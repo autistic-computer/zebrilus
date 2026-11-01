@@ -167,6 +167,7 @@ fn tree_row_element(
         ChooseTreePaneKind::Terminal => ChooserPaneKind::Terminal,
         ChooseTreePaneKind::Browser => ChooserPaneKind::Browser,
         ChooseTreePaneKind::Editor => ChooserPaneKind::Editor,
+        ChooseTreePaneKind::Agent => ChooserPaneKind::Agent,
     });
     let active = item.active();
     let tagged = item.tagged();

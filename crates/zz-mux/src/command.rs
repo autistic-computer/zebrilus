@@ -22,14 +22,15 @@ use std::{
 
 use parking_lot::Mutex;
 use zz_protocol::{
-    AgentAutoApprove, Axis, BrowserDescriptor, ChooseTreeKind, ChooserPreviewSize,
-    ClientEnvironmentBlob, ClientId, CommandInvocation, CommandPromptMode, CommandPromptType,
-    CommandResolution, CommandSpec, DEFAULT_AGENT_AUTO_APPROVE, DEFAULT_AGENT_CLAUDE_CODE_COMMAND,
-    DEFAULT_AGENT_COMMAND, DEFAULT_BROWSER_PROFILE, EditorDescriptor, KeyToken,
-    MAX_AGENT_COMMAND_BYTES, MuxOptionKey, NATIVE_COMMAND_NAMES, PaneBorderIndicators,
-    PaneBorderLines, PaneBorderStatus, PaneId, PaneKindSnapshot, PopupBorderLines, RawText,
-    ServerError, SessionId, SourceSpan, TerminalUiCommand, WindowId, catalog_command_spec,
-    command_specs, normalize_browser_profile_name, parse_tmux_command_options, parse_tmux_options,
+    AgentAutoApprove, AgentDescriptor, AgentProvider, Axis, BrowserDescriptor, ChooseTreeKind,
+    ChooserPreviewSize, ClientEnvironmentBlob, ClientId, CommandInvocation, CommandPromptMode,
+    CommandPromptType, CommandResolution, CommandSpec, DEFAULT_AGENT_AUTO_APPROVE,
+    DEFAULT_AGENT_CLAUDE_CODE_COMMAND, DEFAULT_AGENT_COMMAND, DEFAULT_BROWSER_PROFILE,
+    EditorDescriptor, KeyToken, MAX_AGENT_COMMAND_BYTES, MAX_AGENT_SESSION_ID_BYTES,
+    MAX_GUI_TEXT_BYTES, MuxOptionKey, NATIVE_COMMAND_NAMES, PaneBorderIndicators, PaneBorderLines,
+    PaneBorderStatus, PaneId, PaneKindSnapshot, PopupBorderLines, RawText, ServerError, SessionId,
+    SourceSpan, TerminalUiCommand, WindowId, catalog_command_spec, command_specs,
+    normalize_browser_profile_name, parse_tmux_command_options, parse_tmux_options,
     resolve_command, unimplemented_tmux_command_spec,
 };
 use zz_terminal::{
@@ -2285,6 +2286,7 @@ fn pane_kind_name(kind: &PaneKind) -> &'static str {
         PaneKind::Terminal => "terminal",
         PaneKind::Browser(_) => "browser",
         PaneKind::Editor(_) => "editor",
+        PaneKind::Agent(_) => "agent",
     }
 }
 
@@ -7913,19 +7915,32 @@ impl MuxEngine {
         let (options, positional) = parse_command_options("select-pane-kind", args)?;
         let Some((selection, command)) = positional.split_first() else {
             return Err(ServerError::CommandParse(
-                "select-pane-kind requires exactly one of: terminal, browser, editor".to_owned(),
+                "select-pane-kind requires exactly one of: terminal, browser, editor, agent"
+                    .to_owned(),
             ));
         };
-        if selection.as_str() != "terminal"
+        if !matches!(selection.as_str(), "terminal" | "agent")
             && (!command.is_empty() || options.value("-c").is_some())
         {
             return Err(ServerError::CommandParse(
                 "select-pane-kind: -c and a command need the terminal kind".to_owned(),
             ));
         }
+        if selection.as_str() != "agent" && options.value("--resume").is_some() {
+            return Err(ServerError::CommandParse(
+                "select-pane-kind: --resume needs the agent kind".to_owned(),
+            ));
+        }
         let pane = self.resolve_pane(options.value("-t"), context.window, context.pane)?;
+        let mut command = command;
         let kind = match selection.as_str() {
             "terminal" => PaneKind::Terminal,
+            "agent" => {
+                let agent =
+                    agent_selection(options.value("-c"), options.value("--resume"), command)?;
+                command = &[];
+                PaneKind::Agent(agent)
+            }
             "browser" => PaneKind::Browser(BrowserDescriptor::single(
                 "about:blank".to_owned(),
                 DEFAULT_BROWSER_PROFILE.to_owned(),
@@ -7950,7 +7965,7 @@ impl MuxEngine {
             }
             _ => {
                 return Err(ServerError::InvalidCommand(format!(
-                    "unknown pane kind {selection:?}; expected terminal, browser, or editor"
+                    "unknown pane kind {selection:?}; expected terminal, browser, editor, or agent"
                 )));
             }
         };
@@ -19153,7 +19168,56 @@ fn pane_kind_snapshot(kind: &PaneKind) -> PaneKindSnapshot {
         PaneKind::Terminal => PaneKindSnapshot::Terminal,
         PaneKind::Browser(browser) => PaneKindSnapshot::Browser(browser.clone()),
         PaneKind::Editor(editor) => PaneKindSnapshot::Editor(editor.clone()),
+        PaneKind::Agent(agent) => PaneKindSnapshot::Agent(agent.clone()),
     }
+}
+
+fn agent_selection(
+    cwd: Option<&str>,
+    resume: Option<&str>,
+    args: &[RawText],
+) -> Result<AgentDescriptor, ServerError> {
+    let usage = || {
+        ServerError::CommandParse(
+            "usage: select-pane-kind [-t pane] [-c start-directory] agent claude|codex \
+             [--resume session-id]"
+                .to_owned(),
+        )
+    };
+    let (provider, session_id) = match args {
+        [provider] => (provider, resume),
+        [provider, flag, session_id] if flag.as_str() == "--resume" && resume.is_none() => {
+            (provider, Some(session_id.as_str()))
+        }
+        _ => return Err(usage()),
+    };
+    let provider = provider
+        .as_str()
+        .parse::<AgentProvider>()
+        .map_err(ServerError::CommandParse)?;
+    if session_id.is_some_and(|session_id| {
+        session_id.is_empty()
+            || session_id.len() > MAX_AGENT_SESSION_ID_BYTES
+            || session_id.chars().any(char::is_control)
+    }) {
+        return Err(ServerError::InvalidCommand(format!(
+            "agent session ID must be 1..={MAX_AGENT_SESSION_ID_BYTES} non-control bytes"
+        )));
+    }
+    let cwd = cwd.map(|cwd| PathBuf::from(expand_home(cwd)));
+    if cwd.as_ref().is_some_and(|cwd| {
+        !cwd.is_absolute() || cwd.as_os_str().as_encoded_bytes().len() > MAX_GUI_TEXT_BYTES
+    }) {
+        return Err(ServerError::InvalidCommand(
+            "agent working directory must be absolute and stay inside the wire limit".to_owned(),
+        ));
+    }
+    Ok(AgentDescriptor {
+        provider,
+        cwd,
+        session_id: session_id.map(str::to_owned),
+        ..AgentDescriptor::default()
+    })
 }
 
 struct WindowDestination {
@@ -28240,6 +28304,126 @@ mod tests {
                 if browser.url() == "about:blank" && browser.profile == DEFAULT_BROWSER_PROFILE
         ));
 
+        assert!(engine.state.validate().is_ok());
+    }
+
+    #[test]
+    fn agent_selection_materializes_a_picker_with_provider_cwd_and_resume() {
+        let mut engine = MuxEngine::default();
+        let mut context = ExecutionContext::default();
+        engine
+            .execute(&mut context, &command("new-session", &["-s", "agent"]))
+            .expect("session");
+        let mut picker = || {
+            engine
+                .execute(
+                    &mut context,
+                    &command("split-window", &["--kind", "picker", "-h"]),
+                )
+                .expect("picker split");
+            context.pane.expect("picker pane").to_string()
+        };
+        let (tail, option, bare) = (picker(), picker(), picker());
+        let mut select = |args: &[&str]| {
+            engine.execute(
+                &mut ExecutionContext::default(),
+                &command("select-pane-kind", args),
+            )
+        };
+
+        for args in [
+            &["-t", tail.as_str(), "agent"][..],
+            &["-t", tail.as_str(), "agent", "gemini"],
+            &["-t", tail.as_str(), "agent", "claude", "--resume"],
+            &["-t", tail.as_str(), "agent", "claude", "--fork", "abc"],
+            &[
+                "-t",
+                tail.as_str(),
+                "agent",
+                "claude",
+                "--resume",
+                "abc",
+                "x",
+            ],
+            &[
+                "-t",
+                tail.as_str(),
+                "--resume",
+                "a",
+                "agent",
+                "claude",
+                "--resume",
+                "b",
+            ],
+            &["-t", tail.as_str(), "--resume", "abc", "terminal"],
+            &["-t", tail.as_str(), "-c", "relative/dir", "agent", "codex"],
+            &["-t", tail.as_str(), "agent", "codex", "--resume", "bad\nid"],
+        ] {
+            assert!(select(args).is_err(), "{args:?}");
+        }
+
+        let tail_effect = select(&[
+            "-t",
+            &tail,
+            "-c",
+            "/work/repo",
+            "agent",
+            "claude",
+            "--resume",
+            "session-1",
+        ])
+        .expect("agent with a trailing resume");
+        let option_effect = select(&["-t", &option, "--resume", "thread-2", "agent", "codex"])
+            .expect("agent with a resume option");
+        let bare_effect = select(&["-t", &bare, "agent", "claude-code"]).expect("bare agent");
+
+        let expected = [
+            (
+                tail_effect,
+                AgentDescriptor {
+                    provider: AgentProvider::ClaudeCode,
+                    cwd: Some(PathBuf::from("/work/repo")),
+                    session_id: Some("session-1".to_owned()),
+                    ..AgentDescriptor::default()
+                },
+            ),
+            (
+                option_effect,
+                AgentDescriptor {
+                    provider: AgentProvider::Codex,
+                    session_id: Some("thread-2".to_owned()),
+                    ..AgentDescriptor::default()
+                },
+            ),
+            (
+                bare_effect,
+                AgentDescriptor {
+                    provider: AgentProvider::ClaudeCode,
+                    ..AgentDescriptor::default()
+                },
+            ),
+        ];
+        for (execution, descriptor) in expected {
+            let Some(MuxEffect::PaneMaterialized {
+                pane,
+                kind: PaneKindSnapshot::Agent(agent),
+                command,
+                ..
+            }) = execution.effects.first()
+            else {
+                panic!("agent selection materializes the picker: {execution:?}");
+            };
+            assert_eq!(agent, &descriptor);
+            assert_eq!(command, &None);
+            assert_eq!(
+                engine.state.pane(*pane).map(|pane| &pane.kind),
+                Some(&PaneKind::Agent(descriptor))
+            );
+            assert_eq!(
+                engine.state.pane(*pane).map(|pane| pane.title.as_str()),
+                Some("agent")
+            );
+        }
         assert!(engine.state.validate().is_ok());
     }
 

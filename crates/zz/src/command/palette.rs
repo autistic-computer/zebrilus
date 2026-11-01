@@ -483,6 +483,7 @@ fn tree_pane(pane: &MuxTreePane, attached: bool, mux: &MuxClient) -> PaletteTree
             MuxTreePaneKind::Browser => "Browser",
             MuxTreePaneKind::Editor => "Editor",
             MuxTreePaneKind::Picker => "New pane",
+            MuxTreePaneKind::Agent(_) => "Agent",
         }
         .into(),
         icon: match pane.kind {
@@ -490,6 +491,7 @@ fn tree_pane(pane: &MuxTreePane, attached: bool, mux: &MuxClient) -> PaletteTree
             MuxTreePaneKind::Terminal => IconName::SquareTerminal,
             MuxTreePaneKind::Browser => IconName::Globe,
             MuxTreePaneKind::Editor => IconName::File,
+            MuxTreePaneKind::Agent(provider) => zz_ui::pane::agent_provider_icon(provider),
         },
         running: attention == Some(zz_client::AgentAttentionStatus::Working),
         needs_you: matches!(

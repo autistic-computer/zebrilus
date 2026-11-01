@@ -1978,6 +1978,14 @@ impl AppShell {
                     radii,
                     cx,
                 ),
+                PaneKindSnapshot::Agent(agent) => unsupported_pane(
+                    "Agent",
+                    zz_ui::pane::agent_provider_icon(agent.provider),
+                    "This client does not draw agent chats yet.",
+                    None,
+                    radii,
+                    cx,
+                ),
                 PaneKindSnapshot::Picker => {
                     let picker = self.picker_entity(pane_id, cx);
                     if can_focus
@@ -2605,6 +2613,7 @@ impl AppShell {
                                     ChooseTreePaneKind::Terminal => ChooserPaneKind::Terminal,
                                     ChooseTreePaneKind::Browser => ChooserPaneKind::Browser,
                                     ChooseTreePaneKind::Editor => ChooserPaneKind::Editor,
+                                    ChooseTreePaneKind::Agent => ChooserPaneKind::Agent,
                                 });
                                 let (label, detail) = if item.text.is_empty() {
                                     (item.label.clone(), item.detail.clone())

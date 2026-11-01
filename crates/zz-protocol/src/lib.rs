@@ -114,9 +114,9 @@ pub use providers::{
     compare_versions,
 };
 pub use snapshot::{
-    AgentProvider, Axis, BrowserDescriptor, BrowserProfileNameError, DEFAULT_BROWSER_PROFILE,
-    EditorDescriptor, EditorDescriptorError, FloatingPaneSnapshot, LayoutNode,
-    MAX_BROWSER_PROFILE_NAME_BYTES, MAX_EDITOR_PATH_BYTES, MAX_FAVICON_BYTES,
+    AgentDescriptor, AgentProvider, Axis, BrowserDescriptor, BrowserProfileNameError,
+    DEFAULT_BROWSER_PROFILE, EditorDescriptor, EditorDescriptorError, FloatingPaneSnapshot,
+    LayoutNode, MAX_BROWSER_PROFILE_NAME_BYTES, MAX_EDITOR_PATH_BYTES, MAX_FAVICON_BYTES,
     MAX_PANE_BRANCH_BYTES, MAX_PANE_CWD_BYTES, MAX_PANE_NAME_BYTES, MAX_PANE_PROCESS_BYTES,
     MAX_PANE_PROCESS_ENTRIES, MAX_PANE_STATUS_APP_BYTES, MAX_PANE_STATUS_MESSAGE_BYTES,
     MAX_PANE_STATUS_TITLE_BYTES, MAX_WINDOW_STATUS_LABEL_BYTES, ModalPaneSnapshot, MuxSnapshot,

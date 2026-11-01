@@ -2100,6 +2100,7 @@ impl AppView {
                                 });
                             }
                         }
+                        PaneKindSnapshot::Agent(_) => {}
                         PaneKindSnapshot::Editor(editor) => {
                             wanted_editors.insert(*pane);
                             if let Some(view) = self.editors.get(pane) {

@@ -23,7 +23,7 @@ use crate::{
     },
 };
 
-pub const PROTOCOL_VERSION: u16 = 117;
+pub const PROTOCOL_VERSION: u16 = 118;
 pub const NEW_SESSION_ATTACH_CAPABILITY: &str = "new-session-attach-v1";
 pub const PANE_FRAME_CAPABILITY: &str = "pane-frame-v1";
 pub const CLIENT_TERMINAL_CAPABILITY: &str = "client-terminal-v1";
@@ -2505,6 +2505,7 @@ pub enum ChooseTreePaneKind {
     Terminal,
     Browser,
     Editor,
+    Agent,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -5364,7 +5365,7 @@ mod tests {
 
     #[test]
     fn detached_reason_holds_its_appended_wire_field() {
-        assert_eq!(super::PROTOCOL_VERSION, 117);
+        assert_eq!(super::PROTOCOL_VERSION, 118);
         for (reason, tag) in [
             (super::DetachReason::Requested, 0),
             (super::DetachReason::Evicted, 1),

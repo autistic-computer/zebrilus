@@ -88,6 +88,7 @@ pub fn pane_label(pane: &PaneSnapshot) -> String {
         }
         PaneKindSnapshot::Browser(_) => "browser".to_owned(),
         PaneKindSnapshot::Editor(_) => "editor".to_owned(),
+        PaneKindSnapshot::Agent(_) => "agent".to_owned(),
     }
 }
 

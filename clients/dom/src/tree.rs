@@ -1000,6 +1000,7 @@ const fn tag_name(tag: PaneTag) -> &'static str {
         PaneTag::Browser => "browser",
         PaneTag::Editor => "editor",
         PaneTag::Picker => "picker",
+        PaneTag::Agent(_) => "agent",
     }
 }
 
@@ -1051,6 +1052,7 @@ pub fn kind(kind: &PaneKindSnapshot) -> &'static str {
         PaneKindSnapshot::Terminal => "terminal",
         PaneKindSnapshot::Browser(_) => "browser",
         PaneKindSnapshot::Editor(_) => "editor",
+        PaneKindSnapshot::Agent(_) => "agent",
     }
 }
 

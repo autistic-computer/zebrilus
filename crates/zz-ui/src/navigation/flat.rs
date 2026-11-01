@@ -270,6 +270,7 @@ pub fn pane_glyph(tag: PaneTag) -> IconName {
         PaneTag::Browser => IconName::Globe,
         PaneTag::Editor => IconName::File,
         PaneTag::Picker => IconName::Plus,
+        PaneTag::Agent(provider) => crate::pane::agent_provider_icon(provider),
     }
 }
 

@@ -45,6 +45,7 @@ pub const fn pane_kind_icon(kind: &zz_protocol::PaneKindSnapshot) -> IconName {
         zz_protocol::PaneKindSnapshot::Browser(_) => IconName::Globe,
         zz_protocol::PaneKindSnapshot::Editor(_) => IconName::File,
         zz_protocol::PaneKindSnapshot::Picker => IconName::Plus,
+        zz_protocol::PaneKindSnapshot::Agent(agent) => agent_provider_icon(agent.provider),
     }
 }
 

@@ -3,7 +3,7 @@ use std::{
     collections::BTreeMap,
     fmt,
     hash::{DefaultHasher, Hasher},
-    path::Path,
+    path::{Path, PathBuf},
     str::FromStr,
 };
 
@@ -273,6 +273,15 @@ impl FromStr for AgentProvider {
     }
 }
 
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AgentDescriptor {
+    pub provider: AgentProvider,
+    pub cwd: Option<PathBuf>,
+    pub session_id: Option<String>,
+    pub model: Option<String>,
+    pub effort: Option<String>,
+}
+
 pub const MAX_EDITOR_PATH_BYTES: usize = 16 * 1024;
 
 #[derive(Clone, Debug, Error, PartialEq, Eq)]
@@ -344,6 +353,7 @@ pub enum PaneKindSnapshot {
     Terminal,
     Browser(BrowserDescriptor),
     Editor(EditorDescriptor),
+    Agent(AgentDescriptor),
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -956,6 +966,24 @@ mod tests {
         assert_eq!(
             postcard::from_bytes::<PaneKindSnapshot>(&encoded).expect("decode editor"),
             PaneKindSnapshot::Editor(descriptor)
+        );
+    }
+
+    #[test]
+    fn agent_kind_round_trips_after_the_editor_tag() {
+        let descriptor = AgentDescriptor {
+            provider: AgentProvider::ClaudeCode,
+            cwd: Some(absolute_test_root()),
+            session_id: Some("session-1".to_owned()),
+            model: Some("haiku".to_owned()),
+            effort: Some("low".to_owned()),
+        };
+        let encoded = postcard::to_stdvec(&PaneKindSnapshot::Agent(descriptor.clone()))
+            .expect("encode agent");
+        assert_eq!(encoded[0], 4);
+        assert_eq!(
+            postcard::from_bytes::<PaneKindSnapshot>(&encoded).expect("decode agent"),
+            PaneKindSnapshot::Agent(descriptor)
         );
     }
 

@@ -371,6 +371,7 @@ impl Client {
                     Some(ChooseTreePaneKind::Terminal) => "square-terminal",
                     Some(ChooseTreePaneKind::Browser) => "globe",
                     Some(ChooseTreePaneKind::Editor) => "file",
+                    Some(ChooseTreePaneKind::Agent) => "bot",
                     None if matches!(item.target, ChooseTreeTarget::Session(_)) => "folder",
                     None => "panels-top-left",
                 };

@@ -10163,11 +10163,17 @@ impl Shared {
                         terminals_to_watch.push((*pane, session));
                     }
                     MuxEffect::PaneCreated {
-                        kind: PaneKindSnapshot::Browser(_) | PaneKindSnapshot::Picker,
+                        kind:
+                            PaneKindSnapshot::Browser(_)
+                            | PaneKindSnapshot::Picker
+                            | PaneKindSnapshot::Agent(_),
                         ..
                     }
                     | MuxEffect::PaneMaterialized {
-                        kind: PaneKindSnapshot::Browser(_) | PaneKindSnapshot::Picker,
+                        kind:
+                            PaneKindSnapshot::Browser(_)
+                            | PaneKindSnapshot::Picker
+                            | PaneKindSnapshot::Agent(_),
                         ..
                     }
                     | MuxEffect::SuppressAfterHook
@@ -37092,6 +37098,10 @@ impl ChooseTreeSession {
                                 || "Editor · scratch".to_owned(),
                                 |path| format!("Editor · {path}"),
                             ),
+                        ),
+                        PaneKind::Agent(agent) => (
+                            Some(ChooseTreePaneKind::Agent),
+                            format!("Agent · {}", agent.provider.label()),
                         ),
                     };
                     if !push_choose_tree_item(

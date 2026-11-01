@@ -480,6 +480,7 @@ impl UnifiedPalette {
                         Some(zz_protocol::ChooseTreePaneKind::Terminal) => IconName::SquareTerminal,
                         Some(zz_protocol::ChooseTreePaneKind::Browser) => IconName::Globe,
                         Some(zz_protocol::ChooseTreePaneKind::Editor) => IconName::File,
+                        Some(zz_protocol::ChooseTreePaneKind::Agent) => IconName::Bot,
                         None => IconName::Plus,
                     },
                 ),

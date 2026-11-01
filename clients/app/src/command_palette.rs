@@ -435,6 +435,7 @@ fn tree_pane(
             PaneKindSnapshot::Browser(_) => "Browser · unavailable",
             PaneKindSnapshot::Editor(_) => "Editor · unavailable",
             PaneKindSnapshot::Picker => "New pane",
+            PaneKindSnapshot::Agent(_) => "Agent",
         }
         .into(),
         icon: match &pane.kind {
@@ -442,6 +443,7 @@ fn tree_pane(
             PaneKindSnapshot::Terminal => IconName::SquareTerminal,
             PaneKindSnapshot::Browser(_) => IconName::Globe,
             PaneKindSnapshot::Editor(_) => IconName::File,
+            PaneKindSnapshot::Agent(agent) => zz_ui::pane::agent_provider_icon(agent.provider),
         },
         running: attention == Some(AgentAttentionStatus::Working),
         needs_you: pane.status.as_ref().is_some_and(|status| {

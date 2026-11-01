@@ -7,10 +7,10 @@ use std::{
 use zz_protocol::LayoutNode;
 pub use zz_protocol::layout::{joined_layout, swapped_layout};
 use zz_protocol::{
-    Axis, BrowserDescriptor, EditorDescriptor, FloatingPaneSnapshot, ModalPaneSnapshot,
-    MuxSnapshot, PaneBorderIndicators, PaneBorderLines, PaneBorderStatus, PaneId, PaneKindSnapshot,
-    PaneSnapshot, PaneStatus, PaneSummary, ServerError, SessionId, SessionSnapshot, SplitId,
-    WindowId, WindowSnapshot, normalize_browser_profile_name,
+    AgentDescriptor, Axis, BrowserDescriptor, EditorDescriptor, FloatingPaneSnapshot,
+    ModalPaneSnapshot, MuxSnapshot, PaneBorderIndicators, PaneBorderLines, PaneBorderStatus,
+    PaneId, PaneKindSnapshot, PaneSnapshot, PaneStatus, PaneSummary, ServerError, SessionId,
+    SessionSnapshot, SplitId, WindowId, WindowSnapshot, normalize_browser_profile_name,
 };
 
 use crate::{
@@ -171,6 +171,7 @@ pub enum PaneKind {
     Terminal,
     Browser(BrowserDescriptor),
     Editor(EditorDescriptor),
+    Agent(AgentDescriptor),
 }
 
 impl PaneKind {
@@ -180,6 +181,7 @@ impl PaneKind {
             Self::Terminal => PaneKindSnapshot::Terminal,
             Self::Browser(browser) => PaneKindSnapshot::Browser(browser.clone()),
             Self::Editor(editor) => PaneKindSnapshot::Editor(editor.clone()),
+            Self::Agent(agent) => PaneKindSnapshot::Agent(agent.clone()),
         }
     }
 }
@@ -4723,6 +4725,7 @@ fn pane_title(kind: &PaneKind, terminal: &str) -> String {
         PaneKind::Browser(browser) if browser.url() == "about:blank" => "browser".to_owned(),
         PaneKind::Browser(browser) => browser.url().to_owned(),
         PaneKind::Editor(_) => "editor".to_owned(),
+        PaneKind::Agent(_) => "agent".to_owned(),
     }
 }
 
