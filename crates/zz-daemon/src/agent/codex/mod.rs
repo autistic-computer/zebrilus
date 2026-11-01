@@ -856,7 +856,11 @@ impl Runtime {
         let before = starting.before.clone();
         match (start, starting.resume.clone()) {
             (Start::Fork, Some(thread)) => {
-                let mut params = json!({ "threadId": thread, "cwd": cwd_text });
+                let mut params = json!({
+                    "threadId": thread,
+                    "cwd": cwd_text,
+                    "config": self.thread_config(),
+                });
                 if let Some(before) = before {
                     params["beforeTurnId"] = Value::from(before);
                 }
@@ -864,7 +868,7 @@ impl Runtime {
             }
             (_, Some(thread)) => self.request(
                 "thread/resume",
-                &json!({ "threadId": thread, "cwd": cwd_text }),
+                &json!({ "threadId": thread, "cwd": cwd_text, "config": self.thread_config() }),
                 Outgoing::Thread { start, cwd },
             ),
             (_, None) => {
@@ -874,8 +878,28 @@ impl Runtime {
         }
     }
 
+    fn thread_config(&self) -> Value {
+        let mut config = Map::new();
+        let mut set = |name: &str, value: &str| {
+            config.insert(
+                format!("shell_environment_policy.set.{name}"),
+                Value::from(value),
+            );
+        };
+        for (name, value) in self.workspace.entries() {
+            set(name, value);
+        }
+        if self.workspace.pane.is_some() {
+            set(crate::WORKSPACE_CONTEXT_SENT_ENVIRONMENT_VARIABLE, "1");
+        }
+        if let Some(path) = self.workspace.path(agent_path()) {
+            set("PATH", &path);
+        }
+        Value::Object(config)
+    }
+
     fn start_params(&self, cwd: &str) -> Value {
-        let mut params = json!({ "cwd": cwd });
+        let mut params = json!({ "cwd": cwd, "config": self.thread_config() });
         if let Some(instructions) = &self.instructions {
             params["developerInstructions"] = Value::from(instructions.as_str());
         }
@@ -2553,6 +2577,16 @@ done
                 .unwrap_or_else(|| panic!("no {method} in {log}"))
         };
         assert!(position("config/read") < position("thread/start"));
+        let config = &requests[position("thread/start")]["params"]["config"];
+        assert_eq!(config["shell_environment_policy.set.ZZ_PANE"], "%3");
+        assert_eq!(config["shell_environment_policy.set.ZZ_SESSION"], "work");
+        assert_eq!(
+            config[format!(
+                "shell_environment_policy.set.{}",
+                crate::WORKSPACE_CONTEXT_SENT_ENVIRONMENT_VARIABLE
+            )],
+            "1"
+        );
         let instructions = requests[position("thread/start")]["params"]["developerInstructions"]
             .as_str()
             .expect("developer instructions")

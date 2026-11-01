@@ -4,7 +4,7 @@ title: Agent panes and the flip
 description: How a pane runs Claude Code or Codex as a chat (PaneKind::Agent over the vendor drivers), how flip-agent switches one pane between the CLI's own TUI and that chat on the same session (busy rules, --now, --when-idle and the armed flag, finding the TUI's session, waiting for the old process), forks and side chats, Codex on its shared app server, the chat's slash list, agent-send and agent-respond, and what the chat draws and how its stream reaches clients.
 resource: crates/zz-daemon/src/daemon/agent_flip.rs
 tags: [agent, agent-pane, flip, chat, claude-code, codex, driver, stream]
-timestamp: 2026-11-01T18:00:00-03:00
+timestamp: 2026-11-01T21:00:00-03:00
 ---
 
 # Overview
@@ -128,9 +128,20 @@ closes the chat's connection and runs `codex resume`, mid-turn included, and the
 idle thread with no client 60 s later. A configured command with arguments keeps an app server of
 its own per chat.
 
-The server's environment is its starter's, so commands Codex runs see the `ZZ_PANE` and `TMUX` of
-whoever started the server, not the chat's pane, and `zz` called from them may name the wrong
-pane.
+The server's environment is its starter's, so the chat hands each thread its pane's environment:
+`thread/start`, `thread/resume` and `thread/fork` carry a `config` override that sets
+`shell_environment_policy.set.<NAME>` for `ZZ_PANE`, `ZZ_SESSION`, `ZZ_SOCKET`, `TMUX`,
+`TMUX_PANE`, `ZZ_TMUX_EXECUTABLE`, `ZZ_TMUX_SHIM_DIR`, `ZZ_AGENT_CONTEXT` and `PATH`
+(`thread_config` in `agent/codex/mod.rs`). Commands and background terminals in a chat's turns
+see the chat's pane, two chats in different panes on one server each see their own, and a flip to
+the chat gets it too: the TUI is gone by then, and the server rebuilds a loaded thread nobody is
+subscribed to when a resume brings different overrides. Where it falls short:
+
+- The server ignores the overrides when another client is still subscribed to the thread, so a
+  second chat resuming a thread a live chat holds runs its commands with the first chat's pane.
+- The TUI's own turns run with the server's environment: no pane when zz started the server, or
+  the pane of the TUI that started it. `zz` called from Codex in the TUI may name no pane or the
+  wrong one.
 
 # The chat's slash list
 
