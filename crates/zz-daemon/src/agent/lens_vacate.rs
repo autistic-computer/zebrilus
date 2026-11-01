@@ -15,6 +15,11 @@ impl Claude {
 }
 
 impl Codex {
+    pub(super) fn left(&self, pane_pid: u32) -> bool {
+        !self.pid.is_some_and(crate::pid_alive)
+            && crate::agent::codex_queue::codex_pid(pane_pid).is_none()
+    }
+
     fn unload(&mut self) {
         self.leave();
         self.tail = None;

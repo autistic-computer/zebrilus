@@ -1,6 +1,7 @@
 # Update Log
 
 ## 2026-11-01
+* **Fix**: A Codex lens no longer types into the shell ([agent lens](/concepts/agent-lens.md)). After the Codex TUI exited, a prompt sent to its pane was typed into the shell, which ran it as a command, and `agent-send --wait` printed nothing and exited 0. With no `codex` process left in the pane, the prompt or steer now fails with "Codex is not running in this pane".
 * **Fix**: The lens after a CLI restarts and beside another Codex TUI ([agent lens](/concepts/agent-lens.md)). A new CLI writes its transcript only with its first prompt, so the first `agent-send --wait` to a CLI started again in a pane began its turn on the old session, and the switch to the new one settled it with no text. The lens now lets go of a session once its CLI exits or moves to a session with no transcript yet (`/clear`), showing no session as before a first prompt, so the next session loads as a first one and keeps the turn. It looks on every tick while the shown session's CLI has moved, a turn left on the old session still settles, and a prompt the plugin never took still fails with the exit message. A Claude turn no longer ends on the transcript's `turn_duration` line while the plugin polls, since that line lands just after `done` and ended a prompt sent back to back. The Codex lens guesses the newest rollout in the folder only when no other Codex TUI runs there; otherwise it shows no session until the claim names this TUI's thread, and a prompt typed meanwhile waits up to a minute for the claim.
 
 ## 2026-10-31

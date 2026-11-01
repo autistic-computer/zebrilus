@@ -4,7 +4,7 @@ title: Agent lens
 description: How a terminal pane running Claude Code or Codex shows an agent timeline. Covers the header toggle and chat mode, the slash commands and skills it lists, the terminal PiP for the CLI's own dialogs, references to panes, chats and files as links, copy and fork on messages, how the chat draws pastes, live turns, subagents and diagrams, the model, effort and folder controls, side chats and forks, pasted images, the daemon lens runtime that tails the CLI's own transcript, joins the Codex TUI's app server, and talks to Claude Code through the zz plugin, the agent stream that carries it to clients, Claude permission prompts, and what agent-send and agent-respond do with it.
 resource: crates/zz-daemon/src/agent/lens.rs
 tags: [agent, lens, claude-code, codex, transcript, app-server, plugin, terminal, pane]
-timestamp: 2026-11-01T06:00:00-03:00
+timestamp: 2026-11-01T06:20:00-03:00
 ---
 
 # Overview
@@ -153,6 +153,10 @@ gone or names another session, the Codex TUI's pid has died), so it lets go with
 of the exit, before a new CLI can be ready. It lets go only when the look finds nothing for the
 pane: a Claude record with no transcript or no `claude` process at all, or a Codex pid other than
 the one whose session the lens shows. A Codex TUI found again on the shown rollout keeps it.
+
+A prompt or steer sent while the pane runs no Codex TUI (the TUI the lens last found has exited and
+no `codex` process is left in the pane) fails with "Codex is not running in this pane" instead of
+being typed into the shell, as the Claude source does when neither the plugin nor the CLI is there.
 
 # The Claude Code plugin
 

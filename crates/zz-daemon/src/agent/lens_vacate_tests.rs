@@ -10,8 +10,8 @@ use zz_protocol::chat::{ChatView, ItemKind};
 use zz_protocol::{AgentProvider, PaneId, agent_stream::AgentImage};
 
 use super::{
-    AgentPrompt, AgentPromptOutcome, AgentStreamPayload, Claude, ClaudeFiles, Lens, LensPane,
-    LensSpec, RuntimeCommand, Shadow, Source, shadow_lens,
+    AgentPrompt, AgentPromptOutcome, AgentStreamPayload, Claude, ClaudeFiles, Codex, Lens,
+    LensPane, LensSpec, RuntimeCommand, Shadow, Source, shadow_lens,
 };
 
 const OLD: &str = "5b0e6f43-7c1d-4a2e-9f80-1d2c3b4a5e6f";
@@ -314,4 +314,44 @@ fn a_cli_that_exits_takes_its_session_out_of_the_lens() {
     );
     assert!(lens.session.is_none());
     assert!(tick(&mut lens).is_empty());
+}
+
+fn codex_lens(pane: &Arc<Pane>, pid: Option<u32>) -> Lens {
+    Lens::with_source(
+        LensSpec {
+            pane: PaneId(7),
+            provider: AgentProvider::Codex,
+            io: pane.clone(),
+        },
+        Source::Codex(Box::new(Codex {
+            pid,
+            ..Codex::default()
+        })),
+        Arc::new(AtomicU64::new(1)),
+    )
+}
+
+#[test]
+fn a_prompt_to_a_pane_whose_codex_left_fails_instead_of_reaching_the_shell() {
+    let pane = Arc::new(Pane {
+        pid: std::process::id(),
+        sent: Mutex::default(),
+    });
+    let mut gone = codex_lens(&pane, None);
+    let failed = send(&mut gone, 3, "echo hello");
+    assert!(
+        matches!(
+            failed.as_slice(),
+            [AgentStreamPayload::PromptFinished {
+                turn_id: 3,
+                outcome: AgentPromptOutcome::Failed { message },
+            }] if message == "Codex is not running in this pane"
+        ),
+        "{failed:?}"
+    );
+    assert!(pane.sent.lock().is_empty());
+
+    let mut running = codex_lens(&pane, Some(std::process::id()));
+    assert!(send(&mut running, 4, "Reply with pong").is_empty());
+    assert_eq!(*pane.sent.lock(), ["Reply with pong"]);
 }

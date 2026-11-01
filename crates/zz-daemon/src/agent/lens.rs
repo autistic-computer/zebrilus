@@ -1449,7 +1449,9 @@ impl Source {
             Self::Claude(claude) => (claude.link.as_ref().is_none_or(|link| !link.live())
                 && pane_pid.is_some_and(|pid| claude.left(pid)))
             .then_some("Claude Code is not running in this pane"),
-            Self::Codex(_) => None,
+            Self::Codex(codex) => pane_pid
+                .is_some_and(|pid| codex.left(pid))
+                .then_some("Codex is not running in this pane"),
         }
     }
 }
@@ -3016,7 +3018,10 @@ mod tests {
             writeln!(file, "{line}").unwrap();
         };
         let pane = Arc::new(FakePane::default());
-        let mut codex = Codex::default();
+        let mut codex = Codex {
+            pid: Some(std::process::id()),
+            ..Codex::default()
+        };
         codex.picks.catalog = Catalog::codex_json(
             r#"{"models":[
                 {"slug":"gpt-6.1-sol","visibility":"list","priority":1,"default_reasoning_level":"low","supported_reasoning_levels":[{"effort":"low"},{"effort":"high"},{"effort":"ultra"}]},
@@ -3657,7 +3662,10 @@ mod tests {
         let rollout = root.path().join("rollout-2026-10-24T10-09-22-test.jsonl");
         std::fs::write(&rollout, "").unwrap();
         let pane = Arc::new(FakePane::default());
-        let mut codex = Codex::default();
+        let mut codex = Codex {
+            pid: Some(std::process::id()),
+            ..Codex::default()
+        };
         codex.load(rollout.clone(), root.path());
         let mut lens = Lens::with_source(
             LensSpec {
@@ -3711,7 +3719,10 @@ mod tests {
                 provider: AgentProvider::Codex,
                 io: Arc::new(FakePane::default()),
             },
-            Source::Codex(Box::default()),
+            Source::Codex(Box::new(Codex {
+                pid: Some(std::process::id()),
+                ..Codex::default()
+            })),
             Arc::new(AtomicU64::new(1)),
         );
         lens.command(RuntimeCommand::Prompt {
