@@ -228,7 +228,7 @@ enum Outgoing {
     },
 }
 
-enum Reply {
+pub(crate) enum Reply {
     Command,
     FileChange,
     Legacy,
@@ -1903,60 +1903,33 @@ impl Runtime {
             self.reply_error(&rpc_id, "a side question does not run tools");
             return Ok(());
         }
-        let item = params["itemId"].as_str().unwrap_or_default().to_owned();
-        let reason = params["reason"]
-            .as_str()
-            .filter(|reason| !reason.is_empty());
+        if let Some((reply, tool_call)) = approval(method, params) {
+            if matches!(
+                method,
+                "item/commandExecution/requestApproval" | "execCommandApproval"
+            ) && *self.auto_approve.lock() != AgentAutoApprove::Off
+                && zz_command::runs_only_zz(&params["command"])
+            {
+                self.reply(&rpc_id, &decision(&reply, "allow"));
+                return Ok(());
+            }
+            return self.approve(rpc_id, reply, tool_call).await;
+        }
         match method {
-            "item/commandExecution/requestApproval" | "execCommandApproval" => {
-                let command = params["command"]
-                    .as_str()
-                    .map(str::to_owned)
-                    .or_else(|| {
-                        params["command"].as_array().map(|parts| {
-                            parts
-                                .iter()
-                                .filter_map(Value::as_str)
-                                .collect::<Vec<_>>()
-                                .join(" ")
-                        })
-                    })
-                    .unwrap_or_else(|| "Run a command".to_owned());
-                let reply = if method == "execCommandApproval" {
-                    Reply::Legacy
-                } else {
-                    Reply::Command
-                };
-                if *self.auto_approve.lock() != AgentAutoApprove::Off
-                    && zz_command::runs_only_zz(&params["command"])
-                {
-                    self.reply(&rpc_id, &decision(&reply, "allow"));
-                    return Ok(());
-                }
-                self.approve(rpc_id, reply, &item, &command, "execute", reason)
-                    .await
-            }
-            "item/fileChange/requestApproval" | "applyPatchApproval" => {
-                let reply = if method == "applyPatchApproval" {
-                    Reply::Legacy
-                } else {
-                    Reply::FileChange
-                };
-                self.approve(rpc_id, reply, &item, "Apply the changes", "edit", reason)
-                    .await
-            }
-            "item/permissions/requestApproval" => {
-                self.approve(
-                    rpc_id,
-                    Reply::Permissions(params["permissions"].clone()),
-                    &item,
-                    reason.unwrap_or("Grant more permissions"),
-                    "other",
-                    None,
+            "item/tool/requestUserInput" => {
+                let item = params["itemId"].as_str().unwrap_or_default();
+                let (questions, options, title) = user_input(params);
+                self.ask(
+                    Pending {
+                        rpc_id,
+                        reply: Reply::Questions(questions.clone()),
+                    },
+                    json!({ "toolCallId": item, "title": title }),
+                    options,
+                    questions,
                 )
                 .await
             }
-            "item/tool/requestUserInput" => self.ask_questions(rpc_id, &item, params).await,
             "mcpServer/elicitation/request" => {
                 self.reply(
                     &rpc_id,
@@ -1975,101 +1948,16 @@ impl Runtime {
         &mut self,
         rpc_id: Value,
         reply: Reply,
-        item: &str,
-        title: &str,
-        kind: &str,
-        reason: Option<&str>,
+        tool_call: Value,
     ) -> Result<(), String> {
-        let tool_kind = serde_json::from_value::<ToolKind>(Value::from(kind)).ok();
+        let tool_kind = serde_json::from_value::<ToolKind>(tool_call["kind"].clone()).ok();
         if tier_approves(*self.auto_approve.lock(), tool_kind) {
             self.reply(&rpc_id, &decision(&reply, "allow"));
             return Ok(());
         }
-        let mut tool_call = json!({ "toolCallId": item, "title": title, "kind": kind });
-        if let Some(reason) = reason {
-            tool_call["content"] =
-                json!([{ "type": "content", "content": { "type": "text", "text": reason } }]);
-        }
-        let mut options = vec![option("allow", "Allow", "allow_once")];
-        if !matches!(reply, Reply::Permissions(_)) {
-            options.push(option(
-                "allow_always",
-                "Always allow this session",
-                "allow_always",
-            ));
-        }
-        options.push(option("reject", "Reject", "reject_once"));
-        self.ask(
-            Pending { rpc_id, reply },
-            tool_call,
-            Value::Array(options),
-            Vec::new(),
-        )
-        .await
-    }
-
-    async fn ask_questions(
-        &mut self,
-        rpc_id: Value,
-        item: &str,
-        params: &Value,
-    ) -> Result<(), String> {
-        let questions = params["questions"]
-            .as_array()
-            .into_iter()
-            .flatten()
-            .map(|question| AgentQuestion {
-                id: question["id"].as_str().unwrap_or_default().to_owned(),
-                header: question["header"]
-                    .as_str()
-                    .filter(|header| !header.is_empty())
-                    .map(str::to_owned),
-                question: question["question"]
-                    .as_str()
-                    .unwrap_or("Question")
-                    .to_owned(),
-                options: question["options"]
-                    .as_array()
-                    .into_iter()
-                    .flatten()
-                    .map(|choice| AgentQuestionOption {
-                        label: choice["label"].as_str().unwrap_or_default().to_owned(),
-                        description: choice["description"]
-                            .as_str()
-                            .filter(|text| !text.is_empty())
-                            .map(str::to_owned),
-                    })
-                    .collect(),
-                multi_select: false,
-                allow_other: question["isOther"] == true,
-                secret: question["isSecret"] == true,
-            })
-            .collect::<Vec<_>>();
-        let options = match questions.as_slice() {
-            [only] => only
-                .options
-                .iter()
-                .enumerate()
-                .map(|(index, choice)| {
-                    option(&format!("answer-{index}"), &choice.label, "allow_once")
-                })
-                .collect(),
-            _ => Vec::new(),
-        };
-        let title = match questions.as_slice() {
-            [only] => only.question.clone(),
-            _ => "Codex has questions".to_owned(),
-        };
-        self.ask(
-            Pending {
-                rpc_id,
-                reply: Reply::Questions(questions.clone()),
-            },
-            json!({ "toolCallId": item, "title": title }),
-            Value::Array(options),
-            questions,
-        )
-        .await
+        let options = approval_options(&reply);
+        self.ask(Pending { rpc_id, reply }, tool_call, options, Vec::new())
+            .await
     }
 
     async fn ask(
@@ -2160,6 +2048,122 @@ impl Runtime {
     }
 }
 
+pub(crate) fn approval(method: &str, params: &Value) -> Option<(Reply, Value)> {
+    let item = params["itemId"].as_str().unwrap_or_default();
+    let reason = params["reason"]
+        .as_str()
+        .filter(|reason| !reason.is_empty());
+    let (reply, title, kind, reason) = match method {
+        "item/commandExecution/requestApproval" | "execCommandApproval" => {
+            let command = params["command"]
+                .as_str()
+                .map(str::to_owned)
+                .or_else(|| {
+                    params["command"].as_array().map(|parts| {
+                        parts
+                            .iter()
+                            .filter_map(Value::as_str)
+                            .collect::<Vec<_>>()
+                            .join(" ")
+                    })
+                })
+                .unwrap_or_else(|| "Run a command".to_owned());
+            let reply = if method == "execCommandApproval" {
+                Reply::Legacy
+            } else {
+                Reply::Command
+            };
+            (reply, command, "execute", reason)
+        }
+        "item/fileChange/requestApproval" | "applyPatchApproval" => {
+            let reply = if method == "applyPatchApproval" {
+                Reply::Legacy
+            } else {
+                Reply::FileChange
+            };
+            (reply, "Apply the changes".to_owned(), "edit", reason)
+        }
+        "item/permissions/requestApproval" => (
+            Reply::Permissions(params["permissions"].clone()),
+            reason.unwrap_or("Grant more permissions").to_owned(),
+            "other",
+            None,
+        ),
+        _ => return None,
+    };
+    let mut tool_call = json!({ "toolCallId": item, "title": title, "kind": kind });
+    if let Some(reason) = reason {
+        tool_call["content"] =
+            json!([{ "type": "content", "content": { "type": "text", "text": reason } }]);
+    }
+    Some((reply, tool_call))
+}
+
+pub(crate) fn approval_options(reply: &Reply) -> Value {
+    let mut options = vec![option("allow", "Allow", "allow_once")];
+    if !matches!(reply, Reply::Permissions(_)) {
+        options.push(option(
+            "allow_always",
+            "Always allow this session",
+            "allow_always",
+        ));
+    }
+    options.push(option("reject", "Reject", "reject_once"));
+    Value::Array(options)
+}
+
+pub(crate) fn user_input(params: &Value) -> (Vec<AgentQuestion>, Value, String) {
+    let questions = params["questions"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .map(|question| AgentQuestion {
+            id: question["id"].as_str().unwrap_or_default().to_owned(),
+            header: question["header"]
+                .as_str()
+                .filter(|header| !header.is_empty())
+                .map(str::to_owned),
+            question: question["question"]
+                .as_str()
+                .unwrap_or("Question")
+                .to_owned(),
+            options: question["options"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .map(|choice| AgentQuestionOption {
+                    label: choice["label"].as_str().unwrap_or_default().to_owned(),
+                    description: choice["description"]
+                        .as_str()
+                        .filter(|text| !text.is_empty())
+                        .map(str::to_owned),
+                })
+                .collect(),
+            multi_select: false,
+            allow_other: question["isOther"] == true,
+            secret: question["isSecret"] == true,
+        })
+        .collect::<Vec<_>>();
+    let (options, title) = question_options(&questions);
+    (questions, options, title)
+}
+
+pub(crate) fn question_options(questions: &[AgentQuestion]) -> (Value, String) {
+    match questions {
+        [only] => (
+            only.options
+                .iter()
+                .enumerate()
+                .map(|(index, choice)| {
+                    option(&format!("answer-{index}"), &choice.label, "allow_once")
+                })
+                .collect(),
+            only.question.clone(),
+        ),
+        _ => (Value::Array(Vec::new()), "Codex has questions".to_owned()),
+    }
+}
+
 fn thread_items(thread: &Value) -> Vec<Value> {
     thread["turns"]
         .as_array()
@@ -2185,7 +2189,7 @@ fn spawned(item: &Value) -> Vec<String> {
         .collect()
 }
 
-fn decision(reply: &Reply, option: &str) -> Value {
+pub(crate) fn decision(reply: &Reply, option: &str) -> Value {
     match reply {
         Reply::Command | Reply::FileChange => json!({
             "decision": match option {
@@ -2217,7 +2221,10 @@ fn decision(reply: &Reply, option: &str) -> Value {
     }
 }
 
-fn chosen(questions: &[AgentQuestion], option: Option<&str>) -> Option<AgentQuestionAnswer> {
+pub(crate) fn chosen(
+    questions: &[AgentQuestion],
+    option: Option<&str>,
+) -> Option<AgentQuestionAnswer> {
     let index = option?.strip_prefix("answer-")?.parse::<usize>().ok()?;
     let question = questions.first()?;
     Some(AgentQuestionAnswer {
@@ -2226,7 +2233,7 @@ fn chosen(questions: &[AgentQuestion], option: Option<&str>) -> Option<AgentQues
     })
 }
 
-fn question_answers(answers: &[AgentQuestionAnswer]) -> Value {
+pub(crate) fn question_answers(answers: &[AgentQuestionAnswer]) -> Value {
     let map = answers
         .iter()
         .map(|answer| (answer.id.clone(), json!({ "answers": answer.answers })))
@@ -2238,7 +2245,7 @@ fn compact_command(turn_id: u64) -> String {
     format!("zz-compact-{turn_id}")
 }
 
-fn turn_input(prompt: &AgentPrompt) -> Value {
+pub(crate) fn turn_input(prompt: &AgentPrompt) -> Value {
     let mut input = Vec::new();
     if !prompt.text.is_empty() {
         input.push(json!({ "type": "text", "text": prompt.text, "text_elements": [] }));
