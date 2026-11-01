@@ -16,7 +16,7 @@ export function paneHeaderButton(factory) {
 }
 
 export function paneIcon(kind) {
-  return { browser: "globe", editor: "file", picker: "plus" }[kind] || "square-terminal";
+  return { browser: "globe", editor: "file", picker: "plus", agent: "bot" }[kind] || "square-terminal";
 }
 
 export function metrics() {
@@ -184,6 +184,8 @@ function paneElement(id) {
       state.client.pane_action(id, "zoom", 0);
       flush();
     }
+    const choice = event.target.closest("[data-flip]")?.dataset.flip;
+    if (choice) globalThis.zzAgent?.chooseFlip(id, choice);
   });
   panes.set(id, pane);
   return pane;
@@ -203,6 +205,22 @@ function badge(icon, label) {
   return `<div data-penna="pane.chip" class="pane-badge"><i data-icon="${icon}"></i><span data-text>${escape(label)}</span></div>`;
 }
 
+function flipBusy(busy) {
+  return [
+    `<div data-penna="pane.chip" class="pane-flip-busy">`,
+    `<div class="pane-flip-row"><i data-icon="triangle-alert" class="pane-flip-glyph"></i>`,
+    `<div class="pane-flip-text"><span class="pane-flip-title">${escape(busy.title)}</span><span class="pane-flip-detail">${escape(busy.detail)}</span></div>`,
+    `<button data-penna="button.quiet" data-size="small" data-flip="dismiss" title="Keep this pane as it is" aria-label="Keep this pane as it is"><i data-icon="xmark"></i></button></div>`,
+    `<div class="pane-flip-actions"><button data-penna="button.quiet" data-size="small" data-flip="when-idle">Switch when idle</button>`,
+    `<button data-penna="button" data-size="small" data-flip="now">Switch now</button></div>`,
+    `</div>`,
+  ].join("");
+}
+
+function flipArmed(label) {
+  return `<div data-penna="pane.chip" class="pane-badge pane-flip-armed"><i data-icon="clock"></i><span data-text>${escape(label)}</span><button data-penna="button.quiet" data-size="small" data-flip="cancel">Cancel</button></div>`;
+}
+
 function escape(text) {
   return String(text).replace(/[&<>"]/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[char]);
 }
@@ -210,10 +228,10 @@ function escape(text) {
 function chrome(pane, info, window, floating) {
   const active = window.activePane === pane.id;
   const terminal = info.kind === "terminal";
-  const lens = pane.element.hasAttribute("data-lens");
+  const chat = info.kind === "agent";
   const { header: headerHeight, gaps } = metrics();
   const framed = gaps && !floating;
-  const showHeader = terminal && !floating;
+  const showHeader = (terminal || chat) && !floating;
   pane.info = info;
   pane.floating = floating;
   pane.element.toggleAttribute("data-active", active);
@@ -222,8 +240,8 @@ function chrome(pane, info, window, floating) {
   pane.element.dataset.kind = info.kind;
   const opacity = preferences.pane_inactive_opacity;
   pane.element.style.setProperty("--pane-dim", active ? 1 : opacity);
-  pane.element.toggleAttribute("data-dim-text", !active && terminal && !lens);
-  pane.element.toggleAttribute("data-dim-scrim", !active && (lens || !terminal) && opacity < 1);
+  pane.element.toggleAttribute("data-dim-text", !active && terminal);
+  pane.element.toggleAttribute("data-dim-scrim", !active && !terminal && opacity < 1);
   if (showHeader) {
     if (!pane.header) {
       pane.header = header(pane);
@@ -233,7 +251,10 @@ function chrome(pane, info, window, floating) {
   }
   pane.frame.hidden = !showHeader;
   const tags = [];
-  if (terminal && info.waiting && !lens) tags.push(badge("clock", `Waiting for %${pane.id}`));
+  const flip = state.client ? JSON.parse(state.client.agent_flip_state(pane.id)) : null;
+  if (flip?.busy) tags.push(flipBusy(flip.busy));
+  else if (flip?.armed) tags.push(flipArmed(flip.armedLabel));
+  if (terminal && info.waiting) tags.push(badge("clock", `Waiting for %${pane.id}`));
   if (info.deadLabel) tags.push(badge("circle-x", info.deadLabel));
   if (info.synchronized) tags.push(badge("layers", "Sync"));
   if (window.zoomedPane === pane.id) {

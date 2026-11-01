@@ -1,5 +1,5 @@
-import { emit, flush, on, phase, schedule, state } from "./core.js";
-import { paneHeaderButton, panes } from "./workspace.js";
+import { emit, flush, markTree, on, phase, schedule, state } from "./core.js";
+import { paneHeaderButton, paneRenderer, panes } from "./workspace.js";
 
 const TOOL_ICONS = {
   read: "file",
@@ -315,21 +315,6 @@ function permissionCard(card, actions) {
   const surface = h("div", { class: "agent-card", "data-penna": "inline-panel" });
   const header = h("div", { class: "agent-card-header" }, h("span", { class: "agent-card-glyph" }, icon("triangle-alert")), h("div", { class: "agent-card-title", "aria-label": card.title }, card.title));
   surface.append(header);
-  if (card.kind === "wait") {
-    surface.append(
-      h(
-        "div",
-        { class: "agent-card-tiles" },
-        h(
-          "div",
-          { class: "agent-option", "data-penna": "agent.option", role: "button", onclick: actions.show },
-          h("div", { class: "agent-option-label", "aria-label": "Show terminal" }, "Show terminal"),
-          h("span", { class: "agent-option-trailing" }, icon("square-terminal")),
-        ),
-      ),
-    );
-    return surface;
-  }
   if (card.counter) header.append(h("span", { class: "agent-card-chip", "data-penna": "badge" }, text(card.counter)));
   header.append(
     h(
@@ -644,7 +629,7 @@ function createLens(pane) {
   const upper = h("div", { class: "agent-upper" }, h("div", { class: "agent-column agent-stack" }, prefix, h("div", { class: "agent-pill-back" }, pill)));
   const git = h("div", { class: "agent-column agent-git" });
   const composer = h("div", { class: "agent-composer" }, upper, h("div", { class: "agent-footer" }, git));
-  const root = h("div", { class: "agent-lens" }, area, composer);
+  const root = h("div", { class: "agent-chat" }, area, composer);
   Object.assign(lens, { root, list, scroll, area, jump, prefix, pill, upper, hint, usage, action, git, composer, mention });
 
   scroll.addEventListener("scroll", () => {
@@ -715,7 +700,6 @@ function updateComposer(lens, view) {
         : permissionCard(view.card, {
             respond: (option) => act(lens, () => state.client.agent_respond(lens.pane, view.card.requestId, option)),
             select: (index) => act(lens, () => state.client.agent_permission_select(lens.pane, index)),
-            show: () => toggle(lens.pane),
           }),
     );
   }
@@ -822,85 +806,87 @@ function markAll() {
   schedule();
 }
 
-function attach(pane) {
-  const host = panes.get(pane);
-  const lens = lenses.get(pane);
-  if (!host || !lens) return;
-  if (lens.root.parentElement !== host.body) host.body.append(lens.root);
-  host.element.toggleAttribute("data-lens", true);
-}
-
-function open(pane) {
-  if (!state.client.agent_open(pane)) return;
+function chat(pane) {
+  state.client.agent_open(pane.id);
   flush();
-  const host = panes.get(pane);
-  if (!host) return;
-  const lens = createLens(host);
-  lenses.set(pane, lens);
-  attach(pane);
-  lens.input.focus({ preventScroll: true });
-  mark(pane);
+  const lens = createLens(pane);
+  lenses.set(pane.id, lens);
+  pane.body.append(lens.root);
+  pane.element.toggleAttribute("data-chat", true);
+  const window = state.tree?.sessions.flatMap((session) => session.windows).find((window) => window.panes.some((item) => item.id === pane.id));
+  if (window?.activePane === pane.id) lens.input.focus({ preventScroll: true });
+  mark(pane.id);
+  return {
+    destroy() {
+      state.client?.agent_close(pane.id);
+      flush();
+      clearTimeout(lens.tick);
+      lens.root.remove();
+      lenses.delete(pane.id);
+      pane.element.removeAttribute("data-chat");
+    },
+  };
 }
 
-function close(pane) {
-  state.client.agent_close(pane);
-  flush();
-  const lens = lenses.get(pane);
-  lens?.root.remove();
-  clearTimeout(lens?.tick);
-  lenses.delete(pane);
-  panes.get(pane)?.element.removeAttribute("data-lens");
-}
+paneRenderer("agent", chat);
 
-export function toggle(pane) {
-  if (lenses.has(pane)) close(pane);
-  else open(pane);
-  const window = state.tree?.sessions.flatMap((session) => session.windows).find((window) => window.panes.some((item) => item.id === pane));
-  if (window && window.activePane !== pane) state.client.command("select-pane", ["-t", `%${pane}`]);
+export function flip(pane) {
+  if (!state.client?.agent_flip(pane)) return;
   flush();
   syncHeaders();
+  markTree();
 }
 
-const lensButtons = new WeakMap();
+export function chooseFlip(pane, choice) {
+  if (!state.client?.agent_flip_choose(pane, choice)) return;
+  flush();
+  syncHeaders();
+  markTree();
+}
+
+export function flipState(pane) {
+  return state.client ? JSON.parse(state.client.agent_flip_state(pane)) : null;
+}
+
+const flipButtons = new WeakMap();
 
 paneHeaderButton((pane) => {
-  let lensButton = lensButtons.get(pane);
-  if (!lensButton) {
-    lensButton = button("pane.header.lens", "Show agent view", "eye", (event) => {
+  let flipButton = flipButtons.get(pane);
+  if (!flipButton) {
+    flipButton = button("pane.header.flip", "Switch to chat", "chat", (event) => {
       event.stopPropagation();
-      toggle(pane.id);
+      flip(pane.id);
     });
-    lensButtons.set(pane, lensButton);
+    flipButtons.set(pane, flipButton);
   }
-  lensButton.hidden = !state.client?.agent_provider(pane.id);
-  return lensButton;
+  paintFlip(flipButton, flipState(pane.id));
+  return flipButton;
 });
+
+function paintFlip(flipButton, flip) {
+  flipButton.hidden = !flip;
+  if (!flip) return;
+  flipButton.title = flip.title;
+  flipButton.setAttribute("aria-label", flip.title);
+  const glyph = flipButton.querySelector("[data-icon]");
+  if (glyph) glyph.dataset.icon = flip.icon;
+  flipButton.toggleAttribute("data-armed", flip.armed);
+  flipButton.disabled = flip.pending || null;
+  if (flip.armed) flipButton.dataset.state = "selected";
+  else delete flipButton.dataset.state;
+}
 
 function syncHeaders() {
   for (const [id, pane] of panes) {
-    const lensButton = pane.element.querySelector("[data-penna='pane.header.lens']");
-    if (!lensButton) continue;
-    lensButton.hidden = !state.client?.agent_provider(id);
-    const shown = lenses.has(id);
-    lensButton.title = shown ? "Show terminal" : "Show agent view";
-    lensButton.toggleAttribute("data-open", shown);
-    if (shown) lensButton.dataset.state = "selected";
-    else delete lensButton.dataset.state;
+    const flipButton = pane.element.querySelector("[data-penna='pane.header.flip']");
+    if (flipButton) paintFlip(flipButton, flipState(id));
   }
 }
 
 phase("tree", () => {
   if (!state.client) return;
   state.client.agent_prune();
-  for (const pane of [...lenses.keys()]) {
-    if (!state.client.agent_lens_open(pane) || !panes.has(pane)) {
-      lenses.get(pane)?.root.remove();
-      lenses.delete(pane);
-      panes.get(pane)?.element.removeAttribute("data-lens");
-    }
-  }
   syncHeaders();
-  for (const pane of lenses.keys()) attach(pane);
   markAll();
 });
 
@@ -942,9 +928,11 @@ on("disconnected", () => {
 });
 on("paneRemoved", (event) => {
   state.client.agent_forget(event.pane);
-  const lens = lenses.get(event.pane);
-  lens?.root.remove();
-  lenses.delete(event.pane);
+});
+on("flip", (event) => {
+  if (event.error) emit("status", { text: event.error });
+  syncHeaders();
+  markTree();
 });
 on("theme", markAll);
 
@@ -960,4 +948,4 @@ export function updateProvider(provider) {
   flush();
 }
 
-globalThis.zzAgent = { lenses, toggle, render: (pane) => mark(pane), providers, updateProvider };
+globalThis.zzAgent = { lenses, flip, chooseFlip, render: (pane) => mark(pane), providers, updateProvider };

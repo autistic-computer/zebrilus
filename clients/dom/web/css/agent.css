@@ -1,4 +1,4 @@
-[data-penna="pane.header.lens"] {
+[data-penna="pane.header.flip"] {
   display: inline-grid;
   place-items: center;
   flex: none;
@@ -9,24 +9,71 @@
   color: color-mix(in oklab, var(--penna-muted) 70%, transparent);
 }
 
-[data-penna="pane.header.lens"][data-open] {
+[data-penna="pane.header.flip"][data-armed] {
   color: var(--penna-ink);
 }
 
-[data-pane] [data-penna="pane.header"] [data-penna="pane.header.lens"] {
+[data-pane] [data-penna="pane.header"] [data-penna="pane.header.flip"]:not([data-armed]) {
   visibility: hidden;
 }
 
-[data-pane]:hover [data-penna="pane.header"] [data-penna="pane.header.lens"],
-[data-pane][data-active] [data-penna="pane.header"] [data-penna="pane.header.lens"] {
+[data-pane]:hover [data-penna="pane.header"] [data-penna="pane.header.flip"],
+[data-pane][data-active] [data-penna="pane.header"] [data-penna="pane.header.flip"] {
   visibility: visible;
 }
 
-[data-pane][data-lens] > .pane-body > :not(.agent-lens) {
-  visibility: hidden;
+.pane-flip-busy {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 300px;
+  max-width: calc(100% - 16px);
+  padding: 10px;
+  font-size: 13px;
+  line-height: 16px;
+  pointer-events: auto;
 }
 
-.agent-lens {
+.pane-flip-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+}
+
+.pane-flip-glyph {
+  --penna-icon-size: 13px;
+  margin-top: 1.5px;
+  color: var(--penna-warning);
+}
+
+.pane-flip-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.pane-flip-title {
+  font-weight: 500;
+}
+
+.pane-flip-detail {
+  color: var(--penna-muted);
+}
+
+.pane-flip-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.pane-flip-armed {
+  padding-right: 4px;
+  pointer-events: auto;
+}
+
+.agent-chat {
   position: absolute;
   inset: 0;
   z-index: 1;
@@ -640,7 +687,7 @@
   background: var(--penna-bg);
 }
 
-.agent-lens [data-penna="agent.composer"] {
+.agent-chat [data-penna="agent.composer"] {
   border-radius: 20px;
 }
 
@@ -1065,7 +1112,7 @@
   overflow-y: auto;
 }
 
-.agent-lens [data-penna="menu-item"].agent-completion {
+.agent-chat [data-penna="menu-item"].agent-completion {
   flex: none;
   gap: 12px;
   height: 40px;
