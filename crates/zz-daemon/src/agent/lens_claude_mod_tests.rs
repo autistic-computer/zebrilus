@@ -921,3 +921,31 @@ fn a_background_agents_card_outlives_the_main_turn_and_closes_with_its_own() {
     assert_eq!(resolved(&lens.tick()), [request_id]);
     assert_eq!(hook.join().unwrap(), json!({ "pass": true }));
 }
+
+#[test]
+fn a_hello_that_beat_the_record_to_its_session_is_adopted_once_the_record_catches_up() {
+    let rig = Rig::new(true);
+    let mut lens = rig.lens();
+    lens.open();
+    let _poll = rig.poll();
+    rig.post(&[json!({
+        "t": "hello", "session": "resumed-session", "model": "claude-haiku-5-5", "turn": null,
+    })]);
+    for _ in 0..5 {
+        lens.tick();
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    assert!(lens.source.live_link().is_none());
+
+    let pid = std::process::id();
+    std::fs::write(
+        rig.root.path().join(format!("registry/{pid}.json")),
+        json!({
+            "pid": pid, "sessionId": "resumed-session", "cwd": rig.root.path().join("work"),
+            "status": "idle", "updatedAt": 2,
+        })
+        .to_string(),
+    )
+    .unwrap();
+    live(&mut lens);
+}

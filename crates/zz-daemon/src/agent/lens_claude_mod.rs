@@ -24,12 +24,14 @@ use crate::agent::{
 const UNRELAYED: Duration = Duration::from_secs(2);
 const SETTLED: Duration = Duration::from_secs(1);
 const MAX_BLOCKS: usize = 64;
+const MAX_STRANGERS: usize = 8;
 
 pub(crate) struct Link {
     channel: Channel,
     io: Arc<dyn LensPane>,
     permission_ids: Arc<AtomicU64>,
     instance: Option<Instance>,
+    strangers: Vec<(String, String)>,
     blocks: Vec<Block>,
     asks: Vec<Ask>,
     payloads: Vec<AgentStreamPayload>,
@@ -135,6 +137,7 @@ impl Link {
             io,
             permission_ids,
             instance: None,
+            strangers: Vec::new(),
             blocks: Vec::new(),
             asks: Vec::new(),
             payloads: Vec::new(),
@@ -182,6 +185,14 @@ impl Link {
     pub(crate) fn drain(&mut self, session: Option<&str>, cwd: &Path) -> Drained {
         let mut drained = Drained::default();
         self.started = false;
+        if !self.live()
+            && let Some(position) = self.strangers.iter().position(|(id, from)| {
+                session.is_none_or(|session| session == from) && self.channel.polling(id)
+            })
+        {
+            let (id, _) = self.strangers.remove(position);
+            self.adopt(&id, None, None);
+        }
         for event in self.channel.drain() {
             self.event(&event, session, cwd, &mut drained);
         }
@@ -290,9 +301,24 @@ impl Link {
             instance.model = model;
             return;
         }
-        if session.is_some() && event["session"].as_str() != session {
+        if let Some(session) = session
+            && event["session"].as_str() != Some(session)
+        {
+            self.strangers.retain(|(id, _)| id != from);
+            if self.strangers.len() >= MAX_STRANGERS {
+                self.strangers.remove(0);
+            }
+            self.strangers.push((
+                from.to_owned(),
+                event["session"].as_str().unwrap_or_default().to_owned(),
+            ));
             return;
         }
+        self.adopt(from, turn, model);
+    }
+
+    fn adopt(&mut self, from: &str, turn: Option<String>, model: Option<String>) {
+        self.strangers.retain(|(id, _)| id != from);
         self.resolve(|_| true);
         self.blocks.clear();
         self.prompts.clear();

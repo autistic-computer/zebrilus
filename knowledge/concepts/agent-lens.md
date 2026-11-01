@@ -153,8 +153,11 @@ and is the whole story when the plugin is not there.
   turn), `turn` and `done` (main-loop `turn.start` and `turn.complete`, Esc included), `step`,
   `text` and `thinking` chunks with their block index and UTF-16 offset, `used` (PostToolUse,
   PostToolUseFailure, PermissionDenied), `end`, `model` and `ack`. A `hello` from a session other
-  than the pane's record is ignored, so a `claude -p` a tool runs in the pane neither streams nor
-  blocks.
+  than the pane's record is held, not adopted: its events are dropped and its asks pass at once,
+  and the lens adopts it once the record names its session while the lens has no live plugin. The
+  CLI registers a fresh session id before the one `claude -c` resumes, so a `hello` can arrive
+  ahead of its record. A `claude -p` never connects at all (the mod skips sessions that are not
+  interactive).
 - **Turns.** While the plugin polls, busy and idle come from its turn edges, so Esc in the TUI ends
   the lens turn on the next 250 ms tick. A turn that starts and ends inside one tick still reports
   busy for it, and a main-loop step counts as a start (a background agent's follow-up turn). The
