@@ -4,7 +4,7 @@ title: Agent lens
 description: How a terminal pane running Claude Code or Codex shows an agent timeline. Covers the header toggle and chat mode, the slash commands and skills it lists, the terminal PiP for the CLI's own dialogs, references to panes, chats and files as links, copy and fork on messages, how the chat draws pastes, live turns, subagents and diagrams, the model, effort and folder controls, side chats and forks, pasted images, the daemon lens runtime that tails the CLI's own transcript, joins the Codex TUI's app server, and talks to Claude Code through the zz plugin, the agent stream that carries it to clients, Claude permission prompts, and what agent-send and agent-respond do with it.
 resource: crates/zz-daemon/src/agent/lens.rs
 tags: [agent, lens, claude-code, codex, transcript, app-server, plugin, terminal, pane]
-timestamp: 2026-10-31T23:00:00-03:00
+timestamp: 2026-10-31T23:30:00-03:00
 ---
 
 # Overview
@@ -139,18 +139,39 @@ and is the whole story when the plugin is not there.
 - **Loading.** The daemon writes the plugin into `<daemon data dir>/claude-plugin-<hash of its
   files>` (`agent/claude_plugin.rs`, `include_str!`; not in tests), and every pane it spawns gets
   that folder appended to `CLAUDE_CODE_PLUGIN_DIRS` (the user's own folders stay first) and
-  `ZZ_LENS_SOCKET`, a socket beside the daemon's own (`<socket stem>-lens-<pane>.sock`, left out
+  `ZZ_LENS_SOCKET`, the daemon's lens socket beside its own (`<socket stem>-lens.sock`, left out
   past 100 bytes). The CLI loads the folder with no flag and no prompt, watches it and reloads the
   mod when a file in it changes, and writes about 880 KB of type files into it; one folder per
   version means a daemon of another build never swaps the mod under sessions it did not start.
-  The mod does nothing without `ZZ_LENS_SOCKET`.
-- **Channel.** The lens runtime listens on that socket (`agent/lens_channel.rs`): HTTP/1.1 over
-  the Unix socket, which the mod reaches with `$.http.fetch` and `socketPath`. HTTP because a mod
-  hook has a 10 s budget of its own time that `$.clock.sleep` spends, while a `$` call in flight is
-  free, so a permission hook can wait for the lens as long as the dialog is up only on a fetch. The
-  mod posts its events in batches to `/events`, long-polls `/commands?instance=<id>` (15 s) and
-  posts each permission to `/ask`, which answers `decision`, `pass` or `pending` (ask again). Nobody
-  listens until a lens opens on the pane, so the mod retries once a second and stays quiet.
+  Each pane spawn touches the daemon's folder, and when a daemon first writes the plugin it removes the other
+  `claude-plugin-<16 hex>` folders whose newest file is over 30 days old, so a folder an older
+  daemon's sessions still use stays. The mod does nothing without `ZZ_LENS_SOCKET` and `ZZ_PANE`.
+- **Channel.** One socket per daemon (`agent/lens_channel.rs`, `Hub`), bound 0600 on the first
+  pane spawn that adds the plugin, with one accept thread; `shutdown_agents` closes it and removes
+  the file, and a closed pane drops its state (`Hub::forget`). It speaks HTTP/1.1 over the Unix
+  socket, which the mod reaches with `$.http.fetch` and `socketPath`. HTTP because a mod hook has a
+  10 s budget of its own time that `$.clock.sleep` spends, while a `$` call in flight is free, so a
+  permission hook can wait for the lens as long as the dialog is up only on a fetch. Every request
+  names its pane (`?pane=<n>`, from `ZZ_PANE`). The mod posts its events in batches to `/events`,
+  long-polls `/commands?instance=<id>` (15 s, answering `{commands, watched}`) and posts each
+  permission to `/ask`, which answers `decision`, `pass` or `pending` (ask again). The mod says
+  hello as soon as the session starts and retries once a second while the daemon is away, so the
+  link is up whether or not a lens is open. `/clear`, `/resume` and `/branch` move the CLI to
+  another session id without a new `session.start`, so the mod says hello again when its id
+  differs from the one it last announced: right after `session.end` (the new id shows once that
+  hook returns) and before each long-poll. A pane's state exists only once its plugin has spoken,
+  so panes that never run Claude cost nothing; a hub holding 4096 panes drops the ones with no
+  lens and no polling plugin (a CLI that dies after its pane closed can speak once more) before it
+  turns a new pane away.
+- **Before a lens opens.** The hub keeps only each instance's latest `hello` (eight per pane),
+  with its turn and model kept current from `turn`, `step`, `done`, `end` and `model`; other events
+  are dropped, and `/ask` answers `pass` at once, so the TUI dialog works as if zz were not there.
+  `watched` in each reply tells the mod whether a lens is attached; while it is false the mod sends
+  no `text`, `thinking` or `used` events and posts no asks. A lens opening on the pane attaches
+  (`Hub::attach`, through `LensPane::channel`), wakes the waiting long-poll with `watched: true`,
+  and takes the held hellos; the Claude source greets them as soon as it finds the pane's record,
+  inside `open`, so the first prompt after the lens opens already goes through the plugin. A lens
+  that closes detaches: waiting asks pass and the mod stops streaming.
 - **Events** (`agent/lens_claude_mod.rs`, `Link`). `hello` (instance, session, model, running
   turn), `turn` and `done` (main-loop `turn.start` and `turn.complete`, Esc included), `step`,
   `text` and `thinking` chunks with their block index and UTF-16 offset, `used` (PostToolUse,
@@ -191,8 +212,16 @@ and is the whole story when the plugin is not there.
   typed instead. Stop answers waiting cards with deny and interrupt and calls `$.turn.abort`, which
   leaves no "Interrupted" marker. A model pick calls `$.config.set({ key: "model" })`, which also
   saves it as the user's default, as `/model` does; effort has no API and is still typed.
-- **Fallback.** No socket, an older CLI, a policy that turns mods off, or a plugin that has not
-  polled in 3 s: the lens types, reads the record and answers with keys exactly as below.
+- **A plugin that leaves.** A long-poll checks its connection every 250 ms, so a CLI that exits
+  stops counting as polling within a quarter second, not when the poll times out; commands still
+  queued for it, or that could not be written to it, come back to the lens as lost. A prompt the
+  plugin never acknowledged and can no longer take is typed while the record's process still runs
+  (the mod reloaded), and otherwise ends its turn with "Claude Code exited before it took the
+  prompt" instead of an empty answer. A new prompt or steer while no plugin polls and the pane
+  has neither a Claude record nor a `claude` process fails with "Claude Code is not running in
+  this pane" instead of being typed into the shell.
+- **Fallback.** No socket, an older CLI, a policy that turns mods off, or a plugin that has hung up
+  or not polled in 3 s: the lens types, reads the record and answers with keys exactly as below.
 
 # Codex over the app server
 

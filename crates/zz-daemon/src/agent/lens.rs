@@ -29,6 +29,7 @@ use crate::agent::{
     },
     codex_queue,
     host::RuntimeChannels,
+    lens_channel::Channel,
     lens_claude_mod::{self, Link},
     lens_commands::{self, Listed},
     lens_settings::{self, Catalog, Facts},
@@ -63,7 +64,7 @@ pub(crate) trait LensPane: Send + Sync {
     fn keys(&self, keys: &[&str]) -> Result<(), String>;
     fn attach(&self, images: &[AgentImage]) -> Result<(), String>;
     fn screen(&self) -> Option<String>;
-    fn channel(&self) -> Option<PathBuf> {
+    fn channel(&self) -> Option<Channel> {
         None
     }
 }
@@ -295,11 +296,23 @@ impl Claude {
         let path = sessions::session_file(&files.config, &cwd, &record.session_id);
         let session = record.session_id.clone();
         self.record = Some(record);
+        if let Some(link) = self.link.as_mut() {
+            link.greet(Some(&session));
+        }
         Some(Found {
             session,
             path: path?,
             cwd,
         })
+    }
+
+    fn left(&self, pane_pid: u32) -> bool {
+        let Some(files) = self.files.as_ref() else {
+            return false;
+        };
+        let records = claude_peers::read_records_in(&files.registry).unwrap_or_default();
+        claude_peers::record_in_pane(&records, pane_pid).is_none()
+            && agent_pid(pane_pid, "claude").is_none()
     }
 
     fn follow_launch(&mut self, pane_pid: u32, record: Option<&PeerRecord>) {
@@ -425,7 +438,12 @@ impl Claude {
         };
         let record = self.record.as_ref();
         let cwd = record.map_or_else(|| PathBuf::from("/"), |record| PathBuf::from(&record.cwd));
-        let drained = link.drain(record.map(|record| record.session_id.as_str()), &cwd);
+        let pid = record.map(|record| record.pid);
+        let drained = link.drain(
+            record.map(|record| record.session_id.as_str()),
+            &cwd,
+            || pid.is_some_and(crate::pid_alive),
+        );
         read.finished |= drained.finished;
         read.failed = drained.failed;
         drained.live
@@ -1394,6 +1412,15 @@ impl Source {
     fn live_link(&mut self) -> Option<&mut Link> {
         self.link().filter(|link| link.live())
     }
+
+    fn left(&self, pane_pid: Option<u32>) -> Option<&'static str> {
+        match self {
+            Self::Claude(claude) => (claude.link.as_ref().is_none_or(|link| !link.live())
+                && pane_pid.is_some_and(|pid| claude.left(pid)))
+            .then_some("Claude Code is not running in this pane"),
+            Self::Codex(_) => None,
+        }
+    }
 }
 
 struct Turn {
@@ -1469,8 +1496,8 @@ impl Lens {
         let source = match spec.provider {
             AgentProvider::ClaudeCode => {
                 let mut claude = Claude::new(ClaudeFiles::from_environment());
-                claude.link = spec.io.channel().and_then(|path| {
-                    Link::open(path, Arc::clone(&permission_ids), Arc::clone(&spec.io))
+                claude.link = spec.io.channel().map(|channel| {
+                    Link::open(channel, Arc::clone(&permission_ids), Arc::clone(&spec.io))
                 });
                 Source::Claude(Box::new(claude))
             }
@@ -1777,7 +1804,11 @@ impl Lens {
             .into_iter()
             .map(|update| AgentStreamPayload::Update { update });
         let Some(status) = self.source.status() else {
-            return updates.collect();
+            let mut payloads = updates.collect::<Vec<_>>();
+            if finished {
+                payloads.extend(self.settle(false));
+            }
+            return payloads;
         };
         let mut payloads = Vec::new();
         if status.busy && !self.busy {
@@ -1973,6 +2004,9 @@ impl Lens {
         if let Some(payloads) = self.live_prompt(turn_id, prompt) {
             return payloads;
         }
+        if let Some(message) = self.source.left(self.spec.io.pid()) {
+            return failed(message);
+        }
         if !prompt.images.is_empty()
             && let Err(message) = self.spec.io.attach(&prompt.images)
         {
@@ -2014,7 +2048,11 @@ impl Lens {
         if let Some(payloads) = self.live_steer(text, &prompt) {
             return payloads;
         }
-        match self.spec.io.submit(text) {
+        let typed = match self.source.left(self.spec.io.pid()) {
+            Some(message) => Err(message.to_owned()),
+            None => self.spec.io.submit(text),
+        };
+        match typed {
             Ok(()) => Vec::new(),
             Err(error) => {
                 log::debug!(target: "zz::agent", "could not steer {}: {error}", self.spec.pane);

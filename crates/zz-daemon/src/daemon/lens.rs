@@ -1,7 +1,10 @@
 use super::*;
 
 #[cfg(unix)]
-use crate::agent::lens::{LensPane, LensSpec};
+use crate::agent::{
+    lens::{LensPane, LensSpec},
+    lens_channel::{Channel, Hub},
+};
 
 #[cfg(unix)]
 struct TerminalLens {
@@ -83,9 +86,9 @@ impl LensPane for TerminalLens {
         terminal.capture(CaptureOptions::default()).ok()
     }
 
-    fn channel(&self) -> Option<PathBuf> {
+    fn channel(&self) -> Option<Channel> {
         let shared = self.owner.upgrade()?;
-        crate::agent::claude_plugin::lens_socket(&shared.socket_path, self.pane)
+        shared.lens_hub.get()?.as_ref()?.attach(self.pane)
     }
 }
 
@@ -109,6 +112,23 @@ impl Shared {
             return None;
         }
         lens_provider(&state.summary.process)
+    }
+
+    #[cfg(unix)]
+    pub(super) fn lens_hub(&self) -> Option<&Hub> {
+        if self.agent_stopped.load(Ordering::Acquire) {
+            return None;
+        }
+        self.lens_hub
+            .get_or_init(|| {
+                let path = crate::agent::claude_plugin::lens_socket(&self.socket_path)?;
+                Hub::bind(path)
+                    .inspect_err(|error| {
+                        log::warn!(target: "zz::agent", "the Claude Code lens socket did not open: {error}");
+                    })
+                    .ok()
+            })
+            .as_ref()
     }
 
     #[cfg(not(unix))]

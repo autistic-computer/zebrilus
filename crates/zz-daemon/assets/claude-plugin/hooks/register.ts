@@ -5,15 +5,20 @@ type Command = { id: number; op: string; text?: string; value?: string }
 type Checked = { id: string; tool: string; input: string; agent?: string }
 type Reply = { decision?: PermissionRequestDecision; pending?: boolean }
 type Call = (path: string, method: string, body?: string) => Promise<HttpResponse>
+type Polled = { commands: Command[]; watched?: boolean }
 
 const ASK_LIMIT = 30 * 60 * 1000
 const RETRY = 1000
 const MAX_QUEUE = 2000
+const STREAM = new Set(['text', 'thinking', 'used'])
 
 export const register: Register = (on) => {
   const instance = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
   let call: Call | undefined
+  let renew: (() => Promise<void>) | undefined
+  let announced: string | undefined
   let linked = false
+  let watched = false
   let sending = false
   let queue: Event[] = []
   let turn: string | undefined
@@ -25,6 +30,7 @@ export const register: Register = (on) => {
     if (call === undefined) return false
     try {
       const response = await call('/events', 'POST', JSON.stringify(events))
+      if (response.ok) watched = JSON.parse(response.text).watched === true
       return response.ok
     } catch {
       return false
@@ -45,7 +51,7 @@ export const register: Register = (on) => {
   }
 
   const emit = (event: Event) => {
-    if (!linked) return
+    if (!linked || (!watched && STREAM.has(String(event.t)))) return
     if (queue.length >= MAX_QUEUE) {
       linked = false
       queue = []
@@ -66,14 +72,27 @@ export const register: Register = (on) => {
     const result = await next(e)
     if (!e.isInteractive) return result
     const socket = await $.env.get('ZZ_LENS_SOCKET')
-    if (!socket) return result
+    const pane = (await $.env.get('ZZ_PANE'))?.replace(/^%/, '')
+    if (!socket || !pane) return result
     const channel: Call = (path, method, body) =>
-      $.http.fetch(`http://zz${path}`, {
+      $.http.fetch(`http://zz${path}${path.includes('?') ? '&' : '?'}pane=${pane}`, {
         method,
         headers: { 'content-type': 'application/json' },
         body,
         socketPath: socket,
       })
+    const hello = async (): Promise<Event> => {
+      announced = await $.session.id()
+      return {
+        t: 'hello',
+        i: instance,
+        at: Date.now(),
+        session: announced,
+        model: await $.session.model(),
+        turn: turn ?? null,
+      }
+    }
+    const restarted = call !== undefined
     call = channel
     let polling = false
 
@@ -102,22 +121,15 @@ export const register: Register = (on) => {
       polling = true
       try {
         for (;;) {
-          if (!linked) {
-            const hello = {
-              t: 'hello',
-              i: instance,
-              at: Date.now(),
-              session: await $.session.id(),
-              model: await $.session.model(),
-              turn: turn ?? null,
-            }
-            if (!(await post([hello]))) break
+          if (!linked || (await $.session.id()) !== announced) {
+            if (!(await post([await hello()]))) break
             linked = true
           }
           const response = await channel(`/commands?instance=${instance}`, 'GET')
           if (!response.ok) break
-          const commands: Command[] = JSON.parse(response.text)
-          for (const command of commands) void run(command)
+          const polled: Polled = JSON.parse(response.text)
+          watched = polled.watched === true
+          for (const command of polled.commands) void run(command)
         }
       } catch {}
       linked = false
@@ -125,6 +137,11 @@ export const register: Register = (on) => {
       polling = false
     }
 
+    renew = async () => {
+      if (linked && (await $.session.id()) !== announced) await post([await hello()])
+    }
+    if (restarted && linked) void post([await hello()])
+    void poll()
     $.clock.every(RETRY, () => {
       void poll()
     })
@@ -134,7 +151,11 @@ export const register: Register = (on) => {
   on('session.end', async ($, e, next) => {
     turn = undefined
     emit({ t: 'end', reason: e.reason })
-    return next(e)
+    const result = await next(e)
+    $.clock.after(0, () => {
+      void renew?.()
+    })
+    return result
   })
 
   on('turn.start', async ($, e, next) => {
@@ -183,7 +204,7 @@ export const register: Register = (on) => {
     const result = await next(e)
     const channel = call
     const found = take(e.tool_name, JSON.stringify(e.tool_input), e.agent_id)
-    if (!linked || channel === undefined || result.decision !== undefined) return result
+    if (!linked || !watched || channel === undefined || result.decision !== undefined) return result
     asked += 1
     const body = JSON.stringify({
       t: 'ask',

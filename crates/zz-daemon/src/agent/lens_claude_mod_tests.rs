@@ -1,4 +1,5 @@
 use std::io::Write as _;
+use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::AtomicU64;
@@ -15,20 +16,21 @@ use zz_protocol::{
 use zz_protocol::chat::ChatEvent;
 
 use super::{
-    AgentPrompt, AgentStreamPayload, Claude, ClaudeFiles, Lens, LensPane, LensSpec, Link,
-    RuntimeCommand, RuntimeControl, Shadow, Source, shadow_lens,
+    AgentPrompt, AgentPromptOutcome, AgentStreamPayload, Claude, ClaudeFiles, Lens, LensPane,
+    LensSpec, Link, RuntimeCommand, RuntimeControl, Shadow, Source, shadow_lens,
 };
-use crate::agent::lens_channel::request;
+use crate::agent::lens_channel::{Channel, Hub, request};
 
 const SESSION: &str = "4f1d8a52-2b7e-4c1a-9d3e-6a0b5c7e9f21";
 const MOD: &str = "mod-1";
 const TURN: &str = "a141d466-429e-4f3a-8241-e860401a43a0";
+const PANE: PaneId = PaneId(7);
 
 #[derive(Default)]
 struct Pane {
     sent: Mutex<Vec<String>>,
     keys: Mutex<Vec<String>>,
-    channel: Option<PathBuf>,
+    hub: Option<Hub>,
 }
 
 impl LensPane for Pane {
@@ -59,8 +61,8 @@ impl LensPane for Pane {
         None
     }
 
-    fn channel(&self) -> Option<PathBuf> {
-        self.channel.clone()
+    fn channel(&self) -> Option<Channel> {
+        self.hub.as_ref()?.attach(PANE)
     }
 }
 
@@ -85,7 +87,7 @@ impl Rig {
         let transcript = project.join(format!("{SESSION}.jsonl"));
         std::fs::write(&transcript, "").unwrap();
         let pane = Arc::new(Pane {
-            channel: channel.then(|| root.path().join("lens.sock")),
+            hub: channel.then(|| Hub::bind(root.path().join("lens.sock")).unwrap()),
             ..Pane::default()
         });
         let rig = Self {
@@ -99,6 +101,20 @@ impl Rig {
 
     fn socket(&self) -> PathBuf {
         self.root.path().join("lens.sock")
+    }
+
+    fn hub(&self) -> &Hub {
+        self.pane.hub.as_ref().unwrap()
+    }
+
+    fn open_poll(&self) -> UnixStream {
+        let mut stream = UnixStream::connect(self.socket()).unwrap();
+        write!(
+            stream,
+            "GET /commands?pane=7&instance={MOD} HTTP/1.1\r\nHost: zz\r\nContent-Length: 0\r\n\r\n"
+        )
+        .unwrap();
+        stream
     }
 
     fn record(&self, status: &str) {
@@ -137,9 +153,9 @@ impl Rig {
         claude.link = self
             .pane
             .channel()
-            .and_then(|path| Link::open(path, Arc::clone(&ids), io));
+            .map(|channel| Link::open(channel, Arc::clone(&ids), io));
         let spec = LensSpec {
-            pane: PaneId(7),
+            pane: PANE,
             provider: AgentProvider::ClaudeCode,
             io: self.pane.clone(),
         };
@@ -162,7 +178,7 @@ impl Rig {
         let (status, _) = request(
             &self.socket(),
             "POST",
-            "/events",
+            "/events?pane=7",
             &Value::Array(events).to_string(),
         );
         assert_eq!(status, 200);
@@ -177,7 +193,14 @@ impl Rig {
     fn poll(&self) -> JoinHandle<Value> {
         let socket = self.socket();
         std::thread::spawn(move || {
-            request(&socket, "GET", &format!("/commands?instance={MOD}"), "").1
+            request(
+                &socket,
+                "GET",
+                &format!("/commands?pane=7&instance={MOD}"),
+                "",
+            )
+            .1["commands"]
+                .clone()
         })
     }
 
@@ -185,8 +208,43 @@ impl Rig {
         let socket = self.socket();
         let mut body = body;
         body["i"] = Value::from(MOD);
-        std::thread::spawn(move || request(&socket, "POST", "/ask", &body.to_string()).1)
+        std::thread::spawn(move || request(&socket, "POST", "/ask?pane=7", &body.to_string()).1)
     }
+}
+
+fn until(mut done: impl FnMut() -> bool) {
+    let started = Instant::now();
+    while !done() {
+        assert!(started.elapsed() < Duration::from_secs(5));
+        std::thread::sleep(Duration::from_millis(5));
+    }
+}
+
+fn exited_pid() -> u32 {
+    let mut child = std::process::Command::new("true").spawn().unwrap();
+    let pid = child.id();
+    child.wait().unwrap();
+    pid
+}
+
+fn ask_prompt(lens: &mut Lens, turn_id: u64, text: &str) -> Vec<AgentStreamPayload> {
+    lens.command(RuntimeCommand::Prompt {
+        turn_id,
+        prompt: AgentPrompt {
+            text: text.to_owned(),
+            ..AgentPrompt::default()
+        },
+    })
+}
+
+fn failure(payloads: &[AgentStreamPayload], turn: u64) -> Option<String> {
+    payloads.iter().find_map(|payload| match payload {
+        AgentStreamPayload::PromptFinished {
+            turn_id,
+            outcome: AgentPromptOutcome::Failed { message },
+        } if *turn_id == turn => Some(message.clone()),
+        _ => None,
+    })
 }
 
 fn live(lens: &mut Lens) {
@@ -878,7 +936,7 @@ fn another_claude_in_the_pane_is_ignored_and_never_blocked() {
         request(
             &socket,
             "POST",
-            "/ask",
+            "/ask?pane=7",
             &json!({ "t": "ask", "i": "nested", "key": "nested:1", "tool": "Bash", "input": {} })
                 .to_string(),
         )
@@ -978,4 +1036,133 @@ fn a_dialog_answered_in_the_terminal_withdraws_its_card_before_the_tool_ends() {
     rig.record("busy");
     assert_eq!(resolved(&lens.tick()), [request_id]);
     assert_eq!(hook.join().unwrap(), json!({ "pass": true }));
+}
+
+#[test]
+fn a_plugin_heard_before_the_lens_opened_takes_the_very_first_prompt() {
+    let rig = Rig::new(true);
+    let early = rig.poll();
+    rig.hello(Some(TURN));
+    until(|| rig.hub().polling(super::PaneId(7), MOD));
+    rig.post(&[
+        text(TURN, 0, 0, 0, "dropped while nobody watched"),
+        json!({ "t": "done", "turn": TURN, "reason": "answer" }),
+    ]);
+
+    let mut lens = rig.lens();
+    assert_eq!(early.join().unwrap(), json!([]));
+    let opened = lens.open();
+    assert!(lens.source.live_link().is_some());
+    assert!(!lens.source.live_link().unwrap().busy());
+    assert!(texts(&opened, "agent_message_chunk").is_empty());
+
+    assert!(ask_prompt(&mut lens, 1, "first").is_empty());
+    assert!(rig.pane.sent.lock().is_empty());
+    assert_eq!(
+        rig.poll().join().unwrap(),
+        json!([{ "id": 1, "op": "prompt", "text": "first" }])
+    );
+}
+
+#[test]
+fn a_prompt_the_plugin_took_as_the_cli_exited_fails_instead_of_vanishing() {
+    let rig = Rig::new(true);
+    let mut lens = rig.lens();
+    lens.open();
+    let first = rig.poll();
+    rig.hello(None);
+    live(&mut lens);
+    ask_prompt(&mut lens, 5, "hi");
+    assert_eq!(
+        first.join().unwrap(),
+        json!([{ "id": 1, "op": "prompt", "text": "hi" }])
+    );
+    let again = rig.open_poll();
+    until(|| rig.hub().polling(super::PaneId(7), MOD));
+
+    std::fs::remove_file(
+        rig.root
+            .path()
+            .join(format!("registry/{}.json", std::process::id())),
+    )
+    .unwrap();
+    if let Source::Claude(claude) = &mut lens.source {
+        claude.record.as_mut().unwrap().pid = exited_pid();
+    }
+    drop(again);
+
+    let started = Instant::now();
+    let message = loop {
+        if let Some(message) = failure(&lens.tick(), 5) {
+            break message;
+        }
+        assert!(started.elapsed() < Duration::from_secs(5));
+        std::thread::sleep(Duration::from_millis(20));
+    };
+    assert_eq!(message, "Claude Code exited before it took the prompt");
+    assert!(rig.pane.sent.lock().is_empty());
+    assert!(lens.turn.is_none());
+}
+
+#[test]
+fn a_prompt_left_with_a_plugin_that_hung_up_is_typed_while_the_cli_runs() {
+    let rig = Rig::new(true);
+    let mut lens = rig.lens();
+    lens.open();
+    let first = rig.poll();
+    rig.hello(None);
+    live(&mut lens);
+    ask_prompt(&mut lens, 6, "still here");
+    first.join().unwrap();
+    let again = rig.open_poll();
+    until(|| rig.hub().polling(super::PaneId(7), MOD));
+    drop(again);
+
+    until(|| {
+        lens.tick();
+        !rig.pane.sent.lock().is_empty()
+    });
+    assert_eq!(*rig.pane.sent.lock(), ["still here"]);
+    assert!(lens.turn.is_some());
+    assert!(lens.source.live_link().is_none());
+}
+
+#[test]
+fn a_prompt_after_the_cli_left_the_pane_fails_instead_of_reaching_the_shell() {
+    let rig = Rig::new(true);
+    rig.record("idle");
+    let mut lens = rig.lens();
+    lens.open();
+    let polling = rig.open_poll();
+    rig.hello(None);
+    live(&mut lens);
+    drop(polling);
+    std::fs::remove_file(
+        rig.root
+            .path()
+            .join(format!("registry/{}.json", std::process::id())),
+    )
+    .unwrap();
+    until(|| {
+        lens.tick();
+        lens.source.live_link().is_none()
+    });
+
+    let payloads = ask_prompt(&mut lens, 8, "rm -rf build");
+    assert_eq!(
+        failure(&payloads, 8).as_deref(),
+        Some("Claude Code is not running in this pane")
+    );
+    let steered = lens.command(RuntimeCommand::Verb {
+        prompt: AgentPrompt {
+            text: "/steer git push".to_owned(),
+            ..AgentPrompt::default()
+        },
+    });
+    assert!(matches!(
+        steered.as_slice(),
+        [AgentStreamPayload::PromptsReclaimed { prompts }] if prompts[0].text == "git push"
+    ));
+    assert!(rig.pane.sent.lock().is_empty());
+    assert!(lens.turn.is_none());
 }
