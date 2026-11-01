@@ -267,6 +267,12 @@ pub(crate) struct AgentPendingPermission {
     pub(crate) questions: Vec<AgentQuestion>,
 }
 
+impl AgentPendingPermission {
+    fn outlives_turn(&self) -> bool {
+        self.tool_call["_meta"]["zz"]["background"] == true
+    }
+}
+
 #[derive(Clone, Debug)]
 pub(crate) struct AgentPaneState {
     pub(crate) phase: AgentConnectionPhase,
@@ -1031,7 +1037,10 @@ impl PanePump {
         let accepted = {
             let mut state = self.state.lock();
             if state.phase != AgentConnectionPhase::Ready
-                || !state.pending_permissions.is_empty()
+                || !state
+                    .pending_permissions
+                    .iter()
+                    .all(AgentPendingPermission::outlives_turn)
                 || self.active_turn.is_some()
             {
                 false
@@ -1155,7 +1164,7 @@ impl PanePump {
                     state.error = None;
                     state.git = None;
                     state.tasks.clear();
-                    settle_turn(&mut state);
+                    state.pending_permissions.clear();
                 }
                 AgentStreamPayload::SessionReady { session_id, .. } => {
                     state.session_id = Some(session_id.clone());
@@ -1385,7 +1394,10 @@ impl PanePump {
         let steerable = {
             let state = self.state.lock();
             state.phase == AgentConnectionPhase::Running
-                && state.pending_permissions.is_empty()
+                && state
+                    .pending_permissions
+                    .iter()
+                    .all(AgentPendingPermission::outlives_turn)
                 && state.capabilities.verbs
         };
         let text = prompt.text.trim();
@@ -1813,7 +1825,9 @@ fn append_reply_tail(buffer: &mut String, text: &str, cap: usize) -> bool {
 }
 
 fn settle_turn(state: &mut AgentPaneState) {
-    state.pending_permissions.clear();
+    state
+        .pending_permissions
+        .retain(AgentPendingPermission::outlives_turn);
 }
 
 #[cfg(test)]

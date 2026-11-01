@@ -178,6 +178,27 @@ impl Script {
         })
     }
 
+    pub fn ask_async(&mut self, request: u64, item: &str, question: AgentQuestion) -> &mut Self {
+        let at = self.at;
+        self.start(
+            item,
+            None,
+            ItemKind::Tool,
+            ItemBody::titled(question.question.clone()),
+        )
+        .background(item)
+        .event(&ChatEvent::RequestOpened {
+            request: RequestId(request),
+            turn: None,
+            item: Some(ItemId::new(item)),
+            ask: Ask::Questions {
+                questions: vec![question],
+            },
+            blocking: false,
+            at,
+        })
+    }
+
     pub fn answer(&mut self, request: u64, answers: &[&str]) -> &mut Self {
         self.close(
             RequestId(request),
@@ -492,6 +513,18 @@ pub fn question(id: &str, text: &str, options: Vec<AgentQuestionOption>) -> Agen
         allow_other: true,
         secret: false,
     }
+}
+
+pub fn rendering_question() -> AgentQuestion {
+    question(
+        "q0",
+        "Which rendering element should this test emphasize?",
+        vec![
+            option("Tables", None),
+            option("Diagrams", None),
+            option("Code blocks", None),
+        ],
+    )
 }
 
 pub fn branch_question() -> AgentQuestion {

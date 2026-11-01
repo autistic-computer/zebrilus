@@ -48,7 +48,7 @@ use crate::agent::{
 };
 use zz_machine::Machine;
 
-use translate::Translator;
+use translate::{Asked, Translator, question_reply};
 
 const REQUEST_TIMEOUT: Duration = Duration::from_mins(1);
 #[cfg(unix)]
@@ -210,6 +210,10 @@ enum Outgoing {
     },
     Quiet,
     Steer,
+    Answer {
+        text: String,
+        steered: bool,
+    },
     Terminals,
     Terminate {
         task_id: String,
@@ -238,6 +242,10 @@ pub(crate) enum Reply {
     Legacy,
     Permissions(Value),
     Questions(Vec<AgentQuestion>),
+    Async {
+        call: String,
+        questions: Vec<AgentQuestion>,
+    },
 }
 
 struct Pending {
@@ -734,9 +742,9 @@ impl Runtime {
                 let owner = self.turns.turn().map(|turn| turn.owner.unwrap_or(0));
                 if owner == Some(turn_id) {
                     self.apply(&Fact::Cancel).await?;
-                    self.cancel_permissions().await
+                    self.cancel_blocking().await
                 } else if turn_id == 0 && owner.is_none() {
-                    self.cancel_permissions().await
+                    self.cancel_blocking().await
                 } else {
                     if turn_id > self.last_turn {
                         self.deferred_cancels.insert(turn_id);
@@ -989,7 +997,8 @@ impl Runtime {
             );
             return Ok(());
         }
-        self.settle(start, thread, cwd, Vec::new()).await
+        self.settle(start, thread, cwd, Vec::new(), Vec::new())
+            .await
     }
 
     async fn settle(
@@ -998,6 +1007,7 @@ impl Runtime {
         thread: String,
         cwd: PathBuf,
         history: Vec<(Value, bool)>,
+        questions: Vec<Asked>,
     ) -> Result<(), String> {
         let (source, before) = self
             .starting
@@ -1005,6 +1015,7 @@ impl Runtime {
             .map_or((None, None), |starting| (starting.resume, starting.before));
         self.ready().await?;
         self.translator = Translator::new(cwd.clone());
+        self.translator.reopen(questions);
         self.tasks.clear();
         self.session = Some(Session {
             id: thread.clone(),
@@ -1019,6 +1030,7 @@ impl Runtime {
         for (update, record) in history {
             self.update(update, record).await?;
         }
+        self.open_questions().await?;
         let modes = Some(self.settings.mode_state());
         let config_options = Some(self.settings.config_options());
         self.apply(&Fact::SessionReady).await?;
@@ -1146,16 +1158,17 @@ impl Runtime {
             id: id.clone(),
             cwd: loading.cwd.clone(),
         });
-        let history = self.history(&loading.thread, &children);
+        let (history, questions) = self.history(&loading.thread, &children);
         self.session = previous;
-        self.settle(loading.start, id, loading.cwd, history).await
+        self.settle(loading.start, id, loading.cwd, history, questions)
+            .await
     }
 
     fn history(
         &mut self,
         thread: &Value,
         children: &HashMap<String, Vec<Value>>,
-    ) -> Vec<(Value, bool)> {
+    ) -> (Vec<(Value, bool)>, Vec<Asked>) {
         let id = thread["id"].as_str().unwrap_or_default().to_owned();
         let mut translator = Translator::new(self.cwd());
         let mut updates = Vec::new();
@@ -1171,7 +1184,7 @@ impl Runtime {
         if updates.is_empty()
             && let Some(journal) = self.journal.as_deref()
         {
-            return match journal.replay_for(self.provider, &id) {
+            let replayed = match journal.replay_for(self.provider, &id) {
                 Ok(records) => records
                     .into_iter()
                     .map(|(_, JournalEntry::Update(update))| (update, false))
@@ -1181,13 +1194,17 @@ impl Runtime {
                     Vec::new()
                 }
             };
+            return (replayed, Vec::new());
         }
         if let Some(journal) = self.journal.as_deref()
             && let Err(error) = journal.remove_for(self.provider, &id)
         {
             report_journal_error(&id, &error.to_string());
         }
-        updates.into_iter().map(|update| (update, true)).collect()
+        (
+            updates.into_iter().map(|update| (update, true)).collect(),
+            translator.open_questions(),
+        )
     }
 
     async fn prompt(&mut self, turn_id: u64, prompt: AgentPrompt) -> Result<(), String> {
@@ -1459,7 +1476,23 @@ impl Runtime {
             }
             (Outgoing::Models | Outgoing::Terminals, Err(_))
             | (Outgoing::Quiet, _)
-            | (Outgoing::Steer | Outgoing::SideTurn { .. }, Ok(_)) => Ok(()),
+            | (Outgoing::Steer | Outgoing::SideTurn { .. } | Outgoing::Answer { .. }, Ok(_)) => {
+                Ok(())
+            }
+            (
+                Outgoing::Answer {
+                    text,
+                    steered: true,
+                },
+                Err(_),
+            ) => {
+                self.send_answer(text, None);
+                Ok(())
+            }
+            (Outgoing::Answer { .. }, Err(error)) => {
+                self.notice(&format!("Codex did not take the answer: {error}"))
+                    .await
+            }
             (Outgoing::Thread { start, cwd }, Ok(response)) => {
                 self.threaded(start, cwd, response).await
             }
@@ -1872,10 +1905,12 @@ impl Runtime {
         if self.session.is_none() {
             return Ok(());
         }
-        for update in self.translator.notification(method, params) {
+        let updates = self.translator.notification(method, params);
+        self.answered_elsewhere(&updates).await?;
+        for update in updates {
             self.update(update, true).await?;
         }
-        Ok(())
+        self.open_questions().await
     }
 
     async fn side_notification(
@@ -2017,7 +2052,9 @@ impl Runtime {
         };
         if let Err(error) = validate_payload(&payload) {
             log::warn!(target: "zz::agent", "Codex asked something too large to show: {error}");
-            self.reply(&pending.rpc_id, &decision(&pending.reply, "reject"));
+            if !matches!(pending.reply, Reply::Async { .. }) {
+                self.reply(&pending.rpc_id, &decision(&pending.reply, "reject"));
+            }
             return Ok(());
         }
         self.permissions.insert(request_id, pending);
@@ -2029,7 +2066,9 @@ impl Runtime {
             return Ok(());
         };
         let chosen = match &pending.reply {
-            Reply::Questions(questions) => chosen(questions, option_id),
+            Reply::Questions(questions) | Reply::Async { questions, .. } => {
+                chosen(questions, option_id)
+            }
             _ => None,
         };
         let answer = match &chosen {
@@ -2043,6 +2082,12 @@ impl Runtime {
         })
         .await?;
         let result = match (&pending.reply, option_id) {
+            (Reply::Async { call, questions }, _) => {
+                if let Some(chosen) = &chosen {
+                    self.answer_async(call, questions, std::slice::from_ref(chosen));
+                }
+                return Ok(());
+            }
             (Reply::Questions(_), _) => question_answers(chosen.as_slice()),
             (reply, Some(option)) => decision(reply, option),
             (reply, None) => decision(reply, "cancel"),
@@ -2067,18 +2112,159 @@ impl Runtime {
             canceled: false,
         })
         .await?;
-        self.reply(&pending.rpc_id, &question_answers(answers));
+        match &pending.reply {
+            Reply::Async { call, questions } => self.answer_async(call, questions, answers),
+            _ => self.reply(&pending.rpc_id, &question_answers(answers)),
+        }
         Ok(())
     }
 
-    async fn cancel_permissions(&mut self) -> Result<(), String> {
-        let pending = std::mem::take(&mut self.permissions);
-        for (request_id, pending) in pending {
-            let result = match &pending.reply {
-                Reply::Questions(_) => question_answers(&[]),
-                reply => decision(reply, "cancel"),
+    fn answer_async(
+        &mut self,
+        call: &str,
+        questions: &[AgentQuestion],
+        answers: &[AgentQuestionAnswer],
+    ) {
+        let steer = self
+            .turns
+            .turn()
+            .and_then(Turn::active_command)
+            .map(str::to_owned);
+        self.send_answer(question_reply(call, questions, answers), steer);
+    }
+
+    fn send_answer(&mut self, text: String, steer: Option<String>) {
+        let Some(thread) = self.thread_id() else {
+            return;
+        };
+        let input = json!([{ "type": "text", "text": text, "text_elements": [] }]);
+        if let Some(turn) = steer {
+            self.request(
+                "turn/steer",
+                &json!({ "threadId": thread, "expectedTurnId": turn, "input": input }),
+                Outgoing::Answer {
+                    text,
+                    steered: true,
+                },
+            );
+            return;
+        }
+        let mut params = json!({ "threadId": thread, "input": input });
+        self.settings.turn_overrides(&mut params);
+        self.request(
+            "turn/start",
+            &params,
+            Outgoing::Answer {
+                text,
+                steered: false,
+            },
+        );
+    }
+
+    async fn open_questions(&mut self) -> Result<(), String> {
+        for (call, questions) in self.translator.take_asked() {
+            if self.asking(&call).is_some() {
+                continue;
+            }
+            let (options, title) = question_options(&questions);
+            let tool_call = json!({
+                "toolCallId": call,
+                "title": title,
+                "kind": "other",
+                "_meta": { "zz": { "background": true } },
+            });
+            let reply = Reply::Async {
+                call,
+                questions: questions.clone(),
             };
-            self.reply(&pending.rpc_id, &result);
+            self.ask(
+                Pending {
+                    rpc_id: Value::Null,
+                    reply,
+                },
+                tool_call,
+                options,
+                questions,
+            )
+            .await?;
+        }
+        Ok(())
+    }
+
+    async fn answered_elsewhere(&mut self, updates: &[Value]) -> Result<(), String> {
+        for update in updates {
+            let (Some(call), Some(answered)) = (
+                update["toolCallId"].as_str(),
+                update["_meta"]["zz"]["answered"].as_array(),
+            ) else {
+                continue;
+            };
+            let Some(request_id) = self.asking(call) else {
+                continue;
+            };
+            self.permissions.remove(&request_id);
+            let answers = answered
+                .iter()
+                .enumerate()
+                .map(|(index, entry)| AgentQuestionAnswer {
+                    id: format!("q{index}"),
+                    answers: entry["answer"]
+                        .as_str()
+                        .filter(|answer| !answer.is_empty())
+                        .map(str::to_owned)
+                        .into_iter()
+                        .collect(),
+                })
+                .collect::<Vec<_>>();
+            self.chat
+                .lock()
+                .answered(request_id, chat_answers(&answers));
+            self.emit(AgentStreamPayload::PermissionResolved {
+                request_id,
+                canceled: answers.iter().all(|answer| answer.answers.is_empty()),
+            })
+            .await?;
+        }
+        Ok(())
+    }
+
+    fn asking(&self, call: &str) -> Option<u64> {
+        self.permissions
+            .iter()
+            .find(|(_, pending)| {
+                matches!(&pending.reply, Reply::Async { call: asked, .. } if asked == call)
+            })
+            .map(|(request_id, _)| *request_id)
+    }
+
+    async fn cancel_permissions(&mut self) -> Result<(), String> {
+        self.cancel_where(|_| true).await
+    }
+
+    async fn cancel_blocking(&mut self) -> Result<(), String> {
+        self.cancel_where(|reply| !matches!(reply, Reply::Async { .. }))
+            .await
+    }
+
+    async fn cancel_where(&mut self, which: impl Fn(&Reply) -> bool) -> Result<(), String> {
+        let cancelled = self
+            .permissions
+            .iter()
+            .filter(|(_, pending)| which(&pending.reply))
+            .map(|(request_id, _)| *request_id)
+            .collect::<Vec<_>>();
+        for request_id in cancelled {
+            let Some(pending) = self.permissions.remove(&request_id) else {
+                continue;
+            };
+            let result = match &pending.reply {
+                Reply::Async { .. } => None,
+                Reply::Questions(_) => Some(question_answers(&[])),
+                reply => Some(decision(reply, "cancel")),
+            };
+            if let Some(result) = result {
+                self.reply(&pending.rpc_id, &result);
+            }
             self.emit(AgentStreamPayload::PermissionResolved {
                 request_id,
                 canceled: true,
@@ -2311,7 +2497,7 @@ pub(crate) fn decision(reply: &Reply, option: &str) -> Value {
             }),
             _ => json!({ "permissions": {}, "scope": "turn" }),
         },
-        Reply::Questions(_) => question_answers(&[]),
+        Reply::Questions(_) | Reply::Async { .. } => question_answers(&[]),
     }
 }
 

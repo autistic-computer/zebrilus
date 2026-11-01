@@ -159,7 +159,7 @@ impl Shadow {
                     request: RequestId(*request_id),
                     item,
                     ask: ask(tool_call, options, questions),
-                    blocking: true,
+                    blocking: tool_call["_meta"]["zz"]["background"] != true,
                 });
             }
             AgentStreamPayload::PermissionResolved { request_id, .. } => {

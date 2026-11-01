@@ -578,16 +578,22 @@ impl Draw<'_, '_> {
 
     fn thinking(&self, turn: &TurnView) -> AnyElement {
         let cx = self.cx;
+        let asking = self.view.asking();
         let working = turn.items.iter().any(|id| {
-            self.view.item(id).is_some_and(|item| {
-                item.status.is_open()
-                    && !matches!(
-                        item.kind,
-                        ItemKind::Agent | ItemKind::Reasoning | ItemKind::User
-                    )
-            })
+            asking.is_none_or(|request| request.item.as_ref() != Some(id))
+                && self.view.item(id).is_some_and(|item| {
+                    item.status.is_open()
+                        && !matches!(
+                            item.kind,
+                            ItemKind::Agent | ItemKind::Reasoning | ItemKind::User
+                        )
+                })
         });
-        let label = if working { "Working" } else { "Thinking" };
+        let label = match (working, asking) {
+            (true, _) => "Working",
+            (false, Some(_)) => "Waiting for your answer",
+            (false, None) => "Thinking",
+        };
         let seconds = self.now.saturating_sub(turn.started_at) / 1000;
         let elapsed =
             (seconds > 0 && seconds < 86_400).then(|| chat_rows::duration(seconds * 1000));

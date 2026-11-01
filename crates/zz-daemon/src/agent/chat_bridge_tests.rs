@@ -666,11 +666,12 @@ fn an_async_codex_question_outlives_its_turn_and_takes_its_answer() {
     shadow.payload(&update(json!({
         "sessionUpdate": "tool_call", "toolCallId": "call_q", "title": "Which part?",
         "kind": "other", "status": "in_progress",
-        "_meta": { "codex": { "itemType": "userInputRequest" }, "zz": { "background": true } },
+        "_meta": { "codex": { "itemType": "agentMessage", "delivery": "async" }, "zz": { "background": true } },
     })));
     shadow.payload(&AgentStreamPayload::PermissionRequested {
         request_id: 8,
-        tool_call: json!({ "toolCallId": "call_q", "title": "Which part?", "kind": "other" }),
+        tool_call: json!({ "toolCallId": "call_q", "title": "Which part?", "kind": "other",
+            "_meta": { "zz": { "background": true } } }),
         options: json!([]),
         questions: vec![zz_protocol::agent_stream::AgentQuestion {
             id: "q0".to_owned(),
@@ -685,7 +686,8 @@ fn an_async_codex_question_outlives_its_turn_and_takes_its_answer() {
         idle.request(RequestId(8))
             .is_some_and(zz_protocol::chat::RequestView::is_open)
     );
-    assert_eq!(idle.phase(), ChatPhase::Waiting);
+    assert_eq!(idle.phase(), ChatPhase::Idle);
+    assert_eq!(idle.asking().map(|request| request.id), Some(RequestId(8)));
     shadow.answered(
         8,
         Answer::Questions {
