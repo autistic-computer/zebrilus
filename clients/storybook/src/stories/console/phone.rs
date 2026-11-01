@@ -97,7 +97,7 @@ pub const STORY: Story = Story {
         Section {
             id: "lens",
             name: "Agent lens",
-            summary: "A terminal running Claude Code or Codex on the phone opens in the lens, since typing into a TUI with a phone keyboard is slow. Lens view and Terminal view in the pill's menu switch between them; switching to the terminal keeps that pane there until the agent exits. While the lens is open the page drops the key row the way a browser page does, and the composer types into the TUI.",
+            summary: "A terminal running Claude Code or Codex on the phone opens in the lens, since typing into a TUI with a phone keyboard is slow. Lens view and Terminal view in the pill's menu switch between them; switching to the terminal keeps that pane there until the agent exits. While the lens is open the page drops the key row the way a browser page does, and the composer sends to the CLI.",
             build: phone_lens,
         },
     ],

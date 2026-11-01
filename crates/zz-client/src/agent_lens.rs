@@ -534,7 +534,7 @@ pub fn lens_welcome_title(provider: AgentProvider) -> String {
     format!("{} is waiting for its first prompt", provider.label())
 }
 
-pub const LENS_WELCOME_DETAIL: &str = "What you send here is typed into the terminal.";
+pub const LENS_WELCOME_DETAIL: &str = "What you send here goes to the session in this terminal.";
 
 #[must_use]
 pub fn lens_placeholder(provider: Option<AgentProvider>) -> String {

@@ -530,7 +530,7 @@ pub fn panes(window: &mut Window, cx: &mut App) -> AnyView {
             build(Scene::Codex, Look::Page(360.0), false, window, cx),
         ),
         (
-            "Codex before its first prompt: the welcome names it, and what you send is typed into its terminal",
+            "Codex before its first prompt: the welcome names it, and what you send goes to its session",
             build(Scene::CodexFirst, Look::Page(360.0), true, window, cx),
         ),
     ];

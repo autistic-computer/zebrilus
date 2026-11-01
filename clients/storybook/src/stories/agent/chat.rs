@@ -988,7 +988,7 @@ sequenceDiagram\n\
     Daemon->>Daemon: chat machine\n\
     Daemon-->>Lens: chat event\n\
     Lens->>Lens: fold into ChatView\n\
-    Lens-->>CLI: prompt typed into the TUI\n\
+    Lens-->>CLI: prompt over the live channel\n\
 ```";
 
 const FLOWCHART: &str = "```mermaid\n\
