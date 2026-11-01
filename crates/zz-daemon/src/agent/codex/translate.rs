@@ -4,11 +4,17 @@ use std::{
 };
 
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use zz_protocol::AgentQuestionAnswer;
 
 use crate::agent::chat_bridge::{MAX_PROMPT_IMAGES_BASE64, attach_images};
+use crate::agent::stream::{AgentQuestion, AgentQuestionOption};
 
 const MAX_TITLE_CHARS: usize = 500;
+const ASYNC_TOOL: &str = "request_user_input_async";
+const REPLY_OPEN: &str = "<send_user_message_question_reply>";
+const REPLY_CLOSE: &str = "</send_user_message_question_reply>";
 
 #[derive(Default)]
 pub(crate) struct Translator {
@@ -26,10 +32,11 @@ pub(crate) struct Translator {
     restoring: bool,
 }
 
-struct Asked {
+pub(crate) struct Asked {
     id: String,
-    questions: Vec<String>,
+    questions: Vec<AgentQuestion>,
     answers: Vec<Option<String>>,
+    shown: bool,
 }
 
 impl Asked {
@@ -39,11 +46,25 @@ impl Asked {
             .iter()
             .zip(&self.answers)
             .map(|(question, answer)| {
-                json!({ "question": question, "answer": answer.as_deref().unwrap_or_default() })
+                json!({ "question": question.question, "answer": answer.as_deref().unwrap_or_default() })
             })
             .collect::<Vec<_>>();
         answer_update(&self.id, &answered)
     }
+}
+
+struct QuestionReply {
+    call: String,
+    index: usize,
+    answer: String,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ReplyEntry {
+    question_item_id: String,
+    question: String,
+    answer: String,
 }
 
 const PENDING_THREADS: usize = 32;
@@ -194,12 +215,8 @@ impl Translator {
         updates
     }
 
-    pub(crate) fn history_item(&mut self, item: &Value) -> Vec<Value> {
-        if item["type"] == "userMessage" {
-            let mut updates = self.drop_questions();
-            updates.extend(self.user_message(item));
-            return updates;
-        }
+    #[cfg(test)]
+    fn history_item(&mut self, item: &Value) -> Vec<Value> {
         let mut updates = self.history_start(item);
         updates.extend(self.history_end(item));
         updates
@@ -216,9 +233,6 @@ impl Translator {
     }
 
     pub(crate) fn history_end(&mut self, item: &Value) -> Vec<Value> {
-        if item["type"] == "userMessage" {
-            return self.history_item(item);
-        }
         self.restoring = true;
         let updates = self.completed(item);
         self.restoring = false;
@@ -229,18 +243,11 @@ impl Translator {
         let (Some(id), Some(delta)) = (params["itemId"].as_str(), params["delta"].as_str()) else {
             return Vec::new();
         };
-        if delta.is_empty() {
+        if delta.is_empty() || self.asked.iter().any(|asked| asked.id == id) {
             return Vec::new();
         }
         self.streamed.insert(id.to_owned());
         vec![chunk(kind, id, delta)]
-    }
-
-    pub(crate) fn user_message(&self, item: &Value) -> Vec<Value> {
-        user_text(item, &self.cwd)
-            .map(|(text, images)| user_chunk(&prompt_id(item), &text, images))
-            .into_iter()
-            .collect()
     }
 
     pub(crate) fn drop_questions(&mut self) -> Vec<Value> {
@@ -250,23 +257,53 @@ impl Translator {
             .collect()
     }
 
-    fn ask(&mut self, id: &str, item: &Value) -> Vec<Value> {
-        let questions = item["questions"]
-            .as_array()
+    pub(crate) fn take_asked(&mut self) -> Vec<(String, Vec<AgentQuestion>)> {
+        self.asked
+            .iter_mut()
+            .filter(|asked| !asked.shown)
+            .map(|asked| {
+                asked.shown = true;
+                (asked.id.clone(), asked.questions.clone())
+            })
+            .collect()
+    }
+
+    pub(crate) fn open_questions(&mut self) -> Vec<Asked> {
+        std::mem::take(&mut self.asked)
+    }
+
+    pub(crate) fn reopen(&mut self, asked: Vec<Asked>) {
+        self.asked = asked
             .into_iter()
-            .flatten()
-            .map(|question| question["question"].as_str().unwrap_or_default().to_owned())
-            .collect::<Vec<_>>();
+            .map(|asked| Asked {
+                shown: false,
+                ..asked
+            })
+            .collect();
+    }
+
+    fn ask(&mut self, id: &str, questions: Vec<AgentQuestion>) -> Vec<Value> {
         let title = questions
             .iter()
+            .map(|question| question.question.as_str())
             .find(|question| !question.is_empty())
-            .cloned()
-            .unwrap_or_else(|| "Question".to_owned());
+            .unwrap_or("Question")
+            .to_owned();
+        let input = questions
+            .iter()
+            .map(|question| {
+                json!({
+                    "title": question.question,
+                    "options": question.options.iter().map(|option| option.label.as_str()).collect::<Vec<_>>(),
+                })
+            })
+            .collect::<Vec<_>>();
         self.asked.retain(|asked| asked.id != id);
         self.asked.push(Asked {
             id: id.to_owned(),
             answers: vec![None; questions.len()],
             questions,
+            shown: false,
         });
         vec![json!({
             "sessionUpdate": "tool_call",
@@ -274,35 +311,41 @@ impl Translator {
             "title": clip_title(&title),
             "kind": "other",
             "status": "in_progress",
-            "rawInput": { "questions": item["questions"] },
+            "rawInput": { "questions": input },
             "_meta": {
-                "codex": { "itemType": "userInputRequest" },
+                "codex": { "itemType": "agentMessage", "delivery": "async" },
                 "zz": { "background": true },
             },
         })]
     }
 
-    fn replied(&mut self, item: &Value) -> Vec<Value> {
-        let mut touched = Vec::<String>::new();
-        for reply in item["replies"].as_array().into_iter().flatten() {
-            let Some(call) = reply["callId"].as_str() else {
-                continue;
-            };
+    fn user_item(&mut self, item: &Value) -> Vec<Value> {
+        if let Some(replies) = question_replies(item) {
+            return self.replied(&replies);
+        }
+        let mut updates = self.drop_questions();
+        if let Some((text, images)) = user_text(item, &self.cwd)
+            && !self.prompts.remove(text.trim())
+        {
+            updates.push(user_chunk(&prompt_id(item), &text, images));
+        }
+        updates
+    }
+
+    fn replied(&mut self, replies: &[QuestionReply]) -> Vec<Value> {
+        let mut touched = Vec::<&str>::new();
+        for reply in replies {
             let Some(slot) = self
                 .asked
                 .iter_mut()
-                .find(|asked| asked.id == call)
-                .and_then(|asked| {
-                    let index =
-                        usize::try_from(reply["index"].as_u64().unwrap_or_default()).ok()?;
-                    asked.answers.get_mut(index)
-                })
+                .find(|asked| asked.id == reply.call)
+                .and_then(|asked| asked.answers.get_mut(reply.index))
             else {
                 continue;
             };
-            *slot = Some(reply["answer"].as_str().unwrap_or_default().to_owned());
-            if !touched.iter().any(|known| known == call) {
-                touched.push(call.to_owned());
+            *slot = Some(reply.answer.clone());
+            if !touched.contains(&reply.call.as_str()) {
+                touched.push(&reply.call);
             }
         }
         let mut updates = Vec::new();
@@ -320,10 +363,11 @@ impl Translator {
 
     fn started(&mut self, item: &Value) -> Vec<Value> {
         let id = id_of(item);
-        match item["type"].as_str() {
-            Some("subAgentActivity") => return self.activity(&id, item),
-            Some("userInputRequest") => return self.ask(&id, item),
-            _ => {}
+        if item["type"] == "subAgentActivity" {
+            return self.activity(&id, item);
+        }
+        if let Some(questions) = async_questions(item) {
+            return self.ask(&id, questions);
         }
         let adopted = if item["tool"] == "spawnAgent" {
             self.adopt(&id, item)
@@ -383,20 +427,17 @@ impl Translator {
     fn completed_item(&mut self, id: &str, item: &Value) -> Vec<Value> {
         let id = id.to_owned();
         match item["type"].as_str() {
-            Some("userMessage") => {
-                let Some((text, images)) = user_text(item, &self.cwd) else {
-                    return Vec::new();
-                };
-                if self.prompts.remove(text.trim()) {
-                    return Vec::new();
-                }
-                vec![user_chunk(&prompt_id(item), &text, images)]
+            Some("userMessage") => self.user_item(item),
+            Some("agentMessage") if item["delivery"] == "async" => {
+                let text = item["text"].as_str().unwrap_or_default();
+                let rest = async_questions(item)
+                    .map_or_else(|| text.to_owned(), |questions| leftover(text, &questions));
+                self.whole(&id, "agent_message_chunk", Some(&rest))
             }
             Some("agentMessage" | "plan") => {
                 self.whole(&id, "agent_message_chunk", item["text"].as_str())
             }
-            None | Some("userInputRequest") => Vec::new(),
-            Some("userInputReply") => self.replied(item),
+            None => Vec::new(),
             Some("reasoning") => {
                 let text = item["summary"]
                     .as_array()
@@ -622,6 +663,97 @@ fn user_chunk(message_id: &str, text: &str, images: Vec<(String, String)>) -> Va
     let mut update = chunk("user_message_chunk", message_id, text);
     attach_images(&mut update, images);
     update
+}
+
+pub(crate) fn async_questions(item: &Value) -> Option<Vec<AgentQuestion>> {
+    if item["type"] != "agentMessage" || item["delivery"] != "async" {
+        return None;
+    }
+    let questions = item["questions"]
+        .as_array()?
+        .iter()
+        .enumerate()
+        .map(|(index, question)| AgentQuestion {
+            id: format!("q{index}"),
+            question: question["title"].as_str().unwrap_or_default().to_owned(),
+            options: question["options"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(Value::as_str)
+                .map(|label| AgentQuestionOption {
+                    label: label.to_owned(),
+                    description: None,
+                })
+                .collect(),
+            allow_other: true,
+            ..AgentQuestion::default()
+        })
+        .collect::<Vec<_>>();
+    (!questions.is_empty()).then_some(questions)
+}
+
+fn leftover(text: &str, questions: &[AgentQuestion]) -> String {
+    let mut rest = text.to_owned();
+    for question in questions {
+        let mut block = question.question.clone();
+        for option in &question.options {
+            block.push_str("\n- ");
+            block.push_str(&option.label);
+        }
+        rest = rest.replacen(&block, "", 1);
+    }
+    rest.trim().to_owned()
+}
+
+pub(crate) fn question_reply(
+    call: &str,
+    questions: &[AgentQuestion],
+    answers: &[AgentQuestionAnswer],
+) -> String {
+    let entries = questions
+        .iter()
+        .enumerate()
+        .filter_map(|(index, question)| {
+            let answer = answers.iter().find(|answer| answer.id == question.id)?;
+            Some(ReplyEntry {
+                question_item_id: serde_json::to_string(&(ASYNC_TOOL, call, index)).ok()?,
+                question: question.question.clone(),
+                answer: answer.answers.join(", "),
+            })
+        })
+        .collect::<Vec<_>>();
+    let entries = serde_json::to_string(&entries).unwrap_or_else(|_| "[]".to_owned());
+    format!("{REPLY_OPEN}\n{entries}\n{REPLY_CLOSE}\n")
+}
+
+fn question_replies(item: &Value) -> Option<Vec<QuestionReply>> {
+    let text = item["content"]
+        .as_array()?
+        .iter()
+        .filter(|part| part["type"] == "text")
+        .filter_map(|part| part["text"].as_str())
+        .collect::<String>();
+    let body = text
+        .trim()
+        .strip_prefix(REPLY_OPEN)?
+        .strip_suffix(REPLY_CLOSE)?;
+    let entries = serde_json::from_str::<Vec<ReplyEntry>>(body.trim()).ok()?;
+    Some(
+        entries
+            .into_iter()
+            .filter_map(|entry| {
+                let (tool, call, index) =
+                    serde_json::from_str::<(String, String, usize)>(&entry.question_item_id)
+                        .ok()?;
+                (tool == ASYNC_TOOL).then_some(QuestionReply {
+                    call,
+                    index,
+                    answer: entry.answer,
+                })
+            })
+            .collect(),
+    )
 }
 
 fn answer_update(id: &str, answered: &[Value]) -> Value {
@@ -1400,61 +1532,134 @@ mod tests {
     }
 
     fn asked(id: &str) -> Value {
-        json!({"type": "userInputRequest", "id": id, "questions": [
-            {"id": "q0", "question": "Which part?", "options": [{"label": "A"}, {"label": "B"}]},
-        ]})
+        json!({"type": "agentMessage", "id": id,
+            "text": "Which rendering element should this test emphasize?\n- Tables\n- Diagrams\n- Code blocks",
+            "phase": "final_answer", "memoryCitation": null, "delivery": "async",
+            "questions": [{"title": "Which rendering element should this test emphasize?",
+                "options": ["Tables", "Diagrams", "Code blocks"]}]})
+    }
+
+    fn said(text: &str) -> Value {
+        json!({"type": "userMessage", "id": "u", "clientId": null,
+            "content": [{"type": "text", "text": text, "text_elements": []}]})
+    }
+
+    fn two_part() -> Value {
+        json!({"type": "agentMessage", "id": "call_q", "delivery": "async",
+            "text": "Two things first.\n\nWhich color?\n- Red\n- Blue\n\nWhich size?",
+            "questions": [{"title": "Which color?", "options": ["Red", "Blue"]}, {"title": "Which size?"}]})
+    }
+
+    fn answer(id: &str, answer: &str) -> AgentQuestionAnswer {
+        AgentQuestionAnswer {
+            id: id.to_owned(),
+            answers: vec![answer.to_owned()],
+        }
     }
 
     #[test]
-    fn an_async_question_stays_open_until_its_reply() {
+    fn an_async_question_becomes_a_card_instead_of_its_fallback_text() {
         let mut translator = Translator::new(PathBuf::from("/work"));
-        let ask = history(&mut translator, &asked("call_q"));
-        assert_eq!(ask.len(), 1, "{ask:?}");
-        assert_eq!(ask[0]["sessionUpdate"], "tool_call");
-        assert_eq!(ask[0]["title"], "Which part?");
-        assert_eq!(ask[0]["_meta"]["zz"]["background"], true);
-        let reply = history(
-            &mut translator,
-            &json!({"type": "userInputReply", "id": "u", "replies": [
-                {"callId": "call_q", "index": 0, "question": "Which part?", "answer": "B"},
-            ]}),
-        );
-        assert_eq!(reply.len(), 1, "{reply:?}");
-        assert_eq!(reply[0]["toolCallId"], "call_q");
-        assert_eq!(reply[0]["status"], "completed");
+        let call = "call_810167693edb4b788bc85bd8caff71c2";
+        let item = asked(call);
+        let started = translator.notification("item/started", &json!({ "item": item }));
+        let completed = translator.notification("item/completed", &json!({ "item": item }));
         assert_eq!(
-            reply[0]["_meta"]["zz"]["answered"],
-            json!([{"question": "Which part?", "answer": "B"}])
+            started,
+            [json!({
+                "sessionUpdate": "tool_call",
+                "toolCallId": call,
+                "title": "Which rendering element should this test emphasize?",
+                "kind": "other",
+                "status": "in_progress",
+                "rawInput": { "questions": [{
+                    "title": "Which rendering element should this test emphasize?",
+                    "options": ["Tables", "Diagrams", "Code blocks"],
+                }] },
+                "_meta": {
+                    "codex": { "itemType": "agentMessage", "delivery": "async" },
+                    "zz": { "background": true },
+                },
+            })]
         );
-        assert!(
-            !reply
-                .iter()
-                .any(|update| update["sessionUpdate"] == "user_message_chunk")
+        assert_eq!(completed, Vec::<Value>::new());
+        let option = |label: &str| AgentQuestionOption {
+            label: label.to_owned(),
+            description: None,
+        };
+        assert_eq!(
+            translator.take_asked(),
+            [(
+                call.to_owned(),
+                vec![AgentQuestion {
+                    id: "q0".to_owned(),
+                    question: "Which rendering element should this test emphasize?".to_owned(),
+                    options: vec![option("Tables"), option("Diagrams"), option("Code blocks")],
+                    allow_other: true,
+                    ..AgentQuestion::default()
+                }],
+            )]
+        );
+        assert!(translator.take_asked().is_empty());
+    }
+
+    #[test]
+    fn an_async_message_keeps_text_beyond_its_questions() {
+        let mut translator = Translator::new(PathBuf::from("/work"));
+        let updates = history(&mut translator, &two_part());
+        assert_eq!(updates.len(), 2, "{updates:?}");
+        assert_eq!(updates[0]["sessionUpdate"], "tool_call");
+        assert_eq!(updates[1]["sessionUpdate"], "agent_message_chunk");
+        assert_eq!(updates[1]["content"]["text"], "Two things first.");
+        let questions = &translator.take_asked()[0].1;
+        assert_eq!(questions[1].question, "Which size?");
+        assert!(questions[1].options.is_empty());
+    }
+
+    #[test]
+    fn an_answer_goes_out_in_the_clis_reply_format_and_closes_its_question() {
+        let mut translator = Translator::new(PathBuf::from("/work"));
+        history(&mut translator, &two_part());
+        let questions = translator.take_asked().remove(0).1;
+        let reply = question_reply(
+            "call_q",
+            &questions,
+            &[answer("q0", "Red"), answer("q1", "large, please")],
+        );
+        assert_eq!(
+            reply,
+            r#"<send_user_message_question_reply>
+[{"questionItemId":"[\"request_user_input_async\",\"call_q\",0]","question":"Which color?","answer":"Red"},{"questionItemId":"[\"request_user_input_async\",\"call_q\",1]","question":"Which size?","answer":"large, please"}]
+</send_user_message_question_reply>
+"#
+        );
+        let closed = translator.notification("item/completed", &json!({ "item": said(&reply) }));
+        assert_eq!(
+            closed,
+            [json!({
+                "sessionUpdate": "tool_call_update",
+                "toolCallId": "call_q",
+                "status": "completed",
+                "_meta": { "zz": { "answered": [
+                    { "question": "Which color?", "answer": "Red" },
+                    { "question": "Which size?", "answer": "large, please" },
+                ] } },
+            })]
         );
     }
 
     #[test]
     fn a_question_in_two_parts_closes_once_both_replies_arrive() {
         let mut translator = Translator::new(PathBuf::from("/work"));
-        history(
-            &mut translator,
-            &json!({"type": "userInputRequest", "id": "call_q", "questions": [
-                {"id": "q0", "question": "Which color?", "options": [{"label": "Red"}]},
-                {"id": "q1", "question": "Which size?", "options": [{"label": "Large"}]},
-            ]}),
-        );
-        let reply = |translator: &mut Translator, index: u64, question: &str, answer: &str| {
-            history(
-                translator,
-                &json!({"type": "userInputReply", "id": format!("u{index}"), "replies": [
-                    {"callId": "call_q", "index": index, "question": question, "answer": answer},
-                ]}),
-            )
+        history(&mut translator, &two_part());
+        let questions = translator.take_asked().remove(0).1;
+        let reply = |translator: &mut Translator, id: &str, text: &str| {
+            let text = question_reply("call_q", &questions, &[answer(id, text)]);
+            history(translator, &said(&text))
         };
-        assert!(reply(&mut translator, 0, "Which color?", "Red").is_empty());
-        let done = reply(&mut translator, 1, "Which size?", "Large");
+        assert!(reply(&mut translator, "q0", "Red").is_empty());
+        let done = reply(&mut translator, "q1", "Large");
         assert_eq!(done.len(), 1, "{done:?}");
-        assert_eq!(done[0]["status"], "completed");
         assert_eq!(
             done[0]["_meta"]["zz"]["answered"],
             json!([
@@ -1465,43 +1670,63 @@ mod tests {
     }
 
     #[test]
-    fn a_dropped_question_keeps_the_part_already_answered() {
+    fn another_message_closes_a_question_nobody_answered() {
         let mut translator = Translator::new(PathBuf::from("/work"));
-        history(
-            &mut translator,
-            &json!({"type": "userInputRequest", "id": "call_q", "questions": [
-                {"id": "q0", "question": "Which color?"},
-                {"id": "q1", "question": "Which size?"},
-            ]}),
+        translator.notification("item/started", &json!({ "item": asked("call_q") }));
+        translator.expect_prompt("never mind, go on");
+        let prompt = translator.notification(
+            "item/completed",
+            &json!({ "item": said("never mind, go on") }),
         );
-        history(
-            &mut translator,
-            &json!({"type": "userInputReply", "id": "u", "replies": [
-                {"callId": "call_q", "index": 0, "question": "Which color?", "answer": "Red"},
-            ]}),
-        );
-        let dropped = translator.drop_questions();
+        assert_eq!(prompt.len(), 1, "{prompt:?}");
+        assert_eq!(prompt[0]["toolCallId"], "call_q");
         assert_eq!(
-            dropped[0]["_meta"]["zz"]["answered"],
-            json!([
-                {"question": "Which color?", "answer": "Red"},
-                {"question": "Which size?", "answer": ""},
-            ])
+            prompt[0]["_meta"]["zz"]["answered"],
+            json!([{"question": "Which rendering element should this test emphasize?", "answer": ""}])
         );
+        assert!(translator.open_questions().is_empty());
     }
 
     #[test]
-    fn a_new_prompt_closes_a_question_nobody_answered() {
+    fn history_keeps_open_only_the_questions_nobody_answered() {
         let mut translator = Translator::new(PathBuf::from("/work"));
-        history(&mut translator, &asked("call_q"));
-        let prompt = history(
+        let mut updates = history(&mut translator, &asked("call_a"));
+        updates.extend(history(
             &mut translator,
-            &json!({"type": "userMessage", "id": "u", "content": [{"type": "text", "text": "go on"}]}),
+            &said(&question_reply(
+                "call_a",
+                &async_questions(&asked("call_a")).expect("questions"),
+                &[answer("q0", "Diagrams")],
+            )),
+        ));
+        updates.extend(history(&mut translator, &asked("call_b")));
+        let shape = updates
+            .iter()
+            .map(|update| {
+                (
+                    update["sessionUpdate"].as_str().unwrap_or_default(),
+                    update["toolCallId"].as_str().unwrap_or_default(),
+                    update["_meta"]["zz"]["answered"][0]["answer"].clone(),
+                )
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            shape,
+            [
+                ("tool_call", "call_a", Value::Null),
+                ("tool_call_update", "call_a", json!("Diagrams")),
+                ("tool_call", "call_b", Value::Null),
+            ]
         );
-        assert_eq!(prompt[0]["toolCallId"], "call_q");
-        assert_eq!(prompt[0]["_meta"]["zz"]["answered"][0]["answer"], "");
-        assert_eq!(prompt[1]["sessionUpdate"], "user_message_chunk");
-        assert!(translator.drop_questions().is_empty());
+        let mut live = Translator::new(PathBuf::from("/work"));
+        live.reopen(translator.open_questions());
+        assert_eq!(
+            live.take_asked()
+                .into_iter()
+                .map(|(call, _)| call)
+                .collect::<Vec<_>>(),
+            ["call_b"]
+        );
     }
 
     #[test]
