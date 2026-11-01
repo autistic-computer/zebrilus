@@ -3641,14 +3641,14 @@ fn class_svg(
     let top = -h / 2.0;
     let member_size = js_round(view.font_size * 0.875);
     let line_height = js_round(member_size * 1.5);
-    let border = svg::esc(&theme.border);
+    let border = svg::esc(theme.node_stroke());
     let mut body = format!(
         "<rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" fill=\"{}\" stroke=\"{border}\"{}/>",
         n(left),
         n(top),
         n(w),
         n(h),
-        svg::esc(&theme.surface),
+        svg::esc(theme.node_fill()),
         rounded(&style.shape, theme.radius)
     );
     let ink = ink_fill(style, None);

@@ -43,8 +43,22 @@ pub struct Theme {
     pub surface_alt: String,
     pub border: String,
     pub accent: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub node: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub node_border: Option<String>,
     pub series: Vec<String>,
     pub radius: f64,
+}
+
+impl Theme {
+    pub fn node_fill(&self) -> &str {
+        self.node.as_deref().unwrap_or(&self.surface)
+    }
+
+    pub fn node_stroke(&self) -> &str {
+        self.node_border.as_deref().unwrap_or(&self.border)
+    }
 }
 
 impl Default for Theme {
@@ -58,6 +72,8 @@ impl Default for Theme {
             surface_alt: "#e6e6e6".into(),
             border: "#8a8a8a".into(),
             accent: "#5b7bd5".into(),
+            node: None,
+            node_border: None,
             series: [
                 "#4c78a8", "#f58518", "#54a24b", "#e45756", "#72b7b2", "#eeca3b", "#b279a2",
                 "#9d755d",
@@ -469,6 +485,8 @@ fn validate_options(options: &RenderOptions) -> Result<(), PeleError> {
         &options.theme.accent,
     ]
     .into_iter()
+    .chain(options.theme.node.iter())
+    .chain(options.theme.node_border.iter())
     .chain(options.theme.series.iter())
     {
         if color != "none" && color.parse::<svgtypes::Color>().is_err() {
