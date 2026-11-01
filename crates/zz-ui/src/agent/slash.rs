@@ -47,7 +47,7 @@ pub fn suggestion_row(
     cx: &App,
 ) -> Stateful<Div> {
     let state = row_state(selected, true);
-    let muted = muted_on(&cx.theme().layer(SurfaceRole::MENU_ITEM, state), cx);
+    let muted = muted_on(cx.theme().ground_at(SurfaceRole::MENU_ITEM, state), cx);
     row_surface(
         h_flex()
             .id(id)

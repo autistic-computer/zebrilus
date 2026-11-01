@@ -557,7 +557,7 @@ fn browser_tab_pill(
         .surface_interactive(crate::roles::TAB_PAGE, state, cx)
         .when(!active, |tab| {
             tab.text_color(crate::muted_on(
-                &cx.theme().layer(crate::roles::TAB_PAGE, state),
+                cx.theme().ground_at(crate::roles::TAB_PAGE, state),
                 cx,
             ))
         })
@@ -838,7 +838,7 @@ pub fn browser_omnibox_row(
     let title = title.into();
     let url = url.into();
     let muted = crate::muted_on(
-        &cx.theme().layer(
+        cx.theme().ground_at(
             SurfaceRole::MENU_ITEM,
             if selected {
                 PaintState::Selected

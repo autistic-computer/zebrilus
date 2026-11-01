@@ -25,7 +25,7 @@ Rust edition 2024, MSRV 1.99. Release builds on mac/windows require Zig 0.16.0 (
 - `crates/zz-machine` - the shape of zz's pure state machines: a transition returns the next state, effects and rejects, and the state says when to wake; the agent turn machine (`zz-daemon/src/agent/turn.rs`) is built on it
 - `crates/zz-cli` — headless `zz_cli` binary: the CLI, raw-terminal attach, and the ssh-side entry point
 - `crates/zz-terminal` — terminal engine: PTY sessions, libghostty-vt state, frame snapshots
-- `crates/zz-ui` - zz's application UI on penna (panes, terminal painting, agent, palette, zz's settings pages and appearance rows, navigation, the pane glow and frames (`pane_look`), the terminal tool keys, tmux highlighting, the phone overview's host, window and pane tiles, zz's roles and their patches for penna's built-in themes in `themes/`); kit names come from `penna` directly, not through it
+- `crates/zz-ui` - zz's application UI on penna (panes, terminal painting, agent, palette, zz's settings pages and appearance rows, navigation, the pane glow and frames (`pane_look`), the terminal tool keys, tmux highlighting, the phone overview's host, window and pane tiles; `roles` re-exports the penna recipes zz code still picks by name); kit names come from `penna` directly, not through it
 - `crates/zz-tui` — raw-terminal attach client as a library (the binary lives in `zz-cli`)
 - `crates/zz-web` - local HTTP/WebSocket gateway for browser clients
 - `crates/zz-hotreload` - Subsecond hot-reload launcher for `just hot linux`

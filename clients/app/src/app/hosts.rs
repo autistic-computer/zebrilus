@@ -555,7 +555,6 @@ impl AppShell {
             },
         )
         .surface_role(penna::SurfaceRole::DRAWER)
-        .header_role(roles::PHONE_BAR)
         .into_any_element()
     }
 
@@ -597,7 +596,6 @@ impl AppShell {
             rows.push(
                 sheet_row(
                     "host-sheet-open",
-                    roles::PHONE_ROW,
                     Some(Icon::new(IconName::ArrowRight)),
                     "Open",
                     cx,
@@ -614,7 +612,6 @@ impl AppShell {
         rows.push(if connected || busy {
             sheet_row(
                 "host-sheet-disconnect",
-                roles::PHONE_ROW,
                 Some(Icon::new(IconName::Stop)),
                 if connected { "Disconnect" } else { "Cancel" },
                 cx,
@@ -625,7 +622,6 @@ impl AppShell {
         } else {
             sheet_row(
                 "host-sheet-connect",
-                roles::PHONE_ROW,
                 Some(Icon::new(IconName::Server)),
                 "Connect",
                 cx,
@@ -637,7 +633,6 @@ impl AppShell {
         rows.push(
             sheet_row(
                 "host-sheet-remove",
-                roles::PHONE_ROW,
                 Some(Icon::new(IconName::Xmark)),
                 "Remove host",
                 cx,
@@ -685,7 +680,6 @@ impl AppShell {
             },
         )
         .surface_role(penna::SurfaceRole::DRAWER)
-        .header_role(roles::PHONE_BAR)
         .into_any_element()
     }
 

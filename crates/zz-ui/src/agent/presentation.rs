@@ -238,7 +238,7 @@ impl CardTile {
             surface,
             state,
             ground: layer.ground,
-            muted: muted_on(&layer, cx),
+            muted: muted_on(layer.ground, cx),
         }
     }
 

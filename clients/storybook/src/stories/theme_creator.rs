@@ -836,7 +836,6 @@ impl Phone {
             .map(|(ix, (name, windows, attached))| {
                 sheet_row(
                     ("showcase-session-option", ix),
-                    zz_ui::roles::PHONE_ROW,
                     Some(penna::Icon::new(IconName::Layers)),
                     *name,
                     cx,
@@ -871,15 +870,13 @@ impl Phone {
                 ))
                 .child(sheet_row(
                     "showcase-new-session",
-                    zz_ui::roles::PHONE_ROW,
                     Some(penna::Icon::new(IconName::Plus)),
                     "New session",
                     cx,
                 )),
             px(0.0),
             |_, _| {},
-        )
-        .header_role(zz_ui::roles::PHONE_BAR);
+        );
         phone_frame("showcase-phone-sheet", cx)
             .relative()
             .h(px(PHONE_SHEET_HEIGHT))
@@ -949,7 +946,6 @@ fn drawer(
         |_, _| {},
     )
     .surface_role(role)
-    .header_role(zz_ui::roles::PHONE_BAR)
 }
 
 fn drawers(destination: &Entity<InputState>, window: &mut Window, cx: &mut App) -> AnyElement {
@@ -964,13 +960,7 @@ fn drawers(destination: &Entity<InputState>, window: &mut Window, cx: &mut App) 
             .rule_on(roles::LIST_RULE, penna::Edge::Top, cx)
     };
     let plus = |id: &'static str, label: &'static str| {
-        sheet_row(
-            id,
-            roles::PHONE_ROW,
-            Some(penna::Icon::new(IconName::Plus)),
-            label,
-            cx,
-        )
+        sheet_row(id, Some(penna::Icon::new(IconName::Plus)), label, cx)
     };
     let hosts = list()
         .child(
@@ -988,7 +978,6 @@ fn drawers(destination: &Entity<InputState>, window: &mut Window, cx: &mut App) 
         )
         .child(sheet_row(
             "drawer-host-connect",
-            roles::PHONE_ROW,
             Some(penna::Icon::new(IconName::Server)),
             "Connect",
             cx,
@@ -996,7 +985,6 @@ fn drawers(destination: &Entity<InputState>, window: &mut Window, cx: &mut App) 
         .child(
             sheet_row(
                 "drawer-host-remove",
-                roles::PHONE_ROW,
                 Some(penna::Icon::new(IconName::Xmark)),
                 "Remove host",
                 cx,
@@ -1036,20 +1024,15 @@ fn drawers(destination: &Entity<InputState>, window: &mut Window, cx: &mut App) 
                 .icon(IconName::Copy)
                 .label("Copy SSH key"),
         );
-    let new_pane = list().children(PANES.map(|(id, icon, title, _)| {
-        sheet_row(
-            id,
-            roles::PHONE_ROW,
-            Some(penna::Icon::new(icon)),
-            title,
-            cx,
-        )
-    }));
+    let new_pane =
+        list()
+            .children(PANES.map(|(id, icon, title, _)| {
+                sheet_row(id, Some(penna::Icon::new(icon)), title, cx)
+            }));
     let tabs = list()
         .children(TABS.iter().enumerate().map(|(ix, (title, host))| {
             sheet_row(
                 ("drawer-tab", ix),
-                roles::PHONE_ROW,
                 (ix == 0).then(|| penna::Icon::new(IconName::Check)),
                 *title,
                 cx,
@@ -1444,9 +1427,7 @@ fn reading(cx: &App) -> AnyElement {
         highlight_theme: Arc::clone(&cx.theme().highlight_theme),
         is_dark: cx.theme().is_dark(),
         ..TextViewStyle::default()
-    }
-    .code_role(zz_ui::roles::CARD_CODE)
-    .figure_role(zz_ui::roles::CARD_FIGURE);
+    };
     card("showcase-reading", cx)
         .child(heading(
             "Reading",

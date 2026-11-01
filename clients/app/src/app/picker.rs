@@ -15,12 +15,9 @@ use zz_client::{
     pane_picker::{PaneChoice, PanePickerKey, pane_choices, pane_kind_command, pane_picker_key},
 };
 use zz_protocol::PaneId;
-use zz_ui::{
-    pane::{
-        ChatPickerRow, ChatPickerTarget, agent_provider_icon, chat_picker_rows, pane_picker_row,
-        pane_picker_surface,
-    },
-    roles,
+use zz_ui::pane::{
+    ChatPickerRow, ChatPickerTarget, agent_provider_icon, chat_picker_rows, pane_picker_row,
+    pane_picker_surface,
 };
 
 fn choices() -> &'static [PaneChoice] {
@@ -197,7 +194,6 @@ impl PanePicker {
                 let id = id.clone();
                 sheet_row(
                     ("pane-picker-option", index),
-                    roles::PHONE_ROW,
                     Some(Icon::new(icon)),
                     title,
                     cx,
@@ -238,7 +234,6 @@ impl PanePicker {
                 },
             )
             .surface_role(penna::SurfaceRole::DRAWER)
-            .header_role(roles::PHONE_BAR)
             .into_any_element(),
         )
     }

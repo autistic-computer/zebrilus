@@ -2328,8 +2328,6 @@ fn agent_markdown_style(cx: &App) -> TextViewStyle {
         is_dark: cx.theme().is_dark(),
         ..TextViewStyle::default()
     }
-    .code_role(crate::roles::CARD_CODE)
-    .figure_role(crate::roles::CARD_FIGURE)
 }
 
 pub(crate) fn agent_text_view(

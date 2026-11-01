@@ -144,7 +144,7 @@ pub fn task_tray(
         } else {
             PaintState::Rest
         };
-        let muted = muted_on(&cx.theme().layer(roles::TAB_TRAY, state), cx);
+        let muted = muted_on(cx.theme().ground_at(roles::TAB_TRAY, state), cx);
         h_flex()
             .id(SharedString::from(format!("{id}-plan")))
             .debug_selector(|| "agent-plan-chip".to_owned())

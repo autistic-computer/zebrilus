@@ -930,7 +930,6 @@ impl BrowserPane {
                 let picked = sheet.clone();
                 sheet_row(
                     ("ios-browser-tab", id),
-                    roles::PHONE_ROW,
                     (index == self.active).then(|| Icon::new(IconName::Check)),
                     tab_title(tab).to_owned(),
                     cx,
@@ -973,7 +972,6 @@ impl BrowserPane {
         let opened = sheet.clone();
         let new_tab = sheet_row(
             ("ios-browser-new-tab", self.pane.0),
-            roles::PHONE_ROW,
             Some(Icon::new(IconName::Plus)),
             "New tab",
             cx,
@@ -1012,8 +1010,7 @@ impl BrowserPane {
                     });
                 },
             )
-            .surface_role(penna::SurfaceRole::DRAWER)
-            .header_role(roles::PHONE_BAR),
+            .surface_role(penna::SurfaceRole::DRAWER),
             window,
         )
     }

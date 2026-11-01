@@ -183,7 +183,7 @@ pub(super) fn palette_entry(
     };
     let layer = cx.theme().layer(SurfaceRole::MENU_ITEM, state);
     let foreground = layer.text;
-    let secondary = muted_on(&layer, cx);
+    let secondary = muted_on(layer.ground, cx);
     let highlights = row
         .label
         .char_indices()
