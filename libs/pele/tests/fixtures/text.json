@@ -1,0 +1,911 @@
+{
+  "upstream_revision": "36e584d59152181927e0d8bf70fddcd2a5f33d6c",
+  "measurements": [
+    {
+      "text": "Hello, world!",
+      "size": 16,
+      "style": 0,
+      "expected": 88.016
+    },
+    {
+      "text": "Hello, world!",
+      "size": 16,
+      "style": 1,
+      "expected": 96.016
+    },
+    {
+      "text": "Hello, world!",
+      "size": 16,
+      "style": 2,
+      "expected": 88.016
+    },
+    {
+      "text": "Hello, world!",
+      "size": 16,
+      "style": 4,
+      "expected": 124.8
+    },
+    {
+      "text": "Hello, world!",
+      "size": 16,
+      "style": 8,
+      "expected": 73.34666666666668
+    },
+    {
+      "text": "Hello, world!",
+      "size": 16,
+      "style": 16,
+      "expected": 73.34666666666668
+    },
+    {
+      "text": "Hello, world!",
+      "size": 16,
+      "style": 5,
+      "expected": 124.8
+    },
+    {
+      "text": "日本語",
+      "size": 16,
+      "style": 0,
+      "expected": 48
+    },
+    {
+      "text": "日本語",
+      "size": 16,
+      "style": 1,
+      "expected": 48
+    },
+    {
+      "text": "日本語",
+      "size": 16,
+      "style": 2,
+      "expected": 48
+    },
+    {
+      "text": "日本語",
+      "size": 16,
+      "style": 4,
+      "expected": 57.6
+    },
+    {
+      "text": "日本語",
+      "size": 16,
+      "style": 8,
+      "expected": 40
+    },
+    {
+      "text": "日本語",
+      "size": 16,
+      "style": 16,
+      "expected": 40
+    },
+    {
+      "text": "日本語",
+      "size": 16,
+      "style": 5,
+      "expected": 57.6
+    },
+    {
+      "text": "👋",
+      "size": 16,
+      "style": 0,
+      "expected": 16
+    },
+    {
+      "text": "👋",
+      "size": 16,
+      "style": 1,
+      "expected": 16
+    },
+    {
+      "text": "👋",
+      "size": 16,
+      "style": 2,
+      "expected": 16
+    },
+    {
+      "text": "👋",
+      "size": 16,
+      "style": 4,
+      "expected": 19.2
+    },
+    {
+      "text": "👋",
+      "size": 16,
+      "style": 8,
+      "expected": 13.333333333333334
+    },
+    {
+      "text": "👋",
+      "size": 16,
+      "style": 16,
+      "expected": 13.333333333333334
+    },
+    {
+      "text": "👋",
+      "size": 16,
+      "style": 5,
+      "expected": 19.2
+    },
+    {
+      "text": "á",
+      "size": 16,
+      "style": 0,
+      "expected": 8.896
+    },
+    {
+      "text": "á",
+      "size": 16,
+      "style": 1,
+      "expected": 8.896
+    },
+    {
+      "text": "á",
+      "size": 16,
+      "style": 2,
+      "expected": 8.896
+    },
+    {
+      "text": "á",
+      "size": 16,
+      "style": 4,
+      "expected": 9.6
+    },
+    {
+      "text": "á",
+      "size": 16,
+      "style": 8,
+      "expected": 7.413333333333334
+    },
+    {
+      "text": "á",
+      "size": 16,
+      "style": 16,
+      "expected": 7.413333333333334
+    },
+    {
+      "text": "á",
+      "size": 16,
+      "style": 5,
+      "expected": 9.6
+    },
+    {
+      "text": "مرحبا",
+      "size": 16,
+      "style": 0,
+      "expected": 46.4
+    },
+    {
+      "text": "مرحبا",
+      "size": 16,
+      "style": 1,
+      "expected": 46.4
+    },
+    {
+      "text": "مرحبا",
+      "size": 16,
+      "style": 2,
+      "expected": 46.4
+    },
+    {
+      "text": "مرحبا",
+      "size": 16,
+      "style": 4,
+      "expected": 48
+    },
+    {
+      "text": "مرحبا",
+      "size": 16,
+      "style": 8,
+      "expected": 38.66666666666667
+    },
+    {
+      "text": "مرحبا",
+      "size": 16,
+      "style": 16,
+      "expected": 38.66666666666667
+    },
+    {
+      "text": "مرحبا",
+      "size": 16,
+      "style": 5,
+      "expected": 48
+    },
+    {
+      "text": "­​️",
+      "size": 16,
+      "style": 0,
+      "expected": 0
+    },
+    {
+      "text": "­​️",
+      "size": 16,
+      "style": 1,
+      "expected": 0
+    },
+    {
+      "text": "­​️",
+      "size": 16,
+      "style": 2,
+      "expected": 0
+    },
+    {
+      "text": "­​️",
+      "size": 16,
+      "style": 4,
+      "expected": 0
+    },
+    {
+      "text": "­​️",
+      "size": 16,
+      "style": 8,
+      "expected": 0
+    },
+    {
+      "text": "­​️",
+      "size": 16,
+      "style": 16,
+      "expected": 0
+    },
+    {
+      "text": "­​️",
+      "size": 16,
+      "style": 5,
+      "expected": 0
+    },
+    {
+      "text": "x\n\ty",
+      "size": 16,
+      "style": 0,
+      "expected": 16
+    },
+    {
+      "text": "x\n\ty",
+      "size": 16,
+      "style": 1,
+      "expected": 17.792
+    },
+    {
+      "text": "x\n\ty",
+      "size": 16,
+      "style": 2,
+      "expected": 16
+    },
+    {
+      "text": "x\n\ty",
+      "size": 16,
+      "style": 4,
+      "expected": 19.2
+    },
+    {
+      "text": "x\n\ty",
+      "size": 16,
+      "style": 8,
+      "expected": 13.333333333333334
+    },
+    {
+      "text": "x\n\ty",
+      "size": 16,
+      "style": 16,
+      "expected": 13.333333333333334
+    },
+    {
+      "text": "x\n\ty",
+      "size": 16,
+      "style": 5,
+      "expected": 19.2
+    },
+    {
+      "text": "— Γ test",
+      "size": 16,
+      "style": 0,
+      "expected": 53.248
+    },
+    {
+      "text": "— Γ test",
+      "size": 16,
+      "style": 1,
+      "expected": 55.904
+    },
+    {
+      "text": "— Γ test",
+      "size": 16,
+      "style": 2,
+      "expected": 53.248
+    },
+    {
+      "text": "— Γ test",
+      "size": 16,
+      "style": 4,
+      "expected": 76.8
+    },
+    {
+      "text": "— Γ test",
+      "size": 16,
+      "style": 8,
+      "expected": 44.373333333333335
+    },
+    {
+      "text": "— Γ test",
+      "size": 16,
+      "style": 16,
+      "expected": 44.373333333333335
+    },
+    {
+      "text": "— Γ test",
+      "size": 16,
+      "style": 5,
+      "expected": 76.8
+    }
+  ],
+  "labels": [
+    {
+      "id": "label-0",
+      "raw": "",
+      "markdown": false,
+      "size": 16,
+      "max_width": 4000,
+      "base_style": 0,
+      "expected": {
+        "lines": [],
+        "widths": [],
+        "width": 0,
+        "height": 0,
+        "size": 0,
+        "line_height": 0
+      }
+    },
+    {
+      "id": "label-1",
+      "raw": "Hello world",
+      "markdown": false,
+      "size": 16,
+      "max_width": 4000,
+      "base_style": 0,
+      "expected": {
+        "lines": [
+          [
+            {
+              "text": "Hello world",
+              "style": 0,
+              "width": 79.12
+            }
+          ]
+        ],
+        "widths": [
+          79.12
+        ],
+        "width": 79.12,
+        "height": 24,
+        "size": 16,
+        "line_height": 24
+      }
+    },
+    {
+      "id": "label-2",
+      "raw": "   leading and trailing   ",
+      "markdown": false,
+      "size": 16,
+      "max_width": 4000,
+      "base_style": 0,
+      "expected": {
+        "lines": [
+          [
+            {
+              "text": "leading and trailing",
+              "style": 0,
+              "width": 134.288
+            }
+          ]
+        ],
+        "widths": [
+          134.288
+        ],
+        "width": 134.288,
+        "height": 24,
+        "size": 16,
+        "line_height": 24
+      }
+    },
+    {
+      "id": "label-3",
+      "raw": "First<br/>Second\\nThird\nFourth",
+      "markdown": false,
+      "size": 16,
+      "max_width": 4000,
+      "base_style": 0,
+      "expected": {
+        "lines": [
+          [
+            {
+              "text": "First",
+              "style": 0,
+              "width": 31.104
+            }
+          ],
+          [
+            {
+              "text": "Second",
+              "style": 0,
+              "width": 54.256
+            }
+          ],
+          [
+            {
+              "text": "Third",
+              "style": 0,
+              "width": 36.448
+            }
+          ],
+          [
+            {
+              "text": "Fourth",
+              "style": 0,
+              "width": 46.24
+            }
+          ]
+        ],
+        "widths": [
+          31.104,
+          54.256,
+          36.448,
+          46.24
+        ],
+        "width": 54.256,
+        "height": 84,
+        "size": 16,
+        "line_height": 21
+      }
+    },
+    {
+      "id": "label-4",
+      "raw": "<b>Bold</b> and <i>italic</i> and <code>code</code>",
+      "markdown": false,
+      "size": 16,
+      "max_width": 4000,
+      "base_style": 0,
+      "expected": {
+        "lines": [
+          [
+            {
+              "text": "Bold",
+              "style": 1,
+              "width": 35.552
+            },
+            {
+              "text": " and ",
+              "style": 0,
+              "width": 35.584
+            },
+            {
+              "text": "italic",
+              "style": 2,
+              "width": 32
+            },
+            {
+              "text": " and ",
+              "style": 0,
+              "width": 35.584
+            },
+            {
+              "text": "code",
+              "style": 4,
+              "width": 38.4
+            }
+          ]
+        ],
+        "widths": [
+          177.12
+        ],
+        "width": 177.12,
+        "height": 24,
+        "size": 16,
+        "line_height": 24
+      }
+    },
+    {
+      "id": "label-5",
+      "raw": "**Bold** and _italic_ and `code`",
+      "markdown": true,
+      "size": 16,
+      "max_width": 4000,
+      "base_style": 0,
+      "expected": {
+        "lines": [
+          [
+            {
+              "text": "Bold",
+              "style": 1,
+              "width": 35.552
+            },
+            {
+              "text": " and ",
+              "style": 0,
+              "width": 35.584
+            },
+            {
+              "text": "italic",
+              "style": 2,
+              "width": 32
+            },
+            {
+              "text": " and `code`",
+              "style": 0,
+              "width": 80.928
+            }
+          ]
+        ],
+        "widths": [
+          184.064
+        ],
+        "width": 184.064,
+        "height": 24,
+        "size": 16,
+        "line_height": 24
+      }
+    },
+    {
+      "id": "label-6",
+      "raw": "A &amp; B &lt; C &#x1f44b;",
+      "markdown": false,
+      "size": 16,
+      "max_width": 4000,
+      "base_style": 0,
+      "expected": {
+        "lines": [
+          [
+            {
+              "text": "A & B < C 👋",
+              "style": 0,
+              "width": 91.152
+            }
+          ]
+        ],
+        "widths": [
+          91.152
+        ],
+        "width": 91.152,
+        "height": 24,
+        "size": 16,
+        "line_height": 24
+      }
+    },
+    {
+      "id": "label-7",
+      "raw": "日本語の長いラベル",
+      "markdown": false,
+      "max_width": 40,
+      "size": 16,
+      "base_style": 0,
+      "expected": {
+        "lines": [
+          [
+            {
+              "text": "日本",
+              "style": 0,
+              "width": 32
+            }
+          ],
+          [
+            {
+              "text": "語の",
+              "style": 0,
+              "width": 32
+            }
+          ],
+          [
+            {
+              "text": "長い",
+              "style": 0,
+              "width": 32
+            }
+          ],
+          [
+            {
+              "text": "ラベ",
+              "style": 0,
+              "width": 32
+            }
+          ],
+          [
+            {
+              "text": "ル",
+              "style": 0,
+              "width": 16
+            }
+          ]
+        ],
+        "widths": [
+          32,
+          32,
+          32,
+          32,
+          16
+        ],
+        "width": 32,
+        "height": 105,
+        "size": 16,
+        "line_height": 21
+      }
+    },
+    {
+      "id": "label-8",
+      "raw": "One two three four five six",
+      "markdown": false,
+      "max_width": 70,
+      "size": 16,
+      "base_style": 0,
+      "expected": {
+        "lines": [
+          [
+            {
+              "text": "One two",
+              "style": 0,
+              "width": 59.584
+            }
+          ],
+          [
+            {
+              "text": "three four",
+              "style": 0,
+              "width": 68.48
+            }
+          ],
+          [
+            {
+              "text": "five six",
+              "style": 0,
+              "width": 48.896
+            }
+          ]
+        ],
+        "widths": [
+          59.584,
+          68.48,
+          48.896
+        ],
+        "width": 68.48,
+        "height": 63,
+        "size": 16,
+        "line_height": 21
+      }
+    },
+    {
+      "id": "label-9",
+      "raw": "One **bold word** and more",
+      "markdown": true,
+      "max_width": 70,
+      "size": 16,
+      "base_style": 0,
+      "expected": {
+        "lines": [
+          [
+            {
+              "text": "One ",
+              "style": 0,
+              "width": 34.688
+            },
+            {
+              "text": "bold",
+              "style": 1,
+              "width": 33.776
+            }
+          ],
+          [
+            {
+              "text": "word",
+              "style": 1,
+              "width": 38.224
+            },
+            {
+              "text": " and",
+              "style": 0,
+              "width": 31.136
+            }
+          ],
+          [
+            {
+              "text": "more",
+              "style": 0,
+              "width": 36.448
+            }
+          ]
+        ],
+        "widths": [
+          68.46400000000001,
+          69.35999999999999,
+          36.448
+        ],
+        "width": 69.35999999999999,
+        "height": 63,
+        "size": 16,
+        "line_height": 21
+      }
+    },
+    {
+      "id": "label-10",
+      "raw": "pre<span>mid</span>post",
+      "markdown": false,
+      "size": 16,
+      "max_width": 4000,
+      "base_style": 0,
+      "expected": {
+        "lines": [
+          [
+            {
+              "text": "premidpost",
+              "style": 0,
+              "width": 79.136
+            }
+          ]
+        ],
+        "widths": [
+          79.136
+        ],
+        "width": 79.136,
+        "height": 24,
+        "size": 16,
+        "line_height": 24
+      }
+    },
+    {
+      "id": "label-11",
+      "raw": "x<sub>2</sub> and y<sup>3</sup>",
+      "markdown": false,
+      "size": 16,
+      "max_width": 4000,
+      "base_style": 0,
+      "expected": {
+        "lines": [
+          [
+            {
+              "text": "x",
+              "style": 0,
+              "width": 8
+            },
+            {
+              "text": "2",
+              "style": 8,
+              "width": 7.413333333333334
+            },
+            {
+              "text": " and y",
+              "style": 0,
+              "width": 43.584
+            },
+            {
+              "text": "3",
+              "style": 16,
+              "width": 7.413333333333334
+            }
+          ]
+        ],
+        "widths": [
+          66.41066666666667
+        ],
+        "width": 66.41066666666667,
+        "height": 24,
+        "size": 16,
+        "line_height": 24
+      }
+    },
+    {
+      "id": "label-12",
+      "raw": "<b>bold\nnext</b>",
+      "markdown": false,
+      "size": 16,
+      "max_width": 4000,
+      "base_style": 0,
+      "expected": {
+        "lines": [
+          [
+            {
+              "text": "bold",
+              "style": 1,
+              "width": 33.776
+            }
+          ],
+          [
+            {
+              "text": "next",
+              "style": 1,
+              "width": 32.896
+            }
+          ]
+        ],
+        "widths": [
+          33.776,
+          32.896
+        ],
+        "width": 33.776,
+        "height": 42,
+        "size": 16,
+        "line_height": 21
+      }
+    },
+    {
+      "id": "label-13",
+      "raw": "soft­hyphen and zero​width",
+      "markdown": false,
+      "max_width": 65,
+      "size": 16,
+      "base_style": 0,
+      "expected": {
+        "lines": [
+          [
+            {
+              "text": "soft-",
+              "style": 0,
+              "width": 31.12
+            }
+          ],
+          [
+            {
+              "text": "hyphen",
+              "style": 0,
+              "width": 52.48
+            }
+          ],
+          [
+            {
+              "text": "and zero​",
+              "style": 0,
+              "width": 62.256
+            }
+          ],
+          [
+            {
+              "text": "width",
+              "style": 0,
+              "width": 37.344
+            }
+          ]
+        ],
+        "widths": [
+          31.12,
+          52.48,
+          62.256,
+          37.344
+        ],
+        "width": 62.256,
+        "height": 84,
+        "size": 16,
+        "line_height": 21
+      }
+    },
+    {
+      "id": "label-14",
+      "raw": "\n  First\n  second\n",
+      "markdown": true,
+      "max_width": 4000,
+      "size": 16,
+      "base_style": 0,
+      "expected": {
+        "lines": [
+          [
+            {
+              "text": "First",
+              "style": 0,
+              "width": 31.104
+            }
+          ],
+          [
+            {
+              "text": "second",
+              "style": 0,
+              "width": 51.584
+            }
+          ]
+        ],
+        "widths": [
+          31.104,
+          51.584
+        ],
+        "width": 51.584,
+        "height": 42,
+        "size": 16,
+        "line_height": 21
+      }
+    }
+  ]
+}

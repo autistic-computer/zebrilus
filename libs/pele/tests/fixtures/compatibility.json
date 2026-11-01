@@ -1,0 +1,1040 @@
+{
+  "upstream": {
+    "repository": "https://github.com/obsidianmd/pele",
+    "revision": "36e584d59152181927e0d8bf70fddcd2a5f33d6c",
+    "license": "MIT",
+    "render_options": {
+      "fontSize": 16,
+      "fontFamily": "Arial",
+      "padding": 8,
+      "responsive": false,
+      "now": 1793232000000
+    }
+  },
+  "comparison": "Native behavior and SVG semantics are tested; exact SVG and pixel equivalence are not asserted.",
+  "fixtures": [
+    {
+      "id": "zz-flowchart",
+      "source": "flowchart TD\n    Start([Prompt]) --> Agent[Agent loop]\n    Agent --> Tool{Use a tool?}\n    Tool -->|Yes| Result[Read result]\n    Tool -->|No| Done([Answer])",
+      "native_expectation": "render",
+      "labels": [
+        "Prompt",
+        "Agent loop",
+        "Use a tool?",
+        "Read result",
+        "Answer"
+      ],
+      "oracle": {
+        "ok": true,
+        "type": "flowchart",
+        "mermaid_type": "flowchart-v2",
+        "width": 280,
+        "height": 422,
+        "model": {
+          "direction": "TB",
+          "nodes": [
+            {
+              "id": "Start",
+              "label": "Prompt",
+              "shape": "stadium"
+            },
+            {
+              "id": "Agent",
+              "label": "Agent loop",
+              "shape": "square"
+            },
+            {
+              "id": "Tool",
+              "label": "Use a tool?",
+              "shape": "diamond"
+            },
+            {
+              "id": "Result",
+              "label": "Read result",
+              "shape": "square"
+            },
+            {
+              "id": "Done",
+              "label": "Answer",
+              "shape": "stadium"
+            }
+          ],
+          "edges": [
+            {
+              "from": "Start",
+              "to": "Agent",
+              "label": ""
+            },
+            {
+              "from": "Agent",
+              "to": "Tool",
+              "label": ""
+            },
+            {
+              "from": "Tool",
+              "to": "Result",
+              "label": "Yes"
+            },
+            {
+              "from": "Tool",
+              "to": "Done",
+              "label": "No"
+            }
+          ],
+          "subgraphs": []
+        }
+      }
+    },
+    {
+      "id": "zz-sequence",
+      "source": "sequenceDiagram\n    participant User\n    participant Agent\n    participant Tool\n    User->>Agent: Fix Mermaid rendering\n    Agent->>Tool: Render fixture\n    Tool-->>Agent: SVG\n    Agent-->>User: Verified result",
+      "native_expectation": "render",
+      "labels": [
+        "User",
+        "Agent",
+        "Tool",
+        "Render fixture",
+        "Verified result"
+      ],
+      "oracle": {
+        "ok": true,
+        "type": "sequence",
+        "mermaid_type": "sequence",
+        "width": 377,
+        "height": 278,
+        "model": {
+          "actors": [
+            {
+              "id": "User",
+              "label": "User",
+              "type": "participant"
+            },
+            {
+              "id": "Agent",
+              "label": "Agent",
+              "type": "participant"
+            },
+            {
+              "id": "Tool",
+              "label": "Tool",
+              "type": "participant"
+            }
+          ],
+          "messages": [
+            {
+              "from": "User",
+              "to": "Agent",
+              "text": "Fix Mermaid rendering",
+              "type": 0
+            },
+            {
+              "from": "Agent",
+              "to": "Tool",
+              "text": "Render fixture",
+              "type": 0
+            },
+            {
+              "from": "Tool",
+              "to": "Agent",
+              "text": "SVG",
+              "type": 1
+            },
+            {
+              "from": "Agent",
+              "to": "User",
+              "text": "Verified result",
+              "type": 1
+            }
+          ],
+          "notes": []
+        }
+      }
+    },
+    {
+      "id": "zz-state",
+      "source": "stateDiagram-v2\n    [*] --> Idle\n    Idle --> Rendering\n    Rendering --> Ready\n    Rendering --> Failed\n    Ready --> [*]",
+      "native_expectation": "render",
+      "labels": [
+        "Idle",
+        "Rendering",
+        "Ready",
+        "Failed"
+      ],
+      "oracle": {
+        "ok": true,
+        "type": "state",
+        "mermaid_type": "stateDiagram",
+        "width": 210,
+        "height": 356,
+        "model": null
+      }
+    },
+    {
+      "id": "zz-er",
+      "source": "erDiagram\n    USER ||--o{ SESSION : owns\n    SESSION ||--o{ MESSAGE : contains\n    USER {\n        string id PK\n        string email UK\n    }\n    SESSION {\n        string id PK\n        datetime created_at\n    }\n    MESSAGE {\n        string id PK\n        string content\n    }",
+      "native_expectation": "render",
+      "labels": [
+        "USER",
+        "SESSION",
+        "MESSAGE",
+        "owns",
+        "contains",
+        "string",
+        "id",
+        "PK",
+        "email",
+        "UK",
+        "datetime",
+        "created_at",
+        "content"
+      ],
+      "oracle": {
+        "ok": true,
+        "type": "er",
+        "mermaid_type": "er",
+        "width": 208,
+        "height": 500,
+        "model": null
+      }
+    },
+    {
+      "id": "zz-class",
+      "source": "classDiagram\n    class Agent {\n        +String model\n        +run() Result\n    }\n    class Tool {\n        +String name\n        +execute() Output\n    }\n    Agent --> Tool : invokes",
+      "native_expectation": "render",
+      "labels": [
+        "Agent",
+        "+String model",
+        "+run() : Result",
+        "Tool",
+        "+String name",
+        "+execute() : Output",
+        "invokes"
+      ],
+      "oracle": {
+        "ok": true,
+        "type": "class",
+        "mermaid_type": "classDiagram",
+        "width": 161,
+        "height": 309,
+        "model": null
+      }
+    },
+    {
+      "id": "zz-pie",
+      "source": "pie showData\n    title Tool Usage Breakdown\n    \"Read\" : 42\n    \"Edit\" : 28\n    \"Execute\" : 18\n    \"Search\" : 12",
+      "native_expectation": "render",
+      "labels": [
+        "Tool Usage Breakdown",
+        "Read",
+        "Edit",
+        "Execute",
+        "Search"
+      ],
+      "oracle": {
+        "ok": true,
+        "type": "pie",
+        "mermaid_type": "pie",
+        "width": 386,
+        "height": 296,
+        "model": {
+          "title": "Tool Usage Breakdown",
+          "show_data": true,
+          "sections": [
+            [
+              "Read",
+              42
+            ],
+            [
+              "Edit",
+              28
+            ],
+            [
+              "Execute",
+              18
+            ],
+            [
+              "Search",
+              12
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "id": "zz-gantt",
+      "source": "gantt\n    title Project Timeline\n    dateFormat YYYY-MM-DD\n    section Design\n        Wireframes :done, design, 2026-07-01, 3d\n    section Build\n        Core Agent Loop :active, core, 2026-07-05, 5d\n        Tool Integration :tools, after core, 4d\n    section Ship\n        Testing :crit, test, after tools, 3d",
+      "native_expectation": "render",
+      "labels": [
+        "Project Timeline",
+        "Design",
+        "Build",
+        "Ship",
+        "Wireframes",
+        "Core Agent Loop",
+        "Tool Integration",
+        "Testing"
+      ],
+      "oracle": {
+        "ok": true,
+        "type": "gantt",
+        "mermaid_type": "gantt",
+        "width": 800,
+        "height": 197,
+        "model": null
+      }
+    },
+    {
+      "id": "zz-mindmap",
+      "source": "mindmap\n  root((Agent))\n    Context\n      Files\n      Knowledge\n    Work\n      Reason\n      Tools\n    Verify\n      Tests\n      Visuals",
+      "native_expectation": "unsupported",
+      "labels": [],
+      "oracle": {
+        "ok": true,
+        "type": "mindmap",
+        "mermaid_type": "mindmap",
+        "width": 555,
+        "height": 156,
+        "model": null
+      }
+    },
+    {
+      "id": "zz-journey",
+      "source": "journey\n    title Rendering repair\n    section Diagnose\n      Reproduce variants: 3: Agent\n      Inspect SVG: 4: Agent\n    section Verify\n      Run tests: 5: Agent\n      Review snapshots: 5: User, Agent",
+      "native_expectation": "unsupported",
+      "labels": [],
+      "oracle": {
+        "ok": true,
+        "type": "journey",
+        "mermaid_type": "journey",
+        "width": 652,
+        "height": 327,
+        "model": null
+      }
+    },
+    {
+      "id": "zz-gitgraph",
+      "source": "gitGraph\n    commit id: \"baseline\"\n    branch fix/mermaid\n    commit id: \"theme\"\n    commit id: \"sizing\"\n    checkout main\n    merge fix/mermaid",
+      "native_expectation": "unsupported",
+      "labels": [],
+      "oracle": {
+        "ok": true,
+        "type": "gitGraph",
+        "mermaid_type": "gitGraph",
+        "width": 277,
+        "height": 150,
+        "model": null
+      }
+    },
+    {
+      "id": "zz-quadrant",
+      "source": "quadrantChart\n    title Rendering quality\n    x-axis Clipped --> Fits\n    y-axis Low contrast --> Readable\n    ER: [0.8, 0.85]\n    Gantt: [0.75, 0.8]\n    Pie: [0.9, 0.9]",
+      "native_expectation": "render",
+      "labels": [
+        "Rendering quality",
+        "ER",
+        "Gantt",
+        "Pie"
+      ],
+      "oracle": {
+        "ok": true,
+        "type": "quadrantChart",
+        "mermaid_type": "quadrantChart",
+        "width": 500,
+        "height": 500,
+        "model": {
+          "title": "Rendering quality",
+          "quadrants": [
+            null,
+            null,
+            null,
+            null
+          ],
+          "points": [
+            {
+              "label": "ER",
+              "x": 0.8,
+              "y": 0.85
+            },
+            {
+              "label": "Gantt",
+              "x": 0.75,
+              "y": 0.8
+            },
+            {
+              "label": "Pie",
+              "x": 0.9,
+              "y": 0.9
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "zz-timeline",
+      "source": "timeline\n    title Mermaid renderer\n    section Diagnose\n        Font metrics : ER clipping\n        Fixed canvas : Tiny Gantt\n    section Repair\n        Theme CSS : Visible labels\n        Snapshots : Visual verification",
+      "native_expectation": "unsupported",
+      "labels": [],
+      "oracle": {
+        "ok": true,
+        "type": "timeline",
+        "mermaid_type": "timeline",
+        "width": 800,
+        "height": 221,
+        "model": null
+      }
+    },
+    {
+      "id": "zz-xychart",
+      "source": "xychart-beta\n    title \"Render readability\"\n    x-axis [\"Before\", \"After\"]\n    y-axis \"Score\" 0 --> 10\n    bar [3, 9]",
+      "native_expectation": "unsupported",
+      "labels": [],
+      "oracle": {
+        "ok": true,
+        "type": "xychart",
+        "mermaid_type": "xychart",
+        "width": 700,
+        "height": 500,
+        "model": null
+      }
+    },
+    {
+      "id": "flowchart-quoted-label",
+      "source": "graph LR\n A[\"Quoted & safe\"] --> B[\"After\"]",
+      "labels": [
+        "Quoted & safe",
+        "After"
+      ],
+      "native_expectation": "render",
+      "oracle": {
+        "ok": true,
+        "type": "flowchart",
+        "mermaid_type": "flowchart-v2",
+        "width": 273,
+        "height": 64,
+        "model": {
+          "direction": "LR",
+          "nodes": [
+            {
+              "id": "A",
+              "label": "Quoted & safe",
+              "shape": "square"
+            },
+            {
+              "id": "B",
+              "label": "After",
+              "shape": "square"
+            }
+          ],
+          "edges": [
+            {
+              "from": "A",
+              "to": "B",
+              "label": ""
+            }
+          ],
+          "subgraphs": []
+        }
+      }
+    },
+    {
+      "id": "flowchart-chain",
+      "source": "flowchart TD\n A[First] --> B[Second] --> C[Third]",
+      "labels": [
+        "First",
+        "Second",
+        "Third"
+      ],
+      "native_expectation": "render",
+      "oracle": {
+        "ok": true,
+        "type": "flowchart",
+        "mermaid_type": "flowchart-v2",
+        "width": 107,
+        "height": 256,
+        "model": {
+          "direction": "TB",
+          "nodes": [
+            {
+              "id": "A",
+              "label": "First",
+              "shape": "square"
+            },
+            {
+              "id": "B",
+              "label": "Second",
+              "shape": "square"
+            },
+            {
+              "id": "C",
+              "label": "Third",
+              "shape": "square"
+            }
+          ],
+          "edges": [
+            {
+              "from": "A",
+              "to": "B",
+              "label": ""
+            },
+            {
+              "from": "B",
+              "to": "C",
+              "label": ""
+            }
+          ],
+          "subgraphs": []
+        }
+      }
+    },
+    {
+      "id": "flowchart-subgraph",
+      "source": "flowchart TD\n subgraph Group\n A[One] --> B[Two]\n end",
+      "labels": [
+        "Group",
+        "One",
+        "Two"
+      ],
+      "native_expectation": "render",
+      "oracle": {
+        "ok": true,
+        "type": "flowchart",
+        "mermaid_type": "flowchart-v2",
+        "width": 123,
+        "height": 220,
+        "model": {
+          "direction": "TB",
+          "nodes": [
+            {
+              "id": "A",
+              "label": "One",
+              "shape": "square"
+            },
+            {
+              "id": "B",
+              "label": "Two",
+              "shape": "square"
+            }
+          ],
+          "edges": [
+            {
+              "from": "A",
+              "to": "B",
+              "label": ""
+            }
+          ],
+          "subgraphs": [
+            {
+              "id": "Group",
+              "title": "Group",
+              "nodes": [
+                "B",
+                "A"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "flowchart-unicode",
+      "source": "flowchart LR\n A[日本語] --> B[café]",
+      "labels": [
+        "日本語",
+        "café"
+      ],
+      "native_expectation": "render",
+      "oracle": {
+        "ok": true,
+        "type": "flowchart",
+        "mermaid_type": "flowchart-v2",
+        "width": 215,
+        "height": 64,
+        "model": {
+          "direction": "LR",
+          "nodes": [
+            {
+              "id": "A",
+              "label": "日本語",
+              "shape": "square"
+            },
+            {
+              "id": "B",
+              "label": "café",
+              "shape": "square"
+            }
+          ],
+          "edges": [
+            {
+              "from": "A",
+              "to": "B",
+              "label": ""
+            }
+          ],
+          "subgraphs": []
+        }
+      }
+    },
+    {
+      "id": "sequence-alias-and-note",
+      "source": "sequenceDiagram\n actor U as User\n participant S as Server\n U->>S: Request\n Note over U,S: Working\n S-->>U: Response",
+      "labels": [
+        "User",
+        "Server",
+        "Request",
+        "Working",
+        "Response"
+      ],
+      "native_expectation": "render",
+      "oracle": {
+        "ok": true,
+        "type": "sequence",
+        "mermaid_type": "sequence",
+        "width": 177,
+        "height": 283,
+        "model": {
+          "actors": [
+            {
+              "id": "U",
+              "label": "User",
+              "type": "actor"
+            },
+            {
+              "id": "S",
+              "label": "Server",
+              "type": "participant"
+            }
+          ],
+          "messages": [
+            {
+              "from": "U",
+              "to": "S",
+              "text": "Request",
+              "type": 0
+            },
+            {
+              "from": "U",
+              "to": "S",
+              "text": "Working",
+              "type": 2
+            },
+            {
+              "from": "S",
+              "to": "U",
+              "text": "Response",
+              "type": 1
+            }
+          ],
+          "notes": [
+            {
+              "actor": [
+                "U",
+                "S"
+              ],
+              "placement": 2,
+              "message": "Working",
+              "wrap": false
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "sequence-activation",
+      "source": "sequenceDiagram\n participant A\n participant B\n A->>B: Work\n activate B\n B-->>A: Done\n deactivate B",
+      "labels": [
+        "A",
+        "B",
+        "Work",
+        "Done"
+      ],
+      "native_expectation": "render",
+      "oracle": {
+        "ok": true,
+        "type": "sequence",
+        "mermaid_type": "sequence",
+        "width": 184,
+        "height": 204,
+        "model": {
+          "actors": [
+            {
+              "id": "A",
+              "label": "A",
+              "type": "participant"
+            },
+            {
+              "id": "B",
+              "label": "B",
+              "type": "participant"
+            }
+          ],
+          "messages": [
+            {
+              "from": "A",
+              "to": "B",
+              "text": "Work",
+              "type": 0
+            },
+            {
+              "from": "B",
+              "text": "",
+              "type": 17
+            },
+            {
+              "from": "B",
+              "to": "A",
+              "text": "Done",
+              "type": 1
+            },
+            {
+              "from": "B",
+              "text": "",
+              "type": 18
+            }
+          ],
+          "notes": []
+        }
+      }
+    },
+    {
+      "id": "sequence-loop",
+      "source": "sequenceDiagram\n participant A\n participant B\n loop Retry\n A->>B: Request\n B-->>A: Reply\n end",
+      "labels": [
+        "A",
+        "B",
+        "Retry",
+        "Request",
+        "Reply"
+      ],
+      "native_expectation": "render",
+      "oracle": {
+        "ok": true,
+        "type": "sequence",
+        "mermaid_type": "sequence",
+        "width": 184,
+        "height": 251,
+        "model": {
+          "actors": [
+            {
+              "id": "A",
+              "label": "A",
+              "type": "participant"
+            },
+            {
+              "id": "B",
+              "label": "B",
+              "type": "participant"
+            }
+          ],
+          "messages": [
+            {
+              "text": "Retry",
+              "type": 10
+            },
+            {
+              "from": "A",
+              "to": "B",
+              "text": "Request",
+              "type": 0
+            },
+            {
+              "from": "B",
+              "to": "A",
+              "text": "Reply",
+              "type": 1
+            },
+            {
+              "text": "",
+              "type": 11
+            }
+          ],
+          "notes": []
+        }
+      }
+    },
+    {
+      "id": "pie-basic",
+      "source": "pie\n \"A\": 2\n \"B\": 1",
+      "labels": [
+        "A",
+        "B"
+      ],
+      "native_expectation": "render",
+      "oracle": {
+        "ok": true,
+        "type": "pie",
+        "mermaid_type": "pie",
+        "width": 318,
+        "height": 256,
+        "model": {
+          "title": null,
+          "show_data": false,
+          "sections": [
+            [
+              "A",
+              2
+            ],
+            [
+              "B",
+              1
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "id": "pie-zero",
+      "source": "pie\n \"Nothing\": 0",
+      "labels": [
+        "Nothing"
+      ],
+      "native_expectation": "render",
+      "oracle": {
+        "ok": true,
+        "type": "pie",
+        "mermaid_type": "pie",
+        "width": 357,
+        "height": 256,
+        "model": {
+          "title": null,
+          "show_data": false,
+          "sections": [
+            [
+              "Nothing",
+              0
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "id": "pie-duplicate-label",
+      "source": "pie showData\n \"First\": 3\n \"First\": 9\n \"Second\": 1",
+      "labels": [
+        "First",
+        "Second"
+      ],
+      "native_expectation": "render",
+      "oracle": {
+        "ok": true,
+        "type": "pie",
+        "mermaid_type": "pie",
+        "width": 375,
+        "height": 256,
+        "model": {
+          "title": null,
+          "show_data": true,
+          "sections": [
+            [
+              "First",
+              3
+            ],
+            [
+              "Second",
+              1
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "id": "pie-frontmatter-title",
+      "source": "---\ntitle: Front matter title\n---\npie\n \"A\": 4",
+      "labels": [
+        "Front matter title",
+        "A"
+      ],
+      "native_expectation": "render",
+      "oracle": {
+        "ok": true,
+        "type": "pie",
+        "mermaid_type": "pie",
+        "width": 318,
+        "height": 296,
+        "model": {
+          "title": "Front matter title",
+          "show_data": false,
+          "sections": [
+            [
+              "A",
+              4
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "id": "pie-comment-crlf",
+      "source": "%% standalone comment\r\npie showData\r\n  \"A\": 2\r\n%% ignored\r\n  \"B\": 3\r\n",
+      "labels": [
+        "A",
+        "B"
+      ],
+      "native_expectation": "render",
+      "oracle": {
+        "ok": true,
+        "type": "pie",
+        "mermaid_type": "pie",
+        "width": 337,
+        "height": 256,
+        "model": {
+          "title": null,
+          "show_data": true,
+          "sections": [
+            [
+              "A",
+              2
+            ],
+            [
+              "B",
+              3
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "id": "quadrant-basic",
+      "source": "quadrantChart\n title Priorities\n x-axis Low --> High\n y-axis Low --> High\n quadrant-1 Do\n quadrant-2 Plan\n quadrant-3 Drop\n quadrant-4 Delegate\n Alpha: [0.75, 0.8]\n Beta: [0.2, 0.3]",
+      "labels": [
+        "Priorities",
+        "Do",
+        "Plan",
+        "Drop",
+        "Delegate",
+        "Alpha",
+        "Beta"
+      ],
+      "native_expectation": "render",
+      "oracle": {
+        "ok": true,
+        "type": "quadrantChart",
+        "mermaid_type": "quadrantChart",
+        "width": 500,
+        "height": 500,
+        "model": {
+          "title": "Priorities",
+          "quadrants": [
+            {
+              "text": "Do",
+              "type": "text"
+            },
+            {
+              "text": "Plan",
+              "type": "text"
+            },
+            {
+              "text": "Drop",
+              "type": "text"
+            },
+            {
+              "text": "Delegate",
+              "type": "text"
+            }
+          ],
+          "points": [
+            {
+              "label": "Alpha",
+              "x": 0.75,
+              "y": 0.8
+            },
+            {
+              "label": "Beta",
+              "x": 0.2,
+              "y": 0.3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "pie-negative-error",
+      "source": "pie\n \"A\": -1",
+      "native_expectation": "error",
+      "labels": [],
+      "oracle": {
+        "ok": false,
+        "error": {
+          "code": "semantic",
+          "message": "\"A\" has invalid value: -1. Negative values are not allowed in pie charts. All slice values must be >= 0.",
+          "line": 0,
+          "column": 0
+        }
+      }
+    },
+    {
+      "id": "pie-missing-value-error",
+      "source": "pie\n \"A\":",
+      "native_expectation": "error",
+      "labels": [],
+      "oracle": {
+        "ok": false,
+        "error": {
+          "code": "syntax",
+          "message": "Parse error on line 2:\n \"A\":\n-----^\nExpecting token of type 'NUMBER_PIE' but found `\n`.",
+          "line": 2,
+          "column": 6
+        }
+      }
+    },
+    {
+      "id": "flowchart-unclosed-node-error",
+      "source": "flowchart LR\n A[broken",
+      "native_expectation": "error",
+      "labels": [],
+      "oracle": {
+        "ok": false,
+        "error": {
+          "code": "syntax",
+          "message": "Parse error on line 2:\n A[broken\n---------^\nExpecting 'SQE', 'UNICODE_TEXT', 'TEXT', 'TAGSTART', got '$end'",
+          "line": 2,
+          "column": 10
+        }
+      }
+    },
+    {
+      "id": "sequence-missing-message-colon-error",
+      "source": "sequenceDiagram\n A->>B Hello",
+      "native_expectation": "error",
+      "labels": [],
+      "oracle": {
+        "ok": false,
+        "error": {
+          "code": "syntax",
+          "message": "Parse error on line 2:\n A->>B Hello\n------------^\nExpecting 'TXT', got 'NEWLINE'",
+          "line": 2,
+          "column": 13
+        }
+      }
+    },
+    {
+      "id": "quadrant-out-of-range-error",
+      "source": "quadrantChart\n Point: [1.5, 0.2]",
+      "native_expectation": "error",
+      "labels": [],
+      "oracle": {
+        "ok": false,
+        "error": {
+          "code": "syntax",
+          "message": "Lexical error on line 2. Unrecognized text.\n Point: [1.5, 0.2]\n----------^",
+          "line": 2,
+          "column": 11
+        }
+      }
+    },
+    {
+      "id": "unknown-diagram-error",
+      "source": "notADiagram\n A -> B",
+      "native_expectation": "error",
+      "labels": [],
+      "oracle": {
+        "ok": false,
+        "error": {
+          "code": "unsupported-diagram",
+          "message": "No diagram type detected for the given text.",
+          "line": 0,
+          "column": 0
+        }
+      }
+    }
+  ]
+}

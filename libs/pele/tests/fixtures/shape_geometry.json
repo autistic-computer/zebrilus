@@ -1,0 +1,2279 @@
+{
+  "upstreamRevision": "36e584d59152181927e0d8bf70fddcd2a5f33d6c",
+  "palette": {
+    "surface": "#f3f3f3",
+    "border": "#8a8a8a",
+    "line": "#1f1f1f",
+    "radius": 4
+  },
+  "cases": [
+    {
+      "name": "f-circ",
+      "tw": 0,
+      "th": 0,
+      "w": 14,
+      "h": 14,
+      "dy": 0,
+      "svg": "<circle r=\"7\" fill=\"#1f1f1f\" stroke=\"#8a8a8a\"/>",
+      "insets": [
+        7,
+        7,
+        7,
+        7
+      ],
+      "span": [
+        8.4,
+        8.4
+      ],
+      "label": false,
+      "filled": true
+    },
+    {
+      "name": "f-circ",
+      "tw": 80,
+      "th": 24,
+      "w": 14,
+      "h": 14,
+      "dy": 0,
+      "svg": "<circle r=\"7\" fill=\"#1f1f1f\" stroke=\"#8a8a8a\"/>",
+      "insets": [
+        7,
+        7,
+        7,
+        7
+      ],
+      "span": [
+        8.4,
+        8.4
+      ],
+      "label": false,
+      "filled": true
+    },
+    {
+      "name": "f-circ",
+      "tw": 185.25,
+      "th": 45.5,
+      "w": 14,
+      "h": 14,
+      "dy": 0,
+      "svg": "<circle r=\"7\" fill=\"#1f1f1f\" stroke=\"#8a8a8a\"/>",
+      "insets": [
+        7,
+        7,
+        7,
+        7
+      ],
+      "span": [
+        8.4,
+        8.4
+      ],
+      "label": false,
+      "filled": true
+    },
+    {
+      "name": "notch-rect",
+      "tw": 0,
+      "th": 0,
+      "w": 48,
+      "h": 24,
+      "dy": 0,
+      "svg": "<polygon points=\"-14,-12 24,-12 24,12 -24,12 -24,-2\" fill=\"#f3f3f3\" stroke=\"#8a8a8a\"/>",
+      "insets": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "span": [
+        24,
+        0
+      ],
+      "label": true,
+      "filled": true
+    },
+    {
+      "name": "notch-rect",
+      "tw": 80,
+      "th": 24,
+      "w": 116,
+      "h": 48,
+      "dy": 0,
+      "svg": "<polygon points=\"-48,-24 58,-24 58,24 -58,24 -58,-14\" fill=\"#f3f3f3\" stroke=\"#8a8a8a\"/>",
+      "insets": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "span": [
+        92,
+        24
+      ],
+      "label": true,
+      "filled": true
+    },
+    {
+      "name": "notch-rect",
+      "tw": 185.25,
+      "th": 45.5,
+      "w": 221.25,
+      "h": 69.5,
+      "dy": 0,
+      "svg": "<polygon points=\"-100.62,-34.75 110.63,-34.75 110.63,34.75 -110.62,34.75 -110.62,-24.75\" fill=\"#f3f3f3\" stroke=\"#8a8a8a\"/>",
+      "insets": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "span": [
+        197.25,
+        45.5
+      ],
+      "label": true,
+      "filled": true
+    },
+    {
+      "name": "lin-rect",
+      "tw": 0,
+      "th": 0,
+      "w": 44,
+      "h": 24,
+      "dy": 0,
+      "svg": "<rect x=\"-22\" y=\"-12\" width=\"44\" height=\"24\" fill=\"#f3f3f3\" stroke=\"#8a8a8a\" rx=\"4\"/><path d=\"M-14,-12V12\" fill=\"none\" stroke=\"#8a8a8a\"/>",
+      "insets": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "span": [
+        20,
+        0
+      ],
+      "label": true,
+      "filled": true
+    },
+    {
+      "name": "lin-rect",
+      "tw": 80,
+      "th": 24,
+      "w": 124,
+      "h": 48,
+      "dy": 0,
+      "svg": "<rect x=\"-62\" y=\"-24\" width=\"124\" height=\"48\" fill=\"#f3f3f3\" stroke=\"#8a8a8a\" rx=\"4\"/><path d=\"M-54,-24V24\" fill=\"none\" stroke=\"#8a8a8a\"/>",
+      "insets": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "span": [
+        100,
+        24
+      ],
+      "label": true,
+      "filled": true
+    },
+    {
+      "name": "lin-rect",
+      "tw": 185.25,
+      "th": 45.5,
+      "w": 229.25,
+      "h": 69.5,
+      "dy": 0,
+      "svg": "<rect x=\"-114.62\" y=\"-34.75\" width=\"229.25\" height=\"69.5\" fill=\"#f3f3f3\" stroke=\"#8a8a8a\" rx=\"4\"/><path d=\"M-106.62,-34.75V34.75\" fill=\"none\" stroke=\"#8a8a8a\"/>",
+      "insets": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "span": [
+        205.25,
+        45.5
+      ],
+      "label": true,
+      "filled": true
+    },
+    {
+      "name": "div-rect",
+      "tw": 0,
+      "th": 0,
+      "w": 36,
+      "h": 32,
+      "dy": 4,
+      "svg": "<rect x=\"-18\" y=\"-16\" width=\"36\" height=\"32\" fill=\"#f3f3f3\" stroke=\"#8a8a8a\" rx=\"4\"/><path d=\"M-18,-8H18\" fill=\"none\" stroke=\"#8a8a8a\"/>",
+      "insets": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "span": [
+        12,
+        8
+      ],
+      "label": true,
+      "filled": true
+    },
+    {
+      "name": "div-rect",
+      "tw": 80,
+      "th": 24,
+      "w": 116,
+      "h": 56,
+      "dy": 4,
+      "svg": "<rect x=\"-58\" y=\"-28\" width=\"116\" height=\"56\" fill=\"#f3f3f3\" stroke=\"#8a8a8a\" rx=\"4\"/><path d=\"M-58,-20H58\" fill=\"none\" stroke=\"#8a8a8a\"/>",
+      "insets": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "span": [
+        92,
+        32
+      ],
+      "label": true,
+      "filled": true
+    },
+    {
+      "name": "div-rect",
+      "tw": 185.25,
+      "th": 45.5,
+      "w": 221.25,
+      "h": 77.5,
+      "dy": 4,
+      "svg": "<rect x=\"-110.62\" y=\"-38.75\" width=\"221.25\" height=\"77.5\" fill=\"#f3f3f3\" stroke=\"#8a8a8a\" rx=\"4\"/><path d=\"M-110.62,-30.75H110.63\" fill=\"none\" stroke=\"#8a8a8a\"/>",
+      "insets": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "span": [
+        197.25,
+        53.5
+      ],
+      "label": true,
+      "filled": true
+    },
+    {
+      "name": "win-pane",
+      "tw": 0,
+      "th": 0,
+      "w": 44,
+      "h": 32,
+      "dy": 4,
+      "svg": "<rect x=\"-22\" y=\"-16\" width=\"44\" height=\"32\" fill=\"#f3f3f3\" stroke=\"#8a8a8a\" rx=\"4\"/><path d=\"M-14,-16V16M-22,-8H22\" fill=\"none\" stroke=\"#8a8a8a\"/>",
+      "insets": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "span": [
+        20,
+        8
+      ],
+      "label": true,
+      "filled": true
+    },
+    {
+      "name": "win-pane",
+      "tw": 80,
+      "th": 24,
+      "w": 124,
+      "h": 56,
+      "dy": 4,
+      "svg": "<rect x=\"-62\" y=\"-28\" width=\"124\" height=\"56\" fill=\"#f3f3f3\" stroke=\"#8a8a8a\" rx=\"4\"/><path d=\"M-54,-28V28M-62,-20H62\" fill=\"none\" stroke=\"#8a8a8a\"/>",
+      "insets": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "span": [
+        100,
+        32
+      ],
+      "label": true,
+      "filled": true
+    },
+    {
+      "name": "win-pane",
+      "tw": 185.25,
+      "th": 45.5,
+      "w": 229.25,
+      "h": 77.5,
+      "dy": 4,
+      "svg": "<rect x=\"-114.62\" y=\"-38.75\" width=\"229.25\" height=\"77.5\" fill=\"#f3f3f3\" stroke=\"#8a8a8a\" rx=\"4\"/><path d=\"M-106.62,-38.75V38.75M-114.62,-30.75H114.63\" fill=\"none\" stroke=\"#8a8a8a\"/>",
+      "insets": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "span": [
+        205.25,
+        53.5
+      ],
+      "label": true,
+      "filled": true
+    },
+    {
+      "name": "tri",
+      "tw": 0,
+      "th": 0,
+      "w": 80,
+      "h": 11.11111111111111,
+      "dy": -4.444444444444445,
+      "svg": "<polygon points=\"0,-5.56 40,5.56 -40,5.56\" fill=\"#f3f3f3\" stroke=\"#8a8a8a\"/>",
+      "insets": [
+        0,
+        20,
+        0,
+        20
+      ],
+      "span": [
+        0,
+        0
+      ],
+      "label": true,
+      "filled": true
+    },
+    {
+      "name": "tri",
+      "tw": 80,
+      "th": 24,
+      "w": 168,
+      "h": 71.4,
+      "dy": 13.700000000000003,
+      "svg": "<polygon points=\"0,-35.7 84,35.7 -84,35.7\" fill=\"#f3f3f3\" stroke=\"#8a8a8a\"/>",
+      "insets": [
+        0,
+        42,
+        0,
+        42
+      ],
+      "span": [
+        0,
+        0
+      ],
+      "label": true,
+      "filled": true
+    },
+    {
+      "name": "tri",
+      "tw": 185.25,
+      "th": 45.5,
+      "w": 336.40000000000003,
+      "h": 130.42403073698915,
+      "dy": 32.462015368494576,
+      "svg": "<polygon points=\"0,-65.21 168.2,65.21 -168.2,65.21\" fill=\"#f3f3f3\" stroke=\"#8a8a8a\"/>",
+      "insets": [
+        0,
+        84.10000000000001,
+        0,
+        84.10000000000001
+      ],
+      "span": [
+        0,
+        0
+      ],
+      "label": true,
+      "filled": true
+    },
+    {
+      "name": "flip-tri",
+      "tw": 0,
+      "th": 0,
+      "w": 80,
+      "h": 11.11111111111111,
+      "dy": 4.444444444444445,
+      "svg": "<polygon points=\"-40,-5.56 40,-5.56 0,5.56\" fill=\"#f3f3f3\" stroke=\"#8a8a8a\"/>",
+      "insets": [
+        0,
+        20,
+        0,
+        20
+      ],
+      "span": [
+        0,
+        0
+      ],
+      "label": true,
+      "filled": true
+    },
+    {
+      "name": "flip-tri",
+      "tw": 80,
+      "th": 24,
+      "w": 168,
+      "h": 71.4,
+      "dy": -13.700000000000003,
+      "svg": "<polygon points=\"-84,-35.7 84,-35.7 0,35.7\" fill=\"#f3f3f3\" stroke=\"#8a8a8a\"/>",
+      "insets": [
+        0,
+        42,
+        0,
+        42
+      ],
+      "span": [
+        0,
+        0
+      ],
+      "label": true,
+      "filled": true
+    },
+    {
+      "name": "flip-tri",
+      "tw": 185.25,
+      "th": 45.5,
+      "w": 336.40000000000003,
+      "h": 130.42403073698915,
+      "dy": -32.462015368494576,
+      "svg": "<polygon points=\"-168.2,-65.21 168.2,-65.21 0,65.21\" fill=\"#f3f3f3\" stroke=\"#8a8a8a\"/>",
+      "insets": [
+        0,
+        84.10000000000001,
+        0,
+        84.10000000000001
+      ],
+      "span": [
+        0,
+        0
+      ],
+      "label": true,
+      "filled": true
+    },
+    {
+      "name": "sl-rect",
+      "tw": 0,
+      "th": 0,
+      "w": 36,
+      "h": 34,
+      "dy": 5,
+      "svg": "<polygon points=\"-18,-7 18,-17 18,17 -18,17\" fill=\"#f3f3f3\" stroke=\"#8a8a8a\"/>",
+      "insets": [
+        5,
+        0,
+        0,
+        0
+      ],
+      "span": [
+        0,
+        0
+      ],
+      "label": true,
+      "filled": true
+    },
+    {
+      "name": "sl-rect",
+      "tw": 80,
+      "th": 24,
+      "w": 116,
+      "h": 58,
+      "dy": 5,
+      "svg": "<polygon points=\"-58,-19 58,-29 58,29 -58,29\" fill=\"#f3f3f3\" stroke=\"#8a8a8a\"/>",
+      "insets": [
+        5,
+        0,
+        0,
+        0
+      ],
+      "span": [
+        0,
+        0
+      ],
+      "label": true,
+      "filled": true
+    },
+    {
+      "name": "sl-rect",
+      "tw": 185.25,
+      "th": 45.5,
+      "w": 221.25,
+      "h": 79.5,
+      "dy": 5,
+      "svg": "<polygon points=\"-110.62,-29.75 110.63,-39.75 110.63,39.75 -110.62,39.75\" fill=\"#f3f3f3\" stroke=\"#8a8a8a\"/>",
+      "insets": [
+        5,
+        0,
+        0,
+        0
+      ],
+      "span": [
+        0,
+        0
+      ],
+      "label": true,
+      "filled": true
+    },
+    {
+      "name": "notch-pent",
+      "tw": 0,
+      "th": 0,
+      "w": 36,
+      "h": 24,
+      "dy": 0,
+      "svg": "<polygon points=\"-8,-12 8,-12 18,-2 18,12 -18,12 -18,-2\" fill=\"#f3f3f3\" stroke=\"#8a8a8a\"/>",
+      "insets": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "span": [
+        12,
+        0
+      ],
+      "label": true,
+      "filled": true
+    },
+    {
+      "name": "notch-pent",
+      "tw": 80,
+      "th": 24,
+      "w": 116,
+      "h": 48,
+      "dy": 0,
+      "svg": "<polygon points=\"-48,-24 48,-24 58,-14 58,24 -58,24 -58,-14\" fill=\"#f3f3f3\" stroke=\"#8a8a8a\"/>",
+      "insets": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "span": [
+        92,
+        24
+      ],
+      "label": true,
+      "filled": true
+    },
+    {
+      "name": "notch-pent",
+      "tw": 185.25,
+      "th": 45.5,
+      "w": 221.25,
+      "h": 69.5,
+      "dy": 0,
+      "svg": "<polygon points=\"-100.62,-34.75 100.63,-34.75 110.63,-24.75 110.63,34.75 -110.62,34.75 -110.62,-24.75\" fill=\"#f3f3f3\" stroke=\"#8a8a8a\"/>",
+      "insets": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "span": [
+        197.25,
+        45.5
+      ],
+      "label": true,
+      "filled": true
+    },
+    {
+      "name": "hourglass",
+      "tw": 0,
+      "th": 0,
+      "w": 32,
+      "h": 40,
+      "dy": 0,
+      "svg": "<polygon points=\"-16,-20 16,-20 -16,20 16,20\" fill=\"#f3f3f3\" stroke=\"#8a8a8a\"/>",
+      "insets": [
+        0,
+        16,
+        0,
+        16
+      ],
+      "span": [
+        0,
+        0
+      ],
+      "label": false,
+      "filled": true
+    },
+    {
+      "name": "hourglass",
+      "tw": 80,
+      "th": 24,
+      "w": 32,
+      "h": 40,
+      "dy": 0,
+      "svg": "<polygon points=\"-16,-20 16,-20 -16,20 16,20\" fill=\"#f3f3f3\" stroke=\"#8a8a8a\"/>",
+      "insets": [
+        0,
+        16,
+        0,
+        16
+      ],
+      "span": [
+        0,
+        0
+      ],
+      "label": false,
+      "filled": true
+    },
+    {
+      "name": "hourglass",
+      "tw": 185.25,
+      "th": 45.5,
+      "w": 32,
+      "h": 40,
+      "dy": 0,
+      "svg": "<polygon points=\"-16,-20 16,-20 -16,20 16,20\" fill=\"#f3f3f3\" stroke=\"#8a8a8a\"/>",
+      "insets": [
+        0,
+        16,
+        0,
+        16
+      ],
+      "span": [
+        0,
+        0
+      ],
+      "label": false,
+      "filled": true
+    },
+    {
+      "name": "delay",
+      "tw": 0,
+      "th": 0,
+      "w": 42,
+      "h": 24,
+      "dy": 0,
+      "svg": "<path d=\"M-21,-12H9A12,12 0 0 1 9,12H-21Z\" fill=\"#f3f3f3\" stroke=\"#8a8a8a\"/>",
+      "insets": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "span": [
+        0,
+        0
+      ],
+      "label": true,
+      "filled": true
+    },
+    {
+      "name": "delay",
+      "tw": 80,
+      "th": 24,
+      "w": 128,
+      "h": 48,
+      "dy": 0,
+      "svg": "<path d=\"M-64,-24H40A24,24 0 0 1 40,24H-64Z\" fill=\"#f3f3f3\" stroke=\"#8a8a8a\"/>",
+      "insets": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "span": [
+        0,
+        0
+      ],
+      "label": true,
+      "filled": true
+    },
+    {
+      "name": "delay",
+      "tw": 185.25,
+      "th": 45.5,
+      "w": 238.625,
+      "h": 69.5,
+      "dy": 0,
+      "svg": "<path d=\"M-119.31,-34.75H84.56A34.75,34.75 0 0 1 84.56,34.75H-119.31Z\" fill=\"#f3f3f3\" stroke=\"#8a8a8a\"/>",
+      "insets": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "span": [
+        0,
+        0
+      ],
+      "label": true,
+      "filled": true
+    },
+    {
+      "name": "h-cyl",
+      "tw": 0,
+      "th": 0,
+      "w": 48,
+      "h": 24,
+      "dy": 0,
+      "svg": "<path d=\"M-18,-12H18A6,12 0 0 1 18,12H-18A6,12 0 0 1 -18,-12Z\" fill=\"#f3f3f3\" stroke=\"#8a8a8a\"/><path d=\"M18,-12A6,12 0 0 0 18,12\" fill=\"none\" stroke=\"#8a8a8a\"/>",
+      "insets": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "span": [
+        0,
+        0
+      ],
+      "label": true,
+      "filled": true
+    },
+    {
+      "name": "h-cyl",
+      "tw": 80,
+      "th": 24,
+      "w": 140,
+      "h": 48,
+      "dy": 0,
+      "svg": "<path d=\"M-58,-24H58A12,24 0 0 1 58,24H-58A12,24 0 0 1 -58,-24Z\" fill=\"#f3f3f3\" stroke=\"#8a8a8a\"/><path d=\"M58,-24A12,24 0 0 0 58,24\" fill=\"none\" stroke=\"#8a8a8a\"/>",
+      "insets": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "span": [
+        0,
+        0
+      ],
+      "label": true,
+      "filled": true
+    },
+    {
+      "name": "h-cyl",
+      "tw": 185.25,
+      "th": 45.5,
+      "w": 245.25,
+      "h": 69.5,
+      "dy": 0,
+      "svg": "<path d=\"M-110.62,-34.75H110.63A12,34.75 0 0 1 110.63,34.75H-110.62A12,34.75 0 0 1 -110.62,-34.75Z\" fill=\"#f3f3f3\" stroke=\"#8a8a8a\"/><path d=\"M110.63,-34.75A12,34.75 0 0 0 110.63,34.75\" fill=\"none\" stroke=\"#8a8a8a\"/>",
+      "insets": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "span": [
+        0,
+        0
+      ],
+      "label": true,
+      "filled": true
+    },
+    {
+      "name": "cross-circ",
+      "tw": 0,
+      "th": 0,
+      "w": 44,
+      "h": 44,
+      "dy": 0,
+      "svg": "<circle r=\"22\" fill=\"#f3f3f3\" stroke=\"#8a8a8a\"/><path d=\"M-15.56,-15.56L15.56,15.56M15.56,-15.56L-15.56,15.56\" fill=\"none\" stroke=\"#8a8a8a\"/>",
+      "insets": [
+        1.1433463853857915,
+        1.1433463853857915,
+        1.1433463853857915,
+        1.1433463853857915
+      ],
+      "span": [
+        26.4,
+        26.4
+      ],
+      "label": false,
+      "filled": true
+    },
+    {
+      "name": "cross-circ",
+      "tw": 80,
+      "th": 24,
+      "w": 44,
+      "h": 44,
+      "dy": 0,
+      "svg": "<circle r=\"22\" fill=\"#f3f3f3\" stroke=\"#8a8a8a\"/><path d=\"M-15.56,-15.56L15.56,15.56M15.56,-15.56L-15.56,15.56\" fill=\"none\" stroke=\"#8a8a8a\"/>",
+      "insets": [
+        1.1433463853857915,
+        1.1433463853857915,
+        1.1433463853857915,
+        1.1433463853857915
+      ],
+      "span": [
+        26.4,
+        26.4
+      ],
+      "label": false,
+      "filled": true
+    },
+    {
+      "name": "cross-circ",
+      "tw": 185.25,
+      "th": 45.5,
+      "w": 44,
+      "h": 44,
+      "dy": 0,
+      "svg": "<circle r=\"22\" fill=\"#f3f3f3\" stroke=\"#8a8a8a\"/><path d=\"M-15.56,-15.56L15.56,15.56M15.56,-15.56L-15.56,15.56\" fill=\"none\" stroke=\"#8a8a8a\"/>",
+      "insets": [
+        1.1433463853857915,
+        1.1433463853857915,
+        1.1433463853857915,
+        1.1433463853857915
+      ],
+      "span": [
+        26.4,
+        26.4
+      ],
+      "label": false,
+      "filled": true
+    },
+    {
+      "name": "st-rect",
+      "tw": 0,
+      "th": 0,
+      "w": 44,
+      "h": 32,
+      "dy": 4,
+      "svg": "<rect x=\"-14\" y=\"-16\" width=\"36\" height=\"24\" fill=\"#f3f3f3\" stroke=\"#8a8a8a\" rx=\"4\"/><rect x=\"-18\" y=\"-12\" width=\"36\" height=\"24\" fill=\"#f3f3f3\" stroke=\"#8a8a8a\" rx=\"4\"/><rect x=\"-22\" y=\"-8\" width=\"36\" height=\"24\" fill=\"#f3f3f3\" stroke=\"#8a8a8a\" rx=\"4\"/>",
+      "insets": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "span": [
+        12,
+        0
+      ],
+      "label": true,
+      "filled": true
+    },
+    {
+      "name": "st-rect",
+      "tw": 80,
+      "th": 24,
+      "w": 124,
+      "h": 56,
+      "dy": 4,
+      "svg": "<rect x=\"-54\" y=\"-28\" width=\"116\" height=\"48\" fill=\"#f3f3f3\" stroke=\"#8a8a8a\" rx=\"4\"/><rect x=\"-58\" y=\"-24\" width=\"116\" height=\"48\" fill=\"#f3f3f3\" stroke=\"#8a8a8a\" rx=\"4\"/><rect x=\"-62\" y=\"-20\" width=\"116\" height=\"48\" fill=\"#f3f3f3\" stroke=\"#8a8a8a\" rx=\"4\"/>",
+      "insets": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "span": [
+        92,
+        24
+      ],
+      "label": true,
+      "filled": true
+    },
+    {
+      "name": "st-rect",
+      "tw": 185.25,
+      "th": 45.5,
+      "w": 229.25,
+      "h": 77.5,
+      "dy": 4,
+      "svg": "<rect x=\"-106.62\" y=\"-38.75\" width=\"221.25\" height=\"69.5\" fill=\"#f3f3f3\" stroke=\"#8a8a8a\" rx=\"4\"/><rect x=\"-110.62\" y=\"-34.75\" width=\"221.25\" height=\"69.5\" fill=\"#f3f3f3\" stroke=\"#8a8a8a\" rx=\"4\"/><rect x=\"-114.62\" y=\"-30.75\" width=\"221.25\" height=\"69.5\" fill=\"#f3f3f3\" stroke=\"#8a8a8a\" rx=\"4\"/>",
+      "insets": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "span": [
+        197.25,
+        45.5
+      ],
+      "label": true,
+      "filled": true
+    },
+    {
+      "name": "doc",
+      "tw": 0,
+      "th": 0,
+      "w": 36,
+      "h": 34,
+      "dy": -5,
+      "svg": "<path d=\"M-18,-17H18V7q-9,-12 -18,0t-18,0Z\" fill=\"#f3f3f3\" stroke=\"#8a8a8a\"/>",
+      "insets": [
+        0,
+        0,
+        10,
+        0
+      ],
+      "span": [
+        0,
+        0
+      ],
+      "label": true,
+      "filled": true
+    },
+    {
+      "name": "doc",
+      "tw": 80,
+      "th": 24,
+      "w": 116,
+      "h": 58,
+      "dy": -5,
+      "svg": "<path d=\"M-58,-29H58V19q-29,-12 -58,0t-58,0Z\" fill=\"#f3f3f3\" stroke=\"#8a8a8a\"/>",
+      "insets": [
+        0,
+        0,
+        10,
+        0
+      ],
+      "span": [
+        0,
+        0
+      ],
+      "label": true,
+      "filled": true
+    },
+    {
+      "name": "doc",
+      "tw": 185.25,
+      "th": 45.5,
+      "w": 221.25,
+      "h": 79.5,
+      "dy": -5,
+      "svg": "<path d=\"M-110.62,-39.75H110.63V29.75q-55.31,-12 -110.62,0t-110.62,0Z\" fill=\"#f3f3f3\" stroke=\"#8a8a8a\"/>",
+      "insets": [
+        0,
+        0,
+        10,
+        0
+      ],
+      "span": [
+        0,
+        0
+      ],
+      "label": true,
+      "filled": true
+    },
+    {
+      "name": "flag",
+      "tw": 0,
+      "th": 0,
+      "w": 36,
+      "h": 40,
+      "dy": 0,
+      "svg": "<path d=\"M-18,-12q9,-10 18,0t18,0V12q-9,10 -18,0t-18,0Z\" fill=\"#f3f3f3\" stroke=\"#8a8a8a\"/>",
+      "insets": [
+        8,
+        0,
+        8,
+        0
+      ],
+      "span": [
+        0,
+        0
+      ],
+      "label": true,
+      "filled": true
+    },
+    {
+      "name": "flag",
+      "tw": 80,
+      "th": 24,
+      "w": 116,
+      "h": 64,
+      "dy": 0,
+      "svg": "<path d=\"M-58,-24q29,-10 58,0t58,0V24q-29,10 -58,0t-58,0Z\" fill=\"#f3f3f3\" stroke=\"#8a8a8a\"/>",
+      "insets": [
+        8,
+        0,
+        8,
+        0
+      ],
+      "span": [
+        0,
+        0
+      ],
+      "label": true,
+      "filled": true
+    },
+    {
+      "name": "flag",
+      "tw": 185.25,
+      "th": 45.5,
+      "w": 221.25,
+      "h": 85.5,
+      "dy": 0,
+      "svg": "<path d=\"M-110.62,-34.75q55.31,-10 110.63,0t110.63,0V34.75q-55.31,10 -110.62,0t-110.62,0Z\" fill=\"#f3f3f3\" stroke=\"#8a8a8a\"/>",
+      "insets": [
+        8,
+        0,
+        8,
+        0
+      ],
+      "span": [
+        0,
+        0
+      ],
+      "label": true,
+      "filled": true
+    },
+    {
+      "name": "datastore",
+      "tw": 0,
+      "th": 0,
+      "w": 48,
+      "h": 24,
+      "dy": 0,
+      "svg": "<rect x=\"-24\" y=\"-12\" width=\"48\" height=\"24\" fill=\"#f3f3f3\" stroke=\"none\"/><path d=\"M-24,-12H24M-24,12H24\" fill=\"none\" stroke=\"#8a8a8a\"/>",
+      "insets": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "span": [
+        24,
+        0
+      ],
+      "label": true,
+      "filled": true
+    },
+    {
+      "name": "datastore",
+      "tw": 80,
+      "th": 24,
+      "w": 116,
+      "h": 48,
+      "dy": 0,
+      "svg": "<rect x=\"-58\" y=\"-24\" width=\"116\" height=\"48\" fill=\"#f3f3f3\" stroke=\"none\"/><path d=\"M-58,-24H58M-58,24H58\" fill=\"none\" stroke=\"#8a8a8a\"/>",
+      "insets": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "span": [
+        92,
+        24
+      ],
+      "label": true,
+      "filled": true
+    },
+    {
+      "name": "datastore",
+      "tw": 185.25,
+      "th": 45.5,
+      "w": 221.25,
+      "h": 69.5,
+      "dy": 0,
+      "svg": "<rect x=\"-110.62\" y=\"-34.75\" width=\"221.25\" height=\"69.5\" fill=\"#f3f3f3\" stroke=\"none\"/><path d=\"M-110.62,-34.75H110.63M-110.62,34.75H110.63\" fill=\"none\" stroke=\"#8a8a8a\"/>",
+      "insets": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "span": [
+        197.25,
+        45.5
+      ],
+      "label": true,
+      "filled": true
+    },
+    {
+      "name": "folder",
+      "tw": 0,
+      "th": 0,
+      "w": 64,
+      "h": 32,
+      "dy": 4,
+      "svg": "<path d=\"M-32,-16H-6.4L1.6,-8H32V16H-32Z\" fill=\"#f3f3f3\" stroke=\"#8a8a8a\"/>",
+      "insets": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "span": [
+        0,
+        0
+      ],
+      "label": true,
+      "filled": true
+    },
+    {
+      "name": "folder",
+      "tw": 80,
+      "th": 24,
+      "w": 116,
+      "h": 56,
+      "dy": 4,
+      "svg": "<path d=\"M-58,-28H-11.6L-3.6,-20H58V28H-58Z\" fill=\"#f3f3f3\" stroke=\"#8a8a8a\"/>",
+      "insets": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "span": [
+        0,
+        0
+      ],
+      "label": true,
+      "filled": true
+    },
+    {
+      "name": "folder",
+      "tw": 185.25,
+      "th": 45.5,
+      "w": 221.25,
+      "h": 77.5,
+      "dy": 4,
+      "svg": "<path d=\"M-110.62,-38.75H-62.62L-54.62,-30.75H110.63V38.75H-110.62Z\" fill=\"#f3f3f3\" stroke=\"#8a8a8a\"/>",
+      "insets": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "span": [
+        0,
+        0
+      ],
+      "label": true,
+      "filled": true
+    },
+    {
+      "name": "bucket",
+      "tw": 0,
+      "th": 0,
+      "w": 56,
+      "h": 34,
+      "dy": 3,
+      "svg": "<path d=\"M-28,-12A28,5 0 0 1 28,-12L22.33,12A22.33,5 0 0 1 -22.33,12Z\" fill=\"#f3f3f3\" stroke=\"#8a8a8a\"/><path d=\"M-28,-12A28,5 0 0 0 28,-12\" fill=\"none\" stroke=\"#8a8a8a\"/>",
+      "insets": [
+        0,
+        2.8333333333333335,
+        0,
+        2.8333333333333335
+      ],
+      "span": [
+        0,
+        0
+      ],
+      "label": true,
+      "filled": true
+    },
+    {
+      "name": "bucket",
+      "tw": 80,
+      "th": 24,
+      "w": 136,
+      "h": 58,
+      "dy": 3,
+      "svg": "<path d=\"M-68,-24A68,5 0 0 1 68,-24L58.33,24A58.33,5 0 0 1 -58.33,24Z\" fill=\"#f3f3f3\" stroke=\"#8a8a8a\"/><path d=\"M-68,-24A68,5 0 0 0 68,-24\" fill=\"none\" stroke=\"#8a8a8a\"/>",
+      "insets": [
+        0,
+        4.833333333333333,
+        0,
+        4.833333333333333
+      ],
+      "span": [
+        0,
+        0
+      ],
+      "label": true,
+      "filled": true
+    },
+    {
+      "name": "bucket",
+      "tw": 185.25,
+      "th": 45.5,
+      "w": 241.25,
+      "h": 79.5,
+      "dy": 3,
+      "svg": "<path d=\"M-120.62,-34.75A120.63,5 0 0 1 120.63,-34.75L107.38,34.75A107.38,5 0 0 1 -107.37,34.75Z\" fill=\"#f3f3f3\" stroke=\"#8a8a8a\"/><path d=\"M-120.62,-34.75A120.63,5 0 0 0 120.63,-34.75\" fill=\"none\" stroke=\"#8a8a8a\"/>",
+      "insets": [
+        0,
+        6.625,
+        0,
+        6.625
+      ],
+      "span": [
+        0,
+        0
+      ],
+      "label": true,
+      "filled": true
+    },
+    {
+      "name": "console",
+      "tw": 0,
+      "th": 0,
+      "w": 72,
+      "h": 36,
+      "dy": 6,
+      "svg": "<rect x=\"-36\" y=\"-18\" width=\"72\" height=\"36\" fill=\"#f3f3f3\" stroke=\"#8a8a8a\" rx=\"4\"/><path d=\"M-36,-6H36M-29,-14l3,2.5l-3,2.5M-23,-9h4\" fill=\"none\" stroke=\"#8a8a8a\"/>",
+      "insets": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "span": [
+        48,
+        12
+      ],
+      "label": true,
+      "filled": true
+    },
+    {
+      "name": "console",
+      "tw": 80,
+      "th": 24,
+      "w": 116,
+      "h": 60,
+      "dy": 6,
+      "svg": "<rect x=\"-58\" y=\"-30\" width=\"116\" height=\"60\" fill=\"#f3f3f3\" stroke=\"#8a8a8a\" rx=\"4\"/><path d=\"M-58,-18H58M-51,-26l3,2.5l-3,2.5M-45,-21h4\" fill=\"none\" stroke=\"#8a8a8a\"/>",
+      "insets": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "span": [
+        92,
+        36
+      ],
+      "label": true,
+      "filled": true
+    },
+    {
+      "name": "console",
+      "tw": 185.25,
+      "th": 45.5,
+      "w": 221.25,
+      "h": 81.5,
+      "dy": 6,
+      "svg": "<rect x=\"-110.62\" y=\"-40.75\" width=\"221.25\" height=\"81.5\" fill=\"#f3f3f3\" stroke=\"#8a8a8a\" rx=\"4\"/><path d=\"M-110.62,-28.75H110.63M-103.62,-36.75l3,2.5l-3,2.5M-97.62,-31.75h4\" fill=\"none\" stroke=\"#8a8a8a\"/>",
+      "insets": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "span": [
+        197.25,
+        57.5
+      ],
+      "label": true,
+      "filled": true
+    },
+    {
+      "name": "browser",
+      "tw": 0,
+      "th": 0,
+      "w": 72,
+      "h": 36,
+      "dy": 6,
+      "svg": "<rect x=\"-36\" y=\"-18\" width=\"72\" height=\"36\" fill=\"#f3f3f3\" stroke=\"#8a8a8a\" rx=\"4\"/><path d=\"M-36,-6H36\" fill=\"none\" stroke=\"#8a8a8a\"/><circle cx=\"-28\" cy=\"-12\" r=\"1.5\" fill=\"none\" stroke=\"#8a8a8a\"/><circle cx=\"-21\" cy=\"-12\" r=\"1.5\" fill=\"none\" stroke=\"#8a8a8a\"/><circle cx=\"-14\" cy=\"-12\" r=\"1.5\" fill=\"none\" stroke=\"#8a8a8a\"/>",
+      "insets": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "span": [
+        48,
+        12
+      ],
+      "label": true,
+      "filled": true
+    },
+    {
+      "name": "browser",
+      "tw": 80,
+      "th": 24,
+      "w": 116,
+      "h": 60,
+      "dy": 6,
+      "svg": "<rect x=\"-58\" y=\"-30\" width=\"116\" height=\"60\" fill=\"#f3f3f3\" stroke=\"#8a8a8a\" rx=\"4\"/><path d=\"M-58,-18H58\" fill=\"none\" stroke=\"#8a8a8a\"/><circle cx=\"-50\" cy=\"-24\" r=\"1.5\" fill=\"none\" stroke=\"#8a8a8a\"/><circle cx=\"-43\" cy=\"-24\" r=\"1.5\" fill=\"none\" stroke=\"#8a8a8a\"/><circle cx=\"-36\" cy=\"-24\" r=\"1.5\" fill=\"none\" stroke=\"#8a8a8a\"/>",
+      "insets": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "span": [
+        92,
+        36
+      ],
+      "label": true,
+      "filled": true
+    },
+    {
+      "name": "browser",
+      "tw": 185.25,
+      "th": 45.5,
+      "w": 221.25,
+      "h": 81.5,
+      "dy": 6,
+      "svg": "<rect x=\"-110.62\" y=\"-40.75\" width=\"221.25\" height=\"81.5\" fill=\"#f3f3f3\" stroke=\"#8a8a8a\" rx=\"4\"/><path d=\"M-110.62,-28.75H110.63\" fill=\"none\" stroke=\"#8a8a8a\"/><circle cx=\"-102.62\" cy=\"-34.75\" r=\"1.5\" fill=\"none\" stroke=\"#8a8a8a\"/><circle cx=\"-95.62\" cy=\"-34.75\" r=\"1.5\" fill=\"none\" stroke=\"#8a8a8a\"/><circle cx=\"-88.62\" cy=\"-34.75\" r=\"1.5\" fill=\"none\" stroke=\"#8a8a8a\"/>",
+      "insets": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "span": [
+        197.25,
+        57.5
+      ],
+      "label": true,
+      "filled": true
+    },
+    {
+      "name": "person",
+      "tw": 0,
+      "th": 0,
+      "w": 56,
+      "h": 50,
+      "dy": 13,
+      "svg": "<rect x=\"-28\" y=\"1\" width=\"56\" height=\"24\" rx=\"12\" fill=\"#f3f3f3\" stroke=\"#8a8a8a\"/><circle cy=\"-11\" r=\"13\" fill=\"#f3f3f3\" stroke=\"#8a8a8a\"/>",
+      "insets": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "span": [
+        0,
+        0
+      ],
+      "label": true,
+      "filled": true
+    },
+    {
+      "name": "person",
+      "tw": 80,
+      "th": 24,
+      "w": 116,
+      "h": 74,
+      "dy": 13,
+      "svg": "<rect x=\"-58\" y=\"-11\" width=\"116\" height=\"48\" rx=\"12\" fill=\"#f3f3f3\" stroke=\"#8a8a8a\"/><circle cy=\"-23\" r=\"13\" fill=\"#f3f3f3\" stroke=\"#8a8a8a\"/>",
+      "insets": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "span": [
+        0,
+        0
+      ],
+      "label": true,
+      "filled": true
+    },
+    {
+      "name": "person",
+      "tw": 185.25,
+      "th": 45.5,
+      "w": 221.25,
+      "h": 95.5,
+      "dy": 13,
+      "svg": "<rect x=\"-110.62\" y=\"-21.75\" width=\"221.25\" height=\"69.5\" rx=\"12\" fill=\"#f3f3f3\" stroke=\"#8a8a8a\"/><circle cy=\"-33.75\" r=\"13\" fill=\"#f3f3f3\" stroke=\"#8a8a8a\"/>",
+      "insets": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "span": [
+        0,
+        0
+      ],
+      "label": true,
+      "filled": true
+    },
+    {
+      "name": "bang",
+      "tw": 0,
+      "th": 0,
+      "w": 64,
+      "h": 48,
+      "dy": 0,
+      "svg": "<polygon points=\"0,-24 5.84,-19.19 13.88,-21.62 16.36,-15.39 25.02,-14.96 23.64,-8.54 31.2,-5.34 26.24,0 31.2,5.34 23.64,8.54 25.02,14.96 16.36,15.39 13.88,21.62 5.84,19.19 0,24 -5.84,19.19 -13.88,21.62 -16.36,15.39 -25.02,14.96 -23.64,8.54 -31.2,5.34 -26.24,0 -31.2,-5.34 -23.64,-8.54 -25.02,-14.96 -16.36,-15.39 -13.88,-21.62 -5.84,-19.19\" fill=\"#f3f3f3\" stroke=\"#8a8a8a\"/>",
+      "insets": [
+        3,
+        3,
+        3,
+        3
+      ],
+      "span": [
+        0,
+        0
+      ],
+      "label": true,
+      "filled": true
+    },
+    {
+      "name": "bang",
+      "tw": 80,
+      "th": 24,
+      "w": 144,
+      "h": 72,
+      "dy": 0,
+      "svg": "<polygon points=\"0,-36 13.14,-28.78 31.24,-32.43 36.81,-23.08 56.29,-22.45 53.19,-12.81 70.19,-8.01 59.04,0 70.19,8.01 53.19,12.81 56.29,22.45 36.81,23.08 31.24,32.43 13.14,28.78 0,36 -13.14,28.78 -31.24,32.43 -36.81,23.08 -56.29,22.45 -53.19,12.81 -70.19,8.01 -59.04,0 -70.19,-8.01 -53.19,-12.81 -56.29,-22.45 -36.81,-23.08 -31.24,-32.43 -13.14,-28.78\" fill=\"#f3f3f3\" stroke=\"#8a8a8a\"/>",
+      "insets": [
+        3,
+        3,
+        3,
+        3
+      ],
+      "span": [
+        0,
+        0
+      ],
+      "label": true,
+      "filled": true
+    },
+    {
+      "name": "bang",
+      "tw": 185.25,
+      "th": 45.5,
+      "w": 249.25,
+      "h": 93.5,
+      "dy": 0,
+      "svg": "<polygon points=\"0,-46.75 22.74,-37.37 54.07,-42.12 63.72,-29.97 97.44,-29.15 92.07,-16.63 121.5,-10.4 102.19,0 121.5,10.4 92.07,16.63 97.44,29.15 63.72,29.97 54.07,42.12 22.74,37.37 0,46.75 -22.74,37.37 -54.07,42.12 -63.72,29.97 -97.44,29.15 -92.07,16.63 -121.5,10.4 -102.19,0 -121.5,-10.4 -92.07,-16.63 -97.44,-29.15 -63.72,-29.97 -54.07,-42.12 -22.74,-37.37\" fill=\"#f3f3f3\" stroke=\"#8a8a8a\"/>",
+      "insets": [
+        3,
+        3,
+        3,
+        3
+      ],
+      "span": [
+        0,
+        0
+      ],
+      "label": true,
+      "filled": true
+    },
+    {
+      "name": "cloud",
+      "tw": 0,
+      "th": 0,
+      "w": 68,
+      "h": 48,
+      "dy": 0,
+      "svg": "<path d=\"M-20.8,24A13.2,13.2 0 0 1 -26.08,-2.4A14.28,16.8 0 0 1 -3.4,-17.28A13.6,14.88 0 0 1 21.08,-10.08A13.86,13.86 0 0 1 20.8,24Z\" fill=\"#f3f3f3\" stroke=\"#8a8a8a\"/>",
+      "insets": [
+        1,
+        2,
+        1,
+        2
+      ],
+      "span": [
+        0,
+        0
+      ],
+      "label": true,
+      "filled": true
+    },
+    {
+      "name": "cloud",
+      "tw": 80,
+      "th": 24,
+      "w": 148,
+      "h": 72,
+      "dy": 0,
+      "svg": "<path d=\"M-54.2,36A19.8,19.8 0 0 1 -62.12,-3.6A31.08,25.2 0 0 1 -7.4,-25.92A29.6,22.32 0 0 1 45.88,-15.12A20.79,20.79 0 0 1 54.2,36Z\" fill=\"#f3f3f3\" stroke=\"#8a8a8a\"/>",
+      "insets": [
+        1,
+        2,
+        1,
+        2
+      ],
+      "span": [
+        0,
+        0
+      ],
+      "label": true,
+      "filled": true
+    },
+    {
+      "name": "cloud",
+      "tw": 185.25,
+      "th": 45.5,
+      "w": 253.25,
+      "h": 93.5,
+      "dy": 0,
+      "svg": "<path d=\"M-100.91,46.75A25.71,25.71 0 0 1 -111.2,-4.67A53.18,32.73 0 0 1 -12.66,-33.66A50.65,28.99 0 0 1 78.51,-19.63A27,27 0 0 1 100.91,46.75Z\" fill=\"#f3f3f3\" stroke=\"#8a8a8a\"/>",
+      "insets": [
+        1,
+        2,
+        1,
+        2
+      ],
+      "span": [
+        0,
+        0
+      ],
+      "label": true,
+      "filled": true
+    },
+    {
+      "name": "brace",
+      "tw": 0,
+      "th": 0,
+      "w": 48,
+      "h": 24,
+      "dy": 0,
+      "svg": "<rect x=\"-24\" y=\"-12\" width=\"48\" height=\"24\" fill=\"none\" stroke=\"none\"/><path d=\"M-12,-12q-6,0 -6,6V-6q0,6 -6,6q6,0 6,6V6q0,6 6,6\" fill=\"none\" stroke=\"#8a8a8a\"/>",
+      "insets": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "span": [
+        0,
+        0
+      ],
+      "label": true,
+      "filled": false
+    },
+    {
+      "name": "brace",
+      "tw": 80,
+      "th": 24,
+      "w": 128,
+      "h": 48,
+      "dy": 0,
+      "svg": "<rect x=\"-64\" y=\"-24\" width=\"128\" height=\"48\" fill=\"none\" stroke=\"none\"/><path d=\"M-52,-24q-6,0 -6,6V-6q0,6 -6,6q6,0 6,6V18q0,6 6,6\" fill=\"none\" stroke=\"#8a8a8a\"/>",
+      "insets": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "span": [
+        0,
+        0
+      ],
+      "label": true,
+      "filled": false
+    },
+    {
+      "name": "brace",
+      "tw": 185.25,
+      "th": 45.5,
+      "w": 233.25,
+      "h": 69.5,
+      "dy": 0,
+      "svg": "<rect x=\"-116.62\" y=\"-34.75\" width=\"233.25\" height=\"69.5\" fill=\"none\" stroke=\"none\"/><path d=\"M-104.62,-34.75q-6,0 -6,6V-6q0,6 -6,6q6,0 6,6V28.75q0,6 6,6\" fill=\"none\" stroke=\"#8a8a8a\"/>",
+      "insets": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "span": [
+        0,
+        0
+      ],
+      "label": true,
+      "filled": false
+    },
+    {
+      "name": "brace-r",
+      "tw": 0,
+      "th": 0,
+      "w": 48,
+      "h": 24,
+      "dy": 0,
+      "svg": "<rect x=\"-24\" y=\"-12\" width=\"48\" height=\"24\" fill=\"none\" stroke=\"none\"/><path d=\"M12,-12q6,0 6,6V-6q0,6 6,6q-6,0 -6,6V6q0,6 -6,6\" fill=\"none\" stroke=\"#8a8a8a\"/>",
+      "insets": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "span": [
+        0,
+        0
+      ],
+      "label": true,
+      "filled": false
+    },
+    {
+      "name": "brace-r",
+      "tw": 80,
+      "th": 24,
+      "w": 128,
+      "h": 48,
+      "dy": 0,
+      "svg": "<rect x=\"-64\" y=\"-24\" width=\"128\" height=\"48\" fill=\"none\" stroke=\"none\"/><path d=\"M52,-24q6,0 6,6V-6q0,6 6,6q-6,0 -6,6V18q0,6 -6,6\" fill=\"none\" stroke=\"#8a8a8a\"/>",
+      "insets": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "span": [
+        0,
+        0
+      ],
+      "label": true,
+      "filled": false
+    },
+    {
+      "name": "brace-r",
+      "tw": 185.25,
+      "th": 45.5,
+      "w": 233.25,
+      "h": 69.5,
+      "dy": 0,
+      "svg": "<rect x=\"-116.62\" y=\"-34.75\" width=\"233.25\" height=\"69.5\" fill=\"none\" stroke=\"none\"/><path d=\"M104.63,-34.75q6,0 6,6V-6q0,6 6,6q-6,0 -6,6V28.75q0,6 -6,6\" fill=\"none\" stroke=\"#8a8a8a\"/>",
+      "insets": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "span": [
+        0,
+        0
+      ],
+      "label": true,
+      "filled": false
+    },
+    {
+      "name": "braces",
+      "tw": 0,
+      "th": 0,
+      "w": 60,
+      "h": 24,
+      "dy": 0,
+      "svg": "<rect x=\"-30\" y=\"-12\" width=\"60\" height=\"24\" fill=\"none\" stroke=\"none\"/><path d=\"M-18,-12q-6,0 -6,6V-6q0,6 -6,6q6,0 6,6V6q0,6 6,6\" fill=\"none\" stroke=\"#8a8a8a\"/><path d=\"M18,-12q6,0 6,6V-6q0,6 6,6q-6,0 -6,6V6q0,6 -6,6\" fill=\"none\" stroke=\"#8a8a8a\"/>",
+      "insets": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "span": [
+        0,
+        0
+      ],
+      "label": true,
+      "filled": false
+    },
+    {
+      "name": "braces",
+      "tw": 80,
+      "th": 24,
+      "w": 140,
+      "h": 48,
+      "dy": 0,
+      "svg": "<rect x=\"-70\" y=\"-24\" width=\"140\" height=\"48\" fill=\"none\" stroke=\"none\"/><path d=\"M-58,-24q-6,0 -6,6V-6q0,6 -6,6q6,0 6,6V18q0,6 6,6\" fill=\"none\" stroke=\"#8a8a8a\"/><path d=\"M58,-24q6,0 6,6V-6q0,6 6,6q-6,0 -6,6V18q0,6 -6,6\" fill=\"none\" stroke=\"#8a8a8a\"/>",
+      "insets": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "span": [
+        0,
+        0
+      ],
+      "label": true,
+      "filled": false
+    },
+    {
+      "name": "braces",
+      "tw": 185.25,
+      "th": 45.5,
+      "w": 245.25,
+      "h": 69.5,
+      "dy": 0,
+      "svg": "<rect x=\"-122.62\" y=\"-34.75\" width=\"245.25\" height=\"69.5\" fill=\"none\" stroke=\"none\"/><path d=\"M-110.62,-34.75q-6,0 -6,6V-6q0,6 -6,6q6,0 6,6V28.75q0,6 6,6\" fill=\"none\" stroke=\"#8a8a8a\"/><path d=\"M110.63,-34.75q6,0 6,6V-6q0,6 6,6q-6,0 -6,6V28.75q0,6 -6,6\" fill=\"none\" stroke=\"#8a8a8a\"/>",
+      "insets": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "span": [
+        0,
+        0
+      ],
+      "label": true,
+      "filled": false
+    },
+    {
+      "name": "bolt",
+      "tw": 0,
+      "th": 0,
+      "w": 36,
+      "h": 56,
+      "dy": 0,
+      "svg": "<polygon points=\"5.4,-28 -18,4.48 -1.8,4.48 -5.4,28 18,-4.48 1.8,-4.48\" fill=\"#f3f3f3\" stroke=\"#8a8a8a\"/>",
+      "insets": [
+        0,
+        9,
+        0,
+        9
+      ],
+      "span": [
+        0,
+        0
+      ],
+      "label": false,
+      "filled": true
+    },
+    {
+      "name": "bolt",
+      "tw": 80,
+      "th": 24,
+      "w": 36,
+      "h": 56,
+      "dy": 0,
+      "svg": "<polygon points=\"5.4,-28 -18,4.48 -1.8,4.48 -5.4,28 18,-4.48 1.8,-4.48\" fill=\"#f3f3f3\" stroke=\"#8a8a8a\"/>",
+      "insets": [
+        0,
+        9,
+        0,
+        9
+      ],
+      "span": [
+        0,
+        0
+      ],
+      "label": false,
+      "filled": true
+    },
+    {
+      "name": "bolt",
+      "tw": 185.25,
+      "th": 45.5,
+      "w": 36,
+      "h": 56,
+      "dy": 0,
+      "svg": "<polygon points=\"5.4,-28 -18,4.48 -1.8,4.48 -5.4,28 18,-4.48 1.8,-4.48\" fill=\"#f3f3f3\" stroke=\"#8a8a8a\"/>",
+      "insets": [
+        0,
+        9,
+        0,
+        9
+      ],
+      "span": [
+        0,
+        0
+      ],
+      "label": false,
+      "filled": true
+    },
+    {
+      "name": "lin-cyl",
+      "tw": 0,
+      "th": 0,
+      "w": 56,
+      "h": 44,
+      "dy": 7,
+      "svg": "<path d=\"M-28,-16A28,6 0 0 1 28,-16V16A28,6 0 0 1 -28,16Z\" fill=\"#f3f3f3\" stroke=\"#8a8a8a\"/><path d=\"M-28,-16A28,6 0 0 0 28,-16M-28,-8A28,6 0 0 0 28,-8\" fill=\"none\" stroke=\"#8a8a8a\"/>",
+      "insets": [
+        0.19052498068887447,
+        0,
+        0.19052498068887447,
+        0
+      ],
+      "span": [
+        33.6,
+        0
+      ],
+      "label": true,
+      "filled": true
+    },
+    {
+      "name": "lin-cyl",
+      "tw": 80,
+      "th": 24,
+      "w": 116,
+      "h": 72.57142857142857,
+      "dy": 8.142857142857142,
+      "svg": "<path d=\"M-58,-28A58,8.29 0 0 1 58,-28V28A58,8.29 0 0 1 -58,28Z\" fill=\"#f3f3f3\" stroke=\"#8a8a8a\"/><path d=\"M-58,-28A58,8.29 0 0 0 58,-28M-58,-20A58,8.29 0 0 0 58,-20\" fill=\"none\" stroke=\"#8a8a8a\"/>",
+      "insets": [
+        0.060566188294410885,
+        0,
+        0.060566188294410885,
+        0
+      ],
+      "span": [
+        69.6,
+        28.57142857142857
+      ],
+      "label": true,
+      "filled": true
+    },
+    {
+      "name": "lin-cyl",
+      "tw": 185.25,
+      "th": 45.5,
+      "w": 221.25,
+      "h": 101.5,
+      "dy": 10,
+      "svg": "<path d=\"M-110.62,-38.75A110.63,12 0 0 1 110.63,-38.75V38.75A110.63,12 0 0 1 -110.62,38.75Z\" fill=\"#f3f3f3\" stroke=\"#8a8a8a\"/><path d=\"M-110.62,-38.75A110.63,12 0 0 0 110.63,-38.75M-110.62,-30.75A110.63,12 0 0 0 110.63,-30.75\" fill=\"none\" stroke=\"#8a8a8a\"/>",
+      "insets": [
+        0.024047843748016717,
+        0,
+        0.024047843748016717,
+        0
+      ],
+      "span": [
+        132.75,
+        57.5
+      ],
+      "label": true,
+      "filled": true
+    },
+    {
+      "name": "curv-trap",
+      "tw": 0,
+      "th": 0,
+      "w": 50.4,
+      "h": 24,
+      "dy": 0,
+      "svg": "<path d=\"M-18,-12H18A7.2,12 0 0 1 18,12H-18L-25.2,0Z\" fill=\"#f3f3f3\" stroke=\"#8a8a8a\"/>",
+      "insets": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "span": [
+        0,
+        0
+      ],
+      "label": true,
+      "filled": true
+    },
+    {
+      "name": "curv-trap",
+      "tw": 80,
+      "th": 24,
+      "w": 144.8,
+      "h": 48,
+      "dy": 0,
+      "svg": "<path d=\"M-58,-24H58A14.4,24 0 0 1 58,24H-58L-72.4,0Z\" fill=\"#f3f3f3\" stroke=\"#8a8a8a\"/>",
+      "insets": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "span": [
+        0,
+        0
+      ],
+      "label": true,
+      "filled": true
+    },
+    {
+      "name": "curv-trap",
+      "tw": 185.25,
+      "th": 45.5,
+      "w": 262.95,
+      "h": 69.5,
+      "dy": 0,
+      "svg": "<path d=\"M-110.62,-34.75H110.63A20.85,34.75 0 0 1 110.63,34.75H-110.62L-131.47,0Z\" fill=\"#f3f3f3\" stroke=\"#8a8a8a\"/>",
+      "insets": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "span": [
+        0,
+        0
+      ],
+      "label": true,
+      "filled": true
+    },
+    {
+      "name": "docs",
+      "tw": 0,
+      "th": 0,
+      "w": 44,
+      "h": 42,
+      "dy": -1,
+      "svg": "<g transform=\"translate(4,-4)\"><path d=\"M-18,-17H18V7q-9,-12 -18,0t-18,0Z\" fill=\"#f3f3f3\" stroke=\"#8a8a8a\"/></g><g transform=\"translate(0,0)\"><path d=\"M-18,-17H18V7q-9,-12 -18,0t-18,0Z\" fill=\"#f3f3f3\" stroke=\"#8a8a8a\"/></g><g transform=\"translate(-4,4)\"><path d=\"M-18,-17H18V7q-9,-12 -18,0t-18,0Z\" fill=\"#f3f3f3\" stroke=\"#8a8a8a\"/></g>",
+      "insets": [
+        0,
+        0,
+        10,
+        0
+      ],
+      "span": [
+        0,
+        0
+      ],
+      "label": true,
+      "filled": true
+    },
+    {
+      "name": "docs",
+      "tw": 80,
+      "th": 24,
+      "w": 124,
+      "h": 66,
+      "dy": -1,
+      "svg": "<g transform=\"translate(4,-4)\"><path d=\"M-58,-29H58V19q-29,-12 -58,0t-58,0Z\" fill=\"#f3f3f3\" stroke=\"#8a8a8a\"/></g><g transform=\"translate(0,0)\"><path d=\"M-58,-29H58V19q-29,-12 -58,0t-58,0Z\" fill=\"#f3f3f3\" stroke=\"#8a8a8a\"/></g><g transform=\"translate(-4,4)\"><path d=\"M-58,-29H58V19q-29,-12 -58,0t-58,0Z\" fill=\"#f3f3f3\" stroke=\"#8a8a8a\"/></g>",
+      "insets": [
+        0,
+        0,
+        10,
+        0
+      ],
+      "span": [
+        0,
+        0
+      ],
+      "label": true,
+      "filled": true
+    },
+    {
+      "name": "docs",
+      "tw": 185.25,
+      "th": 45.5,
+      "w": 229.25,
+      "h": 87.5,
+      "dy": -1,
+      "svg": "<g transform=\"translate(4,-4)\"><path d=\"M-110.62,-39.75H110.63V29.75q-55.31,-12 -110.62,0t-110.62,0Z\" fill=\"#f3f3f3\" stroke=\"#8a8a8a\"/></g><g transform=\"translate(0,0)\"><path d=\"M-110.62,-39.75H110.63V29.75q-55.31,-12 -110.62,0t-110.62,0Z\" fill=\"#f3f3f3\" stroke=\"#8a8a8a\"/></g><g transform=\"translate(-4,4)\"><path d=\"M-110.62,-39.75H110.63V29.75q-55.31,-12 -110.62,0t-110.62,0Z\" fill=\"#f3f3f3\" stroke=\"#8a8a8a\"/></g>",
+      "insets": [
+        0,
+        0,
+        10,
+        0
+      ],
+      "span": [
+        0,
+        0
+      ],
+      "label": true,
+      "filled": true
+    },
+    {
+      "name": "bow-rect",
+      "tw": 0,
+      "th": 0,
+      "w": 45.6,
+      "h": 24,
+      "dy": 0,
+      "svg": "<path d=\"M-18,-12H22.8A4.8,12 0 0 0 22.8,12H-18A4.8,12 0 0 1 -18,-12Z\" fill=\"#f3f3f3\" stroke=\"#8a8a8a\"/>",
+      "insets": [
+        0,
+        4.800000000000001,
+        0,
+        0
+      ],
+      "span": [
+        0,
+        0
+      ],
+      "label": true,
+      "filled": true
+    },
+    {
+      "name": "bow-rect",
+      "tw": 80,
+      "th": 24,
+      "w": 135.2,
+      "h": 48,
+      "dy": 0,
+      "svg": "<path d=\"M-58,-24H67.6A9.6,24 0 0 0 67.6,24H-58A9.6,24 0 0 1 -58,-24Z\" fill=\"#f3f3f3\" stroke=\"#8a8a8a\"/>",
+      "insets": [
+        0,
+        9.600000000000001,
+        0,
+        0
+      ],
+      "span": [
+        0,
+        0
+      ],
+      "label": true,
+      "filled": true
+    },
+    {
+      "name": "bow-rect",
+      "tw": 185.25,
+      "th": 45.5,
+      "w": 249.05,
+      "h": 69.5,
+      "dy": 0,
+      "svg": "<path d=\"M-110.62,-34.75H124.53A13.9,34.75 0 0 0 124.53,34.75H-110.62A13.9,34.75 0 0 1 -110.62,-34.75Z\" fill=\"#f3f3f3\" stroke=\"#8a8a8a\"/>",
+      "insets": [
+        0,
+        13.9,
+        0,
+        0
+      ],
+      "span": [
+        0,
+        0
+      ],
+      "label": true,
+      "filled": true
+    },
+    {
+      "name": "tag-rect",
+      "tw": 0,
+      "th": 0,
+      "w": 48,
+      "h": 24,
+      "dy": 0,
+      "svg": "<rect x=\"-24\" y=\"-12\" width=\"48\" height=\"24\" fill=\"#f3f3f3\" stroke=\"#8a8a8a\" rx=\"4\"/><path d=\"M12,12L24,0\" fill=\"none\" stroke=\"#8a8a8a\"/>",
+      "insets": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "span": [
+        24,
+        0
+      ],
+      "label": true,
+      "filled": true
+    },
+    {
+      "name": "tag-rect",
+      "tw": 80,
+      "th": 24,
+      "w": 116,
+      "h": 48,
+      "dy": 0,
+      "svg": "<rect x=\"-58\" y=\"-24\" width=\"116\" height=\"48\" fill=\"#f3f3f3\" stroke=\"#8a8a8a\" rx=\"4\"/><path d=\"M46,24L58,12\" fill=\"none\" stroke=\"#8a8a8a\"/>",
+      "insets": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "span": [
+        92,
+        24
+      ],
+      "label": true,
+      "filled": true
+    },
+    {
+      "name": "tag-rect",
+      "tw": 185.25,
+      "th": 45.5,
+      "w": 221.25,
+      "h": 69.5,
+      "dy": 0,
+      "svg": "<rect x=\"-110.62\" y=\"-34.75\" width=\"221.25\" height=\"69.5\" fill=\"#f3f3f3\" stroke=\"#8a8a8a\" rx=\"4\"/><path d=\"M98.63,34.75L110.63,22.75\" fill=\"none\" stroke=\"#8a8a8a\"/>",
+      "insets": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "span": [
+        197.25,
+        45.5
+      ],
+      "label": true,
+      "filled": true
+    },
+    {
+      "name": "tag-doc",
+      "tw": 0,
+      "th": 0,
+      "w": 36,
+      "h": 34,
+      "dy": -5,
+      "svg": "<path d=\"M-18,-17H18V7q-9,-12 -18,0t-18,0Z\" fill=\"#f3f3f3\" stroke=\"#8a8a8a\"/><path d=\"M6,3L18,-9\" fill=\"none\" stroke=\"#8a8a8a\"/>",
+      "insets": [
+        0,
+        0,
+        10,
+        0
+      ],
+      "span": [
+        0,
+        0
+      ],
+      "label": true,
+      "filled": true
+    },
+    {
+      "name": "tag-doc",
+      "tw": 80,
+      "th": 24,
+      "w": 116,
+      "h": 58,
+      "dy": -5,
+      "svg": "<path d=\"M-58,-29H58V19q-29,-12 -58,0t-58,0Z\" fill=\"#f3f3f3\" stroke=\"#8a8a8a\"/><path d=\"M46,15L58,3\" fill=\"none\" stroke=\"#8a8a8a\"/>",
+      "insets": [
+        0,
+        0,
+        10,
+        0
+      ],
+      "span": [
+        0,
+        0
+      ],
+      "label": true,
+      "filled": true
+    },
+    {
+      "name": "tag-doc",
+      "tw": 185.25,
+      "th": 45.5,
+      "w": 221.25,
+      "h": 79.5,
+      "dy": -5,
+      "svg": "<path d=\"M-110.62,-39.75H110.63V29.75q-55.31,-12 -110.62,0t-110.62,0Z\" fill=\"#f3f3f3\" stroke=\"#8a8a8a\"/><path d=\"M98.63,25.75L110.63,13.75\" fill=\"none\" stroke=\"#8a8a8a\"/>",
+      "insets": [
+        0,
+        0,
+        10,
+        0
+      ],
+      "span": [
+        0,
+        0
+      ],
+      "label": true,
+      "filled": true
+    },
+    {
+      "name": "lin-doc",
+      "tw": 0,
+      "th": 0,
+      "w": 44,
+      "h": 34,
+      "dy": -5,
+      "svg": "<path d=\"M-22,-17H22V7q-11,-12 -22,0t-22,0Z\" fill=\"#f3f3f3\" stroke=\"#8a8a8a\"/><path d=\"M-14,-17V11\" fill=\"none\" stroke=\"#8a8a8a\"/>",
+      "insets": [
+        0,
+        0,
+        10,
+        0
+      ],
+      "span": [
+        0,
+        0
+      ],
+      "label": true,
+      "filled": true
+    },
+    {
+      "name": "lin-doc",
+      "tw": 80,
+      "th": 24,
+      "w": 124,
+      "h": 58,
+      "dy": -5,
+      "svg": "<path d=\"M-62,-29H62V19q-31,-12 -62,0t-62,0Z\" fill=\"#f3f3f3\" stroke=\"#8a8a8a\"/><path d=\"M-54,-29V23\" fill=\"none\" stroke=\"#8a8a8a\"/>",
+      "insets": [
+        0,
+        0,
+        10,
+        0
+      ],
+      "span": [
+        0,
+        0
+      ],
+      "label": true,
+      "filled": true
+    },
+    {
+      "name": "lin-doc",
+      "tw": 185.25,
+      "th": 45.5,
+      "w": 229.25,
+      "h": 79.5,
+      "dy": -5,
+      "svg": "<path d=\"M-114.62,-39.75H114.63V29.75q-57.31,-12 -114.62,0t-114.62,0Z\" fill=\"#f3f3f3\" stroke=\"#8a8a8a\"/><path d=\"M-106.62,-39.75V33.75\" fill=\"none\" stroke=\"#8a8a8a\"/>",
+      "insets": [
+        0,
+        0,
+        10,
+        0
+      ],
+      "span": [
+        0,
+        0
+      ],
+      "label": true,
+      "filled": true
+    },
+    {
+      "name": "collapsedGroup",
+      "tw": 0,
+      "th": 0,
+      "w": 44,
+      "h": 32,
+      "dy": -2,
+      "svg": "<rect x=\"-16\" y=\"-8\" width=\"32\" height=\"24\" fill=\"#f3f3f3\" stroke=\"#8a8a8a\" rx=\"4\"/><rect x=\"-22\" y=\"-16\" width=\"44\" height=\"28\" fill=\"#f3f3f3\" stroke=\"#8a8a8a\" rx=\"4\"/>",
+      "insets": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "span": [
+        0,
+        0
+      ],
+      "label": true,
+      "filled": true
+    },
+    {
+      "name": "collapsedGroup",
+      "tw": 80,
+      "th": 24,
+      "w": 124,
+      "h": 56,
+      "dy": -2,
+      "svg": "<rect x=\"-56\" y=\"-20\" width=\"112\" height=\"48\" fill=\"#f3f3f3\" stroke=\"#8a8a8a\" rx=\"4\"/><rect x=\"-62\" y=\"-28\" width=\"124\" height=\"52\" fill=\"#f3f3f3\" stroke=\"#8a8a8a\" rx=\"4\"/>",
+      "insets": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "span": [
+        0,
+        0
+      ],
+      "label": true,
+      "filled": true
+    },
+    {
+      "name": "collapsedGroup",
+      "tw": 185.25,
+      "th": 45.5,
+      "w": 229.25,
+      "h": 77.5,
+      "dy": -2,
+      "svg": "<rect x=\"-108.62\" y=\"-30.75\" width=\"217.25\" height=\"69.5\" fill=\"#f3f3f3\" stroke=\"#8a8a8a\" rx=\"4\"/><rect x=\"-114.62\" y=\"-38.75\" width=\"229.25\" height=\"73.5\" fill=\"#f3f3f3\" stroke=\"#8a8a8a\" rx=\"4\"/>",
+      "insets": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "span": [
+        0,
+        0
+      ],
+      "label": true,
+      "filled": true
+    }
+  ]
+}
