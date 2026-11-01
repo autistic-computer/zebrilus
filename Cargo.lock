@@ -11096,6 +11096,7 @@ dependencies = [
  "futures-lite",
  "getrandom 0.4.3",
  "glob",
+ "httparse",
  "ignore",
  "libc",
  "log",

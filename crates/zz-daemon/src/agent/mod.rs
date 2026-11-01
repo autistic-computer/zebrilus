@@ -25,6 +25,10 @@ pub(crate) mod journal;
 #[cfg(unix)]
 pub(crate) mod lens;
 #[cfg(unix)]
+pub(crate) mod lens_channel;
+#[cfg(unix)]
+pub(crate) mod lens_claude_mod;
+#[cfg(unix)]
 pub(crate) mod lens_commands;
 #[cfg(unix)]
 pub(crate) mod lens_settings;
