@@ -21,7 +21,7 @@
   outline: none;
   user-select: none;
   --penna-icon-size: 14px;
-  --penna-ring: var(--penna-primary);
+  --penna-ring: var(--penna-focus);
   --penna-fg-muted: oklab(from var(--penna-fg) calc(l * 0.65 + 0.35 * clamp(0, (0.5 - l) * 1000, 1)) calc(a * 0.65) calc(b * 0.65));
   --penna-fg-faint: oklab(from var(--penna-fg) calc(l * 0.45 + 0.55 * clamp(0, (0.5 - l) * 1000, 1)) calc(a * 0.45) calc(b * 0.45));
 }
@@ -30,11 +30,7 @@
   font-size: 13px;
   font-weight: 400;
   line-height: 1;
-  corner-shape: superellipse(2);
-}
-
-.penna-button[data-penna][data-full] {
-  corner-shape: round;
+  outline: none;
 }
 
 .penna-button[data-size="small"] {
@@ -78,6 +74,7 @@
 }
 
 .penna-button:is([data-variant="link"], [data-variant="text"]) {
+  --penna-ring: var(--penna-focus-neutral);
   height: auto;
   padding: 0;
   border: 0;
@@ -152,23 +149,11 @@
   top: 0.5px;
 }
 
-.penna-button[data-tone="danger"] {
-  --penna-ring: var(--penna-danger);
-}
-
-.penna-button[data-tone="warning"] {
-  --penna-ring: var(--penna-warning);
-}
-
-.penna-button[data-tone="success"] {
-  --penna-ring: var(--penna-success);
-}
-
-.penna-button:is([data-focused], :focus-visible)::after {
+.penna-button:is([data-state~="focused"], :focus-visible)::after {
   content: "";
   position: absolute;
   inset: var(--penna-ring-inset, -2px);
-  border: 1.5px solid rgb(from var(--penna-ring) r g b / calc(alpha * 0.8));
+  border: 1.5px solid var(--penna-ring);
   border-radius: var(--penna-ring-r, 12px);
   corner-shape: inherit;
   pointer-events: none;

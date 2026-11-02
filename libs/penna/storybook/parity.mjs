@@ -372,7 +372,7 @@ async function canvasSections(page, only) {
 async function canvasPoint(page, window, id) {
     return page.call(async (window, id) => {
         const [role, name] = id.split(/:(.*)/s);
-        const find = () => ala.find({ id }, window)[0] ?? ala.find({ role, name }, window)[0];
+        const find = () => ala.find({ id }, window)[0] ?? (name === undefined ? undefined : ala.find({ role, name }, window)[0]);
         let node = find();
         if (!node?.bounds) return null;
         scrollBy(0, node.bounds.y + node.bounds.height / 2 - innerHeight / 2);

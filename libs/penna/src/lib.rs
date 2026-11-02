@@ -71,15 +71,15 @@ pub use card::{Card, CardLook};
 pub use chip::{Chip, ChipLook, Dot};
 pub use content::ContentLook;
 pub use foundation::{
-    ADAPTIVE_CORNER_FRACTION, ActiveTheme, BASE_UI_FONT_SIZE, CHROME_GAP, CORNER_SMOOTHING,
-    Colorize, Disableable, Edge, ElementExt, Elevation, Emphasis, FOCUS_RING_WIDTH, Fill, Ground,
-    Highlight, IndexPath, Ink, InteractiveElementExt, InteractivePaintExt, Kind, Knobs, Layer,
-    PANE_HEADER_CONTROL_HEIGHT, PANE_HEADER_HEIGHT, Paint, PaintExt, PaintState, PrimaryStyle,
-    RULE_WIDTH, RuleLook, ScrollbarShow, Selectable, Shadow, ShadowMaterial, Shape, Side, Sizable,
-    Size, Smoothing, Space, Style, StylePatch, StyledExt, Surface, SurfaceRole, TextStyle, Theme,
-    ThemeColor, ThemeMode, Tone, UiZoom, cubic_ease, h_flex, lifted_shadow, list_row, muted_on,
-    oklab_lightness, oklch, parse_hex, rems_from_px, row_state, to_hex, to_oklch, v_flex,
-    window_border, window_paddings,
+    ADAPTIVE_CORNER_FRACTION, ActiveTheme, AuthoredElement, BASE_UI_FONT_SIZE, CHROME_GAP,
+    CORNER_SMOOTHING, Colorize, Disableable, Edge, ElementExt, Elevation, Emphasis,
+    FOCUS_RING_WIDTH, Fill, Ground, Highlight, IndexPath, Ink, InteractiveElementExt,
+    InteractivePaintExt, Kind, Knobs, Layer, PANE_HEADER_CONTROL_HEIGHT, PANE_HEADER_HEIGHT, Paint,
+    PaintExt, PaintState, PrimaryStyle, RULE_WIDTH, RuleLook, ScrollbarShow, Selectable, Shadow,
+    ShadowMaterial, Shape, Side, Sizable, Size, Smoothing, Space, Style, StylePatch, StyledExt,
+    Surface, SurfaceRole, TextStyle, Theme, ThemeColor, ThemeMode, Tone, UiZoom, cubic_ease,
+    h_flex, lifted_shadow, list_row, muted_on, oklab_lightness, oklch, parse_hex, rems_from_px,
+    row_state, to_hex, to_oklch, v_flex, window_border, window_paddings,
 };
 pub use icon::{Assets, Icon, IconName};
 pub use inspector::Inspector;

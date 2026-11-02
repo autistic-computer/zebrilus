@@ -304,7 +304,7 @@ fn row_shell(
     .child(crate::touch::instant_press_highlight(
         id,
         cx.theme().layer(surface, PaintState::Active).fill,
-        crate::touch::PressCorners::Row(row_radius(&layer, height)),
+        crate::touch::PressCorners::Row(row_radius(&layer, height), layer.smoothing),
     ))
 }
 

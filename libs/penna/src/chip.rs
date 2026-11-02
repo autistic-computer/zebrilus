@@ -175,10 +175,15 @@ impl Chip {
 
     fn paint_surface(&self) -> Surface {
         let role = self.look.role();
-        let role = match self.emphasis {
-            Emphasis::Solid | Emphasis::Soft => role,
-            Emphasis::Outline => role.with(role.patch.fill(Fill::None)),
-            Emphasis::Ghost => role.with(role.patch.fill(Fill::None).outline(false)),
+        let role = match (self.look, self.emphasis) {
+            (_, Emphasis::Solid | Emphasis::Soft) => role,
+            (ChipLook::Plain, Emphasis::Outline) => SurfaceRole::OUTLINE_CHIP,
+            (_, Emphasis::Outline) => role
+                .with(role.patch.fill(Fill::None).outline(true))
+                .fixed_emphasis(),
+            (_, Emphasis::Ghost) => role
+                .with(role.patch.fill(Fill::None).outline(false))
+                .fixed_emphasis(),
         };
         Surface::new(role)
             .tone(self.tone)

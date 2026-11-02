@@ -1,6 +1,6 @@
 use ala::{
-    App, Bounds, ClickEvent, InteractiveElement, ParentElement, Pixels, Stateful, Styled as _,
-    Window, canvas,
+    App, Bounds, ClickEvent, ElementId, InteractiveElement, ParentElement, Pixels, SharedString,
+    Stateful, StatefulInteractiveElement, Styled as _, Window, canvas,
 };
 
 pub trait ElementExt: ParentElement + Sized {
@@ -39,3 +39,23 @@ pub trait InteractiveElementExt: InteractiveElement {
 }
 
 impl<E: InteractiveElement> InteractiveElementExt for Stateful<E> {}
+
+pub trait AuthoredElement: InteractiveElement + Sized {
+    fn author_id(self, id: impl Into<ElementId>) -> Stateful<Self>
+    where
+        Stateful<Self>: StatefulInteractiveElement,
+    {
+        let id = id.into();
+        let author = author_name(&id);
+        self.id(id).accessibility_id(author)
+    }
+}
+
+impl<E: InteractiveElement> AuthoredElement for E {}
+
+fn author_name(id: &ElementId) -> SharedString {
+    match id {
+        ElementId::Name(name) => name.clone(),
+        id => id.to_string().into(),
+    }
+}

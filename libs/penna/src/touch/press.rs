@@ -132,7 +132,7 @@ pub fn press_feedback(
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum PressCorners {
     Adaptive(Pixels),
-    Row(Pixels),
+    Row(Pixels, f32),
     Each(Corners<Pixels>),
 }
 
@@ -186,9 +186,9 @@ fn highlight(
                     PressCorners::Each(corners) => {
                         quad.corner_radii(window.resolve_corner_radii(corners, bounds.size))
                     }
-                    PressCorners::Row(radius) => quad
+                    PressCorners::Row(radius, smoothing) => quad
                         .corner_radii(Corners::all(radius).clamp_radii_for_quad_size(bounds.size))
-                        .corner_smoothing(crate::foundation::ROW_CORNER_SMOOTHING),
+                        .corner_smoothing(smoothing),
                 });
             }
             listen(&state, hitbox, delay, window);

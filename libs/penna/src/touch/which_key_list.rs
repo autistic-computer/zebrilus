@@ -63,7 +63,10 @@ impl WhichKeyList {
         let press = crate::touch::press_highlight(
             element_id.clone(),
             pressed.fill,
-            crate::touch::PressCorners::Row(crate::foundation::row_radius(&pressed, height)),
+            crate::touch::PressCorners::Row(
+                crate::foundation::row_radius(&pressed, height),
+                pressed.smoothing,
+            ),
         );
         crate::foundation::row_surface(
             div().id(element_id),

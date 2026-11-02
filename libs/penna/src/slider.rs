@@ -8,8 +8,8 @@ use ala::{
 };
 
 use crate::{
-    ActiveTheme as _, Colorize as _, Emphasis, Kind, PaintState, Size, StyledExt as _, Surface,
-    Tone, h_flex,
+    ActiveTheme as _, AuthoredElement as _, Colorize as _, Emphasis, Kind, PaintState, Size,
+    StyledExt as _, Surface, Tone, h_flex,
     input::{field_chrome_on, field_text},
     oklab_lightness,
     sheet::{bottom_sheet, close_sheet, floating_sheet, sheet_close, sheet_inset},
@@ -126,7 +126,7 @@ impl RenderOnce for DiscreteSlider {
             );
         }
         h_flex()
-            .id(self.id)
+            .author_id(self.id)
             .role(Role::Slider)
             .aria_label(self.label.clone())
             .aria_value(value.clone())
@@ -416,7 +416,7 @@ impl Slider {
         let trigger = field_chrome_on(
             field_text(
                 h_flex()
-                    .id(self.id.clone())
+                    .author_id(self.id.clone())
                     .role(Role::Slider)
                     .aria_label(self.label.clone())
                     .aria_value(shown.clone())
@@ -600,7 +600,7 @@ impl Slider {
         let key_emit = Rc::clone(&emit);
         let key_release = Rc::clone(&release);
         div()
-            .id(self.id)
+            .author_id(self.id)
             .role(Role::Slider)
             .aria_label(self.label)
             .aria_value(SharedString::from(format!("{value}")))

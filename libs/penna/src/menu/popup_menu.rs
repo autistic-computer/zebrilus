@@ -894,7 +894,7 @@ impl PopupMenu {
                 this.child(crate::touch::press_highlight(
                     ala::ElementId::NamedInteger(group_name.clone().into(), 0),
                     None,
-                    crate::touch::PressCorners::Row(row_radius(&row, item_height)),
+                    crate::touch::PressCorners::Row(row_radius(&row, item_height), row.smoothing),
                 ))
             })
             .text_size(crate::rems_from_px(if coarse { 13.0 } else { 12.0 }))
