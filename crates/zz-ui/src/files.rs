@@ -15,8 +15,10 @@ use zz_protocol::{
     PathListRoot, SessionId, WindowId,
 };
 
+use penna::TextStyle;
+
 use crate::{
-    ActiveTheme as _, Colorize as _, IconName,
+    ActiveTheme as _, Colorize as _, IconName, StyledExt as _,
     button::{Button, ButtonVariants as _},
     command::{
         ActionContext, ActionKey, CommandPaletteView, LevelEffect, PaletteActionLevel,
@@ -951,7 +953,7 @@ impl Render for FilesLevel {
                 .w_full()
                 .py(px(16.0))
                 .text_center()
-                .text_size(crate::rems_from_px(12.0))
+                .type_style(TextStyle::Small, cx)
                 .text_color(cx.theme().foreground.muted())
                 .child(self.empty_message())
                 .into_any_element();

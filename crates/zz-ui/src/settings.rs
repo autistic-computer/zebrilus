@@ -10,6 +10,7 @@ pub use penna::settings::*;
 
 use crate::{ActiveTheme as _, Colorize as _, icon::Icon};
 use ala::{App, ElementId, SharedString, Styled as _, Window, div, prelude::*, px};
+use penna::{Label, TextStyle};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SettingsSection {
@@ -124,6 +125,7 @@ pub fn settings_section_index(
     let on_pick = Rc::new(on_pick);
     let muted = cx.theme().foreground.muted();
     let faint = cx.theme().foreground.faint();
+    let card = settings_card_ground(cx);
     let entry = |section: SettingsSection| {
         let id = ElementId::Name(format!("settings-index-{}", section.title()).into());
         let on_pick = Rc::clone(&on_pick);
@@ -136,14 +138,11 @@ pub fn settings_section_index(
                     .items_center()
                     .gap(px(6.0))
                     .children(meta(section).map(|value| {
-                        div()
+                        Label::new(TextStyle::Small, value)
+                            .muted()
+                            .on(card)
+                            .truncate()
                             .max_w(px(160.0))
-                            .overflow_hidden()
-                            .whitespace_nowrap()
-                            .text_ellipsis()
-                            .text_size(crate::rems_from_px(12.0))
-                            .text_color(muted)
-                            .child(value)
                     }))
                     .child(
                         Icon::new(crate::IconName::ChevronRight)

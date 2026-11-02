@@ -1,19 +1,20 @@
 use std::rc::Rc;
 
 use ala::{
-    App, ClipboardItem, IntoElement, ParentElement as _, SharedString, Styled as _, Window, div,
+    App, ClipboardItem, IntoElement, ParentElement as _, SharedString, Styled as _, Window,
     prelude::*, px,
 };
 use zz_protocol::{AgentProvider, ProviderStatus, ProvidersReport};
 
 use super::{SettingEntry, SettingsStack, settings_card_ground};
 use crate::{
-    ActiveTheme as _, Colorize as _, Disableable as _, Icon, IconName, Sizable as _,
+    ActiveTheme as _, Disableable as _, Icon, IconName, Sizable as _,
     button::{Button, ButtonVariants as _},
     h_flex,
     pane::agent_provider_icon,
     spinner::Spinner,
 };
+use penna::{Label, TextStyle};
 
 pub use zz_client::providers::PROVIDERS;
 use zz_client::providers::{
@@ -79,24 +80,15 @@ fn provider_entry(
                 .children(action(id, status, checking, on_update, cx)),
         );
     for (note, tone) in provider_notes(status) {
-        let color = match tone {
-            NoteTone::Muted => cx.theme().foreground.muted(),
-            NoteTone::Foreground => cx.theme().foreground,
-            NoteTone::Warning => cx.theme().warning,
-        };
-        entry = entry.child(task_line(note, color, cx));
+        entry = entry.child(task_line(note, tone, cx));
     }
     entry
 }
 
 fn version_text(status: &ProviderStatus, cx: &App) -> impl IntoElement {
-    let muted = cx.theme().foreground.muted();
     h_flex()
         .flex_none()
         .gap(px(5.0))
-        .font_family(cx.theme().mono_font_family.clone())
-        .text_size(crate::rems_from_px(11.0))
-        .text_color(muted)
         .when(version_current(status), |this| {
             this.child(
                 Icon::new(IconName::Check)
@@ -104,7 +96,11 @@ fn version_text(status: &ProviderStatus, cx: &App) -> impl IntoElement {
                     .text_color(cx.theme().success),
             )
         })
-        .child(SharedString::from(version_label(status)))
+        .child(
+            Label::new(TextStyle::Mono, version_label(status))
+                .muted()
+                .on(settings_card_ground(cx)),
+        )
 }
 
 fn action(
@@ -145,11 +141,11 @@ fn action(
     })
 }
 
-fn task_line(text: impl Into<SharedString>, color: ala::Hsla, cx: &App) -> impl IntoElement {
-    div()
-        .min_w_0()
-        .font_family(cx.theme().mono_font_family.clone())
-        .text_size(crate::rems_from_px(11.0))
-        .text_color(color)
-        .child(text.into())
+fn task_line(text: impl Into<SharedString>, tone: NoteTone, cx: &App) -> Label {
+    let line = Label::new(TextStyle::Mono, text).min_w_0();
+    match tone {
+        NoteTone::Muted => line.muted().on(settings_card_ground(cx)),
+        NoteTone::Foreground => line.text_color(cx.theme().foreground),
+        NoteTone::Warning => line.text_color(cx.theme().warning),
+    }
 }

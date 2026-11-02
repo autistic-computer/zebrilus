@@ -5,11 +5,10 @@ pub mod status;
 
 use crate::{
     ActiveTheme as _, Colorize as _, Disableable as _, Emphasis, Ground, Icon, IconName,
-    InteractiveSurfaceExt as _, Layer, PaintState, Shape, Sizable as _, StyledExt as _, Surface,
-    SurfaceRole, Tone,
-    button::{Button, ButtonVariants as _, COMPACT_ICON_BUTTON_SIZE},
+    PaintState, Sizable as _, StyledExt as _, Surface, Tone,
+    button::{Button, ButtonLook, ButtonVariants as _, COMPACT_ICON_BUTTON_SIZE},
     kbd::Kbd,
-    rems_from_px, roles,
+    rems_from_px,
     sidebar::{
         CHROME_BUTTON_SIZE, SIDEBAR_CONTENT_INSET, SIDEBAR_ROW_ACTION_CENTER, chrome_button,
         sidebar_panel, status_dot,
@@ -18,10 +17,12 @@ use crate::{
     touch::{CoarsePointer, TOUCH_TARGET},
 };
 use ala::{
-    AnyElement, App, ElementId, Hsla, IntoElement, Keystroke, MouseButton, MouseDownEvent,
-    ParentElement as _, Pixels, SharedString, Stateful, StatefulInteractiveElement as _,
-    Styled as _, Window, div, prelude::*, px,
+    App, ElementId, IntoElement, Keystroke, MouseButton, MouseDownEvent, ParentElement as _,
+    Pixels, SharedString, Stateful, StatefulInteractiveElement as _, Styled as _, Window, div,
+    prelude::*, px,
 };
+pub use penna::sidebar::sidebar_fade as workspace_sidebar_fade;
+use penna::{Chip, ChipLook, Panel, PanelLook, Row, RowLook, Tab, TabLook, TextStyle};
 
 pub const WORKSPACE_TREE_ROW_HEIGHT: f32 = 32.0;
 pub const WORKSPACE_TREE_INDENT_WIDTH: f32 = 20.0;
@@ -34,13 +35,11 @@ const WORKSPACE_CHROME_CONTROL_GAP: f32 = 4.0;
 const WORKSPACE_ROW_ACTION_GAP: f32 = 10.0;
 pub const WORKSPACE_SIDEBAR_FADE_HEIGHT: Pixels = px(40.0);
 pub const WORKSPACE_STATUS_PILL_HEIGHT: Pixels = px(32.0);
-const WORKSPACE_STATUS_WINDOW_TEXT_SIZE: f32 = 14.0;
 const WORKSPACE_STATUS_LINE_HEIGHT: Pixels = px(18.0);
 const WORKSPACE_STATUS_ITEM_MAX_WIDTH: Pixels = px(180.0);
 const WORKSPACE_STATUS_WINDOW_DEFAULT_WIDTH: Pixels = px(240.0);
 const WORKSPACE_STATUS_WINDOW_MIN_WIDTH: Pixels = px(36.0);
 const WORKSPACE_STATUS_ICON_SIZE: Pixels = px(14.0);
-const WORKSPACE_STATUS_TEXT_SIZE: f32 = 13.0;
 const WORKSPACE_STATUS_CHIP_PADDING: Pixels = px(6.0);
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -118,9 +117,9 @@ pub fn workspace_status_item(
     icon: Option<IconName>,
     text: SharedString,
     cx: &App,
-) -> Stateful<ala::Div> {
-    div()
-        .id(id)
+) -> Chip {
+    Chip::empty(id)
+        .look(ChipLook::Bar)
         .flex()
         .flex_shrink_1()
         .min_w_0()
@@ -130,16 +129,15 @@ pub fn workspace_status_item(
         .gap(px(5.0))
         .px(WORKSPACE_STATUS_CHIP_PADDING)
         .overflow_hidden()
-        .surface(Surface::new(roles::CHIP_BAR), cx)
         .text_color(cx.theme().foreground.muted())
-        .text_size(rems_from_px(WORKSPACE_STATUS_TEXT_SIZE))
+        .type_style(TextStyle::Body, cx)
         .line_height(WORKSPACE_STATUS_LINE_HEIGHT)
         .children(icon.map(|icon| {
             div()
                 .flex_none()
                 .relative()
                 .top(crate::icon::cap_center_drop(
-                    px(WORKSPACE_STATUS_TEXT_SIZE),
+                    px(TextStyle::Body.design_px()),
                     WORKSPACE_STATUS_ICON_SIZE,
                     cx,
                 ))
@@ -164,10 +162,8 @@ pub fn workspace_status_window(
     state: WorkspaceStatusWindowState,
     deck: Option<pane_stack::PaneStack>,
     cx: &App,
-) -> Stateful<ala::Div> {
+) -> Tab {
     let foreground = cx.theme().foreground;
-    let tab = Surface::new(roles::TAB_WINDOW);
-    let paint_state = state.paint_state();
     let name = div()
         .flex_1()
         .min_w_0()
@@ -175,8 +171,10 @@ pub fn workspace_status_window(
         .whitespace_nowrap()
         .text_fade(crate::LABEL_FADE)
         .child(name);
-    div()
-        .id(id)
+    Tab::new(id, TabLook::Window)
+        .state(state.paint_state())
+        .interactive(state.connected)
+        .when(state.connected, ala::Styled::cursor_pointer)
         .relative()
         .flex()
         .flex_shrink_1()
@@ -188,15 +186,8 @@ pub fn workspace_status_window(
         .gap(px(5.0))
         .px(px(9.0))
         .overflow_hidden()
-        .map(|item| {
-            if state.connected {
-                item.cursor_pointer().surface_hover(tab, paint_state, cx)
-            } else {
-                item.surface_at(tab, paint_state, cx)
-            }
-        })
         .when(!state.active, |item| item.text_color(foreground.muted()))
-        .text_size(rems_from_px(WORKSPACE_STATUS_WINDOW_TEXT_SIZE))
+        .type_style(TextStyle::Lead, cx)
         .line_height(WORKSPACE_STATUS_LINE_HEIGHT)
         .tooltip(move |window, cx| Tooltip::new(tooltip.clone()).build(window, cx))
         .map(|item| match deck {
@@ -246,14 +237,6 @@ pub fn workspace_sidebar_surface(
 }
 
 #[must_use]
-pub fn workspace_slideover_layer(cx: &App) -> Layer {
-    Layer {
-        radius: px(0.0),
-        ..cx.theme().layer(SurfaceRole::POPOVER, PaintState::Rest)
-    }
-}
-
-#[must_use]
 pub fn workspace_sidebar_slideover(
     id: impl Into<ElementId>,
     sidebar: impl IntoElement,
@@ -270,11 +253,11 @@ pub fn workspace_sidebar_slideover(
         .occlude()
         .on_mouse_down(MouseButton::Left, on_dismiss)
         .child(
-            div()
+            Panel::new("workspace-slideover", PanelLook::Popover)
+                .rounded(px(0.0))
                 .h_full()
                 .flex()
                 .flex_none()
-                .layer(&workspace_slideover_layer(cx))
                 .occlude()
                 .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
                 .child(sidebar),
@@ -284,29 +267,20 @@ pub fn workspace_sidebar_slideover(
 #[must_use]
 pub fn workspace_sidebar_ground(window: Ground, slideover: bool, cx: &App) -> Ground {
     if slideover {
-        workspace_slideover_layer(cx).ground
+        cx.theme().ground_of(PanelLook::Popover)
     } else {
         window
     }
 }
 
-#[must_use]
-pub fn workspace_sidebar_fade(ground: Ground, cx: &App) -> Hsla {
-    let sidebar = cx
-        .theme()
-        .layer(Surface::new(roles::SIDEBAR).on(ground), PaintState::Rest);
-    ground.fill.blend(sidebar.fill)
-}
-
 pub fn workspace_row_fill(
     id: &ElementId,
-    role: SurfaceRole,
+    look: RowLook,
     lit: PaintState,
-    hover_group: Option<SharedString>,
+    hover_group: SharedString,
     ground: Ground,
-    radius: Option<Pixels>,
     cx: &App,
-) -> impl Iterator<Item = AnyElement> + use<> {
+) -> Row {
     let theme = cx.theme();
     let inset = theme.row_inset;
     let vertical_inset = if theme.inset_rows() {
@@ -314,36 +288,15 @@ pub fn workspace_row_fill(
     } else {
         px(0.)
     };
-    let surface = Surface::new(role).on(ground);
-    let radius = radius.filter(|_| theme.style(role).shape == Shape::Round);
-    let layer = |state| {
-        let mut layer = theme.layer(surface, state);
-        if let Some(radius) = radius {
-            layer.radius = radius;
-        }
-        layer
-    };
-    let hover = layer(PaintState::Hover);
-    let fill = div()
+    Row::new(ElementId::from((id.clone(), "fill")), look)
+        .state(lit)
+        .on(ground)
+        .hover_group(hover_group)
         .absolute()
         .top(vertical_inset)
         .bottom(vertical_inset)
         .left(inset)
         .right(inset)
-        .layer(&layer(lit))
-        .when_some(
-            hover_group.filter(|_| lit == PaintState::Rest),
-            |this, group| this.group_hover(group, move |style| style.layer(&hover)),
-        );
-    let press = CoarsePointer::get(cx).then(|| {
-        let pressed = layer(PaintState::Active);
-        crate::touch::press_highlight(id.clone(), pressed.fill, pressed.radius)
-            .top(vertical_inset)
-            .bottom(vertical_inset)
-            .left(inset)
-            .right(inset)
-    });
-    std::iter::once(fill.into_any_element()).chain(press.map(IntoElement::into_any_element))
 }
 
 #[must_use]
@@ -384,26 +337,24 @@ pub fn workspace_tree_row(
     let foreground = cx.theme().foreground;
     let ink = cx
         .theme()
-        .layer(Surface::new(roles::SIDEBAR_ROW).on(ground), lit)
-        .text;
-    let fill = workspace_row_fill(
-        &id,
-        roles::SIDEBAR_ROW,
-        lit,
-        Some(row_group.clone()),
-        ground,
-        None,
-        cx,
-    );
+        .ground_at(Surface::from(RowLook::Sidebar).on(ground), lit)
+        .ink;
+    let fill = workspace_row_fill(&id, RowLook::Sidebar, lit, row_group.clone(), ground, cx);
     workspace_tree_row_frame(id, depth, cx)
+        .map(|row| {
+            if active {
+                row.type_style_strong(TextStyle::Lead, cx)
+            } else {
+                row.type_style(TextStyle::Lead, cx)
+            }
+        })
         .pr(workspace_tree_trailing_inset(cx))
         .group(row_group)
-        .children(fill)
+        .child(fill)
         .text_color(if connected { ink } else { foreground.muted() })
         .when(connected, |row| {
             row.hover(move |row| row.text_color(foreground))
         })
-        .when(active, crate::StyledExt::font_medium)
         .when(clickable, ala::Styled::cursor_pointer)
         .child(marker)
         .child(workspace_tree_row_label(label))
@@ -452,7 +403,7 @@ pub fn workspace_row_action(button: Button, ground: Ground, disabled: bool, cx: 
     let ink = cx.theme().paint_on(ground, Tone::Neutral, Emphasis::Ghost);
     button
         .ghost()
-        .surface_role(roles::ICON_BUTTON_ROW)
+        .look(ButtonLook::RowIcon)
         .on(ground)
         .disabled(disabled)
         .text_color(if disabled {
@@ -484,7 +435,6 @@ fn workspace_tree_row_frame(id: impl Into<ElementId>, depth: u8, cx: &App) -> St
             SIDEBAR_CONTENT_INSET + f32::from(depth) * WORKSPACE_TREE_INDENT_WIDTH
         ))
         .pr(px(SIDEBAR_CONTENT_INSET))
-        .text_sm()
 }
 
 fn workspace_tree_row_label(label: impl IntoElement) -> ala::Div {

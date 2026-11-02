@@ -70,6 +70,10 @@ mod tests {
     }
 
     #[test]
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "the test measures each built-in theme's composer buttons against the composer"
+    )]
     fn the_composers_buttons_are_filled_in_every_builtin() {
         use crate::{PaintState, Surface, roles};
         for (id, theme) in builtin_themes() {

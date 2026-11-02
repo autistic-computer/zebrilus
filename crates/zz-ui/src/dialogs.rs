@@ -1,7 +1,8 @@
 use ala::{
-    App, Entity, ParentElement as _, SharedString, Styled as _, div, prelude::FluentBuilder as _,
+    App, Entity, ParentElement as _, SharedString, Styled as _, prelude::FluentBuilder as _,
 };
 use penna::{
+    Label, TextStyle,
     dialog::{AlertDialog, Dialog, DialogButtonProps},
     feedback::{prompt_body, prompt_dialog, prompt_question},
     overlay::dialog_description,
@@ -11,7 +12,6 @@ use crate::{
     ActiveTheme as _, Emphasis, Icon, IconName, Tone,
     button::ButtonVariant,
     input::{Input, InputContentType, InputState},
-    rems_from_px,
 };
 
 #[cfg(any(target_os = "ios", target_os = "android"))]
@@ -71,12 +71,7 @@ pub fn add_host_prompt_dialog(
             .child(dialog_description(cx).child(ADD_HOST_DESCRIPTION))
             .child(Input::new(input))
             .when_some(error, |this, error| {
-                this.child(
-                    div()
-                        .text_size(rems_from_px(11.0))
-                        .text_color(cx.theme().warning)
-                        .child(error),
-                )
+                this.child(Label::new(TextStyle::Caption, error).text_color(cx.theme().warning))
             }),
     )
 }

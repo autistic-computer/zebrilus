@@ -5,7 +5,7 @@ use ala::{App, IntoElement, div, prelude::*, px};
 pub use zz_client::StatusBarSettings;
 
 use crate::{
-    ActiveTheme as _, Colorize as _, IconName, StyledExt as _,
+    ActiveTheme as _, Colorize as _, IconName,
     navigation::{
         WorkspaceStatusWindowState,
         status::{StatusPaneEntry, StatusWindowActions, status_window},
@@ -117,7 +117,6 @@ fn status_bar_preview(settings: StatusBarSettings, gaps: bool, cx: &App) -> ala:
             workspace_status_item("settings-preview-update", None, "v0.9.0".into(), cx)
                 .flex_none()
                 .px(px(6.0))
-                .surface(crate::roles::CHIP_BAR, cx)
                 .text_color(cx.theme().foreground.muted())
                 .child(status_dot(cx.theme().success))
                 .into_any_element(),

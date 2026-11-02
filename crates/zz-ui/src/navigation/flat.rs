@@ -5,23 +5,25 @@ use std::{
 
 use ala::{
     AnyElement, App, ClickEvent, Context, Div, ElementId, FULL_CORNER_RADIUS, FontFeatures,
-    FontWeight, HighlightStyle, Hsla, IntoElement, Keystroke, ParentElement as _, Pixels, Role,
-    SharedString, Stateful, StyledText, Window, div, font, prelude::*, px,
+    HighlightStyle, Hsla, IntoElement, Keystroke, ParentElement as _, Pixels, Role, SharedString,
+    Stateful, StyledText, Window, div, font, prelude::*, px,
 };
+use penna::{Label, RowLook, TextStyle};
 use zz_client::window_summary::{
     Attention, AttentionRollup, PaneTag, PaneTile, Tone as DetailTone, WindowSummary,
 };
 use zz_protocol::{PaneId, WindowId};
 
 use crate::{
-    ActiveTheme as _, Colorize as _, Emphasis, Ground, Highlight, Icon, IconName, PaintState,
-    Shape, Sizable as _, StyledExt as _, Surface, Tone,
-    button::Button,
+    ActiveTheme as _, Colorize as _, Ground, Highlight, Icon, IconName, PaintState, Shape,
+    Sizable as _, StyledExt as _, Surface,
+    button::{Button, ButtonLook},
     command::PaletteHostId,
     h_flex,
     icon::cap_center_drop,
     menu::{ContextMenuExt as _, PopupMenu},
     motion::{self, Disclosure},
+    muted_on,
     navigation::{
         pane_stack::{PaneStack, StackAction, StackSize, StackTile},
         workspace_row_action, workspace_row_fill,
@@ -37,11 +39,8 @@ const ROW_HEIGHT: f32 = 48.0;
 const ROW_RADIUS: f32 = 24.0;
 const ROW_PADDING: f32 = 10.0;
 const TILE_GAP: f32 = 10.0;
-const TITLE_SIZE: f32 = 13.0;
 const TITLE_LINE: f32 = 17.0;
-const DETAIL_SIZE: f32 = 12.0;
 const DETAIL_LINE: f32 = 15.0;
-const AGE_SIZE: f32 = 11.0;
 const LINE_GAP: f32 = 1.0;
 const TITLE_TRAILING_GAP: f32 = 6.0;
 const DETAIL_AGE_GAP: f32 = 8.0;
@@ -50,13 +49,11 @@ const DIMMED: f32 = 0.45;
 const HOST_HEIGHT: f32 = 30.0;
 const HOST_GAP: f32 = 18.0;
 const HOST_GLYPH: f32 = 16.0;
-const HOST_NAME_SIZE: f32 = 13.0;
 const HOST_LINE: f32 = 16.0;
 const HOST_SPACING: f32 = 8.0;
 const ADD_BUTTON_SIZE: f32 = 18.0;
 const ADD_BUTTON_ICON: f32 = 14.0;
 const CHEVRON_SIZE: f32 = 10.0;
-const NOTE_SIZE: f32 = 11.0;
 const NOTE_LINE: f32 = 15.0;
 const HEADER_BUTTON_HEIGHT: f32 = 20.0;
 const STATUS_ICON: f32 = 14.0;
@@ -64,6 +61,12 @@ const ROLLUP_DOT: f32 = crate::sidebar::STATUS_DOT_SIZE;
 const ROLLUP_SPINNER: f32 = 10.0;
 const ROLLUP_GAP: f32 = 8.0;
 const ROLLUP_ITEM_GAP: f32 = 4.0;
+const ROW_GROUP: &str = "flat-window-row";
+const TITLE: TextStyle = TextStyle::Body;
+const DETAIL: TextStyle = TextStyle::Small;
+const AGE: TextStyle = TextStyle::Caption;
+const HOST_NAME: TextStyle = TextStyle::Body;
+const NOTE: TextStyle = TextStyle::Caption;
 
 static TABULAR: LazyLock<FontFeatures> =
     LazyLock::new(|| FontFeatures(Arc::new(vec![("tnum".into(), 1)])));
@@ -200,12 +203,11 @@ impl FlatRowState {
         }
     }
 
-    fn surface(self) -> (Surface, PaintState) {
-        let (role, state) = match self.paint_state() {
-            PaintState::Selected => (roles::ROW_CURSOR, PaintState::Selected),
-            state => (roles::ROW_NAV, state),
-        };
-        (Surface::new(role).on_maybe(self.ground), state)
+    fn look(self) -> (RowLook, PaintState) {
+        match self.paint_state() {
+            PaintState::Selected => (RowLook::Cursor, PaintState::Selected),
+            state => (RowLook::Nav, state),
+        }
     }
 
     fn for_pointer(self, cx: &App) -> Self {
@@ -228,19 +230,17 @@ struct RowInk {
 impl RowInk {
     fn new(state: FlatRowState, cx: &App) -> Self {
         let theme = cx.theme();
-        let (surface, paint_state) = state.surface();
-        let layer = theme.layer(surface, paint_state);
+        let (look, paint_state) = state.look();
+        let ground = theme.ground_at(Surface::from(look).on_maybe(state.ground), paint_state);
         let lit = matches!(
             paint_state,
             PaintState::Selected | PaintState::Current | PaintState::Focused
         );
         Self {
-            ground: layer.ground,
-            text: layer.text,
-            muted: theme
-                .paint_on(layer.ground, Tone::Neutral, Emphasis::Ghost)
-                .muted_at(PaintState::Rest),
-            plain: lit && theme.style(surface.role).selected == Highlight::Accent,
+            ground,
+            text: ground.ink,
+            muted: muted_on(ground, cx),
+            plain: lit && theme.style(Surface::from(look).role).selected == Highlight::Accent,
             dimmed: state.dimmed,
         }
     }
@@ -446,24 +446,18 @@ pub fn flat_window_row(
     let title = SharedString::from(summary.title.clone());
     let target = FlatTarget::Window(host, id);
     let working = summary.attention == Attention::Working && !state.dimmed;
-    let busy = working.then(|| spinner(SPINNER_SIZE, TITLE_SIZE, ink.muted, cx));
+    let busy = working.then(|| spinner(SPINNER_SIZE, TITLE.design_px(), ink.muted, cx));
     let context = menu.clone();
     let row_id = ElementId::NamedInteger(format!("flat-window-{}", host.0).into(), id.0);
-    let (surface, paint_state) = state.surface();
-    let fill = workspace_row_fill(
-        &row_id,
-        surface.role,
-        paint_state,
-        None,
-        surface.ground.unwrap_or_else(|| theme.ground()),
-        theme
-            .styles
-            .get(surface.role.id)
-            .and_then(|patch| patch.shape)
-            .is_none()
-            .then_some(px(ROW_RADIUS)),
-        cx,
-    );
+    let (look, paint_state) = state.look();
+    let ground = state.ground.unwrap_or_else(|| theme.ground());
+    let shaped = theme
+        .styles
+        .get(Surface::from(look).role.id)
+        .and_then(|patch| patch.shape)
+        .is_some();
+    let fill = workspace_row_fill(&row_id, look, paint_state, ROW_GROUP.into(), ground, cx)
+        .when(!shaped, |fill| fill.radius(px(ROW_RADIUS)));
     let hover = handler.clone();
     let click = handler.clone();
     div()
@@ -476,6 +470,7 @@ pub fn flat_window_row(
             state.selected,
             StatefulInteractiveElement::aria_active_descendant,
         )
+        .group(ROW_GROUP)
         .relative()
         .flex()
         .flex_none()
@@ -488,7 +483,7 @@ pub fn flat_window_row(
         .cursor_pointer()
         .on_hover(move |hovered, window, cx| hover(FlatEvent::Hover(target, *hovered), window, cx))
         .on_click(move |_, window, cx| click(FlatEvent::Open(host, id), window, cx))
-        .children(fill)
+        .child(fill)
         .child(
             tile_stack(
                 host,
@@ -510,16 +505,14 @@ pub fn flat_window_row(
                             .h(px(TITLE_LINE))
                             .gap(px(TITLE_TRAILING_GAP))
                             .child(
-                                div()
+                                Label::new(TITLE, title)
+                                    .strong()
+                                    .line_height(px(TITLE_LINE))
                                     .flex_1()
                                     .min_w_0()
                                     .overflow_hidden()
                                     .whitespace_nowrap()
-                                    .text_fade(crate::LABEL_FADE)
-                                    .text_size(px(TITLE_SIZE))
-                                    .line_height(px(TITLE_LINE))
-                                    .font_medium()
-                                    .child(title),
+                                    .text_fade(crate::LABEL_FADE),
                             )
                             .children(busy),
                     )
@@ -535,7 +528,7 @@ pub fn flat_window_row(
                                     .overflow_hidden()
                                     .whitespace_nowrap()
                                     .text_fade(crate::LABEL_FADE)
-                                    .text_size(px(DETAIL_SIZE))
+                                    .type_style(DETAIL, cx)
                                     .line_height(px(DETAIL_LINE))
                                     .text_color(ink.dim(ink.muted))
                                     .child(detail_text(summary, ink, cx)),
@@ -546,25 +539,29 @@ pub fn flat_window_row(
                                     .clone()
                                     .filter(|_| window.shortcut.is_none())
                                     .map(|age| {
-                                        div()
-                                            .flex_none()
-                                            .relative()
-                                            .top(baseline_drop(DETAIL_SIZE, AGE_SIZE, cx))
-                                            .text_size(px(AGE_SIZE))
+                                        Label::new(AGE, age)
                                             .line_height(px(DETAIL_LINE))
                                             .font_features(TABULAR.clone())
                                             .text_color(ink.dim(ink.muted))
-                                            .child(age)
+                                            .flex_none()
+                                            .relative()
+                                            .top(baseline_drop(
+                                                DETAIL.design_px(),
+                                                AGE.design_px(),
+                                                cx,
+                                            ))
                                     }),
                             ),
                     ),
                 px(TILE_GAP),
             ),
         )
-        .children(window.shortcut.clone().map(|stroke| {
-            super::window_shortcut_cap(stroke, surface.ground.unwrap_or_else(|| theme.ground()))
-                .flex_none()
-        }))
+        .children(
+            window
+                .shortcut
+                .clone()
+                .map(|stroke| super::window_shortcut_cap(stroke, ground).flex_none()),
+        )
         .context_menu(move |popup, window_handle, cx| context(host, id, popup, window_handle, cx))
         .into_any_element()
 }
@@ -581,16 +578,15 @@ pub fn flat_rollup(rollup: &AttentionRollup, live: bool, cx: &App) -> Div {
     h_flex()
         .flex_none()
         .gap(px(ROLLUP_GAP))
-        .text_size(px(NOTE_SIZE))
+        .type_style(NOTE, cx)
         .line_height(px(NOTE_LINE))
         .font_features(TABULAR.clone())
-        .font_weight(FontWeight::NORMAL)
         .text_color(muted)
         .when(live && rollup.working > 0, |this| {
             this.child(
                 h_flex()
                     .gap(px(ROLLUP_ITEM_GAP))
-                    .child(spinner(ROLLUP_SPINNER, NOTE_SIZE, muted, cx))
+                    .child(spinner(ROLLUP_SPINNER, NOTE.design_px(), muted, cx))
                     .child(count(rollup.working)),
             )
         })
@@ -603,7 +599,7 @@ pub fn flat_rollup(rollup: &AttentionRollup, live: bool, cx: &App) -> Div {
                         .child(
                             crate::sidebar::status_dot(color)
                                 .relative()
-                                .top(cap_center_drop(px(NOTE_SIZE), px(ROLLUP_DOT), cx)),
+                                .top(cap_center_drop(px(NOTE.design_px()), px(ROLLUP_DOT), cx)),
                         )
                         .child(count(value))
                 }),
@@ -621,8 +617,7 @@ fn header_button(
         .label(label)
         .small()
         .h(px(HEADER_BUTTON_HEIGHT))
-        .font_weight(FontWeight::NORMAL)
-        .surface_role(roles::BUTTON_ROW)
+        .look(ButtonLook::Row)
         .on_click(move |_: &ClickEvent, window, cx| {
             cx.stop_propagation();
             handler(event, window, cx);
@@ -724,8 +719,8 @@ pub fn flat_host_header(
             .flex_none()
             .tooltip(move |window, cx| Tooltip::new(text.clone()).build(window, cx))
             .child(match note.icon {
-                Some(icon) => glyph(icon, STATUS_ICON, HOST_NAME_SIZE, note.color, cx),
-                None => spinner(STATUS_ICON, HOST_NAME_SIZE, note.color, cx),
+                Some(icon) => glyph(icon, STATUS_ICON, HOST_NAME.design_px(), note.color, cx),
+                None => spinner(STATUS_ICON, HOST_NAME.design_px(), note.color, cx),
             })
     });
     let new_chat = (host.live() && (hovered || coarse)).then(|| {
@@ -757,9 +752,8 @@ pub fn flat_host_header(
         } else {
             theme.foreground.rest()
         })
-        .text_size(px(HOST_NAME_SIZE))
+        .type_style(HOST_NAME, cx)
         .line_height(px(HOST_LINE))
-        .font_semibold()
         .cursor_pointer()
         .on_hover(move |hovered, window, cx| hover(FlatEvent::Hover(target, *hovered), window, cx))
         .on_click(move |_, window, cx| click(FlatEvent::FoldHost(id), window, cx))
@@ -770,23 +764,24 @@ pub fn flat_host_header(
                 IconName::Laptop
             },
             HOST_GLYPH,
-            HOST_NAME_SIZE,
+            HOST_NAME.design_px(),
             muted,
             cx,
         ))
         .child(
-            div()
+            Label::new(HOST_NAME, host.name.clone())
+                .strong()
+                .line_height(px(HOST_LINE))
                 .min_w_0()
                 .overflow_hidden()
                 .whitespace_nowrap()
-                .text_fade(crate::LABEL_FADE)
-                .child(host.name.clone()),
+                .text_fade(crate::LABEL_FADE),
         )
         .children(chevron(
             ElementId::from(("flat-host-fold", id.0)),
             host.folded,
             hovered,
-            HOST_NAME_SIZE,
+            HOST_NAME.design_px(),
             cx,
         ))
         .child(div().flex_1())

@@ -8,11 +8,11 @@ use ala::{
 };
 
 use crate::{
-    ActiveTheme as _, Disableable as _, IconName, PaintState, Sizable as _, Surface,
-    button::{Button, ButtonVariants as _},
+    ActiveTheme as _, Disableable as _, IconName, PaintState, Sizable as _,
+    button::{Button, ButtonLook, ButtonVariants as _},
     menu::{ContextMenuExt as _, DropdownMenu as _, PopupMenuItem},
-    roles,
 };
+use penna::TabLook;
 
 use super::{
     TREE_TOUCH_SLOP, WorkspaceStatusWindowState, workspace_row_action, workspace_row_action_gap,
@@ -46,9 +46,8 @@ pub fn status_window(
     let group: SharedString = format!("status-window-{id:?}").into();
     let close_button = actions.close.clone();
     let tooltip = name.clone();
-    let tab = Surface::new(roles::TAB_WINDOW);
-    let ground = cx.theme().layer(tab, state.paint_state()).ground;
-    let hovered = cx.theme().layer(tab, PaintState::Hover).ground;
+    let ground = cx.theme().ground_at(TabLook::Window, state.paint_state());
+    let hovered = cx.theme().ground_at(TabLook::Window, PaintState::Hover);
     let hovers = state.connected && !state.active;
     let deck = status_pane_deck(
         ElementId::Name(format!("status-window-panes-{id:?}").into()),
@@ -126,7 +125,7 @@ pub fn status_window_overflow(
         .small()
         .compact()
         .icon(IconName::Ellipsis)
-        .surface_role(roles::CHROME_BUTTON)
+        .look(ButtonLook::Chrome)
         .tooltip("All windows")
         .disabled(!connected)
         .dropdown_menu(move |menu, _, _| {
