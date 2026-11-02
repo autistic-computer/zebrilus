@@ -154,6 +154,7 @@ fn decode(icon: &TrayIcon) -> Option<image::RgbaImage> {
     }
 }
 
+#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
 fn send(events: &Sender<TrayEvent>, event: TrayEvent) {
     if let Err(error) = events.try_send(event) {
         log::warn!(target: "penna::tray", "dropped a tray event: {error}");
