@@ -19,7 +19,6 @@ function shape(root = document) {
     const style = getComputedStyle(button);
     const radius = parseFloat(style.getPropertyValue("--penna-r")) || 0;
     const full = radius >= FULL;
-    button.toggleAttribute("data-full", full);
     const reach = RING + (parseFloat(style.borderTopWidth) || 0);
     const box = button.getBoundingClientRect();
     const shorter = Math.min(box.width, box.height) + 2 * RING;
@@ -30,11 +29,11 @@ function shape(root = document) {
   });
 }
 
-function settle() {
+function fit() {
   snap();
   shape();
 }
 
-settle();
-document.fonts.ready.then(settle);
+fit();
+document.fonts.ready.then(fit);
 document.addEventListener("load", (event) => event.target.id === "penna-tokens" && shape(), true);

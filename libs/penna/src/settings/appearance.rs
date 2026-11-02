@@ -11,7 +11,8 @@ use crate::select::{Select, SelectEvent, SelectItem as _, SelectState};
 use crate::slider::Slider;
 use crate::switch::Switch;
 use crate::{
-    ActiveTheme as _, Colorize as _, IconName, StyledExt as _, Surface, ThemeColor, ThemeMode,
+    ActiveTheme as _, AuthoredElement as _, Colorize as _, IconName, StyledExt as _, Surface,
+    ThemeColor, ThemeMode,
 };
 use ala::{
     Anchor, AnyElement, App, Context, Entity, FocusHandle, IntoElement, SharedString, Subscription,
@@ -324,7 +325,7 @@ pub fn accent_swatches(
             ring,
             radius,
             div()
-                .id(SharedString::from(format!("settings-accent-{id}")))
+                .author_id(SharedString::from(format!("settings-accent-{id}")))
                 .role(ala::Role::Button)
                 .aria_label(name.clone())
                 .size(px(size))

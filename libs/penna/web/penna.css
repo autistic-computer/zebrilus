@@ -45,6 +45,11 @@ button[data-penna] {
   cursor: default;
 }
 
+[data-penna]:is(:focus-visible, [data-state~="focused"]) {
+  outline: 1.5px solid var(--penna-focus);
+  outline-offset: 0;
+}
+
 .penna-muted {
   color: var(--penna-muted);
 }
@@ -110,7 +115,8 @@ button[data-penna] {
 }
 
 [data-penna="button"],
-[data-penna="button.quiet"] {
+[data-penna="button.quiet"],
+[data-penna="button.outline"] {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -124,7 +130,8 @@ button[data-penna] {
 }
 
 [data-penna="button"][data-size="small"],
-[data-penna="button.quiet"][data-size="small"] {
+[data-penna="button.quiet"][data-size="small"],
+[data-penna="button.outline"][data-size="small"] {
   gap: 4px;
   height: 24px;
   padding: 0 8px;
@@ -150,8 +157,7 @@ button[data-penna] {
   --penna-icon-size: 12px;
 }
 
-[data-penna="field"],
-[data-penna="field.multiline"] {
+:is([data-penna="field"], [data-penna="field.outline"], [data-penna="field.multiline"], [data-penna="field.multiline.outline"]) {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -161,21 +167,21 @@ button[data-penna] {
   line-height: 1.25;
 }
 
-[data-penna="field"][data-size="small"] {
+:is([data-penna="field"], [data-penna="field.outline"])[data-size="small"] {
   gap: 4px;
   height: 24px;
   padding: 0 6px;
   font-size: 12px;
 }
 
-[data-penna="field.multiline"] {
+:is([data-penna="field.multiline"], [data-penna="field.multiline.outline"]) {
   align-items: flex-start;
   height: auto;
   min-height: 56px;
   padding: 6px 8px;
 }
 
-:is([data-penna="field"], [data-penna="field.multiline"]) :is(input, textarea) {
+:is([data-penna="field"], [data-penna="field.outline"], [data-penna="field.multiline"], [data-penna="field.multiline.outline"]) :is(input, textarea) {
   flex: 1;
   min-width: 0;
   padding: 0;
@@ -187,7 +193,7 @@ button[data-penna] {
   resize: none;
 }
 
-:is([data-penna="field"], [data-penna="field.multiline"]) ::placeholder {
+:is([data-penna="field"], [data-penna="field.outline"], [data-penna="field.multiline"], [data-penna="field.multiline.outline"]) ::placeholder {
   color: var(--penna-muted);
   opacity: 0.6;
 }
@@ -253,7 +259,7 @@ button[data-penna] {
   line-height: 16px;
 }
 
-[data-penna="badge"] {
+:is([data-penna="badge"], [data-penna="badge.outline"]) {
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -265,7 +271,7 @@ button[data-penna] {
   --penna-icon-size: 12px;
 }
 
-[data-penna="badge"][data-size="small"] {
+:is([data-penna="badge"], [data-penna="badge.outline"])[data-size="small"] {
   height: 16px;
   padding: 0 5px;
   font-size: 10px;

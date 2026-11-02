@@ -630,6 +630,15 @@ impl SurfaceRole {
         Self { patch, ..self }
     }
 
+    pub(crate) const fn fixed_emphasis(self) -> Self {
+        let knobs = self.knobs();
+        self.with_knobs(Knobs {
+            fill: &[],
+            outline: &[],
+            ..knobs
+        })
+    }
+
     pub(crate) const fn with_knobs(self, knobs: Knobs) -> Self {
         Self {
             knobs: Some(knobs),
@@ -804,6 +813,15 @@ impl SurfaceRole {
             .selected(Highlight::Lift),
     );
 
+    pub const OUTLINE_BUTTON: Self = Self::under(
+        &Self::QUIET_BUTTON,
+        "button.outline",
+        "Outline buttons",
+        "Quiet buttons drawn with an outline on every theme",
+    )
+    .with(StylePatch::EMPTY.fill(Fill::None).outline(true))
+    .fixed_emphasis();
+
     pub const FLAT_ICON_BUTTON: Self = Self::under(
         &Self::ICON_BUTTON,
         "icon-button.flat",
@@ -902,8 +920,35 @@ impl SurfaceRole {
     .with(StylePatch::EMPTY.shape(Shape::Round))
     .capsule(false);
 
+    pub const OUTLINE_FIELD: Self = Self::new(
+        "field.outline",
+        Kind::Field,
+        "Outline fields",
+        "Fields with no fill, drawn with an outline on every theme",
+    )
+    .with(StylePatch::EMPTY.fill(Fill::None).outline(true))
+    .fixed_emphasis();
+
+    pub const OUTLINE_TEXT_AREA: Self = Self::under(
+        &Self::TEXT_AREA,
+        "field.multiline.outline",
+        "Outline text areas",
+        "Text areas with no fill, drawn with an outline on every theme",
+    )
+    .with(StylePatch::EMPTY.fill(Fill::None).outline(true))
+    .fixed_emphasis();
+
     pub const BADGE: Self =
         Self::new("badge", Kind::Label, "Badges", "Small labels and counts").capsule(true);
+
+    pub const OUTLINE_BADGE: Self = Self::under(
+        &Self::BADGE,
+        "badge.outline",
+        "Outline badges",
+        "Badges with no fill, drawn with an outline on every theme",
+    )
+    .with(StylePatch::EMPTY.fill(Fill::None).outline(true))
+    .fixed_emphasis();
 
     pub const CHIP: Self = Self::under(
         &Self::BADGE,
@@ -916,6 +961,15 @@ impl SurfaceRole {
             .shape(Shape::Pill)
             .selected(Highlight::Tint),
     );
+
+    pub const OUTLINE_CHIP: Self = Self::under(
+        &Self::CHIP,
+        "chip.outline",
+        "Outline chips",
+        "Chips with no fill, drawn with an outline on every theme",
+    )
+    .with(StylePatch::EMPTY.fill(Fill::None).outline(true))
+    .fixed_emphasis();
 
     pub const STEP: Self = Self::under(
         &Self::BADGE,
@@ -959,7 +1013,7 @@ impl SurfaceRole {
     )
     .with(StylePatch::EMPTY.shape(Shape::Pill).outline(false));
 
-    pub const KIT: [Self; 35] = [
+    pub const KIT: [Self; 40] = [
         Kind::Bar.role(),
         Kind::Panel.role(),
         Self::INSPECTOR,
@@ -975,6 +1029,7 @@ impl SurfaceRole {
         Self::TOOLTIP,
         Kind::Button.role(),
         Self::QUIET_BUTTON,
+        Self::OUTLINE_BUTTON,
         Self::ICON_BUTTON,
         Self::FLAT_ICON_BUTTON,
         Self::MENU_ITEM,
@@ -986,10 +1041,14 @@ impl SurfaceRole {
         Self::SCREEN_TILE,
         Self::CARD_TILE,
         Kind::Field.role(),
+        Self::OUTLINE_FIELD,
         Self::TEXT_AREA,
+        Self::OUTLINE_TEXT_AREA,
         Kind::Label.role(),
         Self::BADGE,
+        Self::OUTLINE_BADGE,
         Self::CHIP,
+        Self::OUTLINE_CHIP,
         Self::STEP,
         Self::KEYCAP,
         Self::ICON_TILE,
@@ -1518,12 +1577,13 @@ impl Theme {
             shadow,
             text,
             radius,
-            smoothing: if style.shape == Shape::Pill {
-                Smoothing::CIRCLE
+            smoothing: if radius >= FULL_CORNER_RADIUS {
+                Smoothing::CIRCLE.exponent()
+            } else if surface.role.row {
+                style.smoothing.exponent().min(super::ROW_CORNER_SMOOTHING)
             } else {
-                style.smoothing
-            }
-            .exponent(),
+                style.smoothing.exponent()
+            },
             ground: Ground {
                 fill: under,
                 ink: text,

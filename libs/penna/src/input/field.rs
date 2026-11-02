@@ -147,7 +147,12 @@ pub(crate) fn field_chrome_on<E: Styled + InteractiveElement>(
     }
 }
 
-fn field_layer(theme: &Theme, surface: Surface, state: PaintState, focus_bordered: bool) -> Layer {
+pub(crate) fn field_layer(
+    theme: &Theme,
+    surface: Surface,
+    state: PaintState,
+    focus_bordered: bool,
+) -> Layer {
     let mut layer = theme.layer(surface, state);
     layer.border_width = layer.border_width.max(px(1.0));
     let style = theme.style(surface.role);
@@ -278,8 +283,11 @@ impl Input {
             Some(Emphasis::Solid | Emphasis::Soft) => {
                 role.with(role.patch.fill(Fill::Tint).outline(true))
             }
-            Some(Emphasis::Outline) => role.with(role.patch.fill(Fill::None).outline(true)),
-            Some(Emphasis::Ghost) => role.with(role.patch.fill(Fill::None).outline(false)),
+            Some(Emphasis::Outline) if multi_line => SurfaceRole::OUTLINE_TEXT_AREA,
+            Some(Emphasis::Outline) => SurfaceRole::OUTLINE_FIELD,
+            Some(Emphasis::Ghost) => role
+                .with(role.patch.fill(Fill::None).outline(false))
+                .fixed_emphasis(),
         };
         Surface::new(role).tone(self.tone).on_maybe(self.on)
     }

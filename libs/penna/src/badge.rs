@@ -70,8 +70,10 @@ impl Badge {
         let role = SurfaceRole::BADGE;
         let role = match self.emphasis {
             Emphasis::Solid | Emphasis::Soft => role,
-            Emphasis::Outline => role.with(role.patch.fill(Fill::None)),
-            Emphasis::Ghost => role.with(role.patch.fill(Fill::None).outline(false)),
+            Emphasis::Outline => SurfaceRole::OUTLINE_BADGE,
+            Emphasis::Ghost => role
+                .with(role.patch.fill(Fill::None).outline(false))
+                .fixed_emphasis(),
         };
         let ground = self.ground.unwrap_or_else(|| theme.ground());
         let surface = Surface::new(role)

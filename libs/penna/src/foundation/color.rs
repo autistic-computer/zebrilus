@@ -1,5 +1,5 @@
 use ala::{Hsla, Rgba, hsla};
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 
 #[inline]
 pub fn hsl(h: f32, s: f32, l: f32) -> Hsla {
@@ -67,6 +67,40 @@ const COLORED_CHROMA: f32 = 0.06;
 
 thread_local! {
     static CONTRAST: Cell<f32> = const { Cell::new(1.0) };
+    static MEMO: RefCell<Box<[Option<(MemoKey, Hsla)>]>> =
+        RefCell::new(vec![None; MEMO_SLOTS].into_boxed_slice());
+}
+
+const MEMO_SLOTS: usize = 1024;
+
+type MemoKey = [u32; 10];
+
+fn memo_key(kind: u32, a: Hsla, b: Hsla, factor: f32) -> MemoKey {
+    [
+        kind,
+        a.h.to_bits(),
+        a.s.to_bits(),
+        a.l.to_bits(),
+        a.a.to_bits(),
+        b.h.to_bits(),
+        b.s.to_bits(),
+        b.l.to_bits(),
+        b.a.to_bits(),
+        factor.to_bits(),
+    ]
+}
+
+fn memo(key: MemoKey, compute: impl FnOnce() -> Hsla) -> Hsla {
+    let hash = key.iter().fold(0xCBF2_9CE4_8422_2325_u64, |hash, &word| {
+        (hash ^ u64::from(word)).wrapping_mul(0x0000_0100_0000_01B3)
+    });
+    let slot = (hash ^ (hash >> 32)) as usize & (MEMO_SLOTS - 1);
+    if let Some(hit) = MEMO.with_borrow(|memo| memo[slot].filter(|(k, _)| *k == key)) {
+        return hit.1;
+    }
+    let value = compute();
+    MEMO.with_borrow_mut(|memo| memo[slot] = Some((key, value)));
+    value
 }
 
 pub fn set_contrast(value: f32) {
@@ -121,6 +155,12 @@ pub(super) fn toward(from: Hsla, to: Hsla, amount: f32) -> Hsla {
 }
 
 pub(super) fn readable_on(fill: Hsla) -> Hsla {
+    memo(memo_key(1, fill, Hsla::default(), 0.0), || {
+        readable_on_uncached(fill)
+    })
+}
+
+fn readable_on_uncached(fill: Hsla) -> Hsla {
     let pole = if oklab_lightness(fill.opaque()) > READABLE_ON_LIGHTNESS {
         hsla(0., 0., 0., 1.)
     } else {
@@ -445,51 +485,10 @@ impl Colorize for Hsla {
         }
     }
 
-    #[allow(non_snake_case)]
     fn mix_oklab(&self, other: Self, factor: f32) -> Self {
-        let factor = factor.clamp(0.0, 1.0);
-        let inv = 1.0 - factor;
-
-        let result_alpha = self.a * factor + other.a * inv;
-
-        if result_alpha == 0.0 {
-            return Self {
-                h: 0.0,
-                s: 0.0,
-                l: 0.0,
-                a: 0.0,
-            };
-        }
-
-        let rgb1 = self.to_rgb();
-        let rgb2 = other.to_rgb();
-
-        let (l1, a1, b1) = oklab::rgb_to_oklab(rgb1);
-        let (l2, a2, b2) = oklab::rgb_to_oklab(rgb2);
-
-        let alpha1 = self.a;
-        let alpha2 = other.a;
-
-        let l1_pm = l1 * alpha1;
-        let a1_pm = a1 * alpha1;
-        let b1_pm = b1 * alpha1;
-
-        let l2_pm = l2 * alpha2;
-        let a2_pm = a2 * alpha2;
-        let b2_pm = b2 * alpha2;
-
-        let L_pm = l1_pm * factor + l2_pm * inv;
-        let a_pm = a1_pm * factor + a2_pm * inv;
-        let b_pm = b1_pm * factor + b2_pm * inv;
-
-        let L = L_pm / result_alpha;
-        let a = a_pm / result_alpha;
-        let b = b_pm / result_alpha;
-
-        let mut rgb = oklab::oklab_to_rgb(L, a, b);
-        rgb.a = result_alpha;
-
-        rgb.into()
+        memo(memo_key(0, *self, other, factor), || {
+            mix_oklab_uncached(*self, other, factor)
+        })
     }
 
     fn hue(&self, hue: f32) -> Self {
@@ -509,6 +508,53 @@ impl Colorize for Hsla {
         color.l = lightness.clamp(0., 1.);
         color
     }
+}
+
+#[allow(non_snake_case)]
+fn mix_oklab_uncached(this: Hsla, other: Hsla, factor: f32) -> Hsla {
+    let factor = factor.clamp(0.0, 1.0);
+    let inv = 1.0 - factor;
+
+    let result_alpha = this.a * factor + other.a * inv;
+
+    if result_alpha == 0.0 {
+        return Hsla {
+            h: 0.0,
+            s: 0.0,
+            l: 0.0,
+            a: 0.0,
+        };
+    }
+
+    let rgb1 = this.to_rgb();
+    let rgb2 = other.to_rgb();
+
+    let (l1, a1, b1) = oklab::rgb_to_oklab(rgb1);
+    let (l2, a2, b2) = oklab::rgb_to_oklab(rgb2);
+
+    let alpha1 = this.a;
+    let alpha2 = other.a;
+
+    let l1_pm = l1 * alpha1;
+    let a1_pm = a1 * alpha1;
+    let b1_pm = b1 * alpha1;
+
+    let l2_pm = l2 * alpha2;
+    let a2_pm = a2 * alpha2;
+    let b2_pm = b2 * alpha2;
+
+    let L_pm = l1_pm * factor + l2_pm * inv;
+    let a_pm = a1_pm * factor + a2_pm * inv;
+    let b_pm = b1_pm * factor + b2_pm * inv;
+
+    let L = L_pm / result_alpha;
+    let a = a_pm / result_alpha;
+    let b = b_pm / result_alpha;
+
+    let mut rgb = oklab::oklab_to_rgb(L, a, b);
+    rgb.a = result_alpha;
+
+    rgb.into()
 }
 
 #[cfg(test)]

@@ -79,7 +79,7 @@ impl Plate {
         let press = (pressable && CoarsePointer::get(cx)).then(|| {
             let pressed = layer_at(PaintState::Active);
             let corners = match row_height {
-                Some(height) => PressCorners::Row(row_radius(&pressed, height)),
+                Some(height) => PressCorners::Row(row_radius(&pressed, height), pressed.smoothing),
                 None => PressCorners::Adaptive(pressed.radius),
             };
             press_highlight(id, pressed.fill, corners)

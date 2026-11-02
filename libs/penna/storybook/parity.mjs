@@ -156,9 +156,11 @@ function serve(root, allowed) {
     }));
 }
 
-function domFiles(components) {
-    const prefixes = ["web/", "storybook/fonts/", ...components.map((name) => `src/${name}/`)];
-    return (path) => prefixes.some((prefix) => path.startsWith(prefix));
+function domFiles() {
+    const prefixes = ["web/", "storybook/fonts/"];
+    return (path) =>
+        prefixes.some((prefix) => path.startsWith(prefix)) ||
+        (path.startsWith("src/") && PAGE_FILES.has(extname(path)) && !path.split("/").pop().startsWith("parity."));
 }
 
 function chromeBinaries() {
@@ -370,7 +372,7 @@ async function canvasSections(page, only) {
 async function canvasPoint(page, window, id) {
     return page.call(async (window, id) => {
         const [role, name] = id.split(/:(.*)/s);
-        const find = () => ala.find({ id }, window)[0] ?? ala.find({ role, name }, window)[0];
+        const find = () => ala.find({ id }, window)[0] ?? (name === undefined ? undefined : ala.find({ role, name }, window)[0]);
         let node = find();
         if (!node?.bounds) return null;
         scrollBy(0, node.bounds.y + node.bounds.height / 2 - innerHeight / 2);
@@ -924,7 +926,7 @@ async function main() {
     const modes = options.mode ? [options.mode] : MODES;
     const combos = themes.flatMap((theme) => modes.map((mode) => [theme, mode]));
     prepare();
-    const bases = { story: await serve(join(ROOT, "storybook/dist"), () => true), dom: await serve(ROOT, domFiles(options.components)) };
+    const bases = { story: await serve(join(ROOT, "storybook/dist"), () => true), dom: await serve(ROOT, domFiles()) };
     const cdp = connect(launch());
     const pages = { canvas: await tab(cdp), dom: await tab(cdp), lab: await tab(cdp), storybookLoaded: false };
     const failures = [];

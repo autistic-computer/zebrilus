@@ -1,16 +1,16 @@
 use std::rc::Rc;
 
 use ala::{
-    AnyElement, App, ClickEvent, Corners, Div, Edges, ElementId, Hsla, InteractiveElement,
-    Interactivity, IntoElement, MouseButton, ParentElement, Pixels, RenderOnce, Role, SharedString,
-    Stateful, StatefulInteractiveElement as _, StyleRefinement, Styled, Window, div,
-    prelude::FluentBuilder as _, px, relative,
+    AnyElement, App, ClickEvent, Corners, Div, Edges, ElementId, FULL_CORNER_RADIUS, Hsla,
+    InteractiveElement, Interactivity, IntoElement, MouseButton, ParentElement, Pixels, RenderOnce,
+    Role, SharedString, Stateful, StatefulInteractiveElement as _, StyleRefinement, Styled, Window,
+    div, prelude::FluentBuilder as _, px, relative,
 };
 
 use crate::{
-    ActiveTheme as _, Colorize as _, Disableable, Emphasis, FOCUS_RING_WIDTH, Ground, Icon,
-    IconName, Kind, Layer, Paint, PaintState, Selectable, Sizable, Size, StyledExt as _, Surface,
-    SurfaceRole, Tone, h_flex, rems_from_px, roles, tooltip::Tooltip,
+    ActiveTheme as _, AuthoredElement as _, Colorize as _, Disableable, Emphasis, FOCUS_RING_WIDTH,
+    Ground, Icon, IconName, Kind, Layer, Paint, PaintState, Selectable, Sizable, Size, Smoothing,
+    StyledExt as _, Surface, SurfaceRole, Tone, h_flex, rems_from_px, roles, tooltip::Tooltip,
 };
 
 use super::button_icon::ButtonIcon;
@@ -84,6 +84,21 @@ pub enum ButtonLook {
 }
 
 impl ButtonLook {
+    const ALL: [Self; 12] = [
+        Self::Icon,
+        Self::Quiet,
+        Self::Flat,
+        Self::Chrome,
+        Self::Bar,
+        Self::Toggle,
+        Self::RowIcon,
+        Self::Floating,
+        Self::Row,
+        Self::Send,
+        Self::FloatingChip,
+        Self::Tray,
+    ];
+
     const fn role(self) -> SurfaceRole {
         match self {
             Self::Icon => SurfaceRole::ICON_BUTTON,
@@ -100,6 +115,18 @@ impl ButtonLook {
             Self::Tray => roles::TAB_TRAY,
         }
     }
+}
+
+pub(crate) fn rings_focus(role: SurfaceRole) -> bool {
+    [
+        Kind::Button.role(),
+        SurfaceRole::OUTLINE_BUTTON,
+        roles::PHONE_BUTTON,
+        roles::SIDEBAR_ROW,
+    ]
+    .into_iter()
+    .chain(ButtonLook::ALL.into_iter().map(ButtonLook::role))
+    .any(|drawn| drawn.id == role.id)
 }
 
 impl From<ButtonLook> for Surface {
@@ -148,7 +175,8 @@ impl ButtonVariant {
         };
         let role = role.unwrap_or(match emphasis {
             Emphasis::Ghost if icon_only => SurfaceRole::ICON_BUTTON,
-            Emphasis::Ghost | Emphasis::Outline => SurfaceRole::QUIET_BUTTON,
+            Emphasis::Ghost => SurfaceRole::QUIET_BUTTON,
+            Emphasis::Outline => SurfaceRole::OUTLINE_BUTTON,
             Emphasis::Solid | Emphasis::Soft => Kind::Button.role(),
         });
         Some(
@@ -222,7 +250,7 @@ impl Button {
 
         Self {
             id: id.clone(),
-            base: div().flex_shrink_0().id(id),
+            base: div().flex_shrink_0().author_id(id),
             style: StyleRefinement::default(),
             icon: None,
             label: None,
@@ -436,6 +464,7 @@ fn with_focus_ring<T: ParentElement + Styled + Sized>(
     is_focused: bool,
     margins: Pixels,
     paint: &Paint,
+    smoothing: f32,
     window: &Window,
 ) -> T {
     if !is_focused {
@@ -509,6 +538,7 @@ fn with_focus_ring<T: ParentElement + Styled + Sized>(
             .right(-(inset + border_widths.right))
             .bottom(-(inset + border_widths.bottom))
             .focus_ring(paint)
+            .corner_smoothing(smoothing)
             .refine_style(&inner_style),
     )
 }
@@ -569,9 +599,17 @@ impl RenderOnce for Button {
             .clone();
         let is_focused = focus_handle.is_focused(window);
 
-        let rounding = match self.rounded {
-            ButtonRounded::Medium => rest.radius,
-            ButtonRounded::Size(px) => px,
+        let (rounding, smoothing) = match self.rounded {
+            ButtonRounded::Medium => (rest.radius, rest.smoothing),
+            ButtonRounded::Size(radius) if radius >= FULL_CORNER_RADIUS => {
+                (radius, Smoothing::CIRCLE.exponent())
+            }
+            ButtonRounded::Size(radius) => (
+                radius,
+                surface.map_or(crate::CORNER_SMOOTHING, |surface| {
+                    cx.theme().style_of(surface).smoothing.exponent()
+                }),
+            ),
         };
         let coarse = crate::touch::CoarsePointer::get(cx);
         let slop = self.hit_slop.filter(|_| coarse);
@@ -583,6 +621,10 @@ impl RenderOnce for Button {
         let hover = layer_at(PaintState::Hover, cx);
         let active = layer_at(PaintState::Active, cx);
         let hover_bg = self.hover_bg;
+        let plain_label = self.icon.is_none()
+            && self.children.is_empty()
+            && !self.dropdown_caret
+            && pressed == 0.0;
         let on_mouse_down = move |_: &ala::MouseDownEvent, window: &mut Window, cx: &mut App| {
             if is_disabled {
                 cx.stop_propagation();
@@ -648,6 +690,7 @@ impl RenderOnce for Button {
                 }
             })
             .rounded(rounding)
+            .corner_smoothing(smoothing)
             .border(rest.border_width)
             .border_color(rest.border)
             .shadow(rest.shadow.clone())
@@ -682,6 +725,7 @@ impl RenderOnce for Button {
                         .absolute()
                         .inset_0()
                         .rounded(rounding)
+                        .corner_smoothing(smoothing)
                         .bg(press_fill)
                         .opacity(pressed),
                 )
@@ -708,37 +752,46 @@ impl RenderOnce for Button {
                     on_hover(hovered, window, cx);
                 })
             })
-            .child({
-                let label = h_flex()
-                    .id("label")
-                    .size_full()
-                    .items_center()
-                    .justify_center();
+            .map(|this| match (plain_label, self.label) {
+                (true, Some(label)) => this.child(
+                    div()
+                        .flex_none()
+                        .line_height(relative(1.))
+                        .text_size(self.size.control_text())
+                        .child(label),
+                ),
+                (_, text) => this.child({
+                    let label = h_flex()
+                        .id("label")
+                        .size_full()
+                        .items_center()
+                        .justify_center();
 
-                label
-                    .text_size(self.size.control_text())
-                    .when(pressed > 0.0, |this| this.opacity(1.0 - 0.35 * pressed))
-                    .map(|this| match self.size {
-                        Size::Small => this.gap_1(),
-                        _ => this.gap_1p5(),
-                    })
-                    .when_some(self.icon, |this, icon| {
-                        this.child(icon.loading(self.loading).with_size(icon_size))
-                    })
-                    .when_some(self.label, |this, label| {
-                        this.child(div().flex_none().line_height(relative(1.)).child(label))
-                    })
-                    .children(self.children)
-                    .when(self.dropdown_caret, |this| {
-                        this.justify_between().child(
-                            Icon::new(IconName::ChevronDown).small().text_color(
-                                match self.disabled {
-                                    true => rest.text.opacity(0.3),
-                                    false => rest.text.opacity(0.5),
-                                },
-                            ),
-                        )
-                    })
+                    label
+                        .text_size(self.size.control_text())
+                        .when(pressed > 0.0, |this| this.opacity(1.0 - 0.35 * pressed))
+                        .map(|this| match self.size {
+                            Size::Small => this.gap_1(),
+                            _ => this.gap_1p5(),
+                        })
+                        .when_some(self.icon, |this, icon| {
+                            this.child(icon.loading(self.loading).with_size(icon_size))
+                        })
+                        .when_some(text, |this, label| {
+                            this.child(div().flex_none().line_height(relative(1.)).child(label))
+                        })
+                        .children(self.children)
+                        .when(self.dropdown_caret, |this| {
+                            this.justify_between().child(
+                                Icon::new(IconName::ChevronDown).small().text_color(
+                                    match self.disabled {
+                                        true => rest.text.opacity(0.3),
+                                        false => rest.text.opacity(0.5),
+                                    },
+                                ),
+                            )
+                        })
+                }),
             })
             .when(self.loading && !self.disabled, |this| {
                 this.bg(rest.fill.opacity(0.8))
@@ -754,7 +807,7 @@ impl RenderOnce for Button {
             _ => Tone::Neutral,
         };
         let focus_paint = cx.theme().paint_on(ground, tone, Emphasis::Ghost);
-        with_focus_ring(element, is_focused, px(0.), &focus_paint, window)
+        with_focus_ring(element, is_focused, px(0.), &focus_paint, smoothing, window)
     }
 }
 
@@ -873,6 +926,32 @@ mod tests {
         );
     }
 
+    #[test]
+    fn an_outline_button_draws_the_theme_outline_on_every_builtin_theme() {
+        use crate::{ThemeMode, interface_theme::builtin_themes, theme_css::kit_theme};
+
+        let expected = [("default", 0.75), ("macos", 0.5), ("yaru", 1.0)];
+        for ((id, interface), (expected_id, width)) in builtin_themes().iter().zip(expected) {
+            assert_eq!(*id, expected_id);
+            for mode in [ThemeMode::Light, ThemeMode::Dark] {
+                let theme = kit_theme(interface, mode);
+                let layer = |emphasis| {
+                    let surface = ButtonVariant::Paint(Tone::Neutral, emphasis)
+                        .surface(None, false, None)
+                        .unwrap();
+                    theme.layer(surface, PaintState::Rest)
+                };
+                let outline = layer(Emphasis::Outline);
+                assert_eq!(outline.border_width, px(width), "{id} {mode:?}");
+                assert_eq!(outline.border.a, 0.1, "{id} {mode:?}");
+                assert_eq!(outline.fill.a, 0.0, "{id} {mode:?}");
+                let ghost = layer(Emphasis::Ghost);
+                assert_eq!(ghost.border_width, px(0.0), "{id} {mode:?}");
+                assert_eq!(ghost.fill.a, 0.0, "{id} {mode:?}");
+            }
+        }
+    }
+
     #[ala::test]
     fn the_shorthands_name_a_tone_and_an_emphasis(_cx: &mut ala::TestAppContext) {
         let variant = |button: Button| button.variant;
@@ -887,6 +966,93 @@ mod tests {
         assert_eq!(
             variant(Button::new("b").danger().emphasis(Emphasis::Outline)),
             ButtonVariant::Paint(Tone::Danger, Emphasis::Outline)
+        );
+    }
+
+    #[ala::test]
+    fn a_button_draws_its_themes_corner_smoothing(cx: &mut ala::TestAppContext) {
+        use ala::{Context, IntoElement, ParentElement as _, Render, Styled as _, px};
+
+        struct Host(Option<ButtonLook>);
+
+        impl Render for Host {
+            fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+                let button = Button::new("b").label("Button");
+                div().p(px(10.)).child(match self.0 {
+                    Some(look) => button.look(look),
+                    None => button,
+                })
+            }
+        }
+
+        cx.update(crate::init);
+        for (id, look, smoothing) in [
+            ("default", None, 4.0),
+            ("yaru", None, 2.0),
+            ("macos", Some(ButtonLook::Send), 2.0),
+        ] {
+            cx.update(|cx| {
+                let theme = &crate::interface_theme::builtin_themes()
+                    .iter()
+                    .find(|(theme, _)| *theme == id)
+                    .expect("builtin theme")
+                    .1;
+                *crate::Theme::global_mut(cx) =
+                    crate::theme_css::kit_theme(theme, crate::ThemeMode::Dark);
+            });
+            let (_, cx) = cx.add_window_view(|window, _| {
+                window.set_default_corner_smoothing(crate::CORNER_SMOOTHING);
+                Host(look)
+            });
+            cx.update(|window, cx| {
+                _ = window.draw(cx);
+                let drawn = window
+                    .painted_quads()
+                    .iter()
+                    .filter(|quad| quad.corner_radii.top_left.0 > 0.0)
+                    .map(|quad| quad.corner_smoothing)
+                    .collect::<Vec<_>>();
+                assert!(!drawn.is_empty(), "{id}");
+                assert!(
+                    drawn.iter().all(|drawn| *drawn == smoothing),
+                    "{id}: {drawn:?}"
+                );
+            });
+        }
+    }
+
+    #[ala::test]
+    fn buttons_report_their_id_as_the_accessibility_author_id(cx: &mut ala::TestAppContext) {
+        use ala::{Context, IntoElement, ParentElement as _, Render};
+
+        struct Host;
+
+        impl Render for Host {
+            fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+                div()
+                    .child(Button::new("variant-Primary").label("Primary"))
+                    .child(Button::new(("tab", 3usize)).label("Tab"))
+            }
+        }
+
+        cx.update(crate::init);
+        let (_, cx) = cx.add_window_view(|_, _| Host);
+        let ids = cx.update(|window, cx| {
+            window.set_a11y_forced(true);
+            window.draw(cx).clear(cx);
+            let tree = window.a11y_tree().expect("forced a11y builds a tree");
+            let mut ids = tree
+                .nodes
+                .iter()
+                .filter(|(_, node)| node.role() == Role::Button)
+                .map(|(_, node)| node.author_id().map(str::to_owned))
+                .collect::<Vec<_>>();
+            ids.sort();
+            ids
+        });
+        assert_eq!(
+            ids,
+            [Some("tab-3".to_owned()), Some("variant-Primary".to_owned())]
         );
     }
 }

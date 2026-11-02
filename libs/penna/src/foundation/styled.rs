@@ -220,7 +220,7 @@ pub(crate) fn row_corners<E: Styled>(element: E, layer: &Layer, height: Pixels) 
     element
         .rounded(row_radius(layer, height))
         .corner_radius_mode(ala::CornerRadiusMode::Fixed)
-        .corner_smoothing(ROW_CORNER_SMOOTHING)
+        .corner_smoothing(layer.smoothing)
 }
 
 const ROW_RADIUS_SHARE: f32 = 0.40;
