@@ -201,6 +201,6 @@ Each app extends the `disallowed-methods` list it already has (`nidus/crates/nid
 
 ## How to work
 
-- Kit slices happen in a worktree under `~/dev/worktrees/penna/<name>` and merge to penna's main. Look at the worktree's own storybook: `storybook/build.sh`, then serve `storybook/dist`. `just storybook penna` in zebrilus builds zebrilus's copy, not the worktree.
+- Kit slices happen in a worktree under `~/dev/worktrees/penna/<name>` and merge to penna's main. Look at the worktree's own storybook: `storybook/build.sh`, then `storybook/serve.py` on 127.0.0.1:8098. `just storybook penna` in zebrilus builds zebrilus's copy, not the worktree.
 - Checks: everything `just libs check penna` in zebrilus runs, which covers all features, no default features, the storybook natively and for wasm.
 - Library pushes and pulls go one at a time across both apps.

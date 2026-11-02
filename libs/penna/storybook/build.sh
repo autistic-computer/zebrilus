@@ -81,11 +81,15 @@ if [[ -n "$PAGE_FEATURE" ]]; then
 fi
 if [[ "${WEB_SYNTAX_HIGHLIGHTING:-1}" == 1 && -n "$SYNTAX_FEATURE" ]]; then
     AR="$(command -v llvm-ar || true)"
+    if [[ -z "$AR" ]]; then
+        AR="$(compgen -c llvm-ar- | sort -uV | tail -n 1)"
+        AR="${AR:+$(command -v "$AR")}"
+    fi
     if [[ -z "$AR" ]] && command -v brew >/dev/null 2>&1; then
         AR="$(brew --prefix llvm 2>/dev/null)/bin/llvm-ar"
     fi
     if [[ ! -x "$AR" ]]; then
-        echo "syntax highlighting needs llvm-ar (brew install llvm); set WEB_SYNTAX_HIGHLIGHTING=0 to skip it" >&2
+        echo "syntax highlighting needs llvm-ar (brew install llvm, or the llvm package on Linux); set WEB_SYNTAX_HIGHLIGHTING=0 to skip it" >&2
         exit 2
     fi
     TS_HEADERS="$TREE_SITTER_LANGUAGE/wasm/include"
