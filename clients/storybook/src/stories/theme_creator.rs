@@ -834,7 +834,7 @@ impl Phone {
 
     fn sheet(cx: &App) -> AnyElement {
         let theme = cx.theme();
-        let sheet_ground = theme.ground_of(penna::SurfaceRole::DRAWER);
+        let sheet_ground = penna::sheet::sheet_ground(cx);
         let rows = SESSIONS
             .iter()
             .enumerate()
@@ -953,7 +953,7 @@ fn drawer(id: &'static str, title: &'static str, content: impl IntoElement) -> B
 
 fn drawers(destination: &Entity<InputState>, window: &mut Window, cx: &mut App) -> AnyElement {
     let cx: &App = cx;
-    let sheet_ground = cx.theme().ground_of(penna::SurfaceRole::DRAWER);
+    let sheet_ground = penna::sheet::sheet_ground(cx);
     let list = || v_flex().list_inset(cx).pb(px(8.0));
     let rule = || {
         div()

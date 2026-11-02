@@ -6,11 +6,11 @@ use ala::{
 };
 use zz_protocol::{MenuItem, MenuState, PopupBorderLines, parse_styled_segments};
 
-use penna::{Label, Row, RowLook, RuleLook, TextStyle};
+use penna::{Label, PanelLook, Row, RowLook, RuleLook, TextStyle};
 
 use crate::{
     ActiveTheme as _, Colorize as _, Edge, ElementExt as _, Layer, PaintState, StyledExt as _,
-    SurfaceRole, h_flex,
+    h_flex,
     tmux_style::{split_tmux_alignment, tmux_literal_colour, tmux_styled_segments_text},
     touch::{CoarsePointer, TOUCH_TARGET},
     v_flex,
@@ -152,7 +152,7 @@ pub fn display_menu(
     reason = "tmux display-menu paints in the colours menu-style and menu-border-style name; the popover look is their fallback"
 )]
 fn menu_look(cx: &App) -> Layer {
-    cx.theme().layer(SurfaceRole::POPOVER, PaintState::Rest)
+    cx.theme().layer(PanelLook::Popover, PaintState::Rest)
 }
 
 #[allow(

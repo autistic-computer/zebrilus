@@ -6,10 +6,13 @@ use penna::{
 };
 #[cfg(any(target_os = "ios", target_os = "android"))]
 use penna::{
-    Colorize as _, RuleLook, StyledExt as _, SurfaceRole,
+    Colorize as _, RuleLook, StyledExt as _,
     button::ButtonVariants as _,
     input::{Input, InputEvent, InputState},
-    sheet::{bottom_sheet, close_sheet, floating_sheet, sheet_close, sheet_inset, sheet_row},
+    sheet::{
+        bottom_sheet, close_sheet, floating_sheet, sheet_close, sheet_ground, sheet_inset,
+        sheet_row,
+    },
 };
 use zz_ui::settings::{
     SettingEntry, SettingsScrollColumn, SettingsStack, settings_card_ground, settings_page_heading,
@@ -499,7 +502,7 @@ impl AppShell {
         on_dismiss: impl Fn(&mut Self, &mut Context<Self>) + 'static,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        let sheet = cx.theme().ground_of(SurfaceRole::DRAWER);
+        let sheet = sheet_ground(cx);
         let close =
             sheet_close("add-host-close").on_click(|_, _, cx| close_sheet(ADD_HOST_SHEET, cx));
         let dismiss = cx.weak_entity();
@@ -570,7 +573,7 @@ impl AppShell {
             })
             .unwrap_or_default();
         let theme = cx.theme();
-        let sheet = theme.ground_of(SurfaceRole::DRAWER);
+        let sheet = sheet_ground(cx);
         let (state, tone) = if connected {
             ("Connected".to_owned(), Tone::Neutral)
         } else if busy {

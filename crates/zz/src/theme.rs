@@ -310,7 +310,7 @@ mod tests {
                 let theme = Theme::global(cx);
                 let look = PaneLook::global(cx);
                 assert_eq!(look.frames, gaps, "{id} with gaps {gaps}");
-                let outlined = theme.style(zz_ui::roles::PANE).outline;
+                let outlined = theme.style_of(penna::ContentLook::Pane).outline;
                 assert_eq!(
                     look.edge_width(theme),
                     if gaps && outlined {

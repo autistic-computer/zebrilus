@@ -3,7 +3,6 @@ use crate::{
     IconName, Layer, PaintState, Selectable as _, Sizable as _, StyledExt as _, Tone,
     button::{Button, ButtonLook, ButtonVariants as _},
     pane_look::PaneLook,
-    roles,
 };
 use ala::{
     AnyElement, App, BorderStyle, Bounds, Corners, CursorStyle, ElementId, GlassMaterial, Hsla,
@@ -11,7 +10,8 @@ use ala::{
     Window, canvas, div, prelude::*, px, quad, relative, size,
 };
 use penna::{
-    Bar, BarLook, Chip, ChipLook, Label, Row, RowLook, Tab, TabLook, TextStyle, Tile, TileVariant,
+    Bar, BarLook, Chip, ChipLook, ContentLook, Label, Row, RowLook, Tab, TabLook, TextStyle, Tile,
+    TileVariant,
 };
 
 mod drag;
@@ -689,8 +689,9 @@ pub fn pane_surface(
     cx: &App,
 ) -> Stateful<ala::Div> {
     let theme = cx.theme();
-    let glass = theme.style(roles::PANE).fill == Fill::Glass && theme.glass_effect().is_some();
-    let rest = pane_material(roles::PANE, cx);
+    let glass =
+        theme.style_of(ContentLook::Pane).fill == Fill::Glass && theme.glass_effect().is_some();
+    let rest = pane_material(cx);
     let outlined = rest.border_width > Pixels::ZERO;
     let shadow = if chrome.shadow {
         rest.shadow.clone()
@@ -750,10 +751,19 @@ pub fn pane_surface(
 
 #[allow(
     clippy::disallowed_methods,
-    reason = "a pane frame or a tmux popup is the pane's own material: its glass, edge and colours follow the pane and its tmux style"
+    reason = "a pane frame is the pane's own material: its glass and edge follow the pane"
 )]
-fn pane_material(role: penna::SurfaceRole, cx: &App) -> Layer {
-    cx.theme().layer(role, PaintState::Rest)
+fn pane_material(cx: &App) -> Layer {
+    cx.theme().layer(ContentLook::Pane, PaintState::Rest)
+}
+
+#[allow(
+    clippy::disallowed_methods,
+    reason = "a tmux popup is the pane's own material: its colours follow its tmux style"
+)]
+fn floating_pane_material(cx: &App) -> Layer {
+    cx.theme()
+        .layer(ContentLook::FloatingPane, PaintState::Rest)
 }
 
 #[allow(
@@ -773,7 +783,7 @@ fn pane_frame_layer(frame: GlassMaterial, glass: bool, rest: Layer, cx: &App) ->
         };
     }
     let solid = matches!(
-        cx.theme().style(roles::PANE).fill,
+        cx.theme().style_of(ContentLook::Pane).fill,
         Fill::Solid | Fill::Glass
     );
     Layer {
@@ -905,7 +915,7 @@ impl FloatingSurface {
 impl RenderOnce for FloatingSurface {
     fn render(self, _: &mut ala::Window, cx: &mut App) -> impl IntoElement {
         let theme = cx.theme();
-        let mut layer = pane_material(roles::FLOATING_PANE, cx);
+        let mut layer = floating_pane_material(cx);
         if let Some(fill) = self.background {
             layer.fill = fill;
             layer.glass = layer

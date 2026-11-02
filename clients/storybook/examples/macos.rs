@@ -33,6 +33,14 @@ fn material(element: Div, surface: impl Into<Surface>, cx: &App) -> Div {
     element.surface(surface, cx)
 }
 
+#[allow(
+    clippy::disallowed_methods,
+    reason = "the comparison samples the bare floating material, which no look names"
+)]
+const fn glass_sample() -> Surface {
+    Surface::new(Kind::Floating.role())
+}
+
 impl Comparison {
     fn apply(&self, cx: &mut App) {
         self.definition.apply(Theme::global_mut(cx));
@@ -43,7 +51,7 @@ impl Comparison {
 impl Render for Comparison {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let foreground = cx.theme().foreground;
-        let glass_sample = Kind::Floating.role();
+        let glass_sample = glass_sample();
         let panel_ground = cx.theme().ground_of(glass_sample);
         let group_ground = cx.theme().ground_of(ButtonLook::Chrome);
         let dark = cx.theme().mode.is_dark();

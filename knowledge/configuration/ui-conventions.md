@@ -35,12 +35,15 @@ defines roles: zz has none of its own, and no widget takes a role from outside p
 
 - A component takes `.state(PaintState)`, `.tone(..)` and `.on(ground)` where it has them; the
   caller's own `Styled` calls land over the look.
-- To place something on a look, read its ground or radius: `theme.ground_of(look)`,
-  `theme.ground_at(look, state)`, `theme.radius_of(look)` and `muted_on(ground, cx)`.
+- To place something on a look, read its ground, radius or style: `theme.ground_of(look)`,
+  `theme.ground_at(look, state)`, `theme.radius_of(look)`, `theme.style_of(look)`,
+  `theme.casts_shadow(look)` and `muted_on(ground, cx)`; inside a bottom sheet,
+  `sheet::sheet_ground(cx)`. These take only a look: a role is not a surface.
 - Text is `Label::new(TextStyle::X, text)` or `.type_style(TextStyle::X, cx)` on a container.
 - Content that a protocol, tmux or the user's terminal decides (terminal cells, a tmux popup or
-  menu, a PiP's frost, the pane frame and stack) may paint by hand with `.surface`, `.layer` or
-  `theme.layer`, under `#[allow(clippy::disallowed_methods, reason = "...")]` on the narrowest fn.
+  menu, a PiP's frost, the pane frame and stack) may paint a `ContentLook` by hand with
+  `.surface`, `.layer` or `theme.layer`, under
+  `#[allow(clippy::disallowed_methods, reason = "...")]` on the narrowest fn.
 - A new piece of UI that no look covers gets a look in penna first.
 - Do not hand-draw a border, a box shadow, a corner radius or a text size. Clippy rejects them
   outside the kit (rule 3).
@@ -236,13 +239,13 @@ Which surfaces cast drop shadows is each role's `shadow`, all drawn in the theme
 dragged pane chip). The theme's `contact` and `float` materials set their offset, blur, spread and
 strength. `lifted_shadow` is the small shadow under a
 switch thumb and follows the contact strength. `Theme::shadows_of`, `contact_shadows`,
-`float_shadows` and `casts_shadow(role)` read them.
+`float_shadows` and `casts_shadow(look)` read them.
 
 Corners come from the role's shape through its layer's `radius` (`Theme::shape_radius`), so new
 widgets read the look rather than a literal: `Row::row_height(height)` for rows,
 `Panel::inset(inset)` for a container around inset rows, `Theme::inner_radius(inset)` to keep
 other nested corners concentric, and `outlined()`, `inset_rows()`
-and `casts_shadow(role)` for the theme's switches. Control heights, fills, rules and transitions
+and `casts_shadow(look)` for the theme's switches. Control heights, fills, rules and transitions
 no longer change per theme: `Theme::dense`, `Theme::control_background` and `Theme::duration` are
 gone, `Size::control_h()` and `input_py()` take no density, and `divider_color()` is the
 foreground at the edge weight, translucent so a rule lightens glass in a dark theme the way it does

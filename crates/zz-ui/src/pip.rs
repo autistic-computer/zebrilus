@@ -5,13 +5,13 @@ use ala::{
     ParentElement as _, Pixels, Point, Size, Stateful, Styled as _, Window, div, point, prelude::*,
     px,
 };
+use penna::ContentLook;
 use web_time::{Duration, Instant};
 use zz_client::floating::{FloatCells, FloatPlace, PipGeometry};
 use zz_protocol::{PaneBorderLines, PaneId, WindowId, WindowSnapshot};
 
 use crate::{
     ActiveTheme as _, Colorize as _, Layer, PaintState, StyledExt as _, pane_look::pane_color,
-    roles,
 };
 
 const GROUP: &str = "pip";
@@ -403,7 +403,7 @@ pub fn pip_content_radius(cx: &App) -> Pixels {
     reason = "a PiP is frosted in its pane's own colour at the PiP opacity setting, over the floating.pip edge and shadow"
 )]
 fn pip_look(cx: &App) -> Layer {
-    cx.theme().layer(roles::FLOATING_PIP, PaintState::Rest)
+    cx.theme().layer(ContentLook::Pip, PaintState::Rest)
 }
 
 #[allow(
@@ -601,7 +601,7 @@ mod tests {
     )]
     fn a_pip_casts_the_float_shadow() {
         let theme = penna::Theme::from(&*penna::ThemeColor::dark());
-        let pip = theme.layer(roles::FLOATING_PIP, PaintState::Rest);
+        let pip = theme.layer(ContentLook::Pip, PaintState::Rest);
         assert_eq!(pip.shadow, theme.float_shadows());
         assert!(!pip.shadow.is_empty());
     }

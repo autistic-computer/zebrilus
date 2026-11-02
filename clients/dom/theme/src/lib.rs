@@ -1,6 +1,6 @@
 use ala::Hsla;
 use penna::{
-    Colorize as _, Emphasis, Fill, Highlight, PrimaryStyle, SurfaceRole, Theme, ThemeColor,
+    Colorize as _, Emphasis, Fill, Highlight, PanelLook, PrimaryStyle, RowLook, Theme, ThemeColor,
     ThemeMode, Tone, oklch, theme_css, to_hex,
 };
 use serde_json::{Value, json};
@@ -9,7 +9,6 @@ use zz_app::preferences::Preferences;
 use zz_protocol::{ProviderStatus, ProviderTask, ProvidersReport};
 use zz_ui::{
     interface_theme::{self, ACCENTS, DEFAULT_TINT_HUE, InterfaceTheme},
-    roles,
     settings::{SettingsSection, about, providers::PROVIDERS},
 };
 
@@ -130,13 +129,13 @@ fn theme_preview(theme: &InterfaceTheme, mode: ThemeMode) -> Value {
     let materials = &theme.materials;
     let mut kit = Theme::from(&colors);
     theme.apply(&mut kit);
-    let popover = kit.style(SurfaceRole::POPOVER);
+    let popover = kit.style_of(PanelLook::Popover);
     let surface_radius = (materials.radius / 3.0).min(10.0);
     let frosted = popover.fill == Fill::Glass
         && materials
             .glass
             .is_some_and(|glass| f32::from(glass.blur) > 0.0);
-    let (selection, selected_text) = match kit.style(SurfaceRole::MENU_ITEM).selected {
+    let (selection, selected_text) = match kit.style_of(RowLook::Menu).selected {
         Highlight::Accent => (colors.accent.opaque(), accent_ink(&colors)),
         _ => (colors.background.washed(3), colors.foreground),
     };
@@ -146,7 +145,7 @@ fn theme_preview(theme: &InterfaceTheme, mode: ThemeMode) -> Value {
         PrimaryStyle::Foreground => (colors.foreground, colors.background),
     };
     let outline = materials.outline > 0.0 && popover.outline;
-    let shadow = kit.casts_shadow(SurfaceRole::POPOVER) && materials.float.strength > 0.0;
+    let shadow = kit.casts_shadow(PanelLook::Popover) && materials.float.strength > 0.0;
     json!({
         "sidebar": color(colors.background.raised(2)),
         "background": color(colors.background),

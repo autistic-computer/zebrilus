@@ -32,7 +32,7 @@ use web_time::Instant;
 use zz_client::StatusBarModel;
 use zz_protocol::{InputMessage, PaneId, PaneKindSnapshot, WindowId};
 use zz_terminal::KeyAction;
-use zz_ui::{command::tmux_keystroke, compact::ToolKeys, roles};
+use zz_ui::{command::tmux_keystroke, compact::ToolKeys};
 
 use super::AppShell;
 use crate::terminal::{TerminalDisplayPreferences, TerminalText};
@@ -712,7 +712,7 @@ impl AppShell {
     ) -> AnyElement {
         #[cfg(not(any(target_os = "ios", target_os = "android")))]
         let _ = hole;
-        let radius = cx.theme().radius_of(roles::PANE) * motion;
+        let radius = cx.theme().radius_of(penna::ContentLook::Pane) * motion;
         let pane_id = slot.pane;
         let snapshot = self
             .connection

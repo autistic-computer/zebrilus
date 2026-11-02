@@ -6,6 +6,7 @@ use ala::{
     MouseButton, Pixels, RenderOnce, Role, SharedString, Window, deferred, div, ease_out_quint,
     prelude::*, px,
 };
+use penna::ContentLook;
 
 use zz_client::program::Program;
 
@@ -13,7 +14,6 @@ use crate::{
     ActiveTheme as _, Colorize as _, Emphasis, Ground, Icon, IconName, Layer, PaintState,
     StyledExt as _, Surface, Tone, oklab_lightness,
     program::{Face, Lit, program_colors, program_mark},
-    roles,
     tooltip::Tooltip,
     touch::CoarsePointer,
 };
@@ -79,7 +79,7 @@ pub struct StackTile {
 
 pub fn stack_radius(tile: Pixels, around: Pixels, cx: &App) -> Pixels {
     let theme = cx.theme();
-    let radius = theme.radius_of(roles::TILE_STACK);
+    let radius = theme.radius_of(ContentLook::TileStack);
     if radius == FULL_CORNER_RADIUS || radius == Pixels::ZERO {
         return radius;
     }
@@ -91,8 +91,10 @@ pub fn stack_radius(tile: Pixels, around: Pixels, cx: &App) -> Pixels {
     reason = "stack tiles are lit by the stack, dimmed toward their row and show program faces over the tile.stack look"
 )]
 pub(crate) fn stack_look(ground: Option<Ground>, state: PaintState, cx: &App) -> Layer {
-    cx.theme()
-        .layer(Surface::new(roles::TILE_STACK).on_maybe(ground), state)
+    cx.theme().layer(
+        Surface::from(ContentLook::TileStack).on_maybe(ground),
+        state,
+    )
 }
 
 #[allow(

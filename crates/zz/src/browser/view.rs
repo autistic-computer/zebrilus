@@ -498,7 +498,7 @@ fn element_picker_appearance(theme: &penna::Theme, page_zoom: f64) -> ElementPic
         preview_foreground: to_hex(theme.foreground),
         preview_border: to_hex(theme.border()),
         shadow: theme
-            .casts_shadow(penna::SurfaceRole::POPOVER)
+            .casts_shadow(penna::PanelLook::Popover)
             .then(|| to_hex(theme.shadow_color)),
         radius: f32::from(theme.radius),
         font_family: theme.mono_font_family.to_string(),

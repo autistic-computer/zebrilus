@@ -8,7 +8,7 @@ use ala::{
     HighlightStyle, Hsla, IntoElement, Keystroke, ParentElement as _, Pixels, Role, SharedString,
     Stateful, StyledText, Window, div, font, prelude::*, px,
 };
-use penna::{Label, RowLook, TextStyle};
+use penna::{ContentLook, Label, RowLook, TextStyle};
 use zz_client::window_summary::{
     Attention, AttentionRollup, PaneTag, PaneTile, Tone as DetailTone, WindowSummary,
 };
@@ -28,7 +28,6 @@ use crate::{
         pane_stack::{PaneStack, StackAction, StackSize, StackTile},
         workspace_row_action, workspace_row_fill,
     },
-    roles,
     spinner::Spinner,
     tooltip::Tooltip,
     touch::{CoarsePointer, TOUCH_TARGET},
@@ -239,7 +238,7 @@ impl RowInk {
             ground,
             text: ground.ink,
             muted: muted_on(ground, cx),
-            plain: lit && theme.style(Surface::from(look).role).selected == Highlight::Accent,
+            plain: lit && theme.style_of(look).selected == Highlight::Accent,
             dimmed: state.dimmed,
         }
     }
@@ -301,7 +300,7 @@ fn row_trailing_inset(cx: &App) -> Pixels {
 }
 
 fn tile_radius(size: StackSize, cx: &App) -> Pixels {
-    match cx.theme().style(roles::TILE_STACK).shape {
+    match cx.theme().style_of(ContentLook::TileStack).shape {
         Shape::Square => Pixels::ZERO,
         Shape::Pill => FULL_CORNER_RADIUS,
         Shape::Round => px(ROW_RADIUS) - (row_height() - px(size.tile())) / 2.0,

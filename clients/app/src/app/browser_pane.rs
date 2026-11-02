@@ -12,11 +12,14 @@ use ala::{
 use futures::StreamExt as _;
 use penna::{
     ActiveTheme as _, Colorize as _, Disableable as _, Edge, ElementExt as _, Elevation, Icon,
-    IconName, Label, RuleLook, StyledExt as _, SurfaceRole, TextStyle,
+    IconName, Label, RuleLook, StyledExt as _, TextStyle,
     button::{Button, ButtonVariants as _},
     compact::pill_backdrop_reach,
     input::{InputEvent, InputState},
-    sheet::{bottom_sheet, close_sheet, floating_sheet, sheet_close, sheet_inset, sheet_row},
+    sheet::{
+        bottom_sheet, close_sheet, floating_sheet, sheet_close, sheet_ground, sheet_inset,
+        sheet_row,
+    },
 };
 use zz_protocol::{BrowserCommand, BrowserDescriptor, PaneId};
 use zz_ui::{
@@ -381,7 +384,7 @@ impl BrowserPane {
             preview_foreground: penna::to_hex(theme.foreground),
             preview_border: penna::to_hex(theme.border()),
             shadow: theme
-                .casts_shadow(penna::SurfaceRole::POPOVER)
+                .casts_shadow(penna::PanelLook::Popover)
                 .then(|| penna::to_hex(theme.shadow_color)),
             radius: f32::from(theme.radius),
             font_family: theme.mono_font_family.to_string(),
@@ -919,7 +922,7 @@ impl BrowserPane {
 
     fn tab_drawer(&self, window: &Window, cx: &mut Context<Self>) -> AnyElement {
         let sheet = ElementId::from(("ios-browser-tabs-sheet", self.pane.0));
-        let ground = cx.theme().ground_of(SurfaceRole::DRAWER);
+        let ground = sheet_ground(cx);
         let closable = self.tabs.len() > 1;
         let rows: Vec<AnyElement> = self
             .tabs

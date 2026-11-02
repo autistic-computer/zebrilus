@@ -72,6 +72,7 @@ disallowed-methods = [
     { path = "penna::StyledExt::surface_at", reason = "paint chrome with a kit component (Chip, Notice, Tile, Well, Inspector...), not a role by hand; see penna's knowledge/designs/kit.md" },
     { path = "penna::StyledExt::layer", reason = "paint chrome with a kit component (Chip, Notice, Tile, Well, Inspector...), not a role by hand; see penna's knowledge/designs/kit.md" },
     { path = "penna::Theme::layer", reason = "paint chrome with a kit component (Chip, Notice, Tile, Well, Inspector...), not a role by hand; see penna's knowledge/designs/kit.md" },
+    { path = "penna::Surface::new", reason = "build a surface from a look (Surface::from(look)), not a role by name; Surface::new is for theme tooling that samples every role; see penna's knowledge/designs/kit.md" },
     { path = "ala::Styled::font_weight", reason = "set text with Label or .type_style(TextStyle, cx); see penna's knowledge/designs/kit.md" },
     { path = "ala::Styled::text_size", reason = "set text with Label or .type_style(TextStyle, cx); see penna's knowledge/designs/kit.md" },
     { path = "ala::Styled::text_xs", reason = "set text with Label or .type_style(TextStyle, cx); see penna's knowledge/designs/kit.md" },

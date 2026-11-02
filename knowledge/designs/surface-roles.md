@@ -37,7 +37,7 @@ then to a built-in value.
 | Painting helpers (`.surface`, `.surface_at`, `.layer`, `.rule`; crate-private `rule_on`, `row_corners`, `row_radius`) | `libs/penna/src/foundation/styled.rs` |
 | `Theme` fields for the materials, `styles` (the theme's patches, crate-private, read through `Theme::styles()`) and `inspect` | `libs/penna/src/foundation/theme.rs` |
 | Window chrome roles (`CHROME`), the recipes the looks pick (`RECIPES`), the retired ids (`is_retired`) and the lookups (`all()`, `find()`, `members()`) | `libs/penna/src/roles.rs` |
-| The recipes zz's content code reads (`PANE`, `FLOATING_PANE`, `FLOATING_PIP`, `TILE_STACK`, `WINDOW`) | `crates/zz-ui/src/roles.rs` |
+| The look zz's content code reads (`ContentLook`: pane, floating pane, PiP, tile stack, window) | `libs/penna/src/content.rs` |
 | Theme files: `Materials`, the `roles` map and its id check; `ThemeOverrides`, what Settings sets over a theme | `libs/penna/src/interface_theme.rs`; the built-ins in `libs/penna/themes/*.json`, which also hold every recipe's per-theme tweaks |
 | The theme creator | `penna_storybook::creator` in `libs/penna/storybook/src/creator/`, `libs/penna/storybook/src/knobs.rs`; zz's plates in `clients/storybook/src/stories/theme_creator.rs` |
 
@@ -238,9 +238,9 @@ draws one and is not glass. `none` leaves a focused field as it rests.
    window pills, which turn into circles) are. Everything else, keycaps and other tiles included, keeps
    the radius, which the window's adaptive corners hold under half its height.
 
-`Theme::casts_shadow(role)`, `shadows_of(shadow)`, `contact_shadows()`, `float_shadows()`,
-`shape_radius(role, shape)` and `ground_of(surface)` expose the same answers to code that needs
-one value.
+`Theme::casts_shadow(look)`, `shadows_of(shadow)`, `contact_shadows()`, `float_shadows()`,
+`shape_radius(look, shape)`, `style_of(look)` and `ground_of(look)` expose the same answers to code
+that needs one value.
 
 ### Theme file
 

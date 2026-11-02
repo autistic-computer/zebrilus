@@ -1,7 +1,7 @@
 use ala::{App, GlassMaterial, Global, Hsla, Pixels, px};
-use penna::Theme;
+use penna::{ContentLook, Theme};
 
-use crate::{Colorize as _, Highlight, roles};
+use crate::{Colorize as _, Highlight};
 
 const VEIL: [f32; 2] = [0.05, 0.18];
 const WASH: [f32; 2] = [0.3, 0.05];
@@ -30,7 +30,7 @@ impl PaneLook {
     }
 
     fn lights_active_pane(self, theme: &Theme) -> bool {
-        self.glow_strength > 0.0 && theme.style(roles::PANE).selected != Highlight::None
+        self.glow_strength > 0.0 && theme.style_of(ContentLook::Pane).selected != Highlight::None
     }
 
     fn focus(self, theme: &Theme, tint: Hsla, active: bool) -> Hsla {
@@ -97,7 +97,7 @@ pub fn pane_color(theme: &Theme, fill: Hsla) -> Hsla {
 }
 
 fn outline(theme: &Theme) -> Pixels {
-    if theme.style(roles::PANE).outline {
+    if theme.style_of(ContentLook::Pane).outline {
         theme.outline
     } else {
         px(0.0)

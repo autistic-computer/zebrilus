@@ -106,7 +106,7 @@ A pane paints no fill of its own: the window shows through it. `zz_ui::pane_look
 - Anything that dims the window behind a modal, a sheet or a slide-over fills with `theme.scrim`.
 - Every drop shadow is drawn in `theme.shadow_color`, which the theme sets per mode, so a light theme on a tinted background can tint its shadows instead of graying them.
 - The tint (`chrome-tint` and `chrome-tint-hue`, see [interface themes](/designs/interface-themes.md)) changes only the background root (`ThemeColor::tinted`). Planes, washes, edges and glass tints derive from the background, so they all lean with it and no widget has to know.
-- Which surfaces cast a shadow is each role's `shadow` (`none`, `contact` or `float`); what the two shadows look like is the theme's `contact` and `float` materials, which the theme sets with the other materials. `Theme::shadows_of`, `contact_shadows`, `float_shadows` and `casts_shadow(role)` read them. `lifted_shadow` is the small shadow under a switch thumb, and it follows the contact strength.
+- Which surfaces cast a shadow is each role's `shadow` (`none`, `contact` or `float`); what the two shadows look like is the theme's `contact` and `float` materials, which the theme sets with the other materials. `Theme::shadows_of`, `contact_shadows`, `float_shadows` and `casts_shadow(look)` read them. `lifted_shadow` is the small shadow under a switch thumb, and it follows the contact strength.
 
 ## Text
 
@@ -231,7 +231,7 @@ Kit widgets on the model:
 - `libs/penna/src/foundation/surface.rs`: kinds, roles, styles, `Theme::style` and `Theme::layer`.
 - `libs/penna/src/foundation/styled.rs`: `.surface`, `.surface_at`, `.layer`, `.rule`, `list_inset`, `focus_ring`, and the crate-private `rule_on`, `row_corners` and `row_radius`.
 - `libs/penna/src/foundation/theme.rs`: the material fields, `CORNER_SMOOTHING`, `casts_shadow`, `outlined`, `inset_rows` and `inner_radius`.
-- `libs/penna/src/roles.rs`: the window chrome roles, the roles the kit's touch widgets, phone chrome (`penna::compact`), pickers and inline panels draw with, the recipes the looks pick and the retired ids; `crates/zz-ui/src/roles.rs`: the few recipes zz's content code reads.
+- `libs/penna/src/roles.rs`: the window chrome roles, the roles the kit's touch widgets, phone chrome (`penna::compact`), pickers and inline panels draw with, the recipes the looks pick and the retired ids; `libs/penna/src/content.rs`: `ContentLook`, the few recipes zz's content code reads.
 - `libs/penna/src/{badge,check,kbd}.rs`: `Badge`, `Check`, `Keycap`.
 - The storybook's Foundation → Design system story (`#/design-system`) draws every recipe from the same code. Its sections are:
   - tones;

@@ -8,8 +8,8 @@ pub(crate) use penna::{
 pub(crate) use penna::{
     ActiveTheme, CHROME_GAP, Colorize, Disableable, Edge, ElementExt, Elevation, Emphasis, Fill,
     Ground, Highlight, Icon, IconName, Layer, PANE_HEADER_CONTROL_HEIGHT, Paint, PaintExt,
-    PaintState, RULE_WIDTH, Selectable, Shape, Sizable, StyledExt, Surface, SurfaceRole, ThemeMode,
-    Tone, WindowExt, h_flex, list_row, muted_on, oklab_lightness, oklch, rems_from_px, row_state,
+    PaintState, RULE_WIDTH, Selectable, Shape, Sizable, StyledExt, Surface, ThemeMode, Tone,
+    WindowExt, h_flex, list_row, muted_on, oklab_lightness, oklch, rems_from_px, row_state,
     to_oklch, v_flex,
 };
 
@@ -29,7 +29,6 @@ pub mod pane;
 pub mod pane_look;
 pub mod pip;
 pub mod program;
-pub mod roles;
 pub mod settings;
 pub mod shell;
 pub mod target;

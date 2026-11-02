@@ -19,7 +19,7 @@ const RESIZE_HIT_SIZE: Pixels = px(4.0);
     reason = "the window's own drop shadow under client-side decorations, which no surface recipe draws"
 )]
 fn window_shadow(extent: Pixels, cx: &App) -> Vec<ala::BoxShadow> {
-    if !cx.theme().casts_shadow(zz_ui::roles::WINDOW) {
+    if !cx.theme().casts_shadow(penna::ContentLook::Window) {
         return Vec::new();
     }
     vec![ala::BoxShadow {
@@ -131,7 +131,7 @@ impl RenderOnce for RoundedWindowFrame {
                     .children(self.children)
                     .map(|surface| match decorations {
                         Decorations::Client { tiling }
-                            if cx.theme().style(zz_ui::roles::WINDOW).outline =>
+                            if cx.theme().style_of(penna::ContentLook::Window).outline =>
                         {
                             surface.child(border_ring(tiling, window_radius, cx.theme().border()))
                         }
