@@ -17,7 +17,7 @@ lint:
 
 [doc("Serve the last build without rebuilding.")]
 serve:
-    @scripts/storybook-serve.py clients/storybook/dist 8097
+    @libs/penna/storybook/serve.py clients/storybook/dist 8097
 
 [doc("Build penna's own storybook (the theme creator with penna's five plates, then foundation and kit, penna roles only) against libs/ala into libs/penna/storybook/dist; pass --release for an optimized build.")]
 penna-build *args:
@@ -31,7 +31,7 @@ penna-build *args:
 [doc("Build penna's own storybook and serve it on 127.0.0.1:8098 (PORT overrides).")]
 penna *args: (penna-build args)
     @echo "penna storybook at http://127.0.0.1:${PORT:-8098}/"
-    @scripts/storybook-serve.py libs/penna/storybook/dist "${PORT:-8098}"
+    @libs/penna/storybook/serve.py
 
 [doc("Screenshot one story or section of a running storybook: just storybook shot agent/composer?theme=dark out.png")]
 shot route out *args:

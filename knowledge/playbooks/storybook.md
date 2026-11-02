@@ -94,6 +94,9 @@ resolves, and writes into `dist` next to the manifest unless `--out` says otherw
 recipe for penna's page passes the `libs/ala` patches after `--` and shares `target/storybook` with
 zz's page. penna's CI builds the page with `--release` on every run and keeps it as the
 `storybook-page` artifact, with the HTML kit and its tokens under `kit/`.
+`libs/penna/storybook/serve.py [<dir>] [<port>] [<prefix>=<dir>...]` serves a built page without
+caching: penna's `dist` on 8098 (`PORT` overrides) when given nothing. The just recipes call it for
+zz's page, penna's page and `design/`.
 
 The URL holds the story, the section and the knobs: `#/agent/composer?theme=dark&radius=4`.
 Knobs: `theme` (the mode: `system`, `light`, `dark`), `interface-theme` (`default` or

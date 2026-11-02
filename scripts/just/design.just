@@ -15,7 +15,7 @@ penna-tokens:
 
 [doc("Serve design/ on 127.0.0.1:8090 without caching, with penna's kit page at /penna/.")]
 serve: tokens penna-tokens
-    @scripts/storybook-serve.py design 8090 penna=libs/penna/web
+    @libs/penna/storybook/serve.py design 8090 penna=libs/penna/web
 
 [doc("Build the HTML thin client and serve it through the gateway on 127.0.0.1:8092; --socket picks the daemon.")]
 client *args:
