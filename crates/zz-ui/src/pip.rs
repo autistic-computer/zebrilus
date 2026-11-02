@@ -391,6 +391,10 @@ fn pile_shifts(
 }
 
 #[must_use]
+#[allow(
+    clippy::disallowed_methods,
+    reason = "PiP content insets by the PiP's edge so it sits inside the frame"
+)]
 pub fn pip_content_radius(cx: &App) -> Pixels {
     let border = cx
         .theme()
@@ -462,6 +466,10 @@ impl PipSurface {
 }
 
 #[must_use]
+#[allow(
+    clippy::disallowed_methods,
+    reason = "a PiP is frosted in its pane's own colour at the PiP opacity setting, over the floating.pip edge and shadow"
+)]
 pub fn pip_material(fill: Hsla, cx: &App) -> GlassMaterial {
     let theme = cx.theme();
     let fill = fill.opaque();
@@ -484,6 +492,10 @@ pub fn pip_material(fill: Hsla, cx: &App) -> GlassMaterial {
 }
 
 impl RenderOnce for PipSurface {
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "a PiP is frosted in its pane's own colour at the PiP opacity setting, over the floating.pip edge and shadow"
+    )]
     fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
         let mut layer = cx.theme().layer(roles::FLOATING_PIP, PaintState::Rest);
         if !self.bordered {
@@ -582,6 +594,10 @@ mod tests {
     }
 
     #[test]
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "the test checks the floating.pip look itself"
+    )]
     fn a_pip_casts_the_float_shadow() {
         let theme = penna::Theme::from(&*penna::ThemeColor::dark());
         let pip = theme.layer(roles::FLOATING_PIP, PaintState::Rest);

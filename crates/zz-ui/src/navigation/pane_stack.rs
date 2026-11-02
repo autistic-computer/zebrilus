@@ -79,7 +79,7 @@ pub struct StackTile {
 
 pub fn stack_radius(tile: Pixels, around: Pixels, cx: &App) -> Pixels {
     let theme = cx.theme();
-    let radius = theme.layer(roles::TILE_STACK, PaintState::Rest).radius;
+    let radius = theme.radius_of(roles::TILE_STACK);
     if radius == FULL_CORNER_RADIUS || radius == Pixels::ZERO {
         return radius;
     }
@@ -241,6 +241,10 @@ impl PaneStack {
         }
     }
 
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "resting stack tiles are dimmed toward their row and lit by the stack, so they mix the tile.stack look by hand"
+    )]
     fn resting(&self, slot: usize, layer: &Layer, dark: bool, colors: bool) -> Div {
         let size = self.size;
         let front = self.tiles.first().filter(|_| slot == 0);
@@ -265,6 +269,10 @@ impl PaneStack {
         tile.absolute().left(px(slot as f32 * size.step())).top_0()
     }
 
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "open stack tiles are lit by the stack and show program faces over the tile.stack look"
+    )]
     fn open_row(&self, pointer: &Entity<Pointer>, view: EntityId, cx: &App) -> AnyElement {
         let size = self.size;
         let colors = program_colors(cx);
@@ -391,6 +399,17 @@ impl PaneStack {
 }
 
 impl PaneStack {
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "the resting stack tiles take the tile.stack look as their base material"
+    )]
+    fn resting_look(&self, cx: &App) -> Layer {
+        cx.theme().layer(
+            Surface::new(roles::TILE_STACK).on(self.tile_ground(cx)),
+            PaintState::Rest,
+        )
+    }
+
     fn reach(&self) -> Pixels {
         let size = self.size;
         let count = self.tiles.len() as f32;
@@ -405,10 +424,7 @@ impl RenderOnce for PaneStack {
         let openable = self.tiles.len() > 1;
         let open = openable && pointer.read(cx).open();
         let shown = self.tiles.len().clamp(1, RESTING);
-        let resting = cx.theme().layer(
-            Surface::new(roles::TILE_STACK).on(self.tile_ground(cx)),
-            PaintState::Rest,
-        );
+        let resting = self.resting_look(cx);
         let size = self.size;
         let width = size.width(shown);
         let coarse = CoarsePointer::get(cx);

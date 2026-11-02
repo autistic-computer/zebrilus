@@ -1,6 +1,7 @@
 use ala::{AnyElement, App, Div, ParentElement as _, SharedString, Styled as _, div, px};
+use penna::{Label, TextStyle};
 
-use crate::{ActiveTheme as _, Colorize as _, Icon, IconName, StyledExt as _};
+use crate::{ActiveTheme as _, Colorize as _, Icon, IconName};
 
 pub fn overview_count(n: usize, noun: &str) -> String {
     if n == 1 {
@@ -17,16 +18,11 @@ pub fn overview_session_heading(title: &str, cx: &App) -> Div {
         .h(px(44.0))
         .px(px(16.0))
         .mt(px(6.0))
-        .text_size(px(17.0))
-        .font_bold()
         .text_color(cx.theme().foreground.muted())
         .child(
-            div()
-                .min_w_0()
-                .overflow_hidden()
-                .whitespace_nowrap()
-                .text_ellipsis()
-                .child(title.to_owned()),
+            Label::new(TextStyle::Heading, title.to_owned())
+                .truncate()
+                .min_w_0(),
         )
 }
 
@@ -67,19 +63,11 @@ pub fn overview_host_empty(
         .px(px(32.0))
         .text_center()
         .child(Icon::new(IconName::Server).size(px(32.0)).text_color(muted))
+        .child(Label::new(TextStyle::Title, title).mt(px(6.0)))
         .child(
-            div()
-                .mt(px(6.0))
-                .text_size(px(20.0))
-                .font_semibold()
-                .child(title.into()),
-        )
-        .child(
-            div()
-                .text_size(px(13.0))
+            Label::new(TextStyle::Body, detail)
                 .line_height(px(19.0))
-                .text_color(muted)
-                .child(detail.into()),
+                .text_color(muted),
         )
         .children(action.map(|action| div().mt(px(8.0)).child(action)))
 }

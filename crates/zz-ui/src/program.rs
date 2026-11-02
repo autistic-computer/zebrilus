@@ -224,6 +224,10 @@ pub fn program_glyph_path(program: &Program) -> SharedString {
     .into()
 }
 
+#[allow(
+    clippy::disallowed_methods,
+    reason = "program faces take the tile.stack corner smoothing"
+)]
 pub fn program_tile(
     program: &'static Program,
     size: Pixels,

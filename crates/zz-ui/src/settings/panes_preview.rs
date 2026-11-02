@@ -244,6 +244,10 @@ fn terminal_sample(
         .child(terminal_body(lines, opacity, cx))
 }
 
+#[allow(
+    clippy::disallowed_methods,
+    reason = "the sample lines stand in for terminal cells, which keep the terminal's own size and line spacing"
+)]
 fn terminal_body(lines: &'static [Line], opacity: f32, cx: &App) -> ala::Div {
     let theme = cx.theme();
     let tone = |color: Hsla, text: &'static str| div().text_color(color).child(text);
@@ -329,27 +333,33 @@ fn browser_sample(
                 .opacity(opacity)
                 .child(header),
         )
+        .child(sample_page(radii, cx))
+}
+
+#[allow(
+    clippy::disallowed_methods,
+    reason = "the sample page stands in for a web page, which sets its own text sizes"
+)]
+fn sample_page(radii: Corners<Pixels>, cx: &App) -> ala::Div {
+    div()
+        .flex()
+        .flex_col()
+        .flex_1()
+        .min_h_0()
+        .overflow_hidden()
+        .gap(px(4.0))
+        .px(px(16.0))
+        .py(px(12.0))
+        .rounded_bl(radii.bottom_left)
+        .rounded_br(radii.bottom_right)
+        .bg(cx.theme().background.opaque())
+        .text_size(px(13.0))
+        .line_height(px(18.0))
+        .child(div().text_size(px(16.0)).child("Key bindings"))
         .child(
             div()
-                .flex()
-                .flex_col()
-                .flex_1()
-                .min_h_0()
-                .overflow_hidden()
-                .gap(px(4.0))
-                .px(px(16.0))
-                .py(px(12.0))
-                .rounded_bl(radii.bottom_left)
-                .rounded_br(radii.bottom_right)
-                .bg(cx.theme().background.opaque())
-                .text_size(px(13.0))
-                .line_height(px(18.0))
-                .child(div().text_size(px(16.0)).child("Key bindings"))
-                .child(
-                    div()
-                        .text_color(cx.theme().foreground.muted())
-                        .child("Zed has a very customizable key binding system."),
-                ),
+                .text_color(cx.theme().foreground.muted())
+                .child("Zed has a very customizable key binding system."),
         )
 }
 

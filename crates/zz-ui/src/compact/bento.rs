@@ -2,11 +2,12 @@ use ala::{
     AnyElement, App, Div, ElementId, Hsla, ParentElement as _, SharedString, Stateful, Styled as _,
     div, prelude::*, px, relative,
 };
-use penna::compact::{BentoSpan, bento_tile};
-
-use crate::{
-    ActiveTheme as _, Colorize as _, Icon, IconName, Layer, PaintState, StyledExt as _, roles,
+use penna::{
+    Label, TextStyle, Tile, TileVariant,
+    compact::{BentoSpan, bento_tile},
 };
+
+use crate::{ActiveTheme as _, Colorize as _, Icon, IconName, PaintState};
 
 use super::overview::{HostState, host_state_dot};
 
@@ -48,25 +49,12 @@ pub fn host_tile(
                     .items_center()
                     .gap(px(7.0))
                     .child(host_state_dot(state, cx))
-                    .child(
-                        div()
-                            .min_w_0()
-                            .overflow_hidden()
-                            .whitespace_nowrap()
-                            .text_ellipsis()
-                            .text_size(px(17.0))
-                            .font_semibold()
-                            .child(title.into()),
-                    ),
+                    .child(Label::new(TextStyle::Heading, title).truncate().min_w_0()),
             )
             .child(
-                div()
-                    .text_size(px(13.0))
-                    .text_color(theme.foreground.muted())
-                    .whitespace_nowrap()
-                    .overflow_hidden()
-                    .text_ellipsis()
-                    .child(detail.into()),
+                Label::new(TextStyle::Body, detail)
+                    .truncate()
+                    .text_color(theme.foreground.muted()),
             )
             .child(div().flex_1())
             .children(footer),
@@ -78,21 +66,13 @@ pub fn host_tile_line(color: Hsla, text: impl Into<SharedString>, warning: bool,
         .flex()
         .items_center()
         .gap(px(6.0))
-        .text_size(px(13.0))
         .text_color(if warning {
             color
         } else {
             cx.theme().foreground.muted()
         })
         .child(div().flex_none().size(px(6.0)).rounded_full().bg(color))
-        .child(
-            div()
-                .min_w_0()
-                .overflow_hidden()
-                .whitespace_nowrap()
-                .text_ellipsis()
-                .child(text.into()),
-        )
+        .child(Label::new(TextStyle::Body, text).truncate().min_w_0())
 }
 
 pub fn window_tile(
@@ -123,28 +103,23 @@ pub fn window_tile(
                     .gap(px(8.0))
                     .h(px(WINDOW_HEADER))
                     .px(px(4.0))
-                    .text_size(px(15.0))
-                    .child(div().flex_none().text_color(muted).child(index.to_string()))
                     .child(
-                        div()
+                        Label::new(TextStyle::Heading, index.to_string())
                             .flex_none()
-                            .max_w(relative(0.6))
-                            .overflow_hidden()
-                            .whitespace_nowrap()
-                            .text_ellipsis()
-                            .font_semibold()
-                            .child(title.into()),
+                            .text_color(muted),
                     )
                     .child(
-                        div()
+                        Label::new(TextStyle::Heading, title)
+                            .truncate()
+                            .flex_none()
+                            .max_w(relative(0.6)),
+                    )
+                    .child(
+                        Label::new(TextStyle::Body, folder.unwrap_or_default())
+                            .truncate()
                             .flex_1()
                             .min_w_0()
-                            .overflow_hidden()
-                            .whitespace_nowrap()
-                            .text_ellipsis()
-                            .text_size(px(13.0))
-                            .text_color(muted)
-                            .children(folder),
+                            .text_color(muted),
                     )
                     .when(attention, |row| {
                         row.child(
@@ -185,17 +160,15 @@ pub fn mini_pane(
     current: bool,
     attention: bool,
     cx: &App,
-) -> Div {
+) -> Tile {
     let theme = cx.theme();
-    let frame = theme.layer(
-        roles::TILE_MINI,
-        if current {
+    Tile::new("mini-pane")
+        .variant(TileVariant::Mini)
+        .state(if current {
             PaintState::Selected
         } else {
             PaintState::Rest
-        },
-    );
-    div()
+        })
         .relative()
         .size_full()
         .flex()
@@ -203,12 +176,8 @@ pub fn mini_pane(
         .gap(px(4.0))
         .p(px(6.0))
         .overflow_hidden()
-        .layer(&Layer {
-            fill: background,
-            glass: None,
-            radius: px(MINI_RADIUS),
-            ..frame
-        })
+        .bg(background)
+        .rounded(px(MINI_RADIUS))
         .when_some(title, |pane, title| {
             pane.child(
                 div()
@@ -216,17 +185,13 @@ pub fn mini_pane(
                     .flex_none()
                     .items_center()
                     .gap(px(4.0))
-                    .text_size(px(11.0))
                     .text_color(theme.foreground.muted())
                     .child(Icon::new(icon).size(px(12.0)))
                     .child(
-                        div()
+                        Label::new(TextStyle::Caption, title)
+                            .truncate()
                             .flex_1()
-                            .min_w_0()
-                            .overflow_hidden()
-                            .whitespace_nowrap()
-                            .text_ellipsis()
-                            .child(title),
+                            .min_w_0(),
                     )
                     .when(attention, |row| {
                         row.child(

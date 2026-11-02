@@ -1,8 +1,8 @@
 use std::{rc::Rc, time::Duration};
 
 use ala::{
-    AnyElement, App, Bounds, Context, CursorStyle, Div, Entity, IntoElement, MouseButton, Pixels,
-    Point, Render, Stateful, Window, div, prelude::*, px,
+    AnyElement, App, Bounds, Context, CursorStyle, Entity, IntoElement, MouseButton, Pixels, Point,
+    Render, Window, div, prelude::*, px,
 };
 use zz_protocol::PaneId;
 
@@ -135,7 +135,10 @@ impl PaneDragSource {
         self.enabled
     }
 
-    pub fn attach(self, element: Stateful<Div>) -> Stateful<Div> {
+    pub fn attach<E>(self, element: E) -> E
+    where
+        E: StatefulInteractiveElement + ParentElement + Styled,
+    {
         if !self.enabled {
             return element;
         }

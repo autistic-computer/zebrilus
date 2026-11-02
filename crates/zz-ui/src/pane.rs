@@ -1,15 +1,17 @@
 use crate::{
-    ActiveTheme as _, Colorize as _, Disableable as _, ElementExt as _, Emphasis, Fill, Ground,
-    Icon, IconName, InteractiveSurfaceExt as _, Layer, PaintState, Selectable as _, Sizable as _,
-    StyledExt as _, Surface, Tone,
-    button::{Button, ButtonVariants as _},
+    ActiveTheme as _, Colorize as _, Disableable as _, ElementExt as _, Emphasis, Fill, Icon,
+    IconName, Layer, PaintState, Selectable as _, Sizable as _, StyledExt as _, Tone,
+    button::{Button, ButtonLook, ButtonVariants as _},
     pane_look::PaneLook,
     roles,
 };
 use ala::{
-    AnyElement, App, BorderStyle, Bounds, Corners, CursorStyle, ElementId, FontWeight,
-    GlassMaterial, Hsla, IntoElement, ParentElement as _, Pixels, SharedString, Stateful,
-    Styled as _, StyledText, Window, canvas, div, prelude::*, px, quad, relative, size,
+    AnyElement, App, BorderStyle, Bounds, Corners, CursorStyle, ElementId, GlassMaterial, Hsla,
+    IntoElement, ParentElement as _, Pixels, SharedString, Stateful, Styled as _, StyledText,
+    Window, canvas, div, prelude::*, px, quad, relative, size,
+};
+use penna::{
+    Bar, BarLook, Chip, ChipLook, Label, Row, RowLook, Tab, TabLook, TextStyle, Tile, TileVariant,
 };
 
 mod drag;
@@ -26,7 +28,7 @@ pub fn pane_header_icon_button(
     cx: &App,
 ) -> Button {
     Button::compact_icon(id, icon)
-        .surface_role(roles::ICON_BUTTON_BAR)
+        .look(ButtonLook::Bar)
         .size(crate::PANE_HEADER_CONTROL_HEIGHT)
         .disabled(!enabled)
         .text_color(cx.theme().foreground.faint())
@@ -90,7 +92,6 @@ impl RenderOnce for PaneTitle {
         let coarse = crate::touch::CoarsePointer::get(cx);
         let movable = self.drag.enabled();
         let icon_size = px(PANE_TITLE_ICON_SIZE);
-        let surface = Surface::new(roles::BUTTON_TITLE).on(cx.theme().ground_of(roles::BAR_PANE));
         let icon = div()
             .relative()
             .flex_none()
@@ -134,8 +135,8 @@ impl RenderOnce for PaneTitle {
                 )
         });
         let end = if close.is_some() { px(0.0) } else { px(8.0) };
-        let title = div()
-            .id(self.id)
+        let title = Tab::new(self.id, TabLook::Title)
+            .on(cx.theme().ground_of(BarLook::Pane))
             .group(PANE_TITLE_GROUP)
             .debug_selector(|| "pane-title".into())
             .flex()
@@ -146,7 +147,6 @@ impl RenderOnce for PaneTitle {
             .gap(px(6.0))
             .pl(px(6.0))
             .pr(end)
-            .surface_hover(surface, PaintState::Rest, cx)
             .text_color(cx.theme().foreground.muted())
             .child(icon)
             .child(
@@ -314,7 +314,7 @@ pub fn pane_flip_button(
     cx: &App,
 ) -> Button {
     pane_header_icon_button("pane-flip", flip_icon(flip.to), !flip.pending, cx)
-        .surface_role(roles::ICON_BUTTON_TOGGLE)
+        .look(ButtonLook::Toggle)
         .debug_selector(|| "pane-flip".into())
         .selected(flip.armed)
         .when(flip.armed, |button| {
@@ -351,20 +351,20 @@ pub fn pane_flip_busy(
     reason: &str,
     on_choice: impl Fn(FlipChoice, &mut Window, &mut App) + 'static,
     cx: &App,
-) -> Stateful<ala::Div> {
+) -> Chip {
     let on_choice: std::rc::Rc<dyn Fn(FlipChoice, &mut Window, &mut App)> =
         std::rc::Rc::new(on_choice);
-    pane_chip(PaintState::Rest, cx)
-        .id(("pane-flip-busy", pane.0))
+    pane_chip(("pane-flip-busy", pane.0), PaintState::Rest, cx)
         .debug_selector(|| "pane-flip-busy".into())
         .flex()
         .flex_col()
+        .items_stretch()
         .gap(px(8.0))
         .w(px(300.0))
         .max_w_full()
         .p(px(10.0))
         .font_family(cx.theme().font_family.clone())
-        .text_size(crate::rems_from_px(13.0))
+        .type_style(TextStyle::Body, cx)
         .line_height(px(16.0))
         .on_mouse_down(ala::MouseButton::Left, |_, _, cx| cx.stop_propagation())
         .child(
@@ -387,9 +387,9 @@ pub fn pane_flip_busy(
                         .min_w_0()
                         .gap(px(2.0))
                         .child(
-                            div()
-                                .font_weight(FontWeight::MEDIUM)
-                                .child(zz_client::agent_flip::BUSY_TITLE),
+                            Label::new(TextStyle::Body, zz_client::agent_flip::BUSY_TITLE)
+                                .strong()
+                                .line_height(px(16.0)),
                         )
                         .child(
                             div()
@@ -433,20 +433,24 @@ pub fn pane_flip_armed(
     to: FlipTo,
     on_cancel: impl Fn(&mut Window, &mut App) + 'static,
     cx: &App,
-) -> Stateful<ala::Div> {
+) -> Chip {
     let on_choice: std::rc::Rc<dyn Fn(FlipChoice, &mut Window, &mut App)> =
         std::rc::Rc::new(move |_, window, cx| on_cancel(window, cx));
-    pane_status_badge(IconName::Clock, zz_client::agent_flip::armed_label(to), cx)
-        .id(("pane-flip-armed", pane.0))
-        .debug_selector(|| "pane-flip-armed".into())
-        .pr(px(4.0))
-        .on_mouse_down(ala::MouseButton::Left, |_, _, cx| cx.stop_propagation())
-        .child(flip_choice_button(
-            ("pane-flip-cancel", pane.0),
-            zz_client::agent_flip::CANCEL_LABEL,
-            FlipChoice::Cancel,
-            &on_choice,
-        ))
+    status_badge(
+        ("pane-flip-armed", pane.0),
+        IconName::Clock,
+        zz_client::agent_flip::armed_label(to),
+        cx,
+    )
+    .debug_selector(|| "pane-flip-armed".into())
+    .pr(px(4.0))
+    .on_mouse_down(ala::MouseButton::Left, |_, _, cx| cx.stop_propagation())
+    .child(flip_choice_button(
+        ("pane-flip-cancel", pane.0),
+        zz_client::agent_flip::CANCEL_LABEL,
+        FlipChoice::Cancel,
+        &on_choice,
+    ))
 }
 
 pub fn pane_flip_overlay(
@@ -497,19 +501,14 @@ pub fn pane_header(
                 on_action(action, window, cx);
             })
     };
-    div()
-        .id("terminal-pane-header")
-        .group("terminal-pane-header")
+    let bar = Bar::new("terminal-pane-header-bar", BarLook::Pane)
         .flex()
-        .w_full()
-        .h(cx.theme().pane_header_height())
-        .flex_none()
+        .size_full()
         .items_center()
         .gap(px(8.0))
         .px(px(crate::CHROME_GAP))
-        .surface(Surface::new(roles::BAR_PANE), cx)
         .font_family(cx.theme().font_family.clone())
-        .text_size(crate::rems_from_px(13.0))
+        .type_style(TextStyle::Body, cx)
         .line_height(px(16.0))
         .text_color(cx.theme().foreground.muted())
         .child(
@@ -553,7 +552,15 @@ pub fn pane_header(
                         .iter()
                         .map(|(kind, icon, label)| action(*kind, icon.clone(), label)),
                 ),
-        )
+        );
+    div()
+        .id("terminal-pane-header")
+        .group("terminal-pane-header")
+        .flex()
+        .w_full()
+        .h(cx.theme().pane_header_height())
+        .flex_none()
+        .child(bar)
 }
 
 pub fn pane_header_frame(
@@ -674,6 +681,10 @@ pub fn pane_border_color(active: bool, cx: &App) -> Hsla {
     }
 }
 
+#[allow(
+    clippy::disallowed_methods,
+    reason = "the pane frame is the pane's own material: its glass, rim and edge follow the pane and its tmux style"
+)]
 pub fn pane_surface(
     id: impl Into<ElementId>,
     content: impl IntoElement,
@@ -880,6 +891,10 @@ impl FloatingSurface {
 }
 
 impl RenderOnce for FloatingSurface {
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "a tmux popup paints in the colours popup-style and popup-border-style name, over the floating.pane look, and titles its border in the terminal's code font"
+    )]
     fn render(self, _: &mut ala::Window, cx: &mut App) -> impl IntoElement {
         let theme = cx.theme();
         let mut layer = theme.layer(roles::FLOATING_PANE, PaintState::Rest);
@@ -981,16 +996,16 @@ pub fn pane_drag_overlay(
         .occlude()
         .cursor(cursor)
         .map(|veil| match state {
-            PaneDragOverlayState::Armed => veil.layer(&Layer {
-                border_width: Pixels::ZERO,
-                ..cx.theme().layer(
-                    Surface::new(roles::TILE_DROP).on(Ground {
-                        glass: true,
-                        ..cx.theme().ground()
-                    }),
-                    PaintState::Hover,
-                )
-            }),
+            PaneDragOverlayState::Armed => veil.child(
+                Tile::new("pane-drag-veil")
+                    .variant(TileVariant::Veil)
+                    .absolute()
+                    .inset_0()
+                    .rounded_tl(radii.top_left)
+                    .rounded_tr(radii.top_right)
+                    .rounded_bl(radii.bottom_left)
+                    .rounded_br(radii.bottom_right),
+            ),
             PaneDragOverlayState::Source => veil.bg(pane_drag_source_veil(cx)),
             PaneDragOverlayState::Target => veil,
         })
@@ -1011,53 +1026,37 @@ fn pane_drag_source_veil(cx: &App) -> Hsla {
         .opacity(PANE_DRAG_SOURCE_FADE)
 }
 
-pub fn pane_drop_preview(radius: Pixels, border_width: Pixels, cx: &App) -> ala::Div {
-    let layer = cx.theme().layer(roles::TILE_DROP, PaintState::Selected);
-    let border_width = if layer.border_width > Pixels::ZERO {
-        border_width
-    } else {
-        Pixels::ZERO
-    };
-    div().absolute().layer(&Layer {
-        radius,
-        border_width,
-        ..layer
-    })
+pub fn pane_drop_preview(radius: Pixels, border_width: Pixels, _: &App) -> Tile {
+    Tile::new("pane-drop-preview")
+        .variant(TileVariant::Drop)
+        .state(PaintState::Selected)
+        .edge(border_width)
+        .absolute()
+        .rounded(radius)
 }
 
 pub fn pane_drag_chip(
     pane: impl Into<SharedString>,
     title: impl Into<SharedString>,
     cx: &App,
-) -> ala::Div {
-    let theme = cx.theme();
-    let layer = theme.layer(roles::CHIP_DRAG, PaintState::Rest);
-    let ink = theme.paint_on(layer.ground, Tone::Neutral, Emphasis::Ghost);
-    div()
-        .flex()
-        .items_center()
+) -> Chip {
+    let ground = cx.theme().ground_of(ChipLook::Drag);
+    Chip::empty("pane-drag-chip")
+        .look(ChipLook::Drag)
+        .min_w_auto()
+        .h_auto()
         .gap(px(8.0))
         .max_w(px(280.0))
         .px(px(10.0))
         .py(px(6.0))
         .overflow_hidden()
-        .layer(&layer)
-        .text_size(crate::rems_from_px(12.0))
+        .child(Label::new(TextStyle::Mono, pane).strong().flex_none())
         .child(
-            div()
-                .flex_none()
-                .font_family(cx.theme().mono_font_family.clone())
-                .font_weight(FontWeight::BOLD)
-                .child(pane.into()),
-        )
-        .child(
-            div()
-                .min_w_0()
-                .overflow_hidden()
-                .whitespace_nowrap()
-                .text_ellipsis()
-                .text_color(ink.muted_at(PaintState::Rest))
-                .child(title.into()),
+            Label::new(TextStyle::Small, title)
+                .muted()
+                .on(ground)
+                .truncate()
+                .min_w_0(),
         )
 }
 
@@ -1253,16 +1252,25 @@ pub fn pane_split_surface(
         .child(hit_target)
 }
 
-pub fn pane_waiting_state(label: impl IntoElement, cx: &App) -> ala::Div {
-    pane_status_badge(IconName::Clock, label, cx)
+pub fn pane_waiting_state(label: impl IntoElement, cx: &App) -> Chip {
+    status_badge("pane-waiting", IconName::Clock, label, cx)
 }
 
-pub fn pane_sync_badge(cx: &App) -> ala::Div {
-    pane_status_badge(IconName::Layers, "Sync", cx)
+pub fn pane_sync_badge(cx: &App) -> Chip {
+    status_badge("pane-sync", IconName::Layers, "Sync", cx)
 }
 
-pub fn pane_status_badge(icon: IconName, label: impl IntoElement, cx: &App) -> ala::Div {
-    pane_chip(PaintState::Rest, cx)
+pub fn pane_status_badge(icon: IconName, label: impl IntoElement, cx: &App) -> Chip {
+    status_badge("pane-status", icon, label, cx)
+}
+
+fn status_badge(
+    id: impl Into<ElementId>,
+    icon: IconName,
+    label: impl IntoElement,
+    cx: &App,
+) -> Chip {
+    pane_chip(id, PaintState::Rest, cx)
         .flex()
         .items_center()
         .gap(px(7.0))
@@ -1270,7 +1278,7 @@ pub fn pane_status_badge(icon: IconName, label: impl IntoElement, cx: &App) -> a
         .px(px(10.0))
         .py(px(5.0))
         .font_family(cx.theme().font_family.clone())
-        .text_size(crate::rems_from_px(13.0))
+        .type_style(TextStyle::Body, cx)
         .line_height(px(16.0))
         .child(
             div()
@@ -1323,17 +1331,19 @@ pub fn pane_indicator(
     state: &zz_protocol::DisplayPanesState,
     indicator: &zz_protocol::PaneIndicator,
     cx: &App,
-) -> Stateful<ala::Div> {
+) -> Chip {
     let theme = cx.theme();
     let active = indicator.active();
-    let surface = Surface::new(roles::CHIP_MARKER);
     let chip_state = if active {
         PaintState::Current
     } else {
         PaintState::Rest
     };
-    let layer = theme.layer(surface, chip_state);
-    let ink = theme.paint_on(layer.ground, Tone::Neutral, Emphasis::Ghost);
+    let ink = theme.paint_on(
+        theme.ground_at(ChipLook::Marker, chip_state),
+        Tone::Neutral,
+        Emphasis::Ghost,
+    );
     let muted = ink.muted_at(PaintState::Rest);
     let (option, default) = if active {
         (state.active_colour, DISPLAY_PANES_ACTIVE_COLOUR)
@@ -1371,23 +1381,12 @@ pub fn pane_indicator(
         )
         .collect();
     let pane = indicator.pane;
-    let accent = theme.accent.opaque();
-    let ringed = option.filter(|_| active).map(|color| {
-        layer
-            .shadow
-            .iter()
-            .cloned()
-            .map(|mut shadow| {
-                if shadow.color == accent {
-                    shadow.color = color;
-                }
-                shadow
-            })
-            .collect::<Vec<_>>()
-    });
 
-    div()
-        .id(id)
+    Chip::empty(id)
+        .look(ChipLook::Marker)
+        .state(chip_state)
+        .interactive(true)
+        .when_some(option.filter(|_| active), Chip::ring)
         .debug_selector(move || format!("pane-indicator-{}", pane.0))
         .flex()
         .flex_none()
@@ -1396,18 +1395,14 @@ pub fn pane_indicator(
         .gap(px(8.0))
         .h(px(40.0))
         .min_w(px(40.0))
+        .px_0()
         .when(!caption.is_empty(), |chip| chip.pl(px(14.0)).pr(px(16.0)))
-        .surface_hover(surface, chip_state, cx)
-        .when_some(ringed, ala::Styled::shadow)
         .cursor(CursorStyle::PointingHand)
         .font_family(theme.font_family.clone())
         .child(
-            div()
-                .text_size(crate::rems_from_px(20.0))
+            Label::new(TextStyle::Title, glyph)
                 .line_height(crate::rems_from_px(24.0))
-                .font_weight(FontWeight::SEMIBOLD)
-                .text_color(glyph_ink)
-                .child(glyph),
+                .text_color(glyph_ink),
         )
         .when(!caption.is_empty(), |chip| {
             chip.child(
@@ -1418,8 +1413,7 @@ pub fn pane_indicator(
                     .max_w(px(240.0))
                     .overflow_hidden()
                     .whitespace_nowrap()
-                    .text_size(crate::rems_from_px(12.0))
-                    .line_height(px(16.0))
+                    .type_style(TextStyle::Small, cx)
                     .text_color(muted)
                     .children(caption),
             )
@@ -1430,14 +1424,14 @@ pub fn pane_unzoom_control() -> Button {
     Button::new("pane-unzoom")
         .icon(IconName::WindowRestore)
         .label("Unzoom")
-        .surface_role(roles::CHIP_FLOATING)
+        .look(ButtonLook::FloatingChip)
 }
 
 pub fn terminal_mode_indicator(
     label: Option<impl Into<SharedString>>,
     detail: impl Into<SharedString>,
     cx: &App,
-) -> ala::Div {
+) -> Chip {
     let label = label.map(Into::into);
     let icon = match label.as_deref() {
         Some("Copy mode" | "COPY MODE") => IconName::Copy,
@@ -1445,7 +1439,8 @@ pub fn terminal_mode_indicator(
         None => IconName::ArrowDown,
     };
     let detail = detail.into();
-    pane_status_badge(
+    status_badge(
+        "terminal-mode",
         icon,
         div()
             .flex()
@@ -1454,11 +1449,9 @@ pub fn terminal_mode_indicator(
             .when_some(label, ala::ParentElement::child)
             .when(!detail.is_empty(), |row| {
                 row.child(
-                    div()
-                        .font_family(cx.theme().mono_font_family.clone())
-                        .text_size(crate::rems_from_px(12.0))
-                        .text_color(cx.theme().foreground.muted())
-                        .child(detail),
+                    Label::new(TextStyle::Mono, detail)
+                        .line_height(px(16.0))
+                        .text_color(cx.theme().foreground.muted()),
                 )
             }),
         cx,
@@ -1470,10 +1463,10 @@ pub fn terminal_search_prompt(
     caret: usize,
     on_caret: impl FnOnce(Bounds<Pixels>, &mut Window, &mut App) + 'static,
     cx: &App,
-) -> ala::Div {
+) -> Chip {
     let text = StyledText::new(message);
     let layout = text.layout().clone();
-    overlay_line(PaintState::Focused, cx)
+    overlay_line("terminal-search-prompt", PaintState::Focused, cx)
         .child(text)
         .on_prepaint(move |_, window, cx| {
             if let Some(position) = layout.position_for_index(caret) {
@@ -1489,15 +1482,15 @@ pub fn terminal_search_prompt(
         })
 }
 
-pub fn terminal_status_popup(message: impl IntoElement, cx: &App) -> ala::Div {
+pub fn terminal_status_popup(message: impl IntoElement, cx: &App) -> Chip {
     let quiet = overlay_paint(cx).muted_at(PaintState::Rest);
-    overlay_line(PaintState::Rest, cx)
+    overlay_line("terminal-status-popup", PaintState::Rest, cx)
         .text_color(quiet)
         .child(message)
 }
 
-pub fn terminal_link_popup(uri: impl IntoElement, cx: &App) -> ala::Div {
-    overlay_line(PaintState::Rest, cx)
+pub fn terminal_link_popup(uri: impl IntoElement, cx: &App) -> Chip {
+    overlay_line("terminal-link-popup", PaintState::Rest, cx)
         .overflow_hidden()
         .child(uri)
 }
@@ -1506,23 +1499,28 @@ fn overlay_paint(cx: &App) -> crate::Paint {
     cx.theme().paint(Tone::Neutral, Emphasis::Soft).opaque()
 }
 
-fn pane_chip(state: PaintState, cx: &App) -> ala::Div {
-    div()
-        .surface_at(roles::CHIP_FLOATING, state, cx)
+fn pane_chip(id: impl Into<ElementId>, state: PaintState, cx: &App) -> Chip {
+    Chip::empty(id)
+        .look(ChipLook::Floating)
+        .state(state)
+        .min_w_auto()
+        .h_auto()
+        .px_0()
+        .gap_0()
         .when(state == PaintState::Focused, |chip| {
             chip.focus_ring(&overlay_paint(cx))
         })
 }
 
-fn overlay_line(state: PaintState, cx: &App) -> ala::Div {
-    pane_chip(state, cx)
+fn overlay_line(id: impl Into<ElementId>, state: PaintState, cx: &App) -> Chip {
+    pane_chip(id, state, cx)
         .flex()
         .items_center()
         .max_w(px(560.0))
         .px(px(10.0))
         .py(px(4.0))
+        .type_style(TextStyle::Caption, cx)
         .line_height(relative(1.))
-        .text_size(crate::rems_from_px(11.0))
 }
 
 pub fn pane_picker_row(
@@ -1533,7 +1531,7 @@ pub fn pane_picker_row(
     selected: bool,
     enabled: bool,
     cx: &App,
-) -> Stateful<ala::Div> {
+) -> Row {
     picker_item(
         id,
         title.into(),
@@ -1553,7 +1551,7 @@ pub fn pane_picker_folder_row(
     shortcut: Option<&'static str>,
     selected: bool,
     cx: &App,
-) -> Stateful<ala::Div> {
+) -> Row {
     picker_item(
         id,
         path.into(),
@@ -1566,16 +1564,14 @@ pub fn pane_picker_folder_row(
     )
 }
 
-pub fn pane_picker_label(text: impl Into<SharedString>, cx: &App) -> ala::Div {
-    div()
+pub fn pane_picker_label(text: impl Into<SharedString>, cx: &App) -> Label {
+    Label::new(TextStyle::Caption, text)
+        .strong()
         .flex_none()
         .px(px(12.0))
         .pt(px(8.0))
         .pb(px(2.0))
-        .text_size(crate::rems_from_px(11.0))
-        .font_weight(FontWeight::SEMIBOLD)
         .text_color(cx.theme().foreground.muted())
-        .child(text.into())
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1585,8 +1581,8 @@ pub enum ChatPickerTarget {
 }
 
 pub enum ChatPickerRow {
-    Label(ala::Div),
-    Item(ChatPickerTarget, Stateful<ala::Div>),
+    Label(Box<Label>),
+    Item(ChatPickerTarget, Box<Row>),
 }
 
 pub fn chat_picker_rows(
@@ -1598,24 +1594,24 @@ pub fn chat_picker_rows(
 ) -> Vec<ChatPickerRow> {
     use zz_client::new_chat::AGENT_CHOICES;
     let mut rows = vec![
-        ChatPickerRow::Label(pane_picker_label("Folder", cx)),
+        ChatPickerRow::Label(Box::new(pane_picker_label("Folder", cx))),
         ChatPickerRow::Item(
             ChatPickerTarget::FolderLine,
-            pane_picker_folder_row(
+            Box::new(pane_picker_folder_row(
                 ElementId::NamedInteger("chat-picker-folder".into(), pane),
                 picker.folder(recents).to_owned(),
                 None,
                 Some("tab"),
                 false,
                 cx,
-            ),
+            )),
         ),
-        ChatPickerRow::Label(pane_picker_label("Agent", cx)),
+        ChatPickerRow::Label(Box::new(pane_picker_label("Agent", cx))),
     ];
     rows.extend(AGENT_CHOICES.iter().enumerate().map(|(index, agent)| {
         ChatPickerRow::Item(
             ChatPickerTarget::Agent(index, *agent),
-            pane_picker_row(
+            Box::new(pane_picker_row(
                 ElementId::NamedInteger(format!("chat-picker-{}", agent.program).into(), pane),
                 agent.title(),
                 agent_provider_icon(agent.provider()),
@@ -1623,7 +1619,7 @@ pub fn chat_picker_rows(
                 picker.selected == index,
                 enabled,
                 cx,
-            ),
+            )),
         )
     }));
     rows
@@ -1638,48 +1634,44 @@ fn picker_item(
     selected: bool,
     enabled: bool,
     cx: &App,
-) -> Stateful<ala::Div> {
+) -> Row {
     let state = crate::row_state(selected, enabled);
-    let ground = cx.theme().layer(roles::MENU_ITEM_CARD, state).ground;
-    let ink = cx
-        .theme()
-        .paint_on(ground, Tone::Neutral, Emphasis::Ghost)
-        .muted_at(PaintState::Rest);
+    let ground = cx.theme().ground_at(RowLook::MenuCard, state);
     let height = crate::picker::LIST_ROW_HEIGHT;
-    crate::row_surface(
-        crate::h_flex().id(id).flex_none().h(height),
-        roles::MENU_ITEM_CARD,
-        state,
-        height,
-        cx,
-    )
-    .w_full()
-    .gap(px(10.0))
-    .px(px(12.0))
-    .when(enabled, ala::Styled::cursor_pointer)
-    .child(crate::Icon::new(icon).with_size(px(16.0)).text_color(ink))
-    .child(
-        div()
-            .flex_1()
-            .min_w_0()
-            .overflow_hidden()
-            .whitespace_nowrap()
-            .text_ellipsis()
-            .text_size(crate::rems_from_px(12.0))
-            .child(title),
-    )
-    .children(note.map(|note| {
-        div()
-            .flex_none()
-            .text_size(crate::rems_from_px(11.0))
-            .text_color(ink)
-            .child(note)
-    }))
-    .children(shortcut.map(|shortcut| {
-        crate::kbd::Kbd::new(ala::Keystroke::parse(shortcut).expect("static pane picker shortcut"))
+    Row::new(id, RowLook::MenuCard)
+        .state(state)
+        .row_height(height)
+        .h_flex()
+        .flex_none()
+        .h(height)
+        .w_full()
+        .gap(px(10.0))
+        .px(px(12.0))
+        .when(enabled, ala::Styled::cursor_pointer)
+        .child(
+            crate::Icon::new(icon)
+                .with_size(px(16.0))
+                .text_color(crate::muted_on(ground, cx)),
+        )
+        .child(
+            Label::new(TextStyle::Small, title)
+                .truncate()
+                .flex_1()
+                .min_w_0(),
+        )
+        .children(note.map(|note| {
+            Label::new(TextStyle::Caption, note)
+                .muted()
+                .on(ground)
+                .flex_none()
+        }))
+        .children(shortcut.map(|shortcut| {
+            crate::kbd::Kbd::new(
+                ala::Keystroke::parse(shortcut).expect("static pane picker shortcut"),
+            )
             .lowercase()
             .on(ground)
-    }))
+        }))
 }
 
 pub fn pane_picker_surface(
