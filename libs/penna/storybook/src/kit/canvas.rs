@@ -29,7 +29,7 @@ pub const STORY: Story = Story {
         Section {
             id: "drop-and-veil",
             name: "Drop zones and veils",
-            summary: "TileVariant::Drop marks where a dragged thing will land; TileVariant::Veil is the tint laid over panes while something is dragged. The caller sets the drop zone's corners.",
+            summary: "TileVariant::Drop marks where a dragged thing will land; TileVariant::Veil is the tint laid over panes while something is dragged. The caller sets the drop zone's corners, and .edge(width) draws its edge at the width of the frames it lands in, where the theme draws one.",
             build: |_, cx| stateless(drops, cx),
         },
         Section {
@@ -133,6 +133,21 @@ fn drops(_: &mut Window, cx: &mut App) -> AnyElement {
                 Tile::new("drop")
                     .variant(TileVariant::Drop)
                     .state(PaintState::Selected)
+                    .absolute()
+                    .top(Space::S2)
+                    .bottom(Space::S2)
+                    .right(Space::S2)
+                    .w(px(96.0))
+                    .rounded(radius),
+            ),
+        )
+        .state(
+            "drop, selected, edge at 1px",
+            area("drop-edge-area").child(pane("Right half")).child(
+                Tile::new("drop-edge")
+                    .variant(TileVariant::Drop)
+                    .state(PaintState::Selected)
+                    .edge(px(1.0))
                     .absolute()
                     .top(Space::S2)
                     .bottom(Space::S2)

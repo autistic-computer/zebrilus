@@ -80,6 +80,7 @@ impl From<TileVariant> for Surface {
 pub struct Tile {
     plate: Plate,
     variant: TileVariant,
+    edge: Option<Pixels>,
 }
 
 impl Tile {
@@ -88,6 +89,7 @@ impl Tile {
         Self {
             plate: Plate::new(id, TileVariant::Card.role()),
             variant: TileVariant::Card,
+            edge: None,
         }
     }
 
@@ -115,6 +117,12 @@ impl Tile {
         self.plate.state = state;
         self
     }
+
+    #[must_use]
+    pub fn edge(mut self, width: Pixels) -> Self {
+        self.edge = Some(width);
+        self
+    }
 }
 
 plate_element!(Tile);
@@ -123,7 +131,12 @@ impl RenderOnce for Tile {
     fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
         let mut plate = self.plate;
         if self.variant != TileVariant::Veil {
-            return plate.paint(cx);
+            let edge = self.edge;
+            return plate.paint_with(cx, move |layer| {
+                if let Some(width) = edge.filter(|_| layer.border_width > Pixels::ZERO) {
+                    layer.border_width = width;
+                }
+            });
         }
         let ground = plate.surface.ground.unwrap_or_else(|| cx.theme().ground());
         plate.surface = plate.surface.on(Ground {
