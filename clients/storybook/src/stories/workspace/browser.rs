@@ -3,7 +3,7 @@ use ala::{
     Styled as _, Window, div, prelude::*, px,
 };
 use penna::{
-    ActiveTheme as _, Colorize as _, Disableable as _, IconName,
+    ActiveTheme as _, Colorize as _, Disableable as _, IconName, Label, TextStyle,
     button::{Button, ButtonVariants as _},
     input::InputState,
     menu::{DropdownMenu as _, PopupMenu},
@@ -376,13 +376,11 @@ fn headers(inputs: &[Entity<InputState>; 4], window: &mut Window, cx: &mut App) 
 }
 
 fn toolbars(inputs: &[Entity<InputState>; 2], window: &mut Window, cx: &mut App) -> AnyElement {
-    let plain_address = div()
+    let plain_address = Label::new(TextStyle::Small, URLS[0])
+        .muted()
         .flex_1()
         .min_w_0()
         .overflow_hidden()
-        .text_size(px(12.0))
-        .text_color(cx.theme().foreground.muted())
-        .child(URLS[0])
         .into_any_element();
     let disabled = |id: &'static str, icon: IconName| {
         Button::compact_icon(id, icon)

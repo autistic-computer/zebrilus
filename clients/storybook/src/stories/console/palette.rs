@@ -9,7 +9,10 @@ use ala::{
     Keystroke, ParentElement as _, Render, SharedString, Styled as _, Subscription, WeakEntity,
     Window, div, prelude::*, px,
 };
-use penna::{ActiveTheme as _, IconName, StyledExt as _, h_flex, input::InputState, v_flex};
+use penna::{
+    ActiveTheme as _, IconName, Panel, PanelLook, Space, StyledExt as _, TextStyle, h_flex,
+    input::InputState, v_flex,
+};
 use zz_client::{completion::PaneKindAvailability, place::ActionKind};
 use zz_protocol::{
     ChooseTreeItem, ChooseTreeKind, ChooseTreePaneKind, ChooseTreeState, ChooseTreeTarget,
@@ -1259,11 +1262,11 @@ fn label_matches(label: &str, query: &str) -> Vec<std::ops::Range<usize>> {
         .collect()
 }
 
-fn on_surface(content: impl IntoElement, cx: &App) -> impl IntoElement {
-    v_flex()
+fn on_surface(content: impl IntoElement) -> impl IntoElement {
+    Panel::new("palette-story-surface", PanelLook::Popover)
+        .v_flex()
         .w_full()
-        .p(px(8.0))
-        .surface(penna::SurfaceRole::POPOVER, cx)
+        .p(Space::S4)
         .child(content)
 }
 
@@ -1277,11 +1280,11 @@ fn pair(
     states
         .state(
             caption.to_owned(),
-            on_surface(command_palette_entry((id, 0_usize), row, false, cx), cx),
+            on_surface(command_palette_entry((id, 0_usize), row, false, cx)),
         )
         .state(
             format!("{caption}, selected"),
-            on_surface(command_palette_entry((id, 1_usize), row, true, cx), cx),
+            on_surface(command_palette_entry((id, 1_usize), row, true, cx)),
         )
 }
 
@@ -1394,17 +1397,21 @@ fn rows(_: &mut Window, cx: &mut App) -> AnyElement {
         states = states
             .state(
                 format!("host {caption}"),
-                on_surface(
-                    command_palette_entry(("row-host", index * 2), row, false, cx),
+                on_surface(command_palette_entry(
+                    ("row-host", index * 2),
+                    row,
+                    false,
                     cx,
-                ),
+                )),
             )
             .state(
                 format!("host {caption}, selected"),
-                on_surface(
-                    command_palette_entry(("row-host", index * 2 + 1), row, true, cx),
+                on_surface(command_palette_entry(
+                    ("row-host", index * 2 + 1),
+                    row,
+                    true,
                     cx,
-                ),
+                )),
             );
     }
     states
@@ -1414,7 +1421,6 @@ fn rows(_: &mut Window, cx: &mut App) -> AnyElement {
                 v_flex().children(tree.iter().enumerate().map(|(index, row)| {
                     command_palette_tree_entry(("row-tree", index), row, false, |_, _, _| {}, cx)
                 })),
-                cx,
             ),
         )
         .state(
@@ -1429,7 +1435,6 @@ fn rows(_: &mut Window, cx: &mut App) -> AnyElement {
                         cx,
                     )
                 })),
-                cx,
             ),
         )
         .into_any_element()
@@ -1457,10 +1462,9 @@ fn parts(_: &mut Window, cx: &mut App) -> AnyElement {
                     .child(command_palette_section("Workspace", "@", cx))
                     .child(command_palette_section("Commands", ":", cx))
                     .child(command_palette_section("Hosts", "@", cx)),
-                cx,
             ),
         )
-        .state("empty result", on_surface(command_palette_empty(cx), cx))
+        .state("empty result", on_surface(command_palette_empty(cx)))
         .state(
             "completion kinds",
             on_surface(
@@ -1476,7 +1480,6 @@ fn parts(_: &mut Window, cx: &mut App) -> AnyElement {
                     .child(completion(1, "-t", "Target window", "OPTION", false))
                     .child(completion(2, "zz:1", "editor", "VALUE", false))
                     .child(completion(3, "select-window -t 2", "", "HISTORY", false)),
-                cx,
             ),
         )
         .state(
@@ -1485,14 +1488,13 @@ fn parts(_: &mut Window, cx: &mut App) -> AnyElement {
                 v_flex()
                     .child(completion(4, "-t", "Target window", "OPTION", true))
                     .child(completion(5, "-T", "Key table", "OPTION", false)),
-                cx,
             ),
         )
         .state(
             "shortcut hints",
             h_flex()
                 .gap_4()
-                .text_size(px(12.0))
+                .type_style(TextStyle::Small, cx)
                 .text_color(cx.theme().foreground)
                 .child(palette_shortcut_hint(["cmd-k"], "palette"))
                 .child(palette_shortcut_hint(["ctrl-b", "w"], "choose window"))

@@ -6,11 +6,11 @@ use ala::{
 };
 use zz_protocol::{MenuItem, MenuState, PopupBorderLines, parse_styled_segments};
 
-use penna::{Label, RuleLook, TextStyle};
+use penna::{Label, Row, RowLook, RuleLook, TextStyle};
 
 use crate::{
     ActiveTheme as _, Colorize as _, Edge, ElementExt as _, PaintState, StyledExt as _,
-    SurfaceRole, h_flex, row_corners,
+    SurfaceRole, h_flex,
     tmux_style::{split_tmux_alignment, tmux_literal_colour, tmux_styled_segments_text},
     touch::{CoarsePointer, TOUCH_TARGET},
     v_flex,
@@ -165,10 +165,6 @@ pub fn menu_enter(surface: Stateful<Div>) -> AnimationElement<Stateful<Div>> {
     penna::foundation::surface_enter(surface, "display-menu-open", Pixels::ZERO)
 }
 
-#[allow(
-    clippy::disallowed_methods,
-    reason = "the selected row takes the colours menu-selected-style names over the menu-item look"
-)]
 fn menu_row(
     index: usize,
     item: &MenuItem,
@@ -176,35 +172,34 @@ fn menu_row(
     row_height: Pixels,
     inks: &MenuInks,
     cx: &App,
-) -> Stateful<Div> {
+) -> Row {
     let highlighted = selected && item.enabled;
-    let layer = cx.theme().layer(
-        SurfaceRole::MENU_ITEM,
-        if highlighted {
-            PaintState::Selected
-        } else {
-            PaintState::Rest
-        },
-    );
+    let state = if highlighted {
+        PaintState::Selected
+    } else {
+        PaintState::Rest
+    };
+    let row = cx.theme().ground_at(RowLook::Menu, state);
     let (ink, ground) = match (highlighted, inks.selected) {
         (true, Some((fill, text))) => (text, fill),
-        (true, None) => (inks.selected_text.unwrap_or(layer.text), layer.ground.fill),
+        (true, None) => (inks.selected_text.unwrap_or(row.ink), row.fill),
         (false, _) if item.enabled => (inks.rest, inks.ground),
         (false, _) => (inks.rest.muted(), inks.ground),
     };
     let name = tmux_styled_segments_text(&parse_styled_segments(&item.name), ink, ground, cx);
-    h_flex()
-        .id(("display-menu-row", index))
+    Row::new(("display-menu-row", index), RowLook::Menu)
+        .state(state)
+        .row_height(row_height)
+        .interactive(false)
         .debug_selector(move || format!("display-menu-row-{index}"))
         .role(Role::MenuItem)
         .aria_selected(highlighted)
+        .h_flex()
         .flex_none()
         .h(row_height)
         .px(ROW_PADDING)
         .gap_3()
         .justify_between()
-        .layer(&layer)
-        .map(|row| row_corners(row, &layer, row_height))
         .when_some(inks.selected.filter(|_| highlighted), |row, (fill, _)| {
             row.bg(fill)
         })

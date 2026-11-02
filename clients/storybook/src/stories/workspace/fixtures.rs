@@ -4,7 +4,7 @@ use ala::{
     AnyElement, AnyView, App, AppContext as _, Context, Corners, ElementId, IntoElement,
     ParentElement as _, Pixels, Render, SharedString, Stateful, Styled as _, Window, div, px,
 };
-use penna::{ActiveTheme as _, Colorize as _, Icon, IconName};
+use penna::{ActiveTheme as _, Colorize as _, Icon, IconName, StyledExt as _, TextStyle};
 use zz_client::StatusBarPane;
 use zz_protocol::{AgentProvider, BrowserDescriptor, EditorDescriptor, PaneId, PaneKindSnapshot};
 use zz_ui::{
@@ -106,6 +106,10 @@ pub fn chrome(active: bool, scrim: bool, gaps: bool, cx: &App) -> PaneChrome {
         .frame(gaps.then(|| PaneLook::global(cx).frame(cx.theme(), cx.theme().background, active)))
 }
 
+#[allow(
+    clippy::disallowed_methods,
+    reason = "the sample lines stand in for terminal cells, which keep the terminal's own size and line spacing"
+)]
 pub fn terminal_body(lines: &[(Tone, &'static str)], dimmed: bool, cx: &App) -> ala::Div {
     let theme = cx.theme();
     div()
@@ -154,8 +158,7 @@ pub fn placeholder_body(
         .justify_center()
         .gap(px(6.0))
         .p(px(12.0))
-        .text_size(px(12.0))
-        .line_height(px(16.0))
+        .type_style(TextStyle::Small, cx)
         .text_color(cx.theme().foreground)
         .child(
             Icon::new(icon)

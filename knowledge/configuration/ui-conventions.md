@@ -25,38 +25,25 @@ The browser client in `clients/web` (`just web run`) uses the shared ala compone
 
 # Surfaces and roles
 
-Every painted piece of chrome names a surface role (see [surface roles](/designs/surface-roles.md)):
-a kit kind or group such as `button`, `menu-item`, `floating` or `popover`, a window chrome role from
-`penna::roles` (`libs/penna/src/roles.rs`) such as `chrome.button` or `sidebar.row`, or a zz role from
-`zz_ui::roles` (`crates/zz-ui/src/roles.rs`) such as `pane.chip`. The role
-decides the fill, outline, shadow, shape and the hover and selected highlights; the theme's
-materials decide what those look like, and the theme can change any role by id. To paint one:
+Every painted piece of chrome is a penna component drawn in a typed look (see penna's
+`knowledge/designs/kit.md`): `Button::look(ButtonLook::X)`, `Panel`, `Card`, `Bar`, `Tab`, `Row`,
+`Chip`, `Tile`, `Separator::look` and `.rule(RuleLook::X, edge, cx)`, `field_chrome` with a
+`FieldLook`, `BottomSheet`, and the rest. Each look picks a penna recipe (a surface role); the
+recipe decides the fill, outline, shadow, shape and the hover and selected highlights, the theme's
+materials decide what those look like, and the theme can change any recipe by id. Only penna
+defines roles: zz has none of its own, and no widget takes a role from outside penna.
 
-- A kit widget draws as its kind. Give it `.surface_role(roles::X)` when it is a specific piece:
-  `Button`, the fields (`Input`, `NumberInput`, the `Select` trigger, the `CodeEditor` frame), list,
-  menu and sheet rows, popovers, menus, dialogs, sheets, toasts, tooltips, badges, key caps,
-  separators and the window controls all take it.
-- Any other element takes `.surface(role, cx)` at rest, `.surface_at(role, state, cx)` in a
-  `PaintState`, `.surface_hover(..)` to follow the pointer, or `.surface_interactive(..)` on an
-  element with an id to press too. `Surface::new(role)` adds a tone (`.tone(Tone::Danger)`), marks
-  the main action (`.prominent(true)`), or says what it sits on (`.on(ground)`).
-- When code needs the parts, `cx.theme().layer(surface, state)` returns the `Layer`: fill or glass,
-  border and its width, shadows, text, radius, and the ground what sits inside paints on.
-  `.layer(&layer)` paints it, and `theme.ground_of(surface)` is the resting ground.
-- A divider is `.rule_on(roles::BAR_RULE, Edge::Bottom, cx)` or another `rule.*` role; it draws
-  only while the theme keeps that role's outline on.
-- A list row is `penna::row_surface(element, role, state, height, cx)`, rounded with
-  `row_corners`.
-- A new piece of UI that a theme would want to style apart from every existing role gets its own
-  role. Add a `SurfaceRole` to `crates/zz-ui/src/roles.rs`: an id spelled the way a theme file
-  writes it (`region.piece`, lowercase with dots and dashes), the kind it is, a label and a
-  plain-words description for the theme creator, and a `StylePatch` holding only what differs from
-  the kind, so the Default theme draws it as designed. List it in `ZZ`, next to its region's other
-  roles: that list (which also places penna's chrome roles) is what theme files are checked against
-  and the order the theme creator shows. A piece that looks and
-  behaves like an existing role reuses that role instead.
-- Do not hand-draw a border, a box shadow or a corner radius. Clippy rejects them outside the kit
-  (rule 3).
+- A component takes `.state(PaintState)`, `.tone(..)` and `.on(ground)` where it has them; the
+  caller's own `Styled` calls land over the look.
+- To place something on a look, read its ground or radius: `theme.ground_of(look)`,
+  `theme.ground_at(look, state)`, `theme.radius_of(look)` and `muted_on(ground, cx)`.
+- Text is `Label::new(TextStyle::X, text)` or `.type_style(TextStyle::X, cx)` on a container.
+- Content that a protocol, tmux or the user's terminal decides (terminal cells, a tmux popup or
+  menu, a PiP's frost, the pane frame and stack) may paint by hand with `.surface`, `.layer` or
+  `theme.layer`, under `#[allow(clippy::disallowed_methods, reason = "...")]` on the narrowest fn.
+- A new piece of UI that no look covers gets a look in penna first.
+- Do not hand-draw a border, a box shadow, a corner radius or a text size. Clippy rejects them
+  outside the kit (rule 3).
 
 # Rules
 
@@ -69,9 +56,9 @@ materials decide what those look like, and the theme can change any role by id. 
    `libs/penna/src/foundation/color.rs`. Outside the kit, chrome names what it draws
    instead of mixing it (see [Design system](/designs/design-system.md)): a filled, tinted or
    outlined widget draws `theme.paint(tone, emphasis)`, a plane `theme.surface(elevation)`, anything
-   with a fill, edge, corners or shadow its surface role (`.surface(role)` or a widget's
-   `.surface_role(role)`), a rule `.rule_on(role, edge)`, a pane `theme.pane_background(fill)`, and
-   quieter text `foreground.muted()` or `.faint()`. Do not color-match an old literal.
+   with a fill, edge, corners or shadow a kit component in its look, a rule
+   `.rule(RuleLook::X, edge, cx)`, a pane `theme.pane_background(fill)`, and quieter text a
+   `Label` with `.muted()` or `.faint()`. Do not color-match an old literal.
 2. Check the zz-ui widget set before hand-rolling a control. A custom ala
    element is appropriate only when a component cannot preserve required input routing,
    rendering, or interaction behavior. When a fork-local widget must diverge from upstream, record
@@ -95,12 +82,12 @@ materials decide what those look like, and the theme can change any role by id. 
 5. **Menu, picker, and list highlights use the same control treatment.** A selected row is its
    row role's `selected` highlight: the `row` kind fills with the accent and the theme's text on
    it, a theme can make it a tint instead (Glass does), and it casts no shadow. Secondary text
-   takes the row's muted ink (`picker::muted_on`). Rows round from their role's shape: `round` is
-   the theme radius minus 4px while rows are inset, and square at a 0 row inset. `row_corners`
-   holds that radius to 40% of the row's height with fixed smoothing 2.5, and leaves a `pill` row a
-   pill; `ListItem`, popup menu, select and model picker rows and the directory, session, file and
-   history picker rows all use it. `penna::row_surface` draws a row of a given height
-   through a role with its hover and press, and `list_row` builds one as the `row` kind.
+   takes the row's muted ink (`muted_on(ground, cx)`). Rows round from their look's shape: `round` is
+   the theme radius minus 4px while rows are inset, and square at a 0 row inset. `Row::row_height`
+   and `ListItem::row_height` hold that radius to 40% of the row's height with fixed smoothing 2.5,
+   and leave a `pill` row a pill; `ListItem`, popup menu, select and model picker rows and the
+   directory, session, file and history picker rows all draw that way. `Row` draws a row in a
+   `RowLook` with its hover and press, and `list_row` builds a menu row of a given height.
    Directory and session rows share
    26px heights and 12px labels. Custom menu content receives the highlight state so
    descriptions, counts, and timestamps brighten to the normal foreground.
@@ -252,8 +239,8 @@ switch thumb and follows the contact strength. `Theme::shadows_of`, `contact_sha
 `float_shadows` and `casts_shadow(role)` read them.
 
 Corners come from the role's shape through its layer's `radius` (`Theme::shape_radius`), so new
-widgets read the layer rather than a literal: `row_corners(element, layer, height)` for rows,
-`picker::outer_radius(layer, inset)` for a container around inset rows, `Theme::outer_radius(inset)`
+widgets read the look rather than a literal: `Row::row_height(height)` for rows,
+`Panel::inset(inset)` for a container around inset rows, `Theme::outer_radius(inset)`
 and `inner_radius(inset)` to keep other nested corners concentric, and `outlined()`, `inset_rows()`
 and `casts_shadow(role)` for the theme's switches. Control heights, fills, rules and transitions
 no longer change per theme: `Theme::dense`, `Theme::control_background` and `Theme::duration` are

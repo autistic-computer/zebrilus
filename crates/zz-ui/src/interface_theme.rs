@@ -75,17 +75,18 @@ mod tests {
         reason = "the test measures each built-in theme's composer buttons against the composer"
     )]
     fn the_composers_buttons_are_filled_in_every_builtin() {
-        use crate::{PaintState, Surface, roles};
+        use crate::{PaintState, Surface};
+        use penna::{button::ButtonLook, input::FieldLook};
         for (id, theme) in builtin_themes() {
             for mode in [ThemeMode::Light, ThemeMode::Dark] {
                 let mut kit = Theme::from(&*ThemeColor::for_mode(mode));
                 kit.mode = mode;
                 theme.apply(&mut kit);
-                let pill = kit.layer(roles::FIELD_COMPOSER, PaintState::Rest).ground;
+                let pill = kit.layer(FieldLook::Composer, PaintState::Rest).ground;
                 for (button, prominent, least) in [("send and stop", true, 1.5), ("+", false, 1.05)]
                 {
                     let layer = kit.layer(
-                        Surface::new(roles::BUTTON_SEND)
+                        Surface::from(ButtonLook::Send)
                             .prominent(prominent)
                             .on(pill),
                         PaintState::Rest,

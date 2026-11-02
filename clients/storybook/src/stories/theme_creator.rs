@@ -6,7 +6,7 @@ use ala::{
     size,
 };
 use penna::{
-    ActiveTheme as _, Colorize as _, Elevation, IconName, IndexPath,
+    ActiveTheme as _, Colorize as _, Elevation, IconName, IndexPath, Label, RuleLook, TextStyle,
     button::{Button, ButtonVariants as _},
     compact::{
         PillLabel, compact_bar_button, compact_floating_bar, compact_floating_pill, compact_hud,
@@ -710,6 +710,15 @@ impl Render for Floating {
     }
 }
 
+#[allow(
+    clippy::disallowed_methods,
+    reason = "the phone page stands in for terminal cells, which keep the terminal's own font and size"
+)]
+fn terminal_text(page: ala::Div, cx: &App) -> ala::Div {
+    page.font_family(cx.theme().mono_font_family.clone())
+        .text_size(px(12.0))
+}
+
 fn new_tab_address(window: &mut Window, cx: &mut App) -> Entity<InputState> {
     let address = cx.new(|cx| InputState::new(window, cx).placeholder("Search or enter address"));
     address.read(cx).focus_handle(cx).focus(window, cx);
@@ -746,7 +755,6 @@ impl Phone {
     }
 
     fn terminal(&self, cx: &App) -> AnyElement {
-        let theme = cx.theme();
         let placement = placement();
         let pill = compact_floating_pill(
             "showcase-phone-pill",
@@ -767,8 +775,7 @@ impl Phone {
                     .h(px(PHONE_PAGE_HEIGHT))
                     .px(px(12.0))
                     .py(px(8.0))
-                    .font_family(theme.mono_font_family.clone())
-                    .text_size(px(12.0))
+                    .map(|page| terminal_text(page, cx))
                     .line_height(px(17.0))
                     .children(PHONE_LINES.map(|line| div().h(px(17.0)).child(line)))
                     .child(compact_hud("Copied", cx)),
@@ -779,7 +786,6 @@ impl Phone {
     }
 
     fn keys(&self, cx: &App) -> AnyElement {
-        let theme = cx.theme();
         phone_frame("showcase-phone-menu", cx)
             .child(
                 h_flex()
@@ -788,8 +794,7 @@ impl Phone {
                     .py(px(8.0))
                     .items_start()
                     .justify_end()
-                    .font_family(theme.mono_font_family.clone())
-                    .text_size(px(12.0))
+                    .map(|page| terminal_text(page, cx))
                     .child(arrow_pad_bubble(Some(ArrowDirection::Up), cx)),
             )
             .child(
@@ -829,7 +834,7 @@ impl Phone {
 
     fn sheet(cx: &App) -> AnyElement {
         let theme = cx.theme();
-        let muted = theme.foreground.muted();
+        let sheet_ground = theme.ground_of(penna::SurfaceRole::DRAWER);
         let rows = SESSIONS
             .iter()
             .enumerate()
@@ -841,11 +846,10 @@ impl Phone {
                     cx,
                 )
                 .child(
-                    div()
-                        .flex_none()
-                        .text_size(px(13.0))
-                        .text_color(muted)
-                        .child(overview_count(*windows, "window")),
+                    Label::new(TextStyle::Body, overview_count(*windows, "window"))
+                        .muted()
+                        .on(sheet_ground)
+                        .flex_none(),
                 )
                 .when(*attached, |row| {
                     row.child(
@@ -863,11 +867,12 @@ impl Phone {
                 .list_inset(cx)
                 .pb(px(8.0))
                 .children(rows)
-                .child(div().mx(px(12.0)).my(px(4.0)).rule_on(
-                    zz_ui::roles::LIST_RULE,
-                    penna::Edge::Top,
-                    cx,
-                ))
+                .child(
+                    div()
+                        .mx(px(12.0))
+                        .my(px(4.0))
+                        .rule(RuleLook::List, penna::Edge::Top, cx),
+                )
                 .child(sheet_row(
                     "showcase-new-session",
                     Some(penna::Icon::new(IconName::Plus)),
@@ -885,9 +890,11 @@ impl Phone {
                 v_flex()
                     .p(px(16.0))
                     .gap_2()
-                    .text_size(px(13.0))
-                    .text_color(muted)
-                    .children(PHONE_LINES.map(|line| div().child(line))),
+                    .children(PHONE_LINES.map(|line| {
+                        Label::new(TextStyle::Body, line)
+                            .muted()
+                            .on(theme.surface(Elevation::Panel))
+                    })),
             )
             .child(sheet)
             .into_any_element()
@@ -923,20 +930,17 @@ fn drawer_screen(id: &'static str, sheet: BottomSheet, cx: &App) -> AnyElement {
             v_flex()
                 .p(px(24.0))
                 .gap_2()
-                .text_size(px(13.0))
-                .text_color(theme.foreground.muted())
-                .children(PHONE_LINES.map(|line| div().child(line))),
+                .children(PHONE_LINES.map(|line| {
+                    Label::new(TextStyle::Body, line)
+                        .muted()
+                        .on(theme.surface(Elevation::Panel))
+                })),
         )
         .child(sheet)
         .into_any_element()
 }
 
-fn drawer(
-    id: &'static str,
-    title: &'static str,
-    role: penna::SurfaceRole,
-    content: impl IntoElement,
-) -> BottomSheet {
+fn drawer(id: &'static str, title: &'static str, content: impl IntoElement) -> BottomSheet {
     bottom_sheet(
         id,
         title,
@@ -945,19 +949,17 @@ fn drawer(
         px(SAFE_BOTTOM),
         |_, _| {},
     )
-    .surface_role(role)
 }
 
 fn drawers(destination: &Entity<InputState>, window: &mut Window, cx: &mut App) -> AnyElement {
-    use zz_ui::roles;
     let cx: &App = cx;
-    let muted = cx.theme().foreground.muted();
+    let sheet_ground = cx.theme().ground_of(penna::SurfaceRole::DRAWER);
     let list = || v_flex().list_inset(cx).pb(px(8.0));
     let rule = || {
         div()
             .mx(px(12.0))
             .my(px(4.0))
-            .rule_on(roles::LIST_RULE, penna::Edge::Top, cx)
+            .rule(RuleLook::List, penna::Edge::Top, cx)
     };
     let plus = |id: &'static str, label: &'static str| {
         sheet_row(id, Some(penna::Icon::new(IconName::Plus)), label, cx)
@@ -968,8 +970,12 @@ fn drawers(destination: &Entity<InputState>, window: &mut Window, cx: &mut App) 
                 .gap(px(4.0))
                 .px(px(12.0))
                 .pb(px(10.0))
-                .text_size(px(13.0))
-                .child(div().text_color(muted).child("ssh://fabri@alienware"))
+                .type_style(TextStyle::Body, cx)
+                .child(
+                    Label::new(TextStyle::Body, "ssh://fabri@alienware")
+                        .muted()
+                        .on(sheet_ground),
+                )
                 .child(
                     div()
                         .text_color(cx.theme().warning)
@@ -991,13 +997,7 @@ fn drawers(destination: &Entity<InputState>, window: &mut Window, cx: &mut App) 
             )
             .text_color(cx.theme().danger),
         );
-    let note = |text: &'static str| {
-        div()
-            .text_size(px(13.0))
-            .line_height(px(18.0))
-            .text_color(muted)
-            .child(text)
-    };
+    let note = |text: &'static str| Label::new(TextStyle::Body, text).muted().on(sheet_ground);
     let add_host = v_flex()
         .gap(px(10.0))
         .px(px(16.0))
@@ -1010,11 +1010,7 @@ fn drawers(destination: &Entity<InputState>, window: &mut Window, cx: &mut App) 
                 .w_full()
                 .label("Connect"),
         )
-        .child(
-            div()
-                .my(px(6.0))
-                .rule_on(roles::LIST_RULE, penna::Edge::Top, cx),
-        )
+        .child(div().my(px(6.0)).rule(RuleLook::List, penna::Edge::Top, cx))
         .child(note(
             "Add this phone's key to authorized_keys on the host to sign in without a password.",
         ))
@@ -1038,61 +1034,40 @@ fn drawers(destination: &Entity<InputState>, window: &mut Window, cx: &mut App) 
                 cx,
             )
             .child(
-                div()
-                    .flex_none()
-                    .text_size(px(13.0))
-                    .text_color(muted)
-                    .child(*host),
+                Label::new(TextStyle::Body, *host)
+                    .muted()
+                    .on(sheet_ground)
+                    .flex_none(),
             )
         }))
         .child(rule())
         .child(plus("drawer-tab-new", "New tab"));
     let rows: Arc<[_]> = binding_rows().iter().take(5).cloned().collect();
-    let bindings = drawer(
-        "drawer-bindings",
-        "All bindings",
-        penna::SurfaceRole::DRAWER,
-        WhichKeyList::new(rows),
-    );
+    let bindings = drawer("drawer-bindings", "All bindings", WhichKeyList::new(rows));
     tiles(
         window,
         vec![
             vec![
                 drawer_screen(
                     "drawer-screen-hosts",
-                    drawer(
-                        "drawer-hosts",
-                        "alienware",
-                        penna::SurfaceRole::DRAWER,
-                        hosts,
-                    ),
+                    drawer("drawer-hosts", "alienware", hosts),
                     cx,
                 ),
                 drawer_screen(
                     "drawer-screen-add-host",
-                    drawer(
-                        "drawer-add-host",
-                        "Add host",
-                        penna::SurfaceRole::DRAWER,
-                        add_host,
-                    ),
+                    drawer("drawer-add-host", "Add host", add_host),
                     cx,
                 ),
             ],
             vec![
                 drawer_screen(
                     "drawer-screen-new-pane",
-                    drawer(
-                        "drawer-new-pane",
-                        "New pane",
-                        penna::SurfaceRole::DRAWER,
-                        new_pane,
-                    ),
+                    drawer("drawer-new-pane", "New pane", new_pane),
                     cx,
                 ),
                 drawer_screen(
                     "drawer-screen-tabs",
-                    drawer("drawer-tabs", "Tabs", penna::SurfaceRole::DRAWER, tabs),
+                    drawer("drawer-tabs", "Tabs", tabs),
                     cx,
                 ),
             ],
@@ -1493,12 +1468,7 @@ fn agent(cx: &App) -> AnyElement {
             h_flex()
                 .gap_2()
                 .child(agent_jump_to_bottom_button("showcase-jump", cx))
-                .child(
-                    div()
-                        .text_xs()
-                        .text_color(cx.theme().foreground.muted())
-                        .child("Jump to latest"),
-                ),
+                .child(Label::new(TextStyle::Small, "Jump to latest").muted()),
         )
         .into_any_element()
 }

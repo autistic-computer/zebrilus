@@ -1,17 +1,17 @@
 use std::path::PathBuf;
 
 use ala::{
-    App, Bounds, Context, Div, FontWeight, QuitMode, Window, WindowBounds, WindowOptions, div, img,
-    point, prelude::*, px, size,
+    App, Bounds, Context, Div, QuitMode, Window, WindowBounds, WindowOptions, div, img, point,
+    prelude::*, px, size,
 };
 use penna::{
-    ActiveTheme as _, Colorize as _, IconName, Kind, Root, Selectable as _, Sizable as _,
-    StyledExt as _, SurfaceRole, Theme, ThemeMode,
-    button::{Button, ButtonVariants as _},
+    ActiveTheme as _, Icon, IconName, Kind, Label, PaintState, Root, Sizable as _, Space,
+    StyledExt as _, Surface, Tab, TabLook, TextStyle, Theme, ThemeMode, Well,
+    button::{Button, ButtonLook, ButtonVariants as _},
     h_flex,
     switch::Switch,
 };
-use zz_ui::{Assets, interface_theme::InterfaceTheme, roles};
+use zz_ui::{Assets, interface_theme::InterfaceTheme};
 
 struct Comparison {
     sources: Vec<PathBuf>,
@@ -25,6 +25,14 @@ fn at(x: f32, y: f32) -> Div {
     div().absolute().left(px(x)).top(px(y))
 }
 
+#[allow(
+    clippy::disallowed_methods,
+    reason = "the comparison paints theme materials by role, side by side, to check how the macOS theme draws them"
+)]
+fn material(element: Div, surface: impl Into<Surface>, cx: &App) -> Div {
+    element.surface(surface, cx)
+}
+
 impl Comparison {
     fn apply(&self, cx: &mut App) {
         self.definition.apply(Theme::global_mut(cx));
@@ -35,10 +43,9 @@ impl Comparison {
 impl Render for Comparison {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let foreground = cx.theme().foreground;
-        let muted = foreground.muted();
         let glass_sample = Kind::Floating.role();
         let panel_ground = cx.theme().ground_of(glass_sample);
-        let group_ground = cx.theme().ground_of(roles::CHROME_BUTTON);
+        let group_ground = cx.theme().ground_of(ButtonLook::Chrome);
         let dark = cx.theme().mode.is_dark();
         let toolbar = h_flex().gap(px(12.0)).children(
             [IconName::PanelLeft, IconName::Pencil, IconName::Search]
@@ -47,7 +54,7 @@ impl Render for Comparison {
                 .map(|(i, icon)| {
                     Button::new(("toolbar", i))
                         .icon(icon)
-                        .surface_role(roles::CHROME_BUTTON)
+                        .look(ButtonLook::Chrome)
                         .with_size(px(30.0))
                         .h(px(48.0))
                         .w(px(48.0))
@@ -57,11 +64,11 @@ impl Render for Comparison {
                         })
                 }),
         );
-        let tabs = h_flex()
+        let tabs = Well::new()
+            .h_flex()
             .size_full()
-            .gap(px(4.0))
-            .p(px(4.0))
-            .surface(SurfaceRole::WELL, cx)
+            .gap(Space::S2)
+            .p(Space::S2)
             .rounded_full()
             .children(
                 [
@@ -72,15 +79,19 @@ impl Render for Comparison {
                 .into_iter()
                 .enumerate()
                 .map(|(i, (label, icon))| {
-                    Button::new(("tab", i))
-                        .label(label)
-                        .icon(icon)
-                        .ghost()
-                        .surface_role(roles::TAB_WINDOW)
-                        .selected(self.selected == i)
+                    Tab::new(("tab", i), TabLook::Window)
+                        .state(if self.selected == i {
+                            PaintState::Selected
+                        } else {
+                            PaintState::Rest
+                        })
+                        .h_flex()
+                        .justify_center()
+                        .gap(Space::S3)
                         .flex_1()
                         .h(px(28.0))
-                        .text_size(px(14.0))
+                        .child(Icon::new(icon))
+                        .child(Label::new(TextStyle::Lead, label))
                         .on_click(cx.listener(move |this, _, _, cx| {
                             this.selected = i;
                             cx.notify();
@@ -93,7 +104,7 @@ impl Render for Comparison {
             .bg(cx.theme().background)
             .font_family(cx.theme().font_family.clone())
             .text_color(foreground)
-            .text_size(px(14.0))
+            .type_style(TextStyle::Lead, cx)
             .child(
                 at(0.0, 430.0)
                     .w(px(600.0))
@@ -107,24 +118,16 @@ impl Render for Comparison {
                             .h(px(720.0)),
                     ),
             )
-            .child(
-                at(28.0, 30.0)
-                    .text_size(px(26.0))
-                    .font_weight(FontWeight::SEMIBOLD)
-                    .child("macOS"),
-            )
+            .child(at(28.0, 30.0).child(Label::new(TextStyle::Display, "macOS")))
             .child(
                 at(28.0, 67.0)
-                    .text_size(px(13.0))
-                    .text_color(muted)
-                    .child("zz-ui • theme materials"),
+                    .child(Label::new(TextStyle::Body, "zz-ui • theme materials").muted()),
             )
             .child(at(28.0, 110.0).child(toolbar))
             .child(
-                at(210.0, 110.0)
+                material(at(210.0, 110.0), ButtonLook::Chrome, cx)
                     .w(px(220.0))
                     .h(px(48.0))
-                    .surface(roles::CHROME_BUTTON, cx)
                     .child(
                         h_flex()
                             .size_full()
@@ -146,20 +149,16 @@ impl Render for Comparison {
             )
             .child(at(28.0, 209.0).w(px(544.0)).h(px(36.0)).child(tabs))
             .child(
-                at(28.0, 300.0)
+                material(at(28.0, 300.0), glass_sample, cx)
                     .w(px(544.0))
                     .h(px(120.0))
-                    .surface(glass_sample, cx)
+                    .child(at(24.0, 20.0).child(Label::new(TextStyle::Title, "Glass surface")))
                     .child(
-                        at(24.0, 20.0)
-                            .text_size(px(19.0))
-                            .font_weight(FontWeight::SEMIBOLD)
-                            .child("Glass surface"),
-                    )
-                    .child(
-                        at(24.0, 54.0)
-                            .text_color(muted)
-                            .child("Window, popover, and control materials"),
+                        at(24.0, 54.0).child(
+                            Label::new(TextStyle::Lead, "Window, popover, and control materials")
+                                .muted()
+                                .on(panel_ground),
+                        ),
                     )
                     .child(
                         at(470.0, 44.0).child(
@@ -173,19 +172,19 @@ impl Render for Comparison {
                     ),
             )
             .child(
-                at(28.0, 480.0)
+                material(at(28.0, 480.0), glass_sample, cx)
                     .w(px(544.0))
                     .h(px(100.0))
-                    .surface(glass_sample, cx)
                     .child(
                         at(24.0, 22.0)
-                            .font_weight(FontWeight::SEMIBOLD)
-                            .child("Backdrop check"),
+                            .child(Label::new(TextStyle::Lead, "Backdrop check").strong()),
                     )
                     .child(
-                        at(24.0, 52.0)
-                            .text_color(muted)
-                            .child("The same material over colour"),
+                        at(24.0, 52.0).child(
+                            Label::new(TextStyle::Lead, "The same material over colour")
+                                .muted()
+                                .on(panel_ground),
+                        ),
                     )
                     .child(
                         at(398.0, 32.0).child(
@@ -229,13 +228,19 @@ impl Render for Comparison {
                         })),
                 ),
             )
-            .child(at(28.0, 695.0).text_size(px(11.0)).text_color(muted).child(
-                if window.is_window_active() {
-                    "Window active"
-                } else {
-                    "Window inactive"
-                },
-            ))
+            .child(
+                at(28.0, 695.0).child(
+                    Label::new(
+                        TextStyle::Caption,
+                        if window.is_window_active() {
+                            "Window active"
+                        } else {
+                            "Window inactive"
+                        },
+                    )
+                    .muted(),
+                ),
+            )
     }
 }
 

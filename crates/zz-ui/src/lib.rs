@@ -9,8 +9,8 @@ pub(crate) use penna::{
     ActiveTheme, CHROME_GAP, Colorize, Disableable, Edge, ElementExt, Elevation, Emphasis, Fill,
     Ground, Highlight, Icon, IconName, Layer, PANE_HEADER_CONTROL_HEIGHT, Paint, PaintExt,
     PaintState, RULE_WIDTH, Selectable, Shape, Sizable, StyledExt, Surface, SurfaceRole, ThemeMode,
-    Tone, WindowExt, h_flex, list_row, muted_on, oklab_lightness, oklch, rems_from_px, row_corners,
-    row_state, to_oklch, v_flex,
+    Tone, WindowExt, h_flex, list_row, muted_on, oklab_lightness, oklch, rems_from_px, row_state,
+    to_oklch, v_flex,
 };
 
 #[cfg(feature = "agent")]

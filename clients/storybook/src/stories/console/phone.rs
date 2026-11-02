@@ -5,7 +5,7 @@ use ala::{
     ParentElement as _, Render, Styled as _, Window, div, prelude::*, px, white,
 };
 use penna::{
-    ActiveTheme as _, Colorize as _, Elevation, IconName,
+    ActiveTheme as _, Colorize as _, Elevation, IconName, Label, TextStyle,
     button::{Button, ButtonVariants as _},
     compact::{
         BENTO_INSET, BentoSpan, COMPACT_PILL_HEIGHT, PillLabel, PillMenuAlign, PillMenuItem,
@@ -278,14 +278,11 @@ pub(crate) fn hosts_bar(cx: &App) -> AnyElement {
 
 const GRID: f32 = PHONE_WIDTH - BENTO_INSET * 2.0;
 
-fn subtitle(text: &str, cx: &App) -> impl IntoElement {
-    div()
+fn subtitle(text: &str) -> impl IntoElement {
+    Label::new(TextStyle::Heading, text.to_owned())
+        .muted()
         .px(px(BENTO_INSET))
         .pb(px(16.0))
-        .text_size(px(15.0))
-        .line_height(px(20.0))
-        .text_color(cx.theme().foreground.muted())
-        .child(text.to_owned())
 }
 
 pub(crate) fn hosts_page(cx: &App) -> impl IntoElement {
@@ -363,10 +360,14 @@ pub(crate) fn hosts_page(cx: &App) -> impl IntoElement {
     v_flex()
         .pb(px(16.0))
         .child(large_title("Hosts", cx))
-        .child(subtitle("4 hosts · 2 connected", cx))
+        .child(subtitle("4 hosts · 2 connected"))
         .child(div().px(px(BENTO_INSET)).child(bento_grid(px(GRID), tiles)))
 }
 
+#[allow(
+    clippy::disallowed_methods,
+    reason = "the miniature draws the pane's terminal cells, scaled down in the code font"
+)]
 fn preview(lines: &str, cx: &App) -> AnyElement {
     div()
         .font_family(cx.theme().mono_font_family.clone())
@@ -637,6 +638,10 @@ fn host_menu_items() -> Vec<Vec<PillMenuItem>> {
     ]
 }
 
+#[allow(
+    clippy::disallowed_methods,
+    reason = "the sample lines stand in for terminal cells, which keep the terminal's own size and line spacing"
+)]
 fn screen_lines(cx: &App) -> impl IntoElement {
     let theme = cx.theme();
     v_flex()
@@ -814,6 +819,10 @@ impl Render for PhoneAgents {
     }
 }
 
+#[allow(
+    clippy::disallowed_methods,
+    reason = "the sample line stands in for terminal cells, which keep the terminal's own size"
+)]
 fn hud(text: &'static str, cx: &App) -> impl IntoElement {
     phone(
         div()

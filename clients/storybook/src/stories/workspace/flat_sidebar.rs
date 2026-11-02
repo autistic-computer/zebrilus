@@ -5,7 +5,9 @@ use ala::{
     AnyElement, App, AppContext as _, Context, IntoElement, Keystroke, ParentElement as _, Render,
     ScrollHandle, Styled as _, Window, div, prelude::*, px,
 };
-use penna::{ActiveTheme as _, Colorize as _, menu::PopupMenuItem, scroll::ScrollableElement as _};
+use penna::{
+    ActiveTheme as _, Label, TextStyle, menu::PopupMenuItem, scroll::ScrollableElement as _,
+};
 use zz_client::{
     program::{Program, resolve},
     window_summary::{
@@ -1073,8 +1075,6 @@ fn stacks(_: &mut Window, cx: &mut App) -> AnyElement {
 
 fn programs(_: &mut Window, cx: &mut App) -> AnyElement {
     let cx: &App = cx;
-    let muted = cx.theme().foreground.muted();
-    let mono = cx.theme().mono_font_family.clone();
     let state = FlatRowState::default();
     Program::all()
         .iter()
@@ -1100,13 +1100,10 @@ fn programs(_: &mut Window, cx: &mut App) -> AnyElement {
                         cx,
                     ))
                     .child(
-                        div()
-                            .min_w_0()
+                        Label::new(TextStyle::Mono, program.commands.join(" "))
+                            .muted()
                             .truncate()
-                            .text_size(px(11.0))
-                            .font_family(mono.clone())
-                            .text_color(muted)
-                            .child(program.commands.join(" ")),
+                            .min_w_0(),
                     ),
             )
         })

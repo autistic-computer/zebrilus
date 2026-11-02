@@ -5,7 +5,9 @@ use ala::{
     AnyElement, App, IntoElement, ListSizingBehavior, ParentElement as _, SharedString,
     Styled as _, UniformListScrollHandle, Window, div, prelude::*, px, uniform_list,
 };
-use penna::{ActiveTheme as _, Colorize as _, Icon, IconName, Selectable as _, h_flex};
+use penna::{
+    ActiveTheme as _, Colorize as _, Icon, IconName, Label, Selectable as _, TextStyle, h_flex,
+};
 use zz_client::program::Program;
 use zz_ui::{
     navigation::{
@@ -279,7 +281,7 @@ fn tree_rows(_: &mut Window, cx: &mut App) -> AnyElement {
         .into_any_element()
 }
 
-fn labeled(label: &'static str, item: impl IntoElement, cx: &App) -> AnyElement {
+fn labeled(label: &'static str, item: impl IntoElement) -> AnyElement {
     div()
         .flex()
         .flex_col()
@@ -294,12 +296,7 @@ fn labeled(label: &'static str, item: impl IntoElement, cx: &App) -> AnyElement 
                 .justify_center()
                 .child(item),
         )
-        .child(
-            div()
-                .text_size(px(11.0))
-                .text_color(cx.theme().foreground.muted())
-                .child(label),
-        )
+        .child(Label::new(TextStyle::Caption, label).muted())
         .into_any_element()
 }
 
@@ -329,7 +326,7 @@ fn program_marker(id: &'static str, brand: bool, cx: &App) -> AnyElement {
         brand.then(|| cx.theme().ground().fill),
     )
     .unwrap_or_else(|| node_icon(IconName::SquareTerminal, cx).into_any_element());
-    labeled(id, tree_node_marker(mark, false, None, cx), cx)
+    labeled(id, tree_node_marker(mark, false, None, cx))
 }
 
 fn markers(_: &mut Window, cx: &mut App) -> AnyElement {
@@ -338,17 +335,15 @@ fn markers(_: &mut Window, cx: &mut App) -> AnyElement {
         .state(
             "host",
             row()
-                .child(labeled("rest", tree_host_marker(false, None, cx), cx))
-                .child(labeled("bell", tree_host_marker(true, None, cx), cx))
+                .child(labeled("rest", tree_host_marker(false, None, cx)))
+                .child(labeled("bell", tree_host_marker(true, None, cx)))
                 .child(labeled(
                     "needs input",
                     tree_host_marker(false, badge(Badge::NeedsInput), cx),
-                    cx,
                 ))
                 .child(labeled(
                     "both",
                     tree_host_marker(true, badge(Badge::NeedsInput), cx),
-                    cx,
                 )),
         )
         .state(
@@ -368,7 +363,6 @@ fn markers(_: &mut Window, cx: &mut App) -> AnyElement {
                     labeled(
                         label,
                         tree_node_marker(node_icon(icon, cx), false, None, cx),
-                        cx,
                     )
                 }),
             ),
@@ -398,7 +392,7 @@ fn markers(_: &mut Window, cx: &mut App) -> AnyElement {
                         None,
                     )
                     .expect("claude has a mark");
-                    labeled(label, tree_node_marker(mark, bell, badge, cx), cx)
+                    labeled(label, tree_node_marker(mark, bell, badge, cx))
                 }),
             ),
         )
@@ -413,7 +407,6 @@ fn markers(_: &mut Window, cx: &mut App) -> AnyElement {
                         badge(Badge::NeedsInput),
                         cx,
                     ),
-                    cx,
                 ))
                 .child(labeled(
                     "failed",
@@ -423,7 +416,6 @@ fn markers(_: &mut Window, cx: &mut App) -> AnyElement {
                         badge(Badge::Failed),
                         cx,
                     ),
-                    cx,
                 ))
                 .child(labeled(
                     "working",
@@ -433,7 +425,6 @@ fn markers(_: &mut Window, cx: &mut App) -> AnyElement {
                         badge(Badge::Working),
                         cx,
                     ),
-                    cx,
                 ))
                 .child(labeled(
                     "finished, unseen",
@@ -443,12 +434,10 @@ fn markers(_: &mut Window, cx: &mut App) -> AnyElement {
                         badge(Badge::Finished),
                         cx,
                     ),
-                    cx,
                 ))
                 .child(labeled(
                     "bell",
                     tree_node_marker(node_icon(IconName::SquareTerminal, cx), true, None, cx),
-                    cx,
                 ))
                 .child(labeled(
                     "bell and badge",
@@ -458,7 +447,6 @@ fn markers(_: &mut Window, cx: &mut App) -> AnyElement {
                         badge(Badge::Failed),
                         cx,
                     ),
-                    cx,
                 )),
         )
         .state(
@@ -467,7 +455,6 @@ fn markers(_: &mut Window, cx: &mut App) -> AnyElement {
                 .child(labeled(
                     "connecting",
                     tree_host_indicator("indicator-connecting", true, None, cx),
-                    cx,
                 ))
                 .child(labeled(
                     "lost, detail in tooltip",
@@ -477,7 +464,6 @@ fn markers(_: &mut Window, cx: &mut App) -> AnyElement {
                         Some("Connection lost: devbox closed the ssh session".into()),
                         cx,
                     ),
-                    cx,
                 )),
         )
         .into_any_element()
@@ -498,7 +484,6 @@ fn row_actions(_: &mut Window, cx: &mut App) -> AnyElement {
                         "group-open".into(),
                         cx,
                     ),
-                    cx,
                 ))
                 .child(labeled(
                     "collapsed",
@@ -509,12 +494,10 @@ fn row_actions(_: &mut Window, cx: &mut App) -> AnyElement {
                         "group-closed".into(),
                         cx,
                     ),
-                    cx,
                 ))
                 .child(labeled(
                     "bare slot",
                     workspace_tree_marker(node_icon(IconName::Layers, cx)),
-                    cx,
                 )),
         )
         .state(
@@ -544,7 +527,6 @@ fn row_actions(_: &mut Window, cx: &mut App) -> AnyElement {
                         ],
                         cx,
                     ),
-                    cx,
                 ))
                 .child(labeled(
                     "window",
@@ -562,7 +544,6 @@ fn row_actions(_: &mut Window, cx: &mut App) -> AnyElement {
                         ],
                         cx,
                     ),
-                    cx,
                 ))
                 .child(labeled(
                     "read-only",
@@ -580,7 +561,6 @@ fn row_actions(_: &mut Window, cx: &mut App) -> AnyElement {
                         ],
                         cx,
                     ),
-                    cx,
                 )),
         )
         .into_any_element()
@@ -681,21 +661,15 @@ fn chrome(_: &mut Window, cx: &mut App) -> AnyElement {
         .state(
             "buttons",
             row()
-                .child(labeled(
-                    "settings",
-                    workspace_settings_button("settings"),
-                    cx,
-                ))
+                .child(labeled("settings", workspace_settings_button("settings")))
                 .child(labeled(
                     "settings open",
                     workspace_settings_button("settings-open").selected(true),
-                    cx,
                 ))
-                .child(labeled("sidebar", workspace_layout_button("layout"), cx))
+                .child(labeled("sidebar", workspace_layout_button("layout")))
                 .child(labeled(
                     "palette (iOS)",
                     workspace_palette_button("palette"),
-                    cx,
                 )),
         )
         .state(

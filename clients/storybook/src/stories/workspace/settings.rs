@@ -143,6 +143,16 @@ impl Controls {
     }
 }
 
+#[allow(
+    clippy::disallowed_methods,
+    reason = "the config file is file content, shown in the code font at the editor's own size"
+)]
+fn config_file_text(editor: ala::Div, cx: &App) -> ala::Div {
+    editor
+        .font_family(cx.theme().mono_font_family.clone())
+        .text_size(px(12.0))
+}
+
 fn navigation(_: &mut Window, cx: &mut App) -> AnyElement {
     let list = settings_section_navigation(
         "settings-nav",
@@ -292,8 +302,7 @@ fn entries(controls: &Controls, _: &mut Window, cx: &mut App) -> AnyElement {
                             .theme()
                             .paint_on(settings_card_ground(cx), Tone::Neutral, Emphasis::Soft)
                             .fill)
-                        .font_family(cx.theme().mono_font_family.clone())
-                        .text_size(px(12.0))
+                        .map(|editor| config_file_text(editor, cx))
                         .child("font-family = Lilex\ncursor-style = bar\nwindow-padding-x = 8"),
                 ),
             ),

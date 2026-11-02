@@ -1,5 +1,7 @@
 use ala::{AnyElement, App, Hsla, IntoElement, ParentElement as _, Styled as _, Window, div, px};
-use penna::{ActiveTheme as _, Colorize as _, Elevation, h_flex, v_flex};
+use penna::{
+    ActiveTheme as _, Colorize as _, Elevation, Label, StyledExt as _, TextStyle, h_flex, v_flex,
+};
 use zz_protocol::parse_styled_segments;
 use zz_ui::tmux_style::{split_tmux_alignment, tmux_style_colour, tmux_styled_segments_text};
 
@@ -88,19 +90,11 @@ fn line(source: &str, cx: &App) -> impl IntoElement {
         .gap_1()
         .child(
             div()
-                .font_family(theme.mono_font_family.clone())
-                .text_size(px(13.0))
-                .line_height(px(20.0))
+                .type_style(TextStyle::Mono, cx)
                 .text_color(theme.foreground)
                 .child(styled(source, theme.foreground, theme.background, cx)),
         )
-        .child(
-            div()
-                .font_family(theme.mono_font_family.clone())
-                .text_size(px(10.0))
-                .text_color(theme.foreground.muted())
-                .child(source.to_owned()),
-        )
+        .child(Label::new(TextStyle::Mono, source.to_owned()).muted())
 }
 
 fn attributes(_: &mut Window, cx: &mut App) -> AnyElement {
@@ -145,8 +139,7 @@ fn bar(source: &str, foreground: Hsla, background: Hsla, cx: &App) -> impl IntoE
                 .rounded(cx.theme().radius)
                 .bg(background)
                 .text_color(foreground)
-                .font_family(cx.theme().mono_font_family.clone())
-                .text_size(px(12.0))
+                .type_style(TextStyle::Mono, cx)
                 .child(div().flex_1().min_w_0().child(text(&left)))
                 .child(div().flex_none().child(text(&centre)))
                 .child(
@@ -158,13 +151,7 @@ fn bar(source: &str, foreground: Hsla, background: Hsla, cx: &App) -> impl IntoE
                         .child(text(&right)),
                 ),
         )
-        .child(
-            div()
-                .font_family(cx.theme().mono_font_family.clone())
-                .text_size(px(10.0))
-                .text_color(cx.theme().foreground.muted())
-                .child(source.to_owned()),
-        )
+        .child(Label::new(TextStyle::Mono, source.to_owned()).muted())
 }
 
 fn alignment(_: &mut Window, cx: &mut App) -> AnyElement {

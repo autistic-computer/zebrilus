@@ -3,8 +3,8 @@ use ala::{
     prelude::*, px,
 };
 use penna::{
-    ActiveTheme as _, IconName,
-    button::{Button, ButtonVariants as _},
+    ActiveTheme as _, IconName, PanelLook,
+    button::{Button, ButtonLook, ButtonVariants as _},
     v_flex,
 };
 use zz_ui::chooser::{
@@ -225,8 +225,8 @@ const PANES: &[TreeRow] = &[
 fn close(id: &'static str, cx: &App) -> Button {
     Button::compact_icon(id, IconName::Xmark)
         .ghost()
-        .surface_role(penna::SurfaceRole::FLAT_ICON_BUTTON)
-        .on(cx.theme().ground_of(zz_ui::roles::PICKER))
+        .look(ButtonLook::Flat)
+        .on(cx.theme().ground_of(PanelLook::Picker))
         .tooltip("Close")
 }
 

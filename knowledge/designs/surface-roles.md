@@ -34,7 +34,7 @@ then to a built-in value.
 | Piece | Code |
 |---|---|
 | Kinds, styles, patches, `Layer` and the resolver (`Theme::style`, `Theme::layer`) | `libs/penna/src/foundation/surface.rs` |
-| Painting helpers (`.surface`, `.surface_at`, `.layer`, `.rule_on`, `row_corners`, `row_radius`) | `libs/penna/src/foundation/styled.rs` |
+| Painting helpers (`.surface`, `.surface_at`, `.layer`, `.rule`; crate-private `rule_on`, `row_corners`, `row_radius`) | `libs/penna/src/foundation/styled.rs` |
 | `Theme` fields for the materials, `styles` (the theme's patches) and `inspect` | `libs/penna/src/foundation/theme.rs` |
 | Window chrome roles, `register`, `retire` and the lookups (`all()`, `find()`, `members()`) | `libs/penna/src/roles.rs` |
 | zz's roles, retired ids, and the zz-ui lookups that register them first | `crates/zz-ui/src/roles.rs`, `zz_ui::register` in `crates/zz-ui/src/lib.rs` |
@@ -104,7 +104,7 @@ fills with its tone, primary when neutral; on glass it tints the glass with it. 
 that is not a control (a card or a panel) takes its tone's wash when it has a tone, and the ground's
 wash otherwise: `chat.bubble.mine`, retired on 2026-10-28, was a card drawn in the accent tone.
 
-Rules are surfaces too: a divider role only uses `outline`, and `.rule_on(role, edge)` draws a 1px
+Rules are surfaces too: a divider role only uses `outline`, and `.rule(RuleLook::X, edge, cx)` draws a 1px
 line in the divider color when the role's outline is on.
 
 ### Kinds, groups and roles
@@ -205,8 +205,8 @@ draws one and is not glass. `none` leaves a focused field as it rests.
 
 1. **One door.** `Theme::layer(surface, state)` returns everything a surface paints in one state:
    fill or glass, edge and its width, shadows, ink, radius, and the ground what sits inside it
-   paints on. `.surface(role)`, `.surface_at(role, state)`, `.surface_hover` and
-   `.surface_interactive` paint it on an element; kit widgets take `.surface_role(role)`. The root
+   paints on. Kit components paint it in a typed look; content code may use `.surface(role)` and
+   `.surface_at(role, state)` under an allow. The root
    `clippy.toml` rejects hand-drawn borders, the `shadow_*` presets, `BoxShadow`, and the kit's
    leftover edge, ring and radius helpers outside the kit, so every painted piece has a role and
    every role shows up in the creator.
