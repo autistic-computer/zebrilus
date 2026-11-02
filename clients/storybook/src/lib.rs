@@ -216,7 +216,12 @@ mod tests {
                 if let Some(patch) = theme.roles.get(role.id()) {
                     patch.apply(&mut style);
                 }
-                assert_eq!(style, kit.style(role), "{id} {}", role.id());
+                #[allow(
+                    clippy::disallowed_methods,
+                    reason = "the test walks every role, as theme tooling does"
+                )]
+                let resolved = kit.style(role);
+                assert_eq!(style, resolved, "{id} {}", role.id());
             }
         }
     }

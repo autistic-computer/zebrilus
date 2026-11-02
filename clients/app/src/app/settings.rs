@@ -1397,10 +1397,12 @@ mod tests {
             assert_eq!(theme.radius, px(3.0));
             assert_eq!(theme.float_shadow.strength, 0.5);
             assert_eq!(theme.outline, px(0.4));
-            assert_eq!(
-                theme.style(penna::Kind::Button.role()).shape,
-                penna::Shape::Pill
-            );
+            #[allow(
+                clippy::disallowed_methods,
+                reason = "the radius preference reaches the base button role, which no look names"
+            )]
+            let button = theme.style(penna::Kind::Button.role());
+            assert_eq!(button.shape, penna::Shape::Pill);
         });
         preferences.appearance.overrides.radius = Some(5.0);
         preferences.appearance.overrides.accent = Some("green".into());

@@ -10,8 +10,8 @@ use ala::{
     Window, canvas, div, prelude::*, px, quad, relative, size,
 };
 use penna::{
-    Bar, BarLook, Chip, ChipLook, ContentLook, Label, Row, RowLook, Tab, TabLook, TextStyle, Tile,
-    TileVariant,
+    Bar, BarLook, Chip, ChipLook, ContentLook, Label, Row, RowLook, RuleLook, Tab, TabLook,
+    TextStyle, Tile, TileVariant,
 };
 
 mod drag;
@@ -1169,7 +1169,7 @@ pub fn pane_split_surface(
     cx: &App,
 ) -> Stateful<ala::Div> {
     let slot = f32::from(pane_split_slot(gap));
-    let ruled = cx.theme().style(penna::Kind::Rule.role()).outline || hairline.is_some();
+    let ruled = cx.theme().style_of(RuleLook::Plain).outline || hairline.is_some();
     let first = div()
         .flex()
         .flex_none()
