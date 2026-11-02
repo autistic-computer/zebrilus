@@ -228,7 +228,7 @@ impl Theme {
         }
     }
 
-    pub fn field_emphasis(&self, role: super::SurfaceRole) -> Emphasis {
+    pub(crate) fn field_emphasis(&self, role: super::SurfaceRole) -> Emphasis {
         let style = self.style(role);
         match style.fill {
             super::Fill::None if style.outline => Emphasis::Outline,
