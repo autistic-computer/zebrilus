@@ -23,18 +23,16 @@ pub use element_ext::{ElementExt, InteractiveElementExt};
 pub use geometry::Side;
 pub use index_path::IndexPath;
 pub use space::Space;
-pub(crate) use styled::ROW_CORNER_SMOOTHING;
 pub use styled::{
     Disableable, FOCUS_RING_WIDTH, RULE_WIDTH, RuleLook, Selectable, Sizable, Size, StyledExt,
-    h_flex, lifted_shadow, list_row, muted_on, row_corners, row_radius, row_state, row_surface,
-    v_flex,
+    h_flex, lifted_shadow, list_row, muted_on, row_state, v_flex,
 };
-pub(crate) use surface::restyle;
+pub(crate) use styled::{ROW_CORNER_SMOOTHING, RoleRuleExt, row_corners, row_radius, row_surface};
 pub use surface::{
-    Edge, Fill, Highlight, Ink, InteractiveSurfaceExt, Kind, Knobs, Layer, Shadow, ShadowMaterial,
-    Shape, Smoothing, StatefulSurfaceExt, Style, StylePatch, Surface, SurfaceRole, drawn_roles,
-    note_drawn_roles,
+    Edge, Fill, Highlight, Ink, Kind, Knobs, Layer, Shadow, ShadowMaterial, Shape, Smoothing,
+    Style, StylePatch, Surface, SurfaceRole, drawn_roles, note_drawn_roles,
 };
+pub(crate) use surface::{StatefulSurfaceExt, restyle};
 pub use text_style::TextStyle;
 pub use theme::{
     ADAPTIVE_CORNER_FRACTION, ActiveTheme, CHROME_GAP, CORNER_SMOOTHING,

@@ -14,7 +14,6 @@ pub struct Badge {
     icon: Option<Icon>,
     tone: Tone,
     emphasis: Emphasis,
-    surface_role: Option<SurfaceRole>,
     ground: Option<Ground>,
     opaque: bool,
     size: Size,
@@ -30,7 +29,6 @@ impl Badge {
             icon: None,
             tone: Tone::default(),
             emphasis: Emphasis::default(),
-            surface_role: None,
             ground: None,
             opaque: false,
             size: Size::default(),
@@ -63,19 +61,13 @@ impl Badge {
     }
 
     #[must_use]
-    pub fn surface_role(mut self, role: SurfaceRole) -> Self {
-        self.surface_role = Some(role);
-        self
-    }
-
-    #[must_use]
     pub fn on(mut self, ground: Ground) -> Self {
         self.ground = Some(ground);
         self
     }
 
     fn surface_layer(&self, theme: &Theme) -> Layer {
-        let role = self.surface_role.unwrap_or(SurfaceRole::BADGE);
+        let role = SurfaceRole::BADGE;
         let role = match self.emphasis {
             Emphasis::Solid | Emphasis::Soft => role,
             Emphasis::Outline => role.with(role.patch.fill(Fill::None)),

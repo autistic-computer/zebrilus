@@ -10,8 +10,8 @@ use smallvec::SmallVec;
 
 use crate::UiZoom;
 use crate::{
-    ActiveTheme as _, Edge, Icon, IconName, InteractiveElementExt as _, Kind, Layer, PaintState,
-    StyledExt as _, Surface, SurfaceRole, Tone, foundation::restyle, h_flex,
+    ActiveTheme as _, Edge, Icon, IconName, InteractiveElementExt as _, Layer, PaintState,
+    RuleLook, StyledExt as _, Surface, SurfaceRole, Tone, foundation::restyle, h_flex,
 };
 
 pub const TITLE_BAR_HEIGHT: Pixels = crate::PANE_HEADER_HEIGHT;
@@ -255,31 +255,15 @@ impl RenderOnce for WindowControl {
     }
 }
 
-#[derive(IntoElement)]
+#[derive(IntoElement, Default)]
 pub struct WindowControls {
     on_close_window: Option<CloseHandler>,
-    surface_role: SurfaceRole,
-}
-
-impl Default for WindowControls {
-    fn default() -> Self {
-        Self {
-            on_close_window: None,
-            surface_role: crate::roles::WINDOW_CONTROLS,
-        }
-    }
 }
 
 impl WindowControls {
     #[must_use]
     pub fn new() -> Self {
         Self::default()
-    }
-
-    #[must_use]
-    pub fn surface_role(mut self, role: SurfaceRole) -> Self {
-        self.surface_role = role;
-        self
     }
 
     #[must_use]
@@ -300,7 +284,7 @@ impl RenderOnce for WindowControls {
             return div().id("window-controls");
         }
 
-        let role = self.surface_role;
+        let role = crate::roles::WINDOW_CONTROLS;
         let control = move |icon| WindowControl { icon, role };
         h_flex()
             .id("window-controls")
@@ -366,7 +350,7 @@ impl RenderOnce for TitleBar {
                 .justify_between()
                 .h(cx.theme().title_bar_height())
                 .pl(title_bar_left_padding(cx))
-                .rule_on(Kind::Rule.role(), Edge::Bottom, cx)
+                .rule(RuleLook::Plain, Edge::Bottom, cx)
                 .bg(cx.theme().background)
                 .refine_style(&self.style)
                 .when(is_linux, |this| {
@@ -407,7 +391,6 @@ impl RenderOnce for TitleBar {
                 )
                 .child(WindowControls {
                     on_close_window: self.on_close_window,
-                    ..WindowControls::default()
                 }),
         )
     }

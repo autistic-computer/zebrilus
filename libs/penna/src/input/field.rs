@@ -57,7 +57,6 @@ pub struct Input {
     align: TextAlign,
     tone: Tone,
     emphasis: Option<Emphasis>,
-    surface_role: Option<SurfaceRole>,
     on: Option<Ground>,
 }
 
@@ -177,7 +176,6 @@ impl Input {
             align: TextAlign::Left,
             tone: Tone::Neutral,
             emphasis: None,
-            surface_role: None,
             on: None,
         }
     }
@@ -191,12 +189,6 @@ impl Input {
     #[must_use]
     pub fn emphasis(mut self, emphasis: Emphasis) -> Self {
         self.emphasis = Some(emphasis);
-        self
-    }
-
-    #[must_use]
-    pub fn surface_role(mut self, role: SurfaceRole) -> Self {
-        self.surface_role = Some(role);
         self
     }
 
@@ -261,12 +253,11 @@ impl Input {
     }
 
     fn field_surface(&self, multi_line: bool) -> Surface {
-        let field = if multi_line {
+        let role = if multi_line {
             SurfaceRole::TEXT_AREA
         } else {
             Kind::Field.role()
         };
-        let role = self.surface_role.unwrap_or(field);
         let role = match self.emphasis {
             None => role,
             Some(Emphasis::Solid | Emphasis::Soft) => {

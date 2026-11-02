@@ -4,8 +4,8 @@ use ala::{
 };
 
 use crate::{
-    ActiveTheme as _, Edge, Ground, Label, PaintState, Space, StyledExt as _, Surface, SurfaceRole,
-    TextStyle, Tone, h_flex,
+    ActiveTheme as _, Edge, Ground, Label, PaintState, RuleLook, Space, StyledExt as _, Surface,
+    SurfaceRole, TextStyle, Tone, h_flex,
     plate::{Plate, plate_element},
     roles, v_flex,
 };
@@ -205,7 +205,7 @@ impl Styled for Dock {
 impl RenderOnce for Dock {
     fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
         div()
-            .rule_on(roles::BAR_RULE, Edge::Top, cx)
+            .rule(RuleLook::Bar, Edge::Top, cx)
             .refine_style(&self.refinement)
             .child(
                 h_flex()

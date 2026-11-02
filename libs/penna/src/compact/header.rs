@@ -3,7 +3,7 @@ use ala::{
     div, prelude::*, px, transparent_black,
 };
 
-use crate::{ActiveTheme as _, Edge, StyledExt as _, roles};
+use crate::{ActiveTheme as _, Edge, StyledExt as _, foundation::RoleRuleExt as _, roles};
 
 pub const COMPACT_TITLE_BAR_HEIGHT: f32 = 44.0;
 

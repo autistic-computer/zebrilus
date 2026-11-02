@@ -8,7 +8,6 @@ use crate::{ActiveTheme as _, StyledExt as _, SurfaceRole, h_flex, kbd::Kbd};
 
 pub struct Tooltip {
     style: StyleRefinement,
-    surface_role: SurfaceRole,
     text: SharedString,
     action: Option<(Box<dyn Action>, Option<SharedString>)>,
 }
@@ -18,7 +17,6 @@ impl Tooltip {
     pub fn new(text: impl Into<SharedString>) -> Self {
         Self {
             style: StyleRefinement::default(),
-            surface_role: SurfaceRole::TOOLTIP,
             text: text.into(),
             action: None,
         }
@@ -27,12 +25,6 @@ impl Tooltip {
     #[must_use]
     pub fn action(mut self, action: &dyn Action, context: Option<&str>) -> Self {
         self.action = Some((action.boxed_clone(), context.map(SharedString::new)));
-        self
-    }
-
-    #[must_use]
-    pub fn surface_role(mut self, role: SurfaceRole) -> Self {
-        self.surface_role = role;
         self
     }
 
@@ -65,7 +57,7 @@ impl Render for Tooltip {
                 .justify_between()
                 .font_family(cx.theme().font_family.clone())
                 .text_xs()
-                .surface(self.surface_role, cx)
+                .surface(SurfaceRole::TOOLTIP, cx)
                 .refine_style(&self.style)
                 .child(div().child(self.text.clone()))
                 .when_some(key_binding, |this, kbd| {

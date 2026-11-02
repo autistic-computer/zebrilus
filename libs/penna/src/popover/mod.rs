@@ -31,7 +31,6 @@ pub struct Popover {
     style: StyleRefinement,
     anchor: Anchor,
     appearance: bool,
-    surface_role: Option<SurfaceRole>,
     overlay_closable: bool,
     trigger: Option<TriggerBuilder>,
     content: Option<ContentBuilder>,
@@ -46,7 +45,6 @@ impl Popover {
             style: StyleRefinement::default(),
             anchor: Anchor::TopLeft,
             appearance: true,
-            surface_role: None,
             overlay_closable: true,
             trigger: None,
             content: None,
@@ -102,12 +100,6 @@ impl Popover {
     #[must_use]
     pub fn appearance(mut self, appearance: bool) -> Self {
         self.appearance = appearance;
-        self
-    }
-
-    #[must_use]
-    pub fn surface_role(mut self, role: SurfaceRole) -> Self {
-        self.surface_role = Some(role);
         self
     }
 
@@ -241,8 +233,7 @@ impl RenderOnce for Popover {
             .occlude()
             .tab_group()
             .when(self.appearance, |this| {
-                this.surface(self.surface_role.unwrap_or(SurfaceRole::POPOVER), cx)
-                    .p_3()
+                this.surface(SurfaceRole::POPOVER, cx).p_3()
             })
             .map(|this| {
                 if bottom_anchor(self.anchor) {

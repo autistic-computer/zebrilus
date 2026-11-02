@@ -26,7 +26,6 @@ pub struct Kbd {
     style: StyleRefinement,
     stroke: Keystroke,
     lowercase: bool,
-    surface_role: Option<SurfaceRole>,
     on: Option<Ground>,
     size: Size,
 }
@@ -38,7 +37,6 @@ impl Kbd {
             style: StyleRefinement::default(),
             stroke,
             lowercase: false,
-            surface_role: None,
             on: None,
             size: Size::default(),
         }
@@ -47,12 +45,6 @@ impl Kbd {
     #[must_use]
     pub fn lowercase(mut self) -> Self {
         self.lowercase = true;
-        self
-    }
-
-    #[must_use]
-    pub fn surface_role(mut self, role: SurfaceRole) -> Self {
-        self.surface_role = Some(role);
         self
     }
 
@@ -69,7 +61,6 @@ impl Kbd {
         };
         Keycap {
             label: glyphs.into_any_element(),
-            surface_role: self.surface_role,
             on: self.on,
             size: self.size,
             style: self.style.clone(),
@@ -294,7 +285,6 @@ impl RenderOnce for Kbd {
 #[derive(IntoElement)]
 pub struct Keycap {
     label: AnyElement,
-    surface_role: Option<SurfaceRole>,
     on: Option<Ground>,
     size: Size,
     style: StyleRefinement,
@@ -305,22 +295,15 @@ impl Keycap {
     pub fn new(label: impl Into<SharedString>) -> Self {
         Self {
             label: label.into().into_any_element(),
-            surface_role: None,
             on: None,
             size: Size::default(),
             style: StyleRefinement::default(),
         }
     }
 
-    #[must_use]
-    pub fn surface_role(mut self, role: SurfaceRole) -> Self {
-        self.surface_role = Some(role);
-        self
-    }
-
     fn surface_layer(&self, theme: &Theme) -> Layer {
         theme.layer(
-            Surface::new(self.surface_role.unwrap_or(SurfaceRole::KEYCAP)).on_maybe(self.on),
+            Surface::new(SurfaceRole::KEYCAP).on_maybe(self.on),
             PaintState::Rest,
         )
     }

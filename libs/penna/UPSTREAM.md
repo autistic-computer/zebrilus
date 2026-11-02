@@ -111,7 +111,7 @@ radius equal to the container radius minus 4px, without a fixed cap or Full-mode
 square corners when the theme does not inset rows. Container surfaces and multiline inputs keep
 `radius`.
 
-Rows are drawn through `row_corners`, `row_surface` and `list_row`: ala's per-element fixed radius
+Rows are drawn through `Row` and `list_row` (on the crate-private `row_corners` and `row_surface`): ala's per-element fixed radius
 mode, smoothing 2.5, and a radius capped at 40% of the row height. `row_state` picks the selected
 or disabled layer, and custom menu content receives the highlight state so descriptions brighten
 to the normal foreground. Fill and border use native ala painting; no highlight painter or row

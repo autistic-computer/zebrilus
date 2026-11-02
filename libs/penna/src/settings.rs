@@ -7,7 +7,7 @@ use web_time::Duration;
 
 use crate::{
     ActiveTheme as _, Colorize as _, Disableable as _, Emphasis, Ground, IconName, Layer,
-    PaintState, RULE_WIDTH, Selectable as _, Sizable as _, StyledExt as _,
+    PaintState, RULE_WIDTH, RuleLook, Selectable as _, Sizable as _, StyledExt as _,
     badge::Badge,
     button::{Button, ButtonVariants as _},
     icon::Icon,
@@ -958,11 +958,10 @@ impl RenderOnce for SettingEntry {
             .children(press)
             .when(position.rules_above(), |this| {
                 this.child(
-                    div().flex_none().px(px(SETTINGS_STACK_PADDING)).child(
-                        Separator::horizontal()
-                            .surface_role(roles::LIST_RULE)
-                            .h(RULE_WIDTH),
-                    ),
+                    div()
+                        .flex_none()
+                        .px(px(SETTINGS_STACK_PADDING))
+                        .child(Separator::horizontal().look(RuleLook::List).h(RULE_WIDTH)),
                 )
             })
             .child(body);

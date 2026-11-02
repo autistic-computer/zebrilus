@@ -19,7 +19,6 @@ pub struct CodeEditor {
     disabled: bool,
     background_opacity: f32,
     tab_index: isize,
-    surface_role: Option<SurfaceRole>,
 }
 
 impl CodeEditor {
@@ -32,7 +31,6 @@ impl CodeEditor {
             disabled: false,
             background_opacity: 1.0,
             tab_index: 0,
-            surface_role: None,
         }
     }
 
@@ -65,12 +63,6 @@ impl CodeEditor {
         self.tab_index = tab_index;
         self
     }
-
-    #[must_use]
-    pub fn surface_role(mut self, role: SurfaceRole) -> Self {
-        self.surface_role = Some(role);
-        self
-    }
 }
 
 impl Styled for CodeEditor {
@@ -82,7 +74,7 @@ impl Styled for CodeEditor {
 impl RenderOnce for CodeEditor {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let framed = self.bordered || self.focus_bordered;
-        let role = self.surface_role.unwrap_or(SurfaceRole::TEXT_AREA);
+        let role = SurfaceRole::TEXT_AREA;
         let frame = cx.theme().layer(role, PaintState::Rest);
         let edge = frame.border_width.max(px(1.0));
         let inner = Corners::all((frame.radius - edge).max(px(0.0)));

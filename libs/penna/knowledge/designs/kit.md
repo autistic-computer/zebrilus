@@ -2,7 +2,7 @@
 type: Design Plan
 title: "The kit: penna owns every piece of UI chrome"
 description: "Apps compose penna components and stop defining surface roles, theme patches, text sizes, spacing and colors. Tokens (Space, TextStyle) are fixed ratios measured in rems. Each app role becomes a kit recipe picked by a typed variant, and every per-theme tweak an app layer made moves into penna's own theme files. Work lands in vertical slices: a component family, its stories, then both apps in their pull."
-status: In progress (2026-11-01, nidus done, zebrilus roles and typed looks in penna, zebrilus sites next)
+status: Built (2026-11-01, the kit is in place in nidus and zebrilus; no public role builder is left)
 resource: src/foundation/space.rs
 tags:
 - ui
@@ -102,55 +102,55 @@ An app role becomes a kit recipe: a penna-owned role picked by a component's var
 
 ### zebrilus: 43 roles, now 0
 
-Every zz role moved into penna (2026-11-01): 31 became kit recipes under kit names with their code patches and per-theme tweaks, 11 that had no patch and no tweak folded into the kit role they sat under, and `agent.action` merged into `icon-button.row`, which had the same look. Their old ids are in penna's retired list. penna has the typed looks that pick them (the Becomes column); zz code still picks most recipes by name (`roles::TAB_WINDOW`) until its sites move over.
+Every zz role moved into penna (2026-11-01): 31 became kit recipes under kit names with their code patches and per-theme tweaks, 11 that had no patch and no tweak folded into the kit role they sat under, and `agent.action` merged into `icon-button.row`, which had the same look. Their old ids are in penna's retired list. zz draws each through the component and look in the Status column; `zz_ui::roles` names only the recipes content reads (pane, floating pane, PiP, tile stack, window).
 
 Theme tweaks: D default, M macos, Y yaru. A dash means none.
 
 | Role | Parent | Code patch | Theme tweaks | Becomes | Status |
 |---|---|---|---|---|---|
-| titlebar.window-tab | tab | ink rest | D hover/selected tint; M smoothing 2.5, selected glass; Y hover/selected tint | `TabLook::Window` | recipe `tab.window` |
-| browser.tab | tab | - | M selected tint; Y hover/selected tint | `TabLook::Page` | recipe `tab.page` |
-| agent.tray | tab | - | M hover/selected tint | `TabLook::Tray` | recipe `tab.tray` |
-| titlebar.status-chip | badge | selected tint | M hover/selected lift | `ChipLook::Bar` | recipe `chip.bar` |
-| pane.chip | floating | contact shadow, selected tint, capsule | M solid, outline | `ChipLook::Floating`, `ButtonLook::FloatingChip` when pressed | recipe `chip.floating` |
-| pane.display-panes | floating | hover/selected ring | M hover tint, selected accent | `ChipLook::Marker` | recipe `chip.marker` |
-| pane.drag-chip | floating | capsule | M solid, outline | `ChipLook::Drag` | recipe `chip.drag` |
-| browser.empty-icon | badge | pill, no outline | - | `ChipLook::Icon` | recipe `badge.icon` |
-| sidebar.entry | row | ink rest | D hover/selected tint; M smoothing 2.5, hover tint, selected glass; Y hover/selected tint | `RowLook::Nav` | recipe `row.nav` |
-| sidebar.cursor | row | outline, contact shadow, hover tint, selected accent | - | `RowLook::Cursor` | recipe `row.cursor` |
-| sidebar.host-action | button | no outline, no shadow | - | `ButtonLook::Row` | recipe `button.row` |
-| sidebar.row-action | icon-button | hover/selected none | - | `ButtonLook::RowIcon` | recipe `icon-button.row` |
-| pane.header.button | icon-button | hover/selected none | M, Y hover/selected tint | `ButtonLook::Bar` | recipe `icon-button.bar` |
-| pane.header.flip | pane.header.button | selected tint | - | `ButtonLook::Toggle` | recipe `icon-button.toggle` |
-| browser.button | icon-button | - | - | `ButtonLook::Icon` | folded into `icon-button` |
-| agent.action | icon-button | hover/selected none | - | `ButtonLook::RowIcon` | recipe `icon-button.row` |
-| agent.jump | icon-button | solid, outline, contact shadow, hover tint | M solid | `ButtonLook::Floating` | recipe `icon-button.floating` |
-| agent.send | button | solid, outline, contact shadow, hover/selected tint | D tint, no outline, no shadow, pill, hover lift; M round, smoothing 2; Y pill | `ButtonLook::Send` | recipe `button.send` |
-| pane.float | floating | selected ring | - | content: tmux panes paint their own material | recipe `floating.pane` |
-| pane.pip | pane.float | float shadow | - | content: a PiP is frosted in its pane's colour | recipe `floating.pip` |
-| pane.find-bar | popover | - | - | `PanelLook::Popover` | folded into `popover` |
-| palette | popover | - | - | `PanelLook::Popover` | folded into `popover` |
-| pane.picker | menu-item | - | M solid, selected tint | `RowLook::MenuCard` | recipe `menu-item.card` |
-| agent.option | menu-item | - | - | `RowLook::Menu` | folded into `menu-item` |
-| browser.suggestion | menu-item | tint | M tint | `RowLook::MenuTint` | recipe `menu-item.tint` |
-| drawer.hosts | drawer | - | - | `BottomSheet` | folded into `drawer` |
-| drawer.add-host | drawer | - | - | `BottomSheet` | folded into `drawer` |
-| drawer.new-pane | drawer | - | - | `BottomSheet` | folded into `drawer` |
-| drawer.tabs | drawer | - | - | `BottomSheet` | folded into `drawer` |
-| drawer.bindings | drawer | - | - | `BottomSheet` | folded into `drawer` |
-| pane-stack | tile | no outline, no shadow, hover/selected tint, capsule | D smoothing 3; M contact shadow, smoothing 3; Y contact shadow | content: stack tiles light, dim and show program faces | recipe `tile.stack` |
-| pane.drop-zone | floating | tint, no shadow, hover/selected tint | M no shadow | `TileVariant::Drop`, `TileVariant::Veil` | recipe `tile.drop` |
-| phone.mini | tile | no fill, selected ring | - | `TileVariant::Mini` | recipe `tile.mini` |
-| pane.header | bar | fixed knobs | - | `BarLook::Pane` | recipe `bar.pane` |
-| pane.header.title | button.quiet | hover/selected tint | - | `TabLook::Title` | recipe `button.title` |
-| rule.split | rule | - | - | `RuleLook::Plain` | folded into `rule` |
-| agent.bubble | card | - | M, Y tint, no outline, no shadow | `CardLook::Bubble` | recipe `card.bubble` |
-| code | card | no outline, no shadow | M, Y tint, no outline, no shadow | `CardLook::Code` | recipe `card.code` |
-| figure | card | no fill | - | `CardLook::Figure` | recipe `card.figure` |
-| agent.attachment | card | - | M tint | `CardLook::Image` | recipe `card.image` |
-| agent.composer | field.multiline | pill | D hover/selected none; M smoothing 2.5, hover/selected none; Y tint, outline, hover/selected none | `FieldLook::Composer` | recipe `field.composer` |
-| browser.address | field | no fill, no outline | D, M selected tint | `FieldLook::Address` | recipe `field.address` |
-| picker.notice | bar | - | - | `BarLook::Plain` on the picker's ground | folded into `bar` |
+| titlebar.window-tab | tab | ink rest | D hover/selected tint; M smoothing 2.5, selected glass; Y hover/selected tint | `TabLook::Window` | `tab.window`, drawn by `Tab`, `TabLook::Window` |
+| browser.tab | tab | - | M selected tint; Y hover/selected tint | `TabLook::Page` | `tab.page`, drawn by `Tab`, `TabLook::Page` |
+| agent.tray | tab | - | M hover/selected tint | `TabLook::Tray` | `tab.tray`, drawn by `Tab`, `TabLook::Tray` |
+| titlebar.status-chip | badge | selected tint | M hover/selected lift | `ChipLook::Bar` | `chip.bar`, drawn by `Chip`, `ChipLook::Bar` |
+| pane.chip | floating | contact shadow, selected tint, capsule | M solid, outline | `ChipLook::Floating`, `ButtonLook::FloatingChip` when pressed | `chip.floating`, drawn by `Chip`, `ChipLook::Floating`; pressed, `Button`, `ButtonLook::FloatingChip` |
+| pane.display-panes | floating | hover/selected ring | M hover tint, selected accent | `ChipLook::Marker` | `chip.marker`, drawn by `Chip`, `ChipLook::Marker`, ringed in tmux's colour with `Chip::ring` |
+| pane.drag-chip | floating | capsule | M solid, outline | `ChipLook::Drag` | `chip.drag`, drawn by `Chip`, `ChipLook::Drag` |
+| browser.empty-icon | badge | pill, no outline | - | `ChipLook::Icon` | `badge.icon`, drawn by `Chip`, `ChipLook::Icon` |
+| sidebar.entry | row | ink rest | D hover/selected tint; M smoothing 2.5, hover tint, selected glass; Y hover/selected tint | `RowLook::Nav` | `row.nav`, drawn by `Row`, `RowLook::Nav` |
+| sidebar.cursor | row | outline, contact shadow, hover tint, selected accent | - | `RowLook::Cursor` | `row.cursor`, drawn by `Row`, `RowLook::Cursor` |
+| sidebar.host-action | button | no outline, no shadow | - | `ButtonLook::Row` | `button.row`, drawn by `Button`, `ButtonLook::Row` |
+| sidebar.row-action | icon-button | hover/selected none | - | `ButtonLook::RowIcon` | `icon-button.row`, drawn by `Button`, `ButtonLook::RowIcon` |
+| pane.header.button | icon-button | hover/selected none | M, Y hover/selected tint | `ButtonLook::Bar` | `icon-button.bar`, drawn by `Button`, `ButtonLook::Bar` |
+| pane.header.flip | pane.header.button | selected tint | - | `ButtonLook::Toggle` | `icon-button.toggle`, drawn by `Button`, `ButtonLook::Toggle` |
+| browser.button | icon-button | - | - | `ButtonLook::Icon` | `icon-button`, drawn by `Button`, `ButtonLook::Icon` |
+| agent.action | icon-button | hover/selected none | - | `ButtonLook::RowIcon` | `icon-button.row`, drawn by `Button`, `ButtonLook::RowIcon` |
+| agent.jump | icon-button | solid, outline, contact shadow, hover tint | M solid | `ButtonLook::Floating` | `icon-button.floating`, drawn by `Button`, `ButtonLook::Floating` |
+| agent.send | button | solid, outline, contact shadow, hover/selected tint | D tint, no outline, no shadow, pill, hover lift; M round, smoothing 2; Y pill | `ButtonLook::Send` | `button.send`, drawn by `Button`, `ButtonLook::Send` |
+| pane.float | floating | selected ring | - | content: tmux panes paint their own material | `floating.pane`, content: `FloatingSurface` paints it in tmux's popup colours |
+| pane.pip | pane.float | float shadow | - | content: a PiP is frosted in its pane's colour | `floating.pip`, content: `PipSurface` paints it in its pane's colour |
+| pane.find-bar | popover | - | - | `PanelLook::Popover` | `popover`, drawn by `Panel`, `PanelLook::Popover` |
+| palette | popover | - | - | `PanelLook::Popover` | `popover`, drawn by `Panel`, `PanelLook::Popover` |
+| pane.picker | menu-item | - | M solid, selected tint | `RowLook::MenuCard` | `menu-item.card`, drawn by `Row`, `RowLook::MenuCard` |
+| agent.option | menu-item | - | - | `RowLook::Menu` | `menu-item`, drawn by `Row`, `RowLook::Menu` |
+| browser.suggestion | menu-item | tint | M tint | `RowLook::MenuTint` | `menu-item.tint`, drawn by `Row`, `RowLook::MenuTint` |
+| drawer.hosts | drawer | - | - | `BottomSheet` | `drawer`, drawn by `BottomSheet` |
+| drawer.add-host | drawer | - | - | `BottomSheet` | `drawer`, drawn by `BottomSheet` |
+| drawer.new-pane | drawer | - | - | `BottomSheet` | `drawer`, drawn by `BottomSheet` |
+| drawer.tabs | drawer | - | - | `BottomSheet` | `drawer`, drawn by `BottomSheet` |
+| drawer.bindings | drawer | - | - | `BottomSheet` | `drawer`, drawn by `BottomSheet` |
+| pane-stack | tile | no outline, no shadow, hover/selected tint, capsule | D smoothing 3; M contact shadow, smoothing 3; Y contact shadow | content: stack tiles light, dim and show program faces | `tile.stack`, content: `PaneStack` and program faces paint it by hand |
+| pane.drop-zone | floating | tint, no shadow, hover/selected tint | M no shadow | `TileVariant::Drop`, `TileVariant::Veil` | `tile.drop`, drawn by `Tile`, `TileVariant::Drop` and `TileVariant::Veil` |
+| phone.mini | tile | no fill, selected ring | - | `TileVariant::Mini` | `tile.mini`, drawn by `Tile`, `TileVariant::Mini` |
+| pane.header | bar | fixed knobs | - | `BarLook::Pane` | `bar.pane`, drawn by `Bar`, `BarLook::Pane` |
+| pane.header.title | button.quiet | hover/selected tint | - | `TabLook::Title` | `button.title`, drawn by `Tab`, `TabLook::Title` |
+| rule.split | rule | - | - | `RuleLook::Plain` | `rule`, drawn by `Separator`, `RuleLook::Plain` |
+| agent.bubble | card | - | M, Y tint, no outline, no shadow | `CardLook::Bubble` | `card.bubble`, drawn by `Card`, `CardLook::Bubble` |
+| code | card | no outline, no shadow | M, Y tint, no outline, no shadow | `CardLook::Code` | `card.code`, drawn by `Card`, `CardLook::Code`; `TextView` code blocks |
+| figure | card | no fill | - | `CardLook::Figure` | `card.figure`, drawn by `TextView` tables, `CardLook::Figure` |
+| agent.attachment | card | - | M tint | `CardLook::Image` | `card.image`, drawn by `Card`, `CardLook::Image` |
+| agent.composer | field.multiline | pill | D hover/selected none; M smoothing 2.5, hover/selected none; Y tint, outline, hover/selected none | `FieldLook::Composer` | `field.composer`, drawn by `field_chrome` and `field_underlay`, `FieldLook::Composer` |
+| browser.address | field | no fill, no outline | D, M selected tint | `FieldLook::Address` | `field.address`, drawn by `field_chrome`, `FieldLook::Address` |
+| picker.notice | bar | - | - | `BarLook::Plain` on the picker's ground | `bar`, drawn by `Bar`, `BarLook::Plain` on the picker's ground |
 
 ### nidus: 8 roles, now 0
 
@@ -174,15 +174,14 @@ Each slice lands in penna (component, variants, recipes, theme tweaks, stories),
 1. Tokens and `Label` (this doc).
 2. Chip, Steps and Notice; nidus status pill, board chips, first-run steps, banners and the panel's status card. The `chip` and `step` recipes are pills: nidus asked for `rounded_full()` before, which the role's radius overrode. `feedback::callout` and `inline_alert` stay until zebrilus's notice batch moves to Notice.
 3. Inspector, Well, Tile and Dock; the rest of nid-app's chrome; nidus lint on. The well is a tinted recess and tiles are painted on its ground (`Tile::on(Well::ground(cx))`), so screens stand apart from it on every theme; as plain cards both had the same fill wherever a theme turns outlines off.
-4. zebrilus families, one integration each: icon buttons, chips, drawers, floating panels, tabs, menu items, canvas, bars and rules, content, rows, fields, notice; zebrilus lint on. The penna side landed first (2026-11-01): every look under Looks, the readers and their stories, with the old `.surface_role` builders still public until the sites move.
+4. zebrilus families (done 2026-11-01): icon buttons, chips, drawers, floating panels, tabs, menu items, canvas, bars and rules, content, rows, fields, notice; zebrilus lint on as an error. The penna side landed first: every look under Looks, the readers and their stories. Once the sites moved, every `.surface_role` builder went crate-private or away, with `sheet_detail_row`'s role, `picker_search_on`, and the `rule_on`, `row_surface`, `row_corners`, `row_radius`, `outer_radius`, `surface_hover` and `surface_interactive` helpers.
 5. Close registration (done 2026-11-01): `SurfaceRole` has a private field and crate-private constructors and builders, so no other crate can make or restyle a role; `penna::register`, `roles::register`, `roles::retire` and app theme layers are gone; the retired list is penna's. Field looks the storybook used to build by hand are `Input::emphasis`.
 
 ## Lint
 
-Defining a role is a compile error outside penna. The lint covers painting and text by hand.
+Defining a role or restyling a widget by role is a compile error outside penna: `SurfaceRole` has crate-private constructors, every `.surface_role` builder is crate-private, and `rule_on`, `row_surface`, `row_corners`, `row_radius`, `surface_hover` and `surface_interactive` are crate-private. The lint covers what stays public for content code: painting and text by hand.
 
-
-Each app extends the `disallowed-methods` list it already has (`nidus/crates/nid-app/clippy.toml`, `zebrilus/clippy.toml` at the workspace root, which also covers `clients/storybook`; a per-crate file would replace the root list). Added paths: `penna::StyledExt::{surface, surface_at, layer, rule_on}`, `penna::Theme::layer`, `penna::InteractiveSurfaceExt::surface_hover`, `penna::StatefulSurfaceExt::surface_interactive`, `penna::row_surface`, `ala::Styled::{text_size, text_xs, text_sm, text_base, text_lg, text_xl, text_2xl, text_3xl, font_weight}` and the `penna::StyledExt::font_*` weight helpers. `penna::rems_from_px` is not on the list: sizes use it. Both apps carry the lint. zebrilus warns at every site its slice 4 has not moved onto a component yet; content code allows it on the narrowest fn with a reason. The lint is checked once by hand when added, on Linux and on a Mac (macOS-only code is not compiled on Linux). Spacing setters stay open: `gap(Space::S4)` and `gap(px(10.))` are the same call, so Space use is a review rule.
+Each app extends the `disallowed-methods` list it already has (`nidus/crates/nid-app/clippy.toml`, `zebrilus/clippy.toml` at the workspace root, which also covers `clients/storybook`; a per-crate file would replace the root list). Added paths: `penna::StyledExt::{surface, surface_at, layer}`, `penna::Theme::layer`, `ala::Styled::{text_size, text_xs, text_sm, text_base, text_lg, text_xl, text_2xl, text_3xl, font_weight}` and the `penna::StyledExt::font_*` weight helpers. A path that is no longer public leaves the list, since clippy warns on a path it cannot reach. `penna::rems_from_px` is not on the list: sizes use it. Both apps carry the lint and pass it as an error; content code allows it on the narrowest fn with a reason. The lint is checked once by hand when added, on Linux and on a Mac (macOS-only code is not compiled on Linux). Spacing setters stay open: `gap(Space::S4)` and `gap(px(10.))` are the same call, so Space use is a review rule.
 
 ## How to work
 

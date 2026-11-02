@@ -179,7 +179,6 @@ pub struct Dialog {
     button_props: DialogButtonProps,
     show_button_row: bool,
     a11y_role: Role,
-    surface_role: Option<SurfaceRole>,
     pub(crate) props: DialogProps,
     pub(crate) focus_handle: FocusHandle,
     pub(crate) layer_ix: usize,
@@ -198,7 +197,6 @@ impl Dialog {
             button_props: DialogButtonProps::default(),
             show_button_row: false,
             a11y_role: Role::Dialog,
-            surface_role: None,
             props: DialogProps::default(),
             focus_handle: cx.focus_handle(),
             layer_ix: 0,
@@ -279,12 +277,6 @@ impl Dialog {
     }
 
     #[must_use]
-    pub fn surface_role(mut self, role: SurfaceRole) -> Self {
-        self.surface_role = Some(role);
-        self
-    }
-
-    #[must_use]
     fn header(mut self, header: impl IntoElement) -> Self {
         self.header = Some(header.into_any_element());
         self
@@ -340,7 +332,7 @@ impl RenderOnce for Dialog {
         let animation = Animation::new(ANIMATION_DURATION).with_easing(ease_out_quint());
         let scrim = cx.theme().scrim;
 
-        let body = dialog_frame(self.surface_role.unwrap_or(SurfaceRole::DIALOG), cx)
+        let body = dialog_frame(SurfaceRole::DIALOG, cx)
             .id(layer_ix)
             .debug_selector(move || format!("dialog-{layer_ix}"))
             .role(self.a11y_role)
@@ -556,12 +548,6 @@ impl AlertDialog {
     #[must_use]
     pub fn button_props(mut self, button_props: DialogButtonProps) -> Self {
         self.button_props = button_props;
-        self
-    }
-
-    #[must_use]
-    pub fn surface_role(mut self, role: SurfaceRole) -> Self {
-        self.base = self.base.surface_role(role);
         self
     }
 

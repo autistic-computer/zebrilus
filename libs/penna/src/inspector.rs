@@ -8,7 +8,7 @@ use ala::{
 
 use crate::{
     ActiveTheme as _, Edge, IconName, Label, Side, Space, StyledExt as _, Surface, SurfaceRole,
-    TextStyle, button::Button, h_flex, rems_from_px, roles, v_flex,
+    TextStyle, button::Button, foundation::RoleRuleExt as _, h_flex, rems_from_px, roles, v_flex,
 };
 
 const WIDTH: f32 = 340.0;

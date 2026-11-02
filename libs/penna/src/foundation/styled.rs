@@ -145,6 +145,20 @@ pub trait StyledExt: Styled + Sized {
         self.rule_on(look.role(), edge, cx)
     }
 
+    font_weight!(font_thin, THIN);
+    font_weight!(font_extralight, EXTRA_LIGHT);
+    font_weight!(font_light, LIGHT);
+    font_weight!(font_normal, NORMAL);
+    font_weight!(font_medium, MEDIUM);
+    font_weight!(font_semibold, SEMIBOLD);
+    font_weight!(font_bold, BOLD);
+    font_weight!(font_extrabold, EXTRA_BOLD);
+    font_weight!(font_black, BLACK);
+}
+
+impl<E: Styled> StyledExt for E {}
+
+pub(crate) trait RoleRuleExt: Styled + Sized {
     fn rule_on(self, role: SurfaceRole, edge: Edge, cx: &App) -> Self {
         let theme = cx.theme();
         if !theme.style(role).outline {
@@ -159,19 +173,9 @@ pub trait StyledExt: Styled + Sized {
         }
         .border_color(theme.divider_color())
     }
-
-    font_weight!(font_thin, THIN);
-    font_weight!(font_extralight, EXTRA_LIGHT);
-    font_weight!(font_light, LIGHT);
-    font_weight!(font_normal, NORMAL);
-    font_weight!(font_medium, MEDIUM);
-    font_weight!(font_semibold, SEMIBOLD);
-    font_weight!(font_bold, BOLD);
-    font_weight!(font_extrabold, EXTRA_BOLD);
-    font_weight!(font_black, BLACK);
 }
 
-impl<E: Styled> StyledExt for E {}
+impl<E: Styled> RoleRuleExt for E {}
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub enum RuleLook {
@@ -199,7 +203,7 @@ impl From<RuleLook> for Surface {
     }
 }
 
-pub fn row_radius(layer: &Layer, height: Pixels) -> Pixels {
+pub(crate) fn row_radius(layer: &Layer, height: Pixels) -> Pixels {
     if layer.radius >= FULL_CORNER_RADIUS {
         layer.radius
     } else {
@@ -207,7 +211,7 @@ pub fn row_radius(layer: &Layer, height: Pixels) -> Pixels {
     }
 }
 
-pub fn row_corners<E: Styled>(element: E, layer: &Layer, height: Pixels) -> E {
+pub(crate) fn row_corners<E: Styled>(element: E, layer: &Layer, height: Pixels) -> E {
     element
         .rounded(row_radius(layer, height))
         .corner_radius_mode(ala::CornerRadiusMode::Fixed)
@@ -217,7 +221,7 @@ pub fn row_corners<E: Styled>(element: E, layer: &Layer, height: Pixels) -> E {
 const ROW_RADIUS_SHARE: f32 = 0.40;
 pub(crate) const ROW_CORNER_SMOOTHING: f32 = 2.5;
 
-pub fn row_surface<E: StatefulInteractiveElement + Styled>(
+pub(crate) fn row_surface<E: StatefulInteractiveElement + Styled>(
     element: E,
     surface: impl Into<Surface>,
     state: PaintState,

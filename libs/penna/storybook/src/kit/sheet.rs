@@ -1,7 +1,6 @@
 use ala::{
     AnyElement, App, IntoElement, ParentElement as _, SharedString, Styled as _, Window, div, px,
 };
-use penna::roles;
 use penna::{
     ActiveTheme as _, Colorize as _, Elevation, Icon, IconName, StyledExt as _, h_flex,
     sheet::{BottomSheet, bottom_sheet, sheet_action, sheet_close, sheet_detail_row, sheet_option},
@@ -119,7 +118,6 @@ fn sheets(_: &mut Window, cx: &mut App) -> AnyElement {
             )
             .child(sheet_detail_row(
                 "new-terminal",
-                roles::PHONE_ROW,
                 Some(Icon::new(IconName::SquareTerminal)),
                 "Terminal",
                 "A shell in the current folder",
@@ -127,7 +125,6 @@ fn sheets(_: &mut Window, cx: &mut App) -> AnyElement {
             ))
             .child(sheet_detail_row(
                 "new-browser",
-                roles::PHONE_ROW,
                 Some(Icon::new(IconName::Globe)),
                 "Browser",
                 "A web page on macbook, localhost included",

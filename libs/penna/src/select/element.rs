@@ -4,7 +4,7 @@ use ala::{
     prelude::FluentBuilder as _,
 };
 
-use crate::{Ground, Sizable, Size, SurfaceRole};
+use crate::{Ground, Sizable, Size};
 
 use super::{
     CONTEXT,
@@ -52,12 +52,6 @@ impl<D: SelectDelegate> Select<D> {
     #[must_use]
     pub fn on(mut self, ground: Ground) -> Self {
         self.options.on = Some(ground);
-        self
-    }
-
-    #[must_use]
-    pub fn surface_role(mut self, role: SurfaceRole) -> Self {
-        self.options.surface_role = Some(role);
         self
     }
 

@@ -73,7 +73,6 @@ pub struct BottomSheet {
     bottom_inset: Pixels,
     on_dismiss: Dismiss,
     content_scroll: Option<ScrollHandle>,
-    surface_role: Option<SurfaceRole>,
     heading: Option<AnyElement>,
     full: Option<Pixels>,
 }
@@ -94,7 +93,6 @@ pub fn bottom_sheet(
         bottom_inset,
         on_dismiss: Rc::new(on_dismiss),
         content_scroll: None,
-        surface_role: None,
         heading: None,
         full: None,
     }
@@ -104,12 +102,6 @@ impl BottomSheet {
     #[must_use]
     pub fn content_scroll(mut self, handle: ScrollHandle) -> Self {
         self.content_scroll = Some(handle);
-        self
-    }
-
-    #[must_use]
-    pub fn surface_role(mut self, role: SurfaceRole) -> Self {
-        self.surface_role = Some(role);
         self
     }
 
@@ -202,12 +194,12 @@ pub fn sheet_row(
 
 pub fn sheet_detail_row(
     id: impl Into<ElementId>,
-    role: SurfaceRole,
     slot: Option<Icon>,
     label: impl Into<SharedString>,
     detail: impl IntoElement,
     cx: &App,
 ) -> Stateful<Div> {
+    let role = roles::PHONE_ROW;
     let layer = cx.theme().layer(role, PaintState::Rest);
     let muted = muted_on(layer.ground, cx);
     row_shell(id, role, px(DETAIL_HEIGHT), cx)
@@ -485,7 +477,7 @@ impl RenderOnce for BottomSheet {
         let margin = px(FLOAT_MARGIN);
         let rest = self.bottom_inset.max(margin);
         let full = self.full;
-        let sheet = self.surface_role.unwrap_or(SurfaceRole::DRAWER);
+        let sheet = SurfaceRole::DRAWER;
         let ground = theme.ground_of(sheet);
         let grabber = Layer {
             fill: theme

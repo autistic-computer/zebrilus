@@ -1562,7 +1562,7 @@ pub enum Edge {
     Right,
 }
 
-pub trait InteractiveSurfaceExt: InteractiveElement + Styled + Sized {
+pub(crate) trait InteractiveSurfaceExt: InteractiveElement + Styled + Sized {
     fn surface_hover(self, surface: impl Into<Surface>, state: PaintState, cx: &App) -> Self {
         let surface = surface.into();
         let theme = cx.theme();
@@ -1577,7 +1577,7 @@ pub trait InteractiveSurfaceExt: InteractiveElement + Styled + Sized {
 
 impl<E: InteractiveElement + Styled> InteractiveSurfaceExt for E {}
 
-pub trait StatefulSurfaceExt: StatefulInteractiveElement + Styled + Sized {
+pub(crate) trait StatefulSurfaceExt: StatefulInteractiveElement + Styled + Sized {
     fn surface_interactive(self, surface: impl Into<Surface>, state: PaintState, cx: &App) -> Self {
         let surface = surface.into();
         let theme = cx.theme();

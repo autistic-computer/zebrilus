@@ -17,7 +17,7 @@ use ala::{
 use markdown::mdast;
 
 use crate::{
-    ActiveTheme as _, Edge, Kind, PaintState, Sizable as _, StyledExt, SurfaceRole, WindowExt as _,
+    ActiveTheme as _, Edge, PaintState, RuleLook, Sizable as _, StyledExt, WindowExt as _,
     check::Check,
     h_flex,
     highlighter::{HighlightTheme, LanguageRegistry, SyntaxHighlighter},
@@ -43,7 +43,6 @@ use super::{
 use crate::Colorize as _;
 
 const BLOCKQUOTE_BAR_WIDTH: Pixels = px(3.0);
-const RULE: SurfaceRole = Kind::Rule.role();
 
 thread_local! {
     static CODE_BLOCK_HIGHLIGHTERS: RefCell<HashMap<SharedString, SyntaxHighlighter>> =
@@ -1729,7 +1728,9 @@ impl BlockNode {
                         .when(align == ColumnumnAlign::Right, |this| this.text_right())
                         .px_2()
                         .py_1()
-                        .when(!is_last_col, |this| this.rule_on(RULE, Edge::Right, cx))
+                        .when(!is_last_col, |this| {
+                            this.rule(RuleLook::Plain, Edge::Right, cx)
+                        })
                         .refine_style(&style.table_cell)
                         .child(cell.children.render(node_cx, window, cx)),
                 );
@@ -1739,7 +1740,7 @@ impl BlockNode {
                     .id("row")
                     .w_full()
                     .when(row_ix < row_count - 1, |this| {
-                        this.rule_on(RULE, Edge::Bottom, cx)
+                        this.rule(RuleLook::Plain, Edge::Bottom, cx)
                     })
                     .flex()
                     .flex_row()
@@ -1791,7 +1792,9 @@ impl BlockNode {
                         .w(Length::Definite(relative(width)))
                         .px_2()
                         .py_1()
-                        .when(!is_last_col, |this| this.rule_on(RULE, Edge::Right, cx))
+                        .when(!is_last_col, |this| {
+                            this.rule(RuleLook::Plain, Edge::Right, cx)
+                        })
                         .refine_style(&style.table_cell)
                         .child(cell.children.render(node_cx, window, cx)),
                 );
@@ -1802,7 +1805,7 @@ impl BlockNode {
                     .id("row")
                     .w_full()
                     .when(row_ix < row_count - 1, |this| {
-                        this.rule_on(RULE, Edge::Bottom, cx)
+                        this.rule(RuleLook::Plain, Edge::Bottom, cx)
                     })
                     .flex()
                     .flex_row()
@@ -1955,7 +1958,7 @@ impl BlockNode {
                     div()
                         .id("horizontal-rule")
                         .w_full()
-                        .rule_on(RULE, Edge::Top, cx),
+                        .rule(RuleLook::Plain, Edge::Top, cx),
                 )
                 .into_any_element(),
             BlockNode::Break { .. } => div().id("break").into_any_element(),

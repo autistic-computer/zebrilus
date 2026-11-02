@@ -8,7 +8,7 @@ use ala::{
 
 use crate::{
     ActiveTheme as _, Colorize as _, Ground, Icon, IconName, IndexPath, Kind, PaintState,
-    Sizable as _, Size, StyledExt as _, Surface, SurfaceRole, h_flex,
+    Sizable as _, Size, StyledExt as _, Surface, h_flex,
     input::{Input, InputEvent, InputState, field_chrome, field_paint, field_text},
     menu::{PopupMenu, PopupMenuItem},
     sheet::{bottom_sheet, close_sheet, floating_sheet, sheet_close, sheet_inset, sheet_option},
@@ -33,7 +33,6 @@ pub(super) struct SelectOptions {
     pub(super) menu_max_h: Option<Length>,
     pub(super) disabled: bool,
     pub(super) on: Option<Ground>,
-    pub(super) surface_role: Option<SurfaceRole>,
 }
 
 pub enum SelectEvent<D: SelectDelegate> {
@@ -288,8 +287,7 @@ impl<D: SelectDelegate> SelectState<D> {
         let open = self.menu.is_some() || self.sheet;
         let disabled = self.options.disabled;
         let size = self.options.size;
-        let surface = Surface::new(self.options.surface_role.unwrap_or(Kind::Field.role()))
-            .on_maybe(self.options.on);
+        let surface = Surface::new(Kind::Field.role()).on_maybe(self.options.on);
         let paint = field_paint(surface, cx);
         let state = match (disabled, open || focused) {
             (true, _) => PaintState::Disabled,

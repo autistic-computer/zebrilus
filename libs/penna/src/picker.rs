@@ -1,6 +1,6 @@
 use crate::{
-    ActiveTheme as _, CHROME_GAP, Colorize as _, Edge, Icon, IconName, Layer, Sizable as _,
-    StyledExt as _, SurfaceRole, h_flex,
+    ActiveTheme as _, CHROME_GAP, Colorize as _, Edge, Icon, IconName, Layer, RuleLook,
+    Sizable as _, StyledExt as _, h_flex,
     input::{Input, InputState},
     list_row, roles, v_flex,
 };
@@ -12,7 +12,7 @@ use ala::{
 const PICKER_ROW_HEIGHT: Pixels = px(26.0);
 pub const LIST_ROW_HEIGHT: Pixels = px(32.0);
 
-pub fn outer_radius(layer: &Layer, inset: Pixels) -> Pixels {
+pub(crate) fn outer_radius(layer: &Layer, inset: Pixels) -> Pixels {
     if layer.radius > px(0.0) && layer.radius < FULL_CORNER_RADIUS {
         layer.radius + inset
     } else {
@@ -61,18 +61,14 @@ pub fn picker_header(cx: &App) -> Div {
     v_flex()
         .flex_none()
         .gap(px(CHROME_GAP))
-        .rule_on(roles::BAR_RULE, Edge::Bottom, cx)
+        .rule(RuleLook::Bar, Edge::Bottom, cx)
         .p(px(8.0))
 }
 
 pub fn picker_search(input: &Entity<InputState>, cx: &App) -> Div {
-    picker_search_on(input, roles::PICKER, cx)
-}
-
-pub fn picker_search_on(input: &Entity<InputState>, role: SurfaceRole, cx: &App) -> Div {
     div().w_full().child(
         Input::new(input)
-            .on(cx.theme().ground_of(role))
+            .on(cx.theme().ground_of(roles::PICKER))
             .w_full()
             .min_w_0()
             .prefix(
@@ -110,7 +106,7 @@ pub fn picker_footer(cx: &App) -> Div {
         .min_h(px(40.0))
         .flex_none()
         .gap(px(CHROME_GAP))
-        .rule_on(roles::BAR_RULE, Edge::Top, cx)
+        .rule(RuleLook::Bar, Edge::Top, cx)
         .py(px(CHROME_GAP))
         .pl_4()
         .pr(px(CHROME_GAP))

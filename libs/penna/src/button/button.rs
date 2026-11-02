@@ -362,15 +362,14 @@ impl Button {
     }
 
     #[must_use]
-    pub fn surface_role(mut self, role: SurfaceRole) -> Self {
+    pub(crate) fn surface_role(mut self, role: SurfaceRole) -> Self {
         self.surface_role = Some(role);
         self
     }
 
     #[must_use]
-    pub fn look(mut self, look: ButtonLook) -> Self {
-        self.surface_role = Some(look.role());
-        self
+    pub fn look(self, look: ButtonLook) -> Self {
+        self.surface_role(look.role())
     }
 
     #[must_use]

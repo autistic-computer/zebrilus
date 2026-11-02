@@ -8,7 +8,7 @@ use ala::{
 };
 use penna::{
     ActiveTheme as _, Colorize as _, Edge, Elevation, Emphasis, Icon, IconName, IndexPath,
-    StyledExt as _, Surface, Tone,
+    RuleLook, StyledExt as _, Surface, Tone,
     badge::Badge,
     button::{Button, ButtonVariants as _},
     color_picker::{ColorPicker, ColorPickerState},
@@ -997,7 +997,7 @@ impl Phone {
                     div()
                         .mx(px(12.0))
                         .my(px(4.0))
-                        .rule_on(roles::LIST_RULE, Edge::Top, cx),
+                        .rule(RuleLook::List, Edge::Top, cx),
                 )
                 .child(sheet_row(
                     "creator-new-window",

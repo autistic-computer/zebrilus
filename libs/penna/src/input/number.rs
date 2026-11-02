@@ -6,7 +6,7 @@ use ala::{
 
 use crate::{
     ActiveTheme as _, Disableable, Emphasis, Ground, Kind, PaintState, Sizable, Size,
-    StyledExt as _, Surface, SurfaceRole, Tone, button::Button, h_flex, icon::IconName,
+    StyledExt as _, Surface, Tone, button::Button, h_flex, icon::IconName,
 };
 
 use super::{
@@ -107,7 +107,6 @@ pub struct NumberInput {
     appearance: bool,
     disabled: bool,
     tone: Tone,
-    surface_role: Option<SurfaceRole>,
     on: Option<Ground>,
 }
 
@@ -119,7 +118,6 @@ impl NumberInput {
             size: Size::default(),
             appearance: true,
             tone: Tone::Neutral,
-            surface_role: None,
             on: None,
             disabled: false,
         }
@@ -169,12 +167,6 @@ impl NumberInput {
     }
 
     #[must_use]
-    pub fn surface_role(mut self, role: SurfaceRole) -> Self {
-        self.surface_role = Some(role);
-        self
-    }
-
-    #[must_use]
     pub fn on(mut self, ground: Ground) -> Self {
         self.on = Some(ground);
         self
@@ -206,7 +198,7 @@ impl RenderOnce for NumberInput {
         self.state.update(cx, InputState::mark_numeric);
 
         let focused = self.state.read(cx).focus_handle_ref().is_focused(window) && !self.disabled;
-        let role = self.surface_role.unwrap_or(Kind::Field.role());
+        let role = Kind::Field.role();
         let surface = Surface::new(role).tone(self.tone).on_maybe(self.on);
         let state = match (self.disabled, focused) {
             (true, _) => PaintState::Disabled,
@@ -243,7 +235,6 @@ impl RenderOnce for NumberInput {
                     .with_size(self.size)
                     .disabled(self.disabled)
                     .tone(self.tone)
-                    .surface_role(role)
                     .when_some(self.on, Input::on)
                     .appearance(false)
                     .text_align(TextAlign::Center)

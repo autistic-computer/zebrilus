@@ -4,7 +4,7 @@ use crate::button::{Button, ButtonVariants as _};
 use crate::scroll::ScrollableElement;
 use crate::{ActiveTheme, Icon, IconName, Sizable as _, StyledExt, h_flex, kbd::Kbd, v_flex};
 use crate::{
-    Edge, ElementExt, Kind, PaintState, Side, Surface, SurfaceRole,
+    Edge, ElementExt, Kind, PaintState, RuleLook, Side, Surface, SurfaceRole,
     foundation::{row_corners, row_radius},
 };
 use ala::{
@@ -293,7 +293,6 @@ pub struct PopupMenu {
     bounds: Bounds<Pixels>,
 
     parent_menu: Option<WeakEntity<Self>>,
-    surface_role: SurfaceRole,
     scrollable: bool,
     scroll_handle: ScrollHandle,
     submenu_anchor: (Anchor, Pixels),
@@ -308,7 +307,6 @@ impl PopupMenu {
             action_context: None,
             previous_focus_handle: None,
             parent_menu: None,
-            surface_role: SurfaceRole::POPOVER,
             menu_items: Vec::new(),
             selected_index: None,
             min_width: None,
@@ -363,11 +361,6 @@ impl PopupMenu {
 
     pub fn max_h(mut self, height: impl Into<Pixels>) -> Self {
         self.max_height = Some(height.into());
-        self
-    }
-
-    pub fn surface_role(mut self, role: SurfaceRole) -> Self {
-        self.surface_role = role;
         self
     }
 
@@ -940,7 +933,7 @@ impl PopupMenu {
                 .mx(cx.theme().row_inset)
                 .rounded(px(0.0))
                 .border_0()
-                .rule_on(Kind::Rule.role(), Edge::Bottom, cx)
+                .rule(RuleLook::Plain, Edge::Bottom, cx)
                 .disabled(true),
             PopupMenuItem::Label(label) => this
                 .disabled(true)
@@ -968,7 +961,7 @@ impl PopupMenu {
                     StepperAction::Increment => format!("Increase {label}"),
                 };
                 let theme = cx.theme();
-                let menu = theme.ground_of(self.surface_role);
+                let menu = theme.ground_of(SurfaceRole::POPOVER);
                 let mut group =
                     theme.layer(Surface::new(Kind::Field.role()).on(menu), PaintState::Rest);
                 group.fill = group.ground.fill;
@@ -1197,7 +1190,7 @@ impl Render for PopupMenu {
             .on_action(cx.listener(Self::confirm))
             .on_action(cx.listener(Self::dismiss))
             .on_mouse_down_out(cx.listener(Self::on_mouse_down_out))
-            .surface(self.surface_role, cx)
+            .surface(SurfaceRole::POPOVER, cx)
             .text_color(cx.theme().foreground)
             .relative()
             .occlude()
