@@ -82,7 +82,7 @@ fi
 if [[ "${WEB_SYNTAX_HIGHLIGHTING:-1}" == 1 && -n "$SYNTAX_FEATURE" ]]; then
     AR="$(command -v llvm-ar || true)"
     if [[ -z "$AR" ]]; then
-        AR="$(compgen -c llvm-ar- | sort -uV | tail -n 1)"
+        AR="$({ compgen -c llvm-ar- || true; } | sort -uV | tail -n 1)"
         AR="${AR:+$(command -v "$AR")}"
     fi
     if [[ -z "$AR" ]] && command -v brew >/dev/null 2>&1; then
