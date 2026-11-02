@@ -1,6 +1,6 @@
 use ala::{
-    AnyElement, App, InteractiveElement as _, IntoElement, ParentElement as _, SharedString,
-    Styled as _, Window, div, px,
+    AnyElement, App, InteractiveElement as _, IntoElement, ParentElement as _, Pixels,
+    SharedString, Styled as _, Window, div, prelude::FluentBuilder as _, px,
 };
 use penna::{
     ActiveTheme as _, BarLook, Disableable as _, IconName, Label, PaintState, Row, RowLook, Space,
@@ -30,7 +30,7 @@ pub const STORY: Story = Story {
         Section {
             id: "fills",
             name: "Row fills",
-            summary: "A Row with .hover_group(group) is a fill set inside a taller row that lights when the whole row is pointed at. On a touch screen it draws the press highlight.",
+            summary: "A Row with .hover_group(group) is a fill set inside a taller row that lights when the whole row is pointed at. On a touch screen it draws the press highlight. .radius(px) sets a round look's corner radius, here half the 48px row.",
             build: |_, cx| stateless(fills, cx),
         },
         Section {
@@ -187,7 +187,13 @@ fn rows(_: &mut Window, cx: &mut App) -> AnyElement {
         .into_any_element()
 }
 
-fn fill_row(id: &'static str, look: RowLook, lit: PaintState, label: &'static str) -> AnyElement {
+fn fill_row(
+    id: &'static str,
+    look: RowLook,
+    lit: PaintState,
+    radius: Option<Pixels>,
+    label: &'static str,
+) -> AnyElement {
     let group = SharedString::from(format!("{id}-group"));
     div()
         .id(id)
@@ -202,6 +208,7 @@ fn fill_row(id: &'static str, look: RowLook, lit: PaintState, label: &'static st
             Row::new(format!("{id}-fill"), look)
                 .state(lit)
                 .hover_group(group)
+                .when_some(radius, Row::radius)
                 .absolute()
                 .top(px(2.0))
                 .bottom(px(2.0))
@@ -222,12 +229,14 @@ fn fills(_: &mut Window, _: &mut App) -> AnyElement {
                     "fill-sidebar-rest",
                     RowLook::Sidebar,
                     PaintState::Rest,
+                    None,
                     "Rest",
                 ))
                 .child(fill_row(
                     "fill-sidebar-current",
                     RowLook::Sidebar,
                     PaintState::Current,
+                    None,
                     "Current",
                 )),
         )
@@ -238,12 +247,32 @@ fn fills(_: &mut Window, _: &mut App) -> AnyElement {
                     "fill-nav-rest",
                     RowLook::Nav,
                     PaintState::Rest,
+                    None,
                     "Rest",
                 ))
                 .child(fill_row(
                     "fill-cursor",
                     RowLook::Cursor,
                     PaintState::Selected,
+                    None,
+                    "Cursor",
+                )),
+        )
+        .state(
+            "rounded to the row",
+            v_flex()
+                .child(fill_row(
+                    "fill-nav-round-current",
+                    RowLook::Nav,
+                    PaintState::Current,
+                    Some(px(24.0)),
+                    "Current",
+                ))
+                .child(fill_row(
+                    "fill-cursor-round",
+                    RowLook::Cursor,
+                    PaintState::Selected,
+                    Some(px(24.0)),
                     "Cursor",
                 )),
         )

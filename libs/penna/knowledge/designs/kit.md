@@ -41,7 +41,7 @@ Both scales are fixed. A theme changes fonts, materials and recipes, not the sca
 |---|---|---|---|---|---|---|---|---|---|
 | px | 2 | 4 | 6 | 8 | 10 | 12 | 16 | 24 | 32 |
 
-`TextStyle` sets size, line height and weight, and `Mono` also the code font. `Label::new(style, text)` draws a line of text; `.type_style(style, cx)` on a container sets what its text children inherit.
+`TextStyle` sets size, line height and weight, and `Mono` also the code font. `Label::new(style, text)` draws a line of text; `.type_style(style, cx)` on a container sets what its text children inherit, and `.type_style_strong(style, cx)` the same at the style's strong weight, for a container whose text comes from its caller.
 
 | TextStyle | Micro | Caption | Small | Body | Lead | Heading | Title | Display | Mono |
 |---|---|---|---|---|---|---|---|---|---|
@@ -80,7 +80,7 @@ How they behave:
 
 - Panel, Card, Bar, Tab, Row, Chip and Tile share one crate-private plate, a `Stateful<Div>` that paints the look first, so the caller's `Styled` calls land on top: a slide-over's `.rounded(px(0.0))`, a mini tile's `.bg`, a drop zone's corners. Tile painted after the caller before; it now paints first like the rest.
 - Tab and Row are interactive by default, Chip with `.interactive(true)`: they add the hover and active looks while the state is Rest or Focused, and `.interactive(false)` paints the state alone. They take the element's one hover slot, so a caller's own `.hover()` on them is replaced; a text hover goes on a child or a group.
-- `Row::row_height(height)` sizes the corners for a row that tall, as `ListItem` does at 28px by default; it does not set the height. Without it a Row keeps its look's corners. With `.hover_group(group)` a Row is a fill inside a taller row that lights when the group is pointed at, and on a coarse pointer it draws penna's press highlight.
+- `Row::row_height(height)` sizes the corners for a row that tall, as `ListItem` does at 28px by default; it does not set the height. Without it a Row keeps its look's corners. With `.hover_group(group)` a Row is a fill inside a taller row that lights when the group is pointed at, and on a coarse pointer it draws penna's press highlight. `Row::radius(px)` sets a round look's corner radius on the fill and its press highlight both; square and pill looks keep their corners.
 - `Chip::new(id, label)` takes an id; `Chip::empty(id)` draws only its children, which always follow the label. `.ring(color)` recolors the ring its look draws, for a colour tmux names.
 - `Panel::inset(px)` grows a rounded corner by the inset its rows sit at; square and pill corners stay.
 - `Tile::edge(width)` draws the look's edge at that width where the theme draws one, so a drop zone can match the edge of the frames it lands in.

@@ -1,7 +1,7 @@
 use ala::{App, ElementId, IntoElement, Pixels, RenderOnce, SharedString, Window};
 
 use crate::{
-    Ground, PaintState, Surface, SurfaceRole, Tone,
+    ActiveTheme as _, Ground, PaintState, Shape, Surface, SurfaceRole, Tone,
     plate::{Plate, plate_element},
     roles,
 };
@@ -39,6 +39,7 @@ impl From<RowLook> for Surface {
 #[derive(IntoElement)]
 pub struct Row {
     plate: Plate,
+    radius: Option<Pixels>,
 }
 
 impl Row {
@@ -46,7 +47,10 @@ impl Row {
     pub fn new(id: impl Into<ElementId>, look: RowLook) -> Self {
         let mut plate = Plate::new(id, look.role());
         plate.interactive = true;
-        Self { plate }
+        Self {
+            plate,
+            radius: None,
+        }
     }
 
     #[must_use]
@@ -74,6 +78,12 @@ impl Row {
     }
 
     #[must_use]
+    pub fn radius(mut self, radius: Pixels) -> Self {
+        self.radius = Some(radius);
+        self
+    }
+
+    #[must_use]
     pub fn hover_group(mut self, group: impl Into<SharedString>) -> Self {
         self.plate.hover_group = Some(group.into());
         self
@@ -90,6 +100,12 @@ plate_element!(Row);
 
 impl RenderOnce for Row {
     fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
-        self.plate.paint(cx)
+        let round = cx.theme().style(self.plate.surface.role).shape == Shape::Round;
+        let radius = self.radius.filter(|_| round);
+        self.plate.paint_with(cx, move |layer| {
+            if let Some(radius) = radius {
+                layer.radius = radius;
+            }
+        })
     }
 }
