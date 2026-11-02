@@ -792,3 +792,25 @@ fn a_batch_summary_after_the_turn_still_names_its_tools_and_the_live_line_follow
         Some("Counted lines in a.txt")
     );
 }
+
+#[test]
+fn text_streamed_outside_a_turn_stays_one_item() {
+    let mut shadow = Shadow::recording();
+    ready(&mut shadow);
+    for text in ["| 9 | Summ", "ary and pie |\n\n```", "mermaid\npie\n```"] {
+        shadow.payload(&update(json!({
+            "sessionUpdate": "agent_message_chunk", "messageId": "m:0",
+            "content": { "type": "text", "text": text },
+        })));
+    }
+    shadow.payload(&tool("t1", "in_progress"));
+    assert!(shadow.rejects.is_empty(), "{:?}", shadow.rejects);
+    let view = view(&shadow);
+    let item = view.item(&ItemId::new("a:m:0")).expect("one text item");
+    assert_eq!(
+        item.body.text,
+        "| 9 | Summary and pie |\n\n```mermaid\npie\n```"
+    );
+    assert_eq!(item.status, ItemStatus::Completed);
+    assert!(view.item(&ItemId::new("a:m:0~1")).is_none());
+}

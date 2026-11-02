@@ -28,6 +28,7 @@ pub(crate) struct Shadow {
     plan: Option<ItemId>,
     plans: u64,
     splits: HashMap<ItemId, u32>,
+    loose: Option<ItemId>,
     asked: HashMap<u64, ItemId>,
     answered_items: HashSet<ItemId>,
     answers: u64,
@@ -74,6 +75,9 @@ impl Shadow {
 
     pub(crate) fn turn(&mut self, fact: &turn::Fact, session: Option<&str>, now: Instant) {
         self.now = Some(now);
+        if !matches!(fact, turn::Fact::Tick) {
+            self.settle_loose();
+        }
         if self.codex
             && matches!(
                 fact,
@@ -230,6 +234,9 @@ impl Shadow {
         } else {
             ItemId::new(format!("{prefix}:{key}~{split}"))
         };
+        if self.loose.as_ref().is_some_and(|loose| *loose != item) {
+            self.settle_loose();
+        }
         if self.open(&item) {
             self.step(Fact::ItemAppended {
                 item,
@@ -259,7 +266,20 @@ impl Shadow {
             },
             background: false,
         });
-        if whole || alone {
+        if whole {
+            self.step(Fact::ItemEnded {
+                item,
+                status: ItemStatus::Completed,
+            });
+        } else if alone {
+            self.loose = Some(item);
+        }
+    }
+
+    fn settle_loose(&mut self) {
+        if let Some(item) = self.loose.take()
+            && self.open(&item)
+        {
             self.step(Fact::ItemEnded {
                 item,
                 status: ItemStatus::Completed,
@@ -271,6 +291,7 @@ impl Shadow {
         let Some(id) = update["toolCallId"].as_str() else {
             return;
         };
+        self.settle_loose();
         let item = ItemId::new(id);
         let body = ItemBody {
             title: update["title"].as_str().unwrap_or_default().to_owned(),
@@ -423,6 +444,7 @@ impl Shadow {
     }
 
     fn plan(&mut self, update: &Value) {
+        self.settle_loose();
         let steps = update["entries"]
             .as_array()
             .into_iter()
