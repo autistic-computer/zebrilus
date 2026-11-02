@@ -1,7 +1,7 @@
 ---
 type: Playbook
 title: Working with the zz storybook
-description: Run the zz storybook and penna's own, add a story, add an app's roles and plates to the theme creator, change a look and check it in every theme, and drive or screenshot it from an agent.
+description: Run the zz storybook and penna's own, add a story, add an app's plates to the theme creator, change a look and check it in every theme, and drive or screenshot it from an agent.
 resource: libs/penna/storybook/src/lib.rs
 tags:
 - storybook
@@ -33,7 +33,7 @@ app's storybook is that harness plus a `penna_storybook::Catalog`:
 |---|---|
 | `title`, `name` | the nav heading and tab titles (`zz storybook`, `zz`) |
 | `storage` | the `localStorage` prefix: `<storage>-role-edits`, `<storage>-knobs-width` |
-| `register`, `init` | what runs before built-in themes or roles are read (`zz_ui::register`), and the app's init (`zz_ui::init`) |
+| `init` | the app's init (`zz_ui::init`) |
 | `logo` | the icon path the Title bar and Icons stories show as the app's mark |
 | `plates` | the theme creator's regions, in order; the creator opens the page (`#/theme-creator`) when the list is not empty. penna's are `penna_storybook::creator::PLATES` |
 | `stories` | story lists in page order after the creator; penna's are `penna_storybook::FOUNDATION` and `KIT` |
@@ -42,8 +42,8 @@ app's storybook is that harness plus a `penna_storybook::Catalog`:
 
 An app's catalog can name only the fields it changes and end with `..PENNA`
 (`penna_storybook::PENNA`, penna's own catalog), so a field added later does not break it; zz's
-spells out every field. `penna_storybook::install` runs the catalog's `register` and fixes the
-catalog for the process, and `catalog()` read before that gives `PENNA` without fixing it.
+spells out every field. `penna_storybook::install` fixes the catalog for the
+process, and `catalog()` read before that gives `PENNA` without fixing it.
 [penna](/references/penna.md) has the whole setup of an app on the kit, its storybook included.
 
 zz's catalog is `zz_storybook::CATALOG` in `clients/storybook/src/lib.rs`: the creator's plates
@@ -146,7 +146,7 @@ Colors (the mode with Contrast, Tint hue and Tint, palettes, font), Materials
 (shape, glass, both shadows),
 Roles and Export (the theme file with Copy and Import), then App (the catalog's knobs, in zz the
 pane settings, and the preview backdrop and animations, none of which are in the theme). The Roles step lists every kind with its groups and
-roles indented under it (`penna::roles::members`, which lists the roles the app registered too), with the props each role's knobs allow
+roles indented under it (`penna::roles::members`), with the props each role's knobs allow
 (`SurfaceRole::knobs`) as segmented controls. A prop left on inherit shows the value it inherits
 and from which kind or group, built in or from this theme. Setting a prop on a role
 with nothing under it writes only what differs from that into the theme's `roles` patch; on a
@@ -163,33 +163,28 @@ six props itself, or whose groups in between do, is left out. `window` is the on
 through yet, so picking it keeps every region. Roles also go to `localStorage`, keyed by the
 start theme, so they survive a reload when the address drops them for length.
 
-# Add an app's roles and plates to the creator
+# Add an app's plates to the creator
 
-The creator edits every role in `penna::roles::all()`: the kit's, penna's chrome roles and the ones
-the app registered. To tune an app's own roles with it:
+The creator edits every role in `penna::roles::all()`: the kit's kinds and groups, penna's chrome
+roles and the recipes its components pick. Apps define no roles (penna's `knowledge/designs/kit.md`);
+to tune how a theme draws the app's pieces:
 
-1. Register the roles in the catalog's `register` function, the one the app calls at startup,
-   before `penna::init`: `penna::register(ROLES, RETIRED, LAYERS)` takes the roles, the ids that
-   are gone and the app's theme layers (`&[]` for none). A role made with
-   `SurfaceRole::under(&PARENT, ..)` shows in the Roles step under that parent, whether the parent
-   is a kit role or one of the app's; `SurfaceRole::new(id, kind, ..)` hangs under its kind. zz's
-   is `zz_ui::register`.
-2. Add a plate for them: a `Section` whose `build` paints the app's real UI with those roles, listed
+1. Add a plate: a `Section` whose `build` paints the app's real UI with penna's components, listed
    in the catalog's `plates`. List penna's plates beside it (`penna_storybook::creator::WINDOW` and
    the rest, or all of `creator::PLATES`) to keep the kit's surfaces in view. The section host notes
    the roles each plate draws as it paints, and picking a role in the creator shows only the plates
    that drew it, so nothing lists a plate's roles by hand. A role no plate draws reads "not in the
    showcase".
-3. Export (Copy JSON) writes the theme's `roles` patch for every registered role, and Import takes
-   a theme that names them: a retired id is dropped and an unknown id is refused with "unknown role
-   `id`", and "did you mean" when one is close, the same as every theme file.
+2. Export (Copy JSON) writes the theme's `roles` patch for every role, and Import takes a theme
+   that names them: a retired id is dropped and an unknown id is refused with "unknown role `id`",
+   and "did you mean" when one is close, the same as every theme file.
 
-`libs/penna/storybook/tests/creator.rs` plays such an app: it registers `board`, `board.screen`
-(under `board`) and `board.chip` (under `badge`), a retired `board.shelf` and a Board plate beside
-penna's Controls, then checks the creator comes first with those plates, the roles JSON lists the
-new roles under their parents, an edit to `board.screen` sent the way the page sends it lands in
-the exported theme and parses back with `penna::interface_theme`, import drops the retired id and
-names the unknown one, and the Board plate, drawn on ala's test platform, reports the three roles.
+`libs/penna/storybook/tests/creator.rs` plays such an app: a Board plate that draws `well`,
+`tile.screen` and `chip` beside penna's Controls. It checks the creator comes first with those
+plates, the roles JSON lists those roles under their parents, an edit to `tile.screen` sent the way
+the page sends it lands in the exported theme and parses back with `penna::interface_theme`, import
+drops a retired id (`board.screen`) and names an unknown one, and the Board plate, drawn on ala's
+test platform, reports the three roles.
 
 # Add a story
 

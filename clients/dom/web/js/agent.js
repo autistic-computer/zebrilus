@@ -98,7 +98,7 @@ function markdown(html) {
       item.replaceChildren(prefix, body);
     });
   }
-  for (const code of root.querySelectorAll(":not(pre) > code")) code.dataset.penna = "code";
+  for (const code of root.querySelectorAll(":not(pre) > code")) code.dataset.penna = "card.code";
   for (const link of root.querySelectorAll("a")) {
     link.target = "_blank";
     link.rel = "noreferrer";

@@ -273,12 +273,12 @@ except that light mode draws `light-glass` when the theme sets one.
   mode draws instead, because a light glint on a light fill shows nothing: an object of the fields it
   changes from `glass`, or a preset of its own; left out, light mode draws `glass`. A shadow object
   names only the fields it changes. Corner smoothing is not a material; every window draws `CORNER_SMOOTHING`.
-- `roles` maps a kit kind (`button`, `chip`, `row`, `popover`, ...) or a zz role id
-  (`chrome.button`, `sidebar.row`, `agent.composer`, ...) to the style props it changes: `fill`
+- `roles` maps a kit kind (`button`, `chip`, `row`, `popover`, ...) or a role id
+  (`chrome.button`, `sidebar.row`, `field.composer`, ...) to the style props it changes: `fill`
   (`none`, `tint`, `solid`, `glass`), `outline` (`true` or `false`), `shadow` (`none`, `contact`,
   `float`), `shape` (`square`, `round`, `pill`), and `hover` and `selected` (`none`, `tint`, `lift`,
-  `accent`, `ring`, `bar`). The ids are `zz_ui::roles`; [surface roles](/designs/surface-roles.md)
-  lists them and how a role resolves.
+  `accent`, `ring`, `bar`). The ids are `penna::roles`; [surface roles](/designs/surface-roles.md)
+  says how a role resolves, and penna's `knowledge/designs/kit.md` lists the recipes zz draws.
 - Each color set holds the six roots (`background`, `foreground`, `accent`, `success`, `warning`,
   `danger`) and two optional colors: `on-accent`, the text on an accent fill (a solid primary
   button in the accent, an accent selection), and `shadow-color`, the ink of every drop shadow,
@@ -296,15 +296,15 @@ was meant (`` unknown field `row_inset`, did you mean `row-inset`? ``). Material
 are kebab-case while glass fields keep `GlassMaterial`'s snake_case (`light_color`,
 `edge_shadow`), which is the usual slip. A role id `penna::roles::find` does not know is an error
 too, and suggests the role meant (`` unknown role `chromebutton`, did you mean `chrome.button`? ``),
-as is a prop value outside its list. The exception is a role zz no longer draws
-(`zz_ui::roles::RETIRED`): the file loads and that entry is dropped. Settings Import, the thin clients' Import and the storybook's
+as is a prop value outside its list. The exception is a role penna no longer draws
+(`penna::roles::is_retired`): the file loads and that entry is dropped. Settings Import, the thin clients' Import and the storybook's
 import show the same message. `look`, the nine-key format from earlier on 2026-10-13, is unknown
 the same way, so a theme file written for it loads only once it is rewritten as `materials` and
 `roles`.
 
 Three themes ship built in: Default (`default.json`), macOS (`macos.json`) and Yaru
-(`yaru.json`), each penna's file in `libs/penna/themes/` with zz's patches for its own roles laid
-over it from the file of the same name in `crates/zz-ui/themes/`. Liquid Glass was removed on 2026-10-22; a config that still names
+(`yaru.json`), each a file in `libs/penna/themes/` that also holds the per-theme tweaks of the
+recipes zz draws. Liquid Glass was removed on 2026-10-22; a config that still names
 `liquid-glass` loads Default, like any theme that is not found. macOS uses the existing material settings
 for macOS-style glass: chrome buttons, selected tabs and sidebar entries, popovers, dialogs and
 other floating surfaces, with directional glass lighting, contact and float shadows, and light and

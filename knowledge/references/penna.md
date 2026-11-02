@@ -245,7 +245,6 @@ pub static CATALOG: Catalog = Catalog {
     title: "board storybook",
     name: "board",
     storage: "board-storybook",
-    register: board::register,
     init: board::init,
     logo: IconName::Layers.path(),
     plates: &[BOARD_PLATE, penna_storybook::creator::CONTROLS],
@@ -283,17 +282,18 @@ penna's rules are lints. `libs/penna/storybook/clippy.toml` holds the list an ap
 own `clippy.toml` (`disallowed-methods` and `disallowed-types`): no raw `ala::rgb`, `rgba` or
 `hsla` (colors come from `cx.theme()`), none of `Colorize`'s mixing transforms or `Hsla::opacity`
 (name a tone and an emphasis), and no hand-drawn borders, shadows or `BoxShadow`, nor the kit
-helpers that would skip a role (draw through a surface role). A piece that breaks one on purpose
+helpers that would skip a look (draw with a kit component's look). A piece that breaks one on purpose
 takes a scoped `#[allow(clippy::disallowed_methods, reason = "..")]`. zz's root `clippy.toml`
-carries the same list and a few rules of zz's own.
+carries the same list, the kit lint against painting a role or setting text by hand (penna's
+`knowledge/designs/kit.md`), and a few rules of zz's own.
 
 # nidus, the worked example
 
 nidus was the first app on penna outside zz:
 
 - `Cargo.toml`: the dependency lines above (penna with `tray`), the dev profile block.
-- `crates/nid-app/src/theme.rs`: five roles (`board`, `board.screen`, `board.chip`, `board.found`,
-  `banner`), registered with `penna::roles::register` before `penna::init`.
+- `crates/nid-app/src/theme.rs`: `init` and `apply`, and no roles: the board, its chips, the
+  first-run steps and the banners draw with penna's `Well`, `Tile`, `Chip`, `Steps` and `Notice`.
 - `crates/nid-app/src/main.rs`: the window, opened with `TitleBar::title_bar_options`, client
   decorations except on X11, and `Root::new(view, window, cx).bordered(cfg!(target_os = "linux"))`.
 - `crates/nid-app/src/window.rs`: the shell from `app_shell_surface`, the sidebar and settings

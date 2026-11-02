@@ -35,9 +35,9 @@ then to a built-in value.
 |---|---|
 | Kinds, styles, patches, `Layer` and the resolver (`Theme::style`, `Theme::layer`) | `libs/penna/src/foundation/surface.rs` |
 | Painting helpers (`.surface`, `.surface_at`, `.layer`, `.rule`; crate-private `rule_on`, `row_corners`, `row_radius`) | `libs/penna/src/foundation/styled.rs` |
-| `Theme` fields for the materials, `styles` (the theme's patches) and `inspect` | `libs/penna/src/foundation/theme.rs` |
-| Window chrome roles, `register`, `retire` and the lookups (`all()`, `find()`, `members()`) | `libs/penna/src/roles.rs` |
-| zz's roles, retired ids, and the zz-ui lookups that register them first | `crates/zz-ui/src/roles.rs`, `zz_ui::register` in `crates/zz-ui/src/lib.rs` |
+| `Theme` fields for the materials, `styles` (the theme's patches, crate-private, read through `Theme::styles()`) and `inspect` | `libs/penna/src/foundation/theme.rs` |
+| Window chrome roles (`CHROME`), the recipes the looks pick (`RECIPES`), the retired ids (`is_retired`) and the lookups (`all()`, `find()`, `members()`) | `libs/penna/src/roles.rs` |
+| The recipes zz's content code reads (`PANE`, `FLOATING_PANE`, `FLOATING_PIP`, `TILE_STACK`, `WINDOW`) | `crates/zz-ui/src/roles.rs` |
 | Theme files: `Materials`, the `roles` map and its id check; `ThemeOverrides`, what Settings sets over a theme | `libs/penna/src/interface_theme.rs`; the built-ins in `libs/penna/themes/*.json`, which also hold every recipe's per-theme tweaks |
 | The theme creator | `penna_storybook::creator` in `libs/penna/storybook/src/creator/`, `libs/penna/storybook/src/knobs.rs`; zz's plates in `clients/storybook/src/stories/theme_creator.rs` |
 
@@ -131,8 +131,8 @@ never stacks fill on fill or outline in outline.
 
 Within a kind, roles group the way the pieces do. A role (`SurfaceRole`: an id, its kind, the
 group it is in, a label and description for the creator, a built-in `StylePatch` and whether it is
-a row) is either a kind itself, a group the kit names, or one of zz's places, which sits in a kind
-or in a group (`SurfaceRole::under`). The kit's groups (`SurfaceRole::KIT` holds them with the
+a row) is either a kind itself, a group the kit names, or one of penna's chrome roles and recipes
+(`penna::roles`), which sits in a kind or in a group (`SurfaceRole::under`). The kit's groups (`SurfaceRole::KIT` holds them with the
 kinds):
 
 - floating: `popover` (menus and popovers), `dialog`, `sheet` with `drawer` in it (every touch
@@ -144,8 +144,8 @@ kinds):
 - label: `badge` with `grabber` in it, `keycap`, `icon-tile` (the tile that leads a sheet row; its
   ink is the icon's color, rest by default).
 
-So `chrome.button` is in `icon-button`, which is in `button`; `palette` is in `popover`, which is
-in `floating`; `pane.chip` is in `floating` directly. A role resolves the way author CSS beats the browser's defaults
+So `chrome.button` is in `icon-button`, which is in `button`; `picker` is in `dialog`, which is
+in `floating`; `chip.floating` is in `floating` directly. A role resolves the way author CSS beats the browser's defaults
 (`Theme::style`):
 
 1. the kind's built-in style (`Kind::base`), which draws the Default theme;
@@ -154,10 +154,10 @@ in `floating`; `pane.chip` is in `floating` directly. A role resolves the way au
 
 So any theme patch beats every built-in, and among theme patches the closest one wins: a theme
 that makes `floating` glass makes drop zones and pane chips glass too, though both are tint or
-solid as built in, and a patch for `pane.drop-zone` takes it back. Built-in patches only say how
+solid as built in, and a patch for `tile.drop` takes it back. Built-in patches only say how
 the Default theme draws a role. A widget
-with no role draws as its kind. `zz_ui::roles::all()` lists the kit's kinds and groups, then zz's
-67 roles; `members(group)` lists what is directly in a group.
+with no role draws as its kind. `penna::roles::all()` lists the kit's kinds and groups, then the
+chrome roles and the recipes; `members(group)` lists what is directly in a group.
 
 A row (`SurfaceRole::row`, set on `menu-item` and `row` and taken by everything in them) rounds
 concentric inside its list: its round corners are the radius less 4px, square when the row inset
@@ -185,10 +185,10 @@ shows only the allowed props and values:
 | label | all | yes | none, contact | all | fixed | fixed |
 | rule | fixed | yes | fixed | fixed | fixed | fixed |
 
-`popover`, `dialog`, `sheet`, `pane.float` and `inline-panel` take only square and round, since
-a pill box that size is a stadium; `menu-item` casts no shadow. `pane.chip`, `pane.display-panes`,
-`pane.drop-zone` and `titlebar.status-chip` also take hover and selected (`Knobs::pressable`), and
-`window`, `titlebar`, `pane.header` and `sidebar` take nothing (`Knobs::FIXED`): a header
+`popover`, `dialog`, `sheet`, `floating.pane` and `inline-panel` take only square and round, since
+a pill box that size is a stadium; `menu-item` casts no shadow. `chip.floating`, `chip.marker`,
+`tile.drop` and `chip.bar` also take hover and selected (`Knobs::pressable`), and
+`window`, `titlebar`, `bar.pane` and `sidebar` take nothing (`Knobs::FIXED`): a header
 fill ignored the pane's corner radius and stacked glass on a glass pane, and the sidebar stacked
 glass on the window's blur. That leaves nothing in `panel` a theme can change, so the kind is
 fixed too, and `bar` reaches only `phone.bar`. A theme's patch for a kind or group reaches
@@ -234,7 +234,7 @@ draws one and is not glass. `none` leaves a focused field as it rests.
    (menus, palettes, pickers, recent pages, phone rows) and multi-line fields are not, so a menu
    highlight stays a rounded row concentric in its list; the `row` and `tab` groups (sidebar rows
    and entries, window pills, browser and tray tabs), badges (status chips
-   included), pane chips, drag chips and `pane-stack` (the icon tiles in flat sidebar rows and
+   included), pane chips, drag chips and `tile.stack` (the icon tiles in flat sidebar rows and
    window pills, which turn into circles) are. Everything else, keycaps and other tiles included, keeps
    the radius, which the window's adaptive corners hold under half its height.
 
@@ -260,7 +260,7 @@ A theme with glass chrome over flat pill buttons, colors left out:
     "chrome.button": { "fill": "glass", "shape": "pill", "shadow": "contact", "hover": "tint", "selected": "tint" },
     "button": { "fill": "tint", "outline": false, "shadow": "none", "shape": "pill" },
     "tab": { "shape": "pill", "hover": "tint", "selected": "glass" },
-    "agent.composer": { "fill": "glass", "shadow": "contact", "shape": "round" },
+    "field.composer": { "fill": "glass", "shadow": "contact", "shape": "round" },
     "sidebar.row": { "hover": "tint", "selected": "tint" },
     "rule.bar": { "outline": false }
   }
@@ -269,7 +269,7 @@ A theme with glass chrome over flat pill buttons, colors left out:
 
 Kind names, group ids and role ids share the `roles` map. An id `penna::roles::find` does not know is an
 error that suggests the role it was probably meant to be (`chromebutton` gets `chrome.button`,
-`composer` gets `agent.composer`).
+`composer` gets `field.composer`).
 
 ## Where the build differs from the proposal
 
@@ -329,7 +329,8 @@ Four read-only sweeps covered every painted piece in `crates/zz`, `crates/zz-ui`
 the shared function that drew most instances at the time of the sweep; "Drift found" names what the
 role was meant to remove, and what became of it. Groups are as built after the 2026-10-14 regroup. Paths: `ui/` is
 `crates/zz-ui/src`, `kit/` is `libs/penna/src`, `zz/` is `crates/zz/src`, `app/` is
-`clients/app/src`.
+`clients/app/src`. The zz ids below were retired on 2026-11-01, when zz's roles became penna's
+recipes; penna's `knowledge/designs/kit.md` maps each to the recipe and look that replaced it.
 
 ### Window and title bar
 
@@ -375,7 +376,7 @@ role was meant to remove, and what became of it. Groups are as built after the 2
 The Agent pane was removed on 2026-10-23; these roles now style the agent lens over a Claude Code
 or Codex terminal ([agent lens](/designs/agent-lens.md)). The lens has no status pill and no
 pickers, so `agent_status_pill` and the composer pickers are deleted. Their roles, `agent.status`
-and `agent.picker`, were retired on 2026-10-27: they are listed in `roles::RETIRED`, and a theme
+and `agent.picker`, were retired on 2026-10-27: they are in penna's retired list (`penna::roles::is_retired`), and a theme
 file that still names one loads with the entry dropped. The agent history picker
 (`ui/agent/history.rs`) went too; its delete banner was the last `picker.notice`, which since
 2026-10-27 draws the chooser's prompt and key help strips.
@@ -398,8 +399,8 @@ The agent's step rows (the trace line, thoughts and tool calls) had `agent.trace
 
 The Driver Agent's chat, under the sidebar's list, in the command palette's Driver mode and in a
 phone drawer, went with the Driver Agent on 2026-10-28. Its roles `chat.bubble`,
-`chat.bubble.mine`, `rule.chat`, `phone.driver-card` and `drawer.driver` are listed in
-`roles::RETIRED`, and a theme file that still names one loads with the entry dropped.
+`chat.bubble.mine`, `rule.chat`, `phone.driver-card` and `drawer.driver` are in penna's retired
+list (`penna::roles::is_retired`), and a theme file that still names one loads with the entry dropped.
 
 ### Reading content (markdown in agent replies)
 

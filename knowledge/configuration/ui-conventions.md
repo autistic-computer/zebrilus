@@ -106,8 +106,8 @@ defines roles: zz has none of its own, and no widget takes a role from outside p
    render selectable session/window/pane trees with these shared rows. Search flattens matching
    descendants into breadcrumbs. Shared row builders also render daemon command and value prompts.
 6. Use one translucent signal instead of competing fills. Sidebar rows draw their hover and lit
-   states through `navigation::workspace_row_fill` as `sidebar.row` (tree) or `sidebar.entry`
-   (flat), and window pills as `titlebar.window-tab`: in the Default theme a lift, a translucent
+   states through `navigation::workspace_row_fill` in `RowLook::Sidebar` (tree, `sidebar.row`) or
+   `RowLook::Nav` (flat, `row.nav`), and window pills as a `Tab` in `TabLook::Window` (`tab.window`): in the Default theme a lift, a translucent
    wash with the outline that preserves the desktop blur. Where you are or what is on (the active
    session row, the open Settings page, a toggle button that is on) is the role's `selected`
    highlight, a lift or a tint, and never the accent unless a theme gives the role one: the accent
@@ -196,7 +196,7 @@ after the last tab, then the split buttons at the row's end; under it the naviga
 never scrolling: each up to 180px, shrinking evenly, and below 84px a tab shows only its favicon,
 which turns into its X on hover.
 Every header's title is the drag handle: `pane::PaneTitle`, a 22px button
-(`pane.header.title`) holding the kind icon and the title, the provider name and session title
+(a `Tab` in `TabLook::Title`, `button.title`) holding the kind icon and the title, the provider name and session title
 for an agent, and a globe with "Browser" for a browser (`BrowserTabStrip::title`). Dragging it splits or swaps under the existing availability rules
 (`pane::PaneDragSource`). Pointed at, it tints, its icon turns into the four-way move arrows, and
 an X at its right end closes the pane; a coarse pointer (touch, iPad) never hovers, so there the X
@@ -240,8 +240,8 @@ switch thumb and follows the contact strength. `Theme::shadows_of`, `contact_sha
 
 Corners come from the role's shape through its layer's `radius` (`Theme::shape_radius`), so new
 widgets read the look rather than a literal: `Row::row_height(height)` for rows,
-`Panel::inset(inset)` for a container around inset rows, `Theme::outer_radius(inset)`
-and `inner_radius(inset)` to keep other nested corners concentric, and `outlined()`, `inset_rows()`
+`Panel::inset(inset)` for a container around inset rows, `Theme::inner_radius(inset)` to keep
+other nested corners concentric, and `outlined()`, `inset_rows()`
 and `casts_shadow(role)` for the theme's switches. Control heights, fills, rules and transitions
 no longer change per theme: `Theme::dense`, `Theme::control_background` and `Theme::duration` are
 gone, `Size::control_h()` and `input_py()` take no density, and `divider_color()` is the
@@ -272,7 +272,7 @@ title is the small muted label row with its `#[align]` honoured, key annotations
 the right, and disabled rows never highlight. zz's default menu styles are theme slots and leave the
 theme's own popover and row roles; only literal colours from the options or `-s`, `-S` and `-H`
 (last field wins) tint the surface, the outline and separators, or the highlight. The tmux
-`display-panes` indicator is one `pane.display-panes` chip per pane with the key to press, the pane's
+`display-panes` indicator is one `Chip` in `ChipLook::Marker` (`chip.marker`) per pane with the key to press, the pane's
 `display-panes-format` line as a muted caption, and a 2px accent ring on the active pane (or
 `display-panes-active-colour` when it differs from zz's default). A pane that fails in place (a browser page that will not load, an
 editor file that will not open or save, an agent that stopped) shows `penna::feedback::inline_alert`:
@@ -329,14 +329,14 @@ restating it.
    inside the tile.
 3. **Closer inside a group than between groups.** Tiles are 2px apart, a title is 10px above its
    first tile, and separate groups (another question, the footer) sit 12px or a divider away.
-4. **Tiles are list rows.** An option tile is the `agent.option` role, under `menu-item`, so it
+4. **Tiles are list rows.** An option tile is a `Row` in `RowLook::Menu` (`menu-item`), so it
    looks like the other lists a pane shows (the new-session actions, the pane picker, recent
    pages): at least `picker::LIST_ROW_HEIGHT` (32px) tall, 12px text with 11px descriptions, no
    fill at rest, a tint on hover, the accent when picked, and the row corner for that height. The 12px gutter is deeper
    than any built-in theme's card radius, so a concentric inner corner would round to square and
    fall to an arbitrary floor instead.
 
-Options are tiles (`CardTile`) drawn as `agent.option`: bare at rest, with danger-toned text for a
+Options are tiles (`CardTile`) drawn in `RowLook::Menu`: bare at rest, with danger-toned text for a
 destructive choice, a tint on hover and the accent when picked (a tint in Glass; see
 [Design system](/designs/design-system.md)). Hover only changes the fill, which ala repaints;
 text color cannot follow a hover style. What sits on a tile paints on the tile's ground, so it
@@ -402,10 +402,10 @@ knob that derives chrome from terminal colors, and a Ghostty palette cannot repa
 
 `libs/penna/src/interface_theme.rs` owns `InterfaceTheme`, `Materials` and `ThemeColors` and the
 theme file parser and the built-in themes (`libs/penna/themes/*.json`);
-`crates/zz-ui/src/interface_theme.rs` re-exports them, and `zz_ui::register` lays zz's patches for
-its own roles over the built-ins from `crates/zz-ui/themes/*.json` (`penna::interface_theme::register`)
-along with zz's roles and retired role ids. Every zz-ui theme and role lookup registers
-first, so the desktop, browser and iOS clients and the storybook all see the same set. `crates/zz/src/theme.rs` applies desktop
+the built-ins hold every recipe's per-theme tweaks, zz's pieces included, so the desktop, browser
+and iOS clients and the storybook all see the same set. `crates/zz-ui/src/interface_theme.rs`
+re-exports them. A theme file that names a retired role id loads with that entry dropped
+(`penna::roles::is_retired`). `crates/zz/src/theme.rs` applies desktop
 configuration. It holds the latest immutable `TerminalAppearance` and `AppearanceProvenance` as
 ala globals (used by settings badges and the detach action, not to color anything).
 It applies the theme on screen (`config::shown_theme`: the active theme, a built-in or a saved
@@ -467,7 +467,7 @@ for itself, which is how sidebar row actions and browser tab close buttons brigh
 pane's step rows draw no fill, take muted ink, and turn foreground under the pointer when the row
 opens something (`activity_row_marked`); a label in its own color (a running tool, "Waiting for
 you") keeps it. Its message actions (copy on answers, code blocks and diagrams, rewind on prompts)
-are `agent.action` icon buttons with muted ink and no fill in any state (`message_action`), shown
+are `ButtonLook::RowIcon` icon buttons (`icon-button.row`) with muted ink and no fill in any state (`message_action`), shown
 only while their message, code block (`text::CODE_BLOCK_GROUP`) or figure is pointed at, and
 always under a coarse pointer (`shown_on_hover`). The slash menu's rows are 40px: the command at 12px over its description at
 11px.

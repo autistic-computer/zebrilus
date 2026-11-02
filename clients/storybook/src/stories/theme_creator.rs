@@ -161,7 +161,7 @@ pub const PLATES: &[Section] = &[
     Section {
         id: "drawers",
         name: "Drawers",
-        summary: "Every drawer on the phone, each its own role under Drawers, resting on the phone's bottom safe area.",
+        summary: "Every drawer on the phone, all in the one Drawers role, resting on the phone's bottom safe area.",
         build: |window, cx| {
             stateful(
                 window,

@@ -2,11 +2,11 @@ import "settings.just"
 
 set working-directory := "../.."
 
-[doc("Write the CSS tokens of every built-in theme, with zz's roles, into design/tokens.")]
+[doc("Write the CSS tokens of every built-in theme, with the send button's tones, into design/tokens.")]
 tokens:
     cargo run -q -p zz-ui --example theme_css design/tokens
 
-[doc("Write penna's own CSS tokens, the kit's roles only, into libs/penna/web/tokens.")]
+[doc("Write penna's own CSS tokens into libs/penna/web/tokens.")]
 penna-tokens:
     #!/usr/bin/env bash
     set -euo pipefail

@@ -368,7 +368,7 @@ through the same trait.
 placeholder without replacing the field.
 
 The desktop overlay starts near 12% of the viewport height, caps its width at 560px, and leaves
-16px side margins. The panel is the `palette` role (a popover): in the Default theme an opaque
+16px side margins. The panel is a `Panel` in `PanelLook::Popover` (the `popover` role): in the Default theme an opaque
 raised background, the outline and the float shadow, and the theme radius plus the 8px list inset. A 40px input
 row contains 12px search text and pills. Rows match dropdown typography with 12px medium labels,
 10px secondary text, 16px line heights, 26px highlights, and 2px gaps; the scrolling area reaches

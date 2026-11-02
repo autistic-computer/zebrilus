@@ -206,7 +206,7 @@ end no turn.
 # What the clients draw
 
 - **The flip button.** A terminal running either CLI and an agent pane carry a flip button in their
-  header (`pane.header.flip`, `zz_ui::pane::pane_flip_button`) that sends `flip-agent -t <pane>`.
+  header (`ButtonLook::Toggle`, `zz_ui::pane::pane_flip_button`) that sends `flip-agent -t <pane>`.
   A `busy:` answer offers Switch when idle and Switch now; an armed flip shows with Cancel.
   `zz_client::agent_flip` (`AgentFlips`) keeps that state per pane for every client.
 - **The chat.** `crates/zz/src/agent` on the desktop, `clients/app/src/app/agent_pane.rs` on web,
@@ -308,7 +308,7 @@ markdown carries them as `zzref:` links; the user's bubble draws them as clickab
   as a bubble, also when the TUI sent it. Any other message closes the card with no answer, Stop
   leaves it open, and a resumed thread shows the answered ones as records and reopens the one
   still waiting.
-- **Diagrams.** A mermaid or SVG block sits in a card on the `code` role, like a code block, whose
+- **Diagrams.** A mermaid or SVG block sits in a `CardLook::Code` card (`card.code`), like a code block, whose
   header holds its label, Copy source and Open full diagram. pele (`libs/pele`) draws mermaid:
   flowchart, sequence, class, state, ER, gantt, pie and quadrant. Any other type stays an ordinary
   code block of its source, and a supported source that does not parse shows the error with its

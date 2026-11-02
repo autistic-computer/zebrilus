@@ -90,7 +90,7 @@ Without it, the keycap would compute muted gray against the window.
 
 A surface floating over content takes its fill `.opaque()` (`Ground::opaque` keeps the elevation).
 
-Surfaces take their fill, edge, corners and shadow from their **surface role**, described in [surface roles](/designs/surface-roles.md): `theme.layer(surface, state)` resolves the role's style against the theme's materials and returns one `Layer`, and `.surface(role)`, `.surface_at(role, state)`, `.surface_hover` and `.surface_interactive` paint it. Kit widgets take `.surface_role(role)` and draw as their kind without one. A `Surface` is a role with a tone, a `prominent` flag (the solid main action) and the ground it sits on (`.on(ground)`).
+Surfaces take their fill, edge, corners and shadow from their **surface role**, described in [surface roles](/designs/surface-roles.md): `theme.layer(surface, state)` resolves the role's style against the theme's materials and returns one `Layer`. Kit components paint it in a typed look that picks the role (`Button::look(ButtonLook::X)`, `Row`, `Panel`, `Chip` and the rest, see penna's `knowledge/designs/kit.md`), and a widget with no look draws as its kind; only content code paints a role by hand, with `.surface(role)` or `.surface_at(role, state)` under a lint allow. A `Surface` is a role or a look with a tone, a `prominent` flag (the solid main action) and the ground it sits on (`.on(ground)`).
 
 A ground remembers its `elevation` and whether it is glass, and `paint.ground_at` and `Layer::ground` pass them on. Controls (rows, tabs, chips, buttons, icon buttons, fields, badges, keycaps) cast their shadow only on the window: on a panel or a popover they keep the outline and drop the shadow, so a stepper in a menu or a field on a settings card does not stack a third layer on a surface that already stands off the window. Glass on a glass ground paints a tint instead.
 
@@ -100,7 +100,7 @@ A pane paints no fill of its own: the window shows through it. `zz_ui::pane_look
 
 ## Lines and backdrops
 
-- A rule between sections is `.rule(RuleLook::X, edge, cx)` or a `Separator` in a `RuleLook`: `RULE_WIDTH` (1px) in `theme.divider_color()`, the foreground at the edge weight, translucent so a rule lightens glass in a dark theme the way it does a solid fill, drawn when the rule role's outline is on (`rule.bar`, `rule.sidebar`, `rule.split`, `rule.list`, `rule.tree`). It replaces the separate rule recipes the audit found.
+- A rule between sections is `.rule(RuleLook::X, edge, cx)` or a `Separator` in a `RuleLook`: `RULE_WIDTH` (1px) in `theme.divider_color()`, the foreground at the edge weight, translucent so a rule lightens glass in a dark theme the way it does a solid fill, drawn when the rule role's outline is on (`rule`, `rule.bar`, `rule.sidebar`, `rule.list`, `rule.tree`). It replaces the separate rule recipes the audit found.
 - The edge of a surface is its role's `outline`: the theme's outline width, the border color on surfaces and 10% of the ground's ink on controls, and no edge at all when the outline is 0. Glass draws its own rim, so a surface in glass hides the hairline and keeps its width. Highlights recolor the edge and never change its width.
 - A focus ring is `focus_ring(&paint)`: `FOCUS_RING_WIDTH` (1.5px) in the paint's focus color. A chosen tile is its role's `selected: ring`, 2px in the accent.
 - Anything that dims the window behind a modal, a sheet or a slide-over fills with `theme.scrim`.
@@ -176,7 +176,7 @@ Kit widgets on the model:
 
 - Name a tone and an emphasis. Do not pick a fill with `washed()`, `raised()` or `opacity()` at a call site outside the kit. Clippy enforces it: the root `clippy.toml` disallows `Hsla::opacity` and the mixing transforms of `Colorize` (`raised`, `washed`, `wash`, `fill`, `outline`, `subtle`, `glow`, `hover`, `active`, `on`, `floating`). The kit's own `clippy.toml` leaves them out, since the kit is where the recipes are mixed. `muted()`, `faint()` and `opaque()` stay open.
 - Paint chrome with a kit component in its look (penna's `knowledge/designs/kit.md`); only content code paints a role by hand, under an allow. The root `clippy.toml` disallows, outside the kit, `ala::Styled::border` and its sized and per-side forms (`border_1` to `border_4`, and `border_t`, `border_b`, `border_l`, `border_r`, `border_x` and `border_y` with their sizes), `shadow_2xs` through `shadow_2xl`, the type `ala::BoxShadow`, and the kit helpers that would get around the roles: `StyledExt::surface_edge`, `surface_outline` and `chosen_ring`, `lifted_shadow`, and `Theme::control_radius`, `menu_radius` and `row_radius`. The old recipes (`card_style`, `popover_style`, `control_surface`, `control_highlight`, `surface_fill`, `menu_item_corners`, `selection_highlight`, the `rule_*` family, `contact_shadow`, `control_shadow`, `floating_shadow`) are deleted. The kit's `clippy.toml` keeps only the raw-color ban, since the engine is built there.
-- A piece of UI that is new and distinct gets a kit recipe in penna (`libs/penna/src/roles.rs`, picked by a component's variant) instead of a local style (see [UI conventions](/configuration/ui-conventions.md)). Another app on penna registers its roles with `penna::register` the same way ([penna](/references/penna.md)), and draws them on a theme creator plate in its storybook catalog's `plates`, so a theme can be tuned for them ([storybook](/playbooks/storybook.md)).
+- A piece of UI that is new and distinct gets a kit recipe in penna (`libs/penna/src/roles.rs`, picked by a component's variant) instead of a local style (see [UI conventions](/configuration/ui-conventions.md)). Apps define no roles: another app on penna draws its pieces with the same components ([penna](/references/penna.md)) and puts them on a theme creator plate in its storybook catalog's `plates`, so a theme can be tuned for them ([storybook](/playbooks/storybook.md)).
 - A color, edge or shadow that is deliberately not a role takes `#[allow(clippy::disallowed_methods, reason = ..)]` on its one function, or `clippy::disallowed_types` where it names `BoxShadow`. In chrome, today that is:
   - the theme previews in Appearance, and the focus halo around its tiles;
   - the element picker overlay (page CSS) and the blurred chrome background;
@@ -213,14 +213,14 @@ Kit widgets on the model:
 | Invalid field | danger at the field role's emphasis |
 | Inline field (rename in place) | the field role's emphasis, no focus ring |
 | Agent composer | a field shell: `field_chrome` with `FieldLook::Composer`, not a card |
-| User message bubble, attachment tile, Mermaid diagram | `agent.bubble` (a card), `agent.attachment` (a tile), `code` |
+| User message bubble, attachment tile, Mermaid diagram | `Card` in `CardLook::Bubble`, `Image` and `Code` (`card.bubble`, `card.image`, `card.code`) |
 | Browser address bar | neutral · ghost field |
 | Browser tab | neutral · soft when active, ghost otherwise |
 | Settings control | its own recipe, on `settings_card_ground` |
 | Switch, slider | primary · solid when on, neutral soft when off |
 | tmux display-menu | a popover menu; neutral · ghost rows; literal tmux colours override |
-| Display-panes chip | `pane.display-panes`: glass with the float shadow; accent ring when active or pointed at |
-| Pane status badge, pane overlay lines | `pane.chip`: floating, with a contact shadow, and the focus ring when focused |
+| Display-panes chip | `Chip` in `ChipLook::Marker` (`chip.marker`): glass with the float shadow; accent ring when active or pointed at |
+| Pane status badge, pane overlay lines | `Chip` in `ChipLook::Floating` (`chip.floating`): floating, with a contact shadow, and the focus ring when focused |
 | Agent status (Running, Waiting for you, Exited) | `agent.status`: was a badge in the agent pane's header; the header went with the Agent pane on 2026-10-23 ([agent lens](/designs/agent-lens.md)) and the role was retired on 2026-10-27 |
 | Status dot (bell, activity, agent state, host) | `navigation::status_dot`: one 6px dot in the state's color; a working agent is the muted ink |
 | A pane's failure (browser, editor, agent) | `inline_alert`: the `inline-panel` role in the alert layout; primary · solid Try again last |
@@ -230,8 +230,8 @@ Kit widgets on the model:
 - `libs/penna/src/foundation/variant.rs`: `Tone`, `Emphasis`, `Paint`, `Ground`, the recipes.
 - `libs/penna/src/foundation/surface.rs`: kinds, roles, styles, `Theme::style` and `Theme::layer`.
 - `libs/penna/src/foundation/styled.rs`: `.surface`, `.surface_at`, `.layer`, `.rule`, `list_inset`, `focus_ring`, and the crate-private `rule_on`, `row_corners` and `row_radius`.
-- `libs/penna/src/foundation/theme.rs`: the material fields, `CORNER_SMOOTHING`, `casts_shadow`, `outlined`, `inset_rows`, `outer_radius` and `inner_radius`.
-- `libs/penna/src/roles.rs`: the window chrome roles and the roles the kit's touch widgets, phone chrome (`penna::compact`), pickers and inline panels draw with; `crates/zz-ui/src/roles.rs`: zz's roles by region.
+- `libs/penna/src/foundation/theme.rs`: the material fields, `CORNER_SMOOTHING`, `casts_shadow`, `outlined`, `inset_rows` and `inner_radius`.
+- `libs/penna/src/roles.rs`: the window chrome roles, the roles the kit's touch widgets, phone chrome (`penna::compact`), pickers and inline panels draw with, the recipes the looks pick and the retired ids; `crates/zz-ui/src/roles.rs`: the few recipes zz's content code reads.
 - `libs/penna/src/{badge,check,kbd}.rs`: `Badge`, `Check`, `Keycap`.
 - The storybook's Foundation → Design system story (`#/design-system`) draws every recipe from the same code. Its sections are:
   - tones;
