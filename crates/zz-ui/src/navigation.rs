@@ -277,7 +277,7 @@ pub fn workspace_row_fill(
     id: &ElementId,
     look: RowLook,
     lit: PaintState,
-    hover_group: SharedString,
+    hover_group: Option<SharedString>,
     ground: Ground,
     cx: &App,
 ) -> Row {
@@ -288,15 +288,18 @@ pub fn workspace_row_fill(
     } else {
         px(0.)
     };
-    Row::new(ElementId::from((id.clone(), "fill")), look)
+    let fill = Row::new(ElementId::from((id.clone(), "fill")), look)
         .state(lit)
         .on(ground)
-        .hover_group(hover_group)
         .absolute()
         .top(vertical_inset)
         .bottom(vertical_inset)
         .left(inset)
-        .right(inset)
+        .right(inset);
+    match hover_group {
+        Some(group) => fill.hover_group(group),
+        None => fill.interactive(false).press_highlight(true),
+    }
 }
 
 #[must_use]
@@ -339,7 +342,14 @@ pub fn workspace_tree_row(
         .theme()
         .ground_at(Surface::from(RowLook::Sidebar).on(ground), lit)
         .ink;
-    let fill = workspace_row_fill(&id, RowLook::Sidebar, lit, row_group.clone(), ground, cx);
+    let fill = workspace_row_fill(
+        &id,
+        RowLook::Sidebar,
+        lit,
+        Some(row_group.clone()),
+        ground,
+        cx,
+    );
     workspace_tree_row_frame(id, depth, cx)
         .map(|row| {
             if active {

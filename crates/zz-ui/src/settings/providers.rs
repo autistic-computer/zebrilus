@@ -97,7 +97,8 @@ fn version_text(status: &ProviderStatus, cx: &App) -> impl IntoElement {
             )
         })
         .child(
-            Label::new(TextStyle::Mono, version_label(status))
+            Label::new(TextStyle::Caption, version_label(status))
+                .mono()
                 .muted()
                 .on(settings_card_ground(cx)),
         )
@@ -142,7 +143,7 @@ fn action(
 }
 
 fn task_line(text: impl Into<SharedString>, tone: NoteTone, cx: &App) -> Label {
-    let line = Label::new(TextStyle::Mono, text).min_w_0();
+    let line = Label::new(TextStyle::Caption, text).mono().min_w_0();
     match tone {
         NoteTone::Muted => line.muted().on(settings_card_ground(cx)),
         NoteTone::Foreground => line.text_color(cx.theme().foreground),

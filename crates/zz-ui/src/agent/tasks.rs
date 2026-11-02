@@ -1,13 +1,17 @@
 use std::rc::Rc;
 
-use ala::{App, Div, MouseButton, SharedString, Window, div, prelude::*, px};
+use ala::{App, Div, SharedString, Window, div, prelude::*, px};
 use penna::{Panel, PanelLook, Row, RowLook, Tab, TabLook, TextStyle};
 use zz_protocol::AgentTaskWire;
 
 use crate::{
     ActiveTheme as _, Colorize as _, Disableable as _, Emphasis, Icon, IconName, PaintState,
-    Sizable as _, StyledExt as _, Tone, button::Button, h_flex, muted_on, tooltip::Tooltip, v_flex,
+    StyledExt as _, Tone,
+    button::{Button, ButtonLook},
+    h_flex, muted_on, v_flex,
 };
+
+use super::controls::agent_chrome_button;
 
 const TASK_ROW_HEIGHT: f32 = 28.0;
 const TASK_ROW_FONT_SIZE: f32 = 12.0;
@@ -196,26 +200,18 @@ pub fn task_tray(
     });
     let tasks_open = open == Some(TrayPanel::Tasks);
     let tasks_chip = (!tasks.is_empty()).then(|| {
-        let tooltip = if tasks_open {
-            "Hide background tasks"
-        } else {
-            "Show background tasks"
-        };
-        Tab::new(SharedString::from(format!("{id}-tasks")), TabLook::Tray)
+        agent_chrome_button(SharedString::from(format!("{id}-tasks")))
             .debug_selector(|| "agent-task-tray".to_owned())
-            .h_flex()
+            .look(ButtonLook::Tray)
             .flex_none()
-            .justify_center()
-            .h(px(24.0))
-            .px_2()
-            .gap_1()
-            .cursor_default()
-            .type_style(TextStyle::Small, cx)
+            .icon(super::presentation::spinner(phase))
+            .label(task_tray_label(tasks.len()))
+            .tooltip(if tasks_open {
+                "Hide background tasks"
+            } else {
+                "Show background tasks"
+            })
             .text_color(cx.theme().foreground.muted())
-            .child(super::presentation::spinner(phase).small())
-            .child(task_tray_label(tasks.len()))
-            .tooltip(move |window, cx| Tooltip::new(tooltip).build(window, cx))
-            .on_mouse_down(MouseButton::Left, |_, window, _| window.prevent_default())
             .on_click(move |_, window, cx| {
                 toggle(TaskTrayAction::Toggle(TrayPanel::Tasks), window, cx);
                 cx.stop_propagation();

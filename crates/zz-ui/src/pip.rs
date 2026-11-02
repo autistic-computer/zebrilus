@@ -1,15 +1,17 @@
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 use ala::{
-    AnyElement, App, Bounds, ClickEvent, ElementId, GlassMaterial, Global, Hsla, IntoElement,
-    ParentElement as _, Pixels, Point, Size, Styled as _, Window, div, point, prelude::*, px,
+    AnyElement, App, Bounds, ClickEvent, Div, ElementId, GlassMaterial, Global, Hsla, IntoElement,
+    ParentElement as _, Pixels, Point, Size, Stateful, Styled as _, Window, div, point, prelude::*,
+    px,
 };
 use web_time::{Duration, Instant};
 use zz_client::floating::{FloatCells, FloatPlace, PipGeometry};
 use zz_protocol::{PaneBorderLines, PaneId, WindowId, WindowSnapshot};
 
 use crate::{
-    ActiveTheme as _, Colorize as _, PaintState, StyledExt as _, pane_look::pane_color, roles,
+    ActiveTheme as _, Colorize as _, Layer, PaintState, StyledExt as _, pane_look::pane_color,
+    roles,
 };
 
 const GROUP: &str = "pip";
@@ -391,16 +393,25 @@ fn pile_shifts(
 }
 
 #[must_use]
+pub fn pip_content_radius(cx: &App) -> Pixels {
+    let border = pip_look(cx).border_width;
+    (cx.theme().pane_radius() - border).max(Pixels::ZERO)
+}
+
 #[allow(
     clippy::disallowed_methods,
-    reason = "PiP content insets by the PiP's edge so it sits inside the frame"
+    reason = "a PiP is frosted in its pane's own colour at the PiP opacity setting, over the floating.pip edge and shadow"
 )]
-pub fn pip_content_radius(cx: &App) -> Pixels {
-    let border = cx
-        .theme()
-        .layer(roles::FLOATING_PIP, PaintState::Rest)
-        .border_width;
-    (cx.theme().pane_radius() - border).max(Pixels::ZERO)
+fn pip_look(cx: &App) -> Layer {
+    cx.theme().layer(roles::FLOATING_PIP, PaintState::Rest)
+}
+
+#[allow(
+    clippy::disallowed_methods,
+    reason = "a PiP is frosted in its pane's own colour at the PiP opacity setting, over the floating.pip edge and shadow"
+)]
+fn paint_pip(surface: Stateful<Div>, look: &Layer) -> Stateful<Div> {
+    surface.layer(look)
 }
 
 #[derive(IntoElement)]
@@ -466,18 +477,12 @@ impl PipSurface {
 }
 
 #[must_use]
-#[allow(
-    clippy::disallowed_methods,
-    reason = "a PiP is frosted in its pane's own colour at the PiP opacity setting, over the floating.pip edge and shadow"
-)]
 pub fn pip_material(fill: Hsla, cx: &App) -> GlassMaterial {
-    let theme = cx.theme();
     let fill = fill.opaque();
     let opacity = cx
         .try_global::<PipOpacity>()
         .map_or(DEFAULT_OPACITY, |opacity| opacity.0);
-    theme
-        .layer(roles::FLOATING_PIP, PaintState::Rest)
+    pip_look(cx)
         .glass
         .unwrap_or_else(|| {
             GlassMaterial::edge(fill)
@@ -492,12 +497,8 @@ pub fn pip_material(fill: Hsla, cx: &App) -> GlassMaterial {
 }
 
 impl RenderOnce for PipSurface {
-    #[allow(
-        clippy::disallowed_methods,
-        reason = "a PiP is frosted in its pane's own colour at the PiP opacity setting, over the floating.pip edge and shadow"
-    )]
     fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
-        let mut layer = cx.theme().layer(roles::FLOATING_PIP, PaintState::Rest);
+        let mut layer = pip_look(cx);
         if !self.bordered {
             layer.border_width = Pixels::ZERO;
         }
@@ -550,7 +551,7 @@ impl RenderOnce for PipSurface {
             .size_full()
             .overflow_hidden()
             .occlude()
-            .layer(&layer)
+            .map(|surface| paint_pip(surface, &layer))
             .rounded(cx.theme().pane_radius())
             .bg(cx.theme().transparent)
             .glass(material)

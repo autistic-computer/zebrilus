@@ -244,10 +244,6 @@ fn terminal_sample(
         .child(terminal_body(lines, opacity, cx))
 }
 
-#[allow(
-    clippy::disallowed_methods,
-    reason = "the sample lines stand in for terminal cells, which keep the terminal's own size and line spacing"
-)]
 fn terminal_body(lines: &'static [Line], opacity: f32, cx: &App) -> ala::Div {
     let theme = cx.theme();
     let tone = |color: Hsla, text: &'static str| div().text_color(color).child(text);
@@ -260,9 +256,7 @@ fn terminal_body(lines: &'static [Line], opacity: f32, cx: &App) -> ala::Div {
         .overflow_hidden()
         .px(px(12.0))
         .pt(px(4.0))
-        .font_family(theme.mono_font_family.clone())
-        .text_size(px(12.0))
-        .line_height(px(18.0))
+        .map(|body| terminal_text(body, cx))
         .whitespace_nowrap()
         .opacity(opacity)
         .children(lines.iter().map(|line| -> AnyElement {
@@ -278,6 +272,16 @@ fn terminal_body(lines: &'static [Line], opacity: f32, cx: &App) -> ala::Div {
                     .into_any_element(),
             }
         }))
+}
+
+#[allow(
+    clippy::disallowed_methods,
+    reason = "the sample lines stand in for terminal cells, which keep the terminal's own size and line spacing"
+)]
+fn terminal_text(body: ala::Div, cx: &App) -> ala::Div {
+    body.font_family(cx.theme().mono_font_family.clone())
+        .text_size(px(12.0))
+        .line_height(px(18.0))
 }
 
 fn browser_sample(
@@ -336,10 +340,6 @@ fn browser_sample(
         .child(sample_page(radii, cx))
 }
 
-#[allow(
-    clippy::disallowed_methods,
-    reason = "the sample page stands in for a web page, which sets its own text sizes"
-)]
 fn sample_page(radii: Corners<Pixels>, cx: &App) -> ala::Div {
     div()
         .flex()
@@ -353,14 +353,22 @@ fn sample_page(radii: Corners<Pixels>, cx: &App) -> ala::Div {
         .rounded_bl(radii.bottom_left)
         .rounded_br(radii.bottom_right)
         .bg(cx.theme().background.opaque())
-        .text_size(px(13.0))
+        .map(|page| page_text(page, 13.0))
         .line_height(px(18.0))
-        .child(div().text_size(px(16.0)).child("Key bindings"))
+        .child(page_text(div(), 16.0).child("Key bindings"))
         .child(
             div()
                 .text_color(cx.theme().foreground.muted())
                 .child("Zed has a very customizable key binding system."),
         )
+}
+
+#[allow(
+    clippy::disallowed_methods,
+    reason = "the sample page stands in for a web page, which sets its own text sizes"
+)]
+fn page_text(element: ala::Div, size: f32) -> ala::Div {
+    element.text_size(px(size))
 }
 
 #[cfg(test)]

@@ -273,7 +273,11 @@ pub(crate) fn terminal_font_size(appearance: &TerminalAppearance) -> Pixels {
     clippy::disallowed_methods,
     reason = "terminal cells take the font, size and line height of the user's terminal appearance"
 )]
-fn terminal_text<E: Styled>(element: E, font: Font, appearance: &TerminalAppearance) -> E {
+pub(crate) fn terminal_text<E: Styled>(
+    element: E,
+    font: Font,
+    appearance: &TerminalAppearance,
+) -> E {
     element
         .font(font)
         .text_size(terminal_font_size(appearance))

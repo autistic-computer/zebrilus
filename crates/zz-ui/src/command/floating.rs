@@ -9,7 +9,7 @@ use zz_protocol::{MenuItem, MenuState, PopupBorderLines, parse_styled_segments};
 use penna::{Label, Row, RowLook, RuleLook, TextStyle};
 
 use crate::{
-    ActiveTheme as _, Colorize as _, Edge, ElementExt as _, PaintState, StyledExt as _,
+    ActiveTheme as _, Colorize as _, Edge, ElementExt as _, Layer, PaintState, StyledExt as _,
     SurfaceRole, h_flex,
     tmux_style::{split_tmux_alignment, tmux_literal_colour, tmux_styled_segments_text},
     touch::{CoarsePointer, TOUCH_TARGET},
@@ -37,10 +37,6 @@ struct MenuInks {
     rule: Hsla,
 }
 
-#[allow(
-    clippy::disallowed_methods,
-    reason = "tmux display-menu paints in the colours menu-style and menu-border-style name; the popover look is their fallback"
-)]
 pub fn display_menu(
     state: &MenuState,
     selected: Option<usize>,
@@ -60,7 +56,7 @@ pub fn display_menu(
     let outline = tmux_literal_colour(&state.border_style, "fg", cx);
     let selected_text = tmux_literal_colour(&state.selected_style, "fg", cx);
     let rest = text.unwrap_or(theme.foreground);
-    let mut surface = theme.layer(SurfaceRole::POPOVER, PaintState::Rest);
+    let mut surface = menu_look(cx);
     let inks = MenuInks {
         rest,
         selected: tmux_literal_colour(&state.selected_style, "bg", cx)
@@ -122,7 +118,7 @@ pub fn display_menu(
         .role(Role::Menu)
         .relative()
         .occlude()
-        .layer(&surface)
+        .map(|menu| paint_menu(menu, &surface))
         .when_some(text, Styled::text_color)
         .when_some(outline.filter(|_| outlined), |surface, outline| {
             literal_edge(surface, outline, cx)
@@ -149,6 +145,22 @@ pub fn display_menu(
             surface.child(menu_title(&state.title, &inks, cx))
         })
         .child(list)
+}
+
+#[allow(
+    clippy::disallowed_methods,
+    reason = "tmux display-menu paints in the colours menu-style and menu-border-style name; the popover look is their fallback"
+)]
+fn menu_look(cx: &App) -> Layer {
+    cx.theme().layer(SurfaceRole::POPOVER, PaintState::Rest)
+}
+
+#[allow(
+    clippy::disallowed_methods,
+    reason = "tmux display-menu paints in the colours menu-style and menu-border-style name; the popover look is their fallback"
+)]
+fn paint_menu(menu: Stateful<Div>, surface: &Layer) -> Stateful<Div> {
+    menu.layer(surface)
 }
 
 #[allow(

@@ -1556,8 +1556,7 @@ impl Render for TargetPicker {
                     .overflow_hidden()
                     .whitespace_nowrap()
                     .text_ellipsis()
-                    .type_style(TextStyle::Mono, cx)
-                    .line_height(px(16.0))
+                    .type_style_mono(TextStyle::Caption, cx)
                     .child(crumb),
             )
             .children(HINTS.map(|hint| palette_hint(hint, cx)));

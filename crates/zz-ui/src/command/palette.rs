@@ -337,7 +337,7 @@ pub fn command_palette_section(
         .type_style(TextStyle::Caption, cx)
         .text_color(cx.theme().foreground.muted())
         .child(label.into())
-        .child(Label::new(TextStyle::Mono, hint))
+        .child(Label::new(TextStyle::Micro, hint).mono())
 }
 
 pub fn command_palette_empty(cx: &App) -> Div {
@@ -435,11 +435,15 @@ mod tests {
         }
     }
 
-    #[ala::test]
     #[allow(
         clippy::disallowed_methods,
         reason = "the test finds the selected row by the menu-item fill"
     )]
+    fn selected_row_fill(cx: &App) -> Hsla {
+        cx.theme().layer(RowLook::Menu, PaintState::Selected).fill
+    }
+
+    #[ala::test]
     fn palette_fits_its_container_and_tracks_light_and_dark_themes(cx: &mut TestAppContext) {
         for (width, mode, radius) in [
             (720.0_f32, ThemeMode::Dark, 12.0),
@@ -478,10 +482,7 @@ mod tests {
                 let selection = quads
                     .iter()
                     .find(|quad| {
-                        quad.background
-                            == ala::solid_background(
-                                cx.theme().layer(RowLook::Menu, PaintState::Selected).fill,
-                            )
+                        quad.background == ala::solid_background(selected_row_fill(cx))
                             && quad.bounds.size.width.0 > 100.0 * window.scale_factor()
                     })
                     .expect("selected row");

@@ -61,7 +61,6 @@ const ROLLUP_DOT: f32 = crate::sidebar::STATUS_DOT_SIZE;
 const ROLLUP_SPINNER: f32 = 10.0;
 const ROLLUP_GAP: f32 = 8.0;
 const ROLLUP_ITEM_GAP: f32 = 4.0;
-const ROW_GROUP: &str = "flat-window-row";
 const TITLE: TextStyle = TextStyle::Body;
 const DETAIL: TextStyle = TextStyle::Small;
 const AGE: TextStyle = TextStyle::Caption;
@@ -451,13 +450,8 @@ pub fn flat_window_row(
     let row_id = ElementId::NamedInteger(format!("flat-window-{}", host.0).into(), id.0);
     let (look, paint_state) = state.look();
     let ground = state.ground.unwrap_or_else(|| theme.ground());
-    let shaped = theme
-        .styles()
-        .get(Surface::from(look).role.id())
-        .and_then(|patch| patch.shape)
-        .is_some();
-    let fill = workspace_row_fill(&row_id, look, paint_state, ROW_GROUP.into(), ground, cx)
-        .when(!shaped, |fill| fill.radius(px(ROW_RADIUS)));
+    let fill =
+        workspace_row_fill(&row_id, look, paint_state, None, ground, cx).radius(px(ROW_RADIUS));
     let hover = handler.clone();
     let click = handler.clone();
     div()
@@ -470,7 +464,6 @@ pub fn flat_window_row(
             state.selected,
             StatefulInteractiveElement::aria_active_descendant,
         )
-        .group(ROW_GROUP)
         .relative()
         .flex()
         .flex_none()

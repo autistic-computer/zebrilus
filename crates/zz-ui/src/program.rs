@@ -13,8 +13,9 @@ use ala::{
 use zz_client::program::{Look, Program};
 
 use crate::{
-    ActiveTheme as _, Colorize as _, Icon, IconName, PaintState, Surface,
-    navigation::pane_stack::stack_radius, roles, to_oklch,
+    ActiveTheme as _, Colorize as _, Icon, IconName, PaintState,
+    navigation::pane_stack::{stack_look, stack_radius},
+    to_oklch,
 };
 
 pub const PROGRAM_GLYPH_SCALE: f32 = 0.625;
@@ -224,10 +225,6 @@ pub fn program_glyph_path(program: &Program) -> SharedString {
     .into()
 }
 
-#[allow(
-    clippy::disallowed_methods,
-    reason = "program faces take the tile.stack corner smoothing"
-)]
 pub fn program_tile(
     program: &'static Program,
     size: Pixels,
@@ -240,9 +237,7 @@ pub fn program_tile(
         program,
         size,
         radius: stack_radius(size, around, cx),
-        smoothing: theme
-            .layer(Surface::new(roles::TILE_STACK), PaintState::Rest)
-            .smoothing,
+        smoothing: stack_look(None, PaintState::Rest, cx).smoothing,
         dark: theme.is_dark(),
         ground: theme.ground().fill,
         dimmed,

@@ -2,7 +2,8 @@ use std::{cell::RefCell, rc::Rc, sync::Arc};
 
 use ala::{
     AnyView, App, AppContext as _, Context, Entity, IntoElement, ParentElement as _, Pixels,
-    Render, RenderImage, Styled as _, TextRun, Window, canvas, div, px,
+    Render, RenderImage, Styled as _, TextRun, Window, canvas, div, prelude::FluentBuilder as _,
+    px,
 };
 use penna::ActiveTheme as _;
 use zz_terminal::{
@@ -413,11 +414,15 @@ fn cell_metrics(
     (px(width), px(height))
 }
 
+#[allow(
+    clippy::disallowed_methods,
+    reason = "the preview draws terminal cells in the terminal's own font and size"
+)]
+fn terminal_text(text: ala::Div, font: ala::Font, size: Pixels) -> ala::Div {
+    text.font(font).text_size(size)
+}
+
 impl Render for SampleView {
-    #[allow(
-        clippy::disallowed_methods,
-        reason = "the preview draws terminal cells in the terminal's own font, size and line height"
-    )]
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let viewport = Arc::clone(&self.sample.viewport);
         let appearance = Arc::clone(&self.sample.appearance);
@@ -453,8 +458,7 @@ impl Render for SampleView {
                     .pr(px(appearance.padding_right))
                     .pt(px(appearance.padding_top))
                     .pb(px(appearance.padding_bottom))
-                    .font(font)
-                    .text_size(font_size)
+                    .map(|text| terminal_text(text, font, font_size))
                     .line_height(px(appearance
                         .cell_height_adjustment
                         .apply(f32::from(font_size))

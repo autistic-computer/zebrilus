@@ -366,12 +366,16 @@ pub(crate) fn hosts_page(cx: &App) -> impl IntoElement {
 
 #[allow(
     clippy::disallowed_methods,
-    reason = "the miniature draws the pane's terminal cells, scaled down in the code font"
+    reason = "the sample lines and the miniature stand in for terminal cells, which keep the terminal's own size"
 )]
-fn preview(lines: &str, cx: &App) -> AnyElement {
-    div()
+fn terminal_text(element: ala::Div, size: f32, cx: &App) -> ala::Div {
+    element
         .font_family(cx.theme().mono_font_family.clone())
-        .text_size(px(5.0))
+        .text_size(px(size))
+}
+
+fn preview(lines: &str, cx: &App) -> AnyElement {
+    terminal_text(div(), 5.0, cx)
         .line_height(px(6.5))
         .whitespace_nowrap()
         .text_color(cx.theme().foreground.muted())
@@ -638,17 +642,12 @@ fn host_menu_items() -> Vec<Vec<PillMenuItem>> {
     ]
 }
 
-#[allow(
-    clippy::disallowed_methods,
-    reason = "the sample lines stand in for terminal cells, which keep the terminal's own size and line spacing"
-)]
 fn screen_lines(cx: &App) -> impl IntoElement {
     let theme = cx.theme();
     v_flex()
         .px(px(12.0))
         .py(px(8.0))
-        .font_family(theme.mono_font_family.clone())
-        .text_size(px(12.0))
+        .map(|lines| terminal_text(lines, 12.0, cx))
         .line_height(px(17.0))
         .text_color(theme.foreground)
         .children(
@@ -819,18 +818,13 @@ impl Render for PhoneAgents {
     }
 }
 
-#[allow(
-    clippy::disallowed_methods,
-    reason = "the sample line stands in for terminal cells, which keep the terminal's own size"
-)]
 fn hud(text: &'static str, cx: &App) -> impl IntoElement {
     phone(
         div()
             .relative()
             .h(px(140.0))
             .p(px(12.0))
-            .font_family(cx.theme().mono_font_family.clone())
-            .text_size(px(12.0))
+            .map(|hud| terminal_text(hud, 12.0, cx))
             .text_color(cx.theme().foreground.muted())
             .child("~/dev/zz main* > cargo test")
             .child(compact_hud(text, cx)),

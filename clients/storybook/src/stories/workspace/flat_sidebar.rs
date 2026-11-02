@@ -1100,7 +1100,8 @@ fn programs(_: &mut Window, cx: &mut App) -> AnyElement {
                         cx,
                     ))
                     .child(
-                        Label::new(TextStyle::Mono, program.commands.join(" "))
+                        Label::new(TextStyle::Caption, program.commands.join(" "))
+                            .mono()
                             .muted()
                             .truncate()
                             .min_w_0(),

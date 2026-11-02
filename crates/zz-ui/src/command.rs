@@ -224,7 +224,7 @@ impl RenderOnce for CommandPaletteSurface {
                     .overflow_hidden()
                     .whitespace_nowrap()
                     .text_ellipsis()
-                    .type_style(TextStyle::Mono, cx)
+                    .type_style_mono(TextStyle::Micro, cx)
                     .line_height(px(16.0))
                     .text_color(cx.theme().foreground.muted())
                     .children(self.usage)

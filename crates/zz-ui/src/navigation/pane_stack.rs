@@ -86,6 +86,23 @@ pub fn stack_radius(tile: Pixels, around: Pixels, cx: &App) -> Pixels {
     (radius - (around - tile) / 2.0).max(theme.radius * 0.25)
 }
 
+#[allow(
+    clippy::disallowed_methods,
+    reason = "stack tiles are lit by the stack, dimmed toward their row and show program faces over the tile.stack look"
+)]
+pub(crate) fn stack_look(ground: Option<Ground>, state: PaintState, cx: &App) -> Layer {
+    cx.theme()
+        .layer(Surface::new(roles::TILE_STACK).on_maybe(ground), state)
+}
+
+#[allow(
+    clippy::disallowed_methods,
+    reason = "stack tiles are lit by the stack, dimmed toward their row and show program faces over the tile.stack look"
+)]
+fn paint_tile<E: Styled>(tile: E, look: &Layer) -> E {
+    tile.layer(look)
+}
+
 #[derive(Clone, Copy, Default)]
 struct Pointer {
     stack: bool,
@@ -241,10 +258,6 @@ impl PaneStack {
         }
     }
 
-    #[allow(
-        clippy::disallowed_methods,
-        reason = "resting stack tiles are dimmed toward their row and lit by the stack, so they mix the tile.stack look by hand"
-    )]
     fn resting(&self, slot: usize, layer: &Layer, dark: bool, colors: bool) -> Div {
         let size = self.size;
         let front = self.tiles.first().filter(|_| slot == 0);
@@ -257,8 +270,7 @@ impl PaneStack {
                 border: self.dim(layer.fill.blend(layer.border)),
                 ..layer.clone()
             };
-            tile_box(size)
-                .layer(&layer)
+            paint_tile(tile_box(size), &layer)
                 .rounded(self.radius)
                 .when(layer.glass.is_none(), |tile| {
                     tile.bg(Lit::background(layer.fill))
@@ -269,15 +281,11 @@ impl PaneStack {
         tile.absolute().left(px(slot as f32 * size.step())).top_0()
     }
 
-    #[allow(
-        clippy::disallowed_methods,
-        reason = "open stack tiles are lit by the stack and show program faces over the tile.stack look"
-    )]
     fn open_row(&self, pointer: &Entity<Pointer>, view: EntityId, cx: &App) -> AnyElement {
         let size = self.size;
         let colors = program_colors(cx);
         let theme = cx.theme();
-        let tile = Surface::new(roles::TILE_STACK).on(self.tile_ground(cx));
+        let tile_ground = self.tile_ground(cx);
         let pad = size.gap();
         let travel = size.tile() + size.gap();
         let animate = !cx.reduce_motion();
@@ -295,7 +303,7 @@ impl PaneStack {
                 } else {
                     PaintState::Rest
                 };
-                let layer = theme.layer(tile, state);
+                let layer = stack_look(Some(tile_ground), state, cx);
                 let ink = if front {
                     layer.text
                 } else {
@@ -307,7 +315,7 @@ impl PaneStack {
                 let tooltip = stack_tile.tooltip.clone();
                 let program = stack_tile.program;
                 let dark = theme.is_dark();
-                let hover = (!front).then(|| theme.layer(tile, PaintState::Hover));
+                let hover = (!front).then(|| stack_look(Some(tile_ground), PaintState::Hover, cx));
                 let element = tile_box(size)
                     .id(("pane-stack-tile", index))
                     .debug_selector(move || format!("pane-stack-tile-{index}"))
@@ -315,7 +323,7 @@ impl PaneStack {
                     .aria_label(stack_tile.label.clone())
                     .aria_selected(front)
                     .relative()
-                    .layer(&layer)
+                    .map(|tile| paint_tile(tile, &layer))
                     .rounded(self.radius)
                     .tooltip(move |window, cx| {
                         Tooltip::new(tooltip.clone())
@@ -399,15 +407,8 @@ impl PaneStack {
 }
 
 impl PaneStack {
-    #[allow(
-        clippy::disallowed_methods,
-        reason = "the resting stack tiles take the tile.stack look as their base material"
-    )]
     fn resting_look(&self, cx: &App) -> Layer {
-        cx.theme().layer(
-            Surface::new(roles::TILE_STACK).on(self.tile_ground(cx)),
-            PaintState::Rest,
-        )
+        stack_look(Some(self.tile_ground(cx)), PaintState::Rest, cx)
     }
 
     fn reach(&self) -> Pixels {

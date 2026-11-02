@@ -1721,7 +1721,7 @@ impl Focusable for TerminalPane {
     clippy::disallowed_methods,
     reason = "terminal cells take the font and size of the user's terminal appearance"
 )]
-fn terminal_text<E: Styled>(element: E, font: Font, size: Pixels) -> E {
+pub(crate) fn terminal_text<E: Styled>(element: E, font: Font, size: Pixels) -> E {
     element.font(font).text_size(size)
 }
 

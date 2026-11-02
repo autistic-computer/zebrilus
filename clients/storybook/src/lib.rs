@@ -211,7 +211,7 @@ mod tests {
             let mut kit = penna::Theme::default();
             theme.apply_roles(&mut kit);
             theme.materials.apply(&mut kit);
-            for role in zz_ui::roles::all() {
+            for role in penna::roles::all() {
                 let (mut style, _) = knobs::inherited(role, &theme.roles, &theme.materials);
                 if let Some(patch) = theme.roles.get(role.id()) {
                     patch.apply(&mut style);

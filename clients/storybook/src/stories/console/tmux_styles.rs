@@ -94,7 +94,11 @@ fn line(source: &str, cx: &App) -> impl IntoElement {
                 .text_color(theme.foreground)
                 .child(styled(source, theme.foreground, theme.background, cx)),
         )
-        .child(Label::new(TextStyle::Mono, source.to_owned()).muted())
+        .child(
+            Label::new(TextStyle::Micro, source.to_owned())
+                .mono()
+                .muted(),
+        )
 }
 
 fn attributes(_: &mut Window, cx: &mut App) -> AnyElement {
@@ -139,7 +143,7 @@ fn bar(source: &str, foreground: Hsla, background: Hsla, cx: &App) -> impl IntoE
                 .rounded(cx.theme().radius)
                 .bg(background)
                 .text_color(foreground)
-                .type_style(TextStyle::Mono, cx)
+                .type_style_mono(TextStyle::Small, cx)
                 .child(div().flex_1().min_w_0().child(text(&left)))
                 .child(div().flex_none().child(text(&centre)))
                 .child(
@@ -151,7 +155,11 @@ fn bar(source: &str, foreground: Hsla, background: Hsla, cx: &App) -> impl IntoE
                         .child(text(&right)),
                 ),
         )
-        .child(Label::new(TextStyle::Mono, source.to_owned()).muted())
+        .child(
+            Label::new(TextStyle::Micro, source.to_owned())
+                .mono()
+                .muted(),
+        )
 }
 
 fn alignment(_: &mut Window, cx: &mut App) -> AnyElement {

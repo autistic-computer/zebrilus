@@ -2,7 +2,8 @@ use std::rc::Rc;
 
 use ala::{
     AnyElement, AnyView, App, AppContext as _, Context, Corners, ElementId, IntoElement,
-    ParentElement as _, Pixels, Render, SharedString, Stateful, Styled as _, Window, div, px,
+    ParentElement as _, Pixels, Render, SharedString, Stateful, Styled as _, Window, div,
+    prelude::FluentBuilder as _, px,
 };
 use penna::{ActiveTheme as _, Colorize as _, Icon, IconName, StyledExt as _, TextStyle};
 use zz_client::StatusBarPane;
@@ -110,6 +111,12 @@ pub fn chrome(active: bool, scrim: bool, gaps: bool, cx: &App) -> PaneChrome {
     clippy::disallowed_methods,
     reason = "the sample lines stand in for terminal cells, which keep the terminal's own size and line spacing"
 )]
+fn terminal_text(body: ala::Div, cx: &App) -> ala::Div {
+    body.font_family(cx.theme().mono_font_family.clone())
+        .text_size(px(12.0))
+        .line_height(px(18.0))
+}
+
 pub fn terminal_body(lines: &[(Tone, &'static str)], dimmed: bool, cx: &App) -> ala::Div {
     let theme = cx.theme();
     div()
@@ -122,9 +129,7 @@ pub fn terminal_body(lines: &[(Tone, &'static str)], dimmed: bool, cx: &App) -> 
         .px(px(12.0))
         .pt(px(4.0))
         .pb(px(10.0))
-        .font_family(theme.mono_font_family.clone())
-        .text_size(px(12.0))
-        .line_height(px(18.0))
+        .map(|body| terminal_text(body, cx))
         .whitespace_nowrap()
         .text_color(theme.foreground)
         .children(lines.iter().map(|(tone, text)| {

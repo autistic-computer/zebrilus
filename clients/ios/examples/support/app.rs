@@ -9,7 +9,7 @@ use ala::{
     div, prelude::*, px,
 };
 use penna::{
-    ActiveTheme, Colorize,
+    ActiveTheme, Label, TextStyle,
     button::Button,
     input::{Input, InputContentType, InputEvent, InputState},
 };
@@ -640,12 +640,7 @@ impl Render for TerminalApp {
                         },
                     ))),
             )
-            .child(
-                div()
-                    .text_xs()
-                    .text_color(cx.theme().foreground.muted())
-                    .child(status),
-            )
+            .child(Label::new(TextStyle::Small, status).muted())
             .when(self.show_endpoint, |root| {
                 root.child(
                     div()

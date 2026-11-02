@@ -69,27 +69,31 @@ mod tests {
         (left.max(right) + 0.05) / (left.min(right) + 0.05)
     }
 
-    #[test]
     #[allow(
         clippy::disallowed_methods,
         reason = "the test measures each built-in theme's composer buttons against the composer"
     )]
+    fn rest_layer(kit: &Theme, surface: impl Into<crate::Surface>) -> crate::Layer {
+        kit.layer(surface, crate::PaintState::Rest)
+    }
+
+    #[test]
     fn the_composers_buttons_are_filled_in_every_builtin() {
-        use crate::{PaintState, Surface};
+        use crate::Surface;
         use penna::{button::ButtonLook, input::FieldLook};
         for (id, theme) in builtin_themes() {
             for mode in [ThemeMode::Light, ThemeMode::Dark] {
                 let mut kit = Theme::from(&*ThemeColor::for_mode(mode));
                 kit.mode = mode;
                 theme.apply(&mut kit);
-                let pill = kit.layer(FieldLook::Composer, PaintState::Rest).ground;
+                let pill = rest_layer(&kit, FieldLook::Composer).ground;
                 for (button, prominent, least) in [("send and stop", true, 1.5), ("+", false, 1.05)]
                 {
-                    let layer = kit.layer(
+                    let layer = rest_layer(
+                        &kit,
                         Surface::from(ButtonLook::Send)
                             .prominent(prominent)
                             .on(pill),
-                        PaintState::Rest,
                     );
                     let ratio = contrast(pill.fill.blend(layer.fill), pill.fill);
                     assert!(
@@ -194,7 +198,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(theme.roles.keys().collect::<Vec<_>>(), ["card.code"]);
-        assert_eq!(crate::roles::find("agent.composer"), None);
+        assert_eq!(penna::roles::find("agent.composer"), None);
     }
 
     #[test]

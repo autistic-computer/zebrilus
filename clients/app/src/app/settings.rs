@@ -1067,10 +1067,6 @@ struct TerminalPreview {
 }
 
 impl ala::RenderOnce for TerminalPreview {
-    #[allow(
-        clippy::disallowed_methods,
-        reason = "the preview draws terminal cells in the terminal's own font, size and line height"
-    )]
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         use zz_ui::terminal::{
             RowRenderCache, TerminalRenderInput, terminal_background, terminal_font_for_style,
@@ -1134,8 +1130,7 @@ impl ala::RenderOnce for TerminalPreview {
                     .pr(px(appearance.padding_right))
                     .pt(px(appearance.padding_top))
                     .pb(px(appearance.padding_bottom))
-                    .font(font)
-                    .text_size(font_size)
+                    .map(|text| crate::terminal::terminal_text(text, font, font_size))
                     .line_height(px(appearance
                         .cell_height_adjustment
                         .apply(f32::from(font_size))

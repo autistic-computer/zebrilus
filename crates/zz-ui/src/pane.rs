@@ -681,10 +681,6 @@ pub fn pane_border_color(active: bool, cx: &App) -> Hsla {
     }
 }
 
-#[allow(
-    clippy::disallowed_methods,
-    reason = "the pane frame is the pane's own material: its glass, rim and edge follow the pane and its tmux style"
-)]
 pub fn pane_surface(
     id: impl Into<ElementId>,
     content: impl IntoElement,
@@ -694,7 +690,7 @@ pub fn pane_surface(
 ) -> Stateful<ala::Div> {
     let theme = cx.theme();
     let glass = theme.style(roles::PANE).fill == Fill::Glass && theme.glass_effect().is_some();
-    let rest = theme.layer(roles::PANE, PaintState::Rest);
+    let rest = pane_material(roles::PANE, cx);
     let outlined = rest.border_width > Pixels::ZERO;
     let shadow = if chrome.shadow {
         rest.shadow.clone()
@@ -719,7 +715,7 @@ pub fn pane_surface(
         .flex()
         .size_full()
         .overflow_hidden()
-        .when_some(frame, |surface, frame| surface.layer(&frame))
+        .when_some(frame, |surface, frame| paint_material(surface, &frame))
         .shadow(shadow)
         .rounded_tl(chrome.radii.top_left)
         .rounded_tr(chrome.radii.top_right)
@@ -750,6 +746,22 @@ pub fn pane_surface(
             },
         )
         .children(overlays)
+}
+
+#[allow(
+    clippy::disallowed_methods,
+    reason = "a pane frame or a tmux popup is the pane's own material: its glass, edge and colours follow the pane and its tmux style"
+)]
+fn pane_material(role: penna::SurfaceRole, cx: &App) -> Layer {
+    cx.theme().layer(role, PaintState::Rest)
+}
+
+#[allow(
+    clippy::disallowed_methods,
+    reason = "a pane frame or a tmux popup is the pane's own material: its glass, edge and colours follow the pane and its tmux style"
+)]
+fn paint_material(surface: Stateful<ala::Div>, material: &Layer) -> Stateful<ala::Div> {
+    surface.layer(material)
 }
 
 fn pane_frame_layer(frame: GlassMaterial, glass: bool, rest: Layer, cx: &App) -> Layer {
@@ -891,13 +903,9 @@ impl FloatingSurface {
 }
 
 impl RenderOnce for FloatingSurface {
-    #[allow(
-        clippy::disallowed_methods,
-        reason = "a tmux popup paints in the colours popup-style and popup-border-style name, over the floating.pane look, and titles its border in the terminal's code font"
-    )]
     fn render(self, _: &mut ala::Window, cx: &mut App) -> impl IntoElement {
         let theme = cx.theme();
-        let mut layer = theme.layer(roles::FLOATING_PANE, PaintState::Rest);
+        let mut layer = pane_material(roles::FLOATING_PANE, cx);
         if let Some(fill) = self.background {
             layer.fill = fill;
             layer.glass = layer
@@ -925,7 +933,7 @@ impl RenderOnce for FloatingSurface {
             .size_full()
             .overflow_hidden()
             .occlude()
-            .layer(&layer)
+            .map(|surface| paint_material(surface, &layer))
             .on_mouse_down(ala::MouseButton::Left, |_, _, cx| cx.stop_propagation())
             .child(
                 div()
@@ -956,8 +964,7 @@ impl RenderOnce for FloatingSurface {
                         .flex()
                         .justify_between()
                         .gap(px(8.0))
-                        .font_family(cx.theme().mono_font_family.clone())
-                        .text_size(crate::rems_from_px(11.0))
+                        .type_style_mono(TextStyle::Caption, cx)
                         .line_height(inset_y.max(px(14.0)))
                         .child(label(self.title).min_w_0())
                         .when(!self.title_right.is_empty(), |row| {
@@ -1050,7 +1057,12 @@ pub fn pane_drag_chip(
         .px(px(10.0))
         .py(px(6.0))
         .overflow_hidden()
-        .child(Label::new(TextStyle::Mono, pane).strong().flex_none())
+        .child(
+            Label::new(TextStyle::Small, pane)
+                .mono()
+                .strong()
+                .flex_none(),
+        )
         .child(
             Label::new(TextStyle::Small, title)
                 .muted()
@@ -1449,8 +1461,8 @@ pub fn terminal_mode_indicator(
             .when_some(label, ala::ParentElement::child)
             .when(!detail.is_empty(), |row| {
                 row.child(
-                    Label::new(TextStyle::Mono, detail)
-                        .line_height(px(16.0))
+                    Label::new(TextStyle::Small, detail)
+                        .mono()
                         .text_color(cx.theme().foreground.muted()),
                 )
             }),

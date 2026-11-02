@@ -1545,10 +1545,6 @@ fn render_trace_tool(
     }
 }
 
-#[allow(
-    clippy::disallowed_methods,
-    reason = "the failure tail is the failed command's own output, kept small in the code font under its row"
-)]
 fn render_failure(
     store: &Entity<AgentTimelineStore>,
     tool: &AgentToolEntry,
@@ -1575,12 +1571,20 @@ fn render_failure(
                 .overflow_hidden()
                 .whitespace_nowrap()
                 .text_ellipsis()
-                .font_family(cx.theme().mono_font_family.clone())
-                .text_size(crate::rems_from_px(11.0))
+                .map(|tail| failure_text(tail, cx))
                 .text_color(timeline_affordance_color(cx))
                 .child(line)
         }))
         .into_any_element()
+}
+
+#[allow(
+    clippy::disallowed_methods,
+    reason = "the failure tail is the failed command's own output, kept small in the code font under its row"
+)]
+fn failure_text(tail: Div, cx: &App) -> Div {
+    tail.font_family(cx.theme().mono_font_family.clone())
+        .text_size(crate::rems_from_px(11.0))
 }
 
 #[must_use]

@@ -12,7 +12,7 @@ use zz_ui::terminal::{
     RowRenderCache, TerminalRenderInput, cursor_should_blink, terminal_background,
 };
 
-use crate::terminal::view::{terminal_font, terminal_font_size, terminal_line_height};
+use crate::terminal::view::{terminal_font, terminal_font_size, terminal_text};
 
 const COLUMNS: u16 = 72;
 const ROWS: u16 = 8;
@@ -115,10 +115,6 @@ impl TerminalPreview {
 }
 
 impl Render for TerminalPreview {
-    #[allow(
-        clippy::disallowed_methods,
-        reason = "the preview draws terminal cells in the terminal's own font, size and line height"
-    )]
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let appearance = Arc::clone(&self.appearance);
         let viewport = Arc::clone(&self.viewport);
@@ -133,7 +129,6 @@ impl Render for TerminalPreview {
         );
         let font = terminal_font(&appearance);
         let font_size = terminal_font_size(&appearance);
-        let line_height = terminal_line_height(&appearance);
         let probe = window.text_system().shape_line(
             "m".into(),
             font_size,
@@ -176,9 +171,7 @@ impl Render for TerminalPreview {
                     .pr(px(appearance.padding_right))
                     .pt(px(appearance.padding_top))
                     .pb(px(appearance.padding_bottom))
-                    .font(font)
-                    .text_size(font_size)
-                    .line_height(line_height)
+                    .map(|text| terminal_text(text, font, &appearance))
                     .child(
                         canvas(
                             move |bounds, window, cx| {
