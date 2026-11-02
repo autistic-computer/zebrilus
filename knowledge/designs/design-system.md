@@ -129,12 +129,12 @@ Text, number and select fields are neutral paints at their field role's emphasis
 - `NumberInput` takes the same three, and `Select` and `Button` take `.on(ground)` too.
 - Settings controls sit on `settings_card_ground(cx)`, the opaque panel a settings card fills with, so their fills step up from the card instead of a hand-picked control fill.
 
-The shared chrome, `field_chrome` in `input/field.rs`, takes a `Surface` or a role and does three things:
+The shared field chrome in penna's `input/field.rs` does three things:
 - it always draws at least a 1px border, clear unless the role draws one, so focusing never moves the text (a role with no fill and no outline draws no box);
 - it hovers to the soft hover fill;
 - it focuses to the focus color when the theme draws outlines (`Theme::outlined()`) and the field is not glass, whose rim is its edge; a bare field (no fill, no outline) still shows the focus frame then.
 
-`input::field_chrome` and `input::field_paint` are public, for a field that holds more than its text. The agent composer is a field shell built this way, not a card: the `agent.composer` role around its attachments, input and controls, and the focus border while its input has focus.
+`input::field_chrome(element, look, ground, state, cx)` and `input::field_paint(look, cx)` are public, for a field that holds more than its text, and take a `FieldLook`. The agent composer is a field shell built this way, not a card: `FieldLook::Composer` around its attachments, input and controls, and the focus border while its input has focus.
 
 **Text inside a field:**
 - placeholders are `faint_at`;
@@ -212,7 +212,7 @@ Kit widgets on the model:
 | Text, number, select field | neutral at the field role's emphasis |
 | Invalid field | danger at the field role's emphasis |
 | Inline field (rename in place) | the field role's emphasis, no focus ring |
-| Agent composer | a field shell: `field_chrome` as `agent.composer`, not a card |
+| Agent composer | a field shell: `field_chrome` with `FieldLook::Composer`, not a card |
 | User message bubble, attachment tile, Mermaid diagram | `agent.bubble` (a card), `agent.attachment` (a tile), `code` |
 | Browser address bar | neutral · ghost field |
 | Browser tab | neutral · soft when active, ghost otherwise |

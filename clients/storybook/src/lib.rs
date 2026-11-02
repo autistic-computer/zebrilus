@@ -213,10 +213,10 @@ mod tests {
             theme.materials.apply(&mut kit);
             for role in zz_ui::roles::all() {
                 let (mut style, _) = knobs::inherited(role, &theme.roles, &theme.materials);
-                if let Some(patch) = theme.roles.get(role.id) {
+                if let Some(patch) = theme.roles.get(role.id()) {
                     patch.apply(&mut style);
                 }
-                assert_eq!(style, kit.style(role), "{id} {}", role.id);
+                assert_eq!(style, kit.style(role), "{id} {}", role.id());
             }
         }
     }

@@ -321,7 +321,7 @@ fn appearance(controls: &Controls, _: &mut Window, cx: &mut App) -> AnyElement {
             ..active.materials.clone()
         },
         roles: [(
-            SurfaceRole::MENU_ITEM.id.to_owned(),
+            SurfaceRole::MENU_ITEM.id().to_owned(),
             StylePatch::EMPTY.selected(Highlight::Tint),
         )]
         .into(),

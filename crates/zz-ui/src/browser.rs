@@ -276,7 +276,7 @@ pub fn browser_address(
         .flex_1()
         .min_w_0()
         .items_center();
-    field_chrome(shell, FieldLook::Address, state, true, true, cx)
+    field_chrome(shell, FieldLook::Address, None, state, cx)
         .on_mouse_down(MouseButton::Left, move |_, window, cx| {
             focus_handle.focus(window, cx);
             cx.stop_propagation();

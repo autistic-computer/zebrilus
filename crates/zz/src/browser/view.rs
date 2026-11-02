@@ -4338,10 +4338,15 @@ mod tests {
         assert_eq!(appearance.font_family, "Iosevka");
         assert_eq!(appearance.page_zoom, 1.25);
 
-        theme.styles.insert(
-            penna::SurfaceRole::POPOVER.id.into(),
-            penna::StylePatch::EMPTY.shadow(penna::Shadow::None),
-        );
+        penna::interface_theme::InterfaceTheme {
+            roles: [(
+                penna::SurfaceRole::POPOVER.id().to_owned(),
+                penna::StylePatch::EMPTY.shadow(penna::Shadow::None),
+            )]
+            .into(),
+            ..Default::default()
+        }
+        .apply_roles(&mut theme);
         assert_eq!(element_picker_appearance(&theme, 1.0).shadow, None);
     }
 

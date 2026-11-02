@@ -21,7 +21,7 @@ mod tests {
 
     #[test]
     fn ids_are_unique_and_spelled_like_a_theme_file() {
-        let ids = all().map(|role| role.id).collect::<Vec<_>>();
+        let ids = all().map(|role| role.id()).collect::<Vec<_>>();
         for (index, id) in ids.iter().enumerate() {
             assert!(
                 id.chars()
@@ -39,20 +39,20 @@ mod tests {
         }
         for role in all() {
             assert!(
-                !role.label.is_empty() && !role.about.is_empty(),
+                !role.label().is_empty() && !role.about().is_empty(),
                 "{}",
-                role.id
+                role.id()
             );
             for group in role.lineage().skip(1) {
                 assert_eq!(
-                    find(group.id),
+                    find(group.id()),
                     Some(group),
                     "{} is in an unknown group",
-                    role.id
+                    role.id()
                 );
-                assert_eq!(group.kind, role.kind, "{}", role.id);
+                assert_eq!(group.kind(), role.kind(), "{}", role.id());
             }
-            assert_eq!(role.lineage().last(), Some(role.kind.role()));
+            assert_eq!(role.lineage().last(), Some(role.kind().role()));
         }
     }
 
@@ -63,8 +63,8 @@ mod tests {
                 let kit = penna::theme_css::kit_theme(theme, mode);
                 let css = penna::theme_css::stylesheet(&kit, &penna::roles::TONED);
                 for role in all() {
-                    let selector = format!("[data-penna=\"{}\"]", role.id);
-                    assert!(css.contains(&selector), "{id} {mode:?} {}", role.id);
+                    let selector = format!("[data-penna=\"{}\"]", role.id());
+                    assert!(css.contains(&selector), "{id} {mode:?} {}", role.id());
                 }
                 assert!(!css.contains("NaN"), "{id} {mode:?}");
             }

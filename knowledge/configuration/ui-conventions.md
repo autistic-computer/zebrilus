@@ -536,7 +536,7 @@ border instead of exposing the shadow at the join, without stacking translucent 
 titlebar, Settings, margins, split gaps, and rounded pane corners inherit that fill. The slideover
 sidebar paints its own overlay surface. App-owned pane roots paint no fill, so the window shows
 through them; only PiPs paint one, at `zz_ui::pip::PipOpacity` (`pip-background-opacity`, 80%).
-The Agent composer is a field shell (`field_chrome` as the `agent.composer` role) and overlaps the
+The Agent composer is a field shell (`field_chrome` with `FieldLook::Composer`) and overlaps the
 transcript by 12 px at its top edge.
 Prefix cards disable this overlap. The transcript clips before the footer, which inherits the pane background, and
 the shared pane frame adds no background fill. The terminal blends its Ghostty tint with the

@@ -483,8 +483,8 @@ amount, and the pane's root paints the pane background like every other pane.
 Floating panes take the theme's full glass like every popover. Settings previews that are not
 inside a frame use `zz_ui::pane_look::pane_color`.
 
-An agent pane's chat uses the chosen opacity. The composer is a field shell (`field_chrome` drawn as
-the `agent.composer` field role), so at rest it draws what the theme gives that role, a soft wash
+An agent pane's chat uses the chosen opacity. The composer is a field shell (`field_chrome` drawn in
+`FieldLook::Composer`), so at rest it draws what the theme gives that look, a soft wash
 by default, rather than an opaque raised card.
 The footer inherits the main pane background and adds no fill of its own.
 The composer overlaps the transcript by 12 px.

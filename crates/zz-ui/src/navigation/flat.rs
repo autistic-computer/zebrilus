@@ -452,8 +452,8 @@ pub fn flat_window_row(
     let (look, paint_state) = state.look();
     let ground = state.ground.unwrap_or_else(|| theme.ground());
     let shaped = theme
-        .styles
-        .get(Surface::from(look).role.id)
+        .styles()
+        .get(Surface::from(look).role.id())
         .and_then(|patch| patch.shape)
         .is_some();
     let fill = workspace_row_fill(&row_id, look, paint_state, ROW_GROUP.into(), ground, cx)

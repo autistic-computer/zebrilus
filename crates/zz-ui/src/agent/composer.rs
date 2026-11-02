@@ -1,6 +1,6 @@
 use super::AGENT_CONTENT_MAX_WIDTH;
 use crate::input::{FieldLook, Input, InputState, field_chrome, field_paint, field_underlay};
-use crate::{ActiveTheme as _, CHROME_GAP, Ground, PaintState, Surface, h_flex, v_flex};
+use crate::{ActiveTheme as _, CHROME_GAP, Ground, PaintState, h_flex, v_flex};
 use ala::{
     AnyElement, App, Entity, Focusable as _, IntoElement, Pixels, RenderOnce, SharedString, Window,
     div, prelude::*, px,
@@ -49,7 +49,6 @@ impl RenderOnce for Composer {
         };
         let paint = field_paint(FieldLook::Composer, cx);
         let leading = self.leading.is_some();
-        let surface = Surface::from(FieldLook::Composer).on_maybe(self.ground);
         let radius = composer_radius(cx);
         field_chrome(
             h_flex()
@@ -59,10 +58,9 @@ impl RenderOnce for Composer {
                 .items_end()
                 .gap(px(COMPOSER_INSET))
                 .p(px(COMPOSER_INSET)),
-            surface,
+            FieldLook::Composer,
+            self.ground,
             state,
-            true,
-            true,
             cx,
         )
         .rounded(radius)
