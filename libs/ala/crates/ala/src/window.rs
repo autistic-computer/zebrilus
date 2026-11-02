@@ -59,7 +59,7 @@ use std::{
     hash::{Hash, Hasher},
     marker::PhantomData,
     mem,
-    ops::{DerefMut, Range},
+    ops::Range,
     rc::Rc,
     sync::{
         Arc, Weak,
@@ -442,10 +442,10 @@ impl ArenaClearNeeded {
 
     pub fn clear(self, cx: &mut App) {
         assert!(
-            std::ptr::eq(self.arena, &cx.element_arena),
+            std::ptr::eq(self.arena, &*cx.element_arena),
             "ArenaClearNeeded::clear called with a different App than the draw ran against"
         );
-        cx.element_arena.borrow_mut().clear();
+        RefCell::borrow_mut(&cx.element_arena).clear();
     }
 }
 
@@ -854,6 +854,7 @@ pub(crate) struct DeferredDraw {
     absolute_offset: Point<Pixels>,
     prepaint_range: Range<PrepaintStateIndex>,
     paint_range: Range<PaintIndex>,
+    accessed_entities: FxHashSet<EntityId>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -1176,6 +1177,13 @@ pub struct Window {
 struct ModifierState {
     modifiers: Modifiers,
     saw_other_input: bool,
+}
+
+const THERMAL_FRAME_INTERVAL: Duration = Duration::from_micros(16667);
+const FRAME_INTERVAL_TOLERANCE: Duration = Duration::from_millis(1);
+
+fn frame_request_arrived_too_early(elapsed: Duration, minimum_interval: Duration) -> bool {
+    elapsed < minimum_interval.saturating_sub(FRAME_INTERVAL_TOLERANCE)
 }
 
 #[derive(Clone, Debug)]
@@ -1608,12 +1616,19 @@ impl Window {
 
         platform_window.on_close(Box::new({
             let window_id = handle.window_id();
-            let mut cx = cx.to_async();
+            let cx = cx.to_async();
             move || {
-                let _ = handle.update(&mut cx, |_, window, _| window.remove_window());
-                let _ = cx.update(|cx| {
-                    SystemWindowTabController::remove_tab(cx, window_id);
-                });
+                cx.spawn(async move |cx| {
+                    cx.update(|cx| {
+                        if cx.windows.contains_key(window_id) {
+                            handle
+                                .update(cx, |_, window, _| window.remove_window())
+                                .log_err();
+                        }
+                        SystemWindowTabController::remove_tab(cx, window_id);
+                    });
+                })
+                .detach();
             }
         }));
         platform_window.on_request_frame(Box::new({
@@ -1647,18 +1662,19 @@ impl Window {
                         .update(&mut cx, |_, _, cx| cx.thermal_state())
                         .log_err()
                     {
-                        Some(Duration::from_micros(16667))
+                        Some(THERMAL_FRAME_INTERVAL)
                     } else {
                         None
                     };
 
                 let now = Instant::now();
-                let wait = min_frame_interval
-                    .zip(last_frame_time.get())
-                    .and_then(|(min_interval, last_frame)| {
-                        min_interval.checked_sub(now.duration_since(last_frame))
-                    })
-                    .filter(|wait| !wait.is_zero());
+                let wait = min_frame_interval.zip(last_frame_time.get()).and_then(
+                    |(min_interval, last_frame)| {
+                        let elapsed = now.duration_since(last_frame);
+                        frame_request_arrived_too_early(elapsed, min_interval)
+                            .then(|| min_interval - elapsed)
+                    },
+                );
                 if let Some(wait) = wait {
                     deferred_force_render |= force_render;
                     handle
@@ -3312,12 +3328,10 @@ impl Window {
     }
 
     fn record_entities_accessed(&mut self, cx: &mut App) {
-        let mut entities_ref = cx.entities.accessed_entities.get_mut();
-        let mut entities = mem::take(entities_ref.deref_mut());
+        let entities = cx.entities.take_accessed();
         let handle = self.handle;
         cx.record_entities_accessed(handle, self.invalidator.clone(), &entities);
-        let mut entities_ref = cx.entities.accessed_entities.get_mut();
-        mem::swap(&mut entities, entities_ref.deref_mut());
+        cx.entities.restore_accessed(entities);
     }
 
     fn invalidate_entities(&mut self) {
@@ -3605,15 +3619,25 @@ impl Window {
 
                 let prepaint_start = self.prepaint_index();
                 if let Some(mut element) = element {
-                    self.with_rendered_view(current_view, |window| {
-                        window.with_rem_size(Some(rem_size), |window| {
-                            window.with_absolute_element_offset(absolute_offset, |window| {
-                                element.prepaint(window, cx);
+                    let ((), accessed_entities) = cx.detect_accessed_entities(|cx| {
+                        self.with_rendered_view(current_view, |window| {
+                            window.with_rem_size(Some(rem_size), |window| {
+                                window.with_absolute_element_offset(absolute_offset, |window| {
+                                    element.prepaint(window, cx);
+                                });
                             });
                         });
                     });
+                    self.next_frame.deferred_draws[deferred_draw_ix].accessed_entities =
+                        accessed_entities;
                     self.next_frame.deferred_draws[deferred_draw_ix].element = Some(element);
                 } else {
+                    cx.entities.extend_accessed(
+                        self.next_frame.deferred_draws[deferred_draw_ix]
+                            .accessed_entities
+                            .iter()
+                            .copied(),
+                    );
                     self.reuse_prepaint(prepaint_range);
                 }
                 let prepaint_end = self.prepaint_index();
@@ -3647,13 +3671,16 @@ impl Window {
             let paint_start = self.paint_index();
             let content_mask = deferred_draw.content_mask;
             if let Some(element) = deferred_draw.element.as_mut() {
-                self.with_rendered_view(deferred_draw.current_view, |window| {
-                    window.with_content_mask(content_mask, |window| {
-                        window.with_rem_size(Some(deferred_draw.rem_size), |window| {
-                            element.paint(window, cx);
-                        });
+                let ((), accessed_entities) = cx.detect_accessed_entities(|cx| {
+                    self.with_rendered_view(deferred_draw.current_view, |window| {
+                        window.with_content_mask(content_mask, |window| {
+                            window.with_rem_size(Some(deferred_draw.rem_size), |window| {
+                                element.paint(window, cx);
+                            });
+                        })
                     })
-                })
+                });
+                deferred_draw.accessed_entities.extend(accessed_entities);
             } else {
                 self.reuse_paint(deferred_draw.paint_range.clone());
             }
@@ -3734,6 +3761,7 @@ impl Window {
                     absolute_offset: deferred_draw.absolute_offset,
                     prepaint_range: deferred_draw.prepaint_range.clone(),
                     paint_range: deferred_draw.paint_range.clone(),
+                    accessed_entities: deferred_draw.accessed_entities.clone(),
                 }),
         );
     }
@@ -4256,6 +4284,7 @@ impl Window {
             absolute_offset,
             prepaint_range: PrepaintStateIndex::default()..PrepaintStateIndex::default(),
             paint_range: PaintIndex::default()..PaintIndex::default(),
+            accessed_entities: FxHashSet::default(),
         });
     }
 
@@ -6202,9 +6231,14 @@ impl Window {
                     accepts
                 });
 
+            let standalone_modifier = matches!(
+                currently_pending.keystrokes.as_slice(),
+                [keystroke] if keystroke.is_modifier_key()
+            );
             let needs_timeout = previous_timeout.is_some()
                 || match_result.pending_has_binding
-                || text_input_requires_timeout;
+                || text_input_requires_timeout
+                || standalone_modifier;
             currently_pending.timeout = if needs_timeout {
                 match previous_timeout {
                     Some(mut timeout) if timeout.is_paused() => {
@@ -8397,6 +8431,192 @@ mod tests {
         fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
             div()
         }
+    }
+
+    #[ala::test]
+    fn test_native_close_defers_app_access(cx: &mut TestAppContext) {
+        let window = cx.add_window(|_, _| EmptyView);
+        let platform_window = cx.test_window(window.into());
+        {
+            let app = cx.app.borrow_mut();
+            platform_window.simulate_close();
+            assert!(app.windows.contains_key(window.window_id()));
+        }
+        cx.run_until_parked();
+        assert!(!cx.app.borrow().windows.contains_key(window.window_id()));
+    }
+
+    actions!(window_test, [StandaloneModifierAction]);
+
+    struct StandaloneModifierView {
+        focus_handle: FocusHandle,
+        action_count: usize,
+    }
+
+    impl Render for StandaloneModifierView {
+        fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+            div()
+                .key_context("StandaloneModifier")
+                .track_focus(&self.focus_handle)
+                .on_action(cx.listener(|this, _: &StandaloneModifierAction, _, _| {
+                    this.action_count += 1;
+                }))
+        }
+    }
+
+    #[ala::test]
+    fn test_standalone_modifier_sequence_times_out(cx: &mut TestAppContext) {
+        cx.update(|cx| {
+            cx.bind_keys([crate::KeyBinding::new(
+                "shift shift",
+                StandaloneModifierAction,
+                Some("StandaloneModifier"),
+            )]);
+        });
+        let (view, cx) = cx.add_window_view(|window, cx| {
+            let focus_handle = cx.focus_handle();
+            window.focus(&focus_handle, cx);
+            StandaloneModifierView {
+                focus_handle,
+                action_count: 0,
+            }
+        });
+        let shift = Modifiers {
+            shift: true,
+            ..Modifiers::default()
+        };
+        cx.simulate_modifiers_change(shift);
+        cx.simulate_modifiers_change(Modifiers::default());
+        cx.background_executor.advance_clock(Duration::from_secs(2));
+        cx.run_until_parked();
+        cx.update(|window, cx| {
+            assert!(!window.has_pending_keystrokes());
+            assert_eq!(view.read(cx).action_count, 0);
+        });
+
+        cx.simulate_modifiers_change(shift);
+        cx.simulate_modifiers_change(Modifiers::default());
+        cx.simulate_modifiers_change(shift);
+        cx.simulate_modifiers_change(Modifiers::default());
+        cx.update(|window, cx| {
+            assert!(!window.has_pending_keystrokes());
+            assert_eq!(view.read(cx).action_count, 1);
+        });
+    }
+
+    #[ala::test]
+    fn cached_view_follows_inherited_opacity(cx: &mut TestAppContext) {
+        struct Child {
+            renders: usize,
+        }
+
+        impl Render for Child {
+            fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+                self.renders += 1;
+                div().size_full().bg(crate::rgb(0xff0000))
+            }
+        }
+
+        struct Root {
+            opacity: f32,
+            width: Pixels,
+            child: crate::Entity<Child>,
+        }
+
+        impl Render for Root {
+            fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+                div()
+                    .w(self.width)
+                    .h(px(200.))
+                    .opacity(self.opacity)
+                    .hover(|style| style.opacity(1.))
+                    .child(
+                        self.child
+                            .clone()
+                            .cached(crate::StyleRefinement::default().size(px(100.))),
+                    )
+            }
+        }
+
+        fn update_and_draw(
+            window: crate::WindowHandle<Root>,
+            child: &crate::Entity<Child>,
+            cx: &mut TestAppContext,
+            update: impl FnOnce(&mut Root, &mut Window, &mut Context<Root>),
+        ) -> (f32, usize) {
+            window
+                .update(cx, |root, window, cx| {
+                    update(root, window, cx);
+                    cx.notify();
+                })
+                .expect("update root");
+            for _ in 0..3 {
+                let (alpha, renders, requested_frames) = cx
+                    .update_window(window.into(), |_, window, cx| {
+                        window.draw(cx).clear(cx);
+                        let quads = &window.rendered_frame.scene.quads;
+                        assert_eq!(quads.len(), 1);
+                        let alpha = quads.first().expect("child quad").background.solid.a;
+                        (
+                            alpha,
+                            child.read(cx).renders,
+                            window.simulate_next_frame(cx),
+                        )
+                    })
+                    .expect("draw window");
+                if requested_frames == 0 {
+                    return (alpha, renders);
+                }
+            }
+            panic!("cached child kept requesting frames");
+        }
+
+        let child = cx.new(|_| Child { renders: 0 });
+        let window = cx.add_window(|_, _| Root {
+            opacity: 1.,
+            width: px(200.),
+            child: child.clone(),
+        });
+        let outside = point(px(500.), px(500.));
+        let inside = point(px(50.), px(50.));
+        let beside = point(px(250.), px(50.));
+
+        let move_outside = |_: &mut Root, window: &mut Window, cx: &mut Context<Root>| {
+            window.simulate_mouse_move(outside, cx)
+        };
+        assert_eq!(update_and_draw(window, &child, cx, move_outside), (1., 1));
+        assert_eq!(update_and_draw(window, &child, cx, |_, _, _| {}), (1., 1));
+        let fade = |root: &mut Root, _: &mut Window, _: &mut Context<Root>| root.opacity = 0.5;
+        assert_eq!(update_and_draw(window, &child, cx, fade), (0.5, 2));
+        assert_eq!(update_and_draw(window, &child, cx, |_, _, _| {}), (0.5, 2));
+
+        let move_inside = |_: &mut Root, window: &mut Window, cx: &mut Context<Root>| {
+            window.simulate_mouse_move(inside, cx)
+        };
+        assert_eq!(update_and_draw(window, &child, cx, move_inside).0, 1.);
+        let move_beside = |_: &mut Root, window: &mut Window, cx: &mut Context<Root>| {
+            window.simulate_mouse_move(beside, cx)
+        };
+        assert_eq!(update_and_draw(window, &child, cx, move_beside).0, 0.5);
+
+        let widen = |root: &mut Root, _: &mut Window, _: &mut Context<Root>| root.width = px(300.);
+        assert_eq!(update_and_draw(window, &child, cx, widen).0, 1.);
+    }
+
+    #[test]
+    fn frame_throttle_accepts_display_link_rounding() {
+        assert!(!super::frame_request_arrived_too_early(
+            Duration::from_micros(16_666),
+            super::THERMAL_FRAME_INTERVAL,
+        ));
+    }
+
+    #[test]
+    fn frame_throttle_rejects_an_extra_display_refresh() {
+        assert!(super::frame_request_arrived_too_early(
+            Duration::from_micros(8_333),
+            super::THERMAL_FRAME_INTERVAL,
+        ));
     }
 
     struct OpensWindowOnPaint {

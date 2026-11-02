@@ -27,7 +27,6 @@ pub(crate) const WM_ALA_DOCK_MENU_ACTION: u32 = WM_USER + 4;
 pub(crate) const WM_ALA_FORCE_UPDATE_WINDOW: u32 = WM_USER + 5;
 pub(crate) const WM_ALA_KEYBOARD_LAYOUT_CHANGED: u32 = WM_USER + 6;
 pub(crate) const WM_ALA_GPU_DEVICE_LOST: u32 = WM_USER + 7;
-pub(crate) const WM_ALA_KEYDOWN: u32 = WM_USER + 8;
 pub(crate) const WM_ALA_END_SESSION: u32 = WM_USER + 9;
 
 const SIZE_MOVE_LOOP_TIMER_ID: usize = 1;
@@ -127,7 +126,6 @@ impl WindowsWindowInner {
             WM_MOUSEHWHEEL => self.handle_mouse_horizontal_wheel_msg(handle, wparam, lparam),
             WM_SYSKEYUP => self.handle_syskeyup_msg(wparam, lparam),
             WM_KEYUP => self.handle_keyup_msg(wparam, lparam),
-            WM_ALA_KEYDOWN => self.handle_keydown_msg(wparam, lparam),
             WM_CHAR => self.handle_char_msg(wparam),
             WM_IME_STARTCOMPOSITION => self.handle_ime_position(handle),
             WM_IME_COMPOSITION => self.handle_ime_composition(handle, lparam),
@@ -135,11 +133,11 @@ impl WindowsWindowInner {
             WM_SETTINGCHANGE => self.handle_system_settings_changed(handle, wparam, lparam),
             WM_INPUTLANGCHANGE => self.handle_input_language_changed(),
             WM_SHOWWINDOW => self.handle_window_visibility_changed(handle, wparam),
-            WM_ALA_CURSOR_STYLE_CHANGED => self.handle_cursor_changed(lparam),
-            WM_ALA_FORCE_UPDATE_WINDOW => self.draw_window(handle, true),
-            WM_ALA_GPU_DEVICE_LOST => self.handle_device_lost(lparam),
             DM_POINTERHITTEST => self.handle_dm_pointer_hit_test(wparam),
             WM_GETOBJECT => self.handle_wm_getobject(wparam, lparam),
+            WM_ALA_CURSOR_STYLE_CHANGED | WM_ALA_FORCE_UPDATE_WINDOW | WM_ALA_GPU_DEVICE_LOST => {
+                self.handle_ala_events(handle, msg, wparam, lparam)
+            }
             _ => None,
         };
         if let Some(n) = handled {
@@ -336,10 +334,10 @@ impl WindowsWindowInner {
         self.start_tracking_mouse(handle, TME_LEAVE);
         self.restore_cursor_after_hide();
 
-        let Some(mut func) = self.state.callbacks.input.take() else {
-            return Some(1);
-        };
+        let x = lparam.signed_loword() as f32;
+        let y = lparam.signed_hiword() as f32;
         let scale_factor = self.state.scale_factor.get();
+        let new_position = logical_point(x, y, scale_factor);
 
         let pressed_button = match MODIFIERKEYS_FLAGS(wparam.loword() as u32) {
             flags if flags.contains(MK_LBUTTON) => Some(MouseButton::Left),
@@ -353,16 +351,23 @@ impl WindowsWindowInner {
             }
             _ => None,
         };
-        let x = lparam.signed_loword() as f32;
-        let y = lparam.signed_hiword() as f32;
+
+        if pressed_button.is_none() && new_position == self.state.mouse_position.get() {
+            return Some(1);
+        }
+        self.state.mouse_position.set(new_position);
+
+        let Some(mut func) = self.state.callbacks.input.take() else {
+            return Some(1);
+        };
+
         let input = PlatformInput::MouseMove(MouseMoveEvent {
-            position: logical_point(x, y, scale_factor),
+            position: new_position,
             pressed_button,
             modifiers: current_modifiers(),
         });
         let handled = !func(input).propagate;
         self.state.callbacks.input.set(Some(func));
-
         if handled { Some(0) } else { Some(1) }
     }
 
@@ -392,7 +397,7 @@ impl WindowsWindowInner {
         Some(0)
     }
 
-    fn handle_keydown_msg(&self, wparam: WPARAM, lparam: LPARAM) -> Option<isize> {
+    pub(crate) fn handle_keydown_msg(&self, wparam: WPARAM, lparam: LPARAM) -> Option<isize> {
         let Some(input) = handle_key_event(
             wparam,
             lparam,
@@ -1227,7 +1232,28 @@ impl WindowsWindowInner {
             .detach();
     }
 
+    fn handle_ala_events(
+        &self,
+        handle: HWND,
+        message: u32,
+        wparam: WPARAM,
+        lparam: LPARAM,
+    ) -> Option<isize> {
+        if wparam.0 != self.validation_number {
+            return None;
+        }
+        match message {
+            WM_ALA_CURSOR_STYLE_CHANGED => self.handle_cursor_changed(lparam),
+            WM_ALA_FORCE_UPDATE_WINDOW => self.draw_window(handle, true),
+            WM_ALA_GPU_DEVICE_LOST => self.handle_device_lost(lparam),
+            _ => unreachable!(),
+        }
+    }
+
     fn handle_device_lost(&self, lparam: LPARAM) -> Option<isize> {
+        if lparam.0 == 0 {
+            return None;
+        }
         let devices = lparam.0 as *const DirectXDevices;
         let devices = unsafe { &*devices };
         if let Err(err) = self
