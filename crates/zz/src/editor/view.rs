@@ -6,13 +6,13 @@ use std::{
 };
 
 use ala::{
-    App, Context, Entity, FocusHandle, Focusable, IntoElement, KeyBinding, MouseButton,
-    MouseDownEvent, ParentElement as _, Render, Styled as _, Subscription, Window, div, prelude::*,
-    px,
+    App, Context, Div, Entity, FocusHandle, Focusable, IntoElement, KeyBinding, MouseButton,
+    MouseDownEvent, ParentElement as _, Render, Stateful, Styled as _, Subscription, Window, div,
+    prelude::*, px,
 };
 use penna::{
-    ActiveTheme as _, Colorize as _, Emphasis, Kind, PaintState, StyledExt as _, Tone,
-    badge::Badge,
+    ActiveTheme as _, Chip, ChipLook, Emphasis, Label, Panel, PanelLook, Sizable as _, Size,
+    TextStyle, Tone,
     button::{Button, ButtonVariants as _},
     code_editor::{CodeEditor, CodeEditorEvent, CodeEditorState, VimMode},
     feedback::{alert_actions, inline_alert},
@@ -463,16 +463,13 @@ impl EditorView {
             Retry::Save(_) => "Couldn’t save this file",
         };
         let retry = error.retry;
-        let cover = cx.theme().layer(Kind::Panel, PaintState::Rest);
-        div()
+        Panel::new(("editor-error", self.pane.0), PanelLook::Plain)
             .absolute()
             .inset_0()
             .flex()
             .items_center()
             .justify_center()
             .px(px(12.0))
-            .layer(&cover)
-            .bg(cover.ground.fill)
             .child(
                 inline_alert(Some(title.into()), error.message.to_string(), cx)
                     .max_w(px(360.0))
@@ -521,16 +518,13 @@ impl Render for EditorView {
             editor.set_corner_radii(radii, cx);
         });
         let vim_mode = self.editor.read(cx).vim_mode();
-        let root = div()
-            .id(("editor-pane", self.pane.0))
+        let root = editor_text(div().id(("editor-pane", self.pane.0)), cx)
             .key_context(EDITOR_KEY_CONTEXT)
             .track_focus(&focus)
             .relative()
             .flex()
             .size_full()
             .overflow_hidden()
-            .font_family(cx.theme().mono_font_family.clone())
-            .text_size(config::editor_font_size(cx))
             .on_action(cx.listener(Self::open_file))
             .on_action(cx.listener(Self::save_file))
             .on_mouse_down(MouseButton::Left, cx.listener(Self::on_mouse_down))
@@ -543,12 +537,12 @@ impl Render for EditorView {
                         .flex()
                         .items_center()
                         .justify_center()
-                        .text_sm()
-                        .text_color(cx.theme().foreground.muted())
-                        .child(OPEN_HINT),
+                        .child(Label::new(TextStyle::Lead, OPEN_HINT).muted()),
                 )
             })
-            .when_some(vim_mode, |this, mode| this.child(vim_mode_badge(mode)))
+            .when_some(vim_mode, |this, mode| {
+                this.child(vim_mode_chip(self.pane, mode))
+            })
             .when_some(error, |this, error| {
                 this.child(self.render_error(error, cx))
             })
@@ -557,14 +551,29 @@ impl Render for EditorView {
     }
 }
 
-fn vim_mode_badge(mode: VimMode) -> Badge {
-    let badge = Badge::new(mode.label()).surface_role(zz_ui::roles::CHIP_FLOATING);
-    let badge = if matches!(mode, VimMode::Normal) {
-        badge
+#[allow(
+    clippy::disallowed_methods,
+    reason = "file content takes the code font at the editor font size the user set"
+)]
+fn editor_text(root: Stateful<Div>, cx: &App) -> Stateful<Div> {
+    root.font_family(cx.theme().mono_font_family.clone())
+        .text_size(config::editor_font_size(cx))
+}
+
+fn vim_mode_chip(pane: PaneId, mode: VimMode) -> Chip {
+    let chip = Chip::new(("editor-vim-mode", pane.0), mode.label())
+        .look(ChipLook::Floating)
+        .with_size(Size::Small);
+    let chip = if matches!(mode, VimMode::Normal) {
+        chip
     } else {
-        badge.tone(Tone::Primary).emphasis(Emphasis::Solid)
+        chip.tone(Tone::Primary).emphasis(Emphasis::Solid)
     };
-    badge.absolute().right(px(8.0)).bottom(px(8.0))
+    chip.absolute()
+        .right(px(8.0))
+        .bottom(px(8.0))
+        .h(px(18.0))
+        .px(px(6.0))
 }
 
 fn validated_descriptor_path(path: &Path, cwd: &Path) -> Result<String, String> {

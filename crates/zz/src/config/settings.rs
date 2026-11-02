@@ -15,7 +15,8 @@ use ala::{
     SharedString, Subscription, Window, WindowControlArea, div, img, prelude::*, px,
 };
 use penna::{
-    ActiveTheme as _, Colorize as _, Disableable as _, Icon, IconName, IndexPath, WindowExt as _,
+    ActiveTheme as _, Colorize as _, Disableable as _, Icon, IconName, IndexPath, Label, TextStyle,
+    WindowExt as _,
     button::{Button, ButtonVariants as _},
     code_editor::{CodeEditor, CodeEditorEvent, CodeEditorState},
     h_flex,
@@ -70,6 +71,17 @@ const KEY_INPUT_WIDTH: f32 = 65.0;
 const CONFIG_EDITOR_FONT_SIZE: f32 = 12.0;
 const CONFIG_EDITOR_PADDING: f32 = 2.0;
 const APP_ICON_PREVIEW_SIZE: f32 = 48.0;
+
+#[allow(
+    clippy::disallowed_methods,
+    reason = "the config file is file content, shown in the code font at the editor's own size"
+)]
+fn config_file_text(editor: ala::Div, cx: &App) -> ala::Div {
+    editor
+        .font_family(cx.theme().mono_font_family.clone())
+        .text_size(px(CONFIG_EDITOR_FONT_SIZE))
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 enum ConfigFileKind {
     Mux,
@@ -718,13 +730,12 @@ impl SettingsView {
                     }),
             )
             .child(
-                div()
-                    .flex_none()
-                    .text_size(penna::rems_from_px(11.0))
-                    .text_color(cx.theme().warning)
-                    .child(
-                        "Any local process that reaches the port can drive the logged-in browser.",
-                    ),
+                Label::new(
+                    TextStyle::Caption,
+                    "Any local process that reaches the port can drive the logged-in browser.",
+                )
+                .flex_none()
+                .text_color(cx.theme().warning),
             )
     }
 
@@ -1069,11 +1080,9 @@ impl SettingsView {
             );
         if let Some(error) = state.error.clone() {
             destination = destination.child(
-                div()
+                Label::new(TextStyle::Caption, error)
                     .flex_none()
-                    .text_size(penna::rems_from_px(11.0))
-                    .text_color(cx.theme().warning)
-                    .child(error),
+                    .text_color(cx.theme().warning),
             );
         }
 
@@ -1416,13 +1425,11 @@ impl SettingsView {
                             .items_center()
                             .gap(px(10.0))
                             .child(
-                                div()
+                                Label::new(TextStyle::Caption, path)
+                                    .muted()
                                     .flex_1()
                                     .min_w_0()
-                                    .text_size(penna::rems_from_px(11.0))
-                                    .text_color(cx.theme().foreground.muted())
-                                    .text_ellipsis()
-                                    .child(path),
+                                    .text_ellipsis(),
                             )
                             .when(kind == ConfigFileKind::Mux, |row| {
                                 row.child(
@@ -1454,21 +1461,17 @@ impl SettingsView {
                     )
                     .when_some(error, |page, error| {
                         page.child(
-                            div()
+                            Label::new(TextStyle::Caption, error)
                                 .flex_none()
-                                .text_size(penna::rems_from_px(11.0))
-                                .text_color(cx.theme().warning)
-                                .child(error),
+                                .text_color(cx.theme().warning),
                         )
                     })
                     .child(
-                        settings_preview(cx.theme().editor_background(), cx)
+                        config_file_text(settings_preview(cx.theme().editor_background(), cx), cx)
                             .flex()
                             .flex_none()
                             .h(px(320.0))
                             .p(px(CONFIG_EDITOR_PADDING))
-                            .font_family(cx.theme().mono_font_family.clone())
-                            .text_size(px(CONFIG_EDITOR_FONT_SIZE))
                             .child(CodeEditor::new(&editor)),
                     ),
             )

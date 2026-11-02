@@ -1,18 +1,16 @@
 #[cfg(any(target_os = "ios", target_os = "android"))]
-use ala::{AnyElement, Entity, Pixels, SharedString, Subscription, Window, px};
-use ala::{Context, IntoElement, div, prelude::*};
+use ala::{AnyElement, Entity, IntoElement, Pixels, SharedString, Subscription, Window, div, px};
+use ala::{Context, prelude::*};
 use penna::{
-    ActiveTheme as _, Colorize as _, Icon, IconName, button::Button, h_flex, rems_from_px,
+    ActiveTheme as _, Ground, Icon, IconName, Label, TextStyle, Tone, button::Button, h_flex,
 };
 #[cfg(any(target_os = "ios", target_os = "android"))]
 use penna::{
-    StyledExt as _,
+    Colorize as _, RuleLook, StyledExt as _, SurfaceRole,
     button::ButtonVariants as _,
     input::{Input, InputEvent, InputState},
     sheet::{bottom_sheet, close_sheet, floating_sheet, sheet_close, sheet_inset, sheet_row},
 };
-#[cfg(any(target_os = "ios", target_os = "android"))]
-use zz_ui::roles;
 use zz_ui::settings::{
     SettingEntry, SettingsScrollColumn, SettingsStack, settings_card_ground, settings_page_heading,
     settings_scroll_column,
@@ -354,10 +352,11 @@ impl AppShell {
                         entry.child(status_line(
                             status.clone(),
                             if connected || busy {
-                                muted
+                                Tone::Neutral
                             } else {
-                                cx.theme().warning
+                                Tone::Warning
                             },
+                            cx,
                         ))
                     });
                 let target = endpoint.clone();
@@ -414,7 +413,6 @@ impl AppShell {
     fn host_entries(&self, narrow: bool, cx: &mut Context<Self>) -> Vec<SettingEntry> {
         let connection = self.connection.read(cx);
         let connected = connection.connected;
-        let muted = cx.theme().foreground.muted();
         let address = gateway_address();
         let entry = SettingEntry::new("This computer")
             .description(if address.is_empty() {
@@ -433,7 +431,12 @@ impl AppShell {
                 } else {
                     connection.status.clone()
                 },
-                if connected { muted } else { cx.theme().warning },
+                if connected {
+                    Tone::Neutral
+                } else {
+                    Tone::Warning
+                },
+                cx,
             ));
         vec![with_control(
             entry,
@@ -496,17 +499,11 @@ impl AppShell {
         on_dismiss: impl Fn(&mut Self, &mut Context<Self>) + 'static,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        let muted = cx.theme().foreground.muted();
+        let sheet = cx.theme().ground_of(SurfaceRole::DRAWER);
         let close =
             sheet_close("add-host-close").on_click(|_, _, cx| close_sheet(ADD_HOST_SHEET, cx));
         let dismiss = cx.weak_entity();
-        let note = |text: SharedString| {
-            div()
-                .text_size(px(13.0))
-                .line_height(px(18.0))
-                .text_color(muted)
-                .child(text)
-        };
+        let note = |text: SharedString| Label::new(TextStyle::Body, text).muted().on(sheet);
         bottom_sheet(
             ADD_HOST_SHEET,
             "Add host",
@@ -520,11 +517,7 @@ impl AppShell {
                 .child(Input::new(&self.hosts.destination))
                 .child(note("user@host, or user@host:port".into()))
                 .children(self.hosts.error.clone().map(|error| {
-                    div()
-                        .text_size(px(13.0))
-                        .line_height(px(18.0))
-                        .text_color(cx.theme().warning)
-                        .child(error)
+                    Label::new(TextStyle::Body, error).text_color(cx.theme().warning)
                 }))
                 .child(
                     Button::new("add-host-connect")
@@ -537,7 +530,7 @@ impl AppShell {
                             }
                         })),
                 )
-                .child(div().my(px(6.0)).rule_on(roles::LIST_RULE, penna::Edge::Top, cx))
+                .child(div().my(px(6.0)).rule(RuleLook::List, penna::Edge::Top, cx))
                 .child(note(
                     "Add this phone's key to authorized_keys on the host to sign in without a password."
                         .into(),
@@ -554,7 +547,6 @@ impl AppShell {
                 let _ = dismiss.update(cx, |this, cx| on_dismiss(this, cx));
             },
         )
-        .surface_role(penna::SurfaceRole::DRAWER)
         .into_any_element()
     }
 
@@ -578,15 +570,15 @@ impl AppShell {
             })
             .unwrap_or_default();
         let theme = cx.theme();
-        let muted = theme.foreground.muted();
-        let (state, color) = if connected {
-            ("Connected".to_owned(), muted)
+        let sheet = theme.ground_of(SurfaceRole::DRAWER);
+        let (state, tone) = if connected {
+            ("Connected".to_owned(), Tone::Neutral)
         } else if busy {
-            ("Connecting…".to_owned(), muted)
+            ("Connecting…".to_owned(), Tone::Neutral)
         } else if status.is_empty() {
-            ("Not connected".to_owned(), muted)
+            ("Not connected".to_owned(), Tone::Neutral)
         } else {
-            (status, theme.warning)
+            (status, Tone::Warning)
         };
         let danger = theme.danger;
         let target = endpoint.to_owned();
@@ -665,10 +657,12 @@ impl AppShell {
                         .gap(px(4.0))
                         .px(px(12.0))
                         .pb(px(10.0))
-                        .text_size(px(13.0))
-                        .line_height(px(18.0))
-                        .child(div().text_color(muted).child(endpoint.to_owned()))
-                        .child(div().text_color(color).child(state)),
+                        .child(
+                            Label::new(TextStyle::Body, endpoint.to_owned())
+                                .muted()
+                                .on(sheet),
+                        )
+                        .child(toned(Label::new(TextStyle::Body, state), tone, sheet, cx)),
                 )
                 .children(rows),
             bottom_inset,
@@ -679,7 +673,6 @@ impl AppShell {
                 });
             },
         )
-        .surface_role(penna::SurfaceRole::DRAWER)
         .into_any_element()
     }
 
@@ -688,7 +681,7 @@ impl AppShell {
         let destination = SettingEntry::new("Destination")
             .description("user@host, or user@host:port")
             .when_some(self.hosts.error.clone(), |entry, error| {
-                entry.child(status_line(error, cx.theme().warning))
+                entry.child(status_line(error, Tone::Warning, cx))
             });
         SettingsStack::titled("Add host")
             .child(with_control(
@@ -751,10 +744,9 @@ fn row_meta(text: &'static str, cx: &ala::App) -> impl IntoElement {
         .flex_none()
         .gap(px(6.0))
         .children((!text.is_empty()).then(|| {
-            div()
-                .text_size(rems_from_px(12.0))
-                .text_color(theme.foreground.muted())
-                .child(text)
+            Label::new(TextStyle::Small, text)
+                .muted()
+                .on(settings_card_ground(cx))
         }))
         .child(
             Icon::new(IconName::ChevronRight)
@@ -763,11 +755,20 @@ fn row_meta(text: &'static str, cx: &ala::App) -> impl IntoElement {
         )
 }
 
-fn status_line(text: impl Into<ala::SharedString>, color: ala::Hsla) -> impl IntoElement {
-    div()
-        .text_size(rems_from_px(11.0))
-        .text_color(color)
-        .child(text.into())
+fn status_line(text: impl Into<ala::SharedString>, tone: Tone, cx: &ala::App) -> Label {
+    toned(
+        Label::new(TextStyle::Caption, text),
+        tone,
+        settings_card_ground(cx),
+        cx,
+    )
+}
+
+fn toned(line: Label, tone: Tone, ground: Ground, cx: &ala::App) -> Label {
+    match tone {
+        Tone::Neutral => line.muted().on(ground),
+        tone => line.text_color(cx.theme().tone(tone)),
+    }
 }
 
 #[cfg(target_family = "wasm")]

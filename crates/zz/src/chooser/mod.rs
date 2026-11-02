@@ -7,8 +7,8 @@ use ala::{
     UTF16Selection, UniformListScrollHandle, Window, div, prelude::*, uniform_list,
 };
 use penna::{
-    ActiveTheme as _, IconName,
-    button::{Button, ButtonVariants as _},
+    ActiveTheme as _, IconName, PanelLook,
+    button::{Button, ButtonLook, ButtonVariants as _},
 };
 pub(crate) use zz_ui::chooser::ChooserHint;
 use zz_ui::chooser::{
@@ -315,8 +315,8 @@ impl<S: ChooserSpec> Render for Chooser<S> {
         let close_mux = self.mux.clone();
         let close = Button::compact_icon(S::CLOSE_ID, IconName::Xmark)
             .ghost()
-            .surface_role(penna::SurfaceRole::FLAT_ICON_BUTTON)
-            .on(cx.theme().ground_of(zz_ui::roles::PICKER))
+            .look(ButtonLook::Flat)
+            .on(cx.theme().ground_of(PanelLook::Picker))
             .tooltip("Close")
             .on_click(move |_, _, cx| {
                 S::send(close_mux.read(cx), S::close());

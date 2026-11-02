@@ -6,7 +6,7 @@ use ala::{
     linear_color_stop, linear_gradient, point, prelude::*, px, size,
 };
 use penna::{
-    ActiveTheme as _, Colorize as _, IconName,
+    ActiveTheme as _, Colorize as _, IconName, Label, TextStyle,
     button::{Button, ButtonVariants as _},
     compact::{
         BENTO_INSET, BentoSpan, PillLabel, PillPlacement, bento_grid, compact_bar_button,
@@ -47,6 +47,17 @@ const ZOOM_RADIUS: f32 = 10.0;
 const HOST_TILE_NAMES: usize = 2;
 const TILE_FALLBACK_TOP: f32 = 160.0;
 const TILE_FALLBACK_HEIGHT: f32 = 178.0;
+
+#[allow(
+    clippy::disallowed_methods,
+    reason = "the miniature draws the pane's terminal cells, scaled down in the code font"
+)]
+fn preview_text(cx: &App) -> ala::Div {
+    div()
+        .font_family(cx.theme().mono_font_family.clone())
+        .text_size(px(PREVIEW_TEXT))
+        .line_height(px(PREVIEW_LINE))
+}
 
 fn host_palette(core: &zz_client::ClientCore) -> TerminalPalette {
     core.appearance().map_or_else(
@@ -529,12 +540,9 @@ impl AppShell {
                     .pb(placement.zone() + px(16.0))
                     .child(large_title("Hosts", cx))
                     .child(
-                        div()
-                            .px(px(BENTO_INSET))
-                            .text_size(px(15.0))
-                            .line_height(px(20.0))
-                            .text_color(theme.foreground.muted())
-                            .child(subtitle),
+                        Label::new(TextStyle::Heading, subtitle)
+                            .muted()
+                            .px(px(BENTO_INSET)),
                     )
                     .child(
                         div()
@@ -1062,10 +1070,7 @@ impl AppShell {
         let core = &connection.read(cx).core;
         match &page.kind {
             PaneKindSnapshot::Terminal => core.viewport(page.pane).map(|viewport| {
-                div()
-                    .font_family(theme.mono_font_family.clone())
-                    .text_size(px(PREVIEW_TEXT))
-                    .line_height(px(PREVIEW_LINE))
+                preview_text(cx)
                     .whitespace_nowrap()
                     .child(terminal_preview(
                         viewport,
@@ -1082,13 +1087,9 @@ impl AppShell {
                 .map(|(_, host)| host)
                 .or_else(|| descriptor.tabs.get(descriptor.active_tab).cloned())
                 .map(|url| {
-                    div()
-                        .overflow_hidden()
-                        .whitespace_nowrap()
-                        .text_ellipsis()
-                        .text_size(px(10.0))
-                        .text_color(theme.foreground.muted())
-                        .child(url)
+                    Label::new(TextStyle::Micro, url)
+                        .muted()
+                        .truncate()
                         .into_any_element()
                 }),
             _ => None,

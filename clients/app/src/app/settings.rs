@@ -5,7 +5,7 @@ use ala::{
     div, prelude::*, px,
 };
 use penna::{
-    ActiveTheme as _, Colorize as _, IconName, Theme,
+    ActiveTheme as _, IconName, Label, TextStyle, Theme,
     input::{InputEvent, InputState, NumberInput},
     menu::PopupMenuItem,
     select::{Select, SelectEvent, SelectState},
@@ -896,10 +896,9 @@ impl AppShell {
                     SettingEntry::new(host_title)
                         .description("Set in the host's Ghostty configuration")
                         .control(
-                            div()
-                                .text_size(penna::rems_from_px(13.0))
-                                .text_color(cx.theme().foreground.muted())
-                                .child("Shared"),
+                            Label::new(TextStyle::Body, "Shared")
+                                .muted()
+                                .on(settings_card_ground(cx)),
                         ),
                 ),
             )
@@ -1068,6 +1067,10 @@ struct TerminalPreview {
 }
 
 impl ala::RenderOnce for TerminalPreview {
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "the preview draws terminal cells in the terminal's own font, size and line height"
+    )]
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         use zz_ui::terminal::{
             RowRenderCache, TerminalRenderInput, terminal_background, terminal_font_for_style,
@@ -1083,9 +1086,7 @@ impl ala::RenderOnce for TerminalPreview {
         let cache = Rc::new(RefCell::new(RowRenderCache::default()));
         let paint_cache = Rc::clone(&cache);
         let background = if phone() {
-            cx.theme()
-                .layer(zz_ui::roles::SETTINGS_CARD, penna::PaintState::Rest)
-                .fill
+            settings_card_ground(cx).fill
         } else {
             pane_color(
                 cx.theme(),

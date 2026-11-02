@@ -13,7 +13,7 @@ use ala::{
     Window, canvas, div, linear_color_stop, linear_gradient, point, prelude::*, px,
 };
 use penna::{
-    ActiveTheme as _, Colorize as _, IconName, PaintState,
+    ActiveTheme as _, Colorize as _, IconName,
     compact::{
         BENTO_INSET, PillLabel, PillMenuAlign, PillMenuItem, PillMenuLook, PillPlacement,
         PillSpring, compact_floating_bar, compact_floating_pill, compact_hud,
@@ -712,7 +712,7 @@ impl AppShell {
     ) -> AnyElement {
         #[cfg(not(any(target_os = "ios", target_os = "android")))]
         let _ = hole;
-        let radius = cx.theme().layer(roles::PANE, PaintState::Rest).radius * motion;
+        let radius = cx.theme().radius_of(roles::PANE) * motion;
         let pane_id = slot.pane;
         let snapshot = self
             .connection
@@ -1695,7 +1695,6 @@ impl AppShell {
                 });
             },
         )
-        .surface_role(penna::SurfaceRole::DRAWER)
         .into_any_element()
     }
 }

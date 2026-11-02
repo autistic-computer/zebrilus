@@ -15,7 +15,7 @@ use fff_search::FilePickerOptions;
 use fff_search::{FilePicker, FuzzySearchOptions, PaginationArgs, QueryParser};
 use ignore::WalkBuilder;
 use penna::{
-    ActiveTheme as _, CHROME_GAP, Colorize as _, IconName, StyledExt as _, h_flex,
+    ActiveTheme as _, CHROME_GAP, IconName, Label, PanelLook, StyledExt as _, TextStyle, h_flex,
     input::{InputEvent, InputState, MoveDown, MoveUp},
     scroll::ScrollableElement as _,
     v_flex,
@@ -602,16 +602,20 @@ impl FilePickerView {
 
     fn render_notes(&self, cx: &Context<Self>) -> impl IntoElement {
         let listed = !self.rows.is_empty();
+        let ground = cx.theme().ground_of(PanelLook::Picker);
+        let note = move |text: &'static str| Label::new(TextStyle::Micro, text).muted().on(ground);
         h_flex()
             .w_full()
             .flex_none()
             .gap(px(CHROME_GAP))
             .px_2p5()
-            .text_size(penna::rems_from_px(10.0))
-            .text_color(cx.theme().foreground.muted())
-            .when(listed && self.scanning, |this| this.child("Scanning…"))
+            .when(listed && self.scanning, |this| {
+                this.child(note("Scanning…"))
+            })
             .when(self.limited, |this| {
-                this.child("Search limited. Enter a full path to open another folder.")
+                this.child(note(
+                    "Search limited. Enter a full path to open another folder.",
+                ))
             })
     }
 
@@ -677,9 +681,11 @@ impl Render for FilePickerView {
                                         .flex()
                                         .items_center()
                                         .justify_center()
-                                        .text_size(penna::rems_from_px(11.0))
-                                        .text_color(cx.theme().foreground.muted())
-                                        .child(empty_message),
+                                        .child(
+                                            Label::new(TextStyle::Caption, empty_message)
+                                                .muted()
+                                                .on(cx.theme().ground_of(PanelLook::Picker)),
+                                        ),
                                 )
                             }),
                     )

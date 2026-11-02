@@ -32,9 +32,9 @@ use ala::{
     uniform_list,
 };
 use penna::{
-    ActiveTheme as _, Colorize as _, ElementExt as _, Ground, Icon, IconName, Root, StyledExt as _,
-    SurfaceRole,
-    button::{Button, ButtonVariants as _},
+    ActiveTheme as _, Colorize as _, ElementExt as _, Ground, Icon, IconName, Label, Panel,
+    PanelLook, Root, TextStyle,
+    button::{Button, ButtonLook, ButtonVariants as _},
 };
 use zz_client::{
     ChromeAction, ChromeKeymap, ChromeProfile, DropZone, PaneRect, UI_TABLE, coerced_drop_zone,
@@ -1777,12 +1777,9 @@ impl AppShell {
                 .justify_center()
                 .gap(px(12.0))
                 .child(Icon::new(IconName::SquareTerminal).size(px(32.0)))
-                .child(div().text_size(px(16.0)).child("Your workspace"))
+                .child(Label::new(TextStyle::Heading, "Your workspace"))
                 .child(
-                    div()
-                        .text_size(px(12.0))
-                        .text_color(cx.theme().foreground.muted())
-                        .child(self.connection.read(cx).status.clone()),
+                    Label::new(TextStyle::Small, self.connection.read(cx).status.clone()).muted(),
                 )
                 .child(
                     Button::new("web-create-session")
@@ -2236,16 +2233,16 @@ impl AppShell {
         let mut overlays = Vec::new();
         if !self.connection.read(cx).connected {
             overlays.push(
-                div()
+                Panel::new("web-connection-toast", PanelLook::Toast)
                     .absolute()
                     .left(px(8.0))
                     .right(px(8.0))
                     .top(px(8.0))
                     .p(px(8.0))
-                    .surface(SurfaceRole::TOAST, cx)
-                    .text_size(px(12.0))
-                    .text_color(cx.theme().warning)
-                    .child(self.connection.read(cx).status.clone())
+                    .child(
+                        Label::new(TextStyle::Small, self.connection.read(cx).status.clone())
+                            .text_color(cx.theme().warning),
+                    )
                     .into_any_element(),
             );
         }
@@ -2827,8 +2824,8 @@ impl AppShell {
         let close_input = close.clone();
         let close_button = Button::compact_icon("web-overlay-close", IconName::Xmark)
             .ghost()
-            .surface_role(penna::SurfaceRole::FLAT_ICON_BUTTON)
-            .on(cx.theme().ground_of(zz_ui::roles::PICKER))
+            .look(ButtonLook::Flat)
+            .on(cx.theme().ground_of(PanelLook::Picker))
             .tooltip("Close")
             .on_click(move |_, _, cx| {
                 connection.update(cx, |connection, cx| {
@@ -3263,13 +3260,14 @@ fn unsupported_pane(
             control("web-browser-back", IconName::ArrowLeft),
             control("web-browser-forward", IconName::ArrowRight),
             control("web-browser-reload", IconName::Redo2),
-            div()
-                .flex_1()
-                .min_w_0()
-                .overflow_hidden()
-                .text_size(px(12.0))
-                .text_color(cx.theme().foreground.muted())
-                .child(url.clone().unwrap_or_else(|| "Browser".into())),
+            Label::new(
+                TextStyle::Small,
+                url.clone().unwrap_or_else(|| "Browser".to_owned()),
+            )
+            .muted()
+            .flex_1()
+            .min_w_0()
+            .overflow_hidden(),
             control("web-browser-picker", IconName::Inspector),
             control("web-browser-more", IconName::Ellipsis),
         )
@@ -3296,11 +3294,9 @@ fn unsupported_pane(
         .child(Icon::new(icon).size(px(26.0)))
         .child(title.to_owned())
         .child(
-            div()
-                .max_w(px(400.0))
-                .text_size(px(12.0))
-                .text_color(cx.theme().foreground.muted())
-                .child(reason.to_owned()),
+            Label::new(TextStyle::Small, reason.to_owned())
+                .muted()
+                .max_w(px(400.0)),
         )
         .children(url.map(|url| {
             Button::new("web-open-browser-page")

@@ -115,6 +115,10 @@ impl TerminalPreview {
 }
 
 impl Render for TerminalPreview {
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "the preview draws terminal cells in the terminal's own font, size and line height"
+    )]
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let appearance = Arc::clone(&self.appearance);
         let viewport = Arc::clone(&self.viewport);

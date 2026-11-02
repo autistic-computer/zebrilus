@@ -5,15 +5,16 @@ use crate::native_browser::{
 };
 use ala::{
     AnyElement, App, Bounds, ClipboardEntry, ClipboardItem, ClipboardString, Context, Corners,
-    ElementId, Entity, FocusHandle, Focusable, GlassMaterial, Hsla, Image, ImageFormat, Pixels,
-    Render, RenderImage, Rgba, Subscription, TextInputMode, TouchDragEvent, TouchPhase, Window,
-    canvas, div, point, prelude::*, px, size,
+    ElementId, Entity, FocusHandle, Focusable, Hsla, Image, ImageFormat, Pixels, Render,
+    RenderImage, Rgba, Subscription, TextInputMode, TouchDragEvent, TouchPhase, Window, canvas,
+    div, point, prelude::*, px, size,
 };
 use futures::StreamExt as _;
 use penna::{
     ActiveTheme as _, Colorize as _, Disableable as _, Edge, ElementExt as _, Elevation, Icon,
-    IconName, PaintState, StyledExt as _,
+    IconName, Label, RuleLook, StyledExt as _, SurfaceRole, TextStyle,
     button::{Button, ButtonVariants as _},
+    compact::pill_backdrop_reach,
     input::{InputEvent, InputState},
     sheet::{bottom_sheet, close_sheet, floating_sheet, sheet_close, sheet_inset, sheet_row},
 };
@@ -26,7 +27,6 @@ use zz_ui::{
     },
     pane::{PaneDrag, PaneDragSource, pane_header_icon_button},
     pane_look::PaneLook,
-    roles,
 };
 
 use super::compact::PillNotice;
@@ -919,7 +919,7 @@ impl BrowserPane {
 
     fn tab_drawer(&self, window: &Window, cx: &mut Context<Self>) -> AnyElement {
         let sheet = ElementId::from(("ios-browser-tabs-sheet", self.pane.0));
-        let muted = cx.theme().foreground.muted();
+        let ground = cx.theme().ground_of(SurfaceRole::DRAWER);
         let closable = self.tabs.len() > 1;
         let rows: Vec<AnyElement> = self
             .tabs
@@ -935,15 +935,12 @@ impl BrowserPane {
                     cx,
                 )
                 .child(
-                    div()
+                    Label::new(TextStyle::Body, host(&tab.url).to_owned())
+                        .muted()
+                        .on(ground)
+                        .truncate()
                         .flex_none()
-                        .max_w(px(120.0))
-                        .overflow_hidden()
-                        .whitespace_nowrap()
-                        .text_ellipsis()
-                        .text_size(px(13.0))
-                        .text_color(muted)
-                        .child(host(&tab.url).to_owned()),
+                        .max_w(px(120.0)),
                 )
                 .when(closable, |row| {
                     row.child(
@@ -999,7 +996,7 @@ impl BrowserPane {
                         div()
                             .mx(px(12.0))
                             .my(px(4.0))
-                            .rule_on(roles::LIST_RULE, Edge::Top, cx),
+                            .rule(RuleLook::List, Edge::Top, cx),
                     )
                     .child(new_tab),
                 sheet_inset(window),
@@ -1009,8 +1006,7 @@ impl BrowserPane {
                         cx.notify();
                     });
                 },
-            )
-            .surface_role(penna::SurfaceRole::DRAWER),
+            ),
             window,
         )
     }
@@ -1105,13 +1101,7 @@ impl Render for BrowserPane {
         let covered_bottom = self.covered_bottom;
         let hole = self.pill_hole;
         let holes: Vec<_> = hole.into_iter().collect();
-        let reach = hole.and_then(|_| {
-            cx.theme()
-                .layer(roles::PHONE_PILL, PaintState::Rest)
-                .glass
-                .filter(GlassMaterial::reads_backdrop)
-                .map(|glass| glass.backdrop_reach())
-        });
+        let reach = hole.and_then(|_| pill_backdrop_reach(cx));
         let tab_drawer = drawer.then(|| self.tab_drawer(window, cx));
         let tab = &self.tabs[self.active];
         let view = tab.view.clone();
@@ -1165,9 +1155,7 @@ impl Render for BrowserPane {
                         .min_h(px(32.0))
                         .px_2()
                         .gap_2()
-                        .text_sm()
-                        .text_color(cx.theme().foreground.muted())
-                        .child(status)
+                        .child(Label::new(TextStyle::Lead, status).muted())
                         .when(picking, |row| {
                             row.child(
                                 Button::new("ios-browser-cancel-picker")
@@ -1182,12 +1170,10 @@ impl Render for BrowserPane {
             })
             .when(waiting, |pane| {
                 pane.child(
-                    div()
+                    Label::new(TextStyle::Lead, "Waiting for the host connection…")
+                        .muted()
                         .px_2()
-                        .py_1()
-                        .text_sm()
-                        .text_color(cx.theme().foreground.muted())
-                        .child("Waiting for the host connection…"),
+                        .py_1(),
                 )
             })
             .child(

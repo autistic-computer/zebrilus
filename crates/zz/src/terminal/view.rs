@@ -269,6 +269,17 @@ pub(crate) fn terminal_font_size(appearance: &TerminalAppearance) -> Pixels {
     px(appearance.font_size_points * ALA_UNITS_PER_FONT_POINT)
 }
 
+#[allow(
+    clippy::disallowed_methods,
+    reason = "terminal cells take the font, size and line height of the user's terminal appearance"
+)]
+fn terminal_text<E: Styled>(element: E, font: Font, appearance: &TerminalAppearance) -> E {
+    element
+        .font(font)
+        .text_size(terminal_font_size(appearance))
+        .line_height(terminal_line_height(appearance))
+}
+
 pub(crate) fn terminal_line_height(appearance: &TerminalAppearance) -> Pixels {
     px(appearance
         .cell_height_adjustment
@@ -2307,8 +2318,6 @@ impl Render for TerminalView {
         let appearance = Arc::clone(&self.render_appearance.source);
         let font = self.render_appearance.font.clone();
         let appearance_hash = self.render_appearance.stable_hash;
-        let font_size = terminal_font_size(&appearance);
-        let line_height = terminal_line_height(&appearance);
         let retained = self.retained();
         let marked_text = self.marked_text();
         let status = self.status_message();
@@ -2325,8 +2334,7 @@ impl Render for TerminalView {
         };
         let mode_indicator = mode_indicator(mode, unseen_output);
         let mut root = round_div_radii(
-            div()
-                .id("terminal-root")
+            terminal_text(div().id("terminal-root"), font.clone(), &appearance)
                 .relative()
                 .flex()
                 .size_full()
@@ -2338,9 +2346,6 @@ impl Render for TerminalView {
                         .pb(px(appearance.padding_bottom))
                 })
                 .overflow_hidden()
-                .font(font.clone())
-                .text_size(font_size)
-                .line_height(line_height)
                 .key_context(TERMINAL_KEY_CONTEXT)
                 .track_focus(&self.focus_handle)
                 .on_action(cx.listener(|view, _: &crate::menus::Copy, _, cx| {

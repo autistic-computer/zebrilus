@@ -189,10 +189,9 @@ impl SettingsView {
                             .gap(px(8.0))
                             .flex_none()
                             .child(
-                                div()
-                                    .text_size(penna::rems_from_px(11.0))
-                                    .text_color(cx.theme().foreground.muted())
-                                    .child("Prefix +"),
+                                Label::new(TextStyle::Caption, "Prefix +")
+                                    .muted()
+                                    .on(settings_card_ground(cx)),
                             )
                             .child(
                                 div().w(px(KEY_INPUT_WIDTH)).child(

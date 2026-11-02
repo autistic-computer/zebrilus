@@ -1717,6 +1717,14 @@ impl Focusable for TerminalPane {
     }
 }
 
+#[allow(
+    clippy::disallowed_methods,
+    reason = "terminal cells take the font and size of the user's terminal appearance"
+)]
+fn terminal_text<E: Styled>(element: E, font: Font, size: Pixels) -> E {
+    element.font(font).text_size(size)
+}
+
 impl Render for TerminalPane {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         if self.focus_subscriptions.is_empty() {
@@ -1783,8 +1791,7 @@ impl Render for TerminalPane {
         if self.search.is_some() {
             top_right.push(self.search_bar(search_status, cx));
         }
-        let mut root = div()
-            .id(("terminal", self.pane.0))
+        let mut root = terminal_text(div().id(("terminal", self.pane.0)), font, font_size)
             .relative()
             .size_full()
             .when(
@@ -1793,8 +1800,6 @@ impl Render for TerminalPane {
             )
             .rounded_bl(self.corner_radii.bottom_left)
             .rounded_br(self.corner_radii.bottom_right)
-            .font(font)
-            .text_size(font_size)
             .when(!self.floating, |root| {
                 root.pl(px(appearance.padding_left))
                     .pr(px(appearance.padding_right))

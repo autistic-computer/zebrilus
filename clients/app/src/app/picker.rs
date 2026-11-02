@@ -233,7 +233,6 @@ impl PanePicker {
                     });
                 },
             )
-            .surface_role(penna::SurfaceRole::DRAWER)
             .into_any_element(),
         )
     }

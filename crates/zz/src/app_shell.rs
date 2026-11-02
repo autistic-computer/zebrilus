@@ -5,14 +5,9 @@ use ala::{
     AnyElement, AnyView, App, Context, DragMoveEvent, Entity, IntoElement, KeyUpEvent,
     ModifiersChangedEvent, Render, StyleRefinement, Window, div, prelude::*, px,
 };
-use penna::{
-    ActiveTheme as _, Root, StyledExt as _, Surface, WindowControls, draws_window_controls,
-};
+use penna::{ActiveTheme as _, Bar, BarLook, Root, WindowControls, draws_window_controls};
+use zz_ui::navigation::{workspace_chrome_controls_width_for, workspace_sidebar_slideover};
 use zz_ui::shell::{app_shell_surface, app_titlebar_strip, titlebar_over_panes};
-use zz_ui::{
-    navigation::{workspace_chrome_controls_width_for, workspace_sidebar_slideover},
-    roles,
-};
 
 #[cfg(target_os = "macos")]
 use crate::macos_app::{CloseWindow, Minimize, Zoom};
@@ -235,28 +230,30 @@ impl AppShell {
     fn window_controls(&self) -> WindowControls {
         let close_controller = self.controller.clone();
         let close_agent_controller = self.agent_controller.clone();
-        WindowControls::new()
-            .surface_role(roles::WINDOW_CONTROLS)
-            .on_close_window(move |_, window, cx| {
-                if request_window_close(&close_controller, &close_agent_controller, window, cx) {
-                    window.remove_window();
-                }
-            })
+        WindowControls::new().on_close_window(move |_, window, cx| {
+            if request_window_close(&close_controller, &close_agent_controller, window, cx) {
+                window.remove_window();
+            }
+        })
     }
 
     fn render_control_strip(&self, window: &mut Window, cx: &mut App) -> Option<AnyElement> {
         draws_window_controls(window).then(|| {
             let title_corners = WindowCorners::for_window(window).top();
-            let strip = app_titlebar_strip("app-titlebar", div(), self.window_controls(), cx)
-                .surface(Surface::new(roles::TITLEBAR), cx)
-                .when(title_corners.top_right(), |strip| {
-                    strip.rounded_tr(frame_content_corner_radius(cx))
-                });
-            if crate::profile::profile(cx).fixed_window {
-                strip.into_any_element()
+            let strip = app_titlebar_strip("app-titlebar", div(), self.window_controls(), cx);
+            let strip = if crate::profile::profile(cx).fixed_window {
+                strip
             } else {
-                window_drag_handle("app-titlebar-drag", strip, window, cx).into_any_element()
-            }
+                window_drag_handle("app-titlebar-drag", strip, window, cx)
+            };
+            Bar::new("app-titlebar-bar", BarLook::Window)
+                .flex_none()
+                .w_full()
+                .when(title_corners.top_right(), |bar| {
+                    bar.rounded_tr(frame_content_corner_radius(cx))
+                })
+                .child(strip)
+                .into_any_element()
         })
     }
 
