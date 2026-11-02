@@ -114,13 +114,13 @@ fn the_roles_a_plate_draws_show_in_the_tree_under_their_parents() {
     let tree = tree();
     let well = role(&tree, "well");
     assert_eq!(well["kind"], "card");
-    assert_eq!(well["group"], Kind::Card.role().label);
+    assert_eq!(well["group"], Kind::Card.role().label());
     assert_eq!(well["style"]["shadow"], "none");
     assert_eq!(well["style"]["fill"], "tint");
     let screen = role(&tree, "tile.screen");
     assert_eq!(screen["style"]["shadow"], "contact");
     let chip = role(&tree, "chip");
-    assert_eq!(chip["group"], SurfaceRole::BADGE.label);
+    assert_eq!(chip["group"], SurfaceRole::BADGE.label());
     assert_eq!(chip["style"]["shape"], "pill");
 }
 

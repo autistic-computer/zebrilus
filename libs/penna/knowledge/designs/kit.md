@@ -85,6 +85,7 @@ How they behave:
 - `Panel::inset(px)` grows a rounded corner by the inset its rows sit at; square and pill corners stay.
 - `Tile::edge(width)` draws the look's edge at that width where the theme draws one, so a drop zone can match the edge of the frames it lands in.
 - `Badge::on(ground)` paints the badge on that ground, and `opaque()` blends over it.
+- `field_chrome(element, look, ground, state, cx)` frames a field the app lays out itself, on `ground` or the window's when it is `None`, and `field_paint(look, cx)` gives its inks. The forms that take a surface are crate-private, for penna's own fields.
 - `BottomSheet` headers are `phone.bar`, `sheet_row` rows `phone.row`. `TextView` paints code blocks and inline code as `card.code` and tables as `card.figure`.
 
 ### Reading a look
@@ -175,11 +176,17 @@ Each slice lands in penna (component, variants, recipes, theme tweaks, stories),
 2. Chip, Steps and Notice; nidus status pill, board chips, first-run steps, banners and the panel's status card. The `chip` and `step` recipes are pills: nidus asked for `rounded_full()` before, which the role's radius overrode. `feedback::callout` and `inline_alert` stay until zebrilus's notice batch moves to Notice.
 3. Inspector, Well, Tile and Dock; the rest of nid-app's chrome; nidus lint on. The well is a tinted recess and tiles are painted on its ground (`Tile::on(Well::ground(cx))`), so screens stand apart from it on every theme; as plain cards both had the same fill wherever a theme turns outlines off.
 4. zebrilus families (done 2026-11-01): icon buttons, chips, drawers, floating panels, tabs, menu items, canvas, bars and rules, content, rows, fields, notice; zebrilus lint on as an error. The penna side landed first: every look under Looks, the readers and their stories. Once the sites moved, every `.surface_role` builder went crate-private or away, with `sheet_detail_row`'s role, `picker_search_on`, and the `rule_on`, `row_surface`, `row_corners`, `row_radius`, `outer_radius`, `surface_hover` and `surface_interactive` helpers.
-5. Close registration (done 2026-11-01): `SurfaceRole` has a private field and crate-private constructors and builders, so no other crate can make or restyle a role; `penna::register`, `roles::register`, `roles::retire` and app theme layers are gone; the retired list is penna's. Field looks the storybook used to build by hand are `Input::emphasis`.
+5. Close registration (done 2026-11-01): `SurfaceRole`'s fields, constructors and builders are crate-private, so no other crate can make a role or change one; `penna::register`, `roles::register`, `roles::retire` and app theme layers are gone; the retired list is penna's. Field looks the storybook used to build by hand are `Input::emphasis`.
 
 ## Lint
 
-Defining a role or restyling a widget by role is a compile error outside penna: `SurfaceRole` has crate-private constructors, every `.surface_role` builder is crate-private, and `rule_on`, `row_surface`, `row_corners`, `row_radius`, `surface_hover` and `surface_interactive` are crate-private. The lint covers what stays public for content code: painting and text by hand.
+Outside penna it is a compile error to make or change a role, or to hand a widget one:
+
+- `SurfaceRole`'s fields, constructors and builders are crate-private. Other crates read a role through `id()`, `kind()`, `label()`, `about()` and `patch()`.
+- `Theme`'s role patches are crate-private and read through `Theme::styles()`, so a recipe is restyled by id only through a theme's `InterfaceTheme::roles`, which penna's theme files and the themes users save fill.
+- Every `.surface_role` builder, `rule_on`, `row_surface`, `row_corners`, `row_radius`, `surface_hover`, `surface_interactive`, `field_chrome_on` and `field_paint_on` (the forms of `field_chrome` and `field_paint` that take a surface) are crate-private. The public `field_chrome` and `field_paint` take a `FieldLook`.
+
+What stays public and takes a role, a role id or a surface either paints by hand, and the lint covers it (`StyledExt::{surface, surface_at, layer}`, `Theme::layer`), or reads and paints nothing, such as `Theme::style`, `ground_of`, `ground_at`, `radius_of`, `shape_radius`, `casts_shadow`, `roles::find` and `theme_css::stylesheet`. The lint also covers text set by hand.
 
 Each app extends the `disallowed-methods` list it already has (`nidus/crates/nid-app/clippy.toml`, `zebrilus/clippy.toml` at the workspace root, which also covers `clients/storybook`; a per-crate file would replace the root list). Added paths: `penna::StyledExt::{surface, surface_at, layer}`, `penna::Theme::layer`, `ala::Styled::{text_size, text_xs, text_sm, text_base, text_lg, text_xl, text_2xl, text_3xl, font_weight}` and the `penna::StyledExt::font_*` weight helpers. A path that is no longer public leaves the list, since clippy warns on a path it cannot reach. `penna::rems_from_px` is not on the list: sizes use it. Both apps carry the lint and pass it as an error; content code allows it on the narrowest fn with a reason. The lint is checked once by hand when added, on Linux and on a Mac (macOS-only code is not compiled on Linux). Spacing setters stay open: `gap(Space::S4)` and `gap(px(10.))` are the same call, so Space use is a review rule.
 

@@ -170,20 +170,20 @@ pub fn roles_json() -> String {
                 let mut members = Vec::new();
                 walk(kind.role(), 0, &mut members);
                 json!({
-                    "title": kind.role().label,
+                    "title": kind.role().label(),
                     "roles": members.into_iter().map(|(depth, role)| {
                         let (inherited, origins) = knobs::inherited(role, &roles, &materials);
-                        let patch = roles.get(role.id).copied().unwrap_or_default();
+                        let patch = roles.get(role.id()).copied().unwrap_or_default();
                         let mut style = inherited;
                         patch.apply(&mut style);
                         let values = knobs::style_json(inherited);
                         json!({
-                            "id": role.id,
-                            "label": role.label,
-                            "about": role.about,
-                            "kind": role.kind.name(),
+                            "id": role.id(),
+                            "label": role.label(),
+                            "about": role.about(),
+                            "kind": role.kind().name(),
                             "depth": depth,
-                            "group": role.group().map(|group| group.label),
+                            "group": role.group().map(|group| group.label()),
                             "members": penna::roles::members(role).count(),
                             "knobs": knobs::knobs_json(role.knobs()),
                             "patch": patch,
@@ -192,7 +192,7 @@ pub fn roles_json() -> String {
                                 .zip(origins)
                                 .map(|(prop, origin)| ((*prop).to_owned(), json!({
                                     "value": values[prop],
-                                    "from": origin.role.map_or_else(|| knobs::material_origin(prop, role, &materials), |role| role.label.to_owned()),
+                                    "from": origin.role.map_or_else(|| knobs::material_origin(prop, role, &materials), |role| role.label().to_owned()),
                                     "themed": origin.themed,
                                 })))
                                 .collect::<serde_json::Map<_, _>>(),

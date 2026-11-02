@@ -609,10 +609,10 @@ pub fn inherited(
     let knobs = role.knobs();
     let mut style = Style {
         smoothing: materials.smoothing,
-        ..role.kind.base()
+        ..role.kind().base()
     };
     let mut origins = [Origin {
-        role: Some(role.kind.role()),
+        role: Some(role.kind().role()),
         themed: false,
     }; 8];
     origins[4] = Origin {
@@ -640,7 +640,7 @@ pub fn inherited(
     let lineage = role.lineage().collect::<Vec<_>>();
     for node in lineage.iter().rev() {
         layer(
-            node.patch,
+            node.patch(),
             Origin {
                 role: Some(*node),
                 themed: false,
@@ -660,8 +660,8 @@ pub fn inherited(
     if materials.picked_shadows && role.picks_shadow() {
         layer(StylePatch::EMPTY.shadow(Shadow::None), picked);
     }
-    for node in lineage.iter().rev().filter(|node| node.id != role.id) {
-        if let Some(patch) = roles.get(node.id) {
+    for node in lineage.iter().rev().filter(|node| node.id() != role.id()) {
+        if let Some(patch) = roles.get(node.id()) {
             layer(
                 knobs.admit(*patch),
                 Origin {
@@ -1026,10 +1026,10 @@ mod tests {
             theme.materials.apply(&mut kit);
             for role in penna::roles::all() {
                 let (mut style, _) = inherited(role, &theme.roles, &theme.materials);
-                if let Some(patch) = theme.roles.get(role.id) {
+                if let Some(patch) = theme.roles.get(role.id()) {
                     patch.apply(&mut style);
                 }
-                assert_eq!(style, kit.style(role), "{id} {}", role.id);
+                assert_eq!(style, kit.style(role), "{id} {}", role.id());
             }
         }
         let built_in = Materials::default();

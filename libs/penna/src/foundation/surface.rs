@@ -582,20 +582,16 @@ impl Knobs {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct SurfaceRole {
-    pub id: &'static str,
-    pub kind: Kind,
-    pub parent: Option<&'static SurfaceRole>,
-    pub label: &'static str,
-    pub about: &'static str,
-    pub patch: StylePatch,
-    pub knobs: Option<Knobs>,
-    pub row: bool,
-    pub capsule: Option<bool>,
-    sealed: Sealed,
+    pub(crate) id: &'static str,
+    pub(crate) kind: Kind,
+    pub(crate) parent: Option<&'static SurfaceRole>,
+    pub(crate) label: &'static str,
+    pub(crate) about: &'static str,
+    pub(crate) patch: StylePatch,
+    pub(crate) knobs: Option<Knobs>,
+    pub(crate) row: bool,
+    pub(crate) capsule: Option<bool>,
 }
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-struct Sealed;
 
 impl SurfaceRole {
     pub(crate) const fn new(
@@ -614,7 +610,6 @@ impl SurfaceRole {
             knobs: None,
             row: false,
             capsule: None,
-            sealed: Sealed,
         }
     }
 
@@ -651,6 +646,26 @@ impl SurfaceRole {
             capsule: Some(capsule),
             ..self
         }
+    }
+
+    pub const fn id(&self) -> &'static str {
+        self.id
+    }
+
+    pub const fn kind(&self) -> Kind {
+        self.kind
+    }
+
+    pub const fn label(&self) -> &'static str {
+        self.label
+    }
+
+    pub const fn about(&self) -> &'static str {
+        self.about
+    }
+
+    pub const fn patch(&self) -> StylePatch {
+        self.patch
     }
 
     pub const fn capsules(&self) -> bool {

@@ -9,7 +9,7 @@ use ala::{
 use crate::{
     ActiveTheme as _, Colorize as _, Ground, Icon, IconName, IndexPath, Kind, PaintState,
     Sizable as _, Size, StyledExt as _, Surface, h_flex,
-    input::{Input, InputEvent, InputState, field_chrome, field_paint, field_text},
+    input::{Input, InputEvent, InputState, field_chrome_on, field_paint_on, field_text},
     menu::{PopupMenu, PopupMenuItem},
     sheet::{bottom_sheet, close_sheet, floating_sheet, sheet_close, sheet_inset, sheet_option},
 };
@@ -288,7 +288,7 @@ impl<D: SelectDelegate> SelectState<D> {
         let disabled = self.options.disabled;
         let size = self.options.size;
         let surface = Surface::new(Kind::Field.role()).on_maybe(self.options.on);
-        let paint = field_paint(surface, cx);
+        let paint = field_paint_on(surface, cx);
         let state = match (disabled, open || focused) {
             (true, _) => PaintState::Disabled,
             (false, true) => PaintState::Focused,
@@ -306,7 +306,7 @@ impl<D: SelectDelegate> SelectState<D> {
                 this.open_menu(window, cx);
             }
         };
-        let button = field_chrome(
+        let button = field_chrome_on(
             field_text(
                 h_flex()
                     .id("select-trigger")

@@ -3,7 +3,7 @@ use ala::{
     RenderOnce, StyleRefinement, Styled, Window, div, prelude::FluentBuilder as _, px,
 };
 
-use crate::{ActiveTheme as _, PaintState, StyledExt as _, SurfaceRole, input::field_chrome};
+use crate::{ActiveTheme as _, PaintState, StyledExt as _, SurfaceRole, input::field_chrome_on};
 
 use super::{
     CodeEditorState,
@@ -115,7 +115,7 @@ impl RenderOnce for CodeEditor {
             .track_focus(&focus_handle)
             .tab_index(self.tab_index)
             .when(framed, |this| {
-                field_chrome(this, role, paint_state, true, self.focus_bordered, cx)
+                field_chrome_on(this, role, paint_state, true, self.focus_bordered, cx)
             })
             .when(!self.disabled, |this| {
                 this.on_action(window.listener_for(&self.state, CodeEditorState::backspace))

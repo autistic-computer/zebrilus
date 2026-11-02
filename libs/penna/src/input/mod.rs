@@ -22,8 +22,8 @@ pub use actions::{
     ShowCharacterPalette, Undo,
 };
 pub use ala::TextAlign;
-pub(crate) use field::field_text;
 pub use field::{FieldLook, Input, InputContentType, field_chrome, field_paint, field_underlay};
+pub(crate) use field::{field_chrome_on, field_paint_on, field_text};
 pub use number::NumberInput;
 pub use state::{InputEvent, InputState};
 

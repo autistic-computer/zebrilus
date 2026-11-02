@@ -10,7 +10,7 @@ use crate::{
 };
 
 use super::{
-    field::{Input, field_chrome},
+    field::{Input, field_chrome_on},
     state::{InputState, StepDirection},
 };
 use ala::TextAlign;
@@ -218,7 +218,7 @@ impl RenderOnce for NumberInput {
             .h(self.size.control_h())
             .items_center()
             .when(self.appearance, |this| {
-                field_chrome(this, surface, state, true, true, cx)
+                field_chrome_on(this, surface, state, true, true, cx)
             })
             .refine_style(&self.style)
             .child(Self::stepper(

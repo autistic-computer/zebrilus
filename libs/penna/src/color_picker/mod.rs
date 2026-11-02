@@ -12,7 +12,7 @@ use crate::{
     Surface,
     button::{Button, ButtonVariants as _},
     h_flex,
-    input::{Input, InputEvent, InputState, field_chrome, field_text},
+    input::{Input, InputEvent, InputState, field_chrome_on, field_text},
     popover::Popover,
     sheet::{bottom_sheet, close_sheet, floating_sheet, sheet_close, sheet_inset},
     slider::{Slider, thumb},
@@ -505,7 +505,7 @@ impl ColorPicker {
             PaintState::Rest
         };
         let opener = self.state.clone();
-        field_chrome(
+        field_chrome_on(
             field_text(
                 h_flex()
                     .id(("penna-color-picker-field-trigger", self.state.entity_id()))

@@ -49,7 +49,7 @@ pub const STORY: Story = Story {
         Section {
             id: "field-looks",
             name: "Field looks",
-            summary: "field_chrome(element, look, state, bordered, focus_bordered, cx) frames a field the app lays out itself: the chat composer and the browser's address bar, resting, hovered and focused. field_underlay(look, inset, cx) is the opaque plate behind a composer whose look draws no glass.",
+            summary: "field_chrome(element, look, ground, state, cx) frames a field the app lays out itself: the chat composer and the browser's address bar, resting, hovered and focused. field_underlay(look, inset, cx) is the opaque plate behind a composer whose look draws no glass.",
             build: |_, cx| stateless(field_looks, cx),
         },
         Section {
@@ -84,9 +84,8 @@ fn framed_field(look: FieldLook, state: PaintState, label: &'static str, cx: &Ap
                     .flex()
                     .items_center(),
                 look,
+                None,
                 state,
-                true,
-                true,
                 cx,
             )
             .rounded(radius)

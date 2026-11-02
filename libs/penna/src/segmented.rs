@@ -8,7 +8,7 @@ use ala::{
 
 use crate::{
     ActiveTheme as _, Ground, Kind, PaintState, Size, StyledExt as _, Surface, SurfaceRole, h_flex,
-    input::field_chrome,
+    input::field_chrome_on,
 };
 
 const INSET: f32 = 2.0;
@@ -180,7 +180,7 @@ impl RenderOnce for SegmentedControl {
             })
             .collect::<Vec<AnyElement>>();
 
-        field_chrome(
+        field_chrome_on(
             h_flex().id(self.id).flex_none().p(px(INSET)),
             track,
             PaintState::Rest,

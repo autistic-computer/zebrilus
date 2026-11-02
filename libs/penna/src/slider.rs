@@ -10,7 +10,7 @@ use ala::{
 use crate::{
     ActiveTheme as _, Colorize as _, Emphasis, Kind, PaintState, Size, StyledExt as _, Surface,
     Tone, h_flex,
-    input::{field_chrome, field_text},
+    input::{field_chrome_on, field_text},
     oklab_lightness,
     sheet::{bottom_sheet, close_sheet, floating_sheet, sheet_close, sheet_inset},
     tooltip::Tooltip,
@@ -413,7 +413,7 @@ impl Slider {
         };
         let opener = drag.clone();
         let opener_focus = self.focus(&drag, cx);
-        let trigger = field_chrome(
+        let trigger = field_chrome_on(
             field_text(
                 h_flex()
                     .id(self.id.clone())

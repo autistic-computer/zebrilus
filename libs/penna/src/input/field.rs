@@ -97,7 +97,22 @@ pub fn field_underlay(look: FieldLook, inset: Pixels, cx: &App) -> Option<Div> {
     })
 }
 
-pub fn field_paint(surface: impl Into<Surface>, cx: &App) -> Paint {
+pub fn field_paint(look: FieldLook, cx: &App) -> Paint {
+    field_paint_on(look, cx)
+}
+
+pub fn field_chrome<E: Styled + InteractiveElement>(
+    element: E,
+    look: FieldLook,
+    ground: Option<Ground>,
+    state: PaintState,
+    cx: &App,
+) -> E {
+    let surface = Surface::from(look).on_maybe(ground);
+    field_chrome_on(element, surface, state, true, true, cx)
+}
+
+pub(crate) fn field_paint_on(surface: impl Into<Surface>, cx: &App) -> Paint {
     let surface = surface.into();
     let theme = cx.theme();
     theme.paint_on(
@@ -107,7 +122,7 @@ pub fn field_paint(surface: impl Into<Surface>, cx: &App) -> Paint {
     )
 }
 
-pub fn field_chrome<E: Styled + InteractiveElement>(
+pub(crate) fn field_chrome_on<E: Styled + InteractiveElement>(
     element: E,
     surface: impl Into<Surface>,
     state: PaintState,
@@ -318,7 +333,7 @@ impl RenderOnce for Input {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let multi_line = self.state.read(cx).mode().is_multi_line();
         let surface = self.field_surface(multi_line);
-        let paint = field_paint(surface, cx);
+        let paint = field_paint_on(surface, cx);
         let resting = if self.disabled {
             PaintState::Disabled
         } else {
@@ -389,7 +404,7 @@ impl RenderOnce for Input {
 
         element
             .when(self.appearance, |this| {
-                field_chrome(
+                field_chrome_on(
                     this,
                     surface,
                     paint_state,

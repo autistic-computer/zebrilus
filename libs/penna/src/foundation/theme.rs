@@ -91,7 +91,7 @@ pub struct Theme {
     pub bright_surfaces: bool,
     pub highlight_strength: f32,
     pub glass: Option<GlassMaterial>,
-    pub styles: HashMap<SharedString, StylePatch>,
+    pub(crate) styles: HashMap<SharedString, StylePatch>,
     pub inspect: Option<SharedString>,
     pub inspect_strength: f32,
     pub pane_margin: Pixels,
@@ -176,6 +176,10 @@ impl Theme {
 
     pub fn casts_shadow(&self, role: SurfaceRole) -> bool {
         !self.shadows_of(self.style(role).shadow).is_empty()
+    }
+
+    pub fn styles(&self) -> &HashMap<SharedString, StylePatch> {
+        &self.styles
     }
 
     pub fn pane_radius(&self) -> Pixels {
