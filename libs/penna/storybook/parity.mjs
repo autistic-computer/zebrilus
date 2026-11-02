@@ -156,9 +156,11 @@ function serve(root, allowed) {
     }));
 }
 
-function domFiles(components) {
-    const prefixes = ["web/", "storybook/fonts/", ...components.map((name) => `src/${name}/`)];
-    return (path) => prefixes.some((prefix) => path.startsWith(prefix));
+function domFiles() {
+    const prefixes = ["web/", "storybook/fonts/"];
+    return (path) =>
+        prefixes.some((prefix) => path.startsWith(prefix)) ||
+        (path.startsWith("src/") && PAGE_FILES.has(extname(path)) && !path.split("/").pop().startsWith("parity."));
 }
 
 function chromeBinaries() {
@@ -924,7 +926,7 @@ async function main() {
     const modes = options.mode ? [options.mode] : MODES;
     const combos = themes.flatMap((theme) => modes.map((mode) => [theme, mode]));
     prepare();
-    const bases = { story: await serve(join(ROOT, "storybook/dist"), () => true), dom: await serve(ROOT, domFiles(options.components)) };
+    const bases = { story: await serve(join(ROOT, "storybook/dist"), () => true), dom: await serve(ROOT, domFiles()) };
     const cdp = connect(launch());
     const pages = { canvas: await tab(cdp), dom: await tab(cdp), lab: await tab(cdp), storybookLoaded: false };
     const failures = [];

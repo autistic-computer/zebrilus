@@ -36,7 +36,7 @@ set to the canvas node's author id, or `role:name` when it has none. Results lan
 A section scores 100 × √(geometry × pixels): pixels allow 3 levels per channel, so fills and hover tints count,
 and the canvas's own ink is the denominator. Steps score only the target's box and need the DOM to change where
 the canvas did. A section scores 0 if it holds an `img`, `canvas`, `iframe` or similar, or a `url()` image other
-than the kit's icon masks. The DOM page is served only `web/`, `storybook/fonts/` and its own folder.
+than the kit's icon masks. The DOM page is served only `web/`, `storybook/fonts/` and the HTML, CSS and JS under `src/`, so pages can share a component's files.
 
 `src/button` is the template to copy. What it learned about matching ala in the DOM:
 

@@ -583,6 +583,10 @@ impl RenderOnce for Button {
         let hover = layer_at(PaintState::Hover, cx);
         let active = layer_at(PaintState::Active, cx);
         let hover_bg = self.hover_bg;
+        let plain_label = self.icon.is_none()
+            && self.children.is_empty()
+            && !self.dropdown_caret
+            && pressed == 0.0;
         let on_mouse_down = move |_: &ala::MouseDownEvent, window: &mut Window, cx: &mut App| {
             if is_disabled {
                 cx.stop_propagation();
@@ -708,37 +712,46 @@ impl RenderOnce for Button {
                     on_hover(hovered, window, cx);
                 })
             })
-            .child({
-                let label = h_flex()
-                    .id("label")
-                    .size_full()
-                    .items_center()
-                    .justify_center();
+            .map(|this| match (plain_label, self.label) {
+                (true, Some(label)) => this.child(
+                    div()
+                        .flex_none()
+                        .line_height(relative(1.))
+                        .text_size(self.size.control_text())
+                        .child(label),
+                ),
+                (_, text) => this.child({
+                    let label = h_flex()
+                        .id("label")
+                        .size_full()
+                        .items_center()
+                        .justify_center();
 
-                label
-                    .text_size(self.size.control_text())
-                    .when(pressed > 0.0, |this| this.opacity(1.0 - 0.35 * pressed))
-                    .map(|this| match self.size {
-                        Size::Small => this.gap_1(),
-                        _ => this.gap_1p5(),
-                    })
-                    .when_some(self.icon, |this, icon| {
-                        this.child(icon.loading(self.loading).with_size(icon_size))
-                    })
-                    .when_some(self.label, |this, label| {
-                        this.child(div().flex_none().line_height(relative(1.)).child(label))
-                    })
-                    .children(self.children)
-                    .when(self.dropdown_caret, |this| {
-                        this.justify_between().child(
-                            Icon::new(IconName::ChevronDown).small().text_color(
-                                match self.disabled {
-                                    true => rest.text.opacity(0.3),
-                                    false => rest.text.opacity(0.5),
-                                },
-                            ),
-                        )
-                    })
+                    label
+                        .text_size(self.size.control_text())
+                        .when(pressed > 0.0, |this| this.opacity(1.0 - 0.35 * pressed))
+                        .map(|this| match self.size {
+                            Size::Small => this.gap_1(),
+                            _ => this.gap_1p5(),
+                        })
+                        .when_some(self.icon, |this, icon| {
+                            this.child(icon.loading(self.loading).with_size(icon_size))
+                        })
+                        .when_some(text, |this, label| {
+                            this.child(div().flex_none().line_height(relative(1.)).child(label))
+                        })
+                        .children(self.children)
+                        .when(self.dropdown_caret, |this| {
+                            this.justify_between().child(
+                                Icon::new(IconName::ChevronDown).small().text_color(
+                                    match self.disabled {
+                                        true => rest.text.opacity(0.3),
+                                        false => rest.text.opacity(0.5),
+                                    },
+                                ),
+                            )
+                        })
+                }),
             })
             .when(self.loading && !self.disabled, |this| {
                 this.bg(rest.fill.opacity(0.8))
