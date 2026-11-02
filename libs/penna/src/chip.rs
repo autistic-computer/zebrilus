@@ -1,6 +1,6 @@
 use ala::{
     AnyElement, App, Div, ElementId, Hsla, IntoElement, ParentElement, Pixels, RenderOnce,
-    SharedString, Styled as _, TextRun, Window, div, prelude::FluentBuilder as _, px,
+    SharedString, Styled as _, TextRun, Window, div, px,
 };
 
 use crate::{
@@ -242,29 +242,33 @@ impl RenderOnce for Chip {
             .min_w_0()
             .h(rems_from_px(height))
             .px(padding)
-            .gap(Space::S3)
-            .when_some(lead_dot, |chip, tone| chip.child(dot(tone, ground, cx)))
-            .when_some(icon, |chip, icon| {
-                chip.child(icon.with_size(px(text.design_px() + 1.0)))
-            })
-            .when_some(label, |chip, label| {
-                chip.child(
-                    Label::new(text, label)
-                        .strong()
-                        .flex_none()
-                        .whitespace_nowrap(),
-                )
-            })
-            .when_some(detail, |chip, detail| {
-                chip.child(
-                    Label::new(text, format!("· {detail}"))
-                        .muted()
-                        .on(ground)
-                        .min_w_0()
-                        .truncate(),
-                )
-            })
-            .children(children);
+            .gap(Space::S3);
+        plate.children = [
+            lead_dot.map(|tone| dot(tone, ground, cx).into_any_element()),
+            icon.map(|icon| {
+                icon.with_size(px(text.design_px() + 1.0))
+                    .into_any_element()
+            }),
+            label.map(|label| {
+                Label::new(text, label)
+                    .strong()
+                    .flex_none()
+                    .whitespace_nowrap()
+                    .into_any_element()
+            }),
+            detail.map(|detail| {
+                Label::new(text, format!("· {detail}"))
+                    .muted()
+                    .on(ground)
+                    .min_w_0()
+                    .truncate()
+                    .into_any_element()
+            }),
+        ]
+        .into_iter()
+        .flatten()
+        .chain(children)
+        .collect();
         plate.paint_with(cx, move |layer| {
             if let Some(ring) = ring {
                 for shadow in &mut layer.shadow {

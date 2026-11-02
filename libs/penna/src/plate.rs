@@ -1,6 +1,6 @@
 use ala::{
-    App, Div, ElementId, InteractiveElement as _, ParentElement as _, Pixels, SharedString,
-    Stateful, StatefulInteractiveElement as _, StyleRefinement, div,
+    AnyElement, App, Div, ElementId, InteractiveElement as _, ParentElement as _, Pixels,
+    Refineable as _, SharedString, Stateful, StatefulInteractiveElement as _, StyleRefinement, div,
 };
 
 use crate::{
@@ -18,6 +18,9 @@ pub(crate) struct Plate {
     pub(crate) row_height: Option<Pixels>,
     pub(crate) hover_group: Option<SharedString>,
     pub(crate) press: bool,
+    pub(crate) children: Vec<AnyElement>,
+    pub(crate) hover: Option<StyleRefinement>,
+    pub(crate) active: Option<StyleRefinement>,
     id: ElementId,
 }
 
@@ -33,6 +36,9 @@ impl Plate {
             row_height: None,
             hover_group: None,
             press: false,
+            children: Vec::new(),
+            hover: None,
+            active: None,
             id,
         }
     }
@@ -51,6 +57,9 @@ impl Plate {
             row_height,
             hover_group,
             press,
+            children,
+            hover: caller_hover,
+            active: caller_active,
             id,
         } = self;
         let theme = cx.theme();
@@ -61,7 +70,7 @@ impl Plate {
         };
         let layer = layer_at(state);
         let plate = base.layer(&layer);
-        let plate = match row_height {
+        let mut plate = match row_height {
             Some(height) => row_corners(plate, &layer, height),
             None => plate,
         };
@@ -75,21 +84,49 @@ impl Plate {
             };
             press_highlight(id, pressed.fill, corners)
         });
-        let plate = match (lively, hover_group) {
-            (false, _) => plate,
+        let (hover, active) = match (lively, hover_group) {
+            (false, _) => (None, None),
             (true, Some(group)) => {
                 let hover = layer_at(PaintState::Hover);
-                plate.group_hover(group, move |style| restyle(style, &hover))
+                plate = plate.group_hover(group, move |style| restyle(style, &hover));
+                (None, None)
             }
-            (true, None) => {
-                let hover = layer_at(PaintState::Hover);
-                let active = layer_at(PaintState::Active);
-                plate
-                    .hover(move |style| restyle(style, &hover))
-                    .active(move |style| restyle(style, &active))
-            }
+            (true, None) => (
+                Some(restyle(
+                    StyleRefinement::default(),
+                    &layer_at(PaintState::Hover),
+                )),
+                Some(restyle(
+                    StyleRefinement::default(),
+                    &layer_at(PaintState::Active),
+                )),
+            ),
         };
-        plate.refine_style(&style).children(press)
+        let plate = match on_top(hover, caller_hover) {
+            Some(hover) => plate.hover(move |_| hover),
+            None => plate,
+        };
+        let plate = match on_top(active, caller_active) {
+            Some(active) => plate.active(move |_| active),
+            None => plate,
+        };
+        plate
+            .refine_style(&style)
+            .children(press)
+            .children(children)
+    }
+}
+
+fn on_top(
+    look: Option<StyleRefinement>,
+    caller: Option<StyleRefinement>,
+) -> Option<StyleRefinement> {
+    match (look, caller) {
+        (Some(mut look), Some(caller)) => {
+            look.refine(&caller);
+            Some(look)
+        }
+        (look, caller) => look.or(caller),
     }
 }
 
@@ -97,7 +134,7 @@ macro_rules! plate_element {
     ($name:ident) => {
         impl ala::ParentElement for $name {
             fn extend(&mut self, elements: impl IntoIterator<Item = ala::AnyElement>) {
-                self.plate.base.extend(elements);
+                self.plate.children.extend(elements);
             }
         }
 
@@ -114,9 +151,28 @@ macro_rules! plate_element {
             fn interactivity(&mut self) -> &mut ala::Interactivity {
                 self.plate.base.interactivity()
             }
+
+            fn hover(
+                mut self,
+                f: impl FnOnce(ala::StyleRefinement) -> ala::StyleRefinement,
+            ) -> Self {
+                self.plate.hover = Some(f(ala::StyleRefinement::default()));
+                self
+            }
         }
 
-        impl ala::StatefulInteractiveElement for $name {}
+        impl ala::StatefulInteractiveElement for $name {
+            fn active(
+                mut self,
+                f: impl FnOnce(ala::StyleRefinement) -> ala::StyleRefinement,
+            ) -> Self
+            where
+                Self: Sized,
+            {
+                self.plate.active = Some(f(ala::StyleRefinement::default()));
+                self
+            }
+        }
     };
 }
 
@@ -125,11 +181,11 @@ pub(crate) use plate_element;
 #[cfg(test)]
 mod tests {
     use ala::{
-        Context, IntoElement, ParentElement as _, Render, Styled as _, TestAppContext, Window, div,
-        px, solid_background,
+        Context, InteractiveElement as _, IntoElement, ParentElement as _, Render, StyleRefinement,
+        Styled as _, TestAppContext, Window, blue, div, px, red, solid_background,
     };
 
-    use crate::{ActiveTheme as _, PaintState, Tile, TileVariant};
+    use crate::{ActiveTheme as _, PaintState, Row, RowLook, Tile, TileVariant};
 
     struct Mini;
 
@@ -160,5 +216,30 @@ mod tests {
                 "the mini tile's look painted over the caller's fill"
             );
         });
+    }
+
+    struct Hovered;
+
+    impl Render for Hovered {
+        fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+            let danger = cx.theme().danger;
+            div().size_full().child(
+                Row::new("row", RowLook::Menu)
+                    .size(px(40.0))
+                    .hover(move |style| style.bg(danger)),
+            )
+        }
+    }
+
+    #[ala::test]
+    fn the_callers_hover_lands_over_the_looks(cx: &mut TestAppContext) {
+        cx.update(crate::init_without_theme);
+        let (_, cx) = cx.add_window_view(|_, _| Hovered);
+        cx.update(|window, cx| _ = window.draw(cx));
+        let look = StyleRefinement::default().bg(red()).border_color(red());
+        let caller = StyleRefinement::default().bg(blue());
+        let hover = super::on_top(Some(look), Some(caller)).expect("both set a hover");
+        assert_eq!(hover.background, Some(blue().into()));
+        assert_eq!(hover.border_color, Some(red()));
     }
 }

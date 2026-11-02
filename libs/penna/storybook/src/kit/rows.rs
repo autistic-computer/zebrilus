@@ -42,11 +42,13 @@ pub const STORY: Story = Story {
     ],
 };
 
-const STATES: [(PaintState, &str); 5] = [
+const STATES: [(PaintState, &str); 7] = [
     (PaintState::Rest, "Rest"),
     (PaintState::Hover, "Hover"),
+    (PaintState::Active, "Active"),
     (PaintState::Selected, "Selected"),
     (PaintState::Current, "Current"),
+    (PaintState::Focused, "Focused"),
     (PaintState::Disabled, "Disabled"),
 ];
 
@@ -160,7 +162,6 @@ fn rows(_: &mut Window, cx: &mut App) -> AnyElement {
                 v_flex().gap(Space::S1).children(
                     STATES
                         .iter()
-                        .filter(|(state, _)| *state != PaintState::Current)
                         .map(|(state, label)| list_row(*look, name, *state, label)),
                 ),
             )

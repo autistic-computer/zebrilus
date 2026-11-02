@@ -132,9 +132,13 @@ impl RenderOnce for Tile {
         let mut plate = self.plate;
         if self.variant != TileVariant::Veil {
             let edge = self.edge;
+            let mini = self.variant == TileVariant::Mini;
             return plate.paint_with(cx, move |layer| {
                 if let Some(width) = edge.filter(|_| layer.border_width > Pixels::ZERO) {
                     layer.border_width = width;
+                }
+                if mini {
+                    layer.glass = None;
                 }
             });
         }

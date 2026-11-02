@@ -136,10 +136,12 @@ const CHIP_LOOKS: [(ChipLook, &str); 6] = [
     (ChipLook::Icon, "icon"),
 ];
 
-const CHIP_STATES: [(PaintState, &str); 4] = [
+const CHIP_STATES: [(PaintState, &str); 6] = [
     (PaintState::Rest, "Rest"),
     (PaintState::Hover, "Hover"),
+    (PaintState::Active, "Active"),
     (PaintState::Selected, "Selected"),
+    (PaintState::Focused, "Focused"),
     (PaintState::Disabled, "Disabled"),
 ];
 
