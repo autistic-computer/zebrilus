@@ -5,12 +5,14 @@ use ala::{
     MouseButton, SharedString, StyledText, Window, div, prelude::*, px, relative,
 };
 
+use penna::{Label, RowLook, TextStyle};
+
 use crate::{
-    ActiveTheme as _, Colorize as _, Emphasis, Icon, IconName, PaintState, SurfaceRole, Tone,
+    ActiveTheme as _, Colorize as _, Emphasis, Icon, IconName, PaintState, StyledExt as _, Tone,
     badge::Badge,
     input::{Input, InputState},
     list::ListItem,
-    muted_on, row_corners,
+    muted_on,
 };
 
 use super::{command_palette_row_height, palette_vim::PaletteVimMode};
@@ -133,8 +135,7 @@ pub fn unified_command_palette_input(
         .py(px(8.0))
         .gap(px(6.0))
         .font_family(cx.theme().font_family.clone())
-        .text_size(crate::rems_from_px(12.0))
-        .line_height(px(16.0))
+        .type_style(TextStyle::Small, cx)
         .when(!pills.is_empty(), |input| {
             input.prefix(
                 div()
@@ -181,23 +182,33 @@ pub(super) fn palette_entry(
     } else {
         PaintState::Rest
     };
-    let layer = cx.theme().layer(SurfaceRole::MENU_ITEM, state);
-    let foreground = layer.text;
-    let secondary = muted_on(layer.ground, cx);
+    let ground = cx.theme().ground_at(RowLook::Menu, state);
+    let foreground = ground.ink;
+    let secondary = muted_on(ground, cx);
+    let strong = TextStyle::Small.strong_weight();
     let highlights = row
         .label
         .char_indices()
-        .filter_map(|(start, character)| {
+        .map(|(start, character)| {
             let end = start + character.len_utf8();
             let matched = row.matches.iter().any(|range| range.contains(&start));
-            (matched || start < row.muted_prefix).then_some((
+            let color = if matched {
+                Some(foreground)
+            } else {
+                (start < row.muted_prefix).then_some(secondary)
+            };
+            (
                 start..end,
                 HighlightStyle {
-                    color: Some(if matched { foreground } else { secondary }),
-                    font_weight: matched.then_some(FontWeight::SEMIBOLD),
+                    color,
+                    font_weight: Some(if matched {
+                        FontWeight::SEMIBOLD
+                    } else {
+                        strong
+                    }),
                     ..Default::default()
                 },
-            ))
+            )
         })
         .collect::<Vec<_>>();
 
@@ -207,9 +218,9 @@ pub(super) fn palette_entry(
         command_palette_row_height()
     });
     ListItem::new(id)
+        .row_height(height)
         .w_full()
         .h(height)
-        .map(|item| row_corners(item, &layer, height))
         .pl(px(12.0 + row.indent))
         .pr(px(12.0))
         .py(px(4.0))
@@ -222,9 +233,7 @@ pub(super) fn palette_entry(
                 .items_center()
                 .gap(px(8.0))
                 .font_family(cx.theme().font_family.clone())
-                .text_size(crate::rems_from_px(12.0))
-                .font_weight(FontWeight::MEDIUM)
-                .line_height(px(16.0))
+                .type_style(TextStyle::Small, cx)
                 .when(row.expanded.is_some() || row.indent > 0.0, |element| {
                     element.child(
                         div()
@@ -285,32 +294,26 @@ pub(super) fn palette_entry(
                 )
                 .when(!row.detail.is_empty(), |element| {
                     element.child(
-                        div()
+                        Label::new(TextStyle::Micro, row.detail.clone())
+                            .muted()
+                            .on(ground)
                             .flex_1()
                             .min_w_0()
-                            .overflow_hidden()
-                            .whitespace_nowrap()
-                            .text_ellipsis()
-                            .text_size(crate::rems_from_px(10.0))
-                            .font_weight(FontWeight::NORMAL)
-                            .line_height(px(16.0))
-                            .text_color(secondary)
-                            .child(row.detail.clone()),
+                            .truncate()
+                            .line_height(px(16.0)),
                     )
                 })
                 .when(!row.right.is_empty(), |element| {
                     element.child(
-                        div()
+                        Label::new(TextStyle::Micro, row.right.clone())
+                            .muted()
+                            .on(ground)
                             .flex_none()
-                            .text_size(crate::rems_from_px(10.0))
-                            .font_weight(FontWeight::NORMAL)
-                            .line_height(px(16.0))
-                            .text_color(secondary)
-                            .child(row.right.clone()),
+                            .line_height(px(16.0)),
                     )
                 })
                 .when_some(row.shortcut.as_ref(), |element, shortcut| {
-                    element.child(super::tmux_shortcut(shortcut, layer.ground, cx))
+                    element.child(super::tmux_shortcut(shortcut, ground, cx))
                 })
                 .children(badge)
                 .when(row.running, |element| {
@@ -331,23 +334,17 @@ pub fn command_palette_section(
         .justify_between()
         .px(px(10.0))
         .pt(px(4.0))
-        .text_size(crate::rems_from_px(11.0))
-        .line_height(px(16.0))
+        .type_style(TextStyle::Caption, cx)
         .text_color(cx.theme().foreground.muted())
         .child(label.into())
-        .child(
-            div()
-                .font_family(cx.theme().mono_font_family.clone())
-                .text_size(crate::rems_from_px(10.0))
-                .child(hint.into()),
-        )
+        .child(Label::new(TextStyle::Mono, hint))
 }
 
 pub fn command_palette_empty(cx: &App) -> Div {
     div()
         .py(px(16.0))
         .text_center()
-        .text_size(crate::rems_from_px(12.0))
+        .type_style(TextStyle::Small, cx)
         .text_color(cx.theme().foreground.muted())
         .child("No matches")
 }
@@ -439,6 +436,10 @@ mod tests {
     }
 
     #[ala::test]
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "the test finds the selected row by the menu-item fill"
+    )]
     fn palette_fits_its_container_and_tracks_light_and_dark_themes(cx: &mut TestAppContext) {
         for (width, mode, radius) in [
             (720.0_f32, ThemeMode::Dark, 12.0),
@@ -479,9 +480,7 @@ mod tests {
                     .find(|quad| {
                         quad.background
                             == ala::solid_background(
-                                cx.theme()
-                                    .layer(SurfaceRole::MENU_ITEM, PaintState::Selected)
-                                    .fill,
+                                cx.theme().layer(RowLook::Menu, PaintState::Selected).fill,
                             )
                             && quad.bounds.size.width.0 > 100.0 * window.scale_factor()
                     })

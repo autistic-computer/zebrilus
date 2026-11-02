@@ -30,7 +30,7 @@ pub(crate) use palette_model::fuzzy_match;
 pub use palette_vim::PaletteVimMode;
 
 use crate::{
-    ActiveTheme as _, CHROME_GAP, Colorize as _, Edge, PaintState, Sizable as _, StyledExt as _,
+    ActiveTheme as _, CHROME_GAP, Colorize as _, Edge, Sizable as _, StyledExt as _,
     badge::Badge,
     h_flex,
     input::{Input, InputState},
@@ -41,6 +41,7 @@ use ala::{
     AnyElement, App, ElementId, Entity, IntoElement, Keystroke, ParentElement as _, Pixels,
     RenderOnce, SharedString, Styled as _, deferred, div, prelude::*, px, relative,
 };
+use penna::{Label, Panel, PanelLook, RuleLook, TextStyle};
 
 pub const COMMAND_PALETTE_MAX_WIDTH: f32 = 560.0;
 pub const COMMAND_PALETTE_INSET: f32 = 8.0;
@@ -56,14 +57,6 @@ pub fn command_palette_list_height(viewport: Pixels, usage: bool) -> f32 {
 
 pub fn command_palette_row_height() -> f32 {
     px(COMMAND_PALETTE_ROW_HEIGHT).as_f32()
-}
-
-pub fn command_palette_radius(cx: &App) -> Pixels {
-    crate::picker::outer_radius(
-        &cx.theme()
-            .layer(penna::SurfaceRole::POPOVER, PaintState::Rest),
-        px(COMMAND_PALETTE_INSET),
-    )
 }
 
 #[derive(Clone, Copy)]
@@ -87,14 +80,11 @@ pub fn command_palette_input(
         .py(px(8.0))
         .gap(px(8.0))
         .font_family(font_family.clone())
-        .text_size(crate::rems_from_px(12.0))
-        .line_height(px(16.0))
+        .type_style(TextStyle::Small, cx)
         .prefix(
-            div()
+            Label::new(TextStyle::Small, prompt)
                 .font_family(font_family)
-                .text_size(crate::rems_from_px(12.0))
-                .text_color(cx.theme().foreground)
-                .child(prompt.into()),
+                .text_color(cx.theme().foreground),
         )
 }
 
@@ -124,10 +114,7 @@ pub fn command_kind_badge(
     label: impl Into<SharedString>,
     font_family: impl Into<SharedString>,
 ) -> Badge {
-    Badge::new(label)
-        .small()
-        .font_family(font_family.into())
-        .text_size(crate::rems_from_px(9.0))
+    Badge::new(label).small().font_family(font_family.into())
 }
 
 #[derive(IntoElement)]
@@ -217,16 +204,14 @@ impl RenderOnce for CommandPaletteSurface {
         } else {
             (Some(self.input), None)
         };
-        let surface = div()
-            .id("command-palette-surface")
+        let surface = Panel::new("command-palette-surface", PanelLook::Popover)
+            .inset(px(COMMAND_PALETTE_INSET))
             .relative()
             .w_full()
             .max_w(self.max_width)
             .flex()
             .flex_col()
             .overflow_hidden()
-            .surface(penna::SurfaceRole::POPOVER, cx)
-            .rounded(command_palette_radius(cx))
             .on_mouse_down(ala::MouseButton::Left, |_, _, cx| cx.stop_propagation())
             .children(input)
             .children((self.usage.is_some() || self.reserve_usage).then(|| {
@@ -239,8 +224,7 @@ impl RenderOnce for CommandPaletteSurface {
                     .overflow_hidden()
                     .whitespace_nowrap()
                     .text_ellipsis()
-                    .font_family(cx.theme().mono_font_family.clone())
-                    .text_size(crate::rems_from_px(10.0))
+                    .type_style(TextStyle::Mono, cx)
                     .line_height(px(16.0))
                     .text_color(cx.theme().foreground.muted())
                     .children(self.usage)
@@ -286,8 +270,8 @@ impl RenderOnce for CommandPaletteSurface {
                     .gap(px(14.0))
                     .px(px(18.0))
                     .py(px(8.0))
-                    .rule_on(crate::roles::BAR_RULE, Edge::Top, cx)
-                    .text_size(crate::rems_from_px(10.0))
+                    .rule(RuleLook::Bar, Edge::Top, cx)
+                    .type_style(TextStyle::Micro, cx)
                     .line_height(px(16.0))
                     .text_color(cx.theme().foreground.muted())
                     .children(self.footer_leading.map(|leading| {

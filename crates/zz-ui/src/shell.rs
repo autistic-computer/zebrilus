@@ -2,8 +2,9 @@ use crate::ActiveTheme as _;
 use crate::Colorize as _;
 use crate::StyledExt as _;
 use crate::kbd::Kbd;
-use crate::{Edge, Emphasis, Ground, PaintState, Surface, SurfaceRole, Tone, roles};
+use crate::{Edge, Ground};
 pub use penna::shell::*;
+use penna::{Bar, BarLook, Label, RowLook, RuleLook, TextStyle};
 
 use ala::{
     AnyElement, App, ElementId, InteractiveElement as _, IntoElement, Keystroke,
@@ -101,21 +102,24 @@ pub fn workspace_status_bar(
             .into_any_element()
     });
 
+    let bar = Bar::new("gui-status-titlebar-bar", BarLook::Window)
+        .when(!gaps, |bar| bar.rule(RuleLook::Bar, Edge::Bottom, cx))
+        .flex()
+        .size_full()
+        .items_center()
+        .overflow_hidden()
+        .child(leading)
+        .children(titlebar_controls)
+        .child(content)
+        .children(window_controls);
     div()
         .id("gui-status-titlebar")
         .relative()
         .flex()
         .flex_none()
-        .items_center()
         .w_full()
         .h(height)
-        .overflow_hidden()
-        .surface(Surface::new(roles::TITLEBAR), cx)
-        .when(!gaps, |bar| bar.rule_on(roles::BAR_RULE, Edge::Bottom, cx))
-        .child(leading)
-        .children(titlebar_controls)
-        .child(content)
-        .children(window_controls)
+        .child(bar)
 }
 
 const EMPTY_WORKSPACE_WIDTH: f32 = 340.0;
@@ -160,11 +164,11 @@ pub fn empty_workspace_action(
     cx: &App,
 ) -> Stateful<ala::Div> {
     let state = crate::row_state(selected, true);
-    let ground = cx.theme().layer(SurfaceRole::MENU_ITEM, state).ground;
+    let ground = cx.theme().ground_at(RowLook::Menu, state);
     crate::list_row(id, crate::picker::LIST_ROW_HEIGHT, selected, true, cx)
         .px(px(12.0))
         .cursor_pointer()
-        .child(key_hint(keys, label, strong, ground, cx).flex_1().min_w_0())
+        .child(key_hint(keys, label, strong, ground).flex_1().min_w_0())
 }
 
 pub fn empty_workspace_caption(label: impl Into<SharedString>, cx: &App) -> ala::Div {
@@ -172,7 +176,7 @@ pub fn empty_workspace_caption(label: impl Into<SharedString>, cx: &App) -> ala:
         .mt(px(12.0))
         .mb(px(4.0))
         .pl(px(12.0 + EMPTY_KEY_COLUMN + EMPTY_KEY_GAP))
-        .text_size(crate::rems_from_px(11.0))
+        .type_style(TextStyle::Caption, cx)
         .text_color(cx.theme().foreground.muted())
         .child(label.into())
 }
@@ -182,7 +186,7 @@ pub fn empty_workspace_hint(
     label: impl Into<SharedString>,
     cx: &App,
 ) -> ala::Div {
-    key_hint(keys, label, false, cx.theme().ground(), cx)
+    key_hint(keys, label, false, cx.theme().ground())
         .h(px(EMPTY_HINT_HEIGHT))
         .px(px(12.0))
 }
@@ -195,7 +199,7 @@ pub fn empty_workspace_connect(action: impl IntoElement, cx: &App) -> ala::Div {
         .max_w(px(EMPTY_WORKSPACE_WIDTH))
         .items_start()
         .gap_3()
-        .text_size(crate::rems_from_px(12.0))
+        .type_style(TextStyle::Small, cx)
         .child("Connect to a computer")
         .child(
             div()
@@ -212,14 +216,16 @@ fn key_hint(
     label: impl Into<SharedString>,
     strong: bool,
     ground: Ground,
-    cx: &App,
 ) -> ala::Div {
-    let ink = if strong {
-        ground.ink
+    let label = Label::new(TextStyle::Small, label)
+        .on(ground)
+        .flex_1()
+        .min_w_0()
+        .truncate();
+    let label = if strong {
+        label.text_color(ground.ink)
     } else {
-        cx.theme()
-            .paint_on(ground, Tone::Neutral, Emphasis::Ghost)
-            .muted_at(PaintState::Rest)
+        label.muted()
     };
     div()
         .flex()
@@ -238,15 +244,5 @@ fn key_hint(
                         .map(|key| Kbd::new(key).lowercase().on(ground)),
                 ),
         )
-        .child(
-            div()
-                .flex_1()
-                .min_w_0()
-                .overflow_hidden()
-                .whitespace_nowrap()
-                .text_ellipsis()
-                .text_size(crate::rems_from_px(12.0))
-                .text_color(ink)
-                .child(label.into()),
-        )
+        .child(label)
 }

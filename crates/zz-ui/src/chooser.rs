@@ -1,11 +1,12 @@
 use crate::{
-    ActiveTheme as _, Colorize as _, Edge, Emphasis, Icon, IconName, PaintState, Sizable as _,
-    StyledExt as _, Surface, Tone, badge::Badge, kbd::Kbd, list::ListItem, roles,
+    ActiveTheme as _, Colorize as _, Edge, Emphasis, Icon, IconName, Sizable as _, StyledExt as _,
+    Tone, badge::Badge, kbd::Kbd, list::ListItem,
 };
 use ala::{
     AnyElement, App, CursorStyle, IntoElement, Keystroke, ParentElement as _, RenderOnce,
     SharedString, Styled as _, div, prelude::*, px, relative,
 };
+use penna::{Bar, BarLook, Label, Panel, PanelLook, RuleLook, TextStyle};
 use zz_client::chooser::SEARCH_HINTS;
 pub use zz_client::chooser::{ChooserHint, chooser_has_key_gutter, chooser_subtitle};
 
@@ -93,20 +94,20 @@ impl RenderOnce for ChooserModal {
         let rows = f32::from(u8::try_from(self.dimensions.row_count.min(10)).unwrap_or(10));
         let notices = u8::from(self.help) + u8::from(self.prompt.is_some());
         let height = 106.0 + rows * CHOOSER_ROW_HEIGHT + f32::from(notices) * 36.0;
-        let modal = cx.theme().layer(roles::PICKER, PaintState::Rest);
-        let notice = |text: SharedString, cx: &App| {
-            div()
+        let ground = cx.theme().ground_of(PanelLook::Picker);
+        let notice = |id: &'static str, text: SharedString, cx: &App| {
+            Bar::new(id, BarLook::Plain)
+                .on(ground)
                 .flex_none()
                 .px(px(12.0))
                 .py(px(9.0))
-                .surface(Surface::new(penna::Kind::Bar.role()).on(modal.ground), cx)
-                .rule_on(roles::BAR_RULE, Edge::Bottom, cx)
+                .rule(RuleLook::Bar, Edge::Bottom, cx)
                 .font_family(self.font_family.clone())
-                .text_size(crate::rems_from_px(11.0))
+                .type_style(TextStyle::Caption, cx)
                 .child(text)
         };
-        let surface = div()
-            .id(self.id)
+        let surface = Panel::new(self.id, PanelLook::Picker)
+            .inset(px(8.0))
             .relative()
             .flex()
             .flex_col()
@@ -115,8 +116,6 @@ impl RenderOnce for ChooserModal {
             .h(px(height))
             .max_h((window.viewport_size().height - px(44.0)).max(px(0.0)))
             .overflow_hidden()
-            .surface(roles::PICKER, cx)
-            .rounded(crate::picker::outer_radius(&modal, px(8.0)))
             .on_mouse_down(ala::MouseButton::Left, |_, _, cx| cx.stop_propagation())
             .child(
                 div()
@@ -132,18 +131,14 @@ impl RenderOnce for ChooserModal {
                             .min_w_0()
                             .gap(px(2.0))
                             .child(
-                                div()
-                                    .text_size(crate::rems_from_px(13.0))
-                                    .font_medium()
-                                    .text_color(cx.theme().foreground)
-                                    .child(self.title),
+                                Label::new(TextStyle::Body, self.title)
+                                    .strong()
+                                    .text_color(cx.theme().foreground),
                             )
                             .child(
-                                div()
-                                    .text_size(crate::rems_from_px(11.0))
+                                Label::new(TextStyle::Caption, self.subtitle)
                                     .truncate()
-                                    .text_color(cx.theme().foreground.muted())
-                                    .child(self.subtitle),
+                                    .text_color(cx.theme().foreground.muted()),
                             ),
                     )
                     .child(div().flex_1())
@@ -151,11 +146,16 @@ impl RenderOnce for ChooserModal {
             )
             .when(self.help, |modal| {
                 modal.child(notice(
+                    "chooser-help",
                     "Help: the next key closes this and does nothing else".into(),
                     cx,
                 ))
             })
-            .children(self.prompt.clone().map(|prompt| notice(prompt, cx)))
+            .children(
+                self.prompt
+                    .clone()
+                    .map(|prompt| notice("chooser-prompt", prompt, cx)),
+            )
             .child(
                 div()
                     .flex()
@@ -192,7 +192,7 @@ pub fn chooser_footer(
             .items_center()
             .gap(px(7.0))
             .font_family(font_family)
-            .text_size(crate::rems_from_px(11.0))
+            .type_style(TextStyle::Caption, cx)
             .child(div().text_color(cx.theme().foreground).child(search.prefix))
             .child(
                 div()
@@ -214,7 +214,7 @@ pub fn chooser_footer(
         .items_center()
         .gap(px(12.0))
         .px(px(12.0))
-        .rule_on(roles::BAR_RULE, Edge::Top, cx)
+        .rule(RuleLook::Bar, Edge::Top, cx)
         .children(search)
         .child(div().flex_1())
         .child(
@@ -224,7 +224,7 @@ pub fn chooser_footer(
                 .gap(px(10.0))
                 .overflow_hidden()
                 .whitespace_nowrap()
-                .text_size(crate::rems_from_px(9.0))
+                .type_style(TextStyle::Micro, cx)
                 .text_color(cx.theme().foreground.muted())
                 .children(hints.iter().copied().map(chooser_hint)),
         )
@@ -256,15 +256,13 @@ fn chooser_key_cell(
     font_family: SharedString,
     selected: bool,
 ) -> impl IntoElement {
-    div()
+    Label::new(TextStyle::Micro, chooser_key_label(key))
         .w(px(30.0))
         .flex_none()
         .overflow_hidden()
         .whitespace_nowrap()
         .font_family(font_family)
-        .text_size(crate::rems_from_px(10.0))
         .opacity(if selected { 1.0 } else { 0.8 })
-        .child(chooser_key_label(key))
 }
 
 #[allow(clippy::fn_params_excessive_bools)]
@@ -329,41 +327,30 @@ pub fn tree_chooser_row(
                     .opacity(if active || selected { 1.0 } else { 0.8 }),
             )
             .child(
-                div()
+                Label::new(TextStyle::Body, label)
+                    .when(active, Label::strong)
                     .flex_1()
                     .min_w_0()
                     .ml(px(8.0))
-                    .truncate()
-                    .text_size(crate::rems_from_px(13.0))
-                    .when(active, crate::StyledExt::font_medium)
-                    .child(label.into()),
+                    .truncate(),
             )
             .child(
-                div()
+                Label::new(TextStyle::Caption, detail)
                     .max_w(relative(0.3))
                     .min_w_0()
                     .ml(px(12.0))
                     .truncate()
-                    .text_size(crate::rems_from_px(11.0))
-                    .opacity(if selected { 1.0 } else { 0.8 })
-                    .child(detail.into()),
+                    .opacity(if selected { 1.0 } else { 0.8 }),
             )
             .child(
-                div()
+                Label::new(TextStyle::Micro, target)
                     .ml(px(12.0))
                     .flex_none()
                     .font_family(font_family.clone())
-                    .text_size(crate::rems_from_px(10.0))
-                    .opacity(if selected { 1.0 } else { 0.8 })
-                    .child(target),
+                    .opacity(if selected { 1.0 } else { 0.8 }),
             )
             .when(tagged, |row| {
-                row.child(
-                    Badge::new("Tagged")
-                        .small()
-                        .ml(px(8.0))
-                        .text_size(crate::rems_from_px(9.0)),
-                )
+                row.child(Badge::new("Tagged").small().ml(px(8.0)))
             })
             .child(
                 div()
@@ -407,45 +394,33 @@ pub fn buffer_chooser_row(
                     row.child(chooser_key_cell(&key, font_family.clone(), selected))
                 })
                 .child(
-                    div()
+                    Label::new(TextStyle::Caption, name)
                         .w(px(142.0))
                         .flex_none()
-                        .overflow_hidden()
-                        .whitespace_nowrap()
-                        .text_ellipsis()
-                        .font_family(font_family.clone())
-                        .text_size(crate::rems_from_px(11.0))
-                        .child(name.into()),
+                        .truncate()
+                        .font_family(font_family.clone()),
                 )
                 .child(
-                    div()
+                    Label::new(TextStyle::Caption, preview)
                         .flex_1()
                         .min_w_0()
-                        .overflow_hidden()
-                        .whitespace_nowrap()
-                        .text_ellipsis()
-                        .text_size(crate::rems_from_px(11.0))
-                        .child(preview.into()),
+                        .truncate(),
                 )
                 .child(
-                    div()
+                    Label::new(TextStyle::Micro, size)
                         .w(px(76.0))
                         .flex_none()
                         .text_right()
                         .font_family(font_family.clone())
-                        .text_size(crate::rems_from_px(9.0))
-                        .opacity(if selected { 1.0 } else { 0.8 })
-                        .child(size.into()),
+                        .opacity(if selected { 1.0 } else { 0.8 }),
                 )
                 .child(
-                    div()
+                    Label::new(TextStyle::Micro, age)
                         .w(px(54.0))
                         .flex_none()
                         .text_right()
                         .font_family(font_family.clone())
-                        .text_size(crate::rems_from_px(9.0))
-                        .opacity(if selected { 1.0 } else { 0.8 })
-                        .child(age.into()),
+                        .opacity(if selected { 1.0 } else { 0.8 }),
                 )
                 .when(tagged, |row| {
                     row.child(
@@ -454,8 +429,7 @@ pub fn buffer_chooser_row(
                             .tone(Tone::Primary)
                             .emphasis(Emphasis::Solid)
                             .ml(px(8.0))
-                            .font_family(font_family)
-                            .text_size(crate::rems_from_px(9.0)),
+                            .font_family(font_family),
                     )
                 }),
         )

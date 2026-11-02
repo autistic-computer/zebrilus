@@ -3242,15 +3242,17 @@ mod overlays {
     use std::sync::Arc;
 
     use ala::{
-        Anchor, AnyElement, App, Bounds, Div, Entity, Image, ImageSource, MouseButton, ObjectFit,
-        Pixels, Stateful, Window, anchored, deferred, div, img, prelude::*, px,
+        Anchor, AnyElement, App, Bounds, Entity, Image, ImageSource, MouseButton, ObjectFit,
+        Pixels, Window, anchored, deferred, div, img, prelude::*, px,
     };
     use zz_terminal::{SearchCase, SearchMode, SearchQuery, SearchStatus};
 
+    use penna::{Label, Panel, PanelLook, TextStyle};
+
     use crate::{
-        ActiveTheme as _, Colorize as _, Disableable as _, Icon, IconName, PaintState,
-        Selectable as _, StyledExt as _, SurfaceRole,
-        button::{Button, ButtonVariants as _},
+        ActiveTheme as _, Colorize as _, Disableable as _, Icon, IconName, Selectable as _,
+        StyledExt as _,
+        button::{Button, ButtonLook, ButtonVariants as _},
         input::{Input, InputState},
     };
 
@@ -3273,27 +3275,24 @@ mod overlays {
         status: Option<SearchStatus>,
         on_action: impl Fn(FindBarAction, &mut Window, &mut App) + 'static,
         cx: &App,
-    ) -> Stateful<Div> {
+    ) -> Panel {
         let on_action = std::rc::Rc::new(on_action);
         let enabled = status.is_some_and(|status| {
             status.total > 0 && !status.pending() && !status.invalid_pattern()
         });
-        let bar = cx
-            .theme()
-            .layer(penna::SurfaceRole::POPOVER, PaintState::Rest);
+        let ground = cx.theme().ground_of(PanelLook::Popover);
         let button = |id: &'static str, icon: IconName, action: FindBarAction| {
             let on_action = std::rc::Rc::clone(&on_action);
             Button::compact_icon(id, icon)
                 .ghost()
-                .surface_role(crate::SurfaceRole::FLAT_ICON_BUTTON)
-                .on(bar.ground)
+                .look(ButtonLook::Flat)
+                .on(ground)
                 .on_click(move |_, window, cx| {
                     on_action(action, window, cx);
                     cx.stop_propagation();
                 })
         };
-        div()
-            .id("terminal-search")
+        Panel::new("terminal-search", PanelLook::Popover)
             .debug_selector(|| "terminal-search".to_owned())
             .flex()
             .flex_wrap()
@@ -3302,10 +3301,9 @@ mod overlays {
             .w(px(460.0))
             .max_w_full()
             .p(px(4.0))
-            .layer(&bar)
             .occlude()
             .font_family(cx.theme().font_family.clone())
-            .text_size(crate::rems_from_px(13.0))
+            .type_style(TextStyle::Body, cx)
             .line_height(px(16.0))
             .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
             .on_mouse_up(MouseButton::Left, |_, _, cx| cx.stop_propagation())
@@ -3318,7 +3316,7 @@ mod overlays {
             .child(
                 div().flex_1().min_w(px(110.0)).child(
                     Input::new(input)
-                        .on(bar.ground)
+                        .on(ground)
                         .prefix(Icon::new(IconName::Search).size(px(13.0))),
                 ),
             )
@@ -3330,19 +3328,22 @@ mod overlays {
                     .gap(px(2.0))
                     .ml_auto()
                     .child(
-                        div()
-                            .px(px(4.0))
-                            .text_size(crate::rems_from_px(11.0))
-                            .text_color(if status.is_some_and(SearchStatus::invalid_pattern) {
-                                cx.theme().danger
-                            } else {
-                                cx.theme().foreground.muted()
-                            })
-                            .child(if query.text.is_empty() {
+                        Label::new(
+                            TextStyle::Caption,
+                            if query.text.is_empty() {
                                 String::new()
                             } else {
                                 search_result_text(status)
-                            }),
+                            },
+                        )
+                        .px(px(4.0))
+                        .text_color(
+                            if status.is_some_and(SearchStatus::invalid_pattern) {
+                                cx.theme().danger
+                            } else {
+                                cx.theme().foreground.muted()
+                            },
+                        ),
                     )
                     .child(
                         button(
@@ -3391,7 +3392,7 @@ mod overlays {
             )
     }
 
-    pub fn pasted_image_preview(link: Bounds<Pixels>, image: Arc<Image>, cx: &App) -> AnyElement {
+    pub fn pasted_image_preview(link: Bounds<Pixels>, image: Arc<Image>, _: &App) -> AnyElement {
         let (anchor, position) = if link.origin.y >= px(IMAGE_PREVIEW_SIDE + 8.0) {
             (Anchor::BottomLeft, link.origin)
         } else {
@@ -3403,10 +3404,9 @@ mod overlays {
                 .position(position)
                 .snap_to_window_with_margin(px(8.0))
                 .child(
-                    div()
+                    Panel::new("pasted-image-preview", PanelLook::Popover)
                         .size(px(IMAGE_PREVIEW_SIDE))
                         .p_1()
-                        .surface(SurfaceRole::POPOVER, cx)
                         .child(
                             img(ImageSource::Image(image))
                                 .size_full()

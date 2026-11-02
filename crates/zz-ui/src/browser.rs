@@ -2,11 +2,10 @@ use std::{rc::Rc, sync::Arc};
 
 use crate::{
     ActiveTheme as _, Colorize as _, Disableable as _, Edge, Icon, IconName, PaintState,
-    Selectable as _, Sizable as _, StatefulSurfaceExt as _, StyledExt as _, SurfaceRole,
-    badge::Badge,
-    button::{Button, ButtonVariants as _},
+    Selectable as _, Sizable as _, StyledExt as _,
+    button::{Button, ButtonLook, ButtonVariants as _},
     feedback::{alert_actions, inline_alert},
-    input::{Input, InputContentType, InputState, field_chrome},
+    input::{FieldLook, Input, InputContentType, InputState, field_chrome},
     menu::{PopupMenu, PopupMenuItem},
     separator::Separator,
     tooltip::Tooltip,
@@ -15,6 +14,10 @@ use ala::{
     AnyElement, App, Context, Entity, Focusable as _, IntoElement, MouseButton, ParentElement as _,
     Pixels, RenderOnce, SharedString, Styled as _, StyledImage as _, Window, canvas, deferred, div,
     prelude::*, px,
+};
+use penna::{
+    Bar, BarLook, Chip, ChipLook, Label, Panel, PanelLook, Row, RowLook, RuleLook, Tab, TabLook,
+    TextStyle,
 };
 
 pub const BROWSER_OMNIBOX_KEY_CONTEXT: &str = "BrowserOmnibox";
@@ -60,8 +63,7 @@ impl BrowserHeader {
 impl RenderOnce for BrowserHeader {
     fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
         let show_separator = self.toolbar.show_separator;
-        div()
-            .id("browser-pane-header")
+        Bar::new("browser-pane-header", BarLook::Pane)
             .group("browser-pane-header")
             .relative()
             .flex()
@@ -69,7 +71,6 @@ impl RenderOnce for BrowserHeader {
             .w_full()
             .h(Self::HEIGHT)
             .flex_none()
-            .surface(crate::roles::BAR_PANE, cx)
             .pb(px(crate::CHROME_GAP))
             .child(
                 div()
@@ -82,7 +83,7 @@ impl RenderOnce for BrowserHeader {
                     .gap_2()
                     .px(px(crate::CHROME_GAP))
                     .font_family(cx.theme().font_family.clone())
-                    .text_size(crate::rems_from_px(13.0))
+                    .type_style(TextStyle::Body, cx)
                     .line_height(px(16.0))
                     .text_color(cx.theme().foreground.muted())
                     .child(self.tabs)
@@ -101,7 +102,7 @@ impl RenderOnce for BrowserHeader {
             .when(show_separator, |header| {
                 header.child(
                     Separator::horizontal()
-                        .surface_role(crate::roles::BAR_RULE)
+                        .look(RuleLook::Bar)
                         .absolute()
                         .bottom_0()
                         .h(crate::RULE_WIDTH),
@@ -136,8 +137,7 @@ impl CompactBrowserBar {
 
 impl RenderOnce for CompactBrowserBar {
     fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
-        div()
-            .id("compact-browser-bar")
+        Bar::new("compact-browser-bar", BarLook::Pane)
             .debug_selector(|| "compact-browser-bar".into())
             .flex()
             .flex_none()
@@ -146,7 +146,6 @@ impl RenderOnce for CompactBrowserBar {
             .w_full()
             .h(Self::HEIGHT)
             .px(px(12.0))
-            .surface(crate::roles::BAR_PANE, cx)
             .text_color(cx.theme().foreground)
             .child(self.address)
             .child(
@@ -221,7 +220,7 @@ impl RenderOnce for BrowserToolbar {
             .gap_1()
             .px(px(crate::CHROME_GAP))
             .when(self.show_separator, |toolbar| {
-                toolbar.rule_on(crate::roles::BAR_RULE, Edge::Bottom, cx)
+                toolbar.rule(RuleLook::Bar, Edge::Bottom, cx)
             })
             .text_color(cx.theme().foreground)
             .child(
@@ -250,7 +249,6 @@ pub fn browser_address(
     cx: &App,
 ) -> ala::Stateful<ala::Div> {
     let focus_handle = address.read(cx).focus_handle(cx);
-    let role = crate::roles::FIELD_ADDRESS;
     let state = if focus_handle.is_focused(window) {
         PaintState::Focused
     } else {
@@ -263,7 +261,7 @@ pub fn browser_address(
         .min_w_0()
         .px_2()
         .py_0()
-        .text_size(crate::rems_from_px(13.0))
+        .type_style(TextStyle::Body, cx)
         .line_height(px(16.0))
         .appearance(false)
         .content_type(InputContentType::Url);
@@ -278,7 +276,7 @@ pub fn browser_address(
         .flex_1()
         .min_w_0()
         .items_center();
-    field_chrome(shell, role, state, true, true, cx)
+    field_chrome(shell, FieldLook::Address, state, true, true, cx)
         .on_mouse_down(MouseButton::Left, move |_, window, cx| {
             focus_handle.focus(window, cx);
             cx.stop_propagation();
@@ -295,12 +293,9 @@ pub fn browser_address(
 }
 
 pub fn browser_site_controls_button(cx: &App) -> Button {
-    let address = cx
-        .theme()
-        .layer(crate::roles::FIELD_ADDRESS, PaintState::Rest)
-        .radius;
+    let address = cx.theme().radius_of(FieldLook::Address);
     Button::compact_icon("browser-site-controls", IconName::SiteControls)
-        .surface_role(crate::SurfaceRole::FLAT_ICON_BUTTON)
+        .look(ButtonLook::Flat)
         .rounded(if address >= ala::FULL_CORNER_RADIUS {
             address
         } else {
@@ -545,8 +540,8 @@ fn browser_tab_pill(
         .relative()
         .top(px(0.5))
         .child(browser_favicon(favicon, cx));
-    div()
-        .id(("browser-tab", id))
+    Tab::new(("browser-tab", id), TabLook::Page)
+        .state(state)
         .debug_selector(move || format!("browser-tab-{id}"))
         .group(browser_tab_group(id))
         .h(px(BROWSER_CONTROL_HEIGHT))
@@ -554,10 +549,9 @@ fn browser_tab_pill(
         .min_w(px(BROWSER_TAB_MIN_WIDTH))
         .flex()
         .items_center()
-        .surface_interactive(crate::roles::TAB_PAGE, state, cx)
         .when(!active, |tab| {
             tab.text_color(crate::muted_on(
-                cx.theme().ground_at(crate::roles::TAB_PAGE, state),
+                cx.theme().ground_at(TabLook::Page, state),
                 cx,
             ))
         })
@@ -594,15 +588,13 @@ fn browser_tab_pill(
                     }))
                     .child(favicon)
                     .child(
-                        div()
+                        Label::new(TextStyle::Body, label)
                             .flex_1()
                             .min_w_0()
-                            .text_size(crate::rems_from_px(13.0))
                             .line_height(px(16.0))
                             .whitespace_nowrap()
                             .overflow_hidden()
-                            .text_fade(crate::LABEL_FADE)
-                            .child(label),
+                            .text_fade(crate::LABEL_FADE),
                     )
                     .when(closable, |tab| {
                         tab.child(
@@ -661,7 +653,6 @@ pub fn browser_toolbar_button(
     selected: bool,
 ) -> Button {
     Button::compact_icon(id, icon)
-        .surface_role(penna::SurfaceRole::ICON_BUTTON)
         .size(crate::rems_from_px(BROWSER_CONTROL_HEIGHT))
         .when(!disabled, |this| {
             this.text_color(cx.theme().foreground.muted())
@@ -680,7 +671,7 @@ pub fn compact_tabs_button(id: impl Into<ala::ElementId>, count: usize, cx: &App
     Button::new(id)
         .ghost()
         .compact()
-        .surface_role(penna::SurfaceRole::ICON_BUTTON)
+        .look(ButtonLook::Icon)
         .size(crate::PANE_HEADER_CONTROL_HEIGHT)
         .text_color(color)
         .child(
@@ -692,10 +683,11 @@ pub fn compact_tabs_button(id: impl Into<ala::ElementId>, count: usize, cx: &App
                 .rounded(crate::rems_from_px(4.0))
                 .border(crate::rems_from_px(1.5))
                 .border_color(color)
-                .text_size(crate::rems_from_px(9.0))
-                .line_height(crate::rems_from_px(10.0))
-                .font_semibold()
-                .child(SharedString::from(count.min(99).to_string())),
+                .child(
+                    Label::new(TextStyle::Micro, count.min(99).to_string())
+                        .strong()
+                        .line_height(crate::rems_from_px(10.0)),
+                ),
         )
 }
 
@@ -725,12 +717,11 @@ impl RenderOnce for BrowserEmptyHint {
             .gap(px(10.0))
             .p(px(20.0))
             .child(
-                div()
+                Chip::empty("browser-empty-icon")
+                    .look(ChipLook::Icon)
                     .size(px(32.0))
-                    .flex()
-                    .items_center()
+                    .p_0()
                     .justify_center()
-                    .surface(crate::roles::BADGE_ICON, cx)
                     .child(
                         Icon::new(IconName::Globe)
                             .small()
@@ -738,18 +729,17 @@ impl RenderOnce for BrowserEmptyHint {
                     ),
             )
             .child(
-                div()
-                    .text_center()
-                    .text_size(crate::rems_from_px(13.0))
-                    .font_semibold()
-                    .child("Where to?"),
+                Label::new(TextStyle::Body, "Where to?")
+                    .strong()
+                    .text_center(),
             )
             .child(
-                div()
-                    .text_center()
-                    .text_size(crate::rems_from_px(11.0))
-                    .text_color(cx.theme().foreground.muted())
-                    .child("Type a URL to get started. Pages you visit will show up here."),
+                Label::new(
+                    TextStyle::Caption,
+                    "Type a URL to get started. Pages you visit will show up here.",
+                )
+                .text_center()
+                .text_color(cx.theme().foreground.muted()),
             )
     }
 }
@@ -781,37 +771,35 @@ pub fn browser_recent_row(
     url: impl Into<SharedString>,
     favicon: Option<Arc<[u8]>>,
     cx: &App,
-) -> ala::Stateful<ala::Div> {
+) -> Row {
     let url = url.into();
     let height = crate::picker::LIST_ROW_HEIGHT;
-    crate::row_surface(
-        div().id(id).flex().w_full().h(height).flex_none(),
-        crate::roles::MENU_ITEM_TINT,
-        PaintState::Rest,
-        height,
-        cx,
-    )
-    .items_center()
-    .gap(px(8.0))
-    .px(px(12.0))
-    .cursor_pointer()
-    .text_size(crate::rems_from_px(12.0))
-    .child(browser_favicon(favicon, cx))
-    .child(
-        div()
-            .min_w_0()
-            .flex_1()
-            .whitespace_nowrap()
-            .text_ellipsis()
-            .overflow_hidden()
-            .child(url),
-    )
+    Row::new(id, RowLook::MenuTint)
+        .row_height(height)
+        .flex()
+        .w_full()
+        .h(height)
+        .flex_none()
+        .items_center()
+        .gap(px(8.0))
+        .px(px(12.0))
+        .cursor_pointer()
+        .type_style(TextStyle::Small, cx)
+        .child(browser_favicon(favicon, cx))
+        .child(
+            div()
+                .min_w_0()
+                .flex_1()
+                .whitespace_nowrap()
+                .text_ellipsis()
+                .overflow_hidden()
+                .child(url),
+        )
 }
 
 pub fn browser_omnibox_panel(rows: Vec<AnyElement>, cx: &App) -> impl IntoElement {
     deferred(
-        div()
-            .id("browser-omnibox-results")
+        Panel::new("browser-omnibox-results", PanelLook::Popover)
             .debug_selector(|| "browser-omnibox-results".to_owned())
             .absolute()
             .top(BrowserHeader::HEIGHT + px(4.0))
@@ -819,7 +807,6 @@ pub fn browser_omnibox_panel(rows: Vec<AnyElement>, cx: &App) -> impl IntoElemen
             .right(px(8.0))
             .occlude()
             .overflow_hidden()
-            .surface(SurfaceRole::POPOVER, cx)
             .py(px(4.0))
             .list_inset(cx)
             .children(rows),
@@ -839,7 +826,7 @@ pub fn browser_omnibox_row(
     let url = url.into();
     let muted = crate::muted_on(
         cx.theme().ground_at(
-            SurfaceRole::MENU_ITEM,
+            RowLook::Menu,
             if selected {
                 PaintState::Selected
             } else {
@@ -860,7 +847,7 @@ pub fn browser_omnibox_row(
     .gap(px(8.0))
     .px(px(8.0))
     .overflow_hidden()
-    .text_size(crate::rems_from_px(13.0))
+    .type_style(TextStyle::Body, cx)
     .line_height(px(16.0))
     .cursor_pointer()
     .child(
@@ -1302,7 +1289,7 @@ impl BrowserPickStatus {
 }
 
 impl RenderOnce for BrowserPickStatus {
-    fn render(self, _: &mut ala::Window, _: &mut App) -> impl IntoElement {
+    fn render(self, _: &mut ala::Window, cx: &mut App) -> impl IntoElement {
         div()
             .absolute()
             .left(px(16.0))
@@ -1311,14 +1298,14 @@ impl RenderOnce for BrowserPickStatus {
             .flex()
             .justify_center()
             .child(
-                Badge::empty()
-                    .surface_role(crate::roles::CHIP_FLOATING)
-                    .font_weight(ala::FontWeight::NORMAL)
+                Chip::empty("browser-pick-status")
+                    .look(ChipLook::Floating)
+                    .flex_none()
+                    .whitespace_nowrap()
                     .max_w_full()
                     .h(px(28.0))
                     .px(px(10.0))
-                    .text_size(px(12.0))
-                    .line_height(px(16.0))
+                    .type_style(TextStyle::Small, cx)
                     .gap(px(6.0))
                     .child(
                         div()

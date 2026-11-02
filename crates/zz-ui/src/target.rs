@@ -7,8 +7,10 @@ use ala::{
 };
 use zz_protocol::{GitMark, PaneId, PathEntry, PathKind, PathListRoot, SessionId, WindowId};
 
+use penna::{Panel, PanelLook, TextStyle};
+
 use crate::{
-    ActiveTheme as _, Colorize as _, IconName, StyledExt as _, SurfaceRole,
+    ActiveTheme as _, Colorize as _, IconName, StyledExt as _,
     command::{
         PaletteHint, PaletteHostId, PaletteRow, PaletteStatus, PaletteTarget,
         command_palette_entry, command_palette_row_height, fuzzy_match, palette_hint,
@@ -16,7 +18,6 @@ use crate::{
     files::{FileRow, GitMarks, Listing, file_rows, mark_letter},
     h_flex,
     input::{Enter, Escape, IndentInline, InputState, MoveDown, MoveUp},
-    v_flex,
 };
 
 pub const TARGET_MAX_ROWS: usize = 200;
@@ -1498,7 +1499,7 @@ impl TargetPicker {
                 .debug_selector(|| "target-picker-empty".to_owned())
                 .py(px(if self.composer.is_some() { 10.0 } else { 16.0 }))
                 .text_center()
-                .text_size(crate::rems_from_px(12.0))
+                .type_style(TextStyle::Small, cx)
                 .text_color(cx.theme().foreground.muted())
                 .child(self.empty_message())
                 .into_any_element();
@@ -1544,7 +1545,7 @@ impl Render for TargetPicker {
             .h(px(HEADER_HEIGHT))
             .px(px(14.0))
             .gap(px(14.0))
-            .text_size(crate::rems_from_px(10.0))
+            .type_style(TextStyle::Micro, cx)
             .line_height(px(16.0))
             .text_color(cx.theme().foreground.muted())
             .child(
@@ -1555,8 +1556,8 @@ impl Render for TargetPicker {
                     .overflow_hidden()
                     .whitespace_nowrap()
                     .text_ellipsis()
-                    .font_family(cx.theme().mono_font_family.clone())
-                    .text_size(crate::rems_from_px(11.0))
+                    .type_style(TextStyle::Mono, cx)
+                    .line_height(px(16.0))
                     .child(crumb),
             )
             .children(HINTS.map(|hint| palette_hint(hint, cx)));
@@ -1568,10 +1569,10 @@ impl Render for TargetPicker {
             .px(px(8.0))
             .pb(px(BOTTOM_PADDING))
             .child(
-                v_flex()
+                Panel::new("target-picker-panel", PanelLook::Popover)
+                    .v_flex()
                     .w_full()
                     .overflow_hidden()
-                    .surface(SurfaceRole::POPOVER, cx)
                     .occlude()
                     .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
                     .child(header)

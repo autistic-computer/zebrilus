@@ -6,9 +6,11 @@ use ala::{
 };
 use zz_protocol::{MenuItem, MenuState, PopupBorderLines, parse_styled_segments};
 
+use penna::{Label, RuleLook, TextStyle};
+
 use crate::{
     ActiveTheme as _, Colorize as _, Edge, ElementExt as _, PaintState, StyledExt as _,
-    SurfaceRole, h_flex, rems_from_px, roles, row_corners,
+    SurfaceRole, h_flex, row_corners,
     tmux_style::{split_tmux_alignment, tmux_literal_colour, tmux_styled_segments_text},
     touch::{CoarsePointer, TOUCH_TARGET},
     v_flex,
@@ -35,6 +37,10 @@ struct MenuInks {
     rule: Hsla,
 }
 
+#[allow(
+    clippy::disallowed_methods,
+    reason = "tmux display-menu paints in the colours menu-style and menu-border-style name; the popover look is their fallback"
+)]
 pub fn display_menu(
     state: &MenuState,
     selected: Option<usize>,
@@ -92,7 +98,7 @@ pub fn display_menu(
                 .flex_none()
                 .my(px(2.0))
                 .mx(theme.row_inset)
-                .rule_on(roles::LIST_RULE, Edge::Bottom, cx)
+                .rule(RuleLook::List, Edge::Bottom, cx)
                 .border_color(inks.rule)
                 .on_prepaint(record)
                 .into_any_element(),
@@ -129,7 +135,14 @@ pub fn display_menu(
                 .max(px(128.0)),
         )
         .font_family(theme.font_family.clone())
-        .text_size(rems_from_px(if coarse { 13.0 } else { 12.0 }))
+        .type_style(
+            if coarse {
+                TextStyle::Body
+            } else {
+                TextStyle::Small
+            },
+            cx,
+        )
         .line_height(LINE_HEIGHT)
         .on_prepaint(move |bounds, _, _| surface_hits.borrow_mut().surface = bounds)
         .when(titled, |surface| {
@@ -152,6 +165,10 @@ pub fn menu_enter(surface: Stateful<Div>) -> AnimationElement<Stateful<Div>> {
     penna::foundation::surface_enter(surface, "display-menu-open", Pixels::ZERO)
 }
 
+#[allow(
+    clippy::disallowed_methods,
+    reason = "the selected row takes the colours menu-selected-style names over the menu-item look"
+)]
 fn menu_row(
     index: usize,
     item: &MenuItem,
@@ -202,13 +219,11 @@ fn menu_row(
         )
         .when_some(item.annotation.clone(), |row, key| {
             row.child(
-                div()
+                Label::new(TextStyle::Small, key)
                     .flex_none()
                     .whitespace_nowrap()
-                    .text_xs()
                     .text_color(ink)
-                    .opacity(if highlighted { 1.0 } else { 0.8 })
-                    .child(key),
+                    .opacity(if highlighted { 1.0 } else { 0.8 }),
             )
         })
 }
@@ -224,7 +239,7 @@ fn menu_title(title: &str, inks: &MenuInks, cx: &App) -> Div {
         .h(TITLE_HEIGHT)
         .pt(LIST_PADDING)
         .px(cx.theme().row_inset + ROW_PADDING)
-        .text_size(rems_from_px(11.0))
+        .type_style(TextStyle::Caption, cx)
         .text_color(ink)
         .whitespace_nowrap()
         .overflow_hidden()
@@ -278,9 +293,7 @@ pub fn confirm_prompt(
         .items_center()
         .px(px(12.0))
         .font_family(font_family.into())
-        .text_size(px(13.0))
-        .line_height(px(16.0))
-        .child(prompt.into())
+        .child(Label::new(TextStyle::Body, prompt).line_height(px(16.0)))
 }
 
 pub fn confirm_accepts(confirm_key: u8, default_yes: bool, keystroke: &Keystroke) -> bool {
