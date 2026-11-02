@@ -145,7 +145,6 @@ impl Preferences {
         shown.zoom = interface_zoom(self, text_scale, phone());
         shown.animations &= !cx.global::<PlatformReduceMotion>().0;
         shown.apply(self.saved(), Some(window), cx);
-        window.set_default_corner_smoothing(penna::CORNER_SMOOTHING);
         cx.set_global(zz_ui::pip::PipOpacity(self.pip_background_opacity));
         cx.set_global(PaneLook {
             frames: self.gaps,

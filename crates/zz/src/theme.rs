@@ -65,11 +65,9 @@ pub(crate) fn refresh_current_theme(cx: &mut App) {
     let active = config::shown_theme(cx);
     active.activate(Some(mode), None, cx);
     apply_zz_overrides(&active, cx);
-    let corner_smoothing = penna::CORNER_SMOOTHING;
     for window in cx.windows() {
         window
             .update(cx, |_, window, cx| {
-                window.set_default_corner_smoothing(corner_smoothing);
                 window.set_adaptive_corner_fraction(Some(penna::ADAPTIVE_CORNER_FRACTION));
                 crate::ui_scale::place_traffic_lights(window, cx);
             })
@@ -85,7 +83,6 @@ pub fn sync_system_appearance(mut window: Option<&mut Window>, cx: &mut App) {
         .into();
     cx.set_global(SystemThemeMode(system_mode));
     if let Some(window) = window.as_deref_mut() {
-        window.set_default_corner_smoothing(penna::CORNER_SMOOTHING);
         window.set_adaptive_corner_fraction(Some(penna::ADAPTIVE_CORNER_FRACTION));
     }
     let active = config::shown_theme(cx);
