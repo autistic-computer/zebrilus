@@ -1,0 +1,139 @@
+:root {
+  --penna-feedback-fg: var(--penna-fg);
+  --penna-feedback-muted: oklab(from var(--penna-fg) calc(l * 0.65 + 0.35 * clamp(0, (0.5 - l) * 1000, 1)) calc(a * 0.65) calc(b * 0.65));
+}
+
+.penna-callout {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  box-sizing: border-box;
+  width: 100%;
+  padding: 12px;
+  --penna-callout-ink: var(--penna-ink);
+  --penna-glass: 0;
+}
+
+.penna-callout-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  width: 100%;
+}
+
+.penna-callout-icon {
+  display: flex;
+  flex: none;
+  align-items: center;
+  height: 16px;
+}
+
+.penna-callout-icon > [data-icon] {
+  position: relative;
+  top: var(--penna-callout-drop, 0px);
+  --penna-icon-size: 14px;
+}
+
+.penna-callout[data-tone="primary"] .penna-callout-icon {
+  color: var(--penna-primary);
+}
+
+.penna-callout[data-tone="success"] .penna-callout-icon {
+  color: var(--penna-success);
+}
+
+.penna-callout[data-tone="warning"] .penna-callout-icon {
+  color: var(--penna-warning);
+}
+
+.penna-callout:is([data-tone="danger"], :not([data-tone])) .penna-callout-icon {
+  color: var(--penna-danger);
+}
+
+.penna-callout-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.penna-callout-title > span,
+.penna-callout-message > span {
+  position: relative;
+}
+
+.penna-callout-title > span {
+  top: -0.5px;
+}
+
+.penna-callout-message > span {
+  top: 0.5px;
+}
+
+.penna-callout-title {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 16px;
+  color: var(--penna-callout-ink);
+}
+
+.penna-callout-message {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--penna-feedback-muted);
+}
+
+.penna-callout:not(:has(.penna-callout-title)) .penna-callout-message {
+  color: var(--penna-feedback-fg);
+}
+
+.penna-callout:not(:has(.penna-callout-title)) {
+  --penna-callout-drop: var(--penna-callout-drop-message, 0px);
+}
+
+.penna-alert-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  line-height: 1;
+}
+
+.penna-callout[data-tone] .penna-alert-actions .penna-button {
+  color: var(--penna-callout-ink);
+}
+
+.penna-empty-state {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--penna-feedback-muted);
+}
+
+.penna-empty-state-title {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--penna-feedback-fg);
+}
+
+.penna-empty-state > span {
+  line-height: round(down, calc(1em * 1.618), 1px);
+}
+
+.penna-empty-state-title > span {
+  position: relative;
+  top: -0.5px;
+}
+
+:where(.penna-callout[data-ground]) [data-penna="button"] {
+  --penna-shadow: initial;
+  --penna-edge: initial;
+  --penna-bw: initial;
+}

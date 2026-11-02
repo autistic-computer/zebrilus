@@ -1,0 +1,8 @@
+{
+  "story": "compact",
+  "page": "index.html",
+  "steps": [
+    { "name": "hover-settings", "section": "bento", "hover": "bento-settings" },
+    { "name": "press-settings", "section": "bento", "press": "bento-settings" }
+  ]
+}

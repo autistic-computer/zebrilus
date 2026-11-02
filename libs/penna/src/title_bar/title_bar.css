@@ -1,0 +1,81 @@
+.penna-title-bar-frame {
+  flex: none;
+}
+
+.penna-title-bar {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  box-sizing: border-box;
+  height: 40px;
+  gap: 0;
+  min-width: 0;
+  padding: 0 0 0 12px;
+  border: 0;
+  border-bottom: 1px solid var(--penna-divider);
+  border-radius: 0;
+  background: var(--penna-bg);
+  color: var(--penna-fg);
+  box-shadow: none;
+  user-select: none;
+  --penna-fg-muted: oklab(from var(--penna-fg) calc(l * 0.65 + 0.35 * clamp(0, (0.5 - l) * 1000, 1)) calc(a * 0.65) calc(b * 0.65));
+}
+
+.penna-title-bar-drag {
+  display: flex;
+  flex: 1 0 auto;
+  align-items: center;
+  justify-content: space-between;
+  height: 100%;
+}
+
+.penna-title-bar-controls {
+  display: flex;
+  flex: none;
+  align-items: center;
+  height: 100%;
+}
+
+.penna-title-bar-content {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: space-between;
+  padding-right: 8px;
+}
+
+.penna-title-bar-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+
+.penna-title-bar-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.penna-title-bar-text {
+  position: relative;
+  top: 0.5px;
+  flex: none;
+  white-space: nowrap;
+}
+
+.penna-title-bar-muted {
+  color: var(--penna-fg-muted);
+}
+
+.penna-title-bar-group > [data-icon] {
+  --penna-icon-size: 14px;
+}
+
+.penna-title-bar-tip {
+  position: absolute;
+  z-index: 10;
+  pointer-events: none;
+  white-space: nowrap;
+}

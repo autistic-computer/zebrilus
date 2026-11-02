@@ -1,0 +1,61 @@
+.penna-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  --penna-list-muted: oklab(from var(--penna-fg) calc(l * 0.65 + 0.35 * clamp(0, (0.5987 - l) * 1000, 1)) calc(a * 0.65) calc(b * 0.65));
+}
+
+.penna-list-item[data-penna] {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0 4px;
+  height: auto;
+  padding: 4px 12px;
+  font-size: 16px;
+  line-height: 1.618;
+  white-space: nowrap;
+  border-radius: min(var(--penna-r), calc(var(--penna-list-row, 28px) * 0.4)) !important;
+  cursor: default;
+  user-select: none;
+}
+
+.penna-list-item > .penna-list-content {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  font-size: 14px;
+}
+
+.penna-list-item .penna-list-icon {
+  --penna-icon-size: 14px;
+  color: var(--penna-list-muted);
+}
+
+.penna-list-item .penna-list-label {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.penna-list-item .penna-list-detail {
+  flex: none;
+  font-size: 12px;
+  color: var(--penna-list-muted);
+}
+
+.penna-list-item[data-disabled] {
+  color: var(--penna-list-muted);
+}
+
+.penna-list-item[data-penna][data-disabled]:is(:hover, :active) {
+  --penna-fill: initial;
+}
+
+.penna-list-item > .penna-list-content,
+.penna-list-item .penna-list-label,
+.penna-list-item .penna-list-detail {
+  line-height: round(nearest, 1.618em, 0.5px);
+}

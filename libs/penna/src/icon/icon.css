@@ -1,0 +1,60 @@
+[data-icon][data-size="ambient"] {
+  --penna-icon-size: 1em;
+}
+
+[data-icon][data-turn="1"] {
+  transform: rotate(90deg);
+}
+
+[data-icon][data-turn="2"] {
+  transform: rotate(180deg);
+}
+
+[data-icon][data-turn="3"] {
+  transform: rotate(270deg);
+}
+
+[data-icon][data-size="small"] {
+  --penna-icon-size: 12px;
+}
+
+[data-icon][data-size="medium"] {
+  --penna-icon-size: 14px;
+}
+
+[data-icon][data-size="6"] {
+  --penna-icon-size: 24px;
+}
+
+[data-icon][data-tone="foreground"] {
+  color: var(--penna-fg);
+}
+
+[data-icon][data-tone="muted"] {
+  color: oklab(from var(--penna-fg) calc(l * 0.65) calc(a * 0.65) calc(b * 0.65));
+}
+
+:root[data-penna-mode="light"] [data-icon][data-tone="muted"] {
+  color: oklab(from var(--penna-fg) calc(l * 0.65 + 0.35) calc(a * 0.65) calc(b * 0.65));
+}
+
+[data-icon][data-tone="accent"] {
+  color: var(--penna-accent);
+}
+
+[data-icon][data-tone="success"] {
+  color: var(--penna-success);
+}
+
+[data-icon][data-tone="warning"] {
+  color: var(--penna-warning);
+}
+
+[data-icon][data-tone="danger"] {
+  color: var(--penna-danger);
+}
+
+.penna-glyph {
+  display: inline-flex;
+  flex: none;
+}

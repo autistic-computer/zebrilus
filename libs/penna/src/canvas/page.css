@@ -1,0 +1,106 @@
+.canvas-area {
+  position: relative;
+  width: 200px;
+  height: 120px;
+  border: 1px solid var(--penna-border);
+  isolation: isolate;
+}
+
+.canvas-pane {
+  width: 100%;
+  height: 100%;
+  padding: 8px;
+}
+
+.canvas-window {
+  display: flex;
+  gap: 4px;
+  width: 140px;
+  height: 90px;
+}
+
+.canvas-stage {
+  display: flex;
+  justify-content: flex-end;
+  height: 420px;
+}
+
+.canvas-chip {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  height: 20px;
+  padding: 0 8px;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 16px;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.canvas-dot {
+  display: block;
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--penna-success);
+}
+
+.canvas-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
+
+.canvas-stack > .canvas-stack-title {
+  padding: 0 2px;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 20px;
+  color: var(--penna-muted);
+}
+
+.canvas-stack > .canvas-stack-card[data-penna] {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+
+.canvas-entry {
+  display: flex;
+  flex-direction: column;
+}
+
+.canvas-entry + .canvas-entry::before {
+  content: "";
+  flex: none;
+  height: 1px;
+  margin: 0 12px;
+  background: var(--penna-divider);
+}
+
+.canvas-entry > .canvas-entry-body {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 11px 12px;
+}
+
+.canvas-entry-body > .canvas-entry-title {
+  flex: 0 1 auto;
+  max-width: 70%;
+  min-width: 0;
+  font-size: 13px;
+  line-height: 21px;
+  white-space: nowrap;
+}
+
+.canvas-screens {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}

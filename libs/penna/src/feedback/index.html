@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Feedback</title>
+    <link rel="stylesheet" href="../../web/penna.css" />
+    <link rel="stylesheet" href="../../web/story.css" />
+    <link rel="stylesheet" href="../button/button.css" />
+    <link rel="stylesheet" href="feedback.css" />
+    <link rel="stylesheet" href="page.css" />
+    <script src="../../web/kit.js" data-tokens="../../web/tokens/"></script>
+    <script src="../button/button.js" defer></script>
+    <script src="feedback.js" defer></script>
+  </head>
+  <body>
+    <section data-section="callouts">
+      <div class="story-states" data-columns style="--columns: 2">
+        <div class="story-state">
+          <div class="story-label">primary</div>
+          <div class="penna-callout" data-penna="inline-panel" data-tone="primary">
+          <div class="penna-callout-head">
+            <span class="penna-callout-icon"><i data-icon="info"></i></span>
+            <div class="penna-callout-text">
+              <div class="penna-callout-title"><span>Two computers found</span></div>
+              <div class="penna-callout-message"><span>Pair one to share the keyboard and the pointer with it.</span></div>
+            </div>
+          </div>
+        </div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">success</div>
+          <div class="penna-callout" data-penna="inline-panel" data-tone="success">
+          <div class="penna-callout-head">
+            <span class="penna-callout-icon"><i data-icon="circle-check"></i></span>
+            <div class="penna-callout-text">
+              <div class="penna-callout-title"><span>Paired</span></div>
+              <div class="penna-callout-message"><span>The laptop takes the pointer when it crosses the right edge.</span></div>
+            </div>
+          </div>
+        </div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">warning</div>
+          <div class="penna-callout" data-penna="inline-panel" data-tone="warning">
+          <div class="penna-callout-head">
+            <span class="penna-callout-icon"><i data-icon="triangle-alert"></i></span>
+            <div class="penna-callout-text">
+              <div class="penna-callout-title"><span>Accessibility access is off</span></div>
+              <div class="penna-callout-message"><span>Without it the keyboard reaches this computer but not the others.</span></div>
+            </div>
+          </div>
+        </div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">danger</div>
+          <div class="penna-callout" data-penna="inline-panel" data-tone="danger">
+          <div class="penna-callout-head">
+            <span class="penna-callout-icon"><i data-icon="circle-x"></i></span>
+            <div class="penna-callout-text">
+              <div class="penna-callout-title"><span>The service stopped</span></div>
+              <div class="penna-callout-message"><span>It quit with exit code 1 after the last update.</span></div>
+            </div>
+          </div>
+        </div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">message only</div>
+          <div class="penna-callout" data-penna="inline-panel" data-tone="primary">
+          <div class="penna-callout-head">
+            <span class="penna-callout-icon"><i data-icon="info"></i></span>
+            <div class="penna-callout-text">
+              <div class="penna-callout-message"><span>Changes apply to every window.</span></div>
+            </div>
+          </div>
+        </div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">with an action</div>
+          <div class="penna-callout" data-penna="inline-panel" data-tone="warning" data-ground>
+          <div class="penna-callout-head">
+            <span class="penna-callout-icon"><i data-icon="triangle-alert"></i></span>
+            <div class="penna-callout-text">
+              <div class="penna-callout-title"><span>Update ready</span></div>
+              <div class="penna-callout-message"><span>Restart to finish installing version 2.4.</span></div>
+            </div>
+          </div>
+          <div class="penna-alert-actions">
+            <button class="penna-button" data-penna="button" data-id="callout-restart"><span class="penna-label">Restart</span></button>
+          </div>
+        </div>
+        </div>
+      </div>
+    </section>
+
+    <section data-section="inline-alert">
+      <div class="story-states" data-columns style="--columns: 2">
+        <div class="story-state">
+          <div class="story-label">titled, with an action</div>
+          <div class="penna-callout" data-penna="inline-panel" data-ground>
+          <div class="penna-callout-head">
+            <span class="penna-callout-icon"><i data-icon="triangle-alert"></i></span>
+            <div class="penna-callout-text">
+              <div class="penna-callout-title"><span>This page couldn&#39;t load</span></div>
+              <div class="penna-callout-message"><span>The server closed the connection before it sent a response.</span></div>
+            </div>
+          </div>
+          <div class="penna-alert-actions">
+            <button class="penna-button" data-penna="button" data-id="alert-retry"><span class="penna-label">Try again</span></button>
+          </div>
+        </div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">message only</div>
+          <div class="penna-callout" data-penna="inline-panel">
+          <div class="penna-callout-head">
+            <span class="penna-callout-icon"><i data-icon="triangle-alert"></i></span>
+            <div class="penna-callout-text">
+              <div class="penna-callout-message"><span>The file changed on disk and could not be read again.</span></div>
+            </div>
+          </div>
+        </div>
+        </div>
+      </div>
+    </section>
+
+    <section data-section="empty-state">
+      <div class="story-states" data-columns style="--columns: 2">
+        <div class="story-state">
+          <div class="story-label">message only</div>
+          <div class="penna-empty-page">
+            <div class="penna-empty-state"><span>Connecting…</span></div>
+          </div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">titled, with an action</div>
+          <div class="penna-empty-page">
+            <div class="penna-empty-state">
+              <div class="penna-empty-state-title"><span>Could not start</span></div>
+              <span>The background service did not answer.</span>
+              <button class="penna-button" data-penna="button" data-tone="primary" data-prominent data-id="empty-retry"><span class="penna-label">Try again</span></button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </body>
+</html>

@@ -1,0 +1,44 @@
+.input-rule {
+  padding: 0 8px;
+  background: none;
+  border-width: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.input-rule[data-edged] {
+  border-bottom: 1px solid var(--penna-divider);
+}
+
+.input-frame {
+  position: relative;
+  flex: none;
+  width: 220px;
+}
+
+.input-underlay {
+  position: absolute;
+  inset: 1px;
+  border: 0;
+  box-shadow: none;
+  background: var(--penna-bg);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+.input-chrome {
+  position: relative;
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+  height: 40px;
+  padding: 0 16px;
+  font-size: 13px;
+  line-height: 18px;
+  border-width: max(1px, var(--penna-bw));
+  color: var(--penna-muted);
+}
+
+.input-narrow {
+  width: 180px;
+}

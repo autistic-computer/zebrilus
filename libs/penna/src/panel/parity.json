@@ -1,0 +1,8 @@
+{
+  "story": "panels",
+  "page": "index.html",
+  "steps": [
+    { "name": "hover-bar-action", "section": "bars", "hover": "bar-plain-action" },
+    { "name": "press-bar-action", "section": "bars", "press": "bar-plain-action" }
+  ]
+}

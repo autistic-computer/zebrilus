@@ -1,0 +1,10 @@
+{
+  "story": "canvas",
+  "page": "index.html",
+  "steps": [
+    { "name": "hover-by-address", "section": "dock", "hover": "by-address" },
+    { "name": "press-by-address", "section": "dock", "press": "by-address" },
+    { "name": "hover-close", "section": "inspector", "hover": "inspector-close" },
+    { "name": "press-close", "section": "inspector", "press": "inspector-close" }
+  ]
+}

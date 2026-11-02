@@ -1,0 +1,42 @@
+.penna-tooltip[data-penna="tooltip"] {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  box-sizing: border-box;
+  margin: 12px;
+  padding: 2px 8px;
+  font-family: var(--penna-font);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 19.5px;
+  white-space: nowrap;
+  color: var(--penna-ink);
+}
+
+.penna-tooltip > span {
+  position: relative;
+  top: 0px;
+  display: inline-block;
+  flex: none;
+  white-space: nowrap;
+}
+
+.penna-tooltip > .penna-tooltip-key {
+  color: var(--tooltip-fg-muted, var(--penna-muted));
+}
+
+.penna-tooltip[data-floating] {
+  position: absolute;
+  z-index: 10;
+  pointer-events: none;
+}
+
+.penna-tooltip[data-floating]:not([data-open]) {
+  display: none;
+}
+
+:root {
+  --tooltip-fg-muted: oklab(from var(--penna-fg) calc(l * 0.65 + 0.35 * clamp(0, (0.5 - l) * 1000, 1)) calc(a * 0.65) calc(b * 0.65));
+}

@@ -1,0 +1,3 @@
+section[data-section] .story-label {
+  color: oklab(from var(--penna-fg) calc(l * 0.65 + 0.35 * clamp(0, (0.5 - l) * 1000, 1)) calc(a * 0.65) calc(b * 0.65));
+}

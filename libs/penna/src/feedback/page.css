@@ -1,0 +1,14 @@
+.penna-empty-page {
+  display: flex;
+  box-sizing: border-box;
+  width: 100%;
+  height: 220px;
+  background: var(--penna-bg);
+  border: 1px solid var(--penna-border);
+  border-radius: var(--penna-radius);
+  corner-shape: superellipse(2);
+}
+
+section[data-section] {
+  overflow: clip;
+}

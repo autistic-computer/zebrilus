@@ -1,0 +1,61 @@
+{
+  "story": "appearance",
+  "page": "index.html",
+  "steps": [
+    {
+      "name": "hover-system",
+      "section": "page",
+      "hover": "button:System"
+    },
+    {
+      "name": "press-system",
+      "section": "page",
+      "press": "button:System"
+    },
+    {
+      "name": "pick-system",
+      "section": "page",
+      "click": "button:System"
+    },
+    {
+      "name": "pick-light",
+      "section": "page",
+      "click": "button:Light"
+    },
+    {
+      "name": "pick-blue",
+      "section": "page",
+      "click": "settings-accent-blue"
+    },
+    {
+      "name": "pick-theme-accent",
+      "section": "page",
+      "click": "settings-accent-theme"
+    },
+    {
+      "name": "click-tint",
+      "section": "page",
+      "click": "settings-tint"
+    },
+    {
+      "name": "end-tint",
+      "section": "page",
+      "key": "End"
+    },
+    {
+      "name": "home-tint",
+      "section": "page",
+      "key": "Home"
+    },
+    {
+      "name": "click-contrast",
+      "section": "narrow",
+      "click": "settings-contrast"
+    },
+    {
+      "name": "home-contrast",
+      "section": "narrow",
+      "key": "Home"
+    }
+  ]
+}

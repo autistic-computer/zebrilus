@@ -1,0 +1,136 @@
+.penna-dialog-stage {
+  position: relative;
+}
+
+.penna-dialog-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  container-type: size;
+  --dialog-offset: 0px;
+}
+
+.penna-dialog-layer[data-closed] {
+  display: none;
+}
+
+.penna-dialog-layer[data-top] {
+  background: var(--penna-scrim);
+}
+
+.penna-dialog-place {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  height: 100%;
+  padding: calc(16px + var(--dialog-offset)) 0 16px;
+}
+
+.penna-dialog-room {
+  flex: 0 1 round(nearest, max(0px, 10cqh - 16px), 0.5px);
+  min-height: 0;
+}
+
+.penna-dialog.penna-dialog {
+  position: relative;
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: 12px;
+  width: min(var(--dialog-width, 400px), 100cqw - 32px);
+  min-height: 80px;
+  max-height: max(0px, 100cqh - 32px - var(--dialog-offset));
+  padding: 12px 0;
+  font-family: var(--penna-font);
+  font-size: 16px;
+  line-height: 1.618;
+  color: var(--penna-ink);
+  outline: none;
+  --penna-glass: 0;
+  --dialog-fg-muted: oklab(from var(--penna-fg) calc(l * 0.65 + 0.35 * clamp(0, (0.5 - l) * 1000, 1)) calc(a * 0.65) calc(b * 0.65));
+}
+
+.penna-dialog-main {
+  display: flex;
+  flex: 1 1 0%;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.penna-dialog-gutter {
+  flex: none;
+  padding: 0 12px;
+}
+
+.penna-dialog-title {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.penna-dialog-description {
+  font-size: 12px;
+  line-height: round(nearest, 12px * 1.618, 0.5px);
+  color: var(--dialog-fg-muted);
+}
+
+.penna-dialog-body {
+  display: flex;
+  flex: 1 1 0%;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.penna-dialog-scroll {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  padding: 0 12px;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.penna-dialog-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  line-height: 1;
+}
+
+.penna-dialog-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.penna-dialog-head > [data-icon] {
+  --penna-icon-size: 24px;
+}
+
+.penna-dialog-head > [data-icon][data-tone="danger"] {
+  color: var(--penna-danger);
+}
+
+.penna-dialog-lines {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.penna-dialog-close.penna-button {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+}
+
+.penna-dialog-text {
+  display: inline-block;
+  white-space: nowrap;
+}

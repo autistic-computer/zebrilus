@@ -1,0 +1,34 @@
+.penna-settings-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  padding: 0 var(--penna-row-inset);
+}
+
+.penna-settings-nav-row {
+  display: flex;
+  flex: none;
+  align-items: center;
+  height: 32px;
+}
+
+.penna-settings-nav-gap {
+  flex: none;
+  height: 12px;
+}
+
+.penna-settings-nav .penna-settings-nav-button[data-penna] {
+  width: 100%;
+  height: 28px;
+  margin: 0;
+  padding: 0 8px;
+  justify-content: flex-start;
+  gap: 6px;
+  font-size: 13px;
+  --penna-row: 0;
+}
+
+.penna-settings-nav-button:is([aria-current]:not([aria-current="false"]), [data-state~="current"]) .penna-label {
+  font-weight: 500;
+}

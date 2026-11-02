@@ -1,0 +1,9 @@
+{
+  "story": "navigation",
+  "page": "index.html",
+  "steps": [
+    { "name": "hover-general", "section": "settings-navigation", "hover": "penna-settings-section-0" },
+    { "name": "press-general", "section": "settings-navigation", "press": "penna-settings-section-0" },
+    { "name": "hover-back", "section": "settings-navigation", "hover": "back" }
+  ]
+}

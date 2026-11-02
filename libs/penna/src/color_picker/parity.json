@@ -1,0 +1,8 @@
+{
+  "story": "color-picker",
+  "page": "index.html",
+  "steps": [
+    { "name": "hover-swatch", "section": "states", "hover": "penna-color-picker-4294967297" },
+    { "name": "hover-clear", "section": "open", "hover": "penna-color-picker-clear-4294967331" }
+  ]
+}

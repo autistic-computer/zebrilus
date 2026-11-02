@@ -1,0 +1,47 @@
+.menus-stage {
+  min-height: 380px;
+}
+
+.menus-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 24px;
+}
+
+.menus-trigger {
+  position: relative;
+  display: flex;
+  flex: none;
+}
+
+.menus-region {
+  position: relative;
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 280px;
+  height: 96px;
+  padding: 1px;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--penna-menu-muted);
+  outline: none;
+}
+
+.menus-open > .menus-trigger {
+  display: inline-flex;
+}
+
+.menus-dashes {
+  position: absolute;
+  top: 0;
+  left: 0;
+  overflow: visible;
+  pointer-events: none;
+  fill: none;
+  stroke: var(--penna-border);
+  stroke-width: 1px;
+  stroke-linecap: butt;
+}
+

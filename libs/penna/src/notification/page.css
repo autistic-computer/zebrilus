@@ -1,0 +1,60 @@
+:root {
+  --page-fg-muted: oklab(from var(--penna-fg) calc(l * 0.65 + 0.35 * clamp(0, (0.5 - l) * 1000, 1)) calc(a * 0.65) calc(b * 0.65));
+}
+
+section[data-section="toast-stack"] {
+  position: relative;
+}
+
+.stack-pane {
+  height: 380px;
+  font-size: 14px;
+  color: var(--page-fg-muted);
+}
+
+.hovered-frame {
+  height: 120px;
+  display: flex;
+  align-items: flex-start;
+}
+
+.hovered-host {
+  position: relative;
+  display: inline-flex;
+}
+
+.hovered-host > .penna-tooltip[data-floating] {
+  left: 15px;
+  top: 15px;
+}
+
+.popover-frame {
+  height: 260px;
+  display: flex;
+  align-items: flex-start;
+}
+
+.rename-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 260px;
+}
+
+.rename-caption {
+  font-size: 12px;
+  line-height: 19.5px;
+  color: var(--page-fg-muted);
+}
+
+.rename-caption > span {
+  position: relative;
+  top: 0.5px;
+  display: inline-block;
+}
+
+.rename-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}

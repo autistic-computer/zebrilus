@@ -1,0 +1,50 @@
+.dialog-backdrop {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 14px;
+  line-height: round(nearest, 14px * 1.618, 0.5px);
+  color: oklab(from var(--penna-fg) calc(l * 0.65 + 0.35 * clamp(0, (0.5 - l) * 1000, 1)) calc(a * 0.65) calc(b * 0.65));
+}
+
+.dialog-backdrop-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dialog-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.dialog-split {
+  justify-content: space-between;
+}
+
+.dialog-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dialog-bindings {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.dialog-binding {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 14px;
+  line-height: round(nearest, 14px * 1.618, 0.5px);
+}
+
+.dialog-keys {
+  font-family: var(--penna-mono);
+  color: var(--dialog-fg-muted);
+}

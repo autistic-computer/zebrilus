@@ -1,0 +1,20 @@
+{
+  "default-dark/fit": 95.93,
+  "default-dark/other-tables": 97.93,
+  "default-dark/prefix": 97.69,
+  "default-light/fit": 96.54,
+  "default-light/other-tables": 98.02,
+  "default-light/prefix": 97.86,
+  "macos-dark/fit": 94.62,
+  "macos-dark/other-tables": 96.08,
+  "macos-dark/prefix": 96.92,
+  "macos-light/fit": 95.87,
+  "macos-light/other-tables": 97.64,
+  "macos-light/prefix": 97.53,
+  "yaru-dark/fit": 95.8,
+  "yaru-dark/other-tables": 97.85,
+  "yaru-dark/prefix": 97.66,
+  "yaru-light/fit": 95.91,
+  "yaru-light/other-tables": 97.89,
+  "yaru-light/prefix": 97.67
+}

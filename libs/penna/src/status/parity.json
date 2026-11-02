@@ -1,0 +1,9 @@
+{
+  "story": "status",
+  "page": "index.html",
+  "steps": [
+    { "name": "hover-allow", "section": "notices", "hover": "allow" },
+    { "name": "press-allow", "section": "notices", "press": "allow" },
+    { "name": "press-allow-stacked", "section": "stacked", "press": "allow-stacked" }
+  ]
+}

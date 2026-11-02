@@ -1,0 +1,20 @@
+{
+  "default-dark/bottom-sheet": 98.43,
+  "default-dark/bottom-sheet@hover-close": 99.07,
+  "default-dark/bottom-sheet@press-close": 99.02,
+  "default-light/bottom-sheet": 99.08,
+  "default-light/bottom-sheet@hover-close": 98.81,
+  "default-light/bottom-sheet@press-close": 99.01,
+  "macos-dark/bottom-sheet": 98.05,
+  "macos-dark/bottom-sheet@hover-close": 99.19,
+  "macos-dark/bottom-sheet@press-close": 99.34,
+  "macos-light/bottom-sheet": 98.66,
+  "macos-light/bottom-sheet@hover-close": 99.08,
+  "macos-light/bottom-sheet@press-close": 99.11,
+  "yaru-dark/bottom-sheet": 99.13,
+  "yaru-dark/bottom-sheet@hover-close": 99.16,
+  "yaru-dark/bottom-sheet@press-close": 99.34,
+  "yaru-light/bottom-sheet": 99.1,
+  "yaru-light/bottom-sheet@hover-close": 99.17,
+  "yaru-light/bottom-sheet@press-close": 98.85
+}

@@ -1,0 +1,31 @@
+.penna-kbd[data-penna="keycap"] {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  box-sizing: border-box;
+  height: 18px;
+  min-width: 18px;
+  padding: 0 4px;
+  font-family: var(--penna-font);
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 16px;
+  white-space: nowrap;
+  color: var(--penna-muted);
+  --penna-icon-size: 13px;
+}
+
+.penna-kbd[data-size="small"] {
+  height: 16px;
+  min-width: 16px;
+  font-size: 10px;
+  line-height: 14px;
+  --penna-icon-size: 12px;
+}
+
+.penna-kbd > span {
+  flex: none;
+  white-space: nowrap;
+}

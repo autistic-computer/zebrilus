@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Choices</title>
+    <link rel="stylesheet" href="../../web/penna.css" />
+    <link rel="stylesheet" href="../../web/story.css" />
+    <link rel="stylesheet" href="select.css" />
+    <link rel="stylesheet" href="../segmented/segmented.css" />
+    <link rel="stylesheet" href="../switch/switch.css" />
+    <link rel="stylesheet" href="../slider/slider.css" />
+    <link rel="stylesheet" href="index.css" />
+    <script src="../../web/kit.js" data-tokens="../../web/tokens/"></script>
+    <script src="select.js" defer></script>
+    <script src="../segmented/segmented.js" defer></script>
+    <script src="../switch/switch.js" defer></script>
+    <script src="../slider/slider.js" defer></script>
+    <script src="index.js" defer></script>
+  </head>
+  <body>
+    <section data-section="select">
+      <div class="story-states" data-columns="3">
+        <div class="story-state">
+          <div class="story-label">placeholder</div>
+          <div class="penna-select" data-options="Rust, Go, Zig, Swift, OCaml" data-placeholder="Language"></div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">picked</div>
+          <div class="penna-select" data-options="Rust, Go, Zig, Swift, OCaml" data-value="0"></div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">disabled</div>
+          <div class="penna-select" data-options="Rust, Go, Zig, Swift, OCaml" data-value="2" aria-disabled="true"></div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">small</div>
+          <div class="penna-select" data-options="Rust, Go, Zig, Swift, OCaml" data-value="1"></div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">fixed width</div>
+          <div class="penna-select" data-options="Rust, Go, Zig, Swift, OCaml" data-value="4" style="width: 200px"></div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">empty delegate</div>
+          <div class="penna-select" data-options="" data-placeholder="No languages"></div>
+        </div>
+      </div>
+    </section>
+
+    <section data-section="select-open">
+      <div class="choices-open">
+        <div class="story-states">
+          <div class="story-state">
+            <div class="story-label">open</div>
+            <div class="story-row">
+              <div class="penna-select" data-options="Rust, Go, Zig, Swift, OCaml" data-value="0" data-open data-pinned style="width: 200px"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section data-section="segmented">
+      <div class="story-states">
+        <div class="story-state">
+          <div class="story-label">three, press one to slide</div>
+          <div class="story-row">
+            <div class="penna-segmented" data-penna="field" data-value="0" role="radiogroup">
+              <div class="penna-segments" data-penna="button.quiet" data-state="current">
+                <span class="penna-segment-pill"></span>
+                <span class="penna-segment" role="button" data-id="button:System"><span class="penna-label">System</span></span>
+                <span class="penna-segment" role="button" data-id="button:Light"><span class="penna-label">Light</span></span>
+                <span class="penna-segment" role="button" data-id="button:Dark"><span class="penna-label">Dark</span></span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">two</div>
+          <div class="story-row">
+            <div class="penna-segmented" data-penna="field" data-value="1" role="radiogroup">
+              <div class="penna-segments" data-penna="button.quiet" data-state="current">
+                <span class="penna-segment-pill"></span>
+                <span class="penna-segment" role="button" data-id="button:Tiled"><span class="penna-label">Tiled</span></span>
+                <span class="penna-segment" role="button" data-id="button:Floating"><span class="penna-label">Floating</span></span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section data-section="switch">
+      <div class="story-states" data-columns="3">
+        <div class="story-state">
+          <div class="story-label">off, on</div>
+          <div class="story-row">
+            <button class="penna-toggle" aria-checked="false" aria-label="Off"></button>
+            <button class="penna-toggle" aria-checked="true" aria-label="On"></button>
+          </div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">small</div>
+          <div class="story-row">
+            <button class="penna-toggle" data-size="small" aria-checked="false" aria-label="Small off"></button>
+            <button class="penna-toggle" data-size="small" aria-checked="true" aria-label="Small on"></button>
+          </div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">disabled</div>
+          <div class="story-row">
+            <button class="penna-toggle" aria-checked="false" disabled aria-label="Disabled off"></button>
+            <button class="penna-toggle" aria-checked="true" disabled aria-label="Disabled on"></button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section data-section="slider">
+      <div class="story-states" data-columns style="--columns: 2">
+        <div class="story-state">
+          <div class="story-label">first step</div>
+          <div class="penna-steps" data-id="slider-first" data-label="Scrollback" data-steps="1k, 5k, 10k, 50k, 100k" data-value="0"></div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">middle step</div>
+          <div class="penna-steps" data-id="slider-middle" data-label="Scrollback" data-steps="1k, 5k, 10k, 50k, 100k" data-value="2"></div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">last step</div>
+          <div class="penna-steps" data-id="slider-last" data-label="Scrollback" data-steps="1k, 5k, 10k, 50k, 100k" data-value="4"></div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">eleven steps</div>
+          <div class="penna-steps" data-id="slider-many" data-label="Opacity" data-steps="0%, 10%, 20%, 30%, 40%, 50%, 60%, 70%, 80%, 90%, 100%" data-value="7"></div>
+        </div>
+      </div>
+    </section>
+
+    <section data-section="slider-focused">
+      <div class="story-states">
+        <div class="story-state">
+          <div class="story-label">focused</div>
+          <div class="choices-focused">
+            <div class="penna-steps" data-id="slider-focused" data-label="Scrollback" data-steps="1k, 5k, 10k, 50k, 100k" data-value="1" data-focused></div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </body>
+</html>

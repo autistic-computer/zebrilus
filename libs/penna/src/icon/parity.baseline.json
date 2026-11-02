@@ -1,0 +1,20 @@
+{
+  "default-dark/colors-and-rotation": 69.38,
+  "default-dark/gallery": 64.81,
+  "default-dark/sizes": 75.29,
+  "default-light/colors-and-rotation": 68.47,
+  "default-light/gallery": 64.15,
+  "default-light/sizes": 75.31,
+  "macos-dark/colors-and-rotation": 69.32,
+  "macos-dark/gallery": 64.88,
+  "macos-dark/sizes": 75.43,
+  "macos-light/colors-and-rotation": 68.55,
+  "macos-light/gallery": 64.27,
+  "macos-light/sizes": 75.5,
+  "yaru-dark/colors-and-rotation": 69.78,
+  "yaru-dark/gallery": 65.23,
+  "yaru-dark/sizes": 75.88,
+  "yaru-light/colors-and-rotation": 68.77,
+  "yaru-light/gallery": 64.57,
+  "yaru-light/sizes": 76.11
+}

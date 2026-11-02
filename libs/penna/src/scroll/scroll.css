@@ -1,0 +1,119 @@
+.penna-scroll {
+  position: relative;
+  overflow: hidden;
+  --penna-scroll-glow: rgb(from var(--penna-thumb) r g b / calc(alpha * 1.25));
+}
+
+.penna-scroll-viewport {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  scrollbar-width: none;
+}
+
+.penna-scroll-viewport::-webkit-scrollbar {
+  display: none;
+}
+
+.penna-scroll[data-axis="vertical"] > .penna-scroll-viewport {
+  overflow-y: scroll;
+}
+
+.penna-scroll[data-axis="horizontal"] > .penna-scroll-viewport {
+  overflow-x: scroll;
+}
+
+.penna-scroll[data-axis="both"] > .penna-scroll-viewport {
+  overflow: scroll;
+}
+
+.penna-scrollbar {
+  position: absolute;
+  z-index: 1;
+  --penna-thumb-width: 8px;
+  --penna-thumb-inset: 2px;
+  --penna-thumb-fill: var(--penna-thumb);
+}
+
+.penna-scrollbar[hidden] {
+  display: none;
+}
+
+.penna-scrollbar[data-axis="vertical"] {
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 16px;
+}
+
+.penna-scrollbar[data-axis="horizontal"] {
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 16px;
+}
+
+.penna-scroll-thumb {
+  position: absolute;
+}
+
+.penna-scrollbar[data-axis="vertical"] > .penna-scroll-thumb {
+  right: 0;
+  width: 16px;
+  top: calc(var(--penna-thumb-inset) + var(--penna-thumb-start, 0px));
+  height: var(--penna-thumb-length, 0px);
+}
+
+.penna-scrollbar[data-axis="horizontal"] > .penna-scroll-thumb {
+  bottom: 0;
+  height: 16px;
+  left: calc(var(--penna-thumb-inset) + var(--penna-thumb-start, 0px));
+  width: var(--penna-thumb-length, 0px);
+}
+
+.penna-scroll-thumb::before {
+  content: "";
+  position: absolute;
+  background: var(--penna-thumb-fill);
+  border-radius: min(var(--penna-radius), var(--penna-thumb-width) / 2);
+  corner-shape: superellipse(2);
+  opacity: var(--penna-thumb-opacity, 1);
+}
+
+.penna-scrollbar[data-axis="vertical"] > .penna-scroll-thumb::before {
+  top: 0;
+  bottom: 0;
+  right: var(--penna-thumb-inset);
+  width: var(--penna-thumb-width);
+}
+
+.penna-scrollbar[data-axis="horizontal"] > .penna-scroll-thumb::before {
+  left: 0;
+  right: 0;
+  bottom: var(--penna-thumb-inset);
+  height: var(--penna-thumb-width);
+}
+
+.penna-scroll[data-show="scrolling"] > .penna-scrollbar {
+  --penna-thumb-width: 6px;
+}
+
+.penna-scroll:is([data-show="hover"], [data-show="scrolling"]) > .penna-scrollbar:not([data-visible], [data-state~="hover"], :hover) {
+  --penna-thumb-opacity: 0;
+}
+
+.penna-scroll[data-show="scrolling"] > .penna-scrollbar:not([data-visible]) {
+  pointer-events: none;
+}
+
+.penna-scroll:is([data-show="hover"], [data-show="scrolling"]) > .penna-scrollbar:is([data-state~="hover"], :hover) {
+  --penna-thumb-width: 8px;
+  --penna-thumb-opacity: 1;
+}
+
+.penna-scrollbar > .penna-scroll-thumb:is(:hover, [data-state~="hover"]),
+.penna-scrollbar[data-state~="active"] > .penna-scroll-thumb {
+  --penna-thumb-width: 8px;
+  --penna-thumb-fill: var(--penna-scroll-glow);
+  --penna-thumb-opacity: 1;
+}

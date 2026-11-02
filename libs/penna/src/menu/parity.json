@@ -1,0 +1,9 @@
+{
+  "story": "menus",
+  "page": "index.html",
+  "steps": [
+    { "name": "hover-submenu", "section": "popup-menu", "hover": "7" },
+    { "name": "hover-row", "section": "popup-menu", "hover": "1" },
+    { "name": "hover-trigger", "section": "triggers", "hover": "layout-trigger" }
+  ]
+}

@@ -1,0 +1,38 @@
+.penna-popover {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+}
+
+.penna-popover-panel[data-penna="popover"] {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  padding: 12px;
+  font-family: var(--penna-font);
+  color: var(--penna-ink);
+  outline: none;
+  --penna-glass: 0;
+}
+
+.penna-popover[data-anchor~="bottom"] > .penna-popover-panel {
+  top: auto;
+  bottom: calc(100% + 4px);
+}
+
+.penna-popover[data-anchor~="right"] > .penna-popover-panel {
+  left: auto;
+  right: 0;
+}
+
+.penna-popover:not([data-open]) > .penna-popover-panel {
+  display: none;
+}
+
+.penna-popover > .penna-popover-trigger {
+  z-index: 21;
+}

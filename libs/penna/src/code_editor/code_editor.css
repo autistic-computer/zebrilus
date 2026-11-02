@@ -1,0 +1,207 @@
+.penna-code-editor {
+  --ce-font-size: 13px;
+  --ce-lh: calc(var(--ce-font-size) * 1.618);
+  --ce-surface: oklab(from var(--penna-bg) calc(l * 0.96 + 0.04 * clamp(0, (0.5 - l) * 1000, 1)) calc(a * 0.96) calc(b * 0.96));
+  --ce-raised: oklab(from var(--penna-bg) calc(l * 0.9216 + 0.0784 * clamp(0, (0.5 - l) * 1000, 1)) calc(a * 0.9216) calc(b * 0.9216));
+  --ce-number: oklab(from var(--penna-fg) calc(l * 0.65 + 0.35 * clamp(0, (0.5 - l) * 1000, 1)) calc(a * 0.65) calc(b * 0.65));
+  --ce-selection: rgb(from var(--penna-fg) r g b / calc(alpha * 0.28));
+  --ce-caret: var(--penna-fg);
+  position: relative;
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  cursor: text;
+  outline: none;
+  user-select: none;
+  -webkit-user-select: none;
+  font-family: var(--penna-mono);
+  font-size: var(--ce-font-size);
+  font-weight: 400;
+  line-height: var(--ce-lh);
+  font-optical-sizing: none;
+  color: var(--penna-ink);
+}
+
+.penna-code-editor[data-penna] {
+  align-items: initial;
+  min-height: 0;
+  height: 100%;
+  padding: 0;
+  border-width: max(var(--penna-bw), 1px);
+  border-style: solid;
+  --ce-smooth: var(--penna-k);
+}
+
+.penna-code-editor[aria-disabled="true"] {
+  cursor: default;
+}
+
+.penna-code-editor > .ce-surface,
+.penna-code-editor > .ce-gutter {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  corner-shape: superellipse(var(--ce-smooth, 1));
+}
+
+.penna-code-editor > .ce-surface {
+  left: var(--ce-gutter-width, 0px);
+  right: 0;
+  background: var(--ce-surface);
+}
+
+.penna-code-editor > .ce-gutter {
+  left: 0;
+  corner-shape: round;
+  width: var(--ce-gutter-width, 0px);
+  background: var(--ce-raised);
+}
+
+.penna-code-editor > .ce-gutter::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--penna-divider);
+}
+
+.penna-code-editor[data-line-numbers="off"] > .ce-gutter,
+.penna-code-editor[data-line-numbers="off"] > .ce-numbers {
+  display: none;
+}
+
+.penna-code-editor > .ce-content {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: var(--ce-gutter-width, 0px);
+  right: 0;
+}
+
+.ce-scroller {
+  position: absolute;
+  left: var(--ce-scroll-x, 0px);
+  top: var(--ce-scroll-y, 0px);
+}
+
+.ce-active,
+.ce-quad,
+.ce-caret {
+  position: absolute;
+  pointer-events: none;
+}
+
+.ce-active {
+  left: calc(-1 * var(--ce-scroll-x, 0px));
+  width: var(--ce-text-width, 0px);
+  background: var(--ce-raised);
+}
+
+.ce-quad {
+  height: var(--ce-lh);
+  background: var(--ce-selection);
+}
+
+.ce-lines {
+  position: relative;
+  width: max-content;
+  min-width: var(--ce-text-width, 0px);
+  white-space: pre;
+  tab-size: 4;
+}
+
+.penna-code-editor[data-wrap] .ce-lines {
+  width: var(--ce-text-width, 0px);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.ce-line {
+  min-height: var(--ce-lh);
+}
+
+.ce-caret {
+  display: none;
+  width: 2px;
+  height: var(--ce-lh);
+  background: var(--ce-caret);
+  color: var(--ce-surface);
+  white-space: pre;
+}
+
+.ce-caret[data-block] {
+  width: auto;
+  min-width: 0.6em;
+}
+
+.penna-code-editor:is([data-state~="focused"]):not([aria-disabled="true"]) .ce-caret {
+  display: block;
+  animation: ce-blink 1s step-end infinite;
+  animation-delay: 0.3s;
+}
+
+@keyframes ce-blink {
+  0% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+.penna-code-editor > .ce-numbers {
+  position: absolute;
+  left: 0;
+  top: var(--ce-scroll-y, 0px);
+  width: calc(var(--ce-gutter-width, 0px) - 5px);
+  font-size: calc(var(--ce-font-size) * 0.85);
+  line-height: var(--ce-lh);
+  text-align: right;
+  white-space: pre;
+  color: var(--ce-number);
+  pointer-events: none;
+}
+
+.ce-number[data-current] {
+  color: var(--penna-fg);
+}
+
+.ce-probe {
+  position: absolute;
+  visibility: hidden;
+  white-space: pre;
+  font-size: calc(var(--ce-font-size) * 0.85);
+}
+
+.penna-code-editor .ce-k { color: var(--penna-syntax-keyword, var(--ce-k)); }
+.penna-code-editor .ce-t { color: var(--penna-syntax-type, var(--ce-t)); }
+.penna-code-editor .ce-c { color: var(--penna-syntax-constructor, var(--ce-c)); }
+.penna-code-editor .ce-f { color: var(--penna-syntax-function, var(--ce-f)); }
+.penna-code-editor .ce-m { color: var(--penna-syntax-comment, var(--ce-m)); }
+.penna-code-editor .ce-s { color: var(--penna-syntax-string, var(--ce-s)); }
+.penna-code-editor .ce-n { color: var(--penna-syntax-number, var(--ce-n)); }
+.penna-code-editor .ce-b { color: var(--penna-syntax-boolean, var(--ce-b)); }
+.penna-code-editor .ce-p { color: var(--penna-syntax-property, var(--ce-p)); }
+
+.penna-code-editor {
+  --ce-k: var(--penna-warning);
+  --ce-t: color-mix(in oklab, var(--penna-danger), var(--penna-warning) 40%);
+  --ce-c: color-mix(in oklab, var(--penna-muted), var(--penna-warning) 25%);
+  --ce-f: color-mix(in oklab, var(--penna-warning), var(--penna-fg) 45%);
+  --ce-m: var(--penna-muted);
+  --ce-s: var(--penna-success);
+  --ce-n: color-mix(in oklab, var(--penna-warning), var(--penna-fg) 60%);
+  --ce-b: var(--ce-n);
+  --ce-p: color-mix(in oklab, var(--penna-fg), var(--penna-muted) 25%);
+}
+
+:root[data-penna-mode="light"] .penna-code-editor {
+  --ce-k: var(--penna-accent);
+  --ce-t: color-mix(in oklab, var(--penna-accent), var(--penna-danger) 35%);
+  --ce-c: var(--penna-accent);
+  --ce-f: color-mix(in oklab, var(--penna-accent), var(--penna-fg) 45%);
+  --ce-m: var(--penna-accent);
+  --ce-s: var(--penna-success);
+  --ce-n: var(--penna-accent);
+  --ce-b: var(--penna-danger);
+}

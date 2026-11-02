@@ -1,0 +1,75 @@
+.penna-tab[data-penna] {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  box-sizing: border-box;
+  height: 28px;
+  padding: 0 10px;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 16px;
+  white-space: nowrap;
+  cursor: default;
+  user-select: none;
+  outline: none;
+  --penna-icon-size: 14px;
+}
+
+.penna-tab[data-still] {
+  pointer-events: none;
+}
+
+.penna-tab .penna-text {
+  display: inline-block;
+  flex: none;
+  white-space: nowrap;
+}
+
+.penna-tab > .penna-tab-label {
+  display: inline-flex;
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.penna-tab > .penna-tab-aside {
+  display: inline-flex;
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--penna-muted);
+}
+
+.penna-tab > .penna-tab-path {
+  display: inline-flex;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--penna-muted);
+}
+
+.penna-title-tab[data-penna] {
+  height: 24px;
+  padding: 0 8px;
+  gap: 0;
+}
+
+.penna-pane-header {
+  display: flex;
+  align-items: center;
+  height: 36px;
+  padding: 0 8px;
+}
+
+.penna-tab :is(.penna-tab-label, .penna-tab-path) {
+  position: relative;
+  top: 0.5px;
+}
+
+.penna-tab[data-penna][data-penna] {
+  --penna-glass: 0;
+}
+
+.penna-tab[data-penna]:focus-visible {
+  outline: 1.5px solid var(--penna-focus);
+  outline-offset: 1.5px;
+}

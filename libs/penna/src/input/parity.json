@@ -1,0 +1,9 @@
+{
+  "story": "inputs",
+  "page": "index.html",
+  "steps": [
+    { "name": "hover-clear", "section": "field-states", "hover": "penna-input-clear" },
+    { "name": "hover-increment", "section": "number", "hover": "penna-number-increment" },
+    { "name": "hover-decrement", "section": "number", "hover": "penna-number-decrement" }
+  ]
+}

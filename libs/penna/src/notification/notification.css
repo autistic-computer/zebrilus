@@ -1,0 +1,118 @@
+.penna-toast[data-penna="toast"] {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  box-sizing: border-box;
+  width: 400px;
+  max-width: calc(100vw - 32px);
+  padding: 12px;
+  font-family: var(--penna-font);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 18px;
+  color: var(--penna-ink);
+  transition: opacity 150ms, translate 150ms;
+  --penna-glass: 0;
+}
+
+.penna-toast[data-closing] {
+  opacity: 0;
+  translate: 0 -45px;
+  box-shadow: none;
+}
+
+.penna-toast-body {
+  display: flex;
+  flex: 1;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+}
+
+.penna-toast-icon {
+  display: flex;
+  flex: none;
+  align-items: center;
+  height: 18px;
+  --penna-icon-size: 14px;
+}
+
+.penna-toast-icon[data-kind="info"] {
+  color: var(--penna-fg);
+}
+
+.penna-toast-icon[data-kind="success"] {
+  color: var(--penna-success);
+}
+
+.penna-toast-icon[data-kind="warning"] {
+  color: var(--penna-warning);
+}
+
+.penna-toast-icon[data-kind="error"] {
+  color: var(--penna-danger);
+}
+
+.penna-toast-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  overflow: hidden;
+  line-height: 18px;
+}
+
+.penna-toast-title {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.penna-toast-message {
+  font-size: 12px;
+}
+
+.penna-toast-text > div > span {
+  display: inline-block;
+  white-space: nowrap;
+}
+
+.penna-toast-message > span {
+  position: relative;
+  top: 0.5px;
+}
+
+.penna-toast-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 8px;
+}
+
+.penna-toast-close {
+  flex: none;
+  align-self: center;
+  visibility: hidden;
+}
+
+.penna-toast:is(:hover, [data-state~="hover"]) > .penna-toast-close {
+  visibility: visible;
+}
+
+.penna-toast-stack {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding-top: var(--penna-toast-top, 50px);
+  pointer-events: none;
+}
+
+.penna-toast-stack > .penna-toast {
+  pointer-events: auto;
+}

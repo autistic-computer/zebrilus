@@ -1,0 +1,44 @@
+.penna-separator-rule {
+  position: relative;
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+}
+
+.penna-separator-rule:not([data-axis="vertical"]) {
+  width: 100%;
+  height: 0;
+}
+
+.penna-separator-rule[data-axis="vertical"] {
+  width: 0;
+  height: 100%;
+}
+
+.penna-separator-rule > [data-penna] {
+  position: absolute;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  --penna-separator-color: var(--penna-divider);
+}
+
+.penna-separator-rule:not([data-axis="vertical"]) > [data-penna] {
+  width: 100%;
+  height: 0.5px;
+  top: -0.5px;
+  background: var(--penna-separator-color);
+}
+
+.penna-separator-rule[data-axis="vertical"] > [data-penna] {
+  width: 0.5px;
+  height: 100%;
+  left: -0.5px;
+  background: var(--penna-separator-color);
+}
+
+.penna-separator-rule[data-color="danger"] > [data-penna] {
+  --penna-separator-color: var(--penna-danger);
+}

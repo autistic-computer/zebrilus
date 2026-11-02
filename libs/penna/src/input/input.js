@@ -1,0 +1,211 @@
+(() => {
+  const FIELDS = ".penna-input, .penna-number";
+  const TEXT = ".penna-text, .penna-kbd > span";
+  const LINE = 16;
+
+  const probe = document.createElement("i");
+  probe.style.display = "none";
+
+  function rgba(value) {
+    if (!probe.isConnected) document.body.append(probe);
+    probe.style.color = "";
+    probe.style.color = value.trim() || "transparent";
+    const parts = getComputedStyle(probe).color.match(/[\d.]+/g)?.map(Number) ?? [0, 0, 0, 0];
+    const [r, g, b, a = 1] = parts.length > 4 ? parts.slice(1) : parts;
+    return { r, g, b, a };
+  }
+
+  function ground(field) {
+    const style = getComputedStyle(field);
+    const base = rgba(style.getPropertyValue("--penna-bg"));
+    const fill = field.hasAttribute("data-bare") ? { r: 0, g: 0, b: 0, a: 0 } : rgba(style.getPropertyValue("--penna-fill"));
+    const mix = (channel) => Math.round(base[channel] * (1 - fill.a) + fill[channel] * fill.a);
+    field.style.setProperty("--input-ground", `rgb(${mix("r")} ${mix("g")} ${mix("b")})`);
+  }
+
+  function grounds(root = document) {
+    root.querySelectorAll(FIELDS).forEach(ground);
+    root.querySelectorAll(".penna-rule").forEach((rule) => {
+      rule.toggleAttribute("data-edged", rgba(getComputedStyle(rule).getPropertyValue("--penna-edge")).a > 0);
+    });
+  }
+
+  function focused(field, on) {
+    const states = new Set((field.dataset.state ?? "").split(/\s+/).filter(Boolean));
+    if (on) states.add("focused");
+    else states.delete("focused");
+    if (states.size) field.dataset.state = [...states].join(" ");
+    else delete field.dataset.state;
+  }
+
+  function snap(root = document) {
+    const spans = [...root.querySelectorAll(TEXT)];
+    spans.forEach((span) => span.style.removeProperty("width"));
+    const widths = spans.map((span) => span.getBoundingClientRect().width);
+    spans.forEach((span, index) => {
+      span.style.width = `${Math.ceil(widths[index])}px`;
+    });
+  }
+
+  const measure = document.createElement("canvas").getContext("2d");
+
+  function textWidth(input, text) {
+    const style = getComputedStyle(input);
+    measure.font = `${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
+    if (input.type === "password") text = "•".repeat([...text].length);
+    return measure.measureText(text).width;
+  }
+
+  function paintSelection(input) {
+    const field = input.parentElement;
+    let quad = field.querySelector(":scope > .penna-input-selection");
+    const start = input.selectionStart ?? 0;
+    const end = input.selectionEnd ?? 0;
+    if (input.localName !== "input" || start === end) {
+      quad?.remove();
+      return;
+    }
+    if (!quad) {
+      quad = document.createElement("span");
+      quad.className = "penna-input-selection";
+      field.insertBefore(quad, input);
+    }
+    const value = input.value;
+    const full = textWidth(input, value);
+    const align = getComputedStyle(input).textAlign;
+    const room = input.clientWidth;
+    const lead = align === "center" ? (room - full) / 2 : align === "right" || align === "end" ? room - full : 0;
+    const left = input.offsetLeft + lead + textWidth(input, value.slice(0, start)) - input.scrollLeft;
+    quad.style.left = `${left}px`;
+    quad.style.top = `${input.offsetTop}px`;
+    quad.style.width = `${textWidth(input, value.slice(start, end))}px`;
+  }
+
+  function grow(area) {
+    const min = Number(area.dataset.minRows ?? 1);
+    const max = Number(area.dataset.maxRows ?? min);
+    area.style.setProperty("--rows", min);
+    const saved = area.scrollTop;
+    area.style.height = "0px";
+    const rows = Math.round(area.scrollHeight / LINE);
+    area.style.removeProperty("height");
+    area.style.setProperty("--rows", Math.min(max, Math.max(min, area.value ? rows : min)));
+    area.scrollTop = saved;
+  }
+
+  function digits(text) {
+    return text.split(".")[1]?.length ?? 0;
+  }
+
+  function step(field, direction) {
+    const input = field.querySelector("input");
+    if (!input || input.disabled) return;
+    const size = Number(field.dataset.step ?? 1);
+    const min = field.dataset.min === undefined ? null : Number(field.dataset.min);
+    const max = field.dataset.max === undefined ? null : Number(field.dataset.max);
+    const current = input.value.trim();
+    const parsed = current === "" || Number.isNaN(Number(current)) ? null : Number(current);
+    let value = (parsed ?? 0) + direction * size;
+    let places = Math.max(digits(current), digits(String(size)));
+    if (min !== null && value < min) {
+      value = min;
+      places = Math.max(places, digits(String(min)));
+    }
+    if (max !== null && value > max) {
+      value = max;
+      places = Math.max(places, digits(String(max)));
+    }
+    if (parsed !== null && (direction > 0 ? value <= parsed : value >= parsed)) return;
+    input.value = value.toFixed(places);
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+
+  function wire() {
+    document.querySelectorAll(".penna-input > input[data-selection]").forEach((input) => {
+      const [start, end] = input.dataset.selection.split(",").map(Number);
+      input.setSelectionRange(start, end);
+      paintSelection(input);
+    });
+    document.querySelectorAll(".penna-input > :is(input, textarea)").forEach((input) => {
+      const field = input.closest(".penna-number") ?? input.closest(".penna-input");
+      input.addEventListener("focusin", () => focused(field, true));
+      input.addEventListener("focusout", () => document.activeElement === input || focused(field, false));
+      if (document.activeElement === input) focused(field, true);
+      let kept = input.dataset.selection ? input.dataset.selection.split(",").map(Number) : [input.value.length, input.value.length];
+      let pointer = false;
+      input.addEventListener("mousedown", () => {
+        pointer = true;
+      });
+      input.addEventListener("focus", () => {
+        if (!pointer) {
+          const end = input.value.length;
+          input.setSelectionRange(Math.min(kept[0], end), Math.min(kept[1], end));
+        }
+        pointer = false;
+      });
+      input.addEventListener("blur", () => {
+        kept = [input.selectionStart ?? 0, input.selectionEnd ?? 0];
+        paintSelection(input);
+      });
+    });
+    document.querySelectorAll(".penna-input > textarea").forEach((area) => {
+      grow(area);
+      area.addEventListener("input", () => grow(area));
+    });
+    document.querySelectorAll(".penna-input-clear").forEach((button) => {
+      const input = button.closest(".penna-input").querySelector("input");
+      const sync = () => {
+        button.hidden = !input.value;
+      };
+      sync();
+      input.addEventListener("input", sync);
+      button.addEventListener("mousedown", (event) => event.preventDefault());
+      button.addEventListener("click", (event) => {
+        event.preventDefault();
+        input.value = "";
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+        input.focus();
+      });
+    });
+    document.querySelectorAll(".penna-number").forEach((field) => {
+      const input = field.querySelector("input");
+      input.addEventListener("beforeinput", (event) => {
+        if (!event.data) return;
+        const next = input.value.slice(0, input.selectionStart) + event.data + input.value.slice(input.selectionEnd);
+        if (!/^[-+]?\d*\.?\d*$/.test(next)) event.preventDefault();
+      });
+      input.addEventListener("keydown", (event) => {
+        if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+          event.preventDefault();
+          step(field, event.key === "ArrowUp" ? 1 : -1);
+        }
+      });
+      field.querySelectorAll("[data-step-by]").forEach((button) => {
+        button.addEventListener("mousedown", (event) => event.preventDefault());
+        button.addEventListener("click", () => {
+          if (input.disabled) return;
+          input.focus();
+          step(field, Number(button.dataset.stepBy));
+        });
+      });
+    });
+    document.querySelectorAll("input[autofocus]").forEach((input) => {
+      input.focus();
+      focused(input.closest(".penna-number") ?? input.closest(".penna-input"), true);
+      input.setSelectionRange(input.value.length, input.value.length);
+    });
+  }
+
+  function settle() {
+    grounds();
+    snap();
+    document.querySelectorAll(".penna-input > input").forEach((input) => {
+      if (document.activeElement !== input) paintSelection(input);
+    });
+  }
+
+  wire();
+  settle();
+  document.fonts.ready.then(settle);
+  document.addEventListener("load", (event) => event.target.id === "penna-tokens" && requestAnimationFrame(settle), true);
+})();

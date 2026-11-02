@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Canvas</title>
+    <link rel="stylesheet" href="../../web/penna.css" />
+    <link rel="stylesheet" href="../../web/story.css" />
+    <link rel="stylesheet" href="../button/button.css" />
+    <link rel="stylesheet" href="../switch/switch.css" />
+    <link rel="stylesheet" href="canvas.css" />
+    <link rel="stylesheet" href="page.css" />
+    <script src="../../web/kit.js" data-tokens="../../web/tokens/"></script>
+    <script src="../button/button.js" defer></script>
+    <script src="../switch/switch.js" defer></script>
+    <script src="canvas.js" defer></script>
+  </head>
+  <body>
+    <section data-section="screens">
+      <div class="penna-well" data-penna="well">
+        <div class="penna-well-row" data-tiles>
+          <div class="penna-tile" data-penna="tile.screen" data-variant="screen"><span class="penna-type" data-type="caption">Rest</span></div>
+          <div class="penna-tile" data-penna="tile.screen" data-variant="screen" data-state="hover"><span class="penna-type" data-type="caption">Moving</span></div>
+          <div class="penna-tile" data-penna="tile.screen" data-variant="screen" data-state="selected"><span class="penna-type" data-type="caption">Selected</span></div>
+          <div class="penna-tile" data-penna="tile.screen" data-variant="screen" data-tone="primary"><span class="penna-type" data-type="caption">Pointer is here</span></div>
+          <div class="penna-tile" data-penna="tile.screen" data-variant="screen" data-tone="danger" data-state="hover"><span class="penna-type" data-type="caption">Can't go there</span></div>
+          <div class="penna-tile" data-penna="tile.screen" data-variant="screen" data-state="disabled"><span class="penna-type" data-type="caption">Away</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section data-section="drop-and-veil">
+      <div class="story-states" data-columns style="--columns: 2">
+        <div class="story-state">
+          <div class="story-label">drop, selected</div>
+          <div class="canvas-area">
+            <div class="canvas-pane"><span class="penna-type" data-type="caption">Right half</span></div>
+            <div class="penna-tile" data-penna="tile.drop" data-variant="drop" data-state="selected"></div>
+          </div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">drop, selected, edge at 1px</div>
+          <div class="canvas-area">
+            <div class="canvas-pane"><span class="penna-type" data-type="caption">Right half</span></div>
+            <div class="penna-tile" data-penna="tile.drop" data-variant="drop" data-edge data-state="selected"></div>
+          </div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">veil</div>
+          <div class="canvas-area">
+            <div class="canvas-pane"><span class="penna-type" data-type="caption">Drag to move</span></div>
+            <div class="penna-tile" data-penna="tile.drop" data-variant="veil" data-state="hover"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section data-section="mini">
+      <div class="story-states" data-columns style="--columns: 2">
+        <div class="story-state">
+          <div class="story-label">rest</div>
+          <div class="canvas-window" data-tiles>
+            <div class="penna-tile" data-penna="tile.mini" data-variant="mini"><span class="penna-type" data-type="micro">zsh</span></div>
+            <div class="penna-tile" data-penna="tile.mini" data-variant="mini"><span class="penna-type" data-type="micro">zsh</span></div>
+          </div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">selected</div>
+          <div class="canvas-window" data-tiles>
+            <div class="penna-tile" data-penna="tile.mini" data-variant="mini" data-state="selected"><span class="penna-type" data-type="micro">zsh</span></div>
+            <div class="penna-tile" data-penna="tile.mini" data-variant="mini"><span class="penna-type" data-type="micro">zsh</span></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section data-section="dock">
+      <div class="story-states">
+        <div class="story-state">
+          <div class="story-label">with computers nearby</div>
+          <div class="penna-dock">
+            <div class="penna-dock-header">
+              <div class="penna-dock-titles">
+                <span class="penna-type" data-type="body" data-strong>Nearby</span>
+                <span class="penna-type" data-type="small" data-muted>Drag one onto the desk, or click it to pick a side.</span>
+              </div>
+              <button class="penna-button" data-penna="button" data-size="small" data-id="by-address"><i data-icon="plus"></i><span class="penna-label">By address…</span></button>
+            </div>
+            <div class="penna-dock-tiles" data-tiles data-pick>
+              <div class="penna-tile" data-penna="tile.card" data-variant="card"><span class="penna-type" data-type="body" data-strong data-truncate>xps</span><span class="penna-type" data-type="caption" data-truncate>Linux · 1 screen</span></div>
+              <div class="penna-tile" data-penna="tile.card" data-variant="card" data-state="selected"><span class="penna-type" data-type="body" data-strong data-truncate>thinkpad</span><span class="penna-type" data-type="caption" data-truncate>Picked</span></div>
+              <div class="penna-tile" data-penna="tile.card" data-variant="card" data-state="hover"><span class="penna-type" data-type="body" data-strong data-truncate>mini</span><span class="penna-type" data-type="caption" data-truncate>Being dragged</span></div>
+              <div class="penna-tile" data-penna="tile.card" data-variant="card" data-state="disabled"><span class="penna-type" data-type="body" data-strong data-truncate>gaming-pc</span><span class="penna-type" data-type="caption" data-truncate>Needs Nidus 0.8</span></div>
+            </div>
+          </div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">empty</div>
+          <div class="penna-dock">
+            <div class="penna-dock-header">
+              <div class="penna-dock-titles">
+                <span class="penna-type" data-type="body" data-strong>Nearby</span>
+                <span class="penna-type" data-type="small" data-muted>Computers running Nidus on this network show up here.</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section data-section="inspector">
+      <div class="canvas-stage">
+        <aside class="penna-inspector" data-penna="inspector">
+          <div class="penna-inspector-header">
+            <div class="penna-inspector-titles">
+              <span class="penna-type" data-type="heading" data-truncate>ubuntu</span>
+              <span class="penna-type" data-type="small" data-muted>Connected · 2 screens</span>
+            </div>
+            <span class="canvas-chip" data-penna="chip"><i class="canvas-dot"></i><span class="penna-type">Ready</span></span>
+            <button class="penna-button" data-penna="icon-button" data-shape="compact-icon" aria-label="Close" title="Close" data-id="inspector-close" data-close><i data-icon="xmark"></i></button>
+          </div>
+          <div class="canvas-stack">
+            <div class="canvas-stack-title">What ubuntu can do here</div>
+            <div class="canvas-stack-card" data-penna="settings.card">
+              <div class="canvas-entry">
+                <div class="canvas-entry-body">
+                  <span class="canvas-entry-title penna-type">Control this computer</span>
+                  <button class="penna-toggle" aria-checked="true" aria-label="Control this computer"></button>
+                </div>
+              </div>
+              <div class="canvas-entry">
+                <div class="canvas-entry-body">
+                  <span class="canvas-entry-title penna-type">Share the clipboard</span>
+                  <button class="penna-toggle" aria-checked="true" aria-label="Share the clipboard"></button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="canvas-screens">
+            <span class="penna-type" data-type="small" data-strong>Screens</span>
+            <span class="penna-type" data-type="small">DP-1 24″ · HDMI-1 24″</span>
+          </div>
+        </aside>
+      </div>
+    </section>
+  </body>
+</html>

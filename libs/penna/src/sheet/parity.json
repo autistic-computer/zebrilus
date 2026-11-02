@@ -1,0 +1,8 @@
+{
+  "story": "sheet",
+  "page": "index.html",
+  "steps": [
+    { "name": "hover-close", "section": "bottom-sheet", "hover": "language-close" },
+    { "name": "press-close", "section": "bottom-sheet", "press": "language-close" }
+  ]
+}

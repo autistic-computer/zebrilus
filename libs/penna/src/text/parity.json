@@ -1,0 +1,8 @@
+{
+  "story": "markdown",
+  "page": "index.html",
+  "steps": [
+    { "name": "hover-copy", "section": "code", "hover": "md-copy" },
+    { "name": "press-copy", "section": "code", "press": "md-copy" }
+  ]
+}

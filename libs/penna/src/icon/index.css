@@ -1,0 +1,30 @@
+.icon-gallery {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  column-gap: 12px;
+  row-gap: 16px;
+}
+
+.icon-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.icon-name {
+  font-family: var(--penna-mono);
+  font-size: 11px;
+  line-height: 14px;
+  white-space: nowrap;
+}
+
+.icon-name,
+section[data-section] .story-label {
+  color: oklab(from var(--penna-fg) calc(l * 0.65) calc(a * 0.65) calc(b * 0.65));
+}
+
+:root[data-penna-mode="light"] :is(.icon-name, section[data-section] .story-label) {
+  color: oklab(from var(--penna-fg) calc(l * 0.65 + 0.35) calc(a * 0.65) calc(b * 0.65));
+}

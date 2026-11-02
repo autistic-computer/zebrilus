@@ -1,0 +1,10 @@
+{
+  "story": "choices",
+  "page": "index.html",
+  "steps": [
+    { "name": "click-light", "section": "segmented", "click": "button:Light" },
+    { "name": "click-system", "section": "segmented", "click": "button:System" },
+    { "name": "hover-filled-pill", "section": "slider", "hover": "button:1k" },
+    { "name": "hover-empty-pill", "section": "slider", "hover": "button:50k" }
+  ]
+}

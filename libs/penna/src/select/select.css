@@ -1,0 +1,101 @@
+.penna-select {
+  position: relative;
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  outline: none;
+}
+
+.penna-select-trigger {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  box-sizing: border-box;
+  height: 28px;
+  min-width: 0;
+  padding: 0 8px;
+  border-width: max(1px, var(--penna-bw));
+  font-size: 13px;
+  line-height: 1.618;
+  white-space: nowrap;
+  cursor: pointer;
+  --penna-icon-size: 12px;
+}
+
+.penna-select[aria-disabled="true"] > .penna-select-trigger {
+  cursor: default;
+}
+
+.penna-select-trigger > .penna-select-title {
+  position: relative;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.penna-select-trigger > .penna-select-title[data-placeholder] {
+  color: rgb(from var(--penna-muted) r g b / calc(alpha * 0.6));
+}
+
+.penna-select-trigger > [data-icon] {
+  color: var(--penna-muted);
+}
+
+.penna-select-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 10;
+  display: none;
+  box-sizing: content-box;
+  min-width: max(128px, 100% - 2 * var(--penna-row-inset));
+  max-width: 500px;
+  max-height: 450px;
+  overflow-y: auto;
+  --penna-glass: 0;
+}
+
+.penna-select-menu[data-glass] {
+  -webkit-backdrop-filter: blur(var(--penna-glass-blur)) brightness(1.07);
+  backdrop-filter: blur(var(--penna-glass-blur)) brightness(1.07);
+}
+
+.penna-select[data-open] > .penna-select-menu {
+  display: flex;
+}
+
+.penna-select-menu > [data-penna="menu-item"] {
+  flex: none;
+  gap: 8px;
+  cursor: default;
+}
+
+.penna-select-menu > [data-penna="menu-item"] > [data-icon] {
+  position: relative;
+  top: 0.5px;
+  --penna-icon-size: 14px;
+}
+
+.penna-select-menu > [data-penna="menu-item"] > .penna-select-check:not([data-icon]) {
+  display: inline-block;
+  flex: none;
+  width: 14px;
+  height: 14px;
+}
+
+.penna-select-menu > [data-penna="menu-item"] > .penna-label {
+  position: relative;
+  flex: none;
+  white-space: nowrap;
+}
+
+.penna-select-empty {
+  display: flex;
+  justify-content: center;
+  padding: 24px 0;
+  color: rgb(from var(--penna-muted) r g b / calc(alpha * 0.6));
+  --penna-icon-size: 28px;
+}

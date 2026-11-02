@@ -1,0 +1,11 @@
+{
+  "story": "notifications",
+  "page": "index.html",
+  "steps": [
+    { "name": "hover-save", "section": "popover", "hover": "popover-save" },
+    { "name": "close-popover", "section": "popover", "click": "rename-trigger" },
+    { "name": "reopen-popover", "section": "popover", "click": "rename-trigger" },
+    { "name": "hover-restart", "section": "toast-kinds", "hover": "toast-restart" },
+    { "name": "press-restart", "section": "toast-kinds", "press": "toast-restart" }
+  ]
+}

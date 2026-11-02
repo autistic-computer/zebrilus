@@ -1,0 +1,57 @@
+.penna-tree {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  --penna-tree-muted: var(--penna-muted);
+  --penna-tree-row: 28px;
+  --penna-tree-indent: 16px;
+  --penna-tree-inset: 12px;
+  --penna-tree-offset: 20px;
+  --penna-tree-end: 4px;
+}
+
+.penna-tree-row[data-penna] {
+  position: relative;
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0 4px;
+  width: 100%;
+  height: var(--penna-tree-row);
+  margin: 0;
+  padding: 4px var(--penna-tree-inset) 4px calc(var(--penna-tree-inset) + var(--penna-tree-indent) * var(--depth, 0));
+  font-size: 16px;
+  line-height: 1.618;
+  white-space: nowrap;
+  cursor: default;
+  user-select: none;
+  outline: none;
+}
+
+.penna-tree-row > .penna-tree-content {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  font-size: 14px;
+  line-height: round(nearest, 1.618em, 0.5px);
+}
+
+.penna-tree-icon {
+  --penna-icon-size: 14px;
+  color: var(--penna-tree-muted);
+}
+
+.penna-tree-guide {
+  position: absolute;
+  width: 0.5px;
+  background: var(--penna-divider);
+  pointer-events: none;
+}
+
+.penna-tree-guide[data-active] {
+  background: var(--penna-tree-muted);
+}

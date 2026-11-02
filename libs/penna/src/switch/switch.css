@@ -1,0 +1,84 @@
+.penna-toggle {
+  display: inline-flex;
+  flex: none;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  line-height: 0;
+  color: inherit;
+  appearance: none;
+  outline: none;
+  cursor: default;
+  --penna-toggle-w: 36px;
+  --penna-toggle-h: 20px;
+  --penna-toggle-thumb: 16px;
+  --penna-toggle-inset: 2px;
+}
+
+.penna-toggle[data-size="small"] {
+  --penna-toggle-w: 28px;
+  --penna-toggle-h: 16px;
+  --penna-toggle-thumb: 12px;
+}
+
+.penna-toggle > .penna-toggle-track {
+  display: flex;
+  flex: none;
+  align-items: center;
+  box-sizing: border-box;
+  width: var(--penna-toggle-w);
+  height: var(--penna-toggle-h);
+  border: var(--penna-toggle-inset) solid transparent;
+  border-radius: 9999px;
+  background: var(--penna-control);
+}
+
+.penna-toggle > .penna-toggle-track > .penna-toggle-thumb {
+  position: relative;
+  left: 0;
+  flex: none;
+  width: var(--penna-toggle-thumb);
+  height: var(--penna-toggle-thumb);
+  border-radius: 9999px;
+  background: var(--penna-knob);
+  box-shadow: var(--penna-shadow-lifted);
+  transition: left 150ms linear;
+}
+
+.penna-toggle[aria-checked="true"] > .penna-toggle-track {
+  background: var(--penna-primary);
+}
+
+.penna-toggle[aria-checked="true"] > .penna-toggle-track > .penna-toggle-thumb {
+  left: calc(var(--penna-toggle-w) - var(--penna-toggle-thumb) - 2 * var(--penna-toggle-inset));
+  background: var(--penna-on-accent);
+}
+
+.penna-toggle:disabled > .penna-toggle-track {
+  background: rgb(from var(--penna-control) r g b / calc(alpha * 0.5));
+}
+
+.penna-toggle:disabled > .penna-toggle-track > .penna-toggle-thumb {
+  --penna-toggle-knob: rgb(from var(--penna-knob) r g b / calc(alpha * 0.5));
+  background:
+    linear-gradient(var(--penna-toggle-knob), var(--penna-toggle-knob)),
+    linear-gradient(transparent 5%, var(--penna-toggle-under, transparent) 55%);
+}
+
+.penna-toggle[aria-checked="true"]:disabled > .penna-toggle-track {
+  background: rgb(from var(--penna-primary) r g b / calc(alpha * 0.5));
+}
+
+.penna-toggle[aria-checked="true"]:disabled > .penna-toggle-track > .penna-toggle-thumb {
+  --penna-toggle-knob: rgb(from var(--penna-on-accent) r g b / calc(alpha * 0.25));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .penna-toggle > .penna-toggle-track > .penna-toggle-thumb {
+    transition: none;
+  }
+}

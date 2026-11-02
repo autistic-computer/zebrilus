@@ -1,0 +1,87 @@
+.penna-segmented {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  box-sizing: border-box;
+  height: 28px;
+  padding: 2px;
+  border-width: max(1px, var(--penna-bw));
+}
+
+.penna-segmented > .penna-segments {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0;
+  height: auto;
+  padding: 0;
+  font-size: 13px;
+  line-height: 1.618;
+}
+
+.penna-segmented > .penna-segments[data-penna] {
+  --penna-pill-fill: var(--penna-fill);
+  --penna-pill-edge: var(--penna-edge);
+  --penna-pill-bw: var(--penna-bw);
+  --penna-pill-k: var(--penna-k);
+  --penna-pill-shadow: var(--penna-rim), var(--penna-shadow);
+  background: none;
+  border: 0;
+  box-shadow: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+.penna-segmented .penna-segment-pill {
+  position: absolute;
+  top: 0;
+  left: var(--pill-x, 0);
+  box-sizing: border-box;
+  width: var(--pill-w, 0);
+  height: calc(28px - 4px - 2 * max(1px, var(--penna-bw)));
+  padding: 0;
+  border: var(--penna-pill-bw) solid var(--penna-pill-edge);
+  background: var(--penna-pill-fill);
+  box-shadow: var(--penna-pill-shadow);
+  pointer-events: none;
+  corner-shape: superellipse(var(--penna-pill-k));
+  transition: left 220ms cubic-bezier(0.22, 1, 0.36, 1), width 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.penna-segmented[data-still] .penna-segment-pill {
+  transition: none;
+}
+
+.penna-segmented .penna-segment {
+  position: relative;
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  height: calc(28px - 4px - 2 * max(1px, var(--penna-bw)));
+  margin: 0;
+  padding: 0 10px;
+  border: 0;
+  background: none;
+  box-shadow: none;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.618;
+  white-space: nowrap;
+  cursor: default;
+  appearance: none;
+  outline: none;
+}
+
+.penna-segmented .penna-segment > .penna-label {
+  position: relative;
+  flex: none;
+  white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .penna-segmented .penna-segment-pill {
+    transition: none;
+  }
+}

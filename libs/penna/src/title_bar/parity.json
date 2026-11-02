@@ -1,0 +1,9 @@
+{
+  "story": "title-bar",
+  "page": "index.html",
+  "steps": [
+    { "name": "hover-settings", "section": "bar", "hover": "bar-settings" },
+    { "name": "press-settings", "section": "bar", "press": "bar-settings" },
+    { "name": "hover-split", "section": "bar", "hover": "bar-split" }
+  ]
+}

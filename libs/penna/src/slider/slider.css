@@ -1,0 +1,81 @@
+.penna-steps {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  font-size: 12px;
+  line-height: 16px;
+  outline: none;
+  --penna-fg-muted: oklab(from var(--penna-fg) calc(l * 0.65 + 0.35 * clamp(0, (0.5 - l) * 1000, 1)) calc(a * 0.65) calc(b * 0.65));
+}
+
+.penna-steps > .penna-steps-label {
+  position: relative;
+  top: 0.5px;
+  flex: none;
+  color: var(--penna-fg-muted);
+  white-space: nowrap;
+}
+
+.penna-steps > .penna-steps-value {
+  position: relative;
+  top: 0.5px;
+  flex: none;
+  width: 52px;
+  color: var(--penna-fg);
+  white-space: nowrap;
+}
+
+.penna-steps > .penna-steps-pills {
+  display: flex;
+  flex: 1 1 0;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  max-width: calc(var(--count, 5) * 24px + (var(--count, 5) - 1) * 4px);
+}
+
+.penna-steps-pills > .penna-step {
+  display: flex;
+  flex: 1 1 0;
+  align-items: center;
+  box-sizing: border-box;
+  min-width: 0;
+  height: 28px;
+  margin: 0;
+  padding: 0;
+  gap: 0;
+  cursor: pointer;
+}
+
+.penna-steps-pills > .penna-step::before {
+  content: "";
+  box-sizing: border-box;
+  width: 100%;
+  height: 6px;
+  border-radius: min(var(--penna-radius), 1.5px);
+  corner-shape: round;
+  background: var(--penna-step-fill);
+}
+
+.penna-steps-pills > .penna-step {
+  --penna-step-fill: var(--penna-control);
+}
+
+.penna-steps-pills > .penna-step:hover {
+  --penna-step-fill: rgb(from var(--penna-control) r g b / calc(alpha * 0.66));
+}
+
+.penna-steps-pills > .penna-step[data-filled] {
+  --penna-step-pole: hsl(from var(--penna-primary) 0 0 calc(clamp(0, (50 - l) * 1000, 1) * 100));
+  --penna-step-fill: var(--penna-primary);
+}
+
+.penna-steps-pills > .penna-step[data-filled]:hover {
+  --penna-step-fill: color-mix(in oklab, var(--penna-primary) 94%, var(--penna-step-pole));
+}
+
+.penna-steps:is(:focus, [data-focused]) .penna-step[data-picked]::before {
+  border: 1.5px solid rgb(from var(--penna-primary) r g b / calc(alpha * 0.8));
+}

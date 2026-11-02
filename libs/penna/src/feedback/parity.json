@@ -1,0 +1,12 @@
+{
+  "story": "feedback",
+  "page": "index.html",
+  "steps": [
+    { "name": "hover-restart", "section": "callouts", "hover": "callout-restart" },
+    { "name": "press-restart", "section": "callouts", "press": "callout-restart" },
+    { "name": "hover-retry", "section": "inline-alert", "hover": "alert-retry" },
+    { "name": "press-retry", "section": "inline-alert", "press": "alert-retry" },
+    { "name": "hover-empty-retry", "section": "empty-state", "hover": "empty-retry" },
+    { "name": "press-empty-retry", "section": "empty-state", "press": "empty-retry" }
+  ]
+}

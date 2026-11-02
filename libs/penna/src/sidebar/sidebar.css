@@ -1,0 +1,11 @@
+.penna-sidebar-frame[data-penna] {
+  display: block;
+  width: 100%;
+  max-width: 256px;
+  min-height: 0;
+  padding: 8px 0;
+  border: 1px solid var(--penna-border);
+  border-radius: 0;
+  box-shadow: none;
+  font-size: 16px;
+}

@@ -1,0 +1,60 @@
+.penna-kbd[data-penna] {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  height: 18px;
+  min-width: 18px;
+  padding: 0 4px;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 16px;
+  color: var(--penna-muted);
+  --penna-icon-size: 13px;
+}
+
+.display-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 14px;
+}
+
+.display-inline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+
+.display-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 20px;
+  font-size: 14px;
+}
+
+:is(.display-stack, .display-inline, .display-bar),
+:is(.display-stack, .display-bar) > * {
+  line-height: round(nearest, 1.618em, 0.5px);
+}
+
+.display-muted {
+  color: oklab(from var(--penna-fg) calc(l * 0.65 + 0.35 * clamp(0, (0.5987 - l) * 1000, 1)) calc(a * 0.65) calc(b * 0.65));
+}
+
+.penna-text {
+  position: relative;
+  top: var(--display-text-y, 0.25px);
+  display: inline-block;
+  flex: none;
+  white-space: nowrap;
+}
+
+.penna-list-detail > .penna-text,
+.penna-kbd > .penna-text {
+  --display-text-y: 0px;
+}

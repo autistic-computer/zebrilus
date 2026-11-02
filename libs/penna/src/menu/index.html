@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Menus</title>
+    <link rel="stylesheet" href="../../web/penna.css" />
+    <link rel="stylesheet" href="../../web/story.css" />
+    <link rel="stylesheet" href="../button/button.css" />
+    <link rel="stylesheet" href="menu.css" />
+    <link rel="stylesheet" href="page.css" />
+    <script src="../../web/kit.js" data-tokens="../../web/tokens/"></script>
+    <script src="../button/button.js" defer></script>
+    <script src="menu.js" defer></script>
+    <script src="page.js" defer></script>
+  </head>
+  <body>
+    <section data-section="popup-menu">
+      <div class="story-states">
+        <div class="story-state">
+          <div class="story-label">pane menu, view menu</div>
+          <div class="menus-stage"><div class="menus-row" data-menus="pane view"></div></div>
+        </div>
+      </div>
+    </section>
+
+    <section data-section="highlighted-row">
+      <div class="story-states">
+        <div class="story-state">
+          <div class="story-label">second row highlighted</div>
+          <div class="menus-stage"><div class="menus-row" data-menus="pane" data-highlight="row"></div></div>
+        </div>
+      </div>
+    </section>
+
+    <section data-section="submenu-open">
+      <div class="story-states">
+        <div class="story-state">
+          <div class="story-label">submenu open, first row highlighted</div>
+          <div class="menus-stage"><div class="menus-row" data-menus="pane" data-highlight="submenu"></div></div>
+        </div>
+      </div>
+    </section>
+
+    <section data-section="triggers">
+      <div class="story-states">
+        <div class="story-state">
+          <div class="story-label">dropdown button, context-menu region</div>
+          <div class="story-row">
+            <div class="menus-trigger">
+              <button class="penna-button" data-penna="button" data-caret data-id="layout-trigger" data-dropdown="layout"><span class="penna-label">Layout</span><i class="penna-caret" data-icon="chevron-down"></i></button>
+            </div>
+            <div class="menus-region" tabindex="0" data-context="region"><span class="menus-region-text">Right click here</span></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section data-section="dropdown-open">
+      <div class="story-states">
+        <div class="story-state">
+          <div class="story-label">dropdown open</div>
+          <div class="menus-open" style="height: 240px">
+            <div class="menus-trigger">
+              <button class="penna-button" data-penna="button" data-caret data-id="layout-trigger" data-dropdown="layout" data-open><span class="penna-label">Layout</span><i class="penna-caret" data-icon="chevron-down"></i></button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section data-section="context-menu-open">
+      <div class="story-states">
+        <div class="story-state">
+          <div class="story-label">context menu open</div>
+          <div class="menus-open" style="height: 260px">
+            <div class="menus-region" tabindex="0" data-context="region" data-open><span class="menus-region-text">Right click here</span></div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </body>
+</html>
