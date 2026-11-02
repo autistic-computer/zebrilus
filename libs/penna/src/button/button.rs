@@ -927,12 +927,10 @@ mod tests {
     }
 
     #[test]
-    fn an_outline_button_draws_the_theme_outline_on_every_builtin_theme() {
+    fn an_outline_button_draws_a_one_px_outline_on_every_builtin_theme() {
         use crate::{ThemeMode, interface_theme::builtin_themes, theme_css::kit_theme};
 
-        let expected = [("default", 0.75), ("macos", 0.5), ("yaru", 1.0)];
-        for ((id, interface), (expected_id, width)) in builtin_themes().iter().zip(expected) {
-            assert_eq!(*id, expected_id);
+        for (id, interface) in builtin_themes().iter() {
             for mode in [ThemeMode::Light, ThemeMode::Dark] {
                 let theme = kit_theme(interface, mode);
                 let layer = |emphasis| {
@@ -942,8 +940,8 @@ mod tests {
                     theme.layer(surface, PaintState::Rest)
                 };
                 let outline = layer(Emphasis::Outline);
-                assert_eq!(outline.border_width, px(width), "{id} {mode:?}");
-                assert_eq!(outline.border.a, 0.1, "{id} {mode:?}");
+                assert_eq!(outline.border_width, px(1.0), "{id} {mode:?}");
+                assert_eq!(outline.border.a, 0.3, "{id} {mode:?}");
                 assert_eq!(outline.fill.a, 0.0, "{id} {mode:?}");
                 let ghost = layer(Emphasis::Ghost);
                 assert_eq!(ghost.border_width, px(0.0), "{id} {mode:?}");

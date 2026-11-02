@@ -8,7 +8,7 @@ use ala::{
 };
 
 use crate::{
-    ADAPTIVE_CORNER_FRACTION, ActiveTheme as _, CORNER_SMOOTHING, StyledExt as _,
+    ADAPTIVE_CORNER_FRACTION, ActiveTheme as _, StyledExt as _,
     text::{self, SelectionScope, TextSelectionController, WindowTextSelection},
 };
 
@@ -45,7 +45,6 @@ pub struct Root {
 impl Root {
     #[must_use]
     pub fn new(view: impl Into<AnyView>, window: &mut Window, cx: &mut Context<Self>) -> Self {
-        window.set_default_corner_smoothing(CORNER_SMOOTHING);
         window.set_adaptive_corner_fraction(Some(ADAPTIVE_CORNER_FRACTION));
         Self {
             style: StyleRefinement::default(),
@@ -353,6 +352,7 @@ impl Styled for Root {
 impl Render for Root {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         window.set_rem_size(cx.theme().font_size);
+        window.set_default_corner_smoothing(cx.theme().smoothing.exponent());
 
         let inner = div()
             .id("root")
@@ -411,7 +411,7 @@ mod tests {
 
     use super::{Dialog, Root};
     use crate::{
-        ADAPTIVE_CORNER_FRACTION, CORNER_SMOOTHING, WindowExt as _, notification::Notification,
+        ADAPTIVE_CORNER_FRACTION, ActiveTheme as _, WindowExt as _, notification::Notification,
     };
     use ala::{
         App, AppContext as _, Context, IntoElement, ParentElement as _, Render, TestAppContext,
@@ -513,8 +513,11 @@ mod tests {
     #[ala::test]
     fn root_sets_the_window_corners(cx: &mut TestAppContext) {
         let cx = root_window(cx, true, |cx| cx.new(|_| TestView).into());
-        cx.update(|window, _| {
-            assert_eq!(window.default_corner_smoothing(), CORNER_SMOOTHING);
+        cx.update(|window, cx| {
+            assert_eq!(
+                window.default_corner_smoothing(),
+                cx.theme().smoothing.exponent()
+            );
             assert_eq!(
                 window.adaptive_corner_fraction(),
                 Some(ADAPTIVE_CORNER_FRACTION)

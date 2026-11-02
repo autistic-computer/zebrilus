@@ -1013,6 +1013,14 @@ impl SurfaceRole {
     )
     .with(StylePatch::EMPTY.shape(Shape::Pill).outline(false));
 
+    pub(crate) const OUTLINES: [Self; 5] = [
+        Self::OUTLINE_BUTTON,
+        Self::OUTLINE_FIELD,
+        Self::OUTLINE_TEXT_AREA,
+        Self::OUTLINE_BADGE,
+        Self::OUTLINE_CHIP,
+    ];
+
     pub const KIT: [Self; 40] = [
         Kind::Bar.role(),
         Kind::Panel.role(),
@@ -1503,6 +1511,20 @@ impl Theme {
             self.transparent
         };
 
+        let (border, border_width) = if SurfaceRole::OUTLINES
+            .iter()
+            .any(|role| role.id == surface.role.id)
+            && glass.is_none()
+        {
+            let paint = self.paint_on(ground, tone, Emphasis::Outline);
+            let edge = match state {
+                PaintState::Disabled => paint.border.opacity(DISABLED),
+                _ => paint.border,
+            };
+            (edge, paint.border_width)
+        } else {
+            (border, border_width)
+        };
         let casts = !kind.is_control() || ground.elevation == Elevation::Window;
         let mut shadow = if casts && state != PaintState::Disabled {
             let mut shadow = self.shadows_of(style.shadow);
