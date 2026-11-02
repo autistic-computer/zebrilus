@@ -992,6 +992,7 @@ impl AppShell {
                         .map_or_else(|| page.title.clone(), |(title, _)| title)
                 });
                 let mini = mini_pane(
+                    ("mini-pane", page.pane.0),
                     kind_icon(&page.kind),
                     title,
                     self.mini_preview(page, connection, here, cx),

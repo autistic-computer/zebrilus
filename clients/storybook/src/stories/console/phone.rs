@@ -384,6 +384,7 @@ fn preview(lines: &str, cx: &App) -> AnyElement {
 }
 
 fn mini(
+    id: &'static str,
     icon: IconName,
     title: &str,
     lines: &str,
@@ -392,6 +393,7 @@ fn mini(
     cx: &App,
 ) -> AnyElement {
     mini_pane(
+        id,
         icon,
         (!title.is_empty()).then(|| title.to_owned().into()),
         (!lines.is_empty()).then(|| preview(lines, cx)),
@@ -415,7 +417,7 @@ pub(crate) fn host_page(cx: &App) -> impl IntoElement {
             (
                 [0.0, 0.0, 0.6, 1.0],
                 mini(
-                    IconName::SquareTerminal,
+                    "mini-1", IconName::SquareTerminal,
                     "cargo test",
                     "running 214 tests\ntest overview::pager ... ok\ntest overview::bento ... ok\ntest result: ok. 214 passed",
                     true,
@@ -426,7 +428,7 @@ pub(crate) fn host_page(cx: &App) -> impl IntoElement {
             (
                 [0.6, 0.0, 0.4, 0.5],
                 mini(
-                    IconName::File,
+                    "mini-2", IconName::File,
                     "overview.rs",
                     "fn host_body(\n  &mut self,",
                     false,
@@ -436,7 +438,7 @@ pub(crate) fn host_page(cx: &App) -> impl IntoElement {
             ),
             (
                 [0.6, 0.5, 0.4, 0.5],
-                mini(IconName::SquareTerminal, "perf audit", "", false, false, cx),
+                mini("mini-3", IconName::SquareTerminal, "perf audit", "", false, false, cx),
             ),
         ]),
         cx,
@@ -450,7 +452,7 @@ pub(crate) fn host_page(cx: &App) -> impl IntoElement {
         false,
         window_layout(vec![(
             [0.0, 0.0, 1.0, 1.0],
-            mini(IconName::Globe, "", "localhost:4321", false, false, cx),
+            mini("mini-4", IconName::Globe, "", "localhost:4321", false, false, cx),
         )]),
         cx,
     );
@@ -464,11 +466,11 @@ pub(crate) fn host_page(cx: &App) -> impl IntoElement {
         window_layout(vec![
             (
                 [0.0, 0.0, 0.5, 1.0],
-                mini(IconName::SquareTerminal, "review", "", true, true, cx),
+                mini("mini-5", IconName::SquareTerminal, "review", "", true, true, cx),
             ),
             (
                 [0.5, 0.0, 0.5, 1.0],
-                mini(IconName::SquareTerminal, "fix ci", "", false, false, cx),
+                mini("mini-6", IconName::SquareTerminal, "fix ci", "", false, false, cx),
             ),
         ]),
         cx,
@@ -483,7 +485,7 @@ pub(crate) fn host_page(cx: &App) -> impl IntoElement {
         window_layout(vec![(
             [0.0, 0.0, 1.0, 1.0],
             mini(
-                IconName::SquareTerminal,
+                "mini-7", IconName::SquareTerminal,
                 "",
                 "- [ ] fold title on iPad\n- [x] bento grid",
                 false,

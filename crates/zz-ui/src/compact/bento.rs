@@ -153,6 +153,7 @@ pub fn window_layout(panes: Vec<([f32; 4], AnyElement)>) -> Div {
 }
 
 pub fn mini_pane(
+    id: impl Into<ElementId>,
     icon: IconName,
     title: Option<SharedString>,
     preview: Option<AnyElement>,
@@ -162,7 +163,7 @@ pub fn mini_pane(
     cx: &App,
 ) -> Tile {
     let theme = cx.theme();
-    Tile::new("mini-pane")
+    Tile::new(id)
         .variant(TileVariant::Mini)
         .state(if current {
             PaintState::Selected
