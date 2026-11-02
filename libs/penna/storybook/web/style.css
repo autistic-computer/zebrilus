@@ -1080,3 +1080,32 @@ dialog button {
         display: none;
     }
 }
+
+body.solo {
+    display: block;
+}
+
+body.solo nav,
+body.solo aside,
+body.solo #bar,
+body.solo #knobs-resize,
+body.solo main > header,
+body.solo main > section > p {
+    display: none;
+}
+
+body.solo main {
+    height: auto;
+    overflow: visible;
+    padding: 16px;
+}
+
+body.solo main > section {
+    margin: 0 0 24px;
+}
+
+body.solo .mount {
+    margin-top: 8px;
+    border: 0;
+    border-radius: 0;
+}

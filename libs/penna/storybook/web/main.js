@@ -104,6 +104,7 @@ let roleTree = [];
 let step = "colors";
 let selectedRole = null;
 let focusRetries = 0;
+let solo = false;
 const openRegions = new Set();
 const timeline = { past: [], future: [], last: null };
 
@@ -213,6 +214,7 @@ function hashQuery() {
     if (params.toString().length > HASH_LIMIT) params.delete("roles");
     if (step !== STEPS[0]) params.set("step", step);
     if (step === "roles" && selectedRole) params.set("inspect", selectedRole);
+    if (solo) params.set("solo", "1");
     return params.toString();
 }
 
@@ -713,6 +715,8 @@ function loadKnobs(params, stored) {
 }
 
 function loadView(params) {
+    solo = params.has("solo") && params.get("solo") !== "0";
+    document.body.classList.toggle("solo", solo);
     if (STEPS.includes(params.get("step"))) step = params.get("step");
     if (params.has("inspect")) selectedRole = findRole(params.get("inspect")) ? params.get("inspect") : null;
 }

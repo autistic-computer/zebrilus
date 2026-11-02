@@ -1,0 +1,175 @@
+.penna-button {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  box-sizing: border-box;
+  height: 28px;
+  min-width: 0;
+  margin: 0;
+  padding: 0 12px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1;
+  white-space: nowrap;
+  text-decoration: none;
+  cursor: default;
+  appearance: none;
+  outline: none;
+  user-select: none;
+  --penna-icon-size: 14px;
+  --penna-ring: var(--penna-primary);
+  --penna-fg-muted: oklab(from var(--penna-fg) calc(l * 0.65 + 0.35 * clamp(0, (0.5 - l) * 1000, 1)) calc(a * 0.65) calc(b * 0.65));
+  --penna-fg-faint: oklab(from var(--penna-fg) calc(l * 0.45 + 0.55 * clamp(0, (0.5 - l) * 1000, 1)) calc(a * 0.45) calc(b * 0.45));
+}
+
+.penna-button[data-penna] {
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1;
+  corner-shape: superellipse(2);
+}
+
+.penna-button[data-penna][data-full] {
+  corner-shape: round;
+}
+
+.penna-button[data-size="small"] {
+  height: 24px;
+  padding: 0 8px;
+  gap: 4px;
+  font-size: 12px;
+  --penna-icon-size: 12px;
+}
+
+.penna-button[data-compact] {
+  min-width: 28px;
+  padding: 0 6px;
+}
+
+.penna-button[data-size="small"][data-compact] {
+  min-width: 24px;
+  padding: 0 4px;
+}
+
+.penna-button[data-shape="icon"] {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+}
+
+.penna-button[data-shape="icon"][data-size="small"] {
+  width: 24px;
+  height: 24px;
+}
+
+.penna-button[data-shape="compact-icon"] {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+}
+
+.penna-button[data-shape="compact-icon"] > [data-icon] {
+  position: relative;
+  top: 0.5px;
+}
+
+.penna-button:is([data-variant="link"], [data-variant="text"]) {
+  height: auto;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  color: var(--penna-fg);
+}
+
+.penna-button[data-variant="link"] {
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+}
+
+.penna-button[data-variant="text"]:is(:active, [data-state~="active"]) {
+  color: var(--penna-fg-muted);
+}
+
+.penna-button:is([data-variant="link"], [data-variant="text"]):is(:disabled, [aria-disabled="true"]) {
+  color: var(--penna-fg-faint);
+  text-decoration: none;
+}
+
+.penna-button[data-flat] {
+  --penna-edge: initial;
+  --penna-shadow: initial;
+}
+
+.penna-button[data-loading]:not(:disabled) {
+  background: rgb(from var(--penna-fill) r g b / calc(alpha * 0.8));
+  border-color: rgb(from var(--penna-edge) r g b / calc(alpha * 0.8));
+  color: rgb(from var(--penna-ink) r g b / calc(alpha * 0.8));
+}
+
+.penna-button[data-caret] {
+  justify-content: space-between;
+}
+
+.penna-button > .penna-caret {
+  --penna-icon-size: 12px;
+  opacity: 0.5;
+}
+
+.penna-button:disabled > .penna-caret {
+  opacity: 0.3;
+}
+
+.penna-button > .penna-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  line-height: 1.618;
+}
+
+.penna-button > .penna-group > .penna-aside {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--penna-fg-muted);
+}
+
+.penna-button .penna-label {
+  position: relative;
+  left: -0.25px;
+  flex: none;
+  white-space: nowrap;
+  -webkit-text-stroke: 0.15px rgb(from currentColor r g b / calc(alpha * round(down, (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255 * 4 + 0.5, 1) / 4));
+}
+
+.penna-button[data-size="small"] .penna-label {
+  top: 0.5px;
+}
+
+.penna-button[data-tone="danger"] {
+  --penna-ring: var(--penna-danger);
+}
+
+.penna-button[data-tone="warning"] {
+  --penna-ring: var(--penna-warning);
+}
+
+.penna-button[data-tone="success"] {
+  --penna-ring: var(--penna-success);
+}
+
+.penna-button:is([data-focused], :focus-visible)::after {
+  content: "";
+  position: absolute;
+  inset: var(--penna-ring-inset, -2px);
+  border: 1.5px solid rgb(from var(--penna-ring) r g b / calc(alpha * 0.8));
+  border-radius: var(--penna-ring-r, 12px);
+  corner-shape: inherit;
+  pointer-events: none;
+}

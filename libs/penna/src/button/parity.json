@@ -1,0 +1,8 @@
+{
+  "story": "buttons",
+  "page": "index.html",
+  "steps": [
+    { "name": "hover-primary", "section": "variants", "hover": "button:Primary" },
+    { "name": "press-primary", "section": "variants", "press": "button:Primary" }
+  ]
+}

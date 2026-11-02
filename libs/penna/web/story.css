@@ -1,0 +1,95 @@
+@font-face {
+  font-family: "Inter Variable";
+  font-style: normal;
+  font-weight: 100 900;
+  src: url("../storybook/fonts/inter/InterVariable.ttf") format("truetype");
+}
+
+@font-face {
+  font-family: "Inter Variable";
+  font-style: italic;
+  font-weight: 100 900;
+  src: url("../storybook/fonts/inter/InterVariable-Italic.ttf") format("truetype");
+}
+
+@font-face {
+  font-family: "Lilex";
+  font-weight: 400;
+  src: url("../storybook/fonts/lilex/Lilex-Regular.ttf") format("truetype");
+}
+
+@font-face {
+  font-family: "Lilex";
+  font-weight: 700;
+  src: url("../storybook/fonts/lilex/Lilex-Bold.ttf") format("truetype");
+}
+
+@font-face {
+  font-family: "Lilex";
+  font-style: italic;
+  font-weight: 400;
+  src: url("../storybook/fonts/lilex/Lilex-Italic.ttf") format("truetype");
+}
+
+@font-face {
+  font-family: "Lilex";
+  font-style: italic;
+  font-weight: 700;
+  src: url("../storybook/fonts/lilex/Lilex-BoldItalic.ttf") format("truetype");
+}
+
+:root:root {
+  --penna-font: "Inter Variable";
+  --penna-mono: "Lilex";
+}
+
+section[data-section] {
+  display: block;
+  padding: 24px;
+  background: var(--penna-bg);
+  color: var(--penna-fg);
+  font-family: var(--penna-font);
+  font-size: var(--penna-font-size, 16px);
+  font-optical-sizing: none;
+  line-height: 1.618;
+}
+
+.story-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.story-states {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.story-states[data-columns] {
+  display: grid;
+  grid-template-columns: repeat(var(--columns, 2), minmax(0, 1fr));
+}
+
+.story-state {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.story-label {
+  font-family: var(--penna-mono);
+  font-size: 11px;
+  line-height: 14px;
+  color: var(--penna-muted);
+}
+
+.story-states[data-columns="3"] {
+  --story-track: calc((100% - 48px) / 3);
+  grid-template-columns:
+    round(nearest, var(--story-track), 0.5px)
+    calc(round(nearest, var(--story-track) * 2 + 24px, 0.5px) - round(nearest, var(--story-track), 0.5px) - 24px)
+    minmax(0, 1fr);
+}

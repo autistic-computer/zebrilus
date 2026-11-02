@@ -1,0 +1,278 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Button</title>
+    <link rel="stylesheet" href="../../web/penna.css" />
+    <link rel="stylesheet" href="../../web/story.css" />
+    <link rel="stylesheet" href="button.css" />
+    <script src="../../web/kit.js" data-tokens="../../web/tokens/"></script>
+    <script src="button.js" defer></script>
+  </head>
+  <body>
+    <section data-section="variants">
+      <div class="story-row">
+        <button class="penna-button" data-penna="button" data-tone="primary" data-prominent data-id="button:Primary"><span class="penna-label">Primary</span></button>
+        <button class="penna-button" data-penna="button" data-id="button:Secondary"><span class="penna-label">Secondary</span></button>
+        <button class="penna-button" data-penna="button.quiet" data-id="button:Ghost"><span class="penna-label">Ghost</span></button>
+        <button class="penna-button" data-penna="button" data-tone="danger" data-id="button:Danger"><span class="penna-label">Danger</span></button>
+        <button class="penna-button" data-penna="button" data-tone="success" data-id="button:Success"><span class="penna-label">Success</span></button>
+        <button class="penna-button" data-penna="button" data-tone="warning" data-id="button:Warning"><span class="penna-label">Warning</span></button>
+        <a class="penna-button" data-variant="link" href="#" data-id="link:Link"><span class="penna-label">Link</span></a>
+        <button class="penna-button" data-variant="text" data-id="button:Text"><span class="penna-label">Text</span></button>
+      </div>
+    </section>
+
+    <section data-section="sizes">
+      <div class="story-states">
+        <div class="story-state">
+          <div class="story-label">label</div>
+          <div class="story-row">
+            <button class="penna-button" data-penna="button" data-size="small" data-id="button:Small"><span class="penna-label">Small</span></button>
+            <button class="penna-button" data-penna="button" data-id="button:Medium"><span class="penna-label">Medium</span></button>
+          </div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">icon</div>
+          <div class="story-row">
+            <button class="penna-button" data-penna="button" data-shape="icon" data-size="small" aria-label="Notifications" data-id="button:Notifications"><i data-icon="bell"></i></button>
+            <button class="penna-button" data-penna="button" data-shape="icon" aria-label="Notifications" data-id="button:Notifications"><i data-icon="bell"></i></button>
+            <button class="penna-button" data-penna="icon-button" data-shape="compact-icon" aria-label="More" data-id="button:More"><i data-icon="ellipsis"></i></button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section data-section="states">
+      <div class="story-states" data-columns style="--columns: 2">
+        <div class="story-state">
+          <div class="story-label">disabled</div>
+          <div class="story-row">
+            <button class="penna-button" data-penna="button" data-tone="primary" data-prominent disabled data-id="button:Primary"><span class="penna-label">Primary</span></button>
+            <button class="penna-button" data-penna="button" disabled data-id="button:Secondary"><span class="penna-label">Secondary</span></button>
+            <button class="penna-button" data-penna="button.quiet" disabled data-id="button:Ghost"><span class="penna-label">Ghost</span></button>
+            <button class="penna-button" data-penna="button" data-tone="danger" disabled data-id="button:Danger"><span class="penna-label">Danger</span></button>
+            <button class="penna-button" data-penna="button" data-tone="success" disabled data-id="button:Success"><span class="penna-label">Success</span></button>
+          </div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">selected</div>
+          <div class="story-row">
+            <button class="penna-button" data-penna="button.quiet" data-state="current" data-id="button:Ghost"><span class="penna-label">Ghost</span></button>
+            <button class="penna-button" data-penna="button" data-state="current" data-id="button:Default"><span class="penna-label">Default</span></button>
+          </div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">loading</div>
+          <div class="story-row">
+            <button class="penna-button" data-penna="button" data-loading data-id="button:Saving"><span class="penna-label">Saving</span></button>
+            <button class="penna-button" data-penna="button" data-tone="primary" data-prominent data-loading data-id="button:Sending"><span class="penna-label">Sending</span></button>
+          </div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">icon and label</div>
+          <div class="story-row">
+            <button class="penna-button" data-penna="button" data-id="button:Copy"><i data-icon="copy"></i><span class="penna-label">Copy</span></button>
+            <button class="penna-button" data-penna="button.quiet" data-id="button:Open"><i data-icon="external-link"></i><span class="penna-label">Open</span></button>
+          </div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">dropdown caret</div>
+          <div class="story-row">
+            <button class="penna-button" data-penna="button" data-caret data-id="button:Model"><span class="penna-label">Model</span><i class="penna-caret" data-icon="chevron-down"></i></button>
+            <button class="penna-button" data-penna="button.quiet" data-caret data-id="button:Branch"><span class="penna-label">Branch</span><i class="penna-caret" data-icon="chevron-down"></i></button>
+          </div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">outline</div>
+          <div class="story-row">
+            <button class="penna-button" data-penna="button.quiet" data-id="button:Outline"><span class="penna-label">Outline</span></button>
+            <button class="penna-button" data-penna="button.quiet" data-tone="danger" data-id="button:Delete"><span class="penna-label">Delete</span></button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section data-section="custom-and-shapes">
+      <div class="story-states" data-columns style="--columns: 2">
+        <div class="story-state">
+          <div class="story-label">flat</div>
+          <div class="story-row">
+            <button class="penna-button" data-penna="button" data-flat data-id="button:Default"><span class="penna-label">Default</span></button>
+            <button class="penna-button" data-penna="button.quiet" data-flat data-id="button:Ghost"><span class="penna-label">Ghost</span></button>
+            <button class="penna-button" data-penna="button" data-flat data-id="button:Secondary"><span class="penna-label">Secondary</span></button>
+          </div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">compact</div>
+          <div class="story-row">
+            <button class="penna-button" data-penna="button" data-compact data-id="button:Run"><span class="penna-label">Run</span></button>
+            <button class="penna-button" data-penna="button" data-compact data-id="button:Run"><span class="penna-label">Run</span></button>
+            <button class="penna-button" data-penna="button" data-id="button:Run"><span class="penna-label">Run</span></button>
+            <button class="penna-button" data-penna="icon-button" data-shape="compact-icon" aria-label="Add" data-id="button:Add"><i data-icon="plus"></i></button>
+          </div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">rounded</div>
+          <div class="story-row">
+            <button class="penna-button" data-penna="button" style="--penna-r: 0px" data-id="button:Square"><span class="penna-label">Square</span></button>
+            <button class="penna-button" data-penna="button" data-id="button:Theme radius"><span class="penna-label">Theme radius</span></button>
+            <button class="penna-button" data-penna="button" style="--penna-r: 999px" data-id="button:Pill"><span class="penna-label">Pill</span></button>
+            <button class="penna-button" data-penna="button" data-shape="icon" style="--penna-r: 999px"><i data-icon="plus"></i></button>
+          </div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">loading with an icon</div>
+          <div class="story-row">
+            <button class="penna-button" data-penna="button" data-loading data-id="button:Copying"><i data-icon="loader"></i><span class="penna-label">Copying</span></button>
+            <button class="penna-button" data-penna="button" data-shape="icon" data-loading><i data-icon="loader"></i></button>
+          </div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">children</div>
+          <div class="story-row">
+            <button class="penna-button" data-penna="button"><span class="penna-group"><span class="penna-label">Branch</span><span class="penna-label penna-aside">main</span></span></button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section data-section="looks">
+      <div class="story-states" data-columns="3">
+        <div class="story-state">
+          <div class="story-label">icon</div>
+          <div class="story-row">
+            <button class="penna-button" data-penna="icon-button" data-shape="icon" aria-label="icon" data-id="button:icon"><i data-icon="plus"></i></button>
+            <button class="penna-button" data-penna="icon-button" data-shape="icon" data-state="current" aria-label="icon" data-id="button:icon"><i data-icon="plus"></i></button>
+            <button class="penna-button" data-penna="icon-button" data-shape="icon" disabled aria-label="icon" data-id="button:icon"><i data-icon="plus"></i></button>
+          </div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">quiet</div>
+          <div class="story-row">
+            <button class="penna-button" data-penna="button.quiet" data-id="button:Connect"><span class="penna-label">Connect</span></button>
+            <button class="penna-button" data-penna="button.quiet" data-state="current" data-id="button:Connect"><span class="penna-label">Connect</span></button>
+            <button class="penna-button" data-penna="button.quiet" disabled data-id="button:Connect"><span class="penna-label">Connect</span></button>
+          </div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">flat</div>
+          <div class="story-row">
+            <button class="penna-button" data-penna="icon-button.flat" data-shape="icon" aria-label="flat" data-id="button:flat"><i data-icon="plus"></i></button>
+            <button class="penna-button" data-penna="icon-button.flat" data-shape="icon" data-state="current" aria-label="flat" data-id="button:flat"><i data-icon="plus"></i></button>
+            <button class="penna-button" data-penna="icon-button.flat" data-shape="icon" disabled aria-label="flat" data-id="button:flat"><i data-icon="plus"></i></button>
+          </div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">chrome</div>
+          <div class="story-row">
+            <button class="penna-button" data-penna="chrome.button" data-shape="icon" aria-label="chrome" data-id="button:chrome"><i data-icon="plus"></i></button>
+            <button class="penna-button" data-penna="chrome.button" data-shape="icon" data-state="current" aria-label="chrome" data-id="button:chrome"><i data-icon="plus"></i></button>
+            <button class="penna-button" data-penna="chrome.button" data-shape="icon" disabled aria-label="chrome" data-id="button:chrome"><i data-icon="plus"></i></button>
+          </div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">bar</div>
+          <div class="story-row">
+            <button class="penna-button" data-penna="icon-button.bar" data-shape="icon" aria-label="bar" data-id="button:bar"><i data-icon="plus"></i></button>
+            <button class="penna-button" data-penna="icon-button.bar" data-shape="icon" data-state="current" aria-label="bar" data-id="button:bar"><i data-icon="plus"></i></button>
+            <button class="penna-button" data-penna="icon-button.bar" data-shape="icon" disabled aria-label="bar" data-id="button:bar"><i data-icon="plus"></i></button>
+          </div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">toggle</div>
+          <div class="story-row">
+            <button class="penna-button" data-penna="icon-button.toggle" data-shape="icon" aria-label="toggle" data-id="button:toggle"><i data-icon="plus"></i></button>
+            <button class="penna-button" data-penna="icon-button.toggle" data-shape="icon" data-state="current" aria-label="toggle" data-id="button:toggle"><i data-icon="plus"></i></button>
+            <button class="penna-button" data-penna="icon-button.toggle" data-shape="icon" disabled aria-label="toggle" data-id="button:toggle"><i data-icon="plus"></i></button>
+          </div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">row icon</div>
+          <div class="story-row">
+            <button class="penna-button" data-penna="icon-button.row" data-shape="icon" aria-label="row icon" data-id="button:row icon"><i data-icon="plus"></i></button>
+            <button class="penna-button" data-penna="icon-button.row" data-shape="icon" data-state="current" aria-label="row icon" data-id="button:row icon"><i data-icon="plus"></i></button>
+            <button class="penna-button" data-penna="icon-button.row" data-shape="icon" disabled aria-label="row icon" data-id="button:row icon"><i data-icon="plus"></i></button>
+          </div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">floating</div>
+          <div class="story-row">
+            <button class="penna-button" data-penna="icon-button.floating" data-shape="icon" aria-label="floating" data-id="button:floating"><i data-icon="plus"></i></button>
+            <button class="penna-button" data-penna="icon-button.floating" data-shape="icon" data-state="current" aria-label="floating" data-id="button:floating"><i data-icon="plus"></i></button>
+            <button class="penna-button" data-penna="icon-button.floating" data-shape="icon" disabled aria-label="floating" data-id="button:floating"><i data-icon="plus"></i></button>
+          </div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">row</div>
+          <div class="story-row">
+            <button class="penna-button" data-penna="button.row" data-id="button:Connect"><span class="penna-label">Connect</span></button>
+            <button class="penna-button" data-penna="button.row" data-state="current" data-id="button:Connect"><span class="penna-label">Connect</span></button>
+            <button class="penna-button" data-penna="button.row" disabled data-id="button:Connect"><span class="penna-label">Connect</span></button>
+          </div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">send</div>
+          <div class="story-row">
+            <button class="penna-button" data-penna="button.send" data-shape="icon" aria-label="send" data-id="button:send"><i data-icon="plus"></i></button>
+            <button class="penna-button" data-penna="button.send" data-shape="icon" data-state="current" aria-label="send" data-id="button:send"><i data-icon="plus"></i></button>
+            <button class="penna-button" data-penna="button.send" data-shape="icon" disabled aria-label="send" data-id="button:send"><i data-icon="plus"></i></button>
+          </div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">floating chip</div>
+          <div class="story-row">
+            <button class="penna-button" data-penna="chip.floating" data-id="button:Connect"><span class="penna-label">Connect</span></button>
+            <button class="penna-button" data-penna="chip.floating" data-state="current" data-id="button:Connect"><span class="penna-label">Connect</span></button>
+            <button class="penna-button" data-penna="chip.floating" disabled data-id="button:Connect"><span class="penna-label">Connect</span></button>
+          </div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">tray</div>
+          <div class="story-row">
+            <button class="penna-button" data-penna="tab.tray" data-id="button:Connect"><span class="penna-label">Connect</span></button>
+            <button class="penna-button" data-penna="tab.tray" data-state="current" data-id="button:Connect"><span class="penna-label">Connect</span></button>
+            <button class="penna-button" data-penna="tab.tray" disabled data-id="button:Connect"><span class="penna-label">Connect</span></button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section data-section="hovered">
+      <div class="story-states">
+        <div class="story-state">
+          <div class="story-label">hovered, resting</div>
+          <div class="story-row">
+            <button class="penna-button" data-penna="button" data-state="hover" data-id="button:Secondary"><span class="penna-label">Secondary</span></button>
+            <button class="penna-button" data-penna="button" data-id="button:Secondary"><span class="penna-label">Secondary</span></button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section data-section="pressed">
+      <div class="story-states">
+        <div class="story-state">
+          <div class="story-label">pressed, resting</div>
+          <div class="story-row">
+            <button class="penna-button" data-penna="button" data-tone="primary" data-prominent data-state="hover active" data-id="button:Primary"><span class="penna-label">Primary</span></button>
+            <button class="penna-button" data-penna="button" data-tone="primary" data-prominent data-id="button:Primary"><span class="penna-label">Primary</span></button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section data-section="focused">
+      <div class="story-states">
+        <div class="story-state">
+          <div class="story-label">focused, resting</div>
+          <div class="story-row">
+            <button class="penna-button" data-penna="button" data-focused data-id="button:Focused"><span class="penna-label">Focused</span></button>
+            <button class="penna-button" data-penna="button" data-id="button:Focused"><span class="penna-label">Focused</span></button>
+          </div>
+        </div>
+      </div>
+    </section>
+  </body>
+</html>
