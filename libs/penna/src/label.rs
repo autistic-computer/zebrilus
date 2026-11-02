@@ -21,6 +21,7 @@ pub struct Label {
     level: Level,
     ground: Option<Ground>,
     strong: bool,
+    mono: bool,
     truncate: bool,
     refinement: StyleRefinement,
 }
@@ -35,6 +36,7 @@ impl Label {
             level: Level::Full,
             ground: None,
             strong: false,
+            mono: false,
             truncate: false,
             refinement: StyleRefinement::default(),
         }
@@ -61,6 +63,12 @@ impl Label {
     #[must_use]
     pub fn strong(mut self) -> Self {
         self.strong = true;
+        self
+    }
+
+    #[must_use]
+    pub fn mono(mut self) -> Self {
+        self.mono = true;
         self
     }
 
@@ -97,6 +105,9 @@ impl RenderOnce for Label {
         let style = self.style;
         div()
             .type_style(style, cx)
+            .when(self.mono, |this| {
+                this.font_family(theme.mono_font_family.clone())
+            })
             .refine_style(&self.refinement)
             .when(self.strong, |this| this.font_weight(style.strong_weight()))
             .when_some(color, Styled::text_color)

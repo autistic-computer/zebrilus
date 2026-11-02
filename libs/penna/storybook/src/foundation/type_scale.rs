@@ -29,6 +29,12 @@ pub const STORY: Story = Story {
             summary: ".type_style(style, cx) on a container sets the style its text children inherit.",
             build: |_, cx| stateless(inherited, cx),
         },
+        Section {
+            id: "code",
+            name: "Code",
+            summary: "Label::mono() and .type_style_mono(style, cx) set any style in the code font at its own size. Mono is Body in the code font.",
+            build: |_, cx| stateless(code, cx),
+        },
     ],
 };
 
@@ -107,5 +113,24 @@ fn inherited(_: &mut Window, cx: &mut App) -> AnyElement {
                 .child("cargo test -p nid-app")
                 .child("just libs pull penna"),
         )
+        .into_any_element()
+}
+
+fn code(_: &mut Window, cx: &mut App) -> AnyElement {
+    [TextStyle::Micro, TextStyle::Caption, TextStyle::Small]
+        .into_iter()
+        .fold(states(), |states, style| {
+            states.state(
+                format!("{} · mono", style.name()),
+                h_flex()
+                    .gap(Space::S8)
+                    .child(Label::new(style, "git log --oneline").mono())
+                    .child(
+                        v_flex()
+                            .type_style_mono(style, cx)
+                            .child("cargo test -p nid-app"),
+                    ),
+            )
+        })
         .into_any_element()
 }

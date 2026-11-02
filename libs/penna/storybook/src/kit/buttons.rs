@@ -284,7 +284,7 @@ fn custom_and_shapes(_: &mut Window, cx: &mut App) -> AnyElement {
         .into_any_element()
 }
 
-const LOOKS: [(ButtonLook, &str, bool); 11] = [
+const LOOKS: [(ButtonLook, &str, bool); 12] = [
     (ButtonLook::Icon, "icon", true),
     (ButtonLook::Quiet, "quiet", false),
     (ButtonLook::Flat, "flat", true),
@@ -296,6 +296,7 @@ const LOOKS: [(ButtonLook, &str, bool); 11] = [
     (ButtonLook::Row, "row", false),
     (ButtonLook::Send, "send", true),
     (ButtonLook::FloatingChip, "floating chip", false),
+    (ButtonLook::Tray, "tray", false),
 ];
 
 fn looks(_: &mut Window, _: &mut App) -> AnyElement {

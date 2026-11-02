@@ -84,6 +84,11 @@ pub trait StyledExt: Styled + Sized {
             .font_weight(style.strong_weight())
     }
 
+    fn type_style_mono(self, style: TextStyle, cx: &App) -> Self {
+        self.type_style(style, cx)
+            .font_family(cx.theme().mono_font_family.clone())
+    }
+
     fn surface_outline(self, color: Hsla, cx: &App) -> Self {
         let this = self.border_color(color);
         if cx.theme().outlines_edges() {

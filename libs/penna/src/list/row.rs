@@ -94,13 +94,26 @@ impl Row {
         self.plate.interactive = interactive;
         self
     }
+
+    #[must_use]
+    pub fn press_highlight(mut self, press: bool) -> Self {
+        self.plate.press = press;
+        self
+    }
 }
 
 plate_element!(Row);
 
 impl RenderOnce for Row {
     fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
-        let round = cx.theme().style(self.plate.surface.role).shape == Shape::Round;
+        let theme = cx.theme();
+        let role = self.plate.surface.role;
+        let round = theme.style(role).shape == Shape::Round
+            && theme
+                .styles
+                .get(role.id)
+                .and_then(|patch| patch.shape)
+                .is_none();
         let radius = self.radius.filter(|_| round);
         self.plate.paint_with(cx, move |layer| {
             if let Some(radius) = radius {

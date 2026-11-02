@@ -17,6 +17,7 @@ pub(crate) struct Plate {
     pub(crate) interactive: bool,
     pub(crate) row_height: Option<Pixels>,
     pub(crate) hover_group: Option<SharedString>,
+    pub(crate) press: bool,
     id: ElementId,
 }
 
@@ -31,6 +32,7 @@ impl Plate {
             interactive: false,
             row_height: None,
             hover_group: None,
+            press: false,
             id,
         }
     }
@@ -48,6 +50,7 @@ impl Plate {
             interactive,
             row_height,
             hover_group,
+            press,
             id,
         } = self;
         let theme = cx.theme();
@@ -63,7 +66,8 @@ impl Plate {
             None => plate,
         };
         let lively = interactive && matches!(state, PaintState::Rest | PaintState::Focused);
-        let press = (interactive && hover_group.is_some() && CoarsePointer::get(cx)).then(|| {
+        let pressable = press || (interactive && hover_group.is_some());
+        let press = (pressable && CoarsePointer::get(cx)).then(|| {
             let pressed = layer_at(PaintState::Active);
             let corners = match row_height {
                 Some(height) => PressCorners::Row(row_radius(&pressed, height)),

@@ -80,6 +80,7 @@ pub enum ButtonLook {
     Row,
     Send,
     FloatingChip,
+    Tray,
 }
 
 impl ButtonLook {
@@ -96,6 +97,7 @@ impl ButtonLook {
             Self::Row => roles::BUTTON_ROW,
             Self::Send => roles::BUTTON_SEND,
             Self::FloatingChip => roles::CHIP_FLOATING,
+            Self::Tray => roles::TAB_TRAY,
         }
     }
 }

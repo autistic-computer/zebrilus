@@ -53,6 +53,8 @@ Both scales are fixed. A theme changes fonts, materials and recipes, not the sca
 
 Off-scale values in the apps fold by purpose, not by nearest number: 8.5 and 9 become Micro, 11.5 Caption, 12.5 Small, 15 to 18 Heading, 21 Title. Spacing of 1, 3, 5, 7 and 9 folds by eye; 14, 18, 20, 22 and 28 do too. Hairlines, optical offsets and arrangement geometry are not spacing and stay as they are. A migration commit that changes a size says so; one that only swaps a literal for the same token value says that instead.
 
+Code-font text keeps its place on the scale. `Label::mono()` and `.type_style_mono(style, cx)` set any style in the code font at that style's size, so 10, 11 and 12px code text is Micro, Caption and Small in the code font, and 13px is `Mono` (Body in the code font). Off-scale code sizes fold like any other text.
+
 ## Themes and platforms
 
 `default`, `macos` and `yaru` are themes (looks), not operating systems: any of them runs anywhere. A theme's tweak to a piece of UI lives in `themes/*.json` under that piece's recipe id and goes through the same resolver as today: kind defaults, then built-in recipe patches, then the theme's patches from the kind inward.
@@ -65,7 +67,7 @@ A component takes a look: a typed variant that picks one penna recipe. Every loo
 
 | Component | Looks | Recipes |
 |---|---|---|
-| `Button::look` | `ButtonLook::Icon`, `Quiet`, `Flat`, `Chrome`, `Bar`, `Toggle`, `RowIcon`, `Floating`, `Row`, `Send`, `FloatingChip` | `icon-button`, `button.quiet`, `icon-button.flat`, `chrome.button`, `icon-button.bar`, `icon-button.toggle`, `icon-button.row`, `icon-button.floating`, `button.row`, `button.send`, `chip.floating` |
+| `Button::look` | `ButtonLook::Icon`, `Quiet`, `Flat`, `Chrome`, `Bar`, `Toggle`, `RowIcon`, `Floating`, `Row`, `Send`, `FloatingChip`, `Tray` | `icon-button`, `button.quiet`, `icon-button.flat`, `chrome.button`, `icon-button.bar`, `icon-button.toggle`, `icon-button.row`, `icon-button.floating`, `button.row`, `button.send`, `chip.floating`, `tab.tray` |
 | `Panel::new(id, look)` | `PanelLook::Popover`, `Inline`, `Picker`, `Toast`, `Plain` | `popover`, `inline-panel`, `picker`, `toast`, `panel` painted opaque |
 | `Card::new(id, look)` | `CardLook::Bubble`, `Code`, `Figure`, `Image` | `card.bubble`, `card.code`, `card.figure`, `card.image` |
 | `Bar::new(id, look)` | `BarLook::Plain`, `Pane`, `Window` | `bar`, `bar.pane`, `titlebar` |
@@ -80,7 +82,7 @@ How they behave:
 
 - Panel, Card, Bar, Tab, Row, Chip and Tile share one crate-private plate, a `Stateful<Div>` that paints the look first, so the caller's `Styled` calls land on top: a slide-over's `.rounded(px(0.0))`, a mini tile's `.bg`, a drop zone's corners. Tile painted after the caller before; it now paints first like the rest.
 - Tab and Row are interactive by default, Chip with `.interactive(true)`: they add the hover and active looks while the state is Rest or Focused, and `.interactive(false)` paints the state alone. They take the element's one hover slot, so a caller's own `.hover()` on them is replaced; a text hover goes on a child or a group.
-- `Row::row_height(height)` sizes the corners for a row that tall, as `ListItem` does at 28px by default; it does not set the height. Without it a Row keeps its look's corners. With `.hover_group(group)` a Row is a fill inside a taller row that lights when the group is pointed at, and on a coarse pointer it draws penna's press highlight. `Row::radius(px)` sets a round look's corner radius on the fill and its press highlight both; square and pill looks keep their corners.
+- `Row::row_height(height)` sizes the corners for a row that tall, as `ListItem` does at 28px by default; it does not set the height. Without it a Row keeps its look's corners. With `.hover_group(group)` a Row is a fill inside a taller row that lights when the group is pointed at, and on a coarse pointer it draws penna's press highlight. `.press_highlight(true)` draws that press highlight with no hover group, for a fill whose state the app drives and that paints it with `.interactive(false)`. `Row::radius(px)` sets a round look's corner radius on the fill and its press highlight both; square and pill looks keep their corners, and so does a look whose shape the theme sets.
 - `Chip::new(id, label)` takes an id; `Chip::empty(id)` draws only its children, which always follow the label. `.ring(color)` recolors the ring its look draws, for a colour tmux names.
 - `Panel::inset(px)` grows a rounded corner by the inset its rows sit at; square and pill corners stay.
 - `Tile::edge(width)` draws the look's edge at that width where the theme draws one, so a drop zone can match the edge of the frames it lands in.
@@ -111,7 +113,7 @@ Theme tweaks: D default, M macos, Y yaru. A dash means none.
 |---|---|---|---|---|---|
 | titlebar.window-tab | tab | ink rest | D hover/selected tint; M smoothing 2.5, selected glass; Y hover/selected tint | `TabLook::Window` | `tab.window`, drawn by `Tab`, `TabLook::Window` |
 | browser.tab | tab | - | M selected tint; Y hover/selected tint | `TabLook::Page` | `tab.page`, drawn by `Tab`, `TabLook::Page` |
-| agent.tray | tab | - | M hover/selected tint | `TabLook::Tray` | `tab.tray`, drawn by `Tab`, `TabLook::Tray` |
+| agent.tray | tab | - | M hover/selected tint | `TabLook::Tray`, `ButtonLook::Tray` for a chip that takes focus | `tab.tray`, drawn by `Tab`, `TabLook::Tray`; the tasks chip, `Button`, `ButtonLook::Tray` |
 | titlebar.status-chip | badge | selected tint | M hover/selected lift | `ChipLook::Bar` | `chip.bar`, drawn by `Chip`, `ChipLook::Bar` |
 | pane.chip | floating | contact shadow, selected tint, capsule | M solid, outline | `ChipLook::Floating`, `ButtonLook::FloatingChip` when pressed | `chip.floating`, drawn by `Chip`, `ChipLook::Floating`; pressed, `Button`, `ButtonLook::FloatingChip` |
 | pane.display-panes | floating | hover/selected ring | M hover tint, selected accent | `ChipLook::Marker` | `chip.marker`, drawn by `Chip`, `ChipLook::Marker`, ringed in tmux's colour with `Chip::ring` |
@@ -188,7 +190,7 @@ Outside penna it is a compile error to make or change a role, or to hand a widge
 
 What stays public and takes a role, a role id or a surface either paints by hand, and the lint covers it (`StyledExt::{surface, surface_at, layer}`, `Theme::layer`), or reads and paints nothing, such as `Theme::style`, `ground_of`, `ground_at`, `radius_of`, `shape_radius`, `casts_shadow`, `roles::find` and `theme_css::stylesheet`. The lint also covers text set by hand.
 
-Each app extends the `disallowed-methods` list it already has (`nidus/crates/nid-app/clippy.toml`, `zebrilus/clippy.toml` at the workspace root, which also covers `clients/storybook`; a per-crate file would replace the root list). Added paths: `penna::StyledExt::{surface, surface_at, layer}`, `penna::Theme::layer`, `ala::Styled::{text_size, text_xs, text_sm, text_base, text_lg, text_xl, text_2xl, text_3xl, font_weight}` and the `penna::StyledExt::font_*` weight helpers. A path that is no longer public leaves the list, since clippy warns on a path it cannot reach. `penna::rems_from_px` is not on the list: sizes use it. Both apps carry the lint and pass it as an error; content code allows it on the narrowest fn with a reason. The lint is checked once by hand when added, on Linux and on a Mac (macOS-only code is not compiled on Linux). Spacing setters stay open: `gap(Space::S4)` and `gap(px(10.))` are the same call, so Space use is a review rule.
+Each app extends the `disallowed-methods` list it already has (`nidus/crates/nid-app/clippy.toml`, `zebrilus/clippy.toml` at the workspace root, which also covers `clients/storybook`; a per-crate file would replace the root list). Added paths: `penna::StyledExt::{surface, surface_at, layer}`, `penna::Theme::layer`, `ala::Styled::{text_size, text_xs, text_sm, text_base, text_lg, text_xl, text_2xl, text_3xl, font_weight}` and the `penna::StyledExt::font_*` weight helpers. A path that is no longer public leaves the list, since clippy warns on a path it cannot reach. `penna::rems_from_px` is not on the list: sizes use it. Both apps carry the lint and pass it as an error; content code allows it on the narrowest fn with a reason. The lint is checked once by hand when added, on Linux and on a Mac for the Mac and phone targets, since code gated to macOS, iOS or Android is not compiled on Linux. Spacing setters stay open: `gap(Space::S4)` and `gap(px(10.))` are the same call, so Space use is a review rule.
 
 ## How to work
 
