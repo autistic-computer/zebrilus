@@ -25,7 +25,7 @@ There is no separate behavior layer. ala's stateful elements already give hover,
 ## Rules
 
 1. Only penna defines surface roles, theme patches, colors, text styles and spacing.
-2. Components take typed variants (`.tone()`, `.emphasis()`, `.size()`, `.shape()` and looks of their own such as `TabLook::Window`), content and behavior. No public `.surface_role()` is left once the slice that replaces its last consumer lands.
+2. Components take typed variants (`.tone()`, `.emphasis()`, `.size()`, `.shape()` and looks of their own such as `TabLook::Window`), content and behavior. No widget takes a role from outside penna.
 3. Apps own data, behavior, layout geometry and content: terminal cells, the agent transcript, where computers sit on the arrangement, colors that tmux names, the pane frame's material. Content code may carry `#[allow(clippy::disallowed_methods, reason = "...")]`.
 4. A component is in the kit when penna's storybook shows every state of it and it has been looked at on each theme in light and dark.
 5. penna changes its API freely. The commit that pulls penna into an app fixes that app. No deprecated paths.
@@ -186,7 +186,7 @@ Outside penna it is a compile error to make or change a role, or to hand a widge
 
 - `SurfaceRole`'s fields, constructors and builders are crate-private. Other crates read a role through `id()`, `kind()`, `label()`, `about()` and `patch()`.
 - `Theme`'s role patches are crate-private and read through `Theme::styles()`, so a recipe is restyled by id only through a theme's `InterfaceTheme::roles`, which penna's theme files and the themes users save fill.
-- Every `.surface_role` builder, `rule_on`, `row_surface`, `row_corners`, `row_radius`, `surface_hover`, `surface_interactive`, `field_chrome_on` and `field_paint_on` (the forms of `field_chrome` and `field_paint` that take a surface) are crate-private. The public `field_chrome` and `field_paint` take a `FieldLook`.
+- `Button::surface_role` and `ListItem::surface_role` (every other widget's is gone), `rule_on`, `row_surface`, `row_corners`, `row_radius`, `surface_hover`, `surface_interactive`, `field_chrome_on` and `field_paint_on` (the forms of `field_chrome` and `field_paint` that take a surface) are crate-private. The public `field_chrome` and `field_paint` take a `FieldLook`.
 
 What stays public and takes a role, a role id or a surface either paints by hand, and the lint covers it (`StyledExt::{surface, surface_at, layer}`, `Theme::layer`), or reads and paints nothing, such as `Theme::style`, `ground_of`, `ground_at`, `radius_of`, `shape_radius`, `casts_shadow`, `roles::find` and `theme_css::stylesheet`. The lint also covers text set by hand.
 

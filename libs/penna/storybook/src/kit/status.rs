@@ -19,7 +19,7 @@ pub const STORY: Story = Story {
         Section {
             id: "chips",
             name: "Chips",
-            summary: "Chip::new(label) with a dot or an icon in front and a muted detail after it. Selected tints it; tone and emphasis paint it like a badge.",
+            summary: "Chip::new(id, label) with a dot or an icon in front and a muted detail after it. Selected tints it; tone and emphasis paint it like a badge.",
             build: |_, cx| stateless(chips, cx),
         },
         Section {
