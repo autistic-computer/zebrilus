@@ -265,7 +265,7 @@ pub fn list_row(
 ) -> Stateful<Div> {
     row_surface(
         h_flex().id(id).flex_none().h(height),
-        SurfaceRole::MENU_ITEM,
+        Surface::new(SurfaceRole::MENU_ITEM),
         row_state(selected, enabled),
         height,
         cx,

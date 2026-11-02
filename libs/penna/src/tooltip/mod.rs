@@ -4,7 +4,7 @@ use ala::{
 };
 
 use crate::Colorize as _;
-use crate::{ActiveTheme as _, StyledExt as _, SurfaceRole, h_flex, kbd::Kbd};
+use crate::{ActiveTheme as _, StyledExt as _, Surface, SurfaceRole, h_flex, kbd::Kbd};
 
 pub struct Tooltip {
     style: StyleRefinement,
@@ -57,7 +57,7 @@ impl Render for Tooltip {
                 .justify_between()
                 .font_family(cx.theme().font_family.clone())
                 .text_xs()
-                .surface(SurfaceRole::TOOLTIP, cx)
+                .surface(Surface::new(SurfaceRole::TOOLTIP), cx)
                 .refine_style(&self.style)
                 .child(div().child(self.text.clone()))
                 .when_some(key_binding, |this, kbd| {

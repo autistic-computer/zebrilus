@@ -5,7 +5,7 @@ use ala::{
     Styled as _, TestAppContext, Window, div, px, size,
 };
 use penna::{
-    Fill, IconName, Kind, Shadow, StylePatch, StyledExt as _, SurfaceRole, interface_theme,
+    Fill, IconName, Kind, Shadow, StylePatch, StyledExt as _, Surface, SurfaceRole, interface_theme,
 };
 use penna_storybook::{Catalog, Section, creator, story::stateless};
 use serde_json::{Value, json};
@@ -24,15 +24,19 @@ fn board(_: &mut Window, cx: &mut App) -> AnyElement {
         div()
             .size(px(120.0))
             .p(px(8.0))
-            .surface(SurfaceRole::SCREEN_TILE, cx)
-            .child(div().surface(SurfaceRole::CHIP, cx).child(name))
+            .surface(Surface::new(SurfaceRole::SCREEN_TILE), cx)
+            .child(
+                div()
+                    .surface(Surface::new(SurfaceRole::CHIP), cx)
+                    .child(name),
+            )
     };
     div()
         .flex()
         .gap(px(16.0))
         .w(px(320.0))
         .p(px(16.0))
-        .surface(SurfaceRole::WELL, cx)
+        .surface(Surface::new(SurfaceRole::WELL), cx)
         .child(screen("left", cx))
         .child(screen("right", cx))
         .into_any_element()

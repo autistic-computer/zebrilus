@@ -2,7 +2,7 @@ use ala::{
     AnyElement, App, IntoElement, ParentElement, RenderOnce, StyleRefinement, Styled, Window,
 };
 
-use crate::{Space, StyledExt as _, SurfaceRole, v_flex};
+use crate::{Space, StyledExt as _, Surface, SurfaceRole, v_flex};
 
 #[derive(IntoElement, Default)]
 pub struct TrayPanel {
@@ -37,7 +37,7 @@ impl RenderOnce for TrayPanel {
             .pt(Space::S6)
             .pb(Space::S4)
             .gap(Space::S6)
-            .surface(SurfaceRole::POPOVER, cx)
+            .surface(Surface::new(SurfaceRole::POPOVER), cx)
             .refine_style(&self.refinement)
             .children(self.children)
     }

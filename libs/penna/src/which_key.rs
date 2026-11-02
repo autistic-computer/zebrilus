@@ -5,7 +5,7 @@ use ala::{
     SharedString, Size, Styled as _, TextRun, Window, div, font, prelude::*, px,
 };
 
-use crate::{ActiveTheme as _, Colorize as _, StyledExt as _, SurfaceRole, kbd::Kbd};
+use crate::{ActiveTheme as _, Colorize as _, StyledExt as _, Surface, SurfaceRole, kbd::Kbd};
 
 const ROW_HEIGHT: f32 = 22.0;
 const TITLE_HEIGHT: f32 = 24.0;
@@ -416,7 +416,7 @@ impl RenderOnce for WhichKeyView {
             .gap(px(10.0))
             .px(px(PADDING_X))
             .py(px(12.0))
-            .surface(SurfaceRole::SHEET, cx)
+            .surface(Surface::new(SurfaceRole::SHEET), cx)
             .child(
                 div()
                     .flex()

@@ -77,7 +77,7 @@ pub fn stylesheet(theme: &Theme, toned: &[SurfaceRole]) -> String {
     let window = theme.ground();
     let mut grounds: Vec<(Ground, Vec<String>)> = Vec::new();
     for container in roles::all().filter(|role| is_container(role.kind)) {
-        let ground = theme.ground_of(container);
+        let ground = theme.ground_of(Surface::new(container));
         if ground == window {
             continue;
         }
@@ -93,9 +93,9 @@ pub fn stylesheet(theme: &Theme, toned: &[SurfaceRole]) -> String {
             .filter(|role| is_content(role.kind))
         {
             let surface = Surface::new(role).on(ground);
-            let differs = STATES
-                .iter()
-                .any(|state| theme.layer(surface, *state) != theme.layer(role, *state));
+            let differs = STATES.iter().any(|state| {
+                theme.layer(surface, *state) != theme.layer(Surface::new(role), *state)
+            });
             if differs {
                 write_role(&mut css, theme, &selector(role), surface, role, "  ");
             }

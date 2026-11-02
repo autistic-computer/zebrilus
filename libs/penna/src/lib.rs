@@ -13,6 +13,7 @@ mod chip;
 pub mod code_editor;
 pub mod color_picker;
 pub mod compact;
+mod content;
 pub mod dismissal;
 pub mod feedback;
 pub mod foundation;
@@ -68,6 +69,7 @@ pub use bar::{Bar, BarLook};
 pub use canvas::{Dock, Tile, TileVariant, Well};
 pub use card::{Card, CardLook};
 pub use chip::{Chip, ChipLook, Dot};
+pub use content::ContentLook;
 pub use foundation::{
     ADAPTIVE_CORNER_FRACTION, ActiveTheme, BASE_UI_FONT_SIZE, CHROME_GAP, CORNER_SMOOTHING,
     Colorize, Disableable, Edge, ElementExt, Elevation, Emphasis, FOCUS_RING_WIDTH, Fill, Ground,

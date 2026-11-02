@@ -1,6 +1,6 @@
 use crate::{
     ActiveTheme as _, CHROME_GAP, Colorize as _, Edge, Icon, IconName, Layer, RuleLook,
-    Sizable as _, StyledExt as _, h_flex,
+    Sizable as _, StyledExt as _, Surface, h_flex,
     input::{Input, InputState},
     list_row, roles, v_flex,
 };
@@ -52,7 +52,7 @@ pub fn picker_modal_sized(
         .min_h(px(240.0))
         .max_h(px(720.0))
         .overflow_hidden()
-        .surface(roles::PICKER, cx)
+        .surface(Surface::new(roles::PICKER), cx)
         .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation());
     crate::foundation::surface_enter(surface, (id, "picker-open"), px(0.0))
 }
@@ -68,7 +68,7 @@ pub fn picker_header(cx: &App) -> Div {
 pub fn picker_search(input: &Entity<InputState>, cx: &App) -> Div {
     div().w_full().child(
         Input::new(input)
-            .on(cx.theme().ground_of(roles::PICKER))
+            .on(cx.theme().ground_of(Surface::new(roles::PICKER)))
             .w_full()
             .min_w_0()
             .prefix(

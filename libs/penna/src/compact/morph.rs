@@ -7,7 +7,7 @@ use web_time::Instant;
 
 use super::bar::{COMPACT_PILL_HEIGHT, PillPlacement, floating_layer};
 use crate::{
-    ActiveTheme as _, Layer, PaintState, StyledExt as _, rems_from_px, roles,
+    ActiveTheme as _, Layer, PaintState, StyledExt as _, Surface, rems_from_px, roles,
     touch::{KEY_PILL_HEIGHT, KEY_ROW_HEIGHT, KEY_ROW_MARGIN_X, KEY_ROW_MARGIN_Y, KeyRow},
 };
 
@@ -111,7 +111,9 @@ pub fn compact_pill_morph(
     let start = between(px(KEY_ROW_MARGIN_X + keys.lead_room()), placement.inset);
     let side = between(px(KEY_ROW_MARGIN_X), placement.inset);
     let pill = floating_layer(placement, cx);
-    let keys_layer = cx.theme().layer(roles::PHONE_PILL, PaintState::Rest);
+    let keys_layer = cx
+        .theme()
+        .layer(Surface::new(roles::PHONE_PILL), PaintState::Rest);
     let half = |layer: &Layer, height: f32| layer.radius.min(px(height / 2.0));
     let radius = between(
         half(&keys_layer, KEY_PILL_HEIGHT),
@@ -234,7 +236,10 @@ pub fn compact_pill_collapse(
 ) -> Stateful<Div> {
     let progress = progress.clamp(0.0, 1.0);
     let pill = floating_layer(placement, cx);
-    let pressed = cx.theme().layer(roles::PHONE_PILL, PaintState::Active).fill;
+    let pressed = cx
+        .theme()
+        .layer(Surface::new(roles::PHONE_PILL), PaintState::Active)
+        .fill;
     let radius = pill_corner(progress, bounds, placement, cx);
     let full = (width - placement.inset * 2.0).max(px(0.0));
     let fade = |at: f32| {

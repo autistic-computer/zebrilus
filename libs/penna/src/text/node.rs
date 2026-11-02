@@ -17,7 +17,7 @@ use ala::{
 use markdown::mdast;
 
 use crate::{
-    ActiveTheme as _, Edge, PaintState, RuleLook, Sizable as _, StyledExt, WindowExt as _,
+    ActiveTheme as _, Edge, PaintState, RuleLook, Sizable as _, StyledExt, Surface, WindowExt as _,
     check::Check,
     h_flex,
     highlighter::{HighlightTheme, LanguageRegistry, SyntaxHighlighter},
@@ -946,7 +946,9 @@ impl CodeBlock {
             .code_block_body
             .as_ref()
             .and_then(|body| body(self, window, cx));
-        let code = cx.theme().layer(roles::CARD_CODE, PaintState::Rest);
+        let code = cx
+            .theme()
+            .layer(Surface::new(roles::CARD_CODE), PaintState::Rest);
 
         div()
             .w_full()
@@ -2008,7 +2010,7 @@ fn measure_table_columns(table: &Table, col_count: usize, window: &mut Window) -
 }
 
 fn figure<E: Styled>(element: E, cx: &App) -> E {
-    element.surface(roles::CARD_FIGURE, cx)
+    element.surface(Surface::new(roles::CARD_FIGURE), cx)
 }
 
 #[cfg(test)]

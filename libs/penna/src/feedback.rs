@@ -122,7 +122,7 @@ pub fn alert_actions(cx: &App) -> Div {
 }
 
 pub fn alert_ground(cx: &App) -> Ground {
-    cx.theme().ground_of(roles::INLINE_PANEL)
+    cx.theme().ground_of(Surface::new(roles::INLINE_PANEL))
 }
 
 pub fn prompt_dialog(

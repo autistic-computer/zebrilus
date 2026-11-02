@@ -5,7 +5,8 @@ use ala::{
 };
 use penna::{
     ActiveTheme as _, Colorize as _, Disableable as _, Elevation, Emphasis, IconName,
-    InteractivePaintExt as _, Paint, PaintExt as _, PaintState, Sizable as _, StyledExt as _, Tone,
+    InteractivePaintExt as _, Paint, PaintExt as _, PaintState, Sizable as _, StyledExt as _,
+    Surface, Tone,
     badge::Badge,
     button::Button,
     check::Check,
@@ -394,7 +395,10 @@ fn tiles_and_rows(_: &mut Window, cx: &mut App) -> AnyElement {
             .h(px(28.0))
             .px_2()
             .gap_2()
-            .rounded(theme.shape_radius(penna::SurfaceRole::MENU_ITEM, penna::Shape::Round))
+            .rounded(theme.shape_radius(
+                Surface::new(penna::SurfaceRole::MENU_ITEM),
+                penna::Shape::Round,
+            ))
             .painted_interactive(row_paint, selected, true)
             .text_size(px(13.0))
             .child(div().flex_1().child(label))
@@ -424,7 +428,7 @@ fn tiles_and_rows(_: &mut Window, cx: &mut App) -> AnyElement {
                 .w(px(240.0))
                 .gap(px(2.0))
                 .p_1()
-                .surface(penna::SurfaceRole::POPOVER, cx)
+                .surface(Surface::new(penna::SurfaceRole::POPOVER), cx)
                 .child(div().px_2().py_1().child(caption("rows in a popover", cx)))
                 .child(list_row(0, "New tab", false))
                 .child(list_row(1, "Split right", true))
@@ -486,7 +490,7 @@ fn text(_: &mut Window, cx: &mut App) -> AnyElement {
             v_flex()
                 .gap_2()
                 .p_3()
-                .surface(penna::SurfaceRole::POPOVER, cx)
+                .surface(Surface::new(penna::SurfaceRole::POPOVER), cx)
                 .child(caption("popover", cx))
                 .child(text_column(cx)),
         )
@@ -563,7 +567,7 @@ fn grounds(_: &mut Window, cx: &mut App) -> AnyElement {
                 .w(px(204.0))
                 .gap_2()
                 .p_3()
-                .surface(penna::SurfaceRole::POPOVER, cx)
+                .surface(Surface::new(penna::SurfaceRole::POPOVER), cx)
                 .child(caption("popover", cx))
                 .child(ground_samples(cx)),
         )

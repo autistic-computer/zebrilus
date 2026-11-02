@@ -7,7 +7,7 @@ use web_time::Duration;
 
 use crate::{
     ActiveTheme as _, Colorize as _, Disableable as _, Emphasis, Ground, IconName, Layer,
-    PaintState, RULE_WIDTH, RuleLook, Selectable as _, Sizable as _, StyledExt as _,
+    PaintState, RULE_WIDTH, RuleLook, Selectable as _, Sizable as _, StyledExt as _, Surface,
     badge::Badge,
     button::{Button, ButtonVariants as _},
     icon::Icon,
@@ -38,7 +38,7 @@ pub fn settings_navigation_button(
         .px(px(8.0))
         .ghost()
         .surface_role(roles::SIDEBAR_ROW)
-        .on(cx.theme().ground_of(roles::SIDEBAR))
+        .on(cx.theme().ground_of(Surface::new(roles::SIDEBAR)))
         .icon(icon)
         .selected(selected)
         .label(title)
@@ -571,7 +571,7 @@ impl RenderOnce for SettingsDisclosure {
         let coarse = crate::touch::CoarsePointer::get(cx);
         let radius = cx
             .theme()
-            .layer(roles::SETTINGS_CARD, PaintState::Rest)
+            .layer(Surface::new(roles::SETTINGS_CARD), PaintState::Rest)
             .radius;
         let inset = px(DISCLOSURE_PRESS_INSET);
         div()
@@ -904,7 +904,7 @@ impl RenderOnce for SettingEntry {
         };
 
         let theme = cx.theme();
-        let card = theme.layer(roles::SETTINGS_CARD, PaintState::Rest);
+        let card = theme.layer(Surface::new(roles::SETTINGS_CARD), PaintState::Rest);
         let (inset, cast): (Vec<_>, Vec<_>) =
             card.shadow.iter().cloned().partition(|shadow| shadow.inset);
         let radius = card.radius;
@@ -1086,12 +1086,14 @@ impl RenderOnce for SettingCopy {
 
 #[must_use]
 pub fn settings_card_ground(cx: &App) -> Ground {
-    cx.theme().ground_of(roles::SETTINGS_CARD)
+    cx.theme().ground_of(Surface::new(roles::SETTINGS_CARD))
 }
 
 #[must_use]
 pub fn settings_preview(fill: Hsla, cx: &App) -> ala::Div {
-    let layer = cx.theme().layer(roles::SETTINGS_PREVIEW, PaintState::Rest);
+    let layer = cx
+        .theme()
+        .layer(Surface::new(roles::SETTINGS_PREVIEW), PaintState::Rest);
     div().overflow_hidden().layer(&Layer {
         fill,
         glass: None,

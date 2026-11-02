@@ -4,8 +4,8 @@ use ala::{
 };
 
 use crate::{
-    ActiveTheme as _, Colorize as _, Icon, IconName, Layer, PaintState, StyledExt as _, roles,
-    touch::press_highlight,
+    ActiveTheme as _, Colorize as _, Icon, IconName, Layer, PaintState, StyledExt as _, Surface,
+    roles, touch::press_highlight,
 };
 
 pub const BENTO_COLUMNS: usize = 4;
@@ -94,7 +94,9 @@ pub fn bento_tile(
     press: impl Into<ElementId>,
     cx: &App,
 ) -> Stateful<Div> {
-    let frame = cx.theme().layer(roles::PHONE_CARD, PaintState::Rest);
+    let frame = cx
+        .theme()
+        .layer(Surface::new(roles::PHONE_CARD), PaintState::Rest);
     let radius = frame.radius;
     div()
         .id(id)
@@ -115,7 +117,7 @@ pub fn bento_add_tile(
     cx: &App,
 ) -> Stateful<Div> {
     let theme = cx.theme();
-    let frame = theme.layer(roles::PHONE_ADD, PaintState::Rest);
+    let frame = theme.layer(Surface::new(roles::PHONE_ADD), PaintState::Rest);
     let radius = frame.radius;
     div()
         .id(id)

@@ -24,7 +24,7 @@ impl Well {
 
     #[must_use]
     pub fn ground(cx: &App) -> Ground {
-        cx.theme().ground_of(SurfaceRole::WELL)
+        cx.theme().ground_of(Surface::new(SurfaceRole::WELL))
     }
 }
 
@@ -43,7 +43,7 @@ impl Styled for Well {
 impl RenderOnce for Well {
     fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
         div()
-            .surface(SurfaceRole::WELL, cx)
+            .surface(Surface::new(SurfaceRole::WELL), cx)
             .refine_style(&self.refinement)
             .children(self.children)
     }

@@ -881,7 +881,7 @@ impl PopupMenu {
 
         let coarse = crate::touch::CoarsePointer::get(cx);
         let row = cx.theme().layer(
-            SurfaceRole::MENU_ITEM,
+            Surface::new(SurfaceRole::MENU_ITEM),
             if selected {
                 PaintState::Selected
             } else {
@@ -961,7 +961,7 @@ impl PopupMenu {
                     StepperAction::Increment => format!("Increase {label}"),
                 };
                 let theme = cx.theme();
-                let menu = theme.ground_of(SurfaceRole::POPOVER);
+                let menu = theme.ground_of(Surface::new(SurfaceRole::POPOVER));
                 let mut group =
                     theme.layer(Surface::new(Kind::Field.role()).on(menu), PaintState::Rest);
                 group.fill = group.ground.fill;
@@ -1190,7 +1190,7 @@ impl Render for PopupMenu {
             .on_action(cx.listener(Self::confirm))
             .on_action(cx.listener(Self::dismiss))
             .on_mouse_down_out(cx.listener(Self::on_mouse_down_out))
-            .surface(SurfaceRole::POPOVER, cx)
+            .surface(Surface::new(SurfaceRole::POPOVER), cx)
             .text_color(cx.theme().foreground)
             .relative()
             .occlude()

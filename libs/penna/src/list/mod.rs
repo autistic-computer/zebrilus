@@ -12,7 +12,8 @@ use ala::{
 
 use crate::Colorize as _;
 use crate::{
-    ActiveTheme as _, Disableable, PaintState, Selectable, Size, StyledExt as _, SurfaceRole,
+    ActiveTheme as _, Disableable, PaintState, Selectable, Size, StyledExt as _, Surface,
+    SurfaceRole,
     foundation::{restyle, row_corners},
     h_flex,
 };
@@ -153,9 +154,9 @@ impl RenderOnce for ListItem {
         let highlighted = interactive && selected;
 
         let theme = cx.theme();
-        let role = surface_role.unwrap_or(SurfaceRole::MENU_ITEM);
+        let surface = Surface::new(surface_role.unwrap_or(SurfaceRole::MENU_ITEM));
         let layer = theme.layer(
-            role,
+            surface,
             if highlighted {
                 PaintState::Selected
             } else {
@@ -186,7 +187,7 @@ impl RenderOnce for ListItem {
                             })
                     })
                     .when(!selected, |this| {
-                        let hover = theme.layer(role, PaintState::Hover);
+                        let hover = theme.layer(surface, PaintState::Hover);
                         this.hover(move |style| restyle(style, &hover))
                     })
             })
@@ -228,9 +229,9 @@ mod tests {
         cx.update(|window, cx| {
             _ = window.draw(cx);
             let theme = cx.theme();
-            let tinted = theme.layer(TINTED, PaintState::Selected).fill;
+            let tinted = theme.layer(Surface::new(TINTED), PaintState::Selected).fill;
             let accent = theme
-                .layer(SurfaceRole::MENU_ITEM, PaintState::Selected)
+                .layer(Surface::new(SurfaceRole::MENU_ITEM), PaintState::Selected)
                 .fill;
             assert_eq!(accent, theme.selection_background());
             assert_ne!(tinted, accent);

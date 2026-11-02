@@ -1,7 +1,7 @@
 use ala::{AnyElement, App, IntoElement, ParentElement as _, Styled as _, Window, div};
 use penna::{
     ActiveTheme as _, Emphasis, Kind, Label, PaintExt as _, PaintState, Space, StyledExt as _,
-    TextStyle, Tone, h_flex, v_flex,
+    Surface, TextStyle, Tone, h_flex, v_flex,
 };
 
 use crate::story::{Section, Story, stateless, states};
@@ -46,7 +46,7 @@ fn scale(_: &mut Window, cx: &mut App) -> AnyElement {
 }
 
 fn in_use(_: &mut Window, cx: &mut App) -> AnyElement {
-    let card = cx.theme().ground_of(Kind::Card);
+    let card = cx.theme().ground_of(Surface::new(Kind::Card.role()));
     [Space::S2, Space::S4, Space::S8]
         .into_iter()
         .fold(states(), |states, space| {
@@ -55,7 +55,7 @@ fn in_use(_: &mut Window, cx: &mut App) -> AnyElement {
                 v_flex()
                     .gap(space)
                     .p(space)
-                    .surface(Kind::Card, cx)
+                    .surface(Surface::new(Kind::Card.role()), cx)
                     .child(Label::new(TextStyle::Body, "ubuntu"))
                     .child(
                         Label::new(TextStyle::Small, "Connected · 1 screen")

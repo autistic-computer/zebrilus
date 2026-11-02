@@ -10,7 +10,7 @@ use super::{
     popover_key::popover_above,
 };
 use crate::{
-    ActiveTheme as _, Colorize as _, Emphasis, Icon, IconName, PaintState, StyledExt as _,
+    ActiveTheme as _, Colorize as _, Emphasis, Icon, IconName, PaintState, StyledExt as _, Surface,
     SurfaceRole, Tone, rems_from_px, roles,
 };
 
@@ -126,7 +126,7 @@ pub fn arrow_pad_bubble(direction: Option<ArrowDirection>, cx: &App) -> AnyEleme
     let theme = cx.theme();
     let muted = theme
         .paint_on(
-            theme.ground_of(roles::ARROW_PAD),
+            theme.ground_of(Surface::new(roles::ARROW_PAD)),
             Tone::Neutral,
             Emphasis::Ghost,
         )
@@ -142,7 +142,7 @@ pub fn arrow_pad_bubble(direction: Option<ArrowDirection>, cx: &App) -> AnyEleme
                 let selector = format!("arrow-pad-cell-{}", direction.key());
                 cell.debug_selector(move || selector)
                     .surface_at(
-                        roles::ARROW_PAD,
+                        Surface::new(roles::ARROW_PAD),
                         if active {
                             PaintState::Selected
                         } else {
@@ -177,7 +177,7 @@ pub fn arrow_pad_bubble(direction: Option<ArrowDirection>, cx: &App) -> AnyEleme
         .size(rems_from_px(BUBBLE))
         .p(rems_from_px(BUBBLE_PADDING))
         .gap(rems_from_px(CELL_GAP))
-        .surface(SurfaceRole::POPOVER, cx)
+        .surface(Surface::new(SurfaceRole::POPOVER), cx)
         .child(line([
             blank(),
             cell(Some(ArrowDirection::Up), false).into_any_element(),

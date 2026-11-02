@@ -1,6 +1,7 @@
 use ala::{AnyElement, App, IntoElement, ParentElement as _, Styled as _, Window};
 use penna::{
-    ActiveTheme as _, Ground, Kind, Label, Space, StyledExt as _, TextStyle, Tone, h_flex, v_flex,
+    ActiveTheme as _, Ground, Kind, Label, Space, StyledExt as _, Surface, TextStyle, Tone, h_flex,
+    v_flex,
 };
 
 use crate::story::{Section, Story, stateless, states};
@@ -59,14 +60,14 @@ fn scale(_: &mut Window, _: &mut App) -> AnyElement {
 }
 
 fn ink(_: &mut Window, cx: &mut App) -> AnyElement {
-    let card = cx.theme().ground_of(Kind::Card);
+    let card = cx.theme().ground_of(Surface::new(Kind::Card.role()));
     states()
         .state("on the window", lines(None))
         .state(
             "on a card, with .on(ground)",
             v_flex()
                 .p(Space::S8)
-                .surface(Kind::Card, cx)
+                .surface(Surface::new(Kind::Card.role()), cx)
                 .child(lines(Some(card))),
         )
         .state(

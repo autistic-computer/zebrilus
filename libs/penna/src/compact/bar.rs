@@ -88,7 +88,7 @@ pub fn compact_floating_bar(pill: impl IntoElement, placement: &PillPlacement, c
 
 pub(super) fn floating_layer(placement: &PillPlacement, cx: &App) -> Layer {
     let theme = cx.theme();
-    let resting = theme.layer(roles::PHONE_PILL, PaintState::Rest);
+    let resting = theme.layer(Surface::new(roles::PHONE_PILL), PaintState::Rest);
     let radius = match placement.radius {
         Some(radius) if theme.style(roles::PHONE_PILL).shape != Shape::Square => {
             if radius * 2.0 >= px(COMPACT_PILL_HEIGHT) {
@@ -118,14 +118,16 @@ pub(super) fn floating_layer(placement: &PillPlacement, cx: &App) -> Layer {
 
 pub fn pill_backdrop_reach(cx: &App) -> Option<Pixels> {
     cx.theme()
-        .layer(roles::PHONE_PILL, PaintState::Rest)
+        .layer(Surface::new(roles::PHONE_PILL), PaintState::Rest)
         .glass
         .filter(GlassMaterial::reads_backdrop)
         .map(|glass| glass.backdrop_reach())
 }
 
 pub fn pill_glass_over(backdrop: Hsla, cx: &App) -> Option<PillGlass> {
-    let layer = cx.theme().layer(roles::PHONE_PILL, PaintState::Rest);
+    let layer = cx
+        .theme()
+        .layer(Surface::new(roles::PHONE_PILL), PaintState::Rest);
     let tint = layer.glass.filter(GlassMaterial::reads_backdrop)?.tint;
     let under = Rgba::from(backdrop.opaque());
     let over = Rgba::from(tint.opaque());
@@ -210,7 +212,7 @@ pub fn compact_nav_bar(cx: &App) -> Div {
         .gap(rems_from_px(4.0))
         .h(rems_from_px(COMPACT_NAV_BAR_HEIGHT))
         .px(rems_from_px(PADDING_X))
-        .surface(roles::PHONE_BAR, cx)
+        .surface(Surface::new(roles::PHONE_BAR), cx)
 }
 
 pub struct PillLabel {
@@ -228,7 +230,10 @@ pub fn compact_floating_pill(
     cx: &App,
 ) -> Stateful<Div> {
     let pill = floating_layer(placement, cx);
-    let pressed = cx.theme().layer(roles::PHONE_PILL, PaintState::Active).fill;
+    let pressed = cx
+        .theme()
+        .layer(Surface::new(roles::PHONE_PILL), PaintState::Active)
+        .fill;
     let radius = pill.radius;
     div()
         .id(id)

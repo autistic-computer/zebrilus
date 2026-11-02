@@ -83,7 +83,9 @@ pub(super) enum KeyLook {
 }
 
 pub(super) fn key_look(look: KeyLook, theme: &Theme) -> (Surface, PaintState) {
-    let ground = theme.layer(roles::PHONE_PILL, PaintState::Rest).ground;
+    let ground = theme
+        .layer(Surface::new(roles::PHONE_PILL), PaintState::Rest)
+        .ground;
     let key = Surface::new(roles::PHONE_KEY).on(ground);
     match look {
         KeyLook::Rest => (key, PaintState::Rest),
@@ -97,7 +99,9 @@ pub(super) fn key_layer(surface: Surface, state: PaintState, theme: &Theme) -> L
     if theme.style(roles::PHONE_KEY).shape != Shape::Round {
         return layer;
     }
-    let pill = theme.layer(roles::PHONE_PILL, PaintState::Rest).radius;
+    let pill = theme
+        .layer(Surface::new(roles::PHONE_PILL), PaintState::Rest)
+        .radius;
     Layer {
         radius: concentric(pill, ala::px(PILL_PADDING)),
         ..layer
@@ -355,7 +359,7 @@ impl RenderOnce for KeyRow {
             .map(|key| self.key(self.keys.len(), key, sticky, cx));
         let start = KEY_ROW_MARGIN_X + self.lead_room();
         let theme = cx.theme();
-        let pill = theme.layer(roles::PHONE_PILL, PaintState::Rest);
+        let pill = theme.layer(Surface::new(roles::PHONE_PILL), PaintState::Rest);
         let shade = pill.ground.fill;
         let chevron = theme
             .paint_on(pill.ground, Tone::Neutral, Emphasis::Ghost)

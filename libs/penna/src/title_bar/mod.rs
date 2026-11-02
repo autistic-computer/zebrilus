@@ -197,7 +197,7 @@ impl WindowControl {
                     PaintState::Active
                 },
             ),
-            state => theme.layer(self.role, state),
+            state => theme.layer(Surface::new(self.role), state),
         }
     }
 }

@@ -12,8 +12,7 @@ use ala::{
 use crate::{BASE_UI_FONT_SIZE, TITLE_BAR_HEIGHT, highlighter::HighlightTheme};
 
 use super::{
-    Colorize as _, PrimaryStyle, ShadowMaterial, Smoothing, StylePatch, SurfaceRole, ThemeColor,
-    color,
+    Colorize as _, PrimaryStyle, ShadowMaterial, Smoothing, StylePatch, Surface, ThemeColor, color,
 };
 
 pub const CHROME_GAP: f32 = 6.0;
@@ -174,8 +173,8 @@ impl Theme {
         self.glass.filter(|material| !material.is_opaque_fill())
     }
 
-    pub fn casts_shadow(&self, role: SurfaceRole) -> bool {
-        !self.shadows_of(self.style(role).shadow).is_empty()
+    pub fn casts_shadow(&self, surface: impl Into<Surface>) -> bool {
+        !self.shadows_of(self.style_of(surface).shadow).is_empty()
     }
 
     pub fn styles(&self) -> &HashMap<SharedString, StylePatch> {

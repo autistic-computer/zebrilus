@@ -1,6 +1,6 @@
 use crate::Colorize as _;
 use crate::foundation::restyle;
-use crate::{ActiveTheme, Disableable, PaintState, StyledExt, SurfaceRole, h_flex};
+use crate::{ActiveTheme, Disableable, PaintState, StyledExt, Surface, SurfaceRole, h_flex};
 use ala::{
     AnyElement, App, ClickEvent, ElementId, InteractiveElement, IntoElement, MouseButton,
     ParentElement, RenderOnce, Role, SharedString, StatefulInteractiveElement as _,
@@ -98,7 +98,7 @@ impl ParentElement for MenuItemElement {
 impl RenderOnce for MenuItemElement {
     fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
         let theme = cx.theme();
-        let role = SurfaceRole::MENU_ITEM;
+        let surface = Surface::new(SurfaceRole::MENU_ITEM);
         let state = if self.disabled {
             PaintState::Rest
         } else if self.submenu_open {
@@ -108,7 +108,7 @@ impl RenderOnce for MenuItemElement {
         } else {
             PaintState::Rest
         };
-        let hover = (state == PaintState::Rest).then(|| theme.layer(role, PaintState::Hover));
+        let hover = (state == PaintState::Rest).then(|| theme.layer(surface, PaintState::Hover));
         h_flex()
             .id(self.id)
             .role(Role::MenuItem)
@@ -121,7 +121,7 @@ impl RenderOnce for MenuItemElement {
             .px_2()
             .text_xs()
             .relative()
-            .layer(&theme.layer(role, state))
+            .layer(&theme.layer(surface, state))
             .items_center()
             .justify_between()
             .refine_style(&self.style)

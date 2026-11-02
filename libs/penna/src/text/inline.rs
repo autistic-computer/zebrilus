@@ -14,7 +14,7 @@ use ala::{
     quad,
 };
 
-use crate::{ActiveTheme, PaintState, WindowExt as _, roles};
+use crate::{ActiveTheme, PaintState, Surface, WindowExt as _, roles};
 
 use super::{
     global::TextGlobal,
@@ -222,7 +222,9 @@ impl Inline {
         if self.code_ranges.is_empty() {
             return;
         }
-        let layer = cx.theme().layer(roles::CARD_CODE, PaintState::Rest);
+        let layer = cx
+            .theme()
+            .layer(Surface::new(roles::CARD_CODE), PaintState::Rest);
         let radius = layer.radius.min(px(CODE_FILL_RADIUS_MAX));
         let line_height = layout.line_height();
         let bounds = layout.bounds();

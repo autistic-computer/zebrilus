@@ -5,7 +5,7 @@ use ala::{
     Styled as _, Window, div, px, uniform_list,
 };
 use penna::{
-    ActiveTheme as _, Colorize as _, Icon, IconName, RowLook, StyledExt as _, h_flex,
+    ActiveTheme as _, Colorize as _, Icon, IconName, RowLook, StyledExt as _, Surface, h_flex,
     list::{
         ListItem,
         tree::{IndentGuideColors, IndentGuides},
@@ -63,7 +63,7 @@ fn sidebar(id: &'static str, content: impl IntoElement, cx: &App) -> AnyElement 
         .w_full()
         .max_w(px(SIDEBAR_DEFAULT_WIDTH))
         .py(px(8.0))
-        .surface(roles::SIDEBAR, cx)
+        .surface(Surface::new(roles::SIDEBAR), cx)
         .framed(cx)
         .child(content)
         .into_any_element()

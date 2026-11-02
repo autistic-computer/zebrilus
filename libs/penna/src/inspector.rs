@@ -84,7 +84,7 @@ impl Styled for Inspector {
 
 impl RenderOnce for Inspector {
     fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
-        let ground = cx.theme().ground_of(SurfaceRole::INSPECTOR);
+        let ground = cx.theme().ground_of(Surface::new(SurfaceRole::INSPECTOR));
         let edge = match self.side {
             Side::Left => Edge::Right,
             Side::Right => Edge::Left,

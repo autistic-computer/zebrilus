@@ -10,7 +10,9 @@ use crate::segmented::SegmentedControl;
 use crate::select::{Select, SelectEvent, SelectItem as _, SelectState};
 use crate::slider::Slider;
 use crate::switch::Switch;
-use crate::{ActiveTheme as _, Colorize as _, IconName, StyledExt as _, ThemeColor, ThemeMode};
+use crate::{
+    ActiveTheme as _, Colorize as _, IconName, StyledExt as _, Surface, ThemeColor, ThemeMode,
+};
 use ala::{
     Anchor, AnyElement, App, Context, Entity, FocusHandle, IntoElement, SharedString, Subscription,
     Window, div, prelude::*, px,
@@ -1095,7 +1097,8 @@ pub fn interface_theme_preview(theme: &InterfaceTheme, mode: ThemeMode, _: &App)
                 .border_color(colors.foreground.opacity(0.15))
         })
         .when(
-            kit.casts_shadow(crate::SurfaceRole::POPOVER) && materials.float.strength > 0.0,
+            kit.casts_shadow(Surface::new(crate::SurfaceRole::POPOVER))
+                && materials.float.strength > 0.0,
             |menu| {
                 menu.shadow(vec![ala::BoxShadow {
                     color: colors.shadow_color,

@@ -715,7 +715,7 @@ impl Floating {
             .w_full()
             .max_w(px(PICKER_WIDTH))
             .overflow_hidden()
-            .surface(roles::PICKER, cx)
+            .surface(Surface::new(roles::PICKER), cx)
             .child(picker_header(cx).child(picker_search(&self.search, cx)))
             .child(
                 picker_list().children(FILES.iter().enumerate().map(|(index, (icon, path))| {

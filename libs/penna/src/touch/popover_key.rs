@@ -354,7 +354,7 @@ impl PopoverKey {
             .w(rems_from_px(width + 2.0 * CARD_PADDING))
             .p(rems_from_px(CARD_PADDING))
             .gap(rems_from_px(ITEM_GAP))
-            .surface(SurfaceRole::POPOVER, cx)
+            .surface(Surface::new(SurfaceRole::POPOVER), cx)
             .font_family(theme.font_family.clone())
             .text_size(rems_from_px(17.0))
             .line_height(rems_from_px(22.0))

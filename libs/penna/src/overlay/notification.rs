@@ -10,7 +10,7 @@ use ala::{
 
 use super::dialog::{CONTENT_PADDING, DEFAULT_WIDTH, DESCRIPTION_TEXT_SIZE, TITLE_TEXT_SIZE};
 use crate::{
-    ActiveTheme as _, Icon, IconName, Sizable as _, Size, StyledExt as _, SurfaceRole,
+    ActiveTheme as _, Icon, IconName, Sizable as _, Size, StyledExt as _, Surface, SurfaceRole,
     button::{Button, ButtonVariants as _},
     h_flex, v_flex,
 };
@@ -193,7 +193,7 @@ impl Render for Notification {
             .w(self.width)
             .max_w((window.fully_visible_bounds().size.width - px(32.)).max(px(1.)))
             .items_center()
-            .surface(SurfaceRole::TOAST, cx)
+            .surface(Surface::new(SurfaceRole::TOAST), cx)
             .p(CONTENT_PADDING)
             .gap_2()
             .child(

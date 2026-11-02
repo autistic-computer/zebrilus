@@ -11,7 +11,7 @@ use ala::{
 };
 
 use crate::{
-    ActiveTheme as _, Emphasis, IconName, StyledExt as _, SurfaceRole, Tone,
+    ActiveTheme as _, Emphasis, IconName, StyledExt as _, Surface, SurfaceRole, Tone,
     button::{Button, ButtonVariant, ButtonVariants as _},
     h_flex,
     scroll::ScrollableElement as _,
@@ -476,7 +476,7 @@ pub fn dialog_surface(cx: &App) -> Div {
 
 fn dialog_frame(role: SurfaceRole, cx: &App) -> Div {
     v_flex()
-        .surface(role, cx)
+        .surface(Surface::new(role), cx)
         .pt(CONTENT_PADDING)
         .pb(CONTENT_PADDING)
         .gap(CONTENT_PADDING)

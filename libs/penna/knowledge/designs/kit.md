@@ -2,14 +2,14 @@
 type: Design Plan
 title: "The kit: penna owns every piece of UI chrome"
 description: "Apps compose penna components and stop defining surface roles, theme patches, text sizes, spacing and colors. Tokens (Space, TextStyle) are fixed ratios measured in rems. Each app role becomes a kit recipe picked by a typed variant, and every per-theme tweak an app layer made moves into penna's own theme files. Work lands in vertical slices: a component family, its stories, then both apps in their pull."
-status: Built (2026-11-01, the kit is in place in nidus and zebrilus; no public role builder is left)
+status: Built (2026-11-02, the kit is in place in nidus and zebrilus; no public role builder is left, and only the linted Surface::new turns a role into a surface)
 resource: src/foundation/space.rs
 tags:
 - ui
 - theme
 - design-system
 - design-plan
-timestamp: 2026-11-01T00:00:00Z
+timestamp: 2026-11-02T00:00:00Z
 ---
 
 # The kit
@@ -63,7 +63,7 @@ Every per-theme tweak an app layer makes today moves into penna's theme files un
 
 ## Looks
 
-A component takes a look: a typed variant that picks one penna recipe. Every look converts into a `Surface` (`From<XLook> for Surface`), so the readers below take a look wherever they take a surface.
+A component takes a look: a typed variant that picks one penna recipe. Every look converts into a `Surface` (`From<XLook> for Surface`), and nothing else does: a role is not a surface, so a reader or painter that takes `impl Into<Surface>` takes a look.
 
 | Component | Looks | Recipes |
 |---|---|---|
@@ -77,6 +77,7 @@ A component takes a look: a typed variant that picks one penna recipe. Every loo
 | `Tile::variant` | `TileVariant::Card`, `Screen`, `Drop`, `Veil`, `Mini` | `tile.card`, `tile.screen`, `tile.drop`, `tile.drop` at hover with no edge, `tile.mini` |
 | `Separator::look`, `.rule(look, edge, cx)` | `RuleLook::Plain`, `Bar`, `List`, `Tree` | `rule`, `rule.bar`, `rule.list`, `rule.tree` |
 | `field_chrome`, `field_underlay` | `FieldLook::Composer`, `Address` | `field.composer`, `field.address` |
+| none: content paints itself | `ContentLook::Pane`, `FloatingPane`, `Pip`, `TileStack`, `Window` | `pane`, `floating.pane`, `floating.pip`, `tile.stack`, `window` |
 
 How they behave:
 
@@ -89,15 +90,19 @@ How they behave:
 - `Badge::on(ground)` paints the badge on that ground, and `opaque()` blends over it.
 - `field_chrome(element, look, ground, state, cx)` frames a field the app lays out itself, on `ground` or the window's when it is `None`, and `field_paint(look, cx)` gives its inks. The forms that take a surface are crate-private, for penna's own fields.
 - `BottomSheet` headers are `phone.bar`, `sheet_row` rows `phone.row`. `TextView` paints code blocks and inline code as `card.code` and tables as `card.figure`.
+- `ContentLook` names the recipes an app's content paints by hand: a pane frame, a tmux popup, a PiP, stack tiles, the window frame. No component draws it; content reads it through the readers below, and the code that paints it allows the lint on the narrowest fn with a reason.
 
 ### Reading a look
 
-Apps read a ground or a radius, never a `Layer`, so nothing paints through a reader.
+The readers take a look (`impl Into<Surface>`) and return a ground, a radius or style data, never a `Layer`, so nothing paints through a reader. They are not on the lint list. All of them work on a bare `&Theme`.
 
-- `theme.ground_of(look)` and `theme.ground_at(look, state)`: what a label or a button on that surface passes to `.on()`. `Surface::from(look).tone(tone).on(ground)` composes a toned look on a ground. Both work on a bare `&Theme`.
-- `theme.radius_of(look)`: the look's corner radius, to nest corners inside it.
+- `theme.ground_of(look)` and `theme.ground_at(look, state)`: what a label or a button on that surface passes to `.on()`. `Surface::from(look).tone(tone).on(ground)` composes a toned look on a ground.
+- `theme.radius_of(look)`: the look's corner radius, to nest corners inside it. `theme.shape_radius(look, shape)`: the radius the look would have at that shape.
+- `theme.style_of(look)`: the look's resolved style (fill, outline, shadow, shape, smoothing, highlights, ink), for content that follows it. `theme.casts_shadow(look)`: whether the look casts a shadow on this theme.
 - `muted_on(ground, cx)`: the muted ink a label at rest takes on that ground.
-- Shorthands: `Well::ground`, `Notice::ground`, `settings::settings_card_ground`, `sidebar::sidebar_fade(ground, cx)` for the sidebar fill over a ground, `compact::pill_backdrop_reach(cx)` for how far the phone pill's glass reads the backdrop.
+- Shorthands: `Well::ground`, `Notice::ground`, `settings::settings_card_ground`, `sheet::sheet_ground(cx)` for the ground inside a `BottomSheet`, `sidebar::sidebar_fade(ground, cx)` for the sidebar fill over a ground, `compact::pill_backdrop_reach(cx)` for how far the phone pill's glass reads the backdrop.
+
+A role's style data stays readable by name: `Theme::style(role)`, `role.id()`, `roles::all()` and `roles::find(id)` paint nothing. `Surface::new(role)` is the one public way to turn a role into a surface; it is for theme tooling that samples every role, such as penna's storybook and creator, and it is on the lint list.
 
 ## Recipes
 
@@ -105,7 +110,7 @@ An app role becomes a kit recipe: a penna-owned role picked by a component's var
 
 ### zebrilus: 43 roles, now 0
 
-Every zz role moved into penna (2026-11-01): 31 became kit recipes under kit names with their code patches and per-theme tweaks, 11 that had no patch and no tweak folded into the kit role they sat under, and `agent.action` merged into `icon-button.row`, which had the same look. Their old ids are in penna's retired list. zz draws each through the component and look in the Status column; `zz_ui::roles` names only the recipes content reads (pane, floating pane, PiP, tile stack, window).
+Every zz role moved into penna (2026-11-01): 31 became kit recipes under kit names with their code patches and per-theme tweaks, 11 that had no patch and no tweak folded into the kit role they sat under, and `agent.action` merged into `icon-button.row`, which had the same look. Their old ids are in penna's retired list. zz draws each through the component and look in the Status column, and its content reads the pane, floating pane, PiP, tile stack and window through `ContentLook`; zz names no role outside a story or a test.
 
 Theme tweaks: D default, M macos, Y yaru. A dash means none.
 
@@ -129,8 +134,8 @@ Theme tweaks: D default, M macos, Y yaru. A dash means none.
 | agent.action | icon-button | hover/selected none | - | `ButtonLook::RowIcon` | `icon-button.row`, drawn by `Button`, `ButtonLook::RowIcon` |
 | agent.jump | icon-button | solid, outline, contact shadow, hover tint | M solid | `ButtonLook::Floating` | `icon-button.floating`, drawn by `Button`, `ButtonLook::Floating` |
 | agent.send | button | solid, outline, contact shadow, hover/selected tint | D tint, no outline, no shadow, pill, hover lift; M round, smoothing 2; Y pill | `ButtonLook::Send` | `button.send`, drawn by `Button`, `ButtonLook::Send` |
-| pane.float | floating | selected ring | - | content: tmux panes paint their own material | `floating.pane`, content: `FloatingSurface` paints it in tmux's popup colours |
-| pane.pip | pane.float | float shadow | - | content: a PiP is frosted in its pane's colour | `floating.pip`, content: `PipSurface` paints it in its pane's colour |
+| pane.float | floating | selected ring | - | content: tmux panes paint their own material | `floating.pane`, content: `FloatingSurface` paints `ContentLook::FloatingPane` in tmux's popup colours |
+| pane.pip | pane.float | float shadow | - | content: a PiP is frosted in its pane's colour | `floating.pip`, content: `PipSurface` paints `ContentLook::Pip` in its pane's colour |
 | pane.find-bar | popover | - | - | `PanelLook::Popover` | `popover`, drawn by `Panel`, `PanelLook::Popover` |
 | palette | popover | - | - | `PanelLook::Popover` | `popover`, drawn by `Panel`, `PanelLook::Popover` |
 | pane.picker | menu-item | - | M solid, selected tint | `RowLook::MenuCard` | `menu-item.card`, drawn by `Row`, `RowLook::MenuCard` |
@@ -141,7 +146,7 @@ Theme tweaks: D default, M macos, Y yaru. A dash means none.
 | drawer.new-pane | drawer | - | - | `BottomSheet` | `drawer`, drawn by `BottomSheet` |
 | drawer.tabs | drawer | - | - | `BottomSheet` | `drawer`, drawn by `BottomSheet` |
 | drawer.bindings | drawer | - | - | `BottomSheet` | `drawer`, drawn by `BottomSheet` |
-| pane-stack | tile | no outline, no shadow, hover/selected tint, capsule | D smoothing 3; M contact shadow, smoothing 3; Y contact shadow | content: stack tiles light, dim and show program faces | `tile.stack`, content: `PaneStack` and program faces paint it by hand |
+| pane-stack | tile | no outline, no shadow, hover/selected tint, capsule | D smoothing 3; M contact shadow, smoothing 3; Y contact shadow | content: stack tiles light, dim and show program faces | `tile.stack`, content: `PaneStack` and program faces paint `ContentLook::TileStack` by hand |
 | pane.drop-zone | floating | tint, no shadow, hover/selected tint | M no shadow | `TileVariant::Drop`, `TileVariant::Veil` | `tile.drop`, drawn by `Tile`, `TileVariant::Drop` and `TileVariant::Veil` |
 | phone.mini | tile | no fill, selected ring | - | `TileVariant::Mini` | `tile.mini`, drawn by `Tile`, `TileVariant::Mini` |
 | pane.header | bar | fixed knobs | - | `BarLook::Pane` | `bar.pane`, drawn by `Bar`, `BarLook::Pane` |
@@ -179,18 +184,20 @@ Each slice lands in penna (component, variants, recipes, theme tweaks, stories),
 3. Inspector, Well, Tile and Dock; the rest of nid-app's chrome; nidus lint on. The well is a tinted recess and tiles are painted on its ground (`Tile::on(Well::ground(cx))`), so screens stand apart from it on every theme; as plain cards both had the same fill wherever a theme turns outlines off.
 4. zebrilus families (done 2026-11-01): icon buttons, chips, drawers, floating panels, tabs, menu items, canvas, bars and rules, content, rows, fields, notice; zebrilus lint on as an error. The penna side landed first: every look under Looks, the readers and their stories. Once the sites moved, every `.surface_role` builder went crate-private or away, with `sheet_detail_row`'s role, `picker_search_on`, and the `rule_on`, `row_surface`, `row_corners`, `row_radius`, `outer_radius`, `surface_hover` and `surface_interactive` helpers.
 5. Close registration (done 2026-11-01): `SurfaceRole`'s fields, constructors and builders are crate-private, so no other crate can make a role or change one; `penna::register`, `roles::register`, `roles::retire` and app theme layers are gone; the retired list is penna's. Field looks the storybook used to build by hand are `Input::emphasis`.
+6. Close the surface door (done 2026-11-02): a role no longer converts into a `Surface` and `Surface`'s role field is crate-private, so the readers take only looks; `Surface::new(role)` stays for theme tooling and joins the lint. `shape_radius` and `casts_shadow` take a look, `style_of` reads a look's style, `ContentLook` names the recipes zz's content paints, and `sheet_ground` replaces reading the drawer by name. `zz_ui::roles` is gone.
 
 ## Lint
 
 Outside penna it is a compile error to make or change a role, or to hand a widget one:
 
 - `SurfaceRole`'s fields, constructors and builders are crate-private. Other crates read a role through `id()`, `kind()`, `label()`, `about()` and `patch()`.
-- `Theme`'s role patches are crate-private and read through `Theme::styles()`, so a recipe is restyled by id only through a theme's `InterfaceTheme::roles`, which penna's theme files and the themes users save fill.
+- `Theme`'s role patches are crate-private and read through `Theme::styles()`. A recipe is restyled by id through an `InterfaceTheme` laid over the kit: its `roles` map and `apply_roles` are public, so any code can lay one on. penna's theme files and the themes users save fill it; the apps build one in code only in stories and tests.
+- No role converts into a `Surface`: the only `From` impls are the looks', and `Surface`'s role field is crate-private, so a struct literal can't name one either. `Surface::new(role)` is the one public constructor from a role.
 - `Button::surface_role` and `ListItem::surface_role` (every other widget's is gone), `rule_on`, `row_surface`, `row_corners`, `row_radius`, `surface_hover`, `surface_interactive`, `field_chrome_on` and `field_paint_on` (the forms of `field_chrome` and `field_paint` that take a surface) are crate-private. The public `field_chrome` and `field_paint` take a `FieldLook`.
 
-What stays public and takes a role, a role id or a surface either paints by hand, and the lint covers it (`StyledExt::{surface, surface_at, layer}`, `Theme::layer`), or reads and paints nothing, such as `Theme::style`, `ground_of`, `ground_at`, `radius_of`, `shape_radius`, `casts_shadow`, `roles::find` and `theme_css::stylesheet`. The lint also covers text set by hand.
+What stays public and paints by hand is on the lint: `StyledExt::{surface, surface_at, layer}`, `Theme::layer` and `Surface::new`. The readers (`ground_of`, `ground_at`, `radius_of`, `shape_radius`, `style_of`, `casts_shadow`) are not, and take only a look. What takes a role or a role id reads and paints nothing: `Theme::style`, `roles::all`, `roles::find` and `theme_css::stylesheet`. The lint also covers text set by hand.
 
-Each app extends the `disallowed-methods` list it already has (`nidus/crates/nid-app/clippy.toml`, `zebrilus/clippy.toml` at the workspace root, which also covers `clients/storybook`; a per-crate file would replace the root list). Added paths: `penna::StyledExt::{surface, surface_at, layer}`, `penna::Theme::layer`, `ala::Styled::{text_size, text_xs, text_sm, text_base, text_lg, text_xl, text_2xl, text_3xl, font_weight}` and the `penna::StyledExt::font_*` weight helpers. A path that is no longer public leaves the list, since clippy warns on a path it cannot reach. `penna::rems_from_px` is not on the list: sizes use it. Both apps carry the lint and pass it as an error; content code allows it on the narrowest fn with a reason. The lint is checked once by hand when added, on Linux and on a Mac for the Mac and phone targets, since code gated to macOS, iOS or Android is not compiled on Linux. Spacing setters stay open: `gap(Space::S4)` and `gap(px(10.))` are the same call, so Space use is a review rule.
+Each app extends the `disallowed-methods` list it already has (`nidus/crates/nid-app/clippy.toml`, `zebrilus/clippy.toml` at the workspace root, which also covers `clients/storybook`; a per-crate file would replace the root list). Added paths: `penna::StyledExt::{surface, surface_at, layer}`, `penna::Theme::layer`, `penna::Surface::new`, `ala::Styled::{text_size, text_xs, text_sm, text_base, text_lg, text_xl, text_2xl, text_3xl, font_weight}` and the `penna::StyledExt::font_*` weight helpers. A path that is no longer public leaves the list, since clippy warns on a path it cannot reach. `penna::rems_from_px` is not on the list: sizes use it. Both apps carry the lint and pass it as an error on Linux; content code allows it on the narrowest fn with a reason. Code gated to macOS, iOS or Android is not compiled on Linux and has not been linted yet: before a release, run clippy on a Mac for the Mac and phone targets. Spacing setters stay open: `gap(Space::S4)` and `gap(px(10.))` are the same call, so Space use is a review rule.
 
 ## How to work
 
