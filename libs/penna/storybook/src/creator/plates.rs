@@ -27,11 +27,13 @@ use penna::{
     blocks::picker::{path_row, picker_footer, picker_header, picker_list, picker_search},
     blocks::settings::{
         SETTINGS_PAGE_PADDING, SettingEntry, SettingsStack, large_title, settings_card_ground,
-        settings_navigation_button, settings_navigation_group_label, settings_page_content,
+        settings_navigation_button, settings_page_content,
     },
     blocks::sheet::{bottom_sheet, sheet_row},
     blocks::shell::{app_shell_surface, app_titlebar_strip},
-    blocks::sidebar::{chrome_button, sidebar_footer, sidebar_panel, sidebar_titlebar},
+    blocks::sidebar::{
+        chrome_button, sidebar_footer, sidebar_heading, sidebar_panel, sidebar_titlebar,
+    },
     blocks::touch::{
         ArrowDirection, ArrowPad, KeyRow, KeyRowKey, PageDot, WhichKeyList, arrow_pad_bubble,
         page_dots,
@@ -157,7 +159,7 @@ impl AppWindow {
             .w_full()
             .gap(px(2.0))
             .px(px(6.0))
-            .child(settings_navigation_group_label("Settings", cx))
+            .child(sidebar_heading("Settings", cx))
             .children(NAVIGATION.iter().enumerate().map(|(index, (title, icon))| {
                 settings_navigation_button(
                     ("creator-navigation-row", index),

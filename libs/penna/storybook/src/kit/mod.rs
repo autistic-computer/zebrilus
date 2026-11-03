@@ -9,6 +9,7 @@ mod color_picker;
 mod compact;
 mod dialogs;
 mod display;
+mod docs;
 mod feedback;
 mod icons;
 mod inputs;
@@ -51,4 +52,5 @@ pub const STORIES: &[Story] = &[
     appearance::STORY,
     which_key::STORY,
     compact::STORY,
+    docs::STORY,
 ];

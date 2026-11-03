@@ -1,0 +1,140 @@
+.penna-docs-header[data-penna] {
+  position: relative;
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  height: 48px;
+  padding: 0 16px 0.5px;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.penna-docs-rule[data-penna] {
+  position: absolute;
+  inset: auto 0 0 0;
+  height: var(--penna-bw);
+  border: 0;
+  border-radius: 0;
+  background: var(--penna-edge);
+  box-shadow: none;
+}
+
+.penna-docs-rule[data-edge="right"] {
+  inset: 0 0 0 auto;
+  width: var(--penna-bw);
+  height: auto;
+}
+
+.penna-docs-brand {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  margin-right: 16px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.penna-docs-brand > [data-icon] {
+  width: 16px;
+  height: 16px;
+}
+
+.penna-docs-spacer {
+  flex: 1;
+}
+
+.penna-docs-search.penna-button[data-penna] {
+  width: 200px;
+  justify-content: flex-start;
+}
+
+.penna-docs-search > .penna-docs-spacer {
+  flex: 1;
+}
+
+.penna-docs-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  padding: 4px 8px 24px;
+}
+
+.penna-docs-example[data-penna] {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  overflow: hidden;
+}
+
+.penna-docs-preview {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 40px 24px;
+}
+
+.penna-docs-tabs {
+  display: flex;
+  padding: 0 8px 8px;
+}
+
+.penna-docs-code {
+  padding: 0 8px 8px;
+}
+
+.penna-docs-code > [hidden] {
+  display: none;
+}
+
+.penna-docs-layout {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+
+.penna-docs-body {
+  display: flex;
+  flex: 1;
+  align-items: flex-start;
+  min-height: 0;
+}
+
+.penna-docs-side[data-penna] {
+  position: relative;
+  flex: none;
+  width: 248px;
+  height: 100%;
+  padding: 0;
+  overflow-y: auto;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.penna-docs-main {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  overflow-y: auto;
+}
+
+.penna-docs-page {
+  width: 100%;
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 40px 32px 96px;
+}
+
+.penna-docs-code > .penna-md,
+.penna-docs-page > .penna-md {
+  width: auto;
+}

@@ -1,0 +1,12 @@
+{
+  "story": "docs",
+  "page": "index.html",
+  "steps": [
+    { "name": "hover-link", "section": "header", "hover": "docs-header-link-2" },
+    { "name": "hover-search", "section": "header", "hover": "docs-search" },
+    { "name": "hover-entry", "section": "navigation", "hover": "docs-nav-entry-1" },
+    { "name": "press-entry", "section": "navigation", "press": "docs-nav-entry-6" },
+    { "name": "hover-primary", "section": "example", "hover": "example-primary" },
+    { "name": "click-html", "section": "example", "click": { "selector": ".penna-segment:nth-child(3)" } }
+  ]
+}

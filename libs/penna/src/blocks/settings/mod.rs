@@ -6,8 +6,8 @@ use web_time::Duration;
 
 use crate::{
     ActiveTheme as _, AuthoredElement as _, Colorize as _, Disableable as _, Emphasis, Ground,
-    IconName, Layer, PaintState, RULE_WIDTH, RuleLook, Selectable as _, Sizable as _,
-    StyledExt as _, Surface,
+    IconName, Layer, PaintState, RULE_WIDTH, RuleLook, Sizable as _, StyledExt as _, Surface,
+    blocks::sidebar::{sidebar_gap, sidebar_row},
     components::badge::Badge,
     components::button::{Button, ButtonVariants as _},
     components::icon::Icon,
@@ -33,29 +33,11 @@ pub fn settings_navigation_button(
     selected: bool,
     cx: &App,
 ) -> Button {
-    Button::new(id)
-        .w_full()
-        .px(px(8.0))
-        .ghost()
-        .surface_role(roles::SIDEBAR_ROW)
-        .on(cx.theme().ground_of(Surface::new(roles::SIDEBAR)))
-        .icon(icon)
-        .selected(selected)
-        .label(title)
-        .child(div().flex_1())
-        .when(selected, crate::StyledExt::font_medium)
+    sidebar_row(id, title, selected, cx).icon(icon)
 }
 
 pub fn settings_navigation_back_button(id: impl Into<ElementId>, cx: &App) -> Button {
-    Button::new(id)
-        .w_full()
-        .px(px(8.0))
-        .ghost()
-        .surface_role(roles::SIDEBAR_ROW)
-        .on(cx.theme().ground_of(Surface::new(roles::SIDEBAR)))
-        .icon(IconName::ArrowLeft)
-        .label("Back")
-        .child(div().flex_1())
+    sidebar_row(id, "Back", false, cx).icon(IconName::ArrowLeft)
 }
 
 pub fn settings_navigation_row(button: Button) -> ala::Div {
@@ -65,21 +47,6 @@ pub fn settings_navigation_row(button: Button) -> ala::Div {
         .h(px(SETTINGS_NAVIGATION_ROW_HEIGHT))
         .items_center()
         .child(button)
-}
-
-pub fn settings_navigation_group_label(title: impl Into<SharedString>, cx: &App) -> ala::Div {
-    div()
-        .px(px(8.0))
-        .pt(px(12.0))
-        .pb(px(2.0))
-        .text_sm()
-        .text_color(cx.theme().foreground.muted())
-        .map(crate::StyledExt::font_medium)
-        .child(title.into())
-}
-
-pub fn settings_navigation_group_gap() -> ala::Div {
-    div().flex_none().h(px(12.0))
 }
 
 #[derive(Clone, Debug)]
@@ -144,7 +111,7 @@ impl RenderOnce for SettingsNavigation {
         let mut group = None;
         for (index, section) in self.sections.into_iter().enumerate() {
             if group.is_some_and(|group| group != section.group) {
-                rows.push(settings_navigation_group_gap().into_any_element());
+                rows.push(sidebar_gap().into_any_element());
             }
             group = Some(section.group);
             let on_pick = self.on_pick.clone();

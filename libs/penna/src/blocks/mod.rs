@@ -5,6 +5,7 @@ pub mod color_picker;
 pub mod compact;
 pub mod dialog;
 pub mod dock;
+pub mod docs;
 pub mod feedback;
 pub mod inspector;
 pub mod notice;

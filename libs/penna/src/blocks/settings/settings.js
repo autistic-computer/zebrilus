@@ -1,7 +1,7 @@
 function settingsNavigation(nav) {
-  const buttons = () => [...nav.querySelectorAll(".penna-settings-nav-button")];
+  const buttons = () => [...nav.querySelectorAll(".penna-sidebar-row")];
   nav.addEventListener("click", (event) => {
-    const button = event.target.closest(".penna-settings-nav-button");
+    const button = event.target.closest(".penna-sidebar-row");
     if (!button) return;
     if (button.dataset.id === "back") {
       nav.dispatchEvent(new CustomEvent("penna-back", { bubbles: true }));

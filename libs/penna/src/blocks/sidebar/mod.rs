@@ -1,10 +1,13 @@
 use crate::{
-    ActiveTheme as _, Edge, Ground, IconName, PaintState, Sizable as _, StyledExt as _, Surface,
-    components::button::Button, foundation::RoleRuleExt as _, foundation::roles,
+    ActiveTheme as _, Colorize as _, Edge, Ground, IconName, PaintState, Selectable as _,
+    Sizable as _, StyledExt, Surface,
+    components::button::{Button, ButtonVariants as _},
+    foundation::RoleRuleExt as _,
+    foundation::roles,
 };
 use ala::{
-    App, CursorStyle, ElementId, Hsla, IntoElement, ParentElement as _, Pixels, Stateful,
-    Styled as _, div, prelude::*, px,
+    App, CursorStyle, ElementId, Hsla, IntoElement, ParentElement as _, Pixels, SharedString,
+    Stateful, Styled as _, div, prelude::*, px,
 };
 
 pub const SIDEBAR_DEFAULT_WIDTH: f32 = 256.0;
@@ -16,6 +19,42 @@ const CHROME_ICON_SIZE: Pixels = px(17.0);
 const SIDEBAR_FOOTER_TOP: f32 = 4.0;
 const SIDEBAR_RESIZE_HANDLE_WIDTH: f32 = 8.0;
 pub const STATUS_DOT_SIZE: f32 = 6.0;
+
+#[must_use]
+pub fn sidebar_row(
+    id: impl Into<ElementId>,
+    label: impl Into<SharedString>,
+    selected: bool,
+    cx: &App,
+) -> Button {
+    Button::new(id)
+        .w_full()
+        .px(px(8.0))
+        .ghost()
+        .surface_role(roles::SIDEBAR_ROW)
+        .on(cx.theme().ground_of(Surface::new(roles::SIDEBAR)))
+        .selected(selected)
+        .label(label)
+        .child(div().flex_1())
+        .when(selected, StyledExt::font_medium)
+}
+
+#[must_use]
+pub fn sidebar_heading(title: impl Into<SharedString>, cx: &App) -> ala::Div {
+    div()
+        .px(px(8.0))
+        .pt(px(12.0))
+        .pb(px(2.0))
+        .text_sm()
+        .text_color(cx.theme().foreground.muted())
+        .map(StyledExt::font_medium)
+        .child(title.into())
+}
+
+#[must_use]
+pub fn sidebar_gap() -> ala::Div {
+    div().flex_none().h(px(12.0))
+}
 
 #[must_use]
 pub fn status_dot(color: Hsla) -> ala::Div {

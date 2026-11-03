@@ -9,3 +9,31 @@
   box-shadow: none;
   font-size: 16px;
 }
+
+.penna-sidebar-heading {
+  padding: 12px 8px 2px;
+  font-size: 14px;
+  line-height: 22.5px;
+  font-weight: 500;
+  color: var(--penna-fg-muted);
+}
+
+.penna-sidebar-gap {
+  flex: none;
+  height: 12px;
+}
+
+.penna-button.penna-sidebar-row[data-penna] {
+  width: 100%;
+  height: 28px;
+  margin: 0;
+  padding: 0 8px;
+  justify-content: flex-start;
+  gap: 6px;
+  font-size: 13px;
+  --penna-row: 1;
+}
+
+.penna-sidebar-row:is([aria-current]:not([aria-current="false"]), [data-state~="current"]) .penna-label {
+  font-weight: 500;
+}
