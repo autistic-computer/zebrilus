@@ -8,7 +8,7 @@ use ala::{BoxShadow, GlassMaterial, Hsla};
 
 use crate::{
     ADAPTIVE_CORNER_FRACTION, CORNER_SMOOTHING, Colorize as _, Elevation, Emphasis, Ground, Kind,
-    Layer, PaintState, Surface, SurfaceRole, Theme, ThemeMode, Tone,
+    Layer, PaintState, Space, Surface, SurfaceRole, TextStyle, Theme, ThemeMode, Tone,
     components::button::rings_focus,
     components::icon::glyphs,
     components::input::field_layer,
@@ -417,6 +417,7 @@ fn write_root(css: &mut String, theme: &Theme) {
             length(f32::from(theme.font_size)),
         ),
     ];
+    root.extend(scale_vars());
     root.extend(syntax_vars(theme));
     if let Some(glass) = theme.glass {
         root.extend(glass_vars(&glass));
@@ -426,6 +427,45 @@ fn write_root(css: &mut String, theme: &Theme) {
         let _ = writeln!(css, "  {name}: {value};");
     }
     let _ = writeln!(css, "}}");
+}
+
+fn scale_vars() -> Vec<(String, String)> {
+    let named = |prefix: &str, name: &str, space: Space| {
+        (
+            format!("--penna-{prefix}-{name}"),
+            length(space.design_px()),
+        )
+    };
+    let mut vars: Vec<(String, String)> = Space::ALL
+        .iter()
+        .map(|space| named("space", &space.design_px().to_string(), *space))
+        .collect();
+    vars.extend(
+        Space::GAPS
+            .iter()
+            .map(|(name, space)| named("gap", name, *space)),
+    );
+    vars.extend(
+        Space::INSETS
+            .iter()
+            .map(|(name, space)| named("inset", name, *space)),
+    );
+    for style in TextStyle::ALL {
+        let name = style.name();
+        vars.push((
+            format!("--penna-text-{name}-size"),
+            length(style.design_px()),
+        ));
+        vars.push((
+            format!("--penna-text-{name}-line"),
+            length(style.line_height_px()),
+        ));
+        vars.push((
+            format!("--penna-text-{name}-weight"),
+            number(style.weight().0),
+        ));
+    }
+    vars
 }
 
 fn syntax_vars(theme: &Theme) -> Vec<(String, String)> {

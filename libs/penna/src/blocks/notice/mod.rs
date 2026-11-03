@@ -126,32 +126,32 @@ impl RenderOnce for Notice {
         let notice = match self.layout {
             Layout::Inline => h_flex()
                 .items_start()
-                .gap(Space::S5)
-                .px(Space::S6)
-                .py(Space::S5)
+                .gap(Space::S10)
+                .px(Space::S12)
+                .py(Space::S10)
                 .child(lead)
                 .child(
                     v_flex()
                         .flex_1()
                         .min_w_0()
-                        .gap(Space::S1)
+                        .gap(Space::S2)
                         .child(Label::new(TextStyle::Body, self.title).strong())
                         .children(detail),
                 )
                 .children(self.action),
             Layout::Stacked => v_flex()
-                .gap(Space::S2)
-                .px(Space::S6)
-                .py(Space::S5)
+                .gap(Space::S4)
+                .px(Space::S12)
+                .py(Space::S10)
                 .child(
                     h_flex()
-                        .gap(Space::S4)
+                        .gap(Space::S8)
                         .child(lead)
                         .child(Label::new(TextStyle::Lead, self.title).strong()),
                 )
                 .children(detail)
                 .when_some(self.action, |notice, action| {
-                    notice.child(h_flex().pt(Space::S3).child(action))
+                    notice.child(h_flex().pt(Space::S6).child(action))
                 }),
         };
         notice

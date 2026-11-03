@@ -62,18 +62,18 @@ fn screen(id: &'static str, label: &'static str, tone: Tone, state: PaintState, 
         .h(px(90.0))
         .flex()
         .items_end()
-        .p(Space::S3)
+        .p(Space::S6)
         .child(Label::new(TextStyle::Caption, label))
 }
 
 fn screens(_: &mut Window, cx: &mut App) -> AnyElement {
     let cx: &App = cx;
     Well::new()
-        .p(Space::S12)
+        .p(Space::S24)
         .child(
             h_flex()
                 .flex_wrap()
-                .gap(Space::S8)
+                .gap(Space::S16)
                 .child(screen("rest", "Rest", Tone::Neutral, PaintState::Rest, cx))
                 .child(screen(
                     "hover",
@@ -117,7 +117,7 @@ fn screens(_: &mut Window, cx: &mut App) -> AnyElement {
 fn pane(label: &'static str) -> ala::Div {
     div()
         .size_full()
-        .p(Space::S4)
+        .p(Space::S8)
         .child(Label::new(TextStyle::Caption, label))
 }
 
@@ -133,9 +133,9 @@ fn drops(_: &mut Window, cx: &mut App) -> AnyElement {
                     .variant(TileVariant::Drop)
                     .state(PaintState::Selected)
                     .absolute()
-                    .top(Space::S2)
-                    .bottom(Space::S2)
-                    .right(Space::S2)
+                    .top(Space::S4)
+                    .bottom(Space::S4)
+                    .right(Space::S4)
                     .w(px(96.0))
                     .rounded(radius),
             ),
@@ -148,9 +148,9 @@ fn drops(_: &mut Window, cx: &mut App) -> AnyElement {
                     .state(PaintState::Selected)
                     .edge(px(1.0))
                     .absolute()
-                    .top(Space::S2)
-                    .bottom(Space::S2)
-                    .right(Space::S2)
+                    .top(Space::S4)
+                    .bottom(Space::S4)
+                    .right(Space::S4)
                     .w(px(96.0))
                     .rounded(radius),
             ),
@@ -172,7 +172,7 @@ fn mini(id: &'static str, state: PaintState, cx: &App) -> Tile {
         .variant(TileVariant::Mini)
         .state(state)
         .size_full()
-        .p(Space::S3)
+        .p(Space::S6)
         .bg(cx.theme().background)
         .rounded(px(6.0))
         .child(Label::new(TextStyle::Micro, "zsh"))
@@ -184,7 +184,7 @@ fn minis(_: &mut Window, cx: &mut App) -> AnyElement {
         h_flex()
             .w(px(140.0))
             .h(px(90.0))
-            .gap(Space::S2)
+            .gap(Space::S4)
             .child(mini(id, state, cx))
             .child(mini(other, PaintState::Rest, cx))
     };
@@ -206,8 +206,8 @@ fn card(id: &'static str, name: &'static str, detail: &'static str, state: Paint
         .state(state)
         .w(px(132.0))
         .h(px(64.0))
-        .px(Space::S5)
-        .py(Space::S4)
+        .px(Space::S10)
+        .py(Space::S8)
         .flex()
         .flex_col()
         .justify_end()
@@ -230,9 +230,9 @@ fn dock(_: &mut Window, _: &mut App) -> AnyElement {
                 )
                 .child(
                     h_flex()
-                        .px(Space::S8)
-                        .pb(Space::S8)
-                        .gap(Space::S4)
+                        .px(Space::S16)
+                        .pb(Space::S16)
+                        .gap(Space::S8)
                         .child(card("xps", "xps", "Linux · 1 screen", PaintState::Rest))
                         .child(card("picked", "thinkpad", "Picked", PaintState::Selected))
                         .child(card("carried", "mini", "Being dragged", PaintState::Hover))
@@ -283,7 +283,7 @@ fn inspector(_: &mut Window, _: &mut App) -> AnyElement {
                 )
                 .child(
                     v_flex()
-                        .gap(Space::S2)
+                        .gap(Space::S4)
                         .child(Label::new(TextStyle::Small, "Screens").strong())
                         .child(Label::new(TextStyle::Small, "DP-1 24″ · HDMI-1 24″")),
                 ),

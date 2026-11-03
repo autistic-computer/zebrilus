@@ -89,7 +89,7 @@ fn framed_field(
                     .role(Role::Group)
                     .accessibility_id(format!("field-{name}-{}", label.to_lowercase()))
                     .h(px(40.0))
-                    .px(Space::S8)
+                    .px(Space::S16)
                     .flex()
                     .items_center(),
                 look,

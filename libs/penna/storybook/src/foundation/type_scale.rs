@@ -51,7 +51,7 @@ fn scale(_: &mut Window, _: &mut App) -> AnyElement {
                     style.line_height_px()
                 ),
                 h_flex()
-                    .gap(Space::S8)
+                    .gap(Space::S16)
                     .child(Label::new(style, "Drag one onto the desk"))
                     .child(Label::new(style, "Strong").strong()),
             )
@@ -66,13 +66,13 @@ fn ink(_: &mut Window, cx: &mut App) -> AnyElement {
         .state(
             "on a card, with .on(ground)",
             v_flex()
-                .p(Space::S8)
+                .p(Space::S16)
                 .surface(Surface::new(Kind::Card.role()), cx)
                 .child(lines(Some(card))),
         )
         .state(
             "tones",
-            h_flex().gap(Space::S8).children(
+            h_flex().gap(Space::S16).children(
                 Tone::ALL
                     .into_iter()
                     .map(|tone| Label::new(TextStyle::Body, tone.name()).tone(tone)),
@@ -87,7 +87,7 @@ fn lines(ground: Option<Ground>) -> AnyElement {
         None => label,
     };
     v_flex()
-        .gap(Space::S2)
+        .gap(Space::S4)
         .child(on(Label::new(TextStyle::Body, "Ready")))
         .child(on(
             Label::new(TextStyle::Small, "ubuntu is to the right").muted()
@@ -124,7 +124,7 @@ fn code(_: &mut Window, cx: &mut App) -> AnyElement {
             states.state(
                 format!("{} · mono", style.name()),
                 h_flex()
-                    .gap(Space::S8)
+                    .gap(Space::S16)
                     .child(Label::new(style, "git log --oneline").mono())
                     .child(
                         v_flex()

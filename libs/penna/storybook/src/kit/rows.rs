@@ -66,10 +66,10 @@ fn tab(look: TabLook, name: &str, state: PaintState, label: &'static str, cx: &A
     Tab::new(SharedString::from(format!("tab-{name}-{label}")), look)
         .state(state)
         .h(px(28.0))
-        .px(Space::S5)
+        .px(Space::S10)
         .flex()
         .items_center()
-        .gap(Space::S3)
+        .gap(Space::S6)
         .child(Icon::new(IconName::Terminal).size(px(14.0)))
         .child(Label::new(TextStyle::Small, label))
         .child(Label::new(TextStyle::Caption, "zz").muted().on(ground))
@@ -109,11 +109,11 @@ fn tabs(_: &mut Window, cx: &mut App) -> AnyElement {
         )
         .state(
             "title on a pane header",
-            h_flex().h(px(36.0)).px(Space::S4).child(
+            h_flex().h(px(36.0)).px(Space::S8).child(
                 Tab::new("tab-title-on-pane", TabLook::Title)
                     .on(pane)
                     .h(px(24.0))
-                    .px(Space::S4)
+                    .px(Space::S8)
                     .flex()
                     .items_center()
                     .child(
@@ -142,10 +142,10 @@ fn list_row(look: RowLook, name: &str, state: PaintState, label: &'static str) -
         .row_height(height)
         .h(height)
         .w(px(200.0))
-        .px(Space::S6)
+        .px(Space::S12)
         .flex()
         .items_center()
-        .gap(Space::S4)
+        .gap(Space::S8)
         .child(Icon::new(IconName::Folder).size(px(14.0)))
         .child(Label::new(TextStyle::Small, label))
 }
@@ -161,7 +161,7 @@ fn rows(_: &mut Window, cx: &mut App) -> AnyElement {
         .fold(states().columns(2), |states, (look, name)| {
             states.state(
                 *name,
-                v_flex().gap(Space::S1).children(
+                v_flex().gap(Space::S2).children(
                     STATES
                         .iter()
                         .map(|(state, label)| list_row(*look, name, *state, label)),
@@ -171,7 +171,7 @@ fn rows(_: &mut Window, cx: &mut App) -> AnyElement {
         .state(
             "toned",
             v_flex()
-                .gap(Space::S1)
+                .gap(Space::S2)
                 .child(
                     list_row(RowLook::Menu, "danger", PaintState::Rest, "Rest").tone(Tone::Danger),
                 )
@@ -183,7 +183,7 @@ fn rows(_: &mut Window, cx: &mut App) -> AnyElement {
         )
         .state(
             "not interactive",
-            v_flex().gap(Space::S1).child(
+            v_flex().gap(Space::S2).child(
                 list_row(RowLook::Menu, "still", PaintState::Rest, "Rest").interactive(false),
             ),
         )
@@ -206,7 +206,7 @@ fn fill_row(
         .relative()
         .w(px(240.0))
         .h(px(48.0))
-        .px(Space::S8)
+        .px(Space::S16)
         .flex()
         .items_center()
         .child(
@@ -217,8 +217,8 @@ fn fill_row(
                 .absolute()
                 .top(px(2.0))
                 .bottom(px(2.0))
-                .left(Space::S2)
-                .right(Space::S2),
+                .left(Space::S4)
+                .right(Space::S4),
         )
         .child(Label::new(TextStyle::Body, label).relative())
         .into_any_element()

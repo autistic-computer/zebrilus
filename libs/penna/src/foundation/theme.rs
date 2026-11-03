@@ -12,10 +12,11 @@ use ala::{
 use crate::{BASE_UI_FONT_SIZE, TITLE_BAR_HEIGHT, foundation::highlighter::HighlightTheme};
 
 use super::{
-    Colorize as _, PrimaryStyle, ShadowMaterial, Smoothing, StylePatch, Surface, ThemeColor, color,
+    Colorize as _, PrimaryStyle, ShadowMaterial, Smoothing, Space, StylePatch, Surface, ThemeColor,
+    color,
 };
 
-pub const CHROME_GAP: f32 = 6.0;
+pub const CHROME_GAP: f32 = Space::INSET_CHROME.design_px();
 
 pub(super) fn init(cx: &mut App) {
     Theme::change(ThemeMode::Light, None, cx);

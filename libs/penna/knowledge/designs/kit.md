@@ -35,11 +35,11 @@ There is no separate behavior layer. ala's stateful elements already give hover,
 
 Both scales are fixed. A theme changes fonts, materials and recipes, not the scale. Values are in rems, so the interface font size (the root rem, from the theme's `font_size`) scales them; window zoom is applied separately and never twice.
 
-`Space` converts into a length, so it goes straight into ala's setters: `h_flex().gap(Space::S4).p(Space::S6)`.
+`Space` converts into a length, so it goes straight into ala's setters: `h_flex().gap(Space::GAP_RELATED).p(Space::INSET_CARD)`. A variant's number is its pixel value (`Space::S8` is 8px); the gap and inset constants and the rules for picking them are in `knowledge/designs/foundations.md`.
 
-| Space | S1 | S2 | S3 | S4 | S5 | S6 | S8 | S12 | S16 |
-|---|---|---|---|---|---|---|---|---|---|
-| px | 2 | 4 | 6 | 8 | 10 | 12 | 16 | 24 | 32 |
+| Space | S2 | S4 | S6 | S8 | S10 | S12 | S16 | S24 | S32 | S40 | S64 |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| px | 2 | 4 | 6 | 8 | 10 | 12 | 16 | 24 | 32 | 40 | 64 |
 
 `TextStyle` sets size, line height and weight, and `Mono` also the code font. `Label::new(style, text)` draws a line of text; `.type_style(style, cx)` on a container sets what its text children inherit, and `.type_style_strong(style, cx)` the same at the style's strong weight, for a container whose text comes from its caller.
 
@@ -200,7 +200,7 @@ Outside penna it is a compile error to make or change a role, or to hand a widge
 
 What stays public and paints by hand is on the lint: `StyledExt::{surface, surface_at, layer}`, `Theme::layer` and `Surface::new`. The readers (`ground_of`, `ground_at`, `radius_of`, `shape_radius`, `style_of`, `casts_shadow`) are not, and take only a look. `Theme::style(role)` is on the lint too: a style read by name gives a recipe's shape and shadow, which `.rounded` and `.shadow` paint. `Theme::field_emphasis` is crate-private for the same reason. What takes a role or a role id and stays open is `roles::all`, `roles::find` and `theme_css::stylesheet`. The lint blocks the named shortcuts, not every route: a role's kind, patch and lineage, `Kind::base()` and `Theme::styles()` are public data, and code that rebuilds a style from them by hand is a review finding, not a compile error. The lint also covers text set by hand.
 
-Each app extends the `disallowed-methods` list it already has (`nidus/crates/nid-app/clippy.toml`, `zebrilus/clippy.toml` at the workspace root, which also covers `clients/storybook`; a per-crate file would replace the root list). Added paths: `penna::StyledExt::{surface, surface_at, layer}`, `penna::Theme::layer`, `penna::Theme::style`, `penna::Surface::new`, `ala::Styled::{text_size, text_xs, text_sm, text_base, text_lg, text_xl, text_2xl, text_3xl, font_weight}` and the `penna::StyledExt::font_*` weight helpers. A path that is no longer public leaves the list, since clippy warns on a path it cannot reach. `penna::rems_from_px` is not on the list: sizes use it. Both apps carry the lint and pass it as an error on Linux; content code allows it on the narrowest fn with a reason. Code gated to macOS, iOS or Android is not compiled on Linux and has not been linted yet: before a release, run clippy on a Mac for the Mac and phone targets. Spacing setters stay open: `gap(Space::S4)` and `gap(px(10.))` are the same call, so Space use is a review rule.
+Each app extends the `disallowed-methods` list it already has (`nidus/crates/nid-app/clippy.toml`, `zebrilus/clippy.toml` at the workspace root, which also covers `clients/storybook`; a per-crate file would replace the root list). Added paths: `penna::StyledExt::{surface, surface_at, layer}`, `penna::Theme::layer`, `penna::Theme::style`, `penna::Surface::new`, `ala::Styled::{text_size, text_xs, text_sm, text_base, text_lg, text_xl, text_2xl, text_3xl, font_weight}` and the `penna::StyledExt::font_*` weight helpers. A path that is no longer public leaves the list, since clippy warns on a path it cannot reach. `penna::rems_from_px` is not on the list: sizes use it. Both apps carry the lint and pass it as an error on Linux; content code allows it on the narrowest fn with a reason. Code gated to macOS, iOS or Android is not compiled on Linux and has not been linted yet: before a release, run clippy on a Mac for the Mac and phone targets. Spacing setters stay open: `gap(Space::S8)` and `gap(px(10.))` are the same call, so Space use is a review rule.
 
 ## How to work
 

@@ -66,8 +66,8 @@ impl RenderOnce for Dock {
             .child(
                 h_flex()
                     .when_some(self.header_height, Styled::h)
-                    .px(Space::S8)
-                    .gap(Space::S6)
+                    .px(Space::S16)
+                    .gap(Space::S12)
                     .child(
                         v_flex()
                             .flex_1()

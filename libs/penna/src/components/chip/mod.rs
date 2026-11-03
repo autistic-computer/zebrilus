@@ -147,7 +147,7 @@ impl Chip {
     pub fn width(&self, window: &mut Window, cx: &App) -> Pixels {
         let (_, padding, text) = metrics(self.size);
         let rem = window.rem_size();
-        let gap = Space::S3.rems().to_pixels(rem);
+        let gap = Space::S6.rems().to_pixels(rem);
         let label = self.label.clone().unwrap_or_default();
         let mut font = ala::font(cx.theme().font_family.clone());
         font.weight = text.strong_weight();
@@ -253,7 +253,7 @@ impl RenderOnce for Chip {
             .min_w_0()
             .h(rems_from_px(height))
             .px(padding)
-            .gap(Space::S3);
+            .gap(Space::S6);
         plate.children = [
             lead_dot.map(|tone| dot(tone, ground, cx).into_any_element()),
             icon.map(|icon| {
@@ -294,8 +294,8 @@ impl RenderOnce for Chip {
 
 const fn metrics(size: Size) -> (f32, Space, TextStyle) {
     match size {
-        Size::Small => (20.0, Space::S4, TextStyle::Caption),
-        Size::Medium | Size::Size(_) => (24.0, Space::S5, TextStyle::Small),
+        Size::Small => (20.0, Space::S8, TextStyle::Caption),
+        Size::Medium | Size::Size(_) => (24.0, Space::S10, TextStyle::Small),
     }
 }
 

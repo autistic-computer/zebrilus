@@ -56,10 +56,10 @@ const PANEL_LOOKS: [(PanelLook, &str); 5] = [
 fn panel(id: &'static str, look: PanelLook, name: &'static str) -> Panel {
     Panel::new(id, look)
         .w(px(180.0))
-        .p(Space::S6)
+        .p(Space::S12)
         .flex()
         .flex_col()
-        .gap(Space::S2)
+        .gap(Space::S4)
         .child(Label::new(TextStyle::Body, name).strong())
         .child(Label::new(TextStyle::Small, "What sits in it.").muted())
 }
@@ -81,7 +81,7 @@ fn panels(_: &mut Window, _: &mut App) -> AnyElement {
                         .p(px(8.0))
                         .child(
                             div()
-                                .p(Space::S4)
+                                .p(Space::S8)
                                 .child(Label::new(TextStyle::Body, "Inset 8px").strong()),
                         ),
                 ),
@@ -98,11 +98,11 @@ fn cards(_: &mut Window, cx: &mut App) -> AnyElement {
             "bubble",
             Card::new("card-bubble", CardLook::Bubble)
                 .max_w(px(260.0))
-                .px(Space::S6)
-                .py(Space::S4)
+                .px(Space::S12)
+                .py(Space::S8)
                 .flex()
                 .items_center()
-                .gap(Space::S4)
+                .gap(Space::S8)
                 .child(Label::new(
                     TextStyle::Body,
                     "Can you look at the failing test?",
@@ -113,10 +113,10 @@ fn cards(_: &mut Window, cx: &mut App) -> AnyElement {
             "code",
             Card::new("card-code", CardLook::Code)
                 .w(px(260.0))
-                .p(Space::S6)
+                .p(Space::S12)
                 .flex()
                 .flex_col()
-                .gap(Space::S2)
+                .gap(Space::S4)
                 .child(Label::new(TextStyle::Caption, "rust").muted().on(code))
                 .child(Label::new(
                     TextStyle::Mono,
@@ -127,7 +127,7 @@ fn cards(_: &mut Window, cx: &mut App) -> AnyElement {
             "figure",
             Card::new("card-figure", CardLook::Figure)
                 .w(px(260.0))
-                .p(Space::S6)
+                .p(Space::S12)
                 .child(Label::new(TextStyle::Small, "Name · Size · Kind")),
         )
         .state(
@@ -148,7 +148,7 @@ fn bars(_: &mut Window, cx: &mut App) -> AnyElement {
         Bar::new(id, look)
             .w(px(420.0))
             .h(px(36.0))
-            .px(Space::S6)
+            .px(Space::S12)
             .flex()
             .items_center()
             .justify_between()
@@ -177,8 +177,8 @@ fn bars(_: &mut Window, cx: &mut App) -> AnyElement {
                 .child(
                     Bar::new("bar-notice", BarLook::Plain)
                         .on(picker)
-                        .px(Space::S6)
-                        .py(Space::S4)
+                        .px(Space::S12)
+                        .py(Space::S8)
                         .rule(RuleLook::Bar, Edge::Bottom, cx)
                         .child(Label::new(
                             TextStyle::Caption,
@@ -203,10 +203,10 @@ fn rules(_: &mut Window, cx: &mut App) -> AnyElement {
             "separators",
             v_flex()
                 .w(px(240.0))
-                .gap(Space::S6)
+                .gap(Space::S12)
                 .children(RULE_LOOKS.map(|(look, name)| {
                     v_flex()
-                        .gap(Space::S2)
+                        .gap(Space::S4)
                         .child(Label::new(TextStyle::Caption, name).muted())
                         .child(
                             Separator::horizontal()
@@ -218,7 +218,7 @@ fn rules(_: &mut Window, cx: &mut App) -> AnyElement {
         .state(
             "edges",
             h_flex()
-                .gap(Space::S6)
+                .gap(Space::S12)
                 .children(RULE_LOOKS.map(|(look, name)| {
                     div()
                         .size(px(56.0))

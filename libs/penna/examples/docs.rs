@@ -39,22 +39,6 @@ const SCRIPTS: [&str; 6] = [
 const KIT: &str = "../../../../src/";
 const STORYBOOK: &str = "assets/storybook/wasm/storybook.js";
 
-const SITE_CSS: &str = r"html, body { height: 100%; margin: 0; }
-body { overflow: hidden; }
-a.penna-button { text-decoration: none; }
-a.penna-docs-brand { color: inherit; text-decoration: none; }
-.penna-docs-page > .penna-docs-example { margin-bottom: 24px; }
-.penna-docs-page h2[id] { scroll-margin-top: 24px; }
-.penna-docs-header .penna-button[data-docs-menu] { display: none; }
-@media (max-width: 760px) {
-  .penna-docs-header .penna-button[data-docs-menu] { display: inline-flex; }
-  .penna-docs-header .penna-button[data-docs-link] { display: none; }
-  .penna-docs-side[data-penna] { display: none; position: fixed; top: 48px; bottom: 0; left: 0; z-index: 10; width: min(280px, 85vw); height: auto; }
-  .penna-docs-side[data-penna][data-open] { display: block; background: var(--penna-bg); box-shadow: 0 8px 24px rgb(0 0 0 / 0.3); }
-  .penna-docs-page { padding: 24px 16px 64px; }
-}
-";
-
 #[derive(Deserialize)]
 struct Site {
     title: String,
@@ -172,7 +156,8 @@ fn copy_assets(root: &Path, assets: &Path) -> io::Result<()> {
         &root.join("storybook/fonts"),
         &assets.join("storybook/fonts"),
     )?;
-    fs::write(assets.join("site.css"), SITE_CSS)
+    fs::copy(root.join("docs/site.css"), assets.join("site.css"))?;
+    Ok(())
 }
 
 fn copy_tree(from: &Path, to: &Path, extensions: &[&str]) -> io::Result<()> {
@@ -255,6 +240,21 @@ fn document(site: &Site, pages: &[Page], current: usize, native: bool) -> String
         page.body
     );
     html
+}
+
+fn segments<'a>(labels: impl Iterator<Item = &'a str>, name: &str) -> String {
+    let spans = labels.fold(String::new(), |mut html, label_text| {
+        let _ = write!(
+            html,
+            "<span class=\"penna-segment\" role=\"button\">{}</span>",
+            label(label_text)
+        );
+        html
+    });
+    format!(
+        "<div class=\"penna-segmented\" data-penna=\"field\" data-value=\"0\" role=\"radiogroup\" aria-label=\"{name}\">\
+         <div class=\"penna-segments\" data-penna=\"button.quiet\" data-state=\"current\"><span class=\"penna-segment-pill\"></span>{spans}</div></div>"
+    )
 }
 
 fn label(text: &str) -> String {
@@ -370,6 +370,14 @@ impl Builder {
         let children = tree.children().map_or(&[][..], Vec::as_slice);
         let mut index = 0;
         while index < children.len() {
+            if let Node::Code(code) = &children[index]
+                && code.lang.as_deref() == Some("figure")
+            {
+                flush(&mut html, &mut prose);
+                html.push_str(&self.figure(code)?);
+                index += 1;
+                continue;
+            }
             if is_example(&children[index]) {
                 flush(&mut html, &mut prose);
                 let start = index;
@@ -394,11 +402,11 @@ impl Builder {
         let parity: Parity = serde_json::from_str(&fs::read_to_string(folder.join("parity.json"))?)
             .map_err(io::Error::other)?;
         let page = fs::read_to_string(folder.join(&parity.page))?;
-        let open = format!("<section data-section=\"{section}\">");
-        let start = page
+        let open = format!("<section data-section=\"{section}\"");
+        let at = page
             .find(&open)
-            .ok_or_else(|| io::Error::other(format!("{module} has no section {section}")))?
-            + open.len();
+            .ok_or_else(|| io::Error::other(format!("{module} has no section {section}")))?;
+        let start = at + page[at..].find('>').map_or(open.len(), |end| end + 1);
         let end = start
             + page[start..]
                 .find("</section>")
@@ -470,32 +478,15 @@ impl Builder {
             }
             (None, None) => String::new(),
         };
-        let segments = |labels: &mut dyn Iterator<Item = &str>, name: &str| {
-            let spans = labels.fold(String::new(), |mut html, label_text| {
-                let _ = write!(
-                    html,
-                    "<span class=\"penna-segment\" role=\"button\">{}</span>",
-                    label(label_text)
-                );
-                html
-            });
-            format!(
-                "<div class=\"penna-segmented\" data-penna=\"field\" data-value=\"0\" role=\"radiogroup\" aria-label=\"{name}\">\
-                 <div class=\"penna-segments\" data-penna=\"button.quiet\" data-state=\"current\"><span class=\"penna-segment-pill\"></span>{spans}</div></div>"
-            )
-        };
-        let targets = if story.is_some() && self.native {
-            format!(
-                "<div class=\"penna-docs-targets\">{}</div>",
-                segments(&mut ["HTML", "Native"].into_iter(), "Render")
-            )
+        let targets = if story.is_some() {
+            self.targets()
         } else {
             String::new()
         };
         let switch = if tabs.len() > 1 {
             format!(
                 "<div class=\"penna-docs-tabs\">{}</div>",
-                segments(&mut tabs.iter().map(|(name, _)| name.as_str()), "Language")
+                segments(tabs.iter().map(|(name, _)| name.as_str()), "Language")
             )
         } else {
             String::new()
@@ -515,6 +506,49 @@ impl Builder {
             "<div class=\"penna-docs-example\" data-penna=\"card.figure\" role=\"figure\">\
              {targets}{preview}{switch}<div class=\"penna-docs-code\">{panes}</div></div>\n"
         ))
+    }
+
+    fn figure(&self, code: &Code) -> io::Result<String> {
+        meta(code)
+            .into_iter()
+            .filter_map(|token| token.strip_prefix("uses="))
+            .flat_map(|list| list.split(','))
+            .for_each(|name| self.uses(name));
+        let body = match story_ref(code) {
+            Some(reference) => {
+                let story = self.story_section(reference)?;
+                format!(
+                    "<section class=\"penna-docs-stage\" data-section=\"{}\">{}</section>",
+                    escape(&story.section),
+                    story.html
+                )
+            }
+            None => format!("<div class=\"penna-docs-preview\">{}</div>", code.value),
+        };
+        Ok(format!(
+            "<div class=\"penna-docs-example docs-figure\" data-penna=\"card.figure\" role=\"figure\">{body}</div>\n"
+        ))
+    }
+
+    fn uses(&self, name: &str) {
+        for tier in ["components", "blocks"] {
+            for (extension, set) in [("css", &self.styles), ("js", &self.scripts)] {
+                let file = format!("{tier}/{name}/{name}.{extension}");
+                if self.root.join("src").join(&file).exists() {
+                    set.borrow_mut().insert(format!("assets/src/{file}"));
+                }
+            }
+        }
+    }
+
+    fn targets(&self) -> String {
+        if !self.native {
+            return String::new();
+        }
+        format!(
+            "<div class=\"penna-docs-targets\">{}</div>",
+            segments(["HTML", "Native"].into_iter(), "Render")
+        )
     }
 
     fn story_preview(&self, story: &StorySection) -> String {

@@ -9,7 +9,9 @@ penna is the widget kit on ala, a maintained fork of gpui-component. Read `UPSTR
 upstream fix.
 
 penna is the only place UI chrome is defined: tokens, surface roles, theme patches and components.
-Read `knowledge/designs/kit.md` before adding a component or a role. Two rules from it:
+Read `knowledge/designs/foundations.md` before any UI work: it is the spec for every value, name
+and rule (space, type, sizes, color, layout) and the order of work bringing penna onto it. Read
+`knowledge/designs/kit.md` before adding a component or a role. Two rules from it:
 
 - A component is in the kit when the storybook shows every state of it and it has been looked at
   on each theme in light and dark.
@@ -53,6 +55,20 @@ fence. An html fence renders live above the tabs. `story=<story>/<section>` on a
 page markup is the live HTML and an HTML tab, and when `storybook/dist` is built the example gets an
 HTML / Native switch that mounts the same section from the storybook wasm (its `mount(story,
 section, selector)` export) and follows the page's theme. The choice is remembered across pages.
+
+A ```` ```figure ```` fence is a picture with no code: `story=<story>/<section>` shows that section
+with the HTML / Native switch, and otherwise the fence body is penna DOM markup rendered as is,
+with `uses=label,input,...` adding those components' or blocks' CSS and JS to the page. Story
+labels are hidden inside figures. The site's own CSS is `docs/site.css`.
+
+## Design system
+
+People and agents read different documents. The Foundations pages of the docs site
+(`docs/pages/foundations.md`, `color.md`, `typography.md`, `spacing.md`, `sizes.md`) are for
+people: pictures made of real penna components and plain writing, with no values, tokens or
+code. `knowledge/designs/foundations.md` is the spec for agents: every value, name and rule, and
+which step of the work order each one lands in. When they disagree, the spec wins and the pages
+get fixed.
 
 ## Storybook
 

@@ -66,7 +66,7 @@ fn chips(_: &mut Window, _: &mut App) -> AnyElement {
         )
         .state(
             "detail",
-            h_flex().w(Space::S16.rems() * 12.0).child(
+            h_flex().w(Space::S32.rems() * 12.0).child(
                 Chip::new("detail", "Ready")
                     .dot(Tone::Success)
                     .detail("ubuntu is to the right, past the edge of the built-in display"),
@@ -180,8 +180,8 @@ fn chip_looks(_: &mut Window, cx: &mut App) -> AnyElement {
                 .child(
                     Chip::empty("chip-empty-body")
                         .look(ChipLook::Floating)
-                        .px(Space::S5)
-                        .gap(Space::S3)
+                        .px(Space::S10)
+                        .gap(Space::S6)
                         .child(Label::new(TextStyle::Small, "%3").strong())
                         .child(Label::new(TextStyle::Small, "vim")),
                 )
@@ -220,7 +220,7 @@ fn notices(_: &mut Window, cx: &mut App) -> AnyElement {
     states()
         .state(
             "tones",
-            v_flex().gap(Space::S4).children(
+            v_flex().gap(Space::S8).children(
                 [Tone::Danger, Tone::Warning, Tone::Success, Tone::Primary].map(|tone| {
                     Notice::new(tone, format!("A {} notice", tone.name()))
                         .detail("What happened and what to do about it.")
@@ -251,7 +251,7 @@ fn stacked(_: &mut Window, cx: &mut App) -> AnyElement {
     states()
         .state(
             "with a dot and an action",
-            v_flex().w(Space::S16.rems() * 11.0).child(
+            v_flex().w(Space::S32.rems() * 11.0).child(
                 Notice::new(Tone::Warning, "Needs one thing")
                     .dot(Tone::Warning)
                     .stacked()
@@ -267,7 +267,7 @@ fn stacked(_: &mut Window, cx: &mut App) -> AnyElement {
         )
         .state(
             "ready",
-            v_flex().w(Space::S16.rems() * 11.0).child(
+            v_flex().w(Space::S32.rems() * 11.0).child(
                 Notice::new(Tone::Success, "Ready")
                     .dot(Tone::Success)
                     .stacked()

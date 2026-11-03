@@ -64,7 +64,7 @@ impl RenderOnce for Steps {
                 Ordering::Greater => label.muted(),
             };
             let step = h_flex()
-                .gap(Space::S5)
+                .gap(Space::S10)
                 .when(index > 0, |step| {
                     step.child(
                         div()
@@ -99,7 +99,7 @@ impl RenderOnce for Steps {
                 None => step.into_any_element(),
             }
         });
-        let row = h_flex().gap(Space::S5).children(steps);
+        let row = h_flex().gap(Space::S10).children(steps);
         match self.id {
             Some(id) => row.author_id(id).role(Role::List).into_any_element(),
             None => row.into_any_element(),

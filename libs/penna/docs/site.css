@@ -1,0 +1,49 @@
+html, body { height: 100%; margin: 0; }
+body { overflow: hidden; }
+a.penna-button { text-decoration: none; }
+a.penna-docs-brand { color: inherit; text-decoration: none; }
+.penna-docs-page > .penna-docs-example { margin-bottom: 24px; }
+.penna-docs-page h2[id] { scroll-margin-top: 24px; }
+.penna-docs-header .penna-button[data-docs-menu] { display: none; }
+@media (max-width: 760px) {
+  .penna-docs-header .penna-button[data-docs-menu] { display: inline-flex; }
+  .penna-docs-header .penna-button[data-docs-link] { display: none; }
+  .penna-docs-side[data-penna] { display: none; position: fixed; top: 48px; bottom: 0; left: 0; z-index: 10; width: min(280px, 85vw); height: auto; }
+  .penna-docs-side[data-penna][data-open] { display: block; background: var(--penna-bg); box-shadow: 0 8px 24px rgb(0 0 0 / 0.3); }
+  .penna-docs-page { padding: 24px 16px 64px; }
+}
+
+.docs-figure .story-label { display: none; }
+.docs-figure > .penna-docs-preview { padding: 32px; }
+.docs-figure > .penna-docs-preview:has(> .docs-full) { justify-content: flex-start; }
+.docs-full { width: 100%; }
+
+.docs-ladder { display: grid; grid-template-columns: 96px minmax(0, 1fr); align-items: baseline; gap: 20px 24px; }
+.docs-ladder > .penna-type:nth-child(odd) { color: var(--penna-fg-muted); }
+
+.docs-compare { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 40px; }
+.docs-compare > div { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
+.docs-verdict { display: flex; align-items: center; gap: 6px; }
+.docs-verdict i { flex: none; }
+.docs-verdict[data-verdict="do"] i { color: var(--penna-success); }
+.docs-verdict[data-verdict="dont"] i { color: var(--penna-danger); }
+.docs-verdict .penna-type { white-space: normal; }
+
+.docs-form { display: flex; flex-direction: column; }
+.docs-form .penna-input { width: 100%; }
+.docs-field { display: flex; flex-direction: column; }
+.docs-form[data-spacing="grouped"] { gap: 16px; }
+.docs-form[data-spacing="grouped"] .docs-field { gap: 4px; }
+.docs-form[data-spacing="even"] { gap: 12px; }
+.docs-form[data-spacing="even"] .docs-field { gap: 12px; }
+.docs-actions { display: flex; justify-content: flex-end; gap: 8px; }
+
+.docs-row { display: flex; align-items: center; gap: 8px; }
+.docs-row[data-align="start"] { align-items: flex-start; }
+.docs-row .penna-input { width: 160px; }
+.docs-spacer { flex: 1; }
+.docs-text { white-space: normal; }
+
+@media (max-width: 760px) {
+  .docs-compare { grid-template-columns: minmax(0, 1fr); }
+}

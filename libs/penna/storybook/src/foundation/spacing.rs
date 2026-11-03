@@ -15,7 +15,7 @@ pub const STORY: Story = Story {
         Section {
             id: "scale",
             name: "Scale",
-            summary: "h_flex().gap(Space::S4).p(Space::S6)",
+            summary: "h_flex().gap(Space::S8).p(Space::S12)",
             build: |_, cx| stateless(scale, cx),
         },
         Section {
@@ -30,16 +30,16 @@ pub const STORY: Story = Story {
 fn scale(_: &mut Window, cx: &mut App) -> AnyElement {
     let bar = cx.theme().paint(Tone::Accent, Emphasis::Solid);
     v_flex()
-        .gap(Space::S4)
+        .gap(Space::S8)
         .children(Space::ALL.into_iter().map(|space| {
             h_flex()
-                .gap(Space::S6)
+                .gap(Space::S12)
                 .child(
                     div()
-                        .w(Space::S16)
+                        .w(Space::S32)
                         .child(Label::new(TextStyle::Mono, format!("{space:?}")).muted()),
                 )
-                .child(div().w(space).h(Space::S6).painted(bar, PaintState::Rest))
+                .child(div().w(space).h(Space::S12).painted(bar, PaintState::Rest))
                 .child(Label::new(TextStyle::Caption, format!("{}px", space.design_px())).faint())
         }))
         .into_any_element()
@@ -47,7 +47,7 @@ fn scale(_: &mut Window, cx: &mut App) -> AnyElement {
 
 fn in_use(_: &mut Window, cx: &mut App) -> AnyElement {
     let card = cx.theme().ground_of(Surface::new(Kind::Card.role()));
-    [Space::S2, Space::S4, Space::S8]
+    [Space::S4, Space::S8, Space::S16]
         .into_iter()
         .fold(states(), |states, space| {
             states.state(

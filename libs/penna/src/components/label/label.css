@@ -31,17 +31,42 @@
   line-height: 18px;
 }
 
+.penna-type[data-type="lead"] {
+  font-size: 14px;
+  line-height: 20px;
+}
+
 .penna-type[data-type="heading"] {
   font-size: 16px;
   font-weight: 600;
   line-height: 22px;
 }
 
+.penna-type[data-type="title"] {
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 26px;
+}
+
+.penna-type[data-type="display"] {
+  font-size: 26px;
+  font-weight: 600;
+  line-height: 32px;
+}
+
+.penna-type[data-type="mono"] {
+  font-family: var(--penna-mono);
+  font-size: 13px;
+  line-height: 18px;
+}
+
 .penna-type[data-strong] {
   font-weight: 500;
 }
 
-.penna-type[data-type="heading"][data-strong] {
+.penna-type[data-type="heading"][data-strong],
+.penna-type[data-type="title"][data-strong],
+.penna-type[data-type="display"][data-strong] {
   font-weight: 600;
 }
 
