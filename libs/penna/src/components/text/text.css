@@ -1,8 +1,8 @@
 .penna-md {
   width: 640px;
   min-width: 0;
-  font-size: 16px;
-  line-height: 26px;
+  font-size: var(--penna-text-read-body-size);
+  line-height: var(--penna-text-read-body-line);
   color: var(--penna-fg);
   --md-wash: rgb(from var(--penna-fg) r g b / 0.28);
   --md-title-weight: 600;
@@ -30,51 +30,55 @@
 }
 
 .penna-md p {
-  padding-bottom: 16px;
+  padding-bottom: var(--penna-space-12);
 }
 
 .penna-md :is(h1, h2, h3, h4, h5, h6) {
-  padding-bottom: 5px;
+  padding-top: var(--penna-space-4);
+  padding-bottom: var(--penna-space-8);
+  font-weight: var(--penna-text-read-h1-weight);
+}
+
+.penna-md :is(h1, h2) {
+  padding-top: var(--penna-space-12);
+}
+
+.penna-md :is(h1, h2, h3, h4, h5, h6):first-child {
+  padding-top: 0;
 }
 
 .penna-md h1 {
-  line-height: 45.5px;
-  font-size: 28px;
-  font-weight: 700;
+  font-size: var(--penna-text-read-h1-size);
+  line-height: var(--penna-text-read-h1-line);
 }
 
 .penna-md h2 {
-  line-height: 34px;
-  font-size: 21px;
-  font-weight: 600;
+  font-size: var(--penna-text-read-h2-size);
+  line-height: var(--penna-text-read-h2-line);
 }
 
 .penna-md h3 {
-  line-height: 28.5px;
-  font-size: 17.5px;
-  font-weight: 600;
+  font-size: var(--penna-text-read-h3-size);
+  line-height: var(--penna-text-read-h3-line);
 }
 
 .penna-md h4 {
-  line-height: 25.5px;
-  font-size: 15.75px;
-  font-weight: 600;
+  font-size: var(--penna-text-read-h4-size);
+  line-height: var(--penna-text-read-h4-line);
 }
 
 .penna-md h5 {
-  line-height: 22.5px;
-  font-size: 14px;
-  font-weight: 600;
+  font-size: var(--penna-text-read-h5-size);
+  line-height: var(--penna-text-read-h5-line);
 }
 
 .penna-md h6 {
-  line-height: 22.5px;
-  font-size: 14px;
-  font-weight: 500;
+  font-size: var(--penna-text-read-h5-size);
+  line-height: var(--penna-text-read-h5-line);
 }
 
 .penna-md strong {
-  font-weight: 700;
+  font-weight: var(--penna-text-read-h1-weight);
 }
 
 .penna-md em {
@@ -113,7 +117,7 @@
 }
 
 .penna-md .md-quote {
-  padding-bottom: 16px;
+  padding-bottom: var(--penna-space-12);
 }
 
 .penna-md .md-quote:last-child {
@@ -134,7 +138,7 @@
   display: flex;
   flex-direction: column;
   list-style: none;
-  padding-bottom: 16px;
+  padding-bottom: var(--penna-space-12);
 }
 
 .penna-md :is(ul, ol) :is(ul, ol) {
@@ -169,7 +173,7 @@
   flex: none;
   display: flex;
   align-items: center;
-  height: 26px;
+  height: 1lh;
   margin-right: 6px;
 }
 
@@ -178,8 +182,8 @@
   align-items: center;
   justify-content: center;
   box-sizing: border-box;
-  width: 16px;
-  height: 16px;
+  width: 1em;
+  height: 1em;
   border-radius: var(--md-check-r, 0px);
   corner-shape: superellipse(var(--penna-window-k));
   border: 1px solid rgb(from var(--penna-fg) r g b / 0.3);
@@ -187,7 +191,7 @@
   color: var(--penna-on-accent);
   outline: none;
   cursor: default;
-  --penna-icon-size: 11px;
+  --penna-icon-size: round(nearest, 0.7em, 1px);
 }
 
 .penna-md .md-check[aria-checked="true"] {
@@ -196,7 +200,7 @@
 }
 
 .penna-md hr {
-  padding-bottom: 16px;
+  padding-bottom: var(--penna-space-12);
   border: 0;
   height: auto;
 }
@@ -215,7 +219,7 @@
 }
 
 .penna-md .md-code {
-  padding-bottom: 16px;
+  padding-bottom: var(--penna-space-12);
   min-width: 0;
 }
 
@@ -273,7 +277,7 @@
 .penna-md .tk-bracket { color: var(--penna-syntax-bracket); }
 
 .penna-md .md-table {
-  padding-bottom: 16px;
+  padding-bottom: var(--penna-space-12);
   width: 100%;
 }
 

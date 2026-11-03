@@ -8,16 +8,17 @@ use std::{
 };
 
 use ala::{
-    AnyElement, App, Bounds, DefiniteLength, Div, Element, ElementId, FontStyle, FontWeight,
-    GlobalElementId, HighlightStyle, Hsla, InspectorElementId, InteractiveElement as _,
-    IntoElement, LayoutId, Length, ObjectFit, Overflow, ParentElement, Pixels, ScrollHandle,
-    SharedString, SharedUri, StatefulInteractiveElement, Styled, StyledImage as _, Window, div,
-    img, prelude::FluentBuilder as _, px, relative, rems,
+    AnyElement, App, Bounds, DefiniteLength, Div, Element, ElementId, FontStyle, GlobalElementId,
+    HighlightStyle, Hsla, InspectorElementId, InteractiveElement as _, IntoElement, LayoutId,
+    Length, ObjectFit, Overflow, ParentElement, Pixels, ScrollHandle, SharedString, SharedUri,
+    StatefulInteractiveElement, Styled, StyledImage as _, Window, div, img,
+    prelude::FluentBuilder as _, px, relative, rems,
 };
 use markdown::mdast;
 
 use crate::{
-    ActiveTheme as _, Edge, PaintState, RuleLook, Sizable as _, StyledExt, Surface, WindowExt as _,
+    ActiveTheme as _, Edge, PaintState, RuleLook, Sizable as _, Space, StyledExt, Surface,
+    TextStyle, WindowExt as _,
     components::check::Check,
     components::tooltip::Tooltip,
     foundation::highlighter::{HighlightTheme, LanguageRegistry, SyntaxHighlighter},
@@ -1116,7 +1117,7 @@ impl Paragraph {
 
                     let mut highlight = HighlightStyle::default();
                     if style.bold {
-                        highlight.font_weight = Some(FontWeight::BOLD);
+                        highlight.font_weight = Some(TextStyle::ReadBody.strong_weight());
                     }
                     if style.italic {
                         highlight.font_style = Some(FontStyle::Italic);
@@ -1239,7 +1240,7 @@ impl Paragraph {
 
                     let mut highlight = HighlightStyle::default();
                     if style.bold {
-                        highlight.font_weight = Some(FontWeight::BOLD);
+                        highlight.font_weight = Some(TextStyle::ReadBody.strong_weight());
                     }
                     if style.italic {
                         highlight.font_style = Some(FontStyle::Italic);
@@ -1749,7 +1750,7 @@ impl BlockNode {
         }
 
         div()
-            .pb(rems(1.))
+            .pb(node_cx.style.paragraph_gap)
             .w_full()
             .child(horizontal_scroll_area(
                 ("table", options.ix),
@@ -1814,7 +1815,7 @@ impl BlockNode {
         }
 
         div()
-            .pb(rems(1.))
+            .pb(node_cx.style.paragraph_gap)
             .w_full()
             .child(
                 figure(div().id(("table", options.ix)).w_full(), cx)
@@ -1854,30 +1855,23 @@ impl BlockNode {
             BlockNode::Heading {
                 level, children, ..
             } => {
-                let (text_size, font_weight) = match level {
-                    1 => (rems(2.), FontWeight::BOLD),
-                    2 => (rems(1.5), FontWeight::SEMIBOLD),
-                    3 => (rems(1.25), FontWeight::SEMIBOLD),
-                    4 => (rems(1.125), FontWeight::SEMIBOLD),
-                    5 => (rems(1.), FontWeight::SEMIBOLD),
-                    6 => (rems(1.), FontWeight::MEDIUM),
-                    _ => (rems(1.), FontWeight::NORMAL),
+                let style = TextStyle::reading_heading(*level);
+                let above = match level {
+                    1 | 2 => Space::S24,
+                    _ => Space::S16,
                 };
-
-                let heading_base_font_size =
-                    crate::rems_from_px(node_cx.style.heading_base_font_size.as_f32())
-                        .to_pixels(window.rem_size());
-                let mut text_size = text_size.to_pixels(heading_base_font_size);
-                if let Some(f) = node_cx.style.heading_font_size.as_ref() {
-                    text_size = (f)(*level, heading_base_font_size);
-                }
+                let first = options.ix == 0;
 
                 div()
                     .id(SharedString::from(format!("h{}-{}", level, ix)))
-                    .pb(rems(0.3))
+                    .when(!first, |this| {
+                        this.pt(rems(above.rems().0 - node_cx.style.paragraph_gap.0))
+                    })
+                    .pb(Space::S8)
                     .whitespace_normal()
-                    .text_size(text_size)
-                    .font_weight(font_weight)
+                    .text_size(style.size())
+                    .line_height(style.line_height())
+                    .font_weight(style.weight())
                     .child(children.render(node_cx, window, cx))
                     .into_any_element()
             }
@@ -2046,7 +2040,7 @@ fn cell_runs(
             let mut run = text_style.to_run(end - start);
             for mark in covering {
                 if mark.bold {
-                    run.font.weight = FontWeight::BOLD;
+                    run.font.weight = TextStyle::ReadBody.strong_weight();
                 }
                 if mark.italic {
                     run.font.style = FontStyle::Italic;

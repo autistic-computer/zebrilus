@@ -159,4 +159,7 @@ How parity drives the pages:
   `--penna-syntax-{keyword,type,constructor,function,comment,string,number,boolean,property,constant,title,literal}`
   (the highlighter's palette for the mode) and `--penna-glass-backdrop`, already in the shader's order: contrast,
   then brightness added, not multiplied.
+- ala snaps a glyph's baseline to a device pixel rounding halves toward zero (`round_half_toward_zero`), and
+  `text.js` places markdown baselines the same way. Copy that rounding wherever the DOM computes a baseline:
+  rounding halves up puts every line that lands on a half device pixel one pixel low.
 - What is left is text raster: ala snaps glyph baselines and dilates light text, which the DOM can't copy exactly.

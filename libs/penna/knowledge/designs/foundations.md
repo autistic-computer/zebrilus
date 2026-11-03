@@ -2,7 +2,7 @@
 type: Design Plan
 title: "Foundations: the scales and rules every penna screen is built from"
 description: "The agent-facing spec for penna's foundations: space, gap and inset tokens named by their pixel value, the interface, reading and touch type ladders, the control size ladder, color roles and contrast, corners, depth, focus, motion, the six layout primitives, and the order of work that brings penna onto them. People read the Foundations pages of the docs site instead."
-status: In progress (2026-11-03, step 1 of 8 built)
+status: In progress (2026-11-03, steps 1 and 2 of 8 built)
 resource: src/foundation/space.rs
 tags:
 - ui
@@ -93,19 +93,21 @@ Interface (`TextStyle`, built):
 | `display` | 26 | 32 | 600 |
 | `mono` | 13 | 18 | 400, code face |
 
-Reading, for documents and chat (`TextView`, step 2). Sizes reuse the interface sizes with lines made for paragraphs:
+Reading, for documents and chat (`TextStyle::ReadH1` to `ReadH5` and `ReadBody`, built). Sizes reuse the interface sizes with lines made for paragraphs:
 
-| Style | Size | Line | Weight | Today |
+| Style | Size | Line | Weight | Before step 2 |
 |---|---|---|---|---|
 | `read-h1` | 26 | 32 | 600 | 28 on 45.5, bold |
 | `read-h2` | 20 | 28 | 600 | 21 on 34 |
 | `read-h3` | 16 | 24 | 600 | 17.5 on 28.5 |
 | `read-h4` | 14 | 22 | 600 | 15.75 on 25.5 |
-| `read-h5`, `read-h6` | 13 | 20 | 600 | 14 on 22.5 |
+| `read-h5` (h5 and h6) | 13 | 20 | 600 | 14 on 22.5 |
 | `read-body` | 14 | 22 | 400 | 16 on 26 |
-| `read-small` | 13 | 20 | 400 | none |
+| `read-small` | 13 | 20 | 400 | planned, for captions and table cells |
 
-Reading rhythm (step 2): blocks (paragraphs, lists, quotes, code, tables) sit `space-12` apart; a heading has `space-24` above it (h1 and h2) or `space-16` (h3 to h6) and `space-8` below. The first block has nothing above it.
+Reading rhythm (built): blocks (paragraphs, lists, quotes, code, tables) sit `space-12` apart (`TextViewStyle::paragraph_gap`); a heading has `space-24` above it (h1 and h2) or `space-16` (h3 to h6) and `space-8` below. The first block has nothing above it. Bold in reading text is 600.
+
+`TextView` sets `read-body` on itself (`TextViewStyle::text`, default `Some(TextStyle::ReadBody)`). `None` makes it inherit its container's text style instead: zz's agent transcript does that to keep its own 12 to 13px sizes. Headings always take the reading ladder. A task list's checkbox is as tall as the font and sits in a box one line tall.
 
 Touch, for the compact and touch blocks (step 5): `touch-small` 15 on 20, `touch-body` 17 on 22, `touch-title` 34 on 40, weights 400, 400, 600.
 
@@ -197,8 +199,8 @@ Each component's docs page carries an anatomy: its parts and the tokens they use
 | Step | What | Visible change | Status |
 |---|---|---|---|
 | 1 | Token names in Rust and CSS: `Space` named by pixels with gap and inset constants; space, gap, inset and text style CSS variables | none | built |
-| 2 | Reading text: `TextView` and `text.css` on the reading ladder and rhythm | documents and chat get smaller, tighter text | next |
-| 3 | Root text style: `Root` sets `body` | unstyled native text boxes shrink from 21 to 18 | |
+| 2 | Reading text: `TextView` and `text.css` on the reading ladder and rhythm | documents and chat get smaller, tighter text | built |
+| 3 | Root text style: `Root` sets `body` | unstyled native text boxes shrink from 21 to 18 | next |
 | 4 | Layout primitives, native and DOM, with stories | none by themselves | |
 | 5 | Components onto the primitives and tokens, one family at a time, starting with Appearance (its 11 and 14 insets) and the touch ladder | small spacing moves, reviewed per family | |
 | 6 | Control ladder: `control-xs`, `-lg`, `-xl`, rows 28, tabs on the ladder | menu rows grow 2px, tabs move | |

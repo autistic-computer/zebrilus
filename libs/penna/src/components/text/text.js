@@ -116,7 +116,8 @@
 
   function device(value) {
     const scale = devicePixelRatio || 1;
-    return Math.round(value * scale) / scale;
+    const scaled = value * scale;
+    return (Math.sign(scaled) * Math.ceil(Math.abs(scaled) - 0.5)) / scale;
   }
 
   const TEXT = ".penna-md :is(p, h1, h2, h3, h4, h5, h6, .md-prefix, .md-cell)";
