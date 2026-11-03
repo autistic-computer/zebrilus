@@ -1,0 +1,8 @@
+{
+  "title": "penna",
+  "source": "https://github.com/autistic-computer/penna",
+  "groups": [
+    { "title": "Getting started", "pages": ["introduction", "installation"] },
+    { "title": "Components", "pages": ["button"] }
+  ]
+}

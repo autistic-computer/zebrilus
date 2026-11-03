@@ -40,6 +40,16 @@ Public module paths follow the tiers: `penna::components::button`,
 `penna::foundation::interface_theme`. Common types remain re-exported at the crate root.
 There are no aliases for the old module paths.
 
+## Docs site
+
+`docs/site.json` lists the page groups and `docs/pages/<slug>.md` holds each page.
+`cargo run --example docs --features tree-sitter` writes the site to `target/docs` (or the
+folder given as its argument): penna's markdown rendered into the `text` component's HTML,
+code highlighted by penna's highlighter, inside the `docs` block's layout, with the tokens,
+fonts and widget CSS and JS copied under `assets/`. Consecutive fences whose info string ends
+in `example` (```` ```rust example ````, ```` ```html example ````) become one `Example`: the
+html fence renders live above, and every fence is a tab.
+
 ## Storybook
 
 `storybook/` is penna's own page and the harness apps build theirs on: an app's storybook crate

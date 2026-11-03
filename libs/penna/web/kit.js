@@ -69,7 +69,7 @@ function ceilTextRuns(root = document, selector = "[data-penna-text]") {
   runs.forEach((run) => run.style.removeProperty("width"));
   const widths = runs.map((run) => run.getBoundingClientRect().width);
   runs.forEach((run, index) => {
-    run.style.width = `${Math.ceil(widths[index])}px`;
+    if (widths[index] > 0) run.style.width = `${Math.ceil(widths[index])}px`;
   });
 }
 

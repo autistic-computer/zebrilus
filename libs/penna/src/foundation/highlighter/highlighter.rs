@@ -899,6 +899,13 @@ impl SyntaxHighlighter {
         highlights
     }
 
+    pub fn highlights(&self, range: Range<usize>) -> Vec<(Range<usize>, SharedString)> {
+        self.match_styles(range)
+            .into_iter()
+            .map(|item| (item.range, item.name))
+            .collect()
+    }
+
     pub fn styles(
         &self,
         range: &Range<usize>,

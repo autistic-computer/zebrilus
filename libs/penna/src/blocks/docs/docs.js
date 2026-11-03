@@ -7,13 +7,20 @@
         panes.forEach((pane, index) => (pane.hidden = index !== event.detail.index));
       });
     }
-    example.querySelectorAll("[data-copy]").forEach((button) => {
-      button.addEventListener("click", () => {
-        const code = button.closest("pre")?.querySelector("code")?.textContent ?? "";
-        navigator.clipboard?.writeText(code).catch(() => {});
-      });
-    });
   }
 
   document.querySelectorAll(".penna-docs-example").forEach(wire);
+
+  document.querySelectorAll("[data-docs-menu]").forEach((button) => {
+    button.addEventListener("click", () => {
+      document.querySelector(".penna-docs-side")?.toggleAttribute("data-open");
+    });
+  });
+
+  document.querySelectorAll("[data-docs-mode]").forEach((button) => {
+    button.addEventListener("click", () => {
+      pennaKit.choice.mode = pennaKit.choice.mode === "dark" ? "light" : "dark";
+      pennaKit.apply();
+    });
+  });
 })();

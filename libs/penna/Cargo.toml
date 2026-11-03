@@ -98,3 +98,7 @@ struct_excessive_bools = "allow"
 type_complexity = "allow"
 used_underscore_binding = "allow"
 unused_self = "allow"
+
+[[example]]
+name = "docs"
+required-features = ["tree-sitter"]

@@ -266,6 +266,9 @@
 .penna-md .tk-literal { color: var(--penna-syntax-literal); }
 .penna-md .tk-title { color: var(--penna-syntax-title); font-weight: var(--md-title-weight); }
 .penna-md .tk-strong { font-weight: 700; }
+.penna-md .tk-comment { color: var(--penna-syntax-comment); }
+.penna-md .tk-constructor { color: var(--penna-syntax-constructor); }
+.penna-md .tk-boolean { color: var(--penna-syntax-boolean); }
 
 .penna-md .md-table {
   padding-bottom: 16px;
