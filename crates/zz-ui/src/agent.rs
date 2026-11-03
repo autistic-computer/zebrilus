@@ -2327,6 +2327,7 @@ fn markdown_view_with_extensions(
 
 fn agent_markdown_style(cx: &App) -> TextViewStyle {
     TextViewStyle {
+        text: None,
         highlight_theme: Arc::clone(&cx.theme().highlight_theme),
         is_dark: cx.theme().is_dark(),
         ..TextViewStyle::default()
