@@ -150,7 +150,7 @@ pub fn run() -> Result<(), wasm_bindgen::JsValue> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use penna::interface_theme::InterfaceTheme;
+    use penna::foundation::interface_theme::InterfaceTheme;
 
     #[test]
     fn the_catalog_has_no_problems() {
@@ -211,7 +211,7 @@ mod tests {
             let mut kit = penna::Theme::default();
             theme.apply_roles(&mut kit);
             theme.materials.apply(&mut kit);
-            for role in penna::roles::all() {
+            for role in penna::foundation::roles::all() {
                 let (mut style, _) = knobs::inherited(role, &theme.roles, &theme.materials);
                 if let Some(patch) = theme.roles.get(role.id()) {
                     patch.apply(&mut style);

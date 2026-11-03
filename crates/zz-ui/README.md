@@ -52,18 +52,18 @@ selection, cursor, scrollbar, and image placement. It consumes `zz-terminal` vie
 engine features disabled. Each client owns its input, focus, image delivery, and connection
 lifecycle; native daemon and operating-system dependencies stay outside `zz-ui`.
 
-`src/compact/` holds the parts of the phone shell that know about hosts, sessions, windows and
+`src/blocks/compact/` holds the parts of the phone shell that know about hosts, sessions, windows and
 panes: `host_tile`, `host_tile_line`, `window_tile`, `window_layout`, `window_span`, `mini_pane`,
 the overview headings and `HostState`, built on the kit's bento grid. The phone chrome they sit
-in lives in `penna::compact` (`libs/penna/src/compact/`): the floating pill bar and its morph into
+in lives in `penna::blocks::compact` (`libs/penna/src/blocks/compact/`): the floating pill bar and its morph into
 the key row, the pill menu, the folding title bar, the HUD and the bento grid. Large titles are
-`penna::settings::large_title`. The touch widgets under them live in `penna::touch`
-(`libs/penna/src/touch/`), zz-original with no upstream counterpart. `Pager` is a renderer-free model that pages one pane per screen from touch pans and
+`penna::blocks::settings::large_title`. The touch widgets under them live in `penna::blocks::touch`
+(`libs/penna/src/blocks/touch/`), zz-original with no upstream counterpart. `Pager` is a renderer-free model that pages one pane per screen from touch pans and
 wheel scrolls (rubber-banded edges, a quarter-width or velocity commit, one page per gesture,
 the fling ended after a release, a spring settle). `Lift` is the same kind of model for a drag up
 the bar: progress follows the finger over 300px with resistance past the top, and a release past
 a third or a flick springs it open, otherwise closed. The rest is the chrome around it:
-`page_dots`; from `penna::compact`, `compact_floating_bar` with `compact_floating_pill` (an icon,
+`page_dots`; from `penna::blocks::compact`, `compact_floating_bar` with `compact_floating_pill` (an icon,
 a title, a meta line and the dots) and 44px `compact_bar_button`s, and the centered `compact_hud`
 badge (the terminal text size while pinching); `bottom_sheet` (dragged down by its header, or by its content from the top, to close), the
 grouped `WhichKeyList` a sheet shows, `swipe_back` for a back swipe that pops a pushed page over

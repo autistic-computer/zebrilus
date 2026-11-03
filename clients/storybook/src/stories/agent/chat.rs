@@ -6,8 +6,8 @@ use ala::{
     prelude::*, px,
 };
 use penna::{
-    ActiveTheme as _, IconName, WindowExt as _, button::Button, input::InputEvent,
-    notification::Notification, v_flex,
+    ActiveTheme as _, IconName, WindowExt as _, blocks::notification::Notification,
+    components::button::Button, components::input::InputEvent, v_flex,
 };
 use zz_protocol::chat::{
     Answer, Ask, ItemBody, ItemId, ItemKind, ItemStatus, OptionKind, QuestionAnswer, RequestClose,

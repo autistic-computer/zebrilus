@@ -129,8 +129,8 @@ catalog's `plates` are its regions, each its own window, so a hover or a spinner
 region. penna's own page has five plates built from penna alone (`creator::WINDOW`, `CONTROLS`,
 `FLOATING`, `CONTENT`, `PHONE`): an app window with the sidebar, title bar and the appearance
 rows, a form with switches, buttons and the settings card, menus with a picker, toasts, a dialog
-and which-key, markdown and an inline alert, and the phone chrome from `penna::compact` and
-`penna::touch`. zz's creator is every surface of zz in eleven plates (Workspace, Flat sidebar,
+and which-key, markdown and an inline alert, and the phone chrome from `penna::blocks::compact` and
+`penna::blocks::touch`. zz's creator is every surface of zz in eleven plates (Workspace, Flat sidebar,
 Lens, Panes, PiP, Start, Controls, Floating, Content, Phone, Drawers); its Controls, Floating and
 Phone plates reuse the creator's parts (`tiles`, `card`, `heading`, `labeled`, `over_backdrop`,
 `phone_frame`) and keep zz's own preferences card, buttons, toasts and dialog in
@@ -149,7 +149,7 @@ Colors (the mode with Contrast, Tint hue and Tint, palettes, font), Materials
 (shape, glass, both shadows),
 Roles and Export (the theme file with Copy and Import), then App (the catalog's knobs, in zz the
 pane settings, and the preview backdrop and animations, none of which are in the theme). The Roles step lists every kind with its groups and
-roles indented under it (`penna::roles::members`), with the props each role's knobs allow
+roles indented under it (`penna::foundation::roles::members`), with the props each role's knobs allow
 (`SurfaceRole::knobs`) as segmented controls. A prop left on inherit shows the value it inherits
 and from which kind or group, built in or from this theme. Setting a prop on a role
 with nothing under it writes only what differs from that into the theme's `roles` patch; on a
@@ -168,7 +168,7 @@ start theme, so they survive a reload when the address drops them for length.
 
 # Add an app's plates to the creator
 
-The creator edits every role in `penna::roles::all()`: the kit's kinds and groups, penna's chrome
+The creator edits every role in `penna::foundation::roles::all()`: the kit's kinds and groups, penna's chrome
 roles and the recipes its components pick. Apps define no roles (penna's `knowledge/designs/kit.md`);
 to tune how a theme draws the app's pieces:
 
@@ -185,7 +185,7 @@ to tune how a theme draws the app's pieces:
 `libs/penna/storybook/tests/creator.rs` plays such an app: a Board plate that draws `well`,
 `tile.screen` and `chip` beside penna's Controls. It checks the creator comes first with those
 plates, the roles JSON lists those roles under their parents, an edit to `tile.screen` sent the way
-the page sends it lands in the exported theme and parses back with `penna::interface_theme`, import
+the page sends it lands in the exported theme and parses back with `penna::foundation::interface_theme`, import
 drops a retired id (`board.screen`) and names an unknown one, and the Board plate, drawn on ala's
 test platform, reports the three roles.
 

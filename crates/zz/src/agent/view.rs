@@ -37,10 +37,10 @@ use zz_ui::{
 
 use crate::command::palette::palette_backend;
 use penna::{
-    button::Button,
+    components::button::Button,
+    components::input::{IndentInline, InputEvent, InputState, MoveDown, MoveUp},
+    components::scroll::Scrollbar,
     h_flex,
-    input::{IndentInline, InputEvent, InputState, MoveDown, MoveUp},
-    scroll::Scrollbar,
 };
 use zz_protocol::{AgentProvider, CommandInvocation, PaneId};
 use zz_ui::agent::DisclosureKind;

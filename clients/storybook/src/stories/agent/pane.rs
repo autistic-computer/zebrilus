@@ -2,7 +2,7 @@ use ala::{
     AnyElement, AnyView, App, AppContext as _, Context, Div, Entity, IntoElement,
     ParentElement as _, Render, SharedString, Styled as _, Window, div, prelude::*, px,
 };
-use penna::{ActiveTheme as _, input::InputState};
+use penna::{ActiveTheme as _, components::input::InputState};
 use zz_client::agent_flip::{AgentFlips, Flip, FlipMode};
 use zz_protocol::chat::{ItemKind, ItemStatus};
 use zz_protocol::{AgentProvider, PaneId};

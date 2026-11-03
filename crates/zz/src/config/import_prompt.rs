@@ -42,7 +42,7 @@ pub(crate) fn choose_tmux_config(window: &mut Window, cx: &mut App) {
                 .update(|window, cx| {
                     let Some(target) = zz_daemon_client::mux_config_write_path() else {
                         crate::window::toast::push(
-                            penna::notification::Notification::error(
+                            penna::blocks::notification::Notification::error(
                                 "Could not resolve the zz multiplexer configuration path",
                             ),
                             cx,
@@ -80,11 +80,14 @@ fn run_tmux_import(path: PathBuf, window: &mut Window, cx: &mut App) {
             let result = task.await;
             let _ = window.update(|window, cx| match result {
                 Ok(output) => crate::window::toast::push(
-                    penna::notification::Notification::success(output),
+                    penna::blocks::notification::Notification::success(output),
                     cx,
                 ),
                 Err(error) => {
-                    crate::window::toast::push(penna::notification::Notification::info(error), cx);
+                    crate::window::toast::push(
+                        penna::blocks::notification::Notification::info(error),
+                        cx,
+                    );
                     cx.set_global(config::settings::PendingMuxImport(true));
                     window.dispatch_action(Box::new(config::settings::OpenSettings), cx);
                 }

@@ -18,7 +18,7 @@ use ala::{
 use parking_lot::RwLock;
 use penna::{
     ActiveTheme as _, IconName,
-    input::{InputEvent, InputState},
+    components::input::{InputEvent, InputState},
 };
 use zz_client::{
     ChromeAction, TERMINAL_TABLE,
@@ -739,10 +739,12 @@ impl TerminalView {
             },
             cx,
         )
-        .on_action(cx.listener(|view, _: &penna::input::Escape, window, cx| {
-            view.close_search(window, cx);
-            cx.stop_propagation();
-        }))
+        .on_action(
+            cx.listener(|view, _: &penna::components::input::Escape, window, cx| {
+                view.close_search(window, cx);
+                cx.stop_propagation();
+            }),
+        )
         .into_any_element()
     }
 

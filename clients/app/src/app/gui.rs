@@ -17,7 +17,7 @@ impl AppShell {
                 })
                 .flatten(),
             GuiOffer::toggle(PANE_GAPS, preferences.gaps),
-            theme_offer(&penna::settings::appearance::theme_picks(
+            theme_offer(&penna::blocks::appearance::theme_picks(
                 &preferences.appearance,
                 preferences.saved(),
             )),

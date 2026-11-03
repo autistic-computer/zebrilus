@@ -1,8 +1,11 @@
 pub mod tmux_style;
 
 pub(crate) use penna::{
-    badge, button, check, feedback, icon, input, kbd, list, menu, motion, notification, picker,
-    pulse, scroll, separator, sidebar, spinner, text, tooltip, touch,
+    blocks::feedback, blocks::notification, blocks::picker, blocks::sidebar, blocks::touch,
+    components::badge, components::button, components::check, components::icon, components::input,
+    components::kbd, components::list, components::menu, components::scroll, components::separator,
+    components::spinner, components::text, components::tooltip, foundation::motion,
+    foundation::pulse,
 };
 
 pub(crate) use penna::{
@@ -45,7 +48,7 @@ pub fn init(cx: &mut ala::App) {
 
 #[cfg(feature = "tree-sitter")]
 fn register_tmux_language() {
-    let tmux = penna::highlighter::LanguageConfig::new(
+    let tmux = penna::foundation::highlighter::LanguageConfig::new(
         "tmux",
         tree_sitter_tmux::LANGUAGE,
         Vec::new(),
@@ -53,7 +56,7 @@ fn register_tmux_language() {
         "",
         "",
     );
-    let registry = penna::highlighter::LanguageRegistry::singleton();
+    let registry = penna::foundation::highlighter::LanguageRegistry::singleton();
     registry.register("tmux", &tmux);
     registry.register("tmux.conf", &tmux);
 }
@@ -68,7 +71,7 @@ pub const LABEL_FADE: ala::Pixels = ala::px(28.0);
 
 #[cfg(all(test, feature = "tree-sitter"))]
 mod tests {
-    use penna::highlighter::{HighlightTheme, Rope, SyntaxHighlighter};
+    use penna::foundation::highlighter::{HighlightTheme, Rope, SyntaxHighlighter};
 
     #[ala::test]
     fn a_tmux_fence_highlights_after_init(cx: &mut ala::TestAppContext) {

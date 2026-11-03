@@ -1,11 +1,11 @@
-use penna::sidebar::{controls_leading_inset, status_dot};
+use penna::blocks::sidebar::{controls_leading_inset, status_dot};
 use std::rc::Rc;
 
 use ala::{
     AnyElement, App, Entity, IntoElement, MouseButton, Pixels, SharedString, Stateful, Window,
     prelude::*,
 };
-use penna::{ActiveTheme as _, IconName, tooltip::Tooltip};
+use penna::{ActiveTheme as _, IconName, components::tooltip::Tooltip};
 use zz_client::{StatusBarModel, StatusBarWindow};
 use zz_ui::navigation::{
     WorkspaceStatusWindowState,

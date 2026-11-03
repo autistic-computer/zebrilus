@@ -1,5 +1,5 @@
 use ala::{AppContext as _, Context, Focusable as _, Window};
-use penna::{Root, WindowExt as _, input::InputState};
+use penna::{Root, WindowExt as _, components::input::InputState};
 
 use super::AppShell;
 

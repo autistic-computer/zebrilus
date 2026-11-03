@@ -15,10 +15,10 @@ use fff_search::FilePickerOptions;
 use fff_search::{FilePicker, FuzzySearchOptions, PaginationArgs, QueryParser};
 use ignore::WalkBuilder;
 use penna::{
-    ActiveTheme as _, CHROME_GAP, IconName, Label, PanelLook, StyledExt as _, TextStyle, h_flex,
-    input::{InputEvent, InputState, MoveDown, MoveUp},
-    scroll::ScrollableElement as _,
-    v_flex,
+    ActiveTheme as _, CHROME_GAP, IconName, Label, PanelLook, StyledExt as _, TextStyle,
+    components::input::{InputEvent, InputState, MoveDown, MoveUp},
+    components::scroll::ScrollableElement as _,
+    h_flex, v_flex,
 };
 use zz_ui::command::palette_shortcut_hint;
 
@@ -568,7 +568,7 @@ impl FilePickerView {
                     let pointer_view = view.clone();
                     let click_view = view.clone();
                     Some(
-                        penna::picker::path_row(
+                        penna::blocks::picker::path_row(
                             ("file-picker-row", index),
                             icon.clone(),
                             label,
@@ -648,7 +648,7 @@ impl Render for FilePickerView {
         let backdrop_view = cx.entity();
         let empty = self.rows.is_empty();
         let empty_message = self.empty_message(cx);
-        penna::picker::picker_overlay("file-picker-overlay", cx)
+        penna::blocks::picker::picker_overlay("file-picker-overlay", cx)
             .track_focus(&focus)
             .capture_action(cx.listener(Self::move_up))
             .capture_action(cx.listener(Self::move_down))
@@ -658,10 +658,10 @@ impl Render for FilePickerView {
                 cx.stop_propagation();
             })
             .child(
-                penna::picker::picker_modal("file-picker-modal", cx)
+                penna::blocks::picker::picker_modal("file-picker-modal", cx)
                     .child(
-                        penna::picker::picker_header(cx)
-                            .child(penna::picker::picker_search(&self.input, cx)),
+                        penna::blocks::picker::picker_header(cx)
+                            .child(penna::blocks::picker::picker_search(&self.input, cx)),
                     )
                     .child(
                         v_flex()
@@ -690,7 +690,7 @@ impl Render for FilePickerView {
                             }),
                     )
                     .child(
-                        penna::picker::picker_footer(cx)
+                        penna::blocks::picker::picker_footer(cx)
                             .child(palette_shortcut_hint(["up", "down"], "select"))
                             .child(palette_shortcut_hint(["enter"], "open"))
                             .child(palette_shortcut_hint(["escape"], "close"))

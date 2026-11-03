@@ -43,7 +43,7 @@ impl Default for Preferences {
             sidebar: true,
             flat_sidebar: false,
             program_colors: true,
-            sidebar_width: penna::sidebar::SIDEBAR_DEFAULT_WIDTH,
+            sidebar_width: penna::blocks::sidebar::SIDEBAR_DEFAULT_WIDTH,
             status_badges: true,
             gaps: false,
             dark: true,
@@ -80,7 +80,7 @@ impl Preferences {
             self.sidebar_width,
             160.0,
             640.0,
-            penna::sidebar::SIDEBAR_DEFAULT_WIDTH,
+            penna::blocks::sidebar::SIDEBAR_DEFAULT_WIDTH,
         );
         let mut ids = std::collections::HashSet::new();
         self.themes.retain(|(id, _)| {
@@ -455,7 +455,7 @@ mod tests {
         assert_eq!(defaults.appearance.overrides, ThemeOverrides::default());
         assert_eq!(
             defaults.sidebar_width,
-            penna::sidebar::SIDEBAR_DEFAULT_WIDTH
+            penna::blocks::sidebar::SIDEBAR_DEFAULT_WIDTH
         );
         let status = defaults.status_bar_settings();
         assert!(status.badges);

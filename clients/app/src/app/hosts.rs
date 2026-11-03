@@ -2,17 +2,18 @@
 use ala::{AnyElement, Entity, IntoElement, Pixels, SharedString, Subscription, Window, div, px};
 use ala::{Context, prelude::*};
 use penna::{
-    ActiveTheme as _, Ground, Icon, IconName, Label, TextStyle, Tone, button::Button, h_flex,
+    ActiveTheme as _, Ground, Icon, IconName, Label, TextStyle, Tone, components::button::Button,
+    h_flex,
 };
 #[cfg(any(target_os = "ios", target_os = "android"))]
 use penna::{
     Colorize as _, RuleLook, StyledExt as _,
-    button::ButtonVariants as _,
-    input::{Input, InputEvent, InputState},
-    sheet::{
+    blocks::sheet::{
         bottom_sheet, close_sheet, floating_sheet, sheet_close, sheet_ground, sheet_inset,
         sheet_row,
     },
+    components::button::ButtonVariants as _,
+    components::input::{Input, InputEvent, InputState},
 };
 use zz_ui::settings::{
     SettingEntry, SettingsScrollColumn, SettingsStack, settings_card_ground, settings_page_heading,
@@ -383,7 +384,7 @@ impl AppShell {
                     Button::new(("hosts-connect", index))
                         .when(
                             index == 0 && nothing_attached,
-                            penna::button::ButtonVariants::primary,
+                            penna::components::button::ButtonVariants::primary,
                         )
                         .label("Connect")
                         .on(settings_card_ground(cx))
@@ -729,7 +730,7 @@ impl AppShell {
 
 #[cfg(any(target_os = "ios", target_os = "android"))]
 pub(super) fn copy_ssh_key(window: &mut Window, cx: &mut ala::App) {
-    use penna::{WindowExt as _, notification::Notification};
+    use penna::{WindowExt as _, blocks::notification::Notification};
     let notification = match zz_daemon_client::app_ssh_public_key() {
         Ok(key) => {
             cx.write_to_clipboard(ala::ClipboardItem::new_string(key));

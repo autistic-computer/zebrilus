@@ -4,7 +4,7 @@ use ala::{
 };
 use penna::{
     Label, TextStyle, Tile, TileVariant,
-    compact::{BentoSpan, bento_tile},
+    blocks::compact::{BentoSpan, bento_tile},
 };
 
 use crate::{ActiveTheme as _, Colorize as _, Icon, IconName, PaintState};

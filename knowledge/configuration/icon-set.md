@@ -2,7 +2,7 @@
 type: Configuration
 title: zz icon set
 description: zz's icons, adapted from Solar and drawn from skeletons so their corners follow the theme radius and superellipse smoothing, how the app and the site get them, and how to draw, preview and review a new one.
-resource: libs/penna/src/icon/solar.json
+resource: libs/penna/src/components/icon/solar.json
 tags: [ui, icons, penna, storybook, site, theme]
 timestamp: 2026-10-24T00:00:00Z
 ---
@@ -15,13 +15,13 @@ keep their own artwork as files in `crates/zz-ui/assets/icons`, which `zz_ui::As
 falling back to penna's assets. The logo is the path `zz_ui::ZZ_LOGO` (`icons/zz.svg`); the other
 three are `zz_ui::CLAUDE_ICON`, `OPENAI_ICON` and `CHROME_ICON`, each an `IconName::Asset` that names
 its file, so they go anywhere the kit takes an `IconName`. The
-set lives as skeletons in `libs/penna/src/icon/solar.json`, not as SVG files, and is drawn at
+set lives as skeletons in `libs/penna/src/components/icon/solar.json`, not as SVG files, and is drawn at
 paint time for the current theme, so radius 0 gives flat icons and higher radii round them the way zz
 rounds panes. The desktop app, the web and iOS clients and the storybook all draw it.
 
 The glyphs are adapted from the Linear style of the [Solar Icons Set](https://www.figma.com/community/file/1166831539721848736)
 by 480 Design, CC BY 4.0. Each icon taken from Solar names its source in a `solar` field; icons
-without one are zz's own, drawn in Solar's style. `libs/penna/src/icon/LICENSE-SOLAR` holds the
+without one are zz's own, drawn in Solar's style. `libs/penna/src/components/icon/LICENSE-SOLAR` holds the
 credit and the list of changes the license asks for, and `NOTICE.md` lists the set.
 
 Program tiles in the flat sidebar draw the generic programs (a terminal, `log`, `sleep`, `top`,
@@ -46,7 +46,7 @@ JSON, 1.5, Solar's own weight; 1 read too thin and 2 too heavy). Corners are the
 - **Radius 0 is flat**: sharp corners, square caps, mitered joins. Above 0, caps and joins are round.
 
 Two renderers implement the same math and must stay in step when a part kind changes:
-`libs/penna/src/icon/glyphs.rs` (Rust, what the app draws) and
+`libs/penna/src/components/icon/glyphs.rs` (Rust, what the app draws) and
 `libs/penna/storybook/icons/glyph.js` (the review page).
 
 # How it ships
@@ -60,7 +60,7 @@ windows, so every icon redraws. A plain
 `icons/<name>.svg` load, outside any theme, draws at radius 6 and smoothing 4. Nothing has to be wired
 per client: every app that uses the kit's `Assets` and `Icon` gets the set.
 
-The bijection tests in `libs/penna/src/icon/mod.rs` hold `IconName::ALL` to the set: every variant
+The bijection tests in `libs/penna/src/components/icon/mod.rs` hold `IconName::ALL` to the set: every variant
 loads from the kit's `Assets`, and every icon in `solar.json` names its variant. A test in
 `crates/zz-ui/src/program.rs` checks that zz's own marks load from `zz_ui::Assets`.
 
@@ -129,7 +129,7 @@ strokes `dot` parts, and anything else stays a `d` path. Record the source name 
 # Adding or changing an icon
 
 1. If zz needs a new `IconName`, add the variant and its `icons/<name>.svg` path in
-   `libs/penna/src/icon/mod.rs`. A brand mark is not a kit icon: its file goes in
+   `libs/penna/src/components/icon/mod.rs`. A brand mark is not a kit icon: its file goes in
    `crates/zz-ui/assets/icons`, named by an `IconName::Asset` constant in `crates/zz-ui/src/program.rs`.
 2. Add one line to `solar.json` with `name` equal to the path's stem, its `variant`, a `group`, its
    `solar` source if it has one, and its `parts`. Draw it with the rules above.

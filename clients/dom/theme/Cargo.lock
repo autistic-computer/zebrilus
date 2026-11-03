@@ -4429,6 +4429,7 @@ dependencies = [
  "tree-sitter-language",
  "unicode-segmentation",
  "url",
+ "web-sys",
  "web-time",
 ]
 

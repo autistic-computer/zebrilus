@@ -7,9 +7,9 @@ use std::{
 use ala::{App, AsyncApp, Entity, Global, Window, prelude::*};
 use penna::{
     WindowExt as _,
-    button::{Button, ButtonVariants as _},
+    blocks::notification::Notification,
+    components::button::{Button, ButtonVariants as _},
     h_flex,
-    notification::Notification,
 };
 use semver::Version;
 pub(crate) use zz_config::update::{Channel, Release};

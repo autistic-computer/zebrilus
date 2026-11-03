@@ -7,14 +7,14 @@ use ala::{
 };
 use penna::{
     ActiveTheme as _, Colorize as _, IconName, Label, TextStyle,
-    button::{Button, ButtonVariants as _},
-    compact::{
+    blocks::compact::{
         BENTO_INSET, BentoSpan, PillLabel, PillPlacement, bento_grid, compact_bar_button,
         compact_floating_bar, compact_floating_group, compact_floating_pill, folding_title_bar,
         scrolled,
     },
-    settings::large_title,
-    touch::{PageDot, PagerEvent, page_dots},
+    blocks::settings::large_title,
+    blocks::touch::{PageDot, PagerEvent, page_dots},
+    components::button::{Button, ButtonVariants as _},
 };
 use web_time::Instant;
 use zz_client::{
@@ -34,7 +34,7 @@ use zz_ui::{
 use super::{AppShell, MenuFrom, Page, kind_icon, pages};
 use crate::{connection::Connection, terminal::phone_colors};
 #[cfg(any(target_os = "ios", target_os = "android"))]
-use penna::compact::bento_add_tile;
+use penna::blocks::compact::bento_add_tile;
 
 const PREVIEW_TEXT: f32 = 4.0;
 const PREVIEW_LINE: f32 = 4.8;

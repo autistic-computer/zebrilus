@@ -16,10 +16,10 @@ just design penna-tokens   # the same for penna's own page
 | `libs/penna/web/penna.css` | The kit: every element with `data-penna="<role id>"` paints with that role's tokens, plus the layout of the kit's roles (buttons, fields, menus, dialogs, toasts, the window, sidebar and settings) |
 | `libs/penna/web/kit.js` | Loads the tokens for the chosen theme and mode, rounds corners the way ala does, adds the glass lens in Chromium |
 | `libs/penna/web/index.html` | penna's kit page, served at `/penna/` |
-| `libs/penna/src/theme_css.rs` | `penna::theme_css`: writes every role's look in every built-in theme as CSS tokens. penna's `theme_css` example writes `libs/penna/web/tokens/` |
+| `libs/penna/src/foundation/theme_css.rs` | `penna::foundation::theme_css`: writes every role's look in every built-in theme as CSS tokens. penna's `theme_css` example writes `libs/penna/web/tokens/` |
 | `design/zz.css` | The layout of zz's pieces: pane headers, window tabs, the status chip, the agent composer, the palette, the terminal |
 | `design/index.html` | zz's page, served at `/` |
-| `design/tokens/` | zz's tokens: every penna role, with tone variants for `penna::roles::TONED`, written by `crates/zz-ui/examples/theme_css.rs` |
+| `design/tokens/` | zz's tokens: every penna role, with tone variants for `penna::foundation::roles::TONED`, written by `crates/zz-ui/examples/theme_css.rs` |
 
 Both token folders are build output and stay out of git. The HTML client (`clients/dom`) copies the
 kit, `zz.css` and zz's tokens into its `dist/kit/`.
@@ -60,13 +60,13 @@ properties keep `zz-` (`.zz-terminal`, `--zz-pane-header-height`).
 | `data-penna="sidebar.row"` | the component and look that draw that role (`Row::new(id, RowLook::Sidebar)`); any id from `SurfaceRole::KIT` or penna's `roles.rs` |
 | `:hover`, `:active`, `:focus-visible` or `data-state="hover"` | `PaintState::Hover`, `Active`, `Focused` |
 | `data-state="selected"`, `"current"`, `"disabled"` | `PaintState::Selected`, `Current`, `Disabled` |
-| `data-tone="danger"`, `data-prominent` | `.tone(Tone::Danger)`, and a solid `Button` for prominent (kit buttons and labels, and the recipes in `penna::roles::TONED`) |
+| `data-tone="danger"`, `data-prominent` | `.tone(Tone::Danger)`, and a solid `Button` for prominent (kit buttons and labels, and the recipes in `penna::foundation::roles::TONED`) |
 | `data-ground` on a container, kit roles inside it | `.on(theme.ground_of(look))` on the components inside |
 | `color: var(--penna-muted)` | `muted_on(ground, cx)` |
 | `display: flex; gap: 8px; padding: 0 12px` | `h_flex().gap(px(8.)).px(px(12.))` |
 
 Colors, edges, shadows, radius and smoothing come out of `Theme::layer` for every role, state, tone and
-theme, through `penna::theme_css`. Mockups name roles, not colors, the way zz-ui names looks.
+theme, through `penna::foundation::theme_css`. Mockups name roles, not colors, the way zz-ui names looks.
 
 ## How close it is
 

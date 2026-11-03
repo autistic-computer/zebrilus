@@ -1,4 +1,4 @@
-use penna::sidebar::{SIDEBAR_DEFAULT_WIDTH, sidebar_footer, sidebar_titlebar};
+use penna::blocks::sidebar::{SIDEBAR_DEFAULT_WIDTH, sidebar_footer, sidebar_titlebar};
 use std::rc::Rc;
 
 use ala::{

@@ -1,27 +1,29 @@
 use crate::ThemeMode;
 
-pub use penna::interface_theme::{
+pub use penna::foundation::interface_theme::{
     ACCENTS, Appearance, AppearanceChange, BUILTIN_THEMES, DEFAULT_THEME, DEFAULT_TINT_HUE,
     InterfaceTheme, MAX_CORNER_RADIUS, Materials, SavedThemes, ThemeColors, ThemeOverrides,
     accent_color,
 };
-pub use penna::motion::{DEFAULT_ANIMATION_SPEED, MAX_ANIMATION_SPEED, MIN_ANIMATION_SPEED};
+pub use penna::foundation::motion::{
+    DEFAULT_ANIMATION_SPEED, MAX_ANIMATION_SPEED, MIN_ANIMATION_SPEED,
+};
 pub use zz_client::appearance::{AccentSetting, ThemeModeSetting};
 
 pub fn parse_theme(source: &str) -> Result<InterfaceTheme, String> {
-    penna::interface_theme::parse_theme(source)
+    penna::foundation::interface_theme::parse_theme(source)
 }
 
 pub fn builtin_themes() -> &'static [(&'static str, InterfaceTheme)] {
-    penna::interface_theme::builtin_themes()
+    penna::foundation::interface_theme::builtin_themes()
 }
 
 pub fn builtin_theme(id: &str) -> Option<&'static InterfaceTheme> {
-    penna::interface_theme::builtin_theme(id)
+    penna::foundation::interface_theme::builtin_theme(id)
 }
 
 pub fn default_theme() -> &'static InterfaceTheme {
-    penna::interface_theme::default_theme()
+    penna::foundation::interface_theme::default_theme()
 }
 
 pub fn is_builtin_theme(id: &str) -> bool {
@@ -80,7 +82,7 @@ mod tests {
     #[test]
     fn the_composers_buttons_are_filled_in_every_builtin() {
         use crate::Surface;
-        use penna::{button::ButtonLook, input::FieldLook};
+        use penna::{components::button::ButtonLook, components::input::FieldLook};
         for (id, theme) in builtin_themes() {
             for mode in [ThemeMode::Light, ThemeMode::Dark] {
                 let mut kit = Theme::from(&*ThemeColor::for_mode(mode));
@@ -198,12 +200,12 @@ mod tests {
         )
         .unwrap();
         assert_eq!(theme.roles.keys().collect::<Vec<_>>(), ["card.code"]);
-        assert_eq!(penna::roles::find("agent.composer"), None);
+        assert_eq!(penna::foundation::roles::find("agent.composer"), None);
     }
 
     #[test]
     fn zz_names_the_accents_and_limits_the_kit_draws() {
-        use penna::{interface_theme as kit, motion};
+        use penna::{foundation::interface_theme as kit, foundation::motion};
         use zz_client::appearance as config;
         assert_eq!(kit::ACCENTS, config::ACCENTS);
         assert_eq!(kit::DEFAULT_THEME, config::DEFAULT_THEME);
@@ -229,7 +231,7 @@ mod tests {
         );
         assert_eq!(
             ThemeModeSetting::ALL.map(|setting| (pinned_theme_mode(setting), setting.title())),
-            penna::settings::appearance::THEME_MODES
+            penna::blocks::appearance::THEME_MODES
         );
         for setting in ThemeModeSetting::ALL {
             assert_eq!(theme_mode_setting(pinned_theme_mode(setting)), setting);

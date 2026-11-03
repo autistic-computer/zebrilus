@@ -1,4 +1,4 @@
-use penna::sidebar::{
+use penna::blocks::sidebar::{
     SIDEBAR_CONTENT_INSET, SIDEBAR_DEFAULT_WIDTH, sidebar_footer, sidebar_titlebar,
 };
 use std::rc::Rc;
@@ -9,8 +9,8 @@ use ala::{
 };
 use penna::{
     ActiveTheme as _, Colorize as _, Icon, IconName,
-    list::tree::{IndentGuideColors, IndentGuides},
-    scroll::ScrollableElement as _,
+    components::scroll::ScrollableElement as _,
+    components::tree::{IndentGuideColors, IndentGuides},
 };
 use zz_client::program::Program;
 use zz_ui::{
@@ -382,7 +382,7 @@ pub fn tree_list(
             .collect::<Vec<_>>()
     })
     .size_full()
-    .pr(penna::sidebar::SIDEBAR_SCROLLBAR_GUTTER)
+    .pr(penna::blocks::sidebar::SIDEBAR_SCROLLBAR_GUTTER)
     .with_sizing_behavior(ListSizingBehavior::Auto)
     .track_scroll(scroll)
     .with_decoration(guides(depths, active_row, cx));
@@ -397,7 +397,7 @@ pub fn tree_list(
         .into_any_element()
 }
 
-pub fn chrome_controls() -> penna::button::Button {
+pub fn chrome_controls() -> penna::components::button::Button {
     workspace_layout_button("layout")
 }
 

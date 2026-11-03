@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use ala::{App, Entity, Global, Hsla, SharedString, Window};
-use penna::{Theme, ThemeMode, interface_theme::InterfaceTheme};
+use penna::{Theme, ThemeMode, foundation::interface_theme::InterfaceTheme};
 use zz_terminal::TerminalAppearance;
 use zz_ui::pane_look::PaneLook;
 

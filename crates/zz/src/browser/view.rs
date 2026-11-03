@@ -36,9 +36,9 @@ use ala_cef::{
 use core_video::pixel_buffer::CVPixelBuffer;
 use penna::{
     ActiveTheme as _, Colorize as _, Elevation, IconName, WindowExt as _,
-    button::{Button, ButtonVariants as _},
-    input::{InputEvent, InputState},
-    menu::{DropdownMenu as _, PopupMenu, PopupMenuItem},
+    components::button::{Button, ButtonVariants as _},
+    components::input::{InputEvent, InputState},
+    components::menu::{DropdownMenu as _, PopupMenu, PopupMenuItem},
     to_hex,
 };
 use zz_client::{
@@ -3970,7 +3970,7 @@ impl Render for BrowserView {
                 let retry_view = cx.entity();
                 Button::new("browser-retry")
                     .primary()
-                    .on(penna::feedback::alert_ground(cx))
+                    .on(penna::blocks::feedback::alert_ground(cx))
                     .label("Try again")
                     .on_click(move |_, _, cx| {
                         retry_view.update(cx, BrowserView::on_retry);
@@ -4338,7 +4338,7 @@ mod tests {
         assert_eq!(appearance.font_family, "Iosevka");
         assert_eq!(appearance.page_zoom, 1.25);
 
-        penna::interface_theme::InterfaceTheme {
+        penna::foundation::interface_theme::InterfaceTheme {
             roles: [(
                 penna::SurfaceRole::POPOVER.id().to_owned(),
                 penna::StylePatch::EMPTY.shadow(penna::Shadow::None),

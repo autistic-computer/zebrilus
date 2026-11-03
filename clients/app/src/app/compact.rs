@@ -14,19 +14,19 @@ use ala::{
 };
 use penna::{
     ActiveTheme as _, Colorize as _, IconName,
-    compact::{
+    blocks::compact::{
         BENTO_INSET, PillLabel, PillMenuAlign, PillMenuItem, PillMenuLook, PillPlacement,
         PillSpring, compact_floating_bar, compact_floating_pill, compact_hud,
         compact_pill_collapse, compact_pill_label, compact_pill_menu, compact_pill_morph,
         mini_pill_width, pill_bounds, pill_corner, pill_glass_over,
     },
-    kbd::Kbd,
-    sheet::{bottom_sheet, close_sheet},
-    touch::{
+    blocks::sheet::{bottom_sheet, close_sheet},
+    blocks::touch::{
         ArrowPadEvent, KEY_ROW_HEIGHT, KeyRow, Lift, LiftEvent, PageDot, Pager, PagerEvent,
         PopoverKey, PopoverKeyEvent, WhichKeyList, page_dots_in,
     },
-    which_key::{WhichKeyCap, WhichKeyRow},
+    blocks::which_key::{WhichKeyCap, WhichKeyRow},
+    components::kbd::Kbd,
 };
 use web_time::Instant;
 use zz_client::StatusBarModel;
@@ -272,7 +272,7 @@ fn send_chord(
     if let PopoverKeyEvent::Pick(id) = event
         && let Ok(keystroke) = Keystroke::parse(id)
     {
-        let keystroke = penna::touch::StickyModifiers::apply(&keystroke, cx);
+        let keystroke = penna::blocks::touch::StickyModifiers::apply(&keystroke, cx);
         dispatch_key(keystroke, window, cx);
     }
 }
@@ -370,7 +370,7 @@ impl AppShell {
         if !compact {
             #[cfg(any(target_os = "ios", target_os = "android"))]
             ala_platform::mobile::set_status_bar_on_dark(None);
-            penna::touch::StickyModifiers::take(cx);
+            penna::blocks::touch::StickyModifiers::take(cx);
             if self.compact.pinch.take().is_some() {
                 self.terminal_resize_suppressed.set(false);
                 self.preferences.save();
@@ -461,7 +461,8 @@ impl AppShell {
                 |_, _, event: &ArrowPadEvent, window, cx| {
                     let ArrowPadEvent::Arrow(direction) = event;
                     if let Ok(keystroke) = Keystroke::parse(direction.key()) {
-                        let keystroke = penna::touch::StickyModifiers::apply(&keystroke, cx);
+                        let keystroke =
+                            penna::blocks::touch::StickyModifiers::apply(&keystroke, cx);
                         dispatch_key(keystroke, window, cx);
                     }
                 },
@@ -1562,7 +1563,7 @@ impl AppShell {
             .child(content)
             .children(menu)
             .children(sheets)
-            .child(penna::touch::touch_scale(
+            .child(penna::blocks::touch::touch_scale(
                 div()
                     .absolute()
                     .top(top_inset)

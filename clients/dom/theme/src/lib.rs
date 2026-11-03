@@ -1,7 +1,7 @@
 use ala::Hsla;
 use penna::{
     Colorize as _, Emphasis, Fill, Highlight, PanelLook, PrimaryStyle, RowLook, Theme, ThemeColor,
-    ThemeMode, Tone, oklch, theme_css, to_hex,
+    ThemeMode, Tone, foundation::theme_css, oklch, to_hex,
 };
 use serde_json::{Value, json};
 use wasm_bindgen::prelude::*;
@@ -90,7 +90,10 @@ pub fn theme_action(json: &str, action: &str, argument: &str) -> Result<String, 
 pub fn stylesheet(json: &str, dark: bool) -> Result<String, JsError> {
     let preferences = decode(json)?;
     let kit = kit(&preferences, mode(dark));
-    Ok(theme_css::stylesheet(&kit, &penna::roles::TONED))
+    Ok(theme_css::stylesheet(
+        &kit,
+        &penna::foundation::roles::TONED,
+    ))
 }
 
 #[wasm_bindgen]
@@ -347,7 +350,7 @@ fn provider_row(status: &ProviderStatus, checking: bool) -> Value {
     }
     let icon = zz_ui::pane::agent_provider_icon(status.provider).path();
     let icon = icon.trim_start_matches("icons/").trim_end_matches(".svg");
-    let icon = if penna::icon::glyphs::names().any(|name| name == icon) {
+    let icon = if penna::components::icon::glyphs::names().any(|name| name == icon) {
         icon
     } else {
         "bot"

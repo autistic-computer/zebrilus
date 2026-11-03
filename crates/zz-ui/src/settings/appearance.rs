@@ -1,5 +1,5 @@
 use ala::{App, Window};
-use penna::{settings::appearance::value_slider, slider::Slider};
+use penna::{blocks::appearance::value_slider, components::slider::Slider};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ZzRow {
@@ -24,14 +24,14 @@ impl ZzRow {
     }
 }
 
-pub type AppearancePageItem = penna::settings::appearance::AppearancePageItem<ZzRow>;
+pub type AppearancePageItem = penna::blocks::appearance::AppearancePageItem<ZzRow>;
 
 pub fn appearance_page_items(
     macos: bool,
     has_window_blur: bool,
     advanced: bool,
 ) -> Vec<AppearancePageItem> {
-    let mut items = penna::settings::appearance::appearance_page_items(advanced);
+    let mut items = penna::blocks::appearance::appearance_page_items(advanced);
     let sidebar = items
         .iter()
         .position(|item| matches!(item, AppearancePageItem::Advanced { .. }))

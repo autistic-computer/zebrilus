@@ -5,7 +5,7 @@ use ala::{
     App, Context, FocusHandle, Focusable, KeyDownEvent, Keystroke, MouseButton, Render, Window,
     prelude::*,
 };
-use penna::button::{Button, ButtonVariants as _};
+use penna::components::button::{Button, ButtonVariants as _};
 use zz_client::{ChromeAction, UI_TABLE};
 use zz_protocol::{
     CommandInvocation, KeyBindingSnapshot, TmuxOption, command_spec, parse_tmux_command_options,

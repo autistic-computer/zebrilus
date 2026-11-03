@@ -10,8 +10,8 @@ use ala::{
     Window, div, prelude::*, px,
 };
 use penna::{
-    ActiveTheme as _, IconName, Panel, PanelLook, Space, StyledExt as _, TextStyle, h_flex,
-    input::InputState, v_flex,
+    ActiveTheme as _, IconName, Panel, PanelLook, Space, StyledExt as _, TextStyle,
+    components::input::InputState, h_flex, v_flex,
 };
 use zz_client::{completion::PaneKindAvailability, place::ActionKind};
 use zz_protocol::{

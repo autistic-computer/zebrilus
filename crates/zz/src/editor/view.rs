@@ -13,9 +13,9 @@ use ala::{
 use penna::{
     ActiveTheme as _, Chip, ChipLook, Emphasis, Label, Panel, PanelLook, Sizable as _, Size,
     TextStyle, Tone,
-    button::{Button, ButtonVariants as _},
-    code_editor::{CodeEditor, CodeEditorEvent, CodeEditorState, VimMode},
-    feedback::{alert_actions, inline_alert},
+    blocks::code_editor::{CodeEditor, CodeEditorEvent, CodeEditorState, VimMode},
+    blocks::feedback::{alert_actions, inline_alert},
+    components::button::{Button, ButtonVariants as _},
 };
 use zz_protocol::{CommandInvocation, EditorDescriptor, PaneId};
 
@@ -477,7 +477,7 @@ impl EditorView {
                         alert_actions(cx).child(
                             Button::new(format!("editor-retry-{}", self.pane.0))
                                 .primary()
-                                .on(penna::feedback::alert_ground(cx))
+                                .on(penna::blocks::feedback::alert_ground(cx))
                                 .label("Try again")
                                 .on_click(move |_, window, cx| {
                                     view.update(cx, |view, cx| {

@@ -8,7 +8,7 @@ use ala::{
 };
 use penna::{
     ActiveTheme as _, IconName, PanelLook,
-    button::{Button, ButtonLook, ButtonVariants as _},
+    components::button::{Button, ButtonLook, ButtonVariants as _},
 };
 pub(crate) use zz_ui::chooser::ChooserHint;
 use zz_ui::chooser::{

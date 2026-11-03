@@ -64,7 +64,7 @@ half-loaded config to other clients.
 # Tray icon
 
 The GUI process draws its own native tray icon through `crates/zz/src/tray/`, one icon per GUI.
-`penna::tray` (`libs/penna/src/tray/`) owns the platform icon: StatusNotifierItem through ksni on Linux,
+`penna::blocks::tray` (`libs/penna/src/blocks/tray/`) owns the platform icon: StatusNotifierItem through ksni on Linux,
 `NSStatusItem` on macOS, `Shell_NotifyIcon` on Windows. zz keeps the menu, the icon images and what each
 menu action does; a menu action reaches zz as a string (`session <name>`, `pane %<id>`, `settings`).
 The GUI builds the menu from the client's local mux snapshot.

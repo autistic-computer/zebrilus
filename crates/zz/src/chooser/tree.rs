@@ -156,7 +156,7 @@ fn tree_row_element(
     index: usize,
     selected: bool,
     show_key_gutter: bool,
-) -> penna::list::ListItem {
+) -> penna::components::list::ListItem {
     let target = item.target.to_string();
     let disclosure = if item.has_children() {
         if item.expanded() { "▾" } else { "▸" }

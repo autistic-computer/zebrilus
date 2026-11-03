@@ -6,9 +6,9 @@ use ala::{
 };
 use penna::{
     ActiveTheme as _, Colorize as _, Disableable as _, IconName, Sizable as _,
-    button::{Button, ButtonVariants as _},
+    components::button::{Button, ButtonVariants as _},
+    components::input::InputState,
     h_flex,
-    input::InputState,
 };
 use zz_client::agent_completion::{active_command_hint, pane_commands};
 use zz_client::agent_settings::{Choice, LensSettings};

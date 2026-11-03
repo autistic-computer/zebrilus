@@ -1,4 +1,4 @@
-use penna::tray::MenuEntry;
+use penna::blocks::tray::MenuEntry;
 use zz_client::AgentAttentionStatus;
 use zz_protocol::{MuxSnapshot, PaneId, PaneKindSnapshot};
 

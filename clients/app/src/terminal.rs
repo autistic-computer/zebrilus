@@ -9,7 +9,7 @@ use ala::{
 };
 use penna::{
     ActiveTheme, IconName,
-    input::{InputEvent, InputState},
+    components::input::{InputEvent, InputState},
 };
 use zz_client::{
     ChromeAction, ChromeKeymap, ChromeProfile, ClientCore, CoreEvent, TERMINAL_TABLE,
@@ -534,13 +534,13 @@ impl TerminalPane {
         }
         self.reset_cursor_blink(cx);
         let sticky;
-        let event = if !penna::touch::StickyModifiers::get(cx).is_empty()
+        let event = if !penna::blocks::touch::StickyModifiers::get(cx).is_empty()
             && !matches!(
                 event.keystroke.key.as_str(),
                 "shift" | "control" | "alt" | "platform" | "function"
             ) {
             sticky = KeyDownEvent {
-                keystroke: penna::touch::StickyModifiers::apply(&event.keystroke, cx),
+                keystroke: penna::blocks::touch::StickyModifiers::apply(&event.keystroke, cx),
                 is_held: event.is_held,
                 prefer_character_input: event.prefer_character_input,
             };
@@ -794,12 +794,14 @@ impl TerminalPane {
                 cx.stop_propagation();
             }
         }))
-        .on_action(cx.listener(|view, _: &penna::input::Escape, window, cx| {
-            view.close_search(window, cx);
-            view.swallowed_search_key = Some(KeyCode::Escape);
-            cx.stop_propagation();
-        }))
-        .on_action(|_: &penna::input::Enter, _, cx| cx.stop_propagation())
+        .on_action(
+            cx.listener(|view, _: &penna::components::input::Escape, window, cx| {
+                view.close_search(window, cx);
+                view.swallowed_search_key = Some(KeyCode::Escape);
+                cx.stop_propagation();
+            }),
+        )
+        .on_action(|_: &penna::components::input::Enter, _, cx| cx.stop_propagation())
         .into_any_element()
     }
 
@@ -2048,7 +2050,7 @@ fn sticky_keystroke(text: &str, cx: &mut App) -> Option<ala::Keystroke> {
     let (Some(character), None) = (characters.next(), characters.next()) else {
         return None;
     };
-    if penna::touch::StickyModifiers::get(cx).is_empty() {
+    if penna::blocks::touch::StickyModifiers::get(cx).is_empty() {
         return None;
     }
     let keystroke = ala::Keystroke {
@@ -2063,7 +2065,7 @@ fn sticky_keystroke(text: &str, cx: &mut App) -> Option<ala::Keystroke> {
         },
         key_char: Some(text.to_owned()),
     };
-    Some(penna::touch::StickyModifiers::apply(&keystroke, cx))
+    Some(penna::blocks::touch::StickyModifiers::apply(&keystroke, cx))
 }
 
 #[must_use]

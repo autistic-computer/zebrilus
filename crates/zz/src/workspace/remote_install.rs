@@ -1,5 +1,8 @@
 use ala::{App, Entity, Window};
-use penna::{Emphasis, Tone, WindowExt as _, button::ButtonVariant, dialog::DialogButtonProps};
+use penna::{
+    Emphasis, Tone, WindowExt as _, blocks::dialog::DialogButtonProps,
+    components::button::ButtonVariant,
+};
 
 use crate::mux::{client::MuxClient, hosts::InstallOffer};
 

@@ -195,7 +195,7 @@ pane's: quoted for its shell, `@path` for Claude Code. A path from another host 
 `host:/abs/path`.
 
 Keys in the footer and on rows are drawn as key icons, Apple's on macOS and iOS and ISO 9995's
-elsewhere (`penna::kbd::KeyGlyphs`, [design system](/designs/design-system.md)), and a
+elsewhere (`penna::components::kbd::KeyGlyphs`, [design system](/designs/design-system.md)), and a
 command's tmux shortcut (`C-b c`) as one small cap per key.
 
 Session, window, and pane targets use stable IDs for execution; rows display names and breadcrumbs.

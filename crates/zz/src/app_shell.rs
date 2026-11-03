@@ -602,7 +602,7 @@ mod tests {
 
     use ala::{TestAppContext, VisualTestContext, div};
     use ala_cef::BrowserError;
-    use penna::{WindowExt as _, notification::Notification};
+    use penna::{WindowExt as _, blocks::notification::Notification};
     use zz_daemon_client::DaemonError;
     use zz_protocol::ClientMessageKind;
 

@@ -17,7 +17,7 @@ use super::{
     record_recent,
 };
 use crate::IconName;
-use penna::settings::appearance::{ThemePicks, theme_labels};
+use penna::blocks::appearance::{ThemePicks, theme_labels};
 
 #[must_use]
 pub fn theme_offer(picks: &ThemePicks) -> Option<GuiOffer> {

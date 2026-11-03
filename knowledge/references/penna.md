@@ -5,20 +5,20 @@ description: How to build an app on penna, the widget kit on ala - the dependenc
 resource:
 - libs/penna/Cargo.toml
 - libs/penna/src/lib.rs
-- libs/penna/src/interface_theme.rs
+- libs/penna/src/foundation/interface_theme.rs
 tags: [penna, ala, ui, theme, storybook, reference]
-timestamp: 2026-10-31T00:00:00Z
+timestamp: 2026-11-03T00:00:00Z
 ---
 
 # Overview
 
 penna is the widget kit on [ala](/references/ala.md): the theme and its surface roles, primitives,
-widgets, settings pages with an Appearance page, window chrome, phone chrome (`penna::compact`,
-`penna::touch`), icons, a CSS token writer (`penna::theme_css`) and an HTML kit (`web/`). It lives
+widgets, settings pages with an Appearance page, window chrome, phone chrome (`penna::blocks::compact`,
+`penna::blocks::touch`), icons, a CSS token writer (`penna::foundation::theme_css`) and an HTML kit (`web/`). It lives
 in [autistic-computer/penna](https://github.com/autistic-computer/penna) and comes back into this
 repo as the git subtree `libs/penna`, with no zz dependencies. zz uses it by path; nidus
-([autistic-computer/nidus](https://github.com/autistic-computer/nidus), `crates/nid-app`) uses it
-from git and is the worked example below. `libs/penna/storybook` (crate `penna-storybook`) is the
+([autistic-computer/nidus](https://github.com/autistic-computer/nidus), `crates/nid-app`) keeps it
+in the same `libs/penna` subtree and is the worked example below. `libs/penna/storybook` (crate `penna-storybook`) is the
 storybook harness with the theme creator, and penna's own page.
 
 This page is the setup for a new app. The pieces have their own pages: the
@@ -72,9 +72,9 @@ None is on by default.
 
 | Feature | What it adds |
 | --- | --- |
-| `editor` | `penna::code_editor` (the code editor widget) and nothing else |
+| `editor` | `penna::blocks::code_editor` (the code editor widget) and nothing else |
 | `tree-sitter` | the tree-sitter parser and its JSON, Markdown, Rust and TOML grammars, so the code editor and Markdown code blocks highlight. The highlighter API (`SyntaxHighlighter`, `LanguageConfig::new` and `plain`, `LanguageRegistry`) is the same with it off, so app code compiles either way. An app adds a grammar with `LanguageRegistry::singleton().register(name, &LanguageConfig::new(..))`, the way `zz_ui::init` adds tmux |
-| `tray` | `penna::tray`, a tray or menu bar icon with a menu: StatusNotifierItem on Linux, `NSStatusItem` on macOS, `Shell_NotifyIcon` on Windows |
+| `tray` | `penna::blocks::tray`, a tray or menu bar icon with a menu: StatusNotifierItem on Linux, `NSStatusItem` on macOS, `Shell_NotifyIcon` on Windows |
 
 ## Toolchain and dev profiles
 
@@ -100,9 +100,9 @@ Without it a debug build is too slow to use: the storybook drew one theme creato
 
 ## Licenses
 
-penna is `Apache-2.0 AND CC-BY-4.0`. Its icons (`IconName`, drawn from `src/icon/solar.json`) are
+penna is `Apache-2.0 AND CC-BY-4.0`. Its icons (`IconName`, drawn from `src/components/icon/solar.json`) are
 adapted from the Solar Icons Set by 480 Design under CC BY 4.0, so an app that ships them credits
-the set in its own notices or About page, as penna's `NOTICE.md` and `src/icon/LICENSE-SOLAR` do. The
+the set in its own notices or About page, as penna's `NOTICE.md` and `src/components/icon/LICENSE-SOLAR` do. The
 kit's code started as gpui-component (Apache-2.0), credited in the same `NOTICE.md`.
 `penna-storybook` is `Apache-2.0 AND OFL-1.1` for the Inter and Lilex fonts its page bundles.
 
@@ -118,7 +118,7 @@ The order matters, and penna panics with a message that names the fix when it is
    `penna::Assets` for paths it does not have, as `zz_ui::Assets` does. Then **`penna::init(cx)`**
    binds the kit's keys and actions (inputs, menus, dialogs, popovers, selects, text, the code
    editor with `editor`) and activates the built-in Default theme in the OS appearance.
-   A native app also sets `penna::settings::appearance::AvailableFonts(platform.text_system())`
+   A native app also sets `penna::blocks::appearance::AvailableFonts(platform.text_system())`
    as a global, so the UI font picker lists only installed families
    (`crates/zz/src/lib.rs` creates it before the platform moves into the application).
 3. **Open every window with `Root`** as its root view:
@@ -148,7 +148,7 @@ The order matters, and penna panics with a message that names the fix when it is
 ```rust
 fn main() {
     let platform = ala_platform::current_platform(false);
-    let fonts = penna::settings::appearance::AvailableFonts(platform.text_system());
+    let fonts = penna::blocks::appearance::AvailableFonts(platform.text_system());
     let application = ala::Application::with_platform(platform).with_assets(penna::Assets);
     application.run(move |cx| {
         penna::init(cx);
@@ -158,7 +158,7 @@ fn main() {
             cx.new(|cx| penna::Root::new(view, window, cx))
         });
         if let Ok(handle) = opened {
-            penna::overlay::set_toast_host(handle, cx);
+            penna::foundation::overlay::set_toast_host(handle, cx);
         }
     });
 }
@@ -166,14 +166,14 @@ fn main() {
 
 Dialogs and toasts go through `WindowExt` on the window (`window.open_dialog`,
 `window.push_notification`), which logs and does nothing in a window whose root is not a Root.
-Code that has only `App`, such as a background task, calls `penna::overlay::push_toast` after
+Code that has only `App`, such as a background task, calls `penna::foundation::overlay::push_toast` after
 `set_toast_host` named the window to show it in.
 
 # Roles and themes
 
 Every painted surface names a role ([surface roles](/designs/surface-roles.md)), and every role is
-penna's: the kit's kinds and groups (`SurfaceRole::KIT`), its chrome (`penna::roles::CHROME`) and
-the recipes its components pick by variant (`penna::roles::RECIPES`: `tab.window`,
+penna's: the kit's kinds and groups (`SurfaceRole::KIT`), its chrome (`penna::foundation::roles::CHROME`) and
+the recipes its components pick by variant (`penna::foundation::roles::RECIPES`: `tab.window`,
 `field.composer`, `button.send` and the rest). A theme's tweak to a piece of UI lives in
 `libs/penna/themes/*.json` under that recipe's id. Ids that are gone stay in penna's retired list,
 so an old theme file loads with those entries dropped. `parse_theme` reads a user's file with the
@@ -183,7 +183,7 @@ meant. The file format is in [interface themes](/designs/interface-themes.md).
 
 # The Appearance page
 
-`penna::interface_theme::Appearance` is the model: `mode` (`system`, `light` or `dark`), `theme`
+`penna::foundation::interface_theme::Appearance` is the model: `mode` (`system`, `light` or `dark`), `theme`
 (an id), the `ThemeOverrides` flattened in (`radius`, `accent`, `tint`, `tint-hue`), `contrast`,
 `ui_font_family`, `zoom`, `animations` and `animation_speed`. It is serde with defaults, so an app
 keeps it in its own preferences with `#[serde(flatten)]` (`clients/app/src/preferences.rs`), and
@@ -194,7 +194,7 @@ those key names are what users' files hold. The user's own themes are `SavedThem
 - `Appearance::apply(saved, window, cx)` puts it on screen: reduce motion and animation speed, the
   theme with its overrides (`shown_theme`) activated in the mode, the UI font (when installed,
   else ala's system UI font), contrast and zoom.
-- `penna::settings::appearance::appearance_page(title, appearance_page_items::<T>(advanced),
+- `penna::blocks::appearance::appearance_page(title, appearance_page_items::<T>(advanced),
   render)` lays the rows out in a virtual column, and `render` draws each item with
   `kit_row(item, &appearance, saved, &controls, stacked, window, cx)`, which gives a titled
   `SettingEntry` for every kit row. It returns `None` for `AppearancePageItem::App(T)`, the app's
@@ -215,24 +215,24 @@ complete page. zz's two pages wrap the same rows with its own `ZzRow` items
 
 # Kit pieces apps reuse
 
-- Window shell: `penna::shell::app_shell_surface` (sidebar, title bar, content, overlays),
-  `app_titlebar_strip`, `window_drag_handle`, and the sidebar parts in `penna::sidebar`.
-- Settings: `SettingsStack`, `SettingEntry` and the page columns in `penna::settings`;
+- Window shell: `penna::blocks::shell::app_shell_surface` (sidebar, title bar, content, overlays),
+  `app_titlebar_strip`, `window_drag_handle`, and the sidebar parts in `penna::blocks::sidebar`.
+- Settings: `SettingsStack`, `SettingEntry` and the page columns in `penna::blocks::settings`;
   `settings_navigation(id, sections, selected)` with `NavSection` and `on_pick`/`on_back` for the
-  section list; `penna::settings::about` (`About`, `AboutLink`, `about_hero`,
+  section list; `penna::blocks::settings::about` (`About`, `AboutLink`, `about_hero`,
   `about_project_stack`, `about_build_stack`) for an About page. A button, select, check,
   segmented control or input on a settings card takes `.on(settings_card_ground(cx))`, or it paints
   against the window instead of the card. A switch takes no ground.
-- Feedback: `penna::feedback::callout(tone, icon, title, message, cx)` on the `inline-panel` role
+- Feedback: `penna::blocks::feedback::callout(tone, icon, title, message, cx)` on the `inline-panel` role
   in any tone, `inline_alert` for a failure in place, and `empty_state` for a centered page
   message.
-- Lists: `penna::list::tree::IndentGuides`, the indent guides for a uniform list tree, on the
+- Lists: `penna::components::tree::IndentGuides`, the indent guides for a uniform list tree, on the
   `rule.tree` role.
-- Phone chrome: `penna::compact` (the floating pill, its menu, folding title bars, the bento grid)
-  and `penna::touch` (pager, key row, arrow pad and the rest).
+- Phone chrome: `penna::blocks::compact` (the floating pill, its menu, folding title bars, the bento grid)
+  and `penna::blocks::touch` (pager, key row, arrow pad and the rest).
 - HTML: in the penna repo, `cargo run --example theme_css -- <dir>` writes every built-in
   theme's tokens as CSS for both modes, which `web/penna.css` and `web/kit.js` paint with
-  (`penna::theme_css::write_tokens` from code).
+  (`penna::foundation::theme_css::write_tokens` from code).
 
 # A storybook for the app
 

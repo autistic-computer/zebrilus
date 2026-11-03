@@ -2,7 +2,7 @@ use ala::{
     AnyElement, App, AppContext as _, Entity, IntoElement, ParentElement as _, Styled as _,
     UniformListScrollHandle, Window, div, prelude::*, px,
 };
-use penna::{ActiveTheme as _, input::InputState};
+use penna::{ActiveTheme as _, components::input::InputState};
 use zz_protocol::AgentProvider;
 use zz_ui::{
     pane::{PaneSplitAxis, PaneSplitHighlight, PaneSplitSide, pane_split_surface},

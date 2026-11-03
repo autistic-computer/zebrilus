@@ -13,13 +13,13 @@ use futures::StreamExt as _;
 use penna::{
     ActiveTheme as _, Colorize as _, Disableable as _, Edge, ElementExt as _, Elevation, Icon,
     IconName, Label, RuleLook, StyledExt as _, TextStyle,
-    button::{Button, ButtonVariants as _},
-    compact::pill_backdrop_reach,
-    input::{InputEvent, InputState},
-    sheet::{
+    blocks::compact::pill_backdrop_reach,
+    blocks::sheet::{
         bottom_sheet, close_sheet, floating_sheet, sheet_close, sheet_ground, sheet_inset,
         sheet_row,
     },
+    components::button::{Button, ButtonVariants as _},
+    components::input::{InputEvent, InputState},
 };
 use zz_protocol::{BrowserCommand, BrowserDescriptor, PaneId};
 use zz_ui::{
@@ -1128,7 +1128,7 @@ impl Render for BrowserPane {
         let retry = self.writable(cx).then(|| {
             Button::new("ios-browser-retry")
                 .primary()
-                .on(penna::feedback::alert_ground(cx))
+                .on(penna::blocks::feedback::alert_ground(cx))
                 .label("Try again")
                 .on_click(cx.listener(|this, _, _, cx| this.reload(cx)))
         });

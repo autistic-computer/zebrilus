@@ -1,5 +1,5 @@
 use ala::{Context, prelude::*};
-use penna::{ActiveTheme as _, Colorize as _, Icon, IconName, button::Button, h_flex};
+use penna::{ActiveTheme as _, Colorize as _, Icon, IconName, components::button::Button, h_flex};
 use zz_ui::settings::{
     SettingEntry, SettingsScrollColumn, SettingsStack,
     providers::{ProvidersHost, providers_stack},

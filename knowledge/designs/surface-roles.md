@@ -36,9 +36,9 @@ then to a built-in value.
 | Kinds, styles, patches, `Layer` and the resolver (`Theme::style`, `Theme::layer`) | `libs/penna/src/foundation/surface.rs` |
 | Painting helpers (`.surface`, `.surface_at`, `.layer`, `.rule`; crate-private `rule_on`, `row_corners`, `row_radius`) | `libs/penna/src/foundation/styled.rs` |
 | `Theme` fields for the materials, `styles` (the theme's patches, crate-private, read through `Theme::styles()`) and `inspect` | `libs/penna/src/foundation/theme.rs` |
-| Window chrome roles (`CHROME`), the recipes the looks pick (`RECIPES`), the retired ids (`is_retired`) and the lookups (`all()`, `find()`, `members()`) | `libs/penna/src/roles.rs` |
-| The look zz's content code reads (`ContentLook`: pane, floating pane, PiP, tile stack, window) | `libs/penna/src/content.rs` |
-| Theme files: `Materials`, the `roles` map and its id check; `ThemeOverrides`, what Settings sets over a theme | `libs/penna/src/interface_theme.rs`; the built-ins in `libs/penna/themes/*.json`, which also hold every recipe's per-theme tweaks |
+| Window chrome roles (`CHROME`), the recipes the looks pick (`RECIPES`), the retired ids (`is_retired`) and the lookups (`all()`, `find()`, `members()`) | `libs/penna/src/foundation/roles.rs` |
+| The look zz's content code reads (`ContentLook`: pane, floating pane, PiP, tile stack, window) | `libs/penna/src/foundation/content.rs` |
+| Theme files: `Materials`, the `roles` map and its id check; `ThemeOverrides`, what Settings sets over a theme | `libs/penna/src/foundation/interface_theme.rs`; the built-ins in `libs/penna/themes/*.json`, which also hold every recipe's per-theme tweaks |
 | The theme creator | `penna_storybook::creator` in `libs/penna/storybook/src/creator/`, `libs/penna/storybook/src/knobs.rs`; zz's plates in `clients/storybook/src/stories/theme_creator.rs` |
 
 ## The model
@@ -132,7 +132,7 @@ never stacks fill on fill or outline in outline.
 Within a kind, roles group the way the pieces do. A role (`SurfaceRole`: an id, its kind, the
 group it is in, a label and description for the creator, a built-in `StylePatch` and whether it is
 a row) is either a kind itself, a group the kit names, or one of penna's chrome roles and recipes
-(`penna::roles`), which sits in a kind or in a group (`SurfaceRole::under`). The kit's groups (`SurfaceRole::KIT` holds them with the
+(`penna::foundation::roles`), which sits in a kind or in a group (`SurfaceRole::under`). The kit's groups (`SurfaceRole::KIT` holds them with the
 kinds):
 
 - floating: `popover` (menus and popovers), `dialog`, `sheet` with `drawer` in it (every touch
@@ -156,7 +156,7 @@ So any theme patch beats every built-in, and among theme patches the closest one
 that makes `floating` glass makes drop zones and pane chips glass too, though both are tint or
 solid as built in, and a patch for `tile.drop` takes it back. Built-in patches only say how
 the Default theme draws a role. A widget
-with no role draws as its kind. `penna::roles::all()` lists the kit's kinds and groups, then the
+with no role draws as its kind. `penna::foundation::roles::all()` lists the kit's kinds and groups, then the
 chrome roles and the recipes; `members(group)` lists what is directly in a group.
 
 A row (`SurfaceRole::row`, set on `menu-item` and `row` and taken by everything in them) rounds
@@ -267,7 +267,7 @@ A theme with glass chrome over flat pill buttons, colors left out:
 }
 ```
 
-Kind names, group ids and role ids share the `roles` map. An id `penna::roles::find` does not know is an
+Kind names, group ids and role ids share the `roles` map. An id `penna::foundation::roles::find` does not know is an
 error that suggests the role it was probably meant to be (`chromebutton` gets `chrome.button`,
 `composer` gets `field.composer`).
 
@@ -376,7 +376,7 @@ recipes; penna's `knowledge/designs/kit.md` maps each to the recipe and look tha
 The Agent pane was removed on 2026-10-23; these roles now style the agent lens over a Claude Code
 or Codex terminal ([agent lens](/designs/agent-lens.md)). The lens has no status pill and no
 pickers, so `agent_status_pill` and the composer pickers are deleted. Their roles, `agent.status`
-and `agent.picker`, were retired on 2026-10-27: they are in penna's retired list (`penna::roles::is_retired`), and a theme
+and `agent.picker`, were retired on 2026-10-27: they are in penna's retired list (`penna::foundation::roles::is_retired`), and a theme
 file that still names one loads with the entry dropped. The agent history picker
 (`ui/agent/history.rs`) went too; its delete banner was the last `picker.notice`, which since
 2026-10-27 draws the chooser's prompt and key help strips.
@@ -400,7 +400,7 @@ The agent's step rows (the trace line, thoughts and tool calls) had `agent.trace
 The Driver Agent's chat, under the sidebar's list, in the command palette's Driver mode and in a
 phone drawer, went with the Driver Agent on 2026-10-28. Its roles `chat.bubble`,
 `chat.bubble.mine`, `rule.chat`, `phone.driver-card` and `drawer.driver` are in penna's retired
-list (`penna::roles::is_retired`), and a theme file that still names one loads with the entry dropped.
+list (`penna::foundation::roles::is_retired`), and a theme file that still names one loads with the entry dropped.
 
 ### Reading content (markdown in agent replies)
 
@@ -515,7 +515,7 @@ The preview is the catalog's plates: regions that paint real UI. penna's page sh
 the phone chrome); zz lists its eleven instead. Apps define no roles (penna's
 `knowledge/designs/kit.md`); a catalog adds a plate that draws the app's pieces to its `plates`,
 next to penna's if it wants the kit's surfaces in view. The roles it draws show in the Roles step under their parents from
-`penna::roles::all()`, picking one shows the plates that drew it (each section host records the
+`penna::foundation::roles::all()`, picking one shows the plates that drew it (each section host records the
 roles it paints, so no plate lists them), Export writes their patches, and Import drops retired
 ids and refuses unknown ones with the same "unknown role" error as any theme file. The recipe is
 in [storybook](/playbooks/storybook.md).

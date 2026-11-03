@@ -3,7 +3,7 @@ use crate::Colorize as _;
 use crate::StyledExt as _;
 use crate::kbd::Kbd;
 use crate::{Edge, Ground};
-pub use penna::shell::*;
+pub use penna::blocks::shell::*;
 use penna::{Bar, BarLook, Label, RowLook, RuleLook, TextStyle};
 
 use ala::{

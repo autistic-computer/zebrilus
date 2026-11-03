@@ -1,6 +1,6 @@
 mod flat;
 
-use penna::sidebar::{
+use penna::blocks::sidebar::{
     SIDEBAR_CONTENT_INSET as TREE_CONTENT_INSET, SIDEBAR_DEFAULT_WIDTH, sidebar_footer,
     sidebar_panel, sidebar_resize_handle, sidebar_titlebar,
 };
@@ -20,8 +20,8 @@ use ala::{
     prelude::FluentBuilder as _, px, uniform_list,
 };
 use penna::{
-    ActiveTheme as _, Colorize as _, Ground, Icon, IconName, rems_from_px,
-    scroll::ScrollableElement as _,
+    ActiveTheme as _, Colorize as _, Ground, Icon, IconName,
+    components::scroll::ScrollableElement as _, rems_from_px,
 };
 use zz_client::{ChromeAction, SIDEBAR_TABLE, UI_TABLE, program::Program};
 use zz_protocol::{CommandInvocation, MuxSnapshot, PaneId, PaneStatusState, SessionId, WindowId};
@@ -1295,7 +1295,7 @@ fn render_expanded_navigation(
         },
     )
     .size_full()
-    .pr(penna::sidebar::SIDEBAR_SCROLLBAR_GUTTER)
+    .pr(penna::blocks::sidebar::SIDEBAR_SCROLLBAR_GUTTER)
     .with_sizing_behavior(ListSizingBehavior::Auto)
     .track_scroll(scroll_handle)
     .with_decoration(decoration);
@@ -1495,7 +1495,7 @@ fn render_tree_row(
     });
 
     render_tree_row_context_menu(
-        penna::motion::enter_since(row, opened, window, cx),
+        penna::foundation::motion::enter_since(row, opened, window, cx),
         entry,
         runtime,
     )

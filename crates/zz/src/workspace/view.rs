@@ -16,10 +16,10 @@ use ala::{
     MouseMoveEvent, MouseUpEvent, Pixels, Point, Render, Size, StyleRefinement, Task, WeakEntity,
     Window, anchored, div, ease_out_quint, point, prelude::*, px,
 };
-use penna::dialog::DialogButtonProps;
+use penna::blocks::dialog::DialogButtonProps;
 use penna::{
-    ActiveTheme as _, ElementExt as _, Emphasis, Tone, WindowExt as _, button::ButtonVariant,
-    draws_window_controls, notification::Notification,
+    ActiveTheme as _, ElementExt as _, Emphasis, Tone, WindowExt as _,
+    blocks::notification::Notification, components::button::ButtonVariant, draws_window_controls,
 };
 #[cfg(test)]
 use zz_client::pane_swap_command;

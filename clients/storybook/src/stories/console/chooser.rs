@@ -4,7 +4,7 @@ use ala::{
 };
 use penna::{
     ActiveTheme as _, IconName, PanelLook,
-    button::{Button, ButtonLook, ButtonVariants as _},
+    components::button::{Button, ButtonLook, ButtonVariants as _},
     v_flex,
 };
 use zz_ui::chooser::{

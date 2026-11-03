@@ -12,9 +12,9 @@ use ala::{
 };
 use penna::{
     Disableable as _,
-    button::Button,
-    input::{IndentInline, InputEvent, InputState, MoveDown, MoveUp},
-    scroll::Scrollbar,
+    components::button::Button,
+    components::input::{IndentInline, InputEvent, InputState, MoveDown, MoveUp},
+    components::scroll::Scrollbar,
 };
 use serde_json::Value;
 use zz_client::agent_completion::{

@@ -1,1 +1,1 @@
-pub(crate) use penna::list::tree::{IndentGuideColors, IndentGuides};
+pub(crate) use penna::components::tree::{IndentGuideColors, IndentGuides};

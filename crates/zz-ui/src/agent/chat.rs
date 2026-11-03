@@ -13,7 +13,7 @@ use ala::{
     IntoElement, ScrollHandle, ScrollWheelEvent, SharedString, Stateful, StyledText, Subscription,
     Window, div, prelude::*, px, relative,
 };
-use penna::{Card, CardLook, Label, Panel, PanelLook, TextStyle, button::ButtonLook};
+use penna::{Card, CardLook, Label, Panel, PanelLook, TextStyle, components::button::ButtonLook};
 use zz_client::chat_rows::{self, AgentState, Fold, RunLabel, Unit};
 use zz_protocol::{
     agent_stream::AgentImage,

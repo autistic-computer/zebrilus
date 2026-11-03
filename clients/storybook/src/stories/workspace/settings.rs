@@ -7,18 +7,20 @@ use ala::{
 use penna::{
     ActiveTheme as _, Emphasis, Highlight, Icon, IconName, IndexPath, StylePatch, SurfaceRole,
     ThemeMode, Tone,
-    button::Button,
-    color_picker::{ColorPicker, ColorPickerState},
-    input::{InputState, NumberInput},
-    menu::PopupMenuItem,
-    select::{Select, SelectState},
-    settings::about::{about_build_stack, about_copy_button, about_hero, about_project_stack},
-    settings::appearance::{
+    blocks::appearance::{
         SWATCH, ThemePicks, accent_swatches, animation_speed_slider, contrast_slider,
         corner_radius_slider, interface_theme_preview, picker_tile, theme_mode_control,
         theme_picker, tint_hue_slider, tint_slider, ui_font_select, zoom_slider,
     },
-    switch::Switch,
+    blocks::color_picker::{ColorPicker, ColorPickerState},
+    blocks::settings::about::{
+        about_build_stack, about_copy_button, about_hero, about_project_stack,
+    },
+    components::button::Button,
+    components::input::{InputState, NumberInput},
+    components::menu::PopupMenuItem,
+    components::select::{Select, SelectState},
+    components::switch::Switch,
 };
 use zz_client::StatusBarSettings;
 use zz_ui::{
@@ -190,7 +192,8 @@ fn navigation(_: &mut Window, cx: &mut App) -> AnyElement {
         cx,
     )
     .large_title("Settings", &fold);
-    let back = penna::compact::compact_bar_button("settings-phone-back", IconName::ArrowLeft);
+    let back =
+        penna::blocks::compact::compact_bar_button("settings-phone-back", IconName::ArrowLeft);
     states()
         .columns(2)
         .state(

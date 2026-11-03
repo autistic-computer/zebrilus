@@ -6,20 +6,20 @@ use ala::{
 };
 use penna::{
     ActiveTheme as _, Colorize as _, Elevation, IconName, Label, TextStyle,
-    button::{Button, ButtonVariants as _},
-    compact::{
+    blocks::compact::{
         BENTO_INSET, BentoSpan, COMPACT_PILL_HEIGHT, PillLabel, PillMenuAlign, PillMenuItem,
         PillMenuLook, PillPlacement, bento_add_tile, bento_grid, compact_bar_button,
         compact_floating_bar, compact_floating_group, compact_floating_pill, compact_hud,
         compact_pill_menu, folding_title_bar, pill_glass_over,
     },
-    settings::large_title,
-    touch::{
+    blocks::settings::large_title,
+    blocks::touch::{
         ArrowPad, KEY_ROW_HEIGHT, KeyRow, PageDot, PopoverKey, PopoverKeyTap, WhichKeyList,
         page_dots,
     },
+    blocks::which_key::WhichKeyRow,
+    components::button::{Button, ButtonVariants as _},
     v_flex,
-    which_key::WhichKeyRow,
 };
 use zz_protocol::AgentProvider;
 use zz_ui::{
@@ -417,7 +417,8 @@ pub(crate) fn host_page(cx: &App) -> impl IntoElement {
             (
                 [0.0, 0.0, 0.6, 1.0],
                 mini(
-                    "mini-1", IconName::SquareTerminal,
+                    "mini-1",
+                    IconName::SquareTerminal,
                     "cargo test",
                     "running 214 tests\ntest overview::pager ... ok\ntest overview::bento ... ok\ntest result: ok. 214 passed",
                     true,
@@ -428,7 +429,8 @@ pub(crate) fn host_page(cx: &App) -> impl IntoElement {
             (
                 [0.6, 0.0, 0.4, 0.5],
                 mini(
-                    "mini-2", IconName::File,
+                    "mini-2",
+                    IconName::File,
                     "overview.rs",
                     "fn host_body(\n  &mut self,",
                     false,
@@ -438,7 +440,15 @@ pub(crate) fn host_page(cx: &App) -> impl IntoElement {
             ),
             (
                 [0.6, 0.5, 0.4, 0.5],
-                mini("mini-3", IconName::SquareTerminal, "perf audit", "", false, false, cx),
+                mini(
+                    "mini-3",
+                    IconName::SquareTerminal,
+                    "perf audit",
+                    "",
+                    false,
+                    false,
+                    cx,
+                ),
             ),
         ]),
         cx,
@@ -452,7 +462,15 @@ pub(crate) fn host_page(cx: &App) -> impl IntoElement {
         false,
         window_layout(vec![(
             [0.0, 0.0, 1.0, 1.0],
-            mini("mini-4", IconName::Globe, "", "localhost:4321", false, false, cx),
+            mini(
+                "mini-4",
+                IconName::Globe,
+                "",
+                "localhost:4321",
+                false,
+                false,
+                cx,
+            ),
         )]),
         cx,
     );
@@ -466,11 +484,27 @@ pub(crate) fn host_page(cx: &App) -> impl IntoElement {
         window_layout(vec![
             (
                 [0.0, 0.0, 0.5, 1.0],
-                mini("mini-5", IconName::SquareTerminal, "review", "", true, true, cx),
+                mini(
+                    "mini-5",
+                    IconName::SquareTerminal,
+                    "review",
+                    "",
+                    true,
+                    true,
+                    cx,
+                ),
             ),
             (
                 [0.5, 0.0, 0.5, 1.0],
-                mini("mini-6", IconName::SquareTerminal, "fix ci", "", false, false, cx),
+                mini(
+                    "mini-6",
+                    IconName::SquareTerminal,
+                    "fix ci",
+                    "",
+                    false,
+                    false,
+                    cx,
+                ),
             ),
         ]),
         cx,
@@ -485,7 +519,8 @@ pub(crate) fn host_page(cx: &App) -> impl IntoElement {
         window_layout(vec![(
             [0.0, 0.0, 1.0, 1.0],
             mini(
-                "mini-7", IconName::SquareTerminal,
+                "mini-7",
+                IconName::SquareTerminal,
                 "",
                 "- [ ] fold title on iPad\n- [x] bento grid",
                 false,

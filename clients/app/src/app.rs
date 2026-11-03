@@ -17,7 +17,9 @@ mod settings;
 mod sidebar;
 mod status_bar;
 
-use penna::sidebar::{sidebar_footer, sidebar_panel, sidebar_resize_handle, sidebar_titlebar};
+use penna::blocks::sidebar::{
+    sidebar_footer, sidebar_panel, sidebar_resize_handle, sidebar_titlebar,
+};
 use std::{
     cell::{Cell, RefCell},
     collections::{BTreeSet, HashMap},
@@ -34,7 +36,7 @@ use ala::{
 use penna::{
     ActiveTheme as _, Colorize as _, ElementExt as _, Ground, Icon, IconName, Label, Panel,
     PanelLook, Root, TextStyle,
-    button::{Button, ButtonLook, ButtonVariants as _},
+    components::button::{Button, ButtonLook, ButtonVariants as _},
 };
 use zz_client::{
     ChromeAction, ChromeKeymap, ChromeProfile, DropZone, PaneRect, UI_TABLE, coerced_drop_zone,
@@ -238,7 +240,7 @@ fn watch_connection(
                     message_id,
                     ..
                 } => {
-                    use penna::{WindowExt as _, notification::Notification};
+                    use penna::{WindowExt as _, blocks::notification::Notification};
                     let notification = match kind {
                         zz_protocol::ClientMessageKind::Info => Notification::info(text.clone()),
                         zz_protocol::ClientMessageKind::Success => {
@@ -1011,7 +1013,7 @@ impl AppShell {
     pub(super) fn sidebar_width(&self, window: &Window) -> f32 {
         let width = f32::from(window.fully_visible_bounds().size.width);
         if Self::narrow(window) {
-            penna::sidebar::SIDEBAR_DEFAULT_WIDTH.min(width - 40.0)
+            penna::blocks::sidebar::SIDEBAR_DEFAULT_WIDTH.min(width - 40.0)
         } else {
             self.preferences.sidebar_width(width)
         }
@@ -2906,7 +2908,7 @@ impl Render for AppShell {
         if zz_ui::settings::SettingsBottomInset::get(cx) != page_inset {
             cx.set_global(zz_ui::settings::SettingsBottomInset(page_inset));
         }
-        penna::touch::CoarsePointer::set(Self::narrow(window), cx);
+        penna::blocks::touch::CoarsePointer::set(Self::narrow(window), cx);
         #[cfg(any(target_os = "ios", target_os = "android"))]
         self.sync_authentication(window, cx);
         #[cfg(any(target_os = "ios", target_os = "android"))]
@@ -3095,7 +3097,7 @@ impl Render for AppShell {
             .pb((window.viewport_size().height - bottom).max(px(0.0)))
             .pl(visible.left())
             .pr(window.viewport_size().width - visible.right())
-            .child(penna::dismissal::coast_guard())
+            .child(penna::foundation::dismissal::coast_guard())
             .child(shell)
     }
 }

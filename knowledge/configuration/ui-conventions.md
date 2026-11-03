@@ -278,7 +278,7 @@ theme's own popover and row roles; only literal colours from the options or `-s`
 `display-panes` indicator is one `Chip` in `ChipLook::Marker` (`chip.marker`) per pane with the key to press, the pane's
 `display-panes-format` line as a muted caption, and a 2px accent ring on the active pane (or
 `display-panes-active-colour` when it differs from zz's default). A pane that fails in place (a browser page that will not load, an
-editor file that will not open or save, an agent that stopped) shows `penna::feedback::inline_alert`:
+editor file that will not open or save, an agent that stopped) shows `penna::blocks::feedback::inline_alert`:
 the alert dialog's layout on the `inline-panel` role, a 14px danger icon, a 13px title when there is one,
 the message, and `alert_actions` below with label-only Medium buttons and the main action last on
 the right.
@@ -308,7 +308,7 @@ pads around.
 **Every toast stacks at the top center of the workspace window**, whichever view raised it. The
 close button sits in the toast's flex row, vertically centered beside its content. Settings is a route in
 that window, and `AppShell` mounts both the dialog and notification layers for either route.
-`penna::overlay::push_toast` (re-exported as `crates/zz/src/window/toast.rs`'s `push`) sends a toast
+`penna::foundation::overlay::push_toast` (re-exported as `crates/zz/src/window/toast.rs`'s `push`) sends a toast
 to the `WindowHandle<Root>` that `set_toast_host` stored in a global, and defers that window's
 update until the current window callback finishes. Updating that handle during its own click
 callback fails because ala has temporarily removed the window from its registry. Views that
@@ -358,7 +358,7 @@ through the settings portal (GNOME `font-name`, KDE `kdeglobals` `font`), and fo
 without a portal value it falls back to ala's fallback stack. Config reload and OS appearance
 changes reapply the choice to open windows.
 The `UiFontConfig` global holds this string separately so `AppConfig` remains `Copy`.
-Native entrypoints set `penna::settings::appearance::AvailableFonts` from their ala platform text system as a global
+Native entrypoints set `penna::blocks::appearance::AvailableFonts` from their ala platform text system as a global
 (`crates/zz/src/lib.rs` builds it before the platform moves into the application). The picker
 (`ui_font_select`, which the kit's UI font row uses) queries that catalog directly to avoid offering ala
 fallback names that are not installed; without it, as in the thin clients, it lists the text system's names.
@@ -403,12 +403,12 @@ sets over it, never from the terminal.** The mode follows the OS appearance
 unless `theme-mode` pins one, and only picks which of the theme's color sets applies. There is no
 knob that derives chrome from terminal colors, and a Ghostty palette cannot repaint the window.
 
-`libs/penna/src/interface_theme.rs` owns `InterfaceTheme`, `Materials` and `ThemeColors` and the
+`libs/penna/src/foundation/interface_theme.rs` owns `InterfaceTheme`, `Materials` and `ThemeColors` and the
 theme file parser and the built-in themes (`libs/penna/themes/*.json`);
 the built-ins hold every recipe's per-theme tweaks, zz's pieces included, so the desktop, browser
 and iOS clients and the storybook all see the same set. `crates/zz-ui/src/interface_theme.rs`
 re-exports them. A theme file that names a retired role id loads with that entry dropped
-(`penna::roles::is_retired`). `crates/zz/src/theme.rs` applies desktop
+(`penna::foundation::roles::is_retired`). `crates/zz/src/theme.rs` applies desktop
 configuration. It holds the latest immutable `TerminalAppearance` and `AppearanceProvenance` as
 ala globals (used by settings badges and the detach action, not to color anything).
 It applies the theme on screen (`config::shown_theme`: the active theme, a built-in or a saved
@@ -431,7 +431,7 @@ Corner smoothing is not a material: every window draws `CORNER_SMOOTHING` (4), w
   `pane-gaps`, and the margin from `pane-margin`.
 
 The thin clients keep the selected theme id, their own saved themes and their overrides in their
-preferences as a `penna::interface_theme::Appearance`, and `Preferences::apply` adjusts its mode,
+preferences as a `penna::foundation::interface_theme::Appearance`, and `Preferences::apply` adjusts its mode,
 contrast, zoom and animations for the platform and calls `Appearance::apply`, which activates the
 theme with the device's `ThemeOverrides` composed as on desktop; it then sets the UI font from the
 preference, else the theme's font, else the bundled Inter.
@@ -476,7 +476,7 @@ always under a coarse pointer (`shown_on_hover`). The slash menu's rows are 40px
 11px.
 
 Icons next to text are centred on the text's cap height, as Apple places SF Symbols. The icon is
-centred on the line, then moved down by `penna::icon::cap_center_drop(font_size, icon_size,
+centred on the line, then moved down by `penna::components::icon::cap_center_drop(font_size, icon_size,
 cx)`: half of the theme font's ascent less descent less cap height, 0.31px for SF Pro at 12px and
 0.33px at 13px, nothing for Inter, nudged by up to a quarter point so the icon and the baseline
 round to the same device pixel grid. Rows that wrap give the icon a first-line strut as tall as the

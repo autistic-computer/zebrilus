@@ -5,14 +5,14 @@ use ala::{
     ScrollHandle, ScrollStrategy, UniformListScrollHandle, Window, div, prelude::*, px,
     uniform_list,
 };
-use penna::sidebar::SIDEBAR_CONTENT_INSET;
+use penna::blocks::sidebar::SIDEBAR_CONTENT_INSET;
 use penna::{
     ActiveTheme as _, Colorize as _, Ground, Icon, IconName,
-    list::tree::{IndentGuideColors, IndentGuides},
-    menu::PopupMenuItem,
-    motion::Instant,
+    components::menu::PopupMenuItem,
+    components::scroll::ScrollableElement as _,
+    components::tree::{IndentGuideColors, IndentGuides},
+    foundation::motion::Instant,
     rems_from_px,
-    scroll::ScrollableElement as _,
 };
 use std::{collections::BTreeSet, rc::Rc};
 use zz_client::{
@@ -302,7 +302,7 @@ pub(super) fn session_tree(
         },
     )
     .size_full()
-    .pr(penna::sidebar::SIDEBAR_SCROLLBAR_GUTTER)
+    .pr(penna::blocks::sidebar::SIDEBAR_SCROLLBAR_GUTTER)
     .with_sizing_behavior(ListSizingBehavior::Auto)
     .track_scroll(scroll)
     .with_decoration(guides);
@@ -649,7 +649,7 @@ fn render_row(
         activate(&connection, target, cx);
         cx.stop_propagation();
     });
-    let row = penna::motion::enter_since(row, opened, window, cx);
+    let row = penna::foundation::motion::enter_since(row, opened, window, cx);
     if !disabled
         && let Some((label, command)) =
             rename_command(runtime.connection.read(cx).core.snapshot(), target)

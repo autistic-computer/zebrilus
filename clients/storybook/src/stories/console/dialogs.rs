@@ -4,9 +4,9 @@ use ala::{
 };
 use penna::{
     WindowExt as _,
-    button::{Button, ButtonVariants as _},
-    feedback::{alert_actions, inline_alert},
-    input::InputState,
+    blocks::feedback::{alert_actions, inline_alert},
+    components::button::{Button, ButtonVariants as _},
+    components::input::InputState,
 };
 use zz_ui::dialogs::{
     add_host_prompt_dialog, browser_clear_site_data_alert, import_configuration_file_alert,

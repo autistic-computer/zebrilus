@@ -10,8 +10,8 @@ use ala::{
 };
 use penna::{
     ActiveTheme, Label, TextStyle,
-    button::Button,
-    input::{Input, InputContentType, InputEvent, InputState},
+    components::button::Button,
+    components::input::{Input, InputContentType, InputEvent, InputState},
 };
 use std::{collections::HashSet, ops::Range, path::PathBuf, sync::Arc, time::Duration};
 use zz_client::{

@@ -7,7 +7,7 @@ use std::{
 use ala::{
     App, Corners, Global, Pixels, SharedString, WindowBackgroundAppearance, WindowDecorations, px,
 };
-use penna::notification::Notification;
+use penna::blocks::notification::Notification;
 use zz_client::StatusBarSettings;
 use zz_client::url_input::SearchProvider;
 use zz_daemon_client::{Endpoint, InteractiveClient};

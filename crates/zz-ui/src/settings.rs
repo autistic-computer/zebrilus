@@ -6,7 +6,7 @@ pub mod status_bar_preview;
 
 use std::rc::Rc;
 
-pub use penna::settings::*;
+pub use penna::blocks::settings::*;
 
 use crate::{ActiveTheme as _, Colorize as _, icon::Icon};
 use ala::{App, ElementId, SharedString, Styled as _, Window, div, prelude::*, px};

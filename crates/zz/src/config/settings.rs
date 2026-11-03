@@ -17,14 +17,14 @@ use ala::{
 use penna::{
     ActiveTheme as _, Colorize as _, Disableable as _, Icon, IconName, IndexPath, Label, TextStyle,
     WindowExt as _,
-    button::{Button, ButtonVariants as _},
-    code_editor::{CodeEditor, CodeEditorEvent, CodeEditorState},
+    blocks::code_editor::{CodeEditor, CodeEditorEvent, CodeEditorState},
+    blocks::notification::Notification,
+    components::button::{Button, ButtonVariants as _},
+    components::input::{Input, InputEvent, InputState, NumberInput},
+    components::menu::{DropdownMenu as _, PopupMenuItem},
+    components::select::{Select, SelectEvent, SelectState},
+    components::switch::Switch,
     h_flex,
-    input::{Input, InputEvent, InputState, NumberInput},
-    menu::{DropdownMenu as _, PopupMenuItem},
-    notification::Notification,
-    select::{Select, SelectEvent, SelectState},
-    switch::Switch,
 };
 
 use crate::{
@@ -41,7 +41,7 @@ use crate::{
     window::toast,
     workspace::add_host,
 };
-use penna::settings::appearance::{
+use penna::blocks::appearance::{
     AppearanceControls, ThemePicks, kit_row, picker_tile, ui_font_select,
 };
 use zz_client::url_input::SearchProvider;
@@ -762,13 +762,13 @@ impl SettingsView {
         let resolved = *resolved;
         let appearance = appearance(cx);
         let saved = config::themes(cx).saved.clone();
-        penna::settings::appearance::appearance_page(
+        penna::blocks::appearance::appearance_page(
             SettingsSection::Appearance.title(),
             items,
             move |item, position, window, cx| {
                 view.update(cx, |this, cx| match item {
                     AppearancePageItem::Advanced { expanded } => settings_list_disclosure_header(
-                        penna::settings::appearance::ADVANCED_DISCLOSURE,
+                        penna::blocks::appearance::ADVANCED_DISCLOSURE,
                         "Advanced",
                         expanded,
                     )
@@ -1344,7 +1344,7 @@ impl SettingsView {
     }
 
     fn about_section(cx: &Context<Self>) -> AnyElement {
-        use penna::settings::about::{
+        use penna::blocks::settings::about::{
             about_build_stack, about_copy_button, about_hero, about_project_stack,
         };
         use zz_ui::settings::about::{ABOUT_LOGO_SIZE, ZZ_ABOUT, build_info};

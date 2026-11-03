@@ -1,6 +1,6 @@
-use penna::settings::about::{About, AboutLink};
+use penna::blocks::settings::about::{About, AboutLink};
 
-pub use penna::settings::about::ABOUT_LOGO_SIZE;
+pub use penna::blocks::settings::about::ABOUT_LOGO_SIZE;
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 pub const REPOSITORY_URL: &str = "https://github.com/autistic-computer/zebrilus";
@@ -36,7 +36,7 @@ pub const ZZ_ABOUT: About = About {
 
 #[must_use]
 pub fn build_info(platform: &str) -> String {
-    penna::settings::about::build_info(&ZZ_ABOUT, platform)
+    penna::blocks::settings::about::build_info(&ZZ_ABOUT, platform)
 }
 
 #[cfg(test)]

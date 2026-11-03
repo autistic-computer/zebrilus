@@ -1,4 +1,4 @@
-use penna::sidebar::SIDEBAR_DEFAULT_WIDTH;
+use penna::blocks::sidebar::SIDEBAR_DEFAULT_WIDTH;
 use std::rc::Rc;
 
 use ala::{
@@ -6,7 +6,8 @@ use ala::{
     ScrollHandle, Styled as _, Window, div, prelude::*, px,
 };
 use penna::{
-    ActiveTheme as _, Label, TextStyle, menu::PopupMenuItem, scroll::ScrollableElement as _,
+    ActiveTheme as _, Label, TextStyle, components::menu::PopupMenuItem,
+    components::scroll::ScrollableElement as _,
 };
 use zz_client::{
     program::{Program, resolve},

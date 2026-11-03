@@ -7,9 +7,9 @@ use ala::{
 use penna::{
     ActiveTheme as _, Icon, IconName, Kind, Label, PaintState, Root, Sizable as _, Space,
     StyledExt as _, Surface, Tab, TabLook, TextStyle, Theme, ThemeMode, Well,
-    button::{Button, ButtonLook, ButtonVariants as _},
+    components::button::{Button, ButtonLook, ButtonVariants as _},
+    components::switch::Switch,
     h_flex,
-    switch::Switch,
 };
 use zz_ui::{Assets, interface_theme::InterfaceTheme};
 
@@ -259,7 +259,9 @@ fn load(sources: &[PathBuf]) -> Result<InterfaceTheme, String> {
             std::fs::read_to_string(path).map_err(|error| format!("{}: {error}", path.display()))
         })
         .collect::<Result<Vec<_>, _>>()?;
-    penna::interface_theme::parse_layers(&texts.iter().map(String::as_str).collect::<Vec<_>>())
+    penna::foundation::interface_theme::parse_layers(
+        &texts.iter().map(String::as_str).collect::<Vec<_>>(),
+    )
 }
 
 fn main() {

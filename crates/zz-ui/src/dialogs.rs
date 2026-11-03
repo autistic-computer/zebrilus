@@ -3,9 +3,9 @@ use ala::{
 };
 use penna::{
     Label, TextStyle,
-    dialog::{AlertDialog, Dialog, DialogButtonProps},
-    feedback::{prompt_body, prompt_dialog, prompt_question},
-    overlay::dialog_description,
+    blocks::dialog::dialog_description,
+    blocks::dialog::{AlertDialog, Dialog, DialogButtonProps},
+    blocks::feedback::{prompt_body, prompt_dialog, prompt_question},
 };
 
 use crate::{

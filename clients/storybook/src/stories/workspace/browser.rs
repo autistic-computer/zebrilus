@@ -4,9 +4,9 @@ use ala::{
 };
 use penna::{
     ActiveTheme as _, Colorize as _, Disableable as _, IconName, Label, TextStyle,
-    button::{Button, ButtonVariants as _},
-    input::InputState,
-    menu::{DropdownMenu as _, PopupMenu},
+    components::button::{Button, ButtonVariants as _},
+    components::input::InputState,
+    components::menu::{DropdownMenu as _, PopupMenu},
 };
 use zz_protocol::PaneId;
 use zz_ui::{

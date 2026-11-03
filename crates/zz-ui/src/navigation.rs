@@ -21,7 +21,7 @@ use ala::{
     Pixels, SharedString, Stateful, StatefulInteractiveElement as _, Styled as _, Window, div,
     prelude::*, px,
 };
-pub use penna::sidebar::sidebar_fade as workspace_sidebar_fade;
+pub use penna::blocks::sidebar::sidebar_fade as workspace_sidebar_fade;
 use penna::{Chip, ChipLook, Panel, PanelLook, Row, RowLook, Tab, TabLook, TextStyle};
 
 pub const WORKSPACE_TREE_ROW_HEIGHT: f32 = 32.0;

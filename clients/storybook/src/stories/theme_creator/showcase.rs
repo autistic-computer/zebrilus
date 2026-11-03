@@ -4,15 +4,16 @@ use ala::{
 };
 use penna::{
     Emphasis, IconName, Tone,
-    badge::Badge,
-    button::{Button, ButtonVariants as _},
-    h_flex,
-    kbd::Kbd,
-    notification::Notification,
-    overlay::{dialog_description, dialog_footer, dialog_gutter, dialog_surface, dialog_title},
-    slider::DiscreteSlider,
-    tooltip::Tooltip,
-    v_flex,
+    blocks::dialog::{
+        dialog_description, dialog_footer, dialog_gutter, dialog_surface, dialog_title,
+    },
+    blocks::notification::Notification,
+    components::badge::Badge,
+    components::button::{Button, ButtonVariants as _},
+    components::kbd::Kbd,
+    components::slider::DiscreteSlider,
+    components::tooltip::Tooltip,
+    h_flex, v_flex,
 };
 use penna_storybook::creator::{card, heading, toggle};
 use penna_storybook::kit::menus::SplitRight;

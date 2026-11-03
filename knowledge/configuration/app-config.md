@@ -277,7 +277,7 @@ except that light mode draws `light-glass` when the theme sets one.
   (`chrome.button`, `sidebar.row`, `field.composer`, ...) to the style props it changes: `fill`
   (`none`, `tint`, `solid`, `glass`), `outline` (`true` or `false`), `shadow` (`none`, `contact`,
   `float`), `shape` (`square`, `round`, `pill`), and `hover` and `selected` (`none`, `tint`, `lift`,
-  `accent`, `ring`, `bar`). The ids are `penna::roles`; [surface roles](/designs/surface-roles.md)
+  `accent`, `ring`, `bar`). The ids are `penna::foundation::roles`; [surface roles](/designs/surface-roles.md)
   says how a role resolves, and penna's `knowledge/designs/kit.md` lists the recipes zz draws.
 - Each color set holds the six roots (`background`, `foreground`, `accent`, `success`, `warning`,
   `danger`) and two optional colors: `on-accent`, the text on an accent fill (a solid primary
@@ -294,10 +294,10 @@ shadow, in a color set or in a `glass` object, is an error rather than ignored: 
 it and, when it differs from a real key only in case, dashes or underscores, names the key that
 was meant (`` unknown field `row_inset`, did you mean `row-inset`? ``). Material and color keys
 are kebab-case while glass fields keep `GlassMaterial`'s snake_case (`light_color`,
-`edge_shadow`), which is the usual slip. A role id `penna::roles::find` does not know is an error
+`edge_shadow`), which is the usual slip. A role id `penna::foundation::roles::find` does not know is an error
 too, and suggests the role meant (`` unknown role `chromebutton`, did you mean `chrome.button`? ``),
 as is a prop value outside its list. The exception is a role penna no longer draws
-(`penna::roles::is_retired`): the file loads and that entry is dropped. Settings Import, the thin clients' Import and the storybook's
+(`penna::foundation::roles::is_retired`): the file loads and that entry is dropped. Settings Import, the thin clients' Import and the storybook's
 import show the same message. `look`, the nine-key format from earlier on 2026-10-13, is unknown
 the same way, so a theme file written for it loads only once it is rewritten as `materials` and
 `roles`.
@@ -888,8 +888,8 @@ accepts other paths. Existing installs receive this offer once more after the ow
 The desktop and the thin clients build the Interface page from the same item list
 (`zz_ui::settings::appearance::appearance_page_items`: penna's list with zz's Sidebar group, App
 Icon row and window rows added as `ZzRow`s), laid out by
-`penna::settings::appearance::appearance_page`. Both draw penna's rows with `kit_row` from a
-`penna::interface_theme::Appearance`, with the row titles from `AppearancePageItem::title`, and
+`penna::blocks::appearance::appearance_page`. Both draw penna's rows with `kit_row` from a
+`penna::foundation::interface_theme::Appearance`, with the row titles from `AppearancePageItem::title`, and
 draw only their `ZzRow`s themselves; the desktop also keeps its own UI font select and UI zoom
 field. Each edit comes back as an `AppearanceChange`: the desktop builds its `Appearance` from
 `zz/config` and writes each change to its key, and the thin clients keep the `Appearance`

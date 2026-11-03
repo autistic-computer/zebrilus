@@ -12,7 +12,7 @@ use crate::{
     workspace::{AppView, sidebar::WorkspaceSidebar},
 };
 
-use penna::tray::{Menu, Tray};
+use penna::blocks::tray::{Menu, Tray};
 
 use super::{
     QuitAction, TrayEvent,
@@ -30,7 +30,7 @@ pub(crate) struct DesktopTray {
     available: bool,
     pub(crate) window: Option<AnyWindowHandle>,
     mux: Option<WeakEntity<MuxClient>>,
-    events: Option<Sender<penna::tray::TrayEvent>>,
+    events: Option<Sender<penna::blocks::tray::TrayEvent>>,
     pub(crate) sidebar: Option<WeakEntity<WorkspaceSidebar>>,
     pub(crate) stopping_daemon: bool,
     _task: Option<Task<()>>,

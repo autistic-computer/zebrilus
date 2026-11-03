@@ -5,7 +5,7 @@ use ala::{
 };
 use penna::{
     Icon, IconName, StyledExt as _,
-    sheet::{bottom_sheet, close_sheet, sheet_close, sheet_row},
+    blocks::sheet::{bottom_sheet, close_sheet, sheet_close, sheet_row},
 };
 use zz_client::{
     new_chat::{

@@ -4,7 +4,7 @@ use ala::{
     AnyElement, AnyView, App, AppContext as _, Context, IntoElement, ParentElement as _, Render,
     SharedString, Styled as _, Window, div, px, uniform_list,
 };
-use penna::{Disableable as _, button::Button};
+use penna::{Disableable as _, components::button::Button};
 use zz_client::agent_completion::{
     AgentCommand, CommandCompletion, command_label, completion_query,
     meaningful_command_description, pane_commands, ranked_completions,

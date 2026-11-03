@@ -1,5 +1,5 @@
 use async_channel::Sender;
-use penna::tray::{Menu, Tray, TrayEvent, TrayIcon, TrayOptions};
+use penna::blocks::tray::{Menu, Tray, TrayEvent, TrayIcon, TrayOptions};
 use zz_protocol::app_identity::{DIRECTORY, DISPLAY_NAME};
 
 pub(super) fn spawn(menu: Menu, events: Sender<TrayEvent>) -> Option<Tray> {

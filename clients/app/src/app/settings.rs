@@ -6,16 +6,16 @@ use ala::{
 };
 use penna::{
     ActiveTheme as _, IconName, Label, TextStyle, Theme,
-    input::{InputEvent, InputState, NumberInput},
-    menu::PopupMenuItem,
-    select::{Select, SelectEvent, SelectState},
-    settings::{
-        about::{about_build_stack, about_copy_button, about_hero, about_project_stack},
-        appearance::{
-            ADVANCED_DISCLOSURE, AppearanceControls, appearance_page, kit_row, percent_slider,
-        },
+    blocks::appearance::{
+        ADVANCED_DISCLOSURE, AppearanceControls, appearance_page, kit_row, percent_slider,
     },
-    switch::Switch,
+    blocks::settings::about::{
+        about_build_stack, about_copy_button, about_hero, about_project_stack,
+    },
+    components::input::{InputEvent, InputState, NumberInput},
+    components::menu::PopupMenuItem,
+    components::select::{Select, SelectEvent, SelectState},
+    components::switch::Switch,
 };
 use zz_ui::{
     interface_theme::{self, AppearanceChange},
@@ -422,7 +422,7 @@ impl AppShell {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        use penna::{WindowExt as _, notification::Notification};
+        use penna::{WindowExt as _, blocks::notification::Notification};
         let notification = match saved {
             Ok(id) => {
                 self.theme_changed(window, cx);
@@ -474,7 +474,7 @@ impl AppShell {
         let sheet = self.host_sheets(window, cx);
         #[cfg(not(any(target_os = "ios", target_os = "android")))]
         let sheet: Option<AnyElement> = None;
-        let route = penna::touch::swipe_back(
+        let route = penna::blocks::touch::swipe_back(
             "settings-swipe-back",
             self.settings_route(section, picked, cx),
             move |window, cx| {
@@ -575,7 +575,7 @@ impl AppShell {
             .into_any_element()
         };
         let title = if picked { section.title() } else { "Settings" };
-        let back = penna::compact::compact_bar_button("settings-back", IconName::ArrowLeft)
+        let back = penna::blocks::compact::compact_bar_button("settings-back", IconName::ArrowLeft)
             .on_click(cx.listener(|this, _, _, cx| {
                 this.settings_leaving = true;
                 cx.notify();
@@ -592,7 +592,7 @@ impl AppShell {
                         .absolute()
                         .inset_0()
                         .flex()
-                        .child(penna::touch::touch_scale(content, cx)),
+                        .child(penna::blocks::touch::touch_scale(content, cx)),
                 ),
             )
             .child(settings_title_bar(title, fold, back))
@@ -980,7 +980,9 @@ fn about_page(cx: &mut Context<AppShell>) -> SettingsScrollColumn {
                         zz_ui::settings::about::build_info(&copied),
                     ));
                     window.push_notification(
-                        penna::notification::Notification::success("Copied build information"),
+                        penna::blocks::notification::Notification::success(
+                            "Copied build information",
+                        ),
                         cx,
                     );
                 }),
@@ -1044,7 +1046,7 @@ fn choice_select(
 }
 
 fn number_control(input: &Entity<InputState>, cx: &App) -> ala::Div {
-    let width = if penna::touch::CoarsePointer::get(cx) {
+    let width = if penna::blocks::touch::CoarsePointer::get(cx) {
         110.0
     } else {
         120.0

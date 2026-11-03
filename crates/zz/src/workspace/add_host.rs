@@ -1,5 +1,5 @@
 use ala::{App, AppContext as _, Entity, Focusable as _, SharedString, Window};
-use penna::{WindowExt as _, input::InputState};
+use penna::{WindowExt as _, components::input::InputState};
 use zz_daemon_client::Endpoint;
 use zz_ui::dialogs::add_host_prompt_dialog;
 
