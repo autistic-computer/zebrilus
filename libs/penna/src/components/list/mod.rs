@@ -7,7 +7,7 @@ use ala::{
 
 use crate::{
     ActiveTheme as _, AuthoredElement as _, Disableable, PaintState, RowLook, Selectable, Size,
-    StyledExt as _, Surface, SurfaceRole,
+    StyledExt as _, Surface, SurfaceRole, TextStyle,
     foundation::{restyle, row_corners, row_state},
     h_flex,
 };
@@ -163,7 +163,7 @@ impl RenderOnce for ListItem {
             .gap_x_1()
             .py_1()
             .px_3()
-            .text_base()
+            .type_style(TextStyle::Lead, cx)
             .layer(&layer)
             .map(|this| row_corners(this, &layer, row_height))
             .refine_style(&style)

@@ -9,8 +9,8 @@
   height: 32px;
   margin: 0;
   padding: 0 12px;
-  font-size: 12px;
-  line-height: 16px;
+  font-size: var(--penna-text-small-size);
+  line-height: var(--penna-text-small-line);
   white-space: nowrap;
   cursor: default;
   user-select: none;
@@ -31,8 +31,8 @@
 
 .penna-row > .penna-row-aside {
   display: inline-flex;
-  font-size: 11px;
-  line-height: 16px;
+  font-size: var(--penna-text-caption-size);
+  line-height: var(--penna-text-caption-line);
   color: var(--penna-muted);
 }
 
@@ -70,10 +70,6 @@
 
 .penna-item > .penna-item-content {
   width: 100%;
-}
-
-.penna-item > .penna-item-content {
-  line-height: round(nearest, 1.618em, 0.5px);
 }
 
 :is(.penna-row, .penna-item)[data-penna][data-state~="focused"] {

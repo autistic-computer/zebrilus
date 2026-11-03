@@ -133,7 +133,6 @@ fn tree(id: &'static str, active_row: Option<usize>, cx: &App) -> AnyElement {
                     .child(
                         h_flex()
                             .gap_2()
-                            .text_sm()
                             .child(Icon::new(icon.clone()).medium().text_color(muted))
                             .child(*label),
                     )

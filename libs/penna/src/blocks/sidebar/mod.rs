@@ -1,6 +1,6 @@
 use crate::{
     ActiveTheme as _, Colorize as _, Edge, Ground, IconName, PaintState, Selectable as _,
-    Sizable as _, StyledExt, Surface,
+    Sizable as _, StyledExt, Surface, TextStyle,
     components::button::{Button, ButtonVariants as _},
     foundation::RoleRuleExt as _,
     foundation::roles,
@@ -45,9 +45,8 @@ pub fn sidebar_heading(title: impl Into<SharedString>, cx: &App) -> ala::Div {
         .px(px(8.0))
         .pt(px(12.0))
         .pb(px(2.0))
-        .text_sm()
+        .type_style_strong(TextStyle::Lead, cx)
         .text_color(cx.theme().foreground.muted())
-        .map(StyledExt::font_medium)
         .child(title.into())
 }
 

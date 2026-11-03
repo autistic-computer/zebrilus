@@ -5,8 +5,8 @@
   width: max-content;
   padding: 0;
   font-family: var(--penna-font);
-  font-size: 12px;
-  line-height: 16px;
+  font-size: var(--penna-text-small-size);
+  line-height: var(--penna-text-small-line);
   color: var(--penna-ink);
   text-align: left;
   user-select: none;
@@ -39,14 +39,15 @@
   margin: 0;
   padding: 0 8px;
   border: 0;
-  font-size: 12px;
-  line-height: 16px;
+  font-size: var(--penna-text-small-size);
+  line-height: var(--penna-text-small-line);
   white-space: nowrap;
 }
 
 .penna-popup-row[data-kind="label"] {
   height: auto;
-  font-size: 11px;
+  font-size: var(--penna-text-caption-size);
+  line-height: var(--penna-text-caption-line);
   justify-content: flex-start;
 }
 
@@ -167,8 +168,8 @@
   padding: 0;
   gap: 0;
   border-width: 0;
-  font-size: 12px;
-  line-height: 16px;
+  font-size: var(--penna-text-small-size);
+  line-height: var(--penna-text-small-line);
   background: linear-gradient(var(--penna-popup-field), var(--penna-popup-field)), var(--penna-popover);
 }
 

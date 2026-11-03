@@ -1,5 +1,7 @@
 use crate::foundation::restyle;
-use crate::{ActiveTheme, Disableable, PaintState, StyledExt, Surface, SurfaceRole, h_flex};
+use crate::{
+    ActiveTheme, Disableable, PaintState, StyledExt, Surface, SurfaceRole, TextStyle, h_flex,
+};
 use crate::{AuthoredElement as _, Colorize as _};
 use ala::{
     AnyElement, App, ClickEvent, ElementId, InteractiveElement, IntoElement, MouseButton,
@@ -119,7 +121,7 @@ impl RenderOnce for MenuItemElement {
             .gap_x_1()
             .py_1()
             .px_2()
-            .text_xs()
+            .type_style(TextStyle::Small, cx)
             .relative()
             .layer(&theme.layer(surface, state))
             .items_center()

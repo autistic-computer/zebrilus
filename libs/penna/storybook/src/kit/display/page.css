@@ -54,8 +54,12 @@
   white-space: nowrap;
 }
 
-.penna-list-detail > .penna-text {
+.penna-list-label > .penna-text {
   --display-text-y: 0px;
+}
+
+.penna-list-detail > .penna-text {
+  --display-text-y: 0.5px;
 }
 
 .display-inline > .penna-spinner {

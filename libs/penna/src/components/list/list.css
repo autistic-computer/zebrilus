@@ -13,8 +13,9 @@
   gap: 0 4px;
   height: auto;
   padding: 4px 12px;
-  font-size: 16px;
-  line-height: 1.618;
+  font-size: var(--penna-text-lead-size);
+  font-weight: var(--penna-text-lead-weight);
+  line-height: var(--penna-text-lead-line);
   white-space: nowrap;
   border-radius: min(var(--penna-r), calc(var(--penna-list-row, 28px) * 0.4)) !important;
   cursor: default;
@@ -27,7 +28,6 @@
   gap: 8px;
   width: 100%;
   min-width: 0;
-  font-size: 14px;
 }
 
 .penna-list-item .penna-list-icon {
@@ -42,16 +42,11 @@
 
 .penna-list-item .penna-list-detail {
   flex: none;
-  font-size: 12px;
+  font-size: var(--penna-text-small-size);
+  line-height: var(--penna-text-small-line);
   color: var(--penna-list-muted);
 }
 
 .penna-list-item[data-penna]:is([aria-disabled="true"], [data-state~="disabled"]):is(:hover, :active, [aria-selected="true"], [data-state~="selected"]) {
   --penna-fill: initial;
-}
-
-.penna-list-item > .penna-list-content,
-.penna-list-item .penna-list-label,
-.penna-list-item .penna-list-detail {
-  line-height: round(nearest, 1.618em, 0.5px);
 }

@@ -3,7 +3,8 @@ use super::menu_item::MenuItemElement;
 use crate::components::button::{Button, ButtonVariants as _};
 use crate::components::scroll::ScrollableElement;
 use crate::{
-    ActiveTheme, Icon, IconName, Sizable as _, StyledExt, components::kbd::Kbd, h_flex, v_flex,
+    ActiveTheme, Icon, IconName, Sizable as _, StyledExt, TextStyle, components::kbd::Kbd, h_flex,
+    v_flex,
 };
 use crate::{
     Edge, ElementExt, Kind, PaintState, RuleLook, Side, Surface, SurfaceRole,
@@ -780,6 +781,7 @@ impl PopupMenu {
         ink: Hsla,
         opacity: f32,
         window: &mut Window,
+        cx: &App,
     ) -> Option<Div> {
         let action = action?;
 
@@ -796,7 +798,7 @@ impl PopupMenu {
             div()
                 .flex_none()
                 .whitespace_nowrap()
-                .text_xs()
+                .type_style(TextStyle::Small, cx)
                 .text_color(ink)
                 .opacity(opacity)
                 .child(kbd.text())
@@ -902,8 +904,14 @@ impl PopupMenu {
                     ),
                 ))
             })
-            .text_size(crate::rems_from_px(if coarse { 13.0 } else { 12.0 }))
-            .line_height(px(16.0))
+            .type_style(
+                if coarse {
+                    TextStyle::Body
+                } else {
+                    TextStyle::Small
+                },
+                cx,
+            )
             .py_0()
             .px(INNER_PADDING)
             .map(|this| row_corners(this, &row, item_height))
@@ -944,7 +952,7 @@ impl PopupMenu {
                 .disabled(true)
                 .cursor_default()
                 .py_0()
-                .text_size(crate::rems_from_px(11.0))
+                .type_style(TextStyle::Caption, cx)
                 .child(
                     h_flex()
                         .cursor_default()
@@ -1054,7 +1062,7 @@ impl PopupMenu {
             } => {
                 let show_link_icon = *is_link;
                 let action = action.as_ref().map(|action| action.boxed_clone());
-                let key = self.render_key_binding(action, row.text, detail_opacity, window);
+                let key = self.render_key_binding(action, row.text, detail_opacity, window, cx);
 
                 this.when(!disabled, |this| {
                     this.on_click(

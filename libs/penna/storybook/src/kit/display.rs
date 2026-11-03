@@ -4,8 +4,8 @@ use ala::{
 };
 use penna::{
     ActiveTheme as _, Colorize as _, Disableable as _, Icon, IconName, Sizable as _,
-    components::kbd::Kbd, components::list::ListItem, components::separator::Separator,
-    components::spinner::Spinner, h_flex, v_flex,
+    StyledExt as _, TextStyle, components::kbd::Kbd, components::list::ListItem,
+    components::separator::Separator, components::spinner::Spinner, h_flex, v_flex,
 };
 
 use super::support::{Probe, hover, when_visible};
@@ -204,10 +204,14 @@ fn list_row(
         h_flex()
             .w_full()
             .gap_2()
-            .text_sm()
             .child(Icon::new(icon).medium().text_color(muted))
             .child(div().flex_1().child(label))
-            .child(div().text_xs().text_color(muted).child(detail)),
+            .child(
+                div()
+                    .type_style(TextStyle::Small, cx)
+                    .text_color(muted)
+                    .child(detail),
+            ),
     )
 }
 

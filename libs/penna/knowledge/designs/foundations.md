@@ -2,7 +2,7 @@
 type: Design Plan
 title: "Foundations: the scales and rules every penna screen is built from"
 description: "The agent-facing spec for penna's foundations: space, gap and inset tokens named by their pixel value, the interface, reading and touch type ladders, the control size ladder, color roles and contrast, corners, depth, focus, motion, the six layout primitives, and the order of work that brings penna onto them. People read the Foundations pages of the docs site instead."
-status: In progress (2026-11-03, steps 1 and 2 of 8 built)
+status: In progress (2026-11-03, steps 1 and 2 of 9 built, step 3 under way)
 resource: src/foundation/space.rs
 tags:
 - ui
@@ -39,7 +39,7 @@ Status marks: **built** is in the code; **step N** is planned in the work order 
 | `gap-related` | `--penna-gap-related` | `Space::GAP_RELATED` | built |
 | `inset-card` | `--penna-inset-card` | `Space::INSET_CARD` | built |
 | text style `body` | `--penna-text-body-size`, `-line`, `-weight` | `TextStyle::Body` | built |
-| `control-md` | `--penna-control-md` | `Size::Medium` | step 6 |
+| `control-md` | `--penna-control-md` | `Size::Medium` | step 7 |
 | colors | `--penna-fg`, `--penna-fg-muted`, ... | `cx.theme()` fields and looks | built |
 
 Until step 1, `Space` variants were named in 2px steps (`Space::S4` was 8px), while ala's helpers count 4px steps (`gap_4()` is 16px). Don't use ala's spacing helpers (`gap_2()`, `px_3()`, ...) in penna; use `Space`.
@@ -109,11 +109,13 @@ Reading rhythm (built): blocks (paragraphs, lists, quotes, code, tables) sit `sp
 
 `TextView` sets `read-body` on itself (`TextViewStyle::text`, default `Some(TextStyle::ReadBody)`). `None` makes it inherit its container's text style instead: zz's agent transcript does that to keep its own 12 to 13px sizes. Headings always take the reading ladder. A task list's checkbox is as tall as the font and sits in a box one line tall.
 
-Touch, for the compact and touch blocks (step 5): `touch-small` 15 on 20, `touch-body` 17 on 22, `touch-title` 34 on 40, weights 400, 400, 600.
+Touch, for the compact and touch blocks (step 6): `touch-small` 15 on 20, `touch-body` 17 on 22, `touch-title` 34 on 40, weights 400, 400, 600.
+
+Component text (step 3, built for rows, lists and menus): list and tree rows `lead` (4 + 20 + 4 makes the 28 row), their details `small`; sidebar headings strong `lead`; menu rows and their shortcuts `small` (`body` under a coarse pointer), menu section labels `caption`. The HTML versions read the `--penna-text-*` variables instead of copying sizes.
 
 Code takes the size and line of the text around it, in the code face: `mono` in the interface, `read-body` size in reading text. ala can't size one run differently inside a line.
 
-Root text (step 3): ala gives text with no style a line height of 1.618 times its size (13px text gets a 21.03px box). `Root` sets `body` on every window, as it already sets the corner smoothing, so text with no style gets 13 on 18.
+Root text (step 4): ala gives text with no style 16px on a line 1.618 times its size (25.89px), and the HTML root is 13px on 1.618. `Root` will set `body` on every window, as it already sets the corner smoothing, and `penna.css` the same on `html`, so text with no style gets 13 on 18 on both. It lands after step 3, once no component leans on the default, so it moves only app text that sets no style.
 
 Centering: Inter centers its capitals in the line box (within 0.01px at 13 on 18); the macOS system face sits them 0.33px low and Lilex 0.34px. Center a line box to center text; center icons beside text on the capitals with `cap_center_drop`.
 
@@ -123,16 +125,16 @@ Control ladder. Every control at a size shares one anatomy:
 
 | Token | px | Text | Inset | Field inset | Icon | Icon gap | Status |
 |---|---|---|---|---|---|---|---|
-| `control-xs` | 20 | `caption` | 8 | 6 | 12 | 4 | step 6 (chips today) |
+| `control-xs` | 20 | `caption` | 8 | 6 | 12 | 4 | step 7 (chips today) |
 | `control-sm` | 24 | `small` | 8 | 6 | 12 | 4 | built: `Size::Small` |
 | `control-md` | 28 | `body` | 12 | 8 | 14 | 6 | built: `Size::Medium`, the default |
-| `control-lg` | 32 | `body` | 16 | 10 | 16 | 6 | step 6 |
-| `control-xl` | 40 | `lead` | 16 | 12 | 16 | 8 | step 6 |
-| `touch` | 44 | `touch-body` | 16 | 12 | 16 | 8 | step 5 |
+| `control-lg` | 32 | `body` | 16 | 10 | 16 | 6 | step 7 |
+| `control-xl` | 40 | `lead` | 16 | 12 | 16 | 8 | step 7 |
+| `touch` | 44 | `touch-body` | 16 | 12 | 16 | 8 | step 6 |
 
 Fields use the field inset because their text starts at the edge.
 
-Other heights: `control-chrome` 22 (controls in bars, today `PANE_HEADER_CONTROL_HEIGHT`); `bar` 34 = `control-chrome` + 2 × `inset-chrome` (title bar and pane headers); `row` 28 (list, sidebar and menu rows; menu rows are 26 today and move to 28 in step 6); tabs take the ladder (36 today becomes 32 or 40 in step 6).
+Other heights: `control-chrome` 22 (controls in bars, today `PANE_HEADER_CONTROL_HEIGHT`); `bar` 34 = `control-chrome` + 2 × `inset-chrome` (title bar and pane headers); `row` 28 (list, sidebar and menu rows; menu rows are 26 today and move to 28 in step 7); tabs take the ladder (36 today becomes 32 or 40 in step 7).
 
 Icons: 12 beside `small` and `caption`, 14 beside `body`, 16 beside `lead` and `heading`.
 
@@ -140,7 +142,7 @@ Inside a line of text, keycaps, badges and checkboxes take the line height of th
 
 Width: reading text stops at a measure of 640 (about 75 characters of `read-body`). Sidebars are 200 to 256 wide, layout geometry rather than tokens.
 
-Density (step 8): one setting picks the default control and row height: compact 24, regular 28, comfortable 32. Text and gaps stay.
+Density (step 9): one setting picks the default control and row height: compact 24, regular 28, comfortable 32. Text and gaps stay.
 
 ## Color
 
@@ -164,7 +166,7 @@ Surfaces stack in this order, each layer a step away from the one under it (dark
 
 Highlight: what is on, picked or in focus uses `primary`, which is the ink itself in the default look and the accent once one is picked in Appearance.
 
-Contrast (WCAG 2, on `bg`): `fg` 16.4 light / 14.0 dark; `fg-muted` 5.8 / 4.4; `muted` 5.9 / 5.9; `fg-faint` 3.1 / 2.0; `accent` as text 4.4 / 5.8; `on-accent` on `accent` 3.8 / 6.8; `success` 4.3 / 7.5; `warning` 4.6 / 8.4; `danger` 4.9 / 5.3. Under 4.5 and flagged for step 7: `fg-muted` dark, `accent` and `success` as text in light, `on-accent` light. Check all six theme variants (three looks, light and dark), not only the default.
+Contrast (WCAG 2, on `bg`): `fg` 16.4 light / 14.0 dark; `fg-muted` 5.8 / 4.4; `muted` 5.9 / 5.9; `fg-faint` 3.1 / 2.0; `accent` as text 4.4 / 5.8; `on-accent` on `accent` 3.8 / 6.8; `success` 4.3 / 7.5; `warning` 4.6 / 8.4; `danger` 4.9 / 5.3. Under 4.5 and flagged for step 8: `fg-muted` dark, `accent` and `success` as text in light, `on-accent` light. Check all six theme variants (three looks, light and dark), not only the default.
 
 ## Corners, depth, focus, motion
 
@@ -173,7 +175,7 @@ Contrast (WCAG 2, on `bg`): `fg` 16.4 light / 14.0 dark; `fg-muted` 5.8 / 4.4; `
 - Focus: a 1.5px ring (`FOCUS_RING_WIDTH`) drawn outside the border box with its own adaptive radius. Only fields change their fill or edge on focus.
 - Motion: appear 120ms, enter 200ms, turn 220ms, scaled by the animation speed setting (0.25 to 2). Respect reduced motion.
 
-## Layout primitives (step 4)
+## Layout primitives (step 5)
 
 Six primitives place everything. They take tokens and draw nothing.
 
@@ -200,11 +202,12 @@ Each component's docs page carries an anatomy: its parts and the tokens they use
 |---|---|---|---|
 | 1 | Token names in Rust and CSS: `Space` named by pixels with gap and inset constants; space, gap, inset and text style CSS variables | none | built |
 | 2 | Reading text: `TextView` and `text.css` on the reading ladder and rhythm | documents and chat get smaller, tighter text | built |
-| 3 | Root text style: `Root` sets `body` | unstyled native text boxes shrink from 21 to 18 | next |
-| 4 | Layout primitives, native and DOM, with stories | none by themselves | |
-| 5 | Components onto the primitives and tokens, one family at a time, starting with Appearance (its 11 and 14 insets) and the touch ladder | small spacing moves, reviewed per family | |
-| 6 | Control ladder: `control-xs`, `-lg`, `-xl`, rows 28, tabs on the ladder | menu rows grow 2px, tabs move | |
-| 7 | Color: contrast fixes across the six theme variants | flagged pairs darken or lighten | |
-| 8 | Density setting | new option | |
+| 3 | Text styles: every component sets a full text style on its text, native and HTML, one family at a time: rows, lists and menus first, then controls, surfaces, chrome and the editor blocks | per family: rows that grew from a 1.618 line return to their row height | in progress: rows, lists and menus built |
+| 4 | Root text style: `Root` and `penna.css` set `body` | app text with no style goes from 16 on 26 to 13 on 18; penna itself doesn't move | |
+| 5 | Layout primitives, native and DOM, with stories | none by themselves | |
+| 6 | Components onto the primitives and space tokens, one family at a time, starting with Appearance (its 11 and 14 insets) and the touch ladder | small spacing moves, reviewed per family | |
+| 7 | Control ladder: `control-xs`, `-lg`, `-xl`, rows 28, tabs on the ladder | menu rows grow 2px, tabs move | |
+| 8 | Color: contrast fixes across the six theme variants | flagged pairs darken or lighten | |
+| 9 | Density setting | new option | |
 
 Each step lands in penna with its stories, scores parity, rebaselines only what the step meant to move, and is pulled into zz and nidus.
