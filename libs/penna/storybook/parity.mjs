@@ -283,6 +283,7 @@ async function tab(cdp) {
     await send("Runtime.enable");
     await send("Page.enable");
     await send("Emulation.setDeviceMetricsOverride", { ...VIEWPORT, deviceScaleFactor: SCALE, mobile: false });
+    await send("Emulation.setFocusEmulationEnabled", { enabled: true });
     const front = async () => {
         if (cdp.front === sessionId) return;
         await send("Page.bringToFront");
@@ -492,7 +493,11 @@ async function domSections(page, widths, only) {
         await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
         return all.map((element) => {
             const box = element.getBoundingClientRect();
-            const nodes = [...element.querySelectorAll("[data-id]")].map((node) => {
+            const shown = (node) => {
+                const rect = node.getBoundingClientRect();
+                return node.checkVisibility({ visibilityProperty: true }) && (rect.width > 0 || rect.height > 0);
+            };
+            const nodes = [...element.querySelectorAll("[data-id]")].filter(shown).map((node) => {
                 const rect = node.getBoundingClientRect();
                 return { id: node.dataset.id, x: rect.x - box.x, y: rect.y - box.y, width: rect.width, height: rect.height };
             });
