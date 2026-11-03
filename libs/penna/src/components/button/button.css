@@ -11,9 +11,9 @@
   margin: 0;
   padding: 0 12px;
   font: inherit;
-  font-size: 13px;
-  font-weight: 400;
-  line-height: 1;
+  font-size: var(--penna-text-body-size);
+  font-weight: var(--penna-text-body-weight);
+  line-height: var(--penna-text-body-line);
   white-space: nowrap;
   text-decoration: none;
   cursor: default;
@@ -25,9 +25,9 @@
 }
 
 .penna-button[data-penna] {
-  font-size: 13px;
-  font-weight: 400;
-  line-height: 1;
+  font-size: var(--penna-text-body-size);
+  font-weight: var(--penna-text-body-weight);
+  line-height: var(--penna-text-body-line);
   outline: none;
 }
 
@@ -35,7 +35,8 @@
   height: 24px;
   padding: 0 8px;
   gap: 4px;
-  font-size: 12px;
+  font-size: var(--penna-text-small-size);
+  line-height: var(--penna-text-small-line);
   --penna-icon-size: 12px;
 }
 
@@ -127,12 +128,11 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  line-height: 1.618;
 }
 
 .penna-button > .penna-group > .penna-aside {
-  font-size: 12px;
-  line-height: 16px;
+  font-size: var(--penna-text-small-size);
+  line-height: var(--penna-text-small-line);
   color: var(--penna-fg-muted);
 }
 

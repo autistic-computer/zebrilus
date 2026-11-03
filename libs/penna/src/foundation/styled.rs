@@ -3,8 +3,8 @@ use super::{
     SurfaceRole, TextStyle, Tone,
 };
 use ala::{
-    AbsoluteLength, App, BoxShadow, DefiniteLength, Div, Edges, ElementId, FULL_CORNER_RADIUS,
-    Hsla, InteractiveElement as _, Pixels, Refineable, Stateful, StatefulInteractiveElement,
+    App, BoxShadow, DefiniteLength, Div, Edges, ElementId, FULL_CORNER_RADIUS, Hsla,
+    InteractiveElement as _, Pixels, Refineable, Stateful, StatefulInteractiveElement,
     StyleRefinement, Styled, div, px,
 };
 
@@ -299,11 +299,16 @@ impl Size {
         }
     }
 
-    pub fn control_text(&self) -> AbsoluteLength {
+    pub fn control_text(&self) -> TextStyle {
         match self {
-            Size::Size(value) => (*value * 0.875).into(),
-            Size::Small => rems_from_px(12.).into(),
-            Size::Medium => rems_from_px(13.).into(),
+            Size::Small => TextStyle::Small,
+            Size::Medium => TextStyle::Body,
+            Size::Size(value) => match value.as_f32() {
+                height if height < 22. => TextStyle::Caption,
+                height if height < 26. => TextStyle::Small,
+                height if height < 36. => TextStyle::Body,
+                _ => TextStyle::Lead,
+            },
         }
     }
 

@@ -1,8 +1,7 @@
 use ala::{
-    AnyElement, App, DefiniteLength, Div, ElementId, Entity, InteractiveElement, IntoElement,
-    MouseButton, ParentElement as _, Pixels, RenderOnce, Role, SharedString,
-    StatefulInteractiveElement, StyleRefinement, Styled, TextAlign, Window, div,
-    prelude::FluentBuilder as _, px, relative,
+    AnyElement, App, Div, ElementId, Entity, InteractiveElement, IntoElement, MouseButton,
+    ParentElement as _, Pixels, RenderOnce, Role, SharedString, StatefulInteractiveElement,
+    StyleRefinement, Styled, TextAlign, Window, div, prelude::FluentBuilder as _, px, relative,
 };
 
 use crate::{
@@ -19,7 +18,6 @@ use crate::{
 use super::{actions, state::InputState};
 use crate::{Colorize as _, Fill};
 
-const LINE_HEIGHT: DefiniteLength = DefiniteLength::Fraction(1.25);
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InputContentType {
     Url,
@@ -176,8 +174,8 @@ pub(crate) fn field_layer(
     layer
 }
 
-pub(crate) fn field_text<E: Styled>(element: E, size: Size) -> E {
-    element.text_size(size.control_text())
+pub(crate) fn field_text<E: Styled>(element: E, size: Size, cx: &App) -> E {
+    element.type_style(size.control_text(), cx)
 }
 
 impl Input {
@@ -301,8 +299,8 @@ impl Input {
         Surface::new(role).tone(self.tone).on_maybe(self.on)
     }
 
-    fn sized<E: Styled>(element: E, size: Size) -> E {
-        field_text(element.px(size.input_px()).py(size.input_py()), size)
+    fn sized<E: Styled>(element: E, size: Size, cx: &App) -> E {
+        field_text(element.px(size.input_px()).py(size.input_py()), size, cx)
     }
 
     fn height<E: Styled>(element: E, size: Size) -> E {
@@ -412,11 +410,10 @@ impl RenderOnce for Input {
             .items_center()
             .gap(gap)
             .w_full()
-            .line_height(LINE_HEIGHT)
             .text_color(paint.text_at(paint_state))
             .when(editable, ala::Styled::cursor_text);
 
-        element = Self::sized(element, self.size);
+        element = Self::sized(element, self.size, cx);
         if !multi_line {
             element = Self::height(element, self.size);
         }

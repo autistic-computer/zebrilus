@@ -17,8 +17,9 @@
   min-width: 0;
   padding: 0 8px;
   border-width: max(1px, var(--penna-bw));
-  font-size: 13px;
-  line-height: 1.618;
+  font-size: var(--penna-text-body-size);
+  font-weight: var(--penna-text-body-weight);
+  line-height: var(--penna-text-body-line);
   white-space: nowrap;
   cursor: pointer;
   --penna-icon-size: 12px;
@@ -27,7 +28,8 @@
 .penna-select[data-size="small"] > .penna-select-trigger {
   height: 24px;
   padding: 0 6px;
-  font-size: 12px;
+  font-size: var(--penna-text-small-size);
+  line-height: var(--penna-text-small-line);
 }
 
 .penna-select[data-open] > .penna-select-trigger {

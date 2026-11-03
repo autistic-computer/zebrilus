@@ -7,9 +7,9 @@
   box-sizing: border-box;
   height: 28px;
   padding: 0 10px;
-  font-size: 12px;
-  font-weight: 400;
-  line-height: 16px;
+  font-size: var(--penna-text-small-size);
+  font-weight: var(--penna-text-small-weight);
+  line-height: var(--penna-text-small-line);
   white-space: nowrap;
   cursor: default;
   user-select: none;
@@ -29,21 +29,21 @@
 
 .penna-tab > .penna-tab-label {
   display: inline-flex;
-  font-size: 12px;
-  line-height: 16px;
+  font-size: var(--penna-text-small-size);
+  line-height: var(--penna-text-small-line);
 }
 
 .penna-tab > .penna-tab-aside {
   display: inline-flex;
-  font-size: 11px;
-  line-height: 16px;
+  font-size: var(--penna-text-caption-size);
+  line-height: var(--penna-text-caption-line);
   color: var(--penna-muted);
 }
 
 .penna-tab > .penna-tab-path {
   display: inline-flex;
-  font-size: 12px;
-  line-height: 16px;
+  font-size: var(--penna-text-small-size);
+  line-height: var(--penna-text-small-line);
   color: var(--pane-muted, var(--penna-muted));
 }
 

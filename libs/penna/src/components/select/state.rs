@@ -322,6 +322,7 @@ impl<D: SelectDelegate> SelectState<D> {
                     .justify_between()
                     .when(!disabled, ala::Styled::cursor_pointer),
                 size,
+                cx,
             ),
             surface,
             state,

@@ -4,8 +4,8 @@
   gap: 8px;
   width: 100%;
   min-width: 0;
-  font-size: 12px;
-  line-height: 16px;
+  font-size: var(--penna-text-small-size);
+  line-height: var(--penna-text-small-line);
   outline: none;
 }
 

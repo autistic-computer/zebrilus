@@ -571,6 +571,7 @@ impl ColorPicker {
                     .justify_between()
                     .cursor_pointer(),
                 size,
+                cx,
             ),
             Surface::new(Kind::Field.role()),
             state,

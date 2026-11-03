@@ -9,9 +9,9 @@
   min-width: 18px;
   padding: 0 4px;
   font-family: var(--penna-font);
-  font-size: 11px;
-  font-weight: 400;
-  line-height: 16px;
+  font-size: var(--penna-text-caption-size);
+  font-weight: var(--penna-text-caption-weight);
+  line-height: var(--penna-text-caption-line);
   white-space: nowrap;
   color: var(--penna-muted);
   --penna-icon-size: 13px;
@@ -20,8 +20,8 @@
 .penna-kbd[data-size="small"] {
   height: 16px;
   min-width: 16px;
-  font-size: 10px;
-  line-height: 14px;
+  font-size: var(--penna-text-micro-size);
+  line-height: var(--penna-text-micro-line);
   --penna-icon-size: 12px;
 }
 

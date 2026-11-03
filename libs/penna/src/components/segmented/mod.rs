@@ -153,7 +153,7 @@ impl RenderOnce for SegmentedControl {
                     .justify_center()
                     .h(inner)
                     .px(px(SEGMENT_PADDING))
-                    .text_size(Size::Medium.control_text())
+                    .type_style(Size::Medium.control_text(), cx)
                     .whitespace_nowrap()
                     .map(|segment| {
                         if index == selected {

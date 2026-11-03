@@ -4,7 +4,7 @@ use ala::{
 };
 use penna::{
     ActiveTheme as _, Colorize as _, Disableable as _, Emphasis, IconName, Selectable as _,
-    Sizable as _, Tone,
+    Sizable as _, StyledExt as _, TextStyle, Tone,
     components::button::{Button, ButtonLook, ButtonRounded, ButtonVariant, ButtonVariants as _},
 };
 
@@ -274,7 +274,7 @@ fn custom_and_shapes(_: &mut Window, cx: &mut App) -> AnyElement {
                 Button::new("children").child(
                     div().flex().items_center().gap_2().child("Branch").child(
                         div()
-                            .text_xs()
+                            .type_style(TextStyle::Small, cx)
                             .text_color(theme.foreground.muted())
                             .child("main"),
                     ),

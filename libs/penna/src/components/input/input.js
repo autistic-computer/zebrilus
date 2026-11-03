@@ -1,6 +1,5 @@
 (() => {
   const FIELDS = ".penna-input, .penna-number";
-  const LINE = 16;
 
   const probe = document.createElement("i");
   probe.style.display = "none";
@@ -120,7 +119,7 @@
     area.style.setProperty("--rows", min);
     const saved = area.scrollTop;
     area.style.height = "0px";
-    const rows = Math.round(area.scrollHeight / LINE);
+    const rows = Math.round(area.scrollHeight / parseFloat(getComputedStyle(area).lineHeight));
     area.style.removeProperty("height");
     area.style.setProperty("--rows", Math.min(max, Math.max(min, area.value ? rows : min)));
     area.scrollTop = saved;

@@ -15,8 +15,9 @@
   gap: 0;
   height: auto;
   padding: 0;
-  font-size: 13px;
-  line-height: 1.618;
+  font-size: var(--penna-text-body-size);
+  font-weight: var(--penna-text-body-weight);
+  line-height: var(--penna-text-body-line);
 }
 
 .penna-segmented > .penna-segments[data-penna] {
@@ -66,8 +67,9 @@
   background: none;
   box-shadow: none;
   font: inherit;
-  font-size: 13px;
-  line-height: 1.618;
+  font-size: var(--penna-text-body-size);
+  font-weight: var(--penna-text-body-weight);
+  line-height: var(--penna-text-body-line);
   white-space: nowrap;
   cursor: default;
   appearance: none;

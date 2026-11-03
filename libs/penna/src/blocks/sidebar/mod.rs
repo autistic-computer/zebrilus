@@ -45,7 +45,7 @@ pub fn sidebar_heading(title: impl Into<SharedString>, cx: &App) -> ala::Div {
         .px(px(8.0))
         .pt(px(12.0))
         .pb(px(2.0))
-        .type_style_strong(TextStyle::Lead, cx)
+        .type_style_strong(TextStyle::Small, cx)
         .text_color(cx.theme().foreground.muted())
         .child(title.into())
 }

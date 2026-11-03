@@ -9,7 +9,7 @@ use ala::{
 
 use crate::{
     ActiveTheme as _, AuthoredElement as _, Colorize as _, Emphasis, Kind, Paint, PaintState, Size,
-    StyledExt as _, Surface, Tone,
+    StyledExt as _, Surface, TextStyle, Tone,
     blocks::sheet::{bottom_sheet, close_sheet, floating_sheet, sheet_close, sheet_inset},
     blocks::touch::CoarsePointer,
     components::input::{field_chrome_on, field_text},
@@ -132,8 +132,7 @@ impl RenderOnce for DiscreteSlider {
             .track_focus(&focus)
             .w_full()
             .gap_2()
-            .text_xs()
-            .line_height(px(16.0))
+            .type_style(TextStyle::Small, cx)
             .on_key_down(move |event, window, cx| {
                 let next = match event.keystroke.key.as_str() {
                     "left" | "down" => selected.saturating_sub(1),
@@ -431,6 +430,7 @@ impl Slider {
                     .justify_between()
                     .cursor_pointer(),
                 size,
+                cx,
             ),
             Surface::new(Kind::Field.role()),
             state,
@@ -478,8 +478,7 @@ impl Slider {
                         div()
                             .w_full()
                             .text_center()
-                            .text_size(px(22.0))
-                            .font_semibold()
+                            .type_style(TextStyle::Title, cx)
                             .text_color(cx.theme().foreground)
                             .child(shown),
                     )

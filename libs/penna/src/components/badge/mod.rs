@@ -1,11 +1,11 @@
 use ala::{
-    AnyElement, App, FontWeight, IntoElement, ParentElement, RenderOnce, SharedString,
-    StyleRefinement, Styled, Window, prelude::FluentBuilder as _, px,
+    AnyElement, App, IntoElement, ParentElement, RenderOnce, SharedString, StyleRefinement, Styled,
+    Window, prelude::FluentBuilder as _, px,
 };
 
 use crate::{
     ActiveTheme as _, Emphasis, Fill, Ground, Icon, Layer, PaintState, Sizable, Size,
-    StyledExt as _, Surface, SurfaceRole, Theme, Tone, h_flex, rems_from_px,
+    StyledExt as _, Surface, SurfaceRole, TextStyle, Theme, Tone, h_flex,
 };
 
 #[derive(IntoElement)]
@@ -116,8 +116,8 @@ impl Styled for Badge {
 impl RenderOnce for Badge {
     fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
         let (height, text, padding) = match self.size {
-            Size::Small => (16.0, 10.0, 5.0),
-            Size::Medium | Size::Size(_) => (18.0, 11.0, 6.0),
+            Size::Small => (16.0, TextStyle::Micro, 5.0),
+            Size::Medium | Size::Size(_) => (18.0, TextStyle::Caption, 6.0),
         };
         let layer = self.surface_layer(cx.theme());
         h_flex()
@@ -126,12 +126,10 @@ impl RenderOnce for Badge {
             .gap(px(4.0))
             .px(px(padding))
             .layer(&layer)
-            .text_size(rems_from_px(text))
-            .line_height(px(height - 2.0))
-            .font_weight(FontWeight::MEDIUM)
+            .type_style_strong(text, cx)
             .whitespace_nowrap()
             .refine_style(&self.style)
-            .children(self.icon.map(|icon| icon.size(px(text + 1.0))))
+            .children(self.icon.map(|icon| icon.size(px(text.design_px() + 1.0))))
             .when(!self.label.is_empty(), |badge| badge.child(self.label))
             .children(self.children)
     }

@@ -1,12 +1,12 @@
 use ala::{
-    Action, AnyElement, App, AsKeystroke as _, ElementId, FocusHandle, FontWeight, IntoElement,
-    KeyContext, Keystroke, ParentElement as _, RenderOnce, Role, SharedString,
-    StatefulInteractiveElement as _, StyleRefinement, Styled, Window, px,
+    Action, AnyElement, App, AsKeystroke as _, ElementId, FocusHandle, IntoElement, KeyContext,
+    Keystroke, ParentElement as _, RenderOnce, Role, SharedString, StatefulInteractiveElement as _,
+    StyleRefinement, Styled, Window, px,
 };
 
 use crate::{
     ActiveTheme as _, AuthoredElement as _, Ground, Icon, IconName, Layer, PaintState, Sizable,
-    Size, StyledExt as _, Surface, SurfaceRole, Theme, h_flex, rems_from_px,
+    Size, StyledExt as _, Surface, SurfaceRole, TextStyle, Theme, h_flex,
 };
 
 const ICON_SCALE: f32 = 1.2;
@@ -360,8 +360,8 @@ impl Styled for Keycap {
 impl RenderOnce for Keycap {
     fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
         let (height, text) = match self.size {
-            Size::Small => (16.0, 10.0),
-            Size::Medium | Size::Size(_) => (18.0, 11.0),
+            Size::Small => (16.0, TextStyle::Micro),
+            Size::Medium | Size::Size(_) => (18.0, TextStyle::Caption),
         };
         let layer = self.surface_layer(cx.theme());
         let cap = h_flex()
@@ -372,9 +372,7 @@ impl RenderOnce for Keycap {
             .px(px(4.0))
             .layer(&layer)
             .text_color(layer.muted_text())
-            .text_size(rems_from_px(text))
-            .line_height(px(height - 2.0))
-            .font_weight(FontWeight::NORMAL)
+            .type_style(text, cx)
             .refine_style(&self.style)
             .child(self.label);
         match self.id {

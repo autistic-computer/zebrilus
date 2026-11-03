@@ -4,7 +4,7 @@ use ala::{
     AnyElement, App, ClickEvent, Corners, Div, Edges, ElementId, FULL_CORNER_RADIUS, Hsla,
     InteractiveElement, Interactivity, IntoElement, MouseButton, ParentElement, Pixels, RenderOnce,
     Role, SharedString, Stateful, StatefulInteractiveElement as _, StyleRefinement, Styled, Window,
-    div, prelude::FluentBuilder as _, px, relative,
+    div, prelude::FluentBuilder as _, px,
 };
 
 use crate::{
@@ -711,6 +711,7 @@ impl RenderOnce for Button {
             .shadow(rest.shadow.clone())
             .when_some(rest.mark, Styled::edge_mark)
             .text_color(rest.text)
+            .type_style(self.size.control_text(), cx)
             .map(|this| match rest.glass {
                 Some(material) => this.glass(material),
                 None => this.bg(rest.fill),
@@ -768,13 +769,7 @@ impl RenderOnce for Button {
                 })
             })
             .map(|this| match (plain_label, self.label) {
-                (true, Some(label)) => this.child(
-                    div()
-                        .flex_none()
-                        .line_height(relative(1.))
-                        .text_size(self.size.control_text())
-                        .child(label),
-                ),
+                (true, Some(label)) => this.child(div().flex_none().child(label)),
                 (_, text) => this.child({
                     let label = h_flex()
                         .id("label")
@@ -783,7 +778,6 @@ impl RenderOnce for Button {
                         .justify_center();
 
                     label
-                        .text_size(self.size.control_text())
                         .when(pressed > 0.0, |this| this.opacity(1.0 - 0.35 * pressed))
                         .map(|this| match self.size {
                             Size::Small => this.gap_1(),
@@ -793,7 +787,7 @@ impl RenderOnce for Button {
                             this.child(icon.loading(self.loading).with_size(icon_size))
                         })
                         .when_some(text, |this, label| {
-                            this.child(div().flex_none().line_height(relative(1.)).child(label))
+                            this.child(div().flex_none().child(label))
                         })
                         .children(self.children)
                         .when(self.dropdown_caret, |this| {
