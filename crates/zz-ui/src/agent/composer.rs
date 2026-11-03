@@ -16,8 +16,7 @@ pub const COMPOSER_INSET: f32 = 6.0;
 pub const COMPOSER_HEIGHT: f32 = COMPOSER_BUTTON + 2.0 * COMPOSER_INSET;
 const COMPOSER_RADIUS: f32 = COMPOSER_HEIGHT / 2.0;
 const COMPOSER_BACKING_INSET: f32 = 1.0;
-const COMPOSER_TEXT: f32 = 13.0;
-const COMPOSER_TEXT_PADDING: f32 = (COMPOSER_BUTTON - COMPOSER_TEXT * 1.25) / 2.0;
+const COMPOSER_TEXT_PADDING: f32 = (COMPOSER_BUTTON - TextStyle::Body.line_height_px()) / 2.0;
 
 pub fn composer_ground(cx: &App) -> Ground {
     cx.theme().ground_of(FieldLook::Composer)
