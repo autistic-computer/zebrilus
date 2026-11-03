@@ -1,0 +1,3 @@
+.story-row:has(> [data-tooltip]) {
+  position: relative;
+}

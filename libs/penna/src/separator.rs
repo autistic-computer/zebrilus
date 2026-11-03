@@ -4,7 +4,7 @@ use ala::{
     prelude::FluentBuilder as _,
 };
 
-use crate::{AuthoredElement as _, Edge, RuleLook, StyledExt as _};
+use crate::{ActiveTheme as _, AuthoredElement as _, RULE_WIDTH, RuleLook, StyledExt as _};
 
 #[derive(IntoElement)]
 pub struct Separator {
@@ -62,8 +62,12 @@ impl Styled for Separator {
 
 impl RenderOnce for Separator {
     fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
-        let look = self.look;
         let vertical = self.axis == Axis::Vertical;
+        let theme = cx.theme();
+        let ink = theme
+            .style(self.look.role())
+            .outline
+            .then(|| self.color.unwrap_or_else(|| theme.divider_color()));
 
         let rule = div()
             .flex()
@@ -78,18 +82,18 @@ impl RenderOnce for Separator {
                 }
             })
             .refine_style(&self.style)
-            .child(
+            .children(ink.map(|ink| {
                 div()
                     .absolute()
                     .map(|this| {
                         if vertical {
-                            this.h_full().rule(look, Edge::Left, cx)
+                            this.h_full().w(RULE_WIDTH)
                         } else {
-                            this.w_full().rule(look, Edge::Top, cx)
+                            this.w_full().h(RULE_WIDTH)
                         }
                     })
-                    .when_some(self.color, Styled::border_color),
-            );
+                    .bg(ink)
+            }));
         let orientation = if vertical {
             Orientation::Vertical
         } else {

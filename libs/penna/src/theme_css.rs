@@ -339,6 +339,10 @@ fn write_root(css: &mut String, theme: &Theme) {
             "--penna-fg-muted".to_owned(),
             color(theme.foreground.muted()),
         ),
+        (
+            "--penna-fg-faint".to_owned(),
+            color(theme.foreground.faint()),
+        ),
         ("--penna-muted".to_owned(), color(muted)),
         ("--penna-accent".to_owned(), color(theme.accent)),
         ("--penna-on-accent".to_owned(), color(primary.text)),

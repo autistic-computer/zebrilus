@@ -10,17 +10,18 @@
     { "name": "press-danger", "section": "variants", "press": "variant-Danger" },
     { "name": "press-text", "section": "variants", "press": "variant-Text" },
     { "name": "click-secondary", "section": "variants", "click": "variant-Secondary" },
-    { "name": "hover-icon", "section": "sizes", "hover": "icon-md" },
-    { "name": "hover-compact-icon", "section": "sizes", "hover": "icon-compact" },
+    { "name": "hover-icon", "section": "sizes", "hover": "icon-md", "wait": 700 },
+    { "name": "hover-compact-icon", "section": "sizes", "hover": "icon-compact", "wait": 700 },
     { "name": "hover-outline", "section": "states", "hover": "outline-danger" },
     { "name": "hover-caret-ghost", "section": "states", "hover": "caret-ghost" },
     { "name": "hover-flat", "section": "custom-and-shapes", "hover": "flat-default" },
     { "name": "hover-pill", "section": "custom-and-shapes", "hover": "rounded-pill" },
     { "name": "hover-look-quiet", "section": "looks", "hover": "look-quiet-rest" },
     { "name": "press-look-chrome", "section": "looks", "press": "look-chrome-rest" },
-    { "name": "hover-look-floating", "section": "looks", "hover": "look-floating-rest" },
+    { "name": "hover-look-floating", "section": "looks", "hover": "look-floating-rest", "wait": 700 },
     { "name": "hover-look-row", "section": "looks", "hover": "look-row-rest" },
     { "name": "hover-look-tray", "section": "looks", "hover": "look-tray-rest" },
-    { "name": "hover-look-send", "section": "looks", "hover": "look-send-rest" }
+    { "name": "hover-look-send", "section": "looks", "hover": "look-send-rest", "wait": 700 },
+    { "name": "tooltip-look-floating", "section": "looks", "hover": { "selector": "[data-id='look-floating-rest']" }, "wait": 700 }
   ]
 }

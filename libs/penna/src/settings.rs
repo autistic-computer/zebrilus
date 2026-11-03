@@ -47,12 +47,13 @@ pub fn settings_navigation_button(
         .when(selected, crate::StyledExt::font_medium)
 }
 
-pub fn settings_navigation_back_button(id: impl Into<ElementId>) -> Button {
+pub fn settings_navigation_back_button(id: impl Into<ElementId>, cx: &App) -> Button {
     Button::new(id)
         .w_full()
         .px(px(8.0))
         .ghost()
         .surface_role(roles::SIDEBAR_ROW)
+        .on(cx.theme().ground_of(Surface::new(roles::SIDEBAR)))
         .icon(IconName::ArrowLeft)
         .label("Back")
         .child(div().flex_1())
@@ -136,7 +137,7 @@ impl RenderOnce for SettingsNavigation {
     fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
         let back = self.on_back.map(|on_back| {
             settings_navigation_row(
-                settings_navigation_back_button("back")
+                settings_navigation_back_button("back", cx)
                     .on_click(move |event, window, cx| on_back(event, window, cx)),
             )
         });

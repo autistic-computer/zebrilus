@@ -9,18 +9,34 @@ use crate::{
     Size, StyledExt as _, Surface, SurfaceRole, Theme, h_flex, rems_from_px,
 };
 
-const APPLE: bool = cfg!(any(target_os = "macos", target_os = "ios"));
 const ICON_SCALE: f32 = 1.2;
 
-#[cfg(any(target_os = "macos", target_os = "ios"))]
-const SEPARATOR: &str = "";
-#[cfg(not(any(target_os = "macos", target_os = "ios")))]
-const SEPARATOR: &str = "+";
+#[cfg(not(target_family = "wasm"))]
+fn apple() -> bool {
+    cfg!(any(target_os = "macos", target_os = "ios"))
+}
 
-#[cfg(any(target_os = "macos", target_os = "ios"))]
-const MODIFIERS: [&str; 4] = ["⌃", "⌥", "⇧", "⌘"];
-#[cfg(not(any(target_os = "macos", target_os = "ios")))]
-const MODIFIERS: [&str; 4] = ["Ctrl", "Alt", "Shift", "Win"];
+#[cfg(target_family = "wasm")]
+fn apple() -> bool {
+    static APPLE: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *APPLE.get_or_init(|| {
+        web_sys::window()
+            .and_then(|window| window.navigator().user_agent().ok())
+            .is_some_and(|agent| agent.contains("Mac"))
+    })
+}
+
+fn separator() -> &'static str {
+    if apple() { "" } else { "+" }
+}
+
+fn modifiers() -> [&'static str; 4] {
+    if apple() {
+        ["⌃", "⌥", "⇧", "⌘"]
+    } else {
+        ["Ctrl", "Alt", "Shift", "Win"]
+    }
+}
 
 #[derive(IntoElement, Clone, Debug)]
 pub struct Kbd {
@@ -121,11 +137,12 @@ impl Kbd {
 
     pub fn format_key(key: &Keystroke, lowercase: bool) -> String {
         let m = &key.modifiers;
+        let [control, alt, shift, platform] = modifiers();
         let mut parts: Vec<&str> = [
-            m.control.then_some(MODIFIERS[0]),
-            m.alt.then_some(MODIFIERS[1]),
-            m.shift.then_some(MODIFIERS[2]),
-            m.platform.then_some(MODIFIERS[3]),
+            m.control.then_some(control),
+            m.alt.then_some(alt),
+            m.shift.then_some(shift),
+            m.platform.then_some(platform),
         ]
         .into_iter()
         .flatten()
@@ -134,37 +151,26 @@ impl Kbd {
         let key = key_symbol(key.key.as_str());
         let key = if lowercase { key.to_lowercase() } else { key };
         parts.push(&key);
-        parts.join(SEPARATOR)
+        parts.join(separator())
     }
 }
 
 fn key_symbol(key: &str) -> String {
-    macro_rules! platform {
-        ($mac:literal, $other:literal) => {{
-            #[cfg(any(target_os = "macos", target_os = "ios"))]
-            {
-                $mac.to_string()
-            }
-            #[cfg(not(any(target_os = "macos", target_os = "ios")))]
-            {
-                $other.to_string()
-            }
-        }};
-    }
-
+    let apple = apple();
+    let platform = |mac: &str, other: &str| if apple { mac } else { other }.to_string();
     match key {
-        "ctrl" => platform!("⌃", "Ctrl"),
-        "alt" => platform!("⌥", "Alt"),
-        "shift" => platform!("⇧", "Shift"),
-        "cmd" => platform!("⌘", "Win"),
-        "backspace" => platform!("⌫", "Backspace"),
-        "delete" => platform!("⌫", "Delete"),
-        "escape" => platform!("⎋", "Esc"),
-        "enter" => platform!("⏎", "Enter"),
-        "left" => platform!("←", "Left"),
-        "right" => platform!("→", "Right"),
-        "up" => platform!("↑", "Up"),
-        "down" => platform!("↓", "Down"),
+        "ctrl" => platform("⌃", "Ctrl"),
+        "alt" => platform("⌥", "Alt"),
+        "shift" => platform("⇧", "Shift"),
+        "cmd" => platform("⌘", "Win"),
+        "backspace" => platform("⌫", "Backspace"),
+        "delete" => platform("⌫", "Delete"),
+        "escape" => platform("⎋", "Esc"),
+        "enter" => platform("⏎", "Enter"),
+        "left" => platform("←", "Left"),
+        "right" => platform("→", "Right"),
+        "up" => platform("↑", "Up"),
+        "down" => platform("↓", "Down"),
         "space" => "Space".to_string(),
         "pagedown" => "Page Down".to_string(),
         "pageup" => "Page Up".to_string(),
@@ -181,14 +187,14 @@ fn key_symbol(key: &str) -> String {
 #[must_use]
 pub fn key_icon(key: &str) -> Option<IconName> {
     Some(match key {
-        "ctrl" if APPLE => IconName::KeyControl,
+        "ctrl" if apple() => IconName::KeyControl,
         "ctrl" => IconName::KeyControlIso,
-        "alt" if APPLE => IconName::KeyOption,
+        "alt" if apple() => IconName::KeyOption,
         "alt" => IconName::KeyAltIso,
         "shift" => IconName::KeyShift,
-        "cmd" if APPLE => IconName::KeyCommand,
+        "cmd" if apple() => IconName::KeyCommand,
         "escape" => IconName::KeyEscape,
-        "tab" if APPLE => IconName::KeyTab,
+        "tab" if apple() => IconName::KeyTab,
         "tab" => IconName::KeyTabIso,
         "enter" => IconName::KeyReturn,
         "backspace" => IconName::KeyBackspace,
@@ -223,11 +229,12 @@ impl KeyGlyphs {
 
     fn parts(&self) -> Vec<Result<IconName, String>> {
         let m = &self.stroke.modifiers;
+        let [control, alt, shift, platform] = modifiers();
         let modifiers = [
-            (m.control, "ctrl", MODIFIERS[0]),
-            (m.alt, "alt", MODIFIERS[1]),
-            (m.shift, "shift", MODIFIERS[2]),
-            (m.platform, "cmd", MODIFIERS[3]),
+            (m.control, "ctrl", control),
+            (m.alt, "alt", alt),
+            (m.shift, "shift", shift),
+            (m.platform, "cmd", platform),
         ];
         let key = self.stroke.key.as_str();
         let mut parts: Vec<Result<IconName, String>> = modifiers
@@ -247,7 +254,7 @@ impl KeyGlyphs {
         for part in parts {
             match (merged.last_mut(), part) {
                 (Some(Err(text)), Err(next)) => {
-                    text.push_str(SEPARATOR);
+                    text.push_str(separator());
                     text.push_str(&next);
                 }
                 (_, part) => merged.push(part),

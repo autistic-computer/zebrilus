@@ -89,6 +89,31 @@
     quad.style.width = `${textWidth(input, value.slice(start, end))}px`;
   }
 
+  function paintCaret(input) {
+    const field = input.parentElement;
+    let caret = field.querySelector(":scope > .penna-input-caret");
+    const start = input.selectionStart ?? 0;
+    if (document.activeElement !== input || input.disabled || start !== input.selectionEnd) {
+      caret?.remove();
+      return;
+    }
+    if (!caret) {
+      caret = document.createElement("span");
+      caret.className = "penna-input-caret";
+      field.insertBefore(caret, input.nextSibling);
+    }
+    const value = input.value;
+    const full = textWidth(input, value);
+    const align = getComputedStyle(input).textAlign;
+    const room = input.clientWidth;
+    const lead = align === "center" ? (room - full) / 2 : align === "right" || align === "end" ? room - full : 0;
+    caret.style.left = `${input.offsetLeft + Math.max(0, lead) + textWidth(input, value.slice(0, start)) - input.scrollLeft}px`;
+    caret.style.top = `${input.offsetTop}px`;
+    caret.style.animation = "none";
+    void caret.offsetWidth;
+    caret.style.animation = "";
+  }
+
   function grow(area) {
     const min = Number(area.dataset.minRows ?? 1);
     const max = Number(area.dataset.maxRows ?? min);
@@ -155,6 +180,13 @@
         kept = [input.selectionStart ?? 0, input.selectionEnd ?? 0];
         paintSelection(input);
       });
+      input.spellcheck = false;
+      if (input.localName === "input") {
+        const caret = () => paintCaret(input);
+        for (const type of ["focus", "blur", "input", "select", "selectionchange", "scroll", "mouseup"]) input.addEventListener(type, caret);
+        input.addEventListener("keydown", () => requestAnimationFrame(caret));
+        input.addEventListener("mousemove", (event) => event.buttons && caret());
+      }
     });
     document.querySelectorAll(".penna-input > textarea").forEach((area) => {
       grow(area);
@@ -203,6 +235,7 @@
       input.focus();
       focused(input.closest(".penna-number") ?? input.closest(".penna-input"), true);
       input.setSelectionRange(input.value.length, input.value.length);
+      paintCaret(input);
     });
   }
 
@@ -210,6 +243,7 @@
     grounds();
     document.querySelectorAll(".penna-input > input").forEach((input) => {
       if (document.activeElement !== input) paintSelection(input);
+      paintCaret(input);
     });
   }
 

@@ -1,11 +1,13 @@
 use ala::{
     AnyElement, App, Div, ElementId, InteractiveElement as _, ParentElement as _, Pixels,
     Refineable as _, Role, SharedString, Stateful, StatefulInteractiveElement as _,
-    StyleRefinement, div,
+    StyleRefinement, Styled, div, prelude::FluentBuilder as _,
 };
 
 use crate::{
-    ActiveTheme as _, Layer, PaintState, StyledExt as _, Surface, SurfaceRole,
+    ActiveTheme as _, Emphasis, FOCUS_RING_WIDTH, Layer, PaintState, StyledExt as _, Surface,
+    SurfaceRole,
+    button::rings_focus,
     foundation::{author_name, restyle, row_corners, row_radius},
     touch::{CoarsePointer, PressCorners, press_highlight},
 };
@@ -90,7 +92,26 @@ impl Plate {
             adjust(&mut layer);
             layer
         };
-        let layer = layer_at(state);
+        let ringed = state == PaintState::Focused && rings_focus(surface.role);
+        let layer = layer_at(if ringed { PaintState::Rest } else { state });
+        let ring = ringed.then(|| {
+            let ground = surface.ground.unwrap_or_else(|| theme.ground());
+            let paint = theme.paint_on(ground, surface.tone, Emphasis::Ghost);
+            let radius = row_height.map_or(layer.radius, |height| row_radius(&layer, height));
+            let inset = -(FOCUS_RING_WIDTH + layer.border_width);
+            div()
+                .absolute()
+                .top(inset)
+                .left(inset)
+                .right(inset)
+                .bottom(inset)
+                .rounded(radius + FOCUS_RING_WIDTH)
+                .when(row_height.is_some(), |ring| {
+                    ring.corner_radius_mode(ala::CornerRadiusMode::Fixed)
+                })
+                .corner_smoothing(layer.smoothing)
+                .focus_ring(&paint)
+        });
         let base = match role {
             Some(role) => base.role(role).accessibility_id(author_name(&id)),
             None => base,
@@ -137,8 +158,10 @@ impl Plate {
             None => plate,
         };
         plate
+            .when(ring.is_some(), Styled::relative)
             .refine_style(&style)
             .children(press)
+            .children(ring)
             .children(children)
     }
 }
@@ -213,11 +236,14 @@ pub(crate) use plate_element;
 mod tests {
     use ala::{
         Context, InteractiveElement as _, IntoElement, ParentElement as _, Render, Role,
-        StatefulInteractiveElement as _, StyleRefinement, Styled as _, TestAppContext, Window,
-        blue, div, px, red, solid_background,
+        ScaledPixels, StatefulInteractiveElement as _, StyleRefinement, Styled as _,
+        TestAppContext, Window, blue, div, px, red, solid_background,
     };
 
-    use crate::{ActiveTheme as _, PaintState, Row, RowLook, Tab, TabLook, Tile, TileVariant};
+    use crate::{
+        ActiveTheme as _, Emphasis, PaintState, Row, RowLook, Surface, Tab, TabLook, Tile,
+        TileVariant, Tone,
+    };
 
     struct Mini;
 
@@ -337,5 +363,47 @@ mod tests {
                 ("tab-2".to_owned(), Role::Tab, Some(true), false),
             ]
         );
+    }
+
+    struct Focused;
+
+    impl Render for Focused {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            div().size_full().p(px(10.0)).child(
+                Row::new("row", RowLook::Sidebar)
+                    .state(PaintState::Focused)
+                    .row_height(px(28.0))
+                    .w(px(120.0))
+                    .h(px(28.0)),
+            )
+        }
+    }
+
+    #[ala::test]
+    fn a_focused_ringing_row_keeps_its_rest_fill_and_draws_the_focus_ring(cx: &mut TestAppContext) {
+        cx.update(crate::init_without_theme);
+        let (_, cx) = cx.add_window_view(|_, _| Focused);
+        cx.update(|window, cx| {
+            _ = window.draw(cx);
+            let theme = cx.theme();
+            let row = Surface::new(RowLook::Sidebar.role());
+            let selected = theme.layer(row, PaintState::Selected).fill;
+            let focus = theme
+                .paint_on(theme.ground(), Tone::Neutral, Emphasis::Ghost)
+                .focus;
+            let quads = window.painted_quads();
+            assert!(
+                quads
+                    .iter()
+                    .all(|quad| quad.background != solid_background(selected)),
+                "a focused sidebar row painted the selected fill"
+            );
+            let ring = quads
+                .iter()
+                .find(|quad| quad.border_color == focus)
+                .expect("a focused sidebar row draws a focus ring");
+            assert_eq!(ring.border_widths.top, ScaledPixels(3.0));
+            assert_eq!(ring.bounds.size.height, ScaledPixels(62.0));
+        });
     }
 }

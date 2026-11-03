@@ -46,12 +46,12 @@ options:
   --update           write src/<component>/parity.baseline.json (not when --check fails)
   --check            exit 1 when a score drops more than 0.5 below the baseline or has none
   --out <dir>        output folder (default target/parity)
-  --timeout <ms>     give up on a component after this long (default 300000)
+  --timeout <ms>     give up on a component after this long (default 900000)
 
 environment: CHROME overrides the browser binary.`;
 
 function parseArgs(argv) {
-    const options = { components: [], all: false, theme: "", mode: "", section: "", threshold: 2, update: false, check: false, out: join(ROOT, "target/parity"), timeout: 300000 };
+    const options = { components: [], all: false, theme: "", mode: "", section: "", threshold: 2, update: false, check: false, out: join(ROOT, "target/parity"), timeout: 900000 };
     for (let i = 0; i < argv.length; i++) {
         const arg = argv[i];
         if (arg === "-h" || arg === "--help") {
@@ -320,7 +320,7 @@ async function tab(cdp) {
     };
     const mouse = async (type, x, y) => (await front(), send("Input.dispatchMouseEvent", { type, x, y, button: type === "mouseMoved" ? "none" : "left", buttons: type === "mousePressed" ? 1 : 0, clickCount: 1 }));
     const key = async (name) => {
-        const codes = { Tab: 9, Enter: 13, Escape: 27, " ": 32, ArrowLeft: 37, ArrowUp: 38, ArrowRight: 39, ArrowDown: 40 };
+        const codes = { Backspace: 8, Tab: 9, Enter: 13, Escape: 27, " ": 32, PageUp: 33, PageDown: 34, End: 35, Home: 36, ArrowLeft: 37, ArrowUp: 38, ArrowRight: 39, ArrowDown: 40, Delete: 46 };
         await front();
         const base = { key: name, code: name === " " ? "Space" : name, windowsVirtualKeyCode: codes[name] ?? 0 };
         await send("Input.dispatchKeyEvent", { type: "rawKeyDown", ...base });

@@ -66,8 +66,16 @@
   top: 0.5px;
 }
 
+.penna-tab[data-penna][data-state~="focused"] {
+  --penna-ring: var(--penna-focus);
+}
 
-.penna-tab[data-penna]:focus-visible {
-  outline: 1.5px solid var(--penna-focus);
-  outline-offset: 1.5px;
+.penna-tab[data-penna][data-state~="focused"]::after {
+  content: "";
+  position: absolute;
+  inset: var(--penna-ring-inset, -1.5px);
+  border: 1.5px solid var(--penna-ring);
+  border-radius: var(--penna-ring-r, 12px);
+  corner-shape: inherit;
+  pointer-events: none;
 }

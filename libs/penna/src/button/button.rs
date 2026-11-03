@@ -599,7 +599,18 @@ impl RenderOnce for Button {
             .clone();
         let is_focused = focus_handle.is_focused(window);
 
+        let row = surface.is_some_and(|surface| surface.role.row);
         let (rounding, smoothing) = match self.rounded {
+            ButtonRounded::Medium if row => (
+                crate::foundation::row_radius(
+                    &rest,
+                    match self.size {
+                        Size::Size(height) => height,
+                        size => crate::rems_from_px(size.control_px()).to_pixels(window.rem_size()),
+                    },
+                ),
+                rest.smoothing,
+            ),
             ButtonRounded::Medium => (rest.radius, rest.smoothing),
             ButtonRounded::Size(radius) if radius >= FULL_CORNER_RADIUS => {
                 (radius, Smoothing::CIRCLE.exponent())
@@ -690,6 +701,9 @@ impl RenderOnce for Button {
                 }
             })
             .rounded(rounding)
+            .when(row, |this| {
+                this.corner_radius_mode(ala::CornerRadiusMode::Fixed)
+            })
             .corner_smoothing(smoothing)
             .border(rest.border_width)
             .border_color(rest.border)

@@ -6,7 +6,7 @@
     { "name": "hover-row", "section": "popup-menu", "hover": "1" },
     { "name": "hover-view-row", "section": "popup-menu", "hover": { "id": "5", "nth": 2 } },
     { "name": "hover-link", "section": "popup-menu", "hover": { "id": "7", "nth": 2 } },
-    { "name": "hover-step-up", "section": "popup-menu", "hover": "menu-step-up-1" },
+    { "name": "hover-step-up", "section": "popup-menu", "hover": "menu-step-up-1", "wait": 800 },
     { "name": "press-step-down", "section": "popup-menu", "press": "menu-step-down-2" },
     { "name": "click-row", "section": "popup-menu", "click": "6" },
     { "name": "press-row", "section": "popup-menu", "press": "2" },

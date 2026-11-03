@@ -35,26 +35,7 @@
     return [at(5), at(3), at(1)];
   };
 
-  const encode = (c) => (c <= 0.0031308 ? 12.92 * c : 1.055 * c ** (1 / 2.4) - 0.055);
-  const decode = (c) => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
-  const SAMPLES = 8;
-
-  const ramp = (colors) => {
-    const stops = [];
-    const last = colors.length - 1;
-    colors.forEach((color, index) => {
-      if (index === last) return;
-      const from = color.map(encode);
-      const to = colors[index + 1].map(encode);
-      for (let step = 0; step < SAMPLES; step++) {
-        const t = step / SAMPLES;
-        const mixed = from.map((channel, at) => decode(channel + (to[at] - channel) * t));
-        stops.push(`${css(mixed)} ${((index + t) / last) * 100}%`);
-      }
-    });
-    stops.push(`${css(colors[last])} 100%`);
-    return stops.join(", ");
-  };
+  const ramp = (colors) => colors.map((color, index) => `${css(color)} ${(index / (colors.length - 1)) * 100}%`).join(", ");
 
   const swatchRadius = (element) => {
     const radius = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--penna-radius")) || 0;

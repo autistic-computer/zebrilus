@@ -267,6 +267,8 @@ pub fn mount_id(story: &Story, section: &Section) -> String {
     format!("section-{}-{}", story.id, section.id)
 }
 
+const KEYBOARD_SECTIONS: &[(&str, &str)] = &[("notifications", "popover"), ("color-picker", "open")];
+
 pub fn show_story(story: Story, cx: &mut App) -> Result<(), String> {
     DRAWN.with_borrow_mut(BTreeMap::clear);
     for handle in OPEN.with(|open| std::mem::take(&mut *open.borrow_mut())) {
@@ -281,7 +283,7 @@ pub fn show_story(story: Story, cx: &mut App) -> Result<(), String> {
             .open_window(
                 WindowOptions {
                     mount: Some(mount.into()),
-                    focus: false,
+                    focus: KEYBOARD_SECTIONS.contains(&(story.id, section.id)),
                     ..Default::default()
                 },
                 |window, cx| {

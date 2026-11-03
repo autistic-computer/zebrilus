@@ -1,8 +1,9 @@
 use std::cell::Cell;
 
 use ala::{
-    AnyView, App, AppContext as _, Context, Entity, IntoElement, KeyBinding, MouseButton,
-    ParentElement as _, Render, Styled as _, Subscription, Window, actions, div, px,
+    AnyView, App, AppContext as _, Context, DismissEvent, Entity, EntityId, IntoElement,
+    KeyBinding, MouseButton, ParentElement as _, Render, Styled as _, Subscription, Window,
+    actions, div, prelude::FluentBuilder as _, px,
 };
 use penna::{
     ActiveTheme as _, Colorize as _, IconName, WindowExt as _,
@@ -78,6 +79,7 @@ pub const STORY: Story = Story {
 
 struct Toasts {
     items: Vec<(&'static str, Entity<Notification>)>,
+    closed: Vec<EntityId>,
 }
 
 impl Toasts {
@@ -85,7 +87,7 @@ impl Toasts {
         let make = |notification: Notification, cx: &mut Context<Self>| {
             cx.new(|_| notification.autohide(false))
         };
-        Self {
+        let toasts = Self {
             items: vec![
                 (
                     "new, title and message",
@@ -134,14 +136,24 @@ impl Toasts {
                     ),
                 ),
             ],
+            closed: Vec::new(),
+        };
+        for (_, toast) in &toasts.items {
+            cx.subscribe(toast, |this, toast, _: &DismissEvent, cx| {
+                this.closed.push(toast.entity_id());
+                cx.notify();
+            })
+            .detach();
         }
+        toasts
     }
 }
 
 impl Render for Toasts {
     fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
         self.items.iter().fold(states(), |states, (label, toast)| {
-            states.state(*label, toast.clone())
+            let open = !self.closed.contains(&toast.entity_id());
+            states.state(*label, div().when(open, |this| this.child(toast.clone())))
         })
     }
 }

@@ -45,6 +45,7 @@
 }
 
 .penna-title-bar-actions {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 4px;
@@ -63,11 +64,4 @@
 
 .penna-title-bar-group > [data-icon] {
   --penna-icon-size: 14px;
-}
-
-.penna-title-bar-tip {
-  position: absolute;
-  z-index: 10;
-  pointer-events: none;
-  white-space: nowrap;
 }

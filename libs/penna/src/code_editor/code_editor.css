@@ -45,7 +45,6 @@
   position: absolute;
   top: 0;
   bottom: 0;
-  corner-shape: superellipse(var(--penna-window-k));
 }
 
 .penna-code-editor > .ce-surface {
@@ -56,7 +55,6 @@
 
 .penna-code-editor > .ce-gutter {
   left: 0;
-  corner-shape: round;
   width: var(--ce-gutter-width, 0px);
   background: var(--ce-raised);
 }
@@ -82,6 +80,7 @@
   bottom: 0;
   left: var(--ce-gutter-width, 0px);
   right: 0;
+  overflow: hidden;
 }
 
 .ce-scroller {
@@ -144,6 +143,12 @@
   display: block;
   animation: ce-blink 1s step-end infinite;
   animation-delay: 0.3s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .penna-code-editor:is([data-state~="focused"]):not([aria-disabled="true"]) .ce-caret {
+    animation: none;
+  }
 }
 
 @keyframes ce-blink {

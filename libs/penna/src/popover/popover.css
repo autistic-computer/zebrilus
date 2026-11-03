@@ -31,7 +31,3 @@
 .penna-popover:not([data-open]) > .penna-popover-panel {
   display: none;
 }
-
-.penna-popover > .penna-popover-trigger {
-  z-index: 21;
-}

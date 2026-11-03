@@ -125,9 +125,7 @@
     {
       "name": "toggle-animations",
       "section": "page",
-      "click": {
-        "selector": ".penna-toggle"
-      }
+      "click": "settings-animations"
     }
   ]
 }

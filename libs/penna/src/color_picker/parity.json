@@ -10,6 +10,7 @@
     { "name": "click-field", "section": "open", "click": "color-picker-pane-border-field" },
     { "name": "click-hue", "section": "open", "click": "color-picker-pane-border-hue" },
     { "name": "hue-end", "section": "open", "key": "End" },
+    { "name": "escape-close", "section": "open", "key": "Escape", "keep": false },
     { "name": "press-trigger", "section": "open", "press": { "selector": "[data-id=\"color-picker-pane-border\"]" } },
     { "name": "clear", "section": "open", "click": { "selector": "[data-id=\"color-picker-pane-border-clear\"]" } }
   ]

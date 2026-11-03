@@ -7,9 +7,12 @@
     <link rel="stylesheet" href="../../web/penna.css" />
     <link rel="stylesheet" href="../../web/story.css" />
     <link rel="stylesheet" href="button.css" />
+    <link rel="stylesheet" href="../tooltip/tooltip.css" />
+    <link rel="stylesheet" href="page.css" />
     <script src="../../web/kit.js" data-tokens="../../web/tokens/"></script>
     <script src="../../web/story.js" defer></script>
     <script src="button.js" defer></script>
+    <script src="../tooltip/tooltip.js" defer></script>
   </head>
   <body>
     <section data-section="variants">
@@ -37,9 +40,9 @@
         <div class="story-state">
           <div class="story-label">icon</div>
           <div class="story-row">
-            <button class="penna-button" data-penna="button" data-shape="icon" data-size="small" aria-label="Notifications" data-id="icon-sm"><i data-icon="bell"></i></button>
-            <button class="penna-button" data-penna="button" data-shape="icon" aria-label="Notifications" data-id="icon-md"><i data-icon="bell"></i></button>
-            <button class="penna-button" data-penna="icon-button" data-shape="compact-icon" aria-label="More" data-id="icon-compact"><i data-icon="ellipsis"></i></button>
+            <button class="penna-button" data-penna="button" data-shape="icon" data-size="small" aria-label="Notifications" data-tooltip="Notifications" data-id="icon-sm"><i data-icon="bell"></i></button>
+            <button class="penna-button" data-penna="button" data-shape="icon" aria-label="Notifications" data-tooltip="Notifications" data-id="icon-md"><i data-icon="bell"></i></button>
+            <button class="penna-button" data-penna="icon-button" data-shape="compact-icon" aria-label="More" data-tooltip="More" data-id="icon-compact"><i data-icon="ellipsis"></i></button>
           </div>
         </div>
       </div>
@@ -111,7 +114,7 @@
             <button class="penna-button" data-penna="button" data-compact data-id="compact-sm"><span class="penna-label" data-penna-text>Run</span></button>
             <button class="penna-button" data-penna="button" data-compact data-id="compact-md"><span class="penna-label" data-penna-text>Run</span></button>
             <button class="penna-button" data-penna="button" data-id="normal-md"><span class="penna-label" data-penna-text>Run</span></button>
-            <button class="penna-button" data-penna="icon-button" data-shape="compact-icon" aria-label="Add" data-id="compact-icon"><i data-icon="plus"></i></button>
+            <button class="penna-button" data-penna="icon-button" data-shape="compact-icon" aria-label="Add" data-tooltip="Add" data-id="compact-icon"><i data-icon="plus"></i></button>
           </div>
         </div>
         <div class="story-state">
@@ -144,9 +147,9 @@
         <div class="story-state">
           <div class="story-label">icon</div>
           <div class="story-row">
-            <button class="penna-button" data-penna="icon-button" data-shape="icon" aria-label="icon" data-id="look-icon-rest"><i data-icon="plus"></i></button>
-            <button class="penna-button" data-penna="icon-button" data-shape="icon" data-state="current" aria-label="icon" data-id="look-icon-selected"><i data-icon="plus"></i></button>
-            <button class="penna-button" data-penna="icon-button" data-shape="icon" disabled aria-label="icon" data-id="look-icon-disabled"><i data-icon="plus"></i></button>
+            <button class="penna-button" data-penna="icon-button" data-shape="icon" aria-label="icon" data-tooltip="icon" data-id="look-icon-rest"><i data-icon="plus"></i></button>
+            <button class="penna-button" data-penna="icon-button" data-shape="icon" data-state="current" aria-label="icon" data-tooltip="icon" data-id="look-icon-selected"><i data-icon="plus"></i></button>
+            <button class="penna-button" data-penna="icon-button" data-shape="icon" disabled aria-label="icon" data-tooltip="icon" data-id="look-icon-disabled"><i data-icon="plus"></i></button>
           </div>
         </div>
         <div class="story-state">
@@ -160,49 +163,49 @@
         <div class="story-state">
           <div class="story-label">flat</div>
           <div class="story-row">
-            <button class="penna-button" data-penna="icon-button.flat" data-shape="icon" aria-label="flat" data-id="look-flat-rest"><i data-icon="plus"></i></button>
-            <button class="penna-button" data-penna="icon-button.flat" data-shape="icon" data-state="current" aria-label="flat" data-id="look-flat-selected"><i data-icon="plus"></i></button>
-            <button class="penna-button" data-penna="icon-button.flat" data-shape="icon" disabled aria-label="flat" data-id="look-flat-disabled"><i data-icon="plus"></i></button>
+            <button class="penna-button" data-penna="icon-button.flat" data-shape="icon" aria-label="flat" data-tooltip="flat" data-id="look-flat-rest"><i data-icon="plus"></i></button>
+            <button class="penna-button" data-penna="icon-button.flat" data-shape="icon" data-state="current" aria-label="flat" data-tooltip="flat" data-id="look-flat-selected"><i data-icon="plus"></i></button>
+            <button class="penna-button" data-penna="icon-button.flat" data-shape="icon" disabled aria-label="flat" data-tooltip="flat" data-id="look-flat-disabled"><i data-icon="plus"></i></button>
           </div>
         </div>
         <div class="story-state">
           <div class="story-label">chrome</div>
           <div class="story-row">
-            <button class="penna-button" data-penna="chrome.button" data-shape="icon" aria-label="chrome" data-id="look-chrome-rest"><i data-icon="plus"></i></button>
-            <button class="penna-button" data-penna="chrome.button" data-shape="icon" data-state="current" aria-label="chrome" data-id="look-chrome-selected"><i data-icon="plus"></i></button>
-            <button class="penna-button" data-penna="chrome.button" data-shape="icon" disabled aria-label="chrome" data-id="look-chrome-disabled"><i data-icon="plus"></i></button>
+            <button class="penna-button" data-penna="chrome.button" data-shape="icon" aria-label="chrome" data-tooltip="chrome" data-id="look-chrome-rest"><i data-icon="plus"></i></button>
+            <button class="penna-button" data-penna="chrome.button" data-shape="icon" data-state="current" aria-label="chrome" data-tooltip="chrome" data-id="look-chrome-selected"><i data-icon="plus"></i></button>
+            <button class="penna-button" data-penna="chrome.button" data-shape="icon" disabled aria-label="chrome" data-tooltip="chrome" data-id="look-chrome-disabled"><i data-icon="plus"></i></button>
           </div>
         </div>
         <div class="story-state">
           <div class="story-label">bar</div>
           <div class="story-row">
-            <button class="penna-button" data-penna="icon-button.bar" data-shape="icon" aria-label="bar" data-id="look-bar-rest"><i data-icon="plus"></i></button>
-            <button class="penna-button" data-penna="icon-button.bar" data-shape="icon" data-state="current" aria-label="bar" data-id="look-bar-selected"><i data-icon="plus"></i></button>
-            <button class="penna-button" data-penna="icon-button.bar" data-shape="icon" disabled aria-label="bar" data-id="look-bar-disabled"><i data-icon="plus"></i></button>
+            <button class="penna-button" data-penna="icon-button.bar" data-shape="icon" aria-label="bar" data-tooltip="bar" data-id="look-bar-rest"><i data-icon="plus"></i></button>
+            <button class="penna-button" data-penna="icon-button.bar" data-shape="icon" data-state="current" aria-label="bar" data-tooltip="bar" data-id="look-bar-selected"><i data-icon="plus"></i></button>
+            <button class="penna-button" data-penna="icon-button.bar" data-shape="icon" disabled aria-label="bar" data-tooltip="bar" data-id="look-bar-disabled"><i data-icon="plus"></i></button>
           </div>
         </div>
         <div class="story-state">
           <div class="story-label">toggle</div>
           <div class="story-row">
-            <button class="penna-button" data-penna="icon-button.toggle" data-shape="icon" aria-label="toggle" data-id="look-toggle-rest"><i data-icon="plus"></i></button>
-            <button class="penna-button" data-penna="icon-button.toggle" data-shape="icon" data-state="current" aria-label="toggle" data-id="look-toggle-selected"><i data-icon="plus"></i></button>
-            <button class="penna-button" data-penna="icon-button.toggle" data-shape="icon" disabled aria-label="toggle" data-id="look-toggle-disabled"><i data-icon="plus"></i></button>
+            <button class="penna-button" data-penna="icon-button.toggle" data-shape="icon" aria-label="toggle" data-tooltip="toggle" data-id="look-toggle-rest"><i data-icon="plus"></i></button>
+            <button class="penna-button" data-penna="icon-button.toggle" data-shape="icon" data-state="current" aria-label="toggle" data-tooltip="toggle" data-id="look-toggle-selected"><i data-icon="plus"></i></button>
+            <button class="penna-button" data-penna="icon-button.toggle" data-shape="icon" disabled aria-label="toggle" data-tooltip="toggle" data-id="look-toggle-disabled"><i data-icon="plus"></i></button>
           </div>
         </div>
         <div class="story-state">
           <div class="story-label">row icon</div>
           <div class="story-row">
-            <button class="penna-button" data-penna="icon-button.row" data-shape="icon" aria-label="row icon" data-id="look-row icon-rest"><i data-icon="plus"></i></button>
-            <button class="penna-button" data-penna="icon-button.row" data-shape="icon" data-state="current" aria-label="row icon" data-id="look-row icon-selected"><i data-icon="plus"></i></button>
-            <button class="penna-button" data-penna="icon-button.row" data-shape="icon" disabled aria-label="row icon" data-id="look-row icon-disabled"><i data-icon="plus"></i></button>
+            <button class="penna-button" data-penna="icon-button.row" data-shape="icon" aria-label="row icon" data-tooltip="row icon" data-id="look-row icon-rest"><i data-icon="plus"></i></button>
+            <button class="penna-button" data-penna="icon-button.row" data-shape="icon" data-state="current" aria-label="row icon" data-tooltip="row icon" data-id="look-row icon-selected"><i data-icon="plus"></i></button>
+            <button class="penna-button" data-penna="icon-button.row" data-shape="icon" disabled aria-label="row icon" data-tooltip="row icon" data-id="look-row icon-disabled"><i data-icon="plus"></i></button>
           </div>
         </div>
         <div class="story-state">
           <div class="story-label">floating</div>
           <div class="story-row">
-            <button class="penna-button" data-penna="icon-button.floating" data-shape="icon" aria-label="floating" data-id="look-floating-rest"><i data-icon="plus"></i></button>
-            <button class="penna-button" data-penna="icon-button.floating" data-shape="icon" data-state="current" aria-label="floating" data-id="look-floating-selected"><i data-icon="plus"></i></button>
-            <button class="penna-button" data-penna="icon-button.floating" data-shape="icon" disabled aria-label="floating" data-id="look-floating-disabled"><i data-icon="plus"></i></button>
+            <button class="penna-button" data-penna="icon-button.floating" data-shape="icon" aria-label="floating" data-tooltip="floating" data-id="look-floating-rest"><i data-icon="plus"></i></button>
+            <button class="penna-button" data-penna="icon-button.floating" data-shape="icon" data-state="current" aria-label="floating" data-tooltip="floating" data-id="look-floating-selected"><i data-icon="plus"></i></button>
+            <button class="penna-button" data-penna="icon-button.floating" data-shape="icon" disabled aria-label="floating" data-tooltip="floating" data-id="look-floating-disabled"><i data-icon="plus"></i></button>
           </div>
         </div>
         <div class="story-state">
@@ -216,9 +219,9 @@
         <div class="story-state">
           <div class="story-label">send</div>
           <div class="story-row">
-            <button class="penna-button" data-penna="button.send" data-shape="icon" aria-label="send" data-id="look-send-rest"><i data-icon="plus"></i></button>
-            <button class="penna-button" data-penna="button.send" data-shape="icon" data-state="current" aria-label="send" data-id="look-send-selected"><i data-icon="plus"></i></button>
-            <button class="penna-button" data-penna="button.send" data-shape="icon" disabled aria-label="send" data-id="look-send-disabled"><i data-icon="plus"></i></button>
+            <button class="penna-button" data-penna="button.send" data-shape="icon" aria-label="send" data-tooltip="send" data-id="look-send-rest"><i data-icon="plus"></i></button>
+            <button class="penna-button" data-penna="button.send" data-shape="icon" data-state="current" aria-label="send" data-tooltip="send" data-id="look-send-selected"><i data-icon="plus"></i></button>
+            <button class="penna-button" data-penna="button.send" data-shape="icon" disabled aria-label="send" data-tooltip="send" data-id="look-send-disabled"><i data-icon="plus"></i></button>
           </div>
         </div>
         <div class="story-state">

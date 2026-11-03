@@ -22,7 +22,6 @@
   user-select: none;
   --penna-icon-size: 14px;
   --penna-ring: var(--penna-focus);
-  --penna-fg-faint: oklab(from var(--penna-fg) calc(l * 0.45 + 0.55 * clamp(0, (0.5 - l) * 1000, 1)) calc(a * 0.45) calc(b * 0.45));
 }
 
 .penna-button[data-penna] {

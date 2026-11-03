@@ -26,7 +26,7 @@
   justify-content: flex-start;
   gap: 6px;
   font-size: 13px;
-  --penna-row: 0;
+  --penna-row: 1;
 }
 
 .penna-settings-nav-button:is([aria-current]:not([aria-current="false"]), [data-state~="current"]) .penna-label {

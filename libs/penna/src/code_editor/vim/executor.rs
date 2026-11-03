@@ -23,7 +23,9 @@ impl CodeEditorState {
         self.vim = enabled.then(VimState::default);
         if enabled {
             let cursor = self.vim_clamp(self.cursor());
+            let follow_cursor = self.follow_cursor;
             self.move_to(cursor, cx);
+            self.follow_cursor = follow_cursor;
         }
         cx.notify();
     }

@@ -291,8 +291,10 @@ impl WhichKeyView {
 
     fn cap(cap: &WhichKeyCap, cx: &App) -> impl IntoElement {
         div()
-            .flex_none()
+            .min_w_0()
+            .overflow_hidden()
             .whitespace_nowrap()
+            .text_ellipsis()
             .font_family(cx.theme().mono_font_family.clone())
             .text_size(crate::rems_from_px(11.0))
             .text_color(if cap.yours {

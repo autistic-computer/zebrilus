@@ -28,7 +28,24 @@ function markFocus(event) {
   } else return;
   if (states.size) target.dataset.state = [...states].join(" ");
   else target.removeAttribute("data-state");
+  rings();
 }
+
+function rings() {
+  document.querySelectorAll('[data-penna][data-state~="focused"]:is(.penna-tab, .penna-row, .penna-item)').forEach((element) => {
+    const style = getComputedStyle(element);
+    const radius = parseFloat(style.getPropertyValue("--penna-r")) || 0;
+    const box = element.getBoundingClientRect();
+    const cap = (Math.min(box.width, box.height) + 3) * 0.45;
+    const ring = radius >= 9999 ? 9999 : cap > 0 ? cap * Math.tanh((radius + 1.5) / cap) : 0;
+    element.style.setProperty("--penna-ring-inset", `${-(1.5 + (parseFloat(style.borderTopWidth) || 0))}px`);
+    element.style.setProperty("--penna-ring-r", `${ring}px`);
+  });
+}
+
+rings();
+document.fonts.ready.then(rings);
+document.addEventListener("load", (event) => event.target.id === "penna-tokens" && rings(), true);
 
 document.addEventListener("focusin", markFocus);
 document.addEventListener("focusout", markFocus);

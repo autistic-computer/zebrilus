@@ -11,12 +11,11 @@ use ala::{
 };
 
 use crate::{
-    ActiveTheme as _, Disableable, PaintState, Selectable, Size, StyledExt as _, Surface,
-    SurfaceRole,
-    foundation::{restyle, row_corners},
+    ActiveTheme as _, AuthoredElement as _, Disableable, PaintState, Selectable, Size,
+    StyledExt as _, Surface, SurfaceRole,
+    foundation::{restyle, row_corners, row_state},
     h_flex,
 };
-use crate::{AuthoredElement as _, Colorize as _};
 
 type ClickHandler = Box<dyn Fn(&ClickEvent, &mut Window, &mut App) + 'static>;
 type MouseDownHandler = Box<dyn Fn(&MouseDownEvent, &mut Window, &mut App) + 'static>;
@@ -156,20 +155,11 @@ impl RenderOnce for ListItem {
             children,
         } = self;
 
-        let interactive = !disabled;
-        let highlighted = interactive && selected;
-
         let theme = cx.theme();
         let surface = Surface::new(surface_role.unwrap_or(SurfaceRole::MENU_ITEM));
-        let layer = theme.layer(
-            surface,
-            if highlighted {
-                PaintState::Selected
-            } else {
-                PaintState::Rest
-            },
-        );
-        let muted_foreground = theme.foreground.muted();
+        let state = row_state(selected, !disabled);
+        let layer = theme.layer(surface, state);
+        let lively = state == PaintState::Rest;
 
         base.aria_selected(selected)
             .aria_disabled(disabled)
@@ -182,7 +172,7 @@ impl RenderOnce for ListItem {
             .layer(&layer)
             .map(|this| row_corners(this, &layer, row_height))
             .refine_style(&style)
-            .when(interactive, |this| {
+            .when(!disabled, |this| {
                 this.when_some(on_click, |this, on_click| this.on_click(on_click))
                     .when_some(on_mouse_enter, |this, on_mouse_enter| {
                         this.on_mouse_move(on_mouse_enter)
@@ -194,12 +184,13 @@ impl RenderOnce for ListItem {
                                 this.on_mouse_down(button, handler)
                             })
                     })
-                    .when(!selected, |this| {
-                        let hover = theme.layer(surface, PaintState::Hover);
-                        this.hover(move |style| restyle(style, &hover))
-                    })
             })
-            .when(!interactive, |this| this.text_color(muted_foreground))
+            .when(lively, |this| {
+                let hover = theme.layer(surface, PaintState::Hover);
+                let active = theme.layer(surface, PaintState::Active);
+                this.hover(move |style| restyle(style, &hover))
+                    .active(move |style| restyle(style, &active))
+            })
             .child(div().w_full().children(children))
     }
 }

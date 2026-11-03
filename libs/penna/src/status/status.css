@@ -275,6 +275,21 @@
   outline: none;
 }
 
+.penna-chip[data-state~="focused"] {
+  position: relative;
+  --penna-ring: var(--penna-focus);
+}
+
+.penna-chip[data-state~="focused"]::after {
+  content: "";
+  position: absolute;
+  inset: var(--penna-ring-inset, -2px);
+  border: 1.5px solid var(--penna-ring);
+  border-radius: var(--penna-ring-r, 12px);
+  corner-shape: inherit;
+  pointer-events: none;
+}
+
 .penna-notice .penna-button[data-on] {
   background: var(--penna-on-fill);
 }

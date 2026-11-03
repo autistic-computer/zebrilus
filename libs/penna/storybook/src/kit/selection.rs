@@ -1,6 +1,6 @@
 use ala::{
-    AnyElement, AnyView, App, AppContext as _, Context, Entity, IntoElement, ParentElement as _,
-    Render, SharedString, Styled as _, Subscription, Window, div, px,
+    AnyView, App, AppContext as _, Context, Entity, IntoElement, ParentElement as _, Render,
+    SharedString, Styled as _, Subscription, Window, div, px,
 };
 use penna::{
     Disableable as _, IndexPath, Sizable as _, h_flex,
@@ -11,7 +11,7 @@ use penna::{
 };
 
 use super::support::{Probe, after_first_frame, click, dispatch, when_visible};
-use crate::story::{Section, Story, row, stateless, states};
+use crate::story::{Section, Story, row, states};
 
 pub const STORY: Story = Story {
     id: "choices",
@@ -40,8 +40,8 @@ pub const STORY: Story = Story {
         Section {
             id: "switch",
             name: "Switch",
-            summary: "Off, on, compact and disabled. The thumb slides between states; it holds still with motion off.",
-            build: |_, cx| stateless(switches, cx),
+            summary: "Off, on, compact and disabled. A press flips the enabled ones; the thumb slides between states and holds still with motion off.",
+            build: |window, cx| Switches::view(window, cx),
         },
         Section {
             id: "slider",
@@ -168,32 +168,54 @@ impl Render for Segmented {
     }
 }
 
-fn switches(_: &mut Window, _: &mut App) -> AnyElement {
-    states()
-        .columns(3)
-        .state(
-            "off, on",
-            row()
-                .child(Switch::new("switch-off"))
-                .child(Switch::new("switch-on").checked(true)),
-        )
-        .state(
-            "small",
-            row()
-                .child(Switch::new("switch-small-off").small())
-                .child(Switch::new("switch-small-on").small().checked(true)),
-        )
-        .state(
-            "disabled",
-            row()
-                .child(Switch::new("switch-disabled-off").disabled(true))
-                .child(
-                    Switch::new("switch-disabled-on")
-                        .checked(true)
-                        .disabled(true),
-                ),
-        )
-        .into_any_element()
+struct Switches {
+    on: [bool; 4],
+}
+
+impl Switches {
+    fn view(_: &mut Window, cx: &mut App) -> AnyView {
+        cx.new(|_| Self {
+            on: [false, true, false, true],
+        })
+        .into()
+    }
+}
+
+impl Render for Switches {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let switch = |id: &'static str, at: usize| {
+            Switch::new(id).checked(self.on[at]).on_click(cx.listener(
+                move |this, on: &bool, _, cx| {
+                    this.on[at] = *on;
+                    cx.notify();
+                },
+            ))
+        };
+        states()
+            .columns(3)
+            .state(
+                "off, on",
+                row()
+                    .child(switch("switch-off", 0))
+                    .child(switch("switch-on", 1)),
+            )
+            .state(
+                "small",
+                row()
+                    .child(switch("switch-small-off", 2).small())
+                    .child(switch("switch-small-on", 3).small()),
+            )
+            .state(
+                "disabled",
+                row()
+                    .child(Switch::new("switch-disabled-off").disabled(true))
+                    .child(
+                        Switch::new("switch-disabled-on")
+                            .checked(true)
+                            .disabled(true),
+                    ),
+            )
+    }
 }
 
 fn labels(names: &[&'static str]) -> Vec<SharedString> {

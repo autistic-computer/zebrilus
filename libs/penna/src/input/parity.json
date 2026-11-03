@@ -5,6 +5,9 @@
     { "name": "hover-field", "section": "field-states", "hover": "field-populated" },
     { "name": "hover-clear", "section": "field-states", "hover": "field-cleanable-clear" },
     { "name": "click-clear", "section": "field-states", "click": "field-cleanable-clear" },
+    { "name": "click-field", "section": "field-states", "click": "field-populated" },
+    { "name": "type-field", "section": "field-states", "key": "x" },
+    { "name": "arrow-left-field", "section": "field-states", "key": "ArrowLeft" },
     { "name": "hover-small", "section": "field-sizes", "hover": "field-small" },
     { "name": "hover-increment", "section": "number", "hover": "number-default-increment" },
     { "name": "hover-decrement", "section": "number", "hover": "number-default-decrement" },
@@ -12,6 +15,8 @@
     { "name": "click-increment", "section": "number", "click": "number-default-increment" },
     { "name": "click-decimal-decrement", "section": "number", "click": "number-decimal-decrement" },
     { "name": "click-bounded-increment", "section": "number", "click": "number-bounded-increment" },
+    { "name": "click-number-field", "section": "number", "click": { "at": [150, 60] } },
+    { "name": "arrow-up-number", "section": "number", "key": "ArrowUp" },
     { "name": "hover-bare", "section": "number", "hover": "number-bare-increment" }
   ]
 }

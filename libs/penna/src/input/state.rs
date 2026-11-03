@@ -1715,6 +1715,11 @@ impl BlinkCursor {
             self.visible = true;
             return;
         }
+        if cx.reduce_motion() {
+            self.visible = true;
+            cx.notify();
+            return;
+        }
 
         self.visible = !self.visible;
         cx.notify();

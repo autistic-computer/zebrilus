@@ -824,23 +824,18 @@ impl Element for Scrollbar {
                                                 / (bounds.size.height - thumb_size)
                                         } else {
                                             (event.position.x - thumb_size / 2. - bounds.origin.x)
-                                                / (bounds.size.width - thumb_size)
+                                                / (bounds.size.width - thumb_size - margin_end)
                                         }
-                                        .min(1.);
+                                        .clamp(0., 1.);
+                                        let travel =
+                                            -(scroll_area_size - container_size) * percentage;
 
                                         if is_vertical {
-                                            scroll_handle.set_offset(point(
-                                                offset.x,
-                                                (-scroll_area_size * percentage)
-                                                    .clamp(safe_range.start, safe_range.end),
-                                            ));
+                                            scroll_handle.set_offset(point(offset.x, travel));
                                         } else {
-                                            scroll_handle.set_offset(point(
-                                                (-scroll_area_size * percentage)
-                                                    .clamp(safe_range.start, safe_range.end),
-                                                offset.y,
-                                            ));
+                                            scroll_handle.set_offset(point(travel, offset.y));
                                         }
+                                        state.set(state.get().with_hovered_on_thumb(Some(axis)));
                                     }
 
                                     cx.notify(view_id);

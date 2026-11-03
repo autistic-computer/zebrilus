@@ -54,8 +54,7 @@
   white-space: nowrap;
 }
 
-.penna-list-detail > .penna-text,
-.penna-kbd > .penna-text {
+.penna-list-detail > .penna-text {
   --display-text-y: 0px;
 }
 

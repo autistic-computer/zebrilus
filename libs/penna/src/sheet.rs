@@ -758,6 +758,7 @@ mod tests {
     fn a_closed_sheet_slides_away_before_it_dismisses(cx: &mut TestAppContext) {
         let (dismissed, cx) = host(120.0, cx);
         cx.update(|_, cx| cx.set_reduce_motion(false));
+        settle(cx);
         let rest = panel(cx);
         cx.update(|_, cx| close_sheet("sheet", cx));
         redraw(cx);

@@ -54,6 +54,9 @@ ala = { git = "https://github.com/autistic-computer/ala", branch = "main", defau
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
 url = "2.5.8"
 
+[target.'cfg(target_family = "wasm")'.dependencies]
+web-sys = { version = "0.3.105", features = ["Navigator", "Window"] }
+
 [target.'cfg(target_os = "linux")'.dependencies]
 ksni = { version = "0.3.6", optional = true, default-features = false, features = ["async-io", "blocking"] }
 

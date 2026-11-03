@@ -46,11 +46,7 @@
   color: var(--penna-list-muted);
 }
 
-.penna-list-item[data-disabled] {
-  color: var(--penna-list-muted);
-}
-
-.penna-list-item[data-penna][data-disabled]:is(:hover, :active, [aria-selected="true"], [data-state~="selected"]) {
+.penna-list-item[data-penna]:is([aria-disabled="true"], [data-state~="disabled"]):is(:hover, :active, [aria-selected="true"], [data-state~="selected"]) {
   --penna-fill: initial;
 }
 
@@ -58,8 +54,4 @@
 .penna-list-item .penna-list-label,
 .penna-list-item .penna-list-detail {
   line-height: round(nearest, 1.618em, 0.5px);
-}
-
-.penna-list-item[data-penna][data-press="hover"]:not([aria-selected="true"], [data-state~="selected"]):active {
-  --penna-fill: var(--list-hover-fill);
 }

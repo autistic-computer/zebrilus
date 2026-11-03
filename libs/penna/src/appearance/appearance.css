@@ -137,9 +137,8 @@
 .appearance-rule > [data-penna] {
   height: 1px;
   border: 0;
-  border-top: var(--penna-bw) solid var(--penna-edge);
   border-radius: 0;
-  background: none;
+  background: var(--penna-divider);
   box-shadow: none;
 }
 

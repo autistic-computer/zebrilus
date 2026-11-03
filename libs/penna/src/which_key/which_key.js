@@ -91,10 +91,15 @@
     return { perColumn: best[1], width: lineWidth(Math.min(best[2], perLine), columnWidth) };
   }
 
+  function textWidth(element) {
+    const range = document.createRange();
+    range.selectNodeContents(element);
+    return range.getBoundingClientRect().width;
+  }
+
   function capWidths(root) {
-    const caps = [...root.querySelectorAll(".penna-which-key-cap")];
-    caps.forEach((cap) => cap.style.removeProperty("width"));
-    return new Map(caps.map((cap) => [cap, cap.getBoundingClientRect().width]));
+    const caps = [...root.querySelectorAll(".penna-which-key-row .penna-which-key-cap")];
+    return new Map(caps.map((cap) => [cap, textWidth(cap)]));
   }
 
   function blockId(block) {
@@ -169,7 +174,15 @@
     });
   }
 
+  function platform(root = document) {
+    if (!globalThis.pennaKbd?.mac) return;
+    root.querySelectorAll("[data-mac]").forEach((element) => {
+      element.textContent = element.dataset.mac;
+    });
+  }
+
   globalThis.pennaWhichKey = { layout, layoutAll };
+  platform();
   layoutAll();
   document.fonts.ready.then(() => layoutAll());
 })();

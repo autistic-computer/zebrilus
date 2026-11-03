@@ -105,10 +105,6 @@
   --penna-list-row: 40px;
 }
 
-.penna-item[data-disabled] {
-  color: var(--penna-muted);
-}
-
 .penna-item > .penna-item-content {
   width: 100%;
 }
@@ -117,8 +113,16 @@
   line-height: round(nearest, 1.618em, 0.5px);
 }
 
+:is(.penna-row, .penna-item)[data-penna][data-state~="focused"] {
+  --penna-ring: var(--penna-focus);
+}
 
-:is(.penna-row, .penna-item)[data-penna]:focus-visible {
-  outline: 1.5px solid var(--penna-focus);
-  outline-offset: -1.5px;
+:is(.penna-row, .penna-item)[data-penna][data-state~="focused"]::after {
+  content: "";
+  position: absolute;
+  inset: var(--penna-ring-inset, -1.5px);
+  border: 1.5px solid var(--penna-ring);
+  border-radius: var(--penna-ring-r, 12px);
+  corner-shape: inherit;
+  pointer-events: none;
 }

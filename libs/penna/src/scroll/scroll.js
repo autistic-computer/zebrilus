@@ -32,7 +32,7 @@
     const bars = Object.fromEntries(
       axes.map((axis) => {
         const element = scroll.querySelector(`:scope > .penna-scrollbar[data-axis="${axis}"]`) ?? scroll.appendChild(bar(axis, scroll.dataset.bar));
-        return [axis, { axis, element, thumb: element.querySelector(".penna-scroll-thumb"), start: 0, length: 0, margin: 0, content: 0, container: 0 }];
+        return [axis, { axis, element, thumb: element.querySelector(".penna-scroll-thumb"), start: 0, length: 0, full: 0, margin: 0, content: 0, container: 0 }];
       }),
     );
     const state = { last: null, shown: 0, drag: null, frame: 0 };
@@ -61,7 +61,7 @@
         const length = Math.max((container / content) * container, MIN_THUMB);
         const start = (offset(axis) / (content - container)) * (container - margin - length);
         const end = Math.min(start + length, container - margin);
-        Object.assign(info, { start, length: end - start - INSET * 2, margin, content, container });
+        Object.assign(info, { start, length: end - start - INSET * 2, full: length, margin, content, container });
         info.thumb.style.setProperty("--penna-thumb-start", `${start}px`);
         info.thumb.style.setProperty("--penna-thumb-length", `${info.length}px`);
       }
@@ -127,8 +127,10 @@
           info.element.dataset.state = "active";
           return;
         }
-        const ratio = Math.min((position - info.length / 2 - origin) / (size - info.length), 1);
-        setOffset(info.axis, Math.min(Math.max(info.content * ratio, 0), range));
+        const travel = size - info.full - (info.axis === "vertical" ? 0 : info.margin);
+        const ratio = Math.min(Math.max((position - info.full / 2 - origin) / travel, 0), 1);
+        setOffset(info.axis, range * ratio);
+        info.thumb.dataset.state = "hover";
       });
       info.element.addEventListener("pointermove", (event) => {
         const [position, origin, size] = along(info, event);
@@ -137,7 +139,7 @@
         if (over) info.thumb.dataset.state = "hover";
         else delete info.thumb.dataset.state;
         if (state.drag?.info !== info) return;
-        const travel = size - info.length - (info.axis === "vertical" ? 0 : info.margin);
+        const travel = size - info.full - (info.axis === "vertical" ? 0 : info.margin);
         const ratio = Math.min(Math.max((position - state.drag.grab - origin) / travel, 0), 1);
         setOffset(info.axis, (info.content - info.container) * ratio);
       });

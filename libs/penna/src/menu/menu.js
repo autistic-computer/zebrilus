@@ -95,9 +95,9 @@
           make("button", "penna-button", { type: "button", tabindex: "-1", "data-penna": "button.quiet", "data-flat": true, "data-size": "small", "data-id": `${id}-${ix}`, ...attrs }, children);
         const value = text(item.format(item.value));
         const group = make("span", "penna-popup-stepper", { "data-penna": "field" }, [
-          button("menu-step-down", { "data-shape": "icon", "aria-label": `Decrease ${item.label}`, "data-step": "down" }, [glyph("minus")]),
-          button("menu-step-reset", { "data-reset": true, "aria-label": `Reset ${item.label}`, "data-step": "reset" }, [value]),
-          button("menu-step-up", { "data-shape": "icon", "aria-label": `Increase ${item.label}`, "data-step": "up" }, [glyph("plus")]),
+          button("menu-step-down", { "data-shape": "icon", "aria-label": `Decrease ${item.label}`, "data-tooltip": `Decrease ${item.label}`, "data-step": "down" }, [glyph("minus")]),
+          button("menu-step-reset", { "data-reset": true, "aria-label": `Reset ${item.label}`, "data-tooltip": `Reset ${item.label}`, "data-step": "reset" }, [value]),
+          button("menu-step-up", { "data-shape": "icon", "aria-label": `Increase ${item.label}`, "data-tooltip": `Increase ${item.label}`, "data-step": "up" }, [glyph("plus")]),
         ]);
         group.addEventListener("click", (event) => {
           const target = event.target.closest("[data-step]");
@@ -122,7 +122,7 @@
       } else {
         const label = item.link ? make("span", "penna-popup-link", {}, [text(item.label), glyph("external-link", "penna-popup-detail")]) : text(item.label);
         const main = make("span", "penna-popup-main", {}, [label]);
-        if (item.key) main.append(text(item.key, "penna-label penna-popup-key"));
+        if (item.key) main.append(text(globalThis.pennaKbd.text(item.key), "penna-label penna-popup-key"));
         row.append(...this.slot(icons, item), main);
       }
       row.addEventListener("mouseenter", () => this.hover(ix, true));

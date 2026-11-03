@@ -39,7 +39,7 @@ dependencies = [
 [[package]]
 name = "ala"
 version = "0.1.0"
-source = "git+https://github.com/autistic-computer/ala?branch=main#02174c06d161195caa9e5df3aad6759ac6bde72a"
+source = "git+https://github.com/autistic-computer/ala?branch=main#be069eea1a5efc57d4eeda58525fcd1b4e5af279"
 dependencies = [
  "accesskit",
  "ala-macros",
@@ -112,7 +112,7 @@ dependencies = [
 [[package]]
 name = "ala-macros"
 version = "0.1.0"
-source = "git+https://github.com/autistic-computer/ala?branch=main#02174c06d161195caa9e5df3aad6759ac6bde72a"
+source = "git+https://github.com/autistic-computer/ala?branch=main#be069eea1a5efc57d4eeda58525fcd1b4e5af279"
 dependencies = [
  "heck",
  "proc-macro2",
@@ -2591,6 +2591,7 @@ dependencies = [
  "tree-sitter-toml-ng",
  "unicode-segmentation",
  "url",
+ "web-sys",
  "web-time",
  "windows",
 ]

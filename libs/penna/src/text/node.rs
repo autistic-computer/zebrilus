@@ -1668,7 +1668,7 @@ impl BlockNode {
             .map(|row| row.children.len())
             .max()
             .unwrap_or(0);
-        let col_w = measure_table_columns(table, col_count, window);
+        let col_w = measure_table_columns(table, col_count, window, cx);
 
         if matches!(node_cx.style.table.overflow.x, Some(Overflow::Scroll)) {
             Self::render_scroll_table(table, &col_w, options, node_cx, window, cx)
@@ -1981,25 +1981,35 @@ const CELL_MIN_PX: f32 = 48.0;
 const CELL_MAX_PX: f32 = 480.0;
 const WRAP_CELL_MAX_PX: f32 = 1200.0;
 
-fn measure_table_columns(table: &Table, col_count: usize, window: &mut Window) -> Vec<f32> {
+fn measure_table_columns(
+    table: &Table,
+    col_count: usize,
+    window: &mut Window,
+    cx: &App,
+) -> Vec<f32> {
     let text_style = window.text_style();
     let font_size = text_style.font_size.to_pixels(window.rem_size());
+    let mono = &cx.theme().mono_font_family;
     let mut col_w = vec![CELL_MIN_PX; col_count];
     for row in table.children.iter() {
         for (ix, cell) in row.children.iter().enumerate() {
             let Some(slot) = col_w.get_mut(ix) else {
                 continue;
             };
+            let (text, runs) = cell_runs(&cell.children, &text_style, mono);
             let mut w = 0.0_f32;
-            for line in cell.children.text().split('\n') {
+            let mut start = 0;
+            for line in text.split('\n') {
+                let line_start = start + line.len() - line.trim_start().len();
+                start += line.len() + 1;
                 let line = line.trim();
                 if line.is_empty() {
                     continue;
                 }
-                let run = text_style.to_run(line.len());
+                let line_runs = slice_runs(&runs, line_start..line_start + line.len());
                 let line_w = window
                     .text_system()
-                    .layout_line(line, font_size, &[run], None)
+                    .layout_line(line, font_size, &line_runs, None)
                     .width;
                 w = w.max(f32::from(line_w));
             }
@@ -2007,6 +2017,66 @@ fn measure_table_columns(table: &Table, col_count: usize, window: &mut Window) -
         }
     }
     col_w
+}
+
+fn cell_runs(
+    paragraph: &Paragraph,
+    text_style: &ala::TextStyle,
+    mono: &SharedString,
+) -> (String, Vec<ala::TextRun>) {
+    let mut text = String::new();
+    let mut runs = Vec::new();
+    for node in paragraph
+        .children
+        .iter()
+        .filter(|node| node.image.is_none())
+    {
+        let mut cuts = vec![0, node.text.len()];
+        for (range, _) in &node.marks {
+            cuts.extend([range.start, range.end]);
+        }
+        cuts.retain(|cut| *cut <= node.text.len());
+        cuts.sort_unstable();
+        cuts.dedup();
+        for pair in cuts.windows(2) {
+            let (start, end) = (pair[0], pair[1]);
+            let covering = node
+                .marks
+                .iter()
+                .filter(|(range, _)| range.start <= start && end <= range.end)
+                .map(|(_, mark)| mark);
+            let mut run = text_style.to_run(end - start);
+            for mark in covering {
+                if mark.bold {
+                    run.font.weight = FontWeight::BOLD;
+                }
+                if mark.italic {
+                    run.font.style = FontStyle::Italic;
+                }
+                if mark.code {
+                    run.font.family = mono.clone();
+                }
+            }
+            runs.push(run);
+        }
+        text.push_str(&node.text);
+    }
+    (text, runs)
+}
+
+fn slice_runs(runs: &[ala::TextRun], range: Range<usize>) -> Vec<ala::TextRun> {
+    let mut start = 0;
+    runs.iter()
+        .filter_map(|run| {
+            let run_range = start..start + run.len;
+            start = run_range.end;
+            let len = run_range
+                .end
+                .min(range.end)
+                .saturating_sub(run_range.start.max(range.start));
+            (len > 0).then(|| ala::TextRun { len, ..run.clone() })
+        })
+        .collect()
 }
 
 fn figure<E: Styled>(element: E, cx: &App) -> E {
@@ -2050,6 +2120,7 @@ mod tests {
 
     #[ala::test]
     fn table_columns_follow_measured_width_not_utf8_bytes(cx: &mut ala::TestAppContext) {
+        cx.update(crate::init);
         let document = super::super::markdown_parse::parse(
             "| 中文中文 | abcdefghijkl |\n| --- | --- |\n| 中 | a |\n",
             &mut NodeContext::default(),
@@ -2059,7 +2130,7 @@ mod tests {
             panic!("expected table");
         };
         let cx = cx.add_empty_window();
-        let widths = cx.update(|window, _| measure_table_columns(table, 2, window));
+        let widths = cx.update(|window, cx| measure_table_columns(table, 2, window, cx));
         let content = widths.iter().map(|w| w - CELL_PAD_PX).collect::<Vec<_>>();
         assert!(
             (content[0] * 3.0 - content[1]).abs() < 0.5,

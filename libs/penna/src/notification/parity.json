@@ -6,11 +6,12 @@
     { "name": "hover-restart", "section": "toast-kinds", "hover": "toast-restart" },
     { "name": "press-restart", "section": "toast-kinds", "press": "toast-restart" },
     { "name": "hover-later", "section": "toast-kinds", "hover": "toast-later" },
+    { "name": "close-toast", "section": "toast-kinds", "click": { "id": "close", "nth": 4 }, "wait": 600 },
     { "name": "dismiss-toast", "section": "toast-stack", "click": { "id": "close", "nth": 1 }, "wait": 600 },
     { "name": "hover-save", "section": "popover", "hover": "popover-save" },
     { "name": "press-cancel", "section": "popover", "press": "popover-cancel" },
     { "name": "close-popover", "section": "popover", "click": "rename-trigger" },
     { "name": "reopen-popover", "section": "popover", "click": "rename-trigger", "keep": true },
-    { "name": "escape-close", "section": "popover", "key": "Escape" }
+    { "name": "escape-close", "section": "popover", "key": "Escape", "keep": false, "wait": 1000 }
   ]
 }

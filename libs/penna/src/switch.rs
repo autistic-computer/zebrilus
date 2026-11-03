@@ -3,13 +3,13 @@ use std::{rc::Rc, time::Duration};
 use ala::{
     Animation, AnimationExt as _, App, Background, ElementId, Entity, Hsla,
     InteractiveElement as _, IntoElement, MouseButton, ParentElement as _, Pixels, RenderOnce,
-    SharedString, StatefulInteractiveElement as _, StyleRefinement, Styled, Window, div,
-    prelude::FluentBuilder as _, px,
+    Role, SharedString, StatefulInteractiveElement as _, StyleRefinement, Styled, Window,
+    accesskit::Toggled, div, prelude::FluentBuilder as _, px,
 };
 
 use crate::{
-    ActiveTheme as _, Disableable, Emphasis, PaintState, Sizable, Size, StyledExt as _, Tone,
-    h_flex, oklab_lightness,
+    ActiveTheme as _, AuthoredElement as _, Disableable, Emphasis, PaintState, Sizable, Size,
+    StyledExt as _, Tone, h_flex, oklab_lightness,
 };
 
 const TOGGLE_ANIMATION: Duration = Duration::from_millis(150);
@@ -63,6 +63,7 @@ pub struct Switch {
     on_click: Option<ClickHandler>,
     size: Size,
     tooltip: Option<SharedString>,
+    label: Option<SharedString>,
 }
 
 impl Switch {
@@ -76,6 +77,7 @@ impl Switch {
             on_click: None,
             size: Size::Medium,
             tooltip: None,
+            label: None,
         }
     }
 
@@ -91,6 +93,12 @@ impl Switch {
         F: Fn(&bool, &mut Window, &mut App) + 'static,
     {
         self.on_click = Some(Rc::new(handler));
+        self
+    }
+
+    #[must_use]
+    pub fn label(mut self, label: impl Into<SharedString>) -> Self {
+        self.label = Some(label.into());
         self
     }
 
@@ -216,7 +224,17 @@ impl RenderOnce for Switch {
 
         div().refine_style(&self.style).child(
             h_flex()
-                .id(self.id.clone())
+                .author_id(self.id.clone())
+                .role(Role::Switch)
+                .aria_toggled(if checked {
+                    Toggled::True
+                } else {
+                    Toggled::False
+                })
+                .aria_disabled(self.disabled)
+                .when_some(self.label.or_else(|| self.tooltip.clone()), |this, name| {
+                    this.aria_label(name)
+                })
                 .gap_2()
                 .items_start()
                 .child(
@@ -268,5 +286,61 @@ impl RenderOnce for Switch {
                     },
                 ),
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use ala::{Context, Render, TestAppContext};
+
+    use super::*;
+
+    struct Switches;
+
+    impl Render for Switches {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            div()
+                .size_full()
+                .child(Switch::new("off").label("Sharing"))
+                .child(Switch::new("on").checked(true).disabled(true))
+        }
+    }
+
+    #[ala::test]
+    fn a_switch_announces_its_role_state_name_and_id(cx: &mut TestAppContext) {
+        cx.update(crate::init_without_theme);
+        let (_, cx) = cx.add_window_view(|_, _| Switches);
+        let nodes = cx.update(|window, cx| {
+            window.set_a11y_forced(true);
+            window.draw(cx).clear(cx);
+            let tree = window.a11y_tree().expect("forced a11y builds a tree");
+            let mut nodes = tree
+                .nodes
+                .iter()
+                .filter(|(_, node)| node.role() == Role::Switch)
+                .map(|(_, node)| {
+                    (
+                        node.author_id().map(str::to_owned),
+                        node.toggled(),
+                        node.label().map(str::to_owned),
+                        node.is_disabled(),
+                    )
+                })
+                .collect::<Vec<_>>();
+            nodes.sort_by(|a, b| a.0.cmp(&b.0));
+            nodes
+        });
+        assert_eq!(
+            nodes,
+            [
+                (
+                    Some("off".to_owned()),
+                    Some(Toggled::False),
+                    Some("Sharing".to_owned()),
+                    false
+                ),
+                (Some("on".to_owned()), Some(Toggled::True), None, true),
+            ]
+        );
     }
 }

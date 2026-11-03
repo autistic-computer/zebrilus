@@ -514,15 +514,17 @@ impl Render for PopoverKey {
                 Some(keystroke) => keystroke_glyph(keystroke),
                 None => key_glyph(self.label.clone(), self.icon.clone()),
             })
-            .child(
-                div()
-                    .absolute()
-                    .top(rems_from_px(HINT))
-                    .right(rems_from_px(HINT))
-                    .size(rems_from_px(HINT))
-                    .rounded_full()
-                    .bg(hint),
-            )
+            .when(!self.items.is_empty(), |key| {
+                key.child(
+                    div()
+                        .absolute()
+                        .top(rems_from_px(HINT))
+                        .right(rems_from_px(HINT))
+                        .size(rems_from_px(HINT))
+                        .rounded_full()
+                        .bg(hint),
+                )
+            })
             .child(key_slop(canvas(
                 move |bounds, _, _| key.set(bounds),
                 |_, (), _, _| {},

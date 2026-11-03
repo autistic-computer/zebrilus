@@ -547,22 +547,15 @@ impl Element for TextElement {
         let caret = cx.theme().foreground;
         let gutter = background.raised(1).opaque();
         let divider = cx.theme().divider_color();
-        let radii = self.state.read(cx).corner_radii;
         let background_opacity = self.state.read(cx).background_opacity;
-        let text_radii = if layout.gutter_width > Pixels::ZERO {
-            Corners {
-                top_left: Pixels::ZERO,
-                bottom_left: Pixels::ZERO,
-                ..radii
-            }
-        } else {
-            radii
-        };
-        let gutter_radii = Corners {
-            top_left: radii.top_left,
-            bottom_left: radii.bottom_left,
-            top_right: Pixels::ZERO,
-            bottom_right: Pixels::ZERO,
+        let (radii, smoothing) = self
+            .state
+            .read(cx)
+            .surface_corners(layout.viewport_bounds.size, window);
+        let surface = SurfaceShape {
+            bounds: layout.viewport_bounds,
+            radii,
+            smoothing,
         };
 
         window.with_content_mask(
@@ -570,9 +563,10 @@ impl Element for TextElement {
                 bounds: layout.viewport_bounds,
             }),
             |window| {
-                window.paint_quad(
-                    fill(layout.text_bounds, background.opacity(background_opacity))
-                        .corner_radii(text_radii),
+                surface.paint(
+                    layout.text_bounds,
+                    background.opacity(background_opacity),
+                    window,
                 );
 
                 if layout.gutter_width > Pixels::ZERO {
@@ -580,10 +574,7 @@ impl Element for TextElement {
                         origin: layout.viewport_bounds.origin,
                         size: size(layout.gutter_width, layout.viewport_bounds.size.height),
                     };
-                    window.paint_quad(
-                        fill(gutter_bounds, gutter.opacity(background_opacity))
-                            .corner_radii(gutter_radii),
-                    );
+                    surface.paint(gutter_bounds, gutter.opacity(background_opacity), window);
                     window.paint_quad(fill(
                         Bounds {
                             origin: point(
@@ -607,35 +598,15 @@ impl Element for TextElement {
                             line.size(layout.line_height).height,
                         ),
                     };
-                    paint_viewport_quad(
-                        active_bounds,
+                    surface.paint(
+                        active_bounds.intersect(&layout.text_bounds),
                         active_line,
-                        layout.viewport_bounds,
-                        radii,
                         window,
                     );
                 }
 
                 for quad in &prepaint.selection_quads {
-                    paint_viewport_quad(*quad, selection, layout.viewport_bounds, radii, window);
-                }
-
-                for (line, top) in layout.lines.iter().zip(layout.line_tops.iter()) {
-                    let origin = layout.text_origin + point(Pixels::ZERO, *top);
-                    if origin.y + line.size(layout.line_height).height
-                        < layout.viewport_bounds.origin.y
-                        || origin.y > layout.viewport_bounds.bottom()
-                    {
-                        continue;
-                    }
-                    _ = line.paint(
-                        origin,
-                        layout.line_height,
-                        TextAlign::Left,
-                        None,
-                        window,
-                        cx,
-                    );
+                    surface.paint(quad.intersect(&layout.text_bounds), selection, window);
                 }
 
                 for (index, number) in &prepaint.line_numbers {
@@ -655,19 +626,48 @@ impl Element for TextElement {
                     );
                 }
 
-                if let Some(caret_bounds) = prepaint.caret {
-                    paint_viewport_quad(caret_bounds, caret, layout.viewport_bounds, radii, window);
-                    if let Some(glyph) = prepaint.cursor_glyph.as_ref() {
-                        _ = glyph.paint(
-                            caret_bounds.origin,
-                            layout.line_height,
-                            TextAlign::Left,
-                            None,
-                            window,
-                            cx,
-                        );
-                    }
-                }
+                window.with_content_mask(
+                    Some(ContentMask {
+                        bounds: layout.text_bounds,
+                    }),
+                    |window| {
+                        for (line, top) in layout.lines.iter().zip(layout.line_tops.iter()) {
+                            let origin = layout.text_origin + point(Pixels::ZERO, *top);
+                            if origin.y + line.size(layout.line_height).height
+                                < layout.viewport_bounds.origin.y
+                                || origin.y > layout.viewport_bounds.bottom()
+                            {
+                                continue;
+                            }
+                            _ = line.paint(
+                                origin,
+                                layout.line_height,
+                                TextAlign::Left,
+                                None,
+                                window,
+                                cx,
+                            );
+                        }
+
+                        if let Some(caret_bounds) = prepaint.caret {
+                            surface.paint(
+                                caret_bounds.intersect(&layout.text_bounds),
+                                caret,
+                                window,
+                            );
+                            if let Some(glyph) = prepaint.cursor_glyph.as_ref() {
+                                _ = glyph.paint(
+                                    caret_bounds.origin,
+                                    layout.line_height,
+                                    TextAlign::Left,
+                                    None,
+                                    window,
+                                    cx,
+                                );
+                            }
+                        }
+                    },
+                );
             },
         );
 
@@ -686,31 +686,26 @@ impl Element for TextElement {
     }
 }
 
-fn paint_viewport_quad(
+struct SurfaceShape {
     bounds: Bounds<Pixels>,
-    color: ala::Hsla,
-    viewport: Bounds<Pixels>,
     radii: Corners<Pixels>,
-    window: &mut Window,
-) {
-    let quad = bounds.intersect(&viewport);
-    if quad.size.width <= Pixels::ZERO || quad.size.height <= Pixels::ZERO {
-        return;
+    smoothing: Option<f32>,
+}
+
+impl SurfaceShape {
+    fn paint(&self, clip: Bounds<Pixels>, color: ala::Hsla, window: &mut Window) {
+        if clip.size.width <= Pixels::ZERO || clip.size.height <= Pixels::ZERO {
+            return;
+        }
+        let quad = fill(self.bounds, color).corner_radii(self.radii);
+        let quad = match self.smoothing {
+            Some(smoothing) => quad.corner_smoothing(smoothing),
+            None => quad,
+        };
+        window.with_content_mask(Some(ContentMask { bounds: clip }), |window| {
+            window.paint_quad(quad);
+        });
     }
-    let epsilon = px(1.0);
-    let left = quad.origin.x - viewport.origin.x < epsilon;
-    let right = viewport.right() - quad.right() < epsilon;
-    let top = quad.origin.y - viewport.origin.y < epsilon;
-    let bottom = viewport.bottom() - quad.bottom() < epsilon;
-    let cap = quad.size.width.min(quad.size.height) / 2.0;
-    let corner = |flush: bool, radius: Pixels| if flush { radius.min(cap) } else { Pixels::ZERO };
-    let quad_radii = Corners {
-        top_left: corner(top && left, radii.top_left),
-        top_right: corner(top && right, radii.top_right),
-        bottom_right: corner(bottom && right, radii.bottom_right),
-        bottom_left: corner(bottom && left, radii.bottom_left),
-    };
-    window.paint_quad(fill(quad, color).corner_radii(quad_radii));
 }
 
 fn visible_lines(layout: &EditorLayout) -> Range<usize> {

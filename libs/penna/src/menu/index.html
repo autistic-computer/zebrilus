@@ -7,11 +7,14 @@
     <link rel="stylesheet" href="../../web/penna.css" />
     <link rel="stylesheet" href="../../web/story.css" />
     <link rel="stylesheet" href="../button/button.css" />
+    <link rel="stylesheet" href="../tooltip/tooltip.css" />
     <link rel="stylesheet" href="menu.css" />
     <link rel="stylesheet" href="page.css" />
     <script src="../../web/kit.js" data-tokens="../../web/tokens/"></script>
     <script src="../../web/story.js" defer></script>
     <script src="../button/button.js" defer></script>
+    <script src="../kbd/kbd.js" defer></script>
+    <script src="../tooltip/tooltip.js" defer></script>
     <script src="menu.js" defer></script>
     <script src="page.js" defer></script>
   </head>
@@ -20,7 +23,7 @@
       <div class="story-states">
         <div class="story-state">
           <div class="story-label">pane menu, view menu</div>
-          <div class="menus-stage"><div class="menus-row" data-menus="pane view"></div></div>
+          <div class="menus-stage" data-tooltip-host><div class="menus-row" data-menus="pane view"></div></div>
         </div>
       </div>
     </section>
@@ -29,7 +32,7 @@
       <div class="story-states">
         <div class="story-state">
           <div class="story-label">second row highlighted</div>
-          <div class="menus-stage"><div class="menus-row" data-menus="pane" data-highlight="row"></div></div>
+          <div class="menus-stage" data-tooltip-host><div class="menus-row" data-menus="pane" data-highlight="row"></div></div>
         </div>
       </div>
     </section>
@@ -38,7 +41,7 @@
       <div class="story-states">
         <div class="story-state">
           <div class="story-label">submenu open, first row highlighted</div>
-          <div class="menus-stage"><div class="menus-row" data-menus="pane" data-highlight="submenu"></div></div>
+          <div class="menus-stage" data-tooltip-host><div class="menus-row" data-menus="pane" data-highlight="submenu"></div></div>
         </div>
       </div>
     </section>

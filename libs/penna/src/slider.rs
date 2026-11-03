@@ -8,7 +8,7 @@ use ala::{
 };
 
 use crate::{
-    ActiveTheme as _, AuthoredElement as _, Colorize as _, Emphasis, Kind, PaintState, Size,
+    ActiveTheme as _, AuthoredElement as _, Colorize as _, Emphasis, Kind, Paint, PaintState, Size,
     StyledExt as _, Surface, Tone, h_flex,
     input::{field_chrome_on, field_text},
     oklab_lightness,
@@ -94,7 +94,7 @@ impl RenderOnce for DiscreteSlider {
             let (fill, hover) = if index <= selected {
                 (filled.fill, filled.hover)
             } else {
-                (track.fill_at(PaintState::Active), track.hover)
+                (track.active, past_active(&track))
             };
             pills = pills.child(
                 h_flex()
@@ -112,7 +112,7 @@ impl RenderOnce for DiscreteSlider {
                         div()
                             .w_full()
                             .h(px(6.0))
-                            .rounded(cx.theme().control_radius())
+                            .rounded_full()
                             .bg(fill)
                             .group_hover(group, move |this| this.bg(hover))
                             .when(focused && index == selected, |this| {
@@ -163,6 +163,11 @@ impl RenderOnce for DiscreteSlider {
                     .child(value),
             )
     }
+}
+
+fn past_active(paint: &Paint) -> Hsla {
+    let step = (paint.active.a - paint.hover.a).max(0.0);
+    paint.active.alpha((paint.active.a + step).min(1.0))
 }
 
 #[derive(IntoElement)]

@@ -4,7 +4,6 @@ const PRIMITIVES = new Set("str bool char u8 u16 u32 u64 u128 usize i8 i16 i32 i
 const CURSOR_WIDTH = 2;
 const NEWLINE_SELECTION_WIDTH = 4;
 const GUTTER_PADDING = 5;
-const CORNER = 0.45;
 const TAB = 4;
 
 function rustTokens(text) {
@@ -78,11 +77,6 @@ function tokenize(text, language) {
 function lineHtml(tokens) {
   const escape = (value) => value.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]);
   return tokens.map(([text, kind]) => (kind ? `<span class="ce-${kind}">${escape(text)}</span>` : escape(text))).join("");
-}
-
-function resolveRadius(radius, width, height) {
-  const cap = Math.min(width, height) * CORNER;
-  return cap > 0 ? cap * Math.tanh(radius / cap) : 0;
 }
 
 function isWord(char) {
@@ -237,7 +231,6 @@ class CodeEditor {
     const root = this.root;
     if (!root.isConnected || !root.clientWidth || !this.ready) return;
     if (!root.matches(":hover")) this.restFill();
-    const style = getComputedStyle(root);
     this.lh = parseFloat(getComputedStyle(this.linesEl).lineHeight);
     const digits = Math.max(2, String(this.starts.length).length);
     this.probe.textContent = "8".repeat(digits);
@@ -247,10 +240,6 @@ class CodeEditor {
     this.viewHeight = root.clientHeight;
     root.style.setProperty("--ce-gutter-width", `${gutter}px`);
     root.style.setProperty("--ce-text-width", `${this.viewWidth}px`);
-    const radius = Math.max(0, (parseFloat(style.getPropertyValue("--penna-r")) || 0) - Math.max(1, parseFloat(style.borderTopWidth) || 0));
-    const surfaceRadius = resolveRadius(radius, this.viewWidth, this.viewHeight);
-    this.surface.style.borderRadius = gutter ? `0 ${surfaceRadius}px ${surfaceRadius}px 0` : `${surfaceRadius}px`;
-    this.gutter.style.borderRadius = `${radius}px 0 0 ${radius}px`;
     const lineEls = this.linesEl.children;
     const numberEls = this.numbers.children;
     for (let i = 0; i < lineEls.length; i++) numberEls[i].style.height = `${lineEls[i].offsetHeight}px`;

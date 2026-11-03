@@ -1,6 +1,6 @@
 use ala::{
-    App, Corners, Entity, InteractiveElement as _, IntoElement, MouseButton, ParentElement as _,
-    RenderOnce, StyleRefinement, Styled, Window, div, prelude::FluentBuilder as _, px,
+    App, Entity, InteractiveElement as _, IntoElement, MouseButton, ParentElement as _, RenderOnce,
+    StyleRefinement, Styled, Window, div, prelude::FluentBuilder as _, px,
 };
 
 use crate::{
@@ -9,7 +9,7 @@ use crate::{
 
 use super::{
     CodeEditorState,
-    state::{CONTEXT, VIM_CONTEXT},
+    state::{CONTEXT, SurfaceFrame, VIM_CONTEXT},
 };
 
 #[derive(IntoElement)]
@@ -78,17 +78,18 @@ impl RenderOnce for CodeEditor {
         let framed = self.bordered || self.focus_bordered;
         let surface = Surface::new(SurfaceRole::TEXT_AREA);
         let frame = cx.theme().layer(surface, PaintState::Rest);
-        let edge = frame.border_width.max(px(1.0));
-        let inner = Corners::all((frame.radius - edge).max(px(0.0)));
+        let surface_frame = framed.then(|| SurfaceFrame {
+            radius: frame.radius,
+            edge: frame.border_width.max(px(1.0)),
+            smoothing: frame.smoothing,
+        });
         self.state.update(cx, |state, cx| {
             state.disabled = self.disabled;
             if state.background_opacity != self.background_opacity {
                 state.background_opacity = self.background_opacity;
                 cx.notify();
             }
-            if framed {
-                state.set_corner_radii(inner, cx);
-            }
+            state.set_frame(surface_frame, cx);
         });
         let focus_handle = self.state.read(cx).focus_handle_ref().clone();
         let focused = focus_handle.is_focused(window) && !self.disabled;

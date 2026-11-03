@@ -19,7 +19,7 @@ pub const STORY: Story = Story {
         Section {
             id: "kbd",
             name: "Kbd",
-            summary: "One Keystroke as a pill. The web build spells modifiers out (Ctrl, Alt, Shift, Win); macOS draws glyphs.",
+            summary: "One Keystroke as a pill. Mac platforms, including a web build in a Mac browser, draw glyphs; others spell modifiers out (Ctrl, Alt, Shift, Win).",
             build: |_, cx| stateless(kbds, cx),
         },
         Section {

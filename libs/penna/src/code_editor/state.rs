@@ -5,8 +5,8 @@ use ala::{
     Action, App, AppContext as _, Bounds, ClipboardItem, Context, Corners, Edges, Entity,
     EntityInputHandler, EventEmitter, FocusHandle, Focusable, IntoElement, KeyBinding,
     KeyDownEvent, MouseButton, MouseDownEvent, ParentElement as _, Pixels, Point, Render,
-    ScrollKey, ScrollWheelEvent, SharedString, Styled as _, Subscription, TextRun, TextStyle,
-    UTF16Selection, Window, actions, div, point,
+    ScrollKey, ScrollWheelEvent, SharedString, Size, Styled as _, Subscription, TextRun, TextStyle,
+    UTF16Selection, Window, actions, div, point, size,
 };
 use ropey::Rope;
 use unicode_segmentation::UnicodeSegmentation as _;
@@ -205,6 +205,13 @@ enum DragGranularity {
     Line,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(super) struct SurfaceFrame {
+    pub(super) radius: Pixels,
+    pub(super) edge: Pixels,
+    pub(super) smoothing: f32,
+}
+
 pub struct CodeEditorState {
     pub(super) focus_handle: FocusHandle,
     pub(super) mode: EditorMode,
@@ -233,6 +240,7 @@ pub struct CodeEditorState {
     pub(super) disabled: bool,
     pub(super) background_opacity: f32,
     pub(super) corner_radii: Corners<Pixels>,
+    pub(super) frame: Option<SurfaceFrame>,
     pub(super) vim: Option<VimState>,
 
     selecting: bool,
@@ -298,6 +306,7 @@ impl CodeEditorState {
             disabled: false,
             background_opacity: 1.0,
             corner_radii: Corners::default(),
+            frame: None,
             vim: None,
             selecting: false,
             drag_granularity: DragGranularity::Character,
@@ -375,6 +384,31 @@ impl CodeEditorState {
         }
         self.corner_radii = radii;
         cx.notify();
+    }
+
+    pub(super) fn set_frame(&mut self, frame: Option<SurfaceFrame>, cx: &mut Context<Self>) {
+        if self.frame != frame {
+            self.frame = frame;
+            cx.notify();
+        }
+    }
+
+    pub(super) fn surface_corners(
+        &self,
+        viewport: Size<Pixels>,
+        window: &Window,
+    ) -> (Corners<Pixels>, Option<f32>) {
+        let Some(frame) = self.frame else {
+            return (self.corner_radii, None);
+        };
+        let outer = size(
+            viewport.width + frame.edge * 2.0,
+            viewport.height + frame.edge * 2.0,
+        );
+        let radii = window
+            .resolve_corner_radii(Corners::all(frame.radius), outer)
+            .map(|radius| (*radius - frame.edge).max(Pixels::ZERO));
+        (radii, Some(frame.smoothing))
     }
 
     pub fn set_relative_line_numbers(&mut self, enabled: bool, cx: &mut Context<Self>) {

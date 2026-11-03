@@ -6,15 +6,50 @@
 
   let probe;
 
-  function textWidth(text, font) {
+  function runs(cell) {
+    const out = [];
+    const walk = (node, mark) => {
+      if (node.nodeType === Node.TEXT_NODE) {
+        if (node.data) out.push({ text: node.data, ...mark });
+        return;
+      }
+      if (node.nodeType !== Node.ELEMENT_NODE) return;
+      const next = { ...mark };
+      if (node.matches("strong, b")) next.bold = true;
+      if (node.matches("em, i")) next.italic = true;
+      if (node.matches("code")) next.family = getComputedStyle(node).fontFamily;
+      node.childNodes.forEach((child) => walk(child, next));
+    };
+    cell.childNodes.forEach((child) => walk(child, {}));
+    return out;
+  }
+
+  function cellWidth(cell, size, family) {
     if (!probe) {
       probe = document.createElement("span");
-      probe.style.cssText = "position:absolute;left:-99999px;top:0;white-space:pre;visibility:hidden";
+      probe.style.cssText = "position:absolute;left:-99999px;top:0;white-space:pre;visibility:hidden;font-kerning:normal;font-optical-sizing:none";
       document.body.append(probe);
     }
-    probe.style.font = font;
-    probe.style.fontKerning = "none";
-    probe.textContent = text;
+    const parts = runs(cell);
+    const text = parts.map((part) => part.text).join("");
+    const lead = text.length - text.trimStart().length;
+    const end = text.trimEnd().length;
+    let at = 0;
+    const spans = [];
+    for (const part of parts) {
+      const from = Math.max(at, lead) - at;
+      const to = Math.min(at + part.text.length, end) - at;
+      at += part.text.length;
+      if (to <= from) continue;
+      const span = document.createElement("span");
+      span.style.fontFamily = part.family ?? family;
+      span.style.fontSize = size;
+      span.style.fontWeight = part.bold ? "700" : "400";
+      span.style.fontStyle = part.italic ? "italic" : "normal";
+      span.textContent = part.text.slice(from, to);
+      spans.push(span);
+    }
+    probe.replaceChildren(...spans);
     return probe.getBoundingClientRect().width;
   }
 
@@ -23,14 +58,11 @@
     const rows = [...table.querySelectorAll(".md-row")];
     const view = table.closest(".penna-md");
     const style = getComputedStyle(view);
-    const font = `400 ${style.fontSize} ${style.fontFamily}`;
     const count = Math.max(...rows.map((row) => row.children.length));
     const widths = Array(count).fill(CELL_MIN);
     rows.forEach((row) =>
       [...row.children].forEach((cell, index) => {
-        const lines = cell.textContent.split("\n").map((line) => line.trim()).filter(Boolean);
-        const width = Math.max(0, ...lines.map((line) => textWidth(line, font) + 0.5 * (line.split(" ").length)));
-        widths[index] = Math.max(widths[index], width + CELL_PAD);
+        widths[index] = Math.max(widths[index], cellWidth(cell, style.fontSize, style.fontFamily) + CELL_PAD);
       }),
     );
     const columns = widths.map((width) => Math.min(width, scroll ? CELL_MAX : WRAP_MAX));

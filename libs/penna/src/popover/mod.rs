@@ -246,7 +246,13 @@ impl RenderOnce for Popover {
         let panel = panel
             .track_focus(&focus_handle)
             .key_context(CONTEXT)
-            .on_action(window.listener_for(&state, PopoverState::on_action_cancel))
+            .on_action({
+                let state = state.clone();
+                move |_: &Cancel, window, cx| {
+                    state.update(cx, |state, cx| state.dismiss(window, cx));
+                    cx.notify(parent_view_id);
+                }
+            })
             .when_some(self.content, |this, content| {
                 this.child(state.update(cx, |state, cx| content(state, window, cx)))
             })
@@ -358,10 +364,6 @@ impl PopoverState {
         }
 
         cx.notify();
-    }
-
-    fn on_action_cancel(&mut self, _: &Cancel, window: &mut Window, cx: &mut Context<Self>) {
-        self.dismiss(window, cx);
     }
 }
 

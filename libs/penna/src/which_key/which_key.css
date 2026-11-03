@@ -46,6 +46,13 @@
   color: var(--penna-fg-muted);
 }
 
+.penna-which-key-caps > .penna-which-key-cap {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .penna-which-key-cap[data-yours] {
   color: var(--penna-accent);
 }

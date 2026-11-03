@@ -31,7 +31,6 @@
 
 .penna-md p {
   padding-bottom: 16px;
-  padding-right: 0.25em;
 }
 
 .penna-md :is(h1, h2, h3, h4, h5, h6) {
@@ -182,8 +181,7 @@
   width: 16px;
   height: 16px;
   border-radius: var(--md-check-r, 0px);
-  --penna-k: 2;
-  corner-shape: superellipse(var(--penna-k));
+  corner-shape: superellipse(var(--penna-window-k));
   border: 1px solid rgb(from var(--penna-fg) r g b / 0.3);
   background: transparent;
   color: var(--penna-on-accent);
@@ -206,7 +204,9 @@
 .penna-md hr::before {
   content: "";
   display: block;
-  border-top: 0.5px solid var(--penna-divider);
+  height: 0.5px;
+  background: var(--penna-divider);
+  box-shadow: 0 0.5px 0 var(--penna-divider);
 }
 
 .penna-md > :last-child,
