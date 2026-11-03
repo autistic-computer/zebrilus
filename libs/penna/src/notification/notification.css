@@ -13,7 +13,6 @@
   line-height: 18px;
   color: var(--penna-ink);
   transition: opacity 150ms, translate 150ms;
-  --penna-glass: 0;
 }
 
 .penna-toast[data-closing] {
@@ -93,11 +92,11 @@
 .penna-toast-close {
   flex: none;
   align-self: center;
-  visibility: hidden;
+  opacity: 0;
 }
 
-.penna-toast:is(:hover, [data-state~="hover"]) > .penna-toast-close {
-  visibility: visible;
+.penna-toast:is(:hover, :focus-within, [data-state~="hover"]) > .penna-toast-close {
+  opacity: 1;
 }
 
 .penna-toast-stack {

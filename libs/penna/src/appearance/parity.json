@@ -30,7 +30,8 @@
     {
       "name": "pick-theme-accent",
       "section": "page",
-      "click": "settings-accent-theme"
+      "click": "settings-accent-theme",
+      "keep": true
     },
     {
       "name": "click-tint",
@@ -56,6 +57,77 @@
       "name": "home-contrast",
       "section": "narrow",
       "key": "Home"
+    },
+    {
+      "name": "hover-theme",
+      "section": "page",
+      "hover": "settings-theme"
+    },
+    {
+      "name": "open-theme",
+      "section": "page",
+      "click": "settings-theme"
+    },
+    {
+      "name": "theme-down",
+      "section": "page",
+      "key": "ArrowDown"
+    },
+    {
+      "name": "theme-down-again",
+      "section": "page",
+      "key": "ArrowDown"
+    },
+    {
+      "name": "theme-up",
+      "section": "page",
+      "key": "ArrowUp"
+    },
+    {
+      "name": "theme-enter",
+      "section": "page",
+      "key": "Enter"
+    },
+    {
+      "name": "collapse-advanced",
+      "section": "narrow",
+      "click": "settings-appearance-advanced"
+    },
+    {
+      "name": "hover-custom",
+      "section": "page",
+      "hover": "settings-accent-custom"
+    },
+    {
+      "name": "open-custom",
+      "section": "page",
+      "click": "settings-accent-custom"
+    },
+    {
+      "name": "pick-custom",
+      "section": "page",
+      "click": "settings-accent-custom-field",
+      "keep": true
+    },
+    {
+      "name": "close-custom",
+      "section": "page",
+      "key": "Escape"
+    },
+    {
+      "name": "pick-blue-after-custom",
+      "section": "page",
+      "click": {
+        "selector": "[data-id='settings-accent-blue']"
+      },
+      "keep": true
+    },
+    {
+      "name": "toggle-animations",
+      "section": "page",
+      "click": {
+        "selector": ".penna-toggle"
+      }
     }
   ]
 }

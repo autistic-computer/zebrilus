@@ -1,5 +1,32 @@
 {
   "story": "tabs-and-rows",
   "page": "index.html",
-  "steps": []
+  "steps": [
+    { "name": "hover-window-tab", "section": "tabs", "hover": "tab-window-Rest" },
+    { "name": "press-window-tab", "section": "tabs", "press": "tab-window-Rest" },
+    { "name": "hover-page-tab", "section": "tabs", "hover": "tab-page-Rest" },
+    { "name": "press-page-tab", "section": "tabs", "press": "tab-page-Rest" },
+    { "name": "hover-tray-tab", "section": "tabs", "hover": "tab-tray-Rest" },
+    { "name": "press-tray-tab", "section": "tabs", "press": "tab-tray-Rest" },
+    { "name": "hover-title-tab", "section": "tabs", "hover": "tab-title-Rest" },
+    { "name": "hover-pane-title", "section": "tabs", "hover": "tab-title-on-pane" },
+    { "name": "click-window-tab", "section": "tabs", "click": "tab-window-Rest" },
+    { "name": "hover-menu-row", "section": "rows", "hover": "row-menu-Rest" },
+    { "name": "press-menu-row", "section": "rows", "press": "row-menu-Rest" },
+    { "name": "hover-card-row", "section": "rows", "hover": "row-menu card-Rest" },
+    { "name": "hover-tint-row", "section": "rows", "hover": "row-menu tint-Rest" },
+    { "name": "hover-sidebar-row", "section": "rows", "hover": "row-sidebar-Rest" },
+    { "name": "press-sidebar-row", "section": "rows", "press": "row-sidebar-Rest" },
+    { "name": "hover-nav-row", "section": "rows", "hover": "row-nav-Rest" },
+    { "name": "hover-cursor-row", "section": "rows", "hover": "row-cursor-Rest" },
+    { "name": "hover-danger-row", "section": "rows", "hover": "row-danger-Rest" },
+    { "name": "click-menu-row", "section": "rows", "click": "row-menu-Rest" },
+    { "name": "hover-sidebar-fill", "section": "fills", "hover": "fill-sidebar-rest" },
+    { "name": "hover-nav-fill", "section": "fills", "hover": "fill-nav-rest" },
+    { "name": "press-nav-fill", "section": "fills", "press": "fill-nav-rest" },
+    { "name": "hover-menu-item", "section": "list-items", "hover": "item-rest-0" },
+    { "name": "press-menu-item", "section": "list-items", "press": "item-rest-0" },
+    { "name": "hover-sidebar-item", "section": "list-items", "hover": "item-rest-1" },
+    { "name": "hover-tint-item", "section": "list-items", "hover": "item-rest-2" }
+  ]
 }

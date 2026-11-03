@@ -2,9 +2,19 @@
   "story": "choices",
   "page": "index.html",
   "steps": [
+    { "name": "hover-trigger", "section": "select", "hover": { "selector": ".penna-select-trigger", "nth": 2 } },
+    { "name": "click-trigger", "section": "select", "click": { "selector": ".penna-select-trigger", "nth": 2 } },
+    { "name": "key-down", "section": "select", "key": "ArrowDown" },
+    { "name": "hover-item", "section": "select-open", "hover": "2" },
+    { "name": "click-item", "section": "select-open", "click": "3" },
+    { "name": "hover-segment", "section": "segmented", "hover": "button:Dark" },
     { "name": "click-light", "section": "segmented", "click": "button:Light" },
     { "name": "click-system", "section": "segmented", "click": "button:System" },
     { "name": "hover-filled-pill", "section": "slider", "hover": "button:1k" },
-    { "name": "hover-empty-pill", "section": "slider", "hover": "button:50k" }
+    { "name": "hover-empty-pill", "section": "slider", "hover": "button:50k" },
+    { "name": "click-pill", "section": "slider", "click": "button:10k" },
+    { "name": "key-right", "section": "slider", "key": "ArrowRight" },
+    { "name": "key-home", "section": "slider", "key": "Home" },
+    { "name": "hover-focused-pill", "section": "slider-focused", "hover": "button:100k" }
   ]
 }

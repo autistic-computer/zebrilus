@@ -5,18 +5,18 @@ pub use row::{Row, RowLook};
 
 use ala::{
     AnyElement, App, ClickEvent, Div, ElementId, InteractiveElement as _, IntoElement, MouseButton,
-    MouseDownEvent, MouseMoveEvent, ParentElement, Pixels, RenderOnce, Stateful,
+    MouseDownEvent, MouseMoveEvent, ParentElement, Pixels, RenderOnce, Role, Stateful,
     StatefulInteractiveElement as _, StyleRefinement, Styled, Window, div,
     prelude::FluentBuilder as _, px,
 };
 
-use crate::Colorize as _;
 use crate::{
     ActiveTheme as _, Disableable, PaintState, Selectable, Size, StyledExt as _, Surface,
     SurfaceRole,
     foundation::{restyle, row_corners},
     h_flex,
 };
+use crate::{AuthoredElement as _, Colorize as _};
 
 type ClickHandler = Box<dyn Fn(&ClickEvent, &mut Window, &mut App) + 'static>;
 type MouseDownHandler = Box<dyn Fn(&MouseDownEvent, &mut Window, &mut App) + 'static>;
@@ -40,7 +40,7 @@ impl ListItem {
     #[must_use]
     pub fn new(id: impl Into<ElementId>) -> Self {
         Self {
-            base: h_flex().id(id),
+            base: h_flex().author_id(id).role(Role::ListItem),
             style: StyleRefinement::default(),
             disabled: false,
             selected: false,
@@ -56,6 +56,12 @@ impl ListItem {
     #[must_use]
     pub fn selected(mut self, selected: bool) -> Self {
         self.selected = selected;
+        self
+    }
+
+    #[must_use]
+    pub fn role(mut self, role: Role) -> Self {
+        self.base = self.base.role(role);
         self
     }
 
@@ -165,7 +171,9 @@ impl RenderOnce for ListItem {
         );
         let muted_foreground = theme.foreground.muted();
 
-        base.relative()
+        base.aria_selected(selected)
+            .aria_disabled(disabled)
+            .relative()
             .justify_between()
             .gap_x_1()
             .py_1()

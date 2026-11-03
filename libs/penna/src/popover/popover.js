@@ -1,6 +1,7 @@
 (() => {
   function panelOf(popover) {
-    return popover.querySelector(":scope > .penna-popover-panel");
+    popover.panel ??= popover.querySelector(":scope > .penna-popover-panel");
+    return popover.panel;
   }
 
   function triggerOf(popover) {
@@ -18,6 +19,7 @@
       if (states.length) trigger.dataset.state = states.join(" ");
       else trigger.removeAttribute("data-state");
     }
+    if (open && panel && !panel.isConnected) popover.append(panel);
     if (open) {
       popover.previousFocus = document.activeElement;
       panel?.focus({ preventScroll: true });
@@ -25,6 +27,7 @@
     } else if (panel?.contains(document.activeElement)) {
       popover.previousFocus?.focus?.({ preventScroll: true });
     }
+    if (!open) panel?.remove();
     popover.dispatchEvent(new CustomEvent(open ? "penna-open" : "penna-dismiss", { bubbles: true }));
   }
 
@@ -47,8 +50,14 @@
     if (popover) setOpen(popover, false);
   });
 
+  document.querySelectorAll(".penna-popover:not([data-open])").forEach((popover) => {
+    panelOf(popover)?.remove();
+  });
+
   document.querySelectorAll(".penna-popover[data-open]").forEach((popover) => {
     triggerOf(popover)?.setAttribute("aria-expanded", "true");
+    popover.previousFocus = document.activeElement;
+    panelOf(popover)?.focus({ preventScroll: true });
   });
 
   window.pennaPopover = { setOpen };

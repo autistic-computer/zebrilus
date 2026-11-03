@@ -4,6 +4,11 @@
   "steps": [
     { "name": "hover-general", "section": "settings-navigation", "hover": "penna-settings-section-0" },
     { "name": "press-general", "section": "settings-navigation", "press": "penna-settings-section-0" },
-    { "name": "hover-back", "section": "settings-navigation", "hover": "back" }
+    { "name": "hover-back", "section": "settings-navigation", "hover": "back" },
+    { "name": "press-back", "section": "settings-navigation", "press": "back" },
+    { "name": "hover-plain-about", "section": "settings-navigation", "hover": { "id": "penna-settings-section-7", "nth": 2 } },
+    { "name": "click-plain-files", "section": "settings-navigation", "click": { "id": "penna-settings-section-4", "nth": 2 } },
+    { "name": "hover-tree-row", "section": "tree-guides", "hover": "tree-row-2" },
+    { "name": "hover-tree-plain", "section": "tree-guides", "hover": { "id": "tree-row-9", "nth": 3 } }
   ]
 }

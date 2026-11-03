@@ -83,7 +83,7 @@ section[data-section] {
   font-family: var(--penna-mono);
   font-size: 11px;
   line-height: 14px;
-  color: var(--penna-muted);
+  color: var(--penna-fg-muted);
 }
 
 .story-states[data-columns="3"] {

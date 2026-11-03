@@ -22,7 +22,6 @@
   user-select: none;
   --penna-icon-size: 14px;
   --penna-ring: var(--penna-focus);
-  --penna-fg-muted: oklab(from var(--penna-fg) calc(l * 0.65 + 0.35 * clamp(0, (0.5 - l) * 1000, 1)) calc(a * 0.65) calc(b * 0.65));
   --penna-fg-faint: oklab(from var(--penna-fg) calc(l * 0.45 + 0.55 * clamp(0, (0.5 - l) * 1000, 1)) calc(a * 0.45) calc(b * 0.45));
 }
 
@@ -106,6 +105,7 @@
 }
 
 .penna-button[data-loading]:not(:disabled) {
+  box-shadow: var(--penna-over, var(--penna-rim), var(--penna-shadow));
   background: rgb(from var(--penna-fill) r g b / calc(alpha * 0.8));
   border-color: rgb(from var(--penna-edge) r g b / calc(alpha * 0.8));
   color: rgb(from var(--penna-ink) r g b / calc(alpha * 0.8));
@@ -156,5 +156,21 @@
   border: 1.5px solid var(--penna-ring);
   border-radius: var(--penna-ring-r, 12px);
   corner-shape: inherit;
+  pointer-events: none;
+}
+
+.story-row:has(> .penna-button[data-loading]) {
+  isolation: isolate;
+}
+
+.penna-button[data-loading]:not(:disabled)::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: var(--penna-under-inset, 0);
+  translate: -10000px 0;
+  border-radius: inherit;
+  corner-shape: inherit;
+  box-shadow: var(--penna-under);
   pointer-events: none;
 }

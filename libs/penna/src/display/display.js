@@ -1,16 +1,4 @@
-const DISPLAY_TEXT = ".penna-text";
 const DISPLAY_ICONS = ".penna-list-item [data-icon], .penna-spinner > [data-icon]";
-
-if (new URLSearchParams(location.search).has("bare")) document.documentElement.dataset.motion = "off";
-
-function displaySnap() {
-  const spans = [...document.querySelectorAll(DISPLAY_TEXT)];
-  spans.forEach((span) => span.style.removeProperty("width"));
-  const widths = spans.map((span) => span.getBoundingClientRect().width);
-  spans.forEach((span, index) => {
-    span.style.width = `${Math.ceil(widths[index])}px`;
-  });
-}
 
 function displayPin() {
   const icons = [...document.querySelectorAll(DISPLAY_ICONS)];
@@ -24,18 +12,11 @@ function displayPin() {
   });
 }
 
-function displayFit() {
-  document.querySelectorAll("section[data-section]").forEach((section) => {
-    section.style.removeProperty("min-height");
-    section.style.minHeight = `${Math.ceil(section.getBoundingClientRect().height - 0.01)}px`;
-  });
-}
+displayPin();
+document.fonts.ready.then(displayPin);
 
-function displaySettle() {
-  displaySnap();
-  displayPin();
-  displayFit();
-}
-
-displaySettle();
-document.fonts.ready.then(displaySettle);
+addEventListener(
+  "pointermove",
+  () => document.querySelectorAll('.penna-list-item[data-state="hover"]').forEach((row) => row.removeAttribute("data-state")),
+  { once: true },
+);

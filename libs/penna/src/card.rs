@@ -1,4 +1,4 @@
-use ala::{App, ElementId, IntoElement, RenderOnce, Window};
+use ala::{App, ElementId, IntoElement, RenderOnce, Role, Window};
 
 use crate::{
     Ground, Surface, SurfaceRole,
@@ -15,6 +15,13 @@ pub enum CardLook {
 }
 
 impl CardLook {
+    const fn announced(self) -> Role {
+        match self {
+            Self::Bubble | Self::Code => Role::Group,
+            Self::Figure | Self::Image => Role::Figure,
+        }
+    }
+
     const fn role(self) -> SurfaceRole {
         match self {
             Self::Bubble => roles::CARD_BUBBLE,
@@ -40,7 +47,7 @@ impl Card {
     #[must_use]
     pub fn new(id: impl Into<ElementId>, look: CardLook) -> Self {
         Self {
-            plate: Plate::new(id, look.role()),
+            plate: Plate::new(id, look.role()).announce(look.announced()),
         }
     }
 

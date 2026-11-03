@@ -9,46 +9,47 @@
     <link rel="stylesheet" href="../kbd/kbd.css" />
     <link rel="stylesheet" href="which_key.css" />
     <script src="../../web/kit.js" data-tokens="../../web/tokens/"></script>
+    <script src="../../web/story.js" defer></script>
     <script src="which_key.js" defer></script>
   </head>
   <body>
     <section data-section="prefix">
-      <div class="penna-which-key" data-penna="sheet">
+      <div class="penna-which-key" data-id="which-key" data-penna="sheet">
         <div class="penna-which-key-head">
-          <kbd class="penna-kbd" data-penna="keycap"><i data-icon="key-control-iso"></i><span>b</span></kbd>
-          <span class="penna-which-key-text">prefix</span>
-        <span class="penna-which-key-more"><span class="penna-which-key-cap">?</span><span class="penna-which-key-text">all keys</span></span>
+          <kbd class="penna-kbd" data-id="which-key-prefix" data-penna="keycap"><i data-icon="key-control-iso"></i><span data-penna-text>b</span></kbd>
+          <span class="penna-which-key-text" data-penna-text>prefix</span>
+        <span class="penna-which-key-more"><span class="penna-which-key-cap" data-penna-text>?</span><span class="penna-which-key-text" data-penna-text>all keys</span></span>
         </div>
         <div class="penna-which-key-body">
-          <div class="penna-which-key-row" data-group="Windows"><span class="penna-which-key-caps"><span class="penna-which-key-cap">c</span></span><span class="penna-which-key-label">New window</span></div>
-          <div class="penna-which-key-row" data-group="Windows"><span class="penna-which-key-caps"><span class="penna-which-key-cap">0–9</span></span><span class="penna-which-key-label">Select window</span></div>
-          <div class="penna-which-key-row" data-group="Windows"><span class="penna-which-key-caps"><span class="penna-which-key-cap">n</span></span><span class="penna-which-key-label">Next window</span></div>
-          <div class="penna-which-key-row" data-group="Windows"><span class="penna-which-key-caps"><span class="penna-which-key-cap">p</span></span><span class="penna-which-key-label">Previous window</span></div>
-          <div class="penna-which-key-row" data-group="Windows"><span class="penna-which-key-caps"><span class="penna-which-key-cap">,</span></span><span class="penna-which-key-label">Rename window</span></div>
-          <div class="penna-which-key-row" data-group="Windows"><span class="penna-which-key-caps"><span class="penna-which-key-cap">&amp;</span></span><span class="penna-which-key-label">Kill window</span></div>
-          <div class="penna-which-key-row" data-group="Windows"><span class="penna-which-key-caps"><span class="penna-which-key-cap">w</span></span><span class="penna-which-key-label">Choose a window</span></div>
-          <div class="penna-which-key-row" data-group="Panes"><span class="penna-which-key-caps"><span class="penna-which-key-cap">%</span></span><span class="penna-which-key-label">Split left and right</span></div>
-          <div class="penna-which-key-row" data-group="Panes"><span class="penna-which-key-caps"><span class="penna-which-key-cap">&quot;</span></span><span class="penna-which-key-label">Split top and bottom</span></div>
-          <div class="penna-which-key-row" data-group="Panes"><span class="penna-which-key-caps"><span class="penna-which-key-cap">left down up right</span></span><span class="penna-which-key-label">Select pane</span><span class="penna-which-key-repeat">↻</span></div>
-          <div class="penna-which-key-row" data-group="Panes"><span class="penna-which-key-caps"><span class="penna-which-key-cap">Alt+left Alt+down Alt+up Alt+right</span></span><span class="penna-which-key-label">Resize pane</span><span class="penna-which-key-repeat">↻</span></div>
-          <div class="penna-which-key-row" data-group="Panes"><span class="penna-which-key-caps"><span class="penna-which-key-cap">{}</span></span><span class="penna-which-key-label">Swap pane</span></div>
-          <div class="penna-which-key-row" data-group="Panes"><span class="penna-which-key-caps"><span class="penna-which-key-cap">o</span></span><span class="penna-which-key-label">Next pane</span></div>
-          <div class="penna-which-key-row" data-group="Panes"><span class="penna-which-key-caps"><span class="penna-which-key-cap">z</span></span><span class="penna-which-key-label">Zoom pane</span></div>
-          <div class="penna-which-key-row" data-group="Panes"><span class="penna-which-key-caps"><span class="penna-which-key-cap">x</span></span><span class="penna-which-key-label">Kill pane</span></div>
-          <div class="penna-which-key-row" data-group="Panes"><span class="penna-which-key-caps"><span class="penna-which-key-cap">q</span></span><span class="penna-which-key-label">Show pane numbers</span></div>
-          <div class="penna-which-key-row" data-group="Sessions"><span class="penna-which-key-caps"><span class="penna-which-key-cap">d</span></span><span class="penna-which-key-label">Detach</span></div>
-          <div class="penna-which-key-row" data-group="Sessions"><span class="penna-which-key-caps"><span class="penna-which-key-cap">s</span></span><span class="penna-which-key-label">Choose a session</span></div>
-          <div class="penna-which-key-row" data-group="Sessions"><span class="penna-which-key-caps"><span class="penna-which-key-cap">$</span></span><span class="penna-which-key-label">Rename session</span></div>
-          <div class="penna-which-key-row" data-group="Sessions"><span class="penna-which-key-caps"><span class="penna-which-key-cap">()</span></span><span class="penna-which-key-label">Previous or next session</span></div>
-          <div class="penna-which-key-row" data-group="Copy"><span class="penna-which-key-caps"><span class="penna-which-key-cap">[</span></span><span class="penna-which-key-label">Copy mode</span></div>
-          <div class="penna-which-key-row" data-group="Copy"><span class="penna-which-key-caps"><span class="penna-which-key-cap">]</span></span><span class="penna-which-key-label">Paste buffer</span></div>
-          <div class="penna-which-key-row" data-group="Copy"><span class="penna-which-key-caps"><span class="penna-which-key-cap">=</span></span><span class="penna-which-key-label">Choose a buffer</span></div>
-          <div class="penna-which-key-row" data-group="Yours"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-yours>g</span></span><span class="penna-which-key-label">Open lazygit</span></div>
-          <div class="penna-which-key-row" data-group="Yours"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-yours>Shift+p</span></span><span class="penna-which-key-label">Toggle pane logging</span></div>
-          <div class="penna-which-key-row" data-group="Yours"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-yours>Ctrl+r</span></span><span class="penna-which-key-label">Reload config and say so in the status line</span></div>
-          <div class="penna-which-key-row" data-group="Other"><span class="penna-which-key-caps"><span class="penna-which-key-cap">:</span></span><span class="penna-which-key-label">Command prompt</span></div>
-          <div class="penna-which-key-row" data-group="Other"><span class="penna-which-key-caps"><span class="penna-which-key-cap">?</span></span><span class="penna-which-key-label">List keys</span></div>
-          <div class="penna-which-key-row" data-group="Other"><span class="penna-which-key-caps"><span class="penna-which-key-cap">t</span></span><span class="penna-which-key-label">Clock</span></div>
+          <div class="penna-which-key-row" data-id="which-key-row-c" data-group="Windows"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>c</span></span><span class="penna-which-key-label">New window</span></div>
+          <div class="penna-which-key-row" data-id="which-key-row-digits" data-group="Windows"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>0–9</span></span><span class="penna-which-key-label">Select window</span></div>
+          <div class="penna-which-key-row" data-id="which-key-row-n" data-group="Windows"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>n</span></span><span class="penna-which-key-label">Next window</span></div>
+          <div class="penna-which-key-row" data-id="which-key-row-p" data-group="Windows"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>p</span></span><span class="penna-which-key-label">Previous window</span></div>
+          <div class="penna-which-key-row" data-id="which-key-row-," data-group="Windows"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>,</span></span><span class="penna-which-key-label">Rename window</span></div>
+          <div class="penna-which-key-row" data-id="which-key-row-&amp;" data-group="Windows"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>&amp;</span></span><span class="penna-which-key-label">Kill window</span></div>
+          <div class="penna-which-key-row" data-id="which-key-row-w" data-group="Windows"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>w</span></span><span class="penna-which-key-label">Choose a window</span></div>
+          <div class="penna-which-key-row" data-id="which-key-row-%" data-group="Panes"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>%</span></span><span class="penna-which-key-label">Split left and right</span></div>
+          <div class="penna-which-key-row" data-id="which-key-row-&quot;" data-group="Panes"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>&quot;</span></span><span class="penna-which-key-label">Split top and bottom</span></div>
+          <div class="penna-which-key-row" data-id="which-key-row-arrows" data-group="Panes"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>left down up right</span></span><span class="penna-which-key-label">Select pane</span><span class="penna-which-key-repeat" data-penna-text>↻</span></div>
+          <div class="penna-which-key-row" data-id="which-key-row-resize" data-group="Panes"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>Alt+left Alt+down Alt+up Alt+right</span></span><span class="penna-which-key-label">Resize pane</span><span class="penna-which-key-repeat" data-penna-text>↻</span></div>
+          <div class="penna-which-key-row" data-id="which-key-row-swap" data-group="Panes"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>{}</span></span><span class="penna-which-key-label">Swap pane</span></div>
+          <div class="penna-which-key-row" data-id="which-key-row-o" data-group="Panes"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>o</span></span><span class="penna-which-key-label">Next pane</span></div>
+          <div class="penna-which-key-row" data-id="which-key-row-z" data-group="Panes"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>z</span></span><span class="penna-which-key-label">Zoom pane</span></div>
+          <div class="penna-which-key-row" data-id="which-key-row-x" data-group="Panes"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>x</span></span><span class="penna-which-key-label">Kill pane</span></div>
+          <div class="penna-which-key-row" data-id="which-key-row-q" data-group="Panes"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>q</span></span><span class="penna-which-key-label">Show pane numbers</span></div>
+          <div class="penna-which-key-row" data-id="which-key-row-d" data-group="Sessions"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>d</span></span><span class="penna-which-key-label">Detach</span></div>
+          <div class="penna-which-key-row" data-id="which-key-row-s" data-group="Sessions"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>s</span></span><span class="penna-which-key-label">Choose a session</span></div>
+          <div class="penna-which-key-row" data-id="which-key-row-$" data-group="Sessions"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>$</span></span><span class="penna-which-key-label">Rename session</span></div>
+          <div class="penna-which-key-row" data-id="which-key-row-switch" data-group="Sessions"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>()</span></span><span class="penna-which-key-label">Previous or next session</span></div>
+          <div class="penna-which-key-row" data-id="which-key-row-[" data-group="Copy"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>[</span></span><span class="penna-which-key-label">Copy mode</span></div>
+          <div class="penna-which-key-row" data-id="which-key-row-]" data-group="Copy"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>]</span></span><span class="penna-which-key-label">Paste buffer</span></div>
+          <div class="penna-which-key-row" data-id="which-key-row-=" data-group="Copy"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>=</span></span><span class="penna-which-key-label">Choose a buffer</span></div>
+          <div class="penna-which-key-row" data-id="which-key-row-g" data-group="Yours"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text data-yours>g</span></span><span class="penna-which-key-label">Open lazygit</span></div>
+          <div class="penna-which-key-row" data-id="which-key-row-shift-p" data-group="Yours"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text data-yours>Shift+p</span></span><span class="penna-which-key-label">Toggle pane logging</span></div>
+          <div class="penna-which-key-row" data-id="which-key-row-ctrl-r" data-group="Yours"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text data-yours>Ctrl+r</span></span><span class="penna-which-key-label">Reload config and say so in the status line</span></div>
+          <div class="penna-which-key-row" data-id="which-key-row-:" data-group="Other"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>:</span></span><span class="penna-which-key-label">Command prompt</span></div>
+          <div class="penna-which-key-row" data-id="which-key-row-?" data-group="Other"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>?</span></span><span class="penna-which-key-label">List keys</span></div>
+          <div class="penna-which-key-row" data-id="which-key-row-t" data-group="Other"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>t</span></span><span class="penna-which-key-label">Clock</span></div>
         </div>
       </div>
     </section>
@@ -57,124 +58,124 @@
       <div class="story-states">
         <div class="story-state">
           <div class="story-label">880 × 300</div>
-          <div class="penna-which-key" data-penna="sheet" data-fit="880 300">
+          <div class="penna-which-key" data-id="which-key" data-penna="sheet" data-fit="880 300">
             <div class="penna-which-key-head">
-              <kbd class="penna-kbd" data-penna="keycap"><i data-icon="key-control-iso"></i><span>b</span></kbd>
-              <span class="penna-which-key-text">prefix</span>
-            <span class="penna-which-key-more"><span class="penna-which-key-cap">?</span><span class="penna-which-key-text">all keys</span></span>
+              <kbd class="penna-kbd" data-id="which-key-prefix" data-penna="keycap"><i data-icon="key-control-iso"></i><span data-penna-text>b</span></kbd>
+              <span class="penna-which-key-text" data-penna-text>prefix</span>
+            <span class="penna-which-key-more"><span class="penna-which-key-cap" data-penna-text>?</span><span class="penna-which-key-text" data-penna-text>all keys</span></span>
             </div>
             <div class="penna-which-key-body">
-              <div class="penna-which-key-row" data-group="Windows"><span class="penna-which-key-caps"><span class="penna-which-key-cap">c</span></span><span class="penna-which-key-label">New window</span></div>
-              <div class="penna-which-key-row" data-group="Windows"><span class="penna-which-key-caps"><span class="penna-which-key-cap">0–9</span></span><span class="penna-which-key-label">Select window</span></div>
-              <div class="penna-which-key-row" data-group="Windows"><span class="penna-which-key-caps"><span class="penna-which-key-cap">n</span></span><span class="penna-which-key-label">Next window</span></div>
-              <div class="penna-which-key-row" data-group="Windows"><span class="penna-which-key-caps"><span class="penna-which-key-cap">p</span></span><span class="penna-which-key-label">Previous window</span></div>
-              <div class="penna-which-key-row" data-group="Windows"><span class="penna-which-key-caps"><span class="penna-which-key-cap">,</span></span><span class="penna-which-key-label">Rename window</span></div>
-              <div class="penna-which-key-row" data-group="Windows"><span class="penna-which-key-caps"><span class="penna-which-key-cap">&amp;</span></span><span class="penna-which-key-label">Kill window</span></div>
-              <div class="penna-which-key-row" data-group="Windows"><span class="penna-which-key-caps"><span class="penna-which-key-cap">w</span></span><span class="penna-which-key-label">Choose a window</span></div>
-              <div class="penna-which-key-row" data-group="Panes"><span class="penna-which-key-caps"><span class="penna-which-key-cap">%</span></span><span class="penna-which-key-label">Split left and right</span></div>
-              <div class="penna-which-key-row" data-group="Panes"><span class="penna-which-key-caps"><span class="penna-which-key-cap">&quot;</span></span><span class="penna-which-key-label">Split top and bottom</span></div>
-              <div class="penna-which-key-row" data-group="Panes"><span class="penna-which-key-caps"><span class="penna-which-key-cap">left down up right</span></span><span class="penna-which-key-label">Select pane</span><span class="penna-which-key-repeat">↻</span></div>
-              <div class="penna-which-key-row" data-group="Panes"><span class="penna-which-key-caps"><span class="penna-which-key-cap">Alt+left Alt+down Alt+up Alt+right</span></span><span class="penna-which-key-label">Resize pane</span><span class="penna-which-key-repeat">↻</span></div>
-              <div class="penna-which-key-row" data-group="Panes"><span class="penna-which-key-caps"><span class="penna-which-key-cap">{}</span></span><span class="penna-which-key-label">Swap pane</span></div>
-              <div class="penna-which-key-row" data-group="Panes"><span class="penna-which-key-caps"><span class="penna-which-key-cap">o</span></span><span class="penna-which-key-label">Next pane</span></div>
-              <div class="penna-which-key-row" data-group="Panes"><span class="penna-which-key-caps"><span class="penna-which-key-cap">z</span></span><span class="penna-which-key-label">Zoom pane</span></div>
-              <div class="penna-which-key-row" data-group="Panes"><span class="penna-which-key-caps"><span class="penna-which-key-cap">x</span></span><span class="penna-which-key-label">Kill pane</span></div>
-              <div class="penna-which-key-row" data-group="Panes"><span class="penna-which-key-caps"><span class="penna-which-key-cap">q</span></span><span class="penna-which-key-label">Show pane numbers</span></div>
-              <div class="penna-which-key-row" data-group="Sessions"><span class="penna-which-key-caps"><span class="penna-which-key-cap">d</span></span><span class="penna-which-key-label">Detach</span></div>
-              <div class="penna-which-key-row" data-group="Sessions"><span class="penna-which-key-caps"><span class="penna-which-key-cap">s</span></span><span class="penna-which-key-label">Choose a session</span></div>
-              <div class="penna-which-key-row" data-group="Sessions"><span class="penna-which-key-caps"><span class="penna-which-key-cap">$</span></span><span class="penna-which-key-label">Rename session</span></div>
-              <div class="penna-which-key-row" data-group="Sessions"><span class="penna-which-key-caps"><span class="penna-which-key-cap">()</span></span><span class="penna-which-key-label">Previous or next session</span></div>
-              <div class="penna-which-key-row" data-group="Copy"><span class="penna-which-key-caps"><span class="penna-which-key-cap">[</span></span><span class="penna-which-key-label">Copy mode</span></div>
-              <div class="penna-which-key-row" data-group="Copy"><span class="penna-which-key-caps"><span class="penna-which-key-cap">]</span></span><span class="penna-which-key-label">Paste buffer</span></div>
-              <div class="penna-which-key-row" data-group="Copy"><span class="penna-which-key-caps"><span class="penna-which-key-cap">=</span></span><span class="penna-which-key-label">Choose a buffer</span></div>
-              <div class="penna-which-key-row" data-group="Yours"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-yours>g</span></span><span class="penna-which-key-label">Open lazygit</span></div>
-              <div class="penna-which-key-row" data-group="Yours"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-yours>Shift+p</span></span><span class="penna-which-key-label">Toggle pane logging</span></div>
-              <div class="penna-which-key-row" data-group="Yours"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-yours>Ctrl+r</span></span><span class="penna-which-key-label">Reload config and say so in the status line</span></div>
-              <div class="penna-which-key-row" data-group="Other"><span class="penna-which-key-caps"><span class="penna-which-key-cap">:</span></span><span class="penna-which-key-label">Command prompt</span></div>
-              <div class="penna-which-key-row" data-group="Other"><span class="penna-which-key-caps"><span class="penna-which-key-cap">?</span></span><span class="penna-which-key-label">List keys</span></div>
-              <div class="penna-which-key-row" data-group="Other"><span class="penna-which-key-caps"><span class="penna-which-key-cap">t</span></span><span class="penna-which-key-label">Clock</span></div>
+              <div class="penna-which-key-row" data-id="which-key-row-c" data-group="Windows"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>c</span></span><span class="penna-which-key-label">New window</span></div>
+              <div class="penna-which-key-row" data-id="which-key-row-digits" data-group="Windows"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>0–9</span></span><span class="penna-which-key-label">Select window</span></div>
+              <div class="penna-which-key-row" data-id="which-key-row-n" data-group="Windows"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>n</span></span><span class="penna-which-key-label">Next window</span></div>
+              <div class="penna-which-key-row" data-id="which-key-row-p" data-group="Windows"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>p</span></span><span class="penna-which-key-label">Previous window</span></div>
+              <div class="penna-which-key-row" data-id="which-key-row-," data-group="Windows"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>,</span></span><span class="penna-which-key-label">Rename window</span></div>
+              <div class="penna-which-key-row" data-id="which-key-row-&amp;" data-group="Windows"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>&amp;</span></span><span class="penna-which-key-label">Kill window</span></div>
+              <div class="penna-which-key-row" data-id="which-key-row-w" data-group="Windows"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>w</span></span><span class="penna-which-key-label">Choose a window</span></div>
+              <div class="penna-which-key-row" data-id="which-key-row-%" data-group="Panes"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>%</span></span><span class="penna-which-key-label">Split left and right</span></div>
+              <div class="penna-which-key-row" data-id="which-key-row-&quot;" data-group="Panes"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>&quot;</span></span><span class="penna-which-key-label">Split top and bottom</span></div>
+              <div class="penna-which-key-row" data-id="which-key-row-arrows" data-group="Panes"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>left down up right</span></span><span class="penna-which-key-label">Select pane</span><span class="penna-which-key-repeat" data-penna-text>↻</span></div>
+              <div class="penna-which-key-row" data-id="which-key-row-resize" data-group="Panes"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>Alt+left Alt+down Alt+up Alt+right</span></span><span class="penna-which-key-label">Resize pane</span><span class="penna-which-key-repeat" data-penna-text>↻</span></div>
+              <div class="penna-which-key-row" data-id="which-key-row-swap" data-group="Panes"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>{}</span></span><span class="penna-which-key-label">Swap pane</span></div>
+              <div class="penna-which-key-row" data-id="which-key-row-o" data-group="Panes"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>o</span></span><span class="penna-which-key-label">Next pane</span></div>
+              <div class="penna-which-key-row" data-id="which-key-row-z" data-group="Panes"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>z</span></span><span class="penna-which-key-label">Zoom pane</span></div>
+              <div class="penna-which-key-row" data-id="which-key-row-x" data-group="Panes"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>x</span></span><span class="penna-which-key-label">Kill pane</span></div>
+              <div class="penna-which-key-row" data-id="which-key-row-q" data-group="Panes"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>q</span></span><span class="penna-which-key-label">Show pane numbers</span></div>
+              <div class="penna-which-key-row" data-id="which-key-row-d" data-group="Sessions"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>d</span></span><span class="penna-which-key-label">Detach</span></div>
+              <div class="penna-which-key-row" data-id="which-key-row-s" data-group="Sessions"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>s</span></span><span class="penna-which-key-label">Choose a session</span></div>
+              <div class="penna-which-key-row" data-id="which-key-row-$" data-group="Sessions"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>$</span></span><span class="penna-which-key-label">Rename session</span></div>
+              <div class="penna-which-key-row" data-id="which-key-row-switch" data-group="Sessions"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>()</span></span><span class="penna-which-key-label">Previous or next session</span></div>
+              <div class="penna-which-key-row" data-id="which-key-row-[" data-group="Copy"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>[</span></span><span class="penna-which-key-label">Copy mode</span></div>
+              <div class="penna-which-key-row" data-id="which-key-row-]" data-group="Copy"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>]</span></span><span class="penna-which-key-label">Paste buffer</span></div>
+              <div class="penna-which-key-row" data-id="which-key-row-=" data-group="Copy"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>=</span></span><span class="penna-which-key-label">Choose a buffer</span></div>
+              <div class="penna-which-key-row" data-id="which-key-row-g" data-group="Yours"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text data-yours>g</span></span><span class="penna-which-key-label">Open lazygit</span></div>
+              <div class="penna-which-key-row" data-id="which-key-row-shift-p" data-group="Yours"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text data-yours>Shift+p</span></span><span class="penna-which-key-label">Toggle pane logging</span></div>
+              <div class="penna-which-key-row" data-id="which-key-row-ctrl-r" data-group="Yours"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text data-yours>Ctrl+r</span></span><span class="penna-which-key-label">Reload config and say so in the status line</span></div>
+              <div class="penna-which-key-row" data-id="which-key-row-:" data-group="Other"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>:</span></span><span class="penna-which-key-label">Command prompt</span></div>
+              <div class="penna-which-key-row" data-id="which-key-row-?" data-group="Other"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>?</span></span><span class="penna-which-key-label">List keys</span></div>
+              <div class="penna-which-key-row" data-id="which-key-row-t" data-group="Other"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>t</span></span><span class="penna-which-key-label">Clock</span></div>
             </div>
           </div>
         </div>
         <div class="story-state">
           <div class="story-label">520 × 420</div>
-          <div class="penna-which-key" data-penna="sheet" data-fit="520 420">
+          <div class="penna-which-key" data-id="which-key" data-penna="sheet" data-fit="520 420">
             <div class="penna-which-key-head">
-              <kbd class="penna-kbd" data-penna="keycap"><i data-icon="key-control-iso"></i><span>b</span></kbd>
-              <span class="penna-which-key-text">prefix</span>
-            <span class="penna-which-key-more"><span class="penna-which-key-cap">?</span><span class="penna-which-key-text">all keys</span></span>
+              <kbd class="penna-kbd" data-id="which-key-prefix" data-penna="keycap"><i data-icon="key-control-iso"></i><span data-penna-text>b</span></kbd>
+              <span class="penna-which-key-text" data-penna-text>prefix</span>
+            <span class="penna-which-key-more"><span class="penna-which-key-cap" data-penna-text>?</span><span class="penna-which-key-text" data-penna-text>all keys</span></span>
             </div>
             <div class="penna-which-key-body">
-              <div class="penna-which-key-row" data-group="Windows"><span class="penna-which-key-caps"><span class="penna-which-key-cap">c</span></span><span class="penna-which-key-label">New window</span></div>
-              <div class="penna-which-key-row" data-group="Windows"><span class="penna-which-key-caps"><span class="penna-which-key-cap">0–9</span></span><span class="penna-which-key-label">Select window</span></div>
-              <div class="penna-which-key-row" data-group="Windows"><span class="penna-which-key-caps"><span class="penna-which-key-cap">n</span></span><span class="penna-which-key-label">Next window</span></div>
-              <div class="penna-which-key-row" data-group="Windows"><span class="penna-which-key-caps"><span class="penna-which-key-cap">p</span></span><span class="penna-which-key-label">Previous window</span></div>
-              <div class="penna-which-key-row" data-group="Windows"><span class="penna-which-key-caps"><span class="penna-which-key-cap">,</span></span><span class="penna-which-key-label">Rename window</span></div>
-              <div class="penna-which-key-row" data-group="Windows"><span class="penna-which-key-caps"><span class="penna-which-key-cap">&amp;</span></span><span class="penna-which-key-label">Kill window</span></div>
-              <div class="penna-which-key-row" data-group="Windows"><span class="penna-which-key-caps"><span class="penna-which-key-cap">w</span></span><span class="penna-which-key-label">Choose a window</span></div>
-              <div class="penna-which-key-row" data-group="Panes"><span class="penna-which-key-caps"><span class="penna-which-key-cap">%</span></span><span class="penna-which-key-label">Split left and right</span></div>
-              <div class="penna-which-key-row" data-group="Panes"><span class="penna-which-key-caps"><span class="penna-which-key-cap">&quot;</span></span><span class="penna-which-key-label">Split top and bottom</span></div>
-              <div class="penna-which-key-row" data-group="Panes"><span class="penna-which-key-caps"><span class="penna-which-key-cap">left down up right</span></span><span class="penna-which-key-label">Select pane</span><span class="penna-which-key-repeat">↻</span></div>
-              <div class="penna-which-key-row" data-group="Panes"><span class="penna-which-key-caps"><span class="penna-which-key-cap">Alt+left Alt+down Alt+up Alt+right</span></span><span class="penna-which-key-label">Resize pane</span><span class="penna-which-key-repeat">↻</span></div>
-              <div class="penna-which-key-row" data-group="Panes"><span class="penna-which-key-caps"><span class="penna-which-key-cap">{}</span></span><span class="penna-which-key-label">Swap pane</span></div>
-              <div class="penna-which-key-row" data-group="Panes"><span class="penna-which-key-caps"><span class="penna-which-key-cap">o</span></span><span class="penna-which-key-label">Next pane</span></div>
-              <div class="penna-which-key-row" data-group="Panes"><span class="penna-which-key-caps"><span class="penna-which-key-cap">z</span></span><span class="penna-which-key-label">Zoom pane</span></div>
-              <div class="penna-which-key-row" data-group="Panes"><span class="penna-which-key-caps"><span class="penna-which-key-cap">x</span></span><span class="penna-which-key-label">Kill pane</span></div>
-              <div class="penna-which-key-row" data-group="Panes"><span class="penna-which-key-caps"><span class="penna-which-key-cap">q</span></span><span class="penna-which-key-label">Show pane numbers</span></div>
-              <div class="penna-which-key-row" data-group="Sessions"><span class="penna-which-key-caps"><span class="penna-which-key-cap">d</span></span><span class="penna-which-key-label">Detach</span></div>
-              <div class="penna-which-key-row" data-group="Sessions"><span class="penna-which-key-caps"><span class="penna-which-key-cap">s</span></span><span class="penna-which-key-label">Choose a session</span></div>
-              <div class="penna-which-key-row" data-group="Sessions"><span class="penna-which-key-caps"><span class="penna-which-key-cap">$</span></span><span class="penna-which-key-label">Rename session</span></div>
-              <div class="penna-which-key-row" data-group="Sessions"><span class="penna-which-key-caps"><span class="penna-which-key-cap">()</span></span><span class="penna-which-key-label">Previous or next session</span></div>
-              <div class="penna-which-key-row" data-group="Copy"><span class="penna-which-key-caps"><span class="penna-which-key-cap">[</span></span><span class="penna-which-key-label">Copy mode</span></div>
-              <div class="penna-which-key-row" data-group="Copy"><span class="penna-which-key-caps"><span class="penna-which-key-cap">]</span></span><span class="penna-which-key-label">Paste buffer</span></div>
-              <div class="penna-which-key-row" data-group="Copy"><span class="penna-which-key-caps"><span class="penna-which-key-cap">=</span></span><span class="penna-which-key-label">Choose a buffer</span></div>
-              <div class="penna-which-key-row" data-group="Yours"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-yours>g</span></span><span class="penna-which-key-label">Open lazygit</span></div>
-              <div class="penna-which-key-row" data-group="Yours"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-yours>Shift+p</span></span><span class="penna-which-key-label">Toggle pane logging</span></div>
-              <div class="penna-which-key-row" data-group="Yours"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-yours>Ctrl+r</span></span><span class="penna-which-key-label">Reload config and say so in the status line</span></div>
-              <div class="penna-which-key-row" data-group="Other"><span class="penna-which-key-caps"><span class="penna-which-key-cap">:</span></span><span class="penna-which-key-label">Command prompt</span></div>
-              <div class="penna-which-key-row" data-group="Other"><span class="penna-which-key-caps"><span class="penna-which-key-cap">?</span></span><span class="penna-which-key-label">List keys</span></div>
-              <div class="penna-which-key-row" data-group="Other"><span class="penna-which-key-caps"><span class="penna-which-key-cap">t</span></span><span class="penna-which-key-label">Clock</span></div>
+              <div class="penna-which-key-row" data-id="which-key-row-c" data-group="Windows"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>c</span></span><span class="penna-which-key-label">New window</span></div>
+              <div class="penna-which-key-row" data-id="which-key-row-digits" data-group="Windows"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>0–9</span></span><span class="penna-which-key-label">Select window</span></div>
+              <div class="penna-which-key-row" data-id="which-key-row-n" data-group="Windows"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>n</span></span><span class="penna-which-key-label">Next window</span></div>
+              <div class="penna-which-key-row" data-id="which-key-row-p" data-group="Windows"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>p</span></span><span class="penna-which-key-label">Previous window</span></div>
+              <div class="penna-which-key-row" data-id="which-key-row-," data-group="Windows"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>,</span></span><span class="penna-which-key-label">Rename window</span></div>
+              <div class="penna-which-key-row" data-id="which-key-row-&amp;" data-group="Windows"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>&amp;</span></span><span class="penna-which-key-label">Kill window</span></div>
+              <div class="penna-which-key-row" data-id="which-key-row-w" data-group="Windows"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>w</span></span><span class="penna-which-key-label">Choose a window</span></div>
+              <div class="penna-which-key-row" data-id="which-key-row-%" data-group="Panes"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>%</span></span><span class="penna-which-key-label">Split left and right</span></div>
+              <div class="penna-which-key-row" data-id="which-key-row-&quot;" data-group="Panes"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>&quot;</span></span><span class="penna-which-key-label">Split top and bottom</span></div>
+              <div class="penna-which-key-row" data-id="which-key-row-arrows" data-group="Panes"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>left down up right</span></span><span class="penna-which-key-label">Select pane</span><span class="penna-which-key-repeat" data-penna-text>↻</span></div>
+              <div class="penna-which-key-row" data-id="which-key-row-resize" data-group="Panes"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>Alt+left Alt+down Alt+up Alt+right</span></span><span class="penna-which-key-label">Resize pane</span><span class="penna-which-key-repeat" data-penna-text>↻</span></div>
+              <div class="penna-which-key-row" data-id="which-key-row-swap" data-group="Panes"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>{}</span></span><span class="penna-which-key-label">Swap pane</span></div>
+              <div class="penna-which-key-row" data-id="which-key-row-o" data-group="Panes"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>o</span></span><span class="penna-which-key-label">Next pane</span></div>
+              <div class="penna-which-key-row" data-id="which-key-row-z" data-group="Panes"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>z</span></span><span class="penna-which-key-label">Zoom pane</span></div>
+              <div class="penna-which-key-row" data-id="which-key-row-x" data-group="Panes"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>x</span></span><span class="penna-which-key-label">Kill pane</span></div>
+              <div class="penna-which-key-row" data-id="which-key-row-q" data-group="Panes"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>q</span></span><span class="penna-which-key-label">Show pane numbers</span></div>
+              <div class="penna-which-key-row" data-id="which-key-row-d" data-group="Sessions"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>d</span></span><span class="penna-which-key-label">Detach</span></div>
+              <div class="penna-which-key-row" data-id="which-key-row-s" data-group="Sessions"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>s</span></span><span class="penna-which-key-label">Choose a session</span></div>
+              <div class="penna-which-key-row" data-id="which-key-row-$" data-group="Sessions"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>$</span></span><span class="penna-which-key-label">Rename session</span></div>
+              <div class="penna-which-key-row" data-id="which-key-row-switch" data-group="Sessions"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>()</span></span><span class="penna-which-key-label">Previous or next session</span></div>
+              <div class="penna-which-key-row" data-id="which-key-row-[" data-group="Copy"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>[</span></span><span class="penna-which-key-label">Copy mode</span></div>
+              <div class="penna-which-key-row" data-id="which-key-row-]" data-group="Copy"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>]</span></span><span class="penna-which-key-label">Paste buffer</span></div>
+              <div class="penna-which-key-row" data-id="which-key-row-=" data-group="Copy"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>=</span></span><span class="penna-which-key-label">Choose a buffer</span></div>
+              <div class="penna-which-key-row" data-id="which-key-row-g" data-group="Yours"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text data-yours>g</span></span><span class="penna-which-key-label">Open lazygit</span></div>
+              <div class="penna-which-key-row" data-id="which-key-row-shift-p" data-group="Yours"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text data-yours>Shift+p</span></span><span class="penna-which-key-label">Toggle pane logging</span></div>
+              <div class="penna-which-key-row" data-id="which-key-row-ctrl-r" data-group="Yours"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text data-yours>Ctrl+r</span></span><span class="penna-which-key-label">Reload config and say so in the status line</span></div>
+              <div class="penna-which-key-row" data-id="which-key-row-:" data-group="Other"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>:</span></span><span class="penna-which-key-label">Command prompt</span></div>
+              <div class="penna-which-key-row" data-id="which-key-row-?" data-group="Other"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>?</span></span><span class="penna-which-key-label">List keys</span></div>
+              <div class="penna-which-key-row" data-id="which-key-row-t" data-group="Other"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>t</span></span><span class="penna-which-key-label">Clock</span></div>
             </div>
           </div>
         </div>
         <div class="story-state">
           <div class="story-label">too small: 520 × 200, the body scrolls</div>
-          <div class="penna-which-key" data-penna="sheet" data-fit="520 200">
+          <div class="penna-which-key" data-id="which-key" data-penna="sheet" data-fit="520 200">
             <div class="penna-which-key-head">
-              <kbd class="penna-kbd" data-penna="keycap"><i data-icon="key-control-iso"></i><span>b</span></kbd>
-              <span class="penna-which-key-text">prefix</span>
-            <span class="penna-which-key-more"><span class="penna-which-key-cap">?</span><span class="penna-which-key-text">all keys</span></span>
+              <kbd class="penna-kbd" data-id="which-key-prefix" data-penna="keycap"><i data-icon="key-control-iso"></i><span data-penna-text>b</span></kbd>
+              <span class="penna-which-key-text" data-penna-text>prefix</span>
+            <span class="penna-which-key-more"><span class="penna-which-key-cap" data-penna-text>?</span><span class="penna-which-key-text" data-penna-text>all keys</span></span>
             </div>
             <div class="penna-which-key-body">
-              <div class="penna-which-key-row" data-group="Windows"><span class="penna-which-key-caps"><span class="penna-which-key-cap">c</span></span><span class="penna-which-key-label">New window</span></div>
-              <div class="penna-which-key-row" data-group="Windows"><span class="penna-which-key-caps"><span class="penna-which-key-cap">0–9</span></span><span class="penna-which-key-label">Select window</span></div>
-              <div class="penna-which-key-row" data-group="Windows"><span class="penna-which-key-caps"><span class="penna-which-key-cap">n</span></span><span class="penna-which-key-label">Next window</span></div>
-              <div class="penna-which-key-row" data-group="Windows"><span class="penna-which-key-caps"><span class="penna-which-key-cap">p</span></span><span class="penna-which-key-label">Previous window</span></div>
-              <div class="penna-which-key-row" data-group="Windows"><span class="penna-which-key-caps"><span class="penna-which-key-cap">,</span></span><span class="penna-which-key-label">Rename window</span></div>
-              <div class="penna-which-key-row" data-group="Windows"><span class="penna-which-key-caps"><span class="penna-which-key-cap">&amp;</span></span><span class="penna-which-key-label">Kill window</span></div>
-              <div class="penna-which-key-row" data-group="Windows"><span class="penna-which-key-caps"><span class="penna-which-key-cap">w</span></span><span class="penna-which-key-label">Choose a window</span></div>
-              <div class="penna-which-key-row" data-group="Panes"><span class="penna-which-key-caps"><span class="penna-which-key-cap">%</span></span><span class="penna-which-key-label">Split left and right</span></div>
-              <div class="penna-which-key-row" data-group="Panes"><span class="penna-which-key-caps"><span class="penna-which-key-cap">&quot;</span></span><span class="penna-which-key-label">Split top and bottom</span></div>
-              <div class="penna-which-key-row" data-group="Panes"><span class="penna-which-key-caps"><span class="penna-which-key-cap">left down up right</span></span><span class="penna-which-key-label">Select pane</span><span class="penna-which-key-repeat">↻</span></div>
-              <div class="penna-which-key-row" data-group="Panes"><span class="penna-which-key-caps"><span class="penna-which-key-cap">Alt+left Alt+down Alt+up Alt+right</span></span><span class="penna-which-key-label">Resize pane</span><span class="penna-which-key-repeat">↻</span></div>
-              <div class="penna-which-key-row" data-group="Panes"><span class="penna-which-key-caps"><span class="penna-which-key-cap">{}</span></span><span class="penna-which-key-label">Swap pane</span></div>
-              <div class="penna-which-key-row" data-group="Panes"><span class="penna-which-key-caps"><span class="penna-which-key-cap">o</span></span><span class="penna-which-key-label">Next pane</span></div>
-              <div class="penna-which-key-row" data-group="Panes"><span class="penna-which-key-caps"><span class="penna-which-key-cap">z</span></span><span class="penna-which-key-label">Zoom pane</span></div>
-              <div class="penna-which-key-row" data-group="Panes"><span class="penna-which-key-caps"><span class="penna-which-key-cap">x</span></span><span class="penna-which-key-label">Kill pane</span></div>
-              <div class="penna-which-key-row" data-group="Panes"><span class="penna-which-key-caps"><span class="penna-which-key-cap">q</span></span><span class="penna-which-key-label">Show pane numbers</span></div>
-              <div class="penna-which-key-row" data-group="Sessions"><span class="penna-which-key-caps"><span class="penna-which-key-cap">d</span></span><span class="penna-which-key-label">Detach</span></div>
-              <div class="penna-which-key-row" data-group="Sessions"><span class="penna-which-key-caps"><span class="penna-which-key-cap">s</span></span><span class="penna-which-key-label">Choose a session</span></div>
-              <div class="penna-which-key-row" data-group="Sessions"><span class="penna-which-key-caps"><span class="penna-which-key-cap">$</span></span><span class="penna-which-key-label">Rename session</span></div>
-              <div class="penna-which-key-row" data-group="Sessions"><span class="penna-which-key-caps"><span class="penna-which-key-cap">()</span></span><span class="penna-which-key-label">Previous or next session</span></div>
-              <div class="penna-which-key-row" data-group="Copy"><span class="penna-which-key-caps"><span class="penna-which-key-cap">[</span></span><span class="penna-which-key-label">Copy mode</span></div>
-              <div class="penna-which-key-row" data-group="Copy"><span class="penna-which-key-caps"><span class="penna-which-key-cap">]</span></span><span class="penna-which-key-label">Paste buffer</span></div>
-              <div class="penna-which-key-row" data-group="Copy"><span class="penna-which-key-caps"><span class="penna-which-key-cap">=</span></span><span class="penna-which-key-label">Choose a buffer</span></div>
-              <div class="penna-which-key-row" data-group="Yours"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-yours>g</span></span><span class="penna-which-key-label">Open lazygit</span></div>
-              <div class="penna-which-key-row" data-group="Yours"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-yours>Shift+p</span></span><span class="penna-which-key-label">Toggle pane logging</span></div>
-              <div class="penna-which-key-row" data-group="Yours"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-yours>Ctrl+r</span></span><span class="penna-which-key-label">Reload config and say so in the status line</span></div>
-              <div class="penna-which-key-row" data-group="Other"><span class="penna-which-key-caps"><span class="penna-which-key-cap">:</span></span><span class="penna-which-key-label">Command prompt</span></div>
-              <div class="penna-which-key-row" data-group="Other"><span class="penna-which-key-caps"><span class="penna-which-key-cap">?</span></span><span class="penna-which-key-label">List keys</span></div>
-              <div class="penna-which-key-row" data-group="Other"><span class="penna-which-key-caps"><span class="penna-which-key-cap">t</span></span><span class="penna-which-key-label">Clock</span></div>
+              <div class="penna-which-key-row" data-id="which-key-row-c" data-group="Windows"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>c</span></span><span class="penna-which-key-label">New window</span></div>
+              <div class="penna-which-key-row" data-id="which-key-row-digits" data-group="Windows"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>0–9</span></span><span class="penna-which-key-label">Select window</span></div>
+              <div class="penna-which-key-row" data-id="which-key-row-n" data-group="Windows"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>n</span></span><span class="penna-which-key-label">Next window</span></div>
+              <div class="penna-which-key-row" data-id="which-key-row-p" data-group="Windows"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>p</span></span><span class="penna-which-key-label">Previous window</span></div>
+              <div class="penna-which-key-row" data-id="which-key-row-," data-group="Windows"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>,</span></span><span class="penna-which-key-label">Rename window</span></div>
+              <div class="penna-which-key-row" data-id="which-key-row-&amp;" data-group="Windows"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>&amp;</span></span><span class="penna-which-key-label">Kill window</span></div>
+              <div class="penna-which-key-row" data-id="which-key-row-w" data-group="Windows"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>w</span></span><span class="penna-which-key-label">Choose a window</span></div>
+              <div class="penna-which-key-row" data-id="which-key-row-%" data-group="Panes"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>%</span></span><span class="penna-which-key-label">Split left and right</span></div>
+              <div class="penna-which-key-row" data-id="which-key-row-&quot;" data-group="Panes"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>&quot;</span></span><span class="penna-which-key-label">Split top and bottom</span></div>
+              <div class="penna-which-key-row" data-id="which-key-row-arrows" data-group="Panes"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>left down up right</span></span><span class="penna-which-key-label">Select pane</span><span class="penna-which-key-repeat" data-penna-text>↻</span></div>
+              <div class="penna-which-key-row" data-id="which-key-row-resize" data-group="Panes"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>Alt+left Alt+down Alt+up Alt+right</span></span><span class="penna-which-key-label">Resize pane</span><span class="penna-which-key-repeat" data-penna-text>↻</span></div>
+              <div class="penna-which-key-row" data-id="which-key-row-swap" data-group="Panes"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>{}</span></span><span class="penna-which-key-label">Swap pane</span></div>
+              <div class="penna-which-key-row" data-id="which-key-row-o" data-group="Panes"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>o</span></span><span class="penna-which-key-label">Next pane</span></div>
+              <div class="penna-which-key-row" data-id="which-key-row-z" data-group="Panes"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>z</span></span><span class="penna-which-key-label">Zoom pane</span></div>
+              <div class="penna-which-key-row" data-id="which-key-row-x" data-group="Panes"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>x</span></span><span class="penna-which-key-label">Kill pane</span></div>
+              <div class="penna-which-key-row" data-id="which-key-row-q" data-group="Panes"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>q</span></span><span class="penna-which-key-label">Show pane numbers</span></div>
+              <div class="penna-which-key-row" data-id="which-key-row-d" data-group="Sessions"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>d</span></span><span class="penna-which-key-label">Detach</span></div>
+              <div class="penna-which-key-row" data-id="which-key-row-s" data-group="Sessions"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>s</span></span><span class="penna-which-key-label">Choose a session</span></div>
+              <div class="penna-which-key-row" data-id="which-key-row-$" data-group="Sessions"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>$</span></span><span class="penna-which-key-label">Rename session</span></div>
+              <div class="penna-which-key-row" data-id="which-key-row-switch" data-group="Sessions"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>()</span></span><span class="penna-which-key-label">Previous or next session</span></div>
+              <div class="penna-which-key-row" data-id="which-key-row-[" data-group="Copy"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>[</span></span><span class="penna-which-key-label">Copy mode</span></div>
+              <div class="penna-which-key-row" data-id="which-key-row-]" data-group="Copy"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>]</span></span><span class="penna-which-key-label">Paste buffer</span></div>
+              <div class="penna-which-key-row" data-id="which-key-row-=" data-group="Copy"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>=</span></span><span class="penna-which-key-label">Choose a buffer</span></div>
+              <div class="penna-which-key-row" data-id="which-key-row-g" data-group="Yours"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text data-yours>g</span></span><span class="penna-which-key-label">Open lazygit</span></div>
+              <div class="penna-which-key-row" data-id="which-key-row-shift-p" data-group="Yours"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text data-yours>Shift+p</span></span><span class="penna-which-key-label">Toggle pane logging</span></div>
+              <div class="penna-which-key-row" data-id="which-key-row-ctrl-r" data-group="Yours"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text data-yours>Ctrl+r</span></span><span class="penna-which-key-label">Reload config and say so in the status line</span></div>
+              <div class="penna-which-key-row" data-id="which-key-row-:" data-group="Other"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>:</span></span><span class="penna-which-key-label">Command prompt</span></div>
+              <div class="penna-which-key-row" data-id="which-key-row-?" data-group="Other"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>?</span></span><span class="penna-which-key-label">List keys</span></div>
+              <div class="penna-which-key-row" data-id="which-key-row-t" data-group="Other"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>t</span></span><span class="penna-which-key-label">Clock</span></div>
             </div>
           </div>
         </div>
@@ -185,40 +186,40 @@
       <div class="story-states">
         <div class="story-state">
           <div class="story-label">copy-mode-vi</div>
-          <div class="penna-which-key" data-penna="sheet">
+          <div class="penna-which-key" data-id="which-key" data-penna="sheet">
             <div class="penna-which-key-head">
-              <span class="penna-which-key-cap">copy</span>
-              <span class="penna-which-key-text">copy-mode-vi</span>
-            <span class="penna-which-key-more"><span class="penna-which-key-cap">?</span><span class="penna-which-key-text">all keys</span></span>
+              <span class="penna-which-key-cap" data-penna-text>copy</span>
+              <span class="penna-which-key-text" data-penna-text>copy-mode-vi</span>
+            <span class="penna-which-key-more"><span class="penna-which-key-cap" data-penna-text>?</span><span class="penna-which-key-text" data-penna-text>all keys</span></span>
             </div>
             <div class="penna-which-key-body">
-              <div class="penna-which-key-row" data-group="Move"><span class="penna-which-key-caps"><span class="penna-which-key-cap">h j k l</span></span><span class="penna-which-key-label">Move the cursor</span><span class="penna-which-key-repeat">↻</span></div>
-              <div class="penna-which-key-row" data-group="Move"><span class="penna-which-key-caps"><span class="penna-which-key-cap">w</span></span><span class="penna-which-key-label">Next word</span></div>
-              <div class="penna-which-key-row" data-group="Move"><span class="penna-which-key-caps"><span class="penna-which-key-cap">b</span></span><span class="penna-which-key-label">Previous word</span></div>
-              <div class="penna-which-key-row" data-group="Move"><span class="penna-which-key-caps"><span class="penna-which-key-cap">Ctrl+u Ctrl+d</span></span><span class="penna-which-key-label">Half page up or down</span><span class="penna-which-key-repeat">↻</span></div>
-              <div class="penna-which-key-row" data-group="Select"><span class="penna-which-key-caps"><span class="penna-which-key-cap">v</span></span><span class="penna-which-key-label">Begin selection</span></div>
-              <div class="penna-which-key-row" data-group="Select"><span class="penna-which-key-caps"><span class="penna-which-key-cap">Shift+v</span></span><span class="penna-which-key-label">Select line</span></div>
-              <div class="penna-which-key-row" data-group="Select"><span class="penna-which-key-caps"><span class="penna-which-key-cap">y</span></span><span class="penna-which-key-label">Copy and exit</span></div>
-              <div class="penna-which-key-row" data-group="Search"><span class="penna-which-key-caps"><span class="penna-which-key-cap">/</span></span><span class="penna-which-key-label">Search down</span></div>
-              <div class="penna-which-key-row" data-group="Search"><span class="penna-which-key-caps"><span class="penna-which-key-cap">?</span></span><span class="penna-which-key-label">Search up</span></div>
-              <div class="penna-which-key-row" data-group="Search"><span class="penna-which-key-caps"><span class="penna-which-key-cap">n</span></span><span class="penna-which-key-label">Next match</span></div>
-              <div class="penna-which-key-row" data-group="Other"><span class="penna-which-key-caps"><span class="penna-which-key-cap">q</span></span><span class="penna-which-key-label">Exit copy mode</span></div>
+              <div class="penna-which-key-row" data-id="which-key-row-hjkl" data-group="Move"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>h j k l</span></span><span class="penna-which-key-label">Move the cursor</span><span class="penna-which-key-repeat" data-penna-text>↻</span></div>
+              <div class="penna-which-key-row" data-id="which-key-row-w" data-group="Move"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>w</span></span><span class="penna-which-key-label">Next word</span></div>
+              <div class="penna-which-key-row" data-id="which-key-row-b" data-group="Move"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>b</span></span><span class="penna-which-key-label">Previous word</span></div>
+              <div class="penna-which-key-row" data-id="which-key-row-ctrl-u" data-group="Move"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>Ctrl+u Ctrl+d</span></span><span class="penna-which-key-label">Half page up or down</span><span class="penna-which-key-repeat" data-penna-text>↻</span></div>
+              <div class="penna-which-key-row" data-id="which-key-row-v" data-group="Select"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>v</span></span><span class="penna-which-key-label">Begin selection</span></div>
+              <div class="penna-which-key-row" data-id="which-key-row-shift-v" data-group="Select"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>Shift+v</span></span><span class="penna-which-key-label">Select line</span></div>
+              <div class="penna-which-key-row" data-id="which-key-row-y" data-group="Select"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>y</span></span><span class="penna-which-key-label">Copy and exit</span></div>
+              <div class="penna-which-key-row" data-id="which-key-row-/" data-group="Search"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>/</span></span><span class="penna-which-key-label">Search down</span></div>
+              <div class="penna-which-key-row" data-id="which-key-row-?" data-group="Search"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>?</span></span><span class="penna-which-key-label">Search up</span></div>
+              <div class="penna-which-key-row" data-id="which-key-row-n" data-group="Search"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>n</span></span><span class="penna-which-key-label">Next match</span></div>
+              <div class="penna-which-key-row" data-id="which-key-row-q" data-group="Other"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>q</span></span><span class="penna-which-key-label">Exit copy mode</span></div>
             </div>
           </div>
         </div>
         <div class="story-state">
           <div class="story-label">root, no more keys</div>
-          <div class="penna-which-key" data-penna="sheet">
+          <div class="penna-which-key" data-id="which-key" data-penna="sheet">
             <div class="penna-which-key-head">
-              <span class="penna-which-key-cap"></span>
-              <span class="penna-which-key-text">root</span>
+              <span class="penna-which-key-cap" data-penna-text></span>
+              <span class="penna-which-key-text" data-penna-text>root</span>
             </div>
             <div class="penna-which-key-body">
-              <div class="penna-which-key-row" data-group="Panes"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-yours>Alt+h Alt+j Alt+k Alt+l</span></span><span class="penna-which-key-label">Select pane</span><span class="penna-which-key-repeat">↻</span></div>
-              <div class="penna-which-key-row" data-group="Windows"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-yours>Alt+1–5</span></span><span class="penna-which-key-label">Select window</span></div>
-              <div class="penna-which-key-row" data-group="Mouse"><span class="penna-which-key-caps"><span class="penna-which-key-cap">MouseDown1Pane</span></span><span class="penna-which-key-label">Select the pane under the pointer</span></div>
-              <div class="penna-which-key-row" data-group="Mouse"><span class="penna-which-key-caps"><span class="penna-which-key-cap">WheelUpPane</span></span><span class="penna-which-key-label">Scroll into copy mode</span></div>
-              <div class="penna-which-key-row" data-group="Other"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-yours>f12</span></span><span class="penna-which-key-label">Toggle the prefix</span></div>
+              <div class="penna-which-key-row" data-id="which-key-row-alt-hjkl" data-group="Panes"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text data-yours>Alt+h Alt+j Alt+k Alt+l</span></span><span class="penna-which-key-label">Select pane</span><span class="penna-which-key-repeat" data-penna-text>↻</span></div>
+              <div class="penna-which-key-row" data-id="which-key-row-alt-digits" data-group="Windows"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text data-yours>Alt+1–5</span></span><span class="penna-which-key-label">Select window</span></div>
+              <div class="penna-which-key-row" data-id="which-key-row-mouse" data-group="Mouse"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>MouseDown1Pane</span></span><span class="penna-which-key-label">Select the pane under the pointer</span></div>
+              <div class="penna-which-key-row" data-id="which-key-row-wheel" data-group="Mouse"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text>WheelUpPane</span></span><span class="penna-which-key-label">Scroll into copy mode</span></div>
+              <div class="penna-which-key-row" data-id="which-key-row-f12" data-group="Other"><span class="penna-which-key-caps"><span class="penna-which-key-cap" data-penna-text data-yours>f12</span></span><span class="penna-which-key-label">Toggle the prefix</span></div>
             </div>
           </div>
         </div>

@@ -589,6 +589,7 @@ struct Fields {
     empty_select: Entity<SelectState<Vec<&'static str>>>,
     in_tile: Entity<InputState>,
     in_selected_tile: Entity<InputState>,
+    slider: usize,
 }
 
 impl Fields {
@@ -640,12 +641,17 @@ impl Fields {
             empty_select,
             in_tile,
             in_selected_tile,
+            slider: 1,
         }
     }
 }
 
 impl Render for Fields {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let pick = cx.listener(|this, index: &usize, _, cx| {
+            this.slider = *index;
+            cx.notify();
+        });
         let columns = ["empty", "filled", "invalid", "disabled"];
         let rows = FIELD_ROWS
             .iter()
@@ -714,8 +720,8 @@ impl Render for Fields {
                             ["1k", "10k", "50k", "100k"]
                                 .map(SharedString::from)
                                 .to_vec(),
-                            1,
-                            |_, _, _| {},
+                            self.slider,
+                            move |index, window, cx| pick(&index, window, cx),
                         )),
                     ),
             )

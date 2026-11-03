@@ -1,6 +1,6 @@
 use ala::{
     AnyView, AppContext as _, Context, InteractiveElement as _, IntoElement, ParentElement as _,
-    Render, Styled as _, Window, div, px,
+    Render, Styled as _, Subscription, Window, div, px,
 };
 use penna::{
     ActiveTheme as _,
@@ -36,39 +36,42 @@ pub const STORY: Story = Story {
 };
 
 struct AppearanceStory {
+    knobs: Appearance,
     appearance: Appearance,
     controls: AppearanceControls,
     advanced: bool,
     stacked: bool,
+    _knobs: Subscription,
 }
 
 fn page(stacked: bool, window: &mut Window, cx: &mut ala::App) -> AnyView {
     cx.new(|cx: &mut Context<AppearanceStory>| {
-        let appearance = crate::knobs().appearance();
-        let story = cx.entity().downgrade();
-        let controls = AppearanceControls::new(
-            &appearance,
-            move |change, _, cx| {
-                let _ = story.update(cx, |story, cx| {
-                    story.appearance.change(change, &[]);
-                    cx.notify();
-                });
-            },
-            window,
-            cx,
-        );
+        let knobs = crate::knobs().appearance();
+        let controls = AppearanceStory::controls(&knobs, window, cx);
         AppearanceStory {
-            appearance,
+            appearance: knobs.clone(),
+            knobs,
             controls,
             advanced: true,
             stacked,
+            _knobs: cx.observe_global::<penna::Theme>(|story, cx| {
+                if crate::knobs().appearance() != story.knobs {
+                    cx.notify();
+                }
+            }),
         }
     })
     .into()
 }
 
 impl Render for AppearanceStory {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let knobs = crate::knobs().appearance();
+        if knobs != self.knobs {
+            self.controls = Self::controls(&knobs, window, cx);
+            self.appearance = knobs.clone();
+            self.knobs = knobs;
+        }
         let view = cx.entity();
         let items = appearance_page_items::<()>(self.advanced);
         let page = appearance_page("Appearance", items, move |item, position, window, cx| {
@@ -91,6 +94,25 @@ impl Render for AppearanceStory {
 }
 
 impl AppearanceStory {
+    fn controls(
+        appearance: &Appearance,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AppearanceControls {
+        let story = cx.entity().downgrade();
+        AppearanceControls::new(
+            appearance,
+            move |change, _, cx| {
+                let _ = story.update(cx, |story, cx| {
+                    story.appearance.change(change, &[]);
+                    cx.notify();
+                });
+            },
+            window,
+            cx,
+        )
+    }
+
     fn row(
         &self,
         item: penna::settings::appearance::AppearancePageItem<()>,

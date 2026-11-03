@@ -1,5 +1,5 @@
 use ala::{
-    AnyElement, App, Div, ElementId, Hsla, IntoElement, ParentElement, Pixels, RenderOnce,
+    AnyElement, App, Div, ElementId, Hsla, IntoElement, ParentElement, Pixels, RenderOnce, Role,
     SharedString, Styled as _, TextRun, Window, div, px,
 };
 
@@ -91,7 +91,7 @@ impl Chip {
 
     #[must_use]
     pub fn state(mut self, state: PaintState) -> Self {
-        self.plate.state = state;
+        self.plate = self.plate.with_state(state);
         self
     }
 
@@ -241,6 +241,11 @@ impl RenderOnce for Chip {
         let accent = theme.accent.opaque();
         let (height, padding, text) = metrics(size);
         plate.surface = surface;
+        plate.role = plate.role.or(Some(if plate.interactive {
+            Role::Button
+        } else {
+            Role::Group
+        }));
         plate.base = plate
             .base
             .h_flex()

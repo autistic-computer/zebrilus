@@ -1,16 +1,4 @@
 (() => {
-  const TEXT = "section[data-section] .penna-text";
-
-  function snapText() {
-    const spans = [...document.querySelectorAll(TEXT)];
-    spans.forEach((span) => span.style.removeProperty("width"));
-    const widths = spans.map((span) => span.getBoundingClientRect().width);
-    spans.forEach((span, index) => {
-      span.style.display = "inline-block";
-      span.style.width = `${Math.ceil(widths[index])}px`;
-    });
-  }
-
   function wireMenus() {
     document.querySelectorAll(".penna-pill-menu-page").forEach((page) => {
       const menu = page.querySelector(".penna-pill-menu");
@@ -24,33 +12,6 @@
     });
   }
 
-  function tone(backdrop) {
-    const value = (name, fallback) => {
-      const match = backdrop.match(new RegExp(`${name}\\(([-\\d.]+)\\)`));
-      return match ? parseFloat(match[1]) : fallback;
-    };
-    const lift = value("brightness", 1) - 1;
-    const contrast = value("contrast", 1);
-    if (!lift && contrast === 1) return backdrop;
-    const offset = 0.5 * (1 - contrast) + lift;
-    const after = 1 - 2 * offset;
-    const scale = contrast / after;
-    return backdrop
-      .replace(/\s*brightness\([^)]*\)/, "")
-      .replace(/\s*contrast\([^)]*\)/, "")
-      .concat(` brightness(${scale.toFixed(4)}) contrast(${after.toFixed(4)})`);
-  }
-
-  function glass() {
-    document.querySelectorAll("section[data-section] [data-penna]").forEach((element) => {
-      element.style.removeProperty("backdrop-filter");
-      if (getComputedStyle(element).backdropFilter === "none") return;
-      const backdrop = getComputedStyle(element).getPropertyValue("--penna-backdrop").trim();
-      if (!backdrop || backdrop === "none") return;
-      element.style.backdropFilter = tone(backdrop);
-    });
-  }
-
   function groups() {
     document.querySelectorAll(".penna-compact-group").forEach((group) => {
       const face = group.querySelector(".penna-compact-group-face");
@@ -59,20 +20,8 @@
     });
   }
 
-  function smoothing() {
-    const probe = document.createElement("div");
-    probe.dataset.penna = "panel";
-    probe.hidden = true;
-    document.body.append(probe);
-    const k = getComputedStyle(probe).getPropertyValue("--penna-style-k").trim() || "1";
-    probe.remove();
-    return k;
-  }
-
   function frames() {
-    const k = smoothing();
     document.querySelectorAll(".penna-phone, .penna-key-slot").forEach((frame) => {
-      frame.style.cornerShape = `superellipse(${k})`;
       const radius = parseFloat(getComputedStyle(frame).getPropertyValue("--penna-radius")) || 0;
       const cap = Math.min(frame.offsetWidth, frame.offsetHeight) * 0.45;
       frame.style.borderRadius = cap > 0 ? `${(cap * Math.tanh(radius / cap)).toFixed(2)}px` : "0px";
@@ -99,7 +48,7 @@
 
   function glassOver() {
     document.querySelectorAll('.penna-phone[data-page] .penna-compact-pill').forEach((pill) => {
-      pill.style.removeProperty("background");
+      pill.style.removeProperty("--penna-fill");
       const style = getComputedStyle(pill);
       const backdrop = style.getPropertyValue("--penna-backdrop").trim();
       if (!backdrop || backdrop === "none") return;
@@ -113,17 +62,15 @@
       });
       const reads = (alpha) => contrast(ink, shows(alpha)) >= 4.5;
       let alpha = tint.a;
-      if (!reads(alpha)) {
-        let [low, high] = [alpha, Math.max(0.95, alpha)];
-        for (let i = 0; i < 12; i++) {
-          const middle = (low + high) / 2;
-          if (reads(middle)) high = middle;
-          else low = middle;
-        }
-        alpha = high;
+      if (reads(alpha)) return;
+      let [low, high] = [alpha, Math.max(0.95, alpha)];
+      for (let i = 0; i < 12; i++) {
+        const middle = (low + high) / 2;
+        if (reads(middle)) high = middle;
+        else low = middle;
       }
-      const color = shows(alpha);
-      pill.style.background = `rgb(${color.r * 255} ${color.g * 255} ${color.b * 255})`;
+      alpha = high;
+      pill.style.setProperty("--penna-fill", `rgb(${tint.r * 255} ${tint.g * 255} ${tint.b * 255} / ${alpha.toFixed(4)})`);
     });
   }
 
@@ -155,21 +102,16 @@
       if (tile.querySelector(":scope > .penna-press")) return;
       const press = document.createElement("span");
       press.className = "penna-press";
-      press.dataset.penna = "button.quiet";
-      press.dataset.state = "active";
       tile.append(press);
     });
   }
 
-  snapText();
   presses();
   prominent();
   groups();
   tones();
   glassOver();
   frames();
-  glass();
   wireMenus();
-  document.addEventListener("load", (event) => event.target.id === "penna-tokens" && (prominent(), groups(), frames(), glass(), tones(), glassOver()), true);
-  document.fonts.ready.then(snapText);
+  document.addEventListener("load", (event) => event.target.id === "penna-tokens" && (prominent(), groups(), frames(), tones(), glassOver()), true);
 })();

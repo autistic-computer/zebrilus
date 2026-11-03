@@ -1,9 +1,9 @@
 use ala::{
-    Anchor, AnyElement, App, AppContext as _, Bounds, Context, Entity, EventEmitter, FocusHandle,
-    Focusable, HitboxBehavior, Hsla, InteractiveElement as _, IntoElement, MouseButton,
-    MouseMoveEvent, MouseUpEvent, ParentElement as _, Pixels, Point, RenderOnce, SharedString,
-    StatefulInteractiveElement as _, StyleRefinement, Styled as _, Subscription, TouchDragEvent,
-    TouchPhase, Window, canvas, div, linear_color_stop, linear_gradient,
+    Anchor, AnyElement, App, AppContext as _, Bounds, Context, ElementId, Entity, EventEmitter,
+    FocusHandle, Focusable, HitboxBehavior, Hsla, InteractiveElement as _, IntoElement,
+    MouseButton, MouseMoveEvent, MouseUpEvent, ParentElement as _, Pixels, Point, RenderOnce,
+    SharedString, StatefulInteractiveElement as _, StyleRefinement, Styled as _, Subscription,
+    TouchDragEvent, TouchPhase, Window, canvas, div, linear_color_stop, linear_gradient,
     prelude::FluentBuilder as _, px, relative,
 };
 
@@ -11,6 +11,7 @@ use crate::{
     ActiveTheme as _, Colorize as _, Disableable, Kind, PaintState, Sizable, Size, StyledExt as _,
     Surface,
     button::{Button, ButtonVariants as _},
+    foundation::{author_name, author_part},
     h_flex,
     input::{Input, InputEvent, InputState, field_chrome_on, field_text},
     popover::Popover,
@@ -213,6 +214,7 @@ pub struct ColorPicker {
     swatch: Option<Pixels>,
     presets: Option<(SharedString, AnyElement)>,
     disabled: bool,
+    author: Option<SharedString>,
 }
 
 impl ColorPicker {
@@ -227,7 +229,14 @@ impl ColorPicker {
             swatch: None,
             presets: None,
             disabled: false,
+            author: None,
         }
+    }
+
+    #[must_use]
+    pub fn id(mut self, id: impl Into<ElementId>) -> Self {
+        self.author = Some(author_name(&id.into()));
+        self
     }
 
     #[must_use]
@@ -268,6 +277,7 @@ impl ColorPicker {
     )]
     fn field(
         state: &Entity<ColorPickerState>,
+        author: Option<&SharedString>,
         hsv: Hsv,
         height: Pixels,
         cx: &App,
@@ -351,7 +361,16 @@ impl ColorPicker {
             .shadow(crate::lifted_shadow(cx));
         let state = state.clone();
         div()
-            .id(("penna-color-picker-field", state.entity_id()))
+            .id(author_part(
+                author,
+                "field",
+                ("penna-color-picker-field", state.entity_id()),
+            ))
+            .when_some(author, |field, author| {
+                field.accessibility_id(SharedString::from(format!("{author}-field")))
+            })
+            .role(ala::Role::Group)
+            .aria_label("Saturation and brightness")
             .debug_selector(|| "penna-color-picker-field".to_owned())
             .relative()
             .w_full()
@@ -387,7 +406,12 @@ impl ColorPicker {
             })
     }
 
-    fn hue(state: &Entity<ColorPickerState>, hsv: Hsv, cx: &App) -> impl IntoElement {
+    fn hue(
+        state: &Entity<ColorPickerState>,
+        author: Option<&SharedString>,
+        hsv: Hsv,
+        cx: &App,
+    ) -> impl IntoElement {
         let stops = (0..=HUE_STOPS).map(|stop| {
             Hsv {
                 hue: f32::from(stop) / f32::from(HUE_STOPS),
@@ -398,7 +422,7 @@ impl ColorPicker {
         let state = state.clone();
         div().mx(px(-thumb(cx) / 2.0)).child(
             Slider::new(
-                ("penna-color-picker-hue", state.entity_id()),
+                author_part(author, "hue", ("penna-color-picker-hue", state.entity_id())),
                 "Hue",
                 hsv.hue * 360.0,
                 0.0..=360.0,
@@ -421,25 +445,41 @@ impl ColorPicker {
         )
     }
 
-    fn hex_row(state: &Entity<ColorPickerState>, cx: &App) -> impl IntoElement {
+    fn hex_row(
+        state: &Entity<ColorPickerState>,
+        author: Option<&SharedString>,
+        cx: &App,
+    ) -> impl IntoElement {
         let hex = state.read(cx).hex.clone();
         let state = state.clone();
         h_flex()
             .gap(px(6.0))
-            .child(Input::new(&hex).flex_1().min_w_0())
             .child(
-                Button::new(("penna-color-picker-clear", state.entity_id()))
-                    .ghost()
-                    .flat()
-                    .compact()
-                    .icon(crate::IconName::Undo2)
-                    .tooltip("Clear the override")
-                    .on_click(move |_, window, cx| Self::clear(&state, window, cx)),
+                Input::new(&hex)
+                    .when_some(author, |input, author| {
+                        input.id(SharedString::from(format!("{author}-hex")))
+                    })
+                    .flex_1()
+                    .min_w_0(),
+            )
+            .child(
+                Button::new(author_part(
+                    author,
+                    "clear",
+                    ("penna-color-picker-clear", state.entity_id()),
+                ))
+                .ghost()
+                .flat()
+                .compact()
+                .icon(crate::IconName::Undo2)
+                .tooltip("Clear the override")
+                .on_click(move |_, window, cx| Self::clear(&state, window, cx)),
             )
     }
 
     fn controls(
         state: &Entity<ColorPickerState>,
+        author: Option<&SharedString>,
         inherited: Hsla,
         field_height: f32,
         cx: &App,
@@ -447,13 +487,16 @@ impl ColorPicker {
         let hsv = state.read(cx).shown(inherited);
         v_flex()
             .gap(px(8.0))
-            .child(Self::field(state, hsv, px(field_height), cx))
-            .child(Self::hue(state, hsv, cx))
-            .child(Self::hex_row(state, cx))
+            .child(Self::field(state, author, hsv, px(field_height), cx))
+            .child(Self::hue(state, author, hsv, cx))
+            .child(Self::hex_row(state, author, cx))
     }
 
     fn trigger(&self, shown: Hsla, coarse: bool, cx: &App) -> Button {
-        let id = ("penna-color-picker", self.state.entity_id());
+        let id = match &self.author {
+            Some(author) => ElementId::Name(author.clone()),
+            None => ("penna-color-picker", self.state.entity_id()).into(),
+        };
         let swatch = |size: Pixels| {
             div()
                 .size(size)
@@ -463,25 +506,29 @@ impl ColorPicker {
                 .surface_edge(cx)
         };
         let button = match self.swatch {
-            Some(size) => Button::new(id)
+            Some(size) => Button::new(id.clone())
                 .ghost()
                 .flat()
                 .size(size)
                 .p_0()
                 .rounded(cx.theme().swatch_radius())
                 .child(swatch(size)),
-            None if coarse => Button::new(id).ghost().flat().with_size(self.size).child(
-                h_flex()
-                    .gap(px(10.0))
-                    .child(
-                        div()
-                            .font_family(cx.theme().mono_font_family.clone())
-                            .text_size(px(13.0))
-                            .text_color(cx.theme().foreground.muted())
-                            .child(crate::to_hex(shown).to_uppercase()),
-                    )
-                    .child(swatch(TOUCH_TRIGGER_SWATCH)),
-            ),
+            None if coarse => Button::new(id.clone())
+                .ghost()
+                .flat()
+                .with_size(self.size)
+                .child(
+                    h_flex()
+                        .gap(px(10.0))
+                        .child(
+                            div()
+                                .font_family(cx.theme().mono_font_family.clone())
+                                .text_size(px(13.0))
+                                .text_color(cx.theme().foreground.muted())
+                                .child(crate::to_hex(shown).to_uppercase()),
+                        )
+                        .child(swatch(TOUCH_TRIGGER_SWATCH)),
+                ),
             None => Button::new(id)
                 .ghost()
                 .flat()
@@ -508,7 +555,16 @@ impl ColorPicker {
         field_chrome_on(
             field_text(
                 h_flex()
-                    .id(("penna-color-picker-field-trigger", self.state.entity_id()))
+                    .id(author_part(
+                        self.author.as_ref(),
+                        "trigger",
+                        ("penna-color-picker-field-trigger", self.state.entity_id()),
+                    ))
+                    .when_some(self.author.clone(), |trigger, author| {
+                        trigger.accessibility_id(author)
+                    })
+                    .role(ala::Role::Button)
+                    .aria_label(self.label.clone().unwrap_or_else(|| "Color".into()))
                     .w_full()
                     .h(size.control_h())
                     .px(size.input_px())
@@ -560,6 +616,7 @@ impl ColorPicker {
                     .children(presets.map(|presets| div().pb(px(12.0)).child(presets)))
                     .child(Self::controls(
                         &self.state,
+                        self.author.as_ref(),
                         self.inherited,
                         SHEET_FIELD_HEIGHT,
                         cx,
@@ -617,6 +674,7 @@ impl RenderOnce for ColorPicker {
         let state = self.state.clone();
         let inherited = self.inherited;
         let label = self.label.clone();
+        let author = self.author.clone();
         Popover::new(("penna-color-picker-popover", self.state.entity_id()))
             .anchor(Anchor::TopRight)
             .trigger(self.trigger(shown, false, cx))
@@ -632,7 +690,13 @@ impl RenderOnce for ColorPicker {
                                 .child(label),
                         )
                     })
-                    .child(Self::controls(&state, inherited, FIELD_HEIGHT, cx))
+                    .child(Self::controls(
+                        &state,
+                        author.as_ref(),
+                        inherited,
+                        FIELD_HEIGHT,
+                        cx,
+                    ))
             })
             .into_any_element()
     }

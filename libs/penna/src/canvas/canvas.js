@@ -1,16 +1,5 @@
 (() => {
-  const TEXT = ".penna-type";
   const SLOP = 3;
-
-  function snapText(root = document) {
-    const runs = [...root.querySelectorAll(TEXT)];
-    runs.forEach((run) => run.style.removeProperty("width"));
-    const widths = runs.map((run) => run.getBoundingClientRect().width);
-    runs.forEach((run, index) => {
-      if (run.scrollWidth > run.clientWidth + 0.5) return;
-      run.style.width = `${Math.ceil(widths[index])}px`;
-    });
-  }
 
   function states(tile) {
     return new Set((tile.dataset.state || "").split(/\s+/).filter(Boolean));
@@ -89,14 +78,7 @@
 
   function glass() {
     document.querySelectorAll(".penna-tile").forEach((tile) => {
-      tile.style.removeProperty("backdrop-filter");
-      tile.removeAttribute("data-glass");
-      const backdrop = getComputedStyle(tile).getPropertyValue("--penna-backdrop").trim();
-      const glassy = backdrop !== "" && backdrop !== "none";
-      tile.toggleAttribute("data-glass", glassy);
-      if (glassy && tile.dataset.variant !== "veil") {
-        tile.style.backdropFilter = backdrop.replace(/contrast\([^)]*\)/, "").trim();
-      }
+      tile.toggleAttribute("data-glass", getComputedStyle(tile).getPropertyValue("--penna-glass").trim() === "1");
     });
   }
 
@@ -127,6 +109,4 @@
 
   themed();
   document.addEventListener("load", (event) => event.target.id === "penna-tokens" && themed(), true);
-  snapText();
-  document.fonts.ready.then(() => snapText());
 })();

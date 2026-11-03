@@ -47,7 +47,7 @@ pub const STORY: Story = Story {
             id: "slider",
             name: "Discrete slider",
             summary: "A row of pills up to the picked step, with the label on the left and the value on the right.",
-            build: |_, cx| stateless(sliders, cx),
+            build: |window, cx| Sliders::view(window, cx),
         },
         Section {
             id: "slider-focused",
@@ -101,7 +101,7 @@ impl Render for Selects {
             )
             .state("picked", Select::new(&self.picked))
             .state("disabled", Select::new(&self.disabled).disabled(true))
-            .state("small", Select::new(&self.small))
+            .state("small", Select::new(&self.small).small())
             .state("fixed width", Select::new(&self.wide).w(px(200.0)))
             .state(
                 "empty delegate",
@@ -205,47 +205,59 @@ const OPACITY: [&str; 11] = [
     "0%", "10%", "20%", "30%", "40%", "50%", "60%", "70%", "80%", "90%", "100%",
 ];
 
-fn sliders(_: &mut Window, _: &mut App) -> AnyElement {
-    states()
-        .columns(2)
-        .state(
-            "first step",
+struct Sliders {
+    picked: [usize; 4],
+}
+
+impl Sliders {
+    fn view(_: &mut Window, cx: &mut App) -> AnyView {
+        cx.new(|_| Self {
+            picked: [0, 2, 4, 7],
+        })
+        .into()
+    }
+}
+
+impl Render for Sliders {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let slider = |id: &'static str, label: &'static str, steps: &[&'static str], at: usize| {
+            let pick = cx.listener(move |this, index: &usize, _, cx| {
+                this.picked[at] = *index;
+                cx.notify();
+            });
             DiscreteSlider::new(
-                "slider-first",
-                "Scrollback",
-                labels(&SCROLLBACK),
-                0,
-                |_, _, _| {},
-            ),
-        )
-        .state(
-            "middle step",
-            DiscreteSlider::new(
-                "slider-middle",
-                "Scrollback",
-                labels(&SCROLLBACK),
-                2,
-                |_, _, _| {},
-            ),
-        )
-        .state(
-            "last step",
-            DiscreteSlider::new(
-                "slider-last",
-                "Scrollback",
-                labels(&SCROLLBACK),
-                4,
-                |_, _, _| {},
-            ),
-        )
-        .state(
-            "eleven steps",
-            DiscreteSlider::new("slider-many", "Opacity", labels(&OPACITY), 7, |_, _, _| {}),
-        )
-        .into_any_element()
+                id,
+                label,
+                labels(steps),
+                self.picked[at],
+                move |index, window, cx| {
+                    pick(&index, window, cx);
+                },
+            )
+        };
+        states()
+            .columns(2)
+            .state(
+                "first step",
+                slider("slider-first", "Scrollback", &SCROLLBACK, 0),
+            )
+            .state(
+                "middle step",
+                slider("slider-middle", "Scrollback", &SCROLLBACK, 1),
+            )
+            .state(
+                "last step",
+                slider("slider-last", "Scrollback", &SCROLLBACK, 2),
+            )
+            .state(
+                "eleven steps",
+                slider("slider-many", "Opacity", &OPACITY, 3),
+            )
+    }
 }
 
 struct FocusedSlider {
+    picked: usize,
     label: Probe,
     _bounds: Subscription,
 }
@@ -256,6 +268,7 @@ impl FocusedSlider {
         let probe = label.clone();
         when_visible(&label, window, move |window, cx| click(&probe, window, cx));
         cx.new(|cx| Self {
+            picked: 1,
             label,
             _bounds: cx.observe_window_bounds(window, |this: &mut Self, window, cx| {
                 click(&this.label, window, cx);
@@ -266,7 +279,11 @@ impl FocusedSlider {
 }
 
 impl Render for FocusedSlider {
-    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let pick = cx.listener(|this, index: &usize, _, cx| {
+            this.picked = *index;
+            cx.notify();
+        });
         states().state(
             "focused",
             div()
@@ -276,8 +293,8 @@ impl Render for FocusedSlider {
                     "slider-focused",
                     "Scrollback",
                     labels(&SCROLLBACK),
-                    1,
-                    |_, _, _| {},
+                    self.picked,
+                    move |index, window, cx| pick(&index, window, cx),
                 ))
                 .child(
                     div()

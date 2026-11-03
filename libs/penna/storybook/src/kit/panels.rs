@@ -1,4 +1,6 @@
-use ala::{AnyElement, App, IntoElement, ParentElement as _, Styled as _, Window, div, px};
+use ala::{
+    AnyElement, App, IntoElement, ParentElement as _, SharedString, Styled as _, Window, div, px,
+};
 use penna::{
     ActiveTheme as _, Bar, BarLook, Card, CardLook, Edge, IconName, Label, Panel, PanelLook,
     RuleLook, Space, StyledExt as _, TextStyle, Tone,
@@ -207,7 +209,11 @@ fn rules(_: &mut Window, cx: &mut App) -> AnyElement {
                     v_flex()
                         .gap(Space::S2)
                         .child(Label::new(TextStyle::Caption, name).muted())
-                        .child(Separator::horizontal().look(look))
+                        .child(
+                            Separator::horizontal()
+                                .id(SharedString::from(format!("rule-{}", name.to_lowercase())))
+                                .look(look),
+                        )
                 })),
         )
         .state(

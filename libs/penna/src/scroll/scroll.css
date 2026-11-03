@@ -58,39 +58,37 @@
 }
 
 .penna-scrollbar[data-axis="vertical"] > .penna-scroll-thumb {
-  right: 0;
+  right: var(--penna-thumb-inset);
   width: 16px;
   top: calc(var(--penna-thumb-inset) + var(--penna-thumb-start, 0px));
   height: var(--penna-thumb-length, 0px);
 }
 
 .penna-scrollbar[data-axis="horizontal"] > .penna-scroll-thumb {
-  bottom: 0;
+  bottom: var(--penna-thumb-inset);
   height: 16px;
   left: calc(var(--penna-thumb-inset) + var(--penna-thumb-start, 0px));
   width: var(--penna-thumb-length, 0px);
 }
 
-.penna-scroll-thumb::before {
-  content: "";
+.penna-scroll-fill {
   position: absolute;
   background: var(--penna-thumb-fill);
   border-radius: min(var(--penna-radius), var(--penna-thumb-width) / 2);
-  corner-shape: superellipse(2);
   opacity: var(--penna-thumb-opacity, 1);
 }
 
-.penna-scrollbar[data-axis="vertical"] > .penna-scroll-thumb::before {
+.penna-scrollbar[data-axis="vertical"] > .penna-scroll-thumb > .penna-scroll-fill {
   top: 0;
   bottom: 0;
-  right: var(--penna-thumb-inset);
+  right: 0;
   width: var(--penna-thumb-width);
 }
 
-.penna-scrollbar[data-axis="horizontal"] > .penna-scroll-thumb::before {
+.penna-scrollbar[data-axis="horizontal"] > .penna-scroll-thumb > .penna-scroll-fill {
   left: 0;
   right: 0;
-  bottom: var(--penna-thumb-inset);
+  bottom: 0;
   height: var(--penna-thumb-width);
 }
 
@@ -111,7 +109,7 @@
   --penna-thumb-opacity: 1;
 }
 
-.penna-scrollbar > .penna-scroll-thumb:is(:hover, [data-state~="hover"]),
+.penna-scrollbar > .penna-scroll-thumb[data-state~="hover"],
 .penna-scrollbar[data-state~="active"] > .penna-scroll-thumb {
   --penna-thumb-width: 8px;
   --penna-thumb-fill: var(--penna-scroll-glow);

@@ -1,4 +1,4 @@
-use ala::{App, ElementId, IntoElement, RenderOnce, Window};
+use ala::{App, ElementId, IntoElement, RenderOnce, Role, Window};
 
 use crate::{
     Ground, PaintState, Surface, SurfaceRole,
@@ -39,14 +39,14 @@ pub struct Tab {
 impl Tab {
     #[must_use]
     pub fn new(id: impl Into<ElementId>, look: TabLook) -> Self {
-        let mut plate = Plate::new(id, look.role());
+        let mut plate = Plate::new(id, look.role()).announce(Role::Tab);
         plate.interactive = true;
         Self { plate }
     }
 
     #[must_use]
     pub fn state(mut self, state: PaintState) -> Self {
-        self.plate.state = state;
+        self.plate = self.plate.with_choice(state);
         self
     }
 

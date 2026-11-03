@@ -24,6 +24,19 @@ node so one wrong width counts once. Pixels is 1 - mismatched / canvas ink,
 compared after a 0.5px blur at 3 levels per channel. Steps (hover, press, key)
 score only the target's box and also need the DOM to change where the canvas did.
 
+A step targets a node by id ("hover": "ok"), the nth node sharing an id
+({"id": "ok", "nth": 2}, counted from 1 in tree order), a point in the section
+({"at": [x, y]} in CSS px from its top-left corner) or the centre of a DOM
+element ({"selector": ".thumb"}), whose section-relative point the canvas gets
+too. Point and selector steps score the whole section.
+
+Each component loads the story fresh. A step that leaves its canvas section
+changed reloads both pages before the next step and the next theme and mode;
+"keep": true runs a step on that state instead (key steps keep by default,
+"keep": false starts one fresh).
+
+The DOM page loads with ?bare&flat&motion=0 and prefers-reduced-motion: reduce.
+
 options:
   --all              every src/<component>/parity.json
   --theme <t>        default, macos or yaru (default all three)
@@ -33,12 +46,12 @@ options:
   --update           write src/<component>/parity.baseline.json (not when --check fails)
   --check            exit 1 when a score drops more than 0.5 below the baseline or has none
   --out <dir>        output folder (default target/parity)
-  --timeout <ms>     give up after this long (default 600000)
+  --timeout <ms>     give up on a component after this long (default 300000)
 
 environment: CHROME overrides the browser binary.`;
 
 function parseArgs(argv) {
-    const options = { components: [], all: false, theme: "", mode: "", section: "", threshold: 2, update: false, check: false, out: join(ROOT, "target/parity"), timeout: 600000 };
+    const options = { components: [], all: false, theme: "", mode: "", section: "", threshold: 2, update: false, check: false, out: join(ROOT, "target/parity"), timeout: 300000 };
     for (let i = 0; i < argv.length; i++) {
         const arg = argv[i];
         if (arg === "-h" || arg === "--help") {
@@ -132,7 +145,7 @@ const MIME = {
     ".png": "image/png",
 };
 
-function serve(root, allowed) {
+function serve(root, allowed, cache = "no-store") {
     const server = createServer((request, response) => {
         const path = normalize(decodeURIComponent(new URL(request.url, "http://x").pathname));
         let file = join(root, path);
@@ -146,7 +159,7 @@ function serve(root, allowed) {
             response.writeHead(404).end();
             return;
         }
-        response.writeHead(200, { "content-type": MIME[extname(file)] ?? "application/octet-stream", "cache-control": "no-store" });
+        response.writeHead(200, { "content-type": MIME[extname(file)] ?? "application/octet-stream", "cache-control": cache });
         createReadStream(file).pipe(response);
     });
     return new Promise((done) => server.listen(0, "127.0.0.1", () => {
@@ -282,8 +295,15 @@ async function tab(cdp) {
         return result.result.value;
     };
     const call = (fn, ...args) => evaluate(`(${fn})(...${JSON.stringify(args)})`);
+    const media = (mode) =>
+        send("Emulation.setEmulatedMedia", {
+            features: [
+                { name: "prefers-color-scheme", value: mode },
+                { name: "prefers-reduced-motion", value: "reduce" },
+            ],
+        });
     const navigate = async (url, mode) => {
-        await send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-color-scheme", value: mode }] });
+        await media(mode);
         const loaded = new Promise((done) => {
             const listener = (message) => {
                 if (message.sessionId === sessionId && message.method === "Page.loadEventFired") {
@@ -311,7 +331,7 @@ async function tab(cdp) {
         const result = await send("Page.captureScreenshot", { format: "png", clip: { ...clip, scale: 1 }, captureBeyondViewport: true });
         return `data:image/png;base64,${result.data}`;
     };
-    return { send, evaluate, call, navigate, mouse, key, shot };
+    return { send, evaluate, call, media, navigate, mouse, key, shot };
 }
 
 const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
@@ -369,17 +389,32 @@ async function canvasSections(page, only) {
     }, only);
 }
 
-async function canvasPoint(page, window, id) {
-    return page.call(async (window, id) => {
-        const [role, name] = id.split(/:(.*)/s);
-        const find = () => ala.find({ id }, window)[0] ?? (name === undefined ? undefined : ala.find({ role, name }, window)[0]);
-        let node = find();
-        if (!node?.bounds) return null;
-        scrollBy(0, node.bounds.y + node.bounds.height / 2 - innerHeight / 2);
+async function canvasPoint(page, section, target) {
+    return page.call(async (section, target) => {
+        const info = ala.windows().find((each) => each.mount && document.querySelector(each.mount)?.dataset.section === section);
+        if (!info) return null;
+        const locate = () => {
+            if (target.at) {
+                const origin = document.querySelector(info.mount).querySelector("canvas").getBoundingClientRect();
+                return { x: origin.x + target.at[0], y: origin.y + target.at[1] };
+            }
+            let seen = 0;
+            let found = null;
+            const walk = (node) => {
+                if (!node || found) return;
+                const id = node.id ?? (node.name && node.role !== "text" ? `${node.role}:${node.name}` : null);
+                if (id === target.id && node.bounds && ++seen === target.nth) found = node.bounds;
+                for (const child of node.children ?? []) walk(child);
+            };
+            walk(ala.tree(info.id));
+            return found && { x: found.x + found.width / 2, y: found.y + found.height / 2 };
+        };
+        const point = locate();
+        if (!point) return null;
+        scrollBy(0, point.y - innerHeight / 2);
         await parityIdle();
-        node = find();
-        return { x: node.bounds.x + node.bounds.width / 2, y: node.bounds.y + node.bounds.height / 2 };
-    }, window, id);
+        return locate();
+    }, section, target);
 }
 
 async function domReady(page) {
@@ -446,7 +481,7 @@ const FORBIDDEN = async (sections) => {
 };
 
 async function domSections(page, widths, only) {
-    const sections = await page.call(async (widths, only) => {
+    const sections = await page.call(async (widths, only, scale) => {
         const all = [...document.querySelectorAll("section[data-section]")].filter((element) => !only || element.dataset.section === only);
         for (const element of all) {
             const width = widths[element.dataset.section];
@@ -461,27 +496,55 @@ async function domSections(page, widths, only) {
                 const rect = node.getBoundingClientRect();
                 return { id: node.dataset.id, x: rect.x - box.x, y: rect.y - box.y, width: rect.width, height: rect.height };
             });
-            return { section: element.dataset.section, clip: { x: box.x + scrollX, y: box.y + scrollY, width: box.width, height: box.height }, nodes };
+            const snap = (value) => Math.round(value * scale) / scale;
+            const [x0, y0, x1, y1] = [box.x + scrollX, box.y + scrollY, box.right + scrollX, box.bottom + scrollY].map(snap);
+            return { section: element.dataset.section, width: box.width, height: box.height, clip: { x: x0, y: y0, width: x1 - x0, height: y1 - y0 }, nodes };
         });
-    }, widths, only);
+    }, widths, only, SCALE);
     const forbidden = await page.call(FORBIDDEN, sections.map((section) => section.section));
     for (const section of sections) {
-        section.width = section.clip.width;
-        section.height = section.clip.height;
         section.forbidden = forbidden[section.section] ?? null;
         section.png = section.clip.width && section.clip.height ? await page.shot(section.clip) : null;
     }
     return sections;
 }
 
-async function domPoint(page, section, id) {
-    return page.call((section, id) => {
-        const element = document.querySelector(`section[data-section="${CSS.escape(section)}"] [data-id="${CSS.escape(id)}"]`);
-        if (!element) return null;
-        element.scrollIntoView({ block: "center" });
-        const rect = element.getBoundingClientRect();
-        return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
-    }, section, id);
+async function domPoint(page, section, target) {
+    return page.call((section, target) => {
+        const root = document.querySelector(`section[data-section="${CSS.escape(section)}"]`);
+        if (!root) return null;
+        const locate = () => {
+            const box = root.getBoundingClientRect();
+            if (target.at) return { x: box.x + target.at[0], y: box.y + target.at[1] };
+            const element = root.querySelectorAll(target.selector ?? `[data-id="${CSS.escape(target.id)}"]`)[target.nth - 1];
+            if (!element) return null;
+            const rect = element.getBoundingClientRect();
+            return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2, at: [rect.x + rect.width / 2 - box.x, rect.y + rect.height / 2 - box.y] };
+        };
+        const point = locate();
+        if (!point) return null;
+        scrollBy(0, point.y - innerHeight / 2);
+        return locate();
+    }, section, target);
+}
+
+function stepTarget(step) {
+    const raw = step.hover ?? step.press ?? step.click;
+    if (raw === undefined) return null;
+    const target = typeof raw === "string" ? { id: raw } : raw;
+    const kinds = ["id", "at", "selector"].filter((key) => target[key] !== undefined);
+    const nth = target.nth ?? 1;
+    const at = target.at;
+    if (kinds.length !== 1 || !Number.isInteger(nth) || nth < 1 || (at && !(Array.isArray(at) && at.length === 2 && at.every(Number.isFinite)))) {
+        throw new Error(`step ${step.name ?? JSON.stringify(step)}: a target is an id, {"id", "nth"}, {"at": [x, y]} or {"selector"}`);
+    }
+    return { ...target, nth };
+}
+
+function describeTarget(target) {
+    if (target.at) return `@${target.at.join(",")}`;
+    if (target.selector) return target.nth > 1 ? `${target.selector}#${target.nth}` : target.selector;
+    return target.nth > 1 ? `${target.id}#${target.nth}` : target.id;
 }
 
 function overlaps(a0, a1, b0, b1) {
@@ -621,9 +684,10 @@ async function compare(lab, canvas, dom, threshold, folder, name, step) {
     const empty = { score: 0, matched: [], missing: canvas.nodes.map((node) => node.id), extra: [] };
     if (!dom) return { section: name, step: Boolean(step), score: 0, missingSection: true, geometry: empty, size: { canvas: [canvas.width, canvas.height], dom: null } };
     writePng(join(folder, `${name}.dom.png`), dom.png);
-    const target = step?.target;
-    const canvasNode = target ? canvas.nodes.find((node) => node.id === target) : null;
-    const geo = target ? geometry(canvasNode ? [canvasNode] : [], dom.nodes.filter((node) => node.id === target).slice(0, 1), threshold) : geometry(canvas.nodes, dom.nodes, threshold);
+    const target = step?.target?.id ? step.target : null;
+    const nth = (nodes) => (target ? nodes.filter((node) => node.id === target.id).slice(target.nth - 1, target.nth) : nodes);
+    const canvasNode = target ? nth(canvas.nodes)[0] : null;
+    const geo = geometry(nth(canvas.nodes), nth(dom.nodes), threshold);
     const box = canvasNode ? [canvasNode.x - STEP_PAD, canvasNode.y - STEP_PAD, canvasNode.x + canvasNode.width + STEP_PAD, canvasNode.y + canvasNode.height + STEP_PAD].map((value) => value * SCALE) : null;
     const pixels = await lab.call(DIFF, canvas.png, dom.png, step?.canvasBefore ?? null, step?.domBefore ?? null, box);
     writePng(join(folder, `${name}.diff.png`), pixels.diff);
@@ -638,7 +702,7 @@ async function compare(lab, canvas, dom, threshold, folder, name, step) {
         change = union ? pixels.bothChanged / union : 0;
         parts = [...parts, change];
         if (!pixels.canvasChanged) notes.push("canvas did not change: the step tests nothing");
-        if (target && !canvasNode) notes.push(`canvas has no node ${target}`);
+        if (target && !canvasNode) notes.push(`canvas has no node ${describeTarget(target)}`);
     }
     if (dom.forbidden) notes.push(`forbidden: ${dom.forbidden.join(", ")}`);
     const fails = dom.forbidden || (step && !pixels.canvasChanged);
@@ -655,17 +719,21 @@ async function compare(lab, canvas, dom, threshold, folder, name, step) {
     };
 }
 
-async function runSteps(spec, pages, only, threshold, folder, canvasSet) {
+async function runSteps(spec, pages, only, threshold, folder, canvasSet, reload) {
     const results = [];
     const widths = Object.fromEntries(canvasSet.map((each) => [each.section, each.width]));
+    let dirty = false;
     for (const step of spec.steps ?? []) {
         const section = step.section ?? canvasSet[0]?.section;
         if (only && section !== only) continue;
-        const name = `${section}@${step.name ?? step.hover ?? step.press ?? step.click ?? step.key}`;
-        const known = canvasSet.find((each) => each.section === section);
-        if (!known) continue;
-        const target = step.hover ?? step.press ?? step.click;
+        if (!canvasSet.some((each) => each.section === section)) continue;
+        const target = stepTarget(step);
         const type = step.hover ? "hover" : step.press ? "press" : step.click ? "click" : "key";
+        if (dirty && !(step.keep ?? type === "key")) {
+            await reload();
+            dirty = false;
+        }
+        const name = `${section}@${step.name ?? (target ? describeTarget(target) : step.key)}`.replace(/[\\/]/g, "_");
         const act = async (page, point) => {
             if (type === "key") return page.key(step.key);
             if (!point) return;
@@ -675,63 +743,86 @@ async function runSteps(spec, pages, only, threshold, folder, canvasSet) {
         };
         const canvasBefore = (await canvasSections(pages.canvas, section))[0];
         const domBefore = (await domSections(pages.dom, widths, section))[0];
-        const canvasHit = target ? await canvasPoint(pages.canvas, known.window, target) : null;
+        const domHit = target ? await domPoint(pages.dom, section, target) : null;
+        const canvasTarget = target?.selector ? domHit && { at: domHit.at } : target;
+        const canvasHit = canvasTarget ? await canvasPoint(pages.canvas, section, canvasTarget) : null;
         await act(pages.canvas, canvasHit);
         await sleep(step.wait ?? 250);
         const canvasAfter = (await canvasSections(pages.canvas, section))[0];
-        const domHit = target ? await domPoint(pages.dom, section, target) : null;
         await act(pages.dom, domHit);
         await sleep(step.wait ?? 250);
         const domAfter = (await domSections(pages.dom, widths, section))[0];
         const result = await compare(pages.lab, canvasAfter, domAfter, threshold, folder, name, { target, canvasBefore: canvasBefore.png, domBefore: domBefore?.png ?? null });
-        if (target && !domHit) result.note = `${result.note ? `${result.note}; ` : ""}dom has no [data-id=${target}]`;
+        if (target && !domHit) result.note = `${result.note ? `${result.note}; ` : ""}dom has no ${target.selector ?? `[data-id=${describeTarget(target)}]`}`;
         results.push(result);
         for (const [page, point] of [[pages.canvas, canvasHit], [pages.dom, domHit]]) {
             if (type === "press" && point) await page.mouse("mouseReleased", point.x, point.y);
             await page.mouse("mouseMoved", 1, 1);
         }
         await sleep(100);
+        if (!dirty) dirty = (await canvasSections(pages.canvas, section))[0].png !== canvasBefore.png;
     }
-    return results;
+    return { results, dirty };
 }
 
 function mean(values) {
     return values.length ? round(values.reduce((sum, value) => sum + value, 0) / values.length, 2) : null;
 }
 
+async function loadCanvas(pages, bases, story, theme, mode, loads) {
+    if (pages.canvasState === "clean") {
+        await pages.canvas.media(mode);
+        await pages.canvas.call(async (story, theme, mode) => {
+            await Promise.race([storybook.setKnobs({ "interface-theme": theme, theme: mode, motion: "0" }), new Promise((r) => setTimeout(r, 200))]);
+            if (storybook.current() !== story) await Promise.race([storybook.show(story), new Promise((r) => setTimeout(r, 200))]);
+            scrollTo(0, 0);
+        }, story, theme, mode);
+        await canvasReady(pages.canvas, story);
+        return;
+    }
+    const started = Date.now();
+    const knobs = new URLSearchParams({ solo: "1", theme: mode, "interface-theme": theme, motion: "0" });
+    await pages.canvas.navigate(`${bases.story}/?load=${++pages.canvasLoads}#/${story}?${knobs}`, mode);
+    await canvasReady(pages.canvas, story);
+    pages.canvasState = "clean";
+    loads.count++;
+    loads.ms += Date.now() - started;
+}
+
+async function loadDom(pages, url, mode) {
+    await pages.dom.navigate(`${url}&load=${++pages.domLoads}`, mode);
+    await domReady(pages.dom);
+}
+
 async function runComponent(name, options, pages, bases, combos) {
     const specPath = join(ROOT, "src", name, "parity.json");
     if (!existsSync(specPath)) throw new Error(`${relative(ROOT, specPath)} is missing`);
     const spec = JSON.parse(readFileSync(specPath, "utf8"));
-    const report = { component: name, story: spec.story, page: spec.page ?? "index.html", threshold: options.threshold, combos: {} };
+    const report = { component: name, story: spec.story, page: spec.page ?? "index.html", threshold: options.threshold, combos: {}, loads: { count: 0, ms: 0 } };
+    pages.canvasState = "stale";
     for (const [theme, mode] of combos) {
         const combo = `${theme}-${mode}`;
         const folder = join(options.out, name, combo);
         rmSync(folder, { recursive: true, force: true });
-        const knobs = new URLSearchParams({ solo: "1", theme: mode, "interface-theme": theme, motion: "0" });
-        if (!pages.storybookLoaded) {
-            await pages.canvas.navigate(`${bases.story}/#/${spec.story}?${knobs}`, mode);
-            pages.storybookLoaded = true;
-        } else {
-            await pages.canvas.send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-color-scheme", value: mode }] });
-            await pages.canvas.call(async (story, theme, mode) => {
-                await Promise.race([storybook.setKnobs({ "interface-theme": theme, theme: mode, motion: "0" }), new Promise((r) => setTimeout(r, 200))]);
-                if (storybook.current() !== story) await Promise.race([storybook.show(story), new Promise((r) => setTimeout(r, 200))]);
-                scrollTo(0, 0);
-            }, spec.story, theme, mode);
-        }
-        await canvasReady(pages.canvas, spec.story);
+        await loadCanvas(pages, bases, spec.story, theme, mode, report.loads);
         const canvasSet = await canvasSections(pages.canvas, options.section);
         if (!canvasSet.length) throw new Error(`story ${spec.story} has no section${options.section ? ` ${options.section}` : "s"}`);
-        await pages.dom.navigate(`${bases.dom}/src/${name}/${report.page}?theme=${theme}&mode=${mode}&bare`, mode);
-        await domReady(pages.dom);
+        const domUrl = `${bases.dom}/src/${name}/${report.page}?theme=${theme}&mode=${mode}&bare&flat&motion=0`;
+        await loadDom(pages, domUrl, mode);
         const widths = Object.fromEntries(canvasSet.map((each) => [each.section, each.width]));
         const domSet = await domSections(pages.dom, widths, options.section);
         const sections = [];
         for (const canvas of canvasSet) {
             sections.push(await compare(pages.lab, canvas, domSet.find((each) => each.section === canvas.section), options.threshold, folder, canvas.section));
         }
-        sections.push(...(await runSteps(spec, pages, options.section, options.threshold, folder, canvasSet)));
+        const reload = async () => {
+            pages.canvasState = "stale";
+            await loadCanvas(pages, bases, spec.story, theme, mode, report.loads);
+            await loadDom(pages, domUrl, mode);
+        };
+        const steps = await runSteps(spec, pages, options.section, options.threshold, folder, canvasSet, reload);
+        if (steps.dirty) pages.canvasState = "stale";
+        sections.push(...steps.results);
         const unknown = domSet.map((each) => each.section).filter((section) => !canvasSet.some((each) => each.section === section));
         report.combos[combo] = { sections, unknownSections: unknown };
     }
@@ -917,24 +1008,30 @@ toggle.addEventListener("change", () => {
 
 async function main() {
     const options = parseArgs(process.argv.slice(2));
-    const deadline = setTimeout(() => {
-        console.error(`timed out after ${options.timeout} ms`);
-        process.exit(1);
-    }, options.timeout);
-    deadline.unref();
+    let deadline;
+    const arm = (what) => {
+        clearTimeout(deadline);
+        deadline = setTimeout(() => {
+            console.error(`${what} timed out after ${options.timeout} ms`);
+            process.exit(1);
+        }, options.timeout);
+        deadline.unref();
+    };
     const themes = options.theme ? [options.theme] : THEMES;
     const modes = options.mode ? [options.mode] : MODES;
     const combos = themes.flatMap((theme) => modes.map((mode) => [theme, mode]));
     prepare();
-    const bases = { story: await serve(join(ROOT, "storybook/dist"), () => true), dom: await serve(ROOT, domFiles()) };
+    arm("starting the browser");
+    const bases = { story: await serve(join(ROOT, "storybook/dist"), () => true, "max-age=3600"), dom: await serve(ROOT, domFiles()) };
     const cdp = connect(launch());
-    const pages = { canvas: await tab(cdp), dom: await tab(cdp), lab: await tab(cdp), storybookLoaded: false };
+    const pages = { canvas: await tab(cdp), dom: await tab(cdp), lab: await tab(cdp), canvasState: "stale", canvasLoads: 0, domLoads: 0 };
     const failures = [];
     for (const name of options.components) {
+        arm(name);
         const started = Date.now();
         const report = await runComponent(name, options, pages, bases, combos);
         console.log(table(report));
-        console.log(`  (${((Date.now() - started) / 1000).toFixed(1)}s)\n`);
+        console.log(`  (${((Date.now() - started) / 1000).toFixed(1)}s, ${report.loads.count} story loads ${(report.loads.ms / 1000).toFixed(1)}s)\n`);
         failures.push(...baseline(report, options));
     }
     html(options.out);

@@ -1,4 +1,4 @@
-use ala::{App, ElementId, IntoElement, RenderOnce, Window};
+use ala::{App, ElementId, IntoElement, RenderOnce, Role, Window};
 
 use crate::{
     Ground, Kind, Surface, SurfaceRole,
@@ -15,6 +15,13 @@ pub enum BarLook {
 }
 
 impl BarLook {
+    const fn announced(self) -> Role {
+        match self {
+            Self::Plain | Self::Pane => Role::Toolbar,
+            Self::Window => Role::TitleBar,
+        }
+    }
+
     const fn role(self) -> SurfaceRole {
         match self {
             Self::Plain => Kind::Bar.role(),
@@ -39,7 +46,7 @@ impl Bar {
     #[must_use]
     pub fn new(id: impl Into<ElementId>, look: BarLook) -> Self {
         Self {
-            plate: Plate::new(id, look.role()),
+            plate: Plate::new(id, look.role()).announce(look.announced()),
         }
     }
 

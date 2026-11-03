@@ -1,12 +1,10 @@
 .sheet-phone {
-  --penna-sheet-fg-muted: oklab(from var(--penna-fg) calc(l * 0.65 + 0.35 * clamp(0, (0.5 - l) * 1000, 1)) calc(a * 0.65) calc(b * 0.65));
   position: relative;
   width: 390px;
   height: 600px;
-  clip-path: inset(0);
   border: 1px solid var(--penna-border);
   border-radius: 55px;
-  corner-shape: superellipse(2);
+  corner-shape: superellipse(var(--penna-window-k));
   background: var(--penna-panel);
 }
 
@@ -21,10 +19,14 @@
   font-size: 18px;
 }
 
+.sheet-backdrop-title > [data-penna-text] {
+  display: inline-block;
+}
+
 .sheet-backdrop-row {
   display: flex;
   align-items: center;
   gap: 8px;
   font-size: 14px;
-  color: var(--penna-sheet-fg-muted);
+  color: var(--penna-fg-muted);
 }

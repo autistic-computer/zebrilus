@@ -1,33 +1,4 @@
 (() => {
-  const TEXT = ".penna-text:not(.penna-chip-detail), .penna-button .penna-label";
-
-  function snap(root = document) {
-    const runs = [...root.querySelectorAll(TEXT)];
-    runs.forEach((run) => run.style.removeProperty("width"));
-    const widths = runs.map((run) => run.getBoundingClientRect().width);
-    runs.forEach((run, index) => {
-      run.style.width = `${Math.ceil(widths[index])}px`;
-    });
-  }
-
-  const CORNER = 0.45;
-  const FULL = 9999;
-
-  function round(root = document) {
-    root.querySelectorAll(".penna-chip").forEach((chip) => {
-      const style = getComputedStyle(chip);
-      const radius = parseFloat(style.getPropertyValue("--penna-r")) || 0;
-      if (radius <= 0 || radius >= FULL) {
-        chip.removeAttribute("data-radius");
-        return;
-      }
-      const edge = parseFloat(style.borderTopWidth) || 0;
-      const cap = (Math.min(chip.offsetWidth, chip.offsetHeight) - 2 * edge) * CORNER;
-      chip.style.setProperty("--penna-chip-r", `${cap * Math.tanh(radius / cap)}px`);
-      chip.setAttribute("data-radius", "");
-    });
-  }
-
   const probe = new OffscreenCanvas(1, 1).getContext("2d");
 
   const channels = (color) => {
@@ -36,39 +7,6 @@
     probe.fillRect(0, 0, 1, 1);
     return [...probe.getImageData(0, 0, 1, 1).data.slice(0, 3)].map((value) => value / 255);
   };
-
-  const linear = (value) => (value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4);
-  const encoded = (value) => {
-    const clamped = Math.min(Math.max(value, 0), 1);
-    return clamped <= 0.0031308 ? clamped * 12.92 : 1.055 * clamped ** (1 / 2.4) - 0.055;
-  };
-
-  const amount = (filter, name, fallback) => {
-    const found = filter.match(new RegExp(`${name}\\(([^)]*)\\)`));
-    return found ? parseFloat(found[1]) : fallback;
-  };
-
-  function glass(root = document) {
-    const ground = channels(getComputedStyle(document.documentElement).getPropertyValue("--penna-bg").trim());
-    root.querySelectorAll(".penna-chip").forEach((chip) => {
-      const filter = getComputedStyle(chip).getPropertyValue("--penna-backdrop").trim();
-      if (!filter.startsWith("blur")) {
-        chip.removeAttribute("data-glass");
-        return;
-      }
-      const saturation = amount(filter, "saturate", 1);
-      const lift = amount(filter, "brightness", 1) - 1;
-      const contrast = amount(filter, "contrast", 1);
-      const lit = ground.map(linear);
-      const luminance = 0.2126 * lit[0] + 0.7152 * lit[1] + 0.0722 * lit[2];
-      const under = lit.map((value) => {
-        const toned = luminance + (value - luminance) * saturation;
-        return Math.round(encoded((toned - 0.5) * contrast + 0.5 + lift) * 255);
-      });
-      chip.style.setProperty("--penna-glass-under", `rgb(${under.join(" ")})`);
-      chip.setAttribute("data-glass", "");
-    });
-  }
 
   function ring(root = document) {
     const accent = channels(getComputedStyle(document.documentElement).getPropertyValue("--penna-accent").trim()).join();
@@ -155,10 +93,7 @@
 
   function settle() {
     ground();
-    snap();
     truncate();
-    round();
-    glass();
     ring();
   }
 

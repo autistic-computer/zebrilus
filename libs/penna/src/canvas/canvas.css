@@ -94,7 +94,6 @@
   min-width: 0;
   user-select: none;
   touch-action: none;
-  --penna-glass: 0;
   --penna-tile-bw: var(--penna-bw);
 }
 

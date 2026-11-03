@@ -2,7 +2,7 @@ use std::rc::Rc;
 
 use ala::{
     AnyElement, App, InteractiveElement as _, IntoElement, ListSizingBehavior, ParentElement as _,
-    Styled as _, Window, div, px, uniform_list,
+    Role, Styled as _, Window, div, px, uniform_list,
 };
 use penna::{
     ActiveTheme as _, Colorize as _, Icon, IconName, RowLook, StyledExt as _, Surface, h_flex,
@@ -125,6 +125,7 @@ fn tree(id: &'static str, active_row: Option<usize>, cx: &App) -> AnyElement {
             .map(|index| {
                 let (depth, icon, label) = &TREE[index];
                 ListItem::new(("tree-row", index))
+                    .role(Role::TreeItem)
                     .look(RowLook::Sidebar)
                     .selected(active_row == Some(index))
                     .w_full()

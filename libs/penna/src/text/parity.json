@@ -3,6 +3,7 @@
   "page": "index.html",
   "steps": [
     { "name": "hover-copy", "section": "code", "hover": "md-copy" },
-    { "name": "press-copy", "section": "code", "press": "md-copy" }
+    { "name": "press-copy", "section": "code", "press": "md-copy" },
+    { "name": "click-text", "section": "selection", "click": { "at": [120, 37] } }
   ]
 }

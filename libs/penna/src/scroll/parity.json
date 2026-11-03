@@ -1,5 +1,14 @@
 {
   "story": "scrollbars",
   "page": "index.html",
-  "steps": []
+  "steps": [
+    { "name": "hover-always-thumb", "section": "show-modes", "hover": "always-vertical-thumb" },
+    { "name": "press-always-thumb", "section": "show-modes", "press": "always-vertical-thumb" },
+    { "name": "click-always-track", "section": "show-modes", "click": "always-vertical" },
+    { "name": "hover-hover-track", "section": "show-modes", "hover": "hover-vertical" },
+    { "name": "hover-vertical-thumb", "section": "axes", "hover": "axis-vertical-vertical-thumb" },
+    { "name": "click-horizontal-track", "section": "axes", "click": "axis-horizontal-horizontal" },
+    { "name": "hover-both-horizontal-thumb", "section": "axes", "hover": "axis-both-horizontal-thumb" },
+    { "name": "click-both-vertical-track", "section": "axes", "click": "axis-both-vertical" }
+  ]
 }

@@ -1,15 +1,4 @@
 (() => {
-  const TEXT = ".penna-toast-text > div > span";
-
-  function ceil(root = document) {
-    const spans = [...root.querySelectorAll(TEXT)];
-    spans.forEach((span) => span.style.removeProperty("width"));
-    const widths = spans.map((span) => span.getBoundingClientRect().width);
-    spans.forEach((span, index) => {
-      span.style.width = `${Math.ceil(widths[index])}px`;
-    });
-  }
-
   function dismiss(toast) {
     if (toast.hasAttribute("data-closing")) return;
     toast.setAttribute("data-closing", "");
@@ -29,7 +18,5 @@
     if (toast) dismiss(toast);
   });
 
-  ceil();
-  document.fonts.ready.then(() => ceil());
-  window.pennaToast = { dismiss, ceil };
+  window.pennaToast = { dismiss };
 })();

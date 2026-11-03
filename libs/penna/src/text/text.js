@@ -43,16 +43,8 @@
     }
   }
 
-  function snapPrefixes(root = document) {
-    const prefixes = [...root.querySelectorAll(".penna-md .md-prefix")];
-    prefixes.forEach((prefix) => prefix.style.removeProperty("width"));
-    const widths = prefixes.map((prefix) => prefix.getBoundingClientRect().width);
-    prefixes.forEach((prefix, index) => {
-      prefix.style.width = `${Math.ceil(widths[index])}px`;
-    });
-  }
-
   function selectAll(view) {
+    view.dataset.selected = "";
     const selection = getSelection();
     selection.removeAllRanges();
     const range = document.createRange();
@@ -160,7 +152,7 @@
     document.querySelectorAll(".penna-md .md-table").forEach(sizeTable);
     shape();
     shapeChecks();
-    snapPrefixes();
+    pennaKit.ceilText(document, ".penna-md .md-prefix");
     baselines();
   }
 
@@ -180,9 +172,15 @@
     }
   });
 
+  document.addEventListener("mousedown", (event) => {
+    if (event.target.closest?.("button")) return;
+    document.querySelectorAll(".penna-md[data-selectable][data-selected]").forEach((view) => delete view.dataset.selected);
+  });
+
   document.querySelectorAll(".penna-md[data-selectable]").forEach((view) => {
     view.tabIndex = 0;
   });
+  document.querySelectorAll(".penna-md[data-selectable][data-selected]").forEach(selectAll);
 
   const FACES = ["400 16px 'Inter Variable'", "italic 400 16px 'Inter Variable'", "700 16px 'Inter Variable'", "400 13px Lilex", "700 13px Lilex"];
 

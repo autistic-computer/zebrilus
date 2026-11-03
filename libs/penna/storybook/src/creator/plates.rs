@@ -207,6 +207,7 @@ impl AppWindow {
             overrides: &overrides,
         };
         let custom = ColorPicker::new(&self.accent, ala::transparent_black())
+            .id("settings-accent-custom")
             .label("Accent")
             .swatch(px(SWATCH));
         div()

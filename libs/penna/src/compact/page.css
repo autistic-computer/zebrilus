@@ -1,15 +1,14 @@
-section[data-section] .story-label {
-  color: oklab(from var(--penna-fg) calc(l * 0.65 + 0.35 * clamp(0, (0.5 - l) * 1000, 1)) calc(a * 0.65) calc(b * 0.65));
+.penna-text {
+  display: inline-block;
 }
 
 .penna-phone {
-  --penna-phone-muted: oklab(from var(--penna-fg) calc(l * 0.65 + 0.35 * clamp(0, (0.5 - l) * 1000, 1)) calc(a * 0.65) calc(b * 0.65));
   width: 390px;
   overflow: hidden;
   background: var(--penna-bg);
   border: 1px solid var(--penna-border);
   border-radius: var(--penna-radius);
-  corner-shape: superellipse(2);
+  corner-shape: superellipse(var(--penna-window-k));
 }
 
 .penna-phone[data-narrow] {
@@ -46,7 +45,7 @@ section[data-section] .story-label {
   padding: 12px;
   font-family: var(--penna-mono);
   font-size: 12px;
-  color: var(--penna-phone-muted);
+  color: var(--penna-fg-muted);
 }
 
 .penna-bento-page {
@@ -66,6 +65,3 @@ section[data-section] .story-label {
   overflow-y: auto;
   scrollbar-width: none;
 }
-
-
-

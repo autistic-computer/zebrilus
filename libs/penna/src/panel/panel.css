@@ -3,7 +3,6 @@
   flex-direction: column;
   flex: none;
   box-sizing: border-box;
-  --penna-glass: 0;
 }
 
 .penna-panel[data-penna="panel"] {

@@ -1,15 +1,4 @@
 {
-  const TEXT = ".penna-title-bar-text";
-
-  function snapTitleBar(root = document) {
-    const spans = [...root.querySelectorAll(TEXT)];
-    spans.forEach((span) => span.style.removeProperty("width"));
-    const widths = spans.map((span) => span.getBoundingClientRect().width);
-    spans.forEach((span, index) => {
-      span.style.width = `${Math.ceil(widths[index])}px`;
-    });
-  }
-
   function tooltips(root = document) {
     let tip = null;
     let timer = 0;
@@ -28,8 +17,10 @@
           tip.setAttribute("role", "tooltip");
           const label = document.createElement("span");
           label.textContent = target.dataset.tooltip;
+          label.setAttribute("data-penna-text", "");
           tip.append(label);
           document.body.append(tip);
+          pennaKit.ceilText(tip);
           const box = target.getBoundingClientRect();
           const size = tip.getBoundingClientRect();
           const left = Math.min(Math.max(8, box.left + box.width / 2 - size.width / 2), document.documentElement.clientWidth - size.width - 8);
@@ -42,7 +33,5 @@
     });
   }
 
-  snapTitleBar();
   tooltips();
-  document.fonts.ready.then(() => snapTitleBar());
 }

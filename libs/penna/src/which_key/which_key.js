@@ -37,12 +37,12 @@
       const whole = group.rows.length <= perColumn;
       const height = blockHeight(group.rows.length, titled);
       if (whole && open !== null && open + STACK_GAP + height <= blockHeight(perColumn, titled) && stacks.length) {
-        stacks[stacks.length - 1].push({ title: group.title, titled, rows: group.rows });
+        stacks[stacks.length - 1].push({ title: group.title, group: group.title, part: 0, titled, rows: group.rows });
         open += STACK_GAP + height;
         continue;
       }
       for (let index = 0; index * perColumn < group.rows.length; index++) {
-        stacks.push([{ title: index === 0 ? group.title : null, titled, rows: group.rows.slice(index * perColumn, (index + 1) * perColumn) }]);
+        stacks.push([{ title: index === 0 ? group.title : null, group: group.title, part: index, titled, rows: group.rows.slice(index * perColumn, (index + 1) * perColumn) }]);
       }
       open = whole ? height : null;
     }
@@ -91,14 +91,15 @@
     return { perColumn: best[1], width: lineWidth(Math.min(best[2], perLine), columnWidth) };
   }
 
-  function snapText(root) {
-    const texts = [...root.querySelectorAll(".penna-which-key-cap, .penna-which-key-text, .penna-which-key-title > span, .penna-kbd > span")];
-    texts.forEach((text) => text.style.removeProperty("width"));
-    const widths = texts.map((text) => text.getBoundingClientRect().width);
-    texts.forEach((text, index) => {
-      text.style.width = `${Math.ceil(widths[index])}px`;
-    });
-    return new Map(texts.map((text, index) => [text, widths[index]]));
+  function capWidths(root) {
+    const caps = [...root.querySelectorAll(".penna-which-key-cap")];
+    caps.forEach((cap) => cap.style.removeProperty("width"));
+    return new Map(caps.map((cap) => [cap, cap.getBoundingClientRect().width]));
+  }
+
+  function blockId(block) {
+    const base = block.group === null ? "which-key-group" : `which-key-group-${block.group}`;
+    return block.part === 0 ? base : `${base}-${block.part}`;
   }
 
   function available(view) {
@@ -110,7 +111,7 @@
     const body = view.querySelector(".penna-which-key-body");
     if (!owned.has(view)) owned.set(view, [...body.querySelectorAll(".penna-which-key-row")]);
     const rows = owned.get(view);
-    const widths = snapText(view);
+    const widths = capWidths(view);
     const capWidth = Math.ceil(
       Math.min(
         CAP_MAX,
@@ -134,6 +135,7 @@
       for (const block of stack) {
         const element = document.createElement("div");
         element.className = "penna-which-key-block";
+        element.dataset.id = blockId(block);
         if (block.titled) {
           const title = document.createElement("div");
           title.className = "penna-which-key-title";
@@ -141,6 +143,7 @@
           if (block.title !== null) {
             const text = document.createElement("span");
             text.textContent = block.title;
+            text.dataset.pennaText = "";
             title.append(text);
           }
           element.append(title);
@@ -157,34 +160,16 @@
       return column;
     });
     body.replaceChildren(...columns);
-    snapText(view);
-  }
-
-  function glass(view) {
-    view.style.removeProperty("backdrop-filter");
-    view.style.removeProperty("-webkit-backdrop-filter");
-    const backdrop = getComputedStyle(view).getPropertyValue("--penna-backdrop").trim();
-    view.toggleAttribute("data-glass", backdrop !== "" && backdrop !== "none");
-    const brightness = backdrop.match(/brightness\(([\d.]+)\)/);
-    if (!brightness) return;
-    const lift = parseFloat(brightness[1]) - 1;
-    const spread = 1 - 2 * lift;
-    if (!lift || spread <= 0) return;
-    const parts = backdrop.replace(brightness[0], "").replace(/\s+/g, " ").trim();
-    const filter = `${parts} brightness(${1 / spread}) contrast(${spread})`;
-    view.style.backdropFilter = filter;
-    view.style.webkitBackdropFilter = filter;
+    pennaKit.ceilText(view);
   }
 
   function layoutAll(root = document) {
     root.querySelectorAll(".penna-which-key").forEach((view) => {
       layout(view);
-      glass(view);
     });
   }
 
   globalThis.pennaWhichKey = { layout, layoutAll };
   layoutAll();
   document.fonts.ready.then(() => layoutAll());
-  document.addEventListener("load", (event) => event.target.id === "penna-tokens" && document.querySelectorAll(".penna-which-key").forEach(glass), true);
 })();

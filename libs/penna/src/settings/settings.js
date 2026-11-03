@@ -12,7 +12,7 @@ function settingsNavigation(nav) {
     if (nav.hasAttribute("data-controlled")) return;
     buttons().forEach((other) => other.removeAttribute("aria-current"));
     button.setAttribute("aria-current", "page");
-    if (typeof snap === "function") snap(nav);
+    pennaKit.ceilText(nav);
   });
   nav.addEventListener("keydown", (event) => {
     if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;

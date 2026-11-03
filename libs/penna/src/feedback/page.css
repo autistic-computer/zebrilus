@@ -6,7 +6,7 @@
   background: var(--penna-bg);
   border: 1px solid var(--penna-border);
   border-radius: var(--penna-radius);
-  corner-shape: superellipse(2);
+  corner-shape: superellipse(var(--penna-window-k));
 }
 
 section[data-section] {

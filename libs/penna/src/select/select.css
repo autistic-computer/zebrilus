@@ -24,6 +24,16 @@
   --penna-icon-size: 12px;
 }
 
+.penna-select[data-size="small"] > .penna-select-trigger {
+  height: 24px;
+  padding: 0 6px;
+  font-size: 12px;
+}
+
+.penna-select[data-open] > .penna-select-trigger {
+  pointer-events: none;
+}
+
 .penna-select[aria-disabled="true"] > .penna-select-trigger {
   cursor: default;
 }
@@ -53,14 +63,9 @@
   box-sizing: content-box;
   min-width: max(128px, 100% - 2 * var(--penna-row-inset));
   max-width: 500px;
-  max-height: 450px;
+  max-height: calc(var(--penna-select-max, 450px) - 8px);
   overflow-y: auto;
-  --penna-glass: 0;
-}
-
-.penna-select-menu[data-glass] {
-  -webkit-backdrop-filter: blur(var(--penna-glass-blur)) brightness(1.07);
-  backdrop-filter: blur(var(--penna-glass-blur)) brightness(1.07);
+  scrollbar-width: none;
 }
 
 .penna-select[data-open] > .penna-select-menu {

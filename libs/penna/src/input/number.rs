@@ -1,12 +1,16 @@
 use ala::{
-    App, Context, Entity, InteractiveElement as _, IntoElement, KeyBinding, ParentElement as _,
-    RenderOnce, Role, StatefulInteractiveElement as _, StyleRefinement, Styled, Window, actions,
-    prelude::FluentBuilder as _,
+    App, Context, ElementId, Entity, InteractiveElement as _, IntoElement, KeyBinding,
+    ParentElement as _, RenderOnce, Role, SharedString, StatefulInteractiveElement,
+    StyleRefinement, Styled, Window, actions, prelude::FluentBuilder as _,
 };
 
 use crate::{
     ActiveTheme as _, Disableable, Emphasis, Ground, Kind, PaintState, Sizable, Size,
-    StyledExt as _, Surface, Tone, button::Button, h_flex, icon::IconName,
+    StyledExt as _, Surface, Tone,
+    button::Button,
+    foundation::{author_name, author_part},
+    h_flex,
+    icon::IconName,
 };
 
 use super::{
@@ -108,6 +112,7 @@ pub struct NumberInput {
     disabled: bool,
     tone: Tone,
     on: Option<Ground>,
+    author: Option<SharedString>,
 }
 
 impl NumberInput {
@@ -120,6 +125,7 @@ impl NumberInput {
             tone: Tone::Neutral,
             on: None,
             disabled: false,
+            author: None,
         }
     }
 
@@ -129,9 +135,15 @@ impl NumberInput {
         self
     }
 
+    #[must_use]
+    pub fn id(mut self, id: impl Into<ElementId>) -> Self {
+        self.author = Some(author_name(&id.into()));
+        self
+    }
+
     fn stepper(
         state: &Entity<InputState>,
-        id: &'static str,
+        id: ElementId,
         icon: IconName,
         direction: StepDirection,
         size: Size,
@@ -210,6 +222,10 @@ impl RenderOnce for NumberInput {
         h_flex()
             .id(("penna-number-input", self.state.entity_id()))
             .role(Role::SpinButton)
+            .when_some(
+                self.author.clone(),
+                StatefulInteractiveElement::accessibility_id,
+            )
             .aria_disabled(self.disabled)
             .key_context(CONTEXT)
             .on_action(window.listener_for(&self.state, InputState::on_increment))
@@ -223,7 +239,7 @@ impl RenderOnce for NumberInput {
             .refine_style(&self.style)
             .child(Self::stepper(
                 &self.state,
-                "penna-number-decrement",
+                author_part(self.author.as_ref(), "decrement", "penna-number-decrement"),
                 IconName::Minus,
                 StepDirection::Decrement,
                 self.size,
@@ -232,6 +248,9 @@ impl RenderOnce for NumberInput {
             ))
             .child(
                 Input::new(&self.state)
+                    .when_some(self.author.as_ref(), |input, author| {
+                        input.id(SharedString::from(format!("{author}-field")))
+                    })
                     .with_size(self.size)
                     .disabled(self.disabled)
                     .tone(self.tone)
@@ -244,7 +263,7 @@ impl RenderOnce for NumberInput {
             )
             .child(Self::stepper(
                 &self.state,
-                "penna-number-increment",
+                author_part(self.author.as_ref(), "increment", "penna-number-increment"),
                 IconName::Plus,
                 StepDirection::Increment,
                 self.size,

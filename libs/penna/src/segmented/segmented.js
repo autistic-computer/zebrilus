@@ -1,17 +1,4 @@
 (() => {
-function segmentLabels(control) {
-  return [...control.querySelectorAll(".penna-segment > .penna-label")];
-}
-
-function ceilSegments(control) {
-  const labels = segmentLabels(control);
-  labels.forEach((label) => label.style.removeProperty("width"));
-  const widths = labels.map((label) => label.getBoundingClientRect().width);
-  labels.forEach((label, index) => {
-    label.style.width = `${Math.ceil(widths[index])}px`;
-  });
-}
-
 function placePill(control) {
   const segments = [...control.querySelectorAll(".penna-segment")];
   const at = Math.min(Math.max(Number.parseInt(control.dataset.value ?? "0", 10) || 0, 0), segments.length - 1);
@@ -50,7 +37,7 @@ function settleSegmented() {
   document.querySelectorAll(".penna-segmented").forEach((control) => {
     control.toggleAttribute("data-still", true);
     wireSegmented(control);
-    ceilSegments(control);
+    pennaKit.ceilText(control);
     placePill(control);
     control.offsetWidth;
     requestAnimationFrame(() => control.removeAttribute("data-still"));

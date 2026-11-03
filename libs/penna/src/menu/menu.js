@@ -15,17 +15,8 @@
     return element;
   }
 
-  const text = (value, className = "penna-label") => make("span", className, {}, [value]);
+  const text = (value, className = "penna-label") => make("span", className, { "data-penna-text": true }, [value]);
   const glyph = (name, className = "") => make("i", className, { "data-icon": name });
-
-  function snap(root) {
-    const spans = [...root.querySelectorAll(".penna-popup .penna-label")];
-    spans.forEach((span) => span.style.removeProperty("width"));
-    const widths = spans.map((span) => span.getBoundingClientRect().width);
-    spans.forEach((span, index) => {
-      span.style.width = `${Math.ceil(widths[index])}px`;
-    });
-  }
 
   const probe = document.createElement("i");
   probe.hidden = true;
@@ -40,31 +31,15 @@
 
   function edges(root = document) {
     root.querySelectorAll(".penna-popup-stepper").forEach((group) => {
-      group.toggleAttribute("data-edged", alpha(getComputedStyle(group).getPropertyValue("--penna-edge")) > 0);
-    });
-  }
-
-  function frost(root = document) {
-    const popups = root.matches?.(".penna-popup") ? [root] : [...root.querySelectorAll(".penna-popup")];
-    popups.forEach((popup) => {
-      popup.style.removeProperty("--penna-backdrop");
-      const backdrop = getComputedStyle(popup).getPropertyValue("--penna-backdrop").trim();
-      const read = (name) => parseFloat(backdrop.match(new RegExp(`${name}\\(([-\\d.]+)`))?.[1] ?? "NaN");
-      const brightness = read("brightness");
-      const contrast = read("contrast");
-      if (Number.isNaN(brightness) || Number.isNaN(contrast)) return;
-      const slope = contrast - 2 * (brightness - 1);
-      const lifted = backdrop
-        .replace(/brightness\([^)]*\)/, `brightness(${(contrast / slope).toFixed(4)})`)
-        .replace(/contrast\([^)]*\)/, `contrast(${slope.toFixed(4)})`);
-      popup.style.setProperty("--penna-backdrop", lifted);
+      const style = getComputedStyle(group);
+      group.toggleAttribute("data-edged", alpha(style.getPropertyValue("--penna-edge")) > 0);
+      if (!group.matches(":hover")) group.style.setProperty("--penna-popup-field", style.getPropertyValue("--penna-fill"));
     });
   }
 
   function fit(root = document) {
-    frost(root);
     edges(root);
-    snap(root);
+    globalThis.pennaKit?.ceilText(root);
   }
 
   function state(element, name, on) {
@@ -134,7 +109,7 @@
         item.render = () => {
           value.textContent = item.format(item.value);
           row.setAttribute("aria-label", `${item.label}: ${item.format(item.value)}; Left and Right adjust, Enter resets`);
-          snap(row);
+          globalThis.pennaKit?.ceilText(row);
         };
         const ground = make("span", "penna-popup-ground", { "data-penna": "popover", "data-ground": true }, [group]);
         row.append(...this.slot(icons, {}), make("span", "penna-popup-text", {}, [text(item.label)]), ground);
@@ -156,7 +131,7 @@
         if (event.button === 0) event.stopPropagation();
       });
       row.addEventListener("click", (event) => {
-        if (event.target.closest(".penna-popup-sub") || event.target.closest(".penna-popup-stepper")) return;
+        if (event.target.closest(".penna-popup") !== this.element || event.target.closest(".penna-popup-stepper")) return;
         if (!this.clickable(ix)) return;
         event.stopPropagation();
         this.selected = ix;

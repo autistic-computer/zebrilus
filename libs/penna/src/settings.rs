@@ -6,8 +6,9 @@ use std::{cell::Cell, rc::Rc};
 use web_time::Duration;
 
 use crate::{
-    ActiveTheme as _, Colorize as _, Disableable as _, Emphasis, Ground, IconName, Layer,
-    PaintState, RULE_WIDTH, RuleLook, Selectable as _, Sizable as _, StyledExt as _, Surface,
+    ActiveTheme as _, AuthoredElement as _, Colorize as _, Disableable as _, Emphasis, Ground,
+    IconName, Layer, PaintState, RULE_WIDTH, RuleLook, Selectable as _, Sizable as _,
+    StyledExt as _, Surface,
     badge::Badge,
     button::{Button, ButtonVariants as _},
     icon::Icon,
@@ -18,8 +19,8 @@ use crate::{
 };
 use ala::{
     AnyElement, App, Bounds, Corners, ElementId, FocusHandle, Hsla, IntoElement, ListAlignment,
-    ListSizingBehavior, ListState, ParentElement, Pixels, RenderOnce, ScrollHandle, SharedString,
-    Styled as _, Window, div, list, prelude::*, px, relative,
+    ListSizingBehavior, ListState, ParentElement, Pixels, RenderOnce, Role, ScrollHandle,
+    SharedString, Styled as _, Window, div, list, prelude::*, px, relative,
 };
 
 type EntryClick = Rc<dyn Fn(&ala::ClickEvent, &mut Window, &mut App)>;
@@ -575,7 +576,9 @@ impl RenderOnce for SettingsDisclosure {
             .radius;
         let inset = px(DISCLOSURE_PRESS_INSET);
         div()
-            .id(self.id)
+            .author_id(self.id)
+            .role(Role::Button)
+            .aria_expanded(self.expanded)
             .relative()
             .mt(px(10.0) - inset)
             .mb(-inset)
@@ -660,6 +663,7 @@ pub struct SettingsStack {
     title: Option<SharedString>,
     note: Option<SharedString>,
     entries: Vec<SettingEntry>,
+    id: Option<ElementId>,
 }
 
 impl SettingsStack {
@@ -669,7 +673,14 @@ impl SettingsStack {
             title: None,
             note: None,
             entries: Vec::new(),
+            id: None,
         }
+    }
+
+    #[must_use]
+    pub fn id(mut self, id: impl Into<ElementId>) -> Self {
+        self.id = Some(id.into());
+        self
     }
 
     #[must_use]
@@ -725,7 +736,17 @@ impl RenderOnce for SettingsStack {
             .when_some(self.note, |this, note| {
                 this.child(settings_description(note, cx).px(px(2.0)))
             })
-            .child(div().flex().flex_col().w_full().children(rows))
+            .child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .w_full()
+                    .children(rows)
+                    .map(|list| match self.id {
+                        Some(id) => list.author_id(id).role(Role::List).into_any_element(),
+                        None => list.into_any_element(),
+                    }),
+            )
     }
 }
 
@@ -783,6 +804,7 @@ pub struct SettingEntry {
     position: StackPosition,
     children: Vec<AnyElement>,
     on_click: Option<(ElementId, EntryClick)>,
+    id: Option<ElementId>,
 }
 
 impl SettingEntry {
@@ -797,7 +819,14 @@ impl SettingEntry {
             position: StackPosition::Middle,
             children: Vec::new(),
             on_click: None,
+            id: None,
         }
+    }
+
+    #[must_use]
+    pub fn id(mut self, id: impl Into<ElementId>) -> Self {
+        self.id = Some(id.into());
+        self
     }
 
     #[must_use]
@@ -1010,11 +1039,18 @@ impl RenderOnce for SettingEntry {
                 )
             })
             .child(surface);
-        match self.on_click.filter(|_| !disabled) {
-            Some((id, handler)) => entry
-                .id(id)
-                .cursor_pointer()
-                .on_click(move |event, window, cx| handler(event, window, cx))
+        let (clicked, handler) = self.on_click.unzip();
+        let handler = handler.filter(|_| !disabled);
+        match clicked.or(self.id) {
+            Some(id) => entry
+                .author_id(id)
+                .role(Role::ListItem)
+                .aria_disabled(disabled)
+                .when_some(handler, |entry, handler| {
+                    entry
+                        .cursor_pointer()
+                        .on_click(move |event, window, cx| handler(event, window, cx))
+                })
                 .into_any_element(),
             None => entry.into_any_element(),
         }

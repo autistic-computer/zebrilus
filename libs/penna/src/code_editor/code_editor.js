@@ -223,9 +223,20 @@ class CodeEditor {
     this.layout();
   }
 
+  restFill() {
+    const root = this.root;
+    const state = root.getAttribute("data-state");
+    root.removeAttribute("data-state");
+    root.style.removeProperty("--ce-rest-fill");
+    const fill = getComputedStyle(root).getPropertyValue("--penna-fill").trim();
+    if (state !== null) root.setAttribute("data-state", state);
+    if (fill) root.style.setProperty("--ce-rest-fill", fill);
+  }
+
   layout() {
     const root = this.root;
     if (!root.isConnected || !root.clientWidth || !this.ready) return;
+    if (!root.matches(":hover")) this.restFill();
     const style = getComputedStyle(root);
     this.lh = parseFloat(getComputedStyle(this.linesEl).lineHeight);
     const digits = Math.max(2, String(this.starts.length).length);
@@ -248,7 +259,6 @@ class CodeEditor {
     if (this.caretInView) this.follow = true;
     if (this.initialScroll) {
       this.scroll = { x: this.initialScroll[0], y: this.initialScroll[1] * this.lh };
-      this.initialScroll = null;
     }
     this.paint();
   }
@@ -457,9 +467,10 @@ class CodeEditor {
 
   onMouseDown(event) {
     if (event.button !== 0) return;
+    this.initialScroll = null;
     event.preventDefault();
     if (this.disabled) return;
-    this.root.focus();
+    this.root.focus({ preventScroll: true });
     const offset = this.hit(event.clientX, event.clientY);
     if (this.vim && this.vim.mode === "visual") this.vim.mode = "normal";
     if (event.detail === 2) {
@@ -485,6 +496,7 @@ class CodeEditor {
 
   onWheel(event) {
     if (this.lh === undefined) return;
+    this.initialScroll = null;
     const before = { ...this.scroll };
     const dx = event.shiftKey && !event.deltaX ? event.deltaY : event.deltaX;
     const dy = event.shiftKey && !event.deltaX ? 0 : event.deltaY;
@@ -529,6 +541,7 @@ class CodeEditor {
 
   onKey(event) {
     if (this.disabled) return;
+    this.initialScroll = null;
     const mod = event.metaKey || event.ctrlKey;
     if (this.vim && this.vim.mode !== "insert" && this.vimKey(event)) {
       event.preventDefault();

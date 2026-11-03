@@ -2,7 +2,25 @@
   "story": "panels",
   "page": "index.html",
   "steps": [
-    { "name": "hover-bar-action", "section": "bars", "hover": "bar-plain-action" },
-    { "name": "press-bar-action", "section": "bars", "press": "bar-plain-action" }
+    {
+      "name": "hover-bar-action",
+      "section": "bars",
+      "hover": "bar-plain-action"
+    },
+    {
+      "name": "press-bar-action",
+      "section": "bars",
+      "press": "bar-plain-action"
+    },
+    {
+      "name": "hover-pane-action",
+      "section": "bars",
+      "hover": "bar-pane-action"
+    },
+    {
+      "name": "hover-window-action",
+      "section": "bars",
+      "hover": "bar-window-action"
+    }
   ]
 }

@@ -1,6 +1,3 @@
-const PAGE_TEXT = ".penna-row .penna-text, .penna-fill-row .penna-text, .penna-item .penna-text";
-
-const snapPage = () => snapText(PAGE_TEXT);
 const coarse = matchMedia("(pointer: coarse)");
 
 function light(group, state) {
@@ -31,6 +28,4 @@ function stepRows(event) {
   live[(at + keys[event.key] + live.length) % live.length].focus();
 }
 
-snapPage();
-document.fonts.ready.then(snapPage);
 document.addEventListener("keydown", stepRows);

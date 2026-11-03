@@ -7,7 +7,6 @@
   font-size: 12px;
   line-height: 16px;
   outline: none;
-  --penna-fg-muted: oklab(from var(--penna-fg) calc(l * 0.65 + 0.35 * clamp(0, (0.5 - l) * 1000, 1)) calc(a * 0.65) calc(b * 0.65));
 }
 
 .penna-steps > .penna-steps-label {
@@ -54,8 +53,8 @@
   box-sizing: border-box;
   width: 100%;
   height: 6px;
-  border-radius: min(var(--penna-radius), 1.5px);
-  corner-shape: round;
+  border-radius: 3px;
+  corner-shape: superellipse(var(--penna-window-k));
   background: var(--penna-step-fill);
 }
 

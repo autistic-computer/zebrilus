@@ -4,6 +4,22 @@ const THEMES = [
   ["macos", "macOS"],
   ["yaru", "Yaru"],
 ];
+const TOKENS = (document.querySelector("script[data-tokens]")?.dataset.tokens ?? "../../web/tokens/").replace(/\/?$/, "/");
+const themeAccents = new Map();
+const themeAccent = (id, look) => {
+  const key = `${id}-${look}`;
+  if (!themeAccents.has(key)) {
+    themeAccents.set(
+      key,
+      fetch(new URL(`${key}.css`, new URL(TOKENS, document.baseURI)))
+        .then((response) => response.text())
+        .then((text) => /--penna-accent:\s*([^;]+);/.exec(text)?.[1].trim() ?? "")
+        .catch(() => ""),
+    );
+  }
+  return themeAccents.get(key);
+};
+THEMES.forEach(([id]) => ["light", "dark"].forEach((look) => themeAccent(id, look)));
 const HUE_STOPS = 12;
 const RING = 3.5;
 
@@ -32,15 +48,6 @@ const mode = () => document.documentElement.dataset.pennaMode || "dark";
 const themeId = () => document.documentElement.dataset.pennaTheme || "default";
 const px = (value) => parseFloat(value) || 0;
 
-function ceilSpans(root, selector) {
-  const spans = [...root.querySelectorAll(selector)];
-  spans.forEach((span) => span.style.removeProperty("width"));
-  const widths = spans.map((span) => span.getBoundingClientRect().width);
-  spans.forEach((span, index) => {
-    span.style.width = `${Math.ceil(widths[index])}px`;
-  });
-}
-
 function adaptive(radius, width, height) {
   const cap = Math.min(width, height) * 0.45;
   return cap > 0 ? cap * Math.tanh(radius / cap) : 0;
@@ -64,26 +71,6 @@ function shapeRuns(root) {
   });
 }
 
-function themeSmoothing() {
-  const probe = document.createElement("span");
-  probe.dataset.penna = "pane";
-  probe.hidden = true;
-  document.body.append(probe);
-  const smoothing = getComputedStyle(probe).getPropertyValue("--penna-style-k").trim();
-  probe.remove();
-  return smoothing || "1";
-}
-
-function edgeWidth() {
-  const probe = document.createElement("i");
-  probe.dataset.penna = "card";
-  probe.hidden = true;
-  document.body.append(probe);
-  const width = px(getComputedStyle(probe).getPropertyValue("--penna-bw"));
-  probe.remove();
-  return width;
-}
-
 function holdHover(root) {
   const run = root.querySelector(".appearance-run");
   if (!run) return;
@@ -101,8 +88,6 @@ function shapeSwatches(root) {
   const swatch = radius >= 9999 ? 9 : adaptive(radius, 18, 18);
   const ring = radius > 0 ? (radius >= 9999 ? 9999 : adaptive(radius + RING, 25, 25)) : 0;
   const dot = adaptive(Math.min(radius, 5), 10, 10);
-  root.style.setProperty("--appearance-k", themeSmoothing());
-  root.style.setProperty("--appearance-edge", `${edgeWidth()}px`);
   root.style.setProperty("--appearance-swatch-r", `${swatch}px`);
   root.style.setProperty("--appearance-ring-r", `${ring}px`);
   root.style.setProperty("--appearance-dot-r", `${dot}px`);
@@ -150,7 +135,7 @@ function paintSlider(slider) {
   const shown = row?.querySelector(".appearance-shown");
   if (shown) {
     shown.textContent = display(slider, value);
-    ceilSpans(row, ".appearance-shown");
+    pennaKit.ceilText(shown);
   }
   if (slider.hasAttribute("data-hue")) {
     const stops = Array.from({ length: HUE_STOPS + 1 }, (_, stop) => hueColor((stop * 360) / HUE_STOPS));
@@ -220,12 +205,30 @@ function settleSliders(root) {
   });
 }
 
+function wireCustom(frame) {
+  frame.querySelectorAll(".appearance-swatches .penna-color-picker").forEach((picker) => {
+    if (picker.appearanceCustom) return;
+    picker.appearanceCustom = true;
+    const row = picker.closest(".appearance-swatches");
+    picker.addEventListener("change", (event) => {
+      const custom = Boolean(event.detail);
+      picker.toggleAttribute("data-custom", custom);
+      row.querySelectorAll(".appearance-ring").forEach((ring) => {
+        const own = ring.contains(picker);
+        const theme = Boolean(ring.querySelector('[data-accent="theme"]'));
+        ring.toggleAttribute("data-selected", custom ? own : theme);
+      });
+    });
+  });
+}
+
 function wireSwatches(frame) {
   frame.querySelectorAll(".appearance-swatches").forEach((row) => {
     if (row.appearanceSwatches) return;
     row.appearanceSwatches = true;
     const pick = (swatch) => {
       row.querySelectorAll(".appearance-ring").forEach((ring) => ring.toggleAttribute("data-selected", ring.contains(swatch)));
+      row.querySelectorAll(".penna-color-picker").forEach((picker) => picker.removeAttribute("data-custom"));
       row.dispatchEvent(new CustomEvent("change", { bubbles: true, detail: { accent: swatch.dataset.accent } }));
     };
     row.querySelectorAll(".appearance-swatch").forEach((swatch) => {
@@ -241,10 +244,31 @@ function wireSwatches(frame) {
 }
 
 function closeMenus(except) {
-  document.querySelectorAll(".appearance-theme-menu").forEach((menu) => menu !== except && menu.remove());
-  document.querySelectorAll(".appearance-theme[aria-expanded]").forEach((button) => {
-    if (!except || !button.parentElement.contains(except)) button.removeAttribute("aria-expanded");
+  document.querySelectorAll(".appearance-theme-menu").forEach((menu) => {
+    if (menu === except) return;
+    const focused = menu.contains(document.activeElement);
+    menu.remove();
+    if (focused) menu.appearanceTrigger.focus({ preventScroll: true, focusVisible: false });
   });
+  document.querySelectorAll(".appearance-theme[aria-expanded]").forEach((button) => {
+    if (except?.appearanceTrigger === button) return;
+    button.removeAttribute("aria-expanded");
+    button.removeAttribute("data-state");
+  });
+}
+
+function highlight(menu, item) {
+  menu.querySelectorAll('[data-penna="menu-item"]').forEach((each) => {
+    if (each === item) each.dataset.state = "selected";
+    else each.removeAttribute("data-state");
+  });
+}
+
+function move(menu, delta) {
+  const items = [...menu.querySelectorAll('[data-penna="menu-item"]')];
+  const at = items.findIndex((item) => item.dataset.state === "selected");
+  const next = delta > 0 ? (at < 0 ? 0 : (at + 1) % items.length) : at <= 0 ? items.length - 1 : at - 1;
+  highlight(menu, items[next]);
 }
 
 function wireTheme(frame) {
@@ -258,9 +282,10 @@ function wireTheme(frame) {
       menu.className = "penna-menu appearance-theme-menu";
       menu.dataset.penna = "popover";
       menu.setAttribute("role", "menu");
-      THEMES.forEach(([id, label]) => {
+      THEMES.forEach(([id, label], index) => {
         const item = document.createElement("div");
         item.dataset.penna = "menu-item";
+        item.dataset.id = String(index);
         item.setAttribute("role", "menuitemradio");
         item.setAttribute("aria-checked", String(id === button.dataset.picked));
         const check = document.createElement("i");
@@ -270,30 +295,58 @@ function wireTheme(frame) {
         label_.className = "appearance-accent-label";
         const dot = document.createElement("span");
         dot.className = "appearance-dot";
+        if (id !== button.dataset.picked) {
+          const accent = themeAccent(id, mode() === "dark" ? "dark" : "light");
+          accent.then((color) => color && (dot.style.background = color));
+        }
         const text = document.createElement("span");
         text.className = "penna-label";
+        text.dataset.pennaText = "";
         text.textContent = label;
         label_.append(dot, text);
         item.append(check, label_);
-        item.addEventListener("mouseenter", () => (item.dataset.state = "selected"));
-        item.addEventListener("mouseleave", () => item.removeAttribute("data-state"));
+        item.addEventListener("mouseenter", () => highlight(menu, item));
+        item.addEventListener("mouseleave", () => highlight(menu, null));
         item.addEventListener("click", () => {
           button.dataset.picked = id;
           name.textContent = label;
+          pennaKit.ceilText(name);
           closeMenus();
           if (typeof snap === "function") snap(button.parentElement);
         });
         menu.append(item);
       });
       menu.addEventListener("mousedown", (event) => event.preventDefault());
-      button.parentElement.append(menu);
-      menu.toggleAttribute("data-glass", getComputedStyle(menu).getPropertyValue("--penna-backdrop").trim().startsWith("blur"));
+      menu.addEventListener("keydown", (event) => {
+        const keys = {
+          ArrowDown: () => move(menu, 1),
+          ArrowUp: () => move(menu, -1),
+          Enter: () => menu.querySelector('[data-state="selected"]')?.click(),
+          " ": () => menu.querySelector('[data-state="selected"]')?.click(),
+          Escape: () => closeMenus(),
+        };
+        if (!(event.key in keys)) return;
+        event.preventDefault();
+        keys[event.key]();
+      });
+      menu.appearanceTrigger = button;
+      menu.tabIndex = -1;
+      const box = frame.getBoundingClientRect();
+      const anchor = button.getBoundingClientRect();
+      menu.style.top = `${anchor.bottom + 4 - box.top - frame.clientTop}px`;
+      menu.style.right = `${box.right - frame.clientLeft - anchor.right}px`;
+      frame.append(menu);
+      pennaKit.ceilText(menu);
       button.setAttribute("aria-expanded", "true");
+      button.dataset.state = "current";
       closeMenus(menu);
+      menu.focus({ preventScroll: true });
+      return menu;
     };
     button.addEventListener("mousedown", (event) => {
       if (event.button !== 0) return;
       event.stopPropagation();
+      event.preventDefault();
       if (button.hasAttribute("aria-expanded")) closeMenus();
       else open();
     });
@@ -304,7 +357,11 @@ function wireTheme(frame) {
         else open();
       }
     });
-    button.addEventListener("keydown", (event) => event.key === "Escape" && closeMenus());
+    button.addEventListener("keydown", (event) => {
+      if (event.key !== "ArrowDown" || button.hasAttribute("aria-expanded")) return;
+      event.preventDefault();
+      move(open(), 1);
+    });
   });
 }
 
@@ -345,9 +402,10 @@ function settleAppearance() {
     pickMode(frame);
     nameTheme(frame);
     wireSwatches(frame);
+    wireCustom(frame);
     wireTheme(frame);
     wireDisclosure(frame);
-    ceilSpans(frame, ".appearance-text, .appearance-title");
+    pennaKit.ceilText(frame);
     settleSliders(frame);
     shapeSwatches(frame);
     holdHover(frame);

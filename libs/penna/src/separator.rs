@@ -1,9 +1,10 @@
 use ala::{
-    App, Axis, Hsla, IntoElement, ParentElement as _, RenderOnce, StyleRefinement, Styled, Window,
-    div, prelude::FluentBuilder as _,
+    App, Axis, ElementId, Hsla, IntoElement, ParentElement as _, RenderOnce, Role,
+    StatefulInteractiveElement as _, StyleRefinement, Styled, Window, accesskit::Orientation, div,
+    prelude::FluentBuilder as _,
 };
 
-use crate::{Edge, RuleLook, StyledExt as _};
+use crate::{AuthoredElement as _, Edge, RuleLook, StyledExt as _};
 
 #[derive(IntoElement)]
 pub struct Separator {
@@ -11,6 +12,7 @@ pub struct Separator {
     color: Option<Hsla>,
     look: RuleLook,
     axis: Axis,
+    id: Option<ElementId>,
 }
 
 impl Separator {
@@ -21,7 +23,14 @@ impl Separator {
             color: None,
             look: RuleLook::Plain,
             axis: Axis::Vertical,
+            id: None,
         }
+    }
+
+    #[must_use]
+    pub fn id(mut self, id: impl Into<ElementId>) -> Self {
+        self.id = Some(id.into());
+        self
     }
 
     #[must_use]
@@ -56,7 +65,7 @@ impl RenderOnce for Separator {
         let look = self.look;
         let vertical = self.axis == Axis::Vertical;
 
-        div()
+        let rule = div()
             .flex()
             .flex_shrink_0()
             .items_center()
@@ -80,6 +89,19 @@ impl RenderOnce for Separator {
                         }
                     })
                     .when_some(self.color, Styled::border_color),
-            )
+            );
+        let orientation = if vertical {
+            Orientation::Vertical
+        } else {
+            Orientation::Horizontal
+        };
+        match self.id {
+            Some(id) => rule
+                .author_id(id)
+                .role(Role::Splitter)
+                .aria_orientation(orientation)
+                .into_any_element(),
+            None => rule.into_any_element(),
+        }
     }
 }

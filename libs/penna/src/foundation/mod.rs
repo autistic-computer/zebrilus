@@ -20,6 +20,7 @@ pub use animation::cubic_ease;
 pub use animation::{SURFACE_ENTER_DURATION, surface_enter};
 pub use color::{Colorize, oklab_lightness, oklch, parse_hex, to_hex, to_oklch};
 pub use element_ext::{AuthoredElement, ElementExt, InteractiveElementExt};
+pub(crate) use element_ext::{author_name, author_part};
 pub use geometry::Side;
 pub use index_path::IndexPath;
 pub use space::Space;

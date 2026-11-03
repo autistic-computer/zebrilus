@@ -4,7 +4,7 @@
   height: 180px;
   border: 1px solid var(--penna-border);
   border-radius: var(--penna-radius);
-  corner-shape: superellipse(2);
+  corner-shape: superellipse(var(--penna-window-k));
 }
 
 .story-lines {
@@ -17,7 +17,7 @@
   font-family: var(--penna-mono);
   font-size: 14px;
   line-height: 22.5px;
-  color: var(--story-fg-muted);
+  color: var(--penna-fg-muted);
 }
 
 .story-lines > div {
@@ -28,10 +28,7 @@
   color: var(--penna-fg);
 }
 
-.story-states {
-  --story-fg-muted: oklab(from var(--penna-fg) calc(l * 0.65 + 0.35 * clamp(0, (0.5 - l) * 1000, 1)) calc(a * 0.65) calc(b * 0.65));
-}
-
-.story-label {
-  color: var(--story-fg-muted);
+.story-label,
+.story-lines {
+  -webkit-text-stroke: 0.1px currentColor;
 }

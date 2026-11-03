@@ -37,6 +37,10 @@
   --penna-k: 1;
 }
 
+.penna-compact-pill[data-penna]:active {
+  background: linear-gradient(var(--penna-fill), var(--penna-fill)), var(--penna-rest-fill);
+}
+
 .penna-pill-tile[data-penna] {
   display: flex;
   flex: none;
@@ -256,7 +260,7 @@
 
 .penna-bento-detail {
   font-size: 13px;
-  color: var(--penna-phone-muted);
+  color: var(--penna-fg-muted);
 }
 
 .penna-bento-add[data-penna] {
@@ -266,22 +270,21 @@
   justify-content: center;
   gap: 6px;
   font-size: 15px;
-  color: var(--penna-phone-muted);
+  color: var(--penna-fg-muted);
   --penna-icon-size: 18px;
 }
 
-.penna-press[data-penna][data-penna] {
+.penna-press {
   position: absolute;
   inset: 0;
-  border: 0;
-  border-radius: inherit !important;
+  border-radius: inherit;
   corner-shape: inherit;
-  box-shadow: none;
+  background: var(--penna-control);
   opacity: 0;
   pointer-events: none;
 }
 
-.penna-bento-tile:active > .penna-press[data-penna][data-penna] {
+.penna-bento-tile:active > .penna-press {
   opacity: 1;
 }
 
@@ -364,8 +367,4 @@
   font-weight: 600;
   color: var(--penna-fg);
   white-space: nowrap;
-}
-
-:is(.penna-compact-pill, .penna-pill-tile, .penna-pill-chip, .penna-pill-menu-close, .penna-hud-card, .penna-compact-group-face, .penna-bento-tile)[data-penna] {
-  --penna-glass: 0;
 }

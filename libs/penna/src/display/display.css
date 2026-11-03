@@ -43,7 +43,7 @@
 }
 
 .display-muted {
-  color: oklab(from var(--penna-fg) calc(l * 0.65 + 0.35 * clamp(0, (0.5987 - l) * 1000, 1)) calc(a * 0.65) calc(b * 0.65));
+  color: var(--penna-fg-muted);
 }
 
 .penna-text {
@@ -57,4 +57,8 @@
 .penna-list-detail > .penna-text,
 .penna-kbd > .penna-text {
   --display-text-y: 0px;
+}
+
+.display-inline > .penna-spinner {
+  margin-top: -0.5px;
 }

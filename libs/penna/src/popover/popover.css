@@ -16,7 +16,6 @@
   font-family: var(--penna-font);
   color: var(--penna-ink);
   outline: none;
-  --penna-glass: 0;
 }
 
 .penna-popover[data-anchor~="bottom"] > .penna-popover-panel {

@@ -1,4 +1,4 @@
-use ala::{App, ElementId, IntoElement, Pixels, RenderOnce, Window};
+use ala::{App, ElementId, IntoElement, Pixels, RenderOnce, Role, Window};
 
 use crate::{
     Kind, Surface, SurfaceRole,
@@ -17,6 +17,13 @@ pub enum PanelLook {
 }
 
 impl PanelLook {
+    const fn announced(self) -> Role {
+        match self {
+            Self::Toast => Role::Status,
+            Self::Popover | Self::Inline | Self::Picker | Self::Plain => Role::Group,
+        }
+    }
+
     const fn role(self) -> SurfaceRole {
         match self {
             Self::Popover => SurfaceRole::POPOVER,
@@ -45,7 +52,7 @@ impl Panel {
     #[must_use]
     pub fn new(id: impl Into<ElementId>, look: PanelLook) -> Self {
         Self {
-            plate: Plate::new(id, look.role()),
+            plate: Plate::new(id, look.role()).announce(look.announced()),
             look,
             inset: None,
         }

@@ -21,10 +21,6 @@
   animation: penna-spinner-turn 800ms ease-in-out infinite;
 }
 
-:root[data-motion="off"] .penna-spinner > [data-icon] {
-  animation: none;
-}
-
 @media (prefers-reduced-motion: reduce) {
   .penna-spinner > [data-icon] {
     animation: none;
@@ -32,7 +28,7 @@
 }
 
 .penna-spinner[data-color="muted"] {
-  color: oklab(from var(--penna-fg) calc(l * 0.65 + 0.35 * clamp(0, (0.5987 - l) * 1000, 1)) calc(a * 0.65) calc(b * 0.65));
+  color: var(--penna-fg-muted);
 }
 
 .penna-spinner[data-color="accent"] {

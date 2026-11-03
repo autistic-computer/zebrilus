@@ -1,6 +1,5 @@
 .penna-text {
   position: relative;
-  left: -0.25px;
   flex: none;
   white-space: nowrap;
 }
@@ -43,6 +42,10 @@
   font-weight: 500;
 }
 
+.penna-chip:not([data-size="small"]) .penna-text {
+  top: 0.5px;
+}
+
 .penna-chip > .penna-chip-detail {
   flex: 0 1 auto;
   min-width: 0;
@@ -81,7 +84,7 @@
 
 .penna-chip[data-emphasis="ghost"] {
   background: none;
-  border-color: transparent;
+  --penna-bw: 0px;
 }
 
 .penna-chip[data-emphasis="solid"] {
@@ -158,19 +161,16 @@
 }
 
 .penna-step-label {
-  top: -0.5px;
   font-size: 13px;
   line-height: 18px;
   color: var(--penna-fg);
 }
 
 .penna-step[data-place="current"] > .penna-step-label {
-  top: -0.5px;
   font-weight: 500;
 }
 
 .penna-step[data-place="later"] > .penna-step-label {
-  top: -0.5px;
   color: var(--penna-muted);
 }
 
@@ -271,19 +271,8 @@
   gap: 8px;
 }
 
-.penna-chip[data-radius] {
-  border-radius: var(--penna-chip-r) !important;
-}
-
 .penna-chip[data-penna] {
-  --penna-glass: 0;
   outline: none;
-}
-
-.penna-chip[data-glass] {
-  background: linear-gradient(var(--penna-fill), var(--penna-fill)), var(--penna-glass-under);
-  -webkit-backdrop-filter: none;
-  backdrop-filter: none;
 }
 
 .penna-notice .penna-button[data-on] {

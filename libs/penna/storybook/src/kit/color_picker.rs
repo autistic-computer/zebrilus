@@ -1,6 +1,6 @@
 use ala::{
     AnyView, App, AppContext as _, Context, Entity, Hsla, IntoElement, MouseButton,
-    ParentElement as _, Render, Styled as _, Subscription, Window, div, px,
+    ParentElement as _, Render, SharedString, Styled as _, Subscription, Window, div, px,
 };
 use penna::{
     ActiveTheme as _, Colorize as _, Disableable as _, Sizable as _, Size,
@@ -81,17 +81,25 @@ impl Pickers {
 impl Render for Pickers {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let inherited = hex("#bb9af7", cx);
-        let sized = self
-            .sizes
-            .iter()
-            .map(|(size, state)| ColorPicker::new(state, inherited).with_size(*size));
+        let sized = self.sizes.iter().map(|(size, state)| {
+            let name = if *size == Size::Small {
+                "small"
+            } else {
+                "medium"
+            };
+            ColorPicker::new(state, inherited)
+                .id(SharedString::from(format!("color-picker-{name}")))
+                .with_size(*size)
+        });
         states()
             .columns(2)
             .state(
                 "override",
                 setting(
                     "Accent",
-                    ColorPicker::new(&self.set, inherited).label("Accent"),
+                    ColorPicker::new(&self.set, inherited)
+                        .id("color-picker-accent")
+                        .label("Accent"),
                     cx,
                 ),
             )
@@ -99,7 +107,9 @@ impl Render for Pickers {
                 "inherited",
                 setting(
                     "Selection",
-                    ColorPicker::new(&self.inherited, inherited).label("Selection"),
+                    ColorPicker::new(&self.inherited, inherited)
+                        .id("color-picker-selection")
+                        .label("Selection"),
                     cx,
                 ),
             )
@@ -107,7 +117,9 @@ impl Render for Pickers {
                 "disabled",
                 setting(
                     "Cursor",
-                    ColorPicker::new(&self.disabled, inherited).disabled(true),
+                    ColorPicker::new(&self.disabled, inherited)
+                        .id("color-picker-cursor")
+                        .disabled(true),
                     cx,
                 ),
             )
@@ -115,6 +127,7 @@ impl Render for Pickers {
             .state(
                 "bare swatch",
                 ColorPicker::new(&self.swatch, inherited)
+                    .id("color-picker-swatch")
                     .label("Accent")
                     .swatch(px(18.0)),
             )
@@ -154,7 +167,11 @@ impl Render for Open {
             h_flex().justify_end().w(px(320.0)).child(
                 div()
                     .relative()
-                    .child(ColorPicker::new(&self.state, inherited).label("Pane border"))
+                    .child(
+                        ColorPicker::new(&self.state, inherited)
+                            .id("color-picker-pane-border")
+                            .label("Pane border"),
+                    )
                     .child(self.trigger.measure()),
             ),
         )

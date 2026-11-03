@@ -339,6 +339,7 @@ mod web {
     use crate::catalog::{Catalog, catalog, install};
 
     fn launch(cx: &mut ala::App) {
+        cx.set_text_rendering_mode(ala::TextRenderingMode::Grayscale);
         cx.text_system()
             .add_fonts(vec![
                 super::Cow::Borrowed(include_bytes!("../fonts/inter/InterVariable.ttf")),

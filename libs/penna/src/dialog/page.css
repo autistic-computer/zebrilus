@@ -4,13 +4,17 @@
   gap: 8px;
   font-size: 14px;
   line-height: round(nearest, 14px * 1.618, 0.5px);
-  color: oklab(from var(--penna-fg) calc(l * 0.65 + 0.35 * clamp(0, (0.5 - l) * 1000, 1)) calc(a * 0.65) calc(b * 0.65));
+  color: var(--penna-fg-muted);
 }
 
 .dialog-backdrop-row {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.dialog-backdrop-row > [data-icon] {
+  translate: 0 -0.5px;
 }
 
 .dialog-form {
@@ -46,5 +50,5 @@
 
 .dialog-keys {
   font-family: var(--penna-mono);
-  color: var(--dialog-fg-muted);
+  color: var(--penna-fg-muted);
 }

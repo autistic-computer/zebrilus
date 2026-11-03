@@ -11,29 +11,29 @@
     <link rel="stylesheet" href="dialog.css" />
     <link rel="stylesheet" href="page.css" />
     <script src="../../web/kit.js" data-tokens="../../web/tokens/"></script>
+    <script src="../../web/story.js" defer></script>
     <script src="../button/button.js" defer></script>
     <script src="../input/input.js" defer></script>
     <script src="dialog.js" defer></script>
-    <script src="page.js" defer></script>
   </head>
   <body>
     <section data-section="dialog" class="penna-dialog-stage">
       <div class="dialog-backdrop" style="height: 300px">
-        <div class="dialog-backdrop-row"><i data-icon="square-terminal"></i><span class="penna-dialog-text">work</span></div>
-        <div class="dialog-backdrop-row"><i data-icon="square-terminal"></i><span class="penna-dialog-text">scratch</span></div>
-        <div class="dialog-backdrop-row"><i data-icon="square-terminal"></i><span class="penna-dialog-text">logs</span></div>
-        <div class="dialog-backdrop-row"><i data-icon="square-terminal"></i><span class="penna-dialog-text">devbox</span></div>
-        <div class="dialog-backdrop-row"><i data-icon="square-terminal"></i><span class="penna-dialog-text">notes</span></div>
+        <div class="dialog-backdrop-row"><i data-icon="square-terminal"></i><span class="penna-dialog-text" data-penna-text>work</span></div>
+        <div class="dialog-backdrop-row"><i data-icon="square-terminal"></i><span class="penna-dialog-text" data-penna-text>scratch</span></div>
+        <div class="dialog-backdrop-row"><i data-icon="square-terminal"></i><span class="penna-dialog-text" data-penna-text>logs</span></div>
+        <div class="dialog-backdrop-row"><i data-icon="square-terminal"></i><span class="penna-dialog-text" data-penna-text>devbox</span></div>
+        <div class="dialog-backdrop-row"><i data-icon="square-terminal"></i><span class="penna-dialog-text" data-penna-text>notes</span></div>
       </div>
       <div class="penna-dialog-layer">
         <div class="penna-dialog-place">
           <div class="penna-dialog-room"></div>
           <div class="penna-dialog" data-penna="dialog" role="dialog" aria-label="Rename session" style="--dialog-width: 420px">
             <div class="penna-dialog-main">
-              <div class="penna-dialog-gutter"><div class="penna-dialog-title"><span class="penna-dialog-text">Rename session</span></div></div>
+              <div class="penna-dialog-gutter"><div class="penna-dialog-title"><span class="penna-dialog-text" data-penna-text>Rename session</span></div></div>
               <div class="penna-dialog-body"><div class="penna-dialog-scroll"><div class="dialog-form"><div class="penna-dialog-description">Names show in the sidebar and the status bar.</div><label class="penna-input" data-penna="field"><input value="scratch" aria-label="Session name" /></label></div></div></div>
             </div>
-            <div class="penna-dialog-gutter"><div class="penna-dialog-footer"><button class="penna-button" data-penna="button" data-id="cancel" data-dialog-cancel><span class="penna-label">Cancel</span></button><button class="penna-button" data-penna="button" data-tone="primary" data-prominent data-id="ok" data-dialog-ok><span class="penna-label">Rename</span></button></div></div>
+            <div class="penna-dialog-gutter"><div class="penna-dialog-footer"><button class="penna-button" data-penna="button" data-id="cancel" data-dialog-cancel><span class="penna-label" data-penna-text>Cancel</span></button><button class="penna-button" data-penna="button" data-tone="primary" data-prominent data-id="ok" data-dialog-ok><span class="penna-label" data-penna-text>Rename</span></button></div></div>
             <button class="penna-button penna-dialog-close" data-penna="icon-button" data-shape="icon" aria-label="Close" data-id="close" data-dialog-close><i data-icon="xmark"></i></button>
           </div>
         </div>
@@ -42,20 +42,20 @@
 
     <section data-section="alert" class="penna-dialog-stage">
       <div class="dialog-backdrop" style="height: 300px">
-        <div class="dialog-backdrop-row"><i data-icon="square-terminal"></i><span class="penna-dialog-text">work</span></div>
-        <div class="dialog-backdrop-row"><i data-icon="square-terminal"></i><span class="penna-dialog-text">scratch</span></div>
-        <div class="dialog-backdrop-row"><i data-icon="square-terminal"></i><span class="penna-dialog-text">logs</span></div>
-        <div class="dialog-backdrop-row"><i data-icon="square-terminal"></i><span class="penna-dialog-text">devbox</span></div>
-        <div class="dialog-backdrop-row"><i data-icon="square-terminal"></i><span class="penna-dialog-text">notes</span></div>
+        <div class="dialog-backdrop-row"><i data-icon="square-terminal"></i><span class="penna-dialog-text" data-penna-text>work</span></div>
+        <div class="dialog-backdrop-row"><i data-icon="square-terminal"></i><span class="penna-dialog-text" data-penna-text>scratch</span></div>
+        <div class="dialog-backdrop-row"><i data-icon="square-terminal"></i><span class="penna-dialog-text" data-penna-text>logs</span></div>
+        <div class="dialog-backdrop-row"><i data-icon="square-terminal"></i><span class="penna-dialog-text" data-penna-text>devbox</span></div>
+        <div class="dialog-backdrop-row"><i data-icon="square-terminal"></i><span class="penna-dialog-text" data-penna-text>notes</span></div>
       </div>
       <div class="penna-dialog-layer" data-static>
         <div class="penna-dialog-place">
           <div class="penna-dialog-room"></div>
           <div class="penna-dialog" data-penna="dialog" role="alertdialog" aria-label="Kill session work?">
             <div class="penna-dialog-main">
-              <div class="penna-dialog-gutter"><div class="penna-dialog-head"><i data-icon="triangle-alert" data-tone="danger"></i><div class="penna-dialog-lines"><div class="penna-dialog-title"><span class="penna-dialog-text">Kill session work?</span></div><div class="penna-dialog-description">Three windows and seven panes close. Running processes get SIGHUP.</div></div></div></div>
+              <div class="penna-dialog-gutter"><div class="penna-dialog-head"><i data-icon="triangle-alert" data-tone="danger"></i><div class="penna-dialog-lines"><div class="penna-dialog-title"><span class="penna-dialog-text" data-penna-text>Kill session work?</span></div><div class="penna-dialog-description">Three windows and seven panes close. Running processes get SIGHUP.</div></div></div></div>
             </div>
-            <div class="penna-dialog-gutter"><div class="penna-dialog-footer"><button class="penna-button" data-penna="button" data-id="cancel" data-dialog-cancel><span class="penna-label">Cancel</span></button><button class="penna-button" data-penna="button" data-tone="danger" data-prominent data-id="ok" data-dialog-ok><span class="penna-label">Kill session</span></button></div></div>
+            <div class="penna-dialog-gutter"><div class="penna-dialog-footer"><button class="penna-button" data-penna="button" data-id="cancel" data-dialog-cancel><span class="penna-label" data-penna-text>Cancel</span></button><button class="penna-button" data-penna="button" data-tone="danger" data-prominent data-id="ok" data-dialog-ok><span class="penna-label" data-penna-text>Kill session</span></button></div></div>
           </div>
         </div>
       </div>
@@ -63,21 +63,21 @@
 
     <section data-section="custom-footer" class="penna-dialog-stage">
       <div class="dialog-backdrop" style="height: 300px">
-        <div class="dialog-backdrop-row"><i data-icon="square-terminal"></i><span class="penna-dialog-text">work</span></div>
-        <div class="dialog-backdrop-row"><i data-icon="square-terminal"></i><span class="penna-dialog-text">scratch</span></div>
-        <div class="dialog-backdrop-row"><i data-icon="square-terminal"></i><span class="penna-dialog-text">logs</span></div>
-        <div class="dialog-backdrop-row"><i data-icon="square-terminal"></i><span class="penna-dialog-text">devbox</span></div>
-        <div class="dialog-backdrop-row"><i data-icon="square-terminal"></i><span class="penna-dialog-text">notes</span></div>
+        <div class="dialog-backdrop-row"><i data-icon="square-terminal"></i><span class="penna-dialog-text" data-penna-text>work</span></div>
+        <div class="dialog-backdrop-row"><i data-icon="square-terminal"></i><span class="penna-dialog-text" data-penna-text>scratch</span></div>
+        <div class="dialog-backdrop-row"><i data-icon="square-terminal"></i><span class="penna-dialog-text" data-penna-text>logs</span></div>
+        <div class="dialog-backdrop-row"><i data-icon="square-terminal"></i><span class="penna-dialog-text" data-penna-text>devbox</span></div>
+        <div class="dialog-backdrop-row"><i data-icon="square-terminal"></i><span class="penna-dialog-text" data-penna-text>notes</span></div>
       </div>
       <div class="penna-dialog-layer">
         <div class="penna-dialog-place">
           <div class="penna-dialog-room"></div>
           <div class="penna-dialog" data-penna="dialog" role="dialog" aria-label="Server update" style="--dialog-width: 460px">
             <div class="penna-dialog-main">
-              <div class="penna-dialog-gutter"><div class="penna-dialog-title"><span class="penna-dialog-text">Server update</span></div></div>
+              <div class="penna-dialog-gutter"><div class="penna-dialog-title"><span class="penna-dialog-text" data-penna-text>Server update</span></div></div>
               <div class="penna-dialog-body"><div class="penna-dialog-scroll"><div class="penna-dialog-description">Version 0.16.1 is installed. Sessions keep running on the old server until it restarts.</div></div></div>
             </div>
-            <div class="penna-dialog-gutter"><div class="penna-dialog-footer dialog-split"><a class="penna-button" data-variant="link" href="#" data-id="notes"><span class="penna-label">Release notes</span></a><div class="dialog-actions"><button class="penna-button" data-penna="button.quiet" data-id="later"><span class="penna-label">Later</span></button><button class="penna-button" data-penna="button" data-tone="primary" data-prominent data-id="restart"><span class="penna-label">Restart server</span></button></div></div></div>
+            <div class="penna-dialog-gutter"><div class="penna-dialog-footer dialog-split"><a class="penna-button" data-variant="link" href="#" data-id="notes"><span class="penna-label" data-penna-text>Release notes</span></a><div class="dialog-actions"><button class="penna-button" data-penna="button.quiet" data-id="later"><span class="penna-label" data-penna-text>Later</span></button><button class="penna-button" data-penna="button" data-tone="primary" data-prominent data-id="restart"><span class="penna-label" data-penna-text>Restart server</span></button></div></div></div>
           </div>
         </div>
       </div>
@@ -85,21 +85,21 @@
 
     <section data-section="scrolling-body" class="penna-dialog-stage">
       <div class="dialog-backdrop" style="height: 440px">
-        <div class="dialog-backdrop-row"><i data-icon="square-terminal"></i><span class="penna-dialog-text">work</span></div>
-        <div class="dialog-backdrop-row"><i data-icon="square-terminal"></i><span class="penna-dialog-text">scratch</span></div>
-        <div class="dialog-backdrop-row"><i data-icon="square-terminal"></i><span class="penna-dialog-text">logs</span></div>
-        <div class="dialog-backdrop-row"><i data-icon="square-terminal"></i><span class="penna-dialog-text">devbox</span></div>
-        <div class="dialog-backdrop-row"><i data-icon="square-terminal"></i><span class="penna-dialog-text">notes</span></div>
+        <div class="dialog-backdrop-row"><i data-icon="square-terminal"></i><span class="penna-dialog-text" data-penna-text>work</span></div>
+        <div class="dialog-backdrop-row"><i data-icon="square-terminal"></i><span class="penna-dialog-text" data-penna-text>scratch</span></div>
+        <div class="dialog-backdrop-row"><i data-icon="square-terminal"></i><span class="penna-dialog-text" data-penna-text>logs</span></div>
+        <div class="dialog-backdrop-row"><i data-icon="square-terminal"></i><span class="penna-dialog-text" data-penna-text>devbox</span></div>
+        <div class="dialog-backdrop-row"><i data-icon="square-terminal"></i><span class="penna-dialog-text" data-penna-text>notes</span></div>
       </div>
       <div class="penna-dialog-layer">
         <div class="penna-dialog-place">
           <div class="penna-dialog-room"></div>
           <div class="penna-dialog" data-penna="dialog" role="dialog" aria-label="Key bindings" style="--dialog-width: 480px">
             <div class="penna-dialog-main">
-              <div class="penna-dialog-gutter"><div class="penna-dialog-title"><span class="penna-dialog-text">Key bindings</span></div></div>
-              <div class="penna-dialog-body"><div class="penna-dialog-scroll"><div class="dialog-bindings"><div class="dialog-binding"><span class="penna-dialog-text">New window</span><span class="dialog-keys"><span class="penna-dialog-text">Ctrl+T</span></span></div><div class="dialog-binding"><span class="penna-dialog-text">Next window</span><span class="dialog-keys"><span class="penna-dialog-text">Ctrl+Tab</span></span></div><div class="dialog-binding"><span class="penna-dialog-text">Previous window</span><span class="dialog-keys"><span class="penna-dialog-text">Ctrl+Shift+Tab</span></span></div><div class="dialog-binding"><span class="penna-dialog-text">Split right</span><span class="dialog-keys"><span class="penna-dialog-text">Ctrl+D</span></span></div><div class="dialog-binding"><span class="penna-dialog-text">Split down</span><span class="dialog-keys"><span class="penna-dialog-text">Ctrl+Shift+D</span></span></div><div class="dialog-binding"><span class="penna-dialog-text">Close pane</span><span class="dialog-keys"><span class="penna-dialog-text">Ctrl+W</span></span></div><div class="dialog-binding"><span class="penna-dialog-text">Zoom pane</span><span class="dialog-keys"><span class="penna-dialog-text">Ctrl+Shift+Z</span></span></div><div class="dialog-binding"><span class="penna-dialog-text">Detach</span><span class="dialog-keys"><span class="penna-dialog-text">Ctrl+Q</span></span></div><div class="dialog-binding"><span class="penna-dialog-text">Copy</span><span class="dialog-keys"><span class="penna-dialog-text">Ctrl+Shift+C</span></span></div><div class="dialog-binding"><span class="penna-dialog-text">Paste</span><span class="dialog-keys"><span class="penna-dialog-text">Ctrl+Shift+V</span></span></div><div class="dialog-binding"><span class="penna-dialog-text">Rename window</span><span class="dialog-keys"><span class="penna-dialog-text">F2</span></span></div><div class="dialog-binding"><span class="penna-dialog-text">Rename session</span><span class="dialog-keys"><span class="penna-dialog-text">Shift+F2</span></span></div><div class="dialog-binding"><span class="penna-dialog-text">Open session</span><span class="dialog-keys"><span class="penna-dialog-text">Ctrl+O</span></span></div><div class="dialog-binding"><span class="penna-dialog-text">Go to window</span><span class="dialog-keys"><span class="penna-dialog-text">Ctrl+P</span></span></div><div class="dialog-binding"><span class="penna-dialog-text">Find</span><span class="dialog-keys"><span class="penna-dialog-text">Ctrl+F</span></span></div><div class="dialog-binding"><span class="penna-dialog-text">Next pane</span><span class="dialog-keys"><span class="penna-dialog-text">Ctrl+]</span></span></div><div class="dialog-binding"><span class="penna-dialog-text">Previous pane</span><span class="dialog-keys"><span class="penna-dialog-text">Ctrl+[</span></span></div><div class="dialog-binding"><span class="penna-dialog-text">Show shortcuts</span><span class="dialog-keys"><span class="penna-dialog-text">Ctrl+/</span></span></div></div></div></div>
+              <div class="penna-dialog-gutter"><div class="penna-dialog-title"><span class="penna-dialog-text" data-penna-text>Key bindings</span></div></div>
+              <div class="penna-dialog-body"><div class="penna-dialog-scroll"><div class="dialog-bindings"><div class="dialog-binding"><span class="penna-dialog-text" data-penna-text>New window</span><span class="dialog-keys"><span class="penna-dialog-text" data-penna-text>Ctrl+T</span></span></div><div class="dialog-binding"><span class="penna-dialog-text" data-penna-text>Next window</span><span class="dialog-keys"><span class="penna-dialog-text" data-penna-text>Ctrl+Tab</span></span></div><div class="dialog-binding"><span class="penna-dialog-text" data-penna-text>Previous window</span><span class="dialog-keys"><span class="penna-dialog-text" data-penna-text>Ctrl+Shift+Tab</span></span></div><div class="dialog-binding"><span class="penna-dialog-text" data-penna-text>Split right</span><span class="dialog-keys"><span class="penna-dialog-text" data-penna-text>Ctrl+D</span></span></div><div class="dialog-binding"><span class="penna-dialog-text" data-penna-text>Split down</span><span class="dialog-keys"><span class="penna-dialog-text" data-penna-text>Ctrl+Shift+D</span></span></div><div class="dialog-binding"><span class="penna-dialog-text" data-penna-text>Close pane</span><span class="dialog-keys"><span class="penna-dialog-text" data-penna-text>Ctrl+W</span></span></div><div class="dialog-binding"><span class="penna-dialog-text" data-penna-text>Zoom pane</span><span class="dialog-keys"><span class="penna-dialog-text" data-penna-text>Ctrl+Shift+Z</span></span></div><div class="dialog-binding"><span class="penna-dialog-text" data-penna-text>Detach</span><span class="dialog-keys"><span class="penna-dialog-text" data-penna-text>Ctrl+Q</span></span></div><div class="dialog-binding"><span class="penna-dialog-text" data-penna-text>Copy</span><span class="dialog-keys"><span class="penna-dialog-text" data-penna-text>Ctrl+Shift+C</span></span></div><div class="dialog-binding"><span class="penna-dialog-text" data-penna-text>Paste</span><span class="dialog-keys"><span class="penna-dialog-text" data-penna-text>Ctrl+Shift+V</span></span></div><div class="dialog-binding"><span class="penna-dialog-text" data-penna-text>Rename window</span><span class="dialog-keys"><span class="penna-dialog-text" data-penna-text>F2</span></span></div><div class="dialog-binding"><span class="penna-dialog-text" data-penna-text>Rename session</span><span class="dialog-keys"><span class="penna-dialog-text" data-penna-text>Shift+F2</span></span></div><div class="dialog-binding"><span class="penna-dialog-text" data-penna-text>Open session</span><span class="dialog-keys"><span class="penna-dialog-text" data-penna-text>Ctrl+O</span></span></div><div class="dialog-binding"><span class="penna-dialog-text" data-penna-text>Go to window</span><span class="dialog-keys"><span class="penna-dialog-text" data-penna-text>Ctrl+P</span></span></div><div class="dialog-binding"><span class="penna-dialog-text" data-penna-text>Find</span><span class="dialog-keys"><span class="penna-dialog-text" data-penna-text>Ctrl+F</span></span></div><div class="dialog-binding"><span class="penna-dialog-text" data-penna-text>Next pane</span><span class="dialog-keys"><span class="penna-dialog-text" data-penna-text>Ctrl+]</span></span></div><div class="dialog-binding"><span class="penna-dialog-text" data-penna-text>Previous pane</span><span class="dialog-keys"><span class="penna-dialog-text" data-penna-text>Ctrl+[</span></span></div><div class="dialog-binding"><span class="penna-dialog-text" data-penna-text>Show shortcuts</span><span class="dialog-keys"><span class="penna-dialog-text" data-penna-text>Ctrl+/</span></span></div></div></div></div>
             </div>
-            <div class="penna-dialog-gutter"><div class="penna-dialog-footer"><button class="penna-button" data-penna="button" data-tone="primary" data-prominent data-id="ok" data-dialog-ok><span class="penna-label">Done</span></button></div></div>
+            <div class="penna-dialog-gutter"><div class="penna-dialog-footer"><button class="penna-button" data-penna="button" data-tone="primary" data-prominent data-id="ok" data-dialog-ok><span class="penna-label" data-penna-text>Done</span></button></div></div>
             <button class="penna-button penna-dialog-close" data-penna="icon-button" data-shape="icon" aria-label="Close" data-id="close" data-dialog-close><i data-icon="xmark"></i></button>
           </div>
         </div>
@@ -108,21 +108,21 @@
 
     <section data-section="stacked" class="penna-dialog-stage">
       <div class="dialog-backdrop" style="height: 440px">
-        <div class="dialog-backdrop-row"><i data-icon="square-terminal"></i><span class="penna-dialog-text">work</span></div>
-        <div class="dialog-backdrop-row"><i data-icon="square-terminal"></i><span class="penna-dialog-text">scratch</span></div>
-        <div class="dialog-backdrop-row"><i data-icon="square-terminal"></i><span class="penna-dialog-text">logs</span></div>
-        <div class="dialog-backdrop-row"><i data-icon="square-terminal"></i><span class="penna-dialog-text">devbox</span></div>
-        <div class="dialog-backdrop-row"><i data-icon="square-terminal"></i><span class="penna-dialog-text">notes</span></div>
+        <div class="dialog-backdrop-row"><i data-icon="square-terminal"></i><span class="penna-dialog-text" data-penna-text>work</span></div>
+        <div class="dialog-backdrop-row"><i data-icon="square-terminal"></i><span class="penna-dialog-text" data-penna-text>scratch</span></div>
+        <div class="dialog-backdrop-row"><i data-icon="square-terminal"></i><span class="penna-dialog-text" data-penna-text>logs</span></div>
+        <div class="dialog-backdrop-row"><i data-icon="square-terminal"></i><span class="penna-dialog-text" data-penna-text>devbox</span></div>
+        <div class="dialog-backdrop-row"><i data-icon="square-terminal"></i><span class="penna-dialog-text" data-penna-text>notes</span></div>
       </div>
       <div class="penna-dialog-layer">
         <div class="penna-dialog-place">
           <div class="penna-dialog-room"></div>
           <div class="penna-dialog" data-penna="dialog" role="dialog" aria-label="Rename session" style="--dialog-width: 420px">
             <div class="penna-dialog-main">
-              <div class="penna-dialog-gutter"><div class="penna-dialog-title"><span class="penna-dialog-text">Rename session</span></div></div>
+              <div class="penna-dialog-gutter"><div class="penna-dialog-title"><span class="penna-dialog-text" data-penna-text>Rename session</span></div></div>
               <div class="penna-dialog-body"><div class="penna-dialog-scroll"><div class="dialog-form"><div class="penna-dialog-description">Names show in the sidebar and the status bar.</div><label class="penna-input" data-penna="field"><input value="scratch" aria-label="Session name" /></label></div></div></div>
             </div>
-            <div class="penna-dialog-gutter"><div class="penna-dialog-footer"><button class="penna-button" data-penna="button" data-id="cancel" data-dialog-cancel><span class="penna-label">Cancel</span></button><button class="penna-button" data-penna="button" data-tone="primary" data-prominent data-id="ok" data-dialog-ok><span class="penna-label">Rename</span></button></div></div>
+            <div class="penna-dialog-gutter"><div class="penna-dialog-footer"><button class="penna-button" data-penna="button" data-id="cancel" data-dialog-cancel><span class="penna-label" data-penna-text>Cancel</span></button><button class="penna-button" data-penna="button" data-tone="primary" data-prominent data-id="ok" data-dialog-ok><span class="penna-label" data-penna-text>Rename</span></button></div></div>
             <button class="penna-button penna-dialog-close" data-penna="icon-button" data-shape="icon" aria-label="Close" data-id="close" data-dialog-close><i data-icon="xmark"></i></button>
           </div>
         </div>
@@ -132,9 +132,9 @@
           <div class="penna-dialog-room"></div>
           <div class="penna-dialog" data-penna="dialog" role="alertdialog" aria-label="Discard the new name?">
             <div class="penna-dialog-main">
-              <div class="penna-dialog-gutter"><div class="penna-dialog-head"><div class="penna-dialog-lines"><div class="penna-dialog-title"><span class="penna-dialog-text">Discard the new name?</span></div><div class="penna-dialog-description">The session keeps its old name.</div></div></div></div>
+              <div class="penna-dialog-gutter"><div class="penna-dialog-head"><div class="penna-dialog-lines"><div class="penna-dialog-title"><span class="penna-dialog-text" data-penna-text>Discard the new name?</span></div><div class="penna-dialog-description">The session keeps its old name.</div></div></div></div>
             </div>
-            <div class="penna-dialog-gutter"><div class="penna-dialog-footer"><button class="penna-button" data-penna="button" data-id="cancel" data-dialog-cancel><span class="penna-label">Cancel</span></button><button class="penna-button" data-penna="button" data-tone="danger" data-prominent data-id="ok" data-dialog-ok><span class="penna-label">Discard</span></button></div></div>
+            <div class="penna-dialog-gutter"><div class="penna-dialog-footer"><button class="penna-button" data-penna="button" data-id="cancel" data-dialog-cancel><span class="penna-label" data-penna-text>Cancel</span></button><button class="penna-button" data-penna="button" data-tone="danger" data-prominent data-id="ok" data-dialog-ok><span class="penna-label" data-penna-text>Discard</span></button></div></div>
           </div>
         </div>
       </div>

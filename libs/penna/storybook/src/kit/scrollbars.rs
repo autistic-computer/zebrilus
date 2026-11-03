@@ -5,7 +5,7 @@ use ala::{
 };
 use penna::{
     ActiveTheme as _, Colorize as _, ScrollbarShow,
-    scroll::{Scrollbar, ScrollbarAxis},
+    scroll::{GUTTER_WIDTH, MIN_THUMB_SIZE, Scrollbar, ScrollbarAxis},
     v_flex,
 };
 
@@ -22,7 +22,7 @@ pub const STORY: Story = Story {
         Section {
             id: "show-modes",
             name: "Show modes",
-            summary: "Always draws the thumb at rest, Hover draws it while the pointer is over the area (hovered here), Scrolling stays hidden until the area scrolls.",
+            summary: "Always draws the thumb at rest, Hover draws it while the pointer is over the bar (here on the thumb, which widens under it), Scrolling stays hidden until the area scrolls.",
             build: |window, cx| Modes::view(window, cx),
         },
         Section {
@@ -149,7 +149,15 @@ impl Render for Modes {
                         ScrollbarShow::Hover,
                         cx,
                     ))
-                    .child(self.hovered.measure()),
+                    .child(
+                        div()
+                            .absolute()
+                            .top_0()
+                            .right_0()
+                            .w(GUTTER_WIDTH)
+                            .h(px(MIN_THUMB_SIZE))
+                            .child(self.hovered.measure()),
+                    ),
             )
             .state(
                 "Scrolling, at rest",

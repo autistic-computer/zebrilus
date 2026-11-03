@@ -1,16 +1,6 @@
 (() => {
   const DELAY = 500;
   const OFFSET = 1;
-  const TEXT = ".penna-tooltip > span";
-
-  function ceil(root = document) {
-    const spans = [...root.querySelectorAll(TEXT)];
-    spans.forEach((span) => span.style.removeProperty("width"));
-    const widths = spans.map((span) => span.getBoundingClientRect().width);
-    spans.forEach((span, index) => {
-      span.style.width = `${Math.ceil(widths[index])}px`;
-    });
-  }
 
   function tipFor(target) {
     const host = target.closest("[data-tooltip-host]") ?? target.parentElement;
@@ -44,7 +34,7 @@
     timer = setTimeout(() => {
       place(tip, x, y);
       tip.setAttribute("data-open", "");
-      ceil(tip.parentElement);
+      window.pennaKit?.ceilText(tip);
       shown = tip;
     }, DELAY);
   });
@@ -60,7 +50,4 @@
     const target = event.target.closest("[data-tooltip]:not([data-tooltip-pinned])");
     if (target) hide(target);
   });
-
-  ceil();
-  document.fonts.ready.then(() => ceil());
 })();

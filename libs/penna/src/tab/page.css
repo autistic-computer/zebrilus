@@ -73,6 +73,7 @@
   height: auto;
   margin: 0;
   padding: 0;
+  pointer-events: none;
   --penna-row: 0;
 }
 
@@ -116,9 +117,6 @@
   line-height: round(nearest, 1.618em, 0.5px);
 }
 
-:is(.penna-row, .penna-row-fill, .penna-item)[data-penna][data-penna] {
-  --penna-glass: 0;
-}
 
 :is(.penna-row, .penna-item)[data-penna]:focus-visible {
   outline: 1.5px solid var(--penna-focus);

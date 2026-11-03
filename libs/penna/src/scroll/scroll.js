@@ -7,12 +7,19 @@
 
   const calm = matchMedia("(prefers-reduced-motion: reduce)");
 
-  function bar(axis) {
+  function bar(axis, id) {
     const element = document.createElement("div");
     element.className = "penna-scrollbar";
     element.dataset.axis = axis;
     const thumb = document.createElement("div");
     thumb.className = "penna-scroll-thumb";
+    const fill = document.createElement("div");
+    fill.className = "penna-scroll-fill";
+    if (id) {
+      element.dataset.id = `${id}-${axis}`;
+      fill.dataset.id = `${id}-${axis}-thumb`;
+    }
+    thumb.append(fill);
     element.append(thumb);
     return element;
   }
@@ -24,7 +31,7 @@
     const axes = mode === "both" ? ["horizontal", "vertical"] : [mode];
     const bars = Object.fromEntries(
       axes.map((axis) => {
-        const element = scroll.querySelector(`:scope > .penna-scrollbar[data-axis="${axis}"]`) ?? scroll.appendChild(bar(axis));
+        const element = scroll.querySelector(`:scope > .penna-scrollbar[data-axis="${axis}"]`) ?? scroll.appendChild(bar(axis, scroll.dataset.bar));
         return [axis, { axis, element, thumb: element.querySelector(".penna-scroll-thumb"), start: 0, length: 0, margin: 0, content: 0, container: 0 }];
       }),
     );
@@ -38,11 +45,12 @@
 
     function layout() {
       let both = mode === "both";
+      const box = scroll.getBoundingClientRect();
       for (const axis of axes) {
         const info = bars[axis];
         const vertical = axis === "vertical";
         const content = vertical ? viewport.scrollHeight : viewport.scrollWidth;
-        const container = vertical ? scroll.clientHeight : scroll.clientWidth;
+        const container = vertical ? box.height - scroll.clientTop * 2 : box.width - scroll.clientLeft * 2;
         const margin = both && !vertical ? BAR : 0;
         if (content <= container) {
           both = false;
@@ -123,8 +131,12 @@
         setOffset(info.axis, Math.min(Math.max(info.content * ratio, 0), range));
       });
       info.element.addEventListener("pointermove", (event) => {
-        if (state.drag?.info !== info) return;
         const [position, origin, size] = along(info, event);
+        const thumbStart = origin + INSET + info.start;
+        const over = position >= thumbStart && position <= thumbStart + info.length;
+        if (over) info.thumb.dataset.state = "hover";
+        else delete info.thumb.dataset.state;
+        if (state.drag?.info !== info) return;
         const travel = size - info.length - (info.axis === "vertical" ? 0 : info.margin);
         const ratio = Math.min(Math.max((position - state.drag.grab - origin) / travel, 0), 1);
         setOffset(info.axis, (info.content - info.container) * ratio);
@@ -146,9 +158,19 @@
         },
         { passive: false },
       );
+      info.element.addEventListener("pointerleave", () => {
+        if (state.drag?.info !== info) delete info.thumb.dataset.state;
+      });
       info.element.addEventListener("pointerenter", () => {
         if (info.element.hasAttribute("data-visible")) show();
       });
+    }
+
+    if (scroll.hasAttribute("data-hovered")) {
+      for (const { thumb } of Object.values(bars)) {
+        thumb.dataset.state = "hover";
+        document.addEventListener("pointermove", () => delete thumb.dataset.state, { once: true, capture: true });
+      }
     }
 
     const x = parseFloat(scroll.dataset.scrollX);

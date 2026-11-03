@@ -2,8 +2,16 @@
   "story": "inputs",
   "page": "index.html",
   "steps": [
-    { "name": "hover-clear", "section": "field-states", "hover": "penna-input-clear" },
-    { "name": "hover-increment", "section": "number", "hover": "penna-number-increment" },
-    { "name": "hover-decrement", "section": "number", "hover": "penna-number-decrement" }
+    { "name": "hover-field", "section": "field-states", "hover": "field-populated" },
+    { "name": "hover-clear", "section": "field-states", "hover": "field-cleanable-clear" },
+    { "name": "click-clear", "section": "field-states", "click": "field-cleanable-clear" },
+    { "name": "hover-small", "section": "field-sizes", "hover": "field-small" },
+    { "name": "hover-increment", "section": "number", "hover": "number-default-increment" },
+    { "name": "hover-decrement", "section": "number", "hover": "number-default-decrement" },
+    { "name": "press-increment", "section": "number", "press": "number-default-increment" },
+    { "name": "click-increment", "section": "number", "click": "number-default-increment" },
+    { "name": "click-decimal-decrement", "section": "number", "click": "number-decimal-decrement" },
+    { "name": "click-bounded-increment", "section": "number", "click": "number-bounded-increment" },
+    { "name": "hover-bare", "section": "number", "hover": "number-bare-increment" }
   ]
 }

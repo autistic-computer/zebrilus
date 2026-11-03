@@ -1,6 +1,6 @@
 use ala::{
     AnyElement, AnyView, App, AppContext as _, Context, IntoElement, Keystroke, ParentElement as _,
-    Render, Styled as _, Subscription, Window, div, px,
+    Render, SharedString, Styled as _, Subscription, Window, div, px,
 };
 use penna::{
     ActiveTheme as _, Colorize as _, Disableable as _, Icon, IconName, Sizable as _, h_flex,
@@ -45,6 +45,7 @@ pub const STORY: Story = Story {
 
 fn key(source: &str) -> Kbd {
     Kbd::new(Keystroke::parse(source).unwrap_or_default())
+        .id(SharedString::from(format!("kbd-{source}")))
 }
 
 fn kbds(_: &mut Window, _: &mut App) -> AnyElement {
@@ -94,25 +95,33 @@ fn spinners(_: &mut Window, cx: &mut App) -> AnyElement {
         .state(
             "sizes",
             row()
-                .child(Spinner::new().small())
-                .child(Spinner::new())
-                .child(Spinner::new().with_size(px(32.0))),
+                .child(Spinner::new().id("spinner-small").small())
+                .child(Spinner::new().id("spinner-medium"))
+                .child(Spinner::new().id("spinner-32").with_size(px(32.0))),
         )
         .state(
             "colors",
             row()
-                .child(Spinner::new().color(theme.foreground.muted()))
-                .child(Spinner::new().color(theme.accent))
-                .child(Spinner::new().color(theme.success))
-                .child(Spinner::new().color(theme.warning))
-                .child(Spinner::new().color(theme.danger)),
+                .child(
+                    Spinner::new()
+                        .id("spinner-muted")
+                        .color(theme.foreground.muted()),
+                )
+                .child(Spinner::new().id("spinner-accent").color(theme.accent))
+                .child(Spinner::new().id("spinner-success").color(theme.success))
+                .child(Spinner::new().id("spinner-warning").color(theme.warning))
+                .child(Spinner::new().id("spinner-danger").color(theme.danger)),
         )
         .state(
             "inline with text",
             h_flex()
                 .gap_2()
                 .text_sm()
-                .child(Spinner::new().color(theme.foreground.muted()))
+                .child(
+                    Spinner::new()
+                        .id("spinner-inline")
+                        .color(theme.foreground.muted()),
+                )
                 .child("Connecting to devbox"),
         )
         .into_any_element()
@@ -129,7 +138,7 @@ fn separators(_: &mut Window, cx: &mut App) -> AnyElement {
                 .gap_2()
                 .text_sm()
                 .child("Sessions")
-                .child(Separator::horizontal())
+                .child(Separator::horizontal().id("separator-horizontal"))
                 .child(div().text_color(muted).child("work, scratch, logs")),
         )
         .state(
@@ -139,9 +148,9 @@ fn separators(_: &mut Window, cx: &mut App) -> AnyElement {
                 .gap_3()
                 .text_sm()
                 .child("macbook")
-                .child(Separator::vertical())
+                .child(Separator::vertical().id("separator-vertical-1"))
                 .child("work")
-                .child(Separator::vertical())
+                .child(Separator::vertical().id("separator-vertical-2"))
                 .child(div().text_color(muted).child("3 panes")),
         )
         .state(
@@ -150,7 +159,11 @@ fn separators(_: &mut Window, cx: &mut App) -> AnyElement {
                 .gap_2()
                 .text_sm()
                 .child("Danger zone")
-                .child(Separator::horizontal().color(theme.danger))
+                .child(
+                    Separator::horizontal()
+                        .id("separator-danger")
+                        .color(theme.danger),
+                )
                 .child(div().text_color(muted).child("Kill every session")),
         )
         .into_any_element()

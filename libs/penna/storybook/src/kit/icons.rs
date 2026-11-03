@@ -15,7 +15,7 @@ pub const STORY: Story = Story {
         Section {
             id: "gallery",
             name: "Gallery",
-            summary: "Every IconName at the medium size, named as in code.",
+            summary: "Every IconName as Icon::new draws it with no size set, so at the ambient text size, named as in code.",
             build: |_, cx| stateless(gallery, cx),
         },
         Section {

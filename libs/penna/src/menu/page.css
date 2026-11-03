@@ -25,8 +25,9 @@
   padding: 1px;
   font-size: 14px;
   line-height: 20px;
-  color: var(--penna-menu-muted);
+  color: var(--penna-fg-muted);
   outline: none;
+  corner-shape: superellipse(var(--penna-window-k));
 }
 
 .menus-open > .menus-trigger {

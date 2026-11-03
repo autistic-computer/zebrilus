@@ -1,8 +1,8 @@
 .penna-sheet {
-  --penna-sheet-fg-muted: oklab(from var(--penna-fg) calc(l * 0.65 + 0.35 * clamp(0, (0.5 - l) * 1000, 1)) calc(a * 0.65) calc(b * 0.65));
   position: absolute;
   inset: 0;
   z-index: 1;
+  overflow: hidden;
   --penna-sheet-rest: 34px;
   --penna-sheet-offset: 0px;
   --penna-sheet-fade: 1;
@@ -11,6 +11,11 @@
 .penna-sheet[data-closed],
 .penna-sheet[data-closed] .penna-sheet-panel {
   pointer-events: none;
+}
+
+.penna-sheet[data-closed] {
+  visibility: hidden;
+  transition: visibility 0s 240ms;
 }
 
 .penna-sheet-scrim {
@@ -35,6 +40,12 @@
   transition: none;
 }
 
+@media (prefers-reduced-motion: reduce) {
+  :is(.penna-sheet, .penna-sheet[data-closed], .penna-sheet-frame, .penna-sheet-scrim) {
+    transition: none;
+  }
+}
+
 .penna-sheet-panel {
   position: absolute;
   left: 0;
@@ -44,15 +55,14 @@
   flex-direction: column;
   max-height: 85%;
   font-family: var(--penna-font);
-  corner-shape: superellipse(2);
   --penna-sheet-ink: var(--penna-ink);
-  --penna-glass: 0;
   touch-action: none;
   pointer-events: auto;
+  will-change: if(style(--penna-glass: 1): transform; else: auto);
 }
 
-.penna-sheet-panel[data-glass] {
-  corner-shape: round;
+.penna-sheet [data-penna-text] {
+  display: inline-block;
 }
 
 .penna-sheet-grip {
@@ -94,7 +104,6 @@
   padding: 0;
   --penna-r: 9999px;
   --penna-k: 1;
-  corner-shape: round;
   --penna-icon-size: 16px;
 }
 
@@ -118,7 +127,7 @@
   padding: 0 12px 10px;
   font-size: 13px;
   line-height: 18px;
-  color: var(--penna-sheet-fg-muted);
+  color: var(--penna-fg-muted);
 }
 
 .penna-sheet-row {
@@ -136,7 +145,6 @@
   cursor: pointer;
   outline: none;
   user-select: none;
-  corner-shape: superellipse(1.322);
 }
 
 .penna-sheet-row[data-lead="tile"] {
@@ -166,7 +174,6 @@
   width: 40px;
   height: 40px;
   --penna-r: 11.2px;
-  corner-shape: superellipse(2);
   --penna-icon-size: 20px;
 }
 

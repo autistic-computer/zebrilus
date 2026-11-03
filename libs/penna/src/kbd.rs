@@ -1,11 +1,12 @@
 use ala::{
-    Action, AnyElement, App, AsKeystroke as _, FocusHandle, FontWeight, IntoElement, KeyContext,
-    Keystroke, ParentElement as _, RenderOnce, SharedString, StyleRefinement, Styled, Window, px,
+    Action, AnyElement, App, AsKeystroke as _, ElementId, FocusHandle, FontWeight, IntoElement,
+    KeyContext, Keystroke, ParentElement as _, RenderOnce, Role, SharedString,
+    StatefulInteractiveElement as _, StyleRefinement, Styled, Window, px,
 };
 
 use crate::{
-    ActiveTheme as _, Ground, Icon, IconName, Layer, PaintState, Sizable, Size, StyledExt as _,
-    Surface, SurfaceRole, Theme, h_flex, rems_from_px,
+    ActiveTheme as _, AuthoredElement as _, Ground, Icon, IconName, Layer, PaintState, Sizable,
+    Size, StyledExt as _, Surface, SurfaceRole, Theme, h_flex, rems_from_px,
 };
 
 const APPLE: bool = cfg!(any(target_os = "macos", target_os = "ios"));
@@ -28,6 +29,7 @@ pub struct Kbd {
     lowercase: bool,
     on: Option<Ground>,
     size: Size,
+    id: Option<ElementId>,
 }
 
 impl Kbd {
@@ -39,7 +41,14 @@ impl Kbd {
             lowercase: false,
             on: None,
             size: Size::default(),
+            id: None,
         }
+    }
+
+    #[must_use]
+    pub fn id(mut self, id: impl Into<ElementId>) -> Self {
+        self.id = Some(id.into());
+        self
     }
 
     #[must_use]
@@ -61,6 +70,8 @@ impl Kbd {
         };
         Keycap {
             label: glyphs.into_any_element(),
+            name: self.text().into(),
+            id: self.id.clone(),
             on: self.on,
             size: self.size,
             style: self.style.clone(),
@@ -285,6 +296,8 @@ impl RenderOnce for Kbd {
 #[derive(IntoElement)]
 pub struct Keycap {
     label: AnyElement,
+    name: SharedString,
+    id: Option<ElementId>,
     on: Option<Ground>,
     size: Size,
     style: StyleRefinement,
@@ -293,12 +306,21 @@ pub struct Keycap {
 impl Keycap {
     #[must_use]
     pub fn new(label: impl Into<SharedString>) -> Self {
+        let name = label.into();
         Self {
-            label: label.into().into_any_element(),
+            label: name.clone().into_any_element(),
+            name,
+            id: None,
             on: None,
             size: Size::default(),
             style: StyleRefinement::default(),
         }
+    }
+
+    #[must_use]
+    pub fn id(mut self, id: impl Into<ElementId>) -> Self {
+        self.id = Some(id.into());
+        self
     }
 
     fn surface_layer(&self, theme: &Theme) -> Layer {
@@ -335,7 +357,7 @@ impl RenderOnce for Keycap {
             Size::Medium | Size::Size(_) => (18.0, 11.0),
         };
         let layer = self.surface_layer(cx.theme());
-        h_flex()
+        let cap = h_flex()
             .flex_none()
             .justify_center()
             .h(px(height))
@@ -347,7 +369,15 @@ impl RenderOnce for Keycap {
             .line_height(px(height - 2.0))
             .font_weight(FontWeight::NORMAL)
             .refine_style(&self.style)
-            .child(self.label)
+            .child(self.label);
+        match self.id {
+            Some(id) => cap
+                .author_id(id)
+                .role(Role::Label)
+                .aria_label(self.name)
+                .into_any_element(),
+            None => cap.into_any_element(),
+        }
     }
 }
 

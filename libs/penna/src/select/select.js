@@ -1,22 +1,6 @@
 (() => {
 const SELECTS = ".penna-select";
 
-function ceilText(root) {
-  const spans = [...root.querySelectorAll(".penna-label, .penna-select-title")];
-  spans.forEach((span) => {
-    span.style.removeProperty("width");
-    span.style.removeProperty("flex");
-  });
-  const widths = spans.map((span) => span.getBoundingClientRect().width);
-  spans.forEach((span, index) => {
-    if (span.classList.contains("penna-select-title")) {
-      span.style.flex = `0 1 ${Math.ceil(widths[index])}px`;
-    } else {
-      span.style.width = `${Math.ceil(widths[index])}px`;
-    }
-  });
-}
-
 function options(select) {
   return (select.dataset.options || "").split(",").map((name) => name.trim()).filter(Boolean);
 }
@@ -34,6 +18,7 @@ function trigger(select) {
     button.dataset.penna = "field";
     const title = document.createElement("span");
     title.className = "penna-select-title";
+    title.dataset.pennaText = "";
     const caret = document.createElement("i");
     caret.dataset.icon = "chevron-down";
     button.append(title, caret);
@@ -52,7 +37,7 @@ function paintTrigger(select) {
   if (select.getAttribute("aria-disabled") === "true") button.dataset.state = "disabled";
   else if (select.hasAttribute("data-open") || select.matches(":focus-visible")) button.dataset.state = "focused";
   else button.removeAttribute("data-state");
-  ceilText(button);
+  pennaKit.ceilText(button);
 }
 
 function menu(select) {
@@ -69,10 +54,6 @@ function highlight(select, index) {
   });
   const row = list.querySelectorAll('[data-penna="menu-item"]')[index];
   row?.scrollIntoView({ block: "nearest" });
-}
-
-function glassify(list) {
-  list.toggleAttribute("data-glass", getComputedStyle(list).getPropertyValue("--penna-backdrop").trim().startsWith("blur"));
 }
 
 function buildMenu(select) {
@@ -93,6 +74,7 @@ function buildMenu(select) {
     if (at === index) check.dataset.icon = "check";
     const label = document.createElement("span");
     label.className = "penna-label";
+    label.dataset.pennaText = "";
     label.textContent = name;
     item.append(check, label);
     item.addEventListener("mouseenter", () => highlight(select, at));
@@ -114,9 +96,10 @@ function buildMenu(select) {
     list.append(empty);
   }
   list.addEventListener("mousedown", (event) => event.preventDefault());
+  const frame = select.closest("section") ?? document.documentElement;
+  list.style.setProperty("--penna-select-max", `${Math.min(frame.getBoundingClientRect().height * 0.5, 450)}px`);
   select.append(list);
-  glassify(list);
-  ceilText(list);
+  pennaKit.ceilText(list);
   highlight(select, index);
   return list;
 }
@@ -160,8 +143,8 @@ function wire(select) {
   select.setAttribute("role", "combobox");
   select.setAttribute("aria-haspopup", "menu");
   paintTrigger(select);
-  trigger(select).addEventListener("mousedown", (event) => {
-    if (event.button !== 0 || disabled) return;
+  select.addEventListener("mousedown", (event) => {
+    if (event.button !== 0 || disabled || menu(select)?.contains(event.target)) return;
     event.preventDefault();
     select.focus();
     if (select.hasAttribute("data-open")) close(select);
@@ -188,7 +171,7 @@ function wire(select) {
   });
   select.addEventListener("focusin", () => paintTrigger(select));
   select.addEventListener("focusout", () => {
-    if (!select.hasAttribute("data-pinned")) close(select);
+    if (!select.hasAttribute("data-pinned") && document.hasFocus()) close(select);
     requestAnimationFrame(() => paintTrigger(select));
   });
   if (select.hasAttribute("data-open")) {
@@ -201,11 +184,6 @@ function settleSelects(root = document) {
   root.querySelectorAll(SELECTS).forEach((select) => {
     wire(select);
     paintTrigger(select);
-    const list = menu(select);
-    if (list) {
-      glassify(list);
-      ceilText(list);
-    }
   });
 }
 
@@ -219,6 +197,4 @@ document.addEventListener("mousedown", (event) => {
 });
 
 settleSelects();
-document.fonts.ready.then(() => settleSelects());
-document.addEventListener("load", (event) => event.target.id === "penna-tokens" && settleSelects(), true);
 })();

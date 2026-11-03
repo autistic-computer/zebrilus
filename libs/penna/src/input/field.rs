@@ -1,14 +1,15 @@
 use ala::{
-    AnyElement, App, DefiniteLength, Div, Entity, InteractiveElement, IntoElement, MouseButton,
-    ParentElement as _, Pixels, RenderOnce, Role, StatefulInteractiveElement as _, StyleRefinement,
-    Styled, TextAlign, Window, div, prelude::FluentBuilder as _, px, relative,
+    AnyElement, App, DefiniteLength, Div, ElementId, Entity, InteractiveElement, IntoElement,
+    MouseButton, ParentElement as _, Pixels, RenderOnce, Role, SharedString,
+    StatefulInteractiveElement, StyleRefinement, Styled, TextAlign, Window, div,
+    prelude::FluentBuilder as _, px, relative,
 };
 
 use crate::{
     ActiveTheme as _, Disableable, Emphasis, Ground, Highlight, Kind, Layer, Paint, PaintState,
     Sizable, Size, StyledExt as _, Surface, SurfaceRole, Theme, Tone,
     button::Button,
-    foundation::restyle,
+    foundation::{author_name, author_part, restyle},
     h_flex,
     icon::{Icon, IconName},
     roles,
@@ -58,6 +59,7 @@ pub struct Input {
     tone: Tone,
     emphasis: Option<Emphasis>,
     on: Option<Ground>,
+    author: Option<SharedString>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -197,7 +199,14 @@ impl Input {
             tone: Tone::Neutral,
             emphasis: None,
             on: None,
+            author: None,
         }
+    }
+
+    #[must_use]
+    pub fn id(mut self, id: impl Into<ElementId>) -> Self {
+        self.author = Some(author_name(&id.into()));
+        self
     }
 
     #[must_use]
@@ -300,9 +309,9 @@ impl Input {
         element.h(size.control_h())
     }
 
-    fn clear_button(state: &Entity<InputState>, cx: &App) -> Button {
+    fn clear_button(state: &Entity<InputState>, author: Option<&SharedString>, cx: &App) -> Button {
         let state = state.clone();
-        Button::new("penna-input-clear")
+        Button::new(author_part(author, "clear", "penna-input-clear"))
             .icon(Icon::new(IconName::CircleX))
             .emphasis(Emphasis::Ghost)
             .small()
@@ -382,7 +391,8 @@ impl RenderOnce for Input {
             resting
         };
         let show_clear = self.cleanable && !self.disabled && !loading && !empty && !multi_line;
-        let clear_button = show_clear.then(|| Self::clear_button(&self.state, cx));
+        let clear_button =
+            show_clear.then(|| Self::clear_button(&self.state, self.author.as_ref(), cx));
         let editable = !self.disabled;
         let disabled = self.disabled;
         let spinner_color = cx.theme().foreground.muted();
@@ -393,6 +403,7 @@ impl RenderOnce for Input {
         let mut element = div()
             .id(("penna-input", self.state.entity_id()))
             .role(role)
+            .when_some(self.author, StatefulInteractiveElement::accessibility_id)
             .aria_disabled(disabled)
             .key_context(actions::CONTEXT)
             .track_focus(&focus_handle)

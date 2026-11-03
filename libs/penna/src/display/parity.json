@@ -1,5 +1,9 @@
 {
   "story": "display",
   "page": "index.html",
-  "steps": []
+  "steps": [
+    { "name": "hover-rest", "section": "list-item", "hover": "row-rest" },
+    { "name": "click-rest", "section": "list-item", "click": "row-rest" },
+    { "name": "press-rest", "section": "list-item", "press": "row-rest" }
+  ]
 }

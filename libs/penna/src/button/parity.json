@@ -3,6 +3,24 @@
   "page": "index.html",
   "steps": [
     { "name": "hover-primary", "section": "variants", "hover": "variant-Primary" },
-    { "name": "press-primary", "section": "variants", "press": "variant-Primary" }
+    { "name": "press-primary", "section": "variants", "press": "variant-Primary" },
+    { "name": "hover-secondary", "section": "variants", "hover": "variant-Secondary" },
+    { "name": "press-secondary", "section": "variants", "press": "variant-Secondary" },
+    { "name": "hover-ghost", "section": "variants", "hover": "variant-Ghost" },
+    { "name": "press-danger", "section": "variants", "press": "variant-Danger" },
+    { "name": "press-text", "section": "variants", "press": "variant-Text" },
+    { "name": "click-secondary", "section": "variants", "click": "variant-Secondary" },
+    { "name": "hover-icon", "section": "sizes", "hover": "icon-md" },
+    { "name": "hover-compact-icon", "section": "sizes", "hover": "icon-compact" },
+    { "name": "hover-outline", "section": "states", "hover": "outline-danger" },
+    { "name": "hover-caret-ghost", "section": "states", "hover": "caret-ghost" },
+    { "name": "hover-flat", "section": "custom-and-shapes", "hover": "flat-default" },
+    { "name": "hover-pill", "section": "custom-and-shapes", "hover": "rounded-pill" },
+    { "name": "hover-look-quiet", "section": "looks", "hover": "look-quiet-rest" },
+    { "name": "press-look-chrome", "section": "looks", "press": "look-chrome-rest" },
+    { "name": "hover-look-floating", "section": "looks", "hover": "look-floating-rest" },
+    { "name": "hover-look-row", "section": "looks", "hover": "look-row-rest" },
+    { "name": "hover-look-tray", "section": "looks", "hover": "look-tray-rest" },
+    { "name": "hover-look-send", "section": "looks", "hover": "look-send-rest" }
   ]
 }

@@ -52,8 +52,25 @@ function load(id, file) {
   const href = new URL(`${file}.css`, tokens).href;
   if (link.href !== href) {
     link.href = href;
-    link.addEventListener("load", () => requestAnimationFrame(roundAll), { once: true });
+    link.addEventListener(
+      "load",
+      () =>
+        requestAnimationFrame(() => {
+          roundAll();
+          ceilTextRuns();
+        }),
+      { once: true },
+    );
   }
+}
+
+function ceilTextRuns(root = document, selector = "[data-penna-text]") {
+  const runs = [...(root.matches?.(selector) ? [root] : []), ...root.querySelectorAll(selector)];
+  runs.forEach((run) => run.style.removeProperty("width"));
+  const widths = runs.map((run) => run.getBoundingClientRect().width);
+  runs.forEach((run, index) => {
+    run.style.width = `${Math.ceil(widths[index])}px`;
+  });
 }
 
 function apply() {
@@ -258,6 +275,8 @@ addEventListener("DOMContentLoaded", () => {
   });
   switcher();
   roundAll();
+  ceilTextRuns();
+  document.fonts?.ready.then(() => ceilTextRuns());
 });
 
-window.pennaKit = { choice, apply, roundAll };
+window.pennaKit = { choice, apply, roundAll, ceilText: ceilTextRuns };

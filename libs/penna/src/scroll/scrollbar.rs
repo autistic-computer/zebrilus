@@ -1,11 +1,12 @@
 use std::{cell::Cell, panic::Location, rc::Rc};
 
 use ala::{
-    Anchor, App, Axis, Bounds, ContentMask, CursorStyle, Element, ElementId, GlobalElementId,
-    Hitbox, HitboxBehavior, Hsla, InspectorElementId, IntoElement, LayoutId, ListState,
-    MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels, Point, Position, ScrollHandle,
-    ScrollWheelEvent, Size, Style, UniformListScrollHandle, Window, fill, point, px, relative,
-    size, transparent_black,
+    A11ySubtreeBuilder, Anchor, App, Axis, Bounds, ContentMask, CursorStyle, Element, ElementId,
+    GlobalElementId, Hitbox, HitboxBehavior, Hsla, InspectorElementId, IntoElement, LayoutId,
+    ListState, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Orientation, Pixels, Point, Position,
+    Role, ScrollHandle, ScrollWheelEvent, Size, Style, UniformListScrollHandle, Window,
+    accesskit::{Node, Rect},
+    fill, point, px, relative, size, transparent_black,
 };
 use web_time::{Duration, Instant};
 
@@ -320,6 +321,14 @@ struct BarStyle {
     radius: Pixels,
 }
 
+fn from_code_location(id: &ElementId) -> bool {
+    match id {
+        ElementId::CodeLocation(_) => true,
+        ElementId::NamedChild(parent, _) => from_code_location(parent),
+        _ => false,
+    }
+}
+
 fn resting_metrics(show: ScrollbarShow) -> (Pixels, Pixels) {
     match show {
         ScrollbarShow::Scrolling => (THUMB_WIDTH, THUMB_INSET),
@@ -437,6 +446,7 @@ pub struct PrepaintState {
     hitbox: Hitbox,
     scrollbar_state: ScrollbarState,
     states: Vec<AxisPrepaintState>,
+    scale: f32,
 }
 
 struct AxisPrepaintState {
@@ -654,6 +664,56 @@ impl Element for Scrollbar {
             hitbox,
             states,
             scrollbar_state: state,
+            scale: window.scale_factor(),
+        }
+    }
+
+    fn a11y_role(&self) -> Option<Role> {
+        Some(Role::GenericContainer)
+    }
+
+    fn a11y_synthetic_children(
+        &mut self,
+        prepaint: &mut Self::PrepaintState,
+        builder: &mut A11ySubtreeBuilder,
+    ) {
+        let author =
+            (!from_code_location(&self.id)).then(|| crate::foundation::author_name(&self.id));
+        let rect = |bounds: Bounds<Pixels>| {
+            let scale = f64::from(prepaint.scale);
+            Rect {
+                x0: f64::from(bounds.origin.x) * scale,
+                y0: f64::from(bounds.origin.y) * scale,
+                x1: f64::from(bounds.origin.x + bounds.size.width) * scale,
+                y1: f64::from(bounds.origin.y + bounds.size.height) * scale,
+            }
+        };
+        let offset = self.scroll_handle.offset();
+        for state in &prepaint.states {
+            let (name, orientation, offset) = match state.axis {
+                Axis::Vertical => ("vertical", Orientation::Vertical, offset.y),
+                Axis::Horizontal => ("horizontal", Orientation::Horizontal, offset.x),
+            };
+            let travel = state.scroll_size - state.container_size;
+            let position = if travel > Pixels::ZERO {
+                (-offset / travel).clamp(0.0, 1.0)
+            } else {
+                0.0
+            };
+            let mut bar = Node::new(Role::ScrollBar);
+            bar.set_bounds(rect(state.bounds));
+            bar.set_orientation(orientation);
+            bar.set_min_numeric_value(0.0);
+            bar.set_max_numeric_value(100.0);
+            bar.set_numeric_value(f64::from(position * 100.0));
+            let mut thumb = Node::new(Role::GenericContainer);
+            thumb.set_bounds(rect(state.thumb_fill_bounds));
+            if let Some(author) = &author {
+                bar.set_author_id(format!("{author}-{name}"));
+                thumb.set_author_id(format!("{author}-{name}-thumb"));
+            }
+            builder.push_child(builder.synthetic_node_id((name, "bar")), bar);
+            builder.push_child(builder.synthetic_node_id((name, "thumb")), thumb);
         }
     }
 

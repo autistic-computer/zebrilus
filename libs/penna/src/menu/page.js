@@ -83,8 +83,6 @@
     if (region.hasAttribute("data-open")) handle.show(region.clientWidth / 2, region.clientHeight / 2);
   });
 
-  const SMOOTHING = { default: 4, macos: 4, yaru: 2 };
-
   const SVG = "http://www.w3.org/2000/svg";
 
   function outline(width, height, radius, exponent, stroke) {
@@ -133,7 +131,7 @@
   }
 
   function regions() {
-    const k = Math.log2(SMOOTHING[document.documentElement.dataset.pennaTheme] ?? 4);
+    const k = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--penna-window-k")) || 1;
     document.querySelectorAll(".menus-region").forEach((region) => {
       const radius = parseFloat(getComputedStyle(region).getPropertyValue("--penna-radius")) || 0;
       const width = region.offsetWidth;
@@ -141,7 +139,6 @@
       const cap = Math.min(width, height) * 0.45;
       const resolved = cap > 0 ? cap * Math.tanh(radius / cap) : 0;
       region.style.borderRadius = `${resolved}px`;
-      region.style.cornerShape = `superellipse(${k})`;
       let svg = region.querySelector(":scope > .menus-dashes");
       if (!svg) {
         svg = document.createElementNS(SVG, "svg");

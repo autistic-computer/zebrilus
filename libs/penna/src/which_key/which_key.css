@@ -1,11 +1,3 @@
-:root {
-  --penna-which-key-muted: oklab(from var(--penna-fg) calc(l * 0.65 + 0.35 * (1 - sign(l - 0.5)) / 2) calc(a * 0.65) calc(b * 0.65));
-}
-
-.penna-which-key[data-penna] {
-  --penna-glass: 0;
-}
-
 .penna-which-key {
   display: flex;
   flex-direction: column;
@@ -38,7 +30,7 @@
   align-items: center;
   gap: 6px;
   margin-left: auto;
-  color: var(--penna-which-key-muted);
+  color: var(--penna-fg-muted);
 }
 
 .penna-which-key-text {
@@ -51,7 +43,7 @@
   white-space: nowrap;
   font-family: var(--penna-mono);
   font-size: 11px;
-  color: var(--penna-which-key-muted);
+  color: var(--penna-fg-muted);
 }
 
 .penna-which-key-cap[data-yours] {
@@ -88,7 +80,7 @@
   height: 20px;
   font-size: 11px;
   line-height: 16px;
-  color: var(--penna-which-key-muted);
+  color: var(--penna-fg-muted);
   white-space: nowrap;
 }
 
@@ -126,7 +118,7 @@
 .penna-which-key-repeat {
   flex: none;
   font-size: 11px;
-  color: var(--penna-which-key-muted);
+  color: var(--penna-fg-muted);
 }
 
 .penna-which-key-label,

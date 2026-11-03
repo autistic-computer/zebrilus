@@ -1,6 +1,7 @@
 use ala::{
     AnyElement, AnyView, App, AppContext as _, Context, Entity, InteractiveElement as _,
-    IntoElement, Keystroke, ParentElement as _, Render, Styled as _, Window, div, px,
+    IntoElement, Keystroke, ParentElement as _, Render, Role, SharedString,
+    StatefulInteractiveElement as _, Styled as _, Window, div, px,
 };
 use penna::{
     ActiveTheme as _, Colorize as _, Disableable as _, Icon, IconName, Label, PaintState,
@@ -67,7 +68,13 @@ const FIELD_STATES: [(PaintState, &str); 3] = [
     (PaintState::Focused, "Focused"),
 ];
 
-fn framed_field(look: FieldLook, state: PaintState, label: &'static str, cx: &App) -> AnyElement {
+fn framed_field(
+    look: FieldLook,
+    name: &str,
+    state: PaintState,
+    label: &'static str,
+    cx: &App,
+) -> AnyElement {
     let radius = cx.theme().radius_of(look).min(px(20.0));
     div()
         .relative()
@@ -79,6 +86,8 @@ fn framed_field(look: FieldLook, state: PaintState, label: &'static str, cx: &Ap
             field_chrome(
                 div()
                     .id(label)
+                    .role(Role::Group)
+                    .accessibility_id(format!("field-{name}-{}", label.to_lowercase()))
                     .h(px(40.0))
                     .px(Space::S8)
                     .flex()
@@ -107,7 +116,7 @@ fn field_looks(_: &mut Window, cx: &mut App) -> AnyElement {
             row().children(
                 FIELD_STATES
                     .iter()
-                    .map(|(state, label)| framed_field(look, *state, label, cx)),
+                    .map(|(state, label)| framed_field(look, name, *state, label, cx)),
             ),
         )
     })
@@ -167,26 +176,47 @@ impl Render for FieldStates {
         let muted = cx.theme().foreground.muted();
         states()
             .columns(2)
-            .state("empty, placeholder", Input::new(&self.empty))
-            .state("populated", Input::new(&self.populated))
+            .state(
+                "empty, placeholder",
+                Input::new(&self.empty).id("field-empty"),
+            )
+            .state(
+                "populated",
+                Input::new(&self.populated).id("field-populated"),
+            )
             .state(
                 "disabled, empty",
-                Input::new(&self.disabled_empty).disabled(true),
+                Input::new(&self.disabled_empty)
+                    .id("field-disabled-empty")
+                    .disabled(true),
             )
             .state(
                 "disabled, populated",
-                Input::new(&self.disabled_populated).disabled(true),
+                Input::new(&self.disabled_populated)
+                    .id("field-disabled-populated")
+                    .disabled(true),
             )
-            .state("selection, unfocused", Input::new(&self.selection))
-            .state("loading", Input::new(&self.loading))
-            .state("cleanable", Input::new(&self.cleanable).cleanable(true))
+            .state(
+                "selection, unfocused",
+                Input::new(&self.selection).id("field-selection"),
+            )
+            .state("loading", Input::new(&self.loading).id("field-loading"))
+            .state(
+                "cleanable",
+                Input::new(&self.cleanable)
+                    .id("field-cleanable")
+                    .cleanable(true),
+            )
             .state(
                 "password",
-                Input::new(&self.password).content_type(InputContentType::Password),
+                Input::new(&self.password)
+                    .id("field-password")
+                    .content_type(InputContentType::Password),
             )
             .state(
                 "prefix and suffix",
                 Input::new(&self.affixes)
+                    .id("field-affixes")
                     .prefix(Icon::new(IconName::Search).medium().text_color(muted))
                     .suffix(Kbd::new(Keystroke::parse("cmd-k").unwrap_or_default())),
             )
@@ -195,19 +225,25 @@ impl Render for FieldStates {
                 div()
                     .px_2()
                     .rule(penna::RuleLook::Plain, penna::Edge::Bottom, cx)
-                    .child(Input::new(&self.bare).appearance(false)),
+                    .child(Input::new(&self.bare).id("field-bare").appearance(false)),
             )
             .state(
                 "bordered(false)",
-                Input::new(&self.borderless).bordered(false),
+                Input::new(&self.borderless)
+                    .id("field-borderless")
+                    .bordered(false),
             )
             .state(
                 "text_align center",
-                Input::new(&self.centered).text_align(TextAlign::Center),
+                Input::new(&self.centered)
+                    .id("field-centered")
+                    .text_align(TextAlign::Center),
             )
             .state(
                 "text_align right",
-                Input::new(&self.right).text_align(TextAlign::Right),
+                Input::new(&self.right)
+                    .id("field-right")
+                    .text_align(TextAlign::Right),
             )
     }
 }
@@ -239,7 +275,12 @@ impl Render for FieldSizes {
         self.fields
             .iter()
             .fold(states().columns(2), |states, (name, size, state)| {
-                states.state(*name, Input::new(state).with_size(*size))
+                states.state(
+                    *name,
+                    Input::new(state)
+                        .id(SharedString::from(format!("field-{name}")))
+                        .with_size(*size),
+                )
             })
     }
 }
@@ -265,8 +306,8 @@ impl Render for Focused {
     fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
         states()
             .columns(2)
-            .state("focused", Input::new(&self.focused))
-            .state("resting", Input::new(&self.selected))
+            .state("focused", Input::new(&self.focused).id("field-focused"))
+            .state("resting", Input::new(&self.selected).id("field-selected"))
     }
 }
 
@@ -297,10 +338,24 @@ impl Render for MultiLine {
     fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
         states()
             .columns(2)
-            .state("empty, two rows", Input::new(&self.empty))
-            .state("three lines", Input::new(&self.filled))
-            .state("past max_rows, scrolls", Input::new(&self.overflowing))
-            .state("disabled", Input::new(&self.disabled).disabled(true))
+            .state(
+                "empty, two rows",
+                Input::new(&self.empty).id("multi-line-empty"),
+            )
+            .state(
+                "three lines",
+                Input::new(&self.filled).id("multi-line-filled"),
+            )
+            .state(
+                "past max_rows, scrolls",
+                Input::new(&self.overflowing).id("multi-line-overflowing"),
+            )
+            .state(
+                "disabled",
+                Input::new(&self.disabled)
+                    .id("multi-line-disabled")
+                    .disabled(true),
+            )
     }
 }
 
@@ -333,17 +388,37 @@ impl Render for Numbers {
         let narrow = |element: NumberInput| div().w(ala::px(180.0)).child(element);
         states()
             .columns(3)
-            .state("step 1", narrow(NumberInput::new(&self.default)))
-            .state("at min of 0..10", narrow(NumberInput::new(&self.bounded)))
-            .state("step 0.25", narrow(NumberInput::new(&self.decimal)))
+            .state(
+                "step 1",
+                narrow(NumberInput::new(&self.default).id("number-default")),
+            )
+            .state(
+                "at min of 0..10",
+                narrow(NumberInput::new(&self.bounded).id("number-bounded")),
+            )
+            .state(
+                "step 0.25",
+                narrow(NumberInput::new(&self.decimal).id("number-decimal")),
+            )
             .state(
                 "disabled",
-                narrow(NumberInput::new(&self.disabled).disabled(true)),
+                narrow(
+                    NumberInput::new(&self.disabled)
+                        .id("number-disabled")
+                        .disabled(true),
+                ),
             )
-            .state("small", narrow(NumberInput::new(&self.small).small()))
+            .state(
+                "small",
+                narrow(NumberInput::new(&self.small).id("number-small").small()),
+            )
             .state(
                 "appearance(false)",
-                narrow(NumberInput::new(&self.bare).appearance(false)),
+                narrow(
+                    NumberInput::new(&self.bare)
+                        .id("number-bare")
+                        .appearance(false),
+                ),
             )
     }
 }

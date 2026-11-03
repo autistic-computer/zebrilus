@@ -1,17 +1,6 @@
-const SHEET_TEXT = ".penna-sheet-text";
 const COMMIT = 0.48;
 const FLING = 2;
 const SHADOW_ROOM = 32;
-
-function sheetSnap(root = document) {
-  const spans = [...root.querySelectorAll(SHEET_TEXT)];
-  spans.forEach((span) => span.style.removeProperty("width"));
-  const widths = spans.map((span) => span.getBoundingClientRect().width);
-  spans.forEach((span, index) => {
-    span.style.display = "inline-block";
-    span.style.width = `${Math.ceil(widths[index])}px`;
-  });
-}
 
 function sheetExtent(sheet) {
   const panel = sheet.querySelector(".penna-sheet-panel");
@@ -28,10 +17,18 @@ function sheetMove(sheet, offset) {
 function sheetClose(sheet) {
   sheetMove(sheet, sheetExtent(sheet));
   sheet.setAttribute("data-closed", "");
+  sheet.querySelectorAll("[data-id]").forEach((node) => {
+    node.dataset.sheetId = node.dataset.id;
+    delete node.dataset.id;
+  });
 }
 
 function sheetOpen(sheet) {
   sheet.removeAttribute("data-closed");
+  sheet.querySelectorAll("[data-sheet-id]").forEach((node) => {
+    node.dataset.id = node.dataset.sheetId;
+    delete node.dataset.sheetId;
+  });
   sheetMove(sheet, 0);
 }
 
@@ -86,54 +83,10 @@ function sheetSetup(sheet) {
   sheetDrag(sheet);
   sheet.querySelector(".penna-sheet-scrim").addEventListener("click", () => sheetClose(sheet));
   sheet.querySelectorAll("[data-sheet-close]").forEach((button) => button.addEventListener("click", () => sheetClose(sheet)));
-  sheet.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") sheetClose(sheet);
-    if (!["ArrowDown", "ArrowUp"].includes(event.key)) return;
-    const rows = [...sheet.querySelectorAll(".penna-sheet-row")];
-    const at = rows.indexOf(document.activeElement);
-    const next = rows[Math.min(rows.length - 1, Math.max(0, at + (event.key === "ArrowDown" ? 1 : -1)))];
-    next?.focus();
-    event.preventDefault();
-  });
-  sheet.querySelectorAll(".penna-sheet-row").forEach((row) => {
-    const choose = () => {
-      if (row.dataset.lead !== "check") return;
-      row.parentElement.querySelectorAll('.penna-sheet-row[data-lead="check"]').forEach((other) => {
-        const on = other === row;
-        other.setAttribute("aria-checked", `${on}`);
-        other.querySelector(".penna-sheet-check").toggleAttribute("data-checked", on);
-      });
-    };
-    row.addEventListener("click", choose);
-    row.addEventListener("keydown", (event) => {
-      if (event.key !== "Enter" && event.key !== " ") return;
-      event.preventDefault();
-      choose();
-    });
-  });
-}
-
-function sheetGlass(root = document) {
-  root.querySelectorAll(".penna-sheet-panel").forEach((panel) => {
-    panel.style.removeProperty("backdrop-filter");
-    const backdrop = getComputedStyle(panel).getPropertyValue("--penna-backdrop").trim();
-    panel.toggleAttribute("data-glass", backdrop !== "" && backdrop !== "none");
-    const brightness = backdrop.match(/brightness\(([\d.]+)\)/);
-    if (!brightness) return;
-    const lift = parseFloat(brightness[1]) - 1;
-    const spread = 1 - 2 * lift;
-    if (!lift || spread <= 0) return;
-    const parts = backdrop.replace(brightness[0], "").replace(/\s+/g, " ").trim();
-    panel.style.backdropFilter = `${parts} brightness(${1 / spread}) contrast(${spread})`;
-  });
-}
-
-function sheetSettle() {
-  sheetSnap();
-  sheetGlass();
 }
 
 document.querySelectorAll(".penna-sheet").forEach(sheetSetup);
-sheetSettle();
-document.fonts.ready.then(sheetSettle);
-document.addEventListener("load", (event) => event.target.id === "penna-tokens" && sheetGlass(), true);
+
+new MutationObserver(() => {
+  document.querySelectorAll(".penna-sheet[data-closed]").forEach(sheetOpen);
+}).observe(document.documentElement, { attributes: true, attributeFilter: ["data-penna-theme", "data-penna-mode"] });

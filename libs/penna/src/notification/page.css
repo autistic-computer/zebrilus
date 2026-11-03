@@ -1,7 +1,3 @@
-:root {
-  --page-fg-muted: oklab(from var(--penna-fg) calc(l * 0.65 + 0.35 * clamp(0, (0.5 - l) * 1000, 1)) calc(a * 0.65) calc(b * 0.65));
-}
-
 section[data-section="toast-stack"] {
   position: relative;
 }
@@ -9,7 +5,11 @@ section[data-section="toast-stack"] {
 .stack-pane {
   height: 380px;
   font-size: 14px;
-  color: var(--page-fg-muted);
+  color: var(--penna-fg-muted);
+}
+
+.stack-pane > span {
+  display: inline-block;
 }
 
 .hovered-frame {
@@ -44,7 +44,7 @@ section[data-section="toast-stack"] {
 .rename-caption {
   font-size: 12px;
   line-height: 19.5px;
-  color: var(--page-fg-muted);
+  color: var(--penna-fg-muted);
 }
 
 .rename-caption > span {

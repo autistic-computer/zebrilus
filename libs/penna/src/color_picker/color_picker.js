@@ -69,6 +69,21 @@
     return Math.min(radius, Math.min(element.offsetWidth, element.offsetHeight) / 2);
   };
 
+  const MARGIN = 8;
+
+  const fit = (open) => {
+    const section = open.closest("section[data-section]");
+    if (!section) return;
+    open.style.removeProperty("translate");
+    const limits = section.getBoundingClientRect();
+    const box = open.getBoundingClientRect();
+    const gap = parseFloat(getComputedStyle(open).getPropertyValue("--penna-color-picker-gap")) || 0;
+    let top = box.top;
+    if (box.bottom > limits.bottom) top -= box.bottom - limits.bottom + MARGIN;
+    if (top < limits.top) top = limits.top + MARGIN + gap;
+    if (top !== box.top) open.style.translate = `0 ${Math.round(top - box.top)}px`;
+  };
+
   const pickers = new Set();
   const closers = new Set();
 
@@ -84,13 +99,13 @@
 
   function panel(picker) {
     const label = picker.dataset.label;
+    const author = picker.querySelector(":scope > .penna-button").dataset.id;
     const element = document.createElement("div");
     element.className = "penna-color-picker-panel";
     element.dataset.penna = "popover";
     element.dataset.ground = "";
     element.tabIndex = -1;
-    element.style.setProperty("--penna-glass", "0");
-    element.innerHTML = `${label ? `<div class="penna-color-picker-title"></div>` : ""}<div class="penna-color-picker-field"><div class="penna-color-picker-handle"></div></div><div class="penna-color-picker-hue" role="slider" tabindex="0" aria-label="Hue" aria-valuemin="0" aria-valuemax="360" data-id="penna-color-picker-hue-${picker.dataset.entity}"><div class="penna-color-picker-rail"><div class="penna-color-picker-bar"></div><div class="penna-color-picker-knob"></div></div></div><div class="penna-color-picker-hex"><label data-penna="field"><input type="text" spellcheck="false" autocomplete="off" placeholder="#rrggbb" aria-label="Hex"></label><button class="penna-button" data-penna="icon-button" data-shape="icon" data-flat aria-label="Clear the override" title="Clear the override" data-id="penna-color-picker-clear-${picker.dataset.entity}"><i data-icon="undo-2"></i></button></div>`;
+    element.innerHTML = `${label ? `<div class="penna-color-picker-title" data-penna-text></div>` : ""}<div class="penna-color-picker-field" role="group" aria-label="Saturation and brightness" data-id="${author}-field"><div class="penna-color-picker-handle"></div></div><div class="penna-color-picker-hue" role="slider" tabindex="0" aria-label="Hue" aria-valuemin="0" aria-valuemax="360" data-id="${author}-hue"><div class="penna-color-picker-rail"><div class="penna-color-picker-bar"></div><div class="penna-color-picker-knob"></div></div></div><div class="penna-color-picker-hex"><label data-penna="field" data-id="${author}-hex"><input type="text" spellcheck="false" autocomplete="off" placeholder="#rrggbb" aria-label="Hex"></label><button class="penna-button" data-penna="icon-button" data-shape="icon" data-flat aria-label="Clear the override" title="Clear the override" data-id="${author}-clear"><i data-icon="undo-2"></i></button></div>`;
     if (label) element.querySelector(".penna-color-picker-title").textContent = label;
     return element;
   }
@@ -130,9 +145,6 @@
       open.style.setProperty("--penna-color-picker-v", current.value);
       open.style.setProperty("--penna-color-picker-hue", degrees / 360);
       open.querySelector(".penna-color-picker-hue").setAttribute("aria-valuenow", degrees);
-      open.style.removeProperty("--penna-backdrop");
-      const backdrop = getComputedStyle(open).getPropertyValue("--penna-backdrop").trim();
-      if (/contrast\(/.test(backdrop)) open.style.setProperty("--penna-backdrop", backdrop.replace(/contrast\(([^)]*)\)/g, "brightness($1)"));
       const field = open.querySelector(".penna-color-picker-field");
       field.style.setProperty("--penna-color-picker-field-r", `${fieldRadius(field)}px`);
     };
@@ -248,11 +260,12 @@
       closers.forEach((other) => other !== close && other());
       state.panel = panel(picker);
       picker.append(state.panel);
+      window.pennaKit?.ceilText(state.panel);
       wire(state.panel);
       trigger.setAttribute("aria-expanded", "true");
       trigger.dataset.state = `${trigger.dataset.state ?? ""} current`.trim();
       paint();
-      if (typeof shape === "function") shape(state.panel);
+      fit(state.panel);
       document.addEventListener("pointerdown", outside, true);
       document.addEventListener("keydown", escape);
       if (!focus) return;
@@ -288,18 +301,8 @@
     settle();
   }
 
-  const ceil = () => {
-    const labels = [...document.querySelectorAll(".penna-color-picker-text")];
-    labels.forEach((label) => label.style.removeProperty("width"));
-    const widths = labels.map((label) => label.getBoundingClientRect().width);
-    labels.forEach((label, index) => {
-      label.style.width = `${Math.ceil(widths[index])}px`;
-    });
-  };
-
   const settleAll = () => {
     edge();
-    ceil();
     pickers.forEach((settle) => settle());
   };
 

@@ -22,40 +22,6 @@
     });
   };
 
-  const snap = (root = document) => {
-    const runs = [...root.querySelectorAll(".penna-empty-state > span, .penna-empty-state-title > span")];
-    runs.forEach((run) => run.style.removeProperty("width"));
-    const widths = runs.map((run) => run.getBoundingClientRect().width);
-    runs.forEach((run, index) => {
-      run.style.display = "inline-block";
-      run.style.width = `${Math.ceil(widths[index])}px`;
-    });
-  };
-
-  const FILTER = /(brightness|contrast)\(([^)]*)\)/g;
-
-  const glass = (root = document) => {
-    root.querySelectorAll(".penna-callout").forEach((callout) => {
-      callout.style.removeProperty("--penna-backdrop");
-      const backdrop = getComputedStyle(callout).getPropertyValue("--penna-backdrop").trim();
-      const found = Object.fromEntries([...backdrop.matchAll(FILTER)].map(([, name, value]) => [name, parseFloat(value)]));
-      if (!("brightness" in found) || !("contrast" in found)) return;
-      const lift = found.brightness - 1;
-      const spread = found.contrast - 2 * lift;
-      const scaled = backdrop
-        .replace(/brightness\([^)]*\)/, `brightness(${found.contrast / spread})`)
-        .replace(/contrast\([^)]*\)/, `contrast(${spread})`);
-      callout.style.setProperty("--penna-backdrop", scaled);
-    });
-  };
-
-  const settle = () => {
-    glass();
-    tint();
-    snap();
-  };
-
-  settle();
-  document.fonts.ready.then(settle);
-  document.addEventListener("load", (event) => event.target.id === "penna-tokens" && settle(), true);
+  tint();
+  document.addEventListener("load", (event) => event.target.id === "penna-tokens" && tint(), true);
 }

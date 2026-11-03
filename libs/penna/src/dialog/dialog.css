@@ -10,10 +10,6 @@
   --dialog-offset: 0px;
 }
 
-.penna-dialog-layer[data-closed] {
-  display: none;
-}
-
 .penna-dialog-layer[data-top] {
   background: var(--penna-scrim);
 }
@@ -46,8 +42,6 @@
   line-height: 1.618;
   color: var(--penna-ink);
   outline: none;
-  --penna-glass: 0;
-  --dialog-fg-muted: oklab(from var(--penna-fg) calc(l * 0.65 + 0.35 * clamp(0, (0.5 - l) * 1000, 1)) calc(a * 0.65) calc(b * 0.65));
 }
 
 .penna-dialog-main {
@@ -73,7 +67,7 @@
 .penna-dialog-description {
   font-size: 12px;
   line-height: round(nearest, 12px * 1.618, 0.5px);
-  color: var(--dialog-fg-muted);
+  color: var(--penna-fg-muted);
 }
 
 .penna-dialog-body {

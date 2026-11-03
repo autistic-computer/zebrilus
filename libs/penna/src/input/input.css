@@ -17,7 +17,6 @@
   border-width: max(1px, var(--penna-bw));
   cursor: text;
   --penna-icon-size: 14px;
-  --input-fg-muted: oklab(from var(--penna-fg) calc(l * 0.65 + 0.35 * clamp(0, (0.5 - l) * 1000, 1)) calc(a * 0.65) calc(b * 0.65));
   --input-faint: color-mix(in oklab, var(--penna-ink) 45%, var(--input-ground, var(--penna-bg)));
 }
 
@@ -40,8 +39,6 @@
 .penna-input[data-borderless] {
   border-width: 0;
 }
-
-
 
 .penna-input[data-disabled] {
   cursor: default;
@@ -120,7 +117,7 @@
   min-width: 0;
   max-width: 75%;
   overflow: hidden;
-  color: var(--input-fg-muted);
+  color: var(--penna-fg-muted);
 }
 
 .penna-input > .penna-input-suffix {
@@ -135,18 +132,14 @@
 }
 
 .penna-input .penna-input-clear {
-  color: var(--input-fg-muted);
-}
-
-.penna-input .penna-input-clear[hidden] {
-  display: none;
+  color: var(--penna-fg-muted);
 }
 
 .penna-input .penna-spinner {
   display: block;
   width: 12px;
   height: 12px;
-  color: var(--input-fg-muted);
+  color: var(--penna-fg-muted);
   --penna-icon-size: 12px;
 }
 
@@ -202,8 +195,6 @@
   box-shadow: none;
 }
 
-
-
 .penna-number > .penna-button {
   height: 100%;
 }
@@ -212,4 +203,12 @@
   flex: 1;
   width: 0;
   height: 100%;
+}
+
+:is(.penna-input, .penna-number)[data-penna]:not([data-disabled]):active {
+  --penna-fill: var(--input-hover-fill);
+}
+
+:is(.penna-input, .penna-number)[data-penna]:not([data-disabled])[data-state~="focused"] {
+  --penna-fill: var(--input-rest-fill);
 }

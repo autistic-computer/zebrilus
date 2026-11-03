@@ -18,13 +18,5 @@
   font-size: 11px;
   line-height: 14px;
   white-space: nowrap;
-}
-
-.icon-name,
-section[data-section] .story-label {
-  color: oklab(from var(--penna-fg) calc(l * 0.65) calc(a * 0.65) calc(b * 0.65));
-}
-
-:root[data-penna-mode="light"] :is(.icon-name, section[data-section] .story-label) {
-  color: oklab(from var(--penna-fg) calc(l * 0.65 + 0.35) calc(a * 0.65) calc(b * 0.65));
+  color: var(--penna-fg-muted);
 }

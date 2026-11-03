@@ -60,7 +60,7 @@
   font-size: 13px;
   font-weight: 600;
   line-height: 20px;
-  color: var(--penna-muted);
+  color: var(--penna-fg-muted);
 }
 
 .canvas-stack > .canvas-stack-card[data-penna] {
@@ -103,4 +103,23 @@
   display: flex;
   flex-direction: column;
   gap: 4px;
+}
+
+.canvas-stack > .canvas-stack-card[data-penna] {
+  --canvas-card-bw: round(down, var(--penna-bw), 0.5px);
+}
+
+.canvas-stack-card > .canvas-entry {
+  margin: 0 calc(-1 * var(--canvas-card-bw));
+  padding: 0 var(--canvas-card-bw);
+}
+
+.canvas-stack-card > .canvas-entry:first-child {
+  margin-top: calc(-1 * var(--canvas-card-bw));
+  padding-top: var(--canvas-card-bw);
+}
+
+.canvas-stack-card > .canvas-entry:last-child {
+  margin-bottom: calc(-1 * var(--canvas-card-bw));
+  padding-bottom: var(--canvas-card-bw);
 }

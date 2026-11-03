@@ -1,5 +1,5 @@
 use ala::{
-    AnyElement, App, ElementId, IntoElement, ParentElement, Pixels, RenderOnce, SharedString,
+    AnyElement, App, ElementId, IntoElement, ParentElement, Pixels, RenderOnce, Role, SharedString,
     StyleRefinement, Styled, Window, div, prelude::FluentBuilder as _,
 };
 
@@ -114,7 +114,7 @@ impl Tile {
 
     #[must_use]
     pub fn state(mut self, state: PaintState) -> Self {
-        self.plate.state = state;
+        self.plate = self.plate.with_state(state);
         self
     }
 
@@ -131,6 +131,7 @@ impl RenderOnce for Tile {
     fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
         let mut plate = self.plate;
         if self.variant != TileVariant::Veil {
+            plate.role = plate.role.or(Some(Role::Group));
             let edge = self.edge;
             let mini = self.variant == TileVariant::Mini;
             return plate.paint_with(cx, move |layer| {

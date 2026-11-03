@@ -1,6 +1,7 @@
 use ala::{
-    AnyElement, App, InteractiveElement as _, IntoElement, ParentElement as _, Pixels,
-    SharedString, Styled as _, Window, div, prelude::FluentBuilder as _, px,
+    AnyElement, App, InteractiveElement as _, IntoElement, ParentElement as _, Pixels, Role,
+    SharedString, StatefulInteractiveElement as _, Styled as _, Window, div,
+    prelude::FluentBuilder as _, px,
 };
 use penna::{
     ActiveTheme as _, BarLook, Disableable as _, IconName, Label, PaintState, Row, RowLook, Space,
@@ -198,6 +199,8 @@ fn fill_row(
     let group = SharedString::from(format!("{id}-group"));
     div()
         .id(id)
+        .role(Role::ListItem)
+        .accessibility_id(id)
         .group(group.clone())
         .relative()
         .w(px(240.0))

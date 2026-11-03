@@ -10,6 +10,7 @@ use crate::{
     ADAPTIVE_CORNER_FRACTION, CORNER_SMOOTHING, Colorize as _, Elevation, Emphasis, Ground, Kind,
     Layer, PaintState, Surface, SurfaceRole, Theme, ThemeMode, Tone,
     button::rings_focus,
+    highlighter::HighlightTheme,
     icon::glyphs,
     input::field_layer,
     interface_theme::{InterfaceTheme, builtin_themes},
@@ -51,9 +52,29 @@ const PAINT: [(&str, &str); 13] = [
 
 const ROW_RADIUS_SHARE: f32 = 0.4;
 
+const SYNTAX: [(&str, &str); 12] = [
+    ("keyword", "keyword"),
+    ("type", "type"),
+    ("constructor", "constructor"),
+    ("function", "function"),
+    ("comment", "comment"),
+    ("string", "string"),
+    ("number", "number"),
+    ("boolean", "boolean"),
+    ("property", "property"),
+    ("constant", "constant"),
+    ("title", "title"),
+    ("literal", "text.literal"),
+];
+
 pub fn kit_theme(theme: &InterfaceTheme, mode: ThemeMode) -> Theme {
     let mut kit = Theme::from(&theme.colors(mode));
     kit.mode = mode;
+    kit.highlight_theme = if mode.is_dark() {
+        HighlightTheme::default_dark()
+    } else {
+        HighlightTheme::default_light()
+    };
     theme.apply(&mut kit);
     kit
 }
@@ -314,6 +335,10 @@ fn write_root(css: &mut String, theme: &Theme) {
         ("color-scheme".to_owned(), theme.mode.name().to_owned()),
         ("--penna-bg".to_owned(), color(theme.background)),
         ("--penna-fg".to_owned(), color(theme.foreground)),
+        (
+            "--penna-fg-muted".to_owned(),
+            color(theme.foreground.muted()),
+        ),
         ("--penna-muted".to_owned(), color(muted)),
         ("--penna-accent".to_owned(), color(theme.accent)),
         ("--penna-on-accent".to_owned(), color(primary.text)),
@@ -340,6 +365,10 @@ fn write_root(css: &mut String, theme: &Theme) {
             color(theme.surface(Elevation::Popover).fill),
         ),
         ("--penna-radius".to_owned(), length(f32::from(theme.radius))),
+        (
+            "--penna-window-k".to_owned(),
+            number(theme.smoothing.exponent().log2()),
+        ),
         (
             "--penna-focus-neutral".to_owned(),
             color(theme.paint(Tone::Neutral, Emphasis::Ghost).focus),
@@ -380,6 +409,7 @@ fn write_root(css: &mut String, theme: &Theme) {
             length(f32::from(theme.font_size)),
         ),
     ];
+    root.extend(syntax_vars(theme));
     if let Some(glass) = theme.glass {
         root.extend(glass_vars(&glass));
     }
@@ -388,6 +418,16 @@ fn write_root(css: &mut String, theme: &Theme) {
         let _ = writeln!(css, "  {name}: {value};");
     }
     let _ = writeln!(css, "}}");
+}
+
+fn syntax_vars(theme: &Theme) -> Vec<(String, String)> {
+    SYNTAX
+        .iter()
+        .filter_map(|(name, capture)| {
+            let ink = theme.highlight_theme.style(capture)?.color?;
+            Some((format!("--penna-syntax-{name}"), color(ink)))
+        })
+        .collect()
 }
 
 fn glass_vars(material: &GlassMaterial) -> Vec<(String, String)> {
@@ -421,12 +461,29 @@ fn glass_vars(material: &GlassMaterial) -> Vec<(String, String)> {
 
 fn backdrop(material: &GlassMaterial) -> String {
     format!(
-        "blur({}) saturate({}) brightness({}) contrast({})",
+        "blur({}) saturate({}) {}",
         length(f32::from(material.blur)),
         number(material.saturation),
-        number(1.0 + material.brightness),
-        number(material.contrast),
+        tone(material.contrast.max(0.0), material.brightness),
     )
+}
+
+fn tone(contrast: f32, brightness: f32) -> String {
+    if brightness >= 0.0 {
+        let lift = 1.0 + 2.0 * brightness;
+        format!(
+            "contrast({}) brightness({})",
+            number(contrast / lift),
+            number(lift)
+        )
+    } else {
+        let slope = contrast - 2.0 * brightness;
+        format!(
+            "brightness({}) contrast({})",
+            number(contrast / slope),
+            number(slope)
+        )
+    }
 }
 
 fn rim(material: &GlassMaterial) -> String {
@@ -549,6 +606,13 @@ mod tests {
                 assert!(!css.contains("NaN"), "{id} {mode:?}");
             }
         }
+    }
+
+    #[test]
+    fn glass_tone_adds_brightness_after_contrast_like_the_shader() {
+        assert_eq!(tone(1.12, 0.07), "contrast(0.982) brightness(1.14)");
+        assert_eq!(tone(1.0, -0.02), "brightness(0.962) contrast(1.04)");
+        assert_eq!(tone(1.0, 0.0), "contrast(1) brightness(1)");
     }
 
     #[test]

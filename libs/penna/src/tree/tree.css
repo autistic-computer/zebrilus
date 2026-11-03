@@ -3,7 +3,7 @@
   display: flex;
   flex-direction: column;
   width: 100%;
-  --penna-tree-muted: var(--penna-muted);
+  --penna-tree-muted: var(--penna-fg-muted);
   --penna-tree-row: 28px;
   --penna-tree-indent: 16px;
   --penna-tree-inset: 12px;

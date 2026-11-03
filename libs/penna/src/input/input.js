@@ -1,6 +1,5 @@
 (() => {
   const FIELDS = ".penna-input, .penna-number";
-  const TEXT = ".penna-text, .penna-kbd > span";
   const LINE = 16;
 
   const probe = document.createElement("i");
@@ -23,8 +22,26 @@
     field.style.setProperty("--input-ground", `rgb(${mix("r")} ${mix("g")} ${mix("b")})`);
   }
 
+  function fills(field) {
+    const saved = field.getAttribute("data-state");
+    const read = (state) => {
+      if (state) field.setAttribute("data-state", state);
+      else field.removeAttribute("data-state");
+      return getComputedStyle(field).getPropertyValue("--penna-fill").trim();
+    };
+    const rest = read(null);
+    const hover = read("hover");
+    if (saved === null) field.removeAttribute("data-state");
+    else field.setAttribute("data-state", saved);
+    if (rest) field.style.setProperty("--input-rest-fill", rest);
+    if (hover) field.style.setProperty("--input-hover-fill", hover);
+  }
+
   function grounds(root = document) {
-    root.querySelectorAll(FIELDS).forEach(ground);
+    root.querySelectorAll(FIELDS).forEach((field) => {
+      fills(field);
+      ground(field);
+    });
     root.querySelectorAll(".penna-rule").forEach((rule) => {
       rule.toggleAttribute("data-edged", rgba(getComputedStyle(rule).getPropertyValue("--penna-edge")).a > 0);
     });
@@ -36,15 +53,6 @@
     else states.delete("focused");
     if (states.size) field.dataset.state = [...states].join(" ");
     else delete field.dataset.state;
-  }
-
-  function snap(root = document) {
-    const spans = [...root.querySelectorAll(TEXT)];
-    spans.forEach((span) => span.style.removeProperty("width"));
-    const widths = spans.map((span) => span.getBoundingClientRect().width);
-    spans.forEach((span, index) => {
-      span.style.width = `${Math.ceil(widths[index])}px`;
-    });
   }
 
   const measure = document.createElement("canvas").getContext("2d");
@@ -154,8 +162,10 @@
     });
     document.querySelectorAll(".penna-input-clear").forEach((button) => {
       const input = button.closest(".penna-input").querySelector("input");
+      const slot = button.parentElement;
       const sync = () => {
-        button.hidden = !input.value;
+        if (!input.value) button.remove();
+        else if (!button.isConnected) slot.append(button);
       };
       sync();
       input.addEventListener("input", sync);
@@ -198,7 +208,6 @@
 
   function settle() {
     grounds();
-    snap();
     document.querySelectorAll(".penna-input > input").forEach((input) => {
       if (document.activeElement !== input) paintSelection(input);
     });

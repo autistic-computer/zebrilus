@@ -2,10 +2,13 @@ use std::sync::Arc;
 
 use ala::{
     AnyElement, App, IntoElement, Keystroke, Modifiers, ParentElement as _, Pixels, RenderOnce,
-    SharedString, Size, Styled as _, TextRun, Window, div, font, prelude::*, px,
+    Role, SharedString, Size, Styled as _, TextRun, Window, div, font, prelude::*, px,
 };
 
-use crate::{ActiveTheme as _, Colorize as _, StyledExt as _, Surface, SurfaceRole, kbd::Kbd};
+use crate::{
+    ActiveTheme as _, AuthoredElement as _, Colorize as _, StyledExt as _, Surface, SurfaceRole,
+    kbd::Kbd,
+};
 
 const ROW_HEIGHT: f32 = 22.0;
 const TITLE_HEIGHT: f32 = 24.0;
@@ -59,6 +62,8 @@ pub(crate) struct Group<'a> {
 
 struct Block<'a> {
     title: Option<&'a SharedString>,
+    group: Option<&'a SharedString>,
+    part: usize,
     titled: bool,
     rows: &'a [&'a WhichKeyRow],
 }
@@ -96,6 +101,8 @@ fn stacks<'a>(groups: &'a [Group<'a>], per_column: usize) -> Vec<Vec<Block<'a>>>
         {
             stack.push(Block {
                 title: group.title.as_ref(),
+                group: group.title.as_ref(),
+                part: 0,
                 titled,
                 rows: &group.rows,
             });
@@ -105,6 +112,8 @@ fn stacks<'a>(groups: &'a [Group<'a>], per_column: usize) -> Vec<Vec<Block<'a>>>
         for (index, chunk) in group.rows.chunks(per_column).enumerate() {
             stacks.push(vec![Block {
                 title: group.title.as_ref().filter(|_| index == 0),
+                group: group.title.as_ref(),
+                part: index,
                 titled,
                 rows: chunk,
             }]);
@@ -295,8 +304,11 @@ impl WhichKeyView {
     }
 
     fn row(row: &WhichKeyRow, cap_width: f32, cx: &App) -> impl IntoElement {
-        let selector = format!("which-key-row-{}", row.id);
+        let id = SharedString::from(format!("which-key-row-{}", row.id));
+        let selector = id.to_string();
         div()
+            .author_id(id)
+            .role(Role::ListItem)
             .debug_selector(move || selector)
             .h(px(ROW_HEIGHT))
             .flex()
@@ -339,7 +351,18 @@ impl WhichKeyView {
 
     fn block(block: &Block<'_>, cap_width: f32, cx: &App) -> impl IntoElement {
         let selector = block.title.map(|title| format!("which-key-group-{title}"));
+        let id = match (block.group, block.part) {
+            (Some(group), 0) => format!("which-key-group-{group}"),
+            (Some(group), part) => format!("which-key-group-{group}-{part}"),
+            (None, 0) => "which-key-group".to_owned(),
+            (None, part) => format!("which-key-group-{part}"),
+        };
         div()
+            .author_id(SharedString::from(id))
+            .role(Role::List)
+            .when_some(block.group, |element, group| {
+                element.aria_label(group.clone())
+            })
             .flex()
             .flex_col()
             .gap(px(4.0))
@@ -403,7 +426,9 @@ impl RenderOnce for WhichKeyView {
             })
             .collect::<Vec<AnyElement>>();
         div()
-            .id("which-key")
+            .author_id("which-key")
+            .role(Role::Group)
+            .aria_label(header.table.clone())
             .debug_selector(|| "which-key".to_owned())
             .w_full()
             .when_some(fit.width, ala::Styled::max_w)
@@ -426,7 +451,10 @@ impl RenderOnce for WhichKeyView {
                     .text_size(crate::rems_from_px(12.0))
                     .line_height(px(16.0))
                     .child(match header.prefix.clone() {
-                        Some(key) => Kbd::new(key).lowercase().into_any_element(),
+                        Some(key) => Kbd::new(key)
+                            .id("which-key-prefix")
+                            .lowercase()
+                            .into_any_element(),
                         None => Self::cap(
                             &WhichKeyCap {
                                 keys: Vec::new(),

@@ -4,6 +4,17 @@
   "steps": [
     { "name": "hover-submenu", "section": "popup-menu", "hover": "7" },
     { "name": "hover-row", "section": "popup-menu", "hover": "1" },
-    { "name": "hover-trigger", "section": "triggers", "hover": "layout-trigger" }
+    { "name": "hover-view-row", "section": "popup-menu", "hover": { "id": "5", "nth": 2 } },
+    { "name": "hover-link", "section": "popup-menu", "hover": { "id": "7", "nth": 2 } },
+    { "name": "hover-step-up", "section": "popup-menu", "hover": "menu-step-up-1" },
+    { "name": "press-step-down", "section": "popup-menu", "press": "menu-step-down-2" },
+    { "name": "click-row", "section": "popup-menu", "click": "6" },
+    { "name": "press-row", "section": "popup-menu", "press": "2" },
+    { "name": "hover-submenu-row", "section": "submenu-open", "hover": { "id": "2", "nth": 2 } },
+    { "name": "click-submenu-row", "section": "submenu-open", "click": { "id": "2", "nth": 2 } },
+    { "name": "hover-trigger", "section": "triggers", "hover": "layout-trigger" },
+    { "name": "hover-dropdown-row", "section": "dropdown-open", "hover": "2" },
+    { "name": "click-dropdown-row", "section": "dropdown-open", "click": "2" },
+    { "name": "hover-context-row", "section": "context-menu-open", "hover": "1" }
   ]
 }

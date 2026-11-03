@@ -16,15 +16,13 @@
 }
 
 .penna-tooltip > span {
-  position: relative;
-  top: 0px;
   display: inline-block;
   flex: none;
   white-space: nowrap;
 }
 
 .penna-tooltip > .penna-tooltip-key {
-  color: var(--tooltip-fg-muted, var(--penna-muted));
+  color: var(--penna-fg-muted);
 }
 
 .penna-tooltip[data-floating] {
@@ -35,8 +33,4 @@
 
 .penna-tooltip[data-floating]:not([data-open]) {
   display: none;
-}
-
-:root {
-  --tooltip-fg-muted: oklab(from var(--penna-fg) calc(l * 0.65 + 0.35 * clamp(0, (0.5 - l) * 1000, 1)) calc(a * 0.65) calc(b * 0.65));
 }

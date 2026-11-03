@@ -1,6 +1,7 @@
 (() => {
   const SLACK = 1;
   const THRESHOLD = 10;
+  const MARGIN = 8;
   const ARROWS = ["up", "left", "right", "down"];
 
   function edges(row) {
@@ -60,6 +61,13 @@
     return dy < 0 ? "up" : "down";
   }
 
+  function snap(card, frame) {
+    const bounds = frame.getBoundingClientRect();
+    const box = card.getBoundingClientRect();
+    const shift = (start, end, low, high) => Math.max(low + MARGIN - start, Math.min(0, high - MARGIN - end));
+    card.style.translate = `${shift(box.left, box.right, bounds.left, bounds.right)}px ${shift(box.top, box.bottom, bounds.top, bounds.bottom)}px`;
+  }
+
   function wirePad(pad) {
     let origin = null;
     let card = null;
@@ -70,6 +78,7 @@
       pad.setAttribute("data-pressed", "");
       card = bubble();
       pad.append(card);
+      snap(card, pad.closest("section") ?? document.documentElement);
     });
     pad.addEventListener("pointermove", (event) => {
       if (!origin || !card) return;
@@ -96,19 +105,47 @@
     });
   }
 
+  function over(fill) {
+    const paint = document.createElement("canvas").getContext("2d");
+    paint.fillStyle = getComputedStyle(document.documentElement).getPropertyValue("--penna-bg").trim() || "#fff";
+    paint.fillRect(0, 0, 1, 1);
+    paint.fillStyle = fill;
+    paint.fillRect(0, 0, 1, 1);
+    const [r, g, b] = paint.getImageData(0, 0, 1, 1).data;
+    return `rgb(${r} ${g} ${b})`;
+  }
+
   function grounds() {
     const probe = document.createElement("div");
     probe.dataset.penna = "phone.pill";
     probe.hidden = true;
     document.body.append(probe);
-    const backdrop = getComputedStyle(probe).getPropertyValue("--penna-backdrop").trim();
+    const style = getComputedStyle(probe);
+    const backdrop = style.getPropertyValue("--penna-backdrop").trim();
+    const fill = style.getPropertyValue("--penna-fill").trim() || "transparent";
     probe.remove();
     const glass = Boolean(backdrop) && backdrop !== "none";
-    document.querySelectorAll(".penna-key").forEach((key) => key.toggleAttribute("data-on-glass", glass));
+    const shade = `rgb(from ${fill} r g b / 1)`;
+    document.querySelectorAll(".penna-key, .penna-key-row, .penna-compact-pill").forEach((element) => element.toggleAttribute("data-on-glass", glass));
+    document.querySelectorAll(".penna-key-row").forEach((row) => row.style.setProperty("--penna-more-shade", glass ? shade : over(fill)));
+  }
+
+  function still() {
+    document.querySelectorAll(".penna-key, .penna-compact-pill").forEach((element) => {
+      const probe = document.createElement(element.tagName);
+      for (const name of ["data-penna", "data-tone", "data-prominent"]) {
+        if (element.hasAttribute(name)) probe.setAttribute(name, element.getAttribute(name));
+      }
+      probe.hidden = true;
+      document.body.append(probe);
+      element.style.setProperty("--penna-rest-fill", getComputedStyle(probe).getPropertyValue("--penna-fill").trim() || "transparent");
+      probe.remove();
+    });
   }
 
   grounds();
-  document.addEventListener("load", (event) => event.target.id === "penna-tokens" && grounds(), true);
+  still();
+  document.addEventListener("load", (event) => event.target.id === "penna-tokens" && (grounds(), still()), true);
   document.querySelectorAll(".penna-key-row").forEach(wireRow);
   document.fonts.ready.then(() => requestAnimationFrame(settleRows));
   document.querySelectorAll(".penna-key:not(.penna-arrow-pad)").forEach((key) => key.closest(".penna-key-row") || press(key));

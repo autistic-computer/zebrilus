@@ -210,7 +210,7 @@ fn steps(_: &mut Window, _: &mut App) -> AnyElement {
             let name = labels
                 .get(current)
                 .map_or_else(|| "all done".to_owned(), |label| format!("on {label}"));
-            states.state(name, Steps::new(labels).current(current))
+            states.state(name, Steps::new(labels).id("steps").current(current))
         })
         .into_any_element()
 }

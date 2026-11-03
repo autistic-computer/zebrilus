@@ -44,7 +44,7 @@
   display: inline-flex;
   font-size: 12px;
   line-height: 16px;
-  color: var(--penna-muted);
+  color: var(--pane-muted, var(--penna-muted));
 }
 
 .penna-title-tab[data-penna] {
@@ -58,6 +58,7 @@
   align-items: center;
   height: 36px;
   padding: 0 8px;
+  --pane-muted: var(--penna-muted);
 }
 
 .penna-tab :is(.penna-tab-label, .penna-tab-path) {
@@ -65,9 +66,6 @@
   top: 0.5px;
 }
 
-.penna-tab[data-penna][data-penna] {
-  --penna-glass: 0;
-}
 
 .penna-tab[data-penna]:focus-visible {
   outline: 1.5px solid var(--penna-focus);

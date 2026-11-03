@@ -35,19 +35,52 @@ set to the canvas node's author id, which is the id the story passed to the comp
 `tab-3`). parity matches by id and falls back to `role:name` only for nodes with no id. Results land in
 `target/parity/report.html`.
 
+Only an element with an accessibility role reaches that tree. Plates, rows, list items, which-key and
+scrollbars announce themselves from the id they already take (a scrollbar adds `<id>-vertical` and
+`<id>-vertical-thumb`). A row given `hover_group` or `press_highlight(true)` is a fill under its
+parent and stays out of the tree. `Kbd`, `Spinner`, `Separator`, `Steps`, `SettingsStack`, `Input`, `NumberInput`,
+`ColorPicker` and a `SettingEntry` without `on_click` have no id of their own: give them `.id(..)` to make them a node
+(a number input names its parts `<id>-decrement`, `<id>-field`, `<id>-increment`; a color picker `<id>-field`, `<id>-hue`,
+`<id>-hex`, `<id>-clear`). Never give two siblings the same id: ala drops the second node and panics in a debug
+build once accessibility is on.
+
 A section scores 100 × √(geometry × pixels): pixels allow 3 levels per channel, so fills and hover tints count,
 and the canvas's own ink is the denominator. Steps score only the target's box and need the DOM to change where
 the canvas did. A section scores 0 if it holds an `img`, `canvas`, `iframe` or similar, or a `url()` image other
 than the kit's icon masks. The DOM page is served only `web/`, `storybook/fonts/` and the HTML, CSS and JS under `src/`, so pages can share a component's files.
 
+How parity drives the pages:
+
+- The DOM page loads with `?theme=<t>&mode=<m>&bare&flat&motion=0` and `prefers-reduced-motion: reduce`
+  emulated, so `kit.js` skips the glass lens (an `feImage`, still forbidden otherwise) and motion is off
+  through the media query. Leave `--penna-glass` on; pages need no motion switch of their own.
+- A step in `parity.json` is `{ "name", "section", "hover" | "press" | "click" | "key", "wait", "keep" }`.
+  `hover`, `press` and `click` take an id, `{ "id": "penna-number-decrement", "nth": 3 }` for the nth node
+  sharing an id (from 1, in tree order on the canvas and document order in the DOM),
+  `{ "at": [x, y] }` for a point in CSS px from the section's top-left corner on both sides, or
+  `{ "selector": ".thumb" }` for the centre of a DOM element in the section, whose section-relative point
+  the canvas gets too. Point and selector steps score the whole section; id steps score the node's box.
+- Each component loads the story fresh, so entity ids don't depend on what ran before. When a step
+  leaves its canvas section changed (an open menu, a picked value, a focus ring), both pages reload
+  before the next step and the next theme and mode, so no step has to undo itself or another.
+  `"keep": true` runs a step on the previous step's state instead; key steps keep by default
+  (`"keep": false` starts one fresh). Steps that leave nothing behind keep the fast path: one load
+  per component, knobs switched in place. The line after each component counts story loads.
+- `--timeout` is per component (default 5 minutes); Ctrl-C and `kill` close Chrome and the servers.
+
 `src/button` is the template to copy. What it learned about matching ala in the DOM:
 
-- Wrap every text run in a span: ala ceils a text box's width to a whole px, so `button.js` does the same,
-  or labels drift left along a row.
+- Wrap every text run in a span marked `data-penna-text`: ala ceils a text box's width to a whole px, and
+  `kit.js` does the same for those spans on load, after fonts load and on a theme switch, or labels drift left
+  along a row. The span must be a flex item or inline-block. Call `pennaKit.ceilText(root)` after adding or
+  changing runs, or `pennaKit.ceilText(root, selector)` for runs a page marks its own way.
 - `--penna-k` is the smoothing penna draws the role with (`Layer::smoothing`, as `superellipse(log2)`): the
   theme's, capped at 2.5 on rows, and 1 (a plain round) for a full radius. `penna.css` applies it; don't
   hardcode a `corner-shape`. A radius set on one button drops the full-radius round and draws the role's own
   smoothing, which every role exports as `--penna-style-k`: set `--penna-k: var(--penna-style-k)` next to it.
+- An element with no role draws with the window's smoothing, as ala draws a quad with no smoothing of its own:
+  give a rounded box with no role `corner-shape: superellipse(var(--penna-window-k))`. A circle or pill keeps
+  the plain `round`, since ala draws a full radius round whatever the smoothing.
 - Focus is the tokens' `data-state="focused"`: on a button it leaves the fill alone and sets `--penna-focus`.
   ala draws the ring 1.5px outside the border box with its own adaptive radius, which a CSS outline can't
   follow, so `button.css` swaps `penna.css`'s outline for a ring that `button.js` sizes. Link and text
@@ -56,4 +89,11 @@ than the kit's icon masks. The DOM page is served only `web/`, `storybook/fonts/
 - `kit.js` and a page's own script are classic scripts sharing one global scope, so a top-level function
   named like one of kit.js's (`settle`, `round`) replaces it and kit.js stops rounding corners.
 - `story.css` takes `data-columns="3"` for a grid that snaps its tracks to device pixels like ala does.
+- The storybook host ceils each section's height to a whole px; `web/story.js` does the same for every
+  `section[data-section]` (`pennaStory.fit()` reruns it).
+- Root tokens a page reaches for instead of mixing its own: `--penna-fg-muted` (the foreground's muted ink, which
+  `.story-label` and `states()` labels draw in; `--penna-muted` is the ghost paint's, lighter in dark),
+  `--penna-syntax-{keyword,type,constructor,function,comment,string,number,boolean,property,constant,title,literal}`
+  (the highlighter's palette for the mode) and `--penna-glass-backdrop`, already in the shader's order: contrast,
+  then brightness added, not multiplied.
 - What is left is text raster: ala snaps glyph baselines and dilates light text, which the DOM can't copy exactly.

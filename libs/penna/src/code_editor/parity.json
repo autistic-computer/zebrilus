@@ -1,4 +1,18 @@
 {
   "story": "code-editor",
-  "page": "index.html"
+  "page": "index.html",
+  "steps": [
+    { "name": "hover-json", "section": "languages", "hover": { "at": [700, 184] } },
+    { "name": "click-rust", "section": "languages", "click": { "at": [200, 142] }, "wait": 850 },
+    { "name": "type-rust", "section": "languages", "key": "x", "wait": 850 },
+    { "name": "enter", "section": "languages", "key": "Enter", "wait": 850 },
+    { "name": "click-relative", "section": "rails", "click": { "at": [180, 227] }, "wait": 850, "keep": true },
+    { "name": "arrow-up-relative", "section": "rails", "key": "ArrowUp", "wait": 850 },
+    { "name": "click-wrapped", "section": "rails", "click": { "at": [720, 79] }, "wait": 850, "keep": true },
+    { "name": "click-vim", "section": "vim-visual", "click": { "at": [160, 184] }, "wait": 850, "keep": true },
+    { "name": "vim-down", "section": "vim-visual", "key": "j", "wait": 850 },
+    { "name": "vim-open-line", "section": "vim-visual", "key": "o", "wait": 850 },
+    { "name": "click-sideways", "section": "scrolled-sideways", "click": { "at": [200, 121] }, "wait": 850, "keep": true },
+    { "name": "click-focused", "section": "states", "click": { "at": [250, 163] }, "wait": 850, "keep": true }
+  ]
 }

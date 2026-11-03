@@ -823,6 +823,7 @@ pub fn kit_row<T: Copy>(
         AppearancePageItem::Accent => {
             let picks = theme_picks(appearance, saved);
             let custom = ColorPicker::new(&controls.accent, ala::transparent_black())
+                .id("settings-accent-custom")
                 .label(title)
                 .swatch(px(SWATCH));
             let picker = controls.accent.clone();

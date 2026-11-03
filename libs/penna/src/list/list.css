@@ -2,7 +2,7 @@
   display: flex;
   flex-direction: column;
   gap: 2px;
-  --penna-list-muted: oklab(from var(--penna-fg) calc(l * 0.65 + 0.35 * clamp(0, (0.5987 - l) * 1000, 1)) calc(a * 0.65) calc(b * 0.65));
+  --penna-list-muted: var(--penna-fg-muted);
 }
 
 .penna-list-item[data-penna] {
@@ -50,7 +50,7 @@
   color: var(--penna-list-muted);
 }
 
-.penna-list-item[data-penna][data-disabled]:is(:hover, :active) {
+.penna-list-item[data-penna][data-disabled]:is(:hover, :active, [aria-selected="true"], [data-state~="selected"]) {
   --penna-fill: initial;
 }
 
@@ -58,4 +58,8 @@
 .penna-list-item .penna-list-label,
 .penna-list-item .penna-list-detail {
   line-height: round(nearest, 1.618em, 0.5px);
+}
+
+.penna-list-item[data-penna][data-press="hover"]:not([aria-selected="true"], [data-state~="selected"]):active {
+  --penna-fill: var(--list-hover-fill);
 }

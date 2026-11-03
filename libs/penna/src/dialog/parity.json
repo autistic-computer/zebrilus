@@ -5,10 +5,18 @@
     { "name": "hover-ok", "section": "dialog", "hover": "ok" },
     { "name": "hover-cancel", "section": "dialog", "hover": "cancel" },
     { "name": "hover-close", "section": "dialog", "hover": "close" },
+    { "name": "press-ok", "section": "dialog", "press": "ok" },
+    { "name": "focus-field", "section": "dialog", "click": {"selector": ".penna-input input"}, "wait": 80 },
+    { "name": "tab-cancel", "section": "dialog", "key": "Tab" },
+    { "name": "tab-rename", "section": "dialog", "key": "Tab" },
+    { "name": "tab-close", "section": "dialog", "key": "Tab" },
     { "name": "hover-kill", "section": "alert", "hover": "ok" },
     { "name": "hover-later", "section": "custom-footer", "hover": "later" },
     { "name": "press-restart", "section": "custom-footer", "press": "restart" },
     { "name": "hover-close-keys", "section": "scrolling-body", "hover": "close" },
-    { "name": "hover-done", "section": "scrolling-body", "hover": "ok" }
+    { "name": "hover-done", "section": "scrolling-body", "hover": "ok" },
+    { "name": "hover-discard", "section": "stacked", "hover": {"id": "ok", "nth": 2} },
+    { "name": "click-discard-cancel", "section": "stacked", "click": {"selector": "[data-static] [data-id=\"cancel\"]"} },
+    { "name": "then-hover-rename", "section": "stacked", "hover": "ok", "keep": true }
   ]
 }

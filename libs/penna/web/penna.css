@@ -175,10 +175,7 @@ button[data-penna] {
 }
 
 :is([data-penna="field.multiline"], [data-penna="field.multiline.outline"]) {
-  align-items: flex-start;
   height: auto;
-  min-height: 56px;
-  padding: 6px 8px;
 }
 
 :is([data-penna="field"], [data-penna="field.outline"], [data-penna="field.multiline"], [data-penna="field.multiline.outline"]) :is(input, textarea) {
@@ -369,6 +366,7 @@ button[data-penna] {
   width: 16px;
   height: 16px;
   border-radius: calc(var(--penna-radius) / 4);
+  corner-shape: superellipse(var(--penna-window-k, 1));
   border: 1px solid color-mix(in oklab, var(--penna-fg) 30%, transparent);
   color: var(--penna-on-accent);
   --penna-icon-size: 11px;
@@ -421,7 +419,7 @@ button[data-penna] {
   grid-template-rows: var(--penna-titlebar-height, 40px) 1fr;
   overflow: hidden;
   border-radius: 12px;
-  corner-shape: superellipse(2);
+  corner-shape: superellipse(var(--penna-window-k, 2));
   box-shadow: 0 0 0 0.5px #0006, 0 24px 64px #0005;
 }
 
@@ -509,10 +507,10 @@ button[data-penna] {
 [data-penna="titlebar"] {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 0;
   min-width: 0;
   height: var(--penna-titlebar-height, 40px);
-  padding: 0 8px;
+  padding: 0 0 0 12px;
 }
 
 [data-penna="pane"] {

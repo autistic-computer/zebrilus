@@ -1,13 +1,4 @@
 (() => {
-function ceilSpans(root, selector) {
-  const spans = [...root.querySelectorAll(selector)];
-  spans.forEach((span) => span.style.removeProperty("width"));
-  const widths = spans.map((span) => span.getBoundingClientRect().width);
-  spans.forEach((span, index) => {
-    span.style.width = `${Math.ceil(widths[index])}px`;
-  });
-}
-
 function stepLabels(slider) {
   return (slider.dataset.steps || "").split(",").map((name) => name.trim()).filter(Boolean);
 }
@@ -24,7 +15,7 @@ function paintSteps(slider) {
   });
   const value = slider.querySelector(".penna-steps-value");
   value.textContent = labels[at] ?? "";
-  ceilSpans(slider, ".penna-steps-label, .penna-steps-value");
+  pennaKit.ceilText(slider);
 }
 
 function pickStep(slider, index) {
@@ -49,6 +40,7 @@ function wireSteps(slider) {
   slider.dataset.id ||= `slider:${slider.dataset.label || ""}`;
   const label = document.createElement("span");
   label.className = "penna-steps-label";
+  label.dataset.pennaText = "";
   label.textContent = slider.dataset.label || "";
   const pills = document.createElement("span");
   pills.className = "penna-steps-pills";
@@ -73,6 +65,7 @@ function wireSteps(slider) {
   });
   const value = document.createElement("span");
   value.className = "penna-steps-value";
+  value.dataset.pennaText = "";
   slider.replaceChildren(label, pills, value);
   slider.addEventListener("keydown", (event) => {
     const at = Number.parseInt(slider.dataset.value, 10) || 0;
@@ -92,5 +85,4 @@ function settleSteps() {
 }
 
 settleSteps();
-document.fonts.ready.then(settleSteps);
 })();

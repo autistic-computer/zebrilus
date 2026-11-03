@@ -1,12 +1,3 @@
-function snapText(selector, root = document) {
-  const spans = [...root.querySelectorAll(selector)];
-  spans.forEach((span) => span.style.removeProperty("width"));
-  const widths = spans.map((span) => span.getBoundingClientRect().width);
-  spans.forEach((span, index) => {
-    span.style.width = `${Math.ceil(widths[index])}px`;
-  });
-}
-
 function stepTabs(event) {
   const tab = event.target.closest?.(".penna-tab");
   if (!tab) return;
@@ -22,9 +13,6 @@ function stepTabs(event) {
   next.focus();
 }
 
-const snapTabs = () => snapText(".penna-tab .penna-text");
-snapTabs();
-document.fonts.ready.then(snapTabs);
 document.addEventListener("keydown", stepTabs);
 
 function markFocus(event) {
