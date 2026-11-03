@@ -5829,6 +5829,7 @@ dependencies = [
  "tree-sitter-toml-ng",
  "unicode-segmentation",
  "url",
+ "web-sys",
  "web-time",
  "windows 0.62.2",
 ]
