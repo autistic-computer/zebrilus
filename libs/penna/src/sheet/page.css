@@ -6,6 +6,7 @@
   border-radius: 55px;
   corner-shape: superellipse(var(--penna-window-k));
   background: var(--penna-panel);
+  overflow: hidden;
 }
 
 .sheet-backdrop {

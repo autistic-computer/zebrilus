@@ -97,6 +97,11 @@ struct LineFragmentLayout {
     source_range: Range<usize>,
 }
 
+enum WrapPiece {
+    Text(Box<ShapedLine>),
+    Image(Pixels),
+}
+
 enum LineFragmentKind {
     Text {
         text: SharedString,
@@ -205,9 +210,9 @@ impl Element for InlineFlow {
         let layout_ref = layout_state.layout.clone();
 
         let mono = cx.theme().mono_font_family.clone();
+        let text_style = window.text_style();
         let layout_id = window.request_measured_layout(Default::default(), {
             move |known_dimensions, available_space, window, _cx| {
-                let text_style = window.text_style();
                 let wrap_width = if text_style.white_space == WhiteSpace::Normal {
                     known_dimensions.width.or(match available_space.width {
                         AvailableSpace::Definite(width) => Some(width),
@@ -387,15 +392,16 @@ fn layout_flow(
     wrap_width: Option<Pixels>,
     window: &mut Window,
 ) -> InlineFlowLayout {
-    let line_height = window.line_height();
-    let rem_size = window.rem_size();
+    let line_height = text_style.line_height_in_pixels(window.rem_size());
     let total_len = items.iter().map(MeasureItem::len).sum::<usize>();
     if total_len == 0 {
         return InlineFlowLayout::default();
     }
 
-    let line_ranges = line_ranges(items, image_sizes, text_style, wrap_width, window);
-    let font_size = text_style.font_size.to_pixels(rem_size);
+    let line_ranges = line_ranges(items, image_sizes, text_style, mono, wrap_width, window);
+    let soft_wrapped = line_ranges
+        .windows(2)
+        .any(|pair| pair[0].end == pair[1].start);
     let mut fragments = Vec::new();
     let mut max_width = Pixels::ZERO;
     let mut y = Pixels::ZERO;
@@ -438,11 +444,15 @@ fn layout_flow(
                             .iter()
                             .filter_map(|range| clip(range, local_start, local_end))
                             .collect::<Vec<_>>();
-                        let mut runs =
-                            runs_for_highlights(&subtext, text_style, highlights.clone());
-                        code_runs(&mut runs, &code_ranges, mono);
-                        let shaped_line = shape_line(subtext.clone(), font_size, &runs, window);
-                        let width = shaped_line.width();
+                        let width = shape(
+                            subtext.clone(),
+                            &highlights,
+                            &code_ranges,
+                            text_style,
+                            mono,
+                            window,
+                        )
+                        .width();
                         line_width += width;
                         line_fragments.push(LineFragmentLayout {
                             item_ix,
@@ -509,9 +519,13 @@ fn layout_flow(
         y += actual_line_height;
     }
 
+    let width = match wrap_width {
+        Some(wrap_width) if soft_wrapped => wrap_width,
+        _ => max_width,
+    };
     InlineFlowLayout {
         fragments,
-        size: size(max_width, y),
+        size: size(width, y),
     }
 }
 
@@ -519,6 +533,7 @@ fn line_ranges(
     items: &[MeasureItem],
     image_sizes: &[Option<Size<Pixels>>],
     text_style: &TextStyle,
+    mono: &SharedString,
     wrap_width: Option<Pixels>,
     window: &mut Window,
 ) -> Vec<Range<usize>> {
@@ -551,34 +566,59 @@ fn line_ranges(
 
     for hard_line in hard_lines {
         let mut item_start = 0;
-        let wrap_fragments = items
+        let pieces = items
             .iter()
             .enumerate()
             .filter_map(|(ix, item)| {
                 let item_end = item_start + item.len();
-                let fragment = if item_end <= hard_line.start || item_start >= hard_line.end {
+                let piece = if item_end <= hard_line.start || item_start >= hard_line.end {
                     None
                 } else {
                     match item {
-                        MeasureItem::Text { text, .. } => {
+                        MeasureItem::Text {
+                            text,
+                            highlights,
+                            code_ranges,
+                            ..
+                        } => {
                             let start = hard_line.start.max(item_start) - item_start;
                             let end = hard_line.end.min(item_end) - item_start;
-                            (start < end).then(|| WrapLineFragment::text(&text[start..end]))
+                            (start < end).then(|| {
+                                WrapPiece::Text(Box::new(shape(
+                                    SharedString::from(text[start..end].to_string()),
+                                    &slice_ranges(highlights, start, end, |range, style| {
+                                        (range, *style)
+                                    }),
+                                    &code_ranges
+                                        .iter()
+                                        .filter_map(|range| clip(range, start, end))
+                                        .collect::<Vec<_>>(),
+                                    text_style,
+                                    mono,
+                                    window,
+                                )))
+                            })
                         }
                         MeasureItem::Image { .. } => (hard_line.start <= item_start
                             && item_end <= hard_line.end)
                             .then(|| {
-                                WrapLineFragment::element(
+                                WrapPiece::Image(
                                     image_sizes[ix]
                                         .expect("image size should be measured before wrapping")
                                         .width,
-                                    IMAGE_LEN,
                                 )
                             }),
                     }
                 };
                 item_start = item_end;
-                fragment
+                piece
+            })
+            .collect::<Vec<_>>();
+        let wrap_fragments = pieces
+            .iter()
+            .map(|piece| match piece {
+                WrapPiece::Text(line) => WrapLineFragment::shaped(line),
+                WrapPiece::Image(width) => WrapLineFragment::element(*width, IMAGE_LEN),
             })
             .collect::<Vec<_>>();
 
@@ -700,7 +740,7 @@ fn inline_image_size_for_line(
 fn runs_for_highlights(
     text: &str,
     default_style: &TextStyle,
-    highlights: Vec<(Range<usize>, HighlightStyle)>,
+    highlights: &[(Range<usize>, HighlightStyle)],
 ) -> Vec<TextRun> {
     let mut runs = Vec::new();
     let mut ix = 0;
@@ -712,7 +752,7 @@ fn runs_for_highlights(
         runs.push(
             default_style
                 .clone()
-                .highlight(highlight)
+                .highlight(*highlight)
                 .to_run(range.len()),
         );
         ix = range.end;
@@ -725,13 +765,20 @@ fn runs_for_highlights(
     runs
 }
 
-fn shape_line(
+fn shape(
     text: SharedString,
-    font_size: Pixels,
-    runs: &[TextRun],
+    highlights: &[(Range<usize>, HighlightStyle)],
+    code_ranges: &[Range<usize>],
+    text_style: &TextStyle,
+    mono: &SharedString,
     window: &mut Window,
 ) -> ShapedLine {
-    window.text_system().shape_line(text, font_size, runs, None)
+    let mut runs = runs_for_highlights(&text, text_style, highlights);
+    code_runs(&mut runs, code_ranges, mono);
+    let font_size = text_style.font_size.to_pixels(window.rem_size());
+    window
+        .text_system()
+        .shape_line(text, font_size, &runs, None)
 }
 
 fn slice_ranges<T, U>(
@@ -754,6 +801,14 @@ fn clip(range: &Range<usize>, start: usize, end: usize) -> Option<Range<usize>> 
 
 #[cfg(test)]
 mod tests {
+    use std::borrow::Cow;
+
+    use ala::{
+        DevicePixels, Font, FontId, FontMetrics, FontRun, FontWeight, GlyphId, LineLayout,
+        NoopTextSystem, PlatformTextSystem, RenderGlyphParams, ShapedGlyph, ShapedRun,
+        TextRenderingMode,
+    };
+
     use super::*;
 
     #[ala::test]
@@ -784,7 +839,14 @@ mod tests {
 
             for wrap_width in [None, Some(px(400.))] {
                 assert_eq!(
-                    line_ranges(&items, &image_sizes, &text_style, wrap_width, window),
+                    line_ranges(
+                        &items,
+                        &image_sizes,
+                        &text_style,
+                        &text_style.font_family,
+                        wrap_width,
+                        window
+                    ),
                     vec![0..2, 3..3, 4..5, 6..9, 10..10],
                 );
                 let layout = layout_flow(
@@ -801,6 +863,195 @@ mod tests {
                 assert!(origin.y >= window.line_height() * 2.);
                 assert_eq!(layout.size.height, window.line_height() * 5.);
             }
+        });
+    }
+
+    struct WidthsByFont;
+
+    impl WidthsByFont {
+        fn units(font_id: FontId) -> f32 {
+            match font_id.0 {
+                1 => 700.,
+                2 => 600.,
+                _ => 500.,
+            }
+        }
+    }
+
+    impl PlatformTextSystem for WidthsByFont {
+        fn add_fonts(&self, _: Vec<Cow<'static, [u8]>>) -> anyhow::Result<()> {
+            Ok(())
+        }
+
+        fn all_font_names(&self) -> Vec<String> {
+            Vec::new()
+        }
+
+        fn font_id(&self, font: &Font) -> anyhow::Result<FontId> {
+            Ok(if font.family.as_ref() == "Mono" {
+                FontId(2)
+            } else if font.weight >= FontWeight::BOLD {
+                FontId(1)
+            } else {
+                FontId(0)
+            })
+        }
+
+        fn font_metrics(&self, font_id: FontId) -> FontMetrics {
+            NoopTextSystem.font_metrics(font_id)
+        }
+
+        fn typographic_bounds(
+            &self,
+            font_id: FontId,
+            glyph_id: GlyphId,
+        ) -> anyhow::Result<Bounds<f32>> {
+            NoopTextSystem.typographic_bounds(font_id, glyph_id)
+        }
+
+        fn advance(&self, font_id: FontId, _: GlyphId) -> anyhow::Result<Size<f32>> {
+            Ok(size(Self::units(font_id), 0.))
+        }
+
+        fn glyph_for_char(&self, _: FontId, _: char) -> Option<GlyphId> {
+            Some(GlyphId(1))
+        }
+
+        fn glyph_raster_bounds(
+            &self,
+            params: &RenderGlyphParams,
+        ) -> anyhow::Result<Bounds<DevicePixels>> {
+            NoopTextSystem.glyph_raster_bounds(params)
+        }
+
+        fn rasterize_glyph(
+            &self,
+            params: &RenderGlyphParams,
+            raster_bounds: Bounds<DevicePixels>,
+        ) -> anyhow::Result<(Size<DevicePixels>, Vec<u8>)> {
+            NoopTextSystem.rasterize_glyph(params, raster_bounds)
+        }
+
+        fn layout_line(&self, text: &str, font_size: Pixels, runs: &[FontRun]) -> LineLayout {
+            let em = font_size / 1000.;
+            let mut x = px(0.);
+            let mut prev = '\0';
+            let mut chars = text.char_indices();
+            let mut shaped_runs = Vec::new();
+            for run in runs {
+                let mut glyphs = Vec::new();
+                for (index, ch) in chars.by_ref().take(run.len) {
+                    if run.font_id.0 == 0 && prev == 'T' && ch == 'o' {
+                        x -= em * 150.;
+                    }
+                    glyphs.push(ShapedGlyph {
+                        id: GlyphId(1),
+                        position: point(x, px(0.)),
+                        index,
+                        is_emoji: false,
+                    });
+                    x += em * Self::units(run.font_id);
+                    prev = ch;
+                }
+                shaped_runs.push(ShapedRun {
+                    font_id: run.font_id,
+                    glyphs,
+                });
+            }
+            LineLayout {
+                font_size,
+                width: x,
+                ascent: font_size,
+                descent: px(0.),
+                runs: shaped_runs,
+                len: text.len(),
+            }
+        }
+
+        fn recommended_rendering_mode(&self, _: FontId, _: Pixels) -> TextRenderingMode {
+            TextRenderingMode::Grayscale
+        }
+    }
+
+    #[test]
+    fn an_inline_image_paragraph_breaks_where_its_text_alone_breaks() {
+        let mut cx = ala::TestAppContext::build_with_text_system(
+            ala::TestDispatcher::new(0),
+            None,
+            Arc::new(WidthsByFont),
+        );
+        let cx = cx.add_empty_window();
+        cx.update(|window, _| {
+            let text: SharedString =
+                "To ship it run cargo build --release and then wait for it to finish ".into();
+            let highlights = vec![
+                (15..36, HighlightStyle::default()),
+                (
+                    46..57,
+                    HighlightStyle {
+                        font_weight: Some(FontWeight::BOLD),
+                        ..Default::default()
+                    },
+                ),
+            ];
+            let code_ranges = vec![highlights[0].0.clone()];
+            let mono = SharedString::from("Mono");
+            let text_style = window.text_style();
+            let font_size = text_style.font_size.to_pixels(window.rem_size());
+            let items = [
+                MeasureItem::Text {
+                    text: text.clone(),
+                    links: vec![],
+                    highlights: highlights.clone(),
+                    code_ranges: code_ranges.clone(),
+                },
+                MeasureItem::Image {
+                    url: "https://example.com/image.svg".into(),
+                    width: None,
+                    height: None,
+                },
+            ];
+            let image_sizes = [None, Some(size(px(20.), px(10.)))];
+            let wrap_width = px(110.);
+            let mut runs = runs_for_highlights(&text, &text_style, &highlights);
+            code_runs(&mut runs, &code_ranges, &mono);
+            let alone = window
+                .text_system()
+                .shape_text(text.clone(), font_size, &runs, Some(wrap_width), None)
+                .expect("paragraph shapes");
+            let alone_breaks = alone[0]
+                .wrap_boundaries()
+                .iter()
+                .map(|boundary| {
+                    alone[0].unwrapped_layout.runs[boundary.run_ix].glyphs[boundary.glyph_ix].index
+                })
+                .collect::<Vec<_>>();
+
+            assert_eq!(alone_breaks, vec![15, 27, 37, 46, 55]);
+            assert_eq!(
+                line_ranges(
+                    &items,
+                    &image_sizes,
+                    &text_style,
+                    &mono,
+                    Some(wrap_width),
+                    window
+                ),
+                vec![0..15, 15..27, 27..37, 37..46, 46..55, 55..68, 68..69],
+            );
+            assert_eq!(
+                layout_flow(
+                    &items,
+                    &image_sizes,
+                    &text_style,
+                    &mono,
+                    Some(wrap_width),
+                    window
+                )
+                .size
+                .width,
+                wrap_width,
+            );
         });
     }
 
