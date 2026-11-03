@@ -493,7 +493,8 @@ fn daemon_tree_navigation_and_search_preserve_pane_activation(cx: &mut TestAppCo
     cx.update(|window, cx| {
         let _ = window.draw(cx);
     });
-    std::thread::sleep(Duration::from_millis(200));
+    cx.executor()
+        .advance_clock(penna::foundation::SURFACE_ENTER_DURATION);
     cx.update(Window::simulate_next_frame);
     cx.run_until_parked();
     let surface_top = |cx: &mut VisualTestContext| {
