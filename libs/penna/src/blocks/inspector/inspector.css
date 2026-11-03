@@ -1,0 +1,39 @@
+.penna-inspector[data-penna="inspector"] {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: 16px;
+  box-sizing: border-box;
+  width: 340px;
+  height: 100%;
+  padding: 16px;
+  overflow-y: auto;
+  border: 0;
+  border-left: 1px solid var(--penna-divider);
+  border-radius: 0;
+}
+
+.penna-inspector[data-side="left"] {
+  border-left: 0;
+  border-right: 1px solid var(--penna-divider);
+}
+
+.penna-inspector > .penna-inspector-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  width: 100%;
+}
+
+.penna-inspector-header > .penna-inspector-titles {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.penna-inspector[hidden] {
+  display: none;
+}
+

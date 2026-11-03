@@ -6,8 +6,8 @@ use ala::{
 };
 use penna::{
     ActiveTheme as _, IconName, Sizable as _,
-    button::{Button, ButtonVariants as _},
-    text::{TextView, TextViewState, TextViewStyle},
+    components::button::{Button, ButtonVariants as _},
+    components::text::{TextView, TextViewState, TextViewStyle},
 };
 
 use super::support::{Probe, after_first_frame, when_visible};

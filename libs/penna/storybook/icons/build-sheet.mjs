@@ -9,7 +9,7 @@ const penna = join(here, "../..");
 const out = resolve(process.argv[2] ?? join(penna, "target/icon-sheet/penna-icons.html"));
 const searched = process.argv.length > 3 ? process.argv.slice(3).map((dir) => resolve(dir)) : [join(penna, "src")];
 
-const sets = [JSON.parse(readFileSync(join(penna, "src/icon/solar.json"), "utf8"))];
+const sets = [JSON.parse(readFileSync(join(penna, "src/components/icon/solar.json"), "utf8"))];
 const set = sets[0];
 const renderer = readFileSync(join(here, "glyph.js"), "utf8");
 const template = readFileSync(join(here, "sheet.html"), "utf8");
@@ -20,7 +20,7 @@ for (const icon of set.icons) {
   let files = 0;
   try {
     files = execFileSync("rg", ["-l", `IconName::${icon.variant}\\b`, ...searched, "-g", "*.rs",
-      "-g", "!**/src/icon/**", "-g", "!**/storybook/**"], { encoding: "utf8" })
+      "-g", "!**/src/components/icon/**", "-g", "!**/storybook/**"], { encoding: "utf8" })
       .split("\n").filter(Boolean).length;
   } catch {
     files = 0;

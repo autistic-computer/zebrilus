@@ -6,18 +6,18 @@ use ala::{
 };
 use penna::{
     ActiveTheme as _, Colorize as _, Elevation, IconName,
-    compact::{
+    blocks::compact::{
         BENTO_INSET, BentoSpan, COMPACT_PILL_HEIGHT, PillLabel, PillMenuAlign, PillMenuItem,
         PillMenuLook, PillPlacement, bento_add_tile, bento_grid, bento_tile, compact_bar_button,
         compact_floating_bar, compact_floating_group, compact_floating_pill, compact_hud,
         compact_pill_menu, folding_title_bar, pill_glass_over,
     },
-    settings::large_title,
-    touch::{
+    blocks::settings::large_title,
+    blocks::touch::{
         ArrowPad, KeyRow, KeyRowKey, PageDot, PopoverKey, PopoverKeyTap, WhichKeyList, page_dots,
     },
+    blocks::which_key::WhichKeyRow,
     v_flex,
-    which_key::WhichKeyRow,
 };
 
 use crate::story::{Framed as _, Section, Story, row, stateless, states};

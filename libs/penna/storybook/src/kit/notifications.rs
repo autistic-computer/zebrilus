@@ -7,13 +7,12 @@ use ala::{
 };
 use penna::{
     ActiveTheme as _, Colorize as _, IconName, WindowExt as _,
-    button::{Button, ButtonVariants as _},
-    h_flex,
-    input::{Input, InputState},
-    notification::Notification,
-    popover::Popover,
-    tooltip::Tooltip,
-    v_flex,
+    blocks::notification::Notification,
+    components::button::{Button, ButtonVariants as _},
+    components::input::{Input, InputState},
+    components::popover::Popover,
+    components::tooltip::Tooltip,
+    h_flex, v_flex,
 };
 
 use super::support::{Probe, after_first_frame, hover, nudge, press, when_visible};

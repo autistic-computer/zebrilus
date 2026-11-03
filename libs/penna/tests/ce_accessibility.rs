@@ -4,9 +4,9 @@ use ala::{
 };
 use penna::{
     Disableable,
-    button::Button,
-    input::{Input, InputState, NumberInput},
-    slider::DiscreteSlider,
+    components::button::Button,
+    components::input::{Input, InputState, NumberInput},
+    components::slider::DiscreteSlider,
 };
 use std::{cell::Cell, rc::Rc};
 

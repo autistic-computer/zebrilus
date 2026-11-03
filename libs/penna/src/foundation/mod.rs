@@ -2,16 +2,25 @@
 
 mod animation;
 mod color;
+pub mod content;
+pub mod dismissal;
 mod element_ext;
 mod geometry;
+pub mod highlighter;
 mod index_path;
+pub mod interface_theme;
+pub mod motion;
+pub mod overlay;
 mod palette;
+pub mod pulse;
+pub mod roles;
 mod space;
 mod styled;
 mod surface;
 mod text_style;
 mod theme;
 mod theme_color;
+pub mod theme_css;
 mod units;
 mod variant;
 mod window_border;

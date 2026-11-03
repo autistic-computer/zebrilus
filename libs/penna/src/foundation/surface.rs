@@ -905,7 +905,7 @@ impl SurfaceRole {
     );
 
     pub const INSPECTOR: Self = Self::under(
-        &crate::roles::SIDEBAR,
+        &crate::foundation::roles::SIDEBAR,
         "inspector",
         "Inspectors",
         "The selected thing's details, in a column beside the content",

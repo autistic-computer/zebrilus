@@ -4,7 +4,7 @@ use ala::{
 };
 use penna::{
     ActiveTheme as _, Colorize as _, Icon, IconName, TitleBar,
-    button::{Button, ButtonVariants as _},
+    components::button::{Button, ButtonVariants as _},
     h_flex,
 };
 

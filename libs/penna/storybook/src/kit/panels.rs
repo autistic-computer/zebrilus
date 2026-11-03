@@ -4,11 +4,10 @@ use ala::{
 use penna::{
     ActiveTheme as _, Bar, BarLook, Card, CardLook, Edge, IconName, Label, Panel, PanelLook,
     RuleLook, Space, StyledExt as _, TextStyle, Tone,
-    badge::Badge,
-    button::{Button, ButtonVariants as _},
-    h_flex,
-    separator::Separator,
-    v_flex,
+    components::badge::Badge,
+    components::button::{Button, ButtonVariants as _},
+    components::separator::Separator,
+    h_flex, v_flex,
 };
 
 use crate::story::{Section, Story, row, stateless, states};

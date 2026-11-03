@@ -1,0 +1,28 @@
+.penna-dock {
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--penna-divider);
+}
+
+.penna-dock > .penna-dock-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 48px;
+  padding: 0 16px;
+}
+
+.penna-dock-header > .penna-dock-titles {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.penna-dock > .penna-dock-tiles {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 16px 16px;
+}
+

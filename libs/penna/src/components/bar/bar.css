@@ -1,0 +1,6 @@
+.penna-bar[data-penna] {
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+  border-radius: 0;
+}

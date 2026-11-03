@@ -1,0 +1,33 @@
+.penna-well[data-penna="well"] {
+  display: block;
+  padding: 24px;
+  --penna-well-wash: var(--penna-fill);
+}
+
+.penna-well .penna-tile[data-penna] {
+  background:
+    linear-gradient(var(--penna-well-wash), var(--penna-well-wash)),
+    var(--penna-fill);
+}
+
+.penna-well[data-bright] .penna-tile[data-penna] {
+  --penna-tile-lift: oklab(from var(--penna-bg) calc(l + 0.009) a b);
+  background: var(--penna-tile-lift);
+}
+
+.penna-well[data-bright] .penna-tile[data-penna]:is(:disabled, [data-state~="disabled"]) {
+  background: rgb(from var(--penna-tile-lift) r g b / 0.5);
+}
+
+.penna-well:not([data-bright]) .penna-tile[data-penna]:is(:disabled, [data-state~="disabled"]) {
+  background:
+    linear-gradient(rgb(from var(--penna-well-wash) r g b / calc(alpha * 0.5)), rgb(from var(--penna-well-wash) r g b / calc(alpha * 0.5))),
+    var(--penna-fill);
+}
+
+.penna-well > .penna-well-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+

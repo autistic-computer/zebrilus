@@ -1,0 +1,112 @@
+.penna-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  box-sizing: border-box;
+  width: 100%;
+  padding: 10px 12px;
+}
+
+.penna-notice-tone {
+  display: contents;
+}
+
+.penna-notice-lead {
+  display: flex;
+  flex: none;
+  padding-top: 1px;
+  --penna-icon-size: 16px;
+}
+
+.penna-notice-lead > [data-icon] {
+  color: var(--penna-notice-tone, var(--penna-primary));
+}
+
+.penna-notice[data-tone="danger"] {
+  --penna-notice-tone: var(--penna-danger);
+}
+
+.penna-notice[data-tone="warning"] {
+  --penna-notice-tone: var(--penna-warning);
+}
+
+.penna-notice[data-tone="success"] {
+  --penna-notice-tone: var(--penna-success);
+}
+
+.penna-notice[data-tone="neutral"] {
+  --penna-notice-tone: var(--penna-fg);
+}
+
+.penna-notice-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.penna-notice-title {
+  top: -0.5px;
+  align-self: flex-start;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 18px;
+  color: var(--penna-ink);
+}
+
+.penna-notice-detail {
+  position: relative;
+  top: 1px;
+  align-self: flex-start;
+  font-size: 12px;
+  line-height: 16px;
+  white-space: normal;
+  color: var(--penna-muted);
+}
+
+.penna-notice[data-stacked] {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+}
+
+.penna-notice-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.penna-notice[data-stacked] .penna-notice-title {
+  top: -0.5px;
+  align-self: flex-start;
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.penna-notice-action {
+  display: flex;
+  padding-top: 6px;
+}
+
+.penna-notices {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.penna-notice .penna-button[data-on] {
+  background: var(--penna-on-fill);
+}
+
+.penna-notice .penna-button[data-on]:is(:hover, [data-state~="hover"]) {
+  background: var(--penna-on-fill-hover);
+}
+
+.penna-notice .penna-button[data-on]:is(:active, [data-state~="active"]) {
+  background: var(--penna-on-fill-active);
+}
+
+.penna-notice .penna-button[data-penna][data-prominent] {
+  --penna-shadow: 0 0 currentcolor;
+}

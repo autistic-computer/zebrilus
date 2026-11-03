@@ -1,0 +1,56 @@
+.penna-type {
+  position: relative;
+  display: block;
+  flex: none;
+  min-width: 0;
+  max-width: 100%;
+  white-space: nowrap;
+}
+
+.penna-type[data-type] {
+  font-weight: 400;
+}
+
+.penna-type[data-type="micro"] {
+  font-size: 10px;
+  line-height: 14px;
+}
+
+.penna-type[data-type="caption"] {
+  font-size: 11px;
+  line-height: 16px;
+}
+
+.penna-type[data-type="small"] {
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.penna-type[data-type="body"] {
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.penna-type[data-type="heading"] {
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 22px;
+}
+
+.penna-type[data-strong] {
+  font-weight: 500;
+}
+
+.penna-type[data-type="heading"][data-strong] {
+  font-weight: 600;
+}
+
+.penna-type[data-muted] {
+  color: var(--penna-muted);
+}
+
+.penna-type[data-truncate] {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+

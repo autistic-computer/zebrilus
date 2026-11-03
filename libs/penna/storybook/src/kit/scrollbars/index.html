@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Scrollbars</title>
+    <link rel="stylesheet" href="../../../../web/penna.css" />
+    <link rel="stylesheet" href="../../../../web/story.css" />
+    <link rel="stylesheet" href="../../../../src/components/scroll/scroll.css" />
+    <link rel="stylesheet" href="page.css" />
+    <script src="../../../../web/kit.js" data-tokens="../../../../web/tokens/"></script>
+    <script src="../../../../web/story.js" defer></script>
+    <script src="page.js" defer></script>
+    <script src="../../../../src/components/scroll/scroll.js" defer></script>
+  </head>
+  <body>
+    <section data-section="show-modes">
+      <div class="story-states" data-columns="3">
+        <div class="story-state">
+          <div class="story-label">Always</div>
+          <div class="penna-scroll story-area" data-axis="vertical" data-show="always" data-bar="always">
+            <div class="penna-scroll-viewport"><div class="story-lines"></div></div>
+          </div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">Hover, hovered</div>
+          <div class="penna-scroll story-area" data-axis="vertical" data-show="hover" data-bar="hover" data-hovered>
+            <div class="penna-scroll-viewport"><div class="story-lines"></div></div>
+          </div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">Scrolling, at rest</div>
+          <div class="penna-scroll story-area" data-axis="vertical" data-show="scrolling" data-bar="scrolling">
+            <div class="penna-scroll-viewport"><div class="story-lines"></div></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section data-section="axes">
+      <div class="story-states" data-columns="3">
+        <div class="story-state">
+          <div class="story-label">vertical</div>
+          <div class="penna-scroll story-area" data-axis="vertical" data-show="always" data-bar="axis-vertical" data-scroll-y="240">
+            <div class="penna-scroll-viewport"><div class="story-lines"></div></div>
+          </div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">horizontal</div>
+          <div class="penna-scroll story-area" data-axis="horizontal" data-show="always" data-bar="axis-horizontal" data-scroll-x="160">
+            <div class="penna-scroll-viewport"><div class="story-lines"></div></div>
+          </div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">both</div>
+          <div class="penna-scroll story-area" data-axis="both" data-show="always" data-bar="axis-both" data-scroll-x="160" data-scroll-y="240">
+            <div class="penna-scroll-viewport"><div class="story-lines"></div></div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </body>
+</html>

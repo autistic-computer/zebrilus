@@ -127,7 +127,7 @@ pub fn glass_presets_json() -> String {
 
 pub fn interface_themes_json() -> String {
     json!(
-        penna::interface_theme::builtin_themes()
+        penna::foundation::interface_theme::builtin_themes()
             .iter()
             .map(|(id, theme)| {
                 let mut values = knobs::theme_knobs(theme);
@@ -156,7 +156,7 @@ pub fn theme_file_json() -> String {
 pub fn roles_json() -> String {
     fn walk(group: penna::SurfaceRole, depth: usize, out: &mut Vec<(usize, penna::SurfaceRole)>) {
         out.push((depth, group));
-        for member in penna::roles::members(group) {
+        for member in penna::foundation::roles::members(group) {
             walk(member, depth + 1, out);
         }
     }
@@ -184,7 +184,7 @@ pub fn roles_json() -> String {
                             "kind": role.kind().name(),
                             "depth": depth,
                             "group": role.group().map(|group| group.label()),
-                            "members": penna::roles::members(role).count(),
+                            "members": penna::foundation::roles::members(role).count(),
                             "knobs": knobs::knobs_json(role.knobs()),
                             "patch": patch,
                             "inherited": knobs::PROPS
@@ -239,7 +239,7 @@ fn ring(strength: f32, cx: &mut App) {
 }
 
 pub fn import_theme(json: &str) -> Result<String, String> {
-    let theme = penna::interface_theme::parse_theme(json)?;
+    let theme = penna::foundation::interface_theme::parse_theme(json)?;
     Ok(serde_json::Value::Object(knobs::theme_knobs(&theme)).to_string())
 }
 
@@ -267,7 +267,8 @@ pub fn mount_id(story: &Story, section: &Section) -> String {
     format!("section-{}-{}", story.id, section.id)
 }
 
-const KEYBOARD_SECTIONS: &[(&str, &str)] = &[("notifications", "popover"), ("color-picker", "open")];
+const KEYBOARD_SECTIONS: &[(&str, &str)] =
+    &[("notifications", "popover"), ("color-picker", "open")];
 
 pub fn show_story(story: Story, cx: &mut App) -> Result<(), String> {
     DRAWN.with_borrow_mut(BTreeMap::clear);

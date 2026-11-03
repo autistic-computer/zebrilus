@@ -4,7 +4,7 @@ use ala::{
 };
 use penna::{
     ActiveTheme as _,
-    code_editor::{CodeEditor, CodeEditorState, TabSize},
+    blocks::code_editor::{CodeEditor, CodeEditorState, TabSize},
 };
 
 use super::support::{Probe, when_visible};

@@ -5,7 +5,8 @@ use ala::{
 };
 use penna::{
     ActiveTheme as _, BarLook, Disableable as _, IconName, Label, PaintState, Row, RowLook, Space,
-    Surface, Tab, TabLook, TextStyle, Tone, h_flex, icon::Icon, list::ListItem, v_flex,
+    Surface, Tab, TabLook, TextStyle, Tone, components::icon::Icon, components::list::ListItem,
+    h_flex, v_flex,
 };
 
 use crate::story::{Section, Story, row, stateless, states};

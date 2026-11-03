@@ -1,6 +1,6 @@
 use std::{env, path::PathBuf};
 
-use penna::theme_css;
+use penna::foundation::theme_css;
 
 fn main() -> std::io::Result<()> {
     let out = env::args().nth(1).map_or_else(

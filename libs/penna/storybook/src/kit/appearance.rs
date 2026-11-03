@@ -2,14 +2,13 @@ use ala::{
     AnyView, AppContext as _, Context, InteractiveElement as _, IntoElement, ParentElement as _,
     Render, Styled as _, Subscription, Window, div, px,
 };
+use penna::blocks::appearance::{
+    AppearanceControls, appearance_page, appearance_page_items, kit_row,
+};
 use penna::{
     ActiveTheme as _,
-    interface_theme::Appearance,
-    settings::{
-        StackPosition,
-        appearance::{AppearanceControls, appearance_page, appearance_page_items, kit_row},
-        settings_list_disclosure_header,
-    },
+    blocks::settings::{StackPosition, settings_list_disclosure_header},
+    foundation::interface_theme::Appearance,
 };
 
 use crate::story::{Framed as _, Section, Story};
@@ -115,12 +114,12 @@ impl AppearanceStory {
 
     fn row(
         &self,
-        item: penna::settings::appearance::AppearancePageItem<()>,
+        item: penna::blocks::appearance::AppearancePageItem<()>,
         position: StackPosition,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> ala::AnyElement {
-        use penna::settings::appearance::{ADVANCED_DISCLOSURE, AppearancePageItem};
+        use penna::blocks::appearance::{ADVANCED_DISCLOSURE, AppearancePageItem};
         if let AppearancePageItem::Advanced { expanded } = item {
             return settings_list_disclosure_header(ADVANCED_DISCLOSURE, "Advanced", expanded)
                 .on_click(cx.listener(|story, _, _, cx| {

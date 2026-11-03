@@ -11,11 +11,11 @@ gpui-component, https://github.com/longbridge/gpui-component
   UPSTREAM.md records what was ported and how it changed.
 
 
-src/icon/solar.json
+src/components/icon/solar.json
 
   Adapted from the Solar Icons Set by 480 Design,
   https://www.figma.com/community/file/1166831539721848736
-  Licensed under CC BY 4.0. Credit and changes in src/icon/LICENSE-SOLAR.
+  Licensed under CC BY 4.0. Credit and changes in src/components/icon/LICENSE-SOLAR.
 
 
 themes/macos.json, themes/yaru.json

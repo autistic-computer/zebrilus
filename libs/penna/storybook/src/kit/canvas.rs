@@ -5,11 +5,10 @@ use ala::{
 use penna::{
     ActiveTheme as _, Chip, Dock, IconName, Inspector, Label, PaintState, Sizable as _, Space,
     TextStyle, Tile, TileVariant, Tone, Well,
-    button::Button,
-    h_flex,
-    settings::{SettingEntry, SettingsStack},
-    switch::Switch,
-    v_flex,
+    blocks::settings::{SettingEntry, SettingsStack},
+    components::button::Button,
+    components::switch::Switch,
+    h_flex, v_flex,
 };
 
 use crate::story::{Framed as _, Section, Story, stateless, states};

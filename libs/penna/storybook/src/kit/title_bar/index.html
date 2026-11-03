@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Title bar</title>
+    <link rel="stylesheet" href="../../../../web/penna.css" />
+    <link rel="stylesheet" href="../../../../web/story.css" />
+    <link rel="stylesheet" href="../../../../src/components/button/button.css" />
+    <link rel="stylesheet" href="../../../../src/components/tooltip/tooltip.css" />
+    <link rel="stylesheet" href="../../../../src/blocks/title_bar/title_bar.css" />
+    <script src="../../../../web/kit.js" data-tokens="../../../../web/tokens/"></script>
+    <script src="../../../../src/components/button/button.js" defer></script>
+    <script src="../../../../src/components/tooltip/tooltip.js" defer></script>
+  </head>
+  <body>
+    <section data-section="bar">
+      <div class="story-states">
+        <div class="story-state">
+          <div class="story-label">empty</div>
+          <div class="penna-title-bar-frame">
+            <div class="penna-title-bar" data-penna="titlebar">
+              <div class="penna-title-bar-drag"></div>
+              <div class="penna-title-bar-controls"></div>
+            </div>
+          </div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">title and actions</div>
+          <div class="penna-title-bar-frame">
+            <div class="penna-title-bar" data-penna="titlebar">
+              <div class="penna-title-bar-drag">
+                <div class="penna-title-bar-content">
+                  <div class="penna-title-bar-group">
+                    <i data-icon="pencil"></i>
+                    <span class="penna-title-bar-text" data-penna-text>work</span>
+                    <span class="penna-title-bar-text penna-title-bar-muted" data-penna-text>~/dev/app</span>
+                  </div>
+                  <div class="penna-title-bar-actions">
+                    <button class="penna-button" data-penna="icon-button" data-shape="icon" aria-label="Split right" data-tooltip="Split right" data-id="bar-split"><i data-icon="panel-right"></i></button>
+                    <button class="penna-button" data-penna="icon-button" data-shape="icon" aria-label="Settings" data-tooltip="Settings" data-id="bar-settings"><i data-icon="settings"></i></button>
+                  </div>
+                </div>
+              </div>
+              <div class="penna-title-bar-controls"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </body>
+</html>

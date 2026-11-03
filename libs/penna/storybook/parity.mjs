@@ -12,11 +12,12 @@ const MODES = ["light", "dark"];
 const VIEWPORT = { width: 1200, height: 900 };
 const SCALE = 2;
 const STEP_PAD = 4;
-const USAGE = `usage: node storybook/parity.mjs <component>...|--all [options]
+const USAGE = `usage: node storybook/parity.mjs <story>...|--all [options]
 
-Compares each component's hand-written DOM page (src/<component>/<page>) with
+Compares each story's hand-written DOM page (storybook/src/kit/<story>/<page>) with
 the penna render of its storybook story, section by section, on every
 interface theme in light and dark, and scores each section 0..100.
+Use Rust story module names, such as buttons, selection and markdown.
 
 A section scores 100 x sqrt(geometry x pixels) x height factor. Geometry gives
 each canvas node credit 1 - offset/8 px, offsets taken against the previous
@@ -30,7 +31,7 @@ A step targets a node by id ("hover": "ok"), the nth node sharing an id
 element ({"selector": ".thumb"}), whose section-relative point the canvas gets
 too. Point and selector steps score the whole section.
 
-Each component loads the story fresh. A step that leaves its canvas section
+Each story loads fresh. A step that leaves its canvas section
 changed reloads both pages before the next step and the next theme and mode;
 "keep": true runs a step on that state instead (key steps keep by default,
 "keep": false starts one fresh).
@@ -38,15 +39,15 @@ changed reloads both pages before the next step and the next theme and mode;
 The DOM page loads with ?bare&flat&motion=0 and prefers-reduced-motion: reduce.
 
 options:
-  --all              every src/<component>/parity.json
+  --all              every storybook/src/kit/<story>/parity.json
   --theme <t>        default, macos or yaru (default all three)
   --mode <m>         light or dark (default both)
   --section <s>      only this section
   --threshold <px>   offset reported as off (default 2)
-  --update           write src/<component>/parity.baseline.json (not when --check fails)
+  --update           write storybook/src/kit/<story>/parity.baseline.json (not when --check fails)
   --check            exit 1 when a score drops more than 0.5 below the baseline or has none
   --out <dir>        output folder (default target/parity)
-  --timeout <ms>     give up on a component after this long (default 900000)
+  --timeout <ms>     give up on a story after this long (default 900000)
 
 environment: CHROME overrides the browser binary.`;
 
@@ -69,7 +70,7 @@ function parseArgs(argv) {
         else options[key] = argv[++i];
     }
     if (options.all) {
-        options.components = readdirSync(join(ROOT, "src")).filter((name) => existsSync(join(ROOT, "src", name, "parity.json"))).sort();
+        options.components = readdirSync(join(ROOT, "storybook/src/kit")).filter((name) => existsSync(join(ROOT, "storybook/src/kit", name, "parity.json"))).sort();
     }
     if (!options.components.length) throw new Error(USAGE);
     for (const name of options.components) {
@@ -173,7 +174,7 @@ function domFiles() {
     const prefixes = ["web/", "storybook/fonts/"];
     return (path) =>
         prefixes.some((prefix) => path.startsWith(prefix)) ||
-        (path.startsWith("src/") && PAGE_FILES.has(extname(path)) && !path.split("/").pop().startsWith("parity."));
+        ((path.startsWith("src/components/") || path.startsWith("src/blocks/") || path.startsWith("storybook/src/kit/")) && PAGE_FILES.has(extname(path)) && !path.split("/").pop().startsWith("parity."));
 }
 
 function chromeBinaries() {
@@ -800,7 +801,7 @@ async function loadDom(pages, url, mode) {
 }
 
 async function runComponent(name, options, pages, bases, combos) {
-    const specPath = join(ROOT, "src", name, "parity.json");
+    const specPath = join(ROOT, "storybook/src/kit", name, "parity.json");
     if (!existsSync(specPath)) throw new Error(`${relative(ROOT, specPath)} is missing`);
     const spec = JSON.parse(readFileSync(specPath, "utf8"));
     const report = { component: name, story: spec.story, page: spec.page ?? "index.html", threshold: options.threshold, combos: {}, loads: { count: 0, ms: 0 } };
@@ -812,7 +813,7 @@ async function runComponent(name, options, pages, bases, combos) {
         await loadCanvas(pages, bases, spec.story, theme, mode, report.loads);
         const canvasSet = await canvasSections(pages.canvas, options.section);
         if (!canvasSet.length) throw new Error(`story ${spec.story} has no section${options.section ? ` ${options.section}` : "s"}`);
-        const domUrl = `${bases.dom}/src/${name}/${report.page}?theme=${theme}&mode=${mode}&bare&flat&motion=0`;
+        const domUrl = `${bases.dom}/storybook/src/kit/${name}/${report.page}?theme=${theme}&mode=${mode}&bare&flat&motion=0`;
         await loadDom(pages, domUrl, mode);
         const widths = Object.fromEntries(canvasSet.map((each) => [each.section, each.width]));
         const domSet = await domSections(pages.dom, widths, options.section);
@@ -854,7 +855,7 @@ function scores(report) {
 }
 
 function baseline(report, options) {
-    const path = join(ROOT, "src", report.component, "parity.baseline.json");
+    const path = join(ROOT, "storybook/src/kit", report.component, "parity.baseline.json");
     const current = scores(report);
     const saved = existsSync(path) ? JSON.parse(readFileSync(path, "utf8")) : null;
     const failures = [];

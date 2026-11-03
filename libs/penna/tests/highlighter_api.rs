@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use penna::highlighter::{
+use penna::foundation::highlighter::{
     HighlightTheme, InputEdit, LanguageConfig, LanguageRegistry, Point, Rope, SyntaxHighlighter,
 };
 

@@ -1,4 +1,4 @@
-use penna::{Shape, Theme, interface_theme, roles};
+use penna::{Shape, Theme, foundation::interface_theme, foundation::roles};
 
 #[test]
 fn builtins_parse_and_a_theme_reaches_every_kind_of_role() {

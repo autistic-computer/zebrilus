@@ -1,3 +1,7 @@
+use penna::blocks::appearance::{
+    SWATCH, THEME_MODES, ThemePicks, accent_swatches, contrast_slider, corner_radius_slider,
+    picker_tile, theme_mode_control, theme_picker, theme_preview, tint_hue_slider, tint_slider,
+};
 use std::cell::Cell;
 use std::sync::Arc;
 
@@ -9,48 +13,43 @@ use ala::{
 use penna::{
     ActiveTheme as _, Colorize as _, Edge, Elevation, Emphasis, Icon, IconName, IndexPath,
     RuleLook, StyledExt as _, Surface, Tone,
-    badge::Badge,
-    button::{Button, ButtonVariants as _},
-    color_picker::{ColorPicker, ColorPickerState},
-    compact::{
+    blocks::color_picker::{ColorPicker, ColorPickerState},
+    blocks::compact::{
         BENTO_INSET, BentoSpan, PillLabel, PillPlacement, bento_add_tile, bento_grid, bento_tile,
         compact_bar_button, compact_floating_bar, compact_floating_group, compact_floating_pill,
         compact_hud,
     },
-    feedback::{alert_actions, inline_alert},
-    h_flex,
-    input::{Input, InputState, NumberInput},
-    interface_theme::{ThemeOverrides, builtin_themes},
-    kbd::Kbd,
-    menu::{PopupMenu, PopupMenuItem},
-    notification::Notification,
-    overlay::{dialog_description, dialog_footer, dialog_gutter, dialog_surface, dialog_title},
-    picker::{path_row, picker_footer, picker_header, picker_list, picker_search},
-    roles,
-    select::{Select, SelectState},
-    settings::{
-        SETTINGS_PAGE_PADDING, SettingEntry, SettingsStack,
-        appearance::{
-            SWATCH, THEME_MODES, ThemePicks, accent_swatches, contrast_slider,
-            corner_radius_slider, picker_tile, theme_mode_control, theme_picker, theme_preview,
-            tint_hue_slider, tint_slider,
-        },
-        large_title, settings_card_ground, settings_navigation_button,
-        settings_navigation_group_label, settings_page_content,
+    blocks::dialog::{
+        dialog_description, dialog_footer, dialog_gutter, dialog_surface, dialog_title,
     },
-    sheet::{bottom_sheet, sheet_row},
-    shell::{app_shell_surface, app_titlebar_strip},
-    sidebar::{chrome_button, sidebar_footer, sidebar_panel, sidebar_titlebar},
-    slider::DiscreteSlider,
-    switch::Switch,
-    text::{TextView, TextViewStyle},
-    tooltip::Tooltip,
-    touch::{
+    blocks::feedback::{alert_actions, inline_alert},
+    blocks::notification::Notification,
+    blocks::picker::{path_row, picker_footer, picker_header, picker_list, picker_search},
+    blocks::settings::{
+        SETTINGS_PAGE_PADDING, SettingEntry, SettingsStack, large_title, settings_card_ground,
+        settings_navigation_button, settings_navigation_group_label, settings_page_content,
+    },
+    blocks::sheet::{bottom_sheet, sheet_row},
+    blocks::shell::{app_shell_surface, app_titlebar_strip},
+    blocks::sidebar::{chrome_button, sidebar_footer, sidebar_panel, sidebar_titlebar},
+    blocks::touch::{
         ArrowDirection, ArrowPad, KeyRow, KeyRowKey, PageDot, WhichKeyList, arrow_pad_bubble,
         page_dots,
     },
-    v_flex,
-    which_key::{WhichKeyCap, WhichKeyHeader, WhichKeyRow, WhichKeyView},
+    blocks::which_key::{WhichKeyCap, WhichKeyHeader, WhichKeyRow, WhichKeyView},
+    components::badge::Badge,
+    components::button::{Button, ButtonVariants as _},
+    components::input::{Input, InputState, NumberInput},
+    components::kbd::Kbd,
+    components::menu::{PopupMenu, PopupMenuItem},
+    components::select::{Select, SelectState},
+    components::slider::DiscreteSlider,
+    components::switch::Switch,
+    components::text::{TextView, TextViewStyle},
+    components::tooltip::Tooltip,
+    foundation::interface_theme::{ThemeOverrides, builtin_themes},
+    foundation::roles,
+    h_flex, v_flex,
 };
 
 use super::{

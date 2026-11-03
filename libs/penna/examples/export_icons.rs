@@ -1,6 +1,6 @@
 use std::{env, fs, path::PathBuf};
 
-use penna::icon::glyphs;
+use penna::components::icon::glyphs;
 
 fn main() {
     let usage = "usage: export_icons <dir> <theme radius> <corner smoothing>";

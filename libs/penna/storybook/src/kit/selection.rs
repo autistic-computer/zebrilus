@@ -3,11 +3,12 @@ use ala::{
     SharedString, Styled as _, Subscription, Window, div, px,
 };
 use penna::{
-    Disableable as _, IndexPath, Sizable as _, h_flex,
-    segmented::SegmentedControl,
-    select::{Select, SelectState},
-    slider::DiscreteSlider,
-    switch::Switch,
+    Disableable as _, IndexPath, Sizable as _,
+    components::segmented::SegmentedControl,
+    components::select::{Select, SelectState},
+    components::slider::DiscreteSlider,
+    components::switch::Switch,
+    h_flex,
 };
 
 use super::support::{Probe, after_first_frame, click, dispatch, when_visible};

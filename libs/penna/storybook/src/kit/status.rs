@@ -4,7 +4,7 @@ use ala::{
 use penna::{
     ActiveTheme as _, Chip, ChipLook, Emphasis, IconName, Label, Notice, PaintState,
     Selectable as _, Sizable as _, Space, Steps, TextStyle, Tone,
-    button::{Button, ButtonVariants as _},
+    components::button::{Button, ButtonVariants as _},
     h_flex, v_flex,
 };
 

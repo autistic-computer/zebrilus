@@ -195,9 +195,9 @@ impl RuleLook {
     pub(crate) const fn role(self) -> SurfaceRole {
         match self {
             Self::Plain => Kind::Rule.role(),
-            Self::Bar => crate::roles::BAR_RULE,
-            Self::List => crate::roles::LIST_RULE,
-            Self::Tree => crate::roles::TREE_RULE,
+            Self::Bar => crate::foundation::roles::BAR_RULE,
+            Self::List => crate::foundation::roles::LIST_RULE,
+            Self::Tree => crate::foundation::roles::TREE_RULE,
         }
     }
 }

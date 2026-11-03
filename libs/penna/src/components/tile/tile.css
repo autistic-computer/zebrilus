@@ -1,0 +1,84 @@
+.penna-tile[data-penna] {
+  position: relative;
+  box-sizing: border-box;
+  flex: none;
+  min-width: 0;
+  user-select: none;
+  touch-action: none;
+  --penna-tile-bw: var(--penna-bw);
+}
+
+.penna-tile[data-tone="danger"] {
+  --penna-ink: color-mix(in oklab, var(--penna-danger) 70%, var(--penna-fg));
+}
+
+.penna-tile[data-tone="primary"] {
+  --penna-ink: color-mix(in oklab, var(--penna-primary) 70%, var(--penna-fg));
+}
+
+.penna-tile[data-variant="screen"] {
+  display: flex;
+  align-items: flex-end;
+  width: 150px;
+  height: 90px;
+  padding: 6px;
+}
+
+.penna-tile[data-variant="card"] {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  width: 132px;
+  height: 64px;
+  padding: 8px 10px;
+}
+
+.penna-tile[data-variant="drop"] {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  bottom: 4px;
+  width: 96px;
+  --penna-r: var(--penna-radius);
+  --penna-k: var(--penna-style-k);
+}
+
+.penna-tile[data-variant="drop"][data-edge] {
+  border-width: clamp(0px, calc(var(--penna-bw) * 1000), 1px);
+}
+
+.penna-tile[data-variant="veil"] {
+  position: absolute;
+  inset: 0;
+  border-width: 0;
+}
+
+.penna-tile[data-variant="mini"] {
+  flex: 1 1 0;
+  height: 100%;
+  padding: 6px;
+  --penna-fill: var(--penna-bg);
+  --penna-r: 6px;
+  --penna-k: var(--penna-style-k);
+}
+
+.penna-tile[data-dragging] {
+  z-index: 1;
+}
+
+.penna-tile[data-penna]:not([data-penna="tile.drop"]):is([data-state~="selected"], [data-state~="current"], [data-state~="focused"], [aria-selected="true"])::after {
+  content: "";
+  position: absolute;
+  inset: calc(-1 * round(down, var(--penna-tile-bw, 0px), 0.5px));
+  border-radius: inherit;
+  corner-shape: inherit;
+  box-shadow: 0 0 0 2px var(--penna-accent);
+  pointer-events: none;
+}
+
+.penna-tile[data-variant="veil"][data-glass] {
+  z-index: -1;
+  --penna-fill: color-mix(in srgb, var(--penna-control) 90%, transparent);
+  --penna-rim: 0 0 #0000;
+  --penna-backdrop: none;
+}

@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Display</title>
+    <link rel="stylesheet" href="../../../../web/penna.css" />
+    <link rel="stylesheet" href="../../../../web/story.css" />
+    <link rel="stylesheet" href="../../../../src/components/spinner/spinner.css" />
+    <link rel="stylesheet" href="../../../../src/components/separator/separator.css" />
+    <link rel="stylesheet" href="../../../../src/components/list/list.css" />
+    <link rel="stylesheet" href="page.css" />
+    <script src="../../../../web/kit.js" data-tokens="../../../../web/tokens/"></script>
+    <script src="../../../../web/story.js" defer></script>
+    <script src="../../../../src/components/kbd/kbd.js" defer></script>
+    <script src="page.js" defer></script>
+  </head>
+  <body>
+    <section data-section="kbd">
+      <div class="story-states" data-columns style="--columns: 2">
+        <div class="story-state">
+          <div class="story-label">single keys</div>
+          <div class="story-row">
+            <kbd class="penna-kbd" data-id="kbd-a" data-penna="keycap" data-kbd="a"></kbd>
+            <kbd class="penna-kbd" data-id="kbd-escape" data-penna="keycap" data-kbd="escape"></kbd>
+            <kbd class="penna-kbd" data-id="kbd-enter" data-penna="keycap" data-kbd="enter"></kbd>
+            <kbd class="penna-kbd" data-id="kbd-tab" data-penna="keycap" data-kbd="tab"></kbd>
+            <kbd class="penna-kbd" data-id="kbd-space" data-penna="keycap" data-kbd="space"></kbd>
+            <kbd class="penna-kbd" data-id="kbd-backspace" data-penna="keycap" data-kbd="backspace"></kbd>
+          </div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">arrows and function keys</div>
+          <div class="story-row">
+            <kbd class="penna-kbd" data-id="kbd-up" data-penna="keycap" data-kbd="up"></kbd>
+            <kbd class="penna-kbd" data-id="kbd-down" data-penna="keycap" data-kbd="down"></kbd>
+            <kbd class="penna-kbd" data-id="kbd-left" data-penna="keycap" data-kbd="left"></kbd>
+            <kbd class="penna-kbd" data-id="kbd-right" data-penna="keycap" data-kbd="right"></kbd>
+            <kbd class="penna-kbd" data-id="kbd-f5" data-penna="keycap" data-kbd="f5"></kbd>
+            <kbd class="penna-kbd" data-id="kbd-pageup" data-penna="keycap" data-kbd="pageup"></kbd>
+          </div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">chords</div>
+          <div class="story-row">
+            <kbd class="penna-kbd" data-id="kbd-cmd-k" data-penna="keycap" data-kbd="cmd-k"></kbd>
+            <kbd class="penna-kbd" data-id="kbd-ctrl-b" data-penna="keycap" data-kbd="ctrl-b"></kbd>
+            <kbd class="penna-kbd" data-id="kbd-cmd-shift-p" data-penna="keycap" data-kbd="cmd-shift-p"></kbd>
+            <kbd class="penna-kbd" data-id="kbd-ctrl-alt-shift-cmd-z" data-penna="keycap" data-kbd="ctrl-alt-shift-cmd-z"></kbd>
+          </div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">lowercase</div>
+          <div class="story-row">
+            <kbd class="penna-kbd" data-id="kbd-cmd-shift-p" data-penna="keycap" data-kbd="cmd-shift-p" data-kbd-lowercase></kbd>
+            <kbd class="penna-kbd" data-id="kbd-ctrl-a" data-penna="keycap" data-kbd="ctrl-a" data-kbd-lowercase></kbd>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section data-section="spinner">
+      <div class="story-states" data-columns style="--columns: 2">
+        <div class="story-state">
+          <div class="story-label">sizes</div>
+          <div class="story-row">
+            <div class="penna-spinner" data-id="spinner-small" role="status" aria-label="Loading" data-size="small"><i data-icon="loader"></i></div>
+            <div class="penna-spinner" data-id="spinner-medium" role="status" aria-label="Loading"><i data-icon="loader"></i></div>
+            <div class="penna-spinner" data-id="spinner-32" role="status" aria-label="Loading" style="--penna-icon-size: 32px"><i data-icon="loader"></i></div>
+          </div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">colors</div>
+          <div class="story-row">
+            <div class="penna-spinner" data-id="spinner-muted" role="status" aria-label="Loading" data-color="muted"><i data-icon="loader"></i></div>
+            <div class="penna-spinner" data-id="spinner-accent" role="status" aria-label="Loading" data-color="accent"><i data-icon="loader"></i></div>
+            <div class="penna-spinner" data-id="spinner-success" role="status" aria-label="Loading" data-color="success"><i data-icon="loader"></i></div>
+            <div class="penna-spinner" data-id="spinner-warning" role="status" aria-label="Loading" data-color="warning"><i data-icon="loader"></i></div>
+            <div class="penna-spinner" data-id="spinner-danger" role="status" aria-label="Loading" data-color="danger"><i data-icon="loader"></i></div>
+          </div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">inline with text</div>
+          <div class="display-inline">
+            <div class="penna-spinner" data-id="spinner-inline" role="status" aria-label="Loading" data-color="muted"><i data-icon="loader"></i></div>
+            <span class="penna-text" data-penna-text>Connecting to devbox</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section data-section="separator">
+      <div class="story-states" data-columns="3">
+        <div class="story-state">
+          <div class="story-label">horizontal</div>
+          <div class="display-stack">
+            <div><span class="penna-text" data-penna-text>Sessions</span></div>
+            <div class="penna-separator-rule" data-id="separator-horizontal" role="separator"><div data-penna="rule"></div></div>
+            <div class="display-muted"><span class="penna-text" data-penna-text>work, scratch, logs</span></div>
+          </div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">vertical, 20px parent</div>
+          <div class="display-bar">
+            <div><span class="penna-text" data-penna-text>macbook</span></div>
+            <div class="penna-separator-rule" data-id="separator-vertical-1" data-axis="vertical" role="separator" aria-orientation="vertical"><div data-penna="rule"></div></div>
+            <div><span class="penna-text" data-penna-text>work</span></div>
+            <div class="penna-separator-rule" data-id="separator-vertical-2" data-axis="vertical" role="separator" aria-orientation="vertical"><div data-penna="rule"></div></div>
+            <div class="display-muted"><span class="penna-text" data-penna-text>3 panes</span></div>
+          </div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">custom color</div>
+          <div class="display-stack">
+            <div><span class="penna-text" data-penna-text>Danger zone</span></div>
+            <div class="penna-separator-rule" data-id="separator-danger" data-color="danger" role="separator"><div data-penna="rule"></div></div>
+            <div class="display-muted"><span class="penna-text" data-penna-text>Kill every session</span></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section data-section="list-item">
+      <div class="story-states">
+        <div class="story-state">
+          <div class="story-label">resting, hovered, selected, disabled, disabled and selected</div>
+          <div class="penna-list" role="listbox" style="width: 360px">
+            <div class="penna-list-item" data-id="row-rest" data-penna="menu-item" role="option">
+              <div class="penna-list-content">
+                <i class="penna-list-icon" data-icon="square-terminal"></i>
+                <span class="penna-list-label"><span class="penna-text" data-penna-text>work</span></span>
+                <span class="penna-list-detail"><span class="penna-text" data-penna-text>3 panes</span></span>
+              </div>
+            </div>
+            <div class="penna-list-item" data-id="row-hover" data-penna="menu-item" role="option" data-state="hover">
+              <div class="penna-list-content">
+                <i class="penna-list-icon" data-icon="square-terminal"></i>
+                <span class="penna-list-label"><span class="penna-text" data-penna-text>scratch</span></span>
+                <span class="penna-list-detail"><span class="penna-text" data-penna-text>1 pane</span></span>
+              </div>
+            </div>
+            <div class="penna-list-item" data-id="row-selected" data-penna="menu-item" role="option" data-state="selected" aria-selected="true">
+              <div class="penna-list-content">
+                <i class="penna-list-icon" data-icon="square-terminal"></i>
+                <span class="penna-list-label"><span class="penna-text" data-penna-text>logs</span></span>
+                <span class="penna-list-detail"><span class="penna-text" data-penna-text>2 panes</span></span>
+              </div>
+            </div>
+            <div class="penna-list-item" data-id="row-disabled" data-penna="menu-item" role="option" data-state="disabled" aria-disabled="true">
+              <div class="penna-list-content">
+                <i class="penna-list-icon" data-icon="square-terminal"></i>
+                <span class="penna-list-label"><span class="penna-text" data-penna-text>detached</span></span>
+                <span class="penna-list-detail"><span class="penna-text" data-penna-text>gone</span></span>
+              </div>
+            </div>
+            <div class="penna-list-item" data-id="row-disabled-selected" data-penna="menu-item" role="option" data-state="disabled" aria-disabled="true" aria-selected="true">
+              <div class="penna-list-content">
+                <i class="penna-list-icon" data-icon="square-terminal"></i>
+                <span class="penna-list-label"><span class="penna-text" data-penna-text>stale</span></span>
+                <span class="penna-list-detail"><span class="penna-text" data-penna-text>gone</span></span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </body>
+</html>

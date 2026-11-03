@@ -20,7 +20,7 @@ timestamp: 2026-11-02T00:00:00Z
 - **penna foundation** holds the tokens (`Space`, `TextStyle`), the paint model (`Tone`, `Emphasis`, `Paint`, `Ground`), surface roles and the three themes.
 - **penna components** put those together: `Label`, `Button`, `Badge`, `Popover` and the rest.
 
-There is no separate behavior layer. ala's stateful elements already give hover, press, focus and keyboard activation, and penna already shares press feedback (`touch/press.rs`) and swipe dismissal (`dismissal.rs`). A piece of behavior moves into a shared module only when a second component needs it.
+There is no separate behavior layer. ala's stateful elements already give hover, press, focus and keyboard activation, and penna already shares press feedback (`blocks/touch/press.rs`) and swipe dismissal (`foundation/dismissal.rs`). A piece of behavior moves into a shared module only when a second component needs it.
 
 ## Rules
 

@@ -1,0 +1,141 @@
+.penna-chip {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  box-sizing: border-box;
+  min-width: 0;
+  height: 24px;
+  padding: 0 10px;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 16px;
+  white-space: nowrap;
+  cursor: default;
+  user-select: none;
+  pointer-events: none;
+  --penna-icon-size: 13px;
+}
+
+.penna-chip[data-interactive] {
+  pointer-events: auto;
+}
+
+.penna-chip[data-detail] {
+  flex: 0 1 auto;
+}
+
+.penna-chip[data-size="small"] {
+  height: 20px;
+  padding: 0 8px;
+  font-size: 11px;
+  --penna-icon-size: 12px;
+}
+
+.penna-chip .penna-chip-label {
+  font-weight: 500;
+}
+
+.penna-chip:not([data-size="small"]) .penna-text {
+  top: 0.5px;
+}
+
+.penna-chip > .penna-chip-detail {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--penna-muted);
+}
+
+.penna-dot {
+  display: block;
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--penna-muted);
+}
+
+.penna-dot[data-tone="success"] {
+  background: var(--penna-success);
+}
+
+.penna-dot[data-tone="warning"] {
+  background: var(--penna-warning);
+}
+
+.penna-dot[data-tone="danger"] {
+  background: var(--penna-danger);
+}
+
+.penna-dot[data-tone="accent"] {
+  background: var(--penna-accent);
+}
+
+.penna-dot[data-tone="primary"] {
+  background: var(--penna-primary);
+}
+
+.penna-chip[data-emphasis="ghost"] {
+  background: none;
+  --penna-bw: 0px;
+}
+
+.penna-chip[data-emphasis="solid"] {
+  background: var(--penna-solid);
+}
+
+.penna-chip[data-solid="primary"] {
+  --penna-solid: var(--penna-primary);
+}
+
+.penna-chip[data-solid="danger"] {
+  --penna-solid: var(--penna-danger);
+}
+
+.penna-chip[data-solid="warning"] {
+  --penna-solid: var(--penna-warning);
+}
+
+.penna-chip[data-solid="success"] {
+  --penna-solid: var(--penna-success);
+}
+
+.penna-chip[data-solid="accent"] {
+  --penna-solid: var(--penna-accent);
+  border-color: rgb(from var(--penna-accent) r g b / 0.184);
+}
+
+.penna-solid-ink {
+  display: contents;
+  font-size: inherit;
+  font-weight: inherit;
+  line-height: inherit;
+}
+
+.penna-chip[data-look="icon-disc"] {
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  --penna-icon-size: 12px;
+}
+
+.penna-chip[data-penna] {
+  outline: none;
+}
+
+.penna-chip[data-state~="focused"] {
+  position: relative;
+  --penna-ring: var(--penna-focus);
+}
+
+.penna-chip[data-state~="focused"]::after {
+  content: "";
+  position: absolute;
+  inset: var(--penna-ring-inset, -2px);
+  border: 1.5px solid var(--penna-ring);
+  border-radius: var(--penna-ring-r, 12px);
+  corner-shape: inherit;
+  pointer-events: none;
+}

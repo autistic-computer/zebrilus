@@ -5,7 +5,8 @@ use ala::{
     Styled as _, TestAppContext, Window, div, px, size,
 };
 use penna::{
-    Fill, IconName, Kind, Shadow, StylePatch, StyledExt as _, Surface, SurfaceRole, interface_theme,
+    Fill, IconName, Kind, Shadow, StylePatch, StyledExt as _, Surface, SurfaceRole,
+    foundation::interface_theme,
 };
 use penna_storybook::{Catalog, Section, creator, story::stateless};
 use serde_json::{Value, json};

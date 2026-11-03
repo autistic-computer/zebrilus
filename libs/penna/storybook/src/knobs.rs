@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use ala::{App, GlassMaterial, Hsla, px};
-use penna::interface_theme::{
+use penna::foundation::interface_theme::{
     self, Appearance, InterfaceTheme, Materials, ThemeColors, ThemeOverrides,
 };
 use penna::{
@@ -1024,7 +1024,7 @@ mod tests {
             let mut kit = Theme::default();
             theme.apply_roles(&mut kit);
             theme.materials.apply(&mut kit);
-            for role in penna::roles::all() {
+            for role in penna::foundation::roles::all() {
                 let (mut style, _) = inherited(role, &theme.roles, &theme.materials);
                 if let Some(patch) = theme.roles.get(role.id()) {
                     patch.apply(&mut style);
@@ -1037,14 +1037,25 @@ mod tests {
             role: Some(role),
             themed,
         };
-        let (style, origins) = inherited(penna::roles::WINDOW_CONTROLS, &group_patches, &built_in);
+        let (style, origins) = inherited(
+            penna::foundation::roles::WINDOW_CONTROLS,
+            &group_patches,
+            &built_in,
+        );
         assert_eq!(style.fill, penna::Fill::Tint);
         assert_eq!(origins[0], origin(penna::SurfaceRole::ICON_BUTTON, true));
         assert_eq!(origins[2], origin(penna::SurfaceRole::ICON_BUTTON, false));
-        assert_eq!(origins[3], origin(penna::roles::WINDOW_CONTROLS, false));
+        assert_eq!(
+            origins[3],
+            origin(penna::foundation::roles::WINDOW_CONTROLS, false)
+        );
         assert_eq!(style.hover, penna::Highlight::Ring);
         assert_eq!(origins[5], origin(penna::SurfaceRole::ICON_BUTTON, true));
-        let (style, origins) = inherited(penna::roles::INLINE_PANEL, &group_patches, &built_in);
+        let (style, origins) = inherited(
+            penna::foundation::roles::INLINE_PANEL,
+            &group_patches,
+            &built_in,
+        );
         assert_eq!(style.fill, penna::Fill::Glass);
         assert_eq!(origins[0], origin(penna::Kind::Floating.role(), true));
         let (style, origins) = inherited(penna::SurfaceRole::DIALOG, &group_patches, &built_in);
@@ -1064,7 +1075,11 @@ mod tests {
             themed: true,
         };
         assert_eq!((origins[1], origins[2]), (picked, picked));
-        let (style, origins) = inherited(penna::roles::WINDOW_CONTROLS, &group_patches, &materials);
+        let (style, origins) = inherited(
+            penna::foundation::roles::WINDOW_CONTROLS,
+            &group_patches,
+            &materials,
+        );
         assert!(style.outline);
         assert_eq!(origins[1], origin(penna::SurfaceRole::ICON_BUTTON, true));
     }

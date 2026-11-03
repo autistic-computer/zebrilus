@@ -9,7 +9,7 @@ use ala::{
     WindowAppearance, px, size,
 };
 
-use crate::{BASE_UI_FONT_SIZE, TITLE_BAR_HEIGHT, highlighter::HighlightTheme};
+use crate::{BASE_UI_FONT_SIZE, TITLE_BAR_HEIGHT, foundation::highlighter::HighlightTheme};
 
 use super::{
     Colorize as _, PrimaryStyle, ShadowMaterial, Smoothing, StylePatch, Surface, ThemeColor, color,

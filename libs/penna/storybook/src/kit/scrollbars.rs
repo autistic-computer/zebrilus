@@ -5,7 +5,7 @@ use ala::{
 };
 use penna::{
     ActiveTheme as _, Colorize as _, ScrollbarShow,
-    scroll::{GUTTER_WIDTH, MIN_THUMB_SIZE, Scrollbar, ScrollbarAxis},
+    components::scroll::{GUTTER_WIDTH, MIN_THUMB_SIZE, Scrollbar, ScrollbarAxis},
     v_flex,
 };
 

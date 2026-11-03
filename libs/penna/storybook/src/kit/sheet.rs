@@ -4,12 +4,12 @@ use ala::{
     Subscription, Window, div, prelude::FluentBuilder as _, px,
 };
 use penna::{
-    ActiveTheme as _, Colorize as _, Elevation, Icon, IconName, StyledExt as _, h_flex,
-    sheet::{
+    ActiveTheme as _, Colorize as _, Elevation, Icon, IconName, StyledExt as _,
+    blocks::sheet::{
         BottomSheet, bottom_sheet, close_sheet, sheet_action, sheet_close, sheet_detail_row,
         sheet_option,
     },
-    v_flex,
+    h_flex, v_flex,
 };
 
 use crate::creator::{SAFE_BOTTOM, SCREEN_RADIUS};

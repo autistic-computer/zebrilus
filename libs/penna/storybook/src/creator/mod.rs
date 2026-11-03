@@ -4,7 +4,9 @@ use ala::{
     AnyElement, App, ElementId, IntoElement, ParentElement as _, Styled as _, Window, div,
     prelude::*, px,
 };
-use penna::{ActiveTheme as _, Colorize as _, Elevation, h_flex, switch::Switch, v_flex};
+use penna::{
+    ActiveTheme as _, Colorize as _, Elevation, components::switch::Switch, h_flex, v_flex,
+};
 
 use crate::story::{Framed as _, Section, Story};
 

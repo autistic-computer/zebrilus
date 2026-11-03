@@ -7,9 +7,9 @@ use ala::{
 };
 use penna::{
     ActiveTheme as _, Colorize as _, Icon, IconName,
-    button::Button,
+    components::button::Button,
+    components::menu::{ContextMenuExt as _, DropdownMenu as _, PopupMenu, PopupMenuItem},
     h_flex,
-    menu::{ContextMenuExt as _, DropdownMenu as _, PopupMenu, PopupMenuItem},
 };
 
 use super::support::{Probe, after_first_frame, dispatch, hover, press, when_visible};

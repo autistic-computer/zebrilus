@@ -3,8 +3,9 @@ use ala::{
     Render, SharedString, Styled as _, Subscription, Window, div, px,
 };
 use penna::{
-    ActiveTheme as _, Colorize as _, Disableable as _, Icon, IconName, Sizable as _, h_flex,
-    kbd::Kbd, list::ListItem, separator::Separator, spinner::Spinner, v_flex,
+    ActiveTheme as _, Colorize as _, Disableable as _, Icon, IconName, Sizable as _,
+    components::kbd::Kbd, components::list::ListItem, components::separator::Separator,
+    components::spinner::Spinner, h_flex, v_flex,
 };
 
 use super::support::{Probe, hover, when_visible};

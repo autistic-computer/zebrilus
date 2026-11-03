@@ -6,11 +6,11 @@ use ala::{
 use penna::{
     ActiveTheme as _, Colorize as _, Disableable as _, Icon, IconName, Label, PaintState,
     Sizable as _, Size, Space, TextStyle,
-    input::{
+    components::input::{
         FieldLook, Input, InputContentType, InputState, NumberInput, TextAlign, field_chrome,
         field_underlay,
     },
-    kbd::Kbd,
+    components::kbd::Kbd,
 };
 
 use super::support::after_first_frame;

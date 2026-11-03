@@ -15,6 +15,31 @@ Read `knowledge/designs/kit.md` before adding a component or a role. Two rules f
   on each theme in light and dark.
 - Break the API freely. The commit that pulls penna into an app fixes that app; no deprecated paths.
 
+## Source tree
+
+`src/lib.rs` is the only file directly in `src/`. The three tiers are:
+
+- `foundation/`: shared theme, tokens, roles, motion, CSS token generation, traits,
+  highlighting and overlay hosting. Shared support lives here; support used by one widget
+  lives with that widget.
+- `components/<name>/`: one widget primitive. Its folder holds `mod.rs`, any Rust
+  submodules, and its DOM implementation as `<name>.css` and `<name>.js` when present.
+- `blocks/<name>/`: a piece of UI that owns the layout and state of several components.
+  When a piece owns a layout of other penna components, put it here. Appearance is a block.
+
+Components: badge, bar, button, card, check, chip, icon, input, kbd, label, list, menu,
+panel, plate (crate-private), popover, row, scroll, segmented, select, separator, slider,
+spinner, switch, tab, text, tile, tooltip, tree, well.
+
+Blocks: appearance, code_editor (editor feature), color_picker, compact, dialog, dock,
+feedback, inspector, notice, notification, picker, settings, sheet, shell, sidebar,
+steps, title_bar, touch, tray (tray feature), which_key.
+
+Public module paths follow the tiers: `penna::components::button`,
+`penna::blocks::settings`, `penna::blocks::appearance` and
+`penna::foundation::interface_theme`. Common types remain re-exported at the crate root.
+There are no aliases for the old module paths.
+
 ## Storybook
 
 `storybook/` is penna's own page and the harness apps build theirs on: an app's storybook crate
@@ -26,11 +51,17 @@ storybook/build.sh      # build penna's page into storybook/dist against ala fro
 storybook/serve.py      # serve storybook/dist on 127.0.0.1:8098 (PORT overrides)
 storybook/build.sh --manifest <app storybook>/Cargo.toml --out <dir>   # build an app's catalog
 storybook/serve.py <dir> <port>                                         # serve it
-node storybook/parity.mjs button --theme macos --mode dark   # score src/button's DOM page against the canvas story (--all, --section s, --update, --check)
+node storybook/parity.mjs buttons --theme macos --mode dark   # score the buttons DOM page against its canvas story (--all, --section s, --update, --check)
 ```
 
-`#/<story>?solo=1` shows only the section canvases. A component's DOM version lives next to its Rust
-(`src/<component>/{index.html, parity.json}`, laid out with `web/story.css`); its elements carry `data-id`
+`#/<story>?solo=1` shows only the section canvases. Every DOM story page lives beside its Rust
+story module: `storybook/src/kit/<story>.rs` pairs with
+`storybook/src/kit/<story>/{index.html,page.css,page.js,parity.json,parity.baseline.json}`
+(page CSS and JS are optional). Pages import widget CSS and JS from `src/components/` and
+`src/blocks/`, and use `web/story.css`. Parity takes the Rust story module name, including
+`buttons`, `inputs`, `selection`, `navigation`, `rows`, `scrollbars` and `markdown`;
+`parity.json` names the story route when it differs. `--all` discovers every story folder
+with `parity.json`; its baseline stays in that folder. Elements carry `data-id`
 set to the canvas node's author id, which is the id the story passed to the component (`("tab", 3)` reads
 `tab-3`). parity matches by id and falls back to `role:name` only for nodes with no id. Results land in
 `target/parity/report.html`.
@@ -47,7 +78,9 @@ build once accessibility is on.
 A section scores 100 × √(geometry × pixels): pixels allow 3 levels per channel, so fills and hover tints count,
 and the canvas's own ink is the denominator. Steps score only the target's box and need the DOM to change where
 the canvas did. A section scores 0 if it holds an `img`, `canvas`, `iframe` or similar, or a `url()` image other
-than the kit's icon masks. The DOM page is served only `web/`, `storybook/fonts/` and the HTML, CSS and JS under `src/`, so pages can share a component's files.
+than the kit's icon masks. The DOM server exposes only `web/`, `storybook/fonts/`, and HTML, CSS and JS under
+`storybook/src/kit/`, `src/components/` and `src/blocks/`. A page reaches the shared web
+files through `../../../../web/` and widgets through `../../../../src/<tier>/<name>/`.
 
 How parity drives the pages:
 
@@ -60,15 +93,15 @@ How parity drives the pages:
   `{ "at": [x, y] }` for a point in CSS px from the section's top-left corner on both sides, or
   `{ "selector": ".thumb" }` for the centre of a DOM element in the section, whose section-relative point
   the canvas gets too. Point and selector steps score the whole section; id steps score the node's box.
-- Each component loads the story fresh, so entity ids don't depend on what ran before. When a step
+- Each story loads fresh, so entity ids don't depend on what ran before. When a step
   leaves its canvas section changed (an open menu, a picked value, a focus ring), both pages reload
   before the next step and the next theme and mode, so no step has to undo itself or another.
   `"keep": true` runs a step on the previous step's state instead; key steps keep by default
   (`"keep": false` starts one fresh). Steps that leave nothing behind keep the fast path: one load
-  per component, knobs switched in place. The line after each component counts story loads.
-- `--timeout` is per component (default 5 minutes); Ctrl-C and `kill` close Chrome and the servers.
+  per story, knobs switched in place. The line after each story counts story loads.
+- `--timeout` is per story (default 15 minutes); Ctrl-C and `kill` close Chrome and the servers.
 
-`src/button` is the template to copy. What it learned about matching ala in the DOM:
+`storybook/src/kit/buttons/` and `src/components/button/` are the templates to copy. What it learned about matching ala in the DOM:
 
 - Wrap every text run in a span marked `data-penna-text`: ala ceils a text box's width to a whole px, and
   `kit.js` does the same for those spans on load, after fonts load and on a theme switch, or labels drift left

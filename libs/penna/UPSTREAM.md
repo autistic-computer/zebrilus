@@ -9,9 +9,9 @@ a dependency of this workspace**; nothing outside ala (our ala) is left.
 - Forked from: `longbridge/gpui-component`, now [longbridge/gpui-kit][upstream]
 - Original source revision: `b004e595cf5de98a73b6b561394a559a94ae1e2a`
 - Upstream license: Apache-2.0, retained here as `LICENSE-APACHE`
-  (© 2024–2025 Longbridge). The icons are drawn by `src/icon/glyphs.rs` from
-  `src/icon/solar.json`, adapted from the Solar Icons Set by 480 Design (CC BY 4.0,
-  `src/icon/LICENSE-SOLAR`); they replaced an earlier Mac-school set, which replaced
+  (© 2024–2025 Longbridge). The icons are drawn by `src/components/icon/glyphs.rs` from
+  `src/components/icon/solar.json`, adapted from the Solar Icons Set by 480 Design (CC BY 4.0,
+  `src/components/icon/LICENSE-SOLAR`); they replaced an earlier Mac-school set, which replaced
   Tabler, which replaced Iconoir. The kit ships no brand marks: an app
   names its own icon files with `IconName::Asset` and serves them from its own
   asset source.
@@ -30,22 +30,17 @@ cost more than finishing.
 
 ```
 src/
-  foundation/   theme, palette, shared traits, window border
-  highlighter/  syntax-highlight theme data + optional tree-sitter engine
-  code_editor/  rope-backed native editor
-  <widget>/     one directory per widget
-  sheet.rs, dismissal.rs, touch/, pulse.rs, motion.rs   penna-original touch and motion primitives
-  picker.rs, feedback.rs, which_key.rs   penna-original picker dialogs, inline alerts and prompt dialogs, which-key popup
-  interface_theme.rs   penna-original theme files: the built-in themes and the layers an app adds to them
-  settings/      penna-original appearance settings page
-  theme_css.rs   penna-original role looks written as CSS tokens
-  compact.rs, compact/   penna-original phone chrome: bars, title bars, pill menus, tile grids, HUD
-themes/          penna-original built-in themes (default, macos, yaru)
-web/             penna-original HTML kit painted with the CSS tokens
-storybook/       penna-original storybook: the harness crate, its page and the kit stories
+  lib.rs        crate entry point and common type re-exports
+  foundation/   shared tokens, theme, roles, motion, highlighting and overlay hosting
+  components/   one directory per widget primitive, with its Rust and DOM files
+  blocks/       composed UI with its own layout and state, with its Rust and DOM files
+themes/          built-in themes (default, macos, yaru)
+web/             shared HTML kit and generated CSS tokens
+storybook/       harness crate and kit stories; each DOM page lives beside its Rust story
 ```
 
-Everything is reached through `penna::<widget>`, mirroring upstream's namespace.
+Public module paths follow `penna::foundation`, `penna::components` and `penna::blocks`.
+Common types are re-exported at the crate root. AGENTS.md lists every component and block.
 
 ## Ported modules and local deltas
 

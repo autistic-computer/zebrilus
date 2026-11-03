@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Inputs</title>
+    <link rel="stylesheet" href="../../../../web/penna.css" />
+    <link rel="stylesheet" href="../../../../web/story.css" />
+    <link rel="stylesheet" href="../../../../src/components/button/button.css" />
+    <link rel="stylesheet" href="../../../../src/components/kbd/kbd.css" />
+    <link rel="stylesheet" href="../../../../src/components/input/input.css" />
+    <link rel="stylesheet" href="page.css" />
+    <script src="../../../../web/kit.js" data-tokens="../../../../web/tokens/"></script>
+    <script src="../../../../src/components/button/button.js" defer></script>
+    <script src="../../../../src/components/kbd/kbd.js" defer></script>
+    <script src="../../../../src/components/input/input.js" defer></script>
+    <script src="../../../../web/story.js" defer></script>
+  </head>
+  <body>
+    <section data-section="field-states">
+      <div class="story-states" data-columns style="--columns: 2">
+        <div class="story-state">
+          <div class="story-label">empty, placeholder</div>
+          <label class="penna-input" data-penna="field" data-id="field-empty"><input placeholder="Search sessions" /></label>
+        </div>
+        <div class="story-state">
+          <div class="story-label">populated</div>
+          <label class="penna-input" data-penna="field" data-id="field-populated"><input value="git switch work" /></label>
+        </div>
+        <div class="story-state">
+          <div class="story-label">disabled, empty</div>
+          <label class="penna-input" data-penna="field" data-id="field-disabled-empty" aria-disabled="true" data-disabled><input placeholder="Read only" disabled /></label>
+        </div>
+        <div class="story-state">
+          <div class="story-label">disabled, populated</div>
+          <label class="penna-input" data-penna="field" data-id="field-disabled-populated" aria-disabled="true" data-disabled><input value="~/.config/git/config" disabled /></label>
+        </div>
+        <div class="story-state">
+          <div class="story-label">selection, unfocused</div>
+          <label class="penna-input" data-penna="field" data-id="field-selection"><input value="deploy --target staging" data-selection="9,23" /></label>
+        </div>
+        <div class="story-state">
+          <div class="story-label">loading</div>
+          <label class="penna-input" data-penna="field" data-id="field-loading"><input value="Resolving host" /><span class="penna-input-suffix"><span class="penna-spinner"><i data-icon="loader"></i></span></span></label>
+        </div>
+        <div class="story-state">
+          <div class="story-label">cleanable</div>
+          <label class="penna-input" data-penna="field" data-id="field-cleanable"><input value="build logs" /><span class="penna-input-suffix"><button class="penna-button penna-input-clear" data-id="field-cleanable-clear" data-penna="button.quiet" data-shape="icon" data-size="small" type="button" tabindex="-1" aria-label="Clear"><i data-icon="circle-x"></i></button></span></label>
+        </div>
+        <div class="story-state">
+          <div class="story-label">password</div>
+          <label class="penna-input" data-penna="field" data-id="field-password"><input type="password" value="correct horse battery" /></label>
+        </div>
+        <div class="story-state">
+          <div class="story-label">prefix and suffix</div>
+          <label class="penna-input" data-penna="field" data-id="field-affixes"><span class="penna-input-prefix"><i data-icon="search"></i></span><input placeholder="Jump to a pane" /><span class="penna-input-suffix"><kbd class="penna-kbd" data-penna="keycap" data-kbd="cmd-k"></kbd></span></label>
+        </div>
+        <div class="story-state">
+          <div class="story-label">appearance(false)</div>
+          <div class="penna-rule input-rule" data-penna="rule"><label class="penna-input" data-penna="field" data-id="field-bare" data-bare><input value="Untitled session" /></label></div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">bordered(false)</div>
+          <label class="penna-input" data-penna="field" data-id="field-borderless" data-borderless><input placeholder="No resting border" /></label>
+        </div>
+        <div class="story-state">
+          <div class="story-label">text_align center</div>
+          <label class="penna-input" data-penna="field" data-id="field-centered" data-align="center"><input value="centered" /></label>
+        </div>
+        <div class="story-state">
+          <div class="story-label">text_align right</div>
+          <label class="penna-input" data-penna="field" data-id="field-right" data-align="right"><input value="1280" /></label>
+        </div>
+      </div>
+    </section>
+
+    <section data-section="field-sizes">
+      <div class="story-states" data-columns style="--columns: 2">
+        <div class="story-state">
+          <div class="story-label">small</div>
+          <label class="penna-input" data-penna="field" data-id="field-small" data-size="small"><input value="git log --stat" /></label>
+        </div>
+        <div class="story-state">
+          <div class="story-label">medium</div>
+          <label class="penna-input" data-penna="field" data-id="field-medium"><input value="git log --stat" /></label>
+        </div>
+      </div>
+    </section>
+
+    <section data-section="field-focused">
+      <div class="story-states" data-columns style="--columns: 2">
+        <div class="story-state">
+          <div class="story-label">focused</div>
+          <label class="penna-input" data-penna="field" data-id="field-focused"><input value="git switch -c build" autofocus /></label>
+        </div>
+        <div class="story-state">
+          <div class="story-label">resting</div>
+          <label class="penna-input" data-penna="field" data-id="field-selected"><input value="git branch -D scratch" /></label>
+        </div>
+      </div>
+    </section>
+
+    <section data-section="multi-line">
+      <div class="story-states" data-columns style="--columns: 2">
+        <div class="story-state">
+          <div class="story-label">empty, two rows</div>
+          <label class="penna-input" data-penna="field.multiline" data-id="multi-line-empty" data-multiline><textarea rows="2" data-min-rows="2" data-max-rows="6" placeholder="Write a commit message"></textarea></label>
+        </div>
+        <div class="story-state">
+          <div class="story-label">three lines</div>
+          <label class="penna-input" data-penna="field.multiline" data-id="multi-line-filled" data-multiline><textarea rows="2" data-min-rows="2" data-max-rows="6">Panes split along the long edge.
+New windows open in the current directory.
+The status bar shows the session name.</textarea></label>
+        </div>
+        <div class="story-state">
+          <div class="story-label">past max_rows, scrolls</div>
+          <label class="penna-input" data-penna="field.multiline" data-id="multi-line-overflowing" data-multiline><textarea rows="2" data-min-rows="2" data-max-rows="5">line one
+line two
+line three
+line four
+line five
+line six
+line seven
+line eight
+line nine</textarea></label>
+        </div>
+        <div class="story-state">
+          <div class="story-label">disabled</div>
+          <label class="penna-input" data-penna="field.multiline" data-id="multi-line-disabled" data-multiline aria-disabled="true" data-disabled><textarea rows="2" data-min-rows="2" data-max-rows="6" disabled>Panes split along the long edge.
+New windows open in the current directory.
+The status bar shows the session name.</textarea></label>
+        </div>
+      </div>
+    </section>
+
+    <section data-section="field-looks">
+      <div class="story-states">
+        <div class="story-state">
+          <div class="story-label">composer</div>
+          <div class="story-row"><div class="input-frame"><span class="input-underlay" data-penna="field.composer"></span><div class="input-chrome" data-penna="field.composer" data-id="field-composer-rest"><span class="penna-text" data-penna-text>Rest</span></div></div><div class="input-frame"><span class="input-underlay" data-penna="field.composer"></span><div class="input-chrome" data-penna="field.composer" data-id="field-composer-hover" data-state="hover"><span class="penna-text" data-penna-text>Hover</span></div></div><div class="input-frame"><span class="input-underlay" data-penna="field.composer"></span><div class="input-chrome" data-penna="field.composer" data-id="field-composer-focused" data-state="focused"><span class="penna-text" data-penna-text>Focused</span></div></div></div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">address</div>
+          <div class="story-row"><div class="input-frame"><span class="input-underlay" data-penna="field.address"></span><div class="input-chrome" data-penna="field.address" data-id="field-address-rest"><span class="penna-text" data-penna-text>Rest</span></div></div><div class="input-frame"><span class="input-underlay" data-penna="field.address"></span><div class="input-chrome" data-penna="field.address" data-id="field-address-hover" data-state="hover"><span class="penna-text" data-penna-text>Hover</span></div></div><div class="input-frame"><span class="input-underlay" data-penna="field.address"></span><div class="input-chrome" data-penna="field.address" data-id="field-address-focused" data-state="focused"><span class="penna-text" data-penna-text>Focused</span></div></div></div>
+        </div>
+      </div>
+    </section>
+
+    <section data-section="number">
+      <div class="story-states" data-columns="3">
+        <div class="story-state">
+          <div class="story-label">step 1</div>
+          <div class="input-narrow"><div class="penna-number" data-penna="field" data-id="number-default" role="spinbutton" data-step="1"><button class="penna-button" data-penna="button.quiet" data-compact type="button" tabindex="-1" data-step-by="-1" data-id="number-default-decrement"><i data-icon="minus"></i></button><label class="penna-input" data-penna="field" data-id="number-default-field" data-align="center" data-bare><input value="4" inputmode="decimal" /></label><button class="penna-button" data-penna="button.quiet" data-compact type="button" tabindex="-1" data-step-by="1" data-id="number-default-increment"><i data-icon="plus"></i></button></div></div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">at min of 0..10</div>
+          <div class="input-narrow"><div class="penna-number" data-penna="field" data-id="number-bounded" role="spinbutton" data-step="1" data-min="0" data-max="10"><button class="penna-button" data-penna="button.quiet" data-compact type="button" tabindex="-1" data-step-by="-1" data-id="number-bounded-decrement"><i data-icon="minus"></i></button><label class="penna-input" data-penna="field" data-id="number-bounded-field" data-align="center" data-bare><input value="0" inputmode="decimal" /></label><button class="penna-button" data-penna="button.quiet" data-compact type="button" tabindex="-1" data-step-by="1" data-id="number-bounded-increment"><i data-icon="plus"></i></button></div></div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">step 0.25</div>
+          <div class="input-narrow"><div class="penna-number" data-penna="field" data-id="number-decimal" role="spinbutton" data-step="0.25"><button class="penna-button" data-penna="button.quiet" data-compact type="button" tabindex="-1" data-step-by="-1" data-id="number-decimal-decrement"><i data-icon="minus"></i></button><label class="penna-input" data-penna="field" data-id="number-decimal-field" data-align="center" data-bare><input value="1.25" inputmode="decimal" /></label><button class="penna-button" data-penna="button.quiet" data-compact type="button" tabindex="-1" data-step-by="1" data-id="number-decimal-increment"><i data-icon="plus"></i></button></div></div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">disabled</div>
+          <div class="input-narrow"><div class="penna-number" data-penna="field" data-id="number-disabled" role="spinbutton" data-step="1" aria-disabled="true" data-disabled><button class="penna-button" data-penna="button.quiet" data-compact type="button" tabindex="-1" data-step-by="-1" data-id="number-disabled-decrement" disabled><i data-icon="minus"></i></button><label class="penna-input" data-penna="field" data-id="number-disabled-field" data-align="center" data-bare data-disabled><input value="12" inputmode="decimal" disabled /></label><button class="penna-button" data-penna="button.quiet" data-compact type="button" tabindex="-1" data-step-by="1" data-id="number-disabled-increment" disabled><i data-icon="plus"></i></button></div></div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">small</div>
+          <div class="input-narrow"><div class="penna-number" data-penna="field" data-id="number-small" role="spinbutton" data-step="1" data-size="small"><button class="penna-button" data-penna="button.quiet" data-compact data-size="small" type="button" tabindex="-1" data-step-by="-1" data-id="number-small-decrement"><i data-icon="minus"></i></button><label class="penna-input" data-penna="field" data-id="number-small-field" data-align="center" data-bare data-size="small"><input value="8" inputmode="decimal" /></label><button class="penna-button" data-penna="button.quiet" data-compact data-size="small" type="button" tabindex="-1" data-step-by="1" data-id="number-small-increment"><i data-icon="plus"></i></button></div></div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">appearance(false)</div>
+          <div class="input-narrow"><div class="penna-number" data-penna="field" data-id="number-bare" role="spinbutton" data-step="1" data-bare><button class="penna-button" data-penna="button.quiet" data-compact type="button" tabindex="-1" data-step-by="-1" data-id="number-bare-decrement"><i data-icon="minus"></i></button><label class="penna-input" data-penna="field" data-id="number-bare-field" data-align="center" data-bare><input value="2" inputmode="decimal" /></label><button class="penna-button" data-penna="button.quiet" data-compact type="button" tabindex="-1" data-step-by="1" data-id="number-bare-increment"><i data-icon="plus"></i></button></div></div>
+        </div>
+      </div>
+    </section>
+  </body>
+</html>

@@ -4,12 +4,11 @@ use ala::{
 };
 use penna::{
     ActiveTheme as _, Colorize as _, Emphasis, Icon, IconName, Tone, WindowExt as _,
-    button::{Button, ButtonVariant, ButtonVariants as _},
-    dialog::{Dialog, DialogButtonProps},
-    h_flex,
-    input::{Input, InputState},
-    overlay::dialog_description,
-    v_flex,
+    blocks::dialog::dialog_description,
+    blocks::dialog::{Dialog, DialogButtonProps},
+    components::button::{Button, ButtonVariant, ButtonVariants as _},
+    components::input::{Input, InputState},
+    h_flex, v_flex,
 };
 
 use super::support::after_first_frame;

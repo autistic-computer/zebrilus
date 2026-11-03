@@ -1,3 +1,4 @@
+use penna::components::tree::{IndentGuideColors, IndentGuides};
 use std::rc::Rc;
 
 use ala::{
@@ -5,14 +6,12 @@ use ala::{
     Role, Styled as _, Window, div, px, uniform_list,
 };
 use penna::{
-    ActiveTheme as _, Colorize as _, Icon, IconName, RowLook, StyledExt as _, Surface, h_flex,
-    list::{
-        ListItem,
-        tree::{IndentGuideColors, IndentGuides},
-    },
-    roles,
-    settings::{NavSection, settings_navigation},
-    sidebar::SIDEBAR_DEFAULT_WIDTH,
+    ActiveTheme as _, Colorize as _, Icon, IconName, RowLook, StyledExt as _, Surface,
+    blocks::settings::{NavSection, settings_navigation},
+    blocks::sidebar::SIDEBAR_DEFAULT_WIDTH,
+    components::list::ListItem,
+    foundation::roles,
+    h_flex,
 };
 
 use crate::story::{Framed as _, Section, Story, stateless, states};

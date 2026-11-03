@@ -5,7 +5,7 @@ use ala::{
 use penna::{
     ActiveTheme as _, Colorize as _, Disableable as _, Emphasis, IconName, Selectable as _,
     Sizable as _, Tone,
-    button::{Button, ButtonLook, ButtonRounded, ButtonVariant, ButtonVariants as _},
+    components::button::{Button, ButtonLook, ButtonRounded, ButtonVariant, ButtonVariants as _},
 };
 
 use super::support::{Probe, after_first_frame, hover, press, when_visible};

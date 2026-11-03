@@ -1,0 +1,37 @@
+.penna-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.penna-fills {
+  display: flex;
+  flex-direction: column;
+}
+
+.penna-fill-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+  width: 240px;
+  height: 48px;
+  padding: 0 16px;
+  outline: none;
+  cursor: default;
+  user-select: none;
+}
+
+.penna-fill-label {
+  position: relative;
+  display: inline-flex;
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.penna-items {
+  display: flex;
+  flex-direction: column;
+  width: 200px;
+}
+

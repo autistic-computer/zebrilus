@@ -5,10 +5,9 @@ use ala::{
 use penna::{
     ActiveTheme as _, Colorize as _, Elevation, Emphasis, Icon, PaintState, Sizable as _, Size,
     Tone,
-    button::{Button, ButtonVariants as _},
-    h_flex,
-    icon::glyphs,
-    v_flex,
+    components::button::{Button, ButtonVariants as _},
+    components::icon::glyphs,
+    h_flex, v_flex,
 };
 
 use crate::story::Framed as _;
@@ -18,7 +17,7 @@ pub const STORY: Story = Story {
     id: "icon-set",
     name: "Icon set",
     group: "Foundation",
-    summary: "Every penna icon drawn from the theme, adapted from Solar (src/icon/solar.json). Corners take half the theme radius in 24-grid units and the fixed corner smoothing, capped at 0.45 of the shorter side like every corner the kit draws. Radius 0 is flat: sharp corners, square caps, miter joins.",
+    summary: "Every penna icon drawn from the theme, adapted from Solar (src/components/icon/solar.json). Corners take half the theme radius in 24-grid units and the fixed corner smoothing, capped at 0.45 of the shorter side like every corner the kit draws. Radius 0 is flat: sharp corners, square caps, miter joins.",
     sections: &[
         Section {
             id: "catalog",
