@@ -138,3 +138,18 @@
 .penna-docs-page > .penna-md {
   width: auto;
 }
+
+.penna-docs-targets {
+  display: flex;
+  justify-content: flex-end;
+  padding: 8px 8px 0;
+}
+
+.penna-docs-stage[hidden] {
+  display: none;
+}
+
+.penna-docs-mount {
+  width: 100%;
+  min-height: 48px;
+}

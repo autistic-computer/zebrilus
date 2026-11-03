@@ -968,7 +968,6 @@ impl CodeBlock {
                     })
                     .layer(&code)
                     .font_family(cx.theme().mono_font_family.clone())
-                    .text_size(cx.theme().mono_font_size)
                     .relative()
                     .refine_style(&style.code_block)
                     .map(|this| match body {

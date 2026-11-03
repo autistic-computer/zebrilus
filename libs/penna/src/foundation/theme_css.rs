@@ -53,7 +53,7 @@ const PAINT: [(&str, &str); 13] = [
 
 const ROW_RADIUS_SHARE: f32 = 0.4;
 
-const SYNTAX: [(&str, &str); 12] = [
+pub const SYNTAX: [(&str, &str); 15] = [
     ("keyword", "keyword"),
     ("type", "type"),
     ("constructor", "constructor"),
@@ -66,6 +66,9 @@ const SYNTAX: [(&str, &str); 12] = [
     ("constant", "constant"),
     ("title", "title"),
     ("literal", "text.literal"),
+    ("tag", "tag"),
+    ("attribute", "attribute"),
+    ("bracket", "punctuation.bracket"),
 ];
 
 pub fn kit_theme(theme: &InterfaceTheme, mode: ThemeMode) -> Theme {

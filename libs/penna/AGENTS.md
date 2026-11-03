@@ -46,9 +46,13 @@ There are no aliases for the old module paths.
 `cargo run --example docs --features tree-sitter` writes the site to `target/docs` (or the
 folder given as its argument): penna's markdown rendered into the `text` component's HTML,
 code highlighted by penna's highlighter, inside the `docs` block's layout, with the tokens,
-fonts and widget CSS and JS copied under `assets/`. Consecutive fences whose info string ends
-in `example` (```` ```rust example ````, ```` ```html example ````) become one `Example`: the
-html fence renders live above, and every fence is a tab.
+fonts and widget CSS and JS copied under `assets/`. Consecutive fences whose info string holds
+`example` (```` ```rust example ````, ```` ```html example ````) become one `Example` with a tab per
+fence. An html fence renders live above the tabs. `story=<story>/<section>` on a fence
+(```` ```rust example story=buttons/variants ````) uses that storybook section instead: its parity
+page markup is the live HTML and an HTML tab, and when `storybook/dist` is built the example gets an
+HTML / Native switch that mounts the same section from the storybook wasm (its `mount(story,
+section, selector)` export) and follows the page's theme. The choice is remembered across pages.
 
 ## Storybook
 

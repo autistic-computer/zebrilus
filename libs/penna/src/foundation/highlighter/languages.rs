@@ -5,6 +5,7 @@ use super::LanguageConfig;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Language {
     Plain,
+    Html,
     Json,
     Markdown,
     MarkdownInline,
@@ -22,6 +23,7 @@ impl Language {
     pub fn all() -> impl Iterator<Item = Self> {
         [
             Self::Plain,
+            Self::Html,
             Self::Json,
             Self::Markdown,
             Self::MarkdownInline,
@@ -34,6 +36,7 @@ impl Language {
     pub const fn name(self) -> &'static str {
         match self {
             Self::Plain => "text",
+            Self::Html => "html",
             Self::Json => "json",
             Self::Markdown => "markdown",
             Self::MarkdownInline => "markdown_inline",
@@ -49,6 +52,7 @@ impl Language {
     pub(crate) fn from_name(name: &str) -> Option<Self> {
         match name {
             "text" | "plain" | "plaintext" => Some(Self::Plain),
+            "html" | "htm" => Some(Self::Html),
             "json" | "jsonc" => Some(Self::Json),
             "markdown" | "md" | "mdx" => Some(Self::Markdown),
             "markdown_inline" | "markdown-inline" => Some(Self::MarkdownInline),
@@ -60,7 +64,7 @@ impl Language {
 
     fn injection_languages(self) -> Vec<SharedString> {
         match self {
-            Self::Markdown => ["markdown_inline", "rust", "json", "toml"]
+            Self::Markdown => ["markdown_inline", "rust", "json", "toml", "html"]
                 .into_iter()
                 .map(Into::into)
                 .collect(),
@@ -72,6 +76,12 @@ impl Language {
     pub(super) fn config(self) -> LanguageConfig {
         let (language, highlights, injections, locals) = match self {
             Self::Plain => return LanguageConfig::plain(self.name()),
+            Self::Html => (
+                tree_sitter_html::LANGUAGE,
+                tree_sitter_html::HIGHLIGHTS_QUERY,
+                "",
+                "",
+            ),
             Self::Json => (
                 tree_sitter_json::LANGUAGE,
                 include_str!("languages/json/highlights.scm"),

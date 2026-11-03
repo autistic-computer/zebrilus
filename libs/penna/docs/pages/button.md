@@ -2,32 +2,29 @@
 
 A pressable control. Pick a look, give it a label or an icon, and handle the click.
 
-```rust example
+```rust example story=buttons/variants
 Button::new("primary").label("Primary").primary()
 Button::new("secondary").label("Secondary")
 Button::new("ghost").label("Ghost").ghost()
 Button::new("danger").label("Danger").danger()
+Button::new("link").label("Link").link()
 ```
 
-```html example
-<button class="penna-button" data-penna="button" data-tone="primary" data-prominent><span class="penna-label" data-penna-text>Primary</span></button>
-<button class="penna-button" data-penna="button"><span class="penna-label" data-penna-text>Secondary</span></button>
-<button class="penna-button" data-penna="button.quiet"><span class="penna-label" data-penna-text>Ghost</span></button>
-<button class="penna-button" data-penna="button" data-tone="danger"><span class="penna-label" data-penna-text>Danger</span></button>
-```
+## Sizes and icons
 
-## Icons and sizes
-
-```rust example
-Button::new("copy").icon(IconName::Copy).label("Copy")
+```rust example story=buttons/sizes
 Button::new("small").label("Small").small()
-Button::new("add").icon(IconName::Plus).ghost()
+Button::new("medium").label("Medium")
+Button::new("bell").icon(IconName::Bell).tooltip("Notifications")
+Button::compact_icon("more", IconName::Ellipsis).tooltip("More")
 ```
 
-```html example
-<button class="penna-button" data-penna="button"><i data-icon="copy"></i><span class="penna-label" data-penna-text>Copy</span></button>
-<button class="penna-button" data-penna="button" data-size="small"><span class="penna-label" data-penna-text>Small</span></button>
-<button class="penna-button" data-penna="button.quiet" data-shape="icon" aria-label="Add"><i data-icon="plus"></i></button>
+## States
+
+```rust example story=buttons/states
+Button::new("save").label("Save").disabled(true)
+Button::new("tab").label("Ghost").ghost().selected(true)
+Button::new("saving").label("Saving").loading(true)
 ```
 
 ## API

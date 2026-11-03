@@ -270,6 +270,33 @@ pub fn mount_id(story: &Story, section: &Section) -> String {
 const KEYBOARD_SECTIONS: &[(&str, &str)] =
     &[("notifications", "popover"), ("color-picker", "open")];
 
+fn open_section(
+    story: &Story,
+    section: &'static Section,
+    mount: String,
+    cx: &mut App,
+) -> Result<AnyWindowHandle, String> {
+    let knobs = knobs();
+    let handle = cx
+        .open_window(
+            WindowOptions {
+                mount: Some(mount.into()),
+                focus: KEYBOARD_SECTIONS.contains(&(story.id, section.id)),
+                ..Default::default()
+            },
+            |window, cx| {
+                window.set_window_title(section.name);
+                window.set_zoom(knobs.zoom);
+                let content = (section.build)(window, cx);
+                let floats = catalog().floats(story.id, section.id);
+                let host = cx.new(|_| SectionHost::new(section.id, content, floats));
+                cx.new(|cx| Root::new(host, window, cx).bordered(false))
+            },
+        )
+        .map_err(|error| format!("{}: {error:#}", section.id))?;
+    Ok(handle.into())
+}
+
 pub fn show_story(story: Story, cx: &mut App) -> Result<(), String> {
     DRAWN.with_borrow_mut(BTreeMap::clear);
     for handle in OPEN.with(|open| std::mem::take(&mut *open.borrow_mut())) {
@@ -277,29 +304,25 @@ pub fn show_story(story: Story, cx: &mut App) -> Result<(), String> {
             .update(cx, |_, window, _| window.remove_window())
             .ok();
     }
-    let knobs = knobs();
     for section in story.sections {
-        let mount = format!("#{}", mount_id(&story, section));
-        let handle = cx
-            .open_window(
-                WindowOptions {
-                    mount: Some(mount.into()),
-                    focus: KEYBOARD_SECTIONS.contains(&(story.id, section.id)),
-                    ..Default::default()
-                },
-                |window, cx| {
-                    window.set_window_title(section.name);
-                    window.set_zoom(knobs.zoom);
-                    let content = (section.build)(window, cx);
-                    let floats = catalog().floats(story.id, section.id);
-                    let host = cx.new(|_| SectionHost::new(section.id, content, floats));
-                    cx.new(|cx| Root::new(host, window, cx).bordered(false))
-                },
-            )
-            .map_err(|error| format!("{}: {error:#}", section.id))?;
-        OPEN.with(|open| open.borrow_mut().push(handle.into()));
+        let handle = open_section(
+            &story,
+            section,
+            format!("#{}", mount_id(&story, section)),
+            cx,
+        )?;
+        OPEN.with(|open| open.borrow_mut().push(handle));
     }
     Ok(())
+}
+
+pub fn mount_section(story: Story, section: &str, mount: &str, cx: &mut App) -> Result<(), String> {
+    let section = story
+        .sections
+        .iter()
+        .find(|candidate| candidate.id == section)
+        .ok_or_else(|| format!("{} has no section {section}", story.id))?;
+    open_section(&story, section, mount.to_owned(), cx).map(drop)
 }
 
 pub fn set_knobs(query: &str, cx: &mut App) -> Result<(), String> {
@@ -445,6 +468,13 @@ mod web {
     pub fn show(story: &str) -> Result<(), JsValue> {
         let story = super::find(story).ok_or_else(|| JsValue::from_str("no such story"))?;
         with_app(|cx| super::show_story(story, cx))?.map_err(|error| JsValue::from_str(&error))
+    }
+
+    #[wasm_bindgen]
+    pub fn mount(story: &str, section: &str, selector: &str) -> Result<(), JsValue> {
+        let story = super::find(story).ok_or_else(|| JsValue::from_str("no such story"))?;
+        with_app(|cx| super::mount_section(story, section, selector, cx))?
+            .map_err(|error| JsValue::from_str(&error))
     }
 
     #[wasm_bindgen]

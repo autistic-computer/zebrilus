@@ -1,4 +1,6 @@
 use std::{
+    cell::{Cell, RefCell},
+    collections::BTreeSet,
     env,
     fmt::Write as _,
     fs, io,
@@ -7,28 +9,13 @@ use std::{
 
 use markdown::{
     ParseOptions,
-    mdast::{AlignKind, Node},
+    mdast::{AlignKind, Code, Node},
 };
 use penna::foundation::{
     highlighter::{Rope, SyntaxHighlighter},
-    theme_css,
+    theme_css::{self, SYNTAX},
 };
 use serde::Deserialize;
-
-const SYNTAX: [(&str, &str); 12] = [
-    ("keyword", "keyword"),
-    ("type", "type"),
-    ("constructor", "constructor"),
-    ("function", "function"),
-    ("comment", "comment"),
-    ("string", "string"),
-    ("number", "number"),
-    ("boolean", "boolean"),
-    ("property", "property"),
-    ("constant", "constant"),
-    ("title", "title"),
-    ("literal", "text.literal"),
-];
 
 const STYLES: [&str; 7] = [
     "components/button/button.css",
@@ -49,11 +36,10 @@ const SCRIPTS: [&str; 6] = [
     "blocks/docs/docs.js",
 ];
 
-const SITE_CSS: &str = r#"@font-face { font-family: "Inter Variable"; font-style: normal; font-weight: 100 900; src: url("fonts/inter/InterVariable.ttf") format("truetype"); }
-@font-face { font-family: "Inter Variable"; font-style: italic; font-weight: 100 900; src: url("fonts/inter/InterVariable-Italic.ttf") format("truetype"); }
-@font-face { font-family: "Lilex"; font-weight: 400; src: url("fonts/lilex/Lilex-Regular.ttf") format("truetype"); }
-@font-face { font-family: "Lilex"; font-weight: 700; src: url("fonts/lilex/Lilex-Bold.ttf") format("truetype"); }
-html, body { height: 100%; margin: 0; }
+const KIT: &str = "../../../../src/";
+const STORYBOOK: &str = "assets/storybook/wasm/storybook.js";
+
+const SITE_CSS: &str = r"html, body { height: 100%; margin: 0; }
 body { overflow: hidden; }
 a.penna-button { text-decoration: none; }
 a.penna-docs-brand { color: inherit; text-decoration: none; }
@@ -67,7 +53,7 @@ a.penna-docs-brand { color: inherit; text-decoration: none; }
   .penna-docs-side[data-penna][data-open] { display: block; background: var(--penna-bg); box-shadow: 0 8px 24px rgb(0 0 0 / 0.3); }
   .penna-docs-page { padding: 24px 16px 64px; }
 }
-"#;
+";
 
 #[derive(Deserialize)]
 struct Site {
@@ -82,11 +68,33 @@ struct Group {
     pages: Vec<String>,
 }
 
+#[derive(Deserialize)]
+struct Parity {
+    story: String,
+    page: String,
+}
+
 struct Page {
     slug: String,
     title: String,
     group: usize,
     body: String,
+    styles: BTreeSet<String>,
+    scripts: BTreeSet<String>,
+}
+
+struct Builder {
+    root: PathBuf,
+    native: bool,
+    mounts: Cell<usize>,
+    styles: RefCell<BTreeSet<String>>,
+    scripts: RefCell<BTreeSet<String>>,
+}
+
+struct StorySection {
+    story: String,
+    section: String,
+    html: String,
 }
 
 fn main() -> io::Result<()> {
@@ -96,19 +104,31 @@ fn main() -> io::Result<()> {
         .map_or_else(|| root.join("target/docs"), PathBuf::from);
     let site: Site = serde_json::from_str(&fs::read_to_string(root.join("docs/site.json"))?)
         .map_err(io::Error::other)?;
+    let wasm = root.join("storybook/dist/wasm");
+    let builder = Builder {
+        native: wasm.join("storybook.js").exists(),
+        root,
+        mounts: Cell::new(0),
+        styles: RefCell::default(),
+        scripts: RefCell::default(),
+    };
 
     let mut pages = Vec::new();
     for (group, entry) in site.groups.iter().enumerate() {
         for slug in &entry.pages {
-            let source = fs::read_to_string(root.join(format!("docs/pages/{slug}.md")))?;
+            let source = fs::read_to_string(builder.root.join(format!("docs/pages/{slug}.md")))?;
             let tree = markdown::to_mdast(&source, &ParseOptions::gfm())
                 .map_err(|error| io::Error::other(error.to_string()))?;
             let title = first_heading(&tree).unwrap_or_else(|| slug.clone());
+            builder.mounts.set(0);
+            let body = builder.page(&tree)?;
             pages.push(Page {
                 slug: slug.clone(),
                 title,
                 group,
-                body: render_page(&tree),
+                body,
+                styles: builder.styles.take(),
+                scripts: builder.scripts.take(),
             });
         }
     }
@@ -117,9 +137,12 @@ fn main() -> io::Result<()> {
         fs::remove_dir_all(&out)?;
     }
     let assets = out.join("assets");
-    copy_assets(&root, &assets)?;
+    copy_assets(&builder.root, &assets)?;
+    if builder.native {
+        copy_dir(&wasm, &assets.join("storybook/wasm"))?;
+    }
     for (index, page) in pages.iter().enumerate() {
-        let html = document(&site, &pages, index);
+        let html = document(&site, &pages, index, builder.native);
         fs::write(out.join(file_name(&page.slug)), &html)?;
         if index == 0 {
             fs::write(out.join("index.html"), &html)?;
@@ -135,17 +158,39 @@ fn file_name(slug: &str) -> String {
 
 fn copy_assets(root: &Path, assets: &Path) -> io::Result<()> {
     fs::create_dir_all(assets.join("web"))?;
-    for file in ["penna.css", "kit.js"] {
+    for file in ["penna.css", "kit.js", "story.css"] {
         fs::copy(root.join("web").join(file), assets.join("web").join(file))?;
     }
     theme_css::write_tokens(&assets.join("web/tokens"), &[])?;
-    for file in STYLES.iter().chain(SCRIPTS.iter()) {
-        let target = assets.join("src").join(file);
-        fs::create_dir_all(target.parent().unwrap_or(assets))?;
-        fs::copy(root.join("src").join(file), target)?;
-    }
-    copy_dir(&root.join("storybook/fonts"), &assets.join("fonts"))?;
+    copy_tree(&root.join("src"), &assets.join("src"), &["css", "js"])?;
+    copy_tree(
+        &root.join("storybook/src/kit"),
+        &assets.join("kit"),
+        &["css", "js"],
+    )?;
+    copy_dir(
+        &root.join("storybook/fonts"),
+        &assets.join("storybook/fonts"),
+    )?;
     fs::write(assets.join("site.css"), SITE_CSS)
+}
+
+fn copy_tree(from: &Path, to: &Path, extensions: &[&str]) -> io::Result<()> {
+    for entry in fs::read_dir(from)? {
+        let path = entry?.path();
+        let target = to.join(path.file_name().unwrap_or_default());
+        if path.is_dir() {
+            copy_tree(&path, &target, extensions)?;
+        } else if path
+            .extension()
+            .and_then(|extension| extension.to_str())
+            .is_some_and(|extension| extensions.contains(&extension))
+        {
+            fs::create_dir_all(to)?;
+            fs::copy(&path, target)?;
+        }
+    }
+    Ok(())
 }
 
 fn copy_dir(from: &Path, to: &Path) -> io::Result<()> {
@@ -162,33 +207,46 @@ fn copy_dir(from: &Path, to: &Path) -> io::Result<()> {
     Ok(())
 }
 
-fn document(site: &Site, pages: &[Page], current: usize) -> String {
+fn document(site: &Site, pages: &[Page], current: usize, native: bool) -> String {
     let page = &pages[current];
     let mut html = String::new();
     let _ = write!(
         html,
         "<!doctype html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\" />\n\
          <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />\n\
-         <title>{} · {}</title>\n<link rel=\"stylesheet\" href=\"assets/web/penna.css\" />\n",
+         <title>{} · {}</title>\n<link rel=\"stylesheet\" href=\"assets/web/penna.css\" />\n\
+         <link rel=\"stylesheet\" href=\"assets/web/story.css\" />\n",
         escape(&page.title),
         escape(&site.title)
     );
-    for style in STYLES {
-        let _ = writeln!(
-            html,
-            "<link rel=\"stylesheet\" href=\"assets/src/{style}\" />"
-        );
+    let styles = STYLES
+        .iter()
+        .map(|style| format!("assets/src/{style}"))
+        .chain(page.styles.iter().cloned())
+        .collect::<BTreeSet<_>>();
+    for style in styles {
+        let _ = writeln!(html, "<link rel=\"stylesheet\" href=\"{style}\" />");
     }
     html.push_str("<link rel=\"stylesheet\" href=\"assets/site.css\" />\n");
     html.push_str(
         "<script src=\"assets/web/kit.js\" data-tokens=\"assets/web/tokens/\"></script>\n",
     );
-    for script in SCRIPTS {
-        let _ = writeln!(html, "<script src=\"assets/src/{script}\" defer></script>");
+    let scripts = SCRIPTS
+        .iter()
+        .map(|script| format!("assets/src/{script}"))
+        .chain(page.scripts.iter().cloned())
+        .collect::<BTreeSet<_>>();
+    for script in scripts {
+        let _ = writeln!(html, "<script src=\"{script}\" defer></script>");
     }
+    let storybook = if native {
+        format!(" data-docs-storybook=\"{STORYBOOK}\"")
+    } else {
+        String::new()
+    };
     let _ = write!(
         html,
-        "</head>\n<body>\n<div class=\"penna-docs-layout\">\n{}\n<div class=\"penna-docs-body\">\n\
+        "</head>\n<body>\n<div class=\"penna-docs-layout\"{storybook}>\n{}\n<div class=\"penna-docs-body\">\n\
          <aside class=\"penna-docs-side\" data-penna=\"sidebar\"><div class=\"penna-docs-rule\" data-penna=\"rule.sidebar\" data-edge=\"right\"></div>{}</aside>\n\
          <main class=\"penna-docs-main\"><article class=\"penna-docs-page\">\n{}</article></main>\n\
          </div>\n</div>\n</body>\n</html>\n",
@@ -215,7 +273,7 @@ fn current_attrs(current: bool) -> &'static str {
 }
 
 fn header(site: &Site, pages: &[Page], group: usize) -> String {
-    let links: String = site
+    let links = site
         .groups
         .iter()
         .enumerate()
@@ -228,7 +286,7 @@ fn header(site: &Site, pages: &[Page], group: usize) -> String {
                 label(&entry.title)
             ))
         })
-        .collect();
+        .collect::<String>();
     format!(
         "<header class=\"penna-docs-header\" data-penna=\"bar\" role=\"toolbar\">\
          <div class=\"penna-docs-rule\" data-penna=\"rule.bar\"></div>\
@@ -280,26 +338,22 @@ fn plain(nodes: &[Node]) -> String {
     nodes.iter().map(Node::to_string).collect()
 }
 
-fn render_page(tree: &Node) -> String {
-    let mut html = String::new();
-    let mut prose = String::new();
-    let children = tree.children().map_or(&[][..], Vec::as_slice);
-    let mut index = 0;
-    while index < children.len() {
-        if is_example(&children[index]) {
-            flush(&mut html, &mut prose);
-            let start = index;
-            while index < children.len() && is_example(&children[index]) {
-                index += 1;
-            }
-            html.push_str(&example(&children[start..index]));
-            continue;
-        }
-        block(&mut prose, &children[index], 0);
-        index += 1;
-    }
-    flush(&mut html, &mut prose);
-    html
+fn meta(code: &Code) -> Vec<&str> {
+    code.meta
+        .as_deref()
+        .unwrap_or("")
+        .split_whitespace()
+        .collect()
+}
+
+fn is_example(node: &Node) -> bool {
+    matches!(node, Node::Code(code) if meta(code).contains(&"example"))
+}
+
+fn story_ref(code: &Code) -> Option<&str> {
+    meta(code)
+        .into_iter()
+        .find_map(|token| token.strip_prefix("story="))
 }
 
 fn flush(html: &mut String, prose: &mut String) {
@@ -309,55 +363,202 @@ fn flush(html: &mut String, prose: &mut String) {
     }
 }
 
-fn is_example(node: &Node) -> bool {
-    matches!(node, Node::Code(code) if code.meta.as_deref() == Some("example"))
+impl Builder {
+    fn page(&self, tree: &Node) -> io::Result<String> {
+        let mut html = String::new();
+        let mut prose = String::new();
+        let children = tree.children().map_or(&[][..], Vec::as_slice);
+        let mut index = 0;
+        while index < children.len() {
+            if is_example(&children[index]) {
+                flush(&mut html, &mut prose);
+                let start = index;
+                while index < children.len() && is_example(&children[index]) {
+                    index += 1;
+                }
+                html.push_str(&self.example(&children[start..index])?);
+                continue;
+            }
+            block(&mut prose, &children[index], 0);
+            index += 1;
+        }
+        flush(&mut html, &mut prose);
+        Ok(html)
+    }
+
+    fn story_section(&self, reference: &str) -> io::Result<StorySection> {
+        let (module, section) = reference
+            .split_once('/')
+            .ok_or_else(|| io::Error::other(format!("story={reference} needs story/section")))?;
+        let folder = self.root.join("storybook/src/kit").join(module);
+        let parity: Parity = serde_json::from_str(&fs::read_to_string(folder.join("parity.json"))?)
+            .map_err(io::Error::other)?;
+        let page = fs::read_to_string(folder.join(&parity.page))?;
+        let open = format!("<section data-section=\"{section}\">");
+        let start = page
+            .find(&open)
+            .ok_or_else(|| io::Error::other(format!("{module} has no section {section}")))?
+            + open.len();
+        let end = start
+            + page[start..]
+                .find("</section>")
+                .ok_or_else(|| io::Error::other(format!("{module}/{section} is not closed")))?;
+        for (attribute, set) in [("href=\"", &self.styles), ("src=\"", &self.scripts)] {
+            let mut rest = page.as_str();
+            while let Some(at) = rest.find(attribute) {
+                rest = &rest[at + attribute.len()..];
+                let path = &rest[..rest.find('"').unwrap_or(0)];
+                let asset = Path::new(path)
+                    .extension()
+                    .and_then(|extension| extension.to_str())
+                    .is_some_and(|extension| {
+                        extension.eq_ignore_ascii_case("css")
+                            || extension.eq_ignore_ascii_case("js")
+                    });
+                if !asset {
+                    continue;
+                }
+                if let Some(kit) = path.strip_prefix(KIT) {
+                    set.borrow_mut().insert(format!("assets/src/{kit}"));
+                } else if !path.contains('/') {
+                    set.borrow_mut()
+                        .insert(format!("assets/kit/{module}/{path}"));
+                }
+            }
+        }
+        Ok(StorySection {
+            story: parity.story,
+            section: section.to_owned(),
+            html: page[start..end].to_owned(),
+        })
+    }
+
+    fn example(&self, fences: &[Node]) -> io::Result<String> {
+        let codes: Vec<&Code> = fences
+            .iter()
+            .filter_map(|node| match node {
+                Node::Code(code) => Some(code),
+                _ => None,
+            })
+            .collect();
+        let story = codes
+            .iter()
+            .find_map(|code| story_ref(code))
+            .map(|reference| self.story_section(reference))
+            .transpose()?;
+        let mut tabs: Vec<(String, String)> = codes
+            .iter()
+            .map(|code| {
+                (
+                    language_name(code.lang.as_deref()),
+                    code_block(code.lang.as_deref(), &code.value),
+                )
+            })
+            .collect();
+        let written_html = codes
+            .iter()
+            .find(|code| code.lang.as_deref() == Some("html"))
+            .map(|code| code.value.clone());
+        let preview = match (&story, written_html) {
+            (_, Some(html)) => format!("<div class=\"penna-docs-preview\">{html}</div>"),
+            (Some(story), None) => {
+                tabs.push((
+                    "HTML".into(),
+                    code_block(Some("html"), &shown_markup(&story.html)),
+                ));
+                self.story_preview(story)
+            }
+            (None, None) => String::new(),
+        };
+        let segments = |labels: &mut dyn Iterator<Item = &str>, name: &str| {
+            let spans = labels.fold(String::new(), |mut html, label_text| {
+                let _ = write!(
+                    html,
+                    "<span class=\"penna-segment\" role=\"button\">{}</span>",
+                    label(label_text)
+                );
+                html
+            });
+            format!(
+                "<div class=\"penna-segmented\" data-penna=\"field\" data-value=\"0\" role=\"radiogroup\" aria-label=\"{name}\">\
+                 <div class=\"penna-segments\" data-penna=\"button.quiet\" data-state=\"current\"><span class=\"penna-segment-pill\"></span>{spans}</div></div>"
+            )
+        };
+        let targets = if story.is_some() && self.native {
+            format!(
+                "<div class=\"penna-docs-targets\">{}</div>",
+                segments(&mut ["HTML", "Native"].into_iter(), "Render")
+            )
+        } else {
+            String::new()
+        };
+        let switch = if tabs.len() > 1 {
+            format!(
+                "<div class=\"penna-docs-tabs\">{}</div>",
+                segments(&mut tabs.iter().map(|(name, _)| name.as_str()), "Language")
+            )
+        } else {
+            String::new()
+        };
+        let panes = tabs
+            .iter()
+            .enumerate()
+            .fold(String::new(), |mut html, (index, (_, code))| {
+                let _ = write!(
+                    html,
+                    "<div class=\"penna-md\" data-tab{}>{code}</div>",
+                    if index == 0 { "" } else { " hidden" }
+                );
+                html
+            });
+        Ok(format!(
+            "<div class=\"penna-docs-example\" data-penna=\"card.figure\" role=\"figure\">\
+             {targets}{preview}{switch}<div class=\"penna-docs-code\">{panes}</div></div>\n"
+        ))
+    }
+
+    fn story_preview(&self, story: &StorySection) -> String {
+        let mount = self.mounts.get();
+        self.mounts.set(mount + 1);
+        format!(
+            "<section class=\"penna-docs-stage\" data-section=\"{0}\" data-target=\"html\">{1}</section>\
+             <div class=\"penna-docs-stage\" data-target=\"native\" hidden>\
+             <div class=\"penna-docs-mount\" id=\"docs-native-{mount}\" data-story=\"{2}\" data-section=\"{0}\"></div></div>",
+            escape(&story.section),
+            story.html,
+            escape(&story.story)
+        )
+    }
 }
 
-fn example(fences: &[Node]) -> String {
-    let codes: Vec<_> = fences
-        .iter()
-        .filter_map(|node| match node {
-            Node::Code(code) => Some(code),
-            _ => None,
-        })
+fn shown_markup(html: &str) -> String {
+    let mut text = String::with_capacity(html.len());
+    let mut rest = html;
+    while let Some(at) = rest.find(" data-id=\"") {
+        text.push_str(&rest[..at]);
+        rest = &rest[at + " data-id=\"".len()..];
+        rest = &rest[rest.find('"').map_or(rest.len(), |end| end + 1)..];
+    }
+    text.push_str(rest);
+    let lines: Vec<&str> = text
+        .lines()
+        .skip_while(|line| line.trim().is_empty())
         .collect();
-    let preview = codes
+    let lines = &lines[..lines
         .iter()
-        .find(|code| code.lang.as_deref() == Some("html"))
-        .map_or("", |code| code.value.as_str());
-    let tabs = if codes.len() > 1 {
-        let segments = codes.iter().fold(String::new(), |mut html, code| {
-            let _ = write!(
-                html,
-                "<span class=\"penna-segment\" role=\"button\">{}</span>",
-                label(&language_name(code.lang.as_deref()))
-            );
-            html
-        });
-        format!(
-            "<div class=\"penna-docs-tabs\"><div class=\"penna-segmented\" data-penna=\"field\" data-value=\"0\" role=\"radiogroup\" aria-label=\"Language\">\
-             <div class=\"penna-segments\" data-penna=\"button.quiet\" data-state=\"current\"><span class=\"penna-segment-pill\"></span>{segments}</div></div></div>"
-        )
-    } else {
-        String::new()
-    };
-    let panes = codes
+        .rposition(|line| !line.trim().is_empty())
+        .map_or(0, |last| last + 1)];
+    let indent = lines
         .iter()
-        .enumerate()
-        .fold(String::new(), |mut html, (index, code)| {
-            let _ = write!(
-                html,
-                "<div class=\"penna-md\" data-tab=\"{}\"{}>{}</div>",
-                escape(code.lang.as_deref().unwrap_or("text")),
-                if index == 0 { "" } else { " hidden" },
-                code_block(code.lang.as_deref(), &code.value)
-            );
-            html
-        });
-    format!(
-        "<div class=\"penna-docs-example\" data-penna=\"card.figure\" role=\"figure\">\
-         <div class=\"penna-docs-preview\">{preview}</div>{tabs}<div class=\"penna-docs-code\">{panes}</div></div>\n"
-    )
+        .filter(|line| !line.trim().is_empty())
+        .map(|line| line.len() - line.trim_start().len())
+        .min()
+        .unwrap_or(0);
+    lines
+        .iter()
+        .map(|line| line.get(indent..).unwrap_or("").trim_end())
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 fn language_name(lang: Option<&str>) -> String {
@@ -552,13 +753,7 @@ fn push_run(html: &mut String, text: &str, class: Option<&str>) {
 fn syntax_class(name: &str) -> Option<&'static str> {
     SYNTAX
         .iter()
-        .filter(|(_, capture)| {
-            name == *capture
-                || name
-                    .strip_prefix(capture)
-                    .is_some_and(|rest| rest.starts_with('.'))
-        })
-        .max_by_key(|(_, capture)| capture.len())
+        .find(|(_, capture)| *capture == name)
         .map(|(class, _)| *class)
 }
 

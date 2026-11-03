@@ -31,6 +31,11 @@
   pointer-events: none;
 }
 
+.penna-tooltip[data-floating][data-fixed] {
+  position: fixed;
+  z-index: 100;
+}
+
 .penna-tooltip[data-floating]:not([data-open]) {
   display: none;
 }

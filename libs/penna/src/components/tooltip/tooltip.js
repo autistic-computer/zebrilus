@@ -11,8 +11,9 @@
   }
 
   function tipFor(target) {
-    const host = target.closest("[data-tooltip-host]") ?? target.parentElement;
-    let tip = host?.querySelector(":scope > .penna-tooltip[data-floating]");
+    const framed = target.closest("section[data-section]");
+    const host = framed ? (target.closest("[data-tooltip-host]") ?? target.parentElement) : document.body;
+    let tip = host?.querySelector(`:scope > .penna-tooltip[data-floating]${framed ? "" : "[data-fixed]"}`);
     const label = target.dataset.tooltip;
     if (!label) return tip;
     if (!tip) {
@@ -21,6 +22,7 @@
       tip.setAttribute("data-penna", "tooltip");
       tip.setAttribute("data-floating", "");
       tip.setAttribute("role", "tooltip");
+      tip.toggleAttribute("data-fixed", !framed);
       host.append(tip);
     }
     const key = target.dataset.tooltipKey;
@@ -35,9 +37,12 @@
   }
 
   function place(tip, x, y) {
+    const fixed = tip.hasAttribute("data-fixed");
     const host = tip.offsetParent ?? tip.parentElement;
-    const origin = host.getBoundingClientRect();
-    const frame = (tip.closest("section[data-section]") ?? document.documentElement).getBoundingClientRect();
+    const origin = fixed ? { left: 0, top: 0 } : host.getBoundingClientRect();
+    const frame = fixed
+      ? { left: 0, top: 0, width: innerWidth, height: innerHeight }
+      : (tip.closest("section[data-section]") ?? document.documentElement).getBoundingClientRect();
     const box = tip.getBoundingClientRect();
     const style = getComputedStyle(tip);
     const width = box.width + parseFloat(style.marginLeft) + parseFloat(style.marginRight);

@@ -224,8 +224,6 @@
   min-width: 0;
   padding: 12px;
   font-family: var(--penna-mono);
-  font-size: 13px;
-  line-height: 21px;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   color: var(--penna-ink);
@@ -254,6 +252,7 @@
   position: absolute;
   top: 4px;
   right: 4px;
+  display: flex;
 }
 
 .penna-md .tk-keyword { color: var(--penna-syntax-keyword); }
@@ -269,6 +268,9 @@
 .penna-md .tk-comment { color: var(--penna-syntax-comment); }
 .penna-md .tk-constructor { color: var(--penna-syntax-constructor); }
 .penna-md .tk-boolean { color: var(--penna-syntax-boolean); }
+.penna-md .tk-tag { color: var(--penna-syntax-tag); }
+.penna-md .tk-attribute { color: var(--penna-syntax-attribute); }
+.penna-md .tk-bracket { color: var(--penna-syntax-bracket); }
 
 .penna-md .md-table {
   padding-bottom: 16px;

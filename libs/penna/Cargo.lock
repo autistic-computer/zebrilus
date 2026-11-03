@@ -39,7 +39,7 @@ dependencies = [
 [[package]]
 name = "ala"
 version = "0.1.0"
-source = "git+https://github.com/autistic-computer/ala?branch=main#1901f52e76744a089b49b64506b38f3c10375de6"
+source = "git+https://github.com/autistic-computer/ala?branch=main#d8be61c4faa481035dd023aea02e059867e09650"
 dependencies = [
  "accesskit",
  "ala-macros",
@@ -112,7 +112,7 @@ dependencies = [
 [[package]]
 name = "ala-macros"
 version = "0.1.0"
-source = "git+https://github.com/autistic-computer/ala?branch=main#1901f52e76744a089b49b64506b38f3c10375de6"
+source = "git+https://github.com/autistic-computer/ala?branch=main#d8be61c4faa481035dd023aea02e059867e09650"
 dependencies = [
  "heck",
  "proc-macro2",
@@ -2584,6 +2584,7 @@ dependencies = [
  "serde_json",
  "smallvec",
  "tree-sitter",
+ "tree-sitter-html",
  "tree-sitter-json",
  "tree-sitter-language",
  "tree-sitter-md",
@@ -3951,6 +3952,16 @@ dependencies = [
  "regex",
  "serde_json",
  "streaming-iterator",
+ "tree-sitter-language",
+]
+
+[[package]]
+name = "tree-sitter-html"
+version = "0.23.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "261b708e5d92061ede329babaaa427b819329a9d427a1d710abb0f67bbef63ee"
+dependencies = [
+ "cc",
  "tree-sitter-language",
 ]
 

@@ -79,6 +79,7 @@ function apply() {
   document.documentElement.dataset.pennaTheme = choice.theme;
   document.documentElement.dataset.pennaMode = choice.mode;
   remember(choice);
+  document.dispatchEvent(new CustomEvent("penna-theme", { detail: { ...choice } }));
 }
 
 function round(element) {
@@ -253,6 +254,10 @@ function switcher() {
     choice.mode = mode.value;
     apply();
   };
+  document.addEventListener("penna-theme", (event) => {
+    theme.value = event.detail.theme;
+    mode.value = event.detail.mode;
+  });
   document.body.append(bar);
 }
 
