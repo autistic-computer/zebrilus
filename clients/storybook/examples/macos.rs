@@ -75,8 +75,8 @@ impl Render for Comparison {
         let tabs = Well::new()
             .h_flex()
             .size_full()
-            .gap(Space::S2)
-            .p(Space::S2)
+            .gap(Space::S4)
+            .p(Space::S4)
             .rounded_full()
             .children(
                 [
@@ -95,7 +95,7 @@ impl Render for Comparison {
                         })
                         .h_flex()
                         .justify_center()
-                        .gap(Space::S3)
+                        .gap(Space::S6)
                         .flex_1()
                         .h(px(28.0))
                         .child(Icon::new(icon))

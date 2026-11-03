@@ -1266,7 +1266,7 @@ fn on_surface(content: impl IntoElement) -> impl IntoElement {
     Panel::new("palette-story-surface", PanelLook::Popover)
         .v_flex()
         .w_full()
-        .p(Space::S4)
+        .p(Space::S8)
         .child(content)
 }
 
