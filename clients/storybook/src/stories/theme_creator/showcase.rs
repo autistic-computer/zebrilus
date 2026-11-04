@@ -186,7 +186,7 @@ pub(crate) fn dialog(cx: &App) -> AnyElement {
     dialog_surface(cx)
         .w_full()
         .max_w(px(360.0))
-        .child(dialog_gutter().child(dialog_title().child("Kill session \"work\"?")))
+        .child(dialog_gutter().child(dialog_title(cx).child("Kill session \"work\"?")))
         .child(
             dialog_gutter().child(
                 dialog_description(cx).child(

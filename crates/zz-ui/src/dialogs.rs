@@ -21,7 +21,11 @@ const ADD_HOST_DESCRIPTION: &str = "Connects over SSH · your ~/.ssh/config stil
 
 pub fn browser_clear_site_data_alert(alert: AlertDialog, cx: &App) -> AlertDialog {
     alert
-        .icon(Icon::new(IconName::TriangleAlert).text_color(cx.theme().danger))
+        .icon(
+            Icon::new(IconName::TriangleAlert)
+                .size_4()
+                .text_color(cx.theme().danger),
+        )
         .title("Clear site data?")
         .description(
             "This clears cookies and persistent storage owned by the current site. You may be signed out. This cannot be undone.",

@@ -438,7 +438,7 @@
   display: flex;
   flex: none;
   align-items: center;
-  height: 18px;
+  height: var(--penna-text-small-line);
   --penna-icon-size: 14px;
 }
 
@@ -458,8 +458,8 @@
   flex: 1;
   min-width: 0;
   overflow: hidden;
-  font-size: 12px;
-  line-height: 18px;
+  font-size: var(--penna-text-small-size);
+  line-height: var(--penna-text-small-line);
 }
 
 .zz-toast-close {

@@ -899,6 +899,11 @@
   z-index: 60;
 }
 
+.settings-toast-message {
+  font-size: var(--penna-text-small-size);
+  line-height: var(--penna-text-small-line);
+}
+
 .provider {
   gap: 10px;
 }

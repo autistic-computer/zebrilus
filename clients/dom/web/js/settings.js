@@ -432,7 +432,7 @@ function themeSaved(outcome) {
 }
 
 function toast(message, tone) {
-  const element = h("div", { "data-penna": "toast", class: "settings-toast", role: "status", "data-tone": tone }, h("span", { text: message }));
+  const element = h("div", { "data-penna": "toast", class: "settings-toast", role: "status", "data-tone": tone }, h("span", { class: "settings-toast-message", text: message }));
   page.append(element);
   setTimeout(() => element.remove(), 4000);
 }
