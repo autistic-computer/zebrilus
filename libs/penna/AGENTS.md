@@ -63,12 +63,7 @@ labels are hidden inside figures. The site's own CSS is `docs/site.css`.
 
 ## Design system
 
-People and agents read different documents. The Foundations pages of the docs site
-(`docs/pages/foundations.md`, `color.md`, `typography.md`, `spacing.md`, `sizes.md`) are for
-people: pictures made of real penna components and plain writing, with no values, tokens or
-code. `knowledge/designs/foundations.md` is the spec for agents: every value, name and rule, and
-which step of the work order each one lands in. When they disagree, the spec wins and the pages
-get fixed.
+`knowledge/designs/foundations.md` is penna's design language and the source of truth: principles, the rules and scales, and a section per component (purpose, kinds, anatomy, sizes, states, behavior, content, placement, HTML, Status). Write a change there first, then draw it on its docs page, then make the code match. The docs site is how people see the spec: `docs/pages/principles.md`, the Foundations pages (`foundations.md`, `color.md`, `typography.md`, `spacing.md`, `sizes.md`) and a page per component, drawn with real penna components. Pages are terse: one or two short lines under each heading, then a picture. Pictures sit flush with the text, left-aligned, with no card around them, and show one or two cases built from penna markup (`.docs-show`, `.docs-cell` with a `.docs-note` caption); storybook sections (`story=`) are for pages that need the HTML / Native switch. Rules come as do and don't pairs (`.docs-dodont`: two panels with a mark and a caption). Values may appear as clean tables (`.docs-tokens`: name, value, a live example per row). Component pages add one code sample and an API table. A component page whose component doesn't match its section yet opens with a warning notice that names the gaps, and loses it once the Status reads matches. When a page and the spec disagree, the spec wins and the page gets fixed.
 
 ## Storybook
 

@@ -68,7 +68,7 @@ pub const STORY: Story = Story {
     ],
 };
 
-const VARIANTS: [(&str, ButtonVariant); 8] = [
+const VARIANTS: [(&str, ButtonVariant); 7] = [
     (
         "Primary",
         ButtonVariant::Paint(Tone::Primary, Emphasis::Solid),
@@ -81,15 +81,11 @@ const VARIANTS: [(&str, ButtonVariant); 8] = [
         "Ghost",
         ButtonVariant::Paint(Tone::Neutral, Emphasis::Ghost),
     ),
+    (
+        "Outline",
+        ButtonVariant::Paint(Tone::Neutral, Emphasis::Outline),
+    ),
     ("Danger", ButtonVariant::Paint(Tone::Danger, Emphasis::Soft)),
-    (
-        "Success",
-        ButtonVariant::Paint(Tone::Success, Emphasis::Soft),
-    ),
-    (
-        "Warning",
-        ButtonVariant::Paint(Tone::Warning, Emphasis::Soft),
-    ),
     ("Link", ButtonVariant::Link),
     ("Text", ButtonVariant::Text),
 ];

@@ -1,72 +1,115 @@
 # Button
 
-A pressable control. Pick a look, give it a label or an icon, and handle the click.
+Starts an action. To go somewhere use a link, in a menu a menu row, for a setting a switch.
 
-```rust example story=buttons/variants
-Button::new("primary").label("Primary").primary()
-Button::new("secondary").label("Secondary")
-Button::new("ghost").label("Ghost").ghost()
-Button::new("danger").label("Danger").danger()
-Button::new("link").label("Link").link()
+## Kinds
+
+```figure
+<div class="docs-show">
+  <button class="penna-button" data-penna="button" data-tone="primary" data-prominent><span class="penna-label" data-penna-text>Primary</span></button>
+  <button class="penna-button" data-penna="button"><span class="penna-label" data-penna-text>Secondary</span></button>
+  <button class="penna-button" data-penna="button.quiet"><span class="penna-label" data-penna-text>Ghost</span></button>
+  <button class="penna-button" data-penna="button.outline"><span class="penna-label" data-penna-text>Outline</span></button>
+  <button class="penna-button" data-penna="button" data-tone="danger"><span class="penna-label" data-penna-text>Danger</span></button>
+  <a class="penna-button" data-variant="link" href="#"><span class="penna-label" data-penna-text>Link</span></a>
+</div>
+```
+
+- **Primary**: the main action. One per view.
+- **Secondary**: everything else. The default.
+- **Ghost**: bars, toolbars and rows.
+- **Outline**: on a ground with its own fill.
+- **Danger**: destroys, or can't be undone.
+- **Link**: goes somewhere.
+
+```rust
+Button::new("save").label("Save").primary()
 ```
 
 ## Anatomy
 
-A button has a container and up to three parts inside it, in this order:
-
-- **Container**: the shape, with its fill, outline and corners. The look and the theme draw it, and the size sets its height.
-- **Icon**: optional, before the label. While the button is loading it turns into a spinner.
-- **Label**: the text. The size of the button sets how big it is.
-- **Caret**: optional, a small chevron at the far end, for a button that opens a menu.
-
-When the button is reached from the keyboard, a focus ring appears just outside the container.
-
-Each size sets the height, the text, the padding at the sides, the icon and the space between the icon and the label together, so two buttons of one size always match. A button with only an icon is square.
-
-## Sizes and icons
-
-```rust example story=buttons/sizes
-Button::new("xsmall").label("Extra small").xsmall()
-Button::new("small").label("Small").small()
-Button::new("medium").label("Medium")
-Button::new("large").label("Large").large()
-Button::new("xlarge").label("Extra large").xlarge()
-Button::new("touch").label("Touch").touch()
-Button::new("bell").icon(IconName::Bell).tooltip("Notifications")
-Button::compact_icon("more", IconName::Ellipsis).tooltip("More")
+```figure
+<div class="docs-show" data-gap="wide">
+  <div class="docs-cell"><button class="penna-button" data-penna="button" data-size="xlarge" data-caret><i data-icon="plus"></i><span class="penna-label" data-penna-text>Add host</span><i class="penna-caret" data-icon="chevron-down"></i></button><span class="docs-note">Icon, label, caret</span></div>
+  <div class="docs-cell"><button class="penna-button" data-penna="button" data-size="xlarge" aria-label="Notifications"><i data-icon="bell"></i></button><span class="docs-note">Icon only</span></div>
+</div>
 ```
+
+1. **Container**: fill, outline, corners. The size sets its height and side padding.
+2. **Icon**: optional, before the label. A spinner while busy.
+3. **Label**: a verb in sentence case.
+4. **Caret**: optional. Opens a menu.
+
+Icon only: square, with a tooltip naming the action.
+
+## Sizes
+
+```figure
+<div class="docs-tokens">
+  <span class="docs-head">Size</span><span class="docs-head">Height</span><span class="docs-head">Text</span><span class="docs-head">Example</span>
+  <span>xsmall</span><span><code>20</code></span><span><code>caption</code></span><span><button class="penna-button" data-penna="button" data-size="xsmall"><span class="penna-label" data-penna-text>Save</span></button></span>
+  <span>small</span><span><code>24</code></span><span><code>small</code></span><span><button class="penna-button" data-penna="button" data-size="small"><span class="penna-label" data-penna-text>Save</span></button></span>
+  <span>medium</span><span><code>28</code></span><span><code>body</code></span><span><button class="penna-button" data-penna="button"><span class="penna-label" data-penna-text>Save</span></button></span>
+  <span>large</span><span><code>32</code></span><span><code>body</code></span><span><button class="penna-button" data-penna="button" data-size="large"><span class="penna-label" data-penna-text>Save</span></button></span>
+  <span>xlarge</span><span><code>40</code></span><span><code>lead</code></span><span><button class="penna-button" data-penna="button" data-size="xlarge"><span class="penna-label" data-penna-text>Save</span></button></span>
+  <span>touch</span><span><code>44</code></span><span><code>touch-body</code></span><span><button class="penna-button" data-penna="button" data-size="touch"><span class="penna-label" data-penna-text>Save</span></button></span>
+</div>
+```
+
+Medium is the default and follows density. One size per row.
 
 ## States
 
-```rust example story=buttons/states
-Button::new("save").label("Save").disabled(true)
-Button::new("tab").label("Ghost").ghost().selected(true)
-Button::new("saving").label("Saving").loading(true)
+```figure uses=spinner
+<div class="docs-show" data-gap="wide">
+  <div class="docs-cell"><button class="penna-button" data-penna="button"><span class="penna-label" data-penna-text>Save</span></button><span class="docs-note">Rest</span></div>
+  <div class="docs-cell"><button class="penna-button" data-penna="button" data-state="hover"><span class="penna-label" data-penna-text>Save</span></button><span class="docs-note">Hover</span></div>
+  <div class="docs-cell"><button class="penna-button" data-penna="button" data-state="hover active"><span class="penna-label" data-penna-text>Save</span></button><span class="docs-note">Pressed</span></div>
+  <div class="docs-cell"><button class="penna-button" data-penna="button" data-state="focused"><span class="penna-label" data-penna-text>Save</span></button><span class="docs-note">Focused</span></div>
+  <div class="docs-cell"><button class="penna-button" data-penna="button.quiet" data-state="current"><span class="penna-label" data-penna-text>Save</span></button><span class="docs-note">Selected</span></div>
+  <div class="docs-cell"><button class="penna-button" data-penna="button" disabled><span class="penna-label" data-penna-text>Save</span></button><span class="docs-note">Off</span></div>
+  <div class="docs-cell"><button class="penna-button" data-penna="button" data-loading><span class="penna-spinner" data-size="small"><i data-icon="loader"></i></span><span class="penna-label" data-penna-text>Save</span></button><span class="docs-note">Busy</span></div>
+</div>
 ```
 
-Pointing at a button lifts it. Each picture below shows the state on the left, beside a resting copy.
+- Focus ring: keyboard only.
+- Off: leaves the keyboard path, keeps its tooltip.
+- Busy: a spinner, the label stays, clicks are ignored.
 
-```figure story=buttons/hovered
+## Labels
+
+A verb, sentence case, no period. End with an ellipsis when more input comes first.
+
+```figure
+<div class="docs-dodont">
+  <figure data-verdict="do"><div class="docs-dodont-panel"><i class="docs-mark" data-icon="circle-check"></i><button class="penna-button" data-penna="button"><span class="penna-label" data-penna-text>Keep</span></button><button class="penna-button" data-penna="button" data-tone="danger"><span class="penna-label" data-penna-text>Delete branch</span></button></div><figcaption>Name what happens</figcaption></figure>
+  <figure data-verdict="dont"><div class="docs-dodont-panel"><i class="docs-mark" data-icon="circle-x"></i><button class="penna-button" data-penna="button"><span class="penna-label" data-penna-text>No</span></button><button class="penna-button" data-penna="button" data-tone="primary" data-prominent><span class="penna-label" data-penna-text>OK</span></button></div><figcaption>Don't use OK and No</figcaption></figure>
+</div>
 ```
 
-Pressing deepens the fill for as long as the button is held.
+## Placement
 
-```figure story=buttons/pressed
-```
+Actions at the end, main action last. Destructive confirms are danger, not primary.
 
-Keyboard focus draws a ring outside the edge. Only the keyboard brings it up; a click does not.
-
-```figure story=buttons/focused
+```figure
+<div class="docs-dodont">
+  <figure data-verdict="do"><div class="docs-dodont-panel" data-align="end"><i class="docs-mark" data-icon="circle-check"></i><button class="penna-button" data-penna="button"><span class="penna-label" data-penna-text>Cancel</span></button><button class="penna-button" data-penna="button" data-tone="primary" data-prominent><span class="penna-label" data-penna-text>Save</span></button></div><figcaption>Main action last</figcaption></figure>
+  <figure data-verdict="dont"><div class="docs-dodont-panel" data-align="start"><i class="docs-mark" data-icon="circle-x"></i><button class="penna-button" data-penna="button" data-tone="primary" data-prominent><span class="penna-label" data-penna-text>Save</span></button><button class="penna-button" data-penna="button"><span class="penna-label" data-penna-text>Cancel</span></button></div><figcaption>Don't lead with the main action</figcaption></figure>
+</div>
 ```
 
 ## API
 
-| Rust | HTML | What it does |
+| Rust | HTML | Does |
 | --- | --- | --- |
-| `.label(text)` | `.penna-label` | Text inside the button |
-| `.icon(name)` | `<i data-icon>` | An icon before the label |
-| `.primary()`, `.danger()`, `.ghost()` | `data-tone`, `data-penna="button.quiet"` | The look |
-| `.xsmall()`, `.small()`, `.large()`, `.xlarge()`, `.touch()` | `data-size="xsmall"`, `"small"`, `"large"`, `"xlarge"`, `"touch"` | A step on the size ladder; medium is the default |
-| `.selected(true)` | `data-state="current"` | Draws it picked |
-| `.tooltip(text)` | `data-tooltip` | A tooltip on hover |
-| `.on_click(handler)` | a `click` listener | Runs on press |
+| `.label(text)` | `.penna-label` | Label |
+| `.icon(name)` | `<i data-icon>` | Icon before the label |
+| `.primary()`, `.ghost()`, `.danger()`, `.link()` | `data-tone`, `data-prominent`, `data-penna="button.quiet"`, `data-variant` | Kind |
+| `.emphasis(Emphasis::Outline)` | `data-penna="button.outline"` | Outline kind |
+| `.xsmall()` … `.touch()` | `data-size` | Size; medium by default |
+| `.selected(true)` | `data-state="current"` | Selected |
+| `.disabled(true)` | `disabled` | Off |
+| `.loading(true)` | `data-loading` | Busy |
+| `.dropdown_caret(true)` | `data-caret`, `.penna-caret` | Caret |
+| `.tooltip(text)` | `data-tooltip` | Tooltip; required with only an icon |
+| `.on_click(handler)` | `click` | Runs on release |

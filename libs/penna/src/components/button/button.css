@@ -196,6 +196,14 @@
   opacity: 0.5;
 }
 
+.penna-button[data-size="large"] > .penna-caret {
+  --penna-icon-size: 14px;
+}
+
+.penna-button:is([data-size="xlarge"], [data-size="touch"]) > .penna-caret {
+  --penna-icon-size: 16px;
+}
+
 .penna-button:disabled > .penna-caret {
   opacity: 0.3;
 }

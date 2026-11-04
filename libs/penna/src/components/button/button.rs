@@ -12,6 +12,7 @@ use crate::{
     ActiveTheme as _, AuthoredElement as _, Colorize as _, Disableable, Emphasis, FOCUS_RING_WIDTH,
     Ground, Icon, IconName, Kind, Layer, Paint, PaintState, Selectable, Sizable, Size, Smoothing,
     StyledExt as _, Surface, SurfaceRole, Tone, components::tooltip::Tooltip, foundation::roles,
+    components::{input::trailing_size, spinner::Spinner},
     h_flex, rems_from_px,
 };
 
@@ -46,14 +47,6 @@ pub trait ButtonVariants: Sized {
 
     fn danger(self) -> Self {
         self.with_variant(ButtonVariant::Paint(Tone::Danger, Emphasis::Soft))
-    }
-
-    fn warning(self) -> Self {
-        self.with_variant(ButtonVariant::Paint(Tone::Warning, Emphasis::Soft))
-    }
-
-    fn success(self) -> Self {
-        self.with_variant(ButtonVariant::Paint(Tone::Success, Emphasis::Soft))
     }
 
     fn ghost(self) -> Self {
@@ -634,7 +627,9 @@ impl RenderOnce for Button {
         let hover = layer_at(PaintState::Hover, cx);
         let active = layer_at(PaintState::Active, cx);
         let hover_bg = self.hover_bg;
-        let plain_label = self.icon.is_none()
+        let no_icon = self.icon.is_none();
+        let plain_label = no_icon
+            && !self.loading
             && self.children.is_empty()
             && !self.dropdown_caret
             && pressed == 0.0;
@@ -783,13 +778,16 @@ impl RenderOnce for Button {
                         .when_some(self.icon, |this, icon| {
                             this.child(icon.loading(self.loading).with_size(icon_size))
                         })
+                        .when(self.loading && no_icon, |this| {
+                            this.child(Spinner::new().with_size(icon_size))
+                        })
                         .when_some(text, |this, label| {
                             this.child(div().flex_none().child(label))
                         })
                         .children(self.children)
                         .when(self.dropdown_caret, |this| {
                             this.justify_between().child(
-                                Icon::new(IconName::ChevronDown).small().text_color(
+                                Icon::new(IconName::ChevronDown).with_size(trailing_size(self.size)).text_color(
                                     match self.disabled {
                                         true => rest.text.opacity(0.3),
                                         false => rest.text.opacity(0.5),

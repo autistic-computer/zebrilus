@@ -1,83 +1,49 @@
 # Sizes
 
-Controls come in a ladder of sizes, each one a step taller than the last, with its own text, padding and icon. Medium is the default, for settings, dialogs and forms. Small and extra small are for dense places: toolbars, lists, tags and anything that repeats down the screen. Large and extra large give a main action room on a sparse screen, and touch is sized for a finger.
+One ladder of control sizes. Each step sets height, text, padding and icon together.
 
-```figure story=buttons/sizes
+## Ladder
+
+```figure uses=input
+<div class="docs-tokens">
+  <span class="docs-head">Size</span><span class="docs-head">Height</span><span class="docs-head">Text</span><span class="docs-head">Example</span>
+  <span>xsmall</span><span><code>20</code></span><span><code>caption</code></span><span class="docs-show"><label class="penna-input" data-penna="field" data-size="xsmall" style="width: 140px"><input placeholder="Search" /></label><button class="penna-button" data-penna="button" data-size="xsmall"><span class="penna-label" data-penna-text>Save</span></button></span>
+  <span>small</span><span><code>24</code></span><span><code>small</code></span><span class="docs-show"><label class="penna-input" data-penna="field" data-size="small" style="width: 140px"><input placeholder="Search" /></label><button class="penna-button" data-penna="button" data-size="small"><span class="penna-label" data-penna-text>Save</span></button></span>
+  <span>medium</span><span><code>28</code></span><span><code>body</code></span><span class="docs-show"><label class="penna-input" data-penna="field" style="width: 140px"><input placeholder="Search" /></label><button class="penna-button" data-penna="button"><span class="penna-label" data-penna-text>Save</span></button></span>
+  <span>large</span><span><code>32</code></span><span><code>body</code></span><span class="docs-show"><label class="penna-input" data-penna="field" data-size="large" style="width: 140px"><input placeholder="Search" /></label><button class="penna-button" data-penna="button" data-size="large"><span class="penna-label" data-penna-text>Save</span></button></span>
+  <span>xlarge</span><span><code>40</code></span><span><code>lead</code></span><span class="docs-show"><label class="penna-input" data-penna="field" data-size="xlarge" style="width: 140px"><input placeholder="Search" /></label><button class="penna-button" data-penna="button" data-size="xlarge"><span class="penna-label" data-penna-text>Save</span></button></span>
+  <span>touch</span><span><code>44</code></span><span><code>touch-body</code></span><span class="docs-show"><label class="penna-input" data-penna="field" data-size="touch" style="width: 140px"><input placeholder="Search" /></label><button class="penna-button" data-penna="button" data-size="touch"><span class="penna-label" data-penna-text>Save</span></button></span>
+</div>
 ```
+
+Small and xsmall for dense places. Large and xlarge for one main action. Touch under a finger.
 
 ## One size per row
 
-Everything in a row shares one size, so tops, text and edges line up with no nudging.
-
-```figure uses=input,segmented
-<div class="docs-full" style="display: flex; flex-direction: column; gap: 28px">
-  <div style="display: flex; flex-direction: column; gap: 12px">
-    <div class="docs-row">
-      <button class="penna-button" data-penna="button.quiet"><span class="penna-label" data-penna-text>Back</span></button>
-      <label class="penna-input" data-penna="field"><input placeholder="Search panes" /></label>
-      <span class="docs-spacer"></span>
-      <div class="penna-segmented" data-penna="field" data-value="0" role="radiogroup" aria-label="View"><div class="penna-segments" data-penna="button.quiet" data-state="current"><span class="penna-segment-pill"></span><span class="penna-segment" role="button"><span class="penna-label" data-penna-text>Grid</span></span><span class="penna-segment" role="button"><span class="penna-label" data-penna-text>List</span></span></div></div>
-      <button class="penna-button" data-penna="button" data-tone="primary" data-prominent><span class="penna-label" data-penna-text>Share</span></button>
-    </div>
-    <div class="docs-verdict" data-verdict="do"><i data-icon="circle-check"></i><span class="penna-type" data-type="small" data-penna-text>One size: the button, the field and the switcher share a line.</span></div>
-  </div>
-  <div style="display: flex; flex-direction: column; gap: 12px">
-    <div class="docs-row">
-      <button class="penna-button" data-penna="button.quiet"><span class="penna-label" data-penna-text>Back</span></button>
-      <label class="penna-input" data-penna="field" data-size="small"><input placeholder="Search panes" /></label>
-      <span class="docs-spacer"></span>
-      <div class="penna-segmented" data-penna="field" data-value="0" role="radiogroup" aria-label="View"><div class="penna-segments" data-penna="button.quiet" data-state="current"><span class="penna-segment-pill"></span><span class="penna-segment" role="button"><span class="penna-label" data-penna-text>Grid</span></span><span class="penna-segment" role="button"><span class="penna-label" data-penna-text>List</span></span></div></div>
-      <button class="penna-button" data-penna="button" data-tone="primary" data-prominent data-size="small"><span class="penna-label" data-penna-text>Share</span></button>
-    </div>
-    <div class="docs-verdict" data-verdict="dont"><i data-icon="circle-x"></i><span class="penna-type" data-type="small" data-penna-text>Mixed sizes: the small field and the small button break the line.</span></div>
-  </div>
+```figure uses=input
+<div class="docs-dodont">
+  <figure data-verdict="do"><div class="docs-dodont-panel"><i class="docs-mark" data-icon="circle-check"></i><label class="penna-input" data-penna="field" style="width: 150px"><input placeholder="Search panes" /></label><button class="penna-button" data-penna="button" data-tone="primary" data-prominent><span class="penna-label" data-penna-text>Share</span></button></div><figcaption>Tops, text and edges line up</figcaption></figure>
+  <figure data-verdict="dont"><div class="docs-dodont-panel"><i class="docs-mark" data-icon="circle-x"></i><label class="penna-input" data-penna="field" data-size="small" style="width: 150px"><input placeholder="Search panes" /></label><button class="penna-button" data-penna="button" data-tone="primary" data-prominent><span class="penna-label" data-penna-text>Share</span></button></div><figcaption>Don't mix sizes in a row</figcaption></figure>
 </div>
 ```
 
 ## Density
 
-One setting in Appearance, under Advanced, makes the interface tighter or roomier: Compact, Regular or Comfortable. It moves the default size together with the rows of lists, menus and pickers, so buttons, fields and rows stay in line at every setting. Text, spacing and the other sizes stay where they are.
+A setting moves the default size and every row with it. Text and gaps stay.
 
-```figure uses=input,segmented
-<div class="docs-full penna-stack" data-gap="group">
-  <div class="penna-stack" data-gap="tight" style="--penna-control-md: var(--penna-control-sm)">
-    <span class="penna-type" data-type="small" data-muted data-penna-text>Compact</span>
-    <div class="docs-row">
-      <label class="penna-input" data-penna="field"><input placeholder="Search panes" /></label>
-      <div class="penna-segmented" data-penna="field" data-value="0" role="radiogroup" aria-label="View"><div class="penna-segments" data-penna="button.quiet" data-state="current"><span class="penna-segment-pill"></span><span class="penna-segment" role="button"><span class="penna-label" data-penna-text>Grid</span></span><span class="penna-segment" role="button"><span class="penna-label" data-penna-text>List</span></span></div></div>
-      <button class="penna-button" data-penna="button" data-tone="primary" data-prominent><span class="penna-label" data-penna-text>Share</span></button>
-    </div>
-  </div>
-  <div class="penna-stack" data-gap="tight">
-    <span class="penna-type" data-type="small" data-muted data-penna-text>Regular</span>
-    <div class="docs-row">
-      <label class="penna-input" data-penna="field"><input placeholder="Search panes" /></label>
-      <div class="penna-segmented" data-penna="field" data-value="0" role="radiogroup" aria-label="View"><div class="penna-segments" data-penna="button.quiet" data-state="current"><span class="penna-segment-pill"></span><span class="penna-segment" role="button"><span class="penna-label" data-penna-text>Grid</span></span><span class="penna-segment" role="button"><span class="penna-label" data-penna-text>List</span></span></div></div>
-      <button class="penna-button" data-penna="button" data-tone="primary" data-prominent><span class="penna-label" data-penna-text>Share</span></button>
-    </div>
-  </div>
-  <div class="penna-stack" data-gap="tight" style="--penna-control-md: var(--penna-control-lg)">
-    <span class="penna-type" data-type="small" data-muted data-penna-text>Comfortable</span>
-    <div class="docs-row">
-      <label class="penna-input" data-penna="field"><input placeholder="Search panes" /></label>
-      <div class="penna-segmented" data-penna="field" data-value="0" role="radiogroup" aria-label="View"><div class="penna-segments" data-penna="button.quiet" data-state="current"><span class="penna-segment-pill"></span><span class="penna-segment" role="button"><span class="penna-label" data-penna-text>Grid</span></span><span class="penna-segment" role="button"><span class="penna-label" data-penna-text>List</span></span></div></div>
-      <button class="penna-button" data-penna="button" data-tone="primary" data-prominent><span class="penna-label" data-penna-text>Share</span></button>
-    </div>
-  </div>
+```figure uses=input
+<div class="docs-tokens">
+  <span class="docs-head">Density</span><span class="docs-head">Medium</span><span class="docs-head"></span><span class="docs-head">Example</span>
+  <span>Compact</span><span><code>24</code></span><span></span><span class="docs-show" style="--penna-control-md: 24px"><label class="penna-input" data-penna="field" style="width: 140px"><input placeholder="Search" /></label><button class="penna-button" data-penna="button"><span class="penna-label" data-penna-text>Save</span></button></span>
+  <span>Regular</span><span><code>28</code></span><span></span><span class="docs-show"><label class="penna-input" data-penna="field" style="width: 140px"><input placeholder="Search" /></label><button class="penna-button" data-penna="button"><span class="penna-label" data-penna-text>Save</span></button></span>
+  <span>Comfortable</span><span><code>32</code></span><span></span><span class="docs-show" style="--penna-control-md: 32px"><label class="penna-input" data-penna="field" style="width: 140px"><input placeholder="Search" /></label><button class="penna-button" data-penna="button"><span class="penna-label" data-penna-text>Save</span></button></span>
 </div>
 ```
 
-## Fields
+## In a line of text
 
-Fields take the same sizes, so a field always lines up with the buttons beside it.
-
-```figure story=inputs/field-sizes
-```
-
-## Inside a line of text
-
-Keys and badges inside a sentence take the height of the line, so the line never grows to fit them.
+Keys and badges take the line's height, so the line never grows.
 
 ```figure uses=label,kbd
-<p class="penna-type docs-text" data-type="body">Press <kbd class="penna-kbd" data-penna="keycap" data-kbd="cmd-k"></kbd> to open the palette, then <kbd class="penna-kbd" data-penna="keycap" data-kbd="escape"></kbd> to close it again.</p>
+<p class="penna-type docs-text" data-type="body">Press <kbd class="penna-kbd" data-penna="keycap" data-kbd="cmd-k"></kbd> for the palette, <kbd class="penna-kbd" data-penna="keycap" data-kbd="escape"></kbd> to close it.</p>
 ```

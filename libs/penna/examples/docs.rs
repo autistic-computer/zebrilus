@@ -58,6 +58,13 @@ struct Parity {
     page: String,
 }
 
+fn story_pages_last(assets: BTreeSet<String>) -> impl Iterator<Item = String> {
+    let (pages, widgets): (Vec<_>, Vec<_>) = assets
+        .into_iter()
+        .partition(|asset| asset.starts_with("assets/kit/"));
+    widgets.into_iter().chain(pages)
+}
+
 struct Page {
     slug: String,
     title: String,
@@ -209,7 +216,7 @@ fn document(site: &Site, pages: &[Page], current: usize, native: bool) -> String
         .map(|style| format!("assets/src/{style}"))
         .chain(page.styles.iter().cloned())
         .collect::<BTreeSet<_>>();
-    for style in styles {
+    for style in story_pages_last(styles) {
         let _ = writeln!(html, "<link rel=\"stylesheet\" href=\"{style}\" />");
     }
     html.push_str("<link rel=\"stylesheet\" href=\"assets/site.css\" />\n");
@@ -221,7 +228,7 @@ fn document(site: &Site, pages: &[Page], current: usize, native: bool) -> String
         .map(|script| format!("assets/src/{script}"))
         .chain(page.scripts.iter().cloned())
         .collect::<BTreeSet<_>>();
-    for script in scripts {
+    for script in story_pages_last(scripts) {
         let _ = writeln!(html, "<script src=\"{script}\" defer></script>");
     }
     let storybook = if native {
@@ -503,7 +510,7 @@ impl Builder {
                 html
             });
         Ok(format!(
-            "<div class=\"penna-docs-example\" data-penna=\"card.figure\" role=\"figure\">\
+            "<div class=\"penna-docs-example\" role=\"figure\">\
              {targets}{preview}{switch}<div class=\"penna-docs-code\">{panes}</div></div>\n"
         ))
     }
@@ -526,7 +533,7 @@ impl Builder {
             None => format!("<div class=\"penna-docs-preview\">{}</div>", code.value),
         };
         Ok(format!(
-            "<div class=\"penna-docs-example docs-figure\" data-penna=\"card.figure\" role=\"figure\">{body}</div>\n"
+            "<div class=\"penna-docs-example docs-figure\" role=\"figure\">{body}</div>\n"
         ))
     }
 
