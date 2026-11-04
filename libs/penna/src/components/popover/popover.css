@@ -14,6 +14,9 @@
   box-sizing: border-box;
   padding: 12px;
   font-family: var(--penna-font);
+  font-size: var(--penna-text-body-size);
+  font-weight: var(--penna-text-body-weight);
+  line-height: var(--penna-text-body-line);
   color: var(--penna-ink);
   outline: none;
 }

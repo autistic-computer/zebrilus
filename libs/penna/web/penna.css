@@ -251,6 +251,9 @@ button[data-penna] {
 
 [data-penna="popover"]:not(.penna-menu) {
   padding: 12px;
+  font-size: var(--penna-text-body-size);
+  font-weight: var(--penna-text-body-weight);
+  line-height: var(--penna-text-body-line);
 }
 
 [data-penna="tooltip"] {
@@ -258,8 +261,8 @@ button[data-penna] {
   align-items: center;
   gap: 12px;
   padding: 2px 8px;
-  font-size: 12px;
-  line-height: 16px;
+  font-size: var(--penna-text-small-size);
+  line-height: var(--penna-text-small-line);
 }
 
 :is([data-penna="badge"], [data-penna="badge.outline"]) {
@@ -388,19 +391,23 @@ button[data-penna] {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  font-size: var(--penna-text-body-size);
+  font-weight: var(--penna-text-body-weight);
+  line-height: var(--penna-text-body-line);
   width: 400px;
   min-height: 80px;
   padding: 12px;
 }
 
 .penna-title {
-  font-size: 13px;
-  font-weight: 600;
-  line-height: 1;
+  font-size: var(--penna-text-body-size);
+  font-weight: 500;
+  line-height: var(--penna-text-body-line);
 }
 
 .penna-description {
-  font-size: 12px;
+  font-size: var(--penna-text-small-size);
+  line-height: var(--penna-text-small-line);
   color: var(--penna-muted);
 }
 
@@ -415,8 +422,13 @@ button[data-penna] {
   gap: 8px;
   width: 400px;
   padding: 12px;
-  font-size: 12px;
-  line-height: 18px;
+  font-size: var(--penna-text-body-size);
+  line-height: var(--penna-text-body-line);
+}
+
+[data-penna="toast"] .penna-message {
+  font-size: var(--penna-text-small-size);
+  line-height: var(--penna-text-small-line);
 }
 
 .penna-window {

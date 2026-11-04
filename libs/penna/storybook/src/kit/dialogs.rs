@@ -3,7 +3,8 @@ use ala::{
     Styled as _, Window, div, px,
 };
 use penna::{
-    ActiveTheme as _, Colorize as _, Emphasis, Icon, IconName, Tone, WindowExt as _,
+    ActiveTheme as _, Colorize as _, Emphasis, Icon, IconName, StyledExt as _, TextStyle, Tone,
+    WindowExt as _,
     blocks::dialog::dialog_description,
     blocks::dialog::{Dialog, DialogButtonProps},
     components::button::{Button, ButtonVariant, ButtonVariants as _},
@@ -133,7 +134,6 @@ fn open(kind: Kind, field: &Entity<InputState>, window: &mut Window, cx: &mut Ap
                 .child(v_flex().gap_2().children(BINDINGS.iter().map(|(keys, command)| {
                     h_flex()
                         .justify_between()
-                        .text_sm()
                         .child(*command)
                         .child(
                             div()
@@ -214,7 +214,7 @@ impl Render for Backdrop {
         v_flex()
             .h(px(height))
             .gap_2()
-            .text_sm()
+            .type_style(TextStyle::Lead, cx)
             .text_color(muted)
             .children(
                 ["work", "scratch", "logs", "devbox", "notes"]

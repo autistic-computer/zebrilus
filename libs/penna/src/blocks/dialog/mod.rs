@@ -8,12 +8,11 @@ use ala::{
     Animation, AnimationExt as _, AnyElement, App, ClickEvent, Div, FocusHandle,
     InteractiveElement as _, IntoElement, MouseButton, ParentElement, Pixels, RenderOnce, Role,
     SharedString, StatefulInteractiveElement as _, StyleRefinement, Styled, Window,
-    WindowControlArea, anchored, div, ease_out_quint, point, prelude::FluentBuilder as _, px,
-    relative, size,
+    WindowControlArea, anchored, div, ease_out_quint, point, prelude::FluentBuilder as _, px, size,
 };
 
 use crate::{
-    ActiveTheme as _, Emphasis, IconName, StyledExt as _, Surface, SurfaceRole, Tone,
+    ActiveTheme as _, Emphasis, IconName, StyledExt as _, Surface, SurfaceRole, TextStyle, Tone,
     components::button::{Button, ButtonVariant, ButtonVariants as _},
     components::scroll::ScrollableElement as _,
     h_flex, v_flex,
@@ -35,8 +34,6 @@ const MIN_HEIGHT: Pixels = px(80.);
 const LAYER_OFFSET: f32 = 16.;
 const EDGE_MARGIN: Pixels = px(16.);
 pub(crate) const DEFAULT_WIDTH: Pixels = px(400.);
-pub(crate) const TITLE_TEXT_SIZE: Pixels = px(13.);
-pub(crate) const DESCRIPTION_TEXT_SIZE: Pixels = px(12.);
 
 const OK_LABEL: &str = "OK";
 const CANCEL_LABEL: &str = "Cancel";
@@ -382,7 +379,7 @@ impl RenderOnce for Dialog {
                         this.child(dialog_gutter().child(header))
                     })
                     .when_some(self.title, |this, title| {
-                        this.child(dialog_gutter().child(dialog_title().child(title)))
+                        this.child(dialog_gutter().child(dialog_title(cx).child(title)))
                     })
                     .when(!self.children.is_empty(), |this| {
                         this.child(
@@ -478,6 +475,7 @@ pub fn dialog_surface(cx: &App) -> Div {
 fn dialog_frame(role: SurfaceRole, cx: &App) -> Div {
     v_flex()
         .surface(Surface::new(role), cx)
+        .type_style(TextStyle::Body, cx)
         .pt(CONTENT_PADDING)
         .pb(CONTENT_PADDING)
         .gap(CONTENT_PADDING)
@@ -487,25 +485,18 @@ pub fn dialog_gutter() -> Div {
     div().pl(CONTENT_PADDING).pr(CONTENT_PADDING)
 }
 
-pub fn dialog_title() -> Div {
-    div()
-        .text_size(TITLE_TEXT_SIZE)
-        .font_semibold()
-        .line_height(relative(1.))
+pub fn dialog_title(cx: &App) -> Div {
+    div().type_style_strong(TextStyle::Body, cx)
 }
 
 pub fn dialog_description(cx: &App) -> Div {
     div()
-        .text_size(DESCRIPTION_TEXT_SIZE)
+        .type_style(TextStyle::Small, cx)
         .text_color(cx.theme().foreground.muted())
 }
 
 pub fn dialog_footer(cx: &App) -> Div {
-    h_flex()
-        .gap_2()
-        .justify_end()
-        .line_height(relative(1.))
-        .rounded_b(cx.theme().radius)
+    h_flex().gap_2().justify_end().rounded_b(cx.theme().radius)
 }
 
 pub struct AlertDialog {
@@ -598,7 +589,7 @@ impl AlertDialog {
                                 .min_w_0()
                                 .gap_1()
                                 .when_some(self.title, |this, title| {
-                                    this.child(dialog_title().child(title))
+                                    this.child(dialog_title(cx).child(title))
                                 })
                                 .when_some(self.description, |this, description| {
                                     this.child(dialog_description(cx).child(description))

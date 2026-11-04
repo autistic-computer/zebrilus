@@ -49,9 +49,9 @@
 .penna-notice-title {
   top: -0.5px;
   align-self: flex-start;
-  font-size: 13px;
+  font-size: var(--penna-text-body-size);
   font-weight: 500;
-  line-height: 18px;
+  line-height: var(--penna-text-body-line);
   color: var(--penna-ink);
 }
 
@@ -59,8 +59,8 @@
   position: relative;
   top: 1px;
   align-self: flex-start;
-  font-size: 12px;
-  line-height: 16px;
+  font-size: var(--penna-text-small-size);
+  line-height: var(--penna-text-small-line);
   white-space: normal;
   color: var(--penna-muted);
 }
@@ -80,8 +80,8 @@
 .penna-notice[data-stacked] .penna-notice-title {
   top: -0.5px;
   align-self: flex-start;
-  font-size: 14px;
-  line-height: 20px;
+  font-size: var(--penna-text-lead-size);
+  line-height: var(--penna-text-lead-line);
 }
 
 .penna-notice-action {

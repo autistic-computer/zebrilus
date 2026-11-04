@@ -7,7 +7,8 @@ pub use header::DocsHeader;
 pub use nav::{DocsNav, NavGroup};
 
 use crate::{
-    Edge, StyledExt as _, Surface, foundation::RoleRuleExt as _, foundation::roles, h_flex, v_flex,
+    Edge, StyledExt as _, Surface, TextStyle, foundation::RoleRuleExt as _, foundation::roles,
+    h_flex, v_flex,
 };
 use ala::{
     AnyElement, App, ElementId, IntoElement, ParentElement, RenderOnce, Styled as _, Window, div,
@@ -96,6 +97,7 @@ impl RenderOnce for DocsLayout {
                                     .px(px(32.0))
                                     .pt(px(40.0))
                                     .pb(px(96.0))
+                                    .type_style(TextStyle::ReadBody, cx)
                                     .children(self.content),
                             ),
                     ),

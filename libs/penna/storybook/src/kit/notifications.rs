@@ -6,7 +6,7 @@ use ala::{
     actions, div, prelude::FluentBuilder as _, px,
 };
 use penna::{
-    ActiveTheme as _, Colorize as _, IconName, WindowExt as _,
+    ActiveTheme as _, Colorize as _, IconName, StyledExt as _, TextStyle, WindowExt as _,
     blocks::notification::Notification,
     components::button::{Button, ButtonVariants as _},
     components::input::{Input, InputState},
@@ -188,7 +188,7 @@ impl Render for Stack {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         div()
             .h(px(380.0))
-            .text_sm()
+            .type_style(TextStyle::Lead, cx)
             .text_color(cx.theme().foreground.muted())
             .child("Pane content under the toasts.")
     }
@@ -311,11 +311,16 @@ impl Render for Panel {
                                     .icon(IconName::Pencil)
                                     .label("Rename"),
                             )
-                            .content(move |_, _, _| {
+                            .content(move |_, _, cx| {
                                 v_flex()
                                     .w(px(260.0))
                                     .gap_2()
-                                    .child(div().text_xs().text_color(muted).child("Session name"))
+                                    .child(
+                                        div()
+                                            .type_style(TextStyle::Small, cx)
+                                            .text_color(muted)
+                                            .child("Session name"),
+                                    )
                                     .child(Input::new(&name))
                                     .child(
                                         h_flex()

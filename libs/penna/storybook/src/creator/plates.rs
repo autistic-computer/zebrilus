@@ -541,7 +541,7 @@ fn dialog(cx: &App) -> AnyElement {
     dialog_surface(cx)
         .w_full()
         .max_w(px(360.0))
-        .child(dialog_gutter().child(dialog_title().child("Delete \"Drafts\"?")))
+        .child(dialog_gutter().child(dialog_title(cx).child("Delete \"Drafts\"?")))
         .child(dialog_gutter().child(
             dialog_description(cx).child("Its 12 documents and their history are gone for good."),
         ))

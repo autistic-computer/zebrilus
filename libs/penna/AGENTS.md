@@ -123,6 +123,8 @@ How parity drives the pages:
   `{ "at": [x, y] }` for a point in CSS px from the section's top-left corner on both sides, or
   `{ "selector": ".thumb" }` for the centre of a DOM element in the section, whose section-relative point
   the canvas gets too. Point and selector steps score the whole section; id steps score the node's box.
+  An id or selector centre is rounded down to a whole CSS px, since ala's web build reads pointer
+  positions in whole px: a tooltip on the edge of fitting otherwise flips on one side only.
 - Each story loads fresh, so entity ids don't depend on what ran before. When a step
   leaves its canvas section changed (an open menu, a picked value, a focus ring), both pages reload
   before the next step and the next theme and mode, so no step has to undo itself or another.

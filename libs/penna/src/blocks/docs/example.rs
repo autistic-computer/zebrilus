@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use crate::{
-    ActiveTheme as _, IconName, Sizable as _,
+    ActiveTheme as _, IconName, Sizable as _, StyledExt as _, TextStyle,
     components::button::{Button, ButtonVariants as _},
     components::card::{Card, CardLook},
     components::segmented::SegmentedControl,
@@ -101,6 +101,7 @@ impl RenderOnce for Example {
                     .gap(px(8.0))
                     .px(px(24.0))
                     .py(px(40.0))
+                    .type_style(TextStyle::Body, cx)
                     .children(self.preview),
             )
             .when_some(tabs, |this, tabs| {

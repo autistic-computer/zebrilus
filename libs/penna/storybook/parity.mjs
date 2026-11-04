@@ -525,7 +525,9 @@ async function domPoint(page, section, target) {
             const element = root.querySelectorAll(target.selector ?? `[data-id="${CSS.escape(target.id)}"]`)[target.nth - 1];
             if (!element) return null;
             const rect = element.getBoundingClientRect();
-            return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2, at: [rect.x + rect.width / 2 - box.x, rect.y + rect.height / 2 - box.y] };
+            const x = Math.floor(rect.x + rect.width / 2);
+            const y = Math.floor(rect.y + rect.height / 2);
+            return { x, y, at: [x - box.x, y - box.y] };
         };
         const point = locate();
         if (!point) return null;

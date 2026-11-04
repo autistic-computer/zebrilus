@@ -4,7 +4,8 @@ section[data-section="toast-stack"] {
 
 .stack-pane {
   height: 380px;
-  font-size: 14px;
+  font-size: var(--penna-text-lead-size);
+  line-height: var(--penna-text-lead-line);
   color: var(--penna-fg-muted);
 }
 
@@ -42,8 +43,8 @@ section[data-section="toast-stack"] {
 }
 
 .rename-caption {
-  font-size: 12px;
-  line-height: 19.5px;
+  font-size: var(--penna-text-small-size);
+  line-height: var(--penna-text-small-line);
   color: var(--penna-fg-muted);
 }
 

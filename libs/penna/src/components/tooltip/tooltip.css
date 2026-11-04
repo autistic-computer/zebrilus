@@ -8,14 +8,16 @@
   margin: 12px;
   padding: 2px 8px;
   font-family: var(--penna-font);
-  font-size: 12px;
-  font-weight: 400;
-  line-height: 19.5px;
+  font-size: var(--penna-text-small-size);
+  font-weight: var(--penna-text-small-weight);
+  line-height: var(--penna-text-small-line);
   white-space: nowrap;
   color: var(--penna-ink);
 }
 
 .penna-tooltip > span {
+  position: relative;
+  top: 0.5px;
   display: inline-block;
   flex: none;
   white-space: nowrap;

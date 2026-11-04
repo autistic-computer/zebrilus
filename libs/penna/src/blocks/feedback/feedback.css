@@ -5,6 +5,9 @@
   box-sizing: border-box;
   width: 100%;
   padding: 12px;
+  font-size: var(--penna-text-body-size);
+  font-weight: var(--penna-text-body-weight);
+  line-height: var(--penna-text-body-line);
   --penna-callout-ink: var(--penna-ink);
 }
 
@@ -19,7 +22,11 @@
   display: flex;
   flex: none;
   align-items: center;
-  height: 16px;
+  height: var(--penna-text-body-line);
+}
+
+.penna-callout:not(:has(.penna-callout-title)) .penna-callout-icon {
+  height: var(--penna-text-small-line);
 }
 
 .penna-callout-icon > [data-icon] {
@@ -66,15 +73,15 @@
 }
 
 .penna-callout-title {
-  font-size: 13px;
-  font-weight: 600;
-  line-height: 16px;
+  font-size: var(--penna-text-body-size);
+  font-weight: 500;
+  line-height: var(--penna-text-body-line);
   color: var(--penna-callout-ink);
 }
 
 .penna-callout-message {
-  font-size: 12px;
-  line-height: 16px;
+  font-size: var(--penna-text-small-size);
+  line-height: var(--penna-text-small-line);
   color: var(--penna-fg-muted);
 }
 
@@ -92,7 +99,6 @@
   align-items: center;
   justify-content: flex-end;
   gap: 8px;
-  line-height: 1;
 }
 
 .penna-callout[data-tone] .penna-alert-actions .penna-button {
@@ -106,20 +112,22 @@
   align-items: center;
   justify-content: center;
   gap: 8px;
-  font-size: 12px;
+  font-size: var(--penna-text-small-size);
+  line-height: var(--penna-text-small-line);
   color: var(--penna-fg-muted);
 }
 
 .penna-empty-state-title {
-  font-size: 13px;
-  font-weight: 600;
-  line-height: 1;
+  font-size: var(--penna-text-body-size);
+  font-weight: 500;
+  line-height: var(--penna-text-body-line);
   color: var(--penna-fg);
 }
 
 .penna-empty-state > span {
+  position: relative;
+  top: 0.5px;
   display: inline-block;
-  line-height: round(down, calc(1em * 1.618), 1px);
 }
 
 .penna-empty-state-title > span {

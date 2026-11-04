@@ -7,7 +7,7 @@ use ala::{
     anchored, canvas, deferred, div, prelude::FluentBuilder as _, px,
 };
 
-use crate::{Selectable, StyledExt as _, Surface, SurfaceRole, v_flex};
+use crate::{Selectable, StyledExt as _, Surface, SurfaceRole, TextStyle, v_flex};
 use actions::Cancel;
 
 const CONTEXT: &str = "PennaPopover";
@@ -233,7 +233,9 @@ impl RenderOnce for Popover {
             .occlude()
             .tab_group()
             .when(self.appearance, |this| {
-                this.surface(Surface::new(SurfaceRole::POPOVER), cx).p_3()
+                this.surface(Surface::new(SurfaceRole::POPOVER), cx)
+                    .p_3()
+                    .type_style(TextStyle::Body, cx)
             })
             .map(|this| {
                 if bottom_anchor(self.anchor) {

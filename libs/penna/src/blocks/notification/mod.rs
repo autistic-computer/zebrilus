@@ -10,11 +10,10 @@ use ala::{
     Subscription, Window, div, prelude::FluentBuilder as _, px,
 };
 
-use crate::blocks::dialog::{
-    CONTENT_PADDING, DEFAULT_WIDTH, DESCRIPTION_TEXT_SIZE, TITLE_TEXT_SIZE,
-};
+use crate::blocks::dialog::{CONTENT_PADDING, DEFAULT_WIDTH};
 use crate::{
     ActiveTheme as _, Icon, IconName, Sizable as _, Size, StyledExt as _, Surface, SurfaceRole,
+    TextStyle,
     components::button::{Button, ButtonVariants as _},
     h_flex, v_flex,
 };
@@ -23,7 +22,6 @@ const AUTOHIDE_DELAY: Duration = Duration::from_secs(5);
 const DISMISS_ANIMATION: Duration = Duration::from_millis(150);
 const SLIDE_ANIMATION: Duration = Duration::from_millis(250);
 const SLIDE_DISTANCE: f32 = 45.;
-const LINE_HEIGHT: Pixels = px(18.);
 
 #[derive(Debug, Clone, Copy)]
 enum NotificationType {
@@ -186,6 +184,11 @@ impl Render for Notification {
             .clone()
             .map(|builder| builder(self, window, cx));
         let icon = self.type_.map(|type_| type_.icon(cx));
+        let first_line = if self.title.is_some() {
+            TextStyle::Body
+        } else {
+            TextStyle::Small
+        };
         let closing = self.closing;
         let placement = cx.theme().notification.placement;
 
@@ -198,6 +201,7 @@ impl Render for Notification {
             .max_w((window.fully_visible_bounds().size.width - px(32.)).max(px(1.)))
             .items_center()
             .surface(Surface::new(SurfaceRole::TOAST), cx)
+            .type_style(TextStyle::Body, cx)
             .p(CONTENT_PADDING)
             .gap_2()
             .child(
@@ -209,7 +213,7 @@ impl Render for Notification {
                     .when_some(icon, |this, icon| {
                         this.child(
                             h_flex()
-                                .h(LINE_HEIGHT)
+                                .h(first_line.line_height())
                                 .flex_shrink_0()
                                 .debug_selector(|| "notification-icon".to_owned())
                                 .child(icon.with_size(Size::Medium)),
@@ -220,12 +224,10 @@ impl Render for Notification {
                             .flex_1()
                             .gap_0p5()
                             .overflow_hidden()
-                            .line_height(LINE_HEIGHT)
                             .when_some(self.title.clone(), |this, title| {
                                 this.child(
                                     div()
-                                        .text_size(TITLE_TEXT_SIZE)
-                                        .font_semibold()
+                                        .type_style_strong(TextStyle::Body, cx)
                                         .debug_selector(|| "notification-title".to_owned())
                                         .child(title),
                                 )
@@ -233,7 +235,7 @@ impl Render for Notification {
                             .when_some(self.message.clone(), |this, message| {
                                 this.child(
                                     div()
-                                        .text_size(DESCRIPTION_TEXT_SIZE)
+                                        .type_style(TextStyle::Small, cx)
                                         .debug_selector(|| "notification-message".to_owned())
                                         .child(message),
                                 )

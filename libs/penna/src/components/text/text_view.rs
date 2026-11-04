@@ -218,7 +218,7 @@ impl Element for TextView {
             .on_action(window.listener_for(&state, TextViewState::on_action_select_all))
             .child(state.clone())
             .when_some(self.text_view_style.text, |this, text| {
-                this.text_size(text.size()).line_height(text.line_height())
+                this.type_style(text, cx)
             })
             .refine_style(&self.style)
             .into_any_element();

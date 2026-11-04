@@ -38,8 +38,9 @@
   max-height: max(0px, 100cqh - 32px - var(--dialog-offset));
   padding: 12px 0;
   font-family: var(--penna-font);
-  font-size: 16px;
-  line-height: 1.618;
+  font-size: var(--penna-text-body-size);
+  font-weight: var(--penna-text-body-weight);
+  line-height: var(--penna-text-body-line);
   color: var(--penna-ink);
   outline: none;
 }
@@ -59,14 +60,16 @@
 }
 
 .penna-dialog-title {
-  font-size: 13px;
-  font-weight: 600;
-  line-height: 1;
+  font-size: var(--penna-text-body-size);
+  font-weight: 500;
+  line-height: var(--penna-text-body-line);
 }
 
 .penna-dialog-description {
-  font-size: 12px;
-  line-height: round(nearest, 12px * 1.618, 0.5px);
+  position: relative;
+  top: 0.5px;
+  font-size: var(--penna-text-small-size);
+  line-height: var(--penna-text-small-line);
   color: var(--penna-fg-muted);
 }
 
@@ -93,7 +96,6 @@
   align-items: center;
   justify-content: flex-end;
   gap: 8px;
-  line-height: 1;
 }
 
 .penna-dialog-head {

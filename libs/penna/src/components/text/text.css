@@ -2,6 +2,7 @@
   width: 640px;
   min-width: 0;
   font-size: var(--penna-text-read-body-size);
+  font-weight: var(--penna-text-read-body-weight);
   line-height: var(--penna-text-read-body-line);
   color: var(--penna-fg);
   --md-wash: rgb(from var(--penna-fg) r g b / 0.28);

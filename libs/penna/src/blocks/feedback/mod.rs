@@ -1,18 +1,16 @@
 use crate::{
-    ActiveTheme as _, Colorize as _, Ground, Icon, IconName, StyledExt as _, Surface, Tone,
+    ActiveTheme as _, Colorize as _, Ground, Icon, IconName, StyledExt as _, Surface, TextStyle,
+    Tone,
     blocks::dialog::{Dialog, DialogButtonProps},
     blocks::dialog::{dialog_description, dialog_footer, dialog_title},
     foundation::roles,
-    h_flex, rems_from_px, v_flex,
+    h_flex, v_flex,
 };
 use ala::{
     App, Div, IntoElement, ParentElement as _, SharedString, Styled as _, div,
     prelude::FluentBuilder as _, px,
 };
 
-const ALERT_LINE: f32 = 16.0;
-const ALERT_TITLE_SIZE: f32 = 13.0;
-const ALERT_MESSAGE_SIZE: f32 = 12.0;
 const EMPTY_STATE_GAP: f32 = 8.0;
 
 pub fn callout(
@@ -60,27 +58,31 @@ fn callout_on(
 ) -> Div {
     let titled = title.is_some();
     let first_line = if titled {
-        ALERT_TITLE_SIZE
+        TextStyle::Body
     } else {
-        ALERT_MESSAGE_SIZE
+        TextStyle::Small
     };
     v_flex()
         .w_full()
         .p(px(12.0))
         .gap(px(12.0))
         .surface(surface, cx)
+        .type_style(TextStyle::Body, cx)
         .child(
             h_flex()
                 .w_full()
                 .items_start()
                 .gap_2()
                 .child(
-                    h_flex()
-                        .flex_none()
-                        .h(px(ALERT_LINE))
-                        .child(icon.medium().relative().top(
-                            crate::components::icon::cap_center_drop(px(first_line), px(14.0), cx),
-                        )),
+                    h_flex().flex_none().h(first_line.line_height()).child(
+                        icon.medium()
+                            .relative()
+                            .top(crate::components::icon::cap_center_drop(
+                                px(first_line.design_px()),
+                                px(14.0),
+                                cx,
+                            )),
+                    ),
                 )
                 .child(
                     v_flex()
@@ -88,11 +90,10 @@ fn callout_on(
                         .min_w_0()
                         .gap_1()
                         .when_some(title, |column, title| {
-                            column.child(dialog_title().line_height(px(ALERT_LINE)).child(title))
+                            column.child(dialog_title(cx).child(title))
                         })
                         .child(
                             dialog_description(cx)
-                                .line_height(px(ALERT_LINE))
                                 .when(!titled, |message| message.text_color(cx.theme().foreground))
                                 .child(message),
                         ),
@@ -106,11 +107,11 @@ pub fn empty_state(title: Option<SharedString>, message: impl IntoElement, cx: &
         .items_center()
         .justify_center()
         .gap(px(EMPTY_STATE_GAP))
-        .text_size(rems_from_px(ALERT_MESSAGE_SIZE))
+        .type_style(TextStyle::Small, cx)
         .text_color(cx.theme().foreground.muted())
         .when_some(title, |state, title| {
             state.child(
-                dialog_title()
+                dialog_title(cx)
                     .text_color(cx.theme().foreground)
                     .child(title),
             )
