@@ -9,6 +9,7 @@ use core_video::{
     pixel_buffer_io_surface::CVPixelBufferCreateWithIOSurface,
     r#return::{CVReturn, kCVReturnSuccess},
 };
+use objc2_io_surface::IOSurfaceRef;
 use thiserror::Error;
 
 use crate::browser::screenshot::Screenshot;
@@ -113,7 +114,7 @@ fn create_pixel_buffer(io_surface: &MacIoSurface) -> Result<CVPixelBuffer, MacBr
     let status = unsafe {
         CVPixelBufferCreateWithIOSurface(
             kCFAllocatorDefault,
-            io_surface.as_ptr().cast(),
+            &*io_surface.as_ptr().cast::<IOSurfaceRef>(),
             null(),
             &raw mut pixel_buffer,
         )
