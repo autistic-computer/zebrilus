@@ -24,10 +24,10 @@ rust-version = "1.99"
 publish = false
 
 [workspace.dependencies]
-accesskit = { version = "0.24.0", features = ["enumn"] }
-accesskit_macos = "0.26.0"
-accesskit_unix = "0.22"
-accesskit_windows = "0.34"
+accesskit = { version = "0.25.2", features = ["enumn"] }
+accesskit_macos = "0.27.2"
+accesskit_unix = "0.24.1"
+accesskit_windows = "0.35.2"
 agent-client-protocol = "2.1.0"
 anyhow = "1.0.86"
 ashpd = { version = "0.13", default-features = false, features = [
@@ -100,7 +100,7 @@ js-sys = "0.3"
 libc = "0.2.189"
 libghostty-vt = { path = "third_party/rust/libghostty-vt", default-features = false }
 log = "0.4.34"
-mach2 = "0.5"
+mach2 = "0.7"
 memchr = "2.8.3"
 metal = "0.33"
 mimalloc = "0.1.52"
@@ -172,7 +172,7 @@ wgpu = "=30.0.1"
 which = "8"
 windows = "=0.62.2"
 windows-core = "0.62"
-windows-registry = "0.6.0"
+windows-registry = "0.100.0"
 x11rb = "0.13.2"
 zeroize = "=1.9.1"
 
