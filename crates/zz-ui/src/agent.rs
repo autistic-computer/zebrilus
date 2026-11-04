@@ -5207,17 +5207,17 @@ mod tests {
                 &theme.accent,
             ],
             [
-                "#ededed", "#1d1d1f", "#636365", "#636365", "#e4e4e4", "#e4e4e4", "#d5d5d5",
-                "#006fe8"
+                "#ededed", "#1d1d1f", "#58585a", "#58585a", "#e4e4e4", "#e4e4e4", "#d5d5d5",
+                "#0065dd"
             ]
         );
-        assert_eq!(theme.node.as_deref(), Some("#d1deed"));
-        assert_eq!(theme.node_border.as_deref(), Some("#6ba8ea"));
+        assert_eq!(theme.node.as_deref(), Some("#d1ddeb"));
+        assert_eq!(theme.node_border.as_deref(), Some("#6ba2e4"));
         assert_eq!(
             theme.series,
             [
-                "#006fe8", "#0f8d37", "#af5c08", "#da0c21", "#a83fba", "#0c858d", "#84770a",
-                "#c72b7e"
+                "#0065dd", "#12832c", "#a85001", "#cb091e", "#9f35af", "#0e7b82", "#7d6d08",
+                "#714cd5"
             ]
         );
     }
