@@ -1098,7 +1098,7 @@ fn display_path(path: &str, cwd: &Path) -> String {
 
 #[cfg(test)]
 mod tests {
-    use agent_client_protocol::schema::v1::SessionUpdate;
+    use agent_client_protocol::v1::schema::SessionUpdate;
 
     use super::*;
 

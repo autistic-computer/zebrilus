@@ -158,11 +158,11 @@ mod tests {
     fn catalog_reads_the_advertised_options_over_acp() {
         use agent_client_protocol::{
             Agent,
-            schema::v1::{
+            v1::schema::{
                 InitializeRequest, InitializeResponse, NewSessionRequest, NewSessionResponse,
             },
         };
-        let agent = Agent.builder()
+        let agent = Agent.v1()
             .on_receive_request(async |initialize: InitializeRequest, responder, _| {
                 responder.respond(InitializeResponse::new(initialize.protocol_version))
             }, agent_client_protocol::on_receive_request!())

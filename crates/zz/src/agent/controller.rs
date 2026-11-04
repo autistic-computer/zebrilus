@@ -4,7 +4,7 @@ use std::{
     sync::Arc,
 };
 
-use agent_client_protocol::schema::v1::{
+use agent_client_protocol::v1::schema::{
     PermissionOption, SessionUpdate, StopReason, ToolCallUpdate,
 };
 use ala::{App, Context, Entity, Image, ImageFormat, Task};
@@ -1233,7 +1233,7 @@ fn split_inline_images(text: &str) -> (String, Vec<Arc<Image>>) {
 
 #[cfg(test)]
 mod tests {
-    use agent_client_protocol::schema::v1::{
+    use agent_client_protocol::v1::schema::{
         AvailableCommand, AvailableCommandInput, AvailableCommandsUpdate, ContentBlock,
         ContentChunk, Diff, ImageContent, MessageId, PermissionOptionKind, Plan, PlanEntry,
         PlanEntryPriority, PlanEntryStatus, Terminal, TextContent, ToolCall, ToolCallContent,
@@ -1297,7 +1297,7 @@ mod tests {
             AvailableCommandsUpdate::new(vec![
                 AvailableCommand::new("review", "Review changes").input(
                     AvailableCommandInput::Unstructured(
-                        agent_client_protocol::schema::v1::UnstructuredCommandInput::new(
+                        agent_client_protocol::v1::schema::UnstructuredCommandInput::new(
                             "optional instructions",
                         ),
                     ),

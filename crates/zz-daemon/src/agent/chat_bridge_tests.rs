@@ -546,7 +546,7 @@ fn prompt_images_reach_the_user_item() {
 
 #[test]
 fn a_chat_mode_prompt_shows_its_pasted_images_and_sends_them_once() {
-    use agent_client_protocol::schema::v1::MessageId;
+    use agent_client_protocol::v1::schema::MessageId;
     use zz_protocol::ClientInstanceId;
 
     use super::chat_bridge::without_images;

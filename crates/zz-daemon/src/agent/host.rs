@@ -1522,7 +1522,7 @@ impl PanePump {
         }
         let question = serde_json::from_value(permission.options.clone()).map_or(
             true,
-            |options: Vec<agent_client_protocol::schema::v1::PermissionOption>| {
+            |options: Vec<agent_client_protocol::v1::schema::PermissionOption>| {
                 crate::agent::runtime::is_user_question(&options)
             },
         );
@@ -1847,7 +1847,7 @@ fn settle_turn(state: &mut AgentPaneState) {
 
 #[cfg(test)]
 mod tests {
-    use agent_client_protocol::schema::v1::{
+    use agent_client_protocol::v1::schema::{
         ContentBlock, ContentChunk, MessageId, SessionUpdate, TextContent, ToolKind,
     };
 

@@ -28,7 +28,7 @@ accesskit = { version = "0.25.2", features = ["enumn"] }
 accesskit_macos = "0.27.2"
 accesskit_unix = "0.24.1"
 accesskit_windows = "0.35.2"
-agent-client-protocol = "2.1.0"
+agent-client-protocol = { version = "5.0.0", features = ["process"] }
 anyhow = "1.0.86"
 ashpd = { version = "0.13", default-features = false, features = [
     "async-io",

@@ -14,7 +14,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use agent_client_protocol::schema::v1::{MessageId, ToolKind};
+use agent_client_protocol::v1::schema::{MessageId, ToolKind};
 use async_channel::Sender;
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use parking_lot::Mutex;
@@ -2817,7 +2817,7 @@ mod tests {
         }));
         assert_eq!(settings.mode.as_deref(), Some("read-only"));
         let options = settings.config_options();
-        serde_json::from_value::<Vec<agent_client_protocol::schema::v1::SessionConfigOption>>(
+        serde_json::from_value::<Vec<agent_client_protocol::v1::schema::SessionConfigOption>>(
             options.clone(),
         )
         .expect("ACP config options");

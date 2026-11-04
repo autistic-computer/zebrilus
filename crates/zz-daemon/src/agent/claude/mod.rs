@@ -12,7 +12,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use agent_client_protocol::schema::v1::{MessageId, ToolKind};
+use agent_client_protocol::v1::schema::{MessageId, ToolKind};
 use async_channel::Sender;
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use parking_lot::Mutex;
@@ -2349,7 +2349,7 @@ mod tests {
             .collect::<Vec<_>>();
         assert_eq!(ids, ["model", "mode", "effort"]);
         let parsed = serde_json::from_value::<
-            Vec<agent_client_protocol::schema::v1::SessionConfigOption>,
+            Vec<agent_client_protocol::v1::schema::SessionConfigOption>,
         >(options.clone())
         .expect("ACP config options");
         assert_eq!(parsed.len(), 3);
@@ -2362,7 +2362,7 @@ mod tests {
         );
         settings.model = "haiku".to_owned();
         assert_eq!(settings.config_options().as_array().map(Vec::len), Some(2));
-        serde_json::from_value::<agent_client_protocol::schema::v1::SessionModeState>(
+        serde_json::from_value::<agent_client_protocol::v1::schema::SessionModeState>(
             settings.mode_state(),
         )
         .expect("ACP mode state");
@@ -2516,12 +2516,12 @@ while read -r line; do :; done
                 panic!("expected a permission request");
             };
             let tool_call = serde_json::from_value::<
-                agent_client_protocol::schema::v1::ToolCallUpdate,
+                agent_client_protocol::v1::schema::ToolCallUpdate,
             >(tool_call)
             .expect("clients decode the tool call");
             assert_eq!(tool_call.tool_call_id.0.as_ref(), "t1");
             let options = serde_json::from_value::<
-                Vec<agent_client_protocol::schema::v1::PermissionOption>,
+                Vec<agent_client_protocol::v1::schema::PermissionOption>,
             >(options)
             .expect("clients decode the options");
             assert_eq!(options[0].option_id.0.as_ref(), "allow");

@@ -4,16 +4,20 @@ use std::sync::{
 };
 
 use agent_client_protocol::{
-    Agent, Client as AcpClientRole, ConnectTo, ConnectionTo,
-    schema::v1::{
-        AgentCapabilities, CancelRequestNotification, ContentBlock, ContentChunk,
-        InitializeRequest, InitializeResponse, LoadSessionRequest, LoadSessionResponse,
-        NewSessionRequest, NewSessionResponse, PermissionOption, PermissionOptionId,
-        PermissionOptionKind, PromptRequest, PromptResponse, RequestPermissionRequest,
-        SessionNotification, SessionUpdate, StopReason, TextContent, ToolCallStatus,
-        ToolCallUpdate, ToolCallUpdateFields, ToolKind,
+    Agent, Client as AcpClientRole, ConnectTo,
+    v1::{
+        ConnectionTo,
+        schema::{
+            AgentCapabilities, CancelRequestNotification, ContentBlock, ContentChunk,
+            InitializeRequest, InitializeResponse, LoadSessionRequest, LoadSessionResponse,
+            NewSessionRequest, NewSessionResponse, PermissionOption, PermissionOptionId,
+            PermissionOptionKind, PromptRequest, PromptResponse, RequestPermissionRequest,
+            SessionNotification, SessionUpdate, StopReason, TextContent, ToolCallStatus,
+            ToolCallUpdate, ToolCallUpdateFields, ToolKind,
+        },
     },
 };
+use parking_lot::Mutex;
 use zz_protocol::{AgentAutoApprove, AgentProvider};
 
 use crate::agent::{
@@ -64,8 +68,9 @@ pub(crate) fn fixture_runner(
 pub(crate) fn fixture_agent(behavior: Behavior, load: bool) -> impl ConnectTo<AcpClientRole> {
     let prompts = Arc::new(AtomicUsize::new(0));
     let sessions = AtomicUsize::new(0);
+    let hung = Mutex::new(Vec::new());
     Agent
-        .builder()
+        .v1()
         .on_receive_notification(
             async move |_: CancelRequestNotification, _| Ok(()),
             agent_client_protocol::on_receive_notification!(),
@@ -138,7 +143,10 @@ pub(crate) fn fixture_agent(behavior: Behavior, load: bool) -> impl ConnectTo<Ac
                     Behavior::Chunk | Behavior::Echo | Behavior::FailFirst => {
                         responder.respond(PromptResponse::new(StopReason::EndTurn))
                     }
-                    Behavior::Hang => Ok(()),
+                    Behavior::Hang => {
+                        hung.lock().push(responder);
+                        Ok(())
+                    }
                     Behavior::AskPermission | Behavior::AskKindedPermission(_) => {
                         let tool = ToolCallUpdate::new(
                             "tool-1",

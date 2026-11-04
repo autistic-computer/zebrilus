@@ -10,7 +10,7 @@ publish = false
 [dependencies]
 url.workspace = true
 thiserror.workspace = true
-agent-client-protocol-schema = "1.7.0"
+agent-client-protocol-schema = "1.15.1"
 base64.workspace = true
 foldhash.workspace = true
 neo_frizbee = "=0.13.3"

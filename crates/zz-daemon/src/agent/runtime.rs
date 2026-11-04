@@ -11,10 +11,11 @@ use std::{
 };
 
 use agent_client_protocol::{
-    AcpAgent, Agent, Client as AcpClientRole, ConnectTo, ConnectionTo, LineDirection, Responder,
-    schema::{
-        ProtocolVersion,
-        v1::{
+    AcpAgent, Agent, Client as AcpClientRole, ConnectTo, LineDirection,
+    schema::ProtocolVersion,
+    v1::{
+        ConnectionTo, Responder,
+        schema::{
             AgentNotification, AuthMethod, AuthenticateRequest, CancelNotification,
             ClientCapabilities, ClientSessionCapabilities, CloseSessionRequest, ContentBlock,
             ContentChunk, DeleteSessionRequest, ImageContent, Implementation, InitializeRequest,
@@ -611,7 +612,7 @@ pub(crate) async fn run_agent_connection(
     let permission_events = event_tx.clone();
 
     agent_client_protocol::Client
-        .builder()
+        .v1()
         .on_receive_notification(
             async move |notification: AgentNotification, _| {
                 match notification {
@@ -1876,7 +1877,7 @@ fn truncate_payload(text: &mut String, max_bytes: usize) {
 
 #[cfg(test)]
 mod tests {
-    use agent_client_protocol::schema::v1::{PermissionOptionId, PermissionOptionKind};
+    use agent_client_protocol::v1::schema::{PermissionOptionId, PermissionOptionKind};
 
     use super::*;
     use crate::agent::stream::AgentImage;

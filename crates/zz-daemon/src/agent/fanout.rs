@@ -8,7 +8,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use agent_client_protocol::schema::v1::SessionUpdate;
+use agent_client_protocol::v1::schema::SessionUpdate;
 use parking_lot::{Condvar, Mutex};
 use serde_json::Value;
 use zz_protocol::chat::{ChatEvent, ChatLog};
@@ -1975,7 +1975,7 @@ mod tests {
         });
         fixture.accept(AgentStreamPayload::Update {
             update: serde_json::to_value(SessionUpdate::CurrentModeUpdate(
-                agent_client_protocol::schema::v1::CurrentModeUpdate::new("ask"),
+                agent_client_protocol::v1::schema::CurrentModeUpdate::new("ask"),
             ))
             .expect("encode mode update"),
         });
@@ -2028,7 +2028,7 @@ mod tests {
 
     #[test]
     fn journal_replay_restores_raw_config_option_updates() {
-        use agent_client_protocol::schema::v1::{ConfigOptionUpdate, SessionConfigOption};
+        use agent_client_protocol::v1::schema::{ConfigOptionUpdate, SessionConfigOption};
 
         let directory = tempfile::tempdir().expect("journal directory");
         let journal = Arc::new(AgentJournal::open(directory.path()).expect("open journal"));
