@@ -3,10 +3,10 @@
   display: inline-flex;
   flex: none;
   align-items: center;
-  gap: 6px;
+  gap: var(--penna-space-6);
   box-sizing: border-box;
-  height: 32px;
-  padding: 0 10px;
+  height: var(--penna-control-lg);
+  padding: 0 var(--penna-space-10);
   font-size: var(--penna-text-small-size);
   font-weight: var(--penna-text-small-weight);
   line-height: var(--penna-text-small-line);
@@ -68,7 +68,7 @@
 }
 
 .penna-title-tab[data-penna] {
-  padding: 0 8px;
+  padding: 0 var(--penna-space-8);
   gap: 0;
 }
 
@@ -76,7 +76,7 @@
   display: flex;
   align-items: center;
   height: 36px;
-  padding: 0 8px;
+  padding: 0 var(--penna-space-8);
   --pane-muted: var(--penna-muted);
 }
 

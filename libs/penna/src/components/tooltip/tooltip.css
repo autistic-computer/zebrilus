@@ -3,10 +3,10 @@
   flex: none;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: var(--penna-space-12);
   box-sizing: border-box;
-  margin: 12px;
-  padding: 2px 8px;
+  margin: var(--penna-space-12);
+  padding: var(--penna-space-2) var(--penna-space-8);
   font-family: var(--penna-font);
   font-size: var(--penna-text-small-size);
   font-weight: var(--penna-text-small-weight);

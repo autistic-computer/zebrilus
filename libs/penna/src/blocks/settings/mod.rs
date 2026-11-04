@@ -25,8 +25,6 @@ use ala::{
 
 type EntryClick = Rc<dyn Fn(&ala::ClickEvent, &mut Window, &mut App)>;
 
-pub const SETTINGS_NAVIGATION_ROW_HEIGHT: f32 = 32.0;
-
 pub fn settings_navigation_button(
     id: impl Into<ElementId>,
     title: impl Into<SharedString>,
@@ -45,7 +43,7 @@ pub fn settings_navigation_row(button: Button) -> ala::Div {
     div()
         .flex()
         .flex_none()
-        .h(px(SETTINGS_NAVIGATION_ROW_HEIGHT))
+        .h(crate::Size::Large.control_h())
         .items_center()
         .child(button)
 }
@@ -537,16 +535,14 @@ impl RenderOnce for SettingsDisclosure {
             .theme()
             .layer(Surface::new(roles::SETTINGS_CARD), PaintState::Rest)
             .radius;
-        let inset = Space::S6.rems();
-        div()
+        let bleed = Space::S6.rems();
+        let hit = div()
             .author_id(self.id)
             .role(Role::Button)
             .aria_expanded(self.expanded)
             .relative()
-            .mt(Space::S8.rems() - inset)
-            .mb(-inset)
-            .mx(-inset)
-            .p(inset)
+            .m(-bleed)
+            .p(bleed)
             .flex()
             .items_start()
             .gap(Space::S2)
@@ -590,7 +586,8 @@ impl RenderOnce for SettingsDisclosure {
             .child(settings_group_header(self.title.into(), cx))
             .when_some(self.on_click, |this, on_click| {
                 this.on_click(move |event, window, cx| on_click(event, window, cx))
-            })
+            });
+        div().flex().flex_col().pt(Space::S8).child(hit)
     }
 }
 

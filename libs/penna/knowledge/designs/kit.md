@@ -17,7 +17,7 @@ timestamp: 2026-11-02T00:00:00Z
 ## Layers
 
 - **ala** draws elements: div, text shaping, images, canvas, lists, focus, actions, drag.
-- **penna foundation** holds the tokens (`Space`, `TextStyle`), the paint model (`Tone`, `Emphasis`, `Paint`, `Ground`), surface roles and the three themes.
+- **penna foundation** holds the tokens (`Space`, `TextStyle`, and `Size` with `Density`), the layout primitives (`stack`, `inline`, `inset`, `split`, `center`, `tiles`), the paint model (`Tone`, `Emphasis`, `Paint`, `Ground`), surface roles and the three themes.
 - **penna components** put those together: `Label`, `Button`, `Badge`, `Popover` and the rest.
 
 There is no separate behavior layer. ala's stateful elements already give hover, press, focus and keyboard activation, and penna already shares press feedback (`blocks/touch/press.rs`) and swipe dismissal (`foundation/dismissal.rs`). A piece of behavior moves into a shared module only when a second component needs it.
@@ -33,7 +33,7 @@ There is no separate behavior layer. ala's stateful elements already give hover,
 
 ## Tokens
 
-Both scales are fixed. A theme changes fonts, materials and recipes, not the scale. Values are in rems, so the interface font size (the root rem, from the theme's `font_size`) scales them; window zoom is applied separately and never twice.
+Both scales are fixed. A theme changes fonts, materials and recipes, not the scale. Values are in rems, so the interface font size (the root rem, from the theme's `font_size`) scales them; window zoom is applied separately and never twice. `Size` is the control ladder, and only its default rung moves: `Size::Medium` and the rows follow the `Density` setting. The ladder, density and the layout primitives that place things with these tokens are specified in `knowledge/designs/foundations.md`.
 
 `Space` converts into a length, so it goes straight into ala's setters: `h_flex().gap(Space::GAP_RELATED).p(Space::INSET_CARD)`. A variant's number is its pixel value (`Space::S8` is 8px); the gap and inset constants and the rules for picking them are in `knowledge/designs/foundations.md`.
 
@@ -83,7 +83,7 @@ How they behave:
 
 - Panel, Card, Bar, Tab, Row, Chip and Tile share one crate-private plate, a `Stateful<Div>` that paints the look first, so the caller's `Styled` calls land on top: a slide-over's `.rounded(px(0.0))`, a mini tile's `.bg`, a drop zone's corners. Tile painted after the caller before; it now paints first like the rest.
 - Tab and Row are interactive by default, Chip with `.interactive(true)`: they add the hover and active looks while the state is Rest or Focused, and `.interactive(false)` paints the state alone. A caller's own `.hover()` and `.active()` land on top of the look's, as its other styles do.
-- `Row::row_height(height)` sizes the corners for a row that tall, as `ListItem` does at 28px by default; it does not set the height. Without it a Row keeps its look's corners. With `.hover_group(group)` a Row is a fill inside a taller row that lights when the group is pointed at, and on a coarse pointer it draws penna's press highlight under its children. `.press_highlight(true)` draws that press highlight with no hover group, for a fill whose state the app drives and that paints it with `.interactive(false)`. `Row::radius(px)` sets a round look's corner radius on the fill and its press highlight both; square and pill looks keep their corners, and so does a look whose shape the theme sets.
+- `Row::row_height(height)` sizes the corners for a row that tall, as `ListItem` does at the medium control height by default (`Size::Medium.control_px()`, which follows density); it does not set the height, where `ListItem::row_height` sets the minimum height too. Without it a Row keeps its look's corners. With `.hover_group(group)` a Row is a fill inside a taller row that lights when the group is pointed at, and on a coarse pointer it draws penna's press highlight under its children. `.press_highlight(true)` draws that press highlight with no hover group, for a fill whose state the app drives and that paints it with `.interactive(false)`. `Row::radius(px)` sets a round look's corner radius on the fill and its press highlight both; square and pill looks keep their corners, and so does a look whose shape the theme sets.
 - `Chip::new(id, label)` takes an id; `Chip::empty(id)` draws only its children, which always follow the label. `.ring(color)` recolors the ring its look draws, for a colour tmux names.
 - A row role draws at most smoothing 2.5, whatever the theme's smoothing, and a full radius draws as a plain round (smoothing 2), as ala's shader does. `Layer::smoothing` holds that value, every row (`MenuItem`, `ListItem`, a `Row` with or without `row_height`, press highlights) draws it, and the tokens export it as `--penna-k`, so menus moved from 4 to 2.5 on the default and macOS themes.
 - `Root` sets the window's default corner smoothing from the theme on every render, so quads no role paints (checkbox marks, plain divs in app content) follow the theme too: plain round corners on Yaru.

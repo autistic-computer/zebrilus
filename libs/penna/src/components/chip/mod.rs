@@ -292,11 +292,7 @@ impl RenderOnce for Chip {
 }
 
 fn metrics(size: Size) -> (Space, Space, f32) {
-    match size.rung() {
-        Size::XSmall => (Space::S8, Space::S6, 12.0),
-        Size::Small => (Space::S10, Space::S6, 13.0),
-        rung => (rung.inset(), rung.icon_gap(), rung.icon_px()),
-    }
+    (size.inset(), size.icon_gap(), size.icon_px())
 }
 
 #[derive(IntoElement)]

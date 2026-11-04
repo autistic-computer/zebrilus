@@ -4,7 +4,7 @@ use ala::{
     Subscription, Window, div, point, px,
 };
 use penna::{
-    ActiveTheme as _, Colorize as _, ScrollbarShow, StyledExt as _, TextStyle,
+    ActiveTheme as _, Colorize as _, ScrollbarShow, Space, StyledExt as _, TextStyle,
     components::scroll::{GUTTER_WIDTH, MIN_THUMB_SIZE, Scrollbar, ScrollbarAxis},
     v_flex,
 };
@@ -41,8 +41,8 @@ fn lines(cx: &App) -> impl IntoElement {
     v_flex()
         .flex_none()
         .w(px(620.0))
-        .p_2()
-        .gap_1()
+        .p(Space::S8)
+        .gap(Space::S4)
         .type_style(TextStyle::Lead, cx)
         .font_family(cx.theme().mono_font_family.clone())
         .children((1..=ROWS).map(move |line| {

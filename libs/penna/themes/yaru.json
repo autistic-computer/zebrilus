@@ -136,8 +136,8 @@
     "background": "#2c2c2cff",
     "foreground": "#f7f7f7ff",
     "accent": "#f86231ff",
-    "success": "#3fa745ff",
+    "success": "#3faa47ff",
     "warning": "#f99b11ff",
-    "danger": "#ff585aff"
+    "danger": "#ff5c5eff"
   }
 }

@@ -1,15 +1,16 @@
 use ala::{
     AnyElement, App, IntoElement, ParentElement as _, RenderOnce, SharedString, StyleRefinement,
-    Styled, Window, div, prelude::FluentBuilder as _, px,
+    Styled, Window, prelude::FluentBuilder as _, px,
 };
 
 use crate::{
     ActiveTheme as _, Ground, Icon, IconName, Label, Sizable as _, Space, StyledExt as _, Surface,
-    SurfaceRole, TextStyle, Tone, components::chip, h_flex, v_flex,
+    SurfaceRole, TextStyle, Tone,
+    components::{chip, icon::cap_center_drop},
+    h_flex, stack, v_flex,
 };
 
 const ICON: f32 = 16.0;
-const ICON_DROP: f32 = 1.0;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum Lead {
@@ -108,55 +109,57 @@ impl Styled for Notice {
 impl RenderOnce for Notice {
     fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
         let ground = Self::ground(self.tone, cx);
+        let first_line = match self.layout {
+            Layout::Inline => TextStyle::Body,
+            Layout::Stacked => TextStyle::Lead,
+        };
         let lead = match self.lead {
-            Lead::Icon(icon) => div()
+            Lead::Icon(icon) => h_flex()
                 .flex_none()
-                .pt(px(ICON_DROP))
+                .h(first_line.line_height())
                 .child(
                     Icon::new(icon)
                         .with_size(px(ICON))
-                        .text_color(cx.theme().tone(self.tone)),
+                        .text_color(cx.theme().tone(self.tone))
+                        .relative()
+                        .top(cap_center_drop(px(first_line.design_px()), px(ICON), cx)),
                 )
                 .into_any_element(),
             Lead::Dot(tone) => chip::dot(tone, ground, cx).into_any_element(),
         };
+        let title = Label::new(first_line, self.title).font_semibold();
         let detail = self
             .detail
             .map(|detail| Label::new(TextStyle::Small, detail).muted().on(ground));
         let notice = match self.layout {
             Layout::Inline => h_flex()
                 .items_start()
-                .gap(Space::S10)
-                .px(Space::S12)
-                .py(Space::S10)
+                .gap(Space::GAP_RELATED)
                 .child(lead)
                 .child(
                     v_flex()
                         .flex_1()
                         .min_w_0()
-                        .gap(Space::S2)
-                        .child(Label::new(TextStyle::Body, self.title).strong())
+                        .gap(Space::GAP_TIGHT)
+                        .child(title)
                         .children(detail),
                 )
                 .children(self.action),
-            Layout::Stacked => v_flex()
-                .gap(Space::S4)
-                .px(Space::S12)
-                .py(Space::S10)
+            Layout::Stacked => stack(Space::GAP_RELATED)
                 .child(
-                    h_flex()
-                        .gap(Space::S8)
-                        .child(lead)
-                        .child(Label::new(TextStyle::Lead, self.title).strong()),
+                    stack(Space::GAP_TIGHT)
+                        .child(h_flex().gap(Space::GAP_RELATED).child(lead).child(title))
+                        .children(detail),
                 )
-                .children(detail)
                 .when_some(self.action, |notice, action| {
-                    notice.child(h_flex().pt(Space::S6).child(action))
+                    notice.child(h_flex().child(action))
                 }),
         };
         notice
             .w_full()
+            .p(Space::INSET_CARD)
             .surface(surface(self.tone), cx)
+            .type_style(TextStyle::Body, cx)
             .refine_style(&self.refinement)
     }
 }

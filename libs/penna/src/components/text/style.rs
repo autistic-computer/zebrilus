@@ -6,6 +6,8 @@ use ala::{Rems, StyleRefinement};
 
 use crate::{Space, TextStyle, foundation::highlighter::HighlightTheme};
 
+pub const READING_MEASURE: f32 = 640.0;
+
 #[derive(Clone)]
 pub struct TextViewStyle {
     pub text: Option<TextStyle>,

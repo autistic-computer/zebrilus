@@ -3,7 +3,7 @@ use ala::{
     div,
 };
 use penna::{
-    ActiveTheme as _, Colorize as _, Icon, IconName, StyledExt as _, TitleBar,
+    ActiveTheme as _, Colorize as _, Icon, IconName, Space, StyledExt as _, TitleBar,
     components::button::{Button, ButtonVariants as _},
     h_flex,
 };
@@ -33,18 +33,18 @@ fn bars(_: &mut Window, cx: &mut App) -> AnyElement {
                 TitleBar::new().child(
                     h_flex()
                         .w_full()
-                        .pr_2()
+                        .pr(Space::S8)
                         .justify_between()
                         .child(
                             h_flex()
-                                .gap_2()
+                                .gap(Space::S8)
                                 .child(Icon::empty().path(crate::catalog().logo).medium())
                                 .child(div().font_semibold().child("work"))
                                 .child(div().text_color(muted).child("~/dev/app")),
                         )
                         .child(
                             h_flex()
-                                .gap_1()
+                                .gap(Space::S4)
                                 .child(
                                     Button::new("bar-split")
                                         .icon(IconName::PanelRight)

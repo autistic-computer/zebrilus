@@ -77,7 +77,10 @@ impl RenderOnce for Check {
     fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
         let side = match self.size {
             Size::Size(size) => f32::from(size),
-            size => size.control_text().line_height_px() - 2.0,
+            size => match size.rung() {
+                Size::XSmall | Size::Small => 14.0,
+                _ => 16.0,
+            },
         };
         let theme = cx.theme();
         let ground = self.on.unwrap_or_else(|| theme.ground());

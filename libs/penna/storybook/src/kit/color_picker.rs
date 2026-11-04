@@ -3,7 +3,7 @@ use ala::{
     ParentElement as _, Render, SharedString, Styled as _, Subscription, Window, div, px,
 };
 use penna::{
-    ActiveTheme as _, Colorize as _, Disableable as _, Sizable as _, Size, StyledExt as _,
+    ActiveTheme as _, Colorize as _, Disableable as _, Sizable as _, Size, Space, StyledExt as _,
     TextStyle,
     blocks::color_picker::{ColorPicker, ColorPickerState},
     h_flex, parse_hex,
@@ -124,7 +124,7 @@ impl Render for Pickers {
                     cx,
                 ),
             )
-            .state("small, medium", h_flex().gap_3().children(sized))
+            .state("small, medium", h_flex().gap(Space::S12).children(sized))
             .state(
                 "bare swatch",
                 ColorPicker::new(&self.swatch, inherited)

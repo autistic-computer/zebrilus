@@ -2,7 +2,7 @@ html, body { height: 100%; margin: 0; }
 body { overflow: hidden; }
 a.penna-button { text-decoration: none; }
 a.penna-docs-brand { color: inherit; text-decoration: none; }
-.penna-docs-page > .penna-docs-example { margin-bottom: 24px; }
+.penna-docs-page > .penna-docs-example { margin-block: 24px; }
 .penna-docs-page h2[id] { scroll-margin-top: 24px; }
 .penna-docs-header .penna-button[data-docs-menu] { display: none; }
 @media (max-width: 760px) {
@@ -46,4 +46,8 @@ a.penna-docs-brand { color: inherit; text-decoration: none; }
 
 @media (max-width: 760px) {
   .docs-compare { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (min-width: 1000px) {
+  .penna-docs-page > .penna-docs-example[data-penna] { width: calc(100% + 56px); margin-inline: -28px; }
 }

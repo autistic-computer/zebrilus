@@ -3,12 +3,12 @@
   display: flex;
   flex: none;
   align-items: center;
-  gap: 8px;
+  gap: var(--penna-space-8);
   box-sizing: border-box;
   width: 200px;
   height: 32px;
   margin: 0;
-  padding: 0 12px;
+  padding: 0 var(--penna-space-12);
   font-size: var(--penna-text-small-size);
   line-height: var(--penna-text-small-line);
   white-space: nowrap;
@@ -42,10 +42,10 @@
 
 .penna-row-fill[data-penna] {
   position: absolute;
-  top: 2px;
-  bottom: 2px;
-  left: 4px;
-  right: 4px;
+  top: var(--penna-space-2);
+  bottom: var(--penna-space-2);
+  left: var(--penna-space-4);
+  right: var(--penna-space-4);
   height: auto;
   margin: 0;
   padding: 0;

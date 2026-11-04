@@ -6,7 +6,7 @@ use ala::{
     Role, Styled as _, Window, div, px, uniform_list,
 };
 use penna::{
-    ActiveTheme as _, Colorize as _, Icon, IconName, RowLook, StyledExt as _, Surface,
+    ActiveTheme as _, Colorize as _, Icon, IconName, RowLook, Space, StyledExt as _, Surface,
     blocks::settings::{NavSection, settings_navigation},
     blocks::sidebar::SIDEBAR_DEFAULT_WIDTH,
     components::list::ListItem,
@@ -131,7 +131,7 @@ fn tree(id: &'static str, active_row: Option<usize>, cx: &App) -> AnyElement {
                     .pl(px(ROW_INSET + INDENT * f32::from(*depth)))
                     .child(
                         h_flex()
-                            .gap_2()
+                            .gap(Space::S8)
                             .child(Icon::new(icon.clone()).medium().text_color(muted))
                             .child(*label),
                     )

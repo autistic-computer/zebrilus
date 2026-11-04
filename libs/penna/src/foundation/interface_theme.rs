@@ -1188,20 +1188,24 @@ mod tests {
     }
 
     #[test]
-    fn every_named_accent_reads_at_any_tint() {
+    fn every_named_accent_reads_in_every_theme_at_any_tint() {
         let names = ACCENT_COLORS.map(|(name, ..)| name);
         assert_eq!(names, ACCENTS);
-        for hue in (0..360).step_by(30) {
-            for accent in ACCENTS {
-                let mut theme = default_theme().clone();
-                ThemeOverrides {
-                    accent: Some(accent.to_owned()),
-                    tint: Some(1.0),
-                    tint_hue: Some(hue as f32),
-                    ..ThemeOverrides::default()
+        for (id, builtin) in builtin_themes() {
+            for tint in [0.0, 0.25, 0.5, 1.0] {
+                for hue in (0..360).step_by(30) {
+                    for accent in ACCENTS {
+                        let mut theme = builtin.clone();
+                        ThemeOverrides {
+                            accent: Some(accent.to_owned()),
+                            tint: Some(tint),
+                            tint_hue: Some(hue as f32),
+                            ..ThemeOverrides::default()
+                        }
+                        .apply_to(&mut theme);
+                        assert_reads(&format!("{id} {accent} at tint {tint} hue {hue}"), &theme);
+                    }
                 }
-                .apply_to(&mut theme);
-                assert_reads(&format!("{accent} at hue {hue}"), &theme);
             }
         }
     }

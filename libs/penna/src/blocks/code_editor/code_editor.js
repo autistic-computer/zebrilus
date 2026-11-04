@@ -3,7 +3,7 @@ const KEYWORDS = new Set("as async await break const continue crate dyn else enu
 const PRIMITIVES = new Set("str bool char u8 u16 u32 u64 u128 usize i8 i16 i32 i64 i128 isize f32 f64".split(" "));
 const CURSOR_WIDTH = 2;
 const NEWLINE_SELECTION_WIDTH = 4;
-const GUTTER_PADDING = 5;
+const GUTTER_PADDING = 4;
 const TAB = 4;
 
 function rustTokens(text) {

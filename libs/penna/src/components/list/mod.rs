@@ -3,14 +3,14 @@ use ala::{
     AnyElement, App, ClickEvent, Div, ElementId, InteractiveElement as _, IntoElement, MouseButton,
     MouseDownEvent, MouseMoveEvent, ParentElement, Pixels, RenderOnce, Role, Stateful,
     StatefulInteractiveElement as _, StyleRefinement, Styled, Window, div,
-    prelude::FluentBuilder as _, px,
+    prelude::FluentBuilder as _,
 };
 
 use crate::{
     ActiveTheme as _, AuthoredElement as _, Disableable, PaintState, RowLook, Selectable, Size,
     StyledExt as _, Surface, SurfaceRole, TextStyle,
     foundation::{restyle, row_corners, row_state},
-    h_flex,
+    h_flex, rems_from_px,
 };
 
 type ClickHandler = Box<dyn Fn(&ClickEvent, &mut Window, &mut App) + 'static>;
@@ -24,7 +24,7 @@ pub struct ListItem {
     disabled: bool,
     selected: bool,
     surface_role: Option<SurfaceRole>,
-    row_height: Pixels,
+    row_height: Option<Pixels>,
     on_click: Option<ClickHandler>,
     on_mouse_down: Vec<(MouseButton, MouseDownHandler)>,
     on_mouse_enter: Option<MouseMoveHandler>,
@@ -40,7 +40,7 @@ impl ListItem {
             disabled: false,
             selected: false,
             surface_role: None,
-            row_height: px(Size::Medium.control_px()),
+            row_height: None,
             on_click: None,
             on_mouse_down: Vec::new(),
             on_mouse_enter: None,
@@ -73,7 +73,7 @@ impl ListItem {
 
     #[must_use]
     pub fn row_height(mut self, height: Pixels) -> Self {
-        self.row_height = height;
+        self.row_height = Some(height);
         self
     }
 
@@ -137,7 +137,7 @@ impl ParentElement for ListItem {
 }
 
 impl RenderOnce for ListItem {
-    fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
+    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let Self {
             base,
             style,
@@ -151,6 +151,9 @@ impl RenderOnce for ListItem {
             children,
         } = self;
 
+        let row_height = row_height.unwrap_or_else(|| {
+            rems_from_px(Size::Medium.control_px()).to_pixels(window.rem_size())
+        });
         let theme = cx.theme();
         let surface = Surface::new(surface_role.unwrap_or(SurfaceRole::MENU_ITEM));
         let state = row_state(selected, !disabled);
@@ -162,7 +165,7 @@ impl RenderOnce for ListItem {
             .relative()
             .justify_between()
             .gap_x(Space::S4)
-            .py(Space::S4)
+            .min_h(row_height)
             .px(Space::S12)
             .type_style(TextStyle::Lead, cx)
             .layer(&layer)

@@ -964,7 +964,9 @@ impl CodeBlock {
                     .pb(Space::INSET_CARD)
                     .map(|this| {
                         if actions.is_some() {
-                            this.pt(px(44.0))
+                            this.pt(crate::rems_from_px(
+                                2.0 * Space::S8.design_px() + crate::Size::Medium.control_px(),
+                            ))
                         } else {
                             this.pt(Space::INSET_CARD)
                         }
@@ -1970,7 +1972,9 @@ impl BlockNode {
     }
 }
 
-const CELL_PAD_PX: f32 = Space::S8.design_px() * 2.0;
+fn cell_pad(window: &Window) -> f32 {
+    2.0 * f32::from(Space::S8.rems().to_pixels(window.rem_size()))
+}
 const CELL_MIN_PX: f32 = 48.0;
 const CELL_MAX_PX: f32 = 480.0;
 const WRAP_CELL_MAX_PX: f32 = 1200.0;
@@ -1984,6 +1988,7 @@ fn measure_table_columns(
     let text_style = window.text_style();
     let font_size = text_style.font_size.to_pixels(window.rem_size());
     let mono = &cx.theme().mono_font_family;
+    let pad = cell_pad(window);
     let mut col_w = vec![CELL_MIN_PX; col_count];
     for row in table.children.iter() {
         for (ix, cell) in row.children.iter().enumerate() {
@@ -2007,7 +2012,7 @@ fn measure_table_columns(
                     .width;
                 w = w.max(f32::from(line_w));
             }
-            *slot = slot.max(w + CELL_PAD_PX);
+            *slot = slot.max(w + pad);
         }
     }
     col_w
@@ -2124,8 +2129,13 @@ mod tests {
             panic!("expected table");
         };
         let cx = cx.add_empty_window();
-        let widths = cx.update(|window, cx| measure_table_columns(table, 2, window, cx));
-        let content = widths.iter().map(|w| w - CELL_PAD_PX).collect::<Vec<_>>();
+        let (widths, pad) = cx.update(|window, cx| {
+            (
+                measure_table_columns(table, 2, window, cx),
+                cell_pad(window),
+            )
+        });
+        let content = widths.iter().map(|w| w - pad).collect::<Vec<_>>();
         assert!(
             (content[0] * 3.0 - content[1]).abs() < 0.5,
             "four CJK glyphs should take a third of twelve ASCII glyphs, got {widths:?}"

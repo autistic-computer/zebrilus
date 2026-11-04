@@ -3,14 +3,20 @@ use crate::{
     Space, StyledExt as _, Surface,
     components::input::{Input, InputState},
     foundation::roles,
-    h_flex, list_row, v_flex,
+    h_flex, list_row, rems_from_px, v_flex,
 };
 use ala::{
     AnimationElement, App, Div, ElementId, Entity, FULL_CORNER_RADIUS, MouseButton, Pixels,
     SharedString, Stateful, div, prelude::*, px, relative,
 };
 
-pub const LIST_ROW_HEIGHT: Pixels = px(32.0);
+pub fn list_row_height(cx: &App) -> Pixels {
+    row_px(Size::Large, cx)
+}
+
+fn row_px(size: Size, cx: &App) -> Pixels {
+    rems_from_px(size.control_px()).to_pixels(cx.theme().font_size)
+}
 
 pub(crate) fn outer_radius(layer: &Layer, inset: Pixels) -> Pixels {
     if layer.radius > px(0.0) && layer.radius < FULL_CORNER_RADIUS {
@@ -115,10 +121,11 @@ pub fn picker_footer(cx: &App) -> Div {
 }
 
 pub fn picker_row(id: impl Into<ElementId>, selected: bool, cx: &App) -> Stateful<Div> {
-    list_row(id, px(Size::Medium.control_px()), selected, true, cx)
+    list_row(id, row_px(Size::Medium, cx), selected, true, cx)
         .w_full()
         .gap(Space::S8)
         .px(Space::S10)
+        .type_style(crate::TextStyle::Small, cx)
         .cursor_pointer()
 }
 
@@ -142,7 +149,6 @@ pub fn path_row(
                 .overflow_hidden()
                 .text_ellipsis()
                 .whitespace_nowrap()
-                .type_style(crate::TextStyle::Small, cx)
                 .child(label.into()),
         )
 }

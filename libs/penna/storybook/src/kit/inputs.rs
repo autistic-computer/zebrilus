@@ -223,7 +223,7 @@ impl Render for FieldStates {
             .state(
                 "appearance(false)",
                 div()
-                    .px_2()
+                    .px(Space::S8)
                     .rule(penna::RuleLook::Plain, penna::Edge::Bottom, cx)
                     .child(Input::new(&self.bare).id("field-bare").appearance(false)),
             )

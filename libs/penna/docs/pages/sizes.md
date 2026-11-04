@@ -34,6 +34,39 @@ Everything in a row shares one size, so tops, text and edges line up with no nud
 </div>
 ```
 
+## Density
+
+One setting in Appearance, under Advanced, makes the interface tighter or roomier: Compact, Regular or Comfortable. It moves the default size together with the rows of lists, menus and pickers, so buttons, fields and rows stay in line at every setting. Text, spacing and the other sizes stay where they are.
+
+```figure uses=input,segmented
+<div class="docs-full penna-stack" data-gap="group">
+  <div class="penna-stack" data-gap="tight" style="--penna-control-md: var(--penna-control-sm)">
+    <span class="penna-type" data-type="small" data-muted data-penna-text>Compact</span>
+    <div class="docs-row">
+      <label class="penna-input" data-penna="field"><input placeholder="Search panes" /></label>
+      <div class="penna-segmented" data-penna="field" data-value="0" role="radiogroup" aria-label="View"><div class="penna-segments" data-penna="button.quiet" data-state="current"><span class="penna-segment-pill"></span><span class="penna-segment" role="button"><span class="penna-label" data-penna-text>Grid</span></span><span class="penna-segment" role="button"><span class="penna-label" data-penna-text>List</span></span></div></div>
+      <button class="penna-button" data-penna="button" data-tone="primary" data-prominent><span class="penna-label" data-penna-text>Share</span></button>
+    </div>
+  </div>
+  <div class="penna-stack" data-gap="tight">
+    <span class="penna-type" data-type="small" data-muted data-penna-text>Regular</span>
+    <div class="docs-row">
+      <label class="penna-input" data-penna="field"><input placeholder="Search panes" /></label>
+      <div class="penna-segmented" data-penna="field" data-value="0" role="radiogroup" aria-label="View"><div class="penna-segments" data-penna="button.quiet" data-state="current"><span class="penna-segment-pill"></span><span class="penna-segment" role="button"><span class="penna-label" data-penna-text>Grid</span></span><span class="penna-segment" role="button"><span class="penna-label" data-penna-text>List</span></span></div></div>
+      <button class="penna-button" data-penna="button" data-tone="primary" data-prominent><span class="penna-label" data-penna-text>Share</span></button>
+    </div>
+  </div>
+  <div class="penna-stack" data-gap="tight" style="--penna-control-md: var(--penna-control-lg)">
+    <span class="penna-type" data-type="small" data-muted data-penna-text>Comfortable</span>
+    <div class="docs-row">
+      <label class="penna-input" data-penna="field"><input placeholder="Search panes" /></label>
+      <div class="penna-segmented" data-penna="field" data-value="0" role="radiogroup" aria-label="View"><div class="penna-segments" data-penna="button.quiet" data-state="current"><span class="penna-segment-pill"></span><span class="penna-segment" role="button"><span class="penna-label" data-penna-text>Grid</span></span><span class="penna-segment" role="button"><span class="penna-label" data-penna-text>List</span></span></div></div>
+      <button class="penna-button" data-penna="button" data-tone="primary" data-prominent><span class="penna-label" data-penna-text>Share</span></button>
+    </div>
+  </div>
+</div>
+```
+
 ## Fields
 
 Fields take the same sizes, so a field always lines up with the buttons beside it.

@@ -360,7 +360,7 @@ impl Styled for Keycap {
 
 impl RenderOnce for Keycap {
     fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
-        let (height, text) = match self.size {
+        let (height, text) = match self.size.rung() {
             Size::XSmall | Size::Small => (16.0, TextStyle::Micro),
             _ => (18.0, TextStyle::Caption),
         };

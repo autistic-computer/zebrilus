@@ -63,8 +63,8 @@ fn callout_on(
     };
     v_flex()
         .w_full()
-        .p(Space::S12)
-        .gap(Space::S12)
+        .p(Space::INSET_CARD)
+        .gap(Space::GAP_RELATED)
         .surface(surface, cx)
         .type_style(TextStyle::Body, cx)
         .child(
@@ -87,7 +87,7 @@ fn callout_on(
                     v_flex()
                         .flex_1()
                         .min_w_0()
-                        .gap(Space::S4)
+                        .gap(Space::GAP_TIGHT)
                         .when_some(title, |column, title| {
                             column.child(dialog_title(cx).child(title))
                         })

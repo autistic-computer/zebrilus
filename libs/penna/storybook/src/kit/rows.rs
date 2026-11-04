@@ -38,7 +38,7 @@ pub const STORY: Story = Story {
         Section {
             id: "list-items",
             name: "List items",
-            summary: "ListItem::new(id).look(look) picks the row look, .row_height(height) the corners.",
+            summary: "ListItem::new(id).look(look) picks the row look, .row_height(height) its corners and minimum height.",
             build: |_, cx| stateless(list_items, cx),
         },
     ],

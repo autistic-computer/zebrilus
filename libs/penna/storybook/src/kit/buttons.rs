@@ -4,7 +4,7 @@ use ala::{
 };
 use penna::{
     ActiveTheme as _, Colorize as _, Disableable as _, Emphasis, IconName, Selectable as _,
-    Sizable as _, Size, StyledExt as _, TextStyle, Tone,
+    Sizable as _, Size, Space, StyledExt as _, TextStyle, Tone,
     components::button::{Button, ButtonLook, ButtonRounded, ButtonVariant, ButtonVariants as _},
 };
 
@@ -26,7 +26,7 @@ pub const STORY: Story = Story {
         Section {
             id: "sizes",
             name: "Sizes",
-            summary: "Sizable, on the control ladder: xsmall (20px), small (24px), medium (28px, the default), large (32px), xlarge (40px) and touch (44px), with and without labels.",
+            summary: "Sizable, on the control ladder: xsmall (20px), small (24px), medium (28px at regular density, the default), large (32px), xlarge (40px) and touch (44px), with and without labels.",
             build: |_, cx| stateless(sizes, cx),
         },
         Section {
@@ -287,12 +287,17 @@ fn custom_and_shapes(_: &mut Window, cx: &mut App) -> AnyElement {
             "children",
             row().child(
                 Button::new("children").child(
-                    div().flex().items_center().gap_2().child("Branch").child(
-                        div()
-                            .type_style(TextStyle::Small, cx)
-                            .text_color(theme.foreground.muted())
-                            .child("main"),
-                    ),
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap(Space::S8)
+                        .child("Branch")
+                        .child(
+                            div()
+                                .type_style(TextStyle::Small, cx)
+                                .text_color(theme.foreground.muted())
+                                .child("main"),
+                        ),
                 ),
             ),
         )

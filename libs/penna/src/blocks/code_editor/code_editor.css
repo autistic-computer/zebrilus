@@ -160,7 +160,7 @@
   position: absolute;
   left: 0;
   top: var(--ce-scroll-y, 0px);
-  width: calc(var(--ce-gutter-width, 0px) - 5px);
+  width: calc(var(--ce-gutter-width, 0px) - var(--penna-space-4));
   font-size: var(--penna-text-caption-size);
   line-height: var(--ce-lh);
   text-align: right;

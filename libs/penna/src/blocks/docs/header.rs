@@ -8,7 +8,7 @@ use crate::{
     components::icon::Icon,
     foundation::RoleRuleExt as _,
     foundation::roles,
-    h_flex,
+    h_flex, inline,
 };
 use ala::{
     AnyElement, App, ElementId, IntoElement, ParentElement as _, RenderOnce, SharedString,
@@ -97,19 +97,22 @@ impl RenderOnce for DocsHeader {
             .h(px(DOCS_HEADER_HEIGHT))
             .px(Space::S16)
             .rule_on(roles::BAR_RULE, Edge::Bottom, cx)
-            .when_some(self.brand, |this, (icon, name)| {
-                this.child(
-                    h_flex()
-                        .flex_none()
-                        .gap(Space::S8)
-                        .mr(Space::S16)
-                        .type_style(TextStyle::Lead, cx)
-                        .font_semibold()
-                        .child(Icon::new(icon).size(px(16.0)))
-                        .child(name),
-                )
-            })
-            .children(links)
+            .child(
+                inline(Space::GAP_GROUP)
+                    .flex_none()
+                    .when_some(self.brand, |this, (icon, name)| {
+                        this.child(
+                            h_flex()
+                                .flex_none()
+                                .gap(Space::S8)
+                                .type_style(TextStyle::Lead, cx)
+                                .font_semibold()
+                                .child(Icon::new(icon).size(px(16.0)))
+                                .child(name),
+                        )
+                    })
+                    .child(inline(Space::GAP_TIGHT).children(links)),
+            )
             .child(div().flex_1())
             .children(self.end)
     }

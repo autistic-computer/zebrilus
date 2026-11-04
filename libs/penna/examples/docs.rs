@@ -291,8 +291,8 @@ fn header(site: &Site, pages: &[Page], group: usize) -> String {
         "<header class=\"penna-docs-header\" data-penna=\"bar\" role=\"toolbar\">\
          <div class=\"penna-docs-rule\" data-penna=\"rule.bar\"></div>\
          <button class=\"penna-button\" data-penna=\"button.quiet\" data-shape=\"icon\" data-size=\"small\" aria-label=\"Pages\" data-docs-menu><i data-icon=\"panel-left\"></i></button>\
-         <a class=\"penna-docs-brand\" href=\"index.html\"><i data-icon=\"app-window\"></i><span data-penna-text>{}</span></a>\
-         {links}<div class=\"penna-docs-spacer\"></div>\
+         <div class=\"penna-docs-start\"><a class=\"penna-docs-brand\" href=\"index.html\"><i data-icon=\"app-window\"></i><span data-penna-text>{}</span></a>\
+         <div class=\"penna-docs-links\">{links}</div></div><div class=\"penna-docs-spacer\"></div>\
          <a class=\"penna-button\" data-penna=\"button.quiet\" data-shape=\"icon\" data-size=\"small\" aria-label=\"Source\" data-tooltip=\"Source\" href=\"{}\"><i data-icon=\"git-branch\"></i></a>\
          <button class=\"penna-button\" data-penna=\"button.quiet\" data-shape=\"icon\" data-size=\"small\" aria-label=\"Light or dark\" data-tooltip=\"Light or dark\" data-docs-mode><i data-icon=\"palette\"></i></button>\
          </header>",

@@ -406,7 +406,7 @@ impl Render for NotificationList {
             .max_h(height)
             .pt(mt)
             .pb(mb)
-            .gap(Space::S12)
+            .gap(Space::GAP_GROUP)
             .when(matches!(placement, Anchor::TopRight), |this| this.pr(mr))
             .when(matches!(placement, Anchor::TopLeft), |this| this.pl(ml))
             .when(matches!(placement, Anchor::BottomRight), |this| {

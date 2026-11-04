@@ -2,13 +2,13 @@
   position: relative;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--penna-space-6);
   box-sizing: border-box;
   width: 100%;
   height: var(--penna-control-md);
   min-width: 0;
   margin: 0;
-  padding: 2px 8px;
+  padding: var(--penna-space-2) var(--penna-space-8);
   font-family: var(--penna-font);
   font-size: var(--penna-text-body-size);
   font-weight: var(--penna-text-body-weight);
@@ -31,9 +31,9 @@
 }
 
 .penna-input[data-size="small"] {
-  gap: 4px;
+  gap: var(--penna-space-4);
   height: var(--penna-control-sm);
-  padding: 0 6px;
+  padding: 0 var(--penna-space-6);
   font-size: var(--penna-text-small-size);
   line-height: var(--penna-text-small-line);
   --penna-icon-size: 12px;

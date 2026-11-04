@@ -6,7 +6,7 @@ use ala::{
     Window, actions, div, prelude::FluentBuilder as _, px,
 };
 use penna::{
-    ActiveTheme as _, Colorize as _, Icon, IconName, StyledExt as _, TextStyle,
+    ActiveTheme as _, Colorize as _, Icon, IconName, Space, StyledExt as _, TextStyle,
     components::button::Button,
     components::menu::{ContextMenuExt as _, DropdownMenu as _, PopupMenu, PopupMenuItem},
     h_flex,
@@ -215,7 +215,7 @@ impl Render for Menus {
     fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
         let menus = h_flex()
             .items_start()
-            .gap_6()
+            .gap(Space::S24)
             .child(self.pane.clone())
             .when(self.highlight == Highlight::None, |this| {
                 this.child(self.view.clone())

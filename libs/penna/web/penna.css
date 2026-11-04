@@ -91,26 +91,28 @@ button[data-penna] {
 .penna-variants {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(var(--penna-variant-width, 360px), 1fr));
-  gap: 32px;
-  padding: 32px;
+  gap: var(--penna-gap-section);
+  padding: var(--penna-inset-page);
   align-items: start;
 }
 
 .penna-variants > figure {
   margin: 0;
   display: grid;
-  gap: 12px;
+  gap: var(--penna-space-12);
 }
 
 .penna-variants > figure > figcaption {
-  font-size: 12px;
+  font-size: var(--penna-text-small-size);
+  line-height: var(--penna-text-small-line);
+  font-weight: var(--penna-text-small-weight);
   color: var(--penna-muted);
 }
 
 .penna-variants > figure > figcaption b {
   color: var(--penna-fg);
   font-weight: 600;
-  margin-right: 6px;
+  margin-right: var(--penna-space-6);
 }
 
 [data-icon] {
@@ -231,9 +233,9 @@ button[data-penna] {
 :is([data-penna="field"], [data-penna="field.outline"], [data-penna="field.multiline"], [data-penna="field.multiline.outline"]) {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--penna-space-6);
   height: var(--penna-control-md);
-  padding: 2px 8px;
+  padding: var(--penna-space-2) var(--penna-space-8);
   font-size: var(--penna-text-body-size);
   font-weight: var(--penna-text-body-weight);
   line-height: var(--penna-text-body-line);
@@ -249,9 +251,9 @@ button[data-penna] {
 }
 
 :is([data-penna="field"], [data-penna="field.outline"])[data-size="small"] {
-  gap: 4px;
+  gap: var(--penna-space-4);
   height: var(--penna-control-sm);
-  padding: 0 6px;
+  padding: 0 var(--penna-space-6);
   font-size: var(--penna-text-small-size);
   line-height: var(--penna-text-small-line);
 }
@@ -303,16 +305,16 @@ button[data-penna] {
 .penna-menu {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--penna-space-2);
   min-width: 128px;
   max-width: 500px;
-  padding: 4px var(--penna-row-inset);
+  padding: var(--penna-space-4) var(--penna-row-inset);
 }
 
 [data-penna="menu-item"] {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--penna-space-8);
   height: var(--penna-control-md);
   padding: 0 var(--penna-space-8);
   font-size: var(--penna-text-small-size);
@@ -330,14 +332,14 @@ button[data-penna] {
 
 .penna-shortcut {
   margin-left: auto;
-  padding-left: 12px;
+  padding-left: var(--penna-space-12);
   font-size: var(--penna-text-small-size);
   line-height: var(--penna-text-small-line);
   opacity: 0.8;
 }
 
 .penna-menu-label {
-  padding: 4px 8px 2px;
+  padding: var(--penna-space-4) var(--penna-space-8) var(--penna-space-2);
   font-size: var(--penna-text-caption-size);
   line-height: var(--penna-text-caption-line);
   color: var(--penna-muted);
@@ -346,7 +348,7 @@ button[data-penna] {
 .penna-separator {
   flex: none;
   height: 1px;
-  margin: 2px 0;
+  margin: var(--penna-space-2) 0;
   background: var(--penna-divider);
 }
 
@@ -360,8 +362,8 @@ button[data-penna] {
 [data-penna="tooltip"] {
   display: inline-flex;
   align-items: center;
-  gap: 12px;
-  padding: 2px 8px;
+  gap: var(--penna-space-12);
+  padding: var(--penna-space-2) var(--penna-space-8);
   font-size: var(--penna-text-small-size);
   line-height: var(--penna-text-small-line);
 }
@@ -403,7 +405,7 @@ button[data-penna] {
   width: 36px;
   height: 20px;
   margin: 0;
-  padding: 2px;
+  padding: var(--penna-space-2);
   border: 0;
   border-radius: 999px;
   background: var(--penna-control);
@@ -434,7 +436,7 @@ button[data-penna] {
   align-items: center;
   width: 100%;
   height: var(--penna-control-md);
-  padding: 0 8px;
+  padding: 0 var(--penna-space-8);
   outline: none;
   touch-action: none;
 }
@@ -483,6 +485,12 @@ button[data-penna] {
   --penna-icon-size: 11px;
 }
 
+.penna-check:is([data-size="xsmall"], [data-size="small"]) {
+  width: 14px;
+  height: 14px;
+  --penna-icon-size: 10px;
+}
+
 .penna-check[data-on] {
   border-color: var(--penna-accent);
   background: var(--penna-accent);
@@ -515,12 +523,12 @@ button[data-penna] {
 .penna-footer {
   display: flex;
   justify-content: flex-end;
-  gap: 8px;
+  gap: var(--penna-gap-related);
 }
 
 [data-penna="toast"] {
   display: flex;
-  gap: 8px;
+  gap: var(--penna-space-8);
   width: 400px;
   padding: var(--penna-inset-card);
   font-size: var(--penna-text-body-size);
@@ -573,9 +581,9 @@ button[data-penna] {
 [data-penna="sidebar"] {
   display: flex;
   flex-direction: column;
+  gap: var(--penna-space-2);
   min-height: 0;
-  padding-bottom: 8px;
-  font-size: 14px;
+  padding: 0 var(--penna-row-inset) var(--penna-space-8);
 }
 
 .penna-strip {
@@ -583,9 +591,9 @@ button[data-penna] {
   flex: none;
   align-items: center;
   justify-content: flex-end;
-  gap: 4px;
+  gap: var(--penna-space-4);
   height: var(--penna-titlebar-height, 40px);
-  padding: 0 16px 0 86px;
+  padding: 0 calc(var(--penna-space-16) - var(--penna-row-inset)) 0 86px;
 }
 
 [data-penna="chrome.button"] {
@@ -597,12 +605,13 @@ button[data-penna] {
 [data-penna="sidebar.row"] {
   display: flex;
   align-items: center;
-  gap: 6px;
-  height: 30px;
-  margin: 1px var(--penna-row-inset);
-  padding-right: calc(8px - var(--penna-row-inset));
-  padding-left: calc(8px - var(--penna-row-inset) + 20px * var(--depth, 0));
-  font-size: 14px;
+  gap: var(--penna-space-6);
+  height: var(--penna-control-md);
+  padding-right: calc(var(--penna-space-8) - var(--penna-row-inset));
+  padding-left: calc(var(--penna-space-8) - var(--penna-row-inset) + var(--penna-space-16) * var(--depth, 0));
+  font-size: var(--penna-text-body-size);
+  font-weight: var(--penna-text-body-weight);
+  line-height: var(--penna-text-body-line);
   white-space: nowrap;
 }
 
@@ -743,8 +752,13 @@ button[data-penna] {
   font-weight: var(--penna-text-title-weight);
 }
 
+.penna-settings > div {
+  display: grid;
+  gap: var(--penna-gap-related);
+}
+
 .penna-settings h2 {
-  margin: 0 0 var(--penna-gap-related);
+  margin: 0;
   padding: 0 var(--penna-space-4);
   color: var(--penna-muted);
   font-size: var(--penna-text-body-size);
@@ -792,9 +806,9 @@ button[data-penna] {
 [data-penna="phone.pill"] {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--penna-space-8);
   height: 56px;
-  padding: 0 6px;
+  padding: 0 var(--penna-space-6);
 }
 
 [data-penna="phone.pill"] > [data-penna] {

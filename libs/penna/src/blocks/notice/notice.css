@@ -1,10 +1,13 @@
 .penna-notice {
   display: flex;
   align-items: flex-start;
-  gap: 10px;
+  gap: var(--penna-gap-related);
   box-sizing: border-box;
   width: 100%;
-  padding: 10px 12px;
+  padding: var(--penna-inset-card);
+  font-size: var(--penna-text-body-size);
+  font-weight: var(--penna-text-body-weight);
+  line-height: var(--penna-text-body-line);
 }
 
 .penna-notice-tone {
@@ -14,7 +17,8 @@
 .penna-notice-lead {
   display: flex;
   flex: none;
-  padding-top: 1px;
+  align-items: center;
+  height: var(--penna-text-body-line);
   --penna-icon-size: 16px;
 }
 
@@ -42,15 +46,16 @@
   display: flex;
   flex: 1;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--penna-gap-tight);
   min-width: 0;
 }
 
 .penna-notice-title {
+  position: relative;
   top: -0.5px;
   align-self: flex-start;
   font-size: var(--penna-text-body-size);
-  font-weight: 500;
+  font-weight: 600;
   line-height: var(--penna-text-body-line);
   color: var(--penna-ink);
 }
@@ -68,31 +73,33 @@
 .penna-notice[data-stacked] {
   flex-direction: column;
   align-items: stretch;
-  gap: 4px;
+  gap: var(--penna-gap-tight);
 }
 
 .penna-notice-head {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--penna-gap-related);
+}
+
+.penna-notice[data-stacked] .penna-notice-lead {
+  height: var(--penna-text-lead-line);
 }
 
 .penna-notice[data-stacked] .penna-notice-title {
-  top: -0.5px;
-  align-self: flex-start;
   font-size: var(--penna-text-lead-size);
   line-height: var(--penna-text-lead-line);
 }
 
 .penna-notice-action {
   display: flex;
-  padding-top: 6px;
+  padding-top: calc(var(--penna-gap-related) - var(--penna-gap-tight));
 }
 
 .penna-notices {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--penna-space-8);
 }
 
 .penna-notice .penna-button[data-on] {

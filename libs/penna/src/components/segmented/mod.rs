@@ -8,7 +8,7 @@ use ala::{
 
 use crate::{
     ActiveTheme as _, Ground, Kind, PaintState, Size, Space, StyledExt as _, Surface, SurfaceRole,
-    components::input::field_chrome_on, h_flex,
+    components::input::field_chrome_on, h_flex, rems_from_px,
 };
 
 const SLIDE: Duration = Duration::from_millis(220);
@@ -76,10 +76,10 @@ impl RenderOnce for SegmentedControl {
         let layer = cx.theme().layer(track, PaintState::Rest);
         let ground = layer.ground;
         let border = layer.border_width.max(px(1.0));
-        let height = Size::Medium.control_px();
+        let height = rems_from_px(Size::Medium.control_px()).to_pixels(window.rem_size());
         let inset = Space::S2.rems().to_pixels(window.rem_size());
-        let inner = px(height) - inset * 2.0 - border * 2.0;
-        let radius = (layer.radius.min(px(height / 2.0)) - border - inset).max(px(0.0));
+        let inner = height - inset * 2.0 - border * 2.0;
+        let radius = (layer.radius.min(height / 2.0) - border - inset).max(px(0.0));
         let pill = Surface::new(SurfaceRole::QUIET_BUTTON).on(ground);
         let picked = cx.theme().layer(pill, PaintState::Current);
         let rest = cx.theme().layer(pill, PaintState::Rest).text;

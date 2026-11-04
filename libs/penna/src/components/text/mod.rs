@@ -30,7 +30,7 @@ pub use markdown_ext::{
 };
 pub use node::{CODE_BLOCK_GROUP, CodeBlock};
 pub use state::TextViewState;
-pub use style::TextViewStyle;
+pub use style::{READING_MEASURE, TextViewStyle};
 pub use text_view::{TextView, TextViewLayoutState};
 
 pub use global::suppress_text_selection;

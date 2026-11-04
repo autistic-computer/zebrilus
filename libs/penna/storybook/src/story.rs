@@ -2,7 +2,7 @@ use ala::{
     AnyElement, AnyView, App, AppContext as _, Context, InteractiveElement as _, IntoElement,
     ParentElement, Render, RenderOnce, SharedString, Styled, Window, div,
 };
-use penna::{ActiveTheme as _, Colorize as _, StyledExt as _, TextStyle, h_flex, v_flex};
+use penna::{ActiveTheme as _, Colorize as _, Space, StyledExt as _, TextStyle, h_flex, v_flex};
 
 #[derive(Clone, Copy)]
 pub struct Story {
@@ -71,7 +71,7 @@ impl RenderOnce for States {
                 v_flex()
                     .id(("story-state", index))
                     .min_w_0()
-                    .gap_2()
+                    .gap(Space::S8)
                     .child(
                         div()
                             .type_style_mono(TextStyle::Caption, cx)
@@ -81,14 +81,18 @@ impl RenderOnce for States {
                     .child(content)
             });
         if self.columns == 1 {
-            v_flex().w_full().gap_6().children(cells).into_any_element()
+            v_flex()
+                .w_full()
+                .gap(Space::S24)
+                .children(cells)
+                .into_any_element()
         } else {
             div()
                 .w_full()
                 .grid()
                 .grid_cols(self.columns)
-                .gap_x_6()
-                .gap_y_6()
+                .gap_x(Space::S24)
+                .gap_y(Space::S24)
                 .children(cells)
                 .into_any_element()
         }
@@ -117,7 +121,7 @@ impl RenderOnce for Row {
         h_flex()
             .flex_wrap()
             .items_center()
-            .gap_2()
+            .gap(Space::S8)
             .children(self.children)
     }
 }

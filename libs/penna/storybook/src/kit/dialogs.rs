@@ -3,8 +3,8 @@ use ala::{
     Styled as _, Window, div, px,
 };
 use penna::{
-    ActiveTheme as _, Colorize as _, Emphasis, Icon, IconName, StyledExt as _, TextStyle, Tone,
-    WindowExt as _,
+    ActiveTheme as _, Colorize as _, Emphasis, Icon, IconName, Space, StyledExt as _, TextStyle,
+    Tone, WindowExt as _,
     blocks::dialog::dialog_description,
     blocks::dialog::{Dialog, DialogButtonProps},
     components::button::{Button, ButtonVariant, ButtonVariants as _},
@@ -115,7 +115,7 @@ fn open(kind: Kind, field: &Entity<InputState>, window: &mut Window, cx: &mut Ap
                         .child(Button::new("notes").label("Release notes").link())
                         .child(
                             h_flex()
-                                .gap_2()
+                                .gap(Space::S8)
                                 .child(Button::new("later").label("Later").ghost())
                                 .child(
                                     Button::new("restart")
@@ -131,7 +131,7 @@ fn open(kind: Kind, field: &Entity<InputState>, window: &mut Window, cx: &mut Ap
             dialog
                 .title("Key bindings")
                 .width(px(480.0))
-                .child(v_flex().gap_2().children(BINDINGS.iter().map(|(keys, command)| {
+                .child(v_flex().gap(Space::S8).children(BINDINGS.iter().map(|(keys, command)| {
                     h_flex()
                         .justify_between()
                         .child(*command)
@@ -168,7 +168,7 @@ fn rename_dialog(dialog: Dialog, field: &Entity<InputState>, cx: &App) -> Dialog
         .width(px(420.0))
         .child(
             v_flex()
-                .gap_2()
+                .gap(Space::S8)
                 .child(
                     dialog_description(cx).child("Names show in the sidebar and the status bar."),
                 )
@@ -213,7 +213,7 @@ impl Render for Backdrop {
         };
         v_flex()
             .h(px(height))
-            .gap_2()
+            .gap(Space::S8)
             .type_style(TextStyle::Lead, cx)
             .text_color(muted)
             .children(
@@ -221,7 +221,7 @@ impl Render for Backdrop {
                     .into_iter()
                     .map(|name| {
                         h_flex()
-                            .gap_2()
+                            .gap(Space::S8)
                             .child(Icon::new(IconName::SquareTerminal).medium())
                             .child(name)
                     }),

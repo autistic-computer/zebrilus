@@ -6,7 +6,7 @@ use ala::{
     actions, div, prelude::FluentBuilder as _, px,
 };
 use penna::{
-    ActiveTheme as _, Colorize as _, IconName, StyledExt as _, TextStyle, WindowExt as _,
+    ActiveTheme as _, Colorize as _, IconName, Space, StyledExt as _, TextStyle, WindowExt as _,
     blocks::notification::Notification,
     components::button::{Button, ButtonVariants as _},
     components::input::{Input, InputState},
@@ -125,8 +125,8 @@ impl Toasts {
                             .title("Update available")
                             .content(|_, _, _| {
                                 h_flex()
-                                    .gap_2()
-                                    .pt_2()
+                                    .gap(Space::S8)
+                                    .pt(Space::S8)
                                     .child(Button::new("toast-restart").label("Restart").primary())
                                     .child(Button::new("toast-later").label("Later").ghost())
                                     .into_any_element()
@@ -314,7 +314,7 @@ impl Render for Panel {
                             .content(move |_, _, cx| {
                                 v_flex()
                                     .w(px(260.0))
-                                    .gap_2()
+                                    .gap(Space::S8)
                                     .child(
                                         div()
                                             .type_style(TextStyle::Small, cx)
@@ -325,7 +325,7 @@ impl Render for Panel {
                                     .child(
                                         h_flex()
                                             .justify_end()
-                                            .gap_2()
+                                            .gap(Space::S8)
                                             .child(
                                                 Button::new("popover-cancel")
                                                     .label("Cancel")

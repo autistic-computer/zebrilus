@@ -1,7 +1,7 @@
 .penna-settings-nav {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--penna-space-2);
   width: 100%;
   padding: 0 var(--penna-row-inset);
 }
@@ -10,6 +10,6 @@
   display: flex;
   flex: none;
   align-items: center;
-  height: 32px;
+  height: var(--penna-control-lg);
 }
 

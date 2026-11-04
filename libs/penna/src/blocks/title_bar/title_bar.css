@@ -37,20 +37,20 @@
   flex: 1;
   align-items: center;
   justify-content: space-between;
-  padding-right: 8px;
+  padding-right: var(--penna-space-8);
 }
 
 .penna-title-bar-group {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--penna-space-8);
 }
 
 .penna-title-bar-actions {
   position: relative;
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--penna-space-4);
 }
 
 .penna-title-bar-text {

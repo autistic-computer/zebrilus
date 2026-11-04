@@ -19,11 +19,11 @@
   flex-direction: column;
   align-items: center;
   height: 100%;
-  padding: calc(16px + var(--dialog-offset)) 0 16px;
+  padding: calc(var(--penna-space-16) + var(--dialog-offset)) 0 var(--penna-space-16);
 }
 
 .penna-dialog-room {
-  flex: 0 1 round(nearest, max(0px, 10cqh - 16px), 0.5px);
+  flex: 0 1 round(nearest, max(0px, 10cqh - var(--penna-space-16)), 0.5px);
   min-height: 0;
 }
 
@@ -49,7 +49,7 @@
   display: flex;
   flex: 1 1 0%;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--penna-space-8);
   min-height: 0;
   overflow: hidden;
 }
@@ -95,13 +95,13 @@
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 8px;
+  gap: var(--penna-space-8);
 }
 
 .penna-dialog-head {
   display: flex;
   align-items: flex-start;
-  gap: 8px;
+  gap: var(--penna-space-8);
 }
 
 .penna-dialog-head > [data-icon] {
@@ -116,7 +116,7 @@
   display: flex;
   flex: 1;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--penna-space-4);
   min-width: 0;
 }
 

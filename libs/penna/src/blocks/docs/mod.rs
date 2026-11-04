@@ -17,7 +17,8 @@ use ala::{
 };
 
 pub const DOCS_NAV_WIDTH: f32 = 248.0;
-pub const DOCS_CONTENT_WIDTH: f32 = 760.0;
+pub const DOCS_CONTENT_WIDTH: f32 =
+    crate::components::text::READING_MEASURE + 2.0 * Space::INSET_PAGE.design_px();
 
 #[derive(IntoElement)]
 pub struct DocsLayout {
@@ -93,7 +94,7 @@ impl RenderOnce for DocsLayout {
                             .child(
                                 div()
                                     .w_full()
-                                    .max_w(px(DOCS_CONTENT_WIDTH))
+                                    .max_w(crate::rems_from_px(DOCS_CONTENT_WIDTH))
                                     .mx_auto()
                                     .px(Space::INSET_PAGE)
                                     .pt(Space::S40)

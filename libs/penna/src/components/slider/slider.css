@@ -1,7 +1,7 @@
 .penna-steps {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--penna-space-8);
   width: 100%;
   min-width: 0;
   font-size: var(--penna-text-small-size);
@@ -30,9 +30,9 @@
   display: flex;
   flex: 1 1 0;
   align-items: center;
-  gap: 4px;
+  gap: var(--penna-space-4);
   min-width: 0;
-  max-width: calc(var(--count, 5) * 24px + (var(--count, 5) - 1) * 4px);
+  max-width: calc(var(--count, 5) * 24px + (var(--count, 5) - 1) * var(--penna-space-4));
 }
 
 .penna-steps-pills > .penna-step {

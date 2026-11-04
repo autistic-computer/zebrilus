@@ -7,57 +7,113 @@
   white-space: nowrap;
 }
 
-.penna-type[data-type] {
-  font-weight: 400;
-}
-
 .penna-type[data-type="micro"] {
-  font-size: 10px;
-  line-height: 14px;
+  font-size: var(--penna-text-micro-size);
+  font-weight: var(--penna-text-micro-weight);
+  line-height: var(--penna-text-micro-line);
 }
 
 .penna-type[data-type="caption"] {
-  font-size: 11px;
-  line-height: 16px;
+  font-size: var(--penna-text-caption-size);
+  font-weight: var(--penna-text-caption-weight);
+  line-height: var(--penna-text-caption-line);
 }
 
 .penna-type[data-type="small"] {
-  font-size: 12px;
-  line-height: 16px;
+  font-size: var(--penna-text-small-size);
+  font-weight: var(--penna-text-small-weight);
+  line-height: var(--penna-text-small-line);
 }
 
 .penna-type[data-type="body"] {
-  font-size: 13px;
-  line-height: 18px;
+  font-size: var(--penna-text-body-size);
+  font-weight: var(--penna-text-body-weight);
+  line-height: var(--penna-text-body-line);
 }
 
 .penna-type[data-type="lead"] {
-  font-size: 14px;
-  line-height: 20px;
+  font-size: var(--penna-text-lead-size);
+  font-weight: var(--penna-text-lead-weight);
+  line-height: var(--penna-text-lead-line);
 }
 
 .penna-type[data-type="heading"] {
-  font-size: 16px;
-  font-weight: 600;
-  line-height: 22px;
+  font-size: var(--penna-text-heading-size);
+  font-weight: var(--penna-text-heading-weight);
+  line-height: var(--penna-text-heading-line);
 }
 
 .penna-type[data-type="title"] {
-  font-size: 20px;
-  font-weight: 600;
-  line-height: 26px;
+  font-size: var(--penna-text-title-size);
+  font-weight: var(--penna-text-title-weight);
+  line-height: var(--penna-text-title-line);
 }
 
 .penna-type[data-type="display"] {
-  font-size: 26px;
-  font-weight: 600;
-  line-height: 32px;
+  font-size: var(--penna-text-display-size);
+  font-weight: var(--penna-text-display-weight);
+  line-height: var(--penna-text-display-line);
 }
 
 .penna-type[data-type="mono"] {
   font-family: var(--penna-mono);
-  font-size: 13px;
-  line-height: 18px;
+  font-size: var(--penna-text-mono-size);
+  font-weight: var(--penna-text-mono-weight);
+  line-height: var(--penna-text-mono-line);
+}
+
+.penna-type[data-type="read-h1"] {
+  font-size: var(--penna-text-read-h1-size);
+  font-weight: var(--penna-text-read-h1-weight);
+  line-height: var(--penna-text-read-h1-line);
+}
+
+.penna-type[data-type="read-h2"] {
+  font-size: var(--penna-text-read-h2-size);
+  font-weight: var(--penna-text-read-h2-weight);
+  line-height: var(--penna-text-read-h2-line);
+}
+
+.penna-type[data-type="read-h3"] {
+  font-size: var(--penna-text-read-h3-size);
+  font-weight: var(--penna-text-read-h3-weight);
+  line-height: var(--penna-text-read-h3-line);
+}
+
+.penna-type[data-type="read-h4"] {
+  font-size: var(--penna-text-read-h4-size);
+  font-weight: var(--penna-text-read-h4-weight);
+  line-height: var(--penna-text-read-h4-line);
+}
+
+.penna-type[data-type="read-h5"] {
+  font-size: var(--penna-text-read-h5-size);
+  font-weight: var(--penna-text-read-h5-weight);
+  line-height: var(--penna-text-read-h5-line);
+}
+
+.penna-type[data-type="read-body"] {
+  font-size: var(--penna-text-read-body-size);
+  font-weight: var(--penna-text-read-body-weight);
+  line-height: var(--penna-text-read-body-line);
+}
+
+.penna-type[data-type="touch-small"] {
+  font-size: var(--penna-text-touch-small-size);
+  font-weight: var(--penna-text-touch-small-weight);
+  line-height: var(--penna-text-touch-small-line);
+}
+
+.penna-type[data-type="touch-body"] {
+  font-size: var(--penna-text-touch-body-size);
+  font-weight: var(--penna-text-touch-body-weight);
+  line-height: var(--penna-text-touch-body-line);
+}
+
+.penna-type[data-type="touch-title"] {
+  font-size: var(--penna-text-touch-title-size);
+  font-weight: var(--penna-text-touch-title-weight);
+  line-height: var(--penna-text-touch-title-line);
 }
 
 .penna-type[data-strong] {
@@ -66,7 +122,14 @@
 
 .penna-type[data-type="heading"][data-strong],
 .penna-type[data-type="title"][data-strong],
-.penna-type[data-type="display"][data-strong] {
+.penna-type[data-type="display"][data-strong],
+.penna-type[data-type="read-h1"][data-strong],
+.penna-type[data-type="read-h2"][data-strong],
+.penna-type[data-type="read-h3"][data-strong],
+.penna-type[data-type="read-h4"][data-strong],
+.penna-type[data-type="read-h5"][data-strong],
+.penna-type[data-type="read-body"][data-strong],
+.penna-type[data-type="touch-title"][data-strong] {
   font-weight: 600;
 }
 

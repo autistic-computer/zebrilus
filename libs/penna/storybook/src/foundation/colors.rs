@@ -2,7 +2,9 @@ use ala::{
     AnyElement, App, Hsla, IntoElement, ParentElement as _, SharedString, Styled as _, Window, div,
     px,
 };
-use penna::{ActiveTheme as _, Colorize as _, StyledExt as _, TextStyle, h_flex, to_hex, v_flex};
+use penna::{
+    ActiveTheme as _, Colorize as _, Space, StyledExt as _, TextStyle, h_flex, to_hex, v_flex,
+};
 
 use crate::story::Framed as _;
 use crate::story::{Section, Story, stateless, states};
@@ -32,7 +34,7 @@ fn roots(_: &mut Window, cx: &mut App) -> AnyElement {
     let theme = cx.theme();
     h_flex()
         .flex_wrap()
-        .gap_3()
+        .gap(Space::S12)
         .child(swatch("background", theme.background, cx))
         .child(swatch("foreground", theme.foreground, cx))
         .child(swatch("accent", theme.accent, cx))
@@ -64,14 +66,14 @@ fn derived(_: &mut Window, cx: &mut App) -> AnyElement {
     states()
         .state(
             "background.raised(0..=4)",
-            h_flex().gap_3().children(
+            h_flex().gap(Space::S12).children(
                 (0..=4)
                     .map(|level| swatch(format!("raised({level})"), background.raised(level), cx)),
             ),
         )
         .state(
             "background.washed(1..=4)",
-            h_flex().gap_3().children(
+            h_flex().gap(Space::S12).children(
                 (1..=4)
                     .map(|level| swatch(format!("washed({level})"), background.washed(level), cx)),
             ),
@@ -79,7 +81,7 @@ fn derived(_: &mut Window, cx: &mut App) -> AnyElement {
         .state(
             "foreground",
             h_flex()
-                .gap_3()
+                .gap(Space::S12)
                 .child(swatch("muted()", foreground.muted(), cx))
                 .child(swatch("subtle()", foreground.subtle(), cx))
                 .child(swatch("wash()", foreground.wash(), cx))
@@ -88,7 +90,7 @@ fn derived(_: &mut Window, cx: &mut App) -> AnyElement {
         .state(
             "accent",
             h_flex()
-                .gap_3()
+                .gap(Space::S12)
                 .child(swatch("fill()", accent.fill(), cx))
                 .child(swatch("outline()", accent.outline(), cx))
                 .child(swatch("on()", accent.on(), cx))
@@ -101,7 +103,7 @@ fn swatch(name: impl Into<SharedString>, color: Hsla, cx: &App) -> impl IntoElem
     let theme = cx.theme();
     v_flex()
         .w(px(104.0))
-        .gap_1p5()
+        .gap(Space::S6)
         .child(div().h(px(44.0)).rounded(theme.radius).framed(cx).bg(color))
         .child(div().type_style(TextStyle::Small, cx).child(name.into()))
         .child(

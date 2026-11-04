@@ -119,12 +119,12 @@
   display: flex;
   flex: none;
   flex-direction: column;
-  gap: 2px;
-  padding: 0 var(--penna-row-inset) 8px;
+  gap: var(--penna-space-2);
+  padding: 0 var(--penna-row-inset) var(--penna-space-8);
 }
 
 .penna-sheet-note {
-  padding: 0 12px 10px;
+  padding: 0 var(--penna-space-12) var(--penna-space-10);
   color: var(--penna-fg-muted);
   font-size: var(--penna-text-body-size);
   line-height: var(--penna-text-body-line);

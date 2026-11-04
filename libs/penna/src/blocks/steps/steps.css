@@ -1,14 +1,14 @@
 .penna-steps {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--penna-gap-related);
 }
 
 .penna-step {
   display: flex;
   flex: none;
   align-items: center;
-  gap: 10px;
+  gap: var(--penna-gap-related);
 }
 
 .penna-step-line {
@@ -25,15 +25,16 @@
   box-sizing: border-box;
   width: 20px;
   height: 20px;
-  font-size: 11px;
+  font-size: var(--penna-text-caption-size);
   font-weight: 500;
-  line-height: 16px;
+  line-height: var(--penna-text-caption-line);
   --penna-icon-size: 12px;
 }
 
 .penna-step-label {
-  font-size: 13px;
-  line-height: 18px;
+  font-size: var(--penna-text-body-size);
+  font-weight: var(--penna-text-body-weight);
+  line-height: var(--penna-text-body-line);
   color: var(--penna-fg);
 }
 

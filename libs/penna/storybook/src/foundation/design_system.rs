@@ -5,8 +5,8 @@ use ala::{
 };
 use penna::{
     ActiveTheme as _, Colorize as _, Disableable as _, Elevation, Emphasis, IconName,
-    InteractivePaintExt as _, Paint, PaintExt as _, PaintState, Sizable as _, StyledExt as _,
-    Surface, TextStyle, Tone,
+    InteractivePaintExt as _, Paint, PaintExt as _, PaintState, Sizable as _, Space,
+    StyledExt as _, Surface, TextStyle, Tone,
     components::badge::Badge,
     components::button::Button,
     components::check::Check,
@@ -102,8 +102,8 @@ fn matrix(columns: &[&str], rows: Vec<(SharedString, Vec<AnyElement>)>, cx: &App
     div()
         .grid()
         .grid_cols(count)
-        .gap_x_4()
-        .gap_y_3()
+        .gap_x(Space::S16)
+        .gap_y(Space::S12)
         .items_center()
         .child(div())
         .children(
@@ -120,7 +120,7 @@ fn matrix(columns: &[&str], rows: Vec<(SharedString, Vec<AnyElement>)>, cx: &App
 fn sample(label: &'static str, paint: Paint, state: PaintState, cx: &App) -> AnyElement {
     h_flex()
         .h(px(28.0))
-        .px_3()
+        .px(Space::S12)
         .justify_center()
         .rounded(cx.theme().radius)
         .painted(paint, state)
@@ -138,11 +138,11 @@ fn tones(_: &mut Window, cx: &mut App) -> AnyElement {
     let theme = cx.theme();
     h_flex()
         .flex_wrap()
-        .gap_3()
+        .gap(Space::S12)
         .children(Tone::ALL.map(|tone| {
             v_flex()
                 .w(px(104.0))
-                .gap_1p5()
+                .gap(Space::S6)
                 .child(
                     div()
                         .h(px(44.0))
@@ -356,8 +356,8 @@ fn tiles_and_rows(_: &mut Window, cx: &mut App) -> AnyElement {
                 .id(("ds-tile", index))
                 .w_full()
                 .items_start()
-                .gap_2()
-                .px_3()
+                .gap(Space::S8)
+                .px(Space::S12)
                 .py(px(9.0))
                 .rounded(px(8.0))
                 .painted_interactive(tile_paint, selected, enabled)
@@ -388,8 +388,8 @@ fn tiles_and_rows(_: &mut Window, cx: &mut App) -> AnyElement {
             .id(("ds-row", index))
             .w_full()
             .h(px(28.0))
-            .px_2()
-            .gap_2()
+            .px(Space::S8)
+            .gap(Space::S8)
             .rounded(theme.shape_radius(
                 Surface::new(penna::SurfaceRole::MENU_ITEM),
                 penna::Shape::Round,
@@ -401,7 +401,7 @@ fn tiles_and_rows(_: &mut Window, cx: &mut App) -> AnyElement {
     };
     h_flex()
         .items_start()
-        .gap_8()
+        .gap(Space::S32)
         .child(
             v_flex()
                 .w(px(320.0))
@@ -422,9 +422,14 @@ fn tiles_and_rows(_: &mut Window, cx: &mut App) -> AnyElement {
             v_flex()
                 .w(px(240.0))
                 .gap(px(2.0))
-                .p_1()
+                .p(Space::S4)
                 .surface(Surface::new(penna::SurfaceRole::POPOVER), cx)
-                .child(div().px_2().py_1().child(caption("rows in a popover", cx)))
+                .child(
+                    div()
+                        .px(Space::S8)
+                        .py(Space::S4)
+                        .child(caption("rows in a popover", cx)),
+                )
                 .child(list_row(0, "New tab", false))
                 .child(list_row(1, "Split right", true))
                 .child(list_row(2, "Split down", false))
@@ -437,7 +442,7 @@ fn text_column(cx: &App) -> impl IntoElement {
     let foreground = cx.theme().foreground;
     let solid = cx.theme().paint(Tone::Primary, Emphasis::Solid);
     v_flex()
-        .gap_1()
+        .gap(Space::S4)
         .type_style(TextStyle::Body, cx)
         .child(div().text_color(foreground).child("Default text"))
         .child(
@@ -453,7 +458,7 @@ fn text_column(cx: &App) -> impl IntoElement {
         .child(
             h_flex().child(
                 div()
-                    .px_2()
+                    .px(Space::S8)
                     .rounded(px(4.0))
                     .painted(solid, PaintState::Rest)
                     .child("On a solid fill"),
@@ -465,17 +470,17 @@ fn text(_: &mut Window, cx: &mut App) -> AnyElement {
     let raised = cx.theme().surface(Elevation::Panel).fill;
     h_flex()
         .items_start()
-        .gap_6()
+        .gap(Space::S24)
         .child(
             v_flex()
-                .gap_2()
+                .gap(Space::S8)
                 .child(caption("window", cx))
                 .child(text_column(cx)),
         )
         .child(
             v_flex()
-                .gap_2()
-                .p_3()
+                .gap(Space::S8)
+                .p(Space::S12)
                 .rounded(px(8.0))
                 .bg(raised)
                 .child(caption("raised", cx))
@@ -483,8 +488,8 @@ fn text(_: &mut Window, cx: &mut App) -> AnyElement {
         )
         .child(
             v_flex()
-                .gap_2()
-                .p_3()
+                .gap(Space::S8)
+                .p(Space::S12)
                 .surface(Surface::new(penna::SurfaceRole::POPOVER), cx)
                 .child(caption("popover", cx))
                 .child(text_column(cx)),
@@ -529,7 +534,7 @@ fn ground_samples(cx: &App) -> impl IntoElement {
         ),
     ];
     v_flex()
-        .gap_2()
+        .gap(Space::S8)
         .children(samples.map(|(label, tone, emphasis, state)| {
             sample(label, theme.paint(tone, emphasis), state, cx)
         }))
@@ -539,19 +544,19 @@ fn grounds(_: &mut Window, cx: &mut App) -> AnyElement {
     let raised = cx.theme().surface(Elevation::Panel).fill;
     h_flex()
         .items_start()
-        .gap_6()
+        .gap(Space::S24)
         .child(
             v_flex()
                 .w(px(180.0))
-                .gap_2()
+                .gap(Space::S8)
                 .child(caption("window", cx))
                 .child(ground_samples(cx)),
         )
         .child(
             v_flex()
                 .w(px(204.0))
-                .gap_2()
-                .p_3()
+                .gap(Space::S8)
+                .p(Space::S12)
                 .rounded(px(8.0))
                 .bg(raised)
                 .child(caption("raised", cx))
@@ -560,8 +565,8 @@ fn grounds(_: &mut Window, cx: &mut App) -> AnyElement {
         .child(
             v_flex()
                 .w(px(204.0))
-                .gap_2()
-                .p_3()
+                .gap(Space::S8)
+                .p(Space::S12)
                 .surface(Surface::new(penna::SurfaceRole::POPOVER), cx)
                 .child(caption("popover", cx))
                 .child(ground_samples(cx)),
@@ -674,8 +679,8 @@ impl Render for Fields {
             };
             v_flex()
                 .w(px(280.0))
-                .gap_2()
-                .px_3()
+                .gap(Space::S8)
+                .px(Space::S12)
                 .py(px(9.0))
                 .rounded(px(8.0))
                 .painted(tile_paint, state)
@@ -724,7 +729,7 @@ impl Render for Fields {
                 "on a tile: rest, selected",
                 h_flex()
                     .items_start()
-                    .gap_4()
+                    .gap(Space::S16)
                     .child(tile(
                         false,
                         Input::new(&self.in_tile)

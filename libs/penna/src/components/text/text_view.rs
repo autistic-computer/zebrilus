@@ -18,7 +18,7 @@ use super::{
     markdown_ext::MarkdownExtensions,
     node::CodeBlock,
     state::TextViewState,
-    style::TextViewStyle,
+    style::{READING_MEASURE, TextViewStyle},
     window_selection,
 };
 
@@ -219,6 +219,7 @@ impl Element for TextView {
             .child(state.clone())
             .when_some(self.text_view_style.text, |this, text| {
                 this.type_style(text, cx)
+                    .max_w(crate::rems_from_px(READING_MEASURE))
             })
             .refine_style(&self.style)
             .into_any_element();

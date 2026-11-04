@@ -3,8 +3,8 @@ use ala::{
     percentage, px,
 };
 use penna::{
-    ActiveTheme as _, Colorize as _, Icon, IconName, Sizable as _, Size, StyledExt as _, TextStyle,
-    v_flex,
+    ActiveTheme as _, Colorize as _, Icon, IconName, Sizable as _, Size, Space, StyledExt as _,
+    TextStyle, v_flex,
 };
 
 use crate::story::{Section, Story, row, stateless, states};
@@ -41,12 +41,12 @@ fn gallery(_: &mut Window, cx: &mut App) -> AnyElement {
     div()
         .grid()
         .grid_cols(6)
-        .gap_x_3()
-        .gap_y_4()
+        .gap_x(Space::S12)
+        .gap_y(Space::S16)
         .children(IconName::ALL.iter().map(|icon| {
             v_flex()
                 .items_center()
-                .gap_1p5()
+                .gap(Space::S6)
                 .min_w_0()
                 .child(Icon::new(icon.clone()))
                 .child(

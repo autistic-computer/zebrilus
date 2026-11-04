@@ -40,10 +40,10 @@
   right: 0;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--penna-space-8);
   box-sizing: content-box;
   width: 248px;
-  padding: 12px;
+  padding: var(--penna-inset-card);
   font-size: var(--penna-text-body-size);
   font-weight: var(--penna-text-body-weight);
   line-height: var(--penna-text-body-line);
@@ -131,7 +131,7 @@
 .penna-color-picker-hex {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--penna-space-6);
 }
 
 .penna-color-picker-hex > [data-penna="field"] {
@@ -139,7 +139,7 @@
   min-width: 0;
   box-sizing: border-box;
   height: var(--penna-control-md);
-  padding: 2px 8px;
+  padding: var(--penna-space-2) var(--penna-space-8);
   border-width: max(1px, var(--penna-bw));
   cursor: text;
   font-size: var(--penna-text-body-size);

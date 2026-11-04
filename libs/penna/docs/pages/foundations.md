@@ -22,6 +22,6 @@ These pages are for people. They show what penna looks like and explain the thin
 ## In these pages
 
 - [Color](color.html): surfaces, ink, the accent and status colors.
-- [Typography](typography.html): one typeface, a few sizes, and how hierarchy works.
+- [Typography](typography.html): type for the interface, for reading and for touch, and how hierarchy works.
 - [Spacing](spacing.html): how space groups things, and who decides it.
-- [Sizes](sizes.html): control sizes and how they line up.
+- [Sizes](sizes.html): control sizes, density, and how they line up.

@@ -115,7 +115,7 @@ pub(super) fn key_surface<E: Styled>(element: E, look: KeyLook, cx: &App) -> E {
         .h(rems_from_px(KEY_SIZE))
         .layer(&key_layer(surface, state, theme));
     if look == KeyLook::Inverted {
-        element.font_semibold()
+        element.font_weight(crate::TextStyle::TouchSmall.strong_weight())
     } else {
         element
     }

@@ -25,8 +25,8 @@
 .penna-fill-label {
   position: relative;
   display: inline-flex;
-  font-size: 13px;
-  line-height: 18px;
+  font-size: var(--penna-text-body-size);
+  line-height: var(--penna-text-body-line);
 }
 
 .penna-items {

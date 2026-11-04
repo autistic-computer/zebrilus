@@ -67,11 +67,12 @@ impl RenderOnce for Dock {
                 h_flex()
                     .when_some(self.header_height, Styled::h)
                     .px(Space::S16)
-                    .gap(Space::S12)
+                    .gap(Space::GAP_RELATED)
                     .child(
                         v_flex()
                             .flex_1()
                             .min_w_0()
+                            .gap(Space::GAP_TIGHT)
                             .child(Label::new(TextStyle::Body, self.title).strong())
                             .children(
                                 self.subtitle

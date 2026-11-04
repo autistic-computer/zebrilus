@@ -3,7 +3,7 @@ use ala::{
     Render, SharedString, Styled as _, Subscription, Window, div, px,
 };
 use penna::{
-    ActiveTheme as _, Colorize as _, Disableable as _, Icon, IconName, Sizable as _,
+    ActiveTheme as _, Colorize as _, Disableable as _, Icon, IconName, Sizable as _, Space,
     StyledExt as _, TextStyle, components::kbd::Kbd, components::list::ListItem,
     components::separator::Separator, components::spinner::Spinner, h_flex, v_flex,
 };
@@ -116,7 +116,7 @@ fn spinners(_: &mut Window, cx: &mut App) -> AnyElement {
         .state(
             "inline with text",
             h_flex()
-                .gap_2()
+                .gap(Space::S8)
                 .type_style(TextStyle::Lead, cx)
                 .child(
                     Spinner::new()
@@ -136,7 +136,7 @@ fn separators(_: &mut Window, cx: &mut App) -> AnyElement {
         .state(
             "horizontal",
             v_flex()
-                .gap_2()
+                .gap(Space::S8)
                 .type_style(TextStyle::Lead, cx)
                 .child("Sessions")
                 .child(Separator::horizontal().id("separator-horizontal"))
@@ -146,7 +146,7 @@ fn separators(_: &mut Window, cx: &mut App) -> AnyElement {
             "vertical, 20px parent",
             h_flex()
                 .h(px(20.0))
-                .gap_3()
+                .gap(Space::S12)
                 .type_style(TextStyle::Lead, cx)
                 .child("macbook")
                 .child(Separator::vertical().id("separator-vertical-1"))
@@ -157,7 +157,7 @@ fn separators(_: &mut Window, cx: &mut App) -> AnyElement {
         .state(
             "custom color",
             v_flex()
-                .gap_2()
+                .gap(Space::S8)
                 .type_style(TextStyle::Lead, cx)
                 .child("Danger zone")
                 .child(
@@ -203,7 +203,7 @@ fn list_row(
     ListItem::new(id).child(
         h_flex()
             .w_full()
-            .gap_2()
+            .gap(Space::S8)
             .child(Icon::new(icon).medium().text_color(muted))
             .child(div().flex_1().child(label))
             .child(
@@ -219,7 +219,7 @@ impl Render for ListRows {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let list = v_flex()
             .w(px(360.0))
-            .gap_0p5()
+            .gap(Space::S2)
             .child(list_row(
                 "row-rest",
                 IconName::SquareTerminal,

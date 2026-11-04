@@ -77,7 +77,7 @@
 .penna-key[data-penna]:is([data-armed], [data-pressed]) {
   background: var(--penna-primary);
   color: var(--penna-on-accent);
-  font-weight: 600;
+  font-weight: 500;
   --penna-ink: var(--penna-on-accent);
 }
 
@@ -92,7 +92,7 @@
 }
 
 .penna-key-slot {
-  padding: 8px;
+  padding: var(--penna-space-8);
   border-radius: var(--penna-radius);
   corner-shape: superellipse(var(--penna-window-k));
   background: var(--penna-panel);

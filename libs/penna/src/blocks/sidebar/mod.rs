@@ -43,7 +43,7 @@ pub fn sidebar_row(
 pub fn sidebar_heading(title: impl Into<SharedString>, cx: &App) -> ala::Div {
     div()
         .px(Space::S8)
-        .pt(Space::S12)
+        .pt(Space::GAP_GROUP)
         .pb(Space::GAP_TIGHT)
         .type_style_strong(TextStyle::Small, cx)
         .text_color(cx.theme().foreground.muted())
@@ -52,7 +52,7 @@ pub fn sidebar_heading(title: impl Into<SharedString>, cx: &App) -> ala::Div {
 
 #[must_use]
 pub fn sidebar_gap() -> ala::Div {
-    div().flex_none().h(Space::S12)
+    div().flex_none().h(Space::GAP_GROUP)
 }
 
 #[must_use]

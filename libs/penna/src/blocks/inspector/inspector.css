@@ -2,11 +2,11 @@
   display: flex;
   flex: none;
   flex-direction: column;
-  gap: 16px;
+  gap: var(--penna-gap-group);
   box-sizing: border-box;
   width: 340px;
   height: 100%;
-  padding: 16px;
+  padding: var(--penna-inset-pane);
   overflow-y: auto;
   border: 0;
   border-left: 1px solid var(--penna-divider);
@@ -21,7 +21,7 @@
 .penna-inspector > .penna-inspector-header {
   display: flex;
   align-items: flex-start;
-  gap: 8px;
+  gap: var(--penna-space-8);
   width: 100%;
 }
 
@@ -29,7 +29,7 @@
   display: flex;
   flex: 1;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--penna-gap-tight);
   min-width: 0;
 }
 

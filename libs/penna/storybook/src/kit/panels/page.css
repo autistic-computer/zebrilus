@@ -125,24 +125,24 @@ section[data-section] {
 }
 
 .panel-type-caption {
-  font-size: 11px;
-  line-height: 16px;
+  font-size: var(--penna-text-caption-size);
+  line-height: var(--penna-text-caption-line);
 }
 
 .panel-type-small {
-  font-size: 12px;
-  line-height: 16px;
+  font-size: var(--penna-text-small-size);
+  line-height: var(--penna-text-small-line);
 }
 
 .panel-type-body {
-  font-size: 13px;
-  line-height: 18px;
+  font-size: var(--penna-text-body-size);
+  line-height: var(--penna-text-body-line);
 }
 
 .panel-type-mono {
   font-family: var(--penna-mono);
-  font-size: 13px;
-  line-height: 18px;
+  font-size: var(--penna-text-mono-size);
+  line-height: var(--penna-text-mono-line);
 }
 
 .panel-strong {

@@ -4,7 +4,7 @@ use ala::{
 };
 use penna::{
     ActiveTheme as _, Colorize as _, Elevation, Emphasis, Icon, PaintState, Sizable as _, Size,
-    StyledExt as _, TextStyle, Tone,
+    Space, StyledExt as _, TextStyle, Tone,
     components::button::{Button, ButtonVariants as _},
     components::icon::glyphs,
     h_flex, v_flex,
@@ -130,7 +130,7 @@ fn catalog(_: &mut Window, cx: &mut App) -> AnyElement {
                 format!("{group} ({})", members.len()),
                 h_flex()
                     .flex_wrap()
-                    .gap_3()
+                    .gap(Space::S12)
                     .children(members.iter().map(|glyph| card(*glyph, 24.0, cx))),
             )
         })
@@ -140,7 +140,7 @@ fn catalog(_: &mut Window, cx: &mut App) -> AnyElement {
 fn construction(_: &mut Window, cx: &mut App) -> AnyElement {
     h_flex()
         .flex_wrap()
-        .gap_3()
+        .gap(Space::S12)
         .children(glyphs::catalog().map(|glyph| card(glyph, 48.0, cx)))
         .into_any_element()
 }
@@ -158,7 +158,7 @@ fn card(glyph: glyphs::Glyph, size: f32, cx: &App) -> impl IntoElement {
     v_flex()
         .w(px(size * 2.0 + 72.0))
         .items_center()
-        .gap_1()
+        .gap(Space::S4)
         .child(
             h_flex()
                 .w_full()
@@ -188,8 +188,8 @@ fn sidebar(cx: &App) -> impl IntoElement {
     let item = |icon: &'static str, label: &'static str, selected: bool| {
         h_flex()
             .h(px(28.0))
-            .px_2()
-            .gap_2()
+            .px(Space::S8)
+            .gap(Space::S8)
             .rounded(theme.radius)
             .type_style(TextStyle::Body, cx)
             .text_color(theme.foreground.muted())
@@ -204,19 +204,19 @@ fn sidebar(cx: &App) -> impl IntoElement {
     };
     v_flex()
         .w(px(232.0))
-        .p_1p5()
-        .gap_0p5()
+        .p(Space::S6)
+        .gap(Space::S2)
         .rounded(theme.radius * 1.5)
         .framed(cx)
         .bg(theme.surface(Elevation::Panel).fill)
         .child(
             h_flex()
                 .justify_between()
-                .pb_1()
+                .pb(Space::S4)
                 .child(button("panel-left"))
                 .child(
                     h_flex()
-                        .gap_0p5()
+                        .gap(Space::S2)
                         .child(button("search"))
                         .child(button("plus")),
                 ),
@@ -229,16 +229,16 @@ fn sidebar(cx: &App) -> impl IntoElement {
         .child(
             h_flex()
                 .justify_between()
-                .pt_1()
+                .pt(Space::S4)
                 .child(
                     h_flex()
-                        .gap_0p5()
+                        .gap(Space::S2)
                         .child(button("settings"))
                         .child(button("bell")),
                 )
                 .child(
                     h_flex()
-                        .gap_0p5()
+                        .gap(Space::S2)
                         .child(button("chevron-right"))
                         .child(button("xmark")),
                 ),

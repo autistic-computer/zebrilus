@@ -12,7 +12,7 @@ use ala::{
 };
 use penna::{
     ActiveTheme as _, Colorize as _, Edge, Elevation, Emphasis, Icon, IconName, IndexPath,
-    RuleLook, StyledExt as _, Surface, TextStyle, Tone,
+    RuleLook, Space, StyledExt as _, Surface, TextStyle, Tone,
     blocks::color_picker::{ColorPicker, ColorPickerState},
     blocks::compact::{
         BENTO_INSET, BentoSpan, PillLabel, PillPlacement, bento_add_tile, bento_grid, bento_tile,
@@ -148,7 +148,7 @@ impl AppWindow {
     fn sidebar(cx: &App) -> AnyElement {
         let ground = cx.theme().ground();
         let controls = h_flex()
-            .gap_1()
+            .gap(Space::S4)
             .child(
                 chrome_button("creator-sidebar-hide", IconName::PanelLeft, "Hide sidebar")
                     .on(ground),
@@ -272,11 +272,11 @@ impl Render for AppWindow {
         let titlebar = app_titlebar_strip(
             "creator-titlebar",
             div()
-                .pl_3()
+                .pl(Space::S12)
                 .type_style(TextStyle::Lead, cx)
                 .font_weight(ala::FontWeight::MEDIUM)
                 .child("Appearance"),
-            h_flex().pr_2().child(
+            h_flex().pr(Space::S8).child(
                 Button::new("creator-titlebar-search")
                     .ghost()
                     .icon(IconName::Search),
@@ -479,7 +479,7 @@ impl Toasts {
 
     fn stack(&self) -> ala::Div {
         v_flex()
-            .gap_3()
+            .gap(Space::S12)
             .items_center()
             .children(self.toasts.iter().cloned())
             .child(self.tooltip.clone())
@@ -493,7 +493,7 @@ fn buttons(cx: &App) -> AnyElement {
         .child(
             h_flex()
                 .flex_wrap()
-                .gap_2()
+                .gap(Space::S8)
                 .child(
                     Button::new("creator-primary")
                         .primary()
@@ -505,7 +505,7 @@ fn buttons(cx: &App) -> AnyElement {
         )
         .child(
             h_flex()
-                .gap_2()
+                .gap(Space::S8)
                 .child(Button::new("creator-show-details").icon(IconName::PanelRight))
                 .child(Button::new("creator-show-comments").icon(IconName::PanelBottom))
                 .child(Button::new("creator-search").ghost().icon(IconName::Search))
@@ -521,7 +521,7 @@ fn buttons(cx: &App) -> AnyElement {
             h_flex()
                 .flex_wrap()
                 .items_center()
-                .gap_2()
+                .gap(Space::S8)
                 .child(Badge::new("synced").tone(Tone::Success))
                 .child(
                     Badge::new("shared")
@@ -604,7 +604,7 @@ impl Controls {
             .child(labeled("Server", Input::new(&self.server), cx))
             .child(
                 h_flex()
-                    .gap_3()
+                    .gap(Space::S12)
                     .child(
                         div()
                             .flex_1()
@@ -619,8 +619,8 @@ impl Controls {
             .child(labeled("Security", Select::new(&self.security), cx))
             .child(
                 h_flex()
-                    .pt_1()
-                    .gap_2()
+                    .pt(Space::S4)
+                    .gap(Space::S8)
                     .justify_end()
                     .child(Button::new("creator-account-cancel").label("Cancel"))
                     .child(
@@ -1014,7 +1014,7 @@ impl Phone {
             .child(
                 v_flex()
                     .p(px(16.0))
-                    .gap_2()
+                    .gap(Space::S8)
                     .type_style(TextStyle::Body, cx)
                     .text_color(muted)
                     .children(PHONE_LINES.map(|line| div().child(line))),

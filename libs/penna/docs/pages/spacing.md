@@ -32,27 +32,28 @@ penna uses four distances between things, from tight to wide:
 - **Group**: separate groups inside a pane.
 - **Section**: the big parts of a page.
 
-Here they are in one settings pane. Nothing is outlined, and you can still see the structure.
+Here they are on one page. Nothing is outlined, and you can still see the structure.
 
-```figure uses=label,switch,button
-<div class="docs-full" style="display: flex; flex-direction: column; gap: 32px; max-width: 480px">
-  <div style="display: flex; flex-direction: column; gap: 4px">
+```figure uses=label,switch
+<div class="docs-full penna-stack" data-gap="section" style="max-width: 480px">
+  <div class="penna-stack" data-gap="tight">
     <span class="penna-type" data-type="title" data-penna-text>Notifications</span>
     <span class="penna-type docs-text" data-type="body" data-muted data-penna-text>Choose what reaches you while you work.</span>
   </div>
-  <div style="display: flex; flex-direction: column; gap: 8px">
-    <span class="penna-type" data-type="heading" data-penna-text>Alerts</span>
-    <div data-penna="settings.card" style="display: flex; flex-direction: column; padding: 4px 12px">
-      <div class="docs-row" style="padding: 8px 0"><span class="penna-type" data-type="body" data-penna-text>Bell in background panes</span><span class="docs-spacer"></span><button class="penna-toggle" role="switch" aria-checked="true" aria-label="Bell in background panes"></button></div>
-      <div class="docs-row" style="padding: 8px 0"><span class="penna-type" data-type="body" data-penna-text>When an agent finishes</span><span class="docs-spacer"></span><button class="penna-toggle" role="switch" aria-checked="true" aria-label="When an agent finishes"></button></div>
+  <div class="penna-settings" style="padding: 0">
+    <div>
+      <h2>Alerts</h2>
+      <div data-penna="settings.card">
+        <div class="penna-setting"><div class="penna-copy">Bell in background panes<small>Ring when a pane you can't see rings its bell.</small></div><button class="penna-toggle" role="switch" aria-checked="true" aria-label="Bell in background panes"></button></div>
+        <div class="penna-setting"><div class="penna-copy">When an agent finishes<small>Tell me when a long task is done.</small></div><button class="penna-toggle" role="switch" aria-checked="true" aria-label="When an agent finishes"></button></div>
+      </div>
     </div>
-  </div>
-  <div style="display: flex; flex-direction: column; gap: 8px">
-    <span class="penna-type" data-type="heading" data-penna-text>Quiet hours</span>
-    <div data-penna="settings.card" style="display: flex; flex-direction: column; padding: 4px 12px">
-      <div class="docs-row" style="padding: 8px 0"><span class="penna-type" data-type="body" data-penna-text>Mute alerts at night</span><span class="docs-spacer"></span><button class="penna-toggle" role="switch" aria-checked="false" aria-label="Mute alerts at night"></button></div>
+    <div>
+      <h2>Quiet hours</h2>
+      <div data-penna="settings.card">
+        <div class="penna-setting"><div class="penna-copy">Mute alerts at night<small>Hold alerts until the morning.</small></div><button class="penna-toggle" role="switch" aria-checked="false" aria-label="Mute alerts at night"></button></div>
+      </div>
     </div>
-    <div class="docs-actions"><button class="penna-button" data-penna="button.quiet"><span class="penna-label" data-penna-text>Reset</span></button><button class="penna-button" data-penna="button"><span class="penna-label" data-penna-text>Done</span></button></div>
   </div>
 </div>
 ```

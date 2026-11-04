@@ -7,11 +7,11 @@ use ala::{
     Size, Style, TextAlign, TextRun, Window, WrappedLine, fill, point, px, relative, size,
 };
 
-use crate::{ActiveTheme as _, Colorize as _, RULE_WIDTH};
+use crate::{ActiveTheme as _, Colorize as _, RULE_WIDTH, Space};
 
 use super::{CodeEditorState, RopeExt as _, blink_cursor::CURSOR_WIDTH};
 
-const GUTTER_PADDING: Pixels = px(5.0);
+const GUTTER_PADDING: Space = Space::S4;
 const NEWLINE_SELECTION_WIDTH: Pixels = px(4.0);
 
 #[derive(Clone)]
@@ -304,7 +304,7 @@ impl Element for TextElement {
                 .text_system()
                 .shape_line(digit_sample, number_font_size, &[digit_run], None);
         let gutter_width = if state.mode.line_numbers() {
-            digit_line.width() + GUTTER_PADDING * 2.0
+            digit_line.width() + GUTTER_PADDING.rems().to_pixels(window.rem_size()) * 2.0
         } else {
             Pixels::ZERO
         };
@@ -613,7 +613,7 @@ impl Element for TextElement {
                 for (index, number) in &prepaint.line_numbers {
                     let number_origin = point(
                         layout.viewport_bounds.origin.x + layout.gutter_width
-                            - GUTTER_PADDING
+                            - GUTTER_PADDING.rems().to_pixels(window.rem_size())
                             - number.width(),
                         layout.text_origin.y + layout.line_tops[*index],
                     );

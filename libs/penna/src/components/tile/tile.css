@@ -21,7 +21,7 @@
   align-items: flex-end;
   width: 150px;
   height: 90px;
-  padding: 6px;
+  padding: var(--penna-space-6);
 }
 
 .penna-tile[data-variant="card"] {
@@ -30,14 +30,14 @@
   justify-content: flex-end;
   width: 132px;
   height: 64px;
-  padding: 8px 10px;
+  padding: var(--penna-space-8) var(--penna-space-10);
 }
 
 .penna-tile[data-variant="drop"] {
   position: absolute;
-  top: 4px;
-  right: 4px;
-  bottom: 4px;
+  top: var(--penna-space-4);
+  right: var(--penna-space-4);
+  bottom: var(--penna-space-4);
   width: 96px;
   --penna-r: var(--penna-radius);
   --penna-k: var(--penna-style-k);
@@ -56,7 +56,7 @@
 .penna-tile[data-variant="mini"] {
   flex: 1 1 0;
   height: 100%;
-  padding: 6px;
+  padding: var(--penna-space-6);
   --penna-fill: var(--penna-bg);
   --penna-r: 6px;
   --penna-k: var(--penna-style-k);

@@ -5,7 +5,7 @@ use ala::{
     prelude::*, px,
 };
 use penna::{
-    ActiveTheme as _, Colorize as _, Elevation, StyledExt as _, TextStyle,
+    ActiveTheme as _, Colorize as _, Elevation, Space, StyledExt as _, TextStyle,
     components::switch::Switch, h_flex, v_flex,
 };
 
@@ -79,7 +79,7 @@ pub fn card(id: &'static str, cx: &App) -> ala::Stateful<ala::Div> {
         .id(id)
         .w_full()
         .p(px(16.0))
-        .gap_3()
+        .gap(Space::S12)
         .rounded(cx.theme().radius)
         .framed(cx)
         .bg(cx.theme().background)
@@ -109,7 +109,7 @@ pub fn over_backdrop(id: &'static str, content: impl IntoElement, cx: &App) -> A
 
 pub fn heading(title: &'static str, description: &'static str, cx: &App) -> impl IntoElement {
     v_flex()
-        .gap_0p5()
+        .gap(Space::S2)
         .child(
             div()
                 .type_style(TextStyle::Lead, cx)
@@ -126,7 +126,7 @@ pub fn heading(title: &'static str, description: &'static str, cx: &App) -> impl
 
 pub fn labeled(label: &'static str, control: impl IntoElement, cx: &App) -> impl IntoElement {
     v_flex()
-        .gap_1p5()
+        .gap(Space::S6)
         .child(
             div()
                 .type_style(TextStyle::Small, cx)
@@ -145,7 +145,7 @@ pub fn toggle(
     cx: &App,
 ) -> impl IntoElement {
     h_flex()
-        .gap_3()
+        .gap(Space::S12)
         .justify_between()
         .child(
             v_flex()

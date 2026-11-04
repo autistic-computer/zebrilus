@@ -215,7 +215,7 @@
   flex: none;
   align-items: flex-end;
   height: 52px;
-  padding: 0 16px 4px;
+  padding: 0 var(--penna-space-16) var(--penna-space-4);
   color: var(--penna-fg);
   white-space: nowrap;
   font-size: var(--penna-text-touch-title-size);
@@ -252,8 +252,8 @@
 .penna-bento-copy {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  padding: 12px;
+  gap: var(--penna-space-2);
+  padding: var(--penna-space-12);
 }
 
 .penna-bento-title {

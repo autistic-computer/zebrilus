@@ -3,15 +3,14 @@
   width: 100%;
   max-width: 256px;
   min-height: 0;
-  padding: 8px 0;
+  padding: var(--penna-space-8) 0;
   border: 1px solid var(--penna-border);
   border-radius: 0;
   box-shadow: none;
-  font-size: 16px;
 }
 
 .penna-sidebar-heading {
-  padding: var(--penna-space-12) var(--penna-space-8) var(--penna-gap-tight);
+  padding: var(--penna-gap-group) var(--penna-space-8) var(--penna-gap-tight);
   font-size: var(--penna-text-small-size);
   line-height: var(--penna-text-small-line);
   font-weight: 500;
@@ -20,17 +19,16 @@
 
 .penna-sidebar-gap {
   flex: none;
-  height: var(--penna-space-12);
+  height: var(--penna-gap-group);
 }
 
 .penna-button.penna-sidebar-row[data-penna] {
   width: 100%;
   height: var(--penna-control-md);
   margin: 0;
-  padding: 0 8px;
+  padding: 0 var(--penna-space-8);
   justify-content: flex-start;
-  gap: 6px;
-  font-size: 13px;
+  gap: var(--penna-space-6);
   --penna-row: 1;
 }
 

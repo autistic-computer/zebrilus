@@ -1,6 +1,5 @@
 .penna-well[data-penna="well"] {
   display: block;
-  padding: 24px;
   --penna-well-wash: var(--penna-fill);
 }
 
@@ -28,6 +27,6 @@
 .penna-well > .penna-well-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 16px;
+  gap: var(--penna-space-16);
 }
 

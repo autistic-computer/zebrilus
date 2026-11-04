@@ -5,7 +5,7 @@ use crate::components::button::{Button, ButtonVariants as _};
 use crate::components::scroll::ScrollableElement;
 use crate::{
     ActiveTheme, Icon, IconName, Sizable as _, Size, StyledExt, TextStyle, components::kbd::Kbd,
-    h_flex, v_flex,
+    h_flex, rems_from_px, v_flex,
 };
 use crate::{
     Edge, ElementExt, Kind, PaintState, RuleLook, Side, Surface, SurfaceRole,
@@ -810,6 +810,7 @@ impl PopupMenu {
         has_icon: bool,
         checked: bool,
         icon: Option<Icon>,
+        size: Size,
         opacity: f32,
     ) -> Option<impl IntoElement> {
         if !has_icon {
@@ -829,7 +830,7 @@ impl PopupMenu {
                 .relative()
                 .top(px(0.5))
                 .flex_none()
-                .child(icon.size(px(14.0)).opacity(opacity)),
+                .child(icon.with_size(size).opacity(opacity)),
         )
     }
 
@@ -877,13 +878,13 @@ impl PopupMenu {
         let is_submenu = matches!(item, PopupMenuItem::Submenu { .. });
         let group_name = format!("{}:item-{}", cx.entity().entity_id(), ix);
 
-        let item_height = if crate::blocks::touch::CoarsePointer::get(cx) {
+        let coarse = crate::blocks::touch::CoarsePointer::get(cx);
+        let item_height = if coarse {
             px(crate::blocks::touch::TOUCH_TARGET)
         } else {
-            px(Size::Medium.control_px())
+            rems_from_px(Size::Medium.control_px()).to_pixels(window.rem_size())
         };
-
-        let coarse = crate::blocks::touch::CoarsePointer::get(cx);
+        let icon_size = if coarse { Size::Medium } else { Size::Small };
         let row = cx.theme().layer(
             Surface::new(SurfaceRole::MENU_ITEM),
             if selected {
@@ -962,6 +963,7 @@ impl PopupMenu {
                             has_left_icon,
                             false,
                             None,
+                            icon_size,
                             detail_opacity,
                         ))
                         .child(div().flex_1().child(label.clone())),
@@ -1004,6 +1006,7 @@ impl PopupMenu {
                         has_left_icon,
                         false,
                         None,
+                        icon_size,
                         detail_opacity,
                     ))
                     .child(div().flex_1().child(label.clone()))
@@ -1048,6 +1051,7 @@ impl PopupMenu {
                             has_left_icon,
                             is_left_check,
                             icon.clone(),
+                            icon_size,
                             detail_opacity,
                         ))
                         .child((render)(selected && !disabled, window, cx)),
@@ -1076,6 +1080,7 @@ impl PopupMenu {
                     has_left_icon,
                     is_left_check,
                     icon.clone(),
+                    icon_size,
                     detail_opacity,
                 ))
                 .child(
@@ -1122,6 +1127,7 @@ impl PopupMenu {
                             has_left_icon,
                             false,
                             icon.clone(),
+                            icon_size,
                             detail_opacity,
                         ))
                         .child(

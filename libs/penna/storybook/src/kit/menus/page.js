@@ -73,10 +73,19 @@
     }
   });
 
+  const opened = [];
   document.querySelectorAll("[data-dropdown]").forEach((trigger) => {
     const handle = dropdown(trigger, menus[trigger.dataset.dropdown]());
-    if (trigger.hasAttribute("data-open")) handle.show();
+    if (trigger.hasAttribute("data-open")) opened.push(handle);
   });
+  let dropped = false;
+  const drop = () => {
+    if (dropped) return;
+    dropped = true;
+    opened.forEach((handle) => handle.show());
+  };
+  if (document.getElementById("penna-tokens")?.sheet) drop();
+  else document.addEventListener("load", (event) => event.target.id === "penna-tokens" && drop(), true);
 
   document.querySelectorAll("[data-context]").forEach((region) => {
     const handle = context(region, menus[region.dataset.context]());

@@ -1,10 +1,10 @@
 .penna-callout {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: var(--penna-gap-related);
   box-sizing: border-box;
   width: 100%;
-  padding: 12px;
+  padding: var(--penna-inset-card);
   font-size: var(--penna-text-body-size);
   font-weight: var(--penna-text-body-weight);
   line-height: var(--penna-text-body-line);
@@ -14,7 +14,7 @@
 .penna-callout-head {
   display: flex;
   align-items: flex-start;
-  gap: 8px;
+  gap: var(--penna-space-8);
   width: 100%;
 }
 
@@ -55,7 +55,7 @@
   display: flex;
   flex: 1;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--penna-gap-tight);
   min-width: 0;
 }
 
@@ -98,7 +98,7 @@
   flex-wrap: wrap;
   align-items: center;
   justify-content: flex-end;
-  gap: 8px;
+  gap: var(--penna-space-8);
 }
 
 .penna-callout[data-tone] .penna-alert-actions .penna-button {

@@ -3,10 +3,10 @@
   display: flex;
   flex: none;
   align-items: center;
-  gap: 4px;
+  gap: var(--penna-space-4);
   width: 100%;
   height: 48px;
-  padding: 0 16px 0.5px;
+  padding: 0 var(--penna-space-16) 0.5px;
   border: 0;
   border-radius: 0;
   box-shadow: none;
@@ -28,12 +28,24 @@
   height: auto;
 }
 
+.penna-docs-start {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--penna-gap-group);
+}
+
+.penna-docs-links {
+  display: flex;
+  align-items: center;
+  gap: var(--penna-gap-tight);
+}
+
 .penna-docs-brand {
   display: flex;
   flex: none;
   align-items: center;
-  gap: 8px;
-  margin-right: 16px;
+  gap: var(--penna-space-8);
   font-size: var(--penna-text-lead-size);
   font-weight: 600;
   line-height: var(--penna-text-lead-line);
@@ -60,9 +72,9 @@
 .penna-docs-nav {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--penna-space-2);
   width: 100%;
-  padding: 4px 8px 24px;
+  padding: var(--penna-space-4) var(--penna-space-8) var(--penna-space-24);
 }
 
 .penna-docs-example[data-penna] {
@@ -77,8 +89,8 @@
   flex-wrap: wrap;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  padding: 40px 24px;
+  gap: var(--penna-space-8);
+  padding: var(--penna-space-40) var(--penna-space-24);
   font-size: var(--penna-text-body-size);
   font-weight: var(--penna-text-body-weight);
   line-height: var(--penna-text-body-line);
@@ -86,11 +98,11 @@
 
 .penna-docs-tabs {
   display: flex;
-  padding: 0 8px 8px;
+  padding: 0 var(--penna-space-8) var(--penna-space-8);
 }
 
 .penna-docs-code {
-  padding: 0 8px 8px;
+  padding: 0 var(--penna-space-8) var(--penna-space-8);
 }
 
 .penna-docs-code > [hidden] {
@@ -133,7 +145,7 @@
 
 .penna-docs-page {
   width: 100%;
-  max-width: 760px;
+  max-width: calc(640px + 2 * var(--penna-inset-page));
   margin: 0 auto;
   padding: var(--penna-space-40) var(--penna-inset-page) var(--penna-space-64);
   font-size: var(--penna-text-read-body-size);
@@ -141,15 +153,10 @@
   line-height: var(--penna-text-read-body-line);
 }
 
-.penna-docs-code > .penna-md,
-.penna-docs-page > .penna-md {
-  width: auto;
-}
-
 .penna-docs-targets {
   display: flex;
   justify-content: flex-end;
-  padding: 8px 8px 0;
+  padding: var(--penna-space-8) var(--penna-space-8) 0;
 }
 
 .penna-docs-stage[hidden] {

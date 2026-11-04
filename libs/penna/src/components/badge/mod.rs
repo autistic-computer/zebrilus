@@ -116,7 +116,7 @@ impl Styled for Badge {
 
 impl RenderOnce for Badge {
     fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
-        let (height, text, padding) = match self.size {
+        let (height, text, padding) = match self.size.rung() {
             Size::XSmall | Size::Small => (16.0, TextStyle::Micro, Space::S4),
             _ => (18.0, TextStyle::Caption, Space::S6),
         };

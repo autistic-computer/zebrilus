@@ -12,7 +12,8 @@ use crate::{
 };
 
 const ROW_HEIGHT: f32 = 22.0;
-const TITLE_HEIGHT: f32 = 24.0;
+const TITLE_HEIGHT: f32 = 20.0;
+const TITLE_GAP: Space = Space::GAP_TIGHT;
 const LABEL_WIDTH: f32 = 150.0;
 const CAP_GAP: Space = Space::GAP_RELATED;
 const CAP_MIN: f32 = 24.0;
@@ -22,7 +23,8 @@ const COLUMN_GAP: Space = Space::GAP_GROUP;
 const LINE_GAP: Space = Space::GAP_GROUP;
 const STACK_GAP: Space = Space::GAP_GROUP;
 const INSET: Space = Space::INSET_CARD;
-const CHROME_HEIGHT: f32 = 54.0;
+const HEADER_HEIGHT: f32 = 22.0;
+const HEADER_GAP: Space = Space::GAP_RELATED;
 const WIDTH_SLACK: f32 = 4.0;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -83,21 +85,31 @@ pub(crate) fn groups(rows: &[WhichKeyRow]) -> Vec<Group<'_>> {
     groups
 }
 
-fn block_height(rows: usize, titled: bool) -> f32 {
-    rows as f32 * ROW_HEIGHT + if titled { TITLE_HEIGHT } else { 0.0 }
+fn space_px(space: Space, rem: Pixels) -> f32 {
+    f32::from(space.rems().to_pixels(rem))
 }
 
-fn stacks<'a>(groups: &'a [Group<'a>], per_column: usize) -> Vec<Vec<Block<'a>>> {
+fn block_height(rows: usize, titled: bool, rem: Pixels) -> f32 {
+    rows as f32 * ROW_HEIGHT
+        + if titled {
+            TITLE_HEIGHT + space_px(TITLE_GAP, rem)
+        } else {
+            0.0
+        }
+}
+
+fn stacks<'a>(groups: &'a [Group<'a>], per_column: usize, rem: Pixels) -> Vec<Vec<Block<'a>>> {
+    let gap = space_px(STACK_GAP, rem);
     let per_column = per_column.max(1);
     let mut stacks: Vec<Vec<Block<'a>>> = Vec::new();
     let mut open: Option<f32> = None;
     for group in groups {
         let titled = group.title.is_some();
         let whole = group.rows.len() <= per_column;
-        let height = block_height(group.rows.len(), titled);
+        let height = block_height(group.rows.len(), titled, rem);
         if whole
             && let Some(used) = open
-            && used + STACK_GAP.design_px() + height <= block_height(per_column, titled)
+            && used + gap + height <= block_height(per_column, titled, rem)
             && let Some(stack) = stacks.last_mut()
         {
             stack.push(Block {
@@ -107,7 +119,7 @@ fn stacks<'a>(groups: &'a [Group<'a>], per_column: usize) -> Vec<Vec<Block<'a>>>
                 titled,
                 rows: &group.rows,
             });
-            open = Some(used + STACK_GAP.design_px() + height);
+            open = Some(used + gap + height);
             continue;
         }
         for (index, chunk) in group.rows.chunks(per_column).enumerate() {
@@ -124,30 +136,30 @@ fn stacks<'a>(groups: &'a [Group<'a>], per_column: usize) -> Vec<Vec<Block<'a>>>
     stacks
 }
 
-fn stack_height(stack: &[Block<'_>]) -> f32 {
+fn stack_height(stack: &[Block<'_>], rem: Pixels) -> f32 {
     stack
         .iter()
-        .map(|block| block_height(block.rows.len(), block.titled))
+        .map(|block| block_height(block.rows.len(), block.titled, rem))
         .sum::<f32>()
-        + stack.len().saturating_sub(1) as f32 * STACK_GAP.design_px()
+        + stack.len().saturating_sub(1) as f32 * space_px(STACK_GAP, rem)
 }
 
-fn layout_height(stacks: &[Vec<Block<'_>>], per_line: usize) -> f32 {
+fn layout_height(stacks: &[Vec<Block<'_>>], per_line: usize, rem: Pixels) -> f32 {
     let lines = stacks.chunks(per_line.max(1));
     let count = lines.len();
     lines
         .map(|line| {
             line.iter()
-                .map(|stack| stack_height(stack))
+                .map(|stack| stack_height(stack, rem))
                 .fold(0.0, f32::max)
         })
         .sum::<f32>()
-        + count.saturating_sub(1) as f32 * LINE_GAP.design_px()
+        + count.saturating_sub(1) as f32 * space_px(LINE_GAP, rem)
 }
 
-fn per_line(width: Pixels, column_width: f32) -> usize {
-    let gap = COLUMN_GAP.design_px();
-    let inner = f32::from(width) - 2.0 * INSET.design_px() - WIDTH_SLACK;
+fn per_line(width: Pixels, column_width: f32, rem: Pixels) -> usize {
+    let gap = space_px(COLUMN_GAP, rem);
+    let inner = f32::from(width) - 2.0 * space_px(INSET, rem) - WIDTH_SLACK;
     let fits = ((inner + gap) / (column_width + gap)).floor();
     if fits.is_finite() && fits >= 1.0 {
         fits as usize
@@ -156,11 +168,11 @@ fn per_line(width: Pixels, column_width: f32) -> usize {
     }
 }
 
-fn line_width(columns: usize, column_width: f32) -> Pixels {
+fn line_width(columns: usize, column_width: f32, rem: Pixels) -> Pixels {
     let columns = columns.max(1) as f32;
     px(columns * column_width
-        + (columns - 1.0) * COLUMN_GAP.design_px()
-        + 2.0 * INSET.design_px()
+        + (columns - 1.0) * space_px(COLUMN_GAP, rem)
+        + 2.0 * space_px(INSET, rem)
         + WIDTH_SLACK)
 }
 
@@ -169,7 +181,12 @@ struct Fit {
     width: Option<Pixels>,
 }
 
-fn fit(groups: &[Group<'_>], column_width: f32, available: Option<Size<Pixels>>) -> Fit {
+fn fit(
+    groups: &[Group<'_>],
+    column_width: f32,
+    available: Option<Size<Pixels>>,
+    rem: Pixels,
+) -> Fit {
     let tallest = groups
         .iter()
         .map(|group| group.rows.len())
@@ -182,12 +199,13 @@ fn fit(groups: &[Group<'_>], column_width: f32, available: Option<Size<Pixels>>)
             width: None,
         };
     };
-    let per_line = per_line(available.width, column_width);
-    let budget = f32::from(available.height) - CHROME_HEIGHT;
+    let per_line = per_line(available.width, column_width, rem);
+    let chrome = HEADER_HEIGHT + space_px(HEADER_GAP, rem) + 2.0 * space_px(INSET, rem);
+    let budget = f32::from(available.height) - chrome;
     let mut best = (f32::INFINITY, tallest, 1);
     for per_column in (1..=tallest).rev() {
-        let stacks = stacks(groups, per_column);
-        let height = layout_height(&stacks, per_line);
+        let stacks = stacks(groups, per_column, rem);
+        let height = layout_height(&stacks, per_line, rem);
         if height <= budget {
             best = (height, per_column, stacks.len());
             break;
@@ -198,7 +216,7 @@ fn fit(groups: &[Group<'_>], column_width: f32, available: Option<Size<Pixels>>)
     }
     Fit {
         per_column: best.1,
-        width: Some(line_width(best.2.min(per_line), column_width)),
+        width: Some(line_width(best.2.min(per_line), column_width, rem)),
     }
 }
 
@@ -354,7 +372,7 @@ impl WhichKeyView {
             })
     }
 
-    fn block(block: &Block<'_>, cap_width: f32, cx: &App) -> impl IntoElement {
+    fn block(block: &Block<'_>, cap_width: f32, cap_gap: f32, cx: &App) -> impl IntoElement {
         let selector = block.title.map(|title| format!("which-key-group-{title}"));
         let id = match (block.group, block.part) {
             (Some(group), 0) => format!("which-key-group-{group}"),
@@ -370,15 +388,15 @@ impl WhichKeyView {
             })
             .flex()
             .flex_col()
-            .gap(Space::S4)
+            .gap(TITLE_GAP)
             .when(block.titled, |element| {
                 element.child(
                     div()
                         .when_some(selector, |element, selector| {
                             element.debug_selector(move || selector)
                         })
-                        .h(px(TITLE_HEIGHT - 4.0))
-                        .pl(px(cap_width + CAP_GAP.design_px()))
+                        .h(px(TITLE_HEIGHT))
+                        .pl(px(cap_width + cap_gap))
                         .type_style(TextStyle::Caption, cx)
                         .text_color(cx.theme().foreground.muted())
                         .children(block.title.cloned()),
@@ -395,6 +413,8 @@ impl WhichKeyView {
 
 impl RenderOnce for WhichKeyView {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+        let rem = window.rem_size();
+        let cap_gap = space_px(CAP_GAP, rem);
         let cap_width = self
             .rows
             .iter()
@@ -403,32 +423,31 @@ impl RenderOnce for WhichKeyView {
                     .iter()
                     .map(|cap| text_width(&cap_text(cap), window, cx))
                     .sum::<f32>()
-                    + row.caps.len().saturating_sub(1) as f32 * SET_GAP.design_px()
+                    + row.caps.len().saturating_sub(1) as f32 * space_px(SET_GAP, rem)
             })
             .fold(CAP_MIN, f32::max)
             .min(CAP_MAX)
             .ceil();
-        let column_width = cap_width + CAP_GAP.design_px() + LABEL_WIDTH;
+        let column_width = cap_width + cap_gap + LABEL_WIDTH;
         let groups = groups(&self.rows);
-        let fit = fit(&groups, column_width, self.available);
+        let fit = fit(&groups, column_width, self.available, rem);
         let header = &self.header;
-        let body = stacks(&groups, fit.per_column)
-            .into_iter()
-            .map(|stack| {
-                div()
-                    .flex()
-                    .flex_col()
-                    .flex_none()
-                    .gap(STACK_GAP)
-                    .w(px(column_width))
-                    .children(
-                        stack
-                            .iter()
-                            .map(|block| Self::block(block, cap_width, cx).into_any_element()),
-                    )
-                    .into_any_element()
-            })
-            .collect::<Vec<AnyElement>>();
+        let body =
+            stacks(&groups, fit.per_column, rem)
+                .into_iter()
+                .map(|stack| {
+                    div()
+                        .flex()
+                        .flex_col()
+                        .flex_none()
+                        .gap(STACK_GAP)
+                        .w(px(column_width))
+                        .children(stack.iter().map(|block| {
+                            Self::block(block, cap_width, cap_gap, cx).into_any_element()
+                        }))
+                        .into_any_element()
+                })
+                .collect::<Vec<AnyElement>>();
         div()
             .author_id("which-key")
             .role(Role::Group)
@@ -443,7 +462,7 @@ impl RenderOnce for WhichKeyView {
             .occlude()
             .flex()
             .flex_col()
-            .gap(Space::GAP_RELATED)
+            .gap(HEADER_GAP)
             .p(INSET)
             .surface(Surface::new(SurfaceRole::SHEET), cx)
             .child(
@@ -552,7 +571,7 @@ mod tests {
         })
         .collect();
         let groups = groups(&rows);
-        let packed: Vec<_> = stacks(&groups, 7)
+        let packed: Vec<_> = stacks(&groups, 7, px(16.0))
             .iter()
             .map(|stack| titles(stack))
             .collect();
@@ -565,7 +584,7 @@ mod tests {
                 vec!["Other"]
             ]
         );
-        let split = stacks(&groups, 4);
+        let split = stacks(&groups, 4, px(16.0));
         assert_eq!(titles(&split[0]), ["Panes"]);
         assert_eq!(titles(&split[1]), [""]);
         assert!(split[1][0].titled);

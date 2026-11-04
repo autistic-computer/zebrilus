@@ -37,7 +37,9 @@ One color marks what is on, picked or in focus: a switch that is on, the field y
 
 ## Status
 
-Red, amber and green are kept for things going wrong, needing attention, or going right. They always come with an icon and words, so they still read for people who can't tell the colors apart.
+Red, amber and green are kept for things going wrong, needing attention, or going right. They always come with an icon or a word, so they still read for people who can't tell the colors apart.
+
+Colored text stays readable in every look, light and dark: the status colors and the accent are strong enough to read as text, and a label on a filled button or badge in any of them reads just as well, whatever accent you pick.
 
 ```figure story=status/notices
 ```

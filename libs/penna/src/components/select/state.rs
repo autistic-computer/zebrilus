@@ -319,7 +319,7 @@ impl<D: SelectDelegate> SelectState<D> {
                     .flex_none()
                     .h(size.control_h())
                     .px(size.input_px())
-                    .gap(size.icon_gap().max(Space::S6))
+                    .gap(size.icon_gap())
                     .justify_between()
                     .when(!disabled, ala::Styled::cursor_pointer),
                 size,
