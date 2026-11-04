@@ -9,7 +9,7 @@ use std::{
 use zz_client::StatusBarSettings;
 use zz_client::appearance::{
     ACCENTS, AccentSetting, AppIconSetting, BUILTIN_THEMES, DEFAULT_ANIMATION_SPEED, DEFAULT_THEME,
-    DEFAULT_TINT_HUE, MAX_ANIMATION_SPEED, MAX_CORNER_RADIUS, MIN_ANIMATION_SPEED,
+    DEFAULT_TINT_HUE, DensitySetting, MAX_ANIMATION_SPEED, MAX_CORNER_RADIUS, MIN_ANIMATION_SPEED,
     ThemeModeSetting, is_builtin_theme,
 };
 use zz_client::url_input::SearchProvider;
@@ -110,6 +110,7 @@ pub enum ConfigKey {
     ChromeAccent,
     ChromeTint,
     ChromeTintHue,
+    ChromeDensity,
     EditorFontSize,
     EditorLineNumbers,
     EditorRelativeLineNumbers,
@@ -160,6 +161,7 @@ impl ConfigKey {
             Self::ChromeAccent => "chrome-accent",
             Self::ChromeTint => "chrome-tint",
             Self::ChromeTintHue => "chrome-tint-hue",
+            Self::ChromeDensity => "chrome-density",
             Self::EditorFontSize => "editor-font-size",
             Self::EditorLineNumbers => "editor-line-numbers",
             Self::EditorRelativeLineNumbers => "editor-relative-line-numbers",
@@ -210,6 +212,7 @@ impl ConfigKey {
             "chrome-accent" => Some(Self::ChromeAccent),
             "chrome-tint" => Some(Self::ChromeTint),
             "chrome-tint-hue" => Some(Self::ChromeTintHue),
+            "chrome-density" => Some(Self::ChromeDensity),
             "editor-font-size" => Some(Self::EditorFontSize),
             "editor-line-numbers" => Some(Self::EditorLineNumbers),
             "editor-relative-line-numbers" => Some(Self::EditorRelativeLineNumbers),
@@ -274,6 +277,7 @@ impl ConfigKey {
             | Self::ThemeMode
             | Self::InterfaceTheme
             | Self::ChromeAccent
+            | Self::ChromeDensity
             | Self::UiFontFamily
             | Self::AppIcon => None,
         }
@@ -394,6 +398,7 @@ pub struct AppConfig {
     pub chrome_accent: ConfigValue<AccentSetting>,
     pub chrome_tint: ConfigValue<f32>,
     pub chrome_tint_hue: ConfigValue<f32>,
+    pub chrome_density: ConfigValue<DensitySetting>,
     pub editor_font_size: ConfigValue<f32>,
     pub editor_line_numbers: ConfigValue<bool>,
     pub editor_relative_line_numbers: ConfigValue<bool>,
@@ -441,6 +446,7 @@ impl Default for AppConfig {
             chrome_accent: ConfigValue::from_default(AccentSetting::Theme),
             chrome_tint: ConfigValue::from_default(DEFAULT_CHROME_TINT),
             chrome_tint_hue: ConfigValue::from_default(DEFAULT_TINT_HUE),
+            chrome_density: ConfigValue::from_default(DensitySetting::Regular),
             editor_font_size: ConfigValue::from_default(DEFAULT_EDITOR_FONT_SIZE),
             editor_line_numbers: ConfigValue::from_default(DEFAULT_EDITOR_LINE_NUMBERS),
             editor_relative_line_numbers: ConfigValue::from_default(
@@ -502,6 +508,7 @@ impl AppConfig {
             | ConfigKey::ChromeAccent
             | ConfigKey::ChromeTint
             | ConfigKey::ChromeTintHue
+            | ConfigKey::ChromeDensity
             | ConfigKey::EditorFontSize
             | ConfigKey::BrowserElementSelectorHotkey
             | ConfigKey::BrowserRemoteDebuggingPort
@@ -1057,7 +1064,10 @@ pub fn parse_config(source: &str, system_font_family: &str) -> ParsedConfig {
         }
         if matches!(
             key,
-            ConfigKey::ThemeMode | ConfigKey::InterfaceTheme | ConfigKey::AppIcon
+            ConfigKey::ThemeMode
+                | ConfigKey::InterfaceTheme
+                | ConfigKey::AppIcon
+                | ConfigKey::ChromeDensity
         ) {
             continue;
         }
@@ -1106,6 +1116,7 @@ pub fn parse_config(source: &str, system_font_family: &str) -> ParsedConfig {
             | ConfigKey::ThemeMode
             | ConfigKey::InterfaceTheme
             | ConfigKey::ChromeAccent
+            | ConfigKey::ChromeDensity
             | ConfigKey::UiFontFamily
             | ConfigKey::AppIcon => {
                 unreachable!("handled above")
@@ -1183,6 +1194,16 @@ pub fn apply_theme_key(
                     return None;
                 }
                 None => "expected automatic, light or dark".to_owned(),
+            }
+        }
+        ConfigKey::ChromeDensity => {
+            config.chrome_density.provenance = ConfigProvenance::Override;
+            match DensitySetting::parse(value) {
+                Some(density) => {
+                    config.chrome_density.value = density;
+                    return None;
+                }
+                None => "expected compact, regular or comfortable".to_owned(),
             }
         }
         _ => return None,

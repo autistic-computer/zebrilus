@@ -259,7 +259,7 @@ fn menu_row_height(state: &MenuState, titled: bool, room: Size<Pixels>, cx: &App
     let natural = if CoarsePointer::get(cx) {
         TOUCH_TARGET
     } else {
-        26.0
+        penna::Size::Medium.control_px()
     };
     px(zz_client::menu_row_height(
         state,

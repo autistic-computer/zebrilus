@@ -156,6 +156,7 @@ The client-local schema includes these scalar settings and chrome colors.
 | `theme-mode` | `system` | `system`, `light`, `dark` | Follow the OS appearance, or pin one mode |
 | `app-icon` | `automatic` | `automatic`, `light`, `dark` | Which render of `assets/zz.icon` the macOS Dock tile wears; `automatic` defers to the bundle's compiled icon when packaged (so tinted/clear dock styles work) and follows the OS appearance in bare builds, independently of `theme-mode` |
 | `chrome-contrast` | `1.0` | `1.0`–`2.0` | Raises the chrome derivations; out-of-range or invalid values are reported and fall back to `1.0`. Settings shows it as a slider from 100% to 200% in steps of 5, written with two decimals. |
+| `chrome-density` | `regular` | `compact`, `regular`, `comfortable` | The default control and row height in the chrome: 24, 28 or 32px for buttons, fields, selects and list, menu and picker rows; text, gaps and the other control sizes stay. Invalid values are reported and fall back to `regular`. Settings shows it as Density under UI zoom. |
 
 `chrome-preset`, `chrome-preset-light`, `chrome-preset-dark`, `chrome-background`,
 `chrome-foreground`, `chrome-success`, `chrome-warning` and `chrome-danger` are
@@ -764,7 +765,7 @@ always-live inactive-opacity factor and the selected pane's edge strength, which
 
 | Page | Groups |
 | --- | --- |
-| Interface | **Theme** (`theme-mode` as Mode, a System, Light and Dark segmented control, `interface-theme` as Theme, a button listing the built-in and saved themes with their accents beside a more menu with Import from clipboard, `chrome-accent` as Accent swatches with a custom color picker, then `chrome-tint-hue` as Tint and `chrome-tint` as Tint strength, two sliders) · **Advanced**, collapsed until opened (`widget-corner-radius` as Corner radius and `chrome-contrast` as Contrast, two sliders, `UI font`, transient `UI zoom`, macOS `app-icon` as three icon tiles, `animations`, `window-background-blur` as "Window blur" and `window-background-opacity` as "Window blur opacity", a slider dimmed while the blur is off, where the platform profile has it, Linux `window-corner-radius` and `use-system-titlebar`) |
+| Interface | **Theme** (`theme-mode` as Mode, a System, Light and Dark segmented control, `interface-theme` as Theme, a button listing the built-in and saved themes with their accents beside a more menu with Import from clipboard, `chrome-accent` as Accent swatches with a custom color picker, then `chrome-tint-hue` as Tint and `chrome-tint` as Tint strength, two sliders) · **Advanced**, collapsed until opened (`widget-corner-radius` as Corner radius and `chrome-contrast` as Contrast, two sliders, `UI font`, transient `UI zoom`, `chrome-density` as Density, macOS `app-icon` as three icon tiles, `animations`, `window-background-blur` as "Window blur" and `window-background-opacity` as "Window blur opacity", a slider dimmed while the blur is off, where the platform profile has it, Linux `window-corner-radius` and `use-system-titlebar`) |
 | Status bar | Title-bar items shown when the sidebar is retracted (`status-badges`, `status-host`, `status-update`; `status-show-session` and `status-agents` were removed and are reported if present) |
 | Browser | **Network** (`browser-egress`) · **Agents** (`browser-remote-debugging-port` as an on/off switch that writes `9222`) · **Search** (`browser-search-provider`) · **Shortcuts** (`browser-element-selector-hotkey`) |
 | Editor | **Typography** (`editor-font-size`) · **Display** (`editor-line-numbers`, `editor-relative-line-numbers`, `editor-soft-wrap`, `editor-vim-mode`) |
@@ -898,7 +899,8 @@ flattened into their preferences, so the file keeps the same keys (see
 until 2026-10-15 is gone: a theme sets outlines, shadows, row inset, primary and glass together,
 and only Corner radius stays, first under Advanced. Corner radius and Contrast are sliders like
 the tint's, with their value beside them: the radius from 0 to 25 in whole pixels ("10px"), the
-contrast from 100% to 200% in steps of 5, written as `chrome-contrast` with two decimals. Each new
+contrast from 100% to 200% in steps of 5, written as `chrome-contrast` with two decimals. Density
+writes `chrome-density` and reloads the config at once, so the chrome resizes as you pick. Each new
 value is written as the thumb moves, so Contrast previews live like the other appearance keys, and
 the radius follows the theme until the slider moves, so opening Advanced does not pin the theme's
 radius. Each row's Reset removes its key and shows the theme's value again through the normal

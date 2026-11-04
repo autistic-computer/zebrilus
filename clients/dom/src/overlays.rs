@@ -262,6 +262,7 @@ impl Client {
         canvas_height: f32,
         scale: f32,
         room_height: f32,
+        natural_row_height: f32,
     ) -> Option<String> {
         let state = self.core.menu()?;
         let titled = state.border_lines != PopupBorderLines::None && !state.title.is_empty();
@@ -284,7 +285,7 @@ impl Client {
                 "titled": titled,
                 "outlined": outlined,
                 "title": aligned(&state.title),
-                "rowHeight": menu_row_height(state, titled, room_height, 26.0, true),
+                "rowHeight": menu_row_height(state, titled, room_height, natural_row_height, true),
                 "fill": literal(&state.style, "bg"),
                 "text": literal(&state.style, "fg"),
                 "outline": literal(&state.border_style, "fg"),

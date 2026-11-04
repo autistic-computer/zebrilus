@@ -563,7 +563,7 @@ fn editor_text(root: Stateful<Div>, cx: &App) -> Stateful<Div> {
 fn vim_mode_chip(pane: PaneId, mode: VimMode) -> Chip {
     let chip = Chip::new(("editor-vim-mode", pane.0), mode.label())
         .look(ChipLook::Floating)
-        .with_size(Size::Small);
+        .with_size(Size::XSmall);
     let chip = if matches!(mode, VimMode::Normal) {
         chip
     } else {

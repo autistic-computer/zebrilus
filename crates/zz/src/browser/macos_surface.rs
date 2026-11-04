@@ -113,7 +113,7 @@ fn create_pixel_buffer(io_surface: &MacIoSurface) -> Result<CVPixelBuffer, MacBr
     let status = unsafe {
         CVPixelBufferCreateWithIOSurface(
             kCFAllocatorDefault,
-            io_surface.as_ptr().cast(),
+            &*io_surface.as_ptr().cast(),
             null(),
             &raw mut pixel_buffer,
         )

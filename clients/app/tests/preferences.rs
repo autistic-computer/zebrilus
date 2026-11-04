@@ -113,6 +113,7 @@ fn a_preferences_file_written_before_appearance_moved_into_the_kit_loads_the_sam
             zoom: 1.35,
             animations: false,
             animation_speed: 1.5,
+            density: penna::Density::Regular,
         }
     );
     assert_eq!(preferences.theme_mode(), ThemeModeSetting::Light);
@@ -124,5 +125,7 @@ fn a_preferences_file_written_before_appearance_moved_into_the_kit_loads_the_sam
 
     let written = serde_json::to_string(&preferences).unwrap();
     let parsed = |json: &str| serde_json::from_str::<serde_json::Value>(json).unwrap();
-    assert_eq!(parsed(&written), parsed(source));
+    let mut expected = parsed(source);
+    expected["density"] = "regular".into();
+    assert_eq!(parsed(&written), expected);
 }

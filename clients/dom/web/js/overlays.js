@@ -210,7 +210,8 @@ function renderFloating() {
   menuNode = null;
   if (!client) return;
   const area = workspaceRect();
-  const menu = client.menu(area.width, area.height, devicePixelRatio || 1, innerHeight);
+  const natural = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--penna-control-md")) || 28;
+  const menu = client.menu(area.width, area.height, devicePixelRatio || 1, innerHeight, natural);
   if (menu) {
     const parsed = JSON.parse(menu);
     const [shield, surface] = renderMenu(parsed, area);

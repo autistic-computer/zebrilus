@@ -8,7 +8,7 @@ pub use penna::foundation::interface_theme::{
 pub use penna::foundation::motion::{
     DEFAULT_ANIMATION_SPEED, MAX_ANIMATION_SPEED, MIN_ANIMATION_SPEED,
 };
-pub use zz_client::appearance::{AccentSetting, ThemeModeSetting};
+pub use zz_client::appearance::{AccentSetting, DensitySetting, ThemeModeSetting};
 
 pub fn parse_theme(source: &str) -> Result<InterfaceTheme, String> {
     penna::foundation::interface_theme::parse_theme(source)
@@ -43,6 +43,22 @@ pub const fn theme_mode_setting(mode: Option<ThemeMode>) -> ThemeModeSetting {
         Some(ThemeMode::Dark) => ThemeModeSetting::Dark,
         Some(ThemeMode::Light) => ThemeModeSetting::Light,
         None => ThemeModeSetting::System,
+    }
+}
+
+pub const fn kit_density(setting: DensitySetting) -> penna::Density {
+    match setting {
+        DensitySetting::Compact => penna::Density::Compact,
+        DensitySetting::Regular => penna::Density::Regular,
+        DensitySetting::Comfortable => penna::Density::Comfortable,
+    }
+}
+
+pub const fn density_setting(density: penna::Density) -> DensitySetting {
+    match density {
+        penna::Density::Compact => DensitySetting::Compact,
+        penna::Density::Regular => DensitySetting::Regular,
+        penna::Density::Comfortable => DensitySetting::Comfortable,
     }
 }
 
