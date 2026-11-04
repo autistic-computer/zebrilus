@@ -26,7 +26,7 @@ elif name == "cargo" and "zz-web" in args:
 elif name == "rustup" and args[0] == "target":
     print("wasm32-unknown-unknown")
 elif name == "wasm-bindgen" and args == ["--version"]:
-    print("wasm-bindgen 0.2.128")
+    print("wasm-bindgen 0.2.130")
 '''
 
 

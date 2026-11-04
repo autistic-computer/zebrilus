@@ -30,8 +30,8 @@ if ! rustup target list --installed --toolchain "$WEB_TOOLCHAIN" | rg -qx 'wasm3
     exit 2
 fi
 
-if ! command -v wasm-bindgen >/dev/null 2>&1 || [[ "$(wasm-bindgen --version)" != "wasm-bindgen 0.2.128" ]]; then
-    echo "wasm-bindgen 0.2.128 is required; run: just web setup" >&2
+if ! command -v wasm-bindgen >/dev/null 2>&1 || [[ "$(wasm-bindgen --version)" != "wasm-bindgen 0.2.130" ]]; then
+    echo "wasm-bindgen 0.2.130 is required; run: just web setup" >&2
     exit 2
 fi
 

@@ -51,13 +51,13 @@ cargo_metadata = "0.23.1"
 cbindgen = { version = "0.28.0", default-features = false }
 cef = { version = "=156.3.0", features = ["accelerated_osr"] }
 chrono = { version = "0.4.45", default-features = false }
-cocoa = "=0.26.0"
+cocoa = "=0.26.1"
 console_error_panic_hook = "0.1.7"
 core-foundation = "=0.10.1"
 core-foundation-sys = "0.8.6"
 core-graphics = "0.24"
 core-text = "21"
-core-video = "=0.5.2"
+core-video = "=0.6.1"
 criterion = { version = "0.5", features = ["html_reports"] }
 crossbeam-channel = "0.5.17"
 csscolorparser = "=0.9.0"
@@ -116,7 +116,7 @@ objc2-io-surface = "0.3.2"
 objc2-metal = "0.3.2"
 objc2-quartz-core = { version = "0.3.2", default-features = false, features = ["std"] }
 objc2-user-notifications = "0.3"
-parking_lot = "0.12.5"
+parking_lot = "0.13.0"
 pathfinder_geometry = "0.5"
 plist = "1.10.1"
 pollster = "1.0.1"
@@ -146,7 +146,7 @@ serde = { version = "1.0.229", features = ["derive", "rc"] }
 serde_json = "1.0.151"
 serde_urlencoded = "0.7"
 slotmap = "1.0.6"
-smallvec = { version = "=1.16.1", features = ["serde"] }
+smallvec = { version = "=1.16.4", features = ["serde"] }
 smol = "=2.0.2"
 stacksafe = "1.0"
 strum = { version = "0.28", features = ["derive"] }
@@ -164,7 +164,7 @@ unicode-width = "0.2.2"
 url = "=2.5.8"
 usvg = { version = "0.48.1", default-features = false }
 uuid = { version = "1.1.2", features = ["v4", "v5", "v7", "serde"] }
-wasm-bindgen = "0.2.120"
+wasm-bindgen = "0.2.130"
 wasm-bindgen-futures = "0.4"
 wayland-client = "0.31.15"
 web-time = "1.1.0"
@@ -174,7 +174,7 @@ windows = "=0.62.2"
 windows-core = "0.62"
 windows-registry = "0.6.0"
 x11rb = "0.13.2"
-zeroize = "=1.9.0"
+zeroize = "=1.9.1"
 
 ala = { path = "libs/ala/crates/ala", default-features = false }
 penna = { path = "libs/penna" }
