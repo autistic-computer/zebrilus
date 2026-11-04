@@ -20,14 +20,14 @@ zz-protocol.workspace = true
 zz-terminal.workspace = true
 
 [target.'cfg(target_os = "ios")'.dependencies]
-russh = { version = "0.63.3", default-features = false, features = ["ring", "flate2", "rsa"] }
+russh = { version = "0.65.1", default-features = false, features = ["ring", "flate2", "rsa"] }
 tokio = { version = "1", default-features = false, features = ["rt", "net", "io-util", "time", "sync"] }
 getrandom = { workspace = true, features = ["sys_rng"] }
 core-foundation.workspace = true
 security-framework-sys = "2.17"
 
 [target.'cfg(target_os = "android")'.dependencies]
-russh = { version = "0.63.3", default-features = false, features = ["ring", "flate2", "rsa"] }
+russh = { version = "0.65.1", default-features = false, features = ["ring", "flate2", "rsa"] }
 tokio = { version = "1", default-features = false, features = ["rt", "net", "io-util", "time", "sync"] }
 getrandom = { workspace = true, features = ["sys_rng"] }
 
@@ -45,7 +45,7 @@ windows = { workspace = true, features = [
 
 [dev-dependencies]
 sysinfo.workspace = true
-russh = { version = "0.63.3", default-features = false, features = ["ring", "flate2", "rsa"] }
+russh = { version = "0.65.1", default-features = false, features = ["ring", "flate2", "rsa"] }
 tokio = { version = "1", default-features = false, features = ["rt", "net", "io-util", "time", "sync", "macros", "test-util"] }
 
 [lints]

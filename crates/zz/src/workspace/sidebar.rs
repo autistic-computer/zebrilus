@@ -1607,7 +1607,7 @@ fn render_node_marker(
 
 pub(crate) fn local_hostname() -> SharedString {
     static NAME: std::sync::OnceLock<SharedString> = std::sync::OnceLock::new();
-    NAME.get_or_init(|| sidebar_hostname(sysinfo::System::host_name().as_deref()))
+    NAME.get_or_init(|| sidebar_hostname(sysinfo::System::host_name().ok().as_deref()))
         .clone()
 }
 

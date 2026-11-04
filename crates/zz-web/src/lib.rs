@@ -139,7 +139,7 @@ async fn upgrade(
 
 async fn bridge(websocket: WebSocket, daemon: Stream) -> io::Result<()> {
     let (mut browser_write, mut browser_read) = websocket.split();
-    let (mut daemon_read, mut daemon_write) = daemon.split();
+    let (mut daemon_read, mut daemon_write) = (&daemon, &daemon);
     let browser_to_daemon = async {
         while let Some(message) = browser_read.next().await {
             match message.map_err(io::Error::other)? {

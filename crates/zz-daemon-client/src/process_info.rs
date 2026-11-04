@@ -1383,7 +1383,7 @@ mod platform {
     use super::{ProcessRecord, ProcessSample, ProgramProcess};
 
     fn refreshed(pids: &[Pid], refresh: ProcessRefreshKind) -> System {
-        let mut system = System::new();
+        let mut system = System::new().expect("sysinfo supports Windows");
         system.refresh_processes_specifics(ProcessesToUpdate::Some(pids), true, refresh);
         system
     }
@@ -1474,7 +1474,7 @@ mod platform {
     }
 
     pub(super) fn descendants(pid: u32) -> Vec<u32> {
-        let mut system = System::new();
+        let mut system = System::new().expect("sysinfo supports Windows");
         system.refresh_processes_specifics(
             ProcessesToUpdate::All,
             true,
@@ -1523,7 +1523,7 @@ mod platform {
     static TREE: Mutex<Option<Tree>> = Mutex::new(None);
 
     fn scan() -> Tree {
-        let mut system = System::new();
+        let mut system = System::new().expect("sysinfo supports Windows");
         system.refresh_processes_specifics(
             ProcessesToUpdate::All,
             true,
@@ -1608,7 +1608,7 @@ mod platform {
     }
 
     pub(super) fn host_name() -> Option<String> {
-        System::host_name()
+        System::host_name().ok()
     }
 }
 
@@ -1734,7 +1734,7 @@ mod tests {
     }
 
     fn oracle(pid: u32) -> System {
-        let mut system = System::new();
+        let mut system = System::new().expect("sysinfo supports this platform");
         system.refresh_processes_specifics(
             ProcessesToUpdate::Some(&[Pid::from_u32(pid)]),
             true,
@@ -1781,7 +1781,7 @@ mod tests {
         let expected = system.process(Pid::from_u32(pid)).expect("oracle process");
         assert_eq!(start_time(pid), Some(expected.start_time()));
         assert_eq!(command_name(pid).as_deref(), expected.name().to_str());
-        assert_eq!(host_name(), System::host_name());
+        assert_eq!(host_name(), System::host_name().ok());
         assert_eq!(parent(pid), expected.parent().map(Pid::as_u32));
         assert_eq!(
             process_group(pid),

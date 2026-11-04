@@ -47,7 +47,7 @@ env_logger.workspace = true
 ala = { workspace = true, features = ["default"] }
 ala-platform = { workspace = true, features = ["font-kit", "wayland", "x11"] }
 ala-cef = { workspace = true, features = ["cef-runtime", "chrome-import"] }
-fff-search = { version = "=0.10.6", optional = true }
+fff-search = { version = "=0.11.0", optional = true }
 ignore = { workspace = true, optional = true }
 image = { workspace = true, features = ["bmp", "gif", "ico", "jpeg", "png", "pnm", "tiff", "webp"] }
 log.workspace = true
@@ -92,7 +92,7 @@ raw-window-handle.workspace = true
 [target.'cfg(target_os = "linux")'.dependencies]
 libc.workspace = true
 mimalloc = { workspace = true, features = ["no_thp"] }
-notify = "=9.0.0-rc.5"
+notify = "=9.0.0-rc.7"
 raw-window-handle.workspace = true
 wayland-client.workspace = true
 x11rb.workspace = true

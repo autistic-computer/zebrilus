@@ -8,7 +8,7 @@ fn config(query: &str) -> neo_frizbee::Config {
     neo_frizbee::Config {
         max_typos: Some(u16::try_from(query.chars().count() / 4).unwrap_or(6).min(6)),
         casing: neo_frizbee::CaseMatching::Smart,
-        sort: false,
+        sort: neo_frizbee::SortStrategy::Unsorted,
         ..neo_frizbee::Config::default()
     }
 }
@@ -24,7 +24,8 @@ pub fn rank(
             .map(|index| (index, 0, prior(index)))
             .collect::<Vec<_>>()
     } else {
-        neo_frizbee::match_list(query, labels, &config(query))
+        neo_frizbee::Matcher::new(query, &config(query))
+            .match_list(labels)
             .into_iter()
             .map(|matched| {
                 let index = matched.index as usize;
@@ -49,7 +50,7 @@ pub fn highlights(query: &str, kept: &[&str]) -> Vec<Vec<Range<usize>>> {
     if query.is_empty() {
         return rows;
     }
-    for matched in neo_frizbee::match_list_indices(query, kept, &config(query)) {
+    for matched in neo_frizbee::Matcher::new(query, &config(query)).match_list_indices(kept) {
         let index = matched.index as usize;
         let Some(label) = kept.get(index) else {
             continue;
@@ -59,10 +60,10 @@ pub fn highlights(query: &str, kept: &[&str]) -> Vec<Vec<Range<usize>>> {
     rows
 }
 
-fn byte_ranges(label: &str, mut indices: Vec<usize>) -> Vec<Range<usize>> {
+fn byte_ranges(label: &str, mut indices: Vec<u32>) -> Vec<Range<usize>> {
     indices.sort_unstable();
     let mut ranges: Vec<Range<usize>> = Vec::new();
-    for index in indices {
+    for index in indices.into_iter().map(|index| index as usize) {
         if index >= label.len() {
             continue;
         }
