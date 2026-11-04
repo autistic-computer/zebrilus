@@ -179,15 +179,12 @@ impl Editors {
 impl Render for Editors {
     fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
         let frame = |state: &Entity<CodeEditorState>, disabled: bool| {
-            div()
-                .relative()
-                .h(px(300.0))
-                .child(
-                    CodeEditor::new(state)
-                        .bordered(true)
-                        .focus_bordered(true)
-                        .disabled(disabled),
-                )
+            div().relative().h(px(300.0)).child(
+                CodeEditor::new(state)
+                    .bordered(true)
+                    .focus_bordered(true)
+                    .disabled(disabled),
+            )
         };
         let (left, right) = match self.mode {
             Mode::Languages => ("rust", "json"),

@@ -3,7 +3,8 @@ use ala::{
     ParentElement as _, Render, SharedString, Styled as _, Subscription, Window, div, px,
 };
 use penna::{
-    ActiveTheme as _, Colorize as _, Disableable as _, Sizable as _, Size,
+    ActiveTheme as _, Colorize as _, Disableable as _, Sizable as _, Size, StyledExt as _,
+    TextStyle,
     blocks::color_picker::{ColorPicker, ColorPickerState},
     h_flex, parse_hex,
 };
@@ -40,7 +41,7 @@ fn setting(label: &'static str, picker: impl IntoElement, cx: &App) -> impl Into
     h_flex()
         .w(px(320.0))
         .justify_between()
-        .text_sm()
+        .type_style(TextStyle::Lead, cx)
         .child(div().text_color(cx.theme().foreground.muted()).child(label))
         .child(picker)
 }

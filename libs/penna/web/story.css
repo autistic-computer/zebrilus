@@ -49,9 +49,10 @@ section[data-section] {
   background: var(--penna-bg);
   color: var(--penna-fg);
   font-family: var(--penna-font);
-  font-size: var(--penna-font-size, 16px);
+  font-size: var(--penna-text-body-size);
   font-optical-sizing: none;
-  line-height: 1.618;
+  line-height: var(--penna-text-body-line);
+  font-weight: var(--penna-text-body-weight);
 }
 
 .story-row {
@@ -81,9 +82,10 @@ section[data-section] {
 
 .story-label {
   font-family: var(--penna-mono);
-  font-size: 11px;
-  line-height: 14px;
   color: var(--penna-fg-muted);
+  font-size: var(--penna-text-caption-size);
+  line-height: var(--penna-text-caption-line);
+  font-weight: var(--penna-text-caption-weight);
 }
 
 .story-states[data-columns="3"] {

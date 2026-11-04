@@ -4,7 +4,7 @@ use crate::blocks::{
 };
 use std::rc::Rc;
 
-use crate::{window_border, window_paddings};
+use crate::{TextStyle, window_border, window_paddings};
 use ala::{
     Anchor, AnyView, App, AppContext as _, ClipboardItem, Context, Edges, Entity, FocusHandle,
     InteractiveElement as _, IntoElement, ParentElement as _, Render, RenderOnce, StyleRefinement,
@@ -363,6 +363,7 @@ impl Render for Root {
             .relative()
             .size_full()
             .font_family(cx.theme().font_family.clone())
+            .type_style(TextStyle::Body, cx)
             .bg(cx.theme().background)
             .text_color(cx.theme().foreground)
             .refine_style(&self.style)

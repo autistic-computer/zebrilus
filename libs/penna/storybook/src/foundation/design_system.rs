@@ -6,7 +6,7 @@ use ala::{
 use penna::{
     ActiveTheme as _, Colorize as _, Disableable as _, Elevation, Emphasis, IconName,
     InteractivePaintExt as _, Paint, PaintExt as _, PaintState, Sizable as _, StyledExt as _,
-    Surface, Tone,
+    Surface, TextStyle, Tone,
     components::badge::Badge,
     components::button::Button,
     components::check::Check,
@@ -92,9 +92,7 @@ pub const STORY: Story = Story {
 
 fn caption(text: impl Into<SharedString>, cx: &App) -> impl IntoElement {
     div()
-        .text_size(px(11.0))
-        .line_height(px(14.0))
-        .font_family(cx.theme().mono_font_family.clone())
+        .type_style_mono(TextStyle::Caption, cx)
         .text_color(cx.theme().foreground.muted())
         .child(text.into())
 }
@@ -126,7 +124,7 @@ fn sample(label: &'static str, paint: Paint, state: PaintState, cx: &App) -> Any
         .justify_center()
         .rounded(cx.theme().radius)
         .painted(paint, state)
-        .text_size(px(13.0))
+        .type_style(TextStyle::Body, cx)
         .child(label)
         .into_any_element()
 }
@@ -152,7 +150,7 @@ fn tones(_: &mut Window, cx: &mut App) -> AnyElement {
                         .framed(cx)
                         .bg(theme.tone(tone)),
                 )
-                .child(div().text_size(px(12.0)).child(tone.name()))
+                .child(div().type_style(TextStyle::Small, cx).child(tone.name()))
         }))
         .into_any_element()
 }
@@ -363,13 +361,11 @@ fn tiles_and_rows(_: &mut Window, cx: &mut App) -> AnyElement {
                 .py(px(9.0))
                 .rounded(px(8.0))
                 .painted_interactive(tile_paint, selected, enabled)
-                .text_size(px(13.0))
-                .line_height(px(18.0))
+                .type_style(TextStyle::Body, cx)
                 .child(
                     v_flex().flex_1().min_w_0().child(label).child(
                         div()
-                            .text_size(px(12.0))
-                            .line_height(px(16.0))
+                            .type_style(TextStyle::Small, cx)
                             .text_color(tile_paint.muted_at(state))
                             .child(detail),
                     ),
@@ -399,7 +395,7 @@ fn tiles_and_rows(_: &mut Window, cx: &mut App) -> AnyElement {
                 penna::Shape::Round,
             ))
             .painted_interactive(row_paint, selected, true)
-            .text_size(px(13.0))
+            .type_style(TextStyle::Body, cx)
             .child(div().flex_1().child(label))
             .child(Keycap::new("⌘").on(row_paint.ground_at(state)))
     };
@@ -442,7 +438,7 @@ fn text_column(cx: &App) -> impl IntoElement {
     let solid = cx.theme().paint(Tone::Primary, Emphasis::Solid);
     v_flex()
         .gap_1()
-        .text_size(px(13.0))
+        .type_style(TextStyle::Body, cx)
         .child(div().text_color(foreground).child("Default text"))
         .child(
             div()
@@ -683,7 +679,7 @@ impl Render for Fields {
                 .py(px(9.0))
                 .rounded(px(8.0))
                 .painted(tile_paint, state)
-                .text_size(px(13.0))
+                .type_style(TextStyle::Body, cx)
                 .child("Other")
                 .child(input)
         };

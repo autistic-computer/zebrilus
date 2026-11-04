@@ -2,7 +2,7 @@
 type: Design Plan
 title: "Foundations: the scales and rules every penna screen is built from"
 description: "The agent-facing spec for penna's foundations: space, gap and inset tokens named by their pixel value, the interface, reading and touch type ladders, the control size ladder, color roles and contrast, corners, depth, focus, motion, the six layout primitives, and the order of work that brings penna onto them. People read the Foundations pages of the docs site instead."
-status: In progress (2026-11-04, steps 1 to 3 of 9 built)
+status: In progress (2026-11-04, steps 1 to 4 of 9 built)
 resource: src/foundation/space.rs
 tags:
 - ui
@@ -115,7 +115,7 @@ Component text (step 3, built): list and tree rows `lead` (4 + 20 + 4 makes the 
 
 Code takes the size and line of the text around it, in the code face: `mono` in the interface, `read-body` size in reading text. ala can't size one run differently inside a line.
 
-Root text (step 4): ala gives text with no style 16px on a line 1.618 times its size (25.89px), and the HTML root is 13px on 1.618. `Root` will set `body` on every window, as it already sets the corner smoothing, and `penna.css` the same on `html`, so text with no style gets 13 on 18 on both. It lands after step 3, once no component leans on the default, so it moves only app text that sets no style.
+Root text (built): `Root` sets `body` on every window, before the caller's own style, and `penna.css` the same on `html`, so text with no style is 13 on 18 on both, where ala alone gives 16 on 25.89. A storybook section sets `body` too, and the storybook's own labels and sample text take text styles like any component (state labels are `caption` in the code face).
 
 Centering: Inter centers its capitals in the line box (within 0.01px at 13 on 18); the macOS system face sits them 0.33px low and Lilex 0.34px. Center a line box to center text; center icons beside text on the capitals with `cap_center_drop`.
 
@@ -203,7 +203,7 @@ Each component's docs page carries an anatomy: its parts and the tokens they use
 | 1 | Token names in Rust and CSS: `Space` named by pixels with gap and inset constants; space, gap, inset and text style CSS variables | none | built |
 | 2 | Reading text: `TextView` and `text.css` on the reading ladder and rhythm | documents and chat get smaller, tighter text | built |
 | 3 | Text styles: every component sets a full text style on its text, native and HTML, one family at a time: rows, lists and menus first, then controls, surfaces, chrome and the editor blocks, with the touch ladder | per family: rows that grew from a 1.618 line return to their row height | built |
-| 4 | Root text style: `Root` and `penna.css` set `body` | app text with no style goes from 16 on 26 to 13 on 18; penna itself doesn't move | |
+| 4 | Root text style: `Root` and `penna.css` set `body` | app text with no style goes from 16 on 26 to 13 on 18; penna itself doesn't move | built |
 | 5 | Layout primitives, native and DOM, with stories | none by themselves | |
 | 6 | Components onto the primitives and space tokens, one family at a time, starting with Appearance (its 11 and 14 insets) | small spacing moves, reviewed per family | |
 | 7 | Control ladder: `control-xs`, `-lg`, `-xl`, rows 28, tabs on the ladder | menu rows grow 2px, tabs move | |

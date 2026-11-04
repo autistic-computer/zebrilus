@@ -4,7 +4,7 @@ use ala::{
 };
 use penna::{
     ActiveTheme as _, Colorize as _, Elevation, Emphasis, Icon, PaintState, Sizable as _, Size,
-    Tone,
+    StyledExt as _, TextStyle, Tone,
     components::button::{Button, ButtonVariants as _},
     components::icon::glyphs,
     h_flex, v_flex,
@@ -152,9 +152,7 @@ fn card(glyph: glyphs::Glyph, size: f32, cx: &App) -> impl IntoElement {
             .w_full()
             .text_center()
             .truncate()
-            .text_size(px(11.0))
-            .line_height(px(14.0))
-            .font_family(theme.mono_font_family.clone())
+            .type_style_mono(TextStyle::Caption, cx)
             .child(text)
     };
     v_flex()
@@ -193,7 +191,7 @@ fn sidebar(cx: &App) -> impl IntoElement {
             .px_2()
             .gap_2()
             .rounded(theme.radius)
-            .text_size(px(13.0))
+            .type_style(TextStyle::Body, cx)
             .text_color(theme.foreground.muted())
             .when(selected, |item| {
                 item.bg(theme

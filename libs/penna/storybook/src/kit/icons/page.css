@@ -15,8 +15,9 @@
 
 .icon-name {
   font-family: var(--penna-mono);
-  font-size: 11px;
-  line-height: 14px;
   white-space: nowrap;
   color: var(--penna-fg-muted);
+  font-size: var(--penna-text-caption-size);
+  line-height: var(--penna-text-caption-line);
+  font-weight: var(--penna-text-caption-weight);
 }

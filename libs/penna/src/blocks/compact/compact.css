@@ -256,12 +256,16 @@
 }
 
 .penna-bento-title {
-  font-size: 15px;
+  font-size: var(--penna-text-touch-small-size);
+  line-height: var(--penna-text-touch-small-line);
+  font-weight: var(--penna-text-touch-small-weight);
 }
 
 .penna-bento-detail {
-  font-size: 13px;
   color: var(--penna-fg-muted);
+  font-size: var(--penna-text-body-size);
+  line-height: var(--penna-text-body-line);
+  font-weight: var(--penna-text-body-weight);
 }
 
 .penna-bento-add[data-penna] {

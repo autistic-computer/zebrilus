@@ -4,7 +4,7 @@ use ala::{
     Subscription, Window, div, prelude::FluentBuilder as _, px,
 };
 use penna::{
-    ActiveTheme as _, Colorize as _, Elevation, Icon, IconName, StyledExt as _,
+    ActiveTheme as _, Colorize as _, Elevation, Icon, IconName, StyledExt as _, TextStyle,
     blocks::sheet::{
         BottomSheet, bottom_sheet, close_sheet, sheet_action, sheet_close, sheet_detail_row,
         sheet_option,
@@ -64,11 +64,11 @@ fn backdrop(title: &'static str, cx: &App) -> impl IntoElement {
     v_flex()
         .p(px(20.0))
         .gap_3()
-        .child(div().text_lg().child(title))
+        .child(div().type_style(TextStyle::TouchBody, cx).child(title))
         .children(["work", "scratch", "logs"].into_iter().map(move |name| {
             h_flex()
                 .gap_2()
-                .text_sm()
+                .type_style(TextStyle::Lead, cx)
                 .text_color(muted)
                 .child(Icon::new(IconName::SquareTerminal).medium())
                 .child(name)
@@ -167,8 +167,7 @@ impl Render for Sheets {
                     div()
                         .px(px(12.0))
                         .pb(px(10.0))
-                        .text_size(px(13.0))
-                        .line_height(px(18.0))
+                        .type_style(TextStyle::Body, cx)
                         .text_color(muted)
                         .child("Opens as a new window on macbook."),
                 )

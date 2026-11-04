@@ -3,8 +3,8 @@
   align-items: center;
   justify-content: space-between;
   width: 320px;
-  font-size: 14px;
-  line-height: 1.618;
+  font-size: var(--penna-text-lead-size);
+  line-height: var(--penna-text-lead-line);
 }
 
 .penna-color-picker-setting > .penna-color-picker-text {

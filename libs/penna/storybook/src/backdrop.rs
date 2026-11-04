@@ -2,7 +2,7 @@ use ala::{
     AnyElement, App, Hsla, IntoElement, ParentElement as _, Styled as _, div, linear_color_stop,
     linear_gradient, pattern_slash, px,
 };
-use penna::{ActiveTheme as _, Colorize as _, h_flex, v_flex};
+use penna::{ActiveTheme as _, Colorize as _, StyledExt as _, TextStyle, h_flex, v_flex};
 
 use crate::knobs::Backdrop;
 
@@ -180,9 +180,7 @@ fn code(cx: &App) -> AnyElement {
         .inset_0()
         .overflow_hidden()
         .p(px(12.0))
-        .font_family(theme.mono_font_family.clone())
-        .text_size(px(13.0))
-        .line_height(px(18.0))
+        .type_style_mono(TextStyle::Body, cx)
         .children(CODE.iter().cycle().take(CODE.len() * 3).map(|line| {
             h_flex().flex_none().whitespace_nowrap().children(
                 line.iter()

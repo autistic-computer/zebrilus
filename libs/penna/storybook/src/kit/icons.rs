@@ -2,7 +2,10 @@ use ala::{
     AnyElement, App, IntoElement, ParentElement as _, Styled as _, Transformation, Window, div,
     percentage, px,
 };
-use penna::{ActiveTheme as _, Colorize as _, Icon, IconName, Sizable as _, Size, v_flex};
+use penna::{
+    ActiveTheme as _, Colorize as _, Icon, IconName, Sizable as _, Size, StyledExt as _, TextStyle,
+    v_flex,
+};
 
 use crate::story::{Section, Story, row, stateless, states};
 
@@ -35,7 +38,6 @@ pub const STORY: Story = Story {
 
 fn gallery(_: &mut Window, cx: &mut App) -> AnyElement {
     let muted = cx.theme().foreground.muted();
-    let mono = cx.theme().mono_font_family.clone();
     div()
         .grid()
         .grid_cols(6)
@@ -49,9 +51,7 @@ fn gallery(_: &mut Window, cx: &mut App) -> AnyElement {
                 .child(Icon::new(icon.clone()))
                 .child(
                     div()
-                        .text_size(px(11.0))
-                        .line_height(px(14.0))
-                        .font_family(mono.clone())
+                        .type_style_mono(TextStyle::Caption, cx)
                         .text_color(muted)
                         .child(format!("{icon:?}")),
                 )

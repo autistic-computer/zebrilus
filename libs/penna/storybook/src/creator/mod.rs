@@ -5,7 +5,8 @@ use ala::{
     prelude::*, px,
 };
 use penna::{
-    ActiveTheme as _, Colorize as _, Elevation, components::switch::Switch, h_flex, v_flex,
+    ActiveTheme as _, Colorize as _, Elevation, StyledExt as _, TextStyle,
+    components::switch::Switch, h_flex, v_flex,
 };
 
 use crate::story::{Framed as _, Section, Story};
@@ -111,13 +112,13 @@ pub fn heading(title: &'static str, description: &'static str, cx: &App) -> impl
         .gap_0p5()
         .child(
             div()
-                .text_sm()
+                .type_style(TextStyle::Lead, cx)
                 .font_weight(ala::FontWeight::SEMIBOLD)
                 .child(title),
         )
         .child(
             div()
-                .text_xs()
+                .type_style(TextStyle::Small, cx)
                 .text_color(cx.theme().foreground.muted())
                 .child(description),
         )
@@ -128,7 +129,7 @@ pub fn labeled(label: &'static str, control: impl IntoElement, cx: &App) -> impl
         .gap_1p5()
         .child(
             div()
-                .text_xs()
+                .type_style(TextStyle::Small, cx)
                 .text_color(cx.theme().foreground.muted())
                 .child(label),
         )
@@ -149,10 +150,10 @@ pub fn toggle(
         .child(
             v_flex()
                 .min_w_0()
-                .child(div().text_sm().child(title))
+                .child(div().type_style(TextStyle::Lead, cx).child(title))
                 .child(
                     div()
-                        .text_xs()
+                        .type_style(TextStyle::Small, cx)
                         .text_color(cx.theme().foreground.muted())
                         .child(description),
                 ),

@@ -1,8 +1,8 @@
 use ala::{
     AnyElement, AnyView, App, AppContext as _, Context, InteractiveElement as _, IntoElement,
-    ParentElement, Render, RenderOnce, SharedString, Styled, Window, div, px,
+    ParentElement, Render, RenderOnce, SharedString, Styled, Window, div,
 };
-use penna::{ActiveTheme as _, Colorize as _, h_flex, v_flex};
+use penna::{ActiveTheme as _, Colorize as _, StyledExt as _, TextStyle, h_flex, v_flex};
 
 #[derive(Clone, Copy)]
 pub struct Story {
@@ -63,7 +63,6 @@ impl States {
 impl RenderOnce for States {
     fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
         let muted = cx.theme().foreground.muted();
-        let mono = cx.theme().mono_font_family.clone();
         let cells = self
             .items
             .into_iter()
@@ -75,9 +74,7 @@ impl RenderOnce for States {
                     .gap_2()
                     .child(
                         div()
-                            .text_size(px(11.0))
-                            .line_height(px(14.0))
-                            .font_family(mono.clone())
+                            .type_style_mono(TextStyle::Caption, cx)
                             .text_color(muted)
                             .child(label),
                     )

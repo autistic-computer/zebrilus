@@ -2,7 +2,7 @@ use ala::{
     AnyElement, App, Hsla, IntoElement, ParentElement as _, SharedString, Styled as _, Window, div,
     px,
 };
-use penna::{ActiveTheme as _, Colorize as _, h_flex, to_hex, v_flex};
+use penna::{ActiveTheme as _, Colorize as _, StyledExt as _, TextStyle, h_flex, to_hex, v_flex};
 
 use crate::story::Framed as _;
 use crate::story::{Section, Story, stateless, states};
@@ -103,17 +103,10 @@ fn swatch(name: impl Into<SharedString>, color: Hsla, cx: &App) -> impl IntoElem
         .w(px(104.0))
         .gap_1p5()
         .child(div().h(px(44.0)).rounded(theme.radius).framed(cx).bg(color))
+        .child(div().type_style(TextStyle::Small, cx).child(name.into()))
         .child(
             div()
-                .text_size(px(12.0))
-                .line_height(px(16.0))
-                .child(name.into()),
-        )
-        .child(
-            div()
-                .text_size(px(11.0))
-                .line_height(px(14.0))
-                .font_family(theme.mono_font_family.clone())
+                .type_style_mono(TextStyle::Caption, cx)
                 .text_color(theme.foreground.muted())
                 .child(to_hex(color)),
         )

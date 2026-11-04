@@ -5,7 +5,7 @@ use ala::{
     Render, ScrollHandle, Styled as _, Window, div, prelude::*, px, white,
 };
 use penna::{
-    ActiveTheme as _, Colorize as _, Elevation, IconName,
+    ActiveTheme as _, Colorize as _, Elevation, IconName, StyledExt as _, TextStyle,
     blocks::compact::{
         BENTO_INSET, BentoSpan, COMPACT_PILL_HEIGHT, PillLabel, PillMenuAlign, PillMenuItem,
         PillMenuLook, PillPlacement, bento_add_tile, bento_grid, bento_tile, compact_bar_button,
@@ -132,11 +132,9 @@ fn page_lines(cx: &App) -> impl IntoElement {
     v_flex()
         .px(px(12.0))
         .py(px(8.0))
-        .font_family(theme.mono_font_family.clone())
-        .text_size(px(12.0))
-        .line_height(px(17.0))
+        .type_style_mono(TextStyle::Small, cx)
         .text_color(theme.foreground)
-        .children(PAGE_LINES.map(|line| div().h(px(17.0)).child(line)))
+        .children(PAGE_LINES.map(|line| div().h(TextStyle::Small.line_height()).child(line)))
 }
 
 fn pill(
@@ -314,8 +312,7 @@ fn hud(text: &'static str, cx: &App) -> impl IntoElement {
             .relative()
             .h(px(140.0))
             .p(px(12.0))
-            .font_family(cx.theme().mono_font_family.clone())
-            .text_size(px(12.0))
+            .type_style_mono(TextStyle::Small, cx)
             .text_color(cx.theme().foreground.muted())
             .child("~/notes > ls")
             .child(compact_hud(text, cx)),
@@ -475,8 +472,13 @@ fn bento(_: &mut Window, cx: &mut App) -> AnyElement {
                         v_flex()
                             .p(px(12.0))
                             .gap(px(2.0))
-                            .child(div().text_size(px(15.0)).child(*title))
-                            .child(div().text_size(px(13.0)).text_color(muted).child(*detail)),
+                            .child(div().type_style(TextStyle::TouchSmall, cx).child(*title))
+                            .child(
+                                div()
+                                    .type_style(TextStyle::Body, cx)
+                                    .text_color(muted)
+                                    .child(*detail),
+                            ),
                     )
                     .into_any_element(),
             )

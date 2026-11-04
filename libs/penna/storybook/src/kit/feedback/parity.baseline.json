@@ -1,5 +1,5 @@
 {
-  "default-dark/callouts": 98.47,
+  "default-dark/callouts": 98.43,
   "default-dark/callouts@hover-restart": 95.82,
   "default-dark/callouts@press-restart": 95.87,
   "default-dark/empty-state": 94.35,
@@ -8,7 +8,7 @@
   "default-dark/inline-alert": 98.28,
   "default-dark/inline-alert@hover-retry": 96.24,
   "default-dark/inline-alert@press-retry": 96.5,
-  "default-light/callouts": 98.97,
+  "default-light/callouts": 98.98,
   "default-light/callouts@hover-restart": 95.78,
   "default-light/callouts@press-restart": 95.83,
   "default-light/empty-state": 94.28,

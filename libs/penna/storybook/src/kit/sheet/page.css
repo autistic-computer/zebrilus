@@ -17,7 +17,9 @@
 }
 
 .sheet-backdrop-title {
-  font-size: 18px;
+  font-size: var(--penna-text-touch-body-size);
+  line-height: var(--penna-text-touch-body-line);
+  font-weight: var(--penna-text-touch-body-weight);
 }
 
 .sheet-backdrop-title > [data-penna-text] {
@@ -28,6 +30,8 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 14px;
   color: var(--penna-fg-muted);
+  font-size: var(--penna-text-lead-size);
+  line-height: var(--penna-text-lead-line);
+  font-weight: var(--penna-text-lead-weight);
 }

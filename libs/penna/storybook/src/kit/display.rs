@@ -117,7 +117,7 @@ fn spinners(_: &mut Window, cx: &mut App) -> AnyElement {
             "inline with text",
             h_flex()
                 .gap_2()
-                .text_sm()
+                .type_style(TextStyle::Lead, cx)
                 .child(
                     Spinner::new()
                         .id("spinner-inline")
@@ -137,7 +137,7 @@ fn separators(_: &mut Window, cx: &mut App) -> AnyElement {
             "horizontal",
             v_flex()
                 .gap_2()
-                .text_sm()
+                .type_style(TextStyle::Lead, cx)
                 .child("Sessions")
                 .child(Separator::horizontal().id("separator-horizontal"))
                 .child(div().text_color(muted).child("work, scratch, logs")),
@@ -147,7 +147,7 @@ fn separators(_: &mut Window, cx: &mut App) -> AnyElement {
             h_flex()
                 .h(px(20.0))
                 .gap_3()
-                .text_sm()
+                .type_style(TextStyle::Lead, cx)
                 .child("macbook")
                 .child(Separator::vertical().id("separator-vertical-1"))
                 .child("work")
@@ -158,7 +158,7 @@ fn separators(_: &mut Window, cx: &mut App) -> AnyElement {
             "custom color",
             v_flex()
                 .gap_2()
-                .text_sm()
+                .type_style(TextStyle::Lead, cx)
                 .child("Danger zone")
                 .child(
                     Separator::horizontal()

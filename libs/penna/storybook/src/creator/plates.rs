@@ -12,7 +12,7 @@ use ala::{
 };
 use penna::{
     ActiveTheme as _, Colorize as _, Edge, Elevation, Emphasis, Icon, IconName, IndexPath,
-    RuleLook, StyledExt as _, Surface, Tone,
+    RuleLook, StyledExt as _, Surface, TextStyle, Tone,
     blocks::color_picker::{ColorPicker, ColorPickerState},
     blocks::compact::{
         BENTO_INSET, BentoSpan, PillLabel, PillPlacement, bento_add_tile, bento_grid, bento_tile,
@@ -273,7 +273,7 @@ impl Render for AppWindow {
             "creator-titlebar",
             div()
                 .pl_3()
-                .text_sm()
+                .type_style(TextStyle::Lead, cx)
                 .font_weight(ala::FontWeight::MEDIUM)
                 .child("Appearance"),
             h_flex().pr_2().child(
@@ -898,7 +898,6 @@ impl Phone {
     }
 
     fn page(&self, cx: &App) -> AnyElement {
-        let theme = cx.theme();
         let placement = placement();
         let pill = compact_floating_pill(
             "creator-phone-pill",
@@ -919,10 +918,10 @@ impl Phone {
                     .h(px(PHONE_PAGE_HEIGHT))
                     .px(px(12.0))
                     .py(px(8.0))
-                    .font_family(theme.mono_font_family.clone())
-                    .text_size(px(12.0))
-                    .line_height(px(17.0))
-                    .children(PHONE_LINES.map(|line| div().h(px(17.0)).child(line)))
+                    .type_style_mono(TextStyle::Small, cx)
+                    .children(
+                        PHONE_LINES.map(|line| div().h(TextStyle::Small.line_height()).child(line)),
+                    )
                     .child(compact_hud("Copied", cx)),
             )
             .child(div().id("creator-phone-keys").child(key_row(&self.keys)))
@@ -931,7 +930,6 @@ impl Phone {
     }
 
     fn keys(&self, cx: &App) -> AnyElement {
-        let theme = cx.theme();
         phone_frame("creator-phone-menu", cx)
             .child(
                 h_flex()
@@ -940,8 +938,7 @@ impl Phone {
                     .py(px(8.0))
                     .items_start()
                     .justify_end()
-                    .font_family(theme.mono_font_family.clone())
-                    .text_size(px(12.0))
+                    .type_style_mono(TextStyle::Small, cx)
                     .child(arrow_pad_bubble(Some(ArrowDirection::Up), cx)),
             )
             .child(
@@ -975,7 +972,7 @@ impl Phone {
                 .child(
                     div()
                         .flex_none()
-                        .text_size(px(13.0))
+                        .type_style(TextStyle::Body, cx)
                         .text_color(muted)
                         .child(*detail),
                 )
@@ -1018,7 +1015,7 @@ impl Phone {
                 v_flex()
                     .p(px(16.0))
                     .gap_2()
-                    .text_size(px(13.0))
+                    .type_style(TextStyle::Body, cx)
                     .text_color(muted)
                     .children(PHONE_LINES.map(|line| div().child(line))),
             )
@@ -1049,8 +1046,13 @@ impl Phone {
                             v_flex()
                                 .p(px(12.0))
                                 .gap(px(2.0))
-                                .child(div().text_size(px(15.0)).child(*title))
-                                .child(div().text_size(px(13.0)).text_color(muted).child(*detail)),
+                                .child(div().type_style(TextStyle::TouchSmall, cx).child(*title))
+                                .child(
+                                    div()
+                                        .type_style(TextStyle::Body, cx)
+                                        .text_color(muted)
+                                        .child(*detail),
+                                ),
                         )
                         .into_any_element(),
                 )

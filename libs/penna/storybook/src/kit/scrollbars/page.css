@@ -15,8 +15,8 @@
   width: 620px;
   padding: 8px;
   font-family: var(--penna-mono);
-  font-size: 14px;
-  line-height: 22.5px;
+  font-size: var(--penna-text-lead-size);
+  line-height: var(--penna-text-lead-line);
   color: var(--penna-fg-muted);
 }
 

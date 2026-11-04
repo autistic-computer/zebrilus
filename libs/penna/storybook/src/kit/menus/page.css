@@ -24,11 +24,12 @@
   width: 280px;
   height: 96px;
   padding: 1px;
-  font-size: 14px;
-  line-height: 20px;
   color: var(--penna-fg-muted);
   outline: none;
   corner-shape: superellipse(var(--penna-window-k));
+  font-size: var(--penna-text-lead-size);
+  line-height: var(--penna-text-lead-line);
+  font-weight: var(--penna-text-lead-weight);
 }
 
 .menus-open > .menus-trigger {

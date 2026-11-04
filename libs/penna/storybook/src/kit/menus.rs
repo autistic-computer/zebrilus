@@ -6,7 +6,7 @@ use ala::{
     Window, actions, div, prelude::FluentBuilder as _, px,
 };
 use penna::{
-    ActiveTheme as _, Colorize as _, Icon, IconName,
+    ActiveTheme as _, Colorize as _, Icon, IconName, StyledExt as _, TextStyle,
     components::button::Button,
     components::menu::{ContextMenuExt as _, DropdownMenu as _, PopupMenu, PopupMenuItem},
     h_flex,
@@ -168,7 +168,7 @@ pub fn view_menu(menu: PopupMenu, _: &mut Window, _: &mut Context<PopupMenu>) ->
         .item(
             PopupMenuItem::element(|_, _, cx| {
                 div()
-                    .text_xs()
+                    .type_style(TextStyle::Small, cx)
                     .text_color(cx.theme().foreground.muted())
                     .child("Version 0.16.0")
             })
@@ -308,7 +308,7 @@ impl Render for Triggers {
             .rounded(theme.radius)
             .framed(cx)
             .border_dashed()
-            .text_sm()
+            .type_style(TextStyle::Lead, cx)
             .text_color(theme.foreground.muted())
             .child("Right click here")
             .child(self.region.measure())
