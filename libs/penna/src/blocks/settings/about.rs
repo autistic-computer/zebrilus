@@ -43,13 +43,12 @@ pub fn about_hero(about: &About, logo: impl IntoElement, cx: &App) -> ala::Div {
                 .gap(px(5.0))
                 .child(
                     div()
-                        .text_size(crate::rems_from_px(22.0))
-                        .font_medium()
+                        .type_style(crate::TextStyle::Title, cx)
                         .child(about.name),
                 )
                 .child(
                     div()
-                        .text_size(crate::rems_from_px(12.0))
+                        .type_style(crate::TextStyle::Small, cx)
                         .text_color(cx.theme().foreground.muted())
                         .child(about.tagline),
                 )
@@ -61,8 +60,7 @@ pub fn about_hero(about: &About, logo: impl IntoElement, cx: &App) -> ala::Div {
 pub fn about_value(value: impl Into<SharedString>, cx: &App) -> ala::Div {
     div()
         .flex_none()
-        .font_family(cx.theme().mono_font_family.clone())
-        .text_size(crate::rems_from_px(11.0))
+        .type_style_mono(crate::TextStyle::Caption, cx)
         .text_color(cx.theme().foreground.muted())
         .child(value.into())
 }

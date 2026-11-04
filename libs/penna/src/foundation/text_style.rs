@@ -20,10 +20,13 @@ pub enum TextStyle {
     ReadH4,
     ReadH5,
     ReadBody,
+    TouchSmall,
+    TouchBody,
+    TouchTitle,
 }
 
 impl TextStyle {
-    pub const ALL: [Self; 15] = [
+    pub const ALL: [Self; 18] = [
         Self::Micro,
         Self::Caption,
         Self::Small,
@@ -39,6 +42,9 @@ impl TextStyle {
         Self::ReadH4,
         Self::ReadH5,
         Self::ReadBody,
+        Self::TouchSmall,
+        Self::TouchBody,
+        Self::TouchTitle,
     ];
 
     pub const fn name(self) -> &'static str {
@@ -58,6 +64,9 @@ impl TextStyle {
             Self::ReadH4 => "read-h4",
             Self::ReadH5 => "read-h5",
             Self::ReadBody => "read-body",
+            Self::TouchSmall => "touch-small",
+            Self::TouchBody => "touch-body",
+            Self::TouchTitle => "touch-title",
         }
     }
 
@@ -81,6 +90,9 @@ impl TextStyle {
             Self::Heading | Self::ReadH3 => 16.0,
             Self::Title | Self::ReadH2 => 20.0,
             Self::Display | Self::ReadH1 => 26.0,
+            Self::TouchSmall => 15.0,
+            Self::TouchBody => 17.0,
+            Self::TouchTitle => 34.0,
         }
     }
 
@@ -89,12 +101,13 @@ impl TextStyle {
             Self::Micro => 14.0,
             Self::Caption | Self::Small => 16.0,
             Self::Body | Self::Mono => 18.0,
-            Self::Lead | Self::ReadH5 => 20.0,
-            Self::Heading | Self::ReadH4 | Self::ReadBody => 22.0,
+            Self::Lead | Self::ReadH5 | Self::TouchSmall => 20.0,
+            Self::Heading | Self::ReadH4 | Self::ReadBody | Self::TouchBody => 22.0,
             Self::ReadH3 => 24.0,
             Self::Title => 26.0,
             Self::ReadH2 => 28.0,
             Self::Display | Self::ReadH1 => 32.0,
+            Self::TouchTitle => 40.0,
         }
     }
 
@@ -115,16 +128,22 @@ impl TextStyle {
             | Self::ReadH2
             | Self::ReadH3
             | Self::ReadH4
-            | Self::ReadH5 => FontWeight::SEMIBOLD,
+            | Self::ReadH5
+            | Self::TouchTitle => FontWeight::SEMIBOLD,
             _ => FontWeight::NORMAL,
         }
     }
 
     pub const fn strong_weight(self) -> FontWeight {
         match self {
-            Self::Micro | Self::Caption | Self::Small | Self::Body | Self::Lead | Self::Mono => {
-                FontWeight::MEDIUM
-            }
+            Self::Micro
+            | Self::Caption
+            | Self::Small
+            | Self::Body
+            | Self::Lead
+            | Self::Mono
+            | Self::TouchSmall
+            | Self::TouchBody => FontWeight::MEDIUM,
             _ => FontWeight::SEMIBOLD,
         }
     }

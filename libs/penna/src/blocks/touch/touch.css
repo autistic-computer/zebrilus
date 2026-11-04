@@ -144,8 +144,9 @@
   flex: none;
   width: 100%;
   height: 56px;
-  font-size: 15px;
-  line-height: 20px;
+  font-size: var(--penna-text-touch-small-size);
+  line-height: var(--penna-text-touch-small-line);
+  font-weight: var(--penna-text-touch-small-weight);
 }
 
 .penna-key-row-pill[data-penna] {
@@ -234,8 +235,9 @@
   width: 100%;
   padding: 0 var(--penna-row-inset) 8px;
   font-family: var(--penna-font);
-  font-size: 17px;
-  line-height: 22px;
+  font-size: var(--penna-text-touch-body-size);
+  line-height: var(--penna-text-touch-body-line);
+  font-weight: var(--penna-text-touch-body-weight);
 }
 
 .penna-which-key-list-header {
@@ -244,9 +246,10 @@
   align-items: flex-end;
   height: 28px;
   padding: 0 8px 4px;
-  font-size: 13px;
-  font-weight: 500;
   color: var(--penna-fg-muted);
+  font-size: var(--penna-text-body-size);
+  line-height: var(--penna-text-body-line);
+  font-weight: 500;
 }
 
 .penna-which-key-list-row[data-penna] {
@@ -277,8 +280,10 @@
   flex: none;
   white-space: nowrap;
   font-family: var(--penna-mono);
-  font-size: 15px;
   color: var(--penna-fg-muted);
+  font-size: var(--penna-text-touch-small-size);
+  line-height: var(--penna-text-touch-small-line);
+  font-weight: var(--penna-text-touch-small-weight);
 }
 
 .penna-which-key-list-cap[data-yours] {

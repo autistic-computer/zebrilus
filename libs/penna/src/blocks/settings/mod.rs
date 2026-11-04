@@ -174,9 +174,7 @@ pub fn large_title(title: impl Into<SharedString>, cx: &App) -> ala::Div {
         .h(px(LARGE_TITLE_HEIGHT))
         .px(px(16.0))
         .pb(px(4.0))
-        .text_size(px(34.0))
-        .line_height(px(41.0))
-        .font_bold()
+        .type_style(crate::TextStyle::TouchTitle, cx)
         .text_color(cx.theme().foreground)
         .child(
             div()
@@ -232,15 +230,13 @@ fn settings_large_title(title: SharedString, cx: &App) -> ala::Div {
 
 pub fn settings_page_heading(title: impl Into<SharedString>, cx: &App) -> ala::Div {
     let title = title.into();
-    div().flex().flex_col().flex_none().when(
-        !crate::blocks::touch::CoarsePointer::get(cx),
-        |this| {
-            this.child(
-                crate::StyledExt::font_medium(div().text_size(crate::rems_from_px(20.0)))
-                    .child(title),
-            )
-        },
-    )
+    div()
+        .flex()
+        .flex_col()
+        .flex_none()
+        .when(!crate::blocks::touch::CoarsePointer::get(cx), |this| {
+            this.child(div().type_style(crate::TextStyle::Title, cx).child(title))
+        })
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -471,24 +467,20 @@ impl RenderOnce for SettingsVirtualColumn {
     }
 }
 
-pub const SETTINGS_GROUP_TITLE_SIZE: f32 = 13.0;
-pub const SETTINGS_GROUP_TITLE_LINE: f32 = 20.0;
-const SETTINGS_DESCRIPTION_SIZE: f32 = 12.0;
+const SETTINGS_GROUP_TITLE: crate::TextStyle = crate::TextStyle::Body;
 
 pub fn settings_group_header(title: SharedString, cx: &App) -> ala::Div {
-    crate::StyledExt::font_semibold(
-        div()
-            .px(px(2.0))
-            .text_size(crate::rems_from_px(SETTINGS_GROUP_TITLE_SIZE))
-            .line_height(px(SETTINGS_GROUP_TITLE_LINE))
-            .text_color(cx.theme().foreground.muted()),
-    )
-    .child(title)
+    div()
+        .px(px(2.0))
+        .type_style(SETTINGS_GROUP_TITLE, cx)
+        .font_semibold()
+        .text_color(cx.theme().foreground.muted())
+        .child(title)
 }
 
 pub fn settings_description(text: SharedString, cx: &App) -> ala::Div {
     div()
-        .text_size(crate::rems_from_px(SETTINGS_DESCRIPTION_SIZE))
+        .type_style(crate::TextStyle::Small, cx)
         .text_color(cx.theme().foreground.muted())
         .child(text)
 }
@@ -576,20 +568,20 @@ impl RenderOnce for SettingsDisclosure {
                     .items_center()
                     .justify_center()
                     .w(px(SETTINGS_DISCLOSURE_WIDTH))
-                    .h(px(SETTINGS_GROUP_TITLE_LINE))
+                    .h(SETTINGS_GROUP_TITLE.line_height())
                     .child(
                         div()
                             .relative()
                             .top(crate::components::icon::cap_center_drop(
-                                px(SETTINGS_GROUP_TITLE_SIZE),
-                                px(SETTINGS_GROUP_TITLE_SIZE),
+                                px(SETTINGS_GROUP_TITLE.design_px()),
+                                px(SETTINGS_GROUP_TITLE.design_px()),
                                 cx,
                             ))
                             .child(
                                 crate::foundation::motion::Disclosure::new(
                                     self.id,
                                     self.expanded,
-                                    px(SETTINGS_GROUP_TITLE_SIZE),
+                                    px(SETTINGS_GROUP_TITLE.design_px()),
                                 )
                                 .color(muted),
                             ),
@@ -882,7 +874,11 @@ impl RenderOnce for SettingEntry {
                                 .when_some(self.title_icon, |this, icon| {
                                     this.child(icon.with_size(crate::Size::Medium))
                                 })
-                                .child(div().text_size(crate::rems_from_px(13.0)).child(self.title))
+                                .child(
+                                    div()
+                                        .type_style(crate::TextStyle::Body, cx)
+                                        .child(self.title),
+                                )
                                 .when_some(self.title_actions, ala::ParentElement::child),
                         )
                         .when_some(self.control, ala::ParentElement::child),
@@ -1082,7 +1078,11 @@ impl RenderOnce for SettingCopy {
                     .when_some(self.title_icon, |this, icon| {
                         this.child(icon.with_size(crate::Size::Medium))
                     })
-                    .child(div().text_size(crate::rems_from_px(13.0)).child(self.title))
+                    .child(
+                        div()
+                            .type_style(crate::TextStyle::Body, cx)
+                            .child(self.title),
+                    )
                     .when_some(self.title_actions, ala::ParentElement::child),
             )
             .when_some(self.description, |this, description| {

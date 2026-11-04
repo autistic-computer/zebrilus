@@ -54,9 +54,10 @@
 }
 
 .penna-color-picker-title {
-  font-size: 11px;
-  line-height: 18px;
   color: var(--penna-fg-muted);
+  font-size: var(--penna-text-caption-size);
+  line-height: var(--penna-text-caption-line);
+  font-weight: var(--penna-text-caption-weight);
 }
 
 .penna-color-picker-field {
@@ -140,9 +141,10 @@
   height: 28px;
   padding: 2px 8px;
   border-width: max(1px, var(--penna-bw));
-  font-size: 13px;
-  line-height: 1.618;
   cursor: text;
+  font-size: var(--penna-text-body-size);
+  line-height: var(--penna-text-body-line);
+  font-weight: var(--penna-text-body-weight);
 }
 
 .penna-color-picker-hex input {

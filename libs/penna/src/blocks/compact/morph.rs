@@ -1,7 +1,7 @@
 use ala::{
-    App, Bounds, Div, ElementId, FULL_CORNER_RADIUS, FontWeight, InteractiveElement as _,
-    MouseButton, ParentElement as _, Pixels, SharedString, SpringConfig, SpringState, Stateful,
-    Styled as _, TextRun, Window, div, point, px, size,
+    App, Bounds, Div, ElementId, FULL_CORNER_RADIUS, InteractiveElement as _, MouseButton,
+    ParentElement as _, Pixels, SharedString, SpringConfig, SpringState, Stateful, Styled as _,
+    TextRun, Window, div, point, px, size,
 };
 use web_time::Instant;
 
@@ -10,7 +10,6 @@ use crate::{
     ActiveTheme as _, Layer, PaintState, StyledExt as _, Surface,
     blocks::touch::{KEY_PILL_HEIGHT, KEY_ROW_HEIGHT, KEY_ROW_MARGIN_X, KEY_ROW_MARGIN_Y, KeyRow},
     foundation::roles,
-    rems_from_px,
 };
 
 pub const COMPACT_MINI_PILL_HEIGHT: f32 = 32.0;
@@ -18,7 +17,6 @@ pub const COMPACT_MINI_PILL_HEIGHT: f32 = 32.0;
 const SPRING: SpringConfig = SpringConfig::new(520.0, 46.0, 1.0);
 const SETTLE_EPSILON: f32 = 0.002;
 const FADE: f32 = 0.6;
-const MINI_TEXT: f32 = 13.0;
 const MINI_PADDING_X: f32 = 16.0;
 const MINI_MIN_WIDTH: f32 = 88.0;
 const MINI_DROP: f32 = 14.0;
@@ -209,9 +207,9 @@ pub fn pill_corner(
 }
 
 pub fn mini_pill_width(text: &SharedString, window: &Window, cx: &App) -> Pixels {
-    let font_size = rems_from_px(MINI_TEXT).to_pixels(window.rem_size());
+    let font_size = crate::TextStyle::Body.size().to_pixels(window.rem_size());
     let mut font = ala::font(cx.theme().font_family.clone());
-    font.weight = FontWeight::MEDIUM;
+    font.weight = crate::TextStyle::Body.strong_weight();
     let run = TextRun {
         len: text.len(),
         font,
@@ -287,9 +285,7 @@ pub fn compact_pill_collapse(
                 .whitespace_nowrap()
                 .overflow_hidden()
                 .text_ellipsis()
-                .text_size(rems_from_px(MINI_TEXT))
-                .line_height(rems_from_px(16.0))
-                .font_weight(FontWeight::MEDIUM)
+                .type_style_strong(crate::TextStyle::Body, cx)
                 .text_color(pill.text)
                 .opacity(1.0 - fade(progress / FADE))
                 .child(short),

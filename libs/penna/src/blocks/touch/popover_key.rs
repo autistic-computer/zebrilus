@@ -262,8 +262,7 @@ impl PopoverKey {
                 .flex_none()
                 .min_w(rems_from_px(CAP_WIDTH))
                 .whitespace_nowrap()
-                .font_family(theme.mono_font_family.clone())
-                .text_size(rems_from_px(15.0))
+                .type_style_mono(crate::TextStyle::TouchSmall, cx)
                 .text_color(muted)
                 .child(cap)
         };
@@ -356,8 +355,7 @@ impl PopoverKey {
             .gap(rems_from_px(ITEM_GAP))
             .surface(Surface::new(SurfaceRole::POPOVER), cx)
             .font_family(theme.font_family.clone())
-            .text_size(rems_from_px(17.0))
-            .line_height(rems_from_px(22.0))
+            .type_style(crate::TextStyle::TouchBody, cx)
             .on_mouse_down(MouseButton::Left, |_, window, _| window.prevent_default())
             .on_mouse_down_out(cx.listener(|this, event: &MouseDownEvent, _, cx| {
                 if this.open == Some(Open::Pinned) && !this.key.get().contains(&event.position) {

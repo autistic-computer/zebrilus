@@ -1,6 +1,6 @@
 .penna-code-editor {
-  --ce-font-size: 13px;
-  --ce-lh: calc(var(--ce-font-size) * 1.618);
+  --ce-font-size: var(--penna-text-mono-size);
+  --ce-lh: var(--penna-text-mono-line);
   --ce-surface: oklab(from var(--penna-bg) calc(l * 0.96 + 0.04 * clamp(0, (0.5 - l) * 1000, 1)) calc(a * 0.96) calc(b * 0.96));
   --ce-raised: oklab(from var(--penna-bg) calc(l * 0.9216 + 0.0784 * clamp(0, (0.5 - l) * 1000, 1)) calc(a * 0.9216) calc(b * 0.9216));
   --ce-selection: rgb(from var(--penna-fg) r g b / calc(alpha * 0.28));
@@ -161,7 +161,7 @@
   left: 0;
   top: var(--ce-scroll-y, 0px);
   width: calc(var(--ce-gutter-width, 0px) - 5px);
-  font-size: calc(var(--ce-font-size) * 0.85);
+  font-size: var(--penna-text-caption-size);
   line-height: var(--ce-lh);
   text-align: right;
   white-space: pre;
@@ -177,7 +177,7 @@
   position: absolute;
   visibility: hidden;
   white-space: pre;
-  font-size: calc(var(--ce-font-size) * 0.85);
+  font-size: var(--penna-text-caption-size);
 }
 
 .penna-code-editor .ce-k { color: var(--penna-syntax-keyword); }

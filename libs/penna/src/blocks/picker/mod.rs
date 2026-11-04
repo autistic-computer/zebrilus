@@ -96,7 +96,7 @@ pub fn picker_empty(label: impl Into<SharedString>, cx: &App) -> Div {
         .flex()
         .items_center()
         .justify_center()
-        .text_size(crate::rems_from_px(11.0))
+        .type_style(crate::TextStyle::Caption, cx)
         .text_color(cx.theme().foreground.muted())
         .child(label.into())
 }
@@ -111,7 +111,7 @@ pub fn picker_footer(cx: &App) -> Div {
         .py(px(CHROME_GAP))
         .pl_4()
         .pr(px(CHROME_GAP))
-        .text_size(crate::rems_from_px(10.0))
+        .type_style(crate::TextStyle::Micro, cx)
         .text_color(cx.theme().foreground.muted())
 }
 
@@ -143,7 +143,7 @@ pub fn path_row(
                 .overflow_hidden()
                 .text_ellipsis()
                 .whitespace_nowrap()
-                .text_size(crate::rems_from_px(12.0))
+                .type_style(crate::TextStyle::Small, cx)
                 .child(label.into()),
         )
 }

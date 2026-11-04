@@ -10,7 +10,7 @@ pub const STORY: Story = Story {
     id: "type",
     name: "Type",
     group: "Foundation",
-    summary: "Nine text styles. Each one sets size, line height and weight, and Mono also the code font. They are measured in rems, so the interface font size scales all of them at once.",
+    summary: "The interface, reading and touch text styles. Each one sets size, line height and weight, and Mono also the code font. They are measured in rems, so the interface font size scales all of them at once.",
     sections: &[
         Section {
             id: "scale",

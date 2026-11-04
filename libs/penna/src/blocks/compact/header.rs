@@ -75,7 +75,7 @@ pub fn folding_title_bar(
                     .items_center()
                     .justify_center()
                     .opacity(shown)
-                    .text_size(px(17.0))
+                    .type_style(crate::TextStyle::TouchBody, cx)
                     .font_semibold()
                     .text_color(theme.foreground)
                     .child(

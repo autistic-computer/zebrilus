@@ -521,8 +521,7 @@ impl ColorPicker {
                         .gap(px(10.0))
                         .child(
                             div()
-                                .font_family(cx.theme().mono_font_family.clone())
-                                .text_size(px(13.0))
+                                .type_style(crate::TextStyle::Mono, cx)
                                 .text_color(cx.theme().foreground.muted())
                                 .child(crate::to_hex(shown).to_uppercase()),
                         )
@@ -685,7 +684,7 @@ impl RenderOnce for ColorPicker {
                     .when_some(label.clone(), |this, label| {
                         this.child(
                             div()
-                                .text_size(crate::rems_from_px(11.0))
+                                .type_style(crate::TextStyle::Caption, cx)
                                 .text_color(cx.theme().foreground.muted())
                                 .child(label),
                         )

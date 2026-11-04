@@ -17,9 +17,7 @@ pub fn compact_hud(text: impl Into<SharedString>, cx: &App) -> Div {
                 .py(rems_from_px(8.0))
                 .surface(Surface::new(SurfaceRole::TOAST), cx)
                 .font_family(cx.theme().font_family.clone())
-                .text_size(rems_from_px(17.0))
-                .line_height(rems_from_px(22.0))
-                .font_medium()
+                .type_style_strong(crate::TextStyle::TouchBody, cx)
                 .child(text.into()),
         )
 }

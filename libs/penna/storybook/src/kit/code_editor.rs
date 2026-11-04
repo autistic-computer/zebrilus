@@ -2,10 +2,7 @@ use ala::{
     AnyView, App, AppContext as _, Context, Entity, EntityInputHandler as _, IntoElement,
     ParentElement as _, Render, Styled as _, Window, div, px,
 };
-use penna::{
-    ActiveTheme as _,
-    blocks::code_editor::{CodeEditor, CodeEditorState, TabSize},
-};
+use penna::blocks::code_editor::{CodeEditor, CodeEditorState, TabSize};
 
 use super::support::{Probe, when_visible};
 use crate::story::{Section, Story, states};
@@ -180,14 +177,11 @@ impl Editors {
 }
 
 impl Render for Editors {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let theme = cx.theme();
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
         let frame = |state: &Entity<CodeEditorState>, disabled: bool| {
             div()
                 .relative()
                 .h(px(300.0))
-                .font_family(theme.mono_font_family.clone())
-                .text_size(theme.mono_font_size)
                 .child(
                     CodeEditor::new(state)
                         .bordered(true)

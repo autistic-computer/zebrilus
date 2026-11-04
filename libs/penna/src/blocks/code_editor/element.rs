@@ -13,7 +13,6 @@ use super::{CodeEditorState, RopeExt as _, blink_cursor::CURSOR_WIDTH};
 
 const GUTTER_PADDING: Pixels = px(5.0);
 const NEWLINE_SELECTION_WIDTH: Pixels = px(4.0);
-const LINE_NUMBER_SCALE: f32 = 0.85;
 
 #[derive(Clone)]
 pub(crate) struct LastLayout {
@@ -293,7 +292,9 @@ impl Element for TextElement {
         let line_digits = line_count.to_string().len().max(2);
         let digit_sample: SharedString = "8".repeat(line_digits).into();
         let muted = cx.theme().foreground.muted();
-        let number_font_size = font_size * LINE_NUMBER_SCALE;
+        let number_font_size = crate::TextStyle::Caption
+            .size()
+            .to_pixels(window.rem_size());
         let digit_run = TextRun {
             color: muted,
             ..text_style.to_run(digit_sample.len())

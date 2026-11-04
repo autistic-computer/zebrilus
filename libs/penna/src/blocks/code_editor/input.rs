@@ -109,6 +109,7 @@ impl RenderOnce for CodeEditor {
 
         div()
             .id(("code-editor", self.state.entity_id()))
+            .type_style(crate::TextStyle::Mono, cx)
             .refine_style(&self.style)
             .relative()
             .flex()

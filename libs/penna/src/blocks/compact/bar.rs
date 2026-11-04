@@ -338,9 +338,7 @@ fn pill_row(label: PillLabel, dots: impl IntoElement, pill: &Layer, cx: &App) ->
                         .overflow_hidden()
                         .whitespace_nowrap()
                         .text_ellipsis()
-                        .text_size(rems_from_px(15.0))
-                        .line_height(rems_from_px(19.0))
-                        .font_medium()
+                        .type_style_strong(crate::TextStyle::TouchSmall, cx)
                         .child(title),
                 )
                 .child(
@@ -348,8 +346,7 @@ fn pill_row(label: PillLabel, dots: impl IntoElement, pill: &Layer, cx: &App) ->
                         .flex()
                         .items_center()
                         .gap(rems_from_px(8.0))
-                        .text_size(rems_from_px(12.0))
-                        .line_height(rems_from_px(15.0))
+                        .type_style(crate::TextStyle::Small, cx)
                         .child(
                             div()
                                 .flex_1()

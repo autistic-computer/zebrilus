@@ -29,19 +29,19 @@
   display: flex;
   flex: none;
   padding-bottom: 8px;
-  font-size: 20px;
-  font-weight: 500;
-  line-height: 32.5px;
+  font-size: var(--penna-text-title-size);
+  line-height: var(--penna-text-title-line);
+  font-weight: var(--penna-text-title-weight);
 }
 
 .appearance-group,
 .appearance-disclosure {
   display: flex;
   flex: none;
-  font-size: 13px;
-  font-weight: 600;
-  line-height: 20px;
   color: var(--penna-fg-muted);
+  font-size: var(--penna-text-body-size);
+  line-height: var(--penna-text-body-line);
+  font-weight: 600;
 }
 
 .appearance-group {
@@ -72,7 +72,7 @@
   align-items: center;
   justify-content: center;
   width: 14px;
-  height: 20px;
+  height: var(--penna-text-body-line);
 }
 
 .appearance-chevron > [data-icon] {
@@ -124,8 +124,9 @@
   width: 100%;
   max-width: 70%;
   min-width: 0;
-  font-size: 13px;
-  line-height: 21px;
+  font-size: var(--penna-text-body-size);
+  line-height: var(--penna-text-body-line);
+  font-weight: var(--penna-text-body-weight);
 }
 
 .appearance-rule {
@@ -309,10 +310,11 @@
 .appearance-shown {
   position: relative;
   flex: none;
-  font-size: 12px;
-  line-height: 1.618;
   white-space: nowrap;
   color: var(--penna-fg-muted);
+  font-size: var(--penna-text-small-size);
+  line-height: var(--penna-text-small-line);
+  font-weight: var(--penna-text-small-weight);
 }
 
 .appearance-hue-dot {

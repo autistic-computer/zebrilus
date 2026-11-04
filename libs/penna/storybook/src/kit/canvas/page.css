@@ -57,10 +57,10 @@
 
 .canvas-stack > .canvas-stack-title {
   padding: 0 2px;
-  font-size: 13px;
-  font-weight: 600;
-  line-height: 20px;
   color: var(--penna-fg-muted);
+  font-size: var(--penna-text-body-size);
+  line-height: var(--penna-text-body-line);
+  font-weight: 600;
 }
 
 .canvas-stack > .canvas-stack-card[data-penna] {
@@ -94,9 +94,10 @@
   flex: 0 1 auto;
   max-width: 70%;
   min-width: 0;
-  font-size: 13px;
-  line-height: 21px;
   white-space: nowrap;
+  font-size: var(--penna-text-body-size);
+  line-height: var(--penna-text-body-line);
+  font-weight: var(--penna-text-body-weight);
 }
 
 .canvas-screens {

@@ -206,12 +206,7 @@ fn accent_label(accent: ala::Hsla, label: SharedString, cx: &App) -> ala::Div {
                 .rounded(cx.theme().swatch_radius().min(px(ACCENT_DOT / 2.0)))
                 .bg(accent),
         )
-        .child(
-            div()
-                .flex_none()
-                .line_height(ala::relative(1.0))
-                .child(label),
-        )
+        .child(div().flex_none().child(label))
 }
 
 type ThemeMenu = Rc<dyn Fn(PopupMenu, &mut Window, &mut Context<PopupMenu>) -> PopupMenu>;
@@ -541,7 +536,7 @@ pub fn value_slider(slider: Slider, cx: &App) -> ala::Div {
         return div().w_full().child(slider);
     }
     let shown = div()
-        .text_size(crate::rems_from_px(12.0))
+        .type_style(crate::TextStyle::Small, cx)
         .text_color(cx.theme().foreground.muted())
         .child(slider.shown());
     slider_row(slider, shown)
@@ -985,7 +980,7 @@ fn tile(
                 .whitespace_nowrap()
                 .text_ellipsis()
                 .text_center()
-                .text_size(crate::rems_from_px(11.0))
+                .type_style(crate::TextStyle::Caption, cx)
                 .text_color(if selected {
                     cx.theme().foreground
                 } else {

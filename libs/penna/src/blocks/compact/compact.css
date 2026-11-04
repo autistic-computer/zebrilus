@@ -71,8 +71,8 @@
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-  font-size: 15px;
-  line-height: 19px;
+  font-size: var(--penna-text-touch-small-size);
+  line-height: var(--penna-text-touch-small-line);
   font-weight: 500;
 }
 
@@ -80,8 +80,9 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 12px;
-  line-height: 15px;
+  font-size: var(--penna-text-small-size);
+  line-height: var(--penna-text-small-line);
+  font-weight: var(--penna-text-small-weight);
 }
 
 .penna-pill-meta-text {
@@ -139,13 +140,13 @@
   margin: 0;
   padding: 0 18px 0 14px;
   font: inherit;
-  font-size: 15px;
-  line-height: 20px;
-  font-weight: 500;
   white-space: nowrap;
   --penna-r: 9999px;
   --penna-k: 1;
   --penna-icon-size: 18px;
+  font-size: var(--penna-text-touch-small-size);
+  line-height: var(--penna-text-touch-small-line);
+  font-weight: 500;
 }
 
 .penna-pill-chip[data-penna][data-look="quiet"] {
@@ -204,8 +205,8 @@
   width: auto;
   padding: 8px 16px;
   font-family: var(--penna-font);
-  font-size: 17px;
-  line-height: 22px;
+  font-size: var(--penna-text-touch-body-size);
+  line-height: var(--penna-text-touch-body-line);
   font-weight: 500;
 }
 
@@ -215,11 +216,11 @@
   align-items: flex-end;
   height: 52px;
   padding: 0 16px 4px;
-  font-size: 34px;
-  line-height: 41px;
-  font-weight: 700;
   color: var(--penna-fg);
   white-space: nowrap;
+  font-size: var(--penna-text-touch-title-size);
+  line-height: var(--penna-text-touch-title-line);
+  font-weight: var(--penna-text-touch-title-weight);
 }
 
 .penna-bento {
@@ -269,9 +270,11 @@
   align-items: center;
   justify-content: center;
   gap: 6px;
-  font-size: 15px;
   color: var(--penna-fg-muted);
   --penna-icon-size: 18px;
+  font-size: var(--penna-text-touch-small-size);
+  line-height: var(--penna-text-touch-small-line);
+  font-weight: var(--penna-text-touch-small-weight);
 }
 
 .penna-press {
@@ -363,8 +366,9 @@
   align-items: center;
   justify-content: center;
   height: 44px;
-  font-size: 17px;
-  font-weight: 600;
   color: var(--penna-fg);
   white-space: nowrap;
+  font-size: var(--penna-text-touch-body-size);
+  line-height: var(--penna-text-touch-body-line);
+  font-weight: 600;
 }

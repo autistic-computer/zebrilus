@@ -132,7 +132,7 @@ pub fn bento_add_tile(
             glass: None,
             ..frame
         })
-        .text_size(px(15.0))
+        .type_style(crate::TextStyle::TouchSmall, cx)
         .text_color(theme.foreground.muted())
         .child(press_highlight("bento-add-press", None, radius))
         .child(Icon::new(IconName::Plus).size(px(18.0)))

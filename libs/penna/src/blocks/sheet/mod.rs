@@ -222,8 +222,7 @@ pub fn sheet_detail_row(
                         .overflow_hidden()
                         .whitespace_nowrap()
                         .text_ellipsis()
-                        .text_size(px(16.0))
-                        .line_height(px(21.0))
+                        .type_style(crate::TextStyle::TouchBody, cx)
                         .child(label.into()),
                 )
                 .child(
@@ -231,8 +230,7 @@ pub fn sheet_detail_row(
                         .overflow_hidden()
                         .whitespace_nowrap()
                         .text_ellipsis()
-                        .text_size(px(13.0))
-                        .line_height(px(17.0))
+                        .type_style(crate::TextStyle::TouchSmall, cx)
                         .text_color(muted)
                         .child(detail),
                 ),
@@ -277,7 +275,7 @@ fn option_row(
             .overflow_hidden()
             .whitespace_nowrap()
             .text_ellipsis()
-            .text_size(px(16.0))
+            .type_style(crate::TextStyle::TouchBody, cx)
             .child(label),
     )
 }
@@ -592,9 +590,7 @@ impl RenderOnce for BottomSheet {
                             .overflow_hidden()
                             .whitespace_nowrap()
                             .text_ellipsis()
-                            .text_size(px(24.0))
-                            .line_height(px(30.0))
-                            .font_bold()
+                            .type_style(crate::TextStyle::Display, cx)
                             .child(self.title)
                             .into_any_element()
                     }))

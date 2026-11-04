@@ -421,8 +421,7 @@ impl RenderOnce for KeyRow {
             .w_full()
             .h(rems_from_px(KEY_ROW_HEIGHT))
             .font_family(theme.font_family.clone())
-            .text_size(rems_from_px(15.0))
-            .line_height(rems_from_px(20.0))
+            .type_style(crate::TextStyle::TouchSmall, cx)
             .when_some(lead, |row, lead| {
                 row.child(
                     div()

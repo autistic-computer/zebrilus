@@ -282,9 +282,7 @@ fn chip(
         .whitespace_nowrap()
         .layer(&layer)
         .text_color(ink)
-        .text_size(rems_from_px(15.0))
-        .line_height(rems_from_px(20.0))
-        .font_medium()
+        .type_style_strong(crate::TextStyle::TouchSmall, cx)
         .on_mouse_down(MouseButton::Left, |_, window, _| window.prevent_default())
         .child(crate::blocks::touch::press_highlight(
             ElementId::Name(format!("pill-menu-press-{}", item.id).into()),

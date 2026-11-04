@@ -43,8 +43,7 @@ impl WhichKeyList {
         div()
             .flex_none()
             .whitespace_nowrap()
-            .font_family(cx.theme().mono_font_family.clone())
-            .text_size(rems_from_px(15.0))
+            .type_style_mono(crate::TextStyle::TouchSmall, cx)
             .text_color(if cap.yours {
                 cx.theme().accent
             } else {
@@ -128,9 +127,8 @@ impl RenderOnce for WhichKeyList {
                         .h(rems_from_px(HEADER_HEIGHT))
                         .px(rems_from_px(INSET))
                         .pb(rems_from_px(4.0))
-                        .text_size(rems_from_px(13.0))
+                        .type_style_strong(crate::TextStyle::Body, cx)
                         .text_color(cx.theme().foreground.muted())
-                        .font_medium()
                         .child(title)
                         .into_any_element(),
                 );
@@ -149,8 +147,7 @@ impl RenderOnce for WhichKeyList {
             .list_inset(cx)
             .pb(rems_from_px(INSET))
             .font_family(cx.theme().font_family.clone())
-            .text_size(rems_from_px(17.0))
-            .line_height(rems_from_px(22.0))
+            .type_style(crate::TextStyle::TouchBody, cx)
             .children(children)
     }
 }
