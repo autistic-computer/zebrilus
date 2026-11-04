@@ -51,12 +51,12 @@
 .canvas-stack {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--penna-gap-related);
   width: 100%;
 }
 
 .canvas-stack > .canvas-stack-title {
-  padding: 0 2px;
+  padding: 0 var(--penna-space-4);
   color: var(--penna-fg-muted);
   font-size: var(--penna-text-body-size);
   line-height: var(--penna-text-body-line);
@@ -78,7 +78,7 @@
   content: "";
   flex: none;
   height: 1px;
-  margin: 0 12px;
+  margin: 0 var(--penna-inset-card);
   background: var(--penna-divider);
 }
 
@@ -86,8 +86,8 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  padding: 11px 12px;
+  gap: var(--penna-space-16);
+  padding: var(--penna-inset-card);
 }
 
 .canvas-entry-body > .canvas-entry-title {

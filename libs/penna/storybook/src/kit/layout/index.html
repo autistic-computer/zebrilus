@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Layout</title>
+    <link rel="stylesheet" href="../../../../web/penna.css" />
+    <link rel="stylesheet" href="../../../../web/story.css" />
+    <link rel="stylesheet" href="page.css" />
+    <script src="../../../../web/kit.js" data-tokens="../../../../web/tokens/"></script>
+  </head>
+  <body>
+    <section data-section="stack">
+      <div class="story-states">
+        <div class="story-state">
+          <div class="story-label">tight</div>
+          <div class="layout-frame"><div class="penna-stack" data-gap="tight"><div class="layout-block"></div><div class="layout-block"></div><div class="layout-block"></div></div></div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">related</div>
+          <div class="layout-frame"><div class="penna-stack" data-gap="related"><div class="layout-block"></div><div class="layout-block"></div><div class="layout-block"></div></div></div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">group</div>
+          <div class="layout-frame"><div class="penna-stack" data-gap="group"><div class="layout-block"></div><div class="layout-block"></div><div class="layout-block"></div></div></div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">section</div>
+          <div class="layout-frame"><div class="penna-stack" data-gap="section"><div class="layout-block"></div><div class="layout-block"></div><div class="layout-block"></div></div></div>
+        </div>
+      </div>
+    </section>
+    <section data-section="inline">
+      <div class="story-states">
+        <div class="story-state">
+          <div class="story-label">related</div>
+          <div class="layout-frame"><div class="penna-inline" data-gap="related"><div class="layout-block layout-chip"></div><div class="layout-block layout-chip"></div><div class="layout-block layout-chip"></div><div class="layout-block layout-chip"></div></div></div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">wrapping</div>
+          <div class="layout-frame"><div class="penna-inline" data-gap="related" data-wrap><div class="layout-block layout-chip"></div><div class="layout-block layout-chip"></div><div class="layout-block layout-chip"></div><div class="layout-block layout-chip"></div><div class="layout-block layout-chip"></div><div class="layout-block layout-chip"></div><div class="layout-block layout-chip"></div><div class="layout-block layout-chip"></div><div class="layout-block layout-chip"></div></div></div>
+        </div>
+      </div>
+    </section>
+    <section data-section="inset">
+      <div class="story-states">
+        <div class="story-state">
+          <div class="story-label">chrome</div>
+          <div class="layout-frame"><div class="penna-inset" data-inset="chrome"><div class="layout-block"></div></div></div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">card</div>
+          <div class="layout-frame"><div class="penna-inset" data-inset="card"><div class="layout-block"></div></div></div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">pane</div>
+          <div class="layout-frame"><div class="penna-inset" data-inset="pane"><div class="layout-block"></div></div></div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">page</div>
+          <div class="layout-frame"><div class="penna-inset" data-inset="page"><div class="layout-block"></div></div></div>
+        </div>
+      </div>
+    </section>
+    <section data-section="split">
+      <div class="story-states">
+        <div class="story-state">
+          <div class="story-label">160 aside</div>
+          <div class="layout-frame"><div class="penna-split" data-gap="group" style="--penna-aside: 160px"><div><div class="layout-block"></div></div><div><div class="penna-stack" data-gap="related"><div class="layout-block"></div><div class="layout-block"></div><div class="layout-block"></div></div></div></div></div>
+        </div>
+      </div>
+    </section>
+    <section data-section="center">
+      <div class="story-states">
+        <div class="story-state">
+          <div class="story-label">320 measure</div>
+          <div class="layout-frame"><div class="penna-center" style="--penna-measure: 320px"><div class="penna-stack" data-gap="related"><div class="layout-block"></div><div class="layout-block"></div></div></div></div>
+        </div>
+      </div>
+    </section>
+    <section data-section="tiles">
+      <div class="story-states">
+        <div class="story-state">
+          <div class="story-label">3 columns</div>
+          <div class="layout-frame"><div class="penna-tiles" data-gap="related" style="--penna-tiles: 3"><div class="layout-block"></div><div class="layout-block"></div><div class="layout-block"></div><div class="layout-block"></div><div class="layout-block"></div><div class="layout-block"></div></div></div>
+        </div>
+      </div>
+    </section>
+  </body>
+</html>

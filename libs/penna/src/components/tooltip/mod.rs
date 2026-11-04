@@ -1,3 +1,4 @@
+use crate::Space;
 use ala::{
     Action, AnyView, App, AppContext as _, Context, IntoElement, ParentElement as _, Render,
     SharedString, StyleRefinement, Styled, Window, div, prelude::FluentBuilder,
@@ -52,10 +53,10 @@ impl Render for Tooltip {
 
         div().child(
             h_flex()
-                .m_3()
-                .px_2()
-                .py_0p5()
-                .gap_3()
+                .m(Space::S12)
+                .px(Space::S8)
+                .py(Space::S2)
+                .gap(Space::S12)
                 .justify_between()
                 .font_family(cx.theme().font_family.clone())
                 .type_style(TextStyle::Small, cx)

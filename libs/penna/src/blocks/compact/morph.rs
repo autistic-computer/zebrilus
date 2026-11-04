@@ -7,7 +7,7 @@ use web_time::Instant;
 
 use super::bar::{COMPACT_PILL_HEIGHT, PillPlacement, floating_layer};
 use crate::{
-    ActiveTheme as _, Layer, PaintState, StyledExt as _, Surface,
+    ActiveTheme as _, Layer, PaintState, Space, StyledExt as _, Surface,
     blocks::touch::{KEY_PILL_HEIGHT, KEY_ROW_HEIGHT, KEY_ROW_MARGIN_X, KEY_ROW_MARGIN_Y, KeyRow},
     foundation::roles,
 };
@@ -17,7 +17,6 @@ pub const COMPACT_MINI_PILL_HEIGHT: f32 = 32.0;
 const SPRING: SpringConfig = SpringConfig::new(520.0, 46.0, 1.0);
 const SETTLE_EPSILON: f32 = 0.002;
 const FADE: f32 = 0.6;
-const MINI_PADDING_X: f32 = 16.0;
 const MINI_MIN_WIDTH: f32 = 88.0;
 const MINI_DROP: f32 = 14.0;
 const MINI_BOTTOM_MIN: f32 = 6.0;
@@ -221,7 +220,8 @@ pub fn mini_pill_width(text: &SharedString, window: &Window, cx: &App) -> Pixels
     let line = window
         .text_system()
         .shape_line(text.clone(), font_size, &[run], None);
-    (line.width + px(MINI_PADDING_X * 2.0)).max(px(MINI_MIN_WIDTH))
+    let inset = Space::S16.rems().to_pixels(window.rem_size());
+    (line.width + inset * 2.0).max(px(MINI_MIN_WIDTH))
 }
 
 pub fn compact_pill_collapse(
@@ -281,7 +281,7 @@ pub fn compact_pill_collapse(
                 .flex()
                 .items_center()
                 .justify_center()
-                .px(px(MINI_PADDING_X))
+                .px(Space::S16)
                 .whitespace_nowrap()
                 .overflow_hidden()
                 .text_ellipsis()

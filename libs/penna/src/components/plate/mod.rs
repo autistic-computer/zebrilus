@@ -234,6 +234,7 @@ pub(crate) use plate_element;
 
 #[cfg(test)]
 mod tests {
+    use crate::Space;
     use ala::{
         Context, InteractiveElement as _, IntoElement, ParentElement as _, Render, Role,
         ScaledPixels, StatefulInteractiveElement as _, StyleRefinement, Styled as _,
@@ -369,7 +370,7 @@ mod tests {
 
     impl Render for Focused {
         fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-            div().size_full().p(px(10.0)).child(
+            div().size_full().p(Space::S10).child(
                 Row::new("row", RowLook::Sidebar)
                     .state(PaintState::Focused)
                     .row_height(px(28.0))

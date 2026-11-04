@@ -58,7 +58,7 @@
 }
 
 .penna-bento-inset {
-  padding: 0 16px;
+  padding: 0 var(--penna-inset-pane);
 }
 
 .penna-bindings-scroll {

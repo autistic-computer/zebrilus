@@ -6,13 +6,13 @@
 
 .penna-popover-panel[data-penna="popover"] {
   position: absolute;
-  top: calc(100% + 4px);
+  top: calc(100% + var(--penna-space-4));
   left: 0;
   z-index: 20;
   display: flex;
   flex-direction: column;
   box-sizing: border-box;
-  padding: 12px;
+  padding: var(--penna-inset-card);
   font-family: var(--penna-font);
   font-size: var(--penna-text-body-size);
   font-weight: var(--penna-text-body-weight);
@@ -23,7 +23,7 @@
 
 .penna-popover[data-anchor~="bottom"] > .penna-popover-panel {
   top: auto;
-  bottom: calc(100% + 4px);
+  bottom: calc(100% + var(--penna-space-4));
 }
 
 .penna-popover[data-anchor~="right"] > .penna-popover-panel {

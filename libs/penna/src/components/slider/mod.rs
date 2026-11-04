@@ -1,3 +1,4 @@
+use crate::Space;
 use std::{ops::RangeInclusive, rc::Rc};
 
 use ala::{
@@ -29,7 +30,6 @@ const TOUCH_HEIGHT: f32 = 44.0;
 const PREVIEW_WIDTH: f32 = 72.0;
 const PREVIEW_TRACK: f32 = 4.0;
 const PREVIEW_THUMB: f32 = 10.0;
-const SHEET_PADDING_X: f32 = 16.0;
 
 pub(crate) fn thumb(cx: &App) -> f32 {
     if CoarsePointer::get(cx) {
@@ -83,7 +83,7 @@ impl RenderOnce for DiscreteSlider {
             .max_w(px(
                 count as f32 * 24.0 + count.saturating_sub(1) as f32 * 4.0
             ))
-            .gap_1();
+            .gap(Space::S4);
         for (index, label) in self.labels.iter().enumerate() {
             let change = self.on_change.clone();
             let focus = focus.clone();
@@ -131,7 +131,7 @@ impl RenderOnce for DiscreteSlider {
             .aria_value(value.clone())
             .track_focus(&focus)
             .w_full()
-            .gap_2()
+            .gap(Space::S8)
             .type_style(TextStyle::Small, cx)
             .on_key_down(move |event, window, cx| {
                 let next = match event.keystroke.key.as_str() {
@@ -426,7 +426,7 @@ impl Slider {
                     .w_full()
                     .h(size.control_h())
                     .px(size.input_px())
-                    .gap(px(10.0))
+                    .gap(Space::S10)
                     .justify_between()
                     .cursor_pointer(),
                 size,
@@ -471,9 +471,9 @@ impl Slider {
                     .on_click(move |_, _, cx| close_sheet(("penna-slider-sheet", id), cx))
                     .into_any_element()],
                 v_flex()
-                    .px(px(SHEET_PADDING_X))
-                    .pb(px(16.0))
-                    .gap(px(8.0))
+                    .px(Space::INSET_PANE)
+                    .pb(Space::S16)
+                    .gap(Space::S8)
                     .child(
                         div()
                             .w_full()

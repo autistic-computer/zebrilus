@@ -13,7 +13,7 @@
   flex: 1 1 0;
   flex-direction: column;
   min-width: 0;
-  padding: 14px;
+  padding: var(--penna-inset-pane);
   overflow-y: auto;
   scrollbar-width: none;
 }
@@ -28,7 +28,7 @@
 .appearance-heading {
   display: flex;
   flex: none;
-  padding-bottom: 8px;
+  padding-bottom: var(--penna-gap-related);
   font-size: var(--penna-text-title-size);
   line-height: var(--penna-text-title-line);
   font-weight: var(--penna-text-title-weight);
@@ -45,14 +45,14 @@
 }
 
 .appearance-group {
-  padding: 10px 2px 8px;
+  padding: var(--penna-space-8) var(--penna-space-4) var(--penna-gap-related);
 }
 
 .appearance-disclosure {
   align-items: flex-start;
-  gap: 2px;
-  margin: 4px -6px 2px;
-  padding: 6px;
+  gap: var(--penna-space-2);
+  margin: var(--penna-space-2) calc(-1 * var(--penna-space-6)) var(--penna-space-2);
+  padding: var(--penna-space-6);
   border: 0;
   background: none;
   font-family: inherit;
@@ -63,7 +63,7 @@
 }
 
 .appearance-disclosure > .appearance-text {
-  padding: 0 2px;
+  padding: 0 var(--penna-space-4);
 }
 
 .appearance-chevron {
@@ -98,7 +98,7 @@
   display: flex;
   flex: none;
   flex-direction: column;
-  margin-bottom: 8px;
+  margin-bottom: var(--penna-gap-related);
   border-radius: var(--appearance-r-top) var(--appearance-r-top) var(--appearance-r-bottom) var(--appearance-r-bottom) !important;
   color: var(--penna-fg);
 }
@@ -106,15 +106,15 @@
 .appearance-entry {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 11px 12px;
+  gap: var(--penna-gap-related);
+  padding: var(--penna-inset-card);
 }
 
 .appearance-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
+  gap: var(--penna-space-16);
   min-width: 0;
 }
 
@@ -132,7 +132,7 @@
 .appearance-rule {
   flex: none;
   height: 1px;
-  padding: 0 12px;
+  padding: 0 var(--penna-inset-card);
 }
 
 .appearance-rule > [data-penna] {
@@ -147,14 +147,14 @@
   display: flex;
   flex: none;
   align-items: center;
-  gap: 4px;
+  gap: var(--penna-space-4);
   position: relative;
 }
 
 .appearance-accent-label {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--penna-space-8);
 }
 
 .appearance-dot {
@@ -195,7 +195,7 @@
   flex: none;
   flex-wrap: wrap;
   align-items: center;
-  gap: 4px;
+  gap: var(--penna-space-4);
 }
 
 .appearance-ring {
@@ -235,7 +235,7 @@
   display: flex;
   flex: none;
   align-items: center;
-  gap: 10px;
+  gap: var(--penna-space-10);
 }
 
 .appearance-slider {

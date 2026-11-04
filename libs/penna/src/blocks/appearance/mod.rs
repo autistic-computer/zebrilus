@@ -11,8 +11,8 @@ use crate::foundation::interface_theme::{
     SavedThemes, ThemeOverrides,
 };
 use crate::{
-    ActiveTheme as _, AuthoredElement as _, Colorize as _, IconName, StyledExt as _, Surface,
-    ThemeColor, ThemeMode,
+    ActiveTheme as _, AuthoredElement as _, Colorize as _, IconName, Space, StyledExt as _,
+    Surface, ThemeColor, ThemeMode,
 };
 use ala::{
     Anchor, AnyElement, App, Context, Entity, FocusHandle, IntoElement, SharedString, Subscription,
@@ -24,7 +24,6 @@ const THEME_PREVIEW_WIDTH: f32 = 84.0;
 const THEME_PREVIEW_HEIGHT: f32 = 56.0;
 const THEME_PREVIEW_SIDEBAR_WIDTH: f32 = 20.0;
 
-const PAGE_ROW_GAP: f32 = 8.0;
 const TILE_FRAME_PADDING: f32 = 2.0;
 const TILE_RING: f32 = 2.0;
 const TILE_HALO_GAP: f32 = 1.0;
@@ -44,7 +43,7 @@ pub fn run_position<T: Copy>(
 pub fn page_row(element: AnyElement, ends_run: bool) -> AnyElement {
     div()
         .w_full()
-        .pb(px(if ends_run { PAGE_ROW_GAP } else { 0.0 }))
+        .when(ends_run, |row| row.pb(Space::GAP_RELATED))
         .child(element)
         .into_any_element()
 }
@@ -198,7 +197,7 @@ fn accent_label(accent: ala::Hsla, label: SharedString, cx: &App) -> ala::Div {
     div()
         .flex()
         .items_center()
-        .gap(px(8.0))
+        .gap(Space::S8)
         .child(
             div()
                 .flex_none()
@@ -252,7 +251,7 @@ fn picker(
         .flex()
         .flex_none()
         .items_center()
-        .gap(px(4.0))
+        .gap(Space::S4)
         .child(
             Button::new("settings-theme")
                 .child(accent_label(live, current, cx))
@@ -345,7 +344,7 @@ pub fn accent_swatches(
         .flex_wrap()
         .items_center()
         .when(coarse, |row| row.w_full().justify_between())
-        .gap(px(4.0))
+        .gap(Space::S4)
         .child(swatch("theme", "Theme".into(), own))
         .children(named);
     if coarse {
@@ -418,7 +417,7 @@ pub fn tint_hue_slider(
         return div()
             .flex()
             .items_center()
-            .gap(px(10.0))
+            .gap(Space::S10)
             .child(div().flex_1().min_w_0().child(slider))
             .child(dot);
     }
@@ -546,7 +545,7 @@ fn slider_row(slider: Slider, trailing: impl IntoElement) -> ala::Div {
     div()
         .flex()
         .items_center()
-        .gap(px(10.0))
+        .gap(Space::S10)
         .child(div().w(px(SLIDER_WIDTH)).child(slider))
         .child(div().flex_none().w(px(SWATCH * 2.0)).child(trailing))
 }
@@ -950,7 +949,7 @@ fn tile(
         .flex_col()
         .flex_none()
         .items_center()
-        .gap(px(6.0))
+        .gap(Space::S6)
         .cursor_pointer()
         .child(
             div()

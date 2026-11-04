@@ -264,6 +264,7 @@ fn render_scrollbar<H: ScrollbarHandle + Clone>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Space;
     use ala::{
         Context, Render, ScrollDelta, ScrollWheelEvent, TestAppContext, VisualTestContext, point,
         px,
@@ -407,7 +408,7 @@ mod tests {
             crate::v_flex()
                 .w(px(100.))
                 .h(px(100.))
-                .gap(px(10.))
+                .gap(Space::S10)
                 .overflow_y_scrollbar()
                 .child(row("first-row", 20.))
                 .child(row("second-row", 20.))
@@ -423,8 +424,8 @@ mod tests {
                     .flex_1()
                     .gap(px(30.))
                     .overflow_y_scrollbar()
-                    .px(px(12.))
-                    .pb(px(16.))
+                    .px(Space::S12)
+                    .pb(Space::S16)
                     .children((0..5).map(|ix| {
                         div()
                             .h(px(20.))
@@ -450,7 +451,7 @@ mod tests {
             crate::h_flex()
                 .w(px(100.))
                 .h(px(40.))
-                .gap(px(10.))
+                .gap(Space::S10)
                 .overflow_x_scrollbar()
                 .child(item("horizontal-first-item", 50.))
                 .child(item("horizontal-second-item", 50.))
@@ -465,7 +466,7 @@ mod tests {
             crate::v_flex()
                 .w(px(100.))
                 .h(px(100.))
-                .gap(px(10.))
+                .gap(Space::S10)
                 .overflow_scrollbar()
                 .child(row("both-axis-vertical-first-row", 50.))
                 .child(row("both-axis-vertical-second-row", 50.))
@@ -480,7 +481,7 @@ mod tests {
             crate::h_flex()
                 .w(px(100.))
                 .h(px(40.))
-                .gap(px(10.))
+                .gap(Space::S10)
                 .overflow_scrollbar()
                 .child(item("both-axis-horizontal-first-item", 50.))
                 .child(item("both-axis-horizontal-second-item", 50.))
@@ -522,7 +523,7 @@ mod tests {
             crate::v_flex()
                 .w(px(100.))
                 .h(px(100.))
-                .gap(px(10.))
+                .gap(Space::S10)
                 .overflow_y_scrollbar()
                 .child(row("no-overflow-first-row", 20.))
                 .child(row("no-overflow-second-row", 20.))
@@ -710,7 +711,7 @@ mod tests {
                 crate::h_flex()
                     .w(px(100.))
                     .h(px(40.))
-                    .gap(px(10.))
+                    .gap(Space::S10)
                     .overflow_x_scrollbar()
                     .child(item("no-overflow-first-item", 20.))
                     .child(item("no-overflow-second-item", 20.))

@@ -10,16 +10,14 @@ use super::{
     popover_key::popover_above,
 };
 use crate::{
-    ActiveTheme as _, Colorize as _, Emphasis, Icon, IconName, PaintState, StyledExt as _, Surface,
-    SurfaceRole, Tone, foundation::roles, rems_from_px,
+    ActiveTheme as _, Colorize as _, Emphasis, Icon, IconName, PaintState, Space, StyledExt as _,
+    Surface, SurfaceRole, Tone, foundation::roles, rems_from_px,
 };
 
 const THRESHOLD: f32 = 10.0;
 const REPEAT_DELAY: Duration = Duration::from_millis(300);
 const REPEAT_INTERVAL: Duration = Duration::from_millis(80);
 const BUBBLE: f32 = 132.0;
-const BUBBLE_PADDING: f32 = 6.0;
-const CELL_GAP: f32 = 4.0;
 const HUB: f32 = 6.0;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -162,21 +160,15 @@ pub fn arrow_pad_bubble(direction: Option<ArrowDirection>, cx: &App) -> AnyEleme
                 )
             })
     };
-    let line = |cells: [AnyElement; 3]| {
-        div()
-            .flex()
-            .flex_1()
-            .gap(rems_from_px(CELL_GAP))
-            .children(cells)
-    };
+    let line = |cells: [AnyElement; 3]| div().flex().flex_1().gap(Space::S4).children(cells);
     let blank = || cell(None, false).into_any_element();
     div()
         .debug_selector(|| "arrow-pad-bubble".to_owned())
         .flex()
         .flex_col()
         .size(rems_from_px(BUBBLE))
-        .p(rems_from_px(BUBBLE_PADDING))
-        .gap(rems_from_px(CELL_GAP))
+        .p(Space::S6)
+        .gap(Space::S4)
         .surface(Surface::new(SurfaceRole::POPOVER), cx)
         .child(line([
             blank(),

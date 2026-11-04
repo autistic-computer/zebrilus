@@ -6,7 +6,8 @@ use web_time::Duration;
 
 use crate::{
     ActiveTheme as _, AuthoredElement as _, Colorize as _, Disableable as _, Emphasis, Ground,
-    IconName, Layer, PaintState, RULE_WIDTH, RuleLook, Sizable as _, StyledExt as _, Surface,
+    IconName, Layer, PaintState, RULE_WIDTH, RuleLook, Sizable as _, Space, StyledExt as _,
+    Surface,
     blocks::sidebar::{sidebar_gap, sidebar_row},
     components::badge::Badge,
     components::button::{Button, ButtonVariants as _},
@@ -141,7 +142,7 @@ impl RenderOnce for SettingsNavigation {
 }
 
 const SETTINGS_CONTENT_MAX_WIDTH: f32 = 760.0;
-pub const SETTINGS_PAGE_PADDING: f32 = 14.0;
+pub const SETTINGS_PAGE_PADDING: f32 = Space::INSET_PANE.design_px();
 
 pub fn settings_page_content() -> ala::Div {
     div()
@@ -172,8 +173,8 @@ pub fn large_title(title: impl Into<SharedString>, cx: &App) -> ala::Div {
         .flex_none()
         .items_end()
         .h(px(LARGE_TITLE_HEIGHT))
-        .px(px(16.0))
-        .pb(px(4.0))
+        .px(Space::S16)
+        .pb(Space::S4)
         .type_style(crate::TextStyle::TouchTitle, cx)
         .text_color(cx.theme().foreground)
         .child(
@@ -224,8 +225,8 @@ impl RenderOnce for SettingsTitleBar {
 
 fn settings_large_title(title: SharedString, cx: &App) -> ala::Div {
     large_title(title, cx)
-        .px(px(2.0))
-        .mt(px(-SETTINGS_PAGE_PADDING))
+        .px(Space::S4)
+        .mt(-Space::INSET_PANE.rems())
 }
 
 pub fn settings_page_heading(title: impl Into<SharedString>, cx: &App) -> ala::Div {
@@ -316,11 +317,11 @@ impl RenderOnce for SettingsScrollColumn {
                     .size_full()
                     .overflow_y_scroll()
                     .track_scroll(&handle)
-                    .p(px(SETTINGS_PAGE_PADDING))
+                    .p(Space::INSET_PANE)
                     .child(
                         settings_page_content()
                             .flex_none()
-                            .gap(px(18.0))
+                            .gap(Space::GAP_GROUP)
                             .children(title)
                             .children(self.children),
                     )
@@ -447,14 +448,14 @@ impl RenderOnce for SettingsVirtualColumn {
             div()
                 .flex()
                 .w_full()
-                .px(px(SETTINGS_PAGE_PADDING))
+                .px(Space::INSET_PANE)
                 .child(settings_page_content().flex_none().child(row))
                 .into_any_element()
         })
         .with_sizing_behavior(ListSizingBehavior::Auto)
         .size_full()
-        .pt(px(SETTINGS_PAGE_PADDING))
-        .pb(px(SETTINGS_PAGE_PADDING) + SettingsBottomInset::get(cx));
+        .pt(Space::INSET_PANE)
+        .pb(Space::INSET_PANE.rems().to_pixels(window.rem_size()) + SettingsBottomInset::get(cx));
 
         div()
             .id(self.id)
@@ -471,7 +472,7 @@ const SETTINGS_GROUP_TITLE: crate::TextStyle = crate::TextStyle::Body;
 
 pub fn settings_group_header(title: SharedString, cx: &App) -> ala::Div {
     div()
-        .px(px(2.0))
+        .px(Space::S4)
         .type_style(SETTINGS_GROUP_TITLE, cx)
         .font_semibold()
         .text_color(cx.theme().foreground.muted())
@@ -487,14 +488,13 @@ pub fn settings_description(text: SharedString, cx: &App) -> ala::Div {
 
 pub fn settings_list_group_header(title: &'static str, cx: &App) -> ala::Div {
     div()
-        .pt(px(10.0))
+        .pt(Space::S8)
         .child(settings_group_header(title.into(), cx))
 }
 
 const REVEAL: Duration = Duration::from_millis(280);
 const REVEAL_STAGGER: Duration = Duration::from_millis(30);
 const REVEAL_DROP: f32 = 10.0;
-const DISCLOSURE_PRESS_INSET: f32 = 6.0;
 const SETTINGS_DISCLOSURE_WIDTH: f32 = 14.0;
 
 pub fn settings_list_disclosure_header(
@@ -537,19 +537,19 @@ impl RenderOnce for SettingsDisclosure {
             .theme()
             .layer(Surface::new(roles::SETTINGS_CARD), PaintState::Rest)
             .radius;
-        let inset = px(DISCLOSURE_PRESS_INSET);
+        let inset = Space::S6.rems();
         div()
             .author_id(self.id)
             .role(Role::Button)
             .aria_expanded(self.expanded)
             .relative()
-            .mt(px(10.0) - inset)
+            .mt(Space::S8.rems() - inset)
             .mb(-inset)
             .mx(-inset)
             .p(inset)
             .flex()
             .items_start()
-            .gap(px(2.0))
+            .gap(Space::S2)
             .cursor_pointer()
             .when(coarse, |this| {
                 this.child(
@@ -618,8 +618,6 @@ pub fn settings_disclosure_reveal(
         .child(row)
         .into_any_element()
 }
-
-pub const SETTINGS_STACK_PADDING: f32 = 12.0;
 
 #[derive(IntoElement)]
 pub struct SettingsStack {
@@ -692,12 +690,12 @@ impl RenderOnce for SettingsStack {
             .flex()
             .flex_col()
             .w_full()
-            .gap(px(8.0))
+            .gap(Space::GAP_RELATED)
             .when_some(self.title, |this, title| {
                 this.child(settings_group_header(title, cx))
             })
             .when_some(self.note, |this, note| {
-                this.child(settings_description(note, cx).px(px(2.0)))
+                this.child(settings_description(note, cx).px(Space::S4))
             })
             .child(
                 div()
@@ -857,20 +855,20 @@ impl RenderOnce for SettingEntry {
             div()
                 .flex()
                 .flex_col()
-                .gap(px(3.0))
+                .gap(Space::GAP_TIGHT)
                 .child(
                     div()
                         .flex()
                         .items_center()
                         .justify_between()
-                        .gap(px(16.0))
+                        .gap(Space::S16)
                         .child(
                             div()
                                 .flex()
                                 .flex_1()
                                 .min_w_0()
                                 .items_center()
-                                .gap(px(8.0))
+                                .gap(Space::S8)
                                 .when_some(self.title_icon, |this, icon| {
                                     this.child(icon.with_size(crate::Size::Medium))
                                 })
@@ -889,7 +887,7 @@ impl RenderOnce for SettingEntry {
                 .flex()
                 .items_center()
                 .justify_between()
-                .gap(px(16.0))
+                .gap(Space::S16)
                 .child(
                     SettingCopy::new(self.title)
                         .when_some(self.description, SettingCopy::description)
@@ -914,9 +912,8 @@ impl RenderOnce for SettingEntry {
             .flex()
             .flex_col()
             .w_full()
-            .gap(px(10.0))
-            .px(px(SETTINGS_STACK_PADDING))
-            .py(px(11.0))
+            .gap(Space::GAP_RELATED)
+            .p(Space::INSET_CARD)
             .when(disabled, |this| {
                 this.opacity(0.5)
                     .child(div().absolute().inset_0().occlude())
@@ -956,7 +953,7 @@ impl RenderOnce for SettingEntry {
                 this.child(
                     div()
                         .flex_none()
-                        .px(px(SETTINGS_STACK_PADDING))
+                        .px(Space::INSET_CARD)
                         .child(Separator::horizontal().look(RuleLook::List).h(RULE_WIDTH)),
                 )
             })
@@ -1069,12 +1066,12 @@ impl RenderOnce for SettingCopy {
             .w_full()
             .max_w(relative(0.7))
             .min_w_0()
-            .gap(px(2.0))
+            .gap(Space::GAP_TIGHT)
             .child(
                 div()
                     .flex()
                     .items_center()
-                    .gap(px(4.0))
+                    .gap(Space::S4)
                     .when_some(self.title_icon, |this, icon| {
                         this.child(icon.with_size(crate::Size::Medium))
                     })

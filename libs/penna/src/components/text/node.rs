@@ -960,12 +960,14 @@ impl CodeBlock {
                     .group(CODE_BLOCK_GROUP)
                     .w_full()
                     .min_w_0()
-                    .px_3()
-                    .pb_3()
-                    .pt(if actions.is_some() {
-                        px(44.0)
-                    } else {
-                        px(12.0)
+                    .px(Space::INSET_CARD)
+                    .pb(Space::INSET_CARD)
+                    .map(|this| {
+                        if actions.is_some() {
+                            this.pt(px(44.0))
+                        } else {
+                            this.pt(Space::INSET_CARD)
+                        }
                     })
                     .layer(&code)
                     .font_family(cx.theme().mono_font_family.clone())
@@ -991,9 +993,9 @@ impl CodeBlock {
                             div()
                                 .id("actions")
                                 .absolute()
-                                .top_2()
-                                .left_2()
-                                .right_2()
+                                .top(Space::S8)
+                                .left(Space::S8)
+                                .right(Space::S8)
                                 .flex()
                                 .items_center()
                                 .justify_end()
@@ -1515,7 +1517,7 @@ impl BlockNode {
                     div()
                         .flex_none()
                         .h(line_height)
-                        .mr_1p5()
+                        .mr(Space::S6)
                         .flex()
                         .items_center()
                         .child(
@@ -1576,7 +1578,7 @@ impl BlockNode {
                                             v_flex().child(preceding_row).child(
                                                 div()
                                                     .w_full()
-                                                    .pl(rems(1.))
+                                                    .pl(Space::S16)
                                                     .overflow_hidden()
                                                     .child(text),
                                             ),
@@ -1590,7 +1592,7 @@ impl BlockNode {
                                 ));
                             }
                             BlockNode::List { .. } => {
-                                items.push(div().ml(rems(1.)).child(child.render_block(
+                                items.push(div().ml(Space::S16).child(child.render_block(
                                     NodeRenderOptions {
                                         depth: options.depth + 1,
                                         todo: checked.is_some(),
@@ -1630,7 +1632,7 @@ impl BlockNode {
                                         div()
                                             .w_full()
                                             .min_w_0()
-                                            .pl(rems(1.))
+                                            .pl(Space::S16)
                                             .overflow_hidden()
                                             .child(block),
                                     );
@@ -1727,8 +1729,8 @@ impl BlockNode {
                         .whitespace_nowrap()
                         .when(align == ColumnumnAlign::Center, |this| this.text_center())
                         .when(align == ColumnumnAlign::Right, |this| this.text_right())
-                        .px_2()
-                        .py_1()
+                        .px(Space::S8)
+                        .py(Space::S4)
                         .when(!is_last_col, |this| {
                             this.rule(RuleLook::Plain, Edge::Right, cx)
                         })
@@ -1791,8 +1793,8 @@ impl BlockNode {
                         .when(align == ColumnumnAlign::Right, |this| this.text_right())
                         .min_w_16()
                         .w(Length::Definite(relative(width)))
-                        .px_2()
-                        .py_1()
+                        .px(Space::S8)
+                        .py(Space::S4)
                         .when(!is_last_col, |this| {
                             this.rule(RuleLook::Plain, Edge::Right, cx)
                         })
@@ -1885,7 +1887,7 @@ impl BlockNode {
                         .text_color(cx.theme().foreground.muted())
                         .border_l(BLOCKQUOTE_BAR_WIDTH)
                         .border_color(cx.theme().divider_color())
-                        .px_4()
+                        .px(Space::S16)
                         .children({
                             let children_len = children.len();
                             children.into_iter().enumerate().map(move |(index, c)| {
@@ -1968,7 +1970,7 @@ impl BlockNode {
     }
 }
 
-const CELL_PAD_PX: f32 = 16.0;
+const CELL_PAD_PX: f32 = Space::S8.design_px() * 2.0;
 const CELL_MIN_PX: f32 = 48.0;
 const CELL_MAX_PX: f32 = 480.0;
 const WRAP_CELL_MAX_PX: f32 = 1200.0;

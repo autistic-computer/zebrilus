@@ -1,3 +1,4 @@
+use crate::Space;
 use ala::{
     AnyElement, App, ClickEvent, Div, ElementId, InteractiveElement as _, IntoElement, MouseButton,
     MouseDownEvent, MouseMoveEvent, ParentElement, Pixels, RenderOnce, Role, Stateful,
@@ -160,9 +161,9 @@ impl RenderOnce for ListItem {
             .aria_disabled(disabled)
             .relative()
             .justify_between()
-            .gap_x_1()
-            .py_1()
-            .px_3()
+            .gap_x(Space::S4)
+            .py(Space::S4)
+            .px(Space::S12)
             .type_style(TextStyle::Lead, cx)
             .layer(&layer)
             .map(|this| row_corners(this, &layer, row_height))

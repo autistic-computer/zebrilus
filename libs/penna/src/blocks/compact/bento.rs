@@ -4,13 +4,13 @@ use ala::{
 };
 
 use crate::{
-    ActiveTheme as _, Colorize as _, Icon, IconName, Layer, PaintState, StyledExt as _, Surface,
-    blocks::touch::press_highlight, foundation::roles,
+    ActiveTheme as _, Colorize as _, Icon, IconName, Layer, PaintState, Space, StyledExt as _,
+    Surface, blocks::touch::press_highlight, foundation::roles,
 };
 
 pub const BENTO_COLUMNS: usize = 4;
-pub const BENTO_GAP: f32 = 10.0;
-pub const BENTO_INSET: f32 = 16.0;
+pub const BENTO_GAP: f32 = Space::GAP_RELATED.design_px();
+pub const BENTO_INSET: f32 = Space::INSET_PANE.design_px();
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct BentoSpan {
@@ -126,7 +126,7 @@ pub fn bento_add_tile(
         .flex()
         .items_center()
         .justify_center()
-        .gap(px(6.0))
+        .gap(Space::S6)
         .cursor_pointer()
         .layer(&Layer {
             glass: None,

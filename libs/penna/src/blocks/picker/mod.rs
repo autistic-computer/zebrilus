@@ -1,6 +1,6 @@
 use crate::{
-    ActiveTheme as _, CHROME_GAP, Colorize as _, Edge, Icon, IconName, Layer, RuleLook,
-    Sizable as _, StyledExt as _, Surface,
+    ActiveTheme as _, Colorize as _, Edge, Icon, IconName, Layer, RuleLook, Sizable as _, Space,
+    StyledExt as _, Surface,
     components::input::{Input, InputState},
     foundation::roles,
     h_flex, list_row, v_flex,
@@ -29,7 +29,7 @@ pub fn picker_overlay(id: impl Into<ElementId>, cx: &App) -> Stateful<Div> {
         .flex()
         .items_center()
         .justify_center()
-        .p_4()
+        .p(Space::S16)
         .bg(cx.theme().scrim)
         .occlude()
 }
@@ -61,9 +61,9 @@ pub fn picker_modal_sized(
 pub fn picker_header(cx: &App) -> Div {
     v_flex()
         .flex_none()
-        .gap(px(CHROME_GAP))
+        .gap(Space::GAP_RELATED)
         .rule(RuleLook::Bar, Edge::Bottom, cx)
-        .p(px(8.0))
+        .p(Space::S8)
 }
 
 pub fn picker_search(input: &Entity<InputState>, cx: &App) -> Div {
@@ -86,7 +86,7 @@ pub fn picker_list() -> Div {
         .flex_1()
         .min_h_0()
         .overflow_hidden()
-        .p(px(8.0))
+        .p(Space::S8)
 }
 
 pub fn picker_empty(label: impl Into<SharedString>, cx: &App) -> Div {
@@ -106,11 +106,11 @@ pub fn picker_footer(cx: &App) -> Div {
         .w_full()
         .min_h(px(40.0))
         .flex_none()
-        .gap(px(CHROME_GAP))
+        .gap(Space::GAP_RELATED)
         .rule(RuleLook::Bar, Edge::Top, cx)
-        .py(px(CHROME_GAP))
-        .pl_4()
-        .pr(px(CHROME_GAP))
+        .py(Space::INSET_CHROME)
+        .pl(Space::S16)
+        .pr(Space::INSET_CHROME)
         .type_style(crate::TextStyle::Micro, cx)
         .text_color(cx.theme().foreground.muted())
 }
@@ -118,8 +118,8 @@ pub fn picker_footer(cx: &App) -> Div {
 pub fn picker_row(id: impl Into<ElementId>, selected: bool, cx: &App) -> Stateful<Div> {
     list_row(id, PICKER_ROW_HEIGHT, selected, true, cx)
         .w_full()
-        .gap_2()
-        .px_2p5()
+        .gap(Space::S8)
+        .px(Space::S10)
         .cursor_pointer()
 }
 

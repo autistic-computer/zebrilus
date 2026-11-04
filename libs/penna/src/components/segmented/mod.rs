@@ -7,12 +7,10 @@ use ala::{
 };
 
 use crate::{
-    ActiveTheme as _, Ground, Kind, PaintState, Size, StyledExt as _, Surface, SurfaceRole,
+    ActiveTheme as _, Ground, Kind, PaintState, Size, Space, StyledExt as _, Surface, SurfaceRole,
     components::input::field_chrome_on, h_flex,
 };
 
-const INSET: f32 = 2.0;
-const SEGMENT_PADDING: f32 = 10.0;
 const SLIDE: Duration = Duration::from_millis(220);
 
 type SelectHandler = Rc<dyn Fn(usize, &mut Window, &mut App)>;
@@ -79,8 +77,9 @@ impl RenderOnce for SegmentedControl {
         let ground = layer.ground;
         let border = layer.border_width.max(px(1.0));
         let height = Size::Medium.control_px();
-        let inner = px(height - INSET * 2.0) - border * 2.0;
-        let radius = (layer.radius.min(px(height / 2.0)) - border - px(INSET)).max(px(0.0));
+        let inset = Space::S2.rems().to_pixels(window.rem_size());
+        let inner = px(height) - inset * 2.0 - border * 2.0;
+        let radius = (layer.radius.min(px(height / 2.0)) - border - inset).max(px(0.0));
         let pill = Surface::new(SurfaceRole::QUIET_BUTTON).on(ground);
         let picked = cx.theme().layer(pill, PaintState::Current);
         let rest = cx.theme().layer(pill, PaintState::Rest).text;
@@ -152,7 +151,7 @@ impl RenderOnce for SegmentedControl {
                     .items_center()
                     .justify_center()
                     .h(inner)
-                    .px(px(SEGMENT_PADDING))
+                    .px(Space::S10)
                     .type_style(Size::Medium.control_text(), cx)
                     .whitespace_nowrap()
                     .map(|segment| {
@@ -181,7 +180,7 @@ impl RenderOnce for SegmentedControl {
             .collect::<Vec<AnyElement>>();
 
         field_chrome_on(
-            h_flex().id(self.id).flex_none().p(px(INSET)),
+            h_flex().id(self.id).flex_none().p(Space::S2),
             track,
             PaintState::Rest,
             true,

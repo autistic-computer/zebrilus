@@ -214,7 +214,7 @@ button[data-penna] {
   align-items: center;
   gap: 8px;
   height: 26px;
-  padding: 0 8px;
+  padding: 0 var(--penna-space-8);
   font-size: var(--penna-text-small-size);
   line-height: var(--penna-text-small-line);
   white-space: nowrap;
@@ -251,7 +251,7 @@ button[data-penna] {
 }
 
 [data-penna="popover"]:not(.penna-menu) {
-  padding: 12px;
+  padding: var(--penna-inset-card);
   font-size: var(--penna-text-body-size);
   font-weight: var(--penna-text-body-weight);
   line-height: var(--penna-text-body-line);
@@ -269,9 +269,9 @@ button[data-penna] {
 :is([data-penna="badge"], [data-penna="badge.outline"]) {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--penna-space-4);
   height: 18px;
-  padding: 0 6px;
+  padding: 0 var(--penna-space-6);
   font-size: var(--penna-text-caption-size);
   font-weight: 500;
   line-height: var(--penna-text-caption-line);
@@ -280,7 +280,7 @@ button[data-penna] {
 
 :is([data-penna="badge"], [data-penna="badge.outline"])[data-size="small"] {
   height: 16px;
-  padding: 0 5px;
+  padding: 0 var(--penna-space-4);
   font-size: var(--penna-text-micro-size);
   line-height: var(--penna-text-micro-line);
 }
@@ -290,7 +290,7 @@ button[data-penna] {
   place-items: center;
   min-width: 18px;
   height: 18px;
-  padding: 0 4px;
+  padding: 0 var(--penna-space-4);
   font-size: var(--penna-text-caption-size);
   font-weight: var(--penna-text-caption-weight);
   line-height: var(--penna-text-caption-line);
@@ -391,13 +391,13 @@ button[data-penna] {
 [data-penna="dialog"] {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: var(--penna-gap-group);
   font-size: var(--penna-text-body-size);
   font-weight: var(--penna-text-body-weight);
   line-height: var(--penna-text-body-line);
   width: 400px;
   min-height: 80px;
-  padding: 12px;
+  padding: var(--penna-inset-pane);
 }
 
 .penna-title {
@@ -422,7 +422,7 @@ button[data-penna] {
   display: flex;
   gap: 8px;
   width: 400px;
-  padding: 12px;
+  padding: var(--penna-inset-card);
   font-size: var(--penna-text-body-size);
   line-height: var(--penna-text-body-line);
 }
@@ -530,7 +530,7 @@ button[data-penna] {
   gap: 0;
   min-width: 0;
   height: var(--penna-titlebar-height, 40px);
-  padding: 0 0 0 12px;
+  padding: 0 0 0 var(--penna-space-12);
 }
 
 [data-penna="pane"] {
@@ -539,6 +539,79 @@ button[data-penna] {
   min-width: 0;
   min-height: 0;
   overflow: hidden;
+}
+
+.penna-stack {
+  display: flex;
+  flex-direction: column;
+}
+
+.penna-inline {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+}
+
+.penna-inline[data-wrap] {
+  flex-wrap: wrap;
+}
+
+:is(.penna-stack, .penna-inline, .penna-split, .penna-tiles)[data-gap="tight"] {
+  gap: var(--penna-gap-tight);
+}
+
+:is(.penna-stack, .penna-inline, .penna-split, .penna-tiles)[data-gap="related"] {
+  gap: var(--penna-gap-related);
+}
+
+:is(.penna-stack, .penna-inline, .penna-split, .penna-tiles)[data-gap="group"] {
+  gap: var(--penna-gap-group);
+}
+
+:is(.penna-stack, .penna-inline, .penna-split, .penna-tiles)[data-gap="section"] {
+  gap: var(--penna-gap-section);
+}
+
+.penna-inset[data-inset="chrome"] {
+  padding: var(--penna-inset-chrome);
+}
+
+.penna-inset[data-inset="card"] {
+  padding: var(--penna-inset-card);
+}
+
+.penna-inset[data-inset="pane"] {
+  padding: var(--penna-inset-pane);
+}
+
+.penna-inset[data-inset="page"] {
+  padding: var(--penna-inset-page);
+}
+
+.penna-split {
+  display: flex;
+  align-items: flex-start;
+}
+
+.penna-split > :first-child {
+  flex: none;
+  width: var(--penna-aside);
+}
+
+.penna-split > :last-child {
+  flex: 1;
+  min-width: 0;
+}
+
+.penna-center {
+  width: 100%;
+  max-width: var(--penna-measure);
+  margin-inline: auto;
+}
+
+.penna-tiles {
+  display: grid;
+  grid-template-columns: repeat(var(--penna-tiles), minmax(0, 1fr));
 }
 
 .penna-gaps {
@@ -558,9 +631,9 @@ button[data-penna] {
 
 .penna-settings {
   display: grid;
-  gap: 18px;
+  gap: var(--penna-gap-group);
   max-width: 760px;
-  padding: 14px;
+  padding: var(--penna-inset-pane);
 }
 
 .penna-settings > h1 {
@@ -571,8 +644,8 @@ button[data-penna] {
 }
 
 .penna-settings h2 {
-  margin: 0 0 6px;
-  padding: 0 2px;
+  margin: 0 0 var(--penna-gap-related);
+  padding: 0 var(--penna-space-4);
   color: var(--penna-muted);
   font-size: var(--penna-text-body-size);
   line-height: var(--penna-text-body-line);
@@ -587,21 +660,21 @@ button[data-penna] {
 .penna-setting {
   display: flex;
   align-items: center;
-  gap: 16px;
-  padding: 11px 12px;
+  gap: var(--penna-space-16);
+  padding: var(--penna-inset-card);
   font-size: var(--penna-text-body-size);
   line-height: var(--penna-text-body-line);
   font-weight: var(--penna-text-body-weight);
 }
 
 .penna-setting + .penna-setting {
-  box-shadow: inset 12px 0 var(--penna-fill), inset -12px 0 var(--penna-fill), inset 0 1px var(--penna-divider);
+  box-shadow: inset var(--penna-inset-card) 0 var(--penna-fill), inset calc(-1 * var(--penna-inset-card)) 0 var(--penna-fill), inset 0 1px var(--penna-divider);
 }
 
 .penna-setting > .penna-copy {
   display: grid;
   flex: 1;
-  gap: 2px;
+  gap: var(--penna-gap-tight);
   max-width: 70%;
 }
 

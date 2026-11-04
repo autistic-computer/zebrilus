@@ -10,8 +10,8 @@ use web_time::{Duration, Instant};
 
 use crate::foundation::dismissal::{Dismissal, Overdrag, Tick, coast, coasting};
 use crate::{
-    ActiveTheme as _, Emphasis, Ground, Icon, IconName, Layer, PaintState, Shape, StyledExt as _,
-    Surface, SurfaceRole, Tone,
+    ActiveTheme as _, Emphasis, Ground, Icon, IconName, Layer, PaintState, Shape, Space,
+    StyledExt as _, Surface, SurfaceRole, Tone,
     components::button::Button,
     foundation::roles,
     foundation::{muted_on, row_radius, row_surface},
@@ -22,7 +22,6 @@ const ENTER: Duration = Duration::from_millis(240);
 const GRABBER_WIDTH: f32 = 36.0;
 const GRABBER_HEIGHT: f32 = 5.0;
 const HEADER_HEIGHT: f32 = 60.0;
-const PADDING_X: f32 = 20.0;
 const CLOSE: f32 = 36.0;
 const OPTION_HEIGHT: f32 = 52.0;
 const DETAIL_HEIGHT: f32 = 64.0;
@@ -30,7 +29,7 @@ const TILE: f32 = 40.0;
 const TILE_ROW_HEIGHT: f32 = 56.0;
 const TILE_ROUNDING: f32 = 0.28;
 const MAX_HEIGHT: f32 = 0.85;
-const FLOAT_MARGIN: f32 = 8.0;
+const FLOAT_MARGIN: f32 = Space::S8.design_px();
 const RISE: f32 = 0.3;
 const FLING_HEIGHTS: f32 = 2.0;
 const COMMIT_FRACTION: f32 = 0.48;
@@ -214,7 +213,7 @@ pub fn sheet_detail_row(
             div()
                 .flex()
                 .flex_col()
-                .gap(px(1.0))
+                .gap(Space::S2)
                 .flex_1()
                 .min_w_0()
                 .child(
@@ -297,8 +296,8 @@ fn row_shell(
     )
     .relative()
     .w_full()
-    .gap(px(12.0))
-    .px(px(12.0))
+    .gap(Space::S12)
+    .px(Space::S12)
     .cursor_pointer()
     .child(crate::blocks::touch::instant_press_highlight(
         id,
@@ -566,22 +565,26 @@ impl RenderOnce for BottomSheet {
             .on_scroll_wheel(|_, _, cx| cx.stop_propagation())
             .child(listener)
             .child(
-                div().flex().flex_none().justify_center().pt(px(6.0)).child(
-                    div()
-                        .w(px(GRABBER_WIDTH))
-                        .h(px(GRABBER_HEIGHT))
-                        .layer(&grabber),
-                ),
+                div()
+                    .flex()
+                    .flex_none()
+                    .justify_center()
+                    .pt(Space::S6)
+                    .child(
+                        div()
+                            .w(px(GRABBER_WIDTH))
+                            .h(px(GRABBER_HEIGHT))
+                            .layer(&grabber),
+                    ),
             )
             .child(
                 div()
                     .flex()
                     .flex_none()
                     .items_center()
-                    .gap(px(8.0))
+                    .gap(Space::GAP_RELATED)
                     .h(px(HEADER_HEIGHT))
-                    .pl(px(PADDING_X))
-                    .pr(px(14.0))
+                    .px(Space::INSET_PANE)
                     .surface(header, cx)
                     .child(self.heading.unwrap_or_else(|| {
                         div()

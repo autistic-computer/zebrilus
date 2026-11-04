@@ -1,3 +1,4 @@
+use crate::Space;
 use std::rc::Rc;
 
 use ala::{
@@ -693,11 +694,11 @@ impl RenderOnce for Button {
                     match self.size {
                         Size::Size(size) => this.px(size * 0.2),
                         Size::Small => this
-                            .px_2()
-                            .when(self.compact, |this| this.min_w(height).px_1()),
+                            .px(Space::S8)
+                            .when(self.compact, |this| this.min_w(height).px(Space::S4)),
                         Size::Medium => this
-                            .px_3()
-                            .when(self.compact, |this| this.min_w(height).px_1p5()),
+                            .px(Space::S12)
+                            .when(self.compact, |this| this.min_w(height).px(Space::S6)),
                     }
                 }
             })
@@ -780,8 +781,8 @@ impl RenderOnce for Button {
                     label
                         .when(pressed > 0.0, |this| this.opacity(1.0 - 0.35 * pressed))
                         .map(|this| match self.size {
-                            Size::Small => this.gap_1(),
-                            _ => this.gap_1p5(),
+                            Size::Small => this.gap(Space::S4),
+                            _ => this.gap(Space::S6),
                         })
                         .when_some(self.icon, |this, icon| {
                             this.child(icon.loading(self.loading).with_size(icon_size))
@@ -836,7 +837,7 @@ mod tests {
 
         impl Render for Host {
             fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-                div().p(px(10.)).child(
+                div().p(Space::S10).child(
                     Button::new("trigger")
                         .label("Trigger")
                         .selected(self.selected),
@@ -981,14 +982,14 @@ mod tests {
 
     #[ala::test]
     fn a_button_draws_its_themes_corner_smoothing(cx: &mut ala::TestAppContext) {
-        use ala::{Context, IntoElement, ParentElement as _, Render, Styled as _, px};
+        use ala::{Context, IntoElement, ParentElement as _, Render, Styled as _};
 
         struct Host(Option<ButtonLook>);
 
         impl Render for Host {
             fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
                 let button = Button::new("b").label("Button");
-                div().p(px(10.)).child(match self.0 {
+                div().p(Space::S10).child(match self.0 {
                     Some(look) => button.look(look),
                     None => button,
                 })

@@ -6,7 +6,7 @@ use ala::{
 
 use crate::{
     ActiveTheme as _, Disableable, Emphasis, Ground, Highlight, Kind, Layer, Paint, PaintState,
-    Sizable, Size, StyledExt as _, Surface, SurfaceRole, Theme, Tone,
+    Sizable, Size, Space, StyledExt as _, Surface, SurfaceRole, Theme, Tone,
     components::button::Button,
     components::icon::{Icon, IconName},
     components::spinner::Spinner,
@@ -380,8 +380,8 @@ impl RenderOnce for Input {
         };
 
         let gap = match self.size {
-            Size::Small => px(4.),
-            Size::Medium | Size::Size(_) => px(6.),
+            Size::Small => Space::S4,
+            Size::Medium | Size::Size(_) => Space::S6,
         };
         let paint_state = if focused {
             PaintState::Focused

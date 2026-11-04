@@ -1,3 +1,4 @@
+use crate::Space;
 use crate::foundation::restyle;
 use crate::{
     ActiveTheme, Disableable, PaintState, StyledExt, Surface, SurfaceRole, TextStyle, h_flex,
@@ -118,9 +119,9 @@ impl RenderOnce for MenuItemElement {
             .aria_selected(self.selected)
             .group(&self.group_name)
             .flex_none()
-            .gap_x_1()
-            .py_1()
-            .px_2()
+            .gap_x(Space::S4)
+            .py(Space::S4)
+            .px(Space::S8)
             .type_style(TextStyle::Small, cx)
             .relative()
             .layer(&theme.layer(surface, state))

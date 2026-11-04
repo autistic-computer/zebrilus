@@ -5,12 +5,12 @@
   const CAP_GAP = 8;
   const CAP_MIN = 24;
   const CAP_MAX = 112;
-  const SET_GAP = 6;
-  const COLUMN_GAP = 24;
-  const LINE_GAP = 12;
-  const STACK_GAP = 10;
-  const PADDING_X = 16;
-  const CHROME_HEIGHT = 56;
+  const SET_GAP = 4;
+  const COLUMN_GAP = 16;
+  const LINE_GAP = 16;
+  const STACK_GAP = 16;
+  const INSET = 12;
+  const CHROME_HEIGHT = 54;
   const WIDTH_SLACK = 4;
 
   const owned = new WeakMap();
@@ -63,14 +63,14 @@
   }
 
   function perLineOf(width, columnWidth) {
-    const inner = width - 2 * PADDING_X - WIDTH_SLACK;
+    const inner = width - 2 * INSET - WIDTH_SLACK;
     const fits = Math.floor((inner + COLUMN_GAP) / (columnWidth + COLUMN_GAP));
     return Number.isFinite(fits) && fits >= 1 ? fits : 1;
   }
 
   const lineWidth = (columns, columnWidth) => {
     columns = Math.max(1, columns);
-    return columns * columnWidth + (columns - 1) * COLUMN_GAP + 2 * PADDING_X + WIDTH_SLACK;
+    return columns * columnWidth + (columns - 1) * COLUMN_GAP + 2 * INSET + WIDTH_SLACK;
   };
 
   function fitOf(groups, columnWidth, available) {

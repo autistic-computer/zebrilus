@@ -174,7 +174,7 @@ mod tests {
 
     use super::*;
     use crate::{
-        IconName,
+        IconName, Space,
         components::button::{Button, ButtonVariants as _},
     };
 
@@ -202,7 +202,7 @@ mod tests {
                         .top(px(100.0))
                         .left(px(100.0))
                         .flex()
-                        .gap(px(4.0))
+                        .gap(Space::S4)
                         .child(
                             Button::compact_icon("first", IconName::Plus)
                                 .debug_selector(|| "first".to_owned())

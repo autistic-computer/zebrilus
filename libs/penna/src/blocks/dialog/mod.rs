@@ -1,5 +1,6 @@
 #![allow(clippy::pedantic, clippy::style, clippy::complexity)]
 
+use crate::Space;
 use std::{rc::Rc, time::Duration};
 
 use crate::foundation::{SURFACE_ENTER_DURATION, surface_enter};
@@ -29,10 +30,9 @@ pub(crate) const CONTEXT: &str = "PennaDialog";
 
 pub(crate) const ANIMATION_DURATION: Duration = SURFACE_ENTER_DURATION;
 
-pub(crate) const CONTENT_PADDING: Pixels = px(12.);
 const MIN_HEIGHT: Pixels = px(80.);
 const LAYER_OFFSET: f32 = 16.;
-const EDGE_MARGIN: Pixels = px(16.);
+const EDGE_MARGIN: Pixels = px(Space::S16.design_px());
 pub(crate) const DEFAULT_WIDTH: Pixels = px(400.);
 
 const OK_LABEL: &str = "OK";
@@ -374,7 +374,7 @@ impl RenderOnce for Dialog {
                 v_flex()
                     .flex_1()
                     .overflow_hidden()
-                    .gap_y_2()
+                    .gap_y(Space::S8)
                     .when_some(self.header, |this, header| {
                         this.child(dialog_gutter().child(header))
                     })
@@ -387,8 +387,7 @@ impl RenderOnce for Dialog {
                                 v_flex()
                                     .size_full()
                                     .overflow_y_scrollbar()
-                                    .pl(CONTENT_PADDING)
-                                    .pr(CONTENT_PADDING)
+                                    .px(Space::INSET_PANE)
                                     .children(self.children),
                             ),
                         )
@@ -413,8 +412,8 @@ impl RenderOnce for Dialog {
                 let on_close = on_close.clone();
                 Button::new("close")
                     .absolute()
-                    .top(px(8.))
-                    .right(px(8.))
+                    .top(Space::S12)
+                    .right(Space::S12)
                     .ghost()
                     .icon(IconName::Xmark)
                     .on_click(move |_, window, cx| {
@@ -476,13 +475,12 @@ fn dialog_frame(role: SurfaceRole, cx: &App) -> Div {
     v_flex()
         .surface(Surface::new(role), cx)
         .type_style(TextStyle::Body, cx)
-        .pt(CONTENT_PADDING)
-        .pb(CONTENT_PADDING)
-        .gap(CONTENT_PADDING)
+        .py(Space::INSET_PANE)
+        .gap(Space::GAP_GROUP)
 }
 
 pub fn dialog_gutter() -> Div {
-    div().pl(CONTENT_PADDING).pr(CONTENT_PADDING)
+    div().px(Space::INSET_PANE)
 }
 
 pub fn dialog_title(cx: &App) -> Div {
@@ -496,7 +494,10 @@ pub fn dialog_description(cx: &App) -> Div {
 }
 
 pub fn dialog_footer(cx: &App) -> Div {
-    h_flex().gap_2().justify_end().rounded_b(cx.theme().radius)
+    h_flex()
+        .gap(Space::S8)
+        .justify_end()
+        .rounded_b(cx.theme().radius)
 }
 
 pub struct AlertDialog {
@@ -580,14 +581,14 @@ impl AlertDialog {
             .when(has_header, |this| {
                 this.header(
                     h_flex()
-                        .gap_2()
+                        .gap(Space::S8)
                         .items_start()
                         .when_some(self.icon, |row, icon| row.child(icon))
                         .child(
                             v_flex()
                                 .flex_1()
                                 .min_w_0()
-                                .gap_1()
+                                .gap(Space::S4)
                                 .when_some(self.title, |this, title| {
                                     this.child(dialog_title(cx).child(title))
                                 })

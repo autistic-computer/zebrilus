@@ -9,6 +9,7 @@ mod geometry;
 pub mod highlighter;
 mod index_path;
 pub mod interface_theme;
+mod layout;
 pub mod motion;
 pub mod overlay;
 mod palette;
@@ -32,6 +33,7 @@ pub use element_ext::{AuthoredElement, ElementExt, InteractiveElementExt};
 pub(crate) use element_ext::{author_name, author_part};
 pub use geometry::Side;
 pub use index_path::IndexPath;
+pub use layout::{center, inline, inset, split, stack, tiles};
 pub use space::Space;
 pub use styled::{
     Disableable, FOCUS_RING_WIDTH, RULE_WIDTH, RuleLook, Selectable, Sizable, Size, StyledExt,

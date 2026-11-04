@@ -1,3 +1,4 @@
+use crate::Space;
 use crate::{
     ActiveTheme as _, Colorize as _, Ground, Icon, IconName, StyledExt as _, Surface, TextStyle,
     Tone,
@@ -10,8 +11,6 @@ use ala::{
     App, Div, IntoElement, ParentElement as _, SharedString, Styled as _, div,
     prelude::FluentBuilder as _, px,
 };
-
-const EMPTY_STATE_GAP: f32 = 8.0;
 
 pub fn callout(
     tone: Tone,
@@ -64,15 +63,15 @@ fn callout_on(
     };
     v_flex()
         .w_full()
-        .p(px(12.0))
-        .gap(px(12.0))
+        .p(Space::S12)
+        .gap(Space::S12)
         .surface(surface, cx)
         .type_style(TextStyle::Body, cx)
         .child(
             h_flex()
                 .w_full()
                 .items_start()
-                .gap_2()
+                .gap(Space::S8)
                 .child(
                     h_flex().flex_none().h(first_line.line_height()).child(
                         icon.medium()
@@ -88,7 +87,7 @@ fn callout_on(
                     v_flex()
                         .flex_1()
                         .min_w_0()
-                        .gap_1()
+                        .gap(Space::S4)
                         .when_some(title, |column, title| {
                             column.child(dialog_title(cx).child(title))
                         })
@@ -106,7 +105,7 @@ pub fn empty_state(title: Option<SharedString>, message: impl IntoElement, cx: &
         .flex_1()
         .items_center()
         .justify_center()
-        .gap(px(EMPTY_STATE_GAP))
+        .gap(Space::GAP_TIGHT)
         .type_style(TextStyle::Small, cx)
         .text_color(cx.theme().foreground.muted())
         .when_some(title, |state, title| {
@@ -140,12 +139,12 @@ pub fn prompt_dialog(
 }
 
 pub fn prompt_body() -> Div {
-    v_flex().gap_2()
+    v_flex().gap(Space::S8)
 }
 
 pub fn prompt_question(question: &str, cx: &App) -> Div {
     dialog_description(cx)
         .v_flex()
-        .gap_1()
+        .gap(Space::S4)
         .children(question.lines().map(|line| div().child(line.to_owned())))
 }

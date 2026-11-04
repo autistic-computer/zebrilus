@@ -1,3 +1,4 @@
+use crate::Space;
 use ala::{
     Anchor, AnyElement, App, AppContext as _, Bounds, Context, ElementId, Entity, EventEmitter,
     FocusHandle, Focusable, HitboxBehavior, Hsla, InteractiveElement as _, IntoElement,
@@ -25,7 +26,6 @@ const FIELD_SWATCH: Pixels = px(20.0);
 const POPOVER_WIDTH: f32 = 248.0;
 const FIELD_HEIGHT: f32 = 148.0;
 const SHEET_FIELD_HEIGHT: f32 = 200.0;
-const SHEET_PADDING_X: f32 = 16.0;
 const HANDLE: f32 = 14.0;
 const HUE_STOPS: u16 = 12;
 
@@ -452,7 +452,7 @@ impl ColorPicker {
         let hex = state.read(cx).hex.clone();
         let state = state.clone();
         h_flex()
-            .gap(px(6.0))
+            .gap(Space::S6)
             .child(
                 Input::new(&hex)
                     .when_some(author, |input, author| {
@@ -485,7 +485,7 @@ impl ColorPicker {
     ) -> impl IntoElement {
         let hsv = state.read(cx).shown(inherited);
         v_flex()
-            .gap(px(8.0))
+            .gap(Space::S8)
             .child(Self::field(state, author, hsv, px(field_height), cx))
             .child(Self::hue(state, author, hsv, cx))
             .child(Self::hex_row(state, author, cx))
@@ -518,7 +518,7 @@ impl ColorPicker {
                 .with_size(self.size)
                 .child(
                     h_flex()
-                        .gap(px(10.0))
+                        .gap(Space::S10)
                         .child(
                             div()
                                 .type_style(crate::TextStyle::Mono, cx)
@@ -566,7 +566,7 @@ impl ColorPicker {
                     .w_full()
                     .h(size.control_h())
                     .px(size.input_px())
-                    .gap(px(10.0))
+                    .gap(Space::S10)
                     .justify_between()
                     .cursor_pointer(),
                 size,
@@ -610,9 +610,9 @@ impl ColorPicker {
                     .on_click(move |_, _, cx| close_sheet(("penna-color-picker-sheet", id), cx))
                     .into_any_element()],
                 div()
-                    .px(px(SHEET_PADDING_X))
-                    .pb(px(12.0))
-                    .children(presets.map(|presets| div().pb(px(12.0)).child(presets)))
+                    .px(Space::INSET_PANE)
+                    .pb(Space::S12)
+                    .children(presets.map(|presets| div().pb(Space::S12).child(presets)))
                     .child(Self::controls(
                         &self.state,
                         self.author.as_ref(),
@@ -679,7 +679,7 @@ impl RenderOnce for ColorPicker {
             .trigger(self.trigger(shown, false, cx))
             .content(move |_, _, cx| {
                 v_flex()
-                    .gap(px(8.0))
+                    .gap(Space::S8)
                     .w(px(POPOVER_WIDTH))
                     .when_some(label.clone(), |this, label| {
                         this.child(
@@ -715,7 +715,7 @@ mod tests {
         fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
             div()
                 .size_full()
-                .p(px(10.0))
+                .p(Space::S10)
                 .child(ColorPicker::new(&self.state, ala::black()))
         }
     }

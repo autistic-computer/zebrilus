@@ -3,14 +3,14 @@
   display: flex;
   flex: none;
   align-items: center;
-  gap: 6px;
+  gap: var(--penna-space-6);
 }
 
 .penna-dots-group {
   display: flex;
   flex: none;
   align-items: center;
-  gap: 3px;
+  gap: var(--penna-space-2);
 }
 
 .penna-dot {
@@ -100,15 +100,15 @@
 
 .penna-arrow-bubble[data-penna] {
   position: absolute;
-  bottom: calc(100% + 8px);
+  bottom: calc(100% + var(--penna-space-8));
   left: 50%;
   z-index: 10;
   display: grid;
   grid-template: repeat(3, 1fr) / repeat(3, 1fr);
-  gap: 4px;
+  gap: var(--penna-space-4);
   width: 132px;
   height: 132px;
-  padding: 6px;
+  padding: var(--penna-space-6);
   transform: translateX(-50%);
   font-weight: 400;
   --penna-icon-size: 18px;
@@ -154,10 +154,10 @@
   display: block;
   height: auto;
   padding: 0;
-  top: 4px;
-  right: 8px;
-  bottom: 4px;
-  left: 8px;
+  top: var(--penna-space-4);
+  right: var(--penna-space-8);
+  bottom: var(--penna-space-4);
+  left: var(--penna-space-8);
 }
 
 .penna-key-row-scroll {
@@ -211,18 +211,18 @@
 }
 
 .penna-key-row-more[data-penna][data-side="ahead"] {
-  right: 8px;
+  right: var(--penna-space-8);
   justify-content: flex-end;
-  padding-right: 10px;
+  padding-right: var(--penna-space-10);
   border-top-left-radius: 0 !important;
   border-bottom-left-radius: 0 !important;
   background: linear-gradient(90deg, rgb(from var(--penna-more-shade) r g b / 0), var(--penna-more-shade) 55%);
 }
 
 .penna-key-row-more[data-penna][data-side="back"] {
-  left: 8px;
+  left: var(--penna-space-8);
   justify-content: flex-start;
-  padding-left: 10px;
+  padding-left: var(--penna-space-10);
   border-top-right-radius: 0 !important;
   border-bottom-right-radius: 0 !important;
   background: linear-gradient(270deg, rgb(from var(--penna-more-shade) r g b / 0), var(--penna-more-shade) 55%);
@@ -233,7 +233,7 @@
   flex-direction: column;
   gap: clamp(0px, var(--penna-row-inset) * 1000, 2px);
   width: 100%;
-  padding: 0 var(--penna-row-inset) 8px;
+  padding: 0 var(--penna-row-inset) var(--penna-space-8);
   font-family: var(--penna-font);
   font-size: var(--penna-text-touch-body-size);
   line-height: var(--penna-text-touch-body-line);
@@ -245,7 +245,7 @@
   flex: none;
   align-items: flex-end;
   height: 28px;
-  padding: 0 8px 4px;
+  padding: 0 var(--penna-space-8) var(--penna-space-4);
   color: var(--penna-fg-muted);
   font-size: var(--penna-text-body-size);
   line-height: var(--penna-text-body-line);
@@ -256,11 +256,11 @@
   display: flex;
   flex: none;
   align-items: center;
-  gap: 12px;
+  gap: var(--penna-space-12);
   min-width: 0;
   height: 44px;
   margin: 0;
-  padding: 0 8px;
+  padding: 0 var(--penna-space-8);
   font: inherit;
   text-align: left;
 }
@@ -272,7 +272,7 @@
 .penna-which-key-list-caps {
   display: flex;
   flex: none;
-  gap: 6px;
+  gap: var(--penna-space-6);
   min-width: 52px;
 }
 

@@ -6,13 +6,12 @@ use ala::{
 };
 
 use crate::{
-    ActiveTheme as _, Colorize as _, PaintState, StyledExt as _, Surface,
+    ActiveTheme as _, Colorize as _, PaintState, Space, StyledExt as _, Surface,
     blocks::which_key::{WhichKeyCap, WhichKeyRow, cap_text, groups},
     foundation::roles,
     rems_from_px,
 };
 
-const INSET: f32 = 8.0;
 const ROW_HEIGHT: f32 = 44.0;
 const HEADER_HEIGHT: f32 = 28.0;
 const CAP_MIN_WIDTH: f32 = 52.0;
@@ -81,10 +80,10 @@ impl WhichKeyList {
         .flex()
         .flex_none()
         .items_center()
-        .gap(rems_from_px(12.0))
+        .gap(Space::S12)
         .min_w_0()
         .h(rems_from_px(ROW_HEIGHT))
-        .px(rems_from_px(INSET))
+        .px(Space::S8)
         .on_mouse_down(MouseButton::Left, |_, window, _| window.prevent_default())
         .child(press)
         .child(
@@ -92,7 +91,7 @@ impl WhichKeyList {
                 .flex()
                 .flex_none()
                 .min_w(rems_from_px(CAP_MIN_WIDTH))
-                .gap(rems_from_px(6.0))
+                .gap(Space::S6)
                 .children(row.caps.iter().map(|cap| Self::cap(cap, cx))),
         )
         .child(
@@ -125,8 +124,8 @@ impl RenderOnce for WhichKeyList {
                         .flex_none()
                         .items_end()
                         .h(rems_from_px(HEADER_HEIGHT))
-                        .px(rems_from_px(INSET))
-                        .pb(rems_from_px(4.0))
+                        .px(Space::S8)
+                        .pb(Space::S4)
                         .type_style_strong(crate::TextStyle::Body, cx)
                         .text_color(cx.theme().foreground.muted())
                         .child(title)
@@ -145,7 +144,7 @@ impl RenderOnce for WhichKeyList {
             .flex_col()
             .w_full()
             .list_inset(cx)
-            .pb(rems_from_px(INSET))
+            .pb(Space::S8)
             .font_family(cx.theme().font_family.clone())
             .type_style(crate::TextStyle::TouchBody, cx)
             .children(children)

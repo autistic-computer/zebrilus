@@ -1,3 +1,4 @@
+use crate::Space;
 use std::rc::Rc;
 
 use crate::{
@@ -91,17 +92,17 @@ impl RenderOnce for DocsHeader {
             .flex()
             .flex_none()
             .items_center()
-            .gap(px(4.0))
+            .gap(Space::S4)
             .w_full()
             .h(px(DOCS_HEADER_HEIGHT))
-            .px(px(16.0))
+            .px(Space::S16)
             .rule_on(roles::BAR_RULE, Edge::Bottom, cx)
             .when_some(self.brand, |this, (icon, name)| {
                 this.child(
                     h_flex()
                         .flex_none()
-                        .gap(px(8.0))
-                        .mr(px(16.0))
+                        .gap(Space::S8)
+                        .mr(Space::S16)
                         .type_style(TextStyle::Lead, cx)
                         .font_semibold()
                         .child(Icon::new(icon).size(px(16.0)))

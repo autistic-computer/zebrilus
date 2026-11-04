@@ -1,3 +1,4 @@
+use crate::Space;
 use crate::{
     ActiveTheme as _, Colorize as _, Edge, Ground, IconName, PaintState, Selectable as _,
     Sizable as _, StyledExt, Surface, TextStyle,
@@ -11,12 +12,11 @@ use ala::{
 };
 
 pub const SIDEBAR_DEFAULT_WIDTH: f32 = 256.0;
-pub const SIDEBAR_CONTENT_INSET: f32 = 8.0;
+pub const SIDEBAR_CONTENT_INSET: f32 = Space::S8.design_px();
 pub const SIDEBAR_SCROLLBAR_GUTTER: Pixels = px(8.0);
 pub const SIDEBAR_ROW_ACTION_CENTER: Pixels = px(19.0);
 pub const CHROME_BUTTON_SIZE: Pixels = px(32.0);
 const CHROME_ICON_SIZE: Pixels = px(17.0);
-const SIDEBAR_FOOTER_TOP: f32 = 4.0;
 const SIDEBAR_RESIZE_HANDLE_WIDTH: f32 = 8.0;
 pub const STATUS_DOT_SIZE: f32 = 6.0;
 
@@ -29,7 +29,7 @@ pub fn sidebar_row(
 ) -> Button {
     Button::new(id)
         .w_full()
-        .px(px(8.0))
+        .px(Space::S8)
         .ghost()
         .surface_role(roles::SIDEBAR_ROW)
         .on(cx.theme().ground_of(Surface::new(roles::SIDEBAR)))
@@ -42,9 +42,9 @@ pub fn sidebar_row(
 #[must_use]
 pub fn sidebar_heading(title: impl Into<SharedString>, cx: &App) -> ala::Div {
     div()
-        .px(px(8.0))
-        .pt(px(12.0))
-        .pb(px(2.0))
+        .px(Space::S8)
+        .pt(Space::S12)
+        .pb(Space::GAP_TIGHT)
         .type_style_strong(TextStyle::Small, cx)
         .text_color(cx.theme().foreground.muted())
         .child(title.into())
@@ -52,7 +52,7 @@ pub fn sidebar_heading(title: impl Into<SharedString>, cx: &App) -> ala::Div {
 
 #[must_use]
 pub fn sidebar_gap() -> ala::Div {
-    div().flex_none().h(px(12.0))
+    div().flex_none().h(Space::S12)
 }
 
 #[must_use]
@@ -124,7 +124,7 @@ pub fn sidebar_footer(
         .w_full()
         .items_center()
         .justify_between()
-        .pt(px(SIDEBAR_FOOTER_TOP))
+        .pt(Space::S4)
         .pl(window_inset)
         .pr(trailing_inset(cx))
         .pb(window_inset)
@@ -172,7 +172,7 @@ pub fn sidebar_panel(
                 .flex_1()
                 .min_h_0()
                 .overflow_hidden()
-                .pb(px(8.0))
+                .pb(Space::S8)
                 .child(navigation),
         )
 }

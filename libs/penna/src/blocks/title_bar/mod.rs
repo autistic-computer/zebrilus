@@ -1,10 +1,10 @@
 use std::rc::Rc;
 
 use ala::{
-    AnyElement, App, ClickEvent, Decorations, Div, InteractiveElement, IntoElement, MouseButton,
-    ParentElement, Pixels, Point, RenderOnce, Stateful, StatefulInteractiveElement as _,
-    StyleRefinement, Styled, TitlebarOptions, Window, WindowControlArea, div, point,
-    prelude::FluentBuilder as _, px,
+    AnyElement, App, ClickEvent, Decorations, DefiniteLength, Div, InteractiveElement, IntoElement,
+    MouseButton, ParentElement, Pixels, Point, RenderOnce, Stateful,
+    StatefulInteractiveElement as _, StyleRefinement, Styled, TitlebarOptions, Window,
+    WindowControlArea, div, point, prelude::FluentBuilder as _, px,
 };
 use smallvec::SmallVec;
 
@@ -12,7 +12,7 @@ use crate::{
     ActiveTheme as _, Edge, Icon, IconName, InteractiveElementExt as _, Layer, PaintState,
     RuleLook, StyledExt as _, Surface, SurfaceRole, Tone, foundation::restyle, h_flex,
 };
-use crate::{TextStyle, UiZoom};
+use crate::{Space, TextStyle, UiZoom};
 
 pub const TITLE_BAR_HEIGHT: Pixels = crate::PANE_HEADER_HEIGHT;
 
@@ -43,12 +43,12 @@ pub fn window_controls_width(window: &Window) -> Pixels {
 }
 
 #[cfg(target_os = "macos")]
-fn title_bar_left_padding(cx: &App) -> Pixels {
-    macos_traffic_light_clearance(cx)
+fn title_bar_left_padding(cx: &App) -> DefiniteLength {
+    macos_traffic_light_clearance(cx).into()
 }
 #[cfg(not(target_os = "macos"))]
-fn title_bar_left_padding(_cx: &App) -> Pixels {
-    px(12.)
+fn title_bar_left_padding(_cx: &App) -> DefiniteLength {
+    Space::S12.into()
 }
 
 type CloseHandler = Rc<dyn Fn(&ClickEvent, &mut Window, &mut App)>;
@@ -370,7 +370,7 @@ impl RenderOnce for TitleBar {
                         .flex_1()
                         .when(!is_web, |this| {
                             this.window_control_area(WindowControlArea::Drag)
-                                .when(is_fullscreen, ala::Styled::pl_3)
+                                .when(is_fullscreen, |this| this.pl(Space::S12))
                                 .when(is_linux && is_client_decorated, |this| {
                                     this.child(
                                         div()

@@ -1,5 +1,6 @@
 #![allow(clippy::pedantic, clippy::style, clippy::complexity)]
 
+use crate::Space;
 use async_channel::{Receiver, Sender, unbounded};
 use std::{
     future::Future,
@@ -500,7 +501,7 @@ impl Render for TextViewState {
                 )),
                 Some(err) => this.child(
                     v_flex()
-                        .gap_1()
+                        .gap(Space::S4)
                         .child("Failed to parse content")
                         .child(err.to_string()),
                 ),

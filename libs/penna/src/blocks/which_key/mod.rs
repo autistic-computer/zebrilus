@@ -1,3 +1,4 @@
+use crate::Space;
 use std::sync::Arc;
 
 use ala::{
@@ -13,15 +14,15 @@ use crate::{
 const ROW_HEIGHT: f32 = 22.0;
 const TITLE_HEIGHT: f32 = 24.0;
 const LABEL_WIDTH: f32 = 150.0;
-const CAP_GAP: f32 = 8.0;
+const CAP_GAP: Space = Space::GAP_RELATED;
 const CAP_MIN: f32 = 24.0;
 const CAP_MAX: f32 = 112.0;
-const SET_GAP: f32 = 6.0;
-const COLUMN_GAP: f32 = 24.0;
-const LINE_GAP: f32 = 12.0;
-const STACK_GAP: f32 = 10.0;
-const PADDING_X: f32 = 16.0;
-const CHROME_HEIGHT: f32 = 56.0;
+const SET_GAP: Space = Space::GAP_TIGHT;
+const COLUMN_GAP: Space = Space::GAP_GROUP;
+const LINE_GAP: Space = Space::GAP_GROUP;
+const STACK_GAP: Space = Space::GAP_GROUP;
+const INSET: Space = Space::INSET_CARD;
+const CHROME_HEIGHT: f32 = 54.0;
 const WIDTH_SLACK: f32 = 4.0;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -96,7 +97,7 @@ fn stacks<'a>(groups: &'a [Group<'a>], per_column: usize) -> Vec<Vec<Block<'a>>>
         let height = block_height(group.rows.len(), titled);
         if whole
             && let Some(used) = open
-            && used + STACK_GAP + height <= block_height(per_column, titled)
+            && used + STACK_GAP.design_px() + height <= block_height(per_column, titled)
             && let Some(stack) = stacks.last_mut()
         {
             stack.push(Block {
@@ -106,7 +107,7 @@ fn stacks<'a>(groups: &'a [Group<'a>], per_column: usize) -> Vec<Vec<Block<'a>>>
                 titled,
                 rows: &group.rows,
             });
-            open = Some(used + STACK_GAP + height);
+            open = Some(used + STACK_GAP.design_px() + height);
             continue;
         }
         for (index, chunk) in group.rows.chunks(per_column).enumerate() {
@@ -128,7 +129,7 @@ fn stack_height(stack: &[Block<'_>]) -> f32 {
         .iter()
         .map(|block| block_height(block.rows.len(), block.titled))
         .sum::<f32>()
-        + stack.len().saturating_sub(1) as f32 * STACK_GAP
+        + stack.len().saturating_sub(1) as f32 * STACK_GAP.design_px()
 }
 
 fn layout_height(stacks: &[Vec<Block<'_>>], per_line: usize) -> f32 {
@@ -141,12 +142,13 @@ fn layout_height(stacks: &[Vec<Block<'_>>], per_line: usize) -> f32 {
                 .fold(0.0, f32::max)
         })
         .sum::<f32>()
-        + count.saturating_sub(1) as f32 * LINE_GAP
+        + count.saturating_sub(1) as f32 * LINE_GAP.design_px()
 }
 
 fn per_line(width: Pixels, column_width: f32) -> usize {
-    let inner = f32::from(width) - 2.0 * PADDING_X - WIDTH_SLACK;
-    let fits = ((inner + COLUMN_GAP) / (column_width + COLUMN_GAP)).floor();
+    let gap = COLUMN_GAP.design_px();
+    let inner = f32::from(width) - 2.0 * INSET.design_px() - WIDTH_SLACK;
+    let fits = ((inner + gap) / (column_width + gap)).floor();
     if fits.is_finite() && fits >= 1.0 {
         fits as usize
     } else {
@@ -156,7 +158,10 @@ fn per_line(width: Pixels, column_width: f32) -> usize {
 
 fn line_width(columns: usize, column_width: f32) -> Pixels {
     let columns = columns.max(1) as f32;
-    px(columns * column_width + (columns - 1.0) * COLUMN_GAP + 2.0 * PADDING_X + WIDTH_SLACK)
+    px(columns * column_width
+        + (columns - 1.0) * COLUMN_GAP.design_px()
+        + 2.0 * INSET.design_px()
+        + WIDTH_SLACK)
 }
 
 struct Fit {
@@ -314,7 +319,7 @@ impl WhichKeyView {
             .h(px(ROW_HEIGHT))
             .flex()
             .items_center()
-            .gap(px(CAP_GAP))
+            .gap(CAP_GAP)
             .min_w_0()
             .child(
                 div()
@@ -322,7 +327,7 @@ impl WhichKeyView {
                     .flex_none()
                     .flex()
                     .justify_end()
-                    .gap(px(SET_GAP))
+                    .gap(SET_GAP)
                     .overflow_hidden()
                     .children(row.caps.iter().map(|cap| Self::cap(cap, cx))),
             )
@@ -365,7 +370,7 @@ impl WhichKeyView {
             })
             .flex()
             .flex_col()
-            .gap(px(4.0))
+            .gap(Space::S4)
             .when(block.titled, |element| {
                 element.child(
                     div()
@@ -373,7 +378,7 @@ impl WhichKeyView {
                             element.debug_selector(move || selector)
                         })
                         .h(px(TITLE_HEIGHT - 4.0))
-                        .pl(px(cap_width + CAP_GAP))
+                        .pl(px(cap_width + CAP_GAP.design_px()))
                         .type_style(TextStyle::Caption, cx)
                         .text_color(cx.theme().foreground.muted())
                         .children(block.title.cloned()),
@@ -398,12 +403,12 @@ impl RenderOnce for WhichKeyView {
                     .iter()
                     .map(|cap| text_width(&cap_text(cap), window, cx))
                     .sum::<f32>()
-                    + row.caps.len().saturating_sub(1) as f32 * SET_GAP
+                    + row.caps.len().saturating_sub(1) as f32 * SET_GAP.design_px()
             })
             .fold(CAP_MIN, f32::max)
             .min(CAP_MAX)
             .ceil();
-        let column_width = cap_width + CAP_GAP + LABEL_WIDTH;
+        let column_width = cap_width + CAP_GAP.design_px() + LABEL_WIDTH;
         let groups = groups(&self.rows);
         let fit = fit(&groups, column_width, self.available);
         let header = &self.header;
@@ -414,7 +419,7 @@ impl RenderOnce for WhichKeyView {
                     .flex()
                     .flex_col()
                     .flex_none()
-                    .gap(px(STACK_GAP))
+                    .gap(STACK_GAP)
                     .w(px(column_width))
                     .children(
                         stack
@@ -438,16 +443,15 @@ impl RenderOnce for WhichKeyView {
             .occlude()
             .flex()
             .flex_col()
-            .gap(px(10.0))
-            .px(px(PADDING_X))
-            .py(px(12.0))
+            .gap(Space::GAP_RELATED)
+            .p(INSET)
             .surface(Surface::new(SurfaceRole::SHEET), cx)
             .child(
                 div()
                     .flex()
                     .flex_none()
                     .items_center()
-                    .gap(px(8.0))
+                    .gap(Space::S8)
                     .type_style(TextStyle::Small, cx)
                     .child(match header.prefix.clone() {
                         Some(key) => Kbd::new(key)
@@ -476,7 +480,7 @@ impl RenderOnce for WhichKeyView {
                                 .ml_auto()
                                 .flex()
                                 .items_center()
-                                .gap(px(6.0))
+                                .gap(Space::GAP_TIGHT)
                                 .text_color(cx.theme().foreground.muted())
                                 .child(Self::cap(more, cx))
                                 .child("all keys"),
@@ -491,8 +495,8 @@ impl RenderOnce for WhichKeyView {
                     .flex()
                     .flex_row()
                     .flex_wrap()
-                    .gap_x(px(COLUMN_GAP))
-                    .gap_y(px(LINE_GAP))
+                    .gap_x(COLUMN_GAP)
+                    .gap_y(LINE_GAP)
                     .children(body),
             )
     }

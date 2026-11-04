@@ -11,7 +11,7 @@
 }
 
 .penna-sidebar-heading {
-  padding: 12px 8px 2px;
+  padding: var(--penna-space-12) var(--penna-space-8) var(--penna-gap-tight);
   font-size: var(--penna-text-small-size);
   line-height: var(--penna-text-small-line);
   font-weight: 500;
@@ -20,7 +20,7 @@
 
 .penna-sidebar-gap {
   flex: none;
-  height: 12px;
+  height: var(--penna-space-12);
 }
 
 .penna-button.penna-sidebar-row[data-penna] {

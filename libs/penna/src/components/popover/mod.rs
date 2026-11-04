@@ -1,5 +1,6 @@
 mod actions;
 
+use crate::Space;
 use ala::{
     Anchor, AnyElement, App, Bounds, Context, DismissEvent, ElementId, EventEmitter, FocusHandle,
     Focusable, InteractiveElement as _, IntoElement, KeyBinding, MouseButton, ParentElement as _,
@@ -234,14 +235,14 @@ impl RenderOnce for Popover {
             .tab_group()
             .when(self.appearance, |this| {
                 this.surface(Surface::new(SurfaceRole::POPOVER), cx)
-                    .p_3()
+                    .p(Space::INSET_CARD)
                     .type_style(TextStyle::Body, cx)
             })
             .map(|this| {
                 if bottom_anchor(self.anchor) {
-                    this.bottom_1()
+                    this.bottom(Space::S4)
                 } else {
-                    this.top_1()
+                    this.top(Space::S4)
                 }
             });
 
@@ -271,7 +272,7 @@ impl RenderOnce for Popover {
 
         let corner = resolved_corner(self.anchor, trigger_bounds);
         let corner = panel_size.map_or(corner, |panel| {
-            let gap = window.rem_size() * 0.25;
+            let gap = Space::S4.rems().to_pixels(window.rem_size());
             fit_corner(
                 self.anchor,
                 corner,

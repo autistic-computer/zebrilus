@@ -8,10 +8,10 @@
 .penna-compact-bar {
   display: flex;
   flex: none;
-  gap: 8px;
+  gap: var(--penna-gap-related);
   width: 100%;
   height: 84px;
-  padding: 8px 20px 20px;
+  padding: var(--penna-gap-related) 20px 20px;
   font-family: var(--penna-font);
   color: var(--penna-fg);
 }
@@ -25,11 +25,11 @@
   display: flex;
   flex: 1;
   align-items: center;
-  gap: 10px;
+  gap: var(--penna-space-10);
   min-width: 0;
   height: 56px;
   margin: 0;
-  padding: 0 12px 0 8px;
+  padding: 0 var(--penna-space-12) 0 var(--penna-space-8);
   font: inherit;
   text-align: left;
   user-select: none;
@@ -62,7 +62,7 @@
   display: flex;
   flex: 1;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--penna-space-2);
   min-width: 0;
 }
 
@@ -79,7 +79,7 @@
 .penna-pill-meta {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--penna-space-8);
   font-size: var(--penna-text-small-size);
   line-height: var(--penna-text-small-line);
   font-weight: var(--penna-text-small-weight);
@@ -118,7 +118,7 @@
   flex-direction: column;
   align-items: center;
   justify-content: flex-end;
-  gap: 16px;
+  gap: var(--penna-gap-group);
   width: 390px;
   height: 460px;
 }
@@ -127,7 +127,7 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 8px;
+  gap: var(--penna-gap-related);
 }
 
 .penna-pill-chip[data-penna] {
@@ -135,10 +135,10 @@
   display: flex;
   flex: none;
   align-items: center;
-  gap: 10px;
+  gap: var(--penna-space-10);
   height: 44px;
   margin: 0;
-  padding: 0 18px 0 14px;
+  padding: 0 var(--penna-space-16) 0 var(--penna-space-12);
   font: inherit;
   white-space: nowrap;
   --penna-r: 9999px;
@@ -203,7 +203,7 @@
   display: block;
   flex: none;
   width: auto;
-  padding: 8px 16px;
+  padding: var(--penna-space-8) var(--penna-space-16);
   font-family: var(--penna-font);
   font-size: var(--penna-text-touch-body-size);
   line-height: var(--penna-text-touch-body-line);
@@ -227,19 +227,20 @@
   position: relative;
   flex: none;
   width: 358px;
-  height: calc(var(--rows) * 92px - 10px);
+  height: calc(var(--rows) * var(--penna-bento-pitch) - var(--penna-gap-related));
+  --penna-bento-pitch: calc((358px + var(--penna-gap-related)) / 4);
 }
 
 .penna-bento-tile[data-penna] {
   position: absolute;
-  top: calc(var(--row) * 92px);
-  left: calc(var(--column) * 92px);
+  top: calc(var(--row) * var(--penna-bento-pitch));
+  left: calc(var(--column) * var(--penna-bento-pitch));
   display: flex;
   flex-direction: column;
   align-items: stretch;
   justify-content: flex-start;
-  width: calc(var(--columns) * 92px - 10px);
-  height: calc(var(--span) * 92px - 10px);
+  width: calc(var(--columns) * var(--penna-bento-pitch) - var(--penna-gap-related));
+  height: calc(var(--span) * var(--penna-bento-pitch) - var(--penna-gap-related));
   margin: 0;
   padding: 0;
   overflow: hidden;
@@ -273,7 +274,7 @@
   flex-direction: row;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: var(--penna-space-6);
   color: var(--penna-fg-muted);
   --penna-icon-size: 18px;
   font-size: var(--penna-text-touch-small-size);

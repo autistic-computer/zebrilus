@@ -1,3 +1,4 @@
+use crate::Space;
 use ala::{
     Action, AnyElement, App, AsKeystroke as _, ElementId, FocusHandle, IntoElement, KeyContext,
     Keystroke, ParentElement as _, RenderOnce, Role, SharedString, StatefulInteractiveElement as _,
@@ -271,7 +272,7 @@ impl RenderOnce for KeyGlyphs {
         h_flex()
             .flex_none()
             .items_center()
-            .gap(px(1.0))
+            .gap(Space::S2)
             .children(self.parts().into_iter().map(|part| -> AnyElement {
                 match part {
                     Ok(name) => Icon::new(name).size(icon).into_any_element(),
@@ -369,7 +370,7 @@ impl RenderOnce for Keycap {
             .justify_center()
             .h(px(height))
             .min_w(px(height))
-            .px(px(4.0))
+            .px(Space::S4)
             .layer(&layer)
             .text_color(layer.muted_text())
             .type_style(text, cx)

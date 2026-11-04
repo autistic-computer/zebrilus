@@ -1,3 +1,4 @@
+use crate::Space;
 use std::{rc::Rc, time::Duration};
 
 use ala::{
@@ -235,7 +236,7 @@ impl RenderOnce for Switch {
                 .when_some(self.label.or_else(|| self.tooltip.clone()), |this, name| {
                     this.aria_label(name)
                 })
-                .gap_2()
+                .gap(Space::S8)
                 .items_start()
                 .child(
                     div()

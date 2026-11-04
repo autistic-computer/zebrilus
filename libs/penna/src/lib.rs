@@ -33,9 +33,10 @@ pub use foundation::{
     InteractivePaintExt, Kind, Knobs, Layer, PANE_HEADER_CONTROL_HEIGHT, PANE_HEADER_HEIGHT, Paint,
     PaintExt, PaintState, PrimaryStyle, RULE_WIDTH, RuleLook, ScrollbarShow, Selectable, Shadow,
     ShadowMaterial, Shape, Side, Sizable, Size, Smoothing, Space, Style, StylePatch, StyledExt,
-    Surface, SurfaceRole, TextStyle, Theme, ThemeColor, ThemeMode, Tone, UiZoom, cubic_ease,
-    h_flex, lifted_shadow, list_row, muted_on, oklab_lightness, oklch, parse_hex, rems_from_px,
-    row_state, to_hex, to_oklch, v_flex, window_border, window_paddings,
+    Surface, SurfaceRole, TextStyle, Theme, ThemeColor, ThemeMode, Tone, UiZoom, center,
+    cubic_ease, h_flex, inline, inset, lifted_shadow, list_row, muted_on, oklab_lightness, oklch,
+    parse_hex, rems_from_px, row_state, split, stack, tiles, to_hex, to_oklch, v_flex,
+    window_border, window_paddings,
 };
 
 pub fn init(cx: &mut ala::App) {

@@ -1,3 +1,4 @@
+use crate::Space;
 use ala::{
     AnyElement, App, IntoElement, ParentElement, RenderOnce, SharedString, StyleRefinement, Styled,
     Window, prelude::FluentBuilder as _, px,
@@ -116,15 +117,15 @@ impl Styled for Badge {
 impl RenderOnce for Badge {
     fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
         let (height, text, padding) = match self.size {
-            Size::Small => (16.0, TextStyle::Micro, 5.0),
-            Size::Medium | Size::Size(_) => (18.0, TextStyle::Caption, 6.0),
+            Size::Small => (16.0, TextStyle::Micro, Space::S4),
+            Size::Medium | Size::Size(_) => (18.0, TextStyle::Caption, Space::S6),
         };
         let layer = self.surface_layer(cx.theme());
         h_flex()
             .flex_none()
             .h(px(height))
-            .gap(px(4.0))
-            .px(px(padding))
+            .gap(Space::S4)
+            .px(padding)
             .layer(&layer)
             .type_style_strong(text, cx)
             .whitespace_nowrap()

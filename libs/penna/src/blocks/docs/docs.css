@@ -135,7 +135,7 @@
   width: 100%;
   max-width: 760px;
   margin: 0 auto;
-  padding: 40px 32px 96px;
+  padding: var(--penna-space-40) var(--penna-inset-page) var(--penna-space-64);
   font-size: var(--penna-text-read-body-size);
   font-weight: var(--penna-text-read-body-weight);
   line-height: var(--penna-text-read-body-line);

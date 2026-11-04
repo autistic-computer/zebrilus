@@ -5,7 +5,7 @@ use ala::{
 
 use crate::{
     ActiveTheme as _, Colorize as _, Emphasis, Ground, Icon, IconName, Layer, PaintState, Shape,
-    StyledExt as _, Surface, Tone,
+    Space, StyledExt as _, Surface, Tone,
     components::button::{Button, ButtonVariants as _},
     foundation::roles,
     rems_from_px,
@@ -16,9 +16,8 @@ pub const COMPACT_PILL_HEIGHT: f32 = 56.0;
 
 const BUTTON: f32 = 44.0;
 const BUTTON_ICON: f32 = 20.0;
-const PADDING_X: f32 = 8.0;
-const TILE_INSET: f32 = 8.0;
-const PILL_GAP: f32 = 8.0;
+const TILE_INSET: Space = Space::S8;
+const PILL_GAP: Space = Space::GAP_RELATED;
 const PILL_INSET: f32 = 8.0;
 const PILL_INSET_MIN: f32 = 16.0;
 const PILL_INSET_MAX: f32 = 20.0;
@@ -62,11 +61,11 @@ impl PillPlacement {
     }
 
     pub fn zone(&self) -> Pixels {
-        px(PILL_GAP + COMPACT_PILL_HEIGHT) + self.bottom
+        px(PILL_GAP.design_px() + COMPACT_PILL_HEIGHT) + self.bottom
     }
 
     pub fn pill_top(&self) -> Pixels {
-        px(PILL_GAP)
+        px(PILL_GAP.design_px())
     }
 }
 
@@ -76,11 +75,11 @@ pub fn compact_floating_bar(pill: impl IntoElement, placement: &PillPlacement, c
         .debug_selector(|| "compact-bar".to_owned())
         .flex()
         .flex_none()
-        .gap(px(PILL_GAP))
+        .gap(PILL_GAP)
         .w_full()
         .h(placement.zone())
         .px(placement.inset)
-        .pt(px(PILL_GAP))
+        .pt(PILL_GAP)
         .pb(placement.bottom)
         .font_family(theme.font_family.clone())
         .text_color(theme.foreground)
@@ -210,9 +209,9 @@ pub fn compact_nav_bar(cx: &App) -> Div {
         .flex()
         .flex_none()
         .items_center()
-        .gap(rems_from_px(4.0))
+        .gap(Space::S4)
         .h(rems_from_px(COMPACT_NAV_BAR_HEIGHT))
-        .px(rems_from_px(PADDING_X))
+        .px(Space::S8)
         .surface(Surface::new(roles::PHONE_BAR), cx)
 }
 
@@ -293,9 +292,9 @@ fn pill_row(label: PillLabel, dots: impl IntoElement, pill: &Layer, cx: &App) ->
             .paint_on(pill.ground, Tone::Neutral, Emphasis::Ghost)
             .muted_at(PaintState::Rest)
     };
-    let tile = COMPACT_PILL_HEIGHT - 2.0 * TILE_INSET;
+    let tile = COMPACT_PILL_HEIGHT - 2.0 * TILE_INSET.design_px();
     let tile_radius = if theme.style(roles::PHONE_PILL_ICON).shape == Shape::Round {
-        crate::blocks::touch::concentric(pill.radius, px(TILE_INSET))
+        crate::blocks::touch::concentric(pill.radius, px(TILE_INSET.design_px()))
     } else {
         backing.radius
     };
@@ -304,9 +303,9 @@ fn pill_row(label: PillLabel, dots: impl IntoElement, pill: &Layer, cx: &App) ->
         .flex_1()
         .items_center()
         .min_w_0()
-        .pl(rems_from_px(TILE_INSET))
-        .pr(rems_from_px(12.0))
-        .gap(rems_from_px(10.0))
+        .pl(TILE_INSET)
+        .pr(Space::S12)
+        .gap(Space::S10)
         .child(
             div()
                 .flex()
@@ -331,7 +330,7 @@ fn pill_row(label: PillLabel, dots: impl IntoElement, pill: &Layer, cx: &App) ->
                 .flex_col()
                 .flex_1()
                 .min_w_0()
-                .gap(rems_from_px(2.0))
+                .gap(Space::S2)
                 .child(
                     div()
                         .min_w_0()
@@ -345,7 +344,7 @@ fn pill_row(label: PillLabel, dots: impl IntoElement, pill: &Layer, cx: &App) ->
                     div()
                         .flex()
                         .items_center()
-                        .gap(rems_from_px(8.0))
+                        .gap(Space::S8)
                         .type_style(crate::TextStyle::Small, cx)
                         .child(
                             div()
@@ -390,7 +389,7 @@ mod tests {
         assert_eq!(square.radius, None);
         assert_eq!(
             square.zone(),
-            px(PILL_GAP + COMPACT_PILL_HEIGHT + 20.0 + PILL_INSET)
+            px(PILL_GAP.design_px() + COMPACT_PILL_HEIGHT + 20.0 + PILL_INSET)
         );
     }
 }

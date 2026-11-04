@@ -17,24 +17,23 @@ use super::{
     sticky::{StickyModifier, StickyModifiers},
 };
 use crate::{
-    ActiveTheme as _, Emphasis, Icon, IconName, PaintState, RULE_WIDTH, RuleLook, StyledExt as _,
-    Surface, SurfaceRole, Tone, components::separator::Separator, rems_from_px,
+    ActiveTheme as _, Emphasis, Icon, IconName, PaintState, RULE_WIDTH, RuleLook, Space,
+    StyledExt as _, Surface, SurfaceRole, Tone, components::separator::Separator, rems_from_px,
 };
 
 const HOLD: Duration = Duration::from_millis(280);
 const SLIDE: f32 = 12.0;
-const GAP: f32 = 8.0;
 const WINDOW_MARGIN: f32 = 8.0;
-const CARD_PADDING: f32 = 6.0;
+const CARD_PADDING: Space = Space::S6;
 const ITEM_HEIGHT: f32 = 44.0;
-const ITEM_GAP: f32 = 2.0;
+const ITEM_GAP: Space = Space::S2;
 const LIST_WIDTH: f32 = 240.0;
 const CELL_WIDTH: f32 = 140.0;
 const CAP_WIDTH: f32 = 32.0;
 const HINT: f32 = 3.0;
 
 pub(super) fn popover_above(card: impl IntoElement, window: &Window) -> impl IntoElement {
-    let gap = rems_from_px(GAP).to_pixels(window.rem_size());
+    let gap = Space::S8.rems().to_pixels(window.rem_size());
     div().absolute().top_0().left(relative(0.5)).child(
         deferred(
             anchored()
@@ -284,10 +283,10 @@ impl PopoverKey {
             .relative()
             .flex()
             .items_center()
-            .gap(rems_from_px(8.0))
+            .gap(Space::S8)
             .min_w_0()
             .h(rems_from_px(ITEM_HEIGHT))
-            .px(rems_from_px(8.0))
+            .px(Space::S8)
             .surface_at(row, state, cx)
             .when(!hovered, |row| row.active(move |style| style.bg(pressed)))
             .children(leading)
@@ -321,7 +320,7 @@ impl PopoverKey {
     fn card(&self, cx: &mut Context<Self>) -> AnyElement {
         let columns = self.columns;
         let width = if columns > 1 {
-            CELL_WIDTH * f32::from(columns) + ITEM_GAP * f32::from(columns - 1)
+            CELL_WIDTH * f32::from(columns) + ITEM_GAP.design_px() * f32::from(columns - 1)
         } else {
             LIST_WIDTH
         };
@@ -350,9 +349,9 @@ impl PopoverKey {
             .occlude()
             .flex()
             .flex_col()
-            .w(rems_from_px(width + 2.0 * CARD_PADDING))
-            .p(rems_from_px(CARD_PADDING))
-            .gap(rems_from_px(ITEM_GAP))
+            .w(rems_from_px(width + 2.0 * CARD_PADDING.design_px()))
+            .p(CARD_PADDING)
+            .gap(ITEM_GAP)
             .surface(Surface::new(SurfaceRole::POPOVER), cx)
             .font_family(theme.font_family.clone())
             .type_style(crate::TextStyle::TouchBody, cx)
@@ -366,14 +365,14 @@ impl PopoverKey {
                 div()
                     .grid()
                     .grid_cols(columns)
-                    .gap(rems_from_px(ITEM_GAP))
+                    .gap(ITEM_GAP)
                     .children(items),
             )
             .when_some(footer, |card, footer| {
                 card.child(
                     div()
-                        .px(rems_from_px(8.0))
-                        .py(rems_from_px(2.0))
+                        .px(Space::S8)
+                        .py(Space::S2)
                         .child(Separator::horizontal().look(RuleLook::List).h(RULE_WIDTH)),
                 )
                 .child(footer)

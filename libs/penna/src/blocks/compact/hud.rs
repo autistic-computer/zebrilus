@@ -1,6 +1,6 @@
 use ala::{App, Div, ParentElement as _, SharedString, Styled as _, div, prelude::*};
 
-use crate::{ActiveTheme as _, StyledExt as _, Surface, SurfaceRole, rems_from_px};
+use crate::{ActiveTheme as _, Space, StyledExt as _, Surface, SurfaceRole};
 
 pub fn compact_hud(text: impl Into<SharedString>, cx: &App) -> Div {
     div()
@@ -13,8 +13,8 @@ pub fn compact_hud(text: impl Into<SharedString>, cx: &App) -> Div {
         .child(
             div()
                 .flex_none()
-                .px(rems_from_px(16.0))
-                .py(rems_from_px(8.0))
+                .px(Space::S16)
+                .py(Space::S8)
                 .surface(Surface::new(SurfaceRole::TOAST), cx)
                 .font_family(cx.theme().font_family.clone())
                 .type_style_strong(crate::TextStyle::TouchBody, cx)

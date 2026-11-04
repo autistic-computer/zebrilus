@@ -6,32 +6,32 @@ use ala::{
 };
 
 use crate::{
-    ActiveTheme as _, Colorize as _, Emphasis, Icon, IconName, Layer, PaintState, StyledExt as _,
-    Surface, Tone, foundation::roles, rems_from_px,
+    ActiveTheme as _, Colorize as _, Emphasis, Icon, IconName, Layer, PaintState, Space,
+    StyledExt as _, Surface, Tone, foundation::roles, rems_from_px,
 };
 
 const CHIP_ICON: f32 = 18.0;
-const STACK_GAP: f32 = 12.0;
+const STACK_GAP: f32 = Space::S12.design_px();
 const SPACINGS: [Spacing; 4] = [
     Spacing {
         chip: 44.0,
-        gap: 8.0,
-        group: 16.0,
+        gap: Space::GAP_RELATED,
+        group: Space::GAP_GROUP,
     },
     Spacing {
         chip: 44.0,
-        gap: 4.0,
-        group: 10.0,
+        gap: Space::GAP_TIGHT,
+        group: Space::S12,
     },
     Spacing {
         chip: 40.0,
-        gap: 4.0,
-        group: 8.0,
+        gap: Space::GAP_TIGHT,
+        group: Space::GAP_RELATED,
     },
     Spacing {
         chip: 36.0,
-        gap: 2.0,
-        group: 6.0,
+        gap: Space::GAP_TIGHT,
+        group: Space::GAP_RELATED,
     },
 ];
 const CLOSE_ICON: f32 = 22.0;
@@ -79,8 +79,8 @@ impl PillMenuItem {
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct Spacing {
     chip: f32,
-    gap: f32,
-    group: f32,
+    gap: Space,
+    group: Space,
 }
 
 impl Spacing {
@@ -88,7 +88,9 @@ impl Spacing {
         let gaps = chips.saturating_sub(groups) as f32;
         let breaks = groups.saturating_sub(1) as f32;
         let height = |spacing: &Self| {
-            px(chips as f32 * spacing.chip + gaps * spacing.gap + breaks * spacing.group)
+            px(chips as f32 * spacing.chip
+                + gaps * spacing.gap.design_px()
+                + breaks * spacing.group.design_px())
         };
         let tightest = SPACINGS[SPACINGS.len() - 1];
         SPACINGS
@@ -139,7 +141,7 @@ pub fn compact_pill_menu(
                     chip(item, shown, spacing.chip, Rc::clone(&on_pick), cx)
                 })
                 .collect();
-            aligned(div().flex().flex_col().gap(px(spacing.gap)), align).children(chips)
+            aligned(div().flex().flex_col().gap(spacing.gap), align).children(chips)
         })
         .collect();
     let column = match align {
@@ -155,7 +157,7 @@ pub fn compact_pill_menu(
             .flex()
             .flex_col()
             .justify_end()
-            .gap(px(spacing.group)),
+            .gap(spacing.group),
         align,
     )
     .children(groups);
@@ -275,10 +277,10 @@ fn chip(
         .flex()
         .flex_none()
         .items_center()
-        .gap(rems_from_px(10.0))
+        .gap(Space::S10)
         .h(px(height))
-        .pl(rems_from_px(14.0))
-        .pr(rems_from_px(18.0))
+        .pl(Space::S12)
+        .pr(Space::S16)
         .whitespace_nowrap()
         .layer(&layer)
         .text_color(ink)

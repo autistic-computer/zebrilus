@@ -1,10 +1,8 @@
 use ala::{App, Div, Hsla, ParentElement as _, Styled as _, div, prelude::*};
 
-use crate::{ActiveTheme as _, Colorize as _, rems_from_px};
+use crate::{ActiveTheme as _, Colorize as _, Space, rems_from_px};
 
 const ACTIVE_DOT: f32 = 12.0;
-const DOT_GAP: f32 = 3.0;
-const GROUP_GAP: f32 = 6.0;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct PageDot {
@@ -22,13 +20,13 @@ pub fn page_dots_in(groups: &[Vec<PageDot>], ink: Hsla, cx: &App) -> Div {
         .flex()
         .flex_none()
         .items_center()
-        .gap(rems_from_px(GROUP_GAP))
+        .gap(Space::S6)
         .children(groups.iter().enumerate().map(|(group, dots)| {
             div()
                 .flex()
                 .flex_none()
                 .items_center()
-                .gap(rems_from_px(DOT_GAP))
+                .gap(Space::S2)
                 .children(dots.iter().enumerate().map(|(index, dot)| {
                     let selector = format!("page-dot-{group}-{index}");
                     let color = if dot.active {

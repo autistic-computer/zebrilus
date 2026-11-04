@@ -1,3 +1,4 @@
+use crate::Space;
 use ala::{
     Anchor, AnyElement, App, AppContext as _, Bounds, Context, DismissEvent, Entity, EventEmitter,
     FocusHandle, Focusable, InteractiveElement as _, IntoElement, Length, MouseButton,
@@ -318,7 +319,7 @@ impl<D: SelectDelegate> SelectState<D> {
                     .flex_none()
                     .h(size.control_h())
                     .px(size.input_px())
-                    .gap(px(6.0))
+                    .gap(Space::S6)
                     .justify_between()
                     .when(!disabled, ala::Styled::cursor_pointer),
                 size,
@@ -420,11 +421,11 @@ impl<D: SelectDelegate> SelectState<D> {
             div()
                 .flex()
                 .flex_col()
-                .pb(px(8.0))
+                .pb(Space::S8)
                 .children(self.search.as_ref().map(|(search, _)| {
                     div()
-                        .px(px(16.0))
-                        .pb(px(8.0))
+                        .px(Space::S16)
+                        .pb(Space::S8)
                         .child(Input::new(search).cleanable(true))
                 }))
                 .child(div().flex().flex_col().list_inset(cx).children(rows)),
@@ -447,7 +448,7 @@ impl<D: SelectDelegate> SelectState<D> {
                     .anchor(Anchor::TopRight)
                     .position(self.trigger_bounds.bottom_right())
                     .snap_to_window_with_margin(WINDOW_MARGIN)
-                    .child(div().mt_1().child(menu)),
+                    .child(div().mt(Space::S4).child(menu)),
             )
             .with_priority(1)
             .into_any_element(),
@@ -461,7 +462,7 @@ impl<D: SelectDelegate> SelectState<D> {
 
         h_flex()
             .justify_center()
-            .py_6()
+            .py(Space::S24)
             .text_color(cx.theme().foreground.muted().opacity(0.6))
             .child(Icon::new(IconName::Inbox).size(px(28.)))
             .into_any_element()

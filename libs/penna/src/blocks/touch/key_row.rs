@@ -13,20 +13,20 @@ use super::{
     sticky::{StickyModifier, StickyModifiers},
 };
 use crate::{
-    ActiveTheme as _, Emphasis, Icon, IconName, Layer, PaintState, Shape, StyledExt as _, Surface,
-    Theme, Tone, components::kbd::Kbd, foundation::roles, rems_from_px,
+    ActiveTheme as _, Emphasis, Icon, IconName, Layer, PaintState, Shape, Space, StyledExt as _,
+    Surface, Theme, Tone, components::kbd::Kbd, foundation::roles, rems_from_px,
 };
 
 pub const KEY_ROW_HEIGHT: f32 = KEY_PILL_HEIGHT + 2.0 * KEY_ROW_MARGIN_Y;
 pub const KEY_PILL_HEIGHT: f32 = KEY_SIZE + 2.0 * PILL_PADDING;
-pub const KEY_ROW_MARGIN_X: f32 = 8.0;
-pub const KEY_ROW_MARGIN_Y: f32 = 4.0;
+pub const KEY_ROW_MARGIN_X: f32 = Space::S8.design_px();
+pub const KEY_ROW_MARGIN_Y: f32 = Space::S4.design_px();
 pub(super) const KEY_SIZE: f32 = 40.0;
 pub(super) const KEY_ICON: f32 = 18.0;
 const KEY_MARK: f32 = 14.0;
-const PILL_PADDING: f32 = 4.0;
-const KEY_GAP: f32 = 2.0;
-const LEAD_GAP: f32 = 8.0;
+const PILL_PADDING: f32 = Space::S4.design_px();
+const KEY_GAP: f32 = Space::S2.design_px();
+const LEAD_GAP: f32 = Space::GAP_RELATED.design_px();
 const MORE_WIDTH: f32 = 44.0;
 const MORE_ICON: f32 = 14.0;
 const MORE_STOP: f32 = 0.55;
@@ -55,7 +55,7 @@ pub(super) fn keystroke_glyph(keystroke: &Keystroke) -> AnyElement {
     div()
         .flex()
         .items_center()
-        .gap(rems_from_px(1.0))
+        .gap(Space::S2)
         .when(modifiers.control, |glyph| {
             glyph.child(mark(StickyModifier::Control))
         })
@@ -384,13 +384,13 @@ impl RenderOnce for KeyRow {
                             .rounded_tr(pill.radius)
                             .rounded_br(pill.radius)
                             .justify_end()
-                            .pr(rems_from_px(10.0))
+                            .pr(Space::S10)
                     } else {
                         fade.left(rems_from_px(start))
                             .rounded_tl(pill.radius)
                             .rounded_bl(pill.radius)
                             .justify_start()
-                            .pl(rems_from_px(10.0))
+                            .pl(Space::S10)
                     }
                 })
                 .flex()

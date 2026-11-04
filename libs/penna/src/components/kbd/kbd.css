@@ -3,11 +3,11 @@
   flex: none;
   align-items: center;
   justify-content: center;
-  gap: 1px;
+  gap: var(--penna-space-2);
   box-sizing: border-box;
   height: 18px;
   min-width: 18px;
-  padding: 0 4px;
+  padding: 0 var(--penna-space-4);
   font-family: var(--penna-font);
   font-size: var(--penna-text-caption-size);
   font-weight: var(--penna-text-caption-weight);

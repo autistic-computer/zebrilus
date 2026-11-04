@@ -13,6 +13,7 @@ mod docs;
 mod feedback;
 mod icons;
 mod inputs;
+mod layout;
 mod markdown;
 pub mod menus;
 mod navigation;
@@ -49,6 +50,7 @@ pub const STORIES: &[Story] = &[
     icons::STORY,
     title_bar::STORY,
     navigation::STORY,
+    layout::STORY,
     appearance::STORY,
     which_key::STORY,
     compact::STORY,

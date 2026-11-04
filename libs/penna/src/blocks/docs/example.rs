@@ -1,3 +1,4 @@
+use crate::Space;
 use std::sync::Arc;
 
 use crate::{
@@ -10,7 +11,7 @@ use crate::{
 };
 use ala::{
     AnyElement, App, ClipboardItem, ElementId, IntoElement, ParentElement as _, RenderOnce,
-    SharedString, Styled as _, Window, div, prelude::*, px,
+    SharedString, Styled as _, Window, div, prelude::*,
 };
 
 #[derive(Clone, Debug)]
@@ -98,19 +99,19 @@ impl RenderOnce for Example {
                 h_flex()
                     .flex_wrap()
                     .justify_center()
-                    .gap(px(8.0))
-                    .px(px(24.0))
-                    .py(px(40.0))
+                    .gap(Space::S8)
+                    .px(Space::S24)
+                    .py(Space::S40)
                     .type_style(TextStyle::Body, cx)
                     .children(self.preview),
             )
             .when_some(tabs, |this, tabs| {
-                this.child(h_flex().px(px(8.0)).pb(px(8.0)).child(tabs))
+                this.child(h_flex().px(Space::S8).pb(Space::S8).child(tabs))
             })
             .when_some(code, |this, code| {
                 let source = code.source.clone();
                 this.child(
-                    div().px(px(8.0)).pb(px(8.0)).child(
+                    div().px(Space::S8).pb(Space::S8).child(
                         TextView::markdown(
                             ElementId::Name(format!("{}-code-{shown}", self.id).into()),
                             format!("```{}\n{}\n```", code.language, code.source),

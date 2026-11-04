@@ -1,0 +1,14 @@
+.layout-frame {
+  width: 480px;
+  border: 1px solid var(--penna-border);
+}
+
+.layout-block {
+  height: 24px;
+  border: 1px solid var(--penna-border);
+}
+
+.layout-chip {
+  flex: none;
+  width: 64px;
+}

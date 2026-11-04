@@ -1,5 +1,6 @@
 #![allow(clippy::pedantic, clippy::style, clippy::complexity)]
 
+use crate::Space;
 use std::{rc::Rc, time::Duration};
 
 use crate::cubic_ease;
@@ -10,7 +11,7 @@ use ala::{
     Subscription, Window, div, prelude::FluentBuilder as _, px,
 };
 
-use crate::blocks::dialog::{CONTENT_PADDING, DEFAULT_WIDTH};
+use crate::blocks::dialog::DEFAULT_WIDTH;
 use crate::{
     ActiveTheme as _, Icon, IconName, Sizable as _, Size, StyledExt as _, Surface, SurfaceRole,
     TextStyle,
@@ -202,14 +203,14 @@ impl Render for Notification {
             .items_center()
             .surface(Surface::new(SurfaceRole::TOAST), cx)
             .type_style(TextStyle::Body, cx)
-            .p(CONTENT_PADDING)
-            .gap_2()
+            .p(Space::INSET_CARD)
+            .gap(Space::S8)
             .child(
                 h_flex()
                     .flex_1()
                     .min_w_0()
                     .items_start()
-                    .gap_2()
+                    .gap(Space::S8)
                     .when_some(icon, |this, icon| {
                         this.child(
                             h_flex()
@@ -222,7 +223,7 @@ impl Render for Notification {
                     .child(
                         v_flex()
                             .flex_1()
-                            .gap_0p5()
+                            .gap(Space::GAP_TIGHT)
                             .overflow_hidden()
                             .when_some(self.title.clone(), |this, title| {
                                 this.child(
@@ -405,7 +406,7 @@ impl Render for NotificationList {
             .max_h(height)
             .pt(mt)
             .pb(mb)
-            .gap_3()
+            .gap(Space::S12)
             .when(matches!(placement, Anchor::TopRight), |this| this.pr(mr))
             .when(matches!(placement, Anchor::TopLeft), |this| this.pl(ml))
             .when(matches!(placement, Anchor::BottomRight), |this| {

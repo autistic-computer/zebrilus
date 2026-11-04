@@ -6,6 +6,7 @@ pub use example::{Example, ExampleCode};
 pub use header::DocsHeader;
 pub use nav::{DocsNav, NavGroup};
 
+use crate::Space;
 use crate::{
     Edge, StyledExt as _, Surface, TextStyle, foundation::RoleRuleExt as _, foundation::roles,
     h_flex, v_flex,
@@ -94,9 +95,9 @@ impl RenderOnce for DocsLayout {
                                     .w_full()
                                     .max_w(px(DOCS_CONTENT_WIDTH))
                                     .mx_auto()
-                                    .px(px(32.0))
-                                    .pt(px(40.0))
-                                    .pb(px(96.0))
+                                    .px(Space::INSET_PAGE)
+                                    .pt(Space::S40)
+                                    .pb(Space::S64)
                                     .type_style(TextStyle::ReadBody, cx)
                                     .children(self.content),
                             ),

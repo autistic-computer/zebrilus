@@ -10,7 +10,7 @@ pub const STORY: Story = Story {
     id: "spacing",
     name: "Spacing",
     group: "Foundation",
-    summary: "One spacing scale on a 2px step, from S1 (2) to S16 (32). Space converts to a length, so it goes straight into gap, padding and margin. Measured in rems, it scales with the interface font size.",
+    summary: "One spacing scale named by pixels, from S2 to S64, with gap and inset names on top (GAP_RELATED, INSET_CARD). Space converts to a length, so it goes straight into gap and padding. Measured in rems, it scales with the interface font size.",
     sections: &[
         Section {
             id: "scale",

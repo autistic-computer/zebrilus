@@ -2,7 +2,7 @@
 type: Design Plan
 title: "Foundations: the scales and rules every penna screen is built from"
 description: "The agent-facing spec for penna's foundations: space, gap and inset tokens named by their pixel value, the interface, reading and touch type ladders, the control size ladder, color roles and contrast, corners, depth, focus, motion, the six layout primitives, and the order of work that brings penna onto them. People read the Foundations pages of the docs site instead."
-status: In progress (2026-11-04, steps 1 to 4 of 9 built)
+status: In progress (2026-11-04, steps 1 to 6 of 9 built)
 resource: src/foundation/space.rs
 tags:
 - ui
@@ -73,6 +73,8 @@ Insets, set by the container:
 
 Rows in a list touch: their height keeps the rhythm.
 
+Components take every padding, gap and margin from `Space` (built in step 6), so spacing scales with the rem like type does. Settings pages are a pane (`inset-pane` 16 around the page, `gap-group` 16 between groups); a settings row is inside a card (`inset-card` 12 all round, title and description `gap-tight` 4 apart). Dialogs are panes too (`inset-pane` 16). Which-key's columns and lines are `gap-group` 16 apart inside an `inset-card` sheet. What stays in pixels: drawing geometry inside a fixed-size picture (Appearance's theme miniatures), focus halos and swatch rings that feed radius math, and window snap margins.
+
 An inset reaches the text's line box, not its letters. In `body` (13 on 18) capitals start 4.27px inside the box and the baseline sits 4.27px above its bottom, so an `inset-card` reads as about 16px to the capitals. Keep the token; never nudge text.
 
 ## Type
@@ -130,7 +132,7 @@ Control ladder. Every control at a size shares one anatomy:
 | `control-md` | 28 | `body` | 12 | 8 | 14 | 6 | built: `Size::Medium`, the default |
 | `control-lg` | 32 | `body` | 16 | 10 | 16 | 6 | step 7 |
 | `control-xl` | 40 | `lead` | 16 | 12 | 16 | 8 | step 7 |
-| `touch` | 44 | `touch-body` | 16 | 12 | 16 | 8 | step 6 |
+| `touch` | 44 | `touch-body` | 16 | 12 | 16 | 8 | step 7 |
 
 Fields use the field inset because their text starts at the edge.
 
@@ -175,18 +177,20 @@ Contrast (WCAG 2, on `bg`): `fg` 16.4 light / 14.0 dark; `fg-muted` 5.8 / 4.4; `
 - Focus: a 1.5px ring (`FOCUS_RING_WIDTH`) drawn outside the border box with its own adaptive radius. Only fields change their fill or edge on focus.
 - Motion: appear 120ms, enter 200ms, turn 220ms, scaled by the animation speed setting (0.25 to 2). Respect reduced motion.
 
-## Layout primitives (step 5)
+## Layout primitives (built)
 
 Six primitives place everything. They take tokens and draw nothing.
 
 | Primitive | Does | Rust | DOM |
 |---|---|---|---|
 | Stack | children in a column, a gap apart | `stack(Space::GAP_GROUP)` | `.penna-stack[data-gap="group"]` |
-| Inline | children in a row on one line, wrapping when asked | `inline(Space::GAP_RELATED).wrap()` | `.penna-inline[data-gap="related"][data-wrap]` |
+| Inline | children in a row on one line, wrapping when asked | `inline(Space::GAP_RELATED).flex_wrap()` | `.penna-inline[data-gap="related"][data-wrap]` |
 | Inset | padding around one child | `inset(Space::INSET_CARD)` | `.penna-inset[data-inset="card"]` |
-| Split | a fixed side beside a flexible main | `split(width, gap)` | `.penna-split` with `--penna-aside` |
-| Center | a column no wider than a measure | `center(px(640.))` | `.penna-center` |
-| Tiles | equal tiles that fill the width | `tiles(min_width, gap)` | `.penna-tiles` with `--penna-tile` |
+| Split | a fixed side beside a main that takes the rest | `split(width, gap, side, main)` | `.penna-split[data-gap]` with `--penna-aside` |
+| Center | a column no wider than a measure | `center(px(640.))` | `.penna-center` with `--penna-measure` |
+| Tiles | equal tiles that fill the width | `tiles(columns, gap)` | `.penna-tiles[data-gap]` with `--penna-tiles` |
+
+Tiles takes a column count, not a minimum width: ala's grid takes a fixed number of equal columns, so both sides do the same. The Layout story shows each primitive, native and HTML.
 
 Arrangement geometry stays with the app: where nidus puts computers on its board, a sidebar width someone dragged, terminal cells.
 
@@ -204,9 +208,9 @@ Each component's docs page carries an anatomy: its parts and the tokens they use
 | 2 | Reading text: `TextView` and `text.css` on the reading ladder and rhythm | documents and chat get smaller, tighter text | built |
 | 3 | Text styles: every component sets a full text style on its text, native and HTML, one family at a time: rows, lists and menus first, then controls, surfaces, chrome and the editor blocks, with the touch ladder | per family: rows that grew from a 1.618 line return to their row height | built |
 | 4 | Root text style: `Root` and `penna.css` set `body` | app text with no style goes from 16 on 26 to 13 on 18; penna itself doesn't move | built |
-| 5 | Layout primitives, native and DOM, with stories | none by themselves | |
-| 6 | Components onto the primitives and space tokens, one family at a time, starting with Appearance (its 11 and 14 insets) | small spacing moves, reviewed per family | |
-| 7 | Control ladder: `control-xs`, `-lg`, `-xl`, rows 28, tabs on the ladder | menu rows grow 2px, tabs move | |
+| 5 | Layout primitives, native and DOM, with stories | none by themselves | built |
+| 6 | Components onto the primitives and space tokens, one family at a time, starting with Appearance (its 11 and 14 insets) | small spacing moves, reviewed per family | built |
+| 7 | Control ladder: `control-xs`, `-lg`, `-xl`, `touch`, rows 28, tabs on the ladder | menu rows grow 2px, tabs move | |
 | 8 | Color: contrast fixes across the six theme variants | flagged pairs darken or lighten | |
 | 9 | Density setting | new option | |
 

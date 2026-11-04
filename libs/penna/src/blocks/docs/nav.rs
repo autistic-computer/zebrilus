@@ -1,3 +1,4 @@
+use crate::Space;
 use std::rc::Rc;
 
 use crate::{
@@ -6,7 +7,7 @@ use crate::{
 };
 use ala::{
     App, ElementId, IntoElement, ParentElement as _, RenderOnce, SharedString, Styled as _, Window,
-    prelude::*, px,
+    prelude::*,
 };
 
 type Pick = Rc<dyn Fn(usize, &mut Window, &mut App)>;
@@ -91,10 +92,10 @@ impl RenderOnce for DocsNav {
         v_flex()
             .id(self.id)
             .w_full()
-            .gap(px(2.0))
-            .px(px(8.0))
-            .pt(px(4.0))
-            .pb(px(24.0))
+            .gap(Space::S2)
+            .px(Space::S8)
+            .pt(Space::S4)
+            .pb(Space::S24)
             .children(rows)
     }
 }

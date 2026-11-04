@@ -6,7 +6,7 @@
   box-sizing: border-box;
   width: 400px;
   max-width: calc(100vw - 32px);
-  padding: 12px;
+  padding: var(--penna-inset-card);
   font-family: var(--penna-font);
   font-size: var(--penna-text-body-size);
   font-weight: var(--penna-text-body-weight);
@@ -61,7 +61,7 @@
   display: flex;
   flex: 1;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--penna-gap-tight);
   min-width: 0;
   overflow: hidden;
 }

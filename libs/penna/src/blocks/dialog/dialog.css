@@ -32,11 +32,11 @@
   display: flex;
   flex: none;
   flex-direction: column;
-  gap: 12px;
+  gap: var(--penna-gap-group);
   width: min(var(--dialog-width, 400px), 100cqw - 32px);
   min-height: 80px;
   max-height: max(0px, 100cqh - 32px - var(--dialog-offset));
-  padding: 12px 0;
+  padding: var(--penna-inset-pane) 0;
   font-family: var(--penna-font);
   font-size: var(--penna-text-body-size);
   font-weight: var(--penna-text-body-weight);
@@ -56,7 +56,7 @@
 
 .penna-dialog-gutter {
   flex: none;
-  padding: 0 12px;
+  padding: 0 var(--penna-inset-pane);
 }
 
 .penna-dialog-title {
@@ -86,7 +86,7 @@
   flex-direction: column;
   height: 100%;
   min-height: 0;
-  padding: 0 12px;
+  padding: 0 var(--penna-inset-pane);
   overflow-y: auto;
   scrollbar-width: none;
 }
@@ -122,8 +122,8 @@
 
 .penna-dialog-close.penna-button {
   position: absolute;
-  top: 8px;
-  right: 8px;
+  top: var(--penna-space-12);
+  right: var(--penna-space-12);
 }
 
 .penna-dialog-text {

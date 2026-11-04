@@ -1,8 +1,8 @@
-use ala::{App, ElementId, IntoElement, ParentElement as _, SharedString, Styled as _, div, px};
+use ala::{App, ElementId, IntoElement, ParentElement as _, SharedString, Styled as _, div};
 
 use super::{SettingEntry, SettingsStack, settings_card_ground, settings_provenance_badge};
 use crate::{
-    ActiveTheme as _, Colorize as _, IconName, Sizable as _, StyledExt as _,
+    ActiveTheme as _, Colorize as _, IconName, Sizable as _, Space, StyledExt as _,
     components::button::{Button, ButtonVariants as _},
 };
 
@@ -31,16 +31,16 @@ pub fn about_hero(about: &About, logo: impl IntoElement, cx: &App) -> ala::Div {
         .flex()
         .flex_col()
         .items_center()
-        .gap(px(12.0))
-        .pt(px(20.0))
-        .pb(px(10.0))
+        .gap(Space::S12)
+        .pt(Space::S16)
+        .pb(Space::S8)
         .child(logo)
         .child(
             div()
                 .flex()
                 .flex_col()
                 .items_center()
-                .gap(px(5.0))
+                .gap(Space::GAP_TIGHT)
                 .child(
                     div()
                         .type_style(crate::TextStyle::Title, cx)

@@ -2,6 +2,7 @@ use super::{
     ActiveTheme, Edge, Emphasis, Ground, Kind, Layer, PaintState, StatefulSurfaceExt, Surface,
     SurfaceRole, TextStyle, Tone,
 };
+use crate::Space;
 use ala::{
     App, BoxShadow, DefiniteLength, Div, Edges, ElementId, FULL_CORNER_RADIUS, Hsla,
     InteractiveElement as _, Pixels, Refineable, Stateful, StatefulInteractiveElement,
@@ -105,7 +106,7 @@ pub trait StyledExt: Styled + Sized {
     fn list_inset(self, cx: &App) -> Self {
         let this = self.px(cx.theme().row_inset);
         if cx.theme().inset_rows() {
-            this.gap_y_0p5()
+            this.gap_y(Space::S2)
         } else {
             this
         }

@@ -1,5 +1,6 @@
 use super::actions::{Cancel, Confirm, SelectDown, SelectLeft, SelectRight, SelectUp};
 use super::menu_item::MenuItemElement;
+use crate::Space;
 use crate::components::button::{Button, ButtonVariants as _};
 use crate::components::scroll::ScrollableElement;
 use crate::{
@@ -872,7 +873,6 @@ impl PopupMenu {
             0.8
         };
         const EDGE_PADDING: Pixels = px(4.);
-        const INNER_PADDING: Pixels = px(8.);
 
         let is_submenu = matches!(item, PopupMenuItem::Submenu { .. });
         let group_name = format!("{}:item-{}", cx.entity().entity_id(), ix);
@@ -913,7 +913,7 @@ impl PopupMenu {
                 cx,
             )
             .py_0()
-            .px(INNER_PADDING)
+            .px(Space::S8)
             .map(|this| row_corners(this, &row, item_height))
             .items_center()
             .selected(selected)
@@ -942,7 +942,7 @@ impl PopupMenu {
             PopupMenuItem::Separator => this
                 .h_auto()
                 .p_0()
-                .my(px(2.0))
+                .my(Space::S2)
                 .mx(cx.theme().row_inset)
                 .rounded(px(0.0))
                 .border_0()
@@ -957,7 +957,7 @@ impl PopupMenu {
                     h_flex()
                         .cursor_default()
                         .items_center()
-                        .gap(px(8.0))
+                        .gap(Space::S8)
                         .children(Self::render_icon(
                             has_left_icon,
                             false,
@@ -998,7 +998,7 @@ impl PopupMenu {
                     .aria_label(format!(
                         "{label}: {value}; Left and Right adjust, Enter resets"
                     ))
-                    .gap(px(10.0))
+                    .gap(Space::S10)
                     .on_click(cx.listener(move |this, _, window, cx| this.on_click(ix, window, cx)))
                     .children(Self::render_icon(
                         has_left_icon,
@@ -1043,7 +1043,7 @@ impl PopupMenu {
                         .flex_1()
                         .min_h(item_height)
                         .items_center()
-                        .gap(px(8.0))
+                        .gap(Space::S8)
                         .children(Self::render_icon(
                             has_left_icon,
                             is_left_check,
@@ -1071,7 +1071,7 @@ impl PopupMenu {
                 })
                 .disabled(*disabled)
                 .h(item_height)
-                .gap(px(8.0))
+                .gap(Space::S8)
                 .children(Self::render_icon(
                     has_left_icon,
                     is_left_check,
@@ -1081,7 +1081,7 @@ impl PopupMenu {
                 .child(
                     h_flex()
                         .w_full()
-                        .gap_3()
+                        .gap(Space::S12)
                         .items_center()
                         .justify_between()
                         .when(!show_link_icon, |this| this.child(label.clone()))
@@ -1090,7 +1090,7 @@ impl PopupMenu {
                                 h_flex()
                                     .w_full()
                                     .justify_between()
-                                    .gap_1p5()
+                                    .gap(Space::S6)
                                     .child(label.clone())
                                     .child(
                                         Icon::new(IconName::ExternalLink)
@@ -1117,7 +1117,7 @@ impl PopupMenu {
                         .min_h(item_height)
                         .size_full()
                         .items_center()
-                        .gap(px(8.0))
+                        .gap(Space::S8)
                         .children(Self::render_icon(
                             has_left_icon,
                             false,
@@ -1127,7 +1127,7 @@ impl PopupMenu {
                         .child(
                             h_flex()
                                 .flex_1()
-                                .gap_2()
+                                .gap(Space::S8)
                                 .items_center()
                                 .justify_between()
                                 .child(label.clone())
@@ -1210,7 +1210,7 @@ impl Render for PopupMenu {
             .child(
                 v_flex()
                     .id("items")
-                    .py(px(4.0))
+                    .py(Space::S4)
                     .list_inset(cx)
                     .min_w(rems(8.))
                     .when_some(self.min_width, |this, min_width| this.min_w(min_width))
