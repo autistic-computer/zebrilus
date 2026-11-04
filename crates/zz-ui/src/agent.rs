@@ -1311,7 +1311,7 @@ fn render_answer(
             .group(ASSISTANT_ENTRY_GROUP)
             .w_full()
             .gap_1(),
-        13.0,
+        cx,
     )
     .child(assistant_markdown_view(store, id, markdown, cx))
     .when(copyable, |this| {
@@ -1463,7 +1463,7 @@ fn render_trace_steps(
                 AgentEntry::Reasoning { id, markdown, .. } => {
                     render_thought(store, *id, markdown.clone(), cx)
                 }
-                AgentEntry::Assistant { id, markdown, .. } => transcript_text(div().py_1(), 12.0)
+                AgentEntry::Assistant { id, markdown, .. } => transcript_text(div().py_1(), cx)
                     .text_color(timeline_affordance_color(cx))
                     .child(markdown_view(
                         store,
@@ -1500,7 +1500,7 @@ fn render_thought(
         ))
         .when(!empty, |this| {
             this.child(
-                transcript_text(div().pl(px(TRACE_INDENT)).pb_1(), 12.0)
+                transcript_text(div().pl(px(TRACE_INDENT)).pb_1(), cx)
                     .text_color(timeline_affordance_color(cx))
                     .child(markdown_view(store, id, MarkdownSlot::Body, markdown, cx)),
             )
@@ -1676,7 +1676,7 @@ fn reply_popover(
             .gap_1()
             .px_3()
             .py_2(),
-        13.0,
+        cx,
     )
     .when(side, |popover| {
         popover.child(
@@ -1700,16 +1700,22 @@ fn render_notice(
             .w_full()
             .items_start()
             .gap_2(),
-        12.0,
+        cx,
     )
     .text_color(timeline_affordance_color(cx))
     .child(
         div()
             .flex_none()
-            .h(px(ACTIVITY_ROW_HEIGHT - 8.0))
+            .h(px(TextStyle::ReadBody.line_height_px()))
             .flex()
             .items_center()
-            .child(Icon::new(IconName::Info).size(px(ACTIVITY_ROW_FONT_SIZE))),
+            .relative()
+            .top(crate::icon::cap_center_drop(
+                px(TextStyle::ReadBody.design_px()),
+                px(TextStyle::ReadBody.design_px()),
+                cx,
+            ))
+            .child(Icon::new(IconName::Info).size(px(TextStyle::ReadBody.design_px()))),
     )
     .child(div().flex_1().min_w_0().child(markdown_view(
         store,
@@ -2043,14 +2049,8 @@ const TRACE_COUNT_BADGE_OVERHANG: f32 =
     TRACE_COUNT_BADGE_LEFT + TRACE_COUNT_BADGE - ACTIVITY_ROW_FONT_SIZE;
 const TRACE_COUNT_GAP: f32 = TRACE_COUNT_BADGE_OVERHANG + 6.0;
 
-#[allow(
-    clippy::disallowed_methods,
-    reason = "the transcript body is what the user and the agent wrote: it keeps the transcript's own text size on a line relative to it, for its markdown to inherit"
-)]
-fn transcript_text<E: Styled>(element: E, size: f32) -> E {
-    element
-        .text_size(crate::rems_from_px(size))
-        .line_height(ala::phi())
+fn transcript_text<E: Styled>(element: E, cx: &App) -> E {
+    element.type_style(TextStyle::ReadBody, cx)
 }
 
 fn transcript_ground(cx: &App) -> Ground {
@@ -2140,7 +2140,7 @@ fn render_user_entry(
             .gap_2()
             .px_3()
             .py_2(),
-        13.0,
+        cx,
     )
     .when(!images.is_empty(), |this| {
         this.child(

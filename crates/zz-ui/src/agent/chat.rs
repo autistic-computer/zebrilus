@@ -1045,7 +1045,7 @@ fn user_bubble(
                     .gap_2()
                     .px_3()
                     .py_2(),
-                13.0,
+                cx,
             )
             .when(!images.is_empty(), |bubble| {
                 bubble.child(
@@ -1109,7 +1109,7 @@ fn markdown(id: &ItemId, text: SharedString, hooks: &ChatHooks<'_>, cx: &App) ->
         }
         None => TextView::markdown(id, text),
     };
-    transcript_text(div().w_full(), 13.0)
+    transcript_text(div().w_full(), cx)
         .child(
             agent_text_view(view, scope, hooks.owner, cx)
                 .markdown_extensions(assistant_markdown_extensions()),
@@ -1178,7 +1178,7 @@ fn thought_row(
                 .max_h(px(THOUGHT_MAX_HEIGHT))
                 .overflow_y_scroll()
                 .py_1(),
-            12.5,
+            cx,
         )
         .text_color(cx.theme().foreground.muted())
         .debug_selector(|| "chat-thought".to_owned())

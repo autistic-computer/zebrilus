@@ -323,7 +323,9 @@ markdown carries them as `zzref:` links; the user's bubble draws them as clickab
   ER diagram that runs across and is wider than 640 px turns to run down when that fits. A figure
   draws at its own size, scaled down only to fit the transcript's width, so a diagram that turned or
   a long sequence keeps its 13 px labels however tall it gets. Answers use the same markdown style
-  as code blocks and tables elsewhere (`agent_text_view`). The chat passes its pane as the owner
+  as code blocks and tables elsewhere (`agent_text_view`). Transcript text (answers, the user's
+  bubble, thoughts, notices and side replies) is penna's `read-body`, 14 px on a 22 px line, and the
+  markdown inside inherits it. The chat passes its pane as the owner
   (`ChatHooks::owner`), so on the desktop an HTML block's live page can reply to the agent, and two
   panes showing the same item keep their own preview toggles.
 
