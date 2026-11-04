@@ -3,7 +3,7 @@ use ala::{
     div,
 };
 use penna::{
-    ActiveTheme as _, Colorize as _, Icon, IconName, TitleBar,
+    ActiveTheme as _, Colorize as _, Icon, IconName, StyledExt as _, TitleBar,
     components::button::{Button, ButtonVariants as _},
     h_flex,
 };
@@ -39,7 +39,7 @@ fn bars(_: &mut Window, cx: &mut App) -> AnyElement {
                             h_flex()
                                 .gap_2()
                                 .child(Icon::empty().path(crate::catalog().logo).medium())
-                                .child("work")
+                                .child(div().font_semibold().child("work"))
                                 .child(div().text_color(muted).child("~/dev/app")),
                         )
                         .child(

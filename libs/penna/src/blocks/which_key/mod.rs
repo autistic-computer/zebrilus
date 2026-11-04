@@ -464,7 +464,11 @@ impl RenderOnce for WhichKeyView {
                         )
                         .into_any_element(),
                     })
-                    .child(header.table.clone())
+                    .child(
+                        div()
+                            .type_style_strong(TextStyle::Small, cx)
+                            .child(header.table.clone()),
+                    )
                     .when_some(header.more.as_ref(), |element, more| {
                         element.child(
                             div()

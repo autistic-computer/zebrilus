@@ -60,6 +60,10 @@
   white-space: nowrap;
 }
 
+.penna-title-bar-title {
+  font-weight: 600;
+}
+
 .penna-title-bar-muted {
   color: var(--penna-fg-muted);
 }

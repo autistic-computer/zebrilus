@@ -26,6 +26,10 @@
   line-height: var(--penna-text-small-line);
 }
 
+.penna-which-key-name {
+  font-weight: 500;
+}
+
 .penna-which-key-more {
   display: flex;
   align-items: center;
