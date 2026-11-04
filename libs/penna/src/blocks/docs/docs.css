@@ -34,8 +34,9 @@
   align-items: center;
   gap: 8px;
   margin-right: 16px;
-  font-size: 14px;
+  font-size: var(--penna-text-lead-size);
   font-weight: 600;
+  line-height: var(--penna-text-lead-line);
 }
 
 .penna-docs-brand > [data-icon] {

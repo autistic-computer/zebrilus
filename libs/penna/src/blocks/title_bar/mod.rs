@@ -8,11 +8,11 @@ use ala::{
 };
 use smallvec::SmallVec;
 
-use crate::UiZoom;
 use crate::{
     ActiveTheme as _, Edge, Icon, IconName, InteractiveElementExt as _, Layer, PaintState,
     RuleLook, StyledExt as _, Surface, SurfaceRole, Tone, foundation::restyle, h_flex,
 };
+use crate::{TextStyle, UiZoom};
 
 pub const TITLE_BAR_HEIGHT: Pixels = crate::PANE_HEADER_HEIGHT;
 
@@ -364,6 +364,7 @@ impl RenderOnce for TitleBar {
                     h_flex()
                         .id("bar")
                         .h_full()
+                        .type_style(TextStyle::Body, cx)
                         .justify_between()
                         .flex_shrink_0()
                         .flex_1()

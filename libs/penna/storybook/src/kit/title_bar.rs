@@ -38,7 +38,6 @@ fn bars(_: &mut Window, cx: &mut App) -> AnyElement {
                         .child(
                             h_flex()
                                 .gap_2()
-                                .text_sm()
                                 .child(Icon::empty().path(crate::catalog().logo).medium())
                                 .child("work")
                                 .child(div().text_color(muted).child("~/dev/app")),

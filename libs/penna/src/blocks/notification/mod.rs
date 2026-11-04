@@ -227,7 +227,8 @@ impl Render for Notification {
                             .when_some(self.title.clone(), |this, title| {
                                 this.child(
                                     div()
-                                        .type_style_strong(TextStyle::Body, cx)
+                                        .type_style(TextStyle::Body, cx)
+                                        .font_semibold()
                                         .debug_selector(|| "notification-title".to_owned())
                                         .child(title),
                                 )

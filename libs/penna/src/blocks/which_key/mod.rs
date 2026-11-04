@@ -7,7 +7,7 @@ use ala::{
 
 use crate::{
     ActiveTheme as _, AuthoredElement as _, Colorize as _, StyledExt as _, Surface, SurfaceRole,
-    components::kbd::Kbd,
+    TextStyle, components::kbd::Kbd,
 };
 
 const ROW_HEIGHT: f32 = 22.0;
@@ -264,7 +264,7 @@ fn text_width(text: &str, window: &Window, cx: &App) -> f32 {
         underline: None,
         strikethrough: None,
     };
-    let size = crate::rems_from_px(11.0).to_pixels(window.rem_size());
+    let size = TextStyle::Caption.size().to_pixels(window.rem_size());
     f32::from(
         window
             .text_system()
@@ -295,8 +295,7 @@ impl WhichKeyView {
             .overflow_hidden()
             .whitespace_nowrap()
             .text_ellipsis()
-            .font_family(cx.theme().mono_font_family.clone())
-            .text_size(crate::rems_from_px(11.0))
+            .type_style_mono(TextStyle::Caption, cx)
             .text_color(if cap.yours {
                 cx.theme().accent
             } else {
@@ -334,8 +333,7 @@ impl WhichKeyView {
                     .overflow_hidden()
                     .whitespace_nowrap()
                     .text_ellipsis()
-                    .text_size(crate::rems_from_px(12.0))
-                    .line_height(px(16.0))
+                    .type_style(TextStyle::Small, cx)
                     .child(row.label.clone()),
             )
             .when(row.repeat, |element| {
@@ -344,7 +342,7 @@ impl WhichKeyView {
                     div()
                         .debug_selector(move || selector)
                         .flex_none()
-                        .text_size(crate::rems_from_px(11.0))
+                        .type_style(TextStyle::Caption, cx)
                         .text_color(cx.theme().foreground.muted())
                         .child("↻"),
                 )
@@ -376,8 +374,7 @@ impl WhichKeyView {
                         })
                         .h(px(TITLE_HEIGHT - 4.0))
                         .pl(px(cap_width + CAP_GAP))
-                        .text_size(crate::rems_from_px(11.0))
-                        .line_height(px(16.0))
+                        .type_style(TextStyle::Caption, cx)
                         .text_color(cx.theme().foreground.muted())
                         .children(block.title.cloned()),
                 )
@@ -433,6 +430,7 @@ impl RenderOnce for WhichKeyView {
             .aria_label(header.table.clone())
             .debug_selector(|| "which-key".to_owned())
             .w_full()
+            .type_style(TextStyle::Small, cx)
             .when_some(fit.width, ala::Styled::max_w)
             .when_some(self.available, |element, available| {
                 element.max_h(available.height)
@@ -450,8 +448,7 @@ impl RenderOnce for WhichKeyView {
                     .flex_none()
                     .items_center()
                     .gap(px(8.0))
-                    .text_size(crate::rems_from_px(12.0))
-                    .line_height(px(16.0))
+                    .type_style(TextStyle::Small, cx)
                     .child(match header.prefix.clone() {
                         Some(key) => Kbd::new(key)
                             .id("which-key-prefix")

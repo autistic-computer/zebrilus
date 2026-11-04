@@ -486,7 +486,7 @@ pub fn dialog_gutter() -> Div {
 }
 
 pub fn dialog_title(cx: &App) -> Div {
-    div().type_style_strong(TextStyle::Body, cx)
+    div().type_style(TextStyle::Body, cx).font_semibold()
 }
 
 pub fn dialog_description(cx: &App) -> Div {

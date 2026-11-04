@@ -1,7 +1,7 @@
 use std::rc::Rc;
 
 use crate::{
-    Edge, IconName, Selectable as _, Sizable as _, StyledExt as _,
+    Edge, IconName, Selectable as _, Sizable as _, StyledExt as _, TextStyle,
     components::bar::{Bar, BarLook},
     components::button::{Button, ButtonVariants as _},
     components::icon::Icon,
@@ -102,7 +102,7 @@ impl RenderOnce for DocsHeader {
                         .flex_none()
                         .gap(px(8.0))
                         .mr(px(16.0))
-                        .text_size(px(14.0))
+                        .type_style(TextStyle::Lead, cx)
                         .font_semibold()
                         .child(Icon::new(icon).size(px(16.0)))
                         .child(name),
