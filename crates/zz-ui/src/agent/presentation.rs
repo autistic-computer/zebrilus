@@ -247,7 +247,7 @@ impl CardTile {
 
     pub(crate) fn render(self, id: impl Into<ElementId>, cx: &App) -> Row {
         let enabled = self.state != PaintState::Disabled;
-        let height = crate::picker::LIST_ROW_HEIGHT;
+        let height = crate::picker::list_row_height(cx);
         Row::new(id, RowLook::Menu)
             .tone(self.tone)
             .state(self.state)

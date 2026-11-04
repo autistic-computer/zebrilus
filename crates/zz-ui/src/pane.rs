@@ -1659,7 +1659,7 @@ fn picker_item(
 ) -> Row {
     let state = crate::row_state(selected, enabled);
     let ground = cx.theme().ground_at(RowLook::MenuCard, state);
-    let height = crate::picker::LIST_ROW_HEIGHT;
+    let height = crate::picker::list_row_height(cx);
     Row::new(id, RowLook::MenuCard)
         .state(state)
         .row_height(height)

@@ -165,7 +165,7 @@ pub fn empty_workspace_action(
 ) -> Stateful<ala::Div> {
     let state = crate::row_state(selected, true);
     let ground = cx.theme().ground_at(RowLook::Menu, state);
-    crate::list_row(id, crate::picker::LIST_ROW_HEIGHT, selected, true, cx)
+    crate::list_row(id, crate::picker::list_row_height(cx), selected, true, cx)
         .px(px(12.0))
         .cursor_pointer()
         .child(key_hint(keys, label, strong, ground).flex_1().min_w_0())

@@ -773,7 +773,7 @@ pub fn browser_recent_row(
     cx: &App,
 ) -> Row {
     let url = url.into();
-    let height = crate::picker::LIST_ROW_HEIGHT;
+    let height = crate::picker::list_row_height(cx);
     Row::new(id, RowLook::MenuTint)
         .row_height(height)
         .flex()

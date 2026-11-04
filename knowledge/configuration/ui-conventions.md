@@ -337,7 +337,7 @@ restating it.
    first tile, and separate groups (another question, the footer) sit 12px or a divider away.
 4. **Tiles are list rows.** An option tile is a `Row` in `RowLook::Menu` (`menu-item`), so it
    looks like the other lists a pane shows (the new-session actions, the pane picker, recent
-   pages): at least `picker::LIST_ROW_HEIGHT` (32px) tall, 12px text with 11px descriptions, no
+   pages): at least `picker::list_row_height(cx)` (32px, scaled with UI zoom) tall, 12px text with 11px descriptions, no
    fill at rest, a tint on hover, the accent when picked, and the row corner for that height. The 12px gutter is deeper
    than any built-in theme's card radius, so a concentric inner corner would round to square and
    fall to an arbitrary floor instead.
