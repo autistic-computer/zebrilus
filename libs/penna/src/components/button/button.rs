@@ -693,12 +693,8 @@ impl RenderOnce for Button {
                     let this = this.h(height);
                     match self.size {
                         Size::Size(size) => this.px(size * 0.2),
-                        Size::Small => this
-                            .px(Space::S8)
-                            .when(self.compact, |this| this.min_w(height).px(Space::S4)),
-                        Size::Medium => this
-                            .px(Space::S12)
-                            .when(self.compact, |this| this.min_w(height).px(Space::S6)),
+                        size if self.compact => this.min_w(height).px(size.icon_gap()),
+                        size => this.px(size.inset()),
                     }
                 }
             })
@@ -780,9 +776,9 @@ impl RenderOnce for Button {
 
                     label
                         .when(pressed > 0.0, |this| this.opacity(1.0 - 0.35 * pressed))
-                        .map(|this| match self.size {
-                            Size::Small => this.gap(Space::S4),
-                            _ => this.gap(Space::S6),
+                        .gap(match self.size {
+                            Size::Size(_) => Space::S6,
+                            size => size.icon_gap(),
                         })
                         .when_some(self.icon, |this, icon| {
                             this.child(icon.loading(self.loading).with_size(icon_size))

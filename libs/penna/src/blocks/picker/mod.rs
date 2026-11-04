@@ -1,6 +1,6 @@
 use crate::{
-    ActiveTheme as _, Colorize as _, Edge, Icon, IconName, Layer, RuleLook, Sizable as _, Space,
-    StyledExt as _, Surface,
+    ActiveTheme as _, Colorize as _, Edge, Icon, IconName, Layer, RuleLook, Sizable as _, Size,
+    Space, StyledExt as _, Surface,
     components::input::{Input, InputState},
     foundation::roles,
     h_flex, list_row, v_flex,
@@ -10,7 +10,6 @@ use ala::{
     SharedString, Stateful, div, prelude::*, px, relative,
 };
 
-const PICKER_ROW_HEIGHT: Pixels = px(26.0);
 pub const LIST_ROW_HEIGHT: Pixels = px(32.0);
 
 pub(crate) fn outer_radius(layer: &Layer, inset: Pixels) -> Pixels {
@@ -116,7 +115,7 @@ pub fn picker_footer(cx: &App) -> Div {
 }
 
 pub fn picker_row(id: impl Into<ElementId>, selected: bool, cx: &App) -> Stateful<Div> {
-    list_row(id, PICKER_ROW_HEIGHT, selected, true, cx)
+    list_row(id, px(Size::Medium.control_px()), selected, true, cx)
         .w_full()
         .gap(Space::S8)
         .px(Space::S10)

@@ -127,15 +127,15 @@
   "light": {
     "background": "#fafafaff",
     "foreground": "#3d3d3dff",
-    "accent": "#d6421dff",
-    "success": "#0e8420ff",
-    "warning": "#b45b00ff",
+    "accent": "#c73306ff",
+    "success": "#007c16ff",
+    "warning": "#a85000ff",
     "danger": "#c7162bff"
   },
   "dark": {
     "background": "#2c2c2cff",
     "foreground": "#f7f7f7ff",
-    "accent": "#e95420ff",
+    "accent": "#f86231ff",
     "success": "#3fa745ff",
     "warning": "#f99b11ff",
     "danger": "#ff585aff"

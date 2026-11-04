@@ -5,7 +5,7 @@
   gap: 6px;
   box-sizing: border-box;
   width: 100%;
-  height: 28px;
+  height: var(--penna-control-md);
   min-width: 0;
   margin: 0;
   padding: 2px 8px;
@@ -20,13 +20,52 @@
   --input-faint: color-mix(in oklab, var(--penna-ink) 45%, var(--input-ground, var(--penna-bg)));
 }
 
+.penna-input[data-size="xsmall"] {
+  gap: var(--penna-space-4);
+  height: var(--penna-control-xs);
+  padding: 0 var(--penna-space-6);
+  font-size: var(--penna-text-caption-size);
+  font-weight: var(--penna-text-caption-weight);
+  line-height: var(--penna-text-caption-line);
+  --penna-icon-size: 12px;
+}
+
 .penna-input[data-size="small"] {
   gap: 4px;
-  height: 24px;
+  height: var(--penna-control-sm);
   padding: 0 6px;
   font-size: var(--penna-text-small-size);
   line-height: var(--penna-text-small-line);
   --penna-icon-size: 12px;
+}
+
+.penna-input[data-size="large"] {
+  height: var(--penna-control-lg);
+  padding: var(--penna-space-2) var(--penna-space-10);
+  --penna-icon-size: 16px;
+  --input-mark: 14px;
+}
+
+.penna-input[data-size="xlarge"] {
+  gap: var(--penna-space-8);
+  height: var(--penna-control-xl);
+  padding: var(--penna-space-2) var(--penna-space-12);
+  font-size: var(--penna-text-lead-size);
+  font-weight: var(--penna-text-lead-weight);
+  line-height: var(--penna-text-lead-line);
+  --penna-icon-size: 16px;
+  --input-mark: 16px;
+}
+
+.penna-input[data-size="touch"] {
+  gap: var(--penna-space-8);
+  height: var(--penna-control-touch);
+  padding: var(--penna-space-2) var(--penna-space-12);
+  font-size: var(--penna-text-touch-body-size);
+  font-weight: var(--penna-text-touch-body-weight);
+  line-height: var(--penna-text-touch-body-line);
+  --penna-icon-size: 16px;
+  --input-mark: 16px;
 }
 
 .penna-input[data-bare] {
@@ -161,10 +200,10 @@
 
 .penna-input .penna-spinner {
   display: block;
-  width: 12px;
-  height: 12px;
+  width: var(--input-mark, 12px);
+  height: var(--input-mark, 12px);
   color: var(--penna-fg-muted);
-  --penna-icon-size: 12px;
+  --penna-icon-size: var(--input-mark, 12px);
 }
 
 .penna-input .penna-spinner > [data-icon] {
@@ -187,7 +226,6 @@
   align-items: center;
   height: auto;
   min-height: 0;
-  padding: 2px 8px;
 }
 
 .penna-input[data-multiline] > textarea {
@@ -203,14 +241,30 @@
   align-items: center;
   box-sizing: border-box;
   width: 100%;
-  height: 28px;
+  height: var(--penna-control-md);
   padding: 0;
   gap: 0;
   border-width: max(1px, var(--penna-bw));
 }
 
+.penna-number[data-penna][data-size="xsmall"] {
+  height: var(--penna-control-xs);
+}
+
 .penna-number[data-penna][data-size="small"] {
-  height: 24px;
+  height: var(--penna-control-sm);
+}
+
+.penna-number[data-penna][data-size="large"] {
+  height: var(--penna-control-lg);
+}
+
+.penna-number[data-penna][data-size="xlarge"] {
+  height: var(--penna-control-xl);
+}
+
+.penna-number[data-penna][data-size="touch"] {
+  height: var(--penna-control-touch);
 }
 
 .penna-number[data-bare] {

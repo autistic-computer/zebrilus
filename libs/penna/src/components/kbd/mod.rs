@@ -361,8 +361,8 @@ impl Styled for Keycap {
 impl RenderOnce for Keycap {
     fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
         let (height, text) = match self.size {
-            Size::Small => (16.0, TextStyle::Micro),
-            Size::Medium | Size::Size(_) => (18.0, TextStyle::Caption),
+            Size::XSmall | Size::Small => (16.0, TextStyle::Micro),
+            _ => (18.0, TextStyle::Caption),
         };
         let layer = self.surface_layer(cx.theme());
         let cap = h_flex()

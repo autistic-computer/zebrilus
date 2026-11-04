@@ -36,6 +36,9 @@ const choice = {
   mode: modeName(params.get("mode")) || modeName(saved.mode) || "dark",
 };
 
+const density = params.get("density");
+if (density === "compact" || density === "comfortable") document.documentElement.dataset.density = density;
+
 function sheet(id) {
   let link = document.getElementById(id);
   if (!link) {

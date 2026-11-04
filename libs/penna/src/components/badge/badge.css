@@ -13,7 +13,7 @@
   --penna-icon-size: 12px;
 }
 
-.penna-badge[data-penna][data-size="small"] {
+.penna-badge[data-penna]:is([data-size="xsmall"], [data-size="small"]) {
   height: 16px;
   padding: 0 var(--penna-space-4);
   font-size: var(--penna-text-micro-size);

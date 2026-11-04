@@ -4,7 +4,7 @@ use ala::{
 };
 use penna::{
     ActiveTheme as _, Colorize as _, Disableable as _, Emphasis, IconName, Selectable as _,
-    Sizable as _, StyledExt as _, TextStyle, Tone,
+    Sizable as _, Size, StyledExt as _, TextStyle, Tone,
     components::button::{Button, ButtonLook, ButtonRounded, ButtonVariant, ButtonVariants as _},
 };
 
@@ -26,7 +26,7 @@ pub const STORY: Story = Story {
         Section {
             id: "sizes",
             name: "Sizes",
-            summary: "Sizable: small (24px) and medium (28px, the default), with and without labels.",
+            summary: "Sizable, on the control ladder: xsmall (20px), small (24px), medium (28px, the default), large (32px), xlarge (40px) and touch (44px), with and without labels.",
             build: |_, cx| stateless(sizes, cx),
         },
         Section {
@@ -104,29 +104,44 @@ fn variants(_: &mut Window, _: &mut App) -> AnyElement {
         .into_any_element()
 }
 
+const SIZES: [(&str, &str, Size); 6] = [
+    ("xs", "XSmall", Size::XSmall),
+    ("sm", "Small", Size::Small),
+    ("md", "Medium", Size::Medium),
+    ("lg", "Large", Size::Large),
+    ("xl", "XLarge", Size::XLarge),
+    ("touch", "Touch", Size::Touch),
+];
+
 fn sizes(_: &mut Window, _: &mut App) -> AnyElement {
     states()
         .state(
             "label",
-            row()
-                .child(Button::new("size-sm").label("Small").small())
-                .child(Button::new("size-md").label("Medium")),
+            row().children(SIZES.iter().map(|(id, name, size)| {
+                Button::new(format!("size-{id}"))
+                    .label(*name)
+                    .with_size(*size)
+            })),
         )
         .state(
             "icon",
             row()
-                .child(
-                    Button::new("icon-sm")
+                .children(SIZES.iter().map(|(id, _, size)| {
+                    Button::new(format!("icon-{id}"))
                         .icon(IconName::Bell)
-                        .small()
-                        .tooltip("Notifications"),
-                )
-                .child(
-                    Button::new("icon-md")
-                        .icon(IconName::Bell)
-                        .tooltip("Notifications"),
-                )
+                        .with_size(*size)
+                        .tooltip("Notifications")
+                }))
                 .child(Button::compact_icon("icon-compact", IconName::Ellipsis).tooltip("More")),
+        )
+        .state(
+            "icon and label",
+            row().children(SIZES.iter().map(|(id, name, size)| {
+                Button::new(format!("icon-label-{id}"))
+                    .icon(IconName::Bell)
+                    .label(*name)
+                    .with_size(*size)
+            })),
         )
         .into_any_element()
 }

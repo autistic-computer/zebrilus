@@ -22,13 +22,13 @@ pub const STORY: Story = Story {
         Section {
             id: "page",
             name: "Page",
-            summary: "Mode, Theme, Accent and Tint, then the Advanced rows: corner radius, contrast, UI font, UI zoom, animations and their speed. Without a theme menu the Theme row has no more button.",
+            summary: "Mode, Theme, Accent and Tint, then the Advanced rows: corner radius, contrast, UI font, UI zoom, density, animations and their speed. Without a theme menu the Theme row has no more button.",
             build: |window, cx| page(false, window, cx),
         },
         Section {
             id: "narrow",
             name: "Narrow",
-            summary: "With stacked set, the swatches and sliders sit under their titles across the row, the way a phone or a narrow window shows them.",
+            summary: "With stacked set, the swatches, sliders and density segments sit under their titles across the row, the way a phone or a narrow window shows them.",
             build: |window, cx| page(true, window, cx),
         },
     ],
@@ -84,7 +84,7 @@ impl Render for AppearanceStory {
             })
             .flex()
             .w(px(if self.stacked { 360.0 } else { 640.0 }))
-            .h(px(if self.stacked { 980.0 } else { 760.0 }))
+            .h(px(if self.stacked { 1060.0 } else { 820.0 }))
             .rounded(cx.theme().radius)
             .framed(cx)
             .overflow_hidden()

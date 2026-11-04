@@ -108,7 +108,6 @@ const TREE: [(u8, IconName, &str); TREE_ROWS as usize] = [
     (3, IconName::File, "build.log"),
 ];
 
-const ROW_HEIGHT: f32 = 28.0;
 const INDENT: f32 = 16.0;
 const ROW_INSET: f32 = 12.0;
 const ICON_SLOT: f32 = 16.0;
@@ -128,7 +127,7 @@ fn tree(id: &'static str, active_row: Option<usize>, cx: &App) -> AnyElement {
                     .look(RowLook::Sidebar)
                     .selected(active_row == Some(index))
                     .w_full()
-                    .h(px(ROW_HEIGHT))
+                    .h(px(penna::Size::Medium.control_px()))
                     .pl(px(ROW_INSET + INDENT * f32::from(*depth)))
                     .child(
                         h_flex()
@@ -151,7 +150,9 @@ fn tree(id: &'static str, active_row: Option<usize>, cx: &App) -> AnyElement {
     ));
     sidebar(
         id,
-        div().h(px(ROW_HEIGHT * f32::from(TREE_ROWS))).child(rows),
+        div()
+            .h(px(penna::Size::Medium.control_px() * f32::from(TREE_ROWS)))
+            .child(rows),
         cx,
     )
 }

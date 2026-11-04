@@ -53,9 +53,8 @@ const EDGE_WEIGHT: f32 = 0.14;
 const HOVER: f32 = 0.06;
 const ACTIVE: f32 = 0.12;
 const REST: f32 = 0.15;
-const MUTED: f32 = 0.35;
+const MUTED: f32 = 0.30;
 const FAINT: f32 = 0.55;
-const READABLE_ON_LIGHTNESS: f32 = 0.7;
 const FILL_ALPHA: f32 = 0.12;
 const OUTLINE_ALPHA: f32 = 0.55;
 const SUBTLE_ALPHA: f32 = 0.75;
@@ -161,12 +160,34 @@ pub(super) fn readable_on(fill: Hsla) -> Hsla {
 }
 
 fn readable_on_uncached(fill: Hsla) -> Hsla {
-    let pole = if oklab_lightness(fill.opaque()) > READABLE_ON_LIGHTNESS {
-        hsla(0., 0., 0., 1.)
+    let fill = fill.opaque();
+    let light = hsla(0., 0., 1., 1.);
+    let light = light.mix_oklab(light.invert_l(), 0.94);
+    let dark = hsla(0., 0., 0., 1.);
+    let dark = dark.mix_oklab(dark.invert_l(), 0.94);
+    if contrast_ratio(dark, fill) > contrast_ratio(light, fill) {
+        dark
     } else {
-        hsla(0., 0., 1., 1.)
+        light
+    }
+}
+
+fn relative_luminance(color: Hsla) -> f32 {
+    let rgba = Rgba::from(color);
+    let linear = |channel: f32| {
+        if channel <= 0.04045 {
+            channel / 12.92
+        } else {
+            ((channel + 0.055) / 1.055).powf(2.4)
+        }
     };
-    pole.mix_oklab(pole.invert_l(), 0.94)
+    0.2126 * linear(rgba.r) + 0.7152 * linear(rgba.g) + 0.0722 * linear(rgba.b)
+}
+
+pub(super) fn contrast_ratio(left: Hsla, right: Hsla) -> f32 {
+    let left = relative_luminance(left);
+    let right = relative_luminance(right);
+    (left.max(right) + 0.05) / (left.min(right) + 0.05)
 }
 
 pub(super) fn edge_weight() -> f32 {

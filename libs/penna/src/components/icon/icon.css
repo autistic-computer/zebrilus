@@ -14,12 +14,16 @@
   transform: rotate(270deg);
 }
 
-[data-icon][data-size="small"] {
+[data-icon]:is([data-size="xsmall"], [data-size="small"]) {
   --penna-icon-size: 12px;
 }
 
 [data-icon][data-size="medium"] {
   --penna-icon-size: 14px;
+}
+
+[data-icon]:is([data-size="large"], [data-size="xlarge"], [data-size="touch"]) {
+  --penna-icon-size: 16px;
 }
 
 [data-icon][data-size="6"] {

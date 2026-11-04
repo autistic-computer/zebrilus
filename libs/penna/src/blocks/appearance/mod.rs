@@ -11,8 +11,8 @@ use crate::foundation::interface_theme::{
     SavedThemes, ThemeOverrides,
 };
 use crate::{
-    ActiveTheme as _, AuthoredElement as _, Colorize as _, IconName, Space, StyledExt as _,
-    Surface, ThemeColor, ThemeMode,
+    ActiveTheme as _, AuthoredElement as _, Colorize as _, Density, IconName, Space,
+    StyledExt as _, Surface, ThemeColor, ThemeMode,
 };
 use ala::{
     Anchor, AnyElement, App, Context, Entity, FocusHandle, IntoElement, SharedString, Subscription,
@@ -64,6 +64,7 @@ pub enum AppearancePageItem<T = Infallible> {
     ChromeContrast,
     UiFontFamily,
     UiZoom,
+    Density,
     Animations,
     AnimationSpeed,
     App(T),
@@ -89,6 +90,7 @@ impl<T: Copy> AppearancePageItem<T> {
             Self::AnimationSpeed => "Animation speed",
             Self::UiFontFamily => "UI font",
             Self::UiZoom => "UI zoom",
+            Self::Density => "Density",
             Self::Animations => "Animations",
             Self::Title | Self::Group { .. } | Self::Advanced { .. } | Self::App(_) => return None,
         })
@@ -114,6 +116,7 @@ pub fn appearance_page_items<T>(advanced: bool) -> Vec<AppearancePageItem<T>> {
         AppearancePageItem::ChromeContrast,
         AppearancePageItem::UiFontFamily,
         AppearancePageItem::UiZoom,
+        AppearancePageItem::Density,
         AppearancePageItem::Animations,
         AppearancePageItem::AnimationSpeed,
     ]);
@@ -163,6 +166,28 @@ pub fn theme_mode_control(
         )
         .on(crate::blocks::settings::settings_card_ground(cx))
         .on_select(move |index, window, cx| on_pick(THEME_MODES[index].0, window, cx))
+}
+
+pub const DENSITIES: [(Density, &str); 3] = [
+    (Density::Compact, "Compact"),
+    (Density::Regular, "Regular"),
+    (Density::Comfortable, "Comfortable"),
+];
+
+pub fn density_control(
+    selected: Density,
+    on_pick: impl Fn(Density, &mut Window, &mut App) + 'static,
+    cx: &App,
+) -> SegmentedControl {
+    SegmentedControl::new("settings-density", DENSITIES.map(|(_, title)| title))
+        .selected(
+            DENSITIES
+                .iter()
+                .position(|(density, _)| *density == selected)
+                .unwrap_or(0),
+        )
+        .on(crate::blocks::settings::settings_card_ground(cx))
+        .on_select(move |index, window, cx| on_pick(DENSITIES[index].0, window, cx))
 }
 
 pub fn theme_labels(picks: &ThemePicks) -> Vec<SharedString> {
@@ -889,6 +914,20 @@ pub fn kit_row<T: Copy>(
                 cx,
             );
             placed(entry, slider, stacked)
+        }
+        AppearancePageItem::Density => {
+            let control = density_control(
+                appearance.density,
+                move |density, window, cx| {
+                    on_change(AppearanceChange::Density(density), window, cx);
+                },
+                cx,
+            );
+            if stacked {
+                entry.child(div().flex().child(control))
+            } else {
+                entry.control(control)
+            }
         }
         AppearancePageItem::Animations => entry.control(
             Switch::new("settings-animations")

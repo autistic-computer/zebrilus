@@ -4,9 +4,9 @@ use ala::{
     prelude::FluentBuilder as _, px,
 };
 use penna::{
-    ActiveTheme as _, BarLook, Disableable as _, IconName, Label, PaintState, Row, RowLook, Space,
-    Surface, Tab, TabLook, TextStyle, Tone, components::icon::Icon, components::list::ListItem,
-    h_flex, v_flex,
+    ActiveTheme as _, BarLook, Disableable as _, IconName, Label, PaintState, Row, RowLook,
+    Sizable as _, Size, Space, Surface, Tab, TabLook, TextStyle, Tone, components::icon::Icon,
+    components::list::ListItem, h_flex, v_flex,
 };
 
 use crate::story::{Section, Story, row, stateless, states};
@@ -20,7 +20,7 @@ pub const STORY: Story = Story {
         Section {
             id: "tabs",
             name: "Tabs",
-            summary: "Tab::new(id, look).state(state) for window pills, browser tabs, the tray chips over a composer and a pane's title. Point at the resting ones to see them light.",
+            summary: "Tab::new(id, look).state(state) for window pills, browser tabs, the tray chips over a composer and a pane's title. A tab is control-lg, 32 tall; .with_size(size) moves it along the control ladder and leaves its text alone. Point at the resting ones to see them light.",
             build: |_, cx| stateless(tabs, cx),
         },
         Section {
@@ -54,6 +54,15 @@ const STATES: [(PaintState, &str); 7] = [
     (PaintState::Disabled, "Disabled"),
 ];
 
+const TAB_SIZES: [(Size, &str); 6] = [
+    (Size::XSmall, "XSmall"),
+    (Size::Small, "Small"),
+    (Size::Medium, "Medium"),
+    (Size::Large, "Large"),
+    (Size::XLarge, "XLarge"),
+    (Size::Touch, "Touch"),
+];
+
 const TAB_LOOKS: [(TabLook, &str); 4] = [
     (TabLook::Window, "window"),
     (TabLook::Page, "page"),
@@ -65,7 +74,6 @@ fn tab(look: TabLook, name: &str, state: PaintState, label: &'static str, cx: &A
     let ground = cx.theme().ground_at(look, state);
     Tab::new(SharedString::from(format!("tab-{name}-{label}")), look)
         .state(state)
-        .h(px(28.0))
         .px(Space::S10)
         .flex()
         .items_center()
@@ -91,6 +99,12 @@ fn tabs(_: &mut Window, cx: &mut App) -> AnyElement {
             )
         })
         .state(
+            "sizes",
+            row().children(TAB_SIZES.iter().map(|(size, label)| {
+                tab(TabLook::Window, "size", PaintState::Selected, label, cx).with_size(*size)
+            })),
+        )
+        .state(
             "not interactive",
             row()
                 .child(
@@ -112,7 +126,7 @@ fn tabs(_: &mut Window, cx: &mut App) -> AnyElement {
             h_flex().h(px(36.0)).px(Space::S8).child(
                 Tab::new("tab-title-on-pane", TabLook::Title)
                     .on(pane)
-                    .h(px(24.0))
+                    .small()
                     .px(Space::S8)
                     .flex()
                     .items_center()

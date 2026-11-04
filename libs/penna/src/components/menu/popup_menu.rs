@@ -4,8 +4,8 @@ use crate::Space;
 use crate::components::button::{Button, ButtonVariants as _};
 use crate::components::scroll::ScrollableElement;
 use crate::{
-    ActiveTheme, Icon, IconName, Sizable as _, StyledExt, TextStyle, components::kbd::Kbd, h_flex,
-    v_flex,
+    ActiveTheme, Icon, IconName, Sizable as _, Size, StyledExt, TextStyle, components::kbd::Kbd,
+    h_flex, v_flex,
 };
 use crate::{
     Edge, ElementExt, Kind, PaintState, RuleLook, Side, Surface, SurfaceRole,
@@ -880,7 +880,7 @@ impl PopupMenu {
         let item_height = if crate::blocks::touch::CoarsePointer::get(cx) {
             px(crate::blocks::touch::TOUCH_TARGET)
         } else {
-            px(26.)
+            px(Size::Medium.control_px())
         };
 
         let coarse = crate::blocks::touch::CoarsePointer::get(cx);
@@ -994,7 +994,7 @@ impl PopupMenu {
                             this.adjust_stepper(action, window, cx);
                         }))
                 };
-                this.h(item_height.max(px(26.0)))
+                this.h(item_height)
                     .aria_label(format!(
                         "{label}: {value}; Left and Right adjust, Enter resets"
                     ))

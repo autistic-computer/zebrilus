@@ -35,7 +35,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  height: 26px;
+  height: var(--penna-control-md);
   margin: 0;
   padding: 0 var(--penna-space-8);
   border: 0;
@@ -54,7 +54,7 @@
 .penna-popup-row[data-kind="note"],
 .penna-popup-row[data-kind="submenu"] {
   height: auto;
-  min-height: 26px;
+  min-height: var(--penna-control-md);
   gap: 4px;
 }
 
@@ -98,7 +98,7 @@
 
 .penna-popup-row[data-kind="note"] > .penna-popup-line,
 .penna-popup-row[data-kind="submenu"] > .penna-popup-line {
-  min-height: 26px;
+  min-height: var(--penna-control-md);
 }
 
 .penna-popup-main {

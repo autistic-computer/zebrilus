@@ -8,7 +8,7 @@ use ala::{BoxShadow, GlassMaterial, Hsla};
 
 use crate::{
     ADAPTIVE_CORNER_FRACTION, CORNER_SMOOTHING, Colorize as _, Elevation, Emphasis, Ground, Kind,
-    Layer, PaintState, Space, Surface, SurfaceRole, TextStyle, Theme, ThemeMode, Tone,
+    Layer, PaintState, Size, Space, Surface, SurfaceRole, TextStyle, Theme, ThemeMode, Tone,
     components::button::rings_focus,
     components::icon::glyphs,
     components::input::field_layer,
@@ -463,6 +463,12 @@ fn scale_vars() -> Vec<(String, String)> {
         vars.push((
             format!("--penna-text-{name}-weight"),
             number(style.weight().0),
+        ));
+    }
+    for size in Size::LADDER {
+        vars.push((
+            format!("--penna-control-{}", size.name()),
+            length(size.control_px()),
         ));
     }
     vars

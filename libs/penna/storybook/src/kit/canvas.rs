@@ -264,7 +264,7 @@ fn inspector(_: &mut Window, _: &mut App) -> AnyElement {
                 .trailing(
                     Chip::new("inspector-ready", "Ready")
                         .dot(Tone::Success)
-                        .small(),
+                        .xsmall(),
                 )
                 .on_close(|_, _, _| {})
                 .child(

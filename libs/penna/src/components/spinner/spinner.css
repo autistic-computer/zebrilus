@@ -13,8 +13,12 @@
   --penna-icon-size: 14px;
 }
 
-.penna-spinner[data-size="small"] {
+.penna-spinner:is([data-size="xsmall"], [data-size="small"]) {
   --penna-icon-size: 12px;
+}
+
+.penna-spinner:is([data-size="large"], [data-size="xlarge"], [data-size="touch"]) {
+  --penna-icon-size: 16px;
 }
 
 .penna-spinner > [data-icon] {

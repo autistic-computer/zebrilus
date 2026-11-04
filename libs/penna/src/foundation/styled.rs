@@ -1,3 +1,5 @@
+use std::cell::Cell;
+
 use super::{
     ActiveTheme, Edge, Emphasis, Ground, Kind, Layer, PaintState, StatefulSurfaceExt, Surface,
     SurfaceRole, TextStyle, Tone,
@@ -283,49 +285,168 @@ pub fn lifted_shadow(cx: &App) -> Vec<BoxShadow> {
     cx.theme().lifted_shadows()
 }
 
+#[derive(Clone, Default, Copy, PartialEq, Eq, Debug, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum Density {
+    Compact,
+    #[default]
+    Regular,
+    Comfortable,
+}
+
+impl Density {
+    pub const ALL: [Self; 3] = [Self::Compact, Self::Regular, Self::Comfortable];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Compact => "compact",
+            Self::Regular => "regular",
+            Self::Comfortable => "comfortable",
+        }
+    }
+
+    pub fn control_px(self) -> f32 {
+        match self {
+            Self::Compact => 24.,
+            Self::Regular => 28.,
+            Self::Comfortable => 32.,
+        }
+    }
+
+    pub fn get() -> Self {
+        DENSITY.get()
+    }
+
+    pub fn set(self) {
+        DENSITY.set(self);
+    }
+}
+
+thread_local! {
+    static DENSITY: Cell<Density> = const { Cell::new(Density::Regular) };
+}
+
 #[derive(Clone, Default, Copy, PartialEq, Eq, Debug)]
 pub enum Size {
     Size(Pixels),
+    XSmall,
     Small,
     #[default]
     Medium,
+    Large,
+    XLarge,
+    Touch,
 }
 
 impl Size {
+    pub const LADDER: [Self; 6] = [
+        Self::XSmall,
+        Self::Small,
+        Self::Medium,
+        Self::Large,
+        Self::XLarge,
+        Self::Touch,
+    ];
+
+    pub fn name(&self) -> &'static str {
+        match self.rung() {
+            Size::XSmall => "xs",
+            Size::Small => "sm",
+            Size::Large => "lg",
+            Size::XLarge => "xl",
+            Size::Touch => "touch",
+            _ => "md",
+        }
+    }
+
+    pub fn rung(&self) -> Self {
+        match self {
+            Size::Size(value) => {
+                let height = value.as_f32();
+                Self::LADDER
+                    .into_iter()
+                    .rev()
+                    .min_by(|a, b| {
+                        (a.ladder_px() - height)
+                            .abs()
+                            .total_cmp(&(b.ladder_px() - height).abs())
+                    })
+                    .unwrap_or_default()
+            }
+            size => *size,
+        }
+    }
+
     pub fn control_px(&self) -> f32 {
         match self {
+            Size::Medium => Density::get().control_px(),
+            size => size.ladder_px(),
+        }
+    }
+
+    fn ladder_px(&self) -> f32 {
+        match self {
             Size::Size(value) => value.as_f32(),
+            Size::XSmall => 20.,
             Size::Small => 24.,
-            Size::Medium => 28.,
+            Size::Medium => Density::Regular.control_px(),
+            Size::Large => 32.,
+            Size::XLarge => 40.,
+            Size::Touch => 44.,
         }
     }
 
     pub fn control_text(&self) -> TextStyle {
-        match self {
+        match self.rung() {
+            Size::XSmall => TextStyle::Caption,
             Size::Small => TextStyle::Small,
-            Size::Medium => TextStyle::Body,
-            Size::Size(value) => match value.as_f32() {
-                height if height < 22. => TextStyle::Caption,
-                height if height < 26. => TextStyle::Small,
-                height if height < 36. => TextStyle::Body,
-                _ => TextStyle::Lead,
-            },
+            Size::XLarge => TextStyle::Lead,
+            Size::Touch => TextStyle::TouchBody,
+            _ => TextStyle::Body,
+        }
+    }
+
+    pub fn inset(&self) -> Space {
+        match self.rung() {
+            Size::XSmall | Size::Small => Space::S8,
+            Size::Large | Size::XLarge | Size::Touch => Space::S16,
+            _ => Space::S12,
+        }
+    }
+
+    pub fn field_inset(&self) -> Space {
+        match self.rung() {
+            Size::XSmall | Size::Small => Space::S6,
+            Size::Large => Space::S10,
+            Size::XLarge | Size::Touch => Space::S12,
+            _ => Space::S8,
+        }
+    }
+
+    pub fn icon_px(&self) -> f32 {
+        match self.rung() {
+            Size::XSmall | Size::Small => 12.,
+            Size::Large | Size::XLarge | Size::Touch => 16.,
+            _ => 14.,
+        }
+    }
+
+    pub fn icon_gap(&self) -> Space {
+        match self.rung() {
+            Size::XSmall | Size::Small => Space::S4,
+            Size::XLarge | Size::Touch => Space::S8,
+            _ => Space::S6,
         }
     }
 
     pub fn input_px(&self) -> DefiniteLength {
-        match self {
-            Self::Medium => rems_from_px(8.).into(),
-            Self::Small => rems_from_px(6.).into(),
-            Self::Size(_) => px(8.).into(),
-        }
+        self.field_inset().into()
     }
 
     pub fn input_py(&self) -> DefiniteLength {
-        match self {
-            Size::Medium => rems_from_px(2.).into(),
-            Size::Small => rems_from_px(0.).into(),
-            Size::Size(_) => px(2.).into(),
+        match self.rung() {
+            Size::XSmall | Size::Small => rems_from_px(0.).into(),
+            _ => Space::S2.into(),
         }
     }
 
@@ -364,8 +485,28 @@ pub trait Sizable: Sized {
     fn with_size(mut self, size: impl Into<Size>) -> Self;
 
     #[inline(always)]
+    fn xsmall(self) -> Self {
+        self.with_size(Size::XSmall)
+    }
+
+    #[inline(always)]
     fn small(self) -> Self {
         self.with_size(Size::Small)
+    }
+
+    #[inline(always)]
+    fn large(self) -> Self {
+        self.with_size(Size::Large)
+    }
+
+    #[inline(always)]
+    fn xlarge(self) -> Self {
+        self.with_size(Size::XLarge)
+    }
+
+    #[inline(always)]
+    fn touch(self) -> Self {
+        self.with_size(Size::Touch)
     }
 }
 

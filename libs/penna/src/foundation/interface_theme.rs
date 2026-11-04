@@ -104,14 +104,14 @@ impl Materials {
 }
 
 const ACCENT_COLORS: [(&str, &str, &str); ACCENTS.len()] = [
-    ("blue", "#146ae3", "#76abfd"),
-    ("purple", "#8a4fd7", "#bd97fe"),
-    ("pink", "#c63187", "#f585bd"),
-    ("red", "#d32e33", "#ff877f"),
-    ("orange", "#b35407", "#f88e4f"),
-    ("yellow", "#8d6a07", "#d3a229"),
-    ("green", "#028132", "#59be6d"),
-    ("graphite", "#6f6f6f", "#aaaaaa"),
+    ("blue", "#0a64dd", "#76abfd"),
+    ("purple", "#8549d1", "#bd97fe"),
+    ("pink", "#c02a82", "#f585bd"),
+    ("red", "#cc252d", "#ff877f"),
+    ("orange", "#ad4f00", "#f88e4f"),
+    ("yellow", "#876400", "#d3a229"),
+    ("green", "#007b2c", "#59be6d"),
+    ("graphite", "#6a6a6a", "#aaaaaa"),
 ];
 
 pub fn accent_color(value: &str, mode: ThemeMode) -> Option<Hsla> {
@@ -487,6 +487,7 @@ pub struct Appearance {
     pub zoom: f32,
     pub animations: bool,
     pub animation_speed: f32,
+    pub density: crate::Density,
 }
 
 impl Default for Appearance {
@@ -500,6 +501,7 @@ impl Default for Appearance {
             zoom: 1.0,
             animations: true,
             animation_speed: crate::foundation::motion::DEFAULT_ANIMATION_SPEED,
+            density: crate::Density::Regular,
         }
     }
 }
@@ -517,6 +519,7 @@ pub enum AppearanceChange {
     Zoom(f32),
     Animations(bool),
     AnimationSpeed(f32),
+    Density(crate::Density),
 }
 
 pub type SavedThemes = [(SharedString, InterfaceTheme)];
@@ -598,6 +601,7 @@ impl Appearance {
             AppearanceChange::Zoom(zoom) => self.zoom = zoom,
             AppearanceChange::Animations(animations) => self.animations = animations,
             AppearanceChange::AnimationSpeed(speed) => self.animation_speed = speed,
+            AppearanceChange::Density(density) => self.density = density,
         }
     }
 
@@ -615,6 +619,7 @@ impl Appearance {
         let theme = Theme::global_mut(cx);
         theme.font_family = family;
         theme.set_contrast(self.contrast);
+        self.density.set();
         cx.set_global(crate::UiZoom(self.zoom));
         if let Some(window) = window {
             window.set_zoom(self.zoom);
@@ -698,13 +703,29 @@ mod tests {
                     assert!(ratio >= 3.0, "{id} {mode:?} {name} is {ratio:.2}:1");
                 }
             }
-            let accent = kit.paint(crate::Tone::Primary, crate::Emphasis::Solid);
-            let ink = kit.on_accent.unwrap_or(accent.text);
-            let ratio = contrast(ink, kit.accent);
-            assert!(
-                ratio >= 3.0,
-                "{id} {mode:?} text on the accent is {ratio:.2}:1"
-            );
+            for (name, color) in [
+                ("muted text", kit.foreground.muted()),
+                ("accent", kit.accent),
+                ("success", kit.success),
+                ("warning", kit.warning),
+                ("danger", kit.danger),
+            ] {
+                let ratio = contrast(color, kit.background);
+                assert!(ratio >= 4.5, "{id} {mode:?} {name} as text is {ratio:.2}:1");
+            }
+            for tone in [
+                crate::Tone::Accent,
+                crate::Tone::Success,
+                crate::Tone::Warning,
+                crate::Tone::Danger,
+            ] {
+                let solid = kit.paint(tone, crate::Emphasis::Solid);
+                let ratio = contrast(solid.text, solid.fill);
+                assert!(
+                    ratio >= 4.5,
+                    "{id} {mode:?} text on a solid {tone:?} fill is {ratio:.2}:1"
+                );
+            }
         }
     }
 
@@ -966,7 +987,7 @@ mod tests {
             serde_json::from_str::<Appearance>("{}").unwrap(),
             Appearance::default()
         );
-        let source = r#"{"mode":"dark","theme":"macos","radius":12,"accent":"green","tint":0.25,"tint-hue":145,"contrast":1.5,"ui_font_family":"Inter","zoom":1.25,"animations":false,"animation_speed":0.5,"sidebar":true}"#;
+        let source = r#"{"mode":"dark","theme":"macos","radius":12,"accent":"green","tint":0.25,"tint-hue":145,"contrast":1.5,"ui_font_family":"Inter","zoom":1.25,"animations":false,"animation_speed":0.5,"density":"comfortable","sidebar":true}"#;
         let appearance = serde_json::from_str::<Appearance>(source).unwrap();
         assert_eq!(
             appearance,
@@ -984,6 +1005,7 @@ mod tests {
                 zoom: 1.25,
                 animations: false,
                 animation_speed: 0.5,
+                density: crate::Density::Comfortable,
             }
         );
         let written = serde_json::to_value(&appearance).unwrap();
@@ -1001,6 +1023,7 @@ mod tests {
                 "animation_speed",
                 "animations",
                 "contrast",
+                "density",
                 "mode",
                 "radius",
                 "theme",
@@ -1058,7 +1081,7 @@ mod tests {
     }
 
     #[ala::test]
-    fn applying_an_appearance_shows_its_theme_contrast_zoom_and_reduced_motion(
+    fn applying_an_appearance_shows_its_theme_contrast_zoom_density_and_reduced_motion(
         cx: &mut ala::TestAppContext,
     ) {
         let appearance = Appearance {
@@ -1071,6 +1094,7 @@ mod tests {
             contrast: 1.5,
             zoom: 1.25,
             animations: false,
+            density: crate::Density::Compact,
             ..Appearance::default()
         };
         cx.update(|cx| {
@@ -1084,6 +1108,15 @@ mod tests {
             assert_eq!(theme.font_family, ala::Font::default().family);
             assert_eq!(crate::UiZoom::get(cx), 1.25);
             assert!(cx.reduce_motion());
+            assert_eq!(
+                crate::Size::LADDER.map(|size| size.control_px()),
+                [20.0, 24.0, 24.0, 32.0, 40.0, 44.0]
+            );
+            assert_eq!(
+                [22.0, 28.0].map(|height| crate::Size::Size(px(height)).rung()),
+                [crate::Size::Small, crate::Size::Medium]
+            );
+            crate::Density::Regular.set();
         });
     }
 

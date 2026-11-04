@@ -3,7 +3,7 @@ use ala::{
 };
 use penna::{
     ActiveTheme as _, Chip, ChipLook, Emphasis, IconName, Label, Notice, PaintState,
-    Selectable as _, Sizable as _, Space, Steps, TextStyle, Tone,
+    Selectable as _, Sizable as _, Size, Space, Steps, TextStyle, Tone,
     components::button::{Button, ButtonVariants as _},
     h_flex, v_flex,
 };
@@ -19,7 +19,7 @@ pub const STORY: Story = Story {
         Section {
             id: "chips",
             name: "Chips",
-            summary: "Chip::new(id, label) with a dot or an icon in front and a muted detail after it. Selected tints it; tone and emphasis paint it like a badge.",
+            summary: "Chip::new(id, label) with a dot or an icon in front and a muted detail after it. Selected tints it; tone and emphasis paint it like a badge. A chip is small, 24 tall, unless it takes another size on the ladder.",
             build: |_, cx| stateless(chips, cx),
         },
         Section {
@@ -114,17 +114,35 @@ fn chips(_: &mut Window, _: &mut App) -> AnyElement {
             })),
         )
         .state(
-            "small",
+            "xsmall",
             row()
-                .child(Chip::new("small", "ubuntu").dot(Tone::Success).small())
+                .child(Chip::new("small", "ubuntu").dot(Tone::Success).xsmall())
                 .child(
                     Chip::new("xps", "xps")
                         .dot(Tone::Neutral)
-                        .small()
+                        .xsmall()
                         .detail("offline"),
                 ),
         )
+        .state("medium", sized_chips("medium", Size::Medium))
+        .state("large", sized_chips("large", Size::Large))
+        .state("xlarge", sized_chips("xlarge", Size::XLarge))
+        .state("touch", sized_chips("touch", Size::Touch))
         .into_any_element()
+}
+
+fn sized_chips(name: &str, size: Size) -> impl IntoElement {
+    row()
+        .child(
+            Chip::new(SharedString::from(format!("chip-{name}")), "ubuntu")
+                .dot(Tone::Success)
+                .with_size(size),
+        )
+        .child(
+            Chip::new(SharedString::from(format!("chip-{name}-icon")), "macbook")
+                .icon(IconName::Laptop)
+                .with_size(size),
+        )
 }
 
 const CHIP_LOOKS: [(ChipLook, &str); 6] = [

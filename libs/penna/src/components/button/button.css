@@ -4,12 +4,12 @@
   flex: none;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: var(--penna-space-6);
   box-sizing: border-box;
-  height: 28px;
+  height: var(--penna-control-md);
   min-width: 0;
   margin: 0;
-  padding: 0 12px;
+  padding: 0 var(--penna-space-12);
   font: inherit;
   font-size: var(--penna-text-body-size);
   font-weight: var(--penna-text-body-weight);
@@ -31,34 +31,110 @@
   outline: none;
 }
 
+.penna-button[data-size="xsmall"] {
+  height: var(--penna-control-xs);
+  padding: 0 var(--penna-space-8);
+  gap: var(--penna-space-4);
+  font-size: var(--penna-text-caption-size);
+  font-weight: var(--penna-text-caption-weight);
+  line-height: var(--penna-text-caption-line);
+  --penna-icon-size: 12px;
+}
+
 .penna-button[data-size="small"] {
-  height: 24px;
-  padding: 0 8px;
-  gap: 4px;
+  height: var(--penna-control-sm);
+  padding: 0 var(--penna-space-8);
+  gap: var(--penna-space-4);
   font-size: var(--penna-text-small-size);
   line-height: var(--penna-text-small-line);
   --penna-icon-size: 12px;
 }
 
+.penna-button[data-size="large"] {
+  height: var(--penna-control-lg);
+  padding: 0 var(--penna-space-16);
+  --penna-icon-size: 16px;
+}
+
+.penna-button[data-size="xlarge"] {
+  height: var(--penna-control-xl);
+  padding: 0 var(--penna-space-16);
+  gap: var(--penna-space-8);
+  font-size: var(--penna-text-lead-size);
+  font-weight: var(--penna-text-lead-weight);
+  line-height: var(--penna-text-lead-line);
+  --penna-icon-size: 16px;
+}
+
+.penna-button[data-size="touch"] {
+  height: var(--penna-control-touch);
+  padding: 0 var(--penna-space-16);
+  gap: var(--penna-space-8);
+  font-size: var(--penna-text-touch-body-size);
+  font-weight: var(--penna-text-touch-body-weight);
+  line-height: var(--penna-text-touch-body-line);
+  --penna-icon-size: 16px;
+}
+
 .penna-button[data-compact] {
-  min-width: 28px;
-  padding: 0 6px;
+  min-width: var(--penna-control-md);
+  padding: 0 var(--penna-space-6);
+}
+
+.penna-button[data-size="xsmall"][data-compact] {
+  min-width: var(--penna-control-xs);
+  padding: 0 var(--penna-space-4);
 }
 
 .penna-button[data-size="small"][data-compact] {
-  min-width: 24px;
-  padding: 0 4px;
+  min-width: var(--penna-control-sm);
+  padding: 0 var(--penna-space-4);
+}
+
+.penna-button[data-size="large"][data-compact] {
+  min-width: var(--penna-control-lg);
+  padding: 0 var(--penna-space-6);
+}
+
+.penna-button[data-size="xlarge"][data-compact] {
+  min-width: var(--penna-control-xl);
+  padding: 0 var(--penna-space-8);
+}
+
+.penna-button[data-size="touch"][data-compact] {
+  min-width: var(--penna-control-touch);
+  padding: 0 var(--penna-space-8);
 }
 
 .penna-button[data-shape="icon"] {
-  width: 28px;
-  height: 28px;
+  width: var(--penna-control-md);
+  height: var(--penna-control-md);
   padding: 0;
 }
 
+.penna-button[data-shape="icon"][data-size="xsmall"] {
+  width: var(--penna-control-xs);
+  height: var(--penna-control-xs);
+}
+
 .penna-button[data-shape="icon"][data-size="small"] {
-  width: 24px;
-  height: 24px;
+  width: var(--penna-control-sm);
+  height: var(--penna-control-sm);
+}
+
+.penna-button[data-shape="icon"][data-size="large"] {
+  width: var(--penna-control-lg);
+  height: var(--penna-control-lg);
+}
+
+.penna-button[data-shape="icon"][data-size="xlarge"] {
+  width: var(--penna-control-xl);
+  height: var(--penna-control-xl);
+}
+
+.penna-button[data-shape="icon"][data-size="touch"] {
+  width: var(--penna-control-touch);
+  height: var(--penna-control-touch);
 }
 
 .penna-button[data-shape="compact-icon"] {

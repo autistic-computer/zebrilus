@@ -19,6 +19,14 @@ body {
   margin: 0;
 }
 
+:root[data-density="compact"] {
+  --penna-control-md: 24px;
+}
+
+:root[data-density="comfortable"] {
+  --penna-control-md: 32px;
+}
+
 [data-penna] {
   background:
     linear-gradient(var(--penna-mark), var(--penna-mark)) 0 50% / 3px 16px no-repeat,
@@ -121,9 +129,9 @@ button[data-penna] {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  height: 28px;
-  padding: 0 12px;
+  gap: var(--penna-space-6);
+  height: var(--penna-control-md);
+  padding: 0 var(--penna-space-12);
   font-size: var(--penna-text-body-size);
   font-weight: var(--penna-text-body-weight);
   line-height: var(--penna-text-body-line);
@@ -131,15 +139,51 @@ button[data-penna] {
   --penna-icon-size: 14px;
 }
 
+:is([data-penna="button"], [data-penna="button.quiet"], [data-penna="button.outline"])[data-size="xsmall"] {
+  gap: var(--penna-space-4);
+  height: var(--penna-control-xs);
+  padding: 0 var(--penna-space-8);
+  font-size: var(--penna-text-caption-size);
+  font-weight: var(--penna-text-caption-weight);
+  line-height: var(--penna-text-caption-line);
+  --penna-icon-size: 12px;
+}
+
 [data-penna="button"][data-size="small"],
 [data-penna="button.quiet"][data-size="small"],
 [data-penna="button.outline"][data-size="small"] {
-  gap: 4px;
-  height: 24px;
-  padding: 0 8px;
+  gap: var(--penna-space-4);
+  height: var(--penna-control-sm);
+  padding: 0 var(--penna-space-8);
   font-size: var(--penna-text-small-size);
   line-height: var(--penna-text-small-line);
   --penna-icon-size: 12px;
+}
+
+:is([data-penna="button"], [data-penna="button.quiet"], [data-penna="button.outline"])[data-size="large"] {
+  height: var(--penna-control-lg);
+  padding: 0 var(--penna-space-16);
+  --penna-icon-size: 16px;
+}
+
+:is([data-penna="button"], [data-penna="button.quiet"], [data-penna="button.outline"])[data-size="xlarge"] {
+  gap: var(--penna-space-8);
+  height: var(--penna-control-xl);
+  padding: 0 var(--penna-space-16);
+  font-size: var(--penna-text-lead-size);
+  font-weight: var(--penna-text-lead-weight);
+  line-height: var(--penna-text-lead-line);
+  --penna-icon-size: 16px;
+}
+
+:is([data-penna="button"], [data-penna="button.quiet"], [data-penna="button.outline"])[data-size="touch"] {
+  gap: var(--penna-space-8);
+  height: var(--penna-control-touch);
+  padding: 0 var(--penna-space-16);
+  font-size: var(--penna-text-touch-body-size);
+  font-weight: var(--penna-text-touch-body-weight);
+  line-height: var(--penna-text-touch-body-line);
+  --penna-icon-size: 16px;
 }
 
 [data-penna="icon-button"],
@@ -148,35 +192,91 @@ button[data-penna] {
   display: inline-grid;
   place-items: center;
   flex: none;
-  width: 28px;
-  height: 28px;
+  width: var(--penna-control-md);
+  height: var(--penna-control-md);
   padding: 0;
   --penna-icon-size: 14px;
 }
 
-:is([data-penna="icon-button"], [data-penna="icon-button.flat"])[data-size="small"] {
-  width: 24px;
-  height: 24px;
+:is([data-penna="icon-button"], [data-penna="icon-button.flat"])[data-size="xsmall"] {
+  width: var(--penna-control-xs);
+  height: var(--penna-control-xs);
   --penna-icon-size: 12px;
+}
+
+:is([data-penna="icon-button"], [data-penna="icon-button.flat"])[data-size="small"] {
+  width: var(--penna-control-sm);
+  height: var(--penna-control-sm);
+  --penna-icon-size: 12px;
+}
+
+:is([data-penna="icon-button"], [data-penna="icon-button.flat"])[data-size="large"] {
+  width: var(--penna-control-lg);
+  height: var(--penna-control-lg);
+  --penna-icon-size: 16px;
+}
+
+:is([data-penna="icon-button"], [data-penna="icon-button.flat"])[data-size="xlarge"] {
+  width: var(--penna-control-xl);
+  height: var(--penna-control-xl);
+  --penna-icon-size: 16px;
+}
+
+:is([data-penna="icon-button"], [data-penna="icon-button.flat"])[data-size="touch"] {
+  width: var(--penna-control-touch);
+  height: var(--penna-control-touch);
+  --penna-icon-size: 16px;
 }
 
 :is([data-penna="field"], [data-penna="field.outline"], [data-penna="field.multiline"], [data-penna="field.multiline.outline"]) {
   display: flex;
   align-items: center;
   gap: 6px;
-  height: 28px;
+  height: var(--penna-control-md);
   padding: 2px 8px;
   font-size: var(--penna-text-body-size);
   font-weight: var(--penna-text-body-weight);
   line-height: var(--penna-text-body-line);
 }
 
+:is([data-penna="field"], [data-penna="field.outline"])[data-size="xsmall"] {
+  gap: var(--penna-space-4);
+  height: var(--penna-control-xs);
+  padding: 0 var(--penna-space-6);
+  font-size: var(--penna-text-caption-size);
+  font-weight: var(--penna-text-caption-weight);
+  line-height: var(--penna-text-caption-line);
+}
+
 :is([data-penna="field"], [data-penna="field.outline"])[data-size="small"] {
   gap: 4px;
-  height: 24px;
+  height: var(--penna-control-sm);
   padding: 0 6px;
   font-size: var(--penna-text-small-size);
   line-height: var(--penna-text-small-line);
+}
+
+:is([data-penna="field"], [data-penna="field.outline"])[data-size="large"] {
+  height: var(--penna-control-lg);
+  padding: var(--penna-space-2) var(--penna-space-10);
+}
+
+:is([data-penna="field"], [data-penna="field.outline"])[data-size="xlarge"] {
+  gap: var(--penna-space-8);
+  height: var(--penna-control-xl);
+  padding: var(--penna-space-2) var(--penna-space-12);
+  font-size: var(--penna-text-lead-size);
+  font-weight: var(--penna-text-lead-weight);
+  line-height: var(--penna-text-lead-line);
+}
+
+:is([data-penna="field"], [data-penna="field.outline"])[data-size="touch"] {
+  gap: var(--penna-space-8);
+  height: var(--penna-control-touch);
+  padding: var(--penna-space-2) var(--penna-space-12);
+  font-size: var(--penna-text-touch-body-size);
+  font-weight: var(--penna-text-touch-body-weight);
+  line-height: var(--penna-text-touch-body-line);
 }
 
 :is([data-penna="field.multiline"], [data-penna="field.multiline.outline"]) {
@@ -213,7 +313,7 @@ button[data-penna] {
   display: flex;
   align-items: center;
   gap: 8px;
-  height: 26px;
+  height: var(--penna-control-md);
   padding: 0 var(--penna-space-8);
   font-size: var(--penna-text-small-size);
   line-height: var(--penna-text-small-line);
@@ -278,7 +378,7 @@ button[data-penna] {
   --penna-icon-size: 12px;
 }
 
-:is([data-penna="badge"], [data-penna="badge.outline"])[data-size="small"] {
+:is([data-penna="badge"], [data-penna="badge.outline"]):is([data-size="xsmall"], [data-size="small"]) {
   height: 16px;
   padding: 0 var(--penna-space-4);
   font-size: var(--penna-text-micro-size);
@@ -333,7 +433,7 @@ button[data-penna] {
   display: flex;
   align-items: center;
   width: 100%;
-  height: 28px;
+  height: var(--penna-control-md);
   padding: 0 8px;
   outline: none;
   touch-action: none;
