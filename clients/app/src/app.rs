@@ -3294,7 +3294,7 @@ fn unsupported_pane(
             message.bg(cx.theme().background.opaque())
         })
         .child(Icon::new(icon).size(px(26.0)))
-        .child(title.to_owned())
+        .child(Label::new(TextStyle::Heading, title.to_owned()))
         .child(
             Label::new(TextStyle::Small, reason.to_owned())
                 .muted()

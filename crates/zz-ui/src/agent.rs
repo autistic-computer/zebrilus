@@ -2045,10 +2045,12 @@ const TRACE_COUNT_GAP: f32 = TRACE_COUNT_BADGE_OVERHANG + 6.0;
 
 #[allow(
     clippy::disallowed_methods,
-    reason = "the transcript body is what the user and the agent wrote: it keeps the transcript's text size and the line spacing its markdown inherits"
+    reason = "the transcript body is what the user and the agent wrote: it keeps the transcript's own text size on a line relative to it, for its markdown to inherit"
 )]
 fn transcript_text<E: Styled>(element: E, size: f32) -> E {
-    element.text_size(crate::rems_from_px(size))
+    element
+        .text_size(crate::rems_from_px(size))
+        .line_height(ala::phi())
 }
 
 fn transcript_ground(cx: &App) -> Ground {
