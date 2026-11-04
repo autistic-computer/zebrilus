@@ -92,12 +92,12 @@ defines roles: zz has none of its own, and no widget takes a role from outside p
    directory, session, file and history picker rows all draw that way. `Row` draws a row in a
    `RowLook` with its hover and press, and `list_row` builds a menu row of a given height.
    Directory and session rows share
-   26px heights and 12px labels. Custom menu content receives the highlight state so
+   28px heights and 12px labels. Custom menu content receives the highlight state so
    descriptions, counts, and timestamps brighten to the normal foreground.
    Their requested radius reaches the renderer without adaptive compression; the cap keeps
    them short of full pills. Menu containers keep the window's adaptive squircle shape. Open submenu parent rows use a dim neutral highlight; leaf selections keep the
    accent. Selected shortcut labels and icons brighten to the full foreground. The command palette matches dropdown typography with 12px medium labels, 10px descriptions, 16px line heights,
-   26px selectable rows, and 2px gaps. It is at most 560px wide, with 8px list gutters,
+   28px selectable rows, and 2px gaps. It is at most 560px wide, with 8px list gutters,
    a 40px bare Input, 12px search text and inline Badge pills, and a 10px footer. Matched characters
    use semibold foreground; breadcrumb prefixes stay muted until selected. Status dots are the
    shared 6px `navigation::status_dot`: a host's is success when online, warning while waiting,
@@ -227,7 +227,7 @@ Menus and select dropdowns draw as `popover` (a floating group), the command pal
 Default theme an opaque `theme.surface(Elevation::Popover)` fill or the theme's glass, the
 outline, the theme radius and the float shadow in the theme's `shadow_color`. Tooltips are the
 `tooltip` kind (glass with the contact shadow) and toasts the `toast` kind. Menus use
-`Theme.row_inset` gutters (4px by default, through `list_inset`), 26px rows, 12px text, and
+`Theme.row_inset` gutters (4px by default, through `list_inset`), 28px rows, 12px text, and
 `rule.list` separators inset from the surface edge. At a 0 row inset (`Theme::inset_rows` is
 false) the gutters, the gaps between rows, and the separator inset go away, and rows become
 full-width bands with square corners; the workspace tree and command palette follow the same rule.
@@ -259,17 +259,20 @@ radius, so the configured corner setting reaches both the surface and its conten
 
 The browser action menu puts the current profile and page zoom together. Its zoom stepper reads
 live page zoom from the browser view, stays open after each click, and preserves the existing
-zoom steps and limits. Its row stays at least 26px high to fit the embedded controls. With that row selected, Left/Right changes zoom and Enter resets it;
+zoom steps and limits. Its row is a menu row like the others, 28px, which fits the embedded controls. With that row selected, Left/Right changes zoom and Enter resets it;
 Escape dismisses the menu. Other menu actions retain their existing dismissal behavior.
 `PopupMenuItem::stepper` owns those interactions so nested buttons cannot trigger a parent
 menu dismissal.
 
-Controls come in two sizes, set with `Sizable`: Medium, the default, is 28px tall with 13px text
-(the macOS control font, and the comfortable click target in Apple's guidelines); `.small()` is
-24px with 12px text, for toolbars and dense rows. Buttons pad their label by 12px at Medium and
-8px at Small; fields by 8px and 6px. Anything else takes an explicit `Size::Size(px)` or a
-`.size(...)` override. `Size::control_h` is the one height table, and the touch hit slop derives
-from it. Icons keep the ambient font size unless sized: `.small()` is 12px, `Icon::medium()` 14px.
+Controls sit on penna's size ladder, set with `Sizable`: `.xsmall()` 20px, `.small()` 24px,
+Medium (the default) 28px with 13px text, `.large()` 32px, `.xlarge()` 40px and `.touch()` 44px;
+each rung carries its text, inset, icon size and icon gap (penna's
+`knowledge/designs/foundations.md`). `Size::Size(px)` keeps its height and takes the nearest rung
+for everything else. `chrome-density` moves only Medium (24, 28 or 32px), so buttons, fields and
+list, menu and picker rows change together while the other rungs stay. `Size::control_h` is the
+one height table, and the touch hit slop derives from it. Icons keep the ambient font size unless
+sized: `.small()` is 12px, `Icon::medium()` 14px. Chips default to Small (24px); a caption-sized
+chip, like the editor's vim mode, is `.xsmall()`. Tabs default to Large (32px) unless `.h()` is set.
 tmux `display-menu` draws as one of these menus (`zz_ui::command::floating::display_menu`): the
 title is the small muted label row with its `#[align]` honoured, key annotations are plain text on
 the right, and disabled rows never highlight. zz's default menu styles are theme slots and leave the
@@ -444,6 +447,13 @@ rises. Those factors clamp to 0–1. `on()`, `outline()`, `subtle()`, `floating(
 and color math keep their existing values; literals such as `foreground.opacity(0.1)` stay fixed.
 The Rust derivations read a thread-local scalar set by `Theme::set_contrast`. The native macOS
 client keeps the default derivation strengths.
+
+`chrome-density` is `compact`, `regular` (the default) or `comfortable`. Loading the config sets
+penna's `Density` from it (`apply_density`), so Medium controls and list, menu and picker rows are
+24, 28 or 32px while the other rungs, text and gaps stay. The Interface page shows it as Density
+under UI zoom. The thin clients keep it in their `Appearance`, whose `apply` sets it. The HTML
+client shows the same row, sets `data-density` on the page from it, and reads its menu row height
+from `--penna-control-md`.
 
 Icon-only chrome controls use `Button::compact_icon`: a 24px hover surface around a Small 14px
 glyph with a 0.5px downward optical adjustment. The titlebar, sidebar row actions, browser pane,

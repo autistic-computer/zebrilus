@@ -86,7 +86,6 @@ objc2-app-kit = { workspace = true, features = ["NSGraphics", "NSGraphicsContext
 objc2-core-foundation = { workspace = true, features = ["CFCGTypes"] }
 objc2-core-graphics = { workspace = true, features = ["CGAffineTransform", "CGPath"] }
 objc2-foundation = { workspace = true, features = ["NSBundle", "NSData", "NSPathUtilities", "NSString"] }
-objc2-io-surface.workspace = true
 objc2-quartz-core = { workspace = true, features = ["CALayer", "CAShapeLayer", "CATransaction", "objc2-core-foundation", "objc2-core-graphics"] }
 raw-window-handle.workspace = true
 

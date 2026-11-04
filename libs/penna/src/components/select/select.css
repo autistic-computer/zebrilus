@@ -13,7 +13,7 @@
   justify-content: space-between;
   gap: 6px;
   box-sizing: border-box;
-  height: 28px;
+  height: var(--penna-control-md);
   min-width: 0;
   padding: 0 8px;
   border-width: max(1px, var(--penna-bw));
@@ -25,11 +25,45 @@
   --penna-icon-size: 12px;
 }
 
+.penna-select[data-size="xsmall"] > .penna-select-trigger {
+  height: var(--penna-control-xs);
+  padding: 0 var(--penna-space-6);
+  font-size: var(--penna-text-caption-size);
+  font-weight: var(--penna-text-caption-weight);
+  line-height: var(--penna-text-caption-line);
+}
+
 .penna-select[data-size="small"] > .penna-select-trigger {
-  height: 24px;
+  height: var(--penna-control-sm);
   padding: 0 6px;
   font-size: var(--penna-text-small-size);
   line-height: var(--penna-text-small-line);
+}
+
+.penna-select[data-size="large"] > .penna-select-trigger {
+  height: var(--penna-control-lg);
+  padding: 0 var(--penna-space-10);
+  --penna-icon-size: 14px;
+}
+
+.penna-select[data-size="xlarge"] > .penna-select-trigger {
+  gap: var(--penna-space-8);
+  height: var(--penna-control-xl);
+  padding: 0 var(--penna-space-12);
+  font-size: var(--penna-text-lead-size);
+  font-weight: var(--penna-text-lead-weight);
+  line-height: var(--penna-text-lead-line);
+  --penna-icon-size: 16px;
+}
+
+.penna-select[data-size="touch"] > .penna-select-trigger {
+  gap: var(--penna-space-8);
+  height: var(--penna-control-touch);
+  padding: 0 var(--penna-space-12);
+  font-size: var(--penna-text-touch-body-size);
+  font-weight: var(--penna-text-touch-body-weight);
+  line-height: var(--penna-text-touch-body-line);
+  --penna-icon-size: 16px;
 }
 
 .penna-select[data-open] > .penna-select-trigger {

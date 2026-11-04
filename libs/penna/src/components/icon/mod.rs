@@ -8,7 +8,7 @@ use ala::{
     Svg, Transformation, Window, font, prelude::FluentBuilder as _, svg,
 };
 
-use crate::{Sizable, Size, Theme};
+use crate::{Sizable, Size, Theme, rems_from_px};
 
 #[derive(Clone, Default, IntoElement)]
 pub struct Icon {
@@ -96,8 +96,7 @@ impl RenderOnce for Icon {
             .when(!styled_size, |this| this.size(ambient))
             .when_some(self.size, |this, size| match size {
                 Size::Size(size) => this.size(size),
-                Size::Small => this.size_3(),
-                Size::Medium => this.size_3p5(),
+                size => this.size(rems_from_px(size.icon_px())),
             })
             .when_some(self.transformation, Svg::with_transformation)
             .path(path)

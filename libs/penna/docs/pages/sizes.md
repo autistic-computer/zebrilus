@@ -1,6 +1,6 @@
 # Sizes
 
-Controls come in two sizes. Medium is the default, for settings, dialogs and forms. Small is for dense places: toolbars, lists and anything that repeats down the screen.
+Controls come in a ladder of sizes, each one a step taller than the last, with its own text, padding and icon. Medium is the default, for settings, dialogs and forms. Small and extra small are for dense places: toolbars, lists, tags and anything that repeats down the screen. Large and extra large give a main action room on a sparse screen, and touch is sized for a finger.
 
 ```figure story=buttons/sizes
 ```
@@ -36,7 +36,7 @@ Everything in a row shares one size, so tops, text and edges line up with no nud
 
 ## Fields
 
-Fields take the same two sizes, small on the left and medium on the right, so a field always lines up with the buttons beside it.
+Fields take the same sizes, so a field always lines up with the buttons beside it.
 
 ```figure story=inputs/field-sizes
 ```

@@ -117,8 +117,8 @@ impl Styled for Badge {
 impl RenderOnce for Badge {
     fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
         let (height, text, padding) = match self.size {
-            Size::Small => (16.0, TextStyle::Micro, Space::S4),
-            Size::Medium | Size::Size(_) => (18.0, TextStyle::Caption, Space::S6),
+            Size::XSmall | Size::Small => (16.0, TextStyle::Micro, Space::S4),
+            _ => (18.0, TextStyle::Caption, Space::S6),
         };
         let layer = self.surface_layer(cx.theme());
         h_flex()

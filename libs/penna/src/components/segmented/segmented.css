@@ -3,7 +3,7 @@
   flex: none;
   align-items: center;
   box-sizing: border-box;
-  height: 28px;
+  height: var(--penna-control-md);
   padding: var(--penna-space-2);
   border-width: max(1px, var(--penna-bw));
 }
@@ -39,7 +39,7 @@
   left: var(--pill-x, 0);
   box-sizing: border-box;
   width: var(--pill-w, 0);
-  height: calc(28px - 2 * var(--penna-space-2) - 2 * max(1px, var(--penna-bw)));
+  height: calc(var(--penna-control-md) - 2 * var(--penna-space-2) - 2 * max(1px, var(--penna-bw)));
   padding: 0;
   border: var(--penna-pill-bw) solid var(--penna-pill-edge);
   background: var(--penna-pill-fill);
@@ -60,7 +60,7 @@
   align-items: center;
   justify-content: center;
   box-sizing: border-box;
-  height: calc(28px - 2 * var(--penna-space-2) - 2 * max(1px, var(--penna-bw)));
+  height: calc(var(--penna-control-md) - 2 * var(--penna-space-2) - 2 * max(1px, var(--penna-bw)));
   margin: 0;
   padding: 0 var(--penna-space-10);
   border: 0;

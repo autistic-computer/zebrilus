@@ -1,7 +1,7 @@
-use ala::{App, ElementId, IntoElement, RenderOnce, Role, Window};
+use ala::{App, ElementId, IntoElement, RenderOnce, Role, Styled as _, Window};
 
 use crate::{
-    Ground, PaintState, Surface, SurfaceRole,
+    Ground, PaintState, Sizable, Size, Surface, SurfaceRole,
     components::plate::{Plate, plate_element},
     foundation::roles,
 };
@@ -34,6 +34,7 @@ impl From<TabLook> for Surface {
 #[derive(IntoElement)]
 pub struct Tab {
     plate: Plate,
+    size: Size,
 }
 
 impl Tab {
@@ -41,7 +42,10 @@ impl Tab {
     pub fn new(id: impl Into<ElementId>, look: TabLook) -> Self {
         let mut plate = Plate::new(id, look.role()).announce(Role::Tab);
         plate.interactive = true;
-        Self { plate }
+        Self {
+            plate,
+            size: Size::Large,
+        }
     }
 
     #[must_use]
@@ -63,10 +67,19 @@ impl Tab {
     }
 }
 
+impl Sizable for Tab {
+    fn with_size(mut self, size: impl Into<Size>) -> Self {
+        self.size = size.into();
+        self
+    }
+}
+
 plate_element!(Tab);
 
 impl RenderOnce for Tab {
     fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
-        self.plate.paint(cx)
+        let Self { mut plate, size } = self;
+        plate.base = plate.base.h(size.control_h());
+        plate.paint(cx)
     }
 }

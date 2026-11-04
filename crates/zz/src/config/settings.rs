@@ -1999,6 +1999,7 @@ fn appearance(cx: &App) -> Appearance {
         zoom: penna::UiZoom::get(cx),
         animations: resolved.animations.value,
         animation_speed: resolved.animation_speed.value,
+        density: interface_theme::kit_density(resolved.chrome_density.value),
     }
 }
 
@@ -2068,6 +2069,13 @@ fn appearance_changed(change: AppearanceChange, cx: &mut App) {
         AppearanceChange::AnimationSpeed(speed) => {
             let key = ConfigKey::AnimationSpeed;
             (key, set_config_key(key, &format!("{speed:.2}")))
+        }
+        AppearanceChange::Density(density) => {
+            let key = ConfigKey::ChromeDensity;
+            (
+                key,
+                set_config_key(key, interface_theme::density_setting(density).as_str()),
+            )
         }
     };
     written(key, result, cx);
@@ -2194,6 +2202,7 @@ fn refresh_settings_preview(key: ConfigKey, cx: &mut App) {
                 | ConfigKey::ChromeAccent
                 | ConfigKey::ChromeTint
                 | ConfigKey::ChromeTintHue
+                | ConfigKey::ChromeDensity
                 | ConfigKey::WindowBackgroundOpacity
                 | ConfigKey::PaletteWindowLayout
                 | ConfigKey::PaletteShowKeys
@@ -2331,7 +2340,8 @@ fn numeric_config_value(config: &AppConfig, key: ConfigKey) -> ConfigValue<f32> 
         | ConfigKey::InterfaceTheme
         | ConfigKey::UiFontFamily
         | ConfigKey::AppIcon
-        | ConfigKey::ChromeAccent => {
+        | ConfigKey::ChromeAccent
+        | ConfigKey::ChromeDensity => {
             unreachable!("only numeric settings use numeric inputs")
         }
     }

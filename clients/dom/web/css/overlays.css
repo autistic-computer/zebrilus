@@ -71,7 +71,7 @@
   flex: none;
   justify-content: space-between;
   gap: 12px;
-  height: var(--row-height, 26px);
+  height: var(--row-height, var(--penna-control-md, 28px));
   padding: 0 8px;
   color: inherit;
 }

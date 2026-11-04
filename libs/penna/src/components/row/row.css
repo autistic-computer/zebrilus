@@ -60,7 +60,7 @@
 .penna-item.penna-list-item[data-penna] {
   margin: 0;
   outline: none;
-  --penna-list-row: 28px;
+  --penna-list-row: var(--penna-control-md);
 }
 
 .penna-item[data-tall] {

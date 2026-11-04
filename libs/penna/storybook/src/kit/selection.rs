@@ -3,7 +3,7 @@ use ala::{
     SharedString, Styled as _, Subscription, Window, div, px,
 };
 use penna::{
-    Disableable as _, IndexPath, Sizable as _,
+    Disableable as _, IndexPath, Sizable as _, Size,
     components::segmented::SegmentedControl,
     components::select::{Select, SelectState},
     components::slider::DiscreteSlider,
@@ -41,7 +41,7 @@ pub const STORY: Story = Story {
         Section {
             id: "switch",
             name: "Switch",
-            summary: "Off, on, compact and disabled. A press flips the enabled ones; the thumb slides between states and holds still with motion off.",
+            summary: "Off, on, small and disabled, then every other size on the ladder. A press flips the enabled ones; the thumb slides between states and holds still with motion off.",
             build: |window, cx| Switches::view(window, cx),
         },
         Section {
@@ -74,7 +74,7 @@ struct Selects {
     placeholder: Entity<SelectState<Vec<&'static str>>>,
     picked: Entity<SelectState<Vec<&'static str>>>,
     disabled: Entity<SelectState<Vec<&'static str>>>,
-    small: Entity<SelectState<Vec<&'static str>>>,
+    sizes: Vec<(&'static str, Size, Entity<SelectState<Vec<&'static str>>>)>,
     wide: Entity<SelectState<Vec<&'static str>>>,
     empty: Entity<SelectState<Vec<&'static str>>>,
 }
@@ -85,7 +85,16 @@ impl Selects {
             placeholder: select(LANGUAGES.to_vec(), None, window, cx),
             picked: select(LANGUAGES.to_vec(), Some(0), window, cx),
             disabled: select(LANGUAGES.to_vec(), Some(2), window, cx),
-            small: select(LANGUAGES.to_vec(), Some(1), window, cx),
+            sizes: [
+                ("xsmall", Size::XSmall),
+                ("small", Size::Small),
+                ("large", Size::Large),
+                ("xlarge", Size::XLarge),
+                ("touch", Size::Touch),
+            ]
+            .into_iter()
+            .map(|(name, size)| (name, size, select(LANGUAGES.to_vec(), Some(1), window, cx)))
+            .collect(),
             wide: select(LANGUAGES.to_vec(), Some(4), window, cx),
             empty: select(Vec::new(), None, window, cx),
         }
@@ -94,15 +103,19 @@ impl Selects {
 
 impl Render for Selects {
     fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-        states()
+        let states = states()
             .columns(3)
             .state(
                 "placeholder",
                 Select::new(&self.placeholder).placeholder("Language"),
             )
             .state("picked", Select::new(&self.picked))
-            .state("disabled", Select::new(&self.disabled).disabled(true))
-            .state("small", Select::new(&self.small).small())
+            .state("disabled", Select::new(&self.disabled).disabled(true));
+        self.sizes
+            .iter()
+            .fold(states, |states, (name, size, state)| {
+                states.state(*name, Select::new(state).with_size(*size))
+            })
             .state("fixed width", Select::new(&self.wide).w(px(200.0)))
             .state(
                 "empty delegate",
@@ -170,13 +183,13 @@ impl Render for Segmented {
 }
 
 struct Switches {
-    on: [bool; 4],
+    on: [bool; 12],
 }
 
 impl Switches {
     fn view(_: &mut Window, cx: &mut App) -> AnyView {
         cx.new(|_| Self {
-            on: [false, true, false, true],
+            on: std::array::from_fn(|at| at % 2 == 1),
         })
         .into()
     }
@@ -215,6 +228,30 @@ impl Render for Switches {
                             .checked(true)
                             .disabled(true),
                     ),
+            )
+            .state(
+                "xsmall",
+                row()
+                    .child(switch("switch-xsmall-off", 4).xsmall())
+                    .child(switch("switch-xsmall-on", 5).xsmall()),
+            )
+            .state(
+                "large",
+                row()
+                    .child(switch("switch-large-off", 6).large())
+                    .child(switch("switch-large-on", 7).large()),
+            )
+            .state(
+                "xlarge",
+                row()
+                    .child(switch("switch-xlarge-off", 8).xlarge())
+                    .child(switch("switch-xlarge-on", 9).xlarge()),
+            )
+            .state(
+                "touch",
+                row()
+                    .child(switch("switch-touch-off", 10).touch())
+                    .child(switch("switch-touch-on", 11).touch()),
             )
     }
 }

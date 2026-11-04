@@ -5,7 +5,7 @@ use ala::{
 
 use crate::{
     ActiveTheme as _, Colorize as _, Emphasis, Fill, Ground, Icon, Label, PaintState, Selectable,
-    Sizable, Size, Space, StyledExt as _, Surface, SurfaceRole, TextStyle, Tone,
+    Sizable, Size, Space, StyledExt as _, Surface, SurfaceRole, Tone,
     components::plate::{Plate, plate_element},
     foundation::roles,
     rems_from_px,
@@ -79,7 +79,7 @@ impl Chip {
             tone: Tone::Neutral,
             emphasis: Emphasis::Soft,
             ring: None,
-            size: Size::Medium,
+            size: Size::Small,
             children: Vec::new(),
         }
     }
@@ -145,9 +145,10 @@ impl Chip {
     }
 
     pub fn width(&self, window: &mut Window, cx: &App) -> Pixels {
-        let (_, padding, text) = metrics(self.size);
+        let (padding, gap, icon) = metrics(self.size);
+        let text = self.size.control_text();
         let rem = window.rem_size();
-        let gap = Space::S6.rems().to_pixels(rem);
+        let gap = gap.rems().to_pixels(rem);
         let label = self.label.clone().unwrap_or_default();
         let mut font = ala::font(cx.theme().font_family.clone());
         font.weight = text.strong_weight();
@@ -167,7 +168,7 @@ impl Chip {
         let lead = if self.dot.is_some() {
             rems_from_px(DOT).to_pixels(rem) + gap
         } else if self.icon.is_some() {
-            px(text.design_px() + 1.0) + gap
+            px(icon) + gap
         } else {
             px(0.0)
         };
@@ -240,7 +241,8 @@ impl RenderOnce for Chip {
         let theme = cx.theme();
         let ground = theme.ground_at(surface, plate.state);
         let accent = theme.accent.opaque();
-        let (height, padding, text) = metrics(size);
+        let (padding, gap, icon_px) = metrics(size);
+        let text = size.control_text();
         plate.surface = surface;
         plate.role = plate.role.or(Some(if plate.interactive {
             Role::Button
@@ -251,15 +253,12 @@ impl RenderOnce for Chip {
             .base
             .h_flex()
             .min_w_0()
-            .h(rems_from_px(height))
+            .h(size.control_h())
             .px(padding)
-            .gap(Space::S6);
+            .gap(gap);
         plate.children = [
             lead_dot.map(|tone| dot(tone, ground, cx).into_any_element()),
-            icon.map(|icon| {
-                icon.with_size(px(text.design_px() + 1.0))
-                    .into_any_element()
-            }),
+            icon.map(|icon| icon.with_size(px(icon_px)).into_any_element()),
             label.map(|label| {
                 Label::new(text, label)
                     .strong()
@@ -292,10 +291,11 @@ impl RenderOnce for Chip {
     }
 }
 
-const fn metrics(size: Size) -> (f32, Space, TextStyle) {
-    match size {
-        Size::Small => (20.0, Space::S8, TextStyle::Caption),
-        Size::Medium | Size::Size(_) => (24.0, Space::S10, TextStyle::Small),
+fn metrics(size: Size) -> (Space, Space, f32) {
+    match size.rung() {
+        Size::XSmall => (Space::S8, Space::S6, 12.0),
+        Size::Small => (Space::S10, Space::S6, 13.0),
+        rung => (rung.inset(), rung.icon_gap(), rung.icon_px()),
     }
 }
 

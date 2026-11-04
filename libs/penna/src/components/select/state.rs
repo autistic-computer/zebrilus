@@ -14,7 +14,7 @@ use crate::{
         bottom_sheet, close_sheet, floating_sheet, sheet_close, sheet_inset, sheet_option,
     },
     components::input::{
-        Input, InputEvent, InputState, field_chrome_on, field_paint_on, field_text,
+        Input, InputEvent, InputState, field_chrome_on, field_paint_on, field_text, trailing_size,
     },
     components::menu::{PopupMenu, PopupMenuItem},
     h_flex,
@@ -319,7 +319,7 @@ impl<D: SelectDelegate> SelectState<D> {
                     .flex_none()
                     .h(size.control_h())
                     .px(size.input_px())
-                    .gap(Space::S6)
+                    .gap(size.icon_gap().max(Space::S6))
                     .justify_between()
                     .when(!disabled, ala::Styled::cursor_pointer),
                 size,
@@ -340,7 +340,7 @@ impl<D: SelectDelegate> SelectState<D> {
         )
         .child(
             Icon::new(IconName::ChevronDown)
-                .small()
+                .with_size(trailing_size(size))
                 .text_color(paint.muted_at(state)),
         )
         .refine_style(&self.options.style)

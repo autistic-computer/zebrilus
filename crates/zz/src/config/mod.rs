@@ -196,6 +196,7 @@ fn install_config(path: Option<&Path>, parsed: Option<io::Result<ParsedConfig>>,
         cx.set_global(UiFontConfig::default());
         cx.set_global(Themes::default());
         apply_animations(cx);
+        apply_density(cx);
         apply_program_colors(cx);
         apply_window_background_appearance(cx);
         apply_window_decorations(cx);
@@ -271,6 +272,7 @@ fn install_config(path: Option<&Path>, parsed: Option<io::Result<ParsedConfig>>,
     cx.set_global(UiFontConfig(parsed.ui_font));
     cx.set_global(loaded);
     apply_animations(cx);
+    apply_density(cx);
     apply_program_colors(cx);
     apply_window_background_appearance(cx);
     apply_window_decorations(cx);
@@ -582,6 +584,10 @@ pub(crate) fn window_decorations(cx: &App) -> WindowDecorations {
 fn apply_program_colors(cx: &mut App) {
     let colors = resolved_config(cx).program_colors.value;
     cx.set_global(zz_ui::program::ProgramColors(colors));
+}
+
+fn apply_density(cx: &App) {
+    interface_theme::kit_density(resolved_config(cx).chrome_density.value).set();
 }
 
 fn apply_animations(cx: &mut App) {
@@ -2452,6 +2458,31 @@ mod tests {
     }
 
     #[ala::test]
+    fn chrome_density_validates_and_sets_the_kit_control_height(cx: &mut ala::TestAppContext) {
+        let parsed = parse_config("chrome-density = roomy\n");
+        assert_eq!(parsed.diagnostics.len(), 1);
+        assert_eq!(
+            parsed.config.chrome_density.value,
+            zz_client::appearance::DensitySetting::Regular
+        );
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let path = directory.path().join(CONFIG_FILE_NAME);
+        cx.update(zz_ui::init);
+        for (value, expected) in [
+            (Some("compact"), 24.0),
+            (Some("comfortable"), 32.0),
+            (None, 28.0),
+        ] {
+            write_config_edit_at(&path, ConfigKey::ChromeDensity.as_str(), value)
+                .expect("write density");
+            cx.update(|cx| {
+                install_config(Some(&path), Some(load_config(&path)), cx);
+                assert_f32_eq(penna::Size::Medium.control_px(), expected);
+            });
+        }
+    }
+
+    #[ala::test]
     fn pip_background_opacity_validates_reloads_and_resets_without_changing_shadows(
         cx: &mut ala::TestAppContext,
     ) {
@@ -3122,6 +3153,7 @@ mod tests {
             "chrome-accent",
             "chrome-tint",
             "chrome-tint-hue",
+            "chrome-density",
             "editor-font-size",
             "editor-line-numbers",
             "editor-relative-line-numbers",

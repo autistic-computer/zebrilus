@@ -141,6 +141,8 @@ function apply() {
   if (globalThis.pennaKit) Object.assign(globalThis.pennaKit.choice, { theme, mode });
   if (root.dataset.pennaTheme !== theme) root.dataset.pennaTheme = theme;
   if (root.dataset.pennaMode !== mode) root.dataset.pennaMode = mode;
+  const density = preferences.density || "regular";
+  if (root.dataset.density !== density) root.dataset.density = density;
   root.style.zoom = preferences.zoom === 1 ? "" : String(preferences.zoom);
   root.toggleAttribute("data-zz-still", !preferences.animations);
   root.style.setProperty("--zz-animation-speed", String(preferences.animation_speed));

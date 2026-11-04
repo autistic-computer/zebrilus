@@ -76,9 +76,8 @@ impl Sizable for Check {
 impl RenderOnce for Check {
     fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
         let side = match self.size {
-            Size::Small => 14.0,
-            Size::Medium => 16.0,
             Size::Size(size) => f32::from(size),
+            size => size.control_text().line_height_px() - 2.0,
         };
         let theme = cx.theme();
         let ground = self.on.unwrap_or_else(|| theme.ground());

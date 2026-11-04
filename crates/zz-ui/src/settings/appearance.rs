@@ -47,11 +47,11 @@ pub fn appearance_page_items(
         return items;
     }
     if macos
-        && let Some(zoom) = items
+        && let Some(density) = items
             .iter()
-            .position(|item| *item == AppearancePageItem::UiZoom)
+            .position(|item| *item == AppearancePageItem::Density)
     {
-        items.insert(zoom + 1, AppearancePageItem::App(ZzRow::AppIcon));
+        items.insert(density + 1, AppearancePageItem::App(ZzRow::AppIcon));
     }
     if has_window_blur {
         items.extend([
@@ -109,6 +109,7 @@ mod tests {
             Item::ChromeContrast,
             Item::UiFontFamily,
             Item::UiZoom,
+            Item::Density,
             Item::App(ZzRow::AppIcon),
             Item::Animations,
             Item::AnimationSpeed,

@@ -56,10 +56,10 @@
   "light": {
     "background": "#fcfcfcff",
     "foreground": "#1d1d1fff",
-    "accent": "#3d6df2ff",
-    "success": "#1f8a4cff",
-    "warning": "#b25e09ff",
-    "danger": "#d22f3cff"
+    "accent": "#325fe3ff",
+    "success": "#007b3eff",
+    "warning": "#a75400ff",
+    "danger": "#cc2737ff"
   },
   "dark": {
     "background": "#18181aff",

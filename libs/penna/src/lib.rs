@@ -28,7 +28,7 @@ pub use foundation::content::ContentLook;
 pub use foundation::overlay::{ROOT_KEY_CONTEXT, Root, WindowExt};
 pub use foundation::{
     ADAPTIVE_CORNER_FRACTION, ActiveTheme, AuthoredElement, BASE_UI_FONT_SIZE, CHROME_GAP,
-    CORNER_SMOOTHING, Colorize, Disableable, Edge, ElementExt, Elevation, Emphasis,
+    CORNER_SMOOTHING, Colorize, Density, Disableable, Edge, ElementExt, Elevation, Emphasis,
     FOCUS_RING_WIDTH, Fill, Ground, Highlight, IndexPath, Ink, InteractiveElementExt,
     InteractivePaintExt, Kind, Knobs, Layer, PANE_HEADER_CONTROL_HEIGHT, PANE_HEADER_HEIGHT, Paint,
     PaintExt, PaintState, PrimaryStyle, RULE_WIDTH, RuleLook, ScrollbarShow, Selectable, Shadow,

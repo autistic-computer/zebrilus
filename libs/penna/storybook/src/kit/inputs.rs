@@ -32,7 +32,7 @@ pub const STORY: Story = Story {
         Section {
             id: "field-sizes",
             name: "Field sizes",
-            summary: "Sizable on Input: small and medium set the height, padding and text size together.",
+            summary: "Sizable on Input, one field per rung of the control ladder: each size sets the height, side inset, text style and icon gap together.",
             build: |window, cx| cx.new(|cx| FieldSizes::new(window, cx)).into(),
         },
         Section {
@@ -254,7 +254,14 @@ struct FieldSizes {
 
 impl FieldSizes {
     fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let sizes = [("small", Size::Small), ("medium", Size::Medium)];
+        let sizes = [
+            ("xsmall", Size::XSmall),
+            ("small", Size::Small),
+            ("medium", Size::Medium),
+            ("large", Size::Large),
+            ("xlarge", Size::XLarge),
+            ("touch", Size::Touch),
+        ];
         Self {
             fields: sizes
                 .into_iter()
@@ -364,7 +371,7 @@ struct Numbers {
     bounded: Entity<InputState>,
     decimal: Entity<InputState>,
     disabled: Entity<InputState>,
-    small: Entity<InputState>,
+    sizes: Vec<(&'static str, Size, Entity<InputState>)>,
     bare: Entity<InputState>,
 }
 
@@ -377,7 +384,22 @@ impl Numbers {
             }),
             decimal: field(window, cx, |s| s.step(0.25).default_value("1.25")),
             disabled: field(window, cx, |s| s.step(1.0).default_value("12")),
-            small: field(window, cx, |s| s.step(1.0).default_value("8")),
+            sizes: [
+                ("xsmall", Size::XSmall),
+                ("small", Size::Small),
+                ("large", Size::Large),
+                ("xlarge", Size::XLarge),
+                ("touch", Size::Touch),
+            ]
+            .into_iter()
+            .map(|(name, size)| {
+                (
+                    name,
+                    size,
+                    field(window, cx, |s| s.step(1.0).default_value("8")),
+                )
+            })
+            .collect(),
             bare: field(window, cx, |s| s.step(1.0).default_value("2")),
         }
     }
@@ -386,7 +408,7 @@ impl Numbers {
 impl Render for Numbers {
     fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
         let narrow = |element: NumberInput| div().w(ala::px(180.0)).child(element);
-        states()
+        let states = states()
             .columns(3)
             .state(
                 "step 1",
@@ -407,11 +429,19 @@ impl Render for Numbers {
                         .id("number-disabled")
                         .disabled(true),
                 ),
-            )
-            .state(
-                "small",
-                narrow(NumberInput::new(&self.small).id("number-small").small()),
-            )
+            );
+        self.sizes
+            .iter()
+            .fold(states, |states, (name, size, state)| {
+                states.state(
+                    *name,
+                    narrow(
+                        NumberInput::new(state)
+                            .id(SharedString::from(format!("number-{name}")))
+                            .with_size(*size),
+                    ),
+                )
+            })
             .state(
                 "appearance(false)",
                 narrow(

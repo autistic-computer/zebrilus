@@ -93,6 +93,32 @@ impl ThemeModeSetting {
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum DensitySetting {
+    Compact,
+    #[default]
+    Regular,
+    Comfortable,
+}
+
+impl DensitySetting {
+    pub const ALL: [Self; 3] = [Self::Compact, Self::Regular, Self::Comfortable];
+
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Compact => "compact",
+            Self::Regular => "regular",
+            Self::Comfortable => "comfortable",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        Self::ALL
+            .into_iter()
+            .find(|density| density.as_str() == value.trim())
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum AppIconSetting {
     #[default]
     Automatic,

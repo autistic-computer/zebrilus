@@ -19,10 +19,28 @@
   --penna-toggle-inset: 2px;
 }
 
+.penna-toggle[data-size="xsmall"] {
+  --penna-toggle-w: 24px;
+  --penna-toggle-h: 14px;
+  --penna-toggle-thumb: 10px;
+}
+
 .penna-toggle[data-size="small"] {
   --penna-toggle-w: 28px;
   --penna-toggle-h: 16px;
   --penna-toggle-thumb: 12px;
+}
+
+.penna-toggle[data-size="large"] {
+  --penna-toggle-w: 40px;
+  --penna-toggle-h: 22px;
+  --penna-toggle-thumb: 18px;
+}
+
+.penna-toggle:is([data-size="xlarge"], [data-size="touch"]) {
+  --penna-toggle-w: 44px;
+  --penna-toggle-h: 26px;
+  --penna-toggle-thumb: 22px;
 }
 
 .penna-toggle > .penna-toggle-track {

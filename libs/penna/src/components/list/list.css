@@ -17,7 +17,7 @@
   font-weight: var(--penna-text-lead-weight);
   line-height: var(--penna-text-lead-line);
   white-space: nowrap;
-  border-radius: min(var(--penna-r), calc(var(--penna-list-row, 28px) * 0.4)) !important;
+  border-radius: min(var(--penna-r), calc(var(--penna-list-row, var(--penna-control-md)) * 0.4)) !important;
   cursor: default;
   user-select: none;
 }

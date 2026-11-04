@@ -6,7 +6,7 @@ use ala::{
 
 use crate::{
     ActiveTheme as _, Disableable, Emphasis, Ground, Highlight, Kind, Layer, Paint, PaintState,
-    Sizable, Size, Space, StyledExt as _, Surface, SurfaceRole, Theme, Tone,
+    Sizable, Size, StyledExt as _, Surface, SurfaceRole, Theme, Tone,
     components::button::Button,
     components::icon::{Icon, IconName},
     components::spinner::Spinner,
@@ -178,6 +178,16 @@ pub(crate) fn field_text<E: Styled>(element: E, size: Size, cx: &App) -> E {
     element.type_style(size.control_text(), cx)
 }
 
+pub(crate) fn trailing_size(size: Size) -> Size {
+    match size.rung() {
+        Size::XSmall => Size::XSmall,
+        Size::Large => Size::Medium,
+        Size::XLarge => Size::Large,
+        Size::Touch => Size::XLarge,
+        _ => Size::Small,
+    }
+}
+
 impl Input {
     pub fn new(state: &Entity<InputState>) -> Self {
         Self {
@@ -307,12 +317,17 @@ impl Input {
         element.h(size.control_h())
     }
 
-    fn clear_button(state: &Entity<InputState>, author: Option<&SharedString>, cx: &App) -> Button {
+    fn clear_button(
+        state: &Entity<InputState>,
+        author: Option<&SharedString>,
+        size: Size,
+        cx: &App,
+    ) -> Button {
         let state = state.clone();
         Button::new(author_part(author, "clear", "penna-input-clear"))
             .icon(Icon::new(IconName::CircleX))
             .emphasis(Emphasis::Ghost)
-            .small()
+            .with_size(trailing_size(size))
             .tab_stop(false)
             .text_color(cx.theme().foreground.muted())
             .on_click(move |_, window, cx| {
@@ -379,10 +394,8 @@ impl RenderOnce for Input {
                 .map_or(Role::TextInput, InputContentType::role)
         };
 
-        let gap = match self.size {
-            Size::Small => Space::S4,
-            Size::Medium | Size::Size(_) => Space::S6,
-        };
+        let size = self.size;
+        let gap = size.icon_gap();
         let paint_state = if focused {
             PaintState::Focused
         } else {
@@ -390,7 +403,7 @@ impl RenderOnce for Input {
         };
         let show_clear = self.cleanable && !self.disabled && !loading && !empty && !multi_line;
         let clear_button =
-            show_clear.then(|| Self::clear_button(&self.state, self.author.as_ref(), cx));
+            show_clear.then(|| Self::clear_button(&self.state, self.author.as_ref(), size, cx));
         let editable = !self.disabled;
         let disabled = self.disabled;
         let spinner_color = cx.theme().foreground.muted();
@@ -503,7 +516,11 @@ impl RenderOnce for Input {
                         .items_center()
                         .when(disabled, |this| this.opacity(0.5))
                         .when(loading, |this| {
-                            this.child(Spinner::new().small().color(spinner_color))
+                            this.child(
+                                Spinner::new()
+                                    .with_size(trailing_size(size))
+                                    .color(spinner_color),
+                            )
                         })
                         .children(clear_button)
                         .children(suffix),

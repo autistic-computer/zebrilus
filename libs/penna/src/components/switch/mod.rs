@@ -25,28 +25,21 @@ struct Metrics {
 }
 
 impl Metrics {
-    fn for_compact(compact: bool, coarse: bool) -> Self {
-        if coarse && !compact {
-            Self {
-                track_w: px(44.),
-                track_h: px(26.),
-                thumb: px(22.),
-                inset: px(2.),
-            }
-        } else if compact {
-            Self {
-                track_w: px(28.),
-                track_h: px(16.),
-                thumb: px(12.),
-                inset: px(2.),
-            }
-        } else {
-            Self {
-                track_w: px(36.),
-                track_h: px(20.),
-                thumb: px(16.),
-                inset: px(2.),
-            }
+    fn new(size: Size, coarse: bool) -> Self {
+        let (track_w, track_h) = match size.rung() {
+            Size::XSmall => (24., 14.),
+            Size::Small => (28., 16.),
+            _ if coarse => (44., 26.),
+            Size::Large => (40., 22.),
+            Size::XLarge | Size::Touch => (44., 26.),
+            _ => (36., 20.),
+        };
+        let inset = px(2.);
+        Self {
+            track_w: px(track_w),
+            track_h: px(track_h),
+            thumb: px(track_h) - inset * 2,
+            inset,
         }
     }
 
@@ -188,7 +181,7 @@ impl RenderOnce for Switch {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let checked = self.checked;
         let coarse = crate::blocks::touch::CoarsePointer::get(cx);
-        let m = Metrics::for_compact(matches!(self.size, Size::Small), coarse);
+        let m = Metrics::new(self.size, coarse);
 
         let toggle_state = window.use_keyed_state(self.id.clone(), cx, |_, _| checked);
 

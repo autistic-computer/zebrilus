@@ -15,6 +15,11 @@ const MODES = [
   ["light", "Light"],
   ["dark", "Dark"],
 ];
+const DENSITIES = [
+  ["compact", "Compact"],
+  ["regular", "Regular"],
+  ["comfortable", "Comfortable"],
+];
 const PALETTE_LAYOUTS = [
   ["grouped", "Tree"],
   ["flat", "Flat"],
@@ -556,6 +561,14 @@ function appearancePage() {
         entry({
           title: "UI zoom",
           control: valueSlider({ label: "UI zoom", value: p.zoom, min: 0.5, max: 3, step: 0.05, display: percent, commitOnRelease: true, onchange: (value) => set({ zoom: value }) }),
+        }),
+        entry({
+          title: "Density",
+          control: choose({
+            value: p.density || "regular",
+            items: DENSITIES.map(([value, title]) => ({ value, title })),
+            onpick: (value) => set({ density: value }),
+          }),
         }),
         entry({ title: "Animations", control: toggle(p.animations, "Animations", (value) => set({ animations: value })) }),
         entry({
