@@ -90,7 +90,7 @@ validation remains outstanding.
 
 # External pins
 
-- CEF pinned to Rust packages `154.0.0+154.0.23`, Chromium `154.0.8037.17` . see
+- CEF pinned to Rust packages `156.3.0+156.0.15`, Chromium `156.0.8078.80` . see
   [CEF artifacts](/references/cef-artifacts.md).
 - ala is our own copy, the ala crates . see [ala](/references/ala.md).
 - tmux behavior checked against a pinned commit . see [tmux upstream](/references/tmux-upstream.md).

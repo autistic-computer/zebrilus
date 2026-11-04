@@ -10,9 +10,9 @@ parser.add_argument("source", type=Path)
 parser.add_argument("--check", action="store_true")
 args = parser.parse_args()
 source = args.source.read_bytes()
-expected_hash = "46bb59c1d9197f3a07fd3ee6b89499b40df20bb8cd57d18a19fe92f62fd28f43"
+expected_hash = "c19eab2383d9f7662993aa35f6b0a7af659e125e2bff49e86385aa36d8a4de16"
 if hashlib.sha256(source).hexdigest() != expected_hash:
-    raise SystemExit("bindings differ from the published cef-dll-sys 154.0.0+154.0.23 source")
+    raise SystemExit("bindings differ from the published cef-dll-sys 156.3.0+156.0.15 source")
 
 functions = []
 for block in re.findall(r'unsafe extern "C" \{\n(.*?)\n\}', source.decode(), re.DOTALL):

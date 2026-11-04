@@ -3256,9 +3256,12 @@ fn import_accelerated_texture(
     let imported = crate::linux_dmabuf::import_texture(info, &gpu.device)
         .map_err(AcceleratedFrameError::Import);
     #[cfg(not(target_os = "linux"))]
-    let imported = cef::osr_texture_import::SharedTextureHandle::new(info)
-        .import_texture(&gpu.device)
-        .map_err(AcceleratedFrameError::Import);
+    let imported: Result<wgpu::Texture, _> = {
+        let _ = info;
+        Err(AcceleratedFrameError::Import(
+            cef::osr_texture_import::TextureImportError::UnsupportedPlatform,
+        ))
+    };
     let import_validation = pollster::block_on(import_scope.pop());
     if let Some(error) = import_validation {
         return Err(AcceleratedFrameError::WgpuValidation(error.to_string()));

@@ -1,7 +1,7 @@
 # CEF bindings with deferred Linux loading
 
-This package preserves the `cef-dll-sys` 154.0.0+154.0.23 API and re-exports its types
-from cef-rs commit `6a6ed14be68c5b8d90b1e5f5a6705a7f899b18b7`. ala-cef patches
+This package preserves the `cef-dll-sys` 156.3.0+156.0.15 API and re-exports its types
+from cef-rs commit `6805c90eb671b9664795f112dd2d7c966925426a`. ala-cef patches
 the crates.io package to this adapter, and so must any workspace that builds it. Cargo resolves the adapter's upstream
 dependency from its pinned Git source, which avoids a dependency cycle.
 

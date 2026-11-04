@@ -19,8 +19,8 @@ the build consumes (see [build/verify a CEF bundle](/playbooks/build-cef-bundle.
 # Steps
 
 1. **Choose the new CEF release.** Find the target `cef`/`cef-dll-sys` Rust package version (format
-   `<rust-pkg-version>+<cef-version>`, e.g. current `154.0.0+154.0.23` mapping to CEF
-   `154.0.23+g062ebe4+chromium-154.0.8037.17`). The CEF build is whatever the published
+   `<rust-pkg-version>+<cef-version>`, e.g. current `156.3.0+156.0.15` mapping to CEF
+   `156.0.15+gcf671c0+chromium-156.0.8078.80`). The CEF build is whatever the published
    `cef-dll-sys` names after the `+`; a newer patch build of the same milestone needs a new cef-rs
    release, because the upstream build script rejects a newer archive.
 2. **Check which wgpu major the release wants.** `accelerated_osr` hands ala's own
@@ -30,7 +30,7 @@ the build consumes (see [build/verify a CEF bundle](/playbooks/build-cef-bundle.
    was still on 29, which is why the 151 bump also carried an ala patch (fork commit
    `ala: build the wgpu renderer against wgpu 30`) and a `wgpu = "=30.0.0"` workspace bump. Check
    the crate's changelog for a `update wgpu to vN` entry before assuming a bump is dependency-only.
-3. **Bump the workspace dependency and the adapter.** Update `cef = "=154.0.0"` in the root
+3. **Bump the workspace dependency and the adapter.** Update `cef = "=156.3.0"` in the root
    `Cargo.toml` and in `libs/ala-cef/Cargo.toml` (and `wgpu` with it) if the Rust package's
    major/minor version changed. `cef-dll-sys` is patched to
    `libs/ala-cef/third_party/cef-dll-sys`, so bump its package version, its cef-rs `rev`, and
@@ -64,7 +64,7 @@ the build consumes (see [build/verify a CEF bundle](/playbooks/build-cef-bundle.
    See [build/verify a CEF bundle](/playbooks/build-cef-bundle.md) for what this exercises locally.
 7. **Bump the CI cache key.** `.github/workflows/ci.yml`, `.github/workflows/release.yml`, and
    `.github/workflows/nightly-corpus.yml` cache the downloaded distribution under
-   `cef-154.0.23-${{ runner.os }}-${{ runner.arch }}`; update all five keys for the new pin.
+   `cef-156.0.15-${{ runner.os }}-${{ runner.arch }}`; update all five keys for the new pin.
 8. **Commit everything together.** `Cargo.lock`, `Cargo.toml` (if changed), `ARTIFACTS.md`, and the
    CI cache-key bump belong in one change, verified against all three platforms before merge.
 
@@ -72,7 +72,7 @@ the build consumes (see [build/verify a CEF bundle](/playbooks/build-cef-bundle.
 
 | File | Role |
 | --- | --- |
-| `Cargo.toml` | `cef = "=154.0.0"` workspace version constraint, and the `wgpu` pin that must match it |
+| `Cargo.toml` | `cef = "=156.3.0"` workspace version constraint, and the `wgpu` pin that must match it |
 | `libs/ala-cef/third_party/cef-dll-sys/` | Adapter patched over `cef-dll-sys`: cef-rs `rev`, generated symbol table, `UPSTREAM.md` |
 | `Cargo.lock` | Exact resolved `cef`/`cef-dll-sys` version (`<rust-pkg>+<cef-version>`) |
 | `third_party/cef/ARTIFACTS.md` | Reviewable mirror of the official per-target archive name + SHA-1 table |

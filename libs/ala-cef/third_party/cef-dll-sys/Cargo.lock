@@ -130,18 +130,18 @@ dependencies = [
 
 [[package]]
 name = "cef-dll-sys"
-version = "154.0.0+154.0.23"
+version = "156.3.0+156.0.15"
 dependencies = [
  "anyhow",
- "cef-dll-sys 154.0.0+154.0.23 (git+https://github.com/tauri-apps/cef-rs?rev=6a6ed14be68c5b8d90b1e5f5a6705a7f899b18b7)",
+ "cef-dll-sys 156.3.0+156.0.15 (git+https://github.com/tauri-apps/cef-rs?rev=6805c90eb671b9664795f112dd2d7c966925426a)",
  "download-cef",
  "libloading",
 ]
 
 [[package]]
 name = "cef-dll-sys"
-version = "154.0.0+154.0.23"
-source = "git+https://github.com/tauri-apps/cef-rs?rev=6a6ed14be68c5b8d90b1e5f5a6705a7f899b18b7#6a6ed14be68c5b8d90b1e5f5a6705a7f899b18b7"
+version = "156.3.0+156.0.15"
+source = "git+https://github.com/tauri-apps/cef-rs?rev=6805c90eb671b9664795f112dd2d7c966925426a#224a785c7b41758b51821cbb7395ea57ba493a63"
 dependencies = [
  "anyhow",
  "cc",
@@ -290,7 +290,7 @@ dependencies = [
 [[package]]
 name = "download-cef"
 version = "3.0.0"
-source = "git+https://github.com/tauri-apps/cef-rs?rev=6a6ed14be68c5b8d90b1e5f5a6705a7f899b18b7#6a6ed14be68c5b8d90b1e5f5a6705a7f899b18b7"
+source = "git+https://github.com/tauri-apps/cef-rs?rev=6805c90eb671b9664795f112dd2d7c966925426a#224a785c7b41758b51821cbb7395ea57ba493a63"
 dependencies = [
  "bzip2",
  "clap",
