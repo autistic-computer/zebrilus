@@ -3,7 +3,7 @@ mod stories;
 use ala::{App, px};
 use penna_storybook::{Catalog, Control, Knob, Knobs};
 
-pub(crate) use penna_storybook::{backdrop, knobs, story};
+pub(crate) use penna_storybook::{knobs, story};
 
 pub static CATALOG: Catalog = Catalog {
     title: "zz storybook",
@@ -13,15 +13,13 @@ pub static CATALOG: Catalog = Catalog {
     logo: zz_ui::ZZ_LOGO,
     plates: stories::theme_creator::PLATES,
     stories: &[
-        penna_storybook::FOUNDATION,
         stories::agent::STORIES,
         stories::workspace::STORIES,
         stories::console::STORIES,
-        penna_storybook::KIT,
     ],
     knobs: KNOBS,
     apply,
-    floating: &[backdrop::KIT_FLOATING, FLOATING],
+    floating: &[FLOATING],
 };
 
 const KNOBS: &[Knob] = &[
@@ -96,8 +94,6 @@ const FLOATING: &[&str] = &[
     "daemon-prompts",
     "chooser",
     "path-picker",
-    "phone/hud",
-    "phone/keys",
     "panes/floating",
     "panes/display-panes",
     "browser/omnibox",
@@ -158,20 +154,10 @@ mod tests {
     }
 
     #[test]
-    fn the_theme_creator_comes_first_and_the_kit_keeps_its_order() {
+    fn the_theme_creator_comes_first() {
         penna_storybook::install(&CATALOG);
-        let ids = CATALOG.stories().map(|story| story.id).collect::<Vec<_>>();
-        assert_eq!(ids[0], penna_storybook::creator::ID);
-        let kit = penna_storybook::KIT
-            .iter()
-            .map(|story| story.id)
-            .collect::<Vec<_>>();
-        assert!(ids.ends_with(&kit));
-        let foundation = penna_storybook::FOUNDATION
-            .iter()
-            .map(|story| story.id)
-            .collect::<Vec<_>>();
-        assert_eq!(ids[1..=foundation.len()], foundation[..]);
+        let first = CATALOG.stories().next().map(|story| story.id);
+        assert_eq!(first, Some(penna_storybook::creator::ID));
     }
 
     #[test]

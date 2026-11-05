@@ -1,6 +1,6 @@
 use ala::{
-    AnyElement, App, AppContext as _, Entity, Focusable as _, IntoElement, ParentElement as _,
-    Styled as _, Window, div, prelude::*, px,
+    AnyElement, App, AppContext as _, Entity, IntoElement, ParentElement as _, Styled as _, Window,
+    div, prelude::*, px,
 };
 use penna::{
     ActiveTheme as _, Colorize as _, Disableable as _, IconName, Label, TextStyle,
@@ -40,7 +40,7 @@ pub const STORY: Story = Story {
         Section {
             id: "toolbar",
             name: "Toolbar",
-            summary: "browser_toolbar_button states, and BrowserToolbar with history disabled, the element picker on, and the plain-text address the web client shows without Chromium.",
+            summary: "BrowserToolbar with history disabled, the element picker on, and the plain-text address the web client shows without Chromium.",
             build: |window, cx| stateful(window, cx, inputs::<2>, toolbars),
         },
         Section {
@@ -48,12 +48,6 @@ pub const STORY: Story = Story {
             name: "Address field",
             summary: "browser_address: the site controls button inside a borderless URL input. Long URLs scroll inside the field.",
             build: |window, cx| stateful(window, cx, inputs::<4>, addresses),
-        },
-        Section {
-            id: "address-focused",
-            name: "Address field, focused",
-            summary: "With focus the ghost field takes a border in the focus color.",
-            build: |window, cx| stateful(window, cx, focused_input, focused_address),
         },
         Section {
             id: "tabs",
@@ -112,12 +106,6 @@ fn address_input(url: &str, window: &mut Window, cx: &mut App) -> Entity<InputSt
             .placeholder("Search or enter address")
             .default_value(url)
     })
-}
-
-fn focused_input(window: &mut Window, cx: &mut App) -> Entity<InputState> {
-    let input = address_input(URLS[0], window, cx);
-    input.read(cx).focus_handle(cx).focus(window, cx);
-    input
 }
 
 fn site_controls(cx: &App) -> impl IntoElement + use<> {
@@ -389,42 +377,6 @@ fn toolbars(inputs: &[Entity<InputState>; 2], window: &mut Window, cx: &mut App)
     };
     states()
         .state(
-            "buttons: rest, disabled, selected",
-            row()
-                .child(browser_toolbar_button(
-                    cx,
-                    "rest",
-                    IconName::ArrowLeft,
-                    "Back",
-                    false,
-                    false,
-                ))
-                .child(browser_toolbar_button(
-                    cx,
-                    "disabled",
-                    IconName::ArrowRight,
-                    "Forward",
-                    true,
-                    false,
-                ))
-                .child(browser_toolbar_button(
-                    cx,
-                    "selected",
-                    IconName::Inspector,
-                    "Cancel element picker",
-                    false,
-                    true,
-                ))
-                .child(browser_toolbar_button(
-                    cx,
-                    "loading",
-                    IconName::Xmark,
-                    "Stop",
-                    false,
-                    false,
-                )),
-        )
-        .state(
             "back available, forward not",
             framed(
                 "toolbar-history",
@@ -497,12 +449,6 @@ fn addresses(inputs: &[Entity<InputState>; 4], window: &mut Window, cx: &mut App
             "site controls alone",
             row().child(browser_site_controls_button(cx)),
         )
-        .into_any_element()
-}
-
-fn focused_address(input: &Entity<InputState>, window: &mut Window, cx: &mut App) -> AnyElement {
-    states()
-        .state("focused", address_row("address-focused", input, window, cx))
         .into_any_element()
 }
 

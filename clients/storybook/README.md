@@ -1,14 +1,15 @@
 # zz storybook
 
-Every piece of `zz-ui` and `penna` in its states, on one web page. The page is plain HTML:
+Every piece of `zz-ui` in its states, on one web page. The page is plain HTML:
 navigation, prose and knobs. Each section of the story on screen is its own ala window, mounted
 into the section's element and sized to its content.
 
-The page, the story types, the theme knobs and penna's Foundation and Kit stories come from
-`penna-storybook` in `libs/penna/storybook`, the theme creator included. This crate adds zz's
-catalog in `src/lib.rs` (`CATALOG`: the creator's plates from `src/stories/theme_creator.rs`, the
-agent, workspace and console stories, the pane and program color knobs, zz's floating sections,
-`zz_ui::init` and `zz_ui::Assets`) and its `run` entry.
+The page, the story types, the theme knobs and the theme creator come from `penna-storybook` in
+`libs/penna/storybook`. This crate adds zz's catalog in `src/lib.rs` (`CATALOG`: the creator's
+plates from `src/stories/theme_creator.rs`, the agent, workspace and console stories, the pane and
+program color knobs, zz's floating sections, `zz_ui::init` and `zz_ui::Assets`) and its `run`
+entry. penna's Foundation and Kit stories are not in it: they are on penna's own page, which
+defines every component, block and role and their states.
 
 ```bash
 just storybook run      # build, serve on http://127.0.0.1:8097, rebuild on save
@@ -22,7 +23,9 @@ URLs carry the story, the section and the knobs: `#/agent/composer?theme=dark&ra
 
 A story is a `Story` constant. zz's live in `src/stories/<area>/`, each area exporting `STORIES`,
 listed in `CATALOG`; penna's live in `libs/penna/storybook/src/foundation` and `src/kit` and use
-penna only.
+penna only. A zz section shows what zz owns, or zz's data, layout or behavior in a penna block. A
+section that would only show a penna component or block in states penna's page already has does
+not go here; a state penna's page lacks goes into penna's story.
 
 ```rust
 use crate::story::{Section, Story, stateless, states};

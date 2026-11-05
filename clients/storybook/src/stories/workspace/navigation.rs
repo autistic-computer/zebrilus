@@ -1,23 +1,15 @@
-use penna::blocks::sidebar::{SIDEBAR_DEFAULT_WIDTH, sidebar_footer, sidebar_titlebar};
-use std::rc::Rc;
-
 use ala::{
-    AnyElement, App, IntoElement, ListSizingBehavior, ParentElement as _, SharedString,
-    Styled as _, UniformListScrollHandle, Window, div, prelude::*, px, uniform_list,
+    AnyElement, App, IntoElement, ParentElement as _, SharedString, Styled as _,
+    UniformListScrollHandle, Window, div, prelude::*, px,
 };
-use penna::{
-    ActiveTheme as _, Colorize as _, Icon, IconName, Label, Selectable as _, TextStyle, h_flex,
-};
+use penna::{ActiveTheme as _, Colorize as _, Icon, IconName, Label, TextStyle, h_flex};
 use zz_client::program::Program;
 use zz_ui::{
     navigation::{
-        WORKSPACE_TREE_NODE_ICON_SIZE, WorkspaceStatusWindowState,
+        WORKSPACE_TREE_NODE_ICON_SIZE, WorkspaceStatusWindowState, WorkspaceTreeInk,
         sidebar::{tree_action_strip, tree_host_indicator, tree_host_marker, tree_node_marker},
-        workspace_add_host_button, workspace_layout_button, workspace_palette_button,
-        workspace_settings_button, workspace_sidebar_footer_controls,
-        workspace_sidebar_view_button, workspace_status_item, workspace_status_window,
-        workspace_tree_action_button, workspace_tree_disclosure, workspace_tree_marker,
-        workspace_tree_row,
+        workspace_status_item, workspace_status_window, workspace_tree_action_button,
+        workspace_tree_disclosure, workspace_tree_marker,
     },
     program::program_mark,
 };
@@ -25,18 +17,17 @@ use zz_ui::{
 use super::{
     fixtures::stateful,
     tree::{
-        Badge, Node, TreeState, chrome_controls, guides, host_only, numbered, render_node, sidebar,
-        tree_list, workspace_tree,
+        Badge, Node, TreeState, host_only, numbered, render_node, sidebar, tree_list,
+        workspace_tree,
     },
 };
-use crate::story::Framed as _;
 use crate::story::{Section, Story, row, stateless, states};
 
 pub const STORY: Story = Story {
     id: "sidebar",
     name: "Sidebar",
     group: "Workspace",
-    summary: "The workspace sidebar: the host, session, window and pane tree with its markers, badges, indent guides and row actions, plus the titlebar controls and window pills.",
+    summary: "The workspace sidebar: the host, session, window and pane tree with its markers, badges, indent guides and row actions, plus the window pills.",
     sections: &[
         Section {
             id: "sidebar",
@@ -61,18 +52,6 @@ pub const STORY: Story = Story {
             name: "Disclosure and actions",
             summary: "An expandable row swaps its icon for a chevron on hover. Trailing actions sit in a strip that swallows clicks so the row does not activate.",
             build: |_, cx| stateless(row_actions, cx),
-        },
-        Section {
-            id: "indent-guides",
-            name: "Indent guides",
-            summary: "IndentGuides drawn as a uniform_list decoration. Only the guide of the active row's nearest ancestor lights up.",
-            build: |window, cx| stateful(window, cx, |_, _| sidebar_scrolls(), indent_guides),
-        },
-        Section {
-            id: "chrome-controls",
-            name: "Titlebar controls",
-            summary: "The settings, sidebar and palette buttons at the top of the sidebar, or at the start of the status bar when the sidebar is hidden.",
-            build: |_, cx| stateless(chrome, cx),
         },
         Section {
             id: "window-pills",
@@ -482,7 +461,7 @@ fn row_actions(_: &mut Window, cx: &mut App) -> AnyElement {
                         marker(),
                         true,
                         "group-open".into(),
-                        cx,
+                        WorkspaceTreeInk::rest(cx),
                     ),
                 ))
                 .child(labeled(
@@ -492,7 +471,7 @@ fn row_actions(_: &mut Window, cx: &mut App) -> AnyElement {
                         marker(),
                         false,
                         "group-closed".into(),
-                        cx,
+                        WorkspaceTreeInk::rest(cx),
                     ),
                 ))
                 .child(labeled(
@@ -513,6 +492,7 @@ fn row_actions(_: &mut Window, cx: &mut App) -> AnyElement {
                                 IconName::WindowPlus,
                                 "New window",
                                 false,
+                                cx.theme().ground(),
                                 cx,
                             )
                             .into_any_element(),
@@ -521,6 +501,7 @@ fn row_actions(_: &mut Window, cx: &mut App) -> AnyElement {
                                 IconName::Xmark,
                                 "Close session",
                                 false,
+                                cx.theme().ground(),
                                 cx,
                             )
                             .into_any_element(),
@@ -538,6 +519,7 @@ fn row_actions(_: &mut Window, cx: &mut App) -> AnyElement {
                                 IconName::Xmark,
                                 "Close window",
                                 false,
+                                cx.theme().ground(),
                                 cx,
                             )
                             .into_any_element(),
@@ -555,150 +537,13 @@ fn row_actions(_: &mut Window, cx: &mut App) -> AnyElement {
                                 IconName::Xmark,
                                 "Close window",
                                 true,
+                                cx.theme().ground(),
                                 cx,
                             )
                             .into_any_element(),
                         ],
                         cx,
                     ),
-                )),
-        )
-        .into_any_element()
-}
-
-const GUIDE_DEPTHS: [(u8, IconName, &str); 11] = [
-    (0, IconName::HardDrive, "zz daemon"),
-    (1, IconName::Layers, "main"),
-    (2, IconName::AppWindow, "editor"),
-    (3, IconName::SquareTerminal, "nvim"),
-    (3, zz_ui::CLAUDE_ICON, "Review sidebar"),
-    (3, IconName::Globe, "zed.dev"),
-    (2, IconName::AppWindow, "agents"),
-    (3, zz_ui::OPENAI_ICON, "Rework status bar"),
-    (1, IconName::Layers, "scratch"),
-    (2, IconName::AppWindow, "shell"),
-    (3, IconName::SquareTerminal, "zsh"),
-];
-
-fn guide_list(
-    id: &'static str,
-    active_row: Option<usize>,
-    scroll: &UniformListScrollHandle,
-    cx: &App,
-) -> AnyElement {
-    let depths: Rc<[usize]> = GUIDE_DEPTHS
-        .iter()
-        .map(|(depth, _, _)| usize::from(*depth))
-        .collect();
-    let list = uniform_list("guide-rows", GUIDE_DEPTHS.len(), move |range, _, cx| {
-        range
-            .map(|index| {
-                let (depth, icon, label) = GUIDE_DEPTHS[index].clone();
-                let active = active_row == Some(index);
-                workspace_tree_row(
-                    ("guide-row", index),
-                    depth,
-                    active,
-                    false,
-                    false,
-                    true,
-                    true,
-                    true,
-                    format!("guide-group-{index}").into(),
-                    tree_node_marker(
-                        Icon::new(icon)
-                            .medium()
-                            .text_color(cx.theme().foreground.muted()),
-                        false,
-                        None,
-                        cx,
-                    ),
-                    div().child(label),
-                    div(),
-                    cx.theme().ground(),
-                    cx,
-                )
-                .into_any_element()
-            })
-            .collect::<Vec<_>>()
-    })
-    .size_full()
-    .with_sizing_behavior(ListSizingBehavior::Auto)
-    .track_scroll(scroll)
-    .with_decoration(guides(depths, active_row, cx));
-    div()
-        .id(id)
-        .w(px(SIDEBAR_DEFAULT_WIDTH))
-        .h(px(32.0 * GUIDE_DEPTHS.len() as f32))
-        .child(list)
-        .into_any_element()
-}
-
-fn indent_guides(
-    scrolls: &[UniformListScrollHandle; 3],
-    _: &mut Window,
-    cx: &mut App,
-) -> AnyElement {
-    states()
-        .columns(3)
-        .state(
-            "active row: Review sidebar",
-            guide_list("guides-review", Some(4), &scrolls[0], cx),
-        )
-        .state(
-            "active row: zsh, two sessions down",
-            guide_list("guides-zsh", Some(10), &scrolls[1], cx),
-        )
-        .state(
-            "no active row while disconnected",
-            guide_list("guides-none", None, &scrolls[2], cx),
-        )
-        .into_any_element()
-}
-
-fn chrome(_: &mut Window, cx: &mut App) -> AnyElement {
-    states()
-        .state(
-            "buttons",
-            row()
-                .child(labeled("settings", workspace_settings_button("settings")))
-                .child(labeled(
-                    "settings open",
-                    workspace_settings_button("settings-open").selected(true),
-                ))
-                .child(labeled("sidebar", workspace_layout_button("layout")))
-                .child(labeled(
-                    "palette (iOS)",
-                    workspace_palette_button("palette"),
-                )),
-        )
-        .state(
-            "sidebar titlebar",
-            div()
-                .id("titlebar")
-                .w(px(SIDEBAR_DEFAULT_WIDTH))
-                .framed(cx)
-                .rounded(cx.theme().radius)
-                .child(sidebar_titlebar("sidebar-titlebar", chrome_controls(), cx)),
-        )
-        .state(
-            "sidebar footer",
-            div()
-                .id("footer")
-                .w(px(SIDEBAR_DEFAULT_WIDTH))
-                .framed(cx)
-                .rounded(cx.theme().radius)
-                .child(sidebar_footer(
-                    "sidebar-footer",
-                    workspace_settings_button("footer-settings"),
-                    Some(
-                        workspace_sidebar_footer_controls(
-                            workspace_add_host_button("footer-add-host"),
-                            workspace_sidebar_view_button("footer-view", false),
-                        )
-                        .into_any_element(),
-                    ),
-                    cx,
                 )),
         )
         .into_any_element()

@@ -1135,7 +1135,7 @@ fn panes(find: &Entity<InputState>, _: &mut Window, cx: &mut App) -> AnyElement 
                             cx,
                         )
                         .into_any_element(),
-                        terminal_mode_indicator(Some("Copy mode"), "12 / 340", cx)
+                        terminal_mode_indicator("terminal-mode", Some("Copy mode"), "12 / 340", cx)
                             .into_any_element(),
                         pane_sync_badge(cx).into_any_element(),
                     ],
@@ -1180,6 +1180,7 @@ fn panes(find: &Entity<InputState>, _: &mut Window, cx: &mut App) -> AnyElement 
                 ))
                 .into_any_element(),
                 pane_drop_preview(
+                    "pane-drop-preview",
                     cx.theme().pane_radius(),
                     PaneLook::global(cx).edge_width(cx.theme()).max(px(1.0)),
                     cx,
@@ -1193,7 +1194,7 @@ fn panes(find: &Entity<InputState>, _: &mut Window, cx: &mut App) -> AnyElement 
                     .absolute()
                     .left(px(16.0))
                     .bottom(px(16.0))
-                    .child(pane_drag_chip("%4", "cargo test", cx))
+                    .child(pane_drag_chip("pane-drag-chip", "%4", "cargo test", cx))
                     .into_any_element(),
             ],
             cx,

@@ -294,7 +294,8 @@ fn terminal_header(_: &mut Window, cx: &mut App) -> AnyElement {
 
 fn tags(_: &mut Window, cx: &mut App) -> AnyElement {
     let top = vec![
-        terminal_mode_indicator(Some("Copy mode"), "12 / 340", cx).into_any_element(),
+        terminal_mode_indicator("terminal-mode", Some("Copy mode"), "12 / 340", cx)
+            .into_any_element(),
         pane_sync_badge(cx).into_any_element(),
         pane_unzoom_control().into_any_element(),
     ];
@@ -327,10 +328,30 @@ fn tags(_: &mut Window, cx: &mut App) -> AnyElement {
         .state(
             "terminal modes",
             row()
-                .child(terminal_mode_indicator(Some("Copy mode"), "12 / 340", cx))
-                .child(terminal_mode_indicator(Some("Copy mode"), "", cx))
-                .child(terminal_mode_indicator(Some("View mode"), "3 / 120", cx))
-                .child(terminal_mode_indicator(None::<&str>, "+42 output", cx)),
+                .child(terminal_mode_indicator(
+                    ("terminal-mode", 0usize),
+                    Some("Copy mode"),
+                    "12 / 340",
+                    cx,
+                ))
+                .child(terminal_mode_indicator(
+                    ("terminal-mode", 1usize),
+                    Some("Copy mode"),
+                    "",
+                    cx,
+                ))
+                .child(terminal_mode_indicator(
+                    ("terminal-mode", 2usize),
+                    Some("View mode"),
+                    "3 / 120",
+                    cx,
+                ))
+                .child(terminal_mode_indicator(
+                    ("terminal-mode", 3usize),
+                    None::<&str>,
+                    "+42 output",
+                    cx,
+                )),
         )
         .state(
             "search, status and link previews",
@@ -721,6 +742,7 @@ fn drag_and_drop(_: &mut Window, cx: &mut App) -> AnyElement {
         ))
         .child(
             pane_drop_preview(
+                ("pane-drop-preview", 0usize),
                 cx.theme().pane_radius(),
                 PaneLook::global(cx).edge_width(cx.theme()).max(px(1.0)),
                 cx,
@@ -735,7 +757,12 @@ fn drag_and_drop(_: &mut Window, cx: &mut App) -> AnyElement {
                 .absolute()
                 .left(relative(0.62))
                 .top(px(96.0))
-                .child(pane_drag_chip("%1", "cargo test", cx)),
+                .child(pane_drag_chip(
+                    ("pane-drag-chip", 0usize),
+                    "%1",
+                    "cargo test",
+                    cx,
+                )),
         );
     states()
         .state(
@@ -749,8 +776,14 @@ fn drag_and_drop(_: &mut Window, cx: &mut App) -> AnyElement {
         .state(
             "drag chips",
             row()
-                .child(pane_drag_chip("%1", "cargo test", cx))
                 .child(pane_drag_chip(
+                    ("pane-drag-chip", 1usize),
+                    "%1",
+                    "cargo test",
+                    cx,
+                ))
+                .child(pane_drag_chip(
+                    ("pane-drag-chip", 2usize),
                     "%12",
                     "ssh devbox -t 'cd ~/src/zz && cargo build --release --features agent'",
                     cx,
@@ -760,18 +793,21 @@ fn drag_and_drop(_: &mut Window, cx: &mut App) -> AnyElement {
             "drop previews at the pane radius and at zero radius",
             row()
                 .child(
-                    div()
-                        .relative()
-                        .w(px(160.0))
-                        .h(px(90.0))
-                        .child(pane_drop_preview(cx.theme().pane_radius(), px(1.0), cx).inset_0()),
+                    div().relative().w(px(160.0)).h(px(90.0)).child(
+                        pane_drop_preview(
+                            ("pane-drop-preview", 1usize),
+                            cx.theme().pane_radius(),
+                            px(1.0),
+                            cx,
+                        )
+                        .inset_0(),
+                    ),
                 )
                 .child(
-                    div()
-                        .relative()
-                        .w(px(160.0))
-                        .h(px(90.0))
-                        .child(pane_drop_preview(px(0.0), px(1.0), cx).inset_0()),
+                    div().relative().w(px(160.0)).h(px(90.0)).child(
+                        pane_drop_preview(("pane-drop-preview", 2usize), px(0.0), px(1.0), cx)
+                            .inset_0(),
+                    ),
                 ),
         )
         .into_any_element()

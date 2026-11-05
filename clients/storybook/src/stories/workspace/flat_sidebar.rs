@@ -32,6 +32,7 @@ use zz_ui::{
             FlatWindow, HostConnection, flat_row_ground, flat_sidebar, flat_tile_stack,
             flat_window_row,
         },
+        workspace_sidebar_fade,
     },
 };
 
@@ -801,7 +802,7 @@ impl Render for Live {
             )
             .bottom_fade(
                 &self.scroll,
-                cx.theme().background,
+                workspace_sidebar_fade(cx.theme().ground(), cx),
                 WORKSPACE_SIDEBAR_FADE_HEIGHT,
             )
             .vertical_scrollbar(&self.scroll);

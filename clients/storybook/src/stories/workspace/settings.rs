@@ -1,41 +1,30 @@
 use std::sync::{Arc, LazyLock};
 
 use ala::{
-    AnyElement, App, AppContext as _, Entity, FocusHandle, IntoElement, ParentElement as _,
-    Styled as _, Window, div, prelude::*, px,
+    AnyElement, App, AppContext as _, Entity, IntoElement, ParentElement as _, Styled as _, Window,
+    div, prelude::*, px,
 };
 use penna::{
-    ActiveTheme as _, Emphasis, Icon, IconName, IndexPath, ThemeMode, Tone,
-    blocks::appearance::{
-        SWATCH, ThemePicks, accent_swatches, animation_speed_slider, contrast_slider,
-        corner_radius_slider, interface_theme_preview, picker_tile, theme_mode_control,
-        theme_picker, tint_hue_slider, tint_slider, ui_font_select, zoom_slider,
-    },
-    blocks::color_picker::{ColorPicker, ColorPickerState},
+    ActiveTheme as _, Emphasis, Icon, IconName, IndexPath, Tone,
     blocks::settings::about::{
         about_build_stack, about_copy_button, about_hero, about_project_stack,
     },
     components::button::Button,
     components::input::{InputState, NumberInput},
-    components::menu::PopupMenuItem,
     components::select::{Select, SelectState},
     components::switch::Switch,
 };
 use zz_client::StatusBarSettings;
-use zz_ui::{
-    interface_theme::{InterfaceTheme, ThemeOverrides, builtin_themes},
-    settings::{
-        SettingEntry, SettingsFold, SettingsSection, SettingsSelectItem, SettingsStack,
-        about::{ABOUT_LOGO_SIZE, ZZ_ABOUT},
-        appearance::{AppearancePageItem, ZzRow, window_opacity_slider},
-        panes_page,
-        panes_preview::PanesPreview,
-        providers::{ProvidersHost, providers_stack},
-        settings_card_ground, settings_list_disclosure_header, settings_page_title,
-        settings_scroll_column, settings_section_index, settings_section_navigation,
-        settings_title_bar,
-        status_bar_preview::status_bar_page,
-    },
+use zz_ui::settings::{
+    SettingEntry, SettingsFold, SettingsSection, SettingsSelectItem, SettingsStack,
+    about::{ABOUT_LOGO_SIZE, ZZ_ABOUT},
+    appearance::{ZzRow, window_opacity_slider},
+    panes_page,
+    panes_preview::PanesPreview,
+    providers::{ProvidersHost, providers_stack},
+    settings_card_ground, settings_page_title, settings_scroll_column, settings_section_index,
+    settings_section_navigation, settings_title_bar,
+    status_bar_preview::status_bar_page,
 };
 
 use super::{fixtures::stateful, tree::sidebar};
@@ -46,7 +35,7 @@ pub const STORY: Story = Story {
     id: "settings",
     name: "Settings",
     group: "Settings",
-    summary: "The settings route: its sidebar and narrow-screen index, the stacked entry rows every page is built from, the appearance pickers, and the Panes, Status bar, Agents and About pages.",
+    summary: "The settings route: its sidebar and narrow-screen index, the stacked entry rows every page is built from, zz's appearance rows, and the Panes, Status bar, Agents and About pages.",
     sections: &[
         Section {
             id: "navigation",
@@ -62,15 +51,9 @@ pub const STORY: Story = Story {
         },
         Section {
             id: "appearance",
-            name: "Appearance pickers",
-            summary: "The Interface page's Theme rows: Mode as a segmented control, the Theme picker with its more menu, the accent swatches with a custom picker (following the corner radius), the tint sliders (they follow the tint knobs), the Advanced heading, and the corner radius, contrast, animation speed (it follows the speed knob) and window blur opacity sliders under it.",
-            build: |window, cx| stateful(window, cx, Controls::new, appearance),
-        },
-        Section {
-            id: "themes",
-            name: "Themes",
-            summary: "interface_theme_preview for every built-in theme in both modes, as the theme tiles draw them.",
-            build: |_, cx| stateless(themes, cx),
+            name: "Appearance rows",
+            summary: "The rows zz adds to penna's Appearance page: Program colors under Sidebar, and window blur opacity under Advanced. The kit's own rows are penna's, in its Appearance story.",
+            build: |_, cx| stateless(appearance, cx),
         },
         Section {
             id: "panes-page",
@@ -102,9 +85,6 @@ pub const STORY: Story = Story {
 struct Controls {
     numbers: [Entity<InputState>; 8],
     choice: Entity<SelectState<Vec<SettingsSelectItem>>>,
-    font: Entity<SelectState<Vec<SettingsSelectItem>>>,
-    accent: Entity<ColorPickerState>,
-    zoom: FocusHandle,
 }
 
 impl Controls {
@@ -125,15 +105,7 @@ impl Controls {
                 cx,
             )
         });
-        let font = ui_font_select(Some("Inter Variable"), window, cx);
-        let accent = cx.new(|cx| ColorPickerState::new(None, window, cx));
-        Self {
-            numbers,
-            choice,
-            font,
-            accent,
-            zoom: cx.focus_handle(),
-        }
+        Self { numbers, choice }
     }
 
     fn number(&self, index: usize, cx: &App) -> ala::Div {
@@ -312,77 +284,9 @@ fn entries(controls: &Controls, _: &mut Window, cx: &mut App) -> AnyElement {
         .into_any_element()
 }
 
-fn appearance(controls: &Controls, _: &mut Window, cx: &mut App) -> AnyElement {
+fn appearance(_: &mut Window, cx: &mut App) -> AnyElement {
     let knobs = crate::knobs();
-    let active = knobs.interface_theme();
-    let neutral = knobs.neutral();
-    let mode = cx.theme().mode;
-    let saved = InterfaceTheme {
-        name: "theme-1".to_owned(),
-        radius: 4.0,
-        ..active.clone()
-    };
-    let overrides = ThemeOverrides {
-        tint: knobs.tint,
-        tint_hue: knobs.tint_hue,
-        ..ThemeOverrides::default()
-    };
-    let picks = ThemePicks {
-        themes: builtin_themes()
-            .iter()
-            .map(|(id, theme)| ((*id).into(), theme))
-            .chain([("theme-1".into(), &saved)])
-            .collect(),
-        selected: 0,
-        overrides: &overrides,
-    };
-    let entry = |item: AppearancePageItem| SettingEntry::new(item.title().unwrap_or_default());
-    let custom = ColorPicker::new(&controls.accent, ala::transparent_black())
-        .label("Accent")
-        .swatch(px(SWATCH));
     states()
-        .state(
-            "theme rows",
-            SettingsStack::titled("Interface")
-                .child(SettingEntry::new("Mode").control(theme_mode_control(
-                    None,
-                    |_, _, _| {},
-                    cx,
-                )))
-                .child(entry(AppearancePageItem::Themes).control(theme_picker(
-                    &picks,
-                    |_, _, _| {},
-                    |menu, _, _| menu.item(PopupMenuItem::new("Import from clipboard")),
-                    cx,
-                )))
-                .child(entry(AppearancePageItem::Accent).control(accent_swatches(
-                    &picks,
-                    mode,
-                    custom,
-                    |_, _, _| {},
-                    cx,
-                )))
-                .child(entry(AppearancePageItem::TintHue).control(tint_hue_slider(
-                    neutral.hue,
-                    |_, _, _| {},
-                    cx,
-                )))
-                .child(entry(AppearancePageItem::Tint).control(tint_slider(
-                    neutral.amount,
-                    |_, _, _| {},
-                    cx,
-                )))
-                .child(
-                    SettingEntry::new("UI font").control(
-                        div().w(px(200.0)).flex_none().child(
-                            Select::new(&controls.font)
-                                .title("UI font")
-                                .placeholder("System default")
-                                .on(settings_card_ground(cx)),
-                        ),
-                    ),
-                ),
-        )
         .state(
             "sidebar rows",
             SettingsStack::titled("Sidebar").child(
@@ -392,80 +296,12 @@ fn appearance(controls: &Controls, _: &mut Window, cx: &mut App) -> AnyElement {
             ),
         )
         .state(
-            "advanced heading, collapsed and expanded",
-            div()
-                .flex()
-                .flex_col()
-                .gap(px(8.0))
-                .children([false, true].map(|expanded| {
-                    settings_list_disclosure_header(
-                        if expanded {
-                            "advanced-expanded"
-                        } else {
-                            "advanced-collapsed"
-                        },
-                        "Advanced",
-                        expanded,
-                    )
-                })),
+            "advanced: window blur opacity",
+            SettingsStack::new().child(
+                SettingEntry::new(ZzRow::WindowBackgroundOpacity.title())
+                    .control(window_opacity_slider(0.0, |_, _, _| {}, cx)),
+            ),
         )
-        .state(
-            "advanced sliders",
-            SettingsStack::new()
-                .child(
-                    entry(AppearancePageItem::CornerRadius).control(corner_radius_slider(
-                        active.radius,
-                        |_, _, _| {},
-                        cx,
-                    )),
-                )
-                .child(
-                    entry(AppearancePageItem::ChromeContrast).control(contrast_slider(
-                        knobs.contrast,
-                        |_, _, _| {},
-                        cx,
-                    )),
-                )
-                .child(
-                    entry(AppearancePageItem::AnimationSpeed).control(animation_speed_slider(
-                        knobs.speed,
-                        |_, _, _| {},
-                        cx,
-                    )),
-                )
-                .child(entry(AppearancePageItem::UiZoom).control(zoom_slider(
-                    1.0,
-                    &controls.zoom,
-                    |_, _, _| {},
-                    cx,
-                )))
-                .child(
-                    SettingEntry::new(ZzRow::WindowBackgroundOpacity.title())
-                        .control(window_opacity_slider(0.0, |_, _, _| {}, cx)),
-                ),
-        )
-        .into_any_element()
-}
-
-fn themes(_: &mut Window, cx: &mut App) -> AnyElement {
-    let group = |mode: ThemeMode| {
-        div()
-            .flex()
-            .flex_wrap()
-            .gap(px(8.0))
-            .children(builtin_themes().iter().map(|(id, theme)| {
-                picker_tile(
-                    format!("theme-{id}-{}", mode.name()).into(),
-                    theme.name.clone(),
-                    interface_theme_preview(theme, mode, cx),
-                    false,
-                    cx,
-                )
-            }))
-    };
-    states()
-        .state("light", group(ThemeMode::Light))
-        .state("dark", group(ThemeMode::Dark))
         .into_any_element()
 }
 

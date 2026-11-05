@@ -9,14 +9,14 @@ tags:
 - penna
 - wasm
 - agents
-timestamp: 2026-10-31T23:00:00Z
+timestamp: 2026-11-05T12:00:00Z
 ---
 
 # What it is
 
 There are two pages on one harness. `clients/storybook` (crate `zz-storybook`) shows zz's own UI,
-not a generic widget catalog: every piece of `zz-ui` and `penna` in its states, built from fixture
-data with the same functions the app calls. `libs/penna/storybook` (crate `penna-storybook`) is
+not a generic widget catalog: every piece of `zz-ui` in its states, and zz's data in penna's
+blocks, built from fixture data with the same functions the app calls. `libs/penna/storybook` (crate `penna-storybook`) is
 penna's own page, its theme creator, Foundation and Kit stories with penna's roles and assets
 only, and the harness both pages run on. The page is plain HTML (navigation, prose, knobs). Each section of the
 open story is its own ala window, mounted into the section's element with `WindowOptions::mount`
@@ -47,10 +47,11 @@ process, and `catalog()` read before that gives `PENNA` without fixing it.
 [penna](/references/penna.md) has the whole setup of an app on the kit, its storybook included.
 
 zz's catalog is `zz_storybook::CATALOG` in `clients/storybook/src/lib.rs`: the creator's plates
-(`PLATES` in `clients/storybook/src/stories/theme_creator.rs`), penna's Foundation, zz's agent,
-workspace and console stories, then penna's Kit; the pane knobs
+(`PLATES` in `clients/storybook/src/stories/theme_creator.rs`) and zz's agent, workspace and
+console stories, without penna's Foundation and Kit, which stay on penna's page; the pane knobs
 (`pane-gaps`, `pane-margin`, `pip-opacity`, `pane-inactive-opacity`, `pane-glow`, read through
-`crate::pane()`) and `program-colors`; zz's floating sections; `zz_ui::Assets` and `zz_ui::ZZ_LOGO`.
+`crate::pane()`) and `program-colors`; zz's floating sections alone (`&[FLOATING]`, since
+`KIT_FLOATING` names Kit stories); `zz_ui::Assets` and `zz_ui::ZZ_LOGO`.
 Each page's cdylib defines its own `#[wasm_bindgen] run` that calls
 `penna_storybook::start(&CATALOG, assets)`; every other export comes from `penna-storybook`, and
 penna's own `run` is behind its `page` feature, so a linked app never exports two. Both pages load
@@ -114,11 +115,11 @@ gaps on and off side by side, so look at gapped frames with `pane-gaps=1`), `mot
 animations off and freezes spinners). Two more keys only steer the page: `step` (`colors`,
 `materials`, `roles`, `export`, `app`) opens a step of the knob panel, and `inspect=<role id>` picks a role
 on the Roles step. The tint and pane knobs are app config, not theme, so Copy JSON leaves them out;
-they stay in the URL. The Settings story's Appearance pickers section (`#/settings/appearance`)
-draws the Interface page's Theme rows with the builders the app uses: Mode as a segmented control,
-the Theme picker (Default, macOS, Yaru and a saved theme) with its more menu, the accent swatches with a custom picker (both
-rounding with the corner radius) and the tint sliders (which follow the tint knobs), then
-the Advanced heading and its Corner radius and Contrast sliders.
+they stay in the URL. penna's Appearance story (`#/appearance/page` on penna's page) draws the
+Interface page's kit rows with the builders the app uses: Mode, the Theme picker, the accent
+swatches and the tint sliders (which follow the tint knobs), then the Advanced rows. zz's Settings
+story keeps only the rows zz adds (`#/settings/appearance`): Program colors and window blur
+opacity.
 
 The Theme creator lives in `penna-storybook` (`penna_storybook::creator`), so every page built on
 the harness has it: the knob panel, the role tree, export and import come from there, and the
@@ -195,6 +196,9 @@ exporting `STORIES`, listed in `CATALOG`, and zz's creator plates in
 authoring rules; the short version:
 
 - One section per component piece, its states laid out with `states()`.
+- penna defines every component, block and role and its states. A zz section shows what zz owns,
+  or zz's data, layout or behavior in a penna block; one that would only repeat a penna story's
+  states does not go in zz's catalog, and a state penna's page lacks goes into penna's story.
 - Fixtures from constants only. No daemon, network, filesystem or `std::time::Instant`.
 - Sections holding entities (`InputState`, `SelectState`, `QuestionCardState`) build a view once
   in `build`; stateless ones use `stateless(fn, cx)`.

@@ -16,13 +16,13 @@ use zz_client::program::Program;
 use zz_ui::{
     navigation::{
         WORKSPACE_SIDEBAR_FADE_HEIGHT, WORKSPACE_TREE_INDENT_WIDTH,
-        WORKSPACE_TREE_MARKER_SLOT_WIDTH, WORKSPACE_TREE_NODE_ICON_SIZE,
+        WORKSPACE_TREE_MARKER_SLOT_WIDTH, WORKSPACE_TREE_NODE_ICON_SIZE, WorkspaceTreeInk,
         sidebar::{
             TreeRowMenuItem, tree_action_strip, tree_host_indicator, tree_host_marker,
             tree_node_marker, tree_row_menu,
         },
         workspace_add_host_button, workspace_layout_button, workspace_settings_button,
-        workspace_sidebar_footer_controls, workspace_sidebar_surface,
+        workspace_sidebar_fade, workspace_sidebar_footer_controls, workspace_sidebar_surface,
         workspace_sidebar_view_button, workspace_tree_action_button, workspace_tree_disclosure,
         workspace_tree_row, workspace_tree_shortcut,
     },
@@ -228,11 +228,9 @@ pub fn render_node(node: &Node, active: bool, state: TreeState, cx: &App) -> Any
     let group = format!("tree-group-{key}");
     let is_host = node.kind == Kind::Host;
     let disabled = !state.connected;
-    let color = if is_host || state.connected && node.on_active_path {
-        cx.theme().foreground
-    } else {
-        cx.theme().foreground.muted()
-    };
+    let selected = state.focused && state.selected == Some(key);
+    let ink = WorkspaceTreeInk::new(active, selected, state.focused, cx.theme().ground(), cx);
+    let color = ink.node(is_host || state.connected && node.on_active_path);
     let mut actions = Vec::new();
     match node.kind {
         Kind::Host => actions.push(
@@ -241,6 +239,7 @@ pub fn render_node(node: &Node, active: bool, state: TreeState, cx: &App) -> Any
                 IconName::LayersPlus,
                 "New session",
                 disabled,
+                ink.ground,
                 cx,
             )
             .into_any_element(),
@@ -251,6 +250,7 @@ pub fn render_node(node: &Node, active: bool, state: TreeState, cx: &App) -> Any
                 IconName::WindowPlus,
                 "New window",
                 disabled,
+                ink.ground,
                 cx,
             )
             .into_any_element(),
@@ -269,6 +269,7 @@ pub fn render_node(node: &Node, active: bool, state: TreeState, cx: &App) -> Any
                 IconName::Xmark,
                 label,
                 disabled,
+                ink.ground,
                 cx,
             )
             .into_any_element(),
@@ -313,7 +314,7 @@ pub fn render_node(node: &Node, active: bool, state: TreeState, cx: &App) -> Any
             marker,
             node.expanded,
             group.clone().into(),
-            cx,
+            ink,
         )
         .into_any_element()
     } else {
@@ -324,7 +325,7 @@ pub fn render_node(node: &Node, active: bool, state: TreeState, cx: &App) -> Any
             format!("tree-row-{key}"),
             node.depth,
             active,
-            state.focused && state.selected == Some(key),
+            selected,
             state.focused,
             state.connected,
             node.expandable || state.connected && !is_host,
@@ -338,7 +339,7 @@ pub fn render_node(node: &Node, active: bool, state: TreeState, cx: &App) -> Any
         ),
         node.shortcut
             .and_then(|key| Keystroke::parse(&format!("secondary-{key}")).ok()),
-        cx.theme().ground(),
+        ink.ground,
     );
     let rename = match node.kind {
         Kind::Host => None,
@@ -392,7 +393,11 @@ pub fn tree_list(
         .size_full()
         .min_h_0()
         .child(list)
-        .bottom_fade(scroll, cx.theme().background, WORKSPACE_SIDEBAR_FADE_HEIGHT)
+        .bottom_fade(
+            scroll,
+            workspace_sidebar_fade(cx.theme().ground(), cx),
+            WORKSPACE_SIDEBAR_FADE_HEIGHT,
+        )
         .vertical_scrollbar(scroll)
         .into_any_element()
 }

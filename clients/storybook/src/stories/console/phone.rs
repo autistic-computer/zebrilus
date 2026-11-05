@@ -1,22 +1,18 @@
 use std::sync::Arc;
 
 use ala::{
-    AnyElement, AnyView, App, AppContext as _, Context, Entity, Hsla, IntoElement,
-    ParentElement as _, Render, Styled as _, Window, div, prelude::*, px, white,
+    AnyElement, AnyView, App, AppContext as _, Context, IntoElement, ParentElement as _, Render,
+    Styled as _, Window, div, prelude::*, px,
 };
 use penna::{
-    ActiveTheme as _, Colorize as _, Elevation, IconName, Label, TextStyle,
+    ActiveTheme as _, Colorize as _, IconName, Label, TextStyle,
     blocks::compact::{
         BENTO_INSET, BentoSpan, COMPACT_PILL_HEIGHT, PillLabel, PillMenuAlign, PillMenuItem,
         PillMenuLook, PillPlacement, bento_add_tile, bento_grid, compact_bar_button,
-        compact_floating_bar, compact_floating_group, compact_floating_pill, compact_hud,
-        compact_pill_menu, folding_title_bar, pill_glass_over,
+        compact_floating_bar, compact_floating_group, compact_floating_pill, compact_pill_menu,
     },
     blocks::settings::large_title,
-    blocks::touch::{
-        ArrowPad, KEY_ROW_HEIGHT, KeyRow, PageDot, PopoverKey, PopoverKeyTap, WhichKeyList,
-        page_dots,
-    },
+    blocks::touch::{KEY_ROW_HEIGHT, KeyRow, PageDot, page_dots},
     blocks::which_key::WhichKeyRow,
     components::button::{Button, ButtonVariants as _},
     v_flex,
@@ -32,38 +28,20 @@ use zz_ui::{
 
 use crate::stories::agent::pane as agent_pane;
 use crate::story::Framed as _;
-use crate::story::{Section, Story, row, stateless, states};
+use crate::story::{Section, Story, stateless, states};
 use zz_ui::pane::FlipTo;
 
 pub const STORY: Story = Story {
     id: "phone",
     name: "Phone",
     group: "Phone",
-    summary: "The compact pieces of the phone shell, at phone width: the pill, its menu, page dots, the HUD, the key row and the bindings list.",
+    summary: "The phone shell's own pieces, at phone width: the pill menu's zz entries, the key row, the overview and the screen they make together. The pill, page dots, HUD, keys and bindings list are penna's, in its Phone chrome story.",
     sections: &[
-        Section {
-            id: "bar",
-            name: "Pill",
-            summary: "The one control at the bottom of a pane, with no header above the page: swipe it sideways to page panes, swipe it up to go back to the host's windows, tap it for the menu. It is set in from a 55pt screen corner so it runs concentric with it, and turns amber when the page needs attention.",
-            build: |_, cx| stateless(bars, cx),
-        },
-        Section {
-            id: "page-dots",
-            name: "Page dots",
-            summary: "One group per window, one dot per pane. The current pane is the wide dot; a pane asking for attention is amber.",
-            build: |_, cx| stateless(dots, cx),
-        },
         Section {
             id: "pill-menu",
             name: "Pill menu",
-            summary: "What tapping the pill, or the prefix key over the keyboard, opens, the way Calendar's + rises into its actions: the page dims, the pill turns into a close button and the actions stack above it. Overview sits nearest the thumb; Kill pane and All bindings sit furthest. A pane running Claude Code or Codex adds Switch to chat, which reads Switch to the CLI on an agent pane. On a host's page the pill opens what + and the chat did: a new terminal, browser or session on that host (only while it is connected), All hosts and Settings.",
+            summary: "What tapping the pill, or the prefix key over the keyboard, opens. Overview sits nearest the thumb; Kill pane and All bindings sit furthest. A pane running Claude Code or Codex adds Switch to chat, which reads Switch to the CLI on an agent pane. From the prefix key the menu rises from the key instead of the pill.",
             build: |_, cx| cx.new(Menus::new).into(),
-        },
-        Section {
-            id: "hud",
-            name: "HUD",
-            summary: "The transient message centred over the page.",
-            build: |_, cx| stateless(huds, cx),
         },
         Section {
             id: "key-row",
@@ -72,21 +50,9 @@ pub const STORY: Story = Story {
             build: |_, cx| cx.new(KeyRows::new).into(),
         },
         Section {
-            id: "keys",
-            name: "Popover keys",
-            summary: "The prefix key at rest and armed, as when the prefix is waiting for its next key, a popover key with nothing behind it, and the arrow pad at rest.",
-            build: |_, cx| cx.new(Keys::new).into(),
-        },
-        Section {
-            id: "bindings",
-            name: "Bindings list",
-            summary: "WhichKeyList: the prefix table as a touch list, grouped, your own keys in the accent color.",
-            build: |_, cx| stateless(bindings, cx),
-        },
-        Section {
             id: "overview",
             name: "Overview",
-            summary: "Three levels you zoom through, the way Calendar goes from year to month to day. Hosts lists every host as a tile, with settings in the bar. Tapping a host zooms into its page: each session's windows as a bento grid, every window drawn the way it splits its panes, the one it opens to ringed, over the host pill alone. Swiping the pill sideways pages hosts, swiping it up zooms back out to Hosts, and tapping it opens the host's menu. Tapping a window zooms into the pane it was last on. The large title folds into a frosted bar once the page scrolls it away; a host that is not connected shows why and one thing to do.",
+            summary: "Three levels you zoom through, the way Calendar goes from year to month to day. Hosts lists every host as a tile, with settings in the bar. Tapping a host zooms into its page: each session's windows as a bento grid, every window drawn the way it splits its panes, the one it opens to ringed, over the host pill alone. Swiping the pill sideways pages hosts, swiping it up zooms back out to Hosts, and tapping it opens the host's menu. Tapping a window zooms into the pane it was last on. A host that is not connected shows why and one thing to do.",
             build: |_, cx| stateless(overview, cx),
         },
         Section {
@@ -128,118 +94,8 @@ pub(crate) fn groups() -> Vec<Vec<PageDot>> {
     ]
 }
 
-const SCROLLED: f32 = 72.0;
-const SCROLLED_HEIGHT: f32 = 380.0;
-
 pub(crate) fn placement() -> PillPlacement {
     PillPlacement::new(Some(px(55.0)), px(34.0))
-}
-
-fn bar(
-    id: &'static str,
-    title: &str,
-    meta: &str,
-    warning: bool,
-    page: Option<Hsla>,
-    cx: &App,
-) -> impl IntoElement {
-    let placement = PillPlacement {
-        glass: page.and_then(|page| pill_glass_over(page, cx)),
-        ..placement()
-    };
-    let pill = compact_floating_pill(
-        id,
-        PillLabel {
-            icon: if warning {
-                IconName::TriangleAlert
-            } else {
-                IconName::SquareTerminal
-            },
-            title: title.to_owned().into(),
-            meta: meta.to_owned().into(),
-            warning,
-        },
-        page_dots(&groups(), cx),
-        &placement,
-        cx,
-    );
-    phone(compact_floating_bar(pill, &placement, cx), cx).when_some(page, Styled::bg)
-}
-
-fn bars(_: &mut Window, cx: &mut App) -> AnyElement {
-    let cx: &App = cx;
-    states()
-        .columns(2)
-        .state(
-            "rest",
-            bar("bar-rest", "cargo watch", "zz · editor", false, None, cx),
-        )
-        .state(
-            "attention",
-            bar(
-                "bar-warning",
-                "python train.py",
-                "exited with 1 · gpu-box",
-                true,
-                None,
-                cx,
-            ),
-        )
-        .state(
-            "long title",
-            bar(
-                "bar-long",
-                "claude · reviewing crates/zz-ui/src/command/palette_view.rs",
-                "zz · agents · 2 of 4 panes",
-                false,
-                None,
-                cx,
-            ),
-        )
-        .state(
-            "over a white page",
-            bar(
-                "bar-page",
-                "Google",
-                "www.google.com",
-                false,
-                Some(white()),
-                cx,
-            ),
-        )
-        .into_any_element()
-}
-
-fn dots(_: &mut Window, cx: &mut App) -> AnyElement {
-    let cx: &App = cx;
-    states()
-        .columns(2)
-        .state("one pane", page_dots(&[vec![dot(true, false)]], cx))
-        .state(
-            "one window, four panes",
-            page_dots(
-                &[vec![
-                    dot(false, false),
-                    dot(false, false),
-                    dot(true, false),
-                    dot(false, false),
-                ]],
-                cx,
-            ),
-        )
-        .state("three windows", page_dots(&groups(), cx))
-        .state(
-            "attention in every window",
-            page_dots(
-                &[
-                    vec![dot(true, false), dot(false, true)],
-                    vec![dot(false, true)],
-                    vec![dot(false, false), dot(false, true)],
-                ],
-                cx,
-            ),
-        )
-        .into_any_element()
 }
 
 pub(crate) fn host_bar(
@@ -576,29 +432,6 @@ fn overview(_: &mut Window, cx: &mut App) -> AnyElement {
             ),
         )
         .state(
-            "scrolled, the title folded into the bar",
-            phone(
-                v_flex()
-                    .child(
-                        div()
-                            .relative()
-                            .h(px(SCROLLED_HEIGHT))
-                            .overflow_hidden()
-                            .child(
-                                div()
-                                    .absolute()
-                                    .top(px(-SCROLLED))
-                                    .left_0()
-                                    .right_0()
-                                    .child(host_page(cx)),
-                            )
-                            .child(folding_title_bar("macbook", SCROLLED, px(0.0), cx)),
-                    )
-                    .child(host_bar("overview-bar-scrolled", "macbook", "2 sessions", 0, cx)),
-                cx,
-            ),
-        )
-        .state(
             "a host that is not connected",
             phone(
                 v_flex()
@@ -662,20 +495,6 @@ fn menu_items(flip: Option<FlipTo>) -> Vec<Vec<PillMenuItem>> {
             PillMenuItem::new("kill-pane", "Kill pane", IconName::Xmark).look(PillMenuLook::Danger),
         ],
         panes,
-    ]
-}
-
-fn host_menu_items() -> Vec<Vec<PillMenuItem>> {
-    vec![
-        vec![
-            PillMenuItem::new("settings", "Settings", IconName::Settings).look(PillMenuLook::Quiet),
-        ],
-        vec![
-            PillMenuItem::new("new-session", "New session", IconName::Layers),
-            PillMenuItem::new("new-browser", "New browser", IconName::Globe),
-            PillMenuItem::new("new-terminal", "New terminal", IconName::SquareTerminal),
-            PillMenuItem::new("all-hosts", "All hosts", IconName::Server),
-        ],
     ]
 }
 
@@ -745,12 +564,10 @@ impl Render for Menus {
         );
         states()
             .columns(2)
-            .state("tapping the pill", Self::from_pill(menu_items(None), cx))
             .state(
                 "on a terminal running Claude Code: Switch to chat",
                 Self::from_pill(menu_items(Some(FlipTo::Chat)), cx),
             )
-            .state("on a host's page", Self::from_pill(host_menu_items(), cx))
             .state(
                 "tapping the prefix key over the keyboard",
                 phone(
@@ -855,29 +672,6 @@ impl Render for PhoneAgents {
     }
 }
 
-fn hud(text: &'static str, cx: &App) -> impl IntoElement {
-    phone(
-        div()
-            .relative()
-            .h(px(140.0))
-            .p(px(12.0))
-            .map(|hud| terminal_text(hud, 12.0, cx))
-            .text_color(cx.theme().foreground.muted())
-            .child("~/dev/zz main* > cargo test")
-            .child(compact_hud(text, cx)),
-        cx,
-    )
-}
-
-fn huds(_: &mut Window, cx: &mut App) -> AnyElement {
-    let cx: &App = cx;
-    states()
-        .columns(2)
-        .state("short", hud("Copied", cx))
-        .state("longer", hud("Pane 3 of 5 · zoomed", cx))
-        .into_any_element()
-}
-
 pub(crate) fn tool_keys(cx: &mut App) -> ToolKeys {
     ToolKeys::new(cx)
 }
@@ -939,60 +733,6 @@ impl Render for KeyRows {
     }
 }
 
-struct Keys {
-    rest: Entity<PopoverKey>,
-    armed: Entity<PopoverKey>,
-    plain: Entity<PopoverKey>,
-    arrows: Entity<ArrowPad>,
-}
-
-impl Keys {
-    fn new(cx: &mut Context<Self>) -> Self {
-        let popover = |cx: &mut Context<Self>, armed: bool| {
-            let key = cx.new(|cx| PopoverKey::new("prefix", PopoverKeyTap::Press, cx));
-            key.update(cx, |key, cx| key.set_armed(armed, cx));
-            key
-        };
-        Self {
-            rest: popover(cx, false),
-            armed: popover(cx, true),
-            plain: cx.new(|cx| PopoverKey::new("menu", PopoverKeyTap::Open, cx)),
-            arrows: cx.new(ArrowPad::new),
-        }
-    }
-}
-
-impl Render for Keys {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let slot = |id: &'static str, child: AnyElement| {
-            div()
-                .id(id)
-                .p(px(8.0))
-                .rounded(cx.theme().radius)
-                .bg(cx.theme().surface(Elevation::Panel).fill)
-                .child(child)
-        };
-        states()
-            .columns(4)
-            .state(
-                "prefix, rest",
-                row().child(slot("key-rest", self.rest.clone().into_any_element())),
-            )
-            .state(
-                "prefix, armed",
-                row().child(slot("key-armed", self.armed.clone().into_any_element())),
-            )
-            .state(
-                "no items",
-                row().child(slot("key-plain", self.plain.clone().into_any_element())),
-            )
-            .state(
-                "arrow pad",
-                row().child(slot("key-arrows", self.arrows.clone().into_any_element())),
-            )
-    }
-}
-
 pub(crate) fn binding_rows() -> Arc<[WhichKeyRow]> {
     penna_storybook::kit::which_key::prefix_rows()
         .into_iter()
@@ -1002,19 +742,6 @@ pub(crate) fn binding_rows() -> Arc<[WhichKeyRow]> {
                 .is_some_and(|group| matches!(group.as_ref(), "Windows" | "Panes" | "Yours"))
         })
         .collect()
-}
-
-fn bindings(_: &mut Window, cx: &mut App) -> AnyElement {
-    let cx: &App = cx;
-    phone(
-        v_flex()
-            .id("bindings-list")
-            .h(px(560.0))
-            .overflow_y_scroll()
-            .child(WhichKeyList::new(binding_rows())),
-        cx,
-    )
-    .into_any_element()
 }
 
 struct Screen {

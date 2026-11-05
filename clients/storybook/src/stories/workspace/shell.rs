@@ -7,8 +7,8 @@ use zz_protocol::AgentProvider;
 use zz_ui::{
     pane::{PaneSplitAxis, PaneSplitHighlight, PaneSplitSide, pane_split_surface},
     shell::{
-        app_connection_state, app_shell_surface, app_titlebar_strip, app_workspace_surface,
-        shell_ground, titlebar_over_panes,
+        app_connection_state, app_shell_surface, app_workspace_surface, shell_ground,
+        titlebar_over_panes,
     },
 };
 
@@ -16,10 +16,10 @@ use super::{
     browser::browser_pane,
     fixtures::{BUILD, CLAUDE, TerminalPane, gap, stateful},
     status_bar::{Bar, titlebar},
-    tree::{TreeState, chrome_controls, host_only, sidebar, tree_list, workspace_tree},
+    tree::{TreeState, host_only, sidebar, tree_list, workspace_tree},
 };
 use crate::story::Framed as _;
-use crate::story::{Section, Story, stateless, states};
+use crate::story::{Section, Story, states};
 
 pub const STORY: Story = Story {
     id: "shell",
@@ -38,12 +38,6 @@ pub const STORY: Story = Story {
             name: "Connection",
             summary: "Before the first snapshot arrives the sidebar shows only the host, with a spinner or a warning, and the workspace shows app_connection_state.",
             build: |window, cx| stateful(window, cx, Shell::new, connection),
-        },
-        Section {
-            id: "titlebar-strip",
-            name: "Titlebar strip",
-            summary: "app_titlebar_strip: a titlebar-height drag region with controls at its trailing end, mounted where zz draws its own window controls.",
-            build: |_, cx| stateless(titlebar_strip, cx),
         },
     ],
 };
@@ -267,25 +261,6 @@ fn connection(state: &Shell, _: &mut Window, cx: &mut App) -> AnyElement {
                 connecting_shell(false, "Connection lost. Reconnecting in 4s…", state, 1, cx),
                 cx,
             ),
-        )
-        .into_any_element()
-}
-
-fn titlebar_strip(_: &mut Window, cx: &mut App) -> AnyElement {
-    states()
-        .state(
-            "controls at the trailing end",
-            div()
-                .id("strip")
-                .w_full()
-                .rounded(cx.theme().radius)
-                .framed(cx)
-                .child(app_titlebar_strip(
-                    "titlebar-strip",
-                    div(),
-                    div().pr(px(8.0)).child(chrome_controls()),
-                    cx,
-                )),
         )
         .into_any_element()
 }
