@@ -1,23 +1,15 @@
-use std::sync::{Arc, LazyLock};
-
 use ala::{
     AnyElement, App, AppContext as _, Entity, IntoElement, ParentElement as _, Styled as _, Window,
     div, prelude::*, px,
 };
 use penna::{
-    ActiveTheme as _, Emphasis, Icon, IconName, IndexPath, Tone,
-    blocks::settings::about::{
-        about_build_stack, about_copy_button, about_hero, about_project_stack,
-    },
-    components::button::Button,
+    ActiveTheme as _, IconName,
     components::input::{InputState, NumberInput},
-    components::select::{Select, SelectState},
     components::switch::Switch,
 };
 use zz_client::StatusBarSettings;
 use zz_ui::settings::{
-    SettingEntry, SettingsFold, SettingsSection, SettingsSelectItem, SettingsStack,
-    about::{ABOUT_LOGO_SIZE, ZZ_ABOUT},
+    SettingEntry, SettingsFold, SettingsSection, SettingsStack,
     appearance::{ZzRow, window_opacity_slider},
     panes_page,
     panes_preview::PanesPreview,
@@ -44,12 +36,6 @@ pub const STORY: Story = Story {
             build: |_, cx| stateless(navigation, cx),
         },
         Section {
-            id: "entries",
-            name: "Stacks and entries",
-            summary: "SettingsStack glues SettingEntry rows into one surface and rounds only its ends. A row is its title and its control at the right edge; a short description sits under the title only where it says something the title and control do not.",
-            build: |window, cx| stateful(window, cx, Controls::new, entries),
-        },
-        Section {
             id: "appearance",
             name: "Appearance rows",
             summary: "The rows zz adds to penna's Appearance page: Program colors under Sidebar, and window blur opacity under Advanced. The kit's own rows are penna's, in its Appearance story.",
@@ -73,18 +59,11 @@ pub const STORY: Story = Story {
             summary: "providers_stack for each connected machine: Claude Code and Codex with the installed and newest versions, Update or Install, the updater's latest line while it runs, its error when it fails, installs zz leaves to their owner (a root-owned npm prefix with the command to copy, Nix without one), a machine still checking and one that is offline.",
             build: |_, cx| stateless(agents, cx),
         },
-        Section {
-            id: "about",
-            name: "About",
-            summary: "The About page: the logo and version, the build details to quote in a bug report, and the project links.",
-            build: |_, cx| stateless(about, cx),
-        },
     ],
 };
 
 struct Controls {
     numbers: [Entity<InputState>; 8],
-    choice: Entity<SelectState<Vec<SettingsSelectItem>>>,
 }
 
 impl Controls {
@@ -94,18 +73,7 @@ impl Controls {
             let value = values[index];
             cx.new(|cx| InputState::new(window, cx).default_value(value))
         });
-        let choice = cx.new(|cx| {
-            SelectState::new(
-                vec![
-                    SettingsSelectItem::new("Tree", "tree"),
-                    SettingsSelectItem::new("Flat list", "flat"),
-                ],
-                Some(IndexPath::new(0)),
-                window,
-                cx,
-            )
-        });
-        Self { numbers, choice }
+        Self { numbers }
     }
 
     fn number(&self, index: usize, cx: &App) -> ala::Div {
@@ -114,16 +82,6 @@ impl Controls {
             .flex_none()
             .child(NumberInput::new(&self.numbers[index]).on(settings_card_ground(cx)))
     }
-}
-
-#[allow(
-    clippy::disallowed_methods,
-    reason = "the config file is file content, shown in the code font at the editor's own size"
-)]
-fn config_file_text(editor: ala::Div, cx: &App) -> ala::Div {
-    editor
-        .font_family(cx.theme().mono_font_family.clone())
-        .text_size(px(12.0))
 }
 
 fn navigation(_: &mut Window, cx: &mut App) -> AnyElement {
@@ -199,87 +157,6 @@ fn navigation(_: &mut Window, cx: &mut App) -> AnyElement {
                 .overflow_hidden()
                 .child(div().flex().flex_1().min_h_0().child(phone_index))
                 .child(settings_title_bar("Settings", &fold, back)),
-        )
-        .into_any_element()
-}
-
-fn entries(controls: &Controls, _: &mut Window, cx: &mut App) -> AnyElement {
-    states()
-        .state(
-            "page heading",
-            settings_page_title(SettingsSection::Panes, cx),
-        )
-        .state(
-            "titled stack: switch, number and select controls",
-            SettingsStack::titled("Command palette")
-                .child(
-                    SettingEntry::new("Command shortcuts")
-                        .control(Switch::new("shortcuts").checked(true)),
-                )
-                .child(SettingEntry::new("UI zoom").control(controls.number(6, cx)))
-                .child(
-                    SettingEntry::new("Navigation layout").control(
-                        Select::new(&controls.choice)
-                            .title("Navigation layout")
-                            .on(settings_card_ground(cx)),
-                    ),
-                ),
-        )
-        .state(
-            "a single entry rounds all four corners",
-            SettingsStack::new()
-                .child(SettingEntry::new("Sidebar").control(Switch::new("sidebar").checked(true))),
-        )
-        .state(
-            "disabled: no effect with the current configuration",
-            SettingsStack::titled("Frame")
-                .child(
-                    SettingEntry::new("Pane margin")
-                        .description("Needs pane gaps")
-                        .disabled(true)
-                        .control(controls.number(3, cx)),
-                )
-                .child(
-                    SettingEntry::new("Pane edge width")
-                        .description("Needs pane gaps")
-                        .disabled(true)
-                        .control(controls.number(5, cx)),
-                ),
-        )
-        .state(
-            "a stack note saying why its rows are off",
-            SettingsStack::titled("Split panes")
-                .note("Connect to a local session to edit split shortcuts.")
-                .child(
-                    SettingEntry::new("Split below")
-                        .disabled(true)
-                        .control(controls.number(4, cx)),
-                ),
-        )
-        .state(
-            "a state glyph before the title",
-            SettingsStack::titled("Hosts").child(
-                SettingEntry::new("devbox")
-                    .description("fabrico@devbox.local")
-                    .title_icon(Icon::new(IconName::CircleCheck).text_color(cx.theme().success))
-                    .control(Button::new("open-host").label("Disconnect")),
-            ),
-        )
-        .state(
-            "full-width content under the copy",
-            SettingsStack::new().child(
-                SettingEntry::new("Colors, cursor, and spacing").child(
-                    div()
-                        .p(px(10.0))
-                        .rounded(cx.theme().radius)
-                        .bg(cx
-                            .theme()
-                            .paint_on(settings_card_ground(cx), Tone::Neutral, Emphasis::Soft)
-                            .fill)
-                        .map(|editor| config_file_text(editor, cx))
-                        .child("font-family = Lilex\ncursor-style = bar\nwindow-padding-x = 8"),
-                ),
-            ),
         )
         .into_any_element()
 }
@@ -382,19 +259,6 @@ fn status_bar(_: &mut Window, cx: &mut App) -> AnyElement {
         )
         .into_any_element()
 }
-
-static LOGOS: LazyLock<[Arc<ala::Image>; 2]> = LazyLock::new(|| {
-    [
-        include_bytes!("../../../../../assets/zz-light-512.png").as_slice(),
-        include_bytes!("../../../../../assets/zz-dark-512.png").as_slice(),
-    ]
-    .map(|bytes| {
-        Arc::new(ala::Image::from_bytes(
-            ala::ImageFormat::Png,
-            bytes.to_vec(),
-        ))
-    })
-});
 
 fn provider(
     provider: zz_protocol::AgentProvider,
@@ -560,30 +424,6 @@ fn agents(_: &mut Window, cx: &mut App) -> AnyElement {
                 settings_scroll_column("settings-agents")
                     .child(settings_page_title(SettingsSection::Agents, cx))
                     .children(stacks),
-            ),
-        )
-        .into_any_element()
-}
-
-fn about(_: &mut Window, cx: &mut App) -> AnyElement {
-    let logo = Arc::clone(&LOGOS[usize::from(cx.theme().mode.is_dark())]);
-    states()
-        .state(
-            "page",
-            div().id("about").flex().h(px(780.0)).child(
-                settings_scroll_column("settings-about")
-                    .child(about_hero(
-                        &ZZ_ABOUT,
-                        ala::img(logo).size(px(ABOUT_LOGO_SIZE)),
-                        cx,
-                    ))
-                    .child(about_build_stack(
-                        &ZZ_ABOUT,
-                        "browser · wasm32",
-                        about_copy_button("copy-build"),
-                        cx,
-                    ))
-                    .child(about_project_stack(&ZZ_ABOUT, cx)),
             ),
         )
         .into_any_element()
