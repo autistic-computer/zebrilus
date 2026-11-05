@@ -630,9 +630,7 @@ impl AgentPane {
             },
         )
         .w_full()
-        .h(suggestion_list_height(
-            self.completions.len(),
-        ))
+        .h(suggestion_list_height(self.completions.len()))
         .track_scroll(&self.completion_scroll);
         Some(suggestion_list("agent-slash-suggestions", rows, cx).into_any_element())
     }

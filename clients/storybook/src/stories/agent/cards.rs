@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use ala::{
-    AnyElement, AnyView, App, IntoElement, ParentElement as _,
-    SharedString, Styled as _, Window, div, px, uniform_list,
+    AnyElement, AnyView, App, IntoElement, ParentElement as _, SharedString, Styled as _, Window,
+    div, px, uniform_list,
 };
 use penna::{
     Disableable as _,

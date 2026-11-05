@@ -11,7 +11,9 @@ use penna::{
         CHAT_CONTENT_MAX_WIDTH, COMPOSER_OUTER_PADDING, permission_card, permission_option,
     },
     blocks::notification::Notification,
-    components::button::Button, components::input::InputEvent, v_flex,
+    components::button::Button,
+    components::input::InputEvent,
+    v_flex,
 };
 use zz_protocol::chat::{
     Answer, Ask, ItemBody, ItemId, ItemKind, ItemStatus, OptionKind, QuestionAnswer, RequestClose,

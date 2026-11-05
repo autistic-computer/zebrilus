@@ -305,7 +305,10 @@ fn program_marker(id: &'static str, brand: bool, cx: &App) -> AnyElement {
         brand.then(|| cx.theme().ground().fill),
     )
     .unwrap_or_else(|| node_icon(IconName::SquareTerminal, cx).into_any_element());
-    labeled(id, tree_node_marker(mark, false, None, cx))
+    labeled(
+        id,
+        tree_node_marker(mark, false, None, cx.theme().ground(), cx),
+    )
 }
 
 fn markers(_: &mut Window, cx: &mut App) -> AnyElement {
@@ -314,15 +317,21 @@ fn markers(_: &mut Window, cx: &mut App) -> AnyElement {
         .state(
             "host",
             row()
-                .child(labeled("rest", tree_host_marker(false, None, cx)))
-                .child(labeled("bell", tree_host_marker(true, None, cx)))
+                .child(labeled(
+                    "rest",
+                    tree_host_marker(false, None, cx.theme().ground(), cx),
+                ))
+                .child(labeled(
+                    "bell",
+                    tree_host_marker(true, None, cx.theme().ground(), cx),
+                ))
                 .child(labeled(
                     "needs input",
-                    tree_host_marker(false, badge(Badge::NeedsInput), cx),
+                    tree_host_marker(false, badge(Badge::NeedsInput), cx.theme().ground(), cx),
                 ))
                 .child(labeled(
                     "both",
-                    tree_host_marker(true, badge(Badge::NeedsInput), cx),
+                    tree_host_marker(true, badge(Badge::NeedsInput), cx.theme().ground(), cx),
                 )),
         )
         .state(
@@ -341,7 +350,7 @@ fn markers(_: &mut Window, cx: &mut App) -> AnyElement {
                 .map(|(label, icon)| {
                     labeled(
                         label,
-                        tree_node_marker(node_icon(icon, cx), false, None, cx),
+                        tree_node_marker(node_icon(icon, cx), false, None, cx.theme().ground(), cx),
                     )
                 }),
             ),
@@ -371,7 +380,10 @@ fn markers(_: &mut Window, cx: &mut App) -> AnyElement {
                         None,
                     )
                     .expect("claude has a mark");
-                    labeled(label, tree_node_marker(mark, bell, badge, cx))
+                    labeled(
+                        label,
+                        tree_node_marker(mark, bell, badge, cx.theme().ground(), cx),
+                    )
                 }),
             ),
         )
@@ -384,6 +396,7 @@ fn markers(_: &mut Window, cx: &mut App) -> AnyElement {
                         node_icon(zz_ui::CLAUDE_ICON, cx),
                         false,
                         badge(Badge::NeedsInput),
+                        cx.theme().ground(),
                         cx,
                     ),
                 ))
@@ -393,6 +406,7 @@ fn markers(_: &mut Window, cx: &mut App) -> AnyElement {
                         node_icon(zz_ui::CLAUDE_ICON, cx),
                         false,
                         badge(Badge::Failed),
+                        cx.theme().ground(),
                         cx,
                     ),
                 ))
@@ -402,6 +416,7 @@ fn markers(_: &mut Window, cx: &mut App) -> AnyElement {
                         node_icon(zz_ui::OPENAI_ICON, cx),
                         false,
                         badge(Badge::Working),
+                        cx.theme().ground(),
                         cx,
                     ),
                 ))
@@ -411,12 +426,19 @@ fn markers(_: &mut Window, cx: &mut App) -> AnyElement {
                         node_icon(zz_ui::CLAUDE_ICON, cx),
                         false,
                         badge(Badge::Finished),
+                        cx.theme().ground(),
                         cx,
                     ),
                 ))
                 .child(labeled(
                     "bell",
-                    tree_node_marker(node_icon(IconName::SquareTerminal, cx), true, None, cx),
+                    tree_node_marker(
+                        node_icon(IconName::SquareTerminal, cx),
+                        true,
+                        None,
+                        cx.theme().ground(),
+                        cx,
+                    ),
                 ))
                 .child(labeled(
                     "bell and badge",
@@ -424,6 +446,7 @@ fn markers(_: &mut Window, cx: &mut App) -> AnyElement {
                         node_icon(IconName::AppWindow, cx),
                         true,
                         badge(Badge::Failed),
+                        cx.theme().ground(),
                         cx,
                     ),
                 )),
@@ -449,7 +472,15 @@ fn markers(_: &mut Window, cx: &mut App) -> AnyElement {
 }
 
 fn row_actions(_: &mut Window, cx: &mut App) -> AnyElement {
-    let marker = || tree_node_marker(node_icon(IconName::AppWindow, cx), false, None, cx);
+    let marker = || {
+        tree_node_marker(
+            node_icon(IconName::AppWindow, cx),
+            false,
+            None,
+            cx.theme().ground(),
+            cx,
+        )
+    };
     states()
         .state(
             "disclosure: expanded and collapsed, chevron on hover",

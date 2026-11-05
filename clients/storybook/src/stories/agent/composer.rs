@@ -6,11 +6,11 @@ use ala::{
 };
 use penna::{
     Disableable as _, IconName,
-    components::button::Button,
     blocks::chat::{
         COMPOSER_ATTACHMENT, COMPOSER_MAX_WIDTH, COMPOSER_OUTER_PADDING, ChatComposer, Composer,
         composer_add_button,
     },
+    components::button::Button,
     components::input::InputState,
     h_flex,
 };
@@ -20,8 +20,7 @@ use zz_ui::agent::{
     agent_attachment_thumbnail,
     controls::{
         ComposerAction, agent_directory_chip, agent_settings_menu, agent_side_chat_button,
-        composer_action, composer_action_button, context_usage_meter,
-        git_summary_footer,
+        composer_action, composer_action_button, context_usage_meter, git_summary_footer,
     },
     presentation::error_card,
 };

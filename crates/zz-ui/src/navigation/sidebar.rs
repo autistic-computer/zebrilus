@@ -9,7 +9,7 @@ use ala::{
 };
 
 use crate::{
-    ActiveTheme as _, Colorize as _, Icon, IconName, Sizable as _, WindowExt as _,
+    ActiveTheme as _, Colorize as _, Ground, Icon, IconName, Sizable as _, WindowExt as _,
     menu::{ContextMenuExt as _, PopupMenuItem},
     notification::Notification,
     spinner::Spinner,
@@ -19,7 +19,12 @@ use crate::{
 
 use super::workspace_tree_marker;
 
-pub fn tree_host_marker(bell: bool, badge_color: Option<Hsla>, cx: &App) -> AnyElement {
+pub fn tree_host_marker(
+    bell: bool,
+    badge_color: Option<Hsla>,
+    ground: Ground,
+    cx: &App,
+) -> AnyElement {
     static LOGO: LazyLock<Arc<ala::Image>> = LazyLock::new(|| {
         Arc::new(ala::Image::from_bytes(
             ala::ImageFormat::Png,
@@ -34,6 +39,7 @@ pub fn tree_host_marker(bell: bool, badge_color: Option<Hsla>, cx: &App) -> AnyE
         ala::img(Arc::clone(&LOGO)).size(crate::rems_from_px(super::WORKSPACE_TREE_NODE_ICON_SIZE)),
         bell,
         badge_color,
+        ground,
         cx,
     )
 }
@@ -75,8 +81,10 @@ pub fn tree_node_marker(
     icon: impl IntoElement,
     bell: bool,
     badge_color: Option<Hsla>,
+    ground: Ground,
     cx: &App,
 ) -> AnyElement {
+    let dot = |color: Hsla| if ground.solid { ground.ink } else { color };
     workspace_tree_marker(
         div()
             .relative()
@@ -84,7 +92,7 @@ pub fn tree_node_marker(
             .child(icon)
             .when(bell, |this| {
                 this.child(
-                    crate::sidebar::status_dot(cx.theme().warning)
+                    crate::sidebar::status_dot(dot(cx.theme().warning))
                         .absolute()
                         .top(px(-1.0))
                         .right(px(-1.0)),
@@ -92,7 +100,7 @@ pub fn tree_node_marker(
             })
             .when_some(badge_color, |this, color| {
                 this.child(
-                    crate::sidebar::status_dot(color)
+                    crate::sidebar::status_dot(dot(color))
                         .absolute()
                         .bottom(px(-1.0))
                         .right(px(-1.0)),

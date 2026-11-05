@@ -1,12 +1,10 @@
 use std::rc::Rc;
 
-use ala::{
-    AnyElement, App, ElementId, IntoElement, SharedString, Window, div, prelude::*, px,
-};
+use ala::{AnyElement, App, ElementId, IntoElement, SharedString, Window, div, prelude::*, px};
 
 use crate::{
-    ActiveTheme as _, Colorize as _, Disableable as _, Icon, IconName,
-    Sizable as _, StyledExt as _,
+    ActiveTheme as _, Colorize as _, Disableable as _, Icon, IconName, Sizable as _,
+    StyledExt as _,
     button::{Button, ButtonLook},
     h_flex,
     menu::{DropdownMenu as _, PopupMenu, PopupMenuItem},

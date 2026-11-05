@@ -17,7 +17,8 @@ use std::{
 use web_time::{Duration, Instant};
 
 use crate::{
-    ActiveTheme as _, CHROME_GAP, Colorize as _, Edge, Emphasis, Ground, Icon, IconName, StyledExt as _, Tone,
+    ActiveTheme as _, CHROME_GAP, Colorize as _, Edge, Emphasis, Ground, Icon, IconName,
+    StyledExt as _, Tone,
     attachment::{open_attachment_preview, open_render_image_preview},
     button::{Button, ButtonLook, ButtonVariants as _},
     h_flex,
@@ -31,21 +32,19 @@ use crate::{
 use ala::{
     AnyElement, App, ClipboardItem, Context, Div, ElementId, Entity, FollowMode, Global, Hsla,
     Image, ImageSource, IntoElement, ListOffset, ListSizingBehavior, ListState, Pixels,
-    RenderImage, Rgba, SharedString, Task, Window, canvas, div, img, list, prelude::*,
-    px,
+    RenderImage, Rgba, SharedString, Task, Window, canvas, div, img, list, prelude::*, px,
 };
 use parking_lot::RwLock;
-use penna::{Card, CardLook, Panel, RuleLook, TextStyle};
 use penna::blocks::chat::{
-    ACTIVITY_ROW_FONT_SIZE, ASSISTANT_MESSAGE_GROUP,
-    CHAT_CONTENT_MAX_WIDTH, COMPOSER_ATTACHMENT, PlanState, TRANSCRIPT_ATTACHMENT, UserMessage,
-    activity_color, activity_row, message_action, notice_row,
-    reply_bubble, shown_on_hover, spinner, spinner_phase, transcript_ground,
+    ACTIVITY_ROW_FONT_SIZE, ASSISTANT_MESSAGE_GROUP, CHAT_CONTENT_MAX_WIDTH, COMPOSER_ATTACHMENT,
+    PlanState, TRANSCRIPT_ATTACHMENT, UserMessage, activity_color, activity_row, message_action,
+    notice_row, reply_bubble, shown_on_hover, spinner, spinner_phase, transcript_ground,
     transcript_text,
 };
-pub use penna::blocks::chat::{ActivityCount, ActivityEnd, ActivityMark, disclosure_icon};
 #[cfg(test)]
 use penna::blocks::chat::{ACTIVITY_ROW_HEIGHT, single_line};
+pub use penna::blocks::chat::{ActivityCount, ActivityEnd, ActivityMark, disclosure_icon};
+use penna::{Card, CardLook, Panel, RuleLook, TextStyle};
 
 const MERMAID_NODE_NAME: &str = "zz-mermaid";
 const SVG_NODE_NAME: &str = "zz-svg";
@@ -1658,7 +1657,6 @@ fn render_replied_prompt(
         .into_any_element()
 }
 
-
 fn reply_popover(
     store: &Entity<AgentTimelineStore>,
     id: u64,
@@ -1719,11 +1717,6 @@ pub fn composer_attachment(
     )
 }
 
-
-
-
-
-
 const TRACE_COUNT_ICONS: [IconName; 8] = [
     IconName::File,
     IconName::Search,
@@ -1734,7 +1727,6 @@ const TRACE_COUNT_ICONS: [IconName; 8] = [
     IconName::Bot,
     IconName::TriangleAlert,
 ];
-
 
 fn activity_count(count: &zz_client::agent_timeline::TraceCount) -> ActivityCount {
     let (one, many) = zz_client::agent_timeline::TRACE_COUNT_NOUNS[count.slot];
@@ -1780,14 +1772,6 @@ fn tool_mark(
     mark
 }
 
-
-
-
-
-
-
-
-
 fn render_user_entry(
     store: &Entity<AgentTimelineStore>,
     id: u64,
@@ -1800,20 +1784,23 @@ fn render_user_entry(
     let message = images
         .iter()
         .enumerate()
-        .fold(UserMessage::new(("agent-user-entry", id)), |message, (index, image)| {
-            message.attachment(
-                attachment_tile(
-                    (
-                        SharedString::from(format!("agent-user-attachment-{id}")),
-                        index,
-                    ),
-                    Arc::clone(image),
-                    TRANSCRIPT_ATTACHMENT,
-                    bubble_ground,
+        .fold(
+            UserMessage::new(("agent-user-entry", id)),
+            |message, (index, image)| {
+                message.attachment(
+                    attachment_tile(
+                        (
+                            SharedString::from(format!("agent-user-attachment-{id}")),
+                            index,
+                        ),
+                        Arc::clone(image),
+                        TRANSCRIPT_ATTACHMENT,
+                        bubble_ground,
+                    )
+                    .debug_selector(|| "agent-user-attachment".to_owned()),
                 )
-                .debug_selector(|| "agent-user-attachment".to_owned()),
-            )
-        })
+            },
+        )
         .when(!markdown.is_empty(), |message| {
             message.body(markdown_view(store, id, MarkdownSlot::Body, markdown, cx))
         });
@@ -1861,7 +1848,6 @@ fn tool_icon(kind: AgentToolKind) -> IconName {
         AgentToolKind::Other => IconName::Asterisk,
     }
 }
-
 
 fn markdown_view(
     store: &Entity<AgentTimelineStore>,
@@ -4649,7 +4635,6 @@ mod tests {
         );
         assert!(rewinds.borrow().is_empty());
     }
-
 
     fn test_color([r, g, b]: [u8; 3]) -> Hsla {
         Rgba {

@@ -562,7 +562,7 @@ fn render_row(
     let actions = tree_action_strip(format!("web-tree-actions-{id}"), actions, cx);
     let badge_color = entry.badge.map(|badge| badge_color(badge, cx));
     let marker = if is_host {
-        tree_host_marker(entry.bell, badge_color, cx)
+        tree_host_marker(entry.bell, badge_color, ink.ground, cx)
     } else {
         tree_node_marker(
             entry
@@ -583,6 +583,7 @@ fn render_row(
                 }),
             entry.bell,
             badge_color,
+            ink.ground,
             cx,
         )
     };

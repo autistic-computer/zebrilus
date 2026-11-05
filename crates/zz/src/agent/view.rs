@@ -1,14 +1,15 @@
-use std::{
-    collections::{BTreeSet, HashMap},
-    sync::Arc,
-};
 use penna::blocks::chat::{
     CHAT_CONTENT_MAX_WIDTH, COMPOSER_OUTER_PADDING, ChatComposer, Composer, TaskTrayAction,
     TrayPanel, composer_add_button, empty_state, permission_card, permission_option, queue_chip,
     spinner_phase, suggestion_list, suggestion_list_height, suggestion_row,
 };
+use std::{
+    collections::{BTreeSet, HashMap},
+    sync::Arc,
+};
 use zz_ui::agent::controls::{
-    ComposerAction, composer_action, composer_action_button, context_usage_meter, git_summary_footer,
+    ComposerAction, composer_action, composer_action_button, context_usage_meter,
+    git_summary_footer,
 };
 #[cfg(test)]
 use zz_ui::agent::controls::{context_usage_fraction, context_usage_tooltip, git_file_count_label};
@@ -46,11 +47,11 @@ use penna::{
 use zz_protocol::{AgentProvider, CommandInvocation, PaneId};
 use zz_ui::agent::DisclosureKind;
 use zz_ui::agent::{
-    AgentAside, AgentEntry, AgentMarkdown, AgentTimeline,
-    AgentTimelineStore, AgentToolEntry, AgentToolKind, AgentToolPayload, AgentToolStatus,
-    AgentToolText, FoldedTimelineRows, MarkdownSlot, TimelineRow, TimelineStick,
-    agent_jump_to_bottom_button, append_timeline_row, composer_attachment, fold_timeline_rows,
-    plan_progress, timeline_group_kind, timeline_parent, tool_output_text,
+    AgentAside, AgentEntry, AgentMarkdown, AgentTimeline, AgentTimelineStore, AgentToolEntry,
+    AgentToolKind, AgentToolPayload, AgentToolStatus, AgentToolText, FoldedTimelineRows,
+    MarkdownSlot, TimelineRow, TimelineStick, agent_jump_to_bottom_button, append_timeline_row,
+    composer_attachment, fold_timeline_rows, plan_progress, timeline_group_kind, timeline_parent,
+    tool_output_text,
 };
 
 use crate::{
@@ -1651,9 +1652,7 @@ impl AgentView {
             },
         )
         .w_full()
-        .h(suggestion_list_height(
-            self.completions.len(),
-        ))
+        .h(suggestion_list_height(self.completions.len()))
         .track_scroll(&self.completion_scroll);
         Some(suggestion_list("agent-slash-suggestions", rows, cx).into_any_element())
     }

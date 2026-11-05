@@ -11,10 +11,7 @@ use zz_client::agent_flip::{AgentFlips, Flip, FlipMode};
 use zz_protocol::chat::{ItemKind, ItemStatus};
 use zz_protocol::{AgentProvider, PaneId};
 use zz_ui::{
-    agent::{
-        presentation::agent_welcome,
-        tasks::task_tray,
-    },
+    agent::{presentation::agent_welcome, tasks::task_tray},
     pane::{
         FlipChoice, FlipTo, PaneDragSource, PaneFlip, PaneOverlayCorner, TerminalPaneAction,
         agent_provider_icon, pane_flip_overlay, pane_header, pane_overlay_stack,

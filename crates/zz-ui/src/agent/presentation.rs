@@ -20,5 +20,3 @@ pub fn error_card(error: &str, stopped: bool, cx: &App) -> Div {
         cx,
     )
 }
-
-

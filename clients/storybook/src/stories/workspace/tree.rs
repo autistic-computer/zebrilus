@@ -293,7 +293,7 @@ pub fn render_node(node: &Node, active: bool, state: TreeState, cx: &App) -> Any
     let actions = tree_action_strip(format!("tree-actions-{key}"), actions, cx);
     let badge = node.badge.map(|badge| badge.color(cx));
     let marker = if is_host {
-        tree_host_marker(node.bell, badge, cx)
+        tree_host_marker(node.bell, badge, ink.ground, cx)
     } else {
         let icon = node
             .shown_program()
@@ -306,7 +306,7 @@ pub fn render_node(node: &Node, active: bool, state: TreeState, cx: &App) -> Any
                     .text_color(color)
                     .into_any_element()
             });
-        tree_node_marker(icon, node.bell, badge, cx)
+        tree_node_marker(icon, node.bell, badge, ink.ground, cx)
     };
     let marker = if node.expandable {
         workspace_tree_disclosure(

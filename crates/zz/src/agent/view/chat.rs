@@ -4,13 +4,13 @@ use ala::{
     AnyElement, Context, Entity, IntoElement, ScrollWheelEvent, Window, div, prelude::*, px,
 };
 use penna::ActiveTheme as _;
+use penna::blocks::chat::spinner_phase;
 use zz_protocol::chat::{ChatView, RequestView};
 use zz_ui::agent::agent_jump_to_bottom_button;
 use zz_ui::agent::chat::{
     ChatClick, ChatClicks, ChatHooks, chat_agent_pip, chat_column, chat_live, chat_thread,
     shows_chat,
 };
-use penna::blocks::chat::spinner_phase;
 
 use super::{AgentPaneState, AgentView, COMPOSER_OUTER_PADDING};
 

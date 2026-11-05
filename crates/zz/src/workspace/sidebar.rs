@@ -1431,6 +1431,7 @@ fn render_tree_row(
         ink.node(connected && entry.on_active_path),
         runtime.tree_model.has_pending_bell(node),
         node_agent_badge(&runtime.tree_model, &runtime.badges, node),
+        ink.ground,
         cx,
     );
     let marker = if expandable {
@@ -1570,11 +1571,17 @@ fn render_node_marker(
     color: Hsla,
     belled: bool,
     badge: Option<AgentBadge>,
+    ground: Ground,
     cx: &mut App,
 ) -> AnyElement {
     let icon = match &entry.kind {
         TreeNodeKind::Host => {
-            return tree_host_marker(belled, badge.map(|badge| agent_badge_color(badge, cx)), cx);
+            return tree_host_marker(
+                belled,
+                badge.map(|badge| agent_badge_color(badge, cx)),
+                ground,
+                cx,
+            );
         }
         TreeNodeKind::Session => IconName::Layers,
         TreeNodeKind::Window => IconName::AppWindow,
@@ -1593,6 +1600,7 @@ fn render_node_marker(
             }),
         belled,
         badge.map(|badge| agent_badge_color(badge, cx)),
+        ground,
         cx,
     )
 }

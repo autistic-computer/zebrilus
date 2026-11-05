@@ -8,9 +8,9 @@ use std::{
 };
 
 use ala::{
-    AnyElement, App, ClipboardItem, Context, Div, Global, Image, ImageFormat,
-    IntoElement, ScrollHandle, ScrollWheelEvent, SharedString, Stateful, Subscription,
-    Window, div, prelude::*, px, relative,
+    AnyElement, App, ClipboardItem, Context, Div, Global, Image, ImageFormat, IntoElement,
+    ScrollHandle, ScrollWheelEvent, SharedString, Stateful, Subscription, Window, div, prelude::*,
+    px, relative,
 };
 use penna::{Card, CardLook, Label, Panel, PanelLook, TextStyle, components::button::ButtonLook};
 use zz_client::chat_rows::{self, AgentState, Fold, RunLabel, Unit};
@@ -22,19 +22,20 @@ use zz_protocol::{
     },
 };
 
-use penna::blocks::chat::{
-    card_chip, card_glyph, card_header, card_surface, card_tiles, card_title, permission_card,
-    permission_option,
-};
 use super::refs::{ChatRefs, RefLinks, linkify_markdown, ref_text};
 use super::{agent_text_view, assistant_markdown_extensions, attachment_tile};
-use penna::blocks::chat::{
-    ActivityEnd, ActivityMark, CHAT_CONTENT_MAX_WIDTH, TRANSCRIPT_ATTACHMENT, activity_row, transcript_text,
-};
 use crate::{
     ActiveTheme as _, Colorize as _, Disableable as _, Emphasis, Icon, IconName, StyledExt as _,
     Tone, WindowExt as _, button::Button, h_flex, notification::Notification, pip::PipSurface,
     text::TextView, v_flex,
+};
+use penna::blocks::chat::{
+    ActivityEnd, ActivityMark, CHAT_CONTENT_MAX_WIDTH, TRANSCRIPT_ATTACHMENT, activity_row,
+    transcript_text,
+};
+use penna::blocks::chat::{
+    card_chip, card_glyph, card_header, card_surface, card_tiles, card_title, permission_card,
+    permission_option,
 };
 
 #[derive(Clone, Debug, Default)]
