@@ -1,20 +1,14 @@
 pub mod floating;
 mod gui_level;
 mod level;
-mod palette;
 mod palette_model;
 mod palette_places;
 mod palette_view;
-mod palette_vim;
 
 pub use gui_level::{GuiLevel, theme_offer};
 pub use level::{
     ActionContext, ActionKey, CopyAddress, LevelEffect, PaletteActionLevel, install_recents,
     palette_recents, record_recent,
-};
-pub use palette::{
-    PalettePill, PaletteRow, PaletteStatus, command_palette_empty, command_palette_entry,
-    command_palette_section, command_palette_tree_entry, unified_command_palette_input,
 };
 pub use palette_model::{
     PaletteChat, PaletteHostId, PaletteMode, PaletteSettings, PaletteTarget, PaletteTree,
@@ -27,310 +21,16 @@ pub use palette_view::{
 };
 
 pub(crate) use palette_model::fuzzy_match;
-pub use palette_vim::PaletteVimMode;
 
-use crate::{
-    ActiveTheme as _, CHROME_GAP, Colorize as _, Edge, Sizable as _, StyledExt as _,
-    badge::Badge,
-    h_flex,
-    input::{Input, InputState},
-    kbd::{Kbd, KeyGlyphs},
-    list::ListItem,
-};
-use ala::{
-    AnyElement, App, ElementId, Entity, IntoElement, Keystroke, ParentElement as _, Pixels,
-    RenderOnce, SharedString, Styled as _, deferred, div, prelude::*, px, relative,
-};
-use penna::{Label, Panel, PanelLook, RuleLook, TextStyle};
+use ala::{Keystroke, SharedString};
+use penna::blocks::palette::PaletteShortcut;
 
-pub const COMMAND_PALETTE_MAX_WIDTH: f32 = 560.0;
-pub const COMMAND_PALETTE_INSET: f32 = 8.0;
-pub const COMMAND_PALETTE_ROW_HEIGHT: f32 = 28.0;
-pub const COMMAND_PALETTE_INPUT_HEIGHT: f32 = 40.0;
-pub const COMMAND_PALETTE_FOOTER_HEIGHT: f32 = 32.0;
-const COMMAND_PALETTE_LIST_MAX: f32 = 440.0;
-
-pub fn command_palette_list_height(viewport: Pixels, usage: bool) -> f32 {
-    (f32::from(viewport) * 0.88 - if usage { 175.0 } else { 140.0 })
-        .clamp(40.0, COMMAND_PALETTE_LIST_MAX)
-}
-
-pub fn command_palette_row_height() -> f32 {
-    px(COMMAND_PALETTE_ROW_HEIGHT).as_f32()
-}
-
-#[derive(Clone, Copy)]
-pub struct PaletteHint {
-    pub key: &'static str,
-    pub label: &'static str,
-}
-
-pub fn command_palette_input(
-    input: &Entity<InputState>,
-    prompt: impl Into<SharedString>,
-    font_family: impl Into<SharedString>,
-    cx: &App,
-) -> Input {
-    let font_family = font_family.into();
-    Input::new(input)
-        .w_full()
-        .appearance(false)
-        .h(px(COMMAND_PALETTE_INPUT_HEIGHT))
-        .px(px(14.0))
-        .py(px(8.0))
-        .gap(px(8.0))
-        .font_family(font_family.clone())
-        .type_style(TextStyle::Small, cx)
-        .prefix(
-            Label::new(TextStyle::Small, prompt)
-                .font_family(font_family)
-                .text_color(cx.theme().foreground),
-        )
-}
-
-pub fn command_palette_row(
-    id: impl Into<ala::ElementId>,
-    label: impl Into<SharedString>,
-    detail: impl Into<SharedString>,
-    badge: Option<AnyElement>,
-    selected: bool,
-    cx: &App,
-) -> ListItem {
-    palette::palette_entry(
-        id,
-        &PaletteRow {
-            label: label.into(),
-            detail: detail.into(),
-            ..Default::default()
-        },
-        selected,
-        badge,
-        None,
-        cx,
-    )
-}
-
-pub fn command_kind_badge(
-    label: impl Into<SharedString>,
-    font_family: impl Into<SharedString>,
-) -> Badge {
-    Badge::new(label).small().font_family(font_family.into())
-}
-
-#[derive(IntoElement)]
-pub struct CommandPaletteSurface {
-    input: AnyElement,
-    usage: Option<SharedString>,
-    reserve_usage: bool,
-    rows: Option<AnyElement>,
-    hints: Vec<PaletteHint>,
-    revision: u64,
-    input_last: bool,
-    over_input: Option<AnyElement>,
-    footer_leading: Option<AnyElement>,
-    max_width: Pixels,
-}
-
-impl CommandPaletteSurface {
-    pub fn new(input: impl IntoElement, revision: u64) -> Self {
-        Self {
-            input: input.into_any_element(),
-            usage: None,
-            reserve_usage: false,
-            rows: None,
-            hints: Vec::new(),
-            revision,
-            input_last: false,
-            over_input: None,
-            footer_leading: None,
-            max_width: px(COMMAND_PALETTE_MAX_WIDTH),
-        }
-    }
-
-    #[must_use]
-    pub fn footer_leading(mut self, element: impl IntoElement) -> Self {
-        self.footer_leading = Some(element.into_any_element());
-        self
-    }
-
-    #[must_use]
-    pub fn over_input(mut self, element: impl IntoElement) -> Self {
-        self.over_input = Some(element.into_any_element());
-        self
-    }
-
-    #[must_use]
-    pub fn input_last(mut self) -> Self {
-        self.input_last = true;
-        self
-    }
-
-    #[must_use]
-    pub fn max_width(mut self, width: Pixels) -> Self {
-        self.max_width = width;
-        self
-    }
-
-    #[must_use]
-    pub fn rows(mut self, rows: impl IntoElement) -> Self {
-        self.rows = Some(rows.into_any_element());
-        self
-    }
-
-    #[must_use]
-    pub fn hints(mut self, hints: impl IntoIterator<Item = PaletteHint>) -> Self {
-        self.hints = hints.into_iter().collect();
-        self
-    }
-
-    #[must_use]
-    pub fn reserve_usage(mut self) -> Self {
-        self.reserve_usage = true;
-        self
-    }
-
-    #[must_use]
-    pub fn usage(mut self, usage: impl Into<SharedString>) -> Self {
-        let usage = usage.into();
-        self.usage = (!usage.is_empty()).then_some(usage);
-        self
-    }
-}
-
-impl RenderOnce for CommandPaletteSurface {
-    fn render(self, _: &mut ala::Window, cx: &mut App) -> impl IntoElement {
-        let (input, input_last) = if self.input_last {
-            (None, Some(self.input))
-        } else {
-            (Some(self.input), None)
-        };
-        let surface = Panel::new("command-palette-surface", PanelLook::Popover)
-            .inset(px(COMMAND_PALETTE_INSET))
-            .relative()
-            .w_full()
-            .max_w(self.max_width)
-            .flex()
-            .flex_col()
-            .overflow_hidden()
-            .on_mouse_down(ala::MouseButton::Left, |_, _, cx| cx.stop_propagation())
-            .children(input)
-            .children((self.usage.is_some() || self.reserve_usage).then(|| {
-                div()
-                    .h(px(24.0))
-                    .min_w_0()
-                    .flex_none()
-                    .px(px(18.0))
-                    .pb(px(8.0))
-                    .overflow_hidden()
-                    .whitespace_nowrap()
-                    .text_ellipsis()
-                    .type_style_mono(TextStyle::Micro, cx)
-                    .line_height(px(16.0))
-                    .text_color(cx.theme().foreground.muted())
-                    .children(self.usage)
-            }))
-            .children(self.rows.map(|rows| {
-                div()
-                    .list_inset(cx)
-                    .pt(px(if self.input_last {
-                        COMMAND_PALETTE_INSET
-                    } else {
-                        2.0
-                    }))
-                    .pb(px(if self.input_last {
-                        0.0
-                    } else {
-                        COMMAND_PALETTE_INSET
-                    }))
-                    .child(rows)
-            }))
-            .when_some(input_last, |surface, input| {
-                surface.child(div().flex_none().relative().child(input).children(
-                    self.over_input.map(|over| {
-                        deferred(
-                            div()
-                                .absolute()
-                                .left_0()
-                                .right_0()
-                                .bottom(relative(1.0))
-                                .child(over),
-                        )
-                        .with_priority(1)
-                    }),
-                ))
-            })
-            .child(
-                div()
-                    .min_h(px(COMMAND_PALETTE_FOOTER_HEIGHT))
-                    .flex_none()
-                    .flex()
-                    .flex_wrap()
-                    .items_center()
-                    .justify_end()
-                    .gap(px(14.0))
-                    .px(px(18.0))
-                    .py(px(8.0))
-                    .rule(RuleLook::Bar, Edge::Top, cx)
-                    .type_style(TextStyle::Micro, cx)
-                    .line_height(px(16.0))
-                    .text_color(cx.theme().foreground.muted())
-                    .children(self.footer_leading.map(|leading| {
-                        div()
-                            .flex_1()
-                            .min_w_0()
-                            .flex()
-                            .items_center()
-                            .child(leading)
-                    }))
-                    .children(self.hints.into_iter().map(|hint| palette_hint(hint, cx))),
-            );
-        penna::foundation::surface_enter(
-            surface,
-            ElementId::NamedInteger("command-palette-open".into(), self.revision),
-            px(0.0),
-        )
-    }
-}
-
-pub(crate) fn palette_hint(hint: PaletteHint, cx: &App) -> impl IntoElement {
-    div()
-        .flex()
-        .items_center()
-        .gap(px(5.0))
-        .whitespace_nowrap()
-        .child(
-            h_flex()
-                .gap(px(3.0))
-                .text_color(cx.theme().foreground)
-                .children(
-                    hint.key
-                        .split([' ', '/'])
-                        .filter(|key| !key.is_empty())
-                        .map(|key| match Keystroke::parse(key) {
-                            Ok(stroke) => KeyGlyphs::new(stroke).into_any_element(),
-                            Err(_) => key.to_owned().into_any_element(),
-                        }),
-                ),
-        )
-        .child(hint.label)
-}
-
-pub fn tmux_shortcut(shortcut: &SharedString, ground: crate::Ground, cx: &App) -> AnyElement {
-    let keys: Option<Vec<Keystroke>> = shortcut.split_whitespace().map(tmux_keystroke).collect();
+#[must_use]
+pub fn tmux_shortcut(spelling: &SharedString) -> PaletteShortcut {
+    let keys: Option<Vec<Keystroke>> = spelling.split_whitespace().map(tmux_keystroke).collect();
     match keys {
-        Some(keys) if !keys.is_empty() => h_flex()
-            .flex_none()
-            .gap(px(2.0))
-            .children(
-                keys.into_iter()
-                    .map(|key| Kbd::new(key).lowercase().small().on(ground)),
-            )
-            .into_any_element(),
-        _ => crate::kbd::Keycap::new(shortcut.clone())
-            .small()
-            .on(ground)
-            .font_family(cx.theme().mono_font_family.clone())
-            .into_any_element(),
+        Some(keys) if !keys.is_empty() => PaletteShortcut::Keys(keys),
+        _ => PaletteShortcut::Text(spelling.clone()),
     }
 }
 
@@ -351,21 +51,6 @@ pub fn tmux_keystroke(spelling: &str) -> Option<Keystroke> {
         keystroke.key_char = Some(base.to_owned());
     }
     Some(keystroke)
-}
-
-pub fn palette_shortcut_hint(
-    keys: impl IntoIterator<Item = &'static str>,
-    label: impl Into<SharedString>,
-) -> impl IntoElement {
-    div()
-        .flex()
-        .items_center()
-        .gap(px(CHROME_GAP))
-        .children(
-            keys.into_iter()
-                .map(|key| Kbd::new(Keystroke::parse(key).expect("static palette keystroke"))),
-        )
-        .child(label.into())
 }
 
 #[cfg(test)]

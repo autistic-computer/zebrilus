@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use ala::{Image, ImageFormat};
 use penna::IconName;
+use penna::blocks::palette::PaletteStatus;
 use zz_protocol::chat::{
     Answer, Ask, AskOption, ChatEvent, ChatView, ItemBody, ItemId, ItemKind, ItemStatus,
     OptionKind, PlanStep, QuestionAnswer, RequestClose, RequestId, StepStatus, TurnBy, TurnId,
@@ -11,7 +12,7 @@ use zz_protocol::{
     AgentTaskWire, PaneId, SessionId, WindowId,
     agent_stream::{AgentImage, AgentQuestion, AgentQuestionOption},
 };
-use zz_ui::command::{PaletteHostId, PaletteStatus};
+use zz_ui::command::PaletteHostId;
 use zz_ui::target::{TargetChat, TargetHost, TargetPane, TargetSession, TargetWindow};
 
 const START: u64 = 1_793_365_200_000;

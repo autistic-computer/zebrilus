@@ -23,18 +23,12 @@ use zz_protocol::{
 };
 
 use super::{
-    ActionKey, CommandPaletteSurface, CopyAddress, LevelEffect, PaletteActionLevel, PaletteHint,
-    PaletteRow, command_kind_badge, command_palette_empty, command_palette_input,
-    command_palette_row, command_palette_row_height, command_palette_section,
-    command_palette_tree_entry,
-    palette::palette_vim_badge,
+    ActionKey, CopyAddress, LevelEffect, PaletteActionLevel,
     palette_model::{
         PaletteAction, PaletteEntry, PaletteHostId, PaletteMode, PaletteSettings, PaletteTarget,
         PaletteTree, UnifiedPalette, needs_arguments, target_kind,
     },
     palette_recents,
-    palette_vim::{PaletteVim, PaletteVimMode, Twin, VimCommand},
-    unified_command_palette_input,
 };
 use crate::{
     WindowExt as _,
@@ -48,6 +42,11 @@ use crate::{
         TargetBackend, TargetChat, TargetHost, TargetKind, TargetPane, TargetPicker,
         TargetPickerEvent, TargetSession, TargetWindow, pop_level,
     },
+};
+use penna::blocks::palette::{
+    PaletteHint, PaletteRow, PaletteSurface, PaletteVim, PaletteVimMode, Twin, VimCommand,
+    palette_badged_row, palette_empty, palette_input, palette_kind_badge, palette_prompt_input,
+    palette_row, palette_row_height, palette_section, palette_tree_row, palette_vim_badge,
 };
 
 pub trait PaletteBackend {
@@ -866,7 +865,7 @@ impl CommandPaletteView {
             Twin::Into => Box::new(IndentInline),
             Twin::Out => Box::new(OutdentInline),
             Twin::Drop => Box::new(Backspace),
-            Twin::CopyAddress => Box::new(CopyAddress),
+            Twin::Copy => Box::new(CopyAddress),
         };
         window.dispatch_action(action, cx);
     }
@@ -1095,7 +1094,9 @@ impl CommandPaletteView {
         let Some(item) = item else {
             return;
         };
-        if item.kind == TargetKind::Host && item.status != Some(super::PaletteStatus::Online) {
+        if item.kind == TargetKind::Host
+            && item.status != Some(penna::blocks::palette::PaletteStatus::Online)
+        {
             self.backend.connect_host(item.host_id, cx);
         }
         if open || item.kind == TargetKind::Host {
@@ -1322,7 +1323,7 @@ impl CommandPaletteView {
     fn render_unified(&mut self, window: &mut Window, cx: &mut Context<Self>) -> ala::AnyElement {
         let target_item = self.target.as_ref().and_then(|(picker, _)| {
             picker.update(cx, |picker, _| {
-                picker.fit(px(super::command_palette_list_height(
+                picker.fit(px(penna::blocks::palette::palette_list_height(
                     window.viewport_size().height,
                     false,
                 )));
@@ -1402,8 +1403,8 @@ impl CommandPaletteView {
         let entries = Arc::new(unified.rows.clone());
         let palette = cx.entity();
         let rows_palette = palette.clone();
-        let list_height = (entries.len() as f32 * command_palette_row_height()).min(
-            super::command_palette_list_height(
+        let list_height = (entries.len() as f32 * palette_row_height()).min(
+            penna::blocks::palette::palette_list_height(
                 window.viewport_size().height,
                 reserve_usage || usage.is_some(),
             ),
@@ -1416,20 +1417,18 @@ impl CommandPaletteView {
                     .filter_map(|index| {
                         entries.get(index).map(|entry| {
                             if entry.action.is_none() {
-                                return div().h(px(command_palette_row_height())).child(
-                                    command_palette_section(
-                                        entry.row.label.clone(),
-                                        entry.hint,
-                                        cx,
-                                    ),
-                                );
+                                return div().h(px(palette_row_height())).child(palette_section(
+                                    entry.row.label.clone(),
+                                    entry.hint,
+                                    cx,
+                                ));
                             }
                             let hover_palette = rows_palette.clone();
                             let click_palette = rows_palette.clone();
                             let toggle_palette = rows_palette.clone();
                             let expanded = entry.row.expanded;
-                            div().h(px(command_palette_row_height())).child(
-                                command_palette_tree_entry(
+                            div().h(px(palette_row_height())).child(
+                                palette_tree_row(
                                     ("unified-palette-row", index),
                                     &entry.row,
                                     selected == Some(index),
@@ -1605,7 +1604,7 @@ impl CommandPaletteView {
                 }
             }
         }
-        let mut input = unified_command_palette_input(&self.input, unified.pills(), cx);
+        let mut input = palette_input(&self.input, unified.pills(), cx);
         if let Some(vim) = &self.vim {
             input = input.suffix(palette_vim_badge(vim.mode(), vim.pending(), cx));
         }
@@ -1623,7 +1622,7 @@ impl CommandPaletteView {
                 });
             })
             .child(input);
-        let mut surface = CommandPaletteSurface::new(input, cx.entity_id().as_u64()).hints(hints);
+        let mut surface = PaletteSurface::new(input, cx.entity_id().as_u64()).hints(hints);
         if let Some(usage) = usage {
             surface = surface.usage(usage);
         }
@@ -1635,7 +1634,7 @@ impl CommandPaletteView {
         } else if let Some((picker, _)) = &self.target {
             surface.rows(picker.clone())
         } else if unified.rows.is_empty() {
-            surface.rows(command_palette_empty(cx))
+            surface.rows(palette_empty("No matches", cx))
         } else {
             surface.rows(rows)
         };
@@ -2118,15 +2117,23 @@ impl CommandPaletteView {
         let hover_palette = palette.clone();
         let click_palette = palette;
         let kind = suggestion.kind;
-        command_palette_row(
-            ("command-palette-suggestion", index),
-            suggestion.label,
-            suggestion.detail,
-            (kind != CompletionKind::Command)
-                .then(|| command_kind_badge(Self::kind_label(kind), font).into_any_element()),
-            selected,
-            cx,
-        )
+        let row = PaletteRow {
+            label: suggestion.label.into(),
+            detail: suggestion.detail.into(),
+            ..Default::default()
+        };
+        let id = ("command-palette-suggestion", index);
+        if kind == CompletionKind::Command {
+            palette_row(id, &row, selected, cx)
+        } else {
+            palette_badged_row(
+                id,
+                &row,
+                selected,
+                palette_kind_badge(Self::kind_label(kind), font),
+                cx,
+            )
+        }
         .on_mouse_enter(move |_, _, cx| {
             hover_palette.update(cx, |palette, cx| {
                 palette.engage_pointer_selection(index, cx);
@@ -2142,7 +2149,7 @@ impl CommandPaletteView {
             });
             cx.stop_propagation();
         })
-        .map(|row| div().h(px(command_palette_row_height())).child(row))
+        .map(|row| div().h(px(palette_row_height())).child(row))
     }
 }
 
@@ -2186,10 +2193,10 @@ impl Render for CommandPaletteView {
                     .collect::<Vec<_>>()
             }),
         )
-        .h(px(command_palette_row_height() * row_count))
+        .h(px(palette_row_height() * row_count))
         .track_scroll(&self.scroll_handle);
 
-        let input = command_palette_input(
+        let input = palette_prompt_input(
             &self.input,
             self.prompt.clone(),
             self.backend.mono_font(cx),
@@ -2224,7 +2231,7 @@ impl Render for CommandPaletteView {
                 label: "close",
             });
         }
-        let mut surface = CommandPaletteSurface::new(input, cx.entity_id().as_u64()).hints(hints);
+        let mut surface = PaletteSurface::new(input, cx.entity_id().as_u64()).hints(hints);
         if !self.suggestions.is_empty() {
             surface = surface.rows(rows);
         }

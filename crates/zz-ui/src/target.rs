@@ -9,12 +9,13 @@ use zz_protocol::{GitMark, PaneId, PathEntry, PathKind, PathListRoot, SessionId,
 
 use penna::{Panel, PanelLook, TextStyle};
 
+use penna::blocks::palette::{
+    PaletteHint, PaletteRow, PaletteStatus, palette_hint, palette_row, palette_row_height,
+};
+
 use crate::{
     ActiveTheme as _, Colorize as _, IconName, StyledExt as _,
-    command::{
-        PaletteHint, PaletteHostId, PaletteRow, PaletteStatus, PaletteTarget,
-        command_palette_entry, command_palette_row_height, fuzzy_match, palette_hint,
-    },
+    command::{PaletteHostId, PaletteTarget, fuzzy_match},
     files::{FileRow, GitMarks, Listing, file_rows, mark_letter},
     h_flex,
     input::{Enter, Escape, IndentInline, InputState, MoveDown, MoveUp},
@@ -1124,7 +1125,7 @@ impl TargetPicker {
         } else {
             0.0
         };
-        let rows = ((f32::from(room) - chrome) / command_palette_row_height()).floor();
+        let rows = ((f32::from(room) - chrome) / palette_row_height()).floor();
         self.rows = (rows.max(1.0) as usize).min(if self.composer.is_some() {
             TARGET_VISIBLE_ROWS
         } else {
@@ -1454,7 +1455,7 @@ impl TargetPicker {
     ) -> ala::Div {
         let hover = picker.clone();
         let drills = item.drills();
-        command_palette_entry(
+        palette_row(
             ("target-row", index),
             &PaletteRow {
                 label: item.label.clone(),
@@ -1489,7 +1490,7 @@ impl TargetPicker {
             });
             cx.stop_propagation();
         })
-        .map(|row| div().h(px(command_palette_row_height())).child(row))
+        .map(|row| div().h(px(palette_row_height())).child(row))
     }
 
     fn list(&self, cx: &mut Context<Self>) -> ala::AnyElement {
@@ -1521,7 +1522,7 @@ impl TargetPicker {
                     .collect::<Vec<_>>()
             }),
         )
-        .h(px(command_palette_row_height() * visible))
+        .h(px(palette_row_height() * visible))
         .track_scroll(&self.scroll)
         .into_any_element()
     }

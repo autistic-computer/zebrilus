@@ -7,7 +7,8 @@ use zz_client::{
 };
 use zz_protocol::PaneId;
 
-use super::{CommandPaletteEvent, CommandPaletteView, PaletteHint, PaletteHostId};
+use super::{CommandPaletteEvent, CommandPaletteView, PaletteHostId};
+use penna::blocks::palette::PaletteHint;
 
 actions!(zz_palette, [CopyAddress]);
 

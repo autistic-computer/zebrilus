@@ -2,6 +2,7 @@ use std::{rc::Rc, sync::Arc};
 
 use ala::{App, Entity, KeyDownEvent, SharedString, Subscription};
 use penna::IconName;
+use penna::blocks::palette::PaletteStatus;
 use zz_client::{
     completion::PaneKindAvailability, gui_actions::GuiOffer, place::ActionKind, recents::Recents,
 };
@@ -11,8 +12,8 @@ use zz_protocol::{
 use zz_ui::{
     command::{
         GuiLevel, PaletteActionLevel, PaletteBackend, PaletteHostId, PaletteSettings,
-        PaletteStatus, PaletteTarget, PaletteTree, PaletteTreeHost, PaletteTreePane,
-        PaletteTreeSession, PaletteTreeWindow, palette_chats,
+        PaletteTarget, PaletteTree, PaletteTreeHost, PaletteTreePane, PaletteTreeSession,
+        PaletteTreeWindow, palette_chats,
     },
     files::{FilesAction, ListingSink, ListingUpdate, listing_pane},
     target::TargetPicker,

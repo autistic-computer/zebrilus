@@ -12,11 +12,13 @@ use zz_client::{
 };
 use zz_protocol::{CommandInvocation, InputMessage, MuxSnapshot, PaneId, SessionId, WindowId};
 
+use penna::blocks::palette::PaletteStatus;
+
 use crate::{
     IconName,
     command::{
         CommandPaletteEvent, CommandPaletteView, GuiEvent, GuiLevel, PaletteActionLevel,
-        PaletteBackend, PaletteHostId, PaletteSettings, PaletteStatus, PaletteTarget, PaletteTree,
+        PaletteBackend, PaletteHostId, PaletteSettings, PaletteTarget, PaletteTree,
         PaletteTreeHost, PaletteTreePane, PaletteTreeSession, PaletteTreeWindow,
         palette_model::PaletteAction, record_recent,
     },

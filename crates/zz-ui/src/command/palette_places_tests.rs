@@ -328,7 +328,7 @@ fn on_a_place_typing_lists_the_actions_that_take_it_first() {
     assert!(found.iter().all(|row| row != "  detach"));
     let pills = palette.pills();
     assert_eq!(pills.len(), 2);
-    assert!(matches!(&pills[1], PalettePill::Place(label) if label == "Working on foo"));
+    assert!(matches!(&pills[1], PalettePill::Crumb(label) if label == "Working on foo"));
 }
 
 #[test]
@@ -345,7 +345,7 @@ fn a_verb_waiting_on_a_pane_lists_panes_with_the_current_one_first() {
     ));
     assert_eq!(palette.placeholder(), "Pick a pane");
     let pills = palette.pills();
-    assert!(matches!(&pills[1], PalettePill::Verb(label) if label == "read pane"));
+    assert!(matches!(&pills[1], PalettePill::Action(label) if label == "read pane"));
     let found = rows(&mut palette, "flat", &[], &recents);
     assert_eq!(found[1], "  zz 1 › 1 nvim › 0 flat.rs");
 }
