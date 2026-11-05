@@ -1115,7 +1115,7 @@ impl RowRenderCache {
                 offset: target_offset,
                 len: viewport.scrollbar.len,
             });
-        let scrollbar = scrollbar_quad(scrollbar, track, input.overscroll, cx);
+        let scrollbar = scrollbar_quad(scrollbar, track, input.overscroll, window.rem_size(), cx);
         let focused = input.focused;
         let cursor_visible =
             cursor_visible_for_paint(cursor, composing, focused, input.cursor_blink_visible);
@@ -1477,12 +1477,13 @@ pub fn scrollbar_strip_hit(
     surface: Bounds<Pixels>,
     scrollbar: ScrollbarState,
     position: Point<Pixels>,
+    gutter: Pixels,
 ) -> bool {
     zz_client::terminal_view::scrollbar_strip_hit(
         f32::from(surface.right()),
         f32::from(surface.origin.y),
         f32::from(surface.bottom()),
-        f32::from(crate::scroll::GUTTER_WIDTH),
+        f32::from(gutter),
         scrollbar,
         f32::from(position.x),
         f32::from(position.y),
@@ -1671,20 +1672,24 @@ fn scrollbar_quad(
     scrollbar: ScrollbarState,
     bounds: Bounds<Pixels>,
     overscroll: Pixels,
+    rem: Pixels,
     cx: &App,
 ) -> Option<PaintQuad> {
     if scrollbar.total <= scrollbar.len || scrollbar.total == 0 {
         return None;
     }
-    let track_height = bounds.size.height - THUMB_INSET * 2.0;
+    let inset = THUMB_INSET.to_pixels(rem);
+    let width = THUMB_WIDTH.to_pixels(rem);
+    let shortest = MIN_THUMB_SIZE.to_pixels(rem);
+    let track_height = bounds.size.height - inset * 2.0;
     let ratio = scrollbar.len as f32 / scrollbar.total as f32;
-    let thumb_height = (track_height * ratio).max(px(MIN_THUMB_SIZE));
+    let thumb_height = (track_height * ratio).max(shortest);
     let travel = (track_height - thumb_height).max(px(0.0));
     let denominator = scrollbar.total.saturating_sub(scrollbar.len).max(1);
     let progress = scrollbar.offset as f32 / denominator as f32;
-    let squeezed = (thumb_height - overscroll.abs()).max(px(MIN_THUMB_SIZE));
+    let squeezed = (thumb_height - overscroll.abs()).max(shortest);
     let top = bounds.origin.y
-        + THUMB_INSET
+        + inset
         + travel * progress
         + if overscroll < px(0.0) {
             thumb_height - squeezed
@@ -1692,13 +1697,13 @@ fn scrollbar_quad(
             px(0.0)
         };
     let thumb_height = squeezed;
-    let origin = point(bounds.right() - THUMB_WIDTH - THUMB_INSET, top);
+    let origin = point(bounds.right() - width - inset, top);
     Some(
         fill(
-            Bounds::new(origin, size(THUMB_WIDTH, thumb_height)),
+            Bounds::new(origin, size(width, thumb_height)),
             thumb_color(cx),
         )
-        .corner_radii(thumb_radius(THUMB_WIDTH, cx)),
+        .corner_radii(thumb_radius(width, cx)),
     )
 }
 
@@ -3474,12 +3479,14 @@ mod tests {
         assert!(scrollbar_strip_hit(
             surface,
             scrollbar,
-            point(px(208.0), px(30.0))
+            point(px(208.0), px(30.0)),
+            px(16.0)
         ));
         assert!(!scrollbar_strip_hit(
             surface,
             scrollbar,
-            point(px(100.0), px(30.0))
+            point(px(100.0), px(30.0)),
+            px(16.0)
         ));
         assert_eq!(scroll_fraction(surface, point(px(20.0), px(-50.0))), 0);
         assert_eq!(

@@ -1066,6 +1066,7 @@ impl TerminalPane {
                     self.surface_bounds,
                     viewport.scrollbar,
                     position,
+                    penna::components::scroll::GUTTER_WIDTH.to_pixels(cx.theme().font_size),
                 )
             })
     }

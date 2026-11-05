@@ -349,6 +349,7 @@ struct HitGrid {
     cell_width: Pixels,
     line_height: Pixels,
     content_offset: Pixels,
+    scrollbar_gutter: Pixels,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -1315,6 +1316,8 @@ impl TerminalView {
             cell_width,
             line_height,
             content_offset,
+            scrollbar_gutter: penna::components::scroll::GUTTER_WIDTH
+                .to_pixels(cx.theme().font_size),
         });
         if self.search_query.is_none() {
             self.cursor_bounds = cursor_bounds;
@@ -2635,7 +2638,12 @@ const fn selection_has_extent(anchor: PointerCellEvent, pointer: PointerCellEven
 }
 
 fn scrollbar_strip_hit(grid: HitGrid, scrollbar: ScrollbarState, position: Point<Pixels>) -> bool {
-    zz_ui::terminal::scrollbar_strip_hit(grid.surface_bounds, scrollbar, position)
+    zz_ui::terminal::scrollbar_strip_hit(
+        grid.surface_bounds,
+        scrollbar,
+        position,
+        grid.scrollbar_gutter,
+    )
 }
 
 fn modifiers(value: ala::Modifiers) -> Modifiers {
@@ -3251,6 +3259,7 @@ mod tests {
             cell_width: px(8.0),
             line_height: px(19.0),
             content_offset: px(0.0),
+            scrollbar_gutter: px(16.0),
         };
         let scrollable = ScrollbarState {
             total: 100,
