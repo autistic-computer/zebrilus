@@ -1,0 +1,301 @@
+.penna-palette-surface[data-penna] {
+  --penna-palette-accent: var(--penna-primary-ink);
+  --penna-palette-row: calc(28px - min(2px, var(--penna-row-inset) * 1000));
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 560px;
+  padding: 0;
+  overflow: hidden;
+}
+
+.penna-palette-input {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  height: 40px;
+  padding: 8px 14px;
+  font-size: var(--penna-text-small-size);
+  line-height: var(--penna-text-small-line);
+  color: var(--penna-fg);
+}
+
+.penna-palette-input[data-prompt] {
+  gap: 8px;
+}
+
+.penna-palette-input[data-mono] {
+  font-family: var(--penna-mono);
+}
+
+.penna-palette-input > input {
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  font: inherit;
+  color: inherit;
+}
+
+.penna-palette-input > input::placeholder {
+  color: var(--penna-fg-muted);
+}
+
+.penna-palette-pills {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+}
+
+.penna-palette-pill.penna-badge[data-penna] {
+  --penna-palette-accent: var(--penna-primary-ink);
+  gap: 6px;
+  padding: 0 8px;
+}
+
+.penna-palette-pill > .penna-palette-prefix {
+  font-family: var(--penna-mono);
+  color: var(--penna-palette-accent);
+}
+
+.penna-palette-pill[data-kind="code"] {
+  font-family: var(--penna-mono);
+}
+
+.penna-palette-pill[data-kind="action"] {
+  color: var(--penna-palette-accent);
+}
+
+.penna-palette-pill[data-kind="crumb"] {
+  min-width: 28px;
+  flex-shrink: var(--penna-palette-shrink, 1);
+}
+
+.penna-palette-pill[data-kind="crumb"] > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.penna-palette-usage {
+  flex: none;
+  min-width: 0;
+  height: 24px;
+  padding: 0 18px 8px;
+  overflow: hidden;
+  white-space: pre;
+  text-overflow: ellipsis;
+  font-family: var(--penna-mono);
+  font-size: var(--penna-text-micro-size);
+  line-height: 16px;
+  color: var(--penna-fg-muted);
+}
+
+.penna-palette-rows {
+  display: flex;
+  flex-direction: column;
+  padding: 2px var(--penna-row-inset) 8px;
+  gap: min(2px, var(--penna-row-inset) * 1000);
+}
+
+.penna-palette-footer {
+  position: relative;
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 14px;
+  min-height: 32px;
+  padding: 8.5px 18px 8px;
+  font-size: var(--penna-text-micro-size);
+  line-height: 16px;
+  color: var(--penna-fg-muted);
+}
+
+.penna-palette-footer > .penna-palette-rule[data-penna] {
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: var(--penna-bw);
+  border: 0;
+  border-radius: 0;
+  background: var(--penna-edge);
+  box-shadow: none;
+}
+
+.penna-palette-hint {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+
+.penna-palette-hint > .penna-palette-keys {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--penna-fg);
+}
+
+.penna-palette-key-hint {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.penna-palette-row.penna-list-item[data-penna] {
+  --penna-palette-row: calc(28px - min(2px, var(--penna-row-inset) * 1000));
+  flex: none;
+  width: 100%;
+  height: var(--penna-palette-row, 28px);
+  min-height: 0;
+  padding: 4px 12px 4px calc(12px + var(--indent, 0px));
+  font-size: var(--penna-text-small-size);
+  line-height: var(--penna-text-small-line);
+  --penna-list-row: var(--penna-palette-row, 28px);
+}
+
+.penna-palette-row > .penna-palette-content {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+}
+
+.penna-palette-row .penna-palette-disclosure,
+.penna-palette-row .penna-palette-icon {
+  position: relative;
+  top: 0.5px;
+  flex: none;
+  width: 12px;
+  height: 12px;
+  --penna-icon-size: 12px;
+}
+
+.penna-palette-row .penna-palette-disclosure > i {
+  display: block;
+}
+
+.penna-palette-row .penna-palette-label {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-weight: 500;
+  color: var(--penna-ink);
+}
+
+.penna-palette-row[data-detail] .penna-palette-label {
+  flex: 0 0 auto;
+  max-width: 60%;
+}
+
+.penna-palette-label > .penna-palette-muted {
+  color: var(--penna-muted);
+}
+
+.penna-palette-label > .penna-palette-match {
+  font-weight: 600;
+}
+
+.penna-palette-row .penna-palette-detail,
+.penna-palette-row .penna-palette-right {
+  min-width: 0;
+  font-size: var(--penna-text-micro-size);
+  line-height: 16px;
+  white-space: nowrap;
+  color: var(--penna-muted);
+}
+
+.penna-palette-row .penna-palette-detail {
+  flex: 1 1 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.penna-palette-row .penna-palette-right {
+  flex: none;
+}
+
+.penna-palette-row .penna-palette-shortcut {
+  display: flex;
+  flex: none;
+  gap: 2px;
+}
+
+.penna-palette-row .penna-palette-shortcut > .penna-kbd[data-mono] {
+  font-family: var(--penna-mono);
+}
+
+.penna-palette-dot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 9999px;
+  background: var(--penna-palette-dot);
+}
+
+.penna-palette-dot[data-status="online"] {
+  --penna-palette-dot: var(--penna-success);
+}
+
+.penna-palette-dot[data-status="running"],
+.penna-palette-dot[data-status="busy"] {
+  --penna-palette-dot: var(--penna-fg-muted);
+}
+
+.penna-palette-dot[data-status="waiting"] {
+  --penna-palette-dot: var(--penna-warning);
+}
+
+.penna-palette-dot[data-status="offline"] {
+  --penna-palette-dot: var(--penna-fg-faint);
+}
+
+.penna-palette-dot[data-status="busy"] {
+  --penna-palette-dot: var(--penna-muted);
+}
+
+.penna-palette-section {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 28px;
+  padding: 4px 10px 0;
+  font-size: var(--penna-text-caption-size);
+  line-height: var(--penna-text-caption-line);
+  color: var(--penna-fg-muted);
+}
+
+.penna-palette-section > .penna-palette-section-hint {
+  font-family: var(--penna-mono);
+  font-size: var(--penna-text-micro-size);
+  line-height: var(--penna-text-micro-line);
+}
+
+.penna-palette-empty {
+  padding: 16px 0;
+  text-align: center;
+  font-size: var(--penna-text-small-size);
+  line-height: var(--penna-text-small-line);
+  color: var(--penna-fg-muted);
+}
+
+.penna-palette-vim[data-penna] {
+  font-family: var(--penna-mono);
+}
+
+.penna-palette-glyphs {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  --penna-icon-size: 12px;
+}

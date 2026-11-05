@@ -1,0 +1,11 @@
+{
+  "story": "palette",
+  "page": "index.html",
+  "steps": [
+    { "name": "hover-command", "section": "rows", "hover": "row-command-0" },
+    { "name": "press-command", "section": "rows", "press": "row-command-0" },
+    { "name": "hover-tree", "section": "rows", "hover": "row-tree-2" },
+    { "name": "hover-completion", "section": "parts", "hover": "completion-1" },
+    { "name": "hover-target", "section": "surface", "hover": "surface-target-1" }
+  ]
+}

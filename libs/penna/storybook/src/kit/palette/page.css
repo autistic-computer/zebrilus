@@ -1,0 +1,26 @@
+.palette-story-surface[data-penna] {
+  width: 100%;
+  padding: 8px;
+}
+
+.palette-story-hints {
+  display: flex;
+  gap: 16px;
+  font-size: var(--penna-text-small-size);
+  line-height: var(--penna-text-small-line);
+  color: var(--penna-fg);
+}
+
+.palette-story-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.palette-story-slot {
+  height: 28px;
+}
+
+.palette-story-vim {
+  display: flex;
+  gap: 8px;
+}

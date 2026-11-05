@@ -34,7 +34,7 @@ panel, plate (crate-private), popover, row, scroll, segmented, select, separator
 spinner, switch, tab, text, tile, tooltip, tree, well.
 
 Blocks: appearance, code_editor (editor feature), color_picker, compact, dialog, dock,
-docs, feedback, inspector, notice, notification, picker, settings, sheet, shell, sidebar,
+docs, feedback, inspector, notice, notification, palette, picker, settings, sheet, shell, sidebar,
 steps, title_bar, touch, tray (tray feature), which_key.
 
 Public module paths follow the tiers: `penna::components::button`,
