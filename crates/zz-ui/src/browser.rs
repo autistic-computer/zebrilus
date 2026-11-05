@@ -71,6 +71,7 @@ impl RenderOnce for BrowserHeader {
             .w_full()
             .h(Self::HEIGHT)
             .flex_none()
+            .px_0()
             .pb(px(crate::CHROME_GAP))
             .child(
                 div()

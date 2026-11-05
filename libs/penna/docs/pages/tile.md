@@ -2,10 +2,6 @@
 
 A thumbnail you pick or drag, drawn to scale. For a box of content use a card, for a list a row.
 
-```figure uses=notice
-<div class="docs-full penna-notice" data-penna="notice" data-tone="warning"><div class="penna-notice-tone" data-penna="chip" data-tone="warning"><span class="penna-notice-lead"><i data-icon="triangle-alert"></i></span><div class="penna-notice-body"><span class="penna-text penna-notice-title" data-penna-text>Being reworked</span><span class="penna-text penna-notice-detail" data-penna-text>The picked ring is the accent, not the highlight. Tiles don't lift while dragged. The HTML tile fixes its size and drags on its own.</span></div></div></div>
-```
-
 ## Variants
 
 ```figure uses=well,tile,label
@@ -34,6 +30,7 @@ Tile::new("dp-1")
 <div class="penna-well" data-penna="well" style="padding: var(--penna-space-16)">
   <div class="penna-well-row">
     <div class="penna-tile" data-penna="tile.screen" data-variant="screen"><span class="penna-type" data-type="caption" data-penna-text>Rest</span></div>
+    <div class="penna-tile" data-penna="tile.screen" data-variant="screen" data-state="hover"><span class="penna-type" data-type="caption" data-penna-text>Dragged</span></div>
     <div class="penna-tile" data-penna="tile.screen" data-variant="screen" data-state="selected"><span class="penna-type" data-type="caption" data-penna-text>Selected</span></div>
     <div class="penna-tile" data-penna="tile.screen" data-variant="screen" data-state="focused"><span class="penna-type" data-type="caption" data-penna-text>Focused</span></div>
     <div class="penna-tile" data-penna="tile.screen" data-variant="screen" data-state="disabled"><span class="penna-type" data-type="caption" data-penna-text>Away</span></div>
@@ -44,16 +41,16 @@ Tile::new("dp-1")
 - Selected: a 2px ring outside the edge.
 - Focused: the focus ring. A tile with a click handler takes keyboard focus and runs on Space and Enter; a click never focuses it.
 - Off: half the fill, faint label, no shadow.
-- Dragged: the app sets hover; a screen draws as at rest.
+- Dragged: the app sets hover, and the tile lifts on a close shadow.
 
 ## Tone
 
 A tone tints the label. Say what it means in words.
 
-```figure uses=tile,label
+```figure uses=well,tile,label
 <div class="docs-dodont">
-  <figure data-verdict="do"><div class="docs-dodont-panel"><i class="docs-mark" data-icon="circle-check"></i><div class="penna-tile" data-penna="tile.screen" data-variant="screen" data-tone="danger"><span class="penna-type" data-type="caption" data-penna-text>Can't go there</span></div></div><figcaption>Danger with a reason</figcaption></figure>
-  <figure data-verdict="dont"><div class="docs-dodont-panel"><i class="docs-mark" data-icon="circle-x"></i><div class="penna-tile" data-penna="tile.screen" data-variant="screen" data-tone="danger"><span class="penna-type" data-type="caption" data-penna-text>DP-1</span></div></div><figcaption>Don't rely on the color</figcaption></figure>
+  <figure data-verdict="do"><div class="docs-dodont-panel"><i class="docs-mark" data-icon="circle-check"></i><div class="penna-well" data-penna="well" style="padding: var(--penna-space-16)"><div class="penna-well-row"><div class="penna-tile" data-penna="tile.screen" data-variant="screen" data-tone="danger"><span class="penna-type" data-type="caption" data-penna-text>Can't go there</span></div></div></div></div><figcaption>Danger with a reason</figcaption></figure>
+  <figure data-verdict="dont"><div class="docs-dodont-panel"><i class="docs-mark" data-icon="circle-x"></i><div class="penna-well" data-penna="well" style="padding: var(--penna-space-16)"><div class="penna-well-row"><div class="penna-tile" data-penna="tile.screen" data-variant="screen" data-tone="danger"><span class="penna-type" data-type="caption" data-penna-text>DP-1</span></div></div></div></div><figcaption>Don't rely on the color</figcaption></figure>
 </div>
 ```
 
@@ -68,4 +65,5 @@ A tone tints the label. Say what it means in words.
 | `.tone(Tone::Danger)` | `data-tone="danger"` | Tints the label |
 | `.on(ground)` | inside `.penna-well` | Paints it on a ground |
 | `.edge(width)` | `data-edge` | Drop zone edge width |
-| | `[data-tiles]`, `[data-pick]` | Drag and pick, HTML only |
+
+Size, inset, picking and dragging are yours, natively and in HTML.

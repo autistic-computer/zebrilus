@@ -24,8 +24,8 @@ function wireToggle(toggle) {
 }
 
 function underShadow() {
-  const lifted = getComputedStyle(document.documentElement).getPropertyValue("--penna-shadow-lifted");
-  const color = lifted.match(/#[0-9a-f]{3,8}\b|rgba?\([^)]*\)/i)?.[0];
+  const contact = getComputedStyle(document.documentElement).getPropertyValue("--penna-shadow-contact");
+  const color = contact.match(/#[0-9a-f]{3,8}\b|rgba?\([^)]*\)/i)?.[0];
   document.querySelectorAll(".penna-toggle").forEach((toggle) => {
     if (color) toggle.style.setProperty("--penna-toggle-under", color);
     else toggle.style.removeProperty("--penna-toggle-under");

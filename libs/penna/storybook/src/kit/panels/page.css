@@ -24,7 +24,6 @@ section[data-section] {
   align-items: center;
   gap: 8px;
   max-width: 260px;
-  padding: 8px 12px;
 }
 
 .demo-code {
@@ -32,14 +31,17 @@ section[data-section] {
   flex-direction: column;
   gap: 4px;
   width: 260px;
-  padding: 12px;
 }
 
 .demo-figure {
   display: flex;
   flex-direction: column;
   width: 260px;
-  padding: 12px;
+}
+
+.demo-card-panel {
+  width: 260px;
+  padding: var(--penna-inset-card);
 }
 
 .demo-image {
@@ -53,16 +55,10 @@ section[data-section] {
 .demo-bar {
   justify-content: space-between;
   width: 420px;
-  height: 36px;
-  padding: 0 12px;
 }
 
 .demo-bar-picker {
   width: 420px;
-}
-
-.demo-notice {
-  padding: 8px 12px;
 }
 
 .demo-separators {
@@ -99,18 +95,6 @@ section[data-section] {
 
 :root {
   --panel-ground-muted: var(--penna-muted);
-}
-
-.panel-rule-bottom[data-ruled] {
-  border-bottom: 1px solid var(--penna-divider);
-}
-
-.panel-rule-top[data-ruled] {
-  border-top: 1px solid var(--penna-divider);
-}
-
-.panel-rule-left[data-ruled] {
-  border-left: 1px solid var(--penna-divider);
 }
 
 .panel-text {

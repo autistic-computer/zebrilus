@@ -4,7 +4,6 @@
   flex: none;
   min-width: 0;
   max-width: 100%;
-  white-space: nowrap;
 }
 
 .penna-type[data-type="micro"] {
@@ -133,12 +132,41 @@
   font-weight: 600;
 }
 
+.penna-type[data-mono] {
+  font-family: var(--penna-mono);
+}
+
+.penna-type[data-tone="primary"] {
+  color: var(--penna-primary-ink);
+}
+
+.penna-type[data-tone="danger"] {
+  color: var(--penna-danger-ink);
+}
+
+.penna-type[data-tone="warning"] {
+  color: var(--penna-warning-ink);
+}
+
+.penna-type[data-tone="success"] {
+  color: var(--penna-success-ink);
+}
+
+.penna-type[data-tone="accent"] {
+  color: var(--penna-accent-ink);
+}
+
 .penna-type[data-muted] {
   color: var(--penna-muted);
+}
+
+.penna-type[data-faint] {
+  color: var(--penna-faint);
 }
 
 .penna-type[data-truncate] {
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
 }
 

@@ -54,7 +54,7 @@ function adaptive(radius, width, height) {
 }
 
 function controlRadius() {
-  const radius = px(rootStyle().getPropertyValue("--penna-radius"));
+  const radius = px(rootStyle().getPropertyValue("--penna-control-radius"));
   return radius > 24 ? 9999 : radius;
 }
 
@@ -71,18 +71,6 @@ function shapeRuns(root) {
   });
 }
 
-function holdHover(root) {
-  const run = root.querySelector(".appearance-run");
-  if (!run) return;
-  const probe = document.createElement("span");
-  probe.dataset.penna = "field";
-  probe.dataset.state = "hover";
-  probe.hidden = true;
-  run.append(probe);
-  root.style.setProperty("--appearance-field-hover", getComputedStyle(probe).getPropertyValue("--penna-fill").trim());
-  probe.remove();
-}
-
 function shapeSwatches(root) {
   const radius = controlRadius();
   const swatch = radius >= 9999 ? 9 : adaptive(radius, 18, 18);
@@ -91,6 +79,8 @@ function shapeSwatches(root) {
   root.style.setProperty("--appearance-swatch-r", `${swatch}px`);
   root.style.setProperty("--appearance-ring-r", `${ring}px`);
   root.style.setProperty("--appearance-dot-r", `${dot}px`);
+  if (radius >= 9999) root.style.setProperty("--appearance-swatch-k", "1");
+  else root.style.removeProperty("--appearance-swatch-k");
   root.querySelectorAll(".appearance-swatch[data-light]").forEach((element) => {
     element.style.setProperty("--appearance-swatch", element.dataset[mode() === "dark" ? "dark" : "light"]);
   });
@@ -411,7 +401,6 @@ function settleAppearance() {
     pennaKit.ceilText(frame);
     settleSliders(frame);
     shapeSwatches(frame);
-    holdHover(frame);
   });
   if (typeof snap === "function") snap();
   document.querySelectorAll(".appearance-frame").forEach(shapeRuns);

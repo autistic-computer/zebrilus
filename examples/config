@@ -44,11 +44,10 @@ pane-inactive-opacity = 0.7
 # grows with the margin, so its buttons sit on the pane headers' center line.
 pane-margin = 6
 
-# The interface theme: its materials (corners, outlines, shadows, glass), which
-# piece of UI uses which (its roles), and its colors for light and for dark.
-# Three are built in: default, macos and yaru. Any other name selects
-# themes/<name>.json next to this file; Settings -> Interface -> Themes -> Save
-# writes the look on screen there as a new theme.
+# The interface theme: a few knobs over one look (tint, neutral, corners,
+# smoothing, glass, face, mode). Three are built in: default, macos and yaru.
+# Any other name selects themes/<name>.json next to this file; Import from
+# clipboard in Settings -> Interface -> Theme saves one there.
 interface-theme = default
 # interface-theme = macos
 
@@ -57,16 +56,20 @@ interface-theme = default
 # and the tint stay.
 #
 # The corner every rounded piece turns, in logical pixels (0..=25), over the
-# theme's. 0 squares the chrome off. Which pieces are pills at any radius is
-# up to the theme.
+# theme's. 0 squares the chrome off. Controls stay pills at any radius when
+# the theme's control-radius is full.
 # widget-corner-radius = 6
 # The accent: theme (the theme's own), blue, purple, pink, red, orange,
 # yellow, green, graphite (each tuned for light and dark), or a #rrggbb color.
 # chrome-accent = theme
 # How far the window's background, and everything drawn from it, leans
 # toward chrome-tint-hue (0..=1), and that hue in Oklch degrees (0..=360).
-# chrome-tint = 0
-# chrome-tint-hue = 260
+# Both follow the theme's neutral until set.
+# chrome-tint = 0.15
+# chrome-tint-hue = 60
+
+# Draw glass as a solid fill.
+# reduce-transparency = false
 
 # Animate interface transitions, loading indicators, scrollbars, and image
 # frames. Turning this off settles each interface state immediately.

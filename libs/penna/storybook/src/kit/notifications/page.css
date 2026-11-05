@@ -69,3 +69,16 @@ section[data-section="toast-stack"] {
   justify-content: flex-end;
   gap: 8px;
 }
+
+.popover-center-frame {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  width: 320px;
+  height: 120px;
+}
+
+.center-note {
+  display: flex;
+  width: 200px;
+}

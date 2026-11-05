@@ -186,8 +186,8 @@ function wireSlider(slider) {
 }
 
 function underShadow() {
-  const lifted = getComputedStyle(document.documentElement).getPropertyValue("--penna-shadow-lifted");
-  const color = lifted.match(/#[0-9a-f]{3,8}\b|rgba?\([^)]*\)/i)?.[0];
+  const contact = getComputedStyle(document.documentElement).getPropertyValue("--penna-shadow-contact");
+  const color = contact.match(/#[0-9a-f]{3,8}\b|rgba?\([^)]*\)/i)?.[0];
   document.querySelectorAll(".penna-slider").forEach((slider) => {
     if (color) slider.style.setProperty("--penna-slider-under", color);
     else slider.style.removeProperty("--penna-slider-under");

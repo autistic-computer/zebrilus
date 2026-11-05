@@ -1,7 +1,10 @@
-use ala::{App, ElementId, IntoElement, RenderOnce, Role, Window};
+use ala::{
+    App, ElementId, IntoElement, Refineable as _, RenderOnce, Role, StyleRefinement, Styled as _,
+    Window,
+};
 
 use crate::{
-    Ground, Surface, SurfaceRole,
+    Ground, Space, Surface, SurfaceRole,
     components::plate::{Plate, plate_element},
     foundation::roles,
 };
@@ -61,7 +64,10 @@ impl Card {
 plate_element!(Card);
 
 impl RenderOnce for Card {
-    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+    fn render(mut self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+        let mut style = StyleRefinement::default().p(Space::INSET_CARD);
+        style.refine(&self.plate.style);
+        self.plate.style = style;
         self.plate.paint(window, cx)
     }
 }

@@ -169,11 +169,10 @@ pub(crate) fn field_layer(
         return layer;
     }
     let style = theme.style(surface.role);
-    let outlined = theme.outlines_edges() || theme.outlined() && style.outline;
     if state == PaintState::Focused
         && style.selected == Highlight::Edge
         && focus_bordered
-        && outlined
+        && theme.outlined()
         && layer.glass.is_none()
     {
         layer.border = theme.paint_on(ground, Tone::Neutral, Emphasis::Ghost).focus;
@@ -305,13 +304,11 @@ impl Input {
         let role = match self.emphasis {
             None => role,
             Some(Emphasis::Solid | Emphasis::Soft) => {
-                role.with(role.patch.fill(Fill::Tint).outline(true))
+                role.with(role.patch.fill(Fill::Tint).outline(false))
             }
             Some(Emphasis::Outline) if multi_line => SurfaceRole::OUTLINE_TEXT_AREA,
             Some(Emphasis::Outline) => SurfaceRole::OUTLINE_FIELD,
-            Some(Emphasis::Ghost) => role
-                .with(role.patch.fill(Fill::None).outline(false))
-                .fixed_emphasis(),
+            Some(Emphasis::Ghost) => role.with(role.patch.fill(Fill::None).outline(false)),
         };
         Surface::new(role).tone(self.tone).on_maybe(self.on)
     }
@@ -560,12 +557,8 @@ mod tests {
     }
 
     #[test]
-    fn a_toned_field_paints_only_its_edge_even_where_fields_have_none() {
-        let mut theme = Theme::from(&*ThemeColor::light());
-        theme.picked_outlines = true;
-        theme
-            .styles
-            .insert("field".into(), StylePatch::EMPTY.outline(false));
+    fn a_toned_field_paints_only_its_edge() {
+        let theme = Theme::from(&*ThemeColor::light());
         let field = Surface::new(Kind::Field.role());
         let danger = theme.paint(Tone::Danger, Emphasis::Outline);
         for (state, edge) in [
@@ -577,45 +570,23 @@ mod tests {
             let toned = field_layer(&theme, field.tone(Tone::Danger), state, true);
             assert_eq!(toned.fill, plain.fill);
             assert_eq!(toned.text, plain.text);
-            assert_eq!(plain.border.a, 0.0);
             assert_eq!(toned.border, edge);
         }
+        assert_eq!(
+            field_layer(&theme, field, PaintState::Rest, true).border.a,
+            0.0
+        );
     }
 
     #[test]
-    fn a_field_that_highlights_nothing_on_focus_keeps_its_edge() {
-        let mut theme = Theme::from(&*ThemeColor::dark());
-        let field = Surface::new(Kind::Field.role());
-        let rest = field_layer(&theme, field, PaintState::Rest, true);
-        theme
-            .styles
-            .insert("field".into(), StylePatch::EMPTY.selected(Highlight::None));
-        let focused = field_layer(&theme, field, PaintState::Focused, true);
-        assert_eq!(focused.border, rest.border);
-    }
-
-    #[test]
-    fn a_theme_that_picks_outlines_borders_focus_only_on_fields_it_picks() {
-        let mut theme = Theme::from(&*ThemeColor::dark());
-        theme.picked_outlines = true;
+    fn focus_draws_an_edge_in_the_ink_except_on_glass() {
+        let theme = Theme::from(&*ThemeColor::dark());
         let field = Surface::new(Kind::Field.role());
         let focused = field_layer(&theme, field, PaintState::Focused, true);
-        assert_eq!(focused.border.a, 0.0);
-
-        theme
-            .styles
-            .insert("field".into(), StylePatch::EMPTY.outline(true));
-        let focused = field_layer(&theme, field, PaintState::Focused, true);
-        assert!(focused.border.a > 0.0);
-    }
-
-    #[test]
-    fn focus_draws_no_border_without_outlines_or_on_glass() {
-        let mut theme = Theme::from(&*ThemeColor::dark());
-        theme.outline = px(0.0);
-        let field = Surface::new(Kind::Field.role());
-        let focused = field_layer(&theme, field, PaintState::Focused, true);
-        assert_eq!(focused.border.a, 0.0);
+        assert_eq!(
+            focused.border,
+            theme.paint(Tone::Neutral, Emphasis::Ghost).focus
+        );
 
         let mut theme = Theme::from(&*ThemeColor::dark());
         theme.glass = ala::GlassMaterial::preset("regular");

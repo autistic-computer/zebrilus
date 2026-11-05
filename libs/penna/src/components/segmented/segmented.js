@@ -24,7 +24,7 @@ function placePill(control) {
   const outer = parseFloat(track.borderTopLeftRadius) || 0;
   const border = parseFloat(track.borderTopWidth) || 0;
   const radius = Math.max(Math.min(outer, control.offsetHeight / 2) - border - 2, 0);
-  pill.style.borderRadius = `${radius}px`;
+  control.style.setProperty("--penna-pill-r", `${radius}px`);
 }
 
 function shapeRing(control) {

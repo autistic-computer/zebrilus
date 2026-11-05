@@ -119,12 +119,7 @@ impl RenderOnce for Row {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let theme = cx.theme();
         let role = self.plate.surface.role;
-        let round = theme.style(role).shape == Shape::Round
-            && theme
-                .styles
-                .get(role.id)
-                .and_then(|patch| patch.shape)
-                .is_none();
+        let round = theme.style(role).shape == Shape::Round;
         let radius = self.radius.filter(|_| round);
         self.plate.paint_with(window, cx, move |layer| {
             if let Some(radius) = radius {

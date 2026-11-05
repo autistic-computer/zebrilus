@@ -1264,7 +1264,7 @@ impl Render for PopupMenu {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Elevation, Emphasis, Tone};
+    use crate::Elevation;
 
     #[ala::test]
     fn custom_content_tracks_keyboard_and_pointer_highlights(cx: &mut ala::TestAppContext) {
@@ -1316,7 +1316,7 @@ mod tests {
         }
         for (configured, expected) in [(12.0, Some(8.0)), (14.0, Some(10.0)), (25.0, None)] {
             cx.update(|cx| {
-                crate::init_without_theme(cx);
+                crate::init_tinted(cx);
                 cx.set_reduce_motion(true);
                 crate::Theme::global_mut(cx).radius = px(configured);
             });
@@ -1349,7 +1349,7 @@ mod tests {
                     })
                     .expect("selected menu entry");
                 assert_eq!(highlight.corner_smoothing, 2.5);
-                assert_eq!(surface.corner_smoothing, 4.0);
+                assert_eq!(surface.corner_smoothing, 3.0);
                 let pill = highlight.bounds.size.height.0 / 2.0;
                 let radius = highlight.corner_radii.top_left.0;
                 match expected {
@@ -1368,7 +1368,7 @@ mod tests {
     #[ala::test]
     fn open_submenu_parent_stays_neutral_while_leaf_stays_accented(cx: &mut ala::TestAppContext) {
         cx.update(|cx| {
-            crate::init_without_theme(cx);
+            crate::init_tinted(cx);
             cx.set_reduce_motion(true);
         });
         let (_, cx) = cx.add_window_view(|window, cx| {
@@ -1395,10 +1395,13 @@ mod tests {
                 let parent = quads
                     .iter()
                     .find(|quad| {
-                        quad.background
-                            == ala::solid_background(
-                                cx.theme().paint(Tone::Neutral, Emphasis::Ghost).hover,
-                            )
+                        let theme = cx.theme();
+                        let menu = theme.ground_of(Surface::new(SurfaceRole::POPOVER));
+                        let hover = theme.layer(
+                            Surface::new(SurfaceRole::MENU_ITEM).on(menu),
+                            PaintState::Hover,
+                        );
+                        quad.background == ala::solid_background(hover.fill)
                     })
                     .expect("open submenu parent has a neutral background");
                 let child = quads
@@ -1433,7 +1436,7 @@ mod tests {
         &mut ala::VisualTestContext,
     ) {
         cx.update(|cx| {
-            crate::init_without_theme(cx);
+            crate::init_tinted(cx);
             cx.set_reduce_motion(true);
         });
         struct Host(Entity<PopupMenu>);

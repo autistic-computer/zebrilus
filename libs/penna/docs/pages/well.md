@@ -13,7 +13,7 @@ A tinted recess that things are arranged on, like screens on a desk. For a box o
 </div>
 ```
 
-1. **Container**: a tint of the ink over its ground. No outline, no shadow, theme radius.
+1. **Container**: a tint of the ink over its ground. No outline, no shadow, the `radius` knob.
 2. **Inset**: the caller's. The canvas story pads `space-24`.
 3. **Tiles**: in a wrapping row `gap-group` 16 apart, or where the app arranges them.
 4. **Ground**: tiles on it take `Well::ground(cx)`, so they rise a step from the recess.

@@ -1,14 +1,14 @@
 use ala::Hsla;
 use penna::{
-    Colorize as _, Emphasis, Fill, Highlight, PanelLook, PrimaryStyle, RowLook, Theme, ThemeColor,
-    ThemeMode, Tone, foundation::theme_css, oklch, to_hex,
+    Colorize as _, Elevation, Emphasis, Fill, PaintState, PanelLook, RowLook, Surface, Theme,
+    ThemeColor, ThemeMode, Tone, foundation::theme_css, oklch, to_hex,
 };
 use serde_json::{Value, json};
 use wasm_bindgen::prelude::*;
 use zz_app::preferences::Preferences;
 use zz_protocol::{ProviderStatus, ProviderTask, ProvidersReport};
 use zz_ui::{
-    interface_theme::{self, ACCENTS, DEFAULT_TINT_HUE, InterfaceTheme},
+    interface_theme::{self, ACCENTS, InterfaceTheme},
     settings::{SettingsSection, about, providers::PROVIDERS},
 };
 
@@ -117,57 +117,46 @@ fn palette(colors: &ThemeColor) -> Value {
     })
 }
 
-fn accent_ink(colors: &ThemeColor) -> Hsla {
-    let mut theme = Theme::from(colors);
-    theme.primary = PrimaryStyle::Accent;
-    theme.paint(Tone::Primary, Emphasis::Solid).text
-}
-
 #[allow(
     clippy::disallowed_methods,
     reason = "previews draw another theme's colors, as zz-ui's settings previews do"
 )]
 fn theme_preview(theme: &InterfaceTheme, mode: ThemeMode) -> Value {
     let colors = theme.colors(mode);
-    let materials = &theme.materials;
     let mut kit = Theme::from(&colors);
+    kit.mode = mode;
     theme.apply(&mut kit);
     let popover = kit.style_of(PanelLook::Popover);
-    let surface_radius = (materials.radius / 3.0).min(10.0);
-    let frosted = popover.fill == Fill::Glass
-        && materials
-            .glass
-            .is_some_and(|glass| f32::from(glass.blur) > 0.0);
-    let (selection, selected_text) = match kit.style_of(RowLook::Menu).selected {
-        Highlight::Accent => (colors.accent.opaque(), accent_ink(&colors)),
-        _ => (colors.background.washed(3), colors.foreground),
-    };
-    let surface = colors.background.raised(2).opaque();
-    let (primary, primary_text) = match materials.primary {
-        PrimaryStyle::Accent => (colors.accent, accent_ink(&colors)),
-        PrimaryStyle::Foreground => (colors.foreground, colors.background),
-    };
-    let outline = materials.outline > 0.0 && popover.outline;
-    let shadow = kit.casts_shadow(PanelLook::Popover) && materials.float.strength > 0.0;
+    let surface_radius = (f32::from(kit.radius) / 3.0).min(10.0);
+    let frosted =
+        popover.fill == Fill::Glass && kit.glass.is_some_and(|glass| f32::from(glass.blur) > 0.0);
+    let menu_ground = kit.surface(Elevation::Popover);
+    let picked = kit.layer(
+        Surface::from(RowLook::Menu).on(menu_ground),
+        PaintState::Selected,
+    );
+    let surface = menu_ground.fill.opaque();
+    let primary = kit.paint(Tone::Primary, Emphasis::Solid);
+    let shadow = kit.casts_shadow(PanelLook::Popover);
     json!({
-        "sidebar": color(colors.background.raised(2)),
+        "sidebar": color(kit.surface(Elevation::Panel).fill),
         "background": color(colors.background),
         "border": color(colors.border()),
         "lights": [color(colors.danger), color(colors.warning), color(colors.success)],
         "text": color(colors.foreground.muted()),
         "radius": surface_radius.max(4.0),
         "menu": {
-            "fill": color(if frosted { surface.opacity(0.6) } else { surface }),
+            "fill": color(if frosted { surface.opacity(0.7) } else { surface }),
             "radius": surface_radius,
             "rowRadius": surface_radius / 2.0,
-            "inset": materials.row_inset.min(3.0),
-            "outline": outline.then(|| color(colors.foreground.opacity(0.15))),
+            "inset": f32::from(kit.row_inset).min(3.0),
+            "outline": popover.outline.then(|| color(colors.foreground.opacity(0.15))),
             "shadow": shadow.then(|| color(colors.shadow_color)),
-            "selection": color(selection),
-            "selectedText": color(selected_text),
+            "selection": color(picked.fill),
+            "selectedText": color(picked.text),
         },
-        "button": color(primary),
-        "buttonText": color(primary_text),
+        "button": color(primary.fill),
+        "buttonText": color(primary.text),
     })
 }
 
@@ -206,7 +195,8 @@ pub fn picks(json: &str, dark: bool) -> Result<String, JsError> {
         .as_deref()
         .filter(|accent| !ACCENTS.contains(accent))
         .and_then(|accent| interface_theme::accent_color(accent, ThemeMode::Dark));
-    let hue = overrides.tint_hue.unwrap_or(DEFAULT_TINT_HUE);
+    let neutral = preferences.appearance.neutral(preferences.saved());
+    let hue = neutral.hue;
     Ok(json!({
         "themes": themes,
         "selected": selected,
@@ -230,7 +220,7 @@ pub fn picks(json: &str, dark: bool) -> Result<String, JsError> {
             "hue": hue,
             "dot": color(oklch(0.72, 0.13, hue)),
             "stops": (0..=HUE_STOPS).map(|stop| color(oklch(0.72, 0.13, f32::from(stop) * 360.0 / f32::from(HUE_STOPS)))).collect::<Vec<_>>(),
-            "strength": overrides.tint.unwrap_or(0.0),
+            "strength": neutral.amount,
         },
         "radius": preferences.widget_corner_radius(),
         "font": preferences.shown_ui_font(),

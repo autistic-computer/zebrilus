@@ -12,7 +12,7 @@ pub const ACCENTS: [&str; 8] = [
     "blue", "purple", "pink", "red", "orange", "yellow", "green", "graphite",
 ];
 
-pub const DEFAULT_TINT_HUE: f32 = 260.0;
+pub const DEFAULT_TINT_HUE: f32 = 60.0;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub enum AccentSetting {

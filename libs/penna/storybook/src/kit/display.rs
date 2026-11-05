@@ -16,7 +16,7 @@ pub const STORY: Story = Story {
     id: "display",
     name: "Display",
     group: "Kit",
-    summary: "Small read-only pieces: key caps, badges, spinners, separators and list rows.",
+    summary: "Small read-only pieces: key caps, badges, labels, spinners, separators and list rows.",
     sections: &[
         Section {
             id: "kbd",
@@ -31,6 +31,12 @@ pub const STORY: Story = Story {
             build: |_, cx| stateless(badges, cx),
         },
         Section {
+            id: "label",
+            name: "Label",
+            summary: "Label::new(style, text) with .muted(), .faint(), .tone(..), .strong() and .mono(), the code face at the style's own size. It wraps when it runs out of room, unless it truncates.",
+            build: |_, cx| stateless(labels, cx),
+        },
+        Section {
             id: "spinner",
             name: "Spinner",
             summary: "The Loader glyph on a 800ms turn, at every size and in a few tints. It stops with motion off.",
@@ -39,7 +45,7 @@ pub const STORY: Story = Story {
         Section {
             id: "separator",
             name: "Separator",
-            summary: "A one pixel rule that takes no room along its axis. A vertical rule needs a parent with a definite height.",
+            summary: "A one pixel rule that takes no room along its axis. A vertical rule needs a parent with a definite height; .tone(tone) draws it in a tone's ink.",
             build: |_, cx| stateless(separators, cx),
         },
         Section {
@@ -158,6 +164,48 @@ fn badges(_: &mut Window, cx: &mut App) -> AnyElement {
         .into_any_element()
 }
 
+fn labels(_: &mut Window, _: &mut App) -> AnyElement {
+    let sentence = "Keyboard and pointer follow the cursor to the next computer";
+    states()
+        .columns(2)
+        .state(
+            "full, muted, faint, strong",
+            row()
+                .child(Label::new(TextStyle::Body, "Ready"))
+                .child(Label::new(TextStyle::Body, "ubuntu is to the right").muted())
+                .child(Label::new(TextStyle::Body, "Last seen").faint())
+                .child(Label::new(TextStyle::Body, "Paired").strong()),
+        )
+        .state(
+            "tones",
+            row().children(
+                [
+                    (Tone::Primary, "Picked"),
+                    (Tone::Danger, "Failed"),
+                    (Tone::Warning, "Waiting"),
+                    (Tone::Success, "Ready"),
+                    (Tone::Accent, "Linked"),
+                ]
+                .map(|(tone, word)| Label::new(TextStyle::Body, word).tone(tone)),
+            ),
+        )
+        .state(
+            "code, small and body",
+            row()
+                .child(Label::new(TextStyle::Small, "git log --oneline").mono())
+                .child(Label::new(TextStyle::Body, "just libs pull penna").mono()),
+        )
+        .state(
+            "wrapping and truncated, 180 wide",
+            v_flex()
+                .w(px(180.0))
+                .gap(Space::S8)
+                .child(Label::new(TextStyle::Body, sentence))
+                .child(Label::new(TextStyle::Body, sentence).truncate()),
+        )
+        .into_any_element()
+}
+
 fn spinners(_: &mut Window, cx: &mut App) -> AnyElement {
     let theme = cx.theme();
     states()
@@ -224,7 +272,7 @@ fn separators(_: &mut Window, cx: &mut App) -> AnyElement {
                 .child(div().text_color(muted).child("3 panes")),
         )
         .state(
-            "custom color",
+            "danger tone",
             v_flex()
                 .gap(Space::S8)
                 .type_style(TextStyle::Lead, cx)
@@ -232,7 +280,7 @@ fn separators(_: &mut Window, cx: &mut App) -> AnyElement {
                 .child(
                     Separator::horizontal()
                         .id("separator-danger")
-                        .color(theme.danger),
+                        .tone(Tone::Danger),
                 )
                 .child(div().text_color(muted).child("Kill every session")),
         )

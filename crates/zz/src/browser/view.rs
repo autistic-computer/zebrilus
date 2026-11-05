@@ -4338,15 +4338,7 @@ mod tests {
         assert_eq!(appearance.font_family, "Iosevka");
         assert_eq!(appearance.page_zoom, 1.25);
 
-        penna::foundation::interface_theme::InterfaceTheme {
-            roles: [(
-                penna::SurfaceRole::POPOVER.id().to_owned(),
-                penna::StylePatch::EMPTY.shadow(penna::Shadow::None),
-            )]
-            .into(),
-            ..Default::default()
-        }
-        .apply_roles(&mut theme);
+        theme.float_shadow.strength = 0.0;
         assert_eq!(element_picker_appearance(&theme, 1.0).shadow, None);
     }
 

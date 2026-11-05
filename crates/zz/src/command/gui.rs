@@ -44,7 +44,7 @@ fn theme_sets_font(id: &str, cx: &App) -> bool {
                 .find(|(saved, _)| saved.as_ref() == id)
                 .map(|(_, theme)| theme)
         })
-        .is_some_and(|theme| theme.materials.font.is_some())
+        .is_some_and(|theme| theme.face.is_some())
 }
 
 pub(crate) fn preview(action: &GuiAction, value: &str, cx: &mut App) {

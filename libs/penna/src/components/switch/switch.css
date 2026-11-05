@@ -64,7 +64,7 @@
   height: var(--penna-toggle-thumb);
   border-radius: 9999px;
   background: var(--penna-knob);
-  box-shadow: var(--penna-shadow-lifted);
+  box-shadow: var(--penna-shadow-contact);
   transition: left 150ms linear;
 }
 
@@ -75,6 +75,22 @@
 .penna-toggle[aria-checked="true"] > .penna-toggle-track > .penna-toggle-thumb {
   left: calc(var(--penna-toggle-w) - var(--penna-toggle-thumb) - 2 * var(--penna-toggle-inset));
   background: var(--penna-on-accent);
+}
+
+.penna-toggle:not(:disabled):is(:hover, [data-state~="hover"]) > .penna-toggle-track {
+  background: rgb(from var(--penna-control) r g b / calc(alpha * 4 / 3));
+}
+
+.penna-toggle:not(:disabled):is(:active, [data-state~="active"]) > .penna-toggle-track {
+  background: rgb(from var(--penna-control) r g b / calc(alpha * 5 / 3));
+}
+
+.penna-toggle[aria-checked="true"]:not(:disabled):is(:hover, [data-state~="hover"]) > .penna-toggle-track {
+  background: var(--penna-primary-hover);
+}
+
+.penna-toggle[aria-checked="true"]:not(:disabled):is(:active, [data-state~="active"]) > .penna-toggle-track {
+  background: var(--penna-primary-pressed);
 }
 
 .penna-toggle:is(:focus-visible, [data-state~="focused"]) > .penna-toggle-track::after {

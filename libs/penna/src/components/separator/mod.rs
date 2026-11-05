@@ -1,15 +1,15 @@
 use ala::{
-    App, Axis, ElementId, Hsla, IntoElement, ParentElement as _, RenderOnce, Role,
+    App, Axis, ElementId, IntoElement, ParentElement as _, RenderOnce, Role,
     StatefulInteractiveElement as _, StyleRefinement, Styled, Window, accesskit::Orientation, div,
     prelude::FluentBuilder as _,
 };
 
-use crate::{ActiveTheme as _, AuthoredElement as _, RULE_WIDTH, RuleLook, StyledExt as _};
+use crate::{ActiveTheme as _, AuthoredElement as _, RULE_WIDTH, RuleLook, StyledExt as _, Tone};
 
 #[derive(IntoElement)]
 pub struct Separator {
     style: StyleRefinement,
-    color: Option<Hsla>,
+    tone: Tone,
     look: RuleLook,
     axis: Axis,
     id: Option<ElementId>,
@@ -20,7 +20,7 @@ impl Separator {
     pub fn vertical() -> Self {
         Self {
             style: StyleRefinement::default(),
-            color: None,
+            tone: Tone::Neutral,
             look: RuleLook::Plain,
             axis: Axis::Vertical,
             id: None,
@@ -42,8 +42,8 @@ impl Separator {
     }
 
     #[must_use]
-    pub fn color(mut self, color: impl Into<Hsla>) -> Self {
-        self.color = Some(color.into());
+    pub fn tone(mut self, tone: Tone) -> Self {
+        self.tone = tone;
         self
     }
 
@@ -67,7 +67,10 @@ impl RenderOnce for Separator {
         let ink = theme
             .style(self.look.role())
             .outline
-            .then(|| self.color.unwrap_or_else(|| theme.divider_color()));
+            .then(|| match self.tone {
+                Tone::Neutral => theme.divider_color(),
+                tone => theme.tone(tone),
+            });
 
         let rule = div()
             .flex()

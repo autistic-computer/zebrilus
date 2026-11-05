@@ -9,6 +9,7 @@
     <link rel="stylesheet" href="../../../../src/components/kbd/kbd.css" />
     <link rel="stylesheet" href="../../../../src/components/badge/badge.css" />
     <link rel="stylesheet" href="../../../../src/components/card/card.css" />
+    <link rel="stylesheet" href="../../../../src/components/label/label.css" />
     <link rel="stylesheet" href="../../../../src/components/spinner/spinner.css" />
     <link rel="stylesheet" href="../../../../src/components/separator/separator.css" />
     <link rel="stylesheet" href="../../../../src/components/list/list.css" />
@@ -87,30 +88,68 @@
       </div>
     </section>
 
+    <section data-section="label">
+      <div class="story-states" data-columns style="--columns: 2">
+        <div class="story-state">
+          <div class="story-label">full, muted, faint, strong</div>
+          <div class="story-row">
+            <span class="penna-type" data-type="body" data-penna-text>Ready</span>
+            <span class="penna-type" data-type="body" data-muted data-penna-text>ubuntu is to the right</span>
+            <span class="penna-type" data-type="body" data-faint data-penna-text>Last seen</span>
+            <span class="penna-type" data-type="body" data-strong data-penna-text>Paired</span>
+          </div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">tones</div>
+          <div class="story-row">
+            <span class="penna-type" data-type="body" data-tone="primary" data-penna-text>Picked</span>
+            <span class="penna-type" data-type="body" data-tone="danger" data-penna-text>Failed</span>
+            <span class="penna-type" data-type="body" data-tone="warning" data-penna-text>Waiting</span>
+            <span class="penna-type" data-type="body" data-tone="success" data-penna-text>Ready</span>
+            <span class="penna-type" data-type="body" data-tone="accent" data-penna-text>Linked</span>
+          </div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">code, small and body</div>
+          <div class="story-row">
+            <span class="penna-type" data-type="small" data-mono data-penna-text>git log --oneline</span>
+            <span class="penna-type" data-type="body" data-mono data-penna-text>just libs pull penna</span>
+          </div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">wrapping and truncated, 180 wide</div>
+          <div class="display-labels">
+            <span class="penna-type" data-type="body" data-penna-text>Keyboard and pointer follow the cursor to the next computer</span>
+            <span class="penna-type" data-type="body" data-truncate data-penna-text>Keyboard and pointer follow the cursor to the next computer</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <section data-section="spinner">
       <div class="story-states" data-columns style="--columns: 2">
         <div class="story-state">
           <div class="story-label">sizes</div>
           <div class="story-row">
-            <div class="penna-spinner" data-id="spinner-small" role="status" aria-label="Loading" data-size="small"><i data-icon="loader"></i></div>
-            <div class="penna-spinner" data-id="spinner-medium" role="status" aria-label="Loading"><i data-icon="loader"></i></div>
-            <div class="penna-spinner" data-id="spinner-32" role="status" aria-label="Loading" style="--penna-icon-size: 32px"><i data-icon="loader"></i></div>
+            <div class="penna-spinner" data-id="spinner-small" role="progressbar" aria-label="Loading" data-size="small"><i data-icon="loader"></i></div>
+            <div class="penna-spinner" data-id="spinner-medium" role="progressbar" aria-label="Loading"><i data-icon="loader"></i></div>
+            <div class="penna-spinner" data-id="spinner-32" role="progressbar" aria-label="Loading" style="--penna-icon-size: 32px"><i data-icon="loader"></i></div>
           </div>
         </div>
         <div class="story-state">
           <div class="story-label">colors</div>
           <div class="story-row">
-            <div class="penna-spinner" data-id="spinner-muted" role="status" aria-label="Loading" data-color="muted"><i data-icon="loader"></i></div>
-            <div class="penna-spinner" data-id="spinner-accent" role="status" aria-label="Loading" data-color="accent"><i data-icon="loader"></i></div>
-            <div class="penna-spinner" data-id="spinner-success" role="status" aria-label="Loading" data-color="success"><i data-icon="loader"></i></div>
-            <div class="penna-spinner" data-id="spinner-warning" role="status" aria-label="Loading" data-color="warning"><i data-icon="loader"></i></div>
-            <div class="penna-spinner" data-id="spinner-danger" role="status" aria-label="Loading" data-color="danger"><i data-icon="loader"></i></div>
+            <div class="penna-spinner" data-id="spinner-muted" role="progressbar" aria-label="Loading" data-color="muted"><i data-icon="loader"></i></div>
+            <div class="penna-spinner" data-id="spinner-accent" role="progressbar" aria-label="Loading" data-color="accent"><i data-icon="loader"></i></div>
+            <div class="penna-spinner" data-id="spinner-success" role="progressbar" aria-label="Loading" data-color="success"><i data-icon="loader"></i></div>
+            <div class="penna-spinner" data-id="spinner-warning" role="progressbar" aria-label="Loading" data-color="warning"><i data-icon="loader"></i></div>
+            <div class="penna-spinner" data-id="spinner-danger" role="progressbar" aria-label="Loading" data-color="danger"><i data-icon="loader"></i></div>
           </div>
         </div>
         <div class="story-state">
           <div class="story-label">inline with text</div>
           <div class="display-inline">
-            <div class="penna-spinner" data-id="spinner-inline" role="status" aria-label="Loading" data-color="muted"><i data-icon="loader"></i></div>
+            <div class="penna-spinner" data-id="spinner-inline" role="progressbar" aria-label="Loading" data-color="muted"><i data-icon="loader"></i></div>
             <span class="penna-text" data-penna-text>Connecting to devbox</span>
           </div>
         </div>
@@ -138,10 +177,10 @@
           </div>
         </div>
         <div class="story-state">
-          <div class="story-label">custom color</div>
+          <div class="story-label">danger tone</div>
           <div class="display-stack">
             <div><span class="penna-text" data-penna-text>Danger zone</span></div>
-            <div class="penna-separator-rule" data-id="separator-danger" data-color="danger" role="separator"><div data-penna="rule"></div></div>
+            <div class="penna-separator-rule" data-id="separator-danger" data-tone="danger" role="separator"><div data-penna="rule"></div></div>
             <div class="display-muted"><span class="penna-text" data-penna-text>Kill every session</span></div>
           </div>
         </div>

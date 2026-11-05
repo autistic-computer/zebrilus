@@ -5,6 +5,3 @@
   box-sizing: border-box;
 }
 
-.penna-panel[data-penna="panel"] {
-  --penna-fill: var(--penna-bg);
-}

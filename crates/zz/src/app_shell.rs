@@ -247,6 +247,7 @@ impl AppShell {
                 window_drag_handle("app-titlebar-drag", strip, window, cx)
             };
             Bar::new("app-titlebar-bar", BarLook::Window)
+                .px_0()
                 .flex_none()
                 .w_full()
                 .when(title_corners.top_right(), |bar| {

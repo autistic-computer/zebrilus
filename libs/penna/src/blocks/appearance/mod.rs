@@ -7,8 +7,8 @@ use crate::components::select::{Select, SelectEvent, SelectItem as _, SelectStat
 use crate::components::slider::Slider;
 use crate::components::switch::Switch;
 use crate::foundation::interface_theme::{
-    ACCENTS, Appearance, AppearanceChange, DEFAULT_TINT_HUE, InterfaceTheme, MAX_CORNER_RADIUS,
-    SavedThemes, ThemeOverrides,
+    ACCENTS, Appearance, AppearanceChange, InterfaceTheme, MAX_CORNER_RADIUS, SavedThemes,
+    ThemeOverrides,
 };
 use crate::{
     ActiveTheme as _, AuthoredElement as _, Colorize as _, Density, IconName, Space,
@@ -62,6 +62,7 @@ pub enum AppearancePageItem<T = Infallible> {
     Advanced { expanded: bool },
     CornerRadius,
     ChromeContrast,
+    ReduceTransparency,
     UiFontFamily,
     UiZoom,
     Density,
@@ -87,6 +88,7 @@ impl<T: Copy> AppearancePageItem<T> {
             Self::Themes => "Theme",
             Self::CornerRadius => "Corner radius",
             Self::ChromeContrast => "Contrast",
+            Self::ReduceTransparency => "Reduce transparency",
             Self::AnimationSpeed => "Animation speed",
             Self::UiFontFamily => "UI font",
             Self::UiZoom => "UI zoom",
@@ -114,6 +116,7 @@ pub fn appearance_page_items<T>(advanced: bool) -> Vec<AppearancePageItem<T>> {
     items.extend([
         AppearancePageItem::CornerRadius,
         AppearancePageItem::ChromeContrast,
+        AppearancePageItem::ReduceTransparency,
         AppearancePageItem::UiFontFamily,
         AppearancePageItem::UiZoom,
         AppearancePageItem::Density,
@@ -870,12 +873,12 @@ pub fn kit_row<T: Copy>(
             placed(entry, swatches, stacked)
         }
         AppearancePageItem::TintHue => {
-            let hue = appearance.overrides.tint_hue.unwrap_or(DEFAULT_TINT_HUE);
+            let hue = appearance.neutral(saved).hue;
             let slider = tint_hue_slider(hue, controls.change(AppearanceChange::TintHue), cx);
             placed(entry, slider, stacked)
         }
         AppearancePageItem::Tint => {
-            let tint = appearance.overrides.tint.unwrap_or(0.0);
+            let tint = appearance.neutral(saved).amount;
             let slider = tint_slider(tint, controls.change(AppearanceChange::Tint), cx);
             placed(entry, slider, stacked)
         }
@@ -895,6 +898,13 @@ pub fn kit_row<T: Copy>(
             );
             placed(entry, slider, stacked)
         }
+        AppearancePageItem::ReduceTransparency => entry.control(
+            Switch::new("settings-reduce-transparency")
+                .checked(appearance.reduce_transparency)
+                .on_click(move |reduce, window, cx| {
+                    on_change(AppearanceChange::ReduceTransparency(*reduce), window, cx);
+                }),
+        ),
         AppearancePageItem::UiFontFamily => {
             let select = controls.ui_font_select(appearance, saved, window, cx);
             entry.control(
@@ -1091,19 +1101,21 @@ pub fn theme_preview(
 )]
 pub fn interface_theme_preview(theme: &InterfaceTheme, mode: ThemeMode, _: &App) -> ala::Div {
     let colors = theme.colors(mode);
-    let materials = &theme.materials;
     let mut kit = crate::Theme::from(&colors);
+    kit.mode = mode;
     theme.apply(&mut kit);
     let popover = kit.style(crate::SurfaceRole::POPOVER);
-    let surface_radius = (materials.radius / 3.0).min(10.0);
+    let surface_radius = (f32::from(kit.radius) / 3.0).min(10.0);
     let row_radius = surface_radius / 2.0;
-    let inset = materials.row_inset.min(3.0);
-    let frosted = popover.fill == crate::Fill::Glass
-        && materials.glass.is_some_and(|glass| glass.blur > px(0.0));
-    let (selection, selected_text) = match kit.style(crate::SurfaceRole::MENU_ITEM).selected {
-        crate::Highlight::Accent => (colors.accent.opaque(), accent_ink(&colors)),
-        _ => (colors.background.washed(3), colors.foreground),
-    };
+    let inset = f32::from(kit.row_inset).min(3.0);
+    let frosted =
+        popover.fill == crate::Fill::Glass && kit.glass.is_some_and(|glass| glass.blur > px(0.0));
+    let menu_ground = kit.surface(crate::Elevation::Popover);
+    let picked = kit.layer(
+        Surface::new(crate::SurfaceRole::MENU_ITEM).on(menu_ground),
+        crate::PaintState::Selected,
+    );
+    let (selection, selected_text) = (picked.fill, picked.text);
     let text = colors.foreground.muted();
     let row = |width: f32, selected: bool| {
         div()
@@ -1121,7 +1133,7 @@ pub fn interface_theme_preview(theme: &InterfaceTheme, mode: ThemeMode, _: &App)
                     .bg(if selected { selected_text } else { text }),
             )
     };
-    let surface = colors.background.raised(2).opaque();
+    let surface = menu_ground.fill.opaque();
     let menu = div()
         .w(px(44.0))
         .flex()
@@ -1131,17 +1143,16 @@ pub fn interface_theme_preview(theme: &InterfaceTheme, mode: ThemeMode, _: &App)
         .when(inset > 0.0, |menu| menu.gap(px(1.0)))
         .rounded(px(surface_radius))
         .bg(if frosted {
-            surface.opacity(0.6)
+            surface.opacity(0.7)
         } else {
             surface
         })
-        .when(materials.outline > 0.0 && popover.outline, |menu| {
+        .when(popover.outline, |menu| {
             menu.border(px(0.5))
                 .border_color(colors.foreground.opacity(0.15))
         })
         .when(
-            kit.casts_shadow(Surface::new(crate::SurfaceRole::POPOVER))
-                && materials.float.strength > 0.0,
+            kit.casts_shadow(Surface::new(crate::SurfaceRole::POPOVER)),
             |menu| {
                 menu.shadow(vec![ala::BoxShadow {
                     color: colors.shadow_color,
@@ -1153,10 +1164,7 @@ pub fn interface_theme_preview(theme: &InterfaceTheme, mode: ThemeMode, _: &App)
             },
         )
         .children([row(24.0, false), row(18.0, true), row(21.0, false)]);
-    let (primary, primary_text) = match materials.primary {
-        crate::PrimaryStyle::Accent => (colors.accent, accent_ink(&colors)),
-        crate::PrimaryStyle::Foreground => (colors.foreground, colors.background),
-    };
+    let primary = kit.paint(crate::Tone::Primary, crate::Emphasis::Solid);
     let button = div()
         .w(px(20.0))
         .h(px(8.0))
@@ -1164,8 +1172,8 @@ pub fn interface_theme_preview(theme: &InterfaceTheme, mode: ThemeMode, _: &App)
         .items_center()
         .justify_center()
         .rounded(px(row_radius.max(2.0)))
-        .bg(primary)
-        .child(div().w(px(10.0)).h(px(2.0)).rounded_full().bg(primary_text));
+        .bg(primary.fill)
+        .child(div().w(px(10.0)).h(px(2.0)).rounded_full().bg(primary.text));
     div()
         .w(px(THEME_PREVIEW_WIDTH))
         .h(px(THEME_PREVIEW_HEIGHT))
@@ -1173,17 +1181,11 @@ pub fn interface_theme_preview(theme: &InterfaceTheme, mode: ThemeMode, _: &App)
         .overflow_hidden()
         .rounded(px(surface_radius.max(4.0)))
         .bg(theme_preview_split_background(
-            colors.background.raised(2),
+            kit.surface(crate::Elevation::Panel).fill,
             colors.background,
             THEME_PREVIEW_SIDEBAR_WIDTH / THEME_PREVIEW_WIDTH,
         ))
-        .child(
-            div()
-                .w(px(THEME_PREVIEW_SIDEBAR_WIDTH))
-                .flex_none()
-                .border_r_1()
-                .border_color(colors.border()),
-        )
+        .child(div().w(px(THEME_PREVIEW_SIDEBAR_WIDTH)).flex_none())
         .child(
             div()
                 .flex()
@@ -1207,14 +1209,6 @@ pub fn interface_theme_preview(theme: &InterfaceTheme, mode: ThemeMode, _: &App)
                 )
                 .child(menu),
         )
-}
-
-fn accent_ink(colors: &ThemeColor) -> ala::Hsla {
-    let mut theme = crate::Theme::from(colors);
-    theme.primary = crate::PrimaryStyle::Accent;
-    theme
-        .paint(crate::Tone::Primary, crate::Emphasis::Solid)
-        .text
 }
 
 #[allow(

@@ -1,6 +1,7 @@
 (() => {
   const DELAY = 500;
   const OFFSET = 1;
+  const SLOP = 8;
 
   function run(text, className) {
     const span = document.createElement("span");
@@ -55,6 +56,14 @@
 
   let timer;
   let shown;
+  let press;
+
+  function show(tip, x, y) {
+    tip.setAttribute("data-open", "");
+    window.pennaKit?.ceilText(tip);
+    place(tip, x, y);
+    shown = tip;
+  }
 
   function hide(target) {
     clearTimeout(timer);
@@ -64,18 +73,14 @@
   }
 
   document.addEventListener("pointerover", (event) => {
+    if (event.pointerType === "touch") return;
     const target = event.target.closest("[data-tooltip]");
     if (!target || target.contains(event.relatedTarget)) return;
     const tip = tipFor(target);
     if (!tip) return;
     hide();
     const { clientX: x, clientY: y } = event;
-    timer = setTimeout(() => {
-      tip.setAttribute("data-open", "");
-      window.pennaKit?.ceilText(tip);
-      place(tip, x, y);
-      shown = tip;
-    }, DELAY);
+    timer = setTimeout(() => show(tip, x, y), DELAY);
   });
 
   document.addEventListener("pointerout", (event) => {
@@ -87,8 +92,57 @@
 
   document.addEventListener("pointerdown", (event) => {
     const target = event.target.closest("[data-tooltip]:not([data-tooltip-pinned])");
-    if (target) hide(target);
+    if (!target) return;
+    hide(target);
+    if (event.pointerType !== "touch") return;
+    const { pointerId: id, clientX: x, clientY: y } = event;
+    press = { id, x, y, held: false };
+    timer = setTimeout(() => {
+      const tip = tipFor(target);
+      if (!tip) return;
+      show(tip, x, y);
+      press.held = true;
+    }, DELAY);
   });
+
+  document.addEventListener("pointermove", (event) => {
+    if (press?.id !== event.pointerId || press.held) return;
+    if (Math.hypot(event.clientX - press.x, event.clientY - press.y) > SLOP) {
+      clearTimeout(timer);
+      press = undefined;
+    }
+  });
+
+  let lifted = -Infinity;
+
+  function lift(event) {
+    if (press?.id !== event.pointerId) return;
+    if (press.held) lifted = event.timeStamp;
+    press = undefined;
+    hide();
+  }
+
+  document.addEventListener("pointerup", lift);
+  document.addEventListener("pointercancel", lift);
+  document.addEventListener("contextmenu", (event) => {
+    if (press) event.preventDefault();
+  });
+  document.addEventListener(
+    "touchmove",
+    (event) => {
+      if (press?.held) event.preventDefault();
+    },
+    { passive: false },
+  );
+  document.addEventListener(
+    "click",
+    (event) => {
+      if (event.timeStamp - lifted > DELAY) return;
+      event.preventDefault();
+      event.stopPropagation();
+    },
+    true,
+  );
 
   let focused;
 

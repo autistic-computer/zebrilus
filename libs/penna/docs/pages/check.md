@@ -30,7 +30,7 @@ Checkbox::new("restore").label("Restore sessions").checked(on).on_click(toggle)
 </div>
 ```
 
-1. **Box**: an edge when off, filled with the highlight when on or mixed. A checkbox's corner is a quarter of the theme radius; a radio is round.
+1. **Box**: an edge when off, filled with the highlight when on or mixed. A checkbox's corner is a quarter of the `radius` knob; a radio is round.
 2. **Mark**: a check, a minus or a dot, in the fill's ink.
 3. **Label**: centered on the box at its first line's capitals. A long label wraps under itself, never under the box.
 

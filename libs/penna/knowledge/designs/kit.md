@@ -1,7 +1,7 @@
 ---
 type: Design Plan
 title: "The kit: penna owns every piece of UI chrome"
-description: "Apps compose penna components and stop defining surface roles, theme patches, text sizes, spacing and colors. Tokens (Space, TextStyle) are fixed ratios measured in rems. Each app role becomes a kit recipe picked by a typed variant, and every per-theme tweak an app layer made moves into penna's own theme files. Work lands in vertical slices: a component family, its stories, then both apps in their pull."
+description: "Apps compose penna components and stop defining surface roles, theme patches, text sizes, spacing and colors. Tokens (Space, TextStyle) are fixed ratios measured in rems. Each app role becomes a kit recipe picked by a typed variant, and the look is penna's alone, adjusted by a theme's knobs. Work lands in vertical slices: a component family, its stories, then both apps in their pull."
 status: Built (2026-11-02, the kit is in place in nidus and zebrilus; no public role builder is left, and only the linted Surface::new turns a role into a surface)
 resource: src/foundation/space.rs
 tags:
@@ -17,7 +17,7 @@ timestamp: 2026-11-02T00:00:00Z
 ## Layers
 
 - **ala** draws elements: div, text shaping, images, canvas, lists, focus, actions, drag.
-- **penna foundation** holds the tokens (`Space`, `TextStyle`, and `Size` with `Density`), the layout primitives (`stack`, `inline`, `inset`, `split`, `center`, `tiles`), the paint model (`Tone`, `Emphasis`, `Paint`, `Ground`), surface roles and the three themes.
+- **penna foundation** holds the tokens (`Space`, `TextStyle`, and `Size` with `Density`), the layout primitives (`stack`, `inline`, `inset`, `split`, `center`, `tiles`), the paint model (`Tone`, `Emphasis`, `Paint`, `Ground`), surface roles and the look with its three presets.
 - **penna components** put those together: `Label`, `Button`, `Badge`, `Popover` and the rest.
 
 There is no separate behavior layer. ala's stateful elements already give hover, press, focus and keyboard activation, and penna already shares press feedback (`blocks/touch/press.rs`) and swipe dismissal (`foundation/dismissal.rs`). A piece of behavior moves into a shared module only when a second component needs it.
@@ -33,7 +33,7 @@ There is no separate behavior layer. ala's stateful elements already give hover,
 
 ## Tokens
 
-Both scales are fixed. A theme changes fonts, materials and recipes, not the scale. Values are in rems, so the interface font size (the root rem, from the theme's `font_size`) scales them; window zoom is applied separately and never twice. `Size` is the control ladder, and only its default rung moves: `Size::Medium` and the rows follow the `Density` setting. The ladder, density and the layout primitives that place things with these tokens are specified in `knowledge/designs/foundations.md`.
+Both scales are fixed. A theme changes its knobs (tint, corners, glass, face), not the scale. Values are in rems, so the interface font size (the root rem, from the theme's `font_size`) scales them; window zoom is applied separately and never twice. `Size` is the control ladder, and only its default rung moves: `Size::Medium` and the rows follow the `Density` setting. The ladder, density and the layout primitives that place things with these tokens are specified in `knowledge/designs/foundations.md`.
 
 `Space` converts into a length, so it goes straight into ala's setters: `h_flex().gap(Space::GAP_RELATED).p(Space::INSET_CARD)`. A variant's number is its pixel value (`Space::S8` is 8px); the gap and inset constants and the rules for picking them are in `knowledge/designs/foundations.md`.
 
@@ -57,9 +57,7 @@ Code-font text keeps its place on the scale. `Label::mono()` and `.type_style_mo
 
 ## Themes and platforms
 
-`default`, `macos` and `yaru` are themes (looks), not operating systems: any of them runs anywhere. A theme's tweak to a piece of UI lives in `themes/*.json` under that piece's recipe id and goes through the same resolver as today: kind defaults, then built-in recipe patches, then the theme's patches from the kind inward.
-
-Every per-theme tweak an app layer makes today moves into penna's theme files under the recipe that replaces the app role, so nothing an app tuned is lost, and the other app gets the same look. Real operating system differences (fonts, key glyphs, window border) stay in penna behind `cfg!(target_os)`.
+`default`, `macos` and `yaru` are presets, knob values with names, not operating systems: any of them runs anywhere. A theme file in `themes/*.json` holds only knobs (`foundations.md`, Look); how a piece of UI draws comes from its kind's defaults and its built-in recipe patch, the same under every preset, so both apps get the same look. Real operating system differences (fonts, key glyphs, window border, the default glass) stay in penna behind `cfg!(target_os)`.
 
 ## Looks
 
@@ -91,7 +89,7 @@ How they behave:
 - `Panel::inset(px)` grows a rounded corner by the inset its rows sit at; square and pill corners stay.
 - `Tile::edge(width)` draws the look's edge at that width where the theme draws one, so a drop zone can match the edge of the frames it lands in.
 - `Badge::on(ground)` paints the badge on that ground, and `opaque()` blends over it.
-- `Emphasis::Outline` draws through its own recipe: `button.outline`, `badge.outline`, `chip.outline` (the plain chip), `field.outline` and `field.multiline.outline`. Each has no fill and a 1px outline in the tone's outline ink (30% neutral, 55% for a tone, as `Emphasis::Outline`'s paint), not the theme's hairline, and fixes both so no theme patch or picked outline turns them off; shape, smoothing and highlights stay open. Another chip look at Outline or Ghost, and a badge, chip or field at Ghost, fixes fill and outline on the look's own recipe the same way.
+- `Emphasis::Outline` draws through its own recipe: `button.outline`, `badge.outline`, `chip.outline` (the plain chip), `field.outline` and `field.multiline.outline`. Each has no fill and a 1px outline in the tone's outline ink (30% neutral, 55% for a tone, as `Emphasis::Outline`'s paint), not the hairline, and fixes both; shape, smoothing and highlights stay open. Another chip look at Outline or Ghost, and a badge, chip or field at Ghost, fixes fill and outline on the look's own recipe the same way.
 - `field_chrome(element, look, ground, state, cx)` frames a field the app lays out itself, on `ground` or the window's when it is `None`, and `field_paint(look, cx)` gives its inks. The forms that take a surface are crate-private, for penna's own fields.
 - `BottomSheet` headers are `phone.bar`, `sheet_row` rows `phone.row`. `TextView` paints code blocks and inline code as `card.code` and tables as `card.figure`.
 - `ContentLook` names the recipes an app's content paints by hand: a pane frame, a tmux popup, a PiP, stack tiles, the window frame. No component draws it; content reads it through the readers below, and the code that paints it allows the lint on the narrowest fn with a reason.
@@ -110,11 +108,11 @@ A role's id and place stay readable by name: `role.id()`, `roles::all()` and `ro
 
 ## Recipes
 
-An app role becomes a kit recipe: a penna-owned role picked by a component's variant, named for the kit (`tab.window`, `field.composer`, `icon-button.send`), not for the app. When a recipe lands, the app ids it replaces go into penna's retired list, so saved and pasted themes still load; a custom override a user saved for a retired id resets.
+An app role becomes a kit recipe: a penna-owned role picked by a component's variant, named for the kit (`tab.window`, `field.composer`, `icon-button.send`), not for the app. When a recipe lands, the app ids it replaces are gone; theme files name no roles, so nothing saved refers to them.
 
 ### zebrilus: 43 roles, now 0
 
-Every zz role moved into penna (2026-11-01): 31 became kit recipes under kit names with their code patches and per-theme tweaks, 11 that had no patch and no tweak folded into the kit role they sat under, and `agent.action` merged into `icon-button.row`, which had the same look. Their old ids are in penna's retired list. zz draws each through the component and look in the Status column, and its content reads the pane, floating pane, PiP, tile stack and window through `ContentLook`; zz names no role outside a story or a test.
+Every zz role moved into penna (2026-11-01): 31 became kit recipes under kit names with their code patches and per-theme tweaks, 11 that had no patch and no tweak folded into the kit role they sat under, and `agent.action` merged into `icon-button.row`, which had the same look. zz draws each through the component and look in the Status column, and its content reads the pane, floating pane, PiP, tile stack and window through `ContentLook`; zz names no role outside a story or a test.
 
 Theme tweaks: D default, M macos, Y yaru. A dash means none.
 
@@ -195,11 +193,11 @@ Each slice lands in penna (component, variants, recipes, theme tweaks, stories),
 Outside penna it is a compile error to make or change a role, or to hand a widget one:
 
 - `SurfaceRole`'s fields, constructors and builders are crate-private. Other crates read a role through `id()`, `kind()`, `label()`, `about()` and `patch()`.
-- `Theme`'s role patches are crate-private and read through `Theme::styles()`. A recipe is restyled by id through an `InterfaceTheme` laid over the kit: its `roles` map and `apply_roles` are public, so any code can lay one on. penna's theme files and the themes users save fill it; the apps build one in code only in stories and tests.
+- No code outside penna restyles a recipe: an `InterfaceTheme` holds only knobs, and a recipe's look comes from its kind and its built-in patch.
 - No role converts into a `Surface`: the only `From` impls are the looks', and `Surface`'s role field is crate-private, so a struct literal can't name one either. `Surface::new(role)` is the one public constructor from a role.
 - `Button::surface_role` and `ListItem::surface_role` (every other widget's is gone), `rule_on`, `row_surface`, `row_corners`, `row_radius`, `surface_hover`, `surface_interactive`, `field_chrome_on` and `field_paint_on` (the forms of `field_chrome` and `field_paint` that take a surface) are crate-private. The public `field_chrome` and `field_paint` take a `FieldLook`.
 
-What stays public and paints by hand is on the lint: `StyledExt::{surface, surface_at, layer}`, `Theme::layer` and `Surface::new`. The readers (`ground_of`, `ground_at`, `radius_of`, `shape_radius`, `style_of`, `casts_shadow`) are not, and take only a look. `Theme::style(role)` is on the lint too: a style read by name gives a recipe's shape and shadow, which `.rounded` and `.shadow` paint. `Theme::field_emphasis` is crate-private for the same reason. What takes a role or a role id and stays open is `roles::all`, `roles::find` and `theme_css::stylesheet`. The lint blocks the named shortcuts, not every route: a role's kind, patch and lineage, `Kind::base()` and `Theme::styles()` are public data, and code that rebuilds a style from them by hand is a review finding, not a compile error. The lint also covers text set by hand.
+What stays public and paints by hand is on the lint: `StyledExt::{surface, surface_at, layer}`, `Theme::layer` and `Surface::new`. The readers (`ground_of`, `ground_at`, `radius_of`, `shape_radius`, `style_of`, `casts_shadow`) are not, and take only a look. `Theme::style(role)` is on the lint too: a style read by name gives a recipe's shape and shadow, which `.rounded` and `.shadow` paint. `Theme::field_emphasis` is crate-private for the same reason. What takes a role or a role id and stays open is `roles::all`, `roles::find` and `theme_css::stylesheet`. The lint blocks the named shortcuts, not every route: a role's kind, patch and lineage and `Kind::base()` are public data, and code that rebuilds a style from them by hand is a review finding, not a compile error. The lint also covers text set by hand.
 
 Each app extends the `disallowed-methods` list it already has (`nidus/crates/nid-app/clippy.toml`, `zebrilus/clippy.toml` at the workspace root, which also covers `clients/storybook`; a per-crate file would replace the root list). Added paths: `penna::StyledExt::{surface, surface_at, layer}`, `penna::Theme::layer`, `penna::Theme::style`, `penna::Surface::new`, `ala::Styled::{text_size, text_xs, text_sm, text_base, text_lg, text_xl, text_2xl, text_3xl, font_weight}` and the `penna::StyledExt::font_*` weight helpers. A path that is no longer public leaves the list, since clippy warns on a path it cannot reach. `penna::rems_from_px` is not on the list: sizes use it. Both apps carry the lint and pass it as an error on Linux; content code allows it on the narrowest fn with a reason. Code gated to macOS, iOS or Android is not compiled on Linux and has not been linted yet: before a release, run clippy on a Mac for the Mac and phone targets. Spacing setters stay open: `gap(Space::S8)` and `gap(px(10.))` are the same call, so Space use is a review rule.
 

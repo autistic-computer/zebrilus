@@ -106,6 +106,7 @@ pub fn workspace_status_bar(
         .when(!gaps, |bar| bar.rule(RuleLook::Bar, Edge::Bottom, cx))
         .flex()
         .size_full()
+        .px_0()
         .items_center()
         .overflow_hidden()
         .child(leading)

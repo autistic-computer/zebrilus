@@ -99,16 +99,13 @@ caching: penna's `dist` on 8098 (`PORT` overrides) when given nothing. The just 
 zz's page, penna's page and `design/`.
 
 The URL holds the story, the section and the knobs: `#/agent/composer?theme=dark&radius=4`.
-Knobs: `theme` (the mode: `system`, `light`, `dark`), `interface-theme` (`default` or
-`macos`: the built-in the knobs start from, materials and roles both, picked under Start from), the theme's `name`,
-the materials (`radius`, `outline`, `row-inset`, `primary`, `highlights` (`lift` or `flat`), `surfaces` (`darker` or `brighter`, the `bright-surfaces` material), `font`, `glass` with its sliders, the
-contact shadow as `contact-y`, `contact-blur`, `contact-spread`, `contact-strength` and the float
-shadow as `float-y`, `float-blur`, `float-spread`, `float-strength`), `roles` (the theme file's
-`roles` object as JSON, written only while it differs from the start theme's), each mode's colors
-(`light-accent`, `dark-on-accent`, `dark-shadow-color`, ...; a `#rrggbb` shadow color keeps the
-theme's alpha, or the palette's when the theme sets none), `contrast`, the tint (`tint-hue`, Oklch
-degrees with 260 as the default, and `tint`, 0 to 1, as `chrome-tint-hue` and `chrome-tint` set it
-in the app), `zoom`, zz's pane knobs
+Knobs: `theme` (the mode: `system`, `light`, `dark`), `interface-theme` (`default`, `macos` or
+`yaru`: the preset the knobs start from, picked under Start from), the theme's knobs (`name`,
+`tint-color` or `light-tint-color` and `dark-tint-color`, `neutral-hue`, `neutral-amount`,
+`radius`, `control-radius`, `smoothing`, `face`, `lock` for the mode lock, and `glass` with its
+sliders), the person's settings over it (`accent`, `contrast`, the tint as `tint-hue` and `tint`,
+which set the neutral as `chrome-tint-hue` and `chrome-tint` do in the app,
+`reduce-transparency`), `zoom`, zz's pane knobs
 (`pane-gaps`, `pane-margin`, `pip-opacity`,
 `pane-inactive-opacity`, `pane-glow`, mirroring Settings → Panes, where pane corners follow the
 theme's radius and the pane edge its glass, or its outline in a theme without glass; `pane-gaps` drives the Theme

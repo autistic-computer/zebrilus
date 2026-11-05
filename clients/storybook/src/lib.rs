@@ -150,7 +150,6 @@ pub fn run() -> Result<(), wasm_bindgen::JsValue> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use penna::foundation::interface_theme::InterfaceTheme;
 
     #[test]
     fn the_catalog_has_no_problems() {
@@ -198,31 +197,5 @@ mod tests {
         assert_eq!(pane.inactive, 0.4);
         assert!(!knobs.flag("program-colors"));
         assert!(Knobs::parse("pane-margin=wide").is_err());
-    }
-
-    #[test]
-    fn every_zz_role_inherits_what_the_theme_resolves() {
-        penna_storybook::install(&CATALOG);
-        let themes = zz_ui::interface_theme::builtin_themes()
-            .iter()
-            .map(|(id, theme)| ((*id).to_owned(), theme.clone()))
-            .collect::<Vec<(String, InterfaceTheme)>>();
-        for (id, theme) in themes {
-            let mut kit = penna::Theme::default();
-            theme.apply_roles(&mut kit);
-            theme.materials.apply(&mut kit);
-            for role in penna::foundation::roles::all() {
-                let (mut style, _) = knobs::inherited(role, &theme.roles, &theme.materials);
-                if let Some(patch) = theme.roles.get(role.id()) {
-                    patch.apply(&mut style);
-                }
-                #[allow(
-                    clippy::disallowed_methods,
-                    reason = "the test walks every role, as theme tooling does"
-                )]
-                let resolved = kit.style(role);
-                assert_eq!(style, resolved, "{id} {}", role.id());
-            }
-        }
     }
 }

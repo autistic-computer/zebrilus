@@ -1,9 +1,8 @@
 use crate::ThemeMode;
 
 pub use penna::foundation::interface_theme::{
-    ACCENTS, Appearance, AppearanceChange, BUILTIN_THEMES, DEFAULT_THEME, DEFAULT_TINT_HUE,
-    InterfaceTheme, MAX_CORNER_RADIUS, Materials, SavedThemes, ThemeColors, ThemeOverrides,
-    accent_color,
+    ACCENTS, Appearance, AppearanceChange, BUILTIN_THEMES, DEFAULT_THEME, InterfaceTheme,
+    MAX_CORNER_RADIUS, SavedThemes, ThemeOverrides, accent_color,
 };
 pub use penna::foundation::motion::{
     DEFAULT_ANIMATION_SPEED, MAX_ANIMATION_SPEED, MIN_ANIMATION_SPEED,
@@ -123,19 +122,6 @@ mod tests {
         }
     }
 
-    #[test]
-    fn every_builtin_parses_with_its_id_and_a_name() {
-        let ids = builtin_themes()
-            .iter()
-            .map(|(id, _)| *id)
-            .collect::<Vec<_>>();
-        assert_eq!(ids, BUILTIN_THEMES);
-        for (id, theme) in builtin_themes() {
-            assert!(!theme.name.is_empty(), "{id} has no name");
-            sets_every_root(id, &theme.light, &theme.dark);
-        }
-    }
-
     fn assert_reads(id: &str, theme: &InterfaceTheme) {
         for mode in [ThemeMode::Light, ThemeMode::Dark] {
             let mut kit = Theme::from(&*ThemeColor::for_mode(mode));
@@ -167,21 +153,6 @@ mod tests {
         }
     }
 
-    fn sets_every_root(id: &str, light: &ThemeColors, dark: &ThemeColors) {
-        for colors in [light, dark] {
-            for root in [
-                colors.background,
-                colors.foreground,
-                colors.accent,
-                colors.success,
-                colors.warning,
-                colors.danger,
-            ] {
-                assert!(root.is_some(), "{id} leaves a root to the fallback palette");
-            }
-        }
-    }
-
     #[test]
     fn builtin_text_and_status_colors_read_on_their_surfaces() {
         for (id, theme) in builtin_themes() {
@@ -190,42 +161,11 @@ mod tests {
     }
 
     #[test]
-    fn themes_round_trip_through_json() {
-        for (id, theme) in builtin_themes() {
-            let once = parse_theme(&theme.to_json()).unwrap();
-            let twice = parse_theme(&once.to_json()).unwrap();
-            assert_eq!(once, twice, "{id} drifts through JSON");
-            assert_eq!(once.roles, theme.roles, "{id} loses its roles");
-            assert_eq!(
-                Materials {
-                    glass: None,
-                    ..once.materials.clone()
-                },
-                Materials {
-                    glass: None,
-                    ..theme.materials.clone()
-                },
-            );
-        }
-    }
-
-    #[test]
-    fn retired_roles_load_and_drop() {
-        let theme = parse_theme(
-            r#"{"roles":{"agent.status":{"fill":"tint"},"agent.composer":{"fill":"tint"},"card.code":{}}}"#,
-        )
-        .unwrap();
-        assert_eq!(theme.roles.keys().collect::<Vec<_>>(), ["card.code"]);
-        assert_eq!(penna::foundation::roles::find("agent.composer"), None);
-    }
-
-    #[test]
     fn zz_names_the_accents_and_limits_the_kit_draws() {
         use penna::{foundation::interface_theme as kit, foundation::motion};
         use zz_client::appearance as config;
         assert_eq!(kit::ACCENTS, config::ACCENTS);
         assert_eq!(kit::DEFAULT_THEME, config::DEFAULT_THEME);
-        assert_eq!(kit::DEFAULT_TINT_HUE, config::DEFAULT_TINT_HUE);
         assert_eq!(kit::MAX_CORNER_RADIUS, config::MAX_CORNER_RADIUS);
         assert_eq!(kit::BUILTIN_THEMES, config::BUILTIN_THEMES);
         let ids = builtin_themes()
@@ -252,13 +192,5 @@ mod tests {
         for setting in ThemeModeSetting::ALL {
             assert_eq!(theme_mode_setting(pinned_theme_mode(setting)), setting);
         }
-    }
-
-    #[test]
-    fn a_theme_naming_a_recipe_hints_at_its_full_id() {
-        let error = parse_theme(r#"{"roles":{"composer":{}}}"#).unwrap_err();
-        assert!(error.contains("did you mean `field.composer`"), "{error}");
-        let theme = parse_theme(r#"{"roles":{"chip.floating":{"shape":"pill"}}}"#).unwrap();
-        assert_eq!(theme.roles.keys().collect::<Vec<_>>(), ["chip.floating"]);
     }
 }

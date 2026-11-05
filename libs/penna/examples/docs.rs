@@ -1,6 +1,6 @@
 use std::{
     cell::{Cell, RefCell},
-    collections::BTreeSet,
+    collections::{BTreeSet, HashMap},
     env,
     fmt::Write as _,
     fs, io,
@@ -11,9 +11,13 @@ use markdown::{
     ParseOptions,
     mdast::{AlignKind, Code, Node},
 };
-use penna::foundation::{
-    highlighter::{Rope, SyntaxHighlighter},
-    theme_css::{self, SYNTAX},
+use penna::{
+    ThemeMode,
+    foundation::{
+        highlighter::{Rope, SyntaxHighlighter},
+        interface_theme::{self, InterfaceTheme},
+        theme_css::{self, SYNTAX},
+    },
 };
 use serde::Deserialize;
 
@@ -34,6 +38,29 @@ const SCRIPTS: [&str; 6] = [
     "components/text/text.js",
     "components/tooltip/tooltip.js",
     "blocks/docs/docs.js",
+];
+
+const LOOKS: [(&str, &str); 10] = [
+    ("blue", r#"{ "tint": "blue" }"#),
+    ("pink", r#"{ "tint": "pink" }"#),
+    ("radius-4", r#"{ "radius": 4 }"#),
+    ("radius-20", r#"{ "radius": 20 }"#),
+    ("pill", r#"{ "control-radius": "full" }"#),
+    ("smoothing-2", r#"{ "radius": 24, "smoothing": 2 }"#),
+    ("smoothing-3", r#"{ "radius": 24 }"#),
+    ("smoothing-5", r#"{ "radius": 24, "smoothing": 5 }"#),
+    ("glass-none", r#"{ "glass": "none" }"#),
+    ("glass-liquid", r#"{ "glass": "liquid" }"#),
+];
+
+const LOOK_ROLES: [&str; 7] = [
+    "button",
+    "button.quiet",
+    "field",
+    "menu-item",
+    "popover",
+    "card",
+    "tile.card",
 ];
 
 const KIT: &str = "../../../../src/";
@@ -153,6 +180,7 @@ fn copy_assets(root: &Path, assets: &Path) -> io::Result<()> {
         fs::copy(root.join("web").join(file), assets.join("web").join(file))?;
     }
     theme_css::write_tokens(&assets.join("web/tokens"), &[])?;
+    write_looks(&assets.join("looks"))?;
     copy_tree(&root.join("src"), &assets.join("src"), &["css", "js"])?;
     copy_tree(
         &root.join("storybook/src/kit"),
@@ -165,6 +193,163 @@ fn copy_assets(root: &Path, assets: &Path) -> io::Result<()> {
     )?;
     fs::copy(root.join("docs/site.css"), assets.join("site.css"))?;
     Ok(())
+}
+
+struct Rule {
+    path: Vec<String>,
+    decls: Vec<(String, String)>,
+}
+
+fn write_looks(dir: &Path) -> io::Result<()> {
+    fs::create_dir_all(dir)?;
+    for (name, source) in LOOKS {
+        let look = interface_theme::parse_theme(source).map_err(io::Error::other)?;
+        fs::write(dir.join(format!("{name}.css")), look_sheet(name, &look))?;
+    }
+    Ok(())
+}
+
+fn look_sheet(name: &str, look: &InterfaceTheme) -> String {
+    let mut css = String::new();
+    for mode in [ThemeMode::Light, ThemeMode::Dark] {
+        let sheet = |theme| theme_css::stylesheet(&theme_css::kit_theme(theme, mode), &[]);
+        let base = rules(&sheet(interface_theme::default_theme()));
+        let shown = rules(&sheet(look));
+        let _ = writeln!(
+            css,
+            "@scope (:root[data-penna-mode=\"{}\"] [data-look=\"{name}\"]) {{",
+            mode.name()
+        );
+        let changed = changed(&base, &shown);
+        let mut open: Vec<&str> = Vec::new();
+        for rule in changed.iter().filter(|rule| drawn_in_looks(rule)) {
+            let Some((leaf, parents)) = rule.path.split_last() else {
+                continue;
+            };
+            let kept = open
+                .iter()
+                .zip(parents)
+                .take_while(|(open, parent)| **open == parent.as_str())
+                .count();
+            css.push_str(&"}\n".repeat(open.len() - kept));
+            open.truncate(kept);
+            for parent in &parents[kept..] {
+                let _ = writeln!(css, "{} {{", scoped(parent));
+                open.push(parent.as_str());
+            }
+            let _ = write!(css, "{} {{", scoped(leaf));
+            for (name, value) in &rule.decls {
+                let _ = write!(css, " {name}: {value};");
+            }
+            css.push_str(" }\n");
+        }
+        css.push_str(&"}\n".repeat(open.len()));
+        css.push_str("}\n");
+    }
+    css
+}
+
+fn scoped(selector: &str) -> &str {
+    if selector == ":root" {
+        ":scope"
+    } else {
+        selector
+    }
+}
+
+fn drawn_in_looks(rule: &Rule) -> bool {
+    rule.path
+        .iter()
+        .rev()
+        .find(|selector| !selector.starts_with('&'))
+        .is_some_and(|selector| {
+            selector == ":root"
+                || LOOK_ROLES
+                    .iter()
+                    .any(|role| selector.starts_with(&format!("[data-penna=\"{role}\"]")))
+        })
+}
+
+fn rules(css: &str) -> Vec<Rule> {
+    let mut path: Vec<String> = Vec::new();
+    let mut rules: Vec<Rule> = Vec::new();
+    for line in css.lines().map(str::trim) {
+        if line.is_empty() || line.starts_with("@property") {
+            continue;
+        }
+        if line == "}" {
+            path.pop();
+            continue;
+        }
+        match line.split_once(" {") {
+            Some((selector, rest)) => {
+                let mut at = path.clone();
+                at.push(selector.to_owned());
+                let (rest, closed) = rest
+                    .trim()
+                    .strip_suffix('}')
+                    .map_or((rest, false), |rest| (rest, true));
+                rules.push(Rule {
+                    path: at.clone(),
+                    decls: decls(rest),
+                });
+                if !closed {
+                    path = at;
+                }
+            }
+            None => {
+                if let Some(rule) = rules.iter_mut().rev().find(|rule| rule.path == path) {
+                    rule.decls.extend(decls(line));
+                }
+            }
+        }
+    }
+    rules
+}
+
+fn decls(text: &str) -> Vec<(String, String)> {
+    text.split(';')
+        .filter_map(|decl| decl.split_once(':'))
+        .map(|(name, value)| (name.trim().to_owned(), value.trim().to_owned()))
+        .collect()
+}
+
+fn changed(base: &[Rule], shown: &[Rule]) -> Vec<Rule> {
+    let lookup = |rules: &[Rule]| {
+        rules
+            .iter()
+            .map(|rule| (rule.path.clone(), rule.decls.clone()))
+            .collect::<HashMap<_, _>>()
+    };
+    let before = lookup(base);
+    let after = lookup(shown);
+    shown
+        .iter()
+        .filter_map(|rule| {
+            let was = before.get(&rule.path).cloned().unwrap_or_default();
+            let fallback = |name: &str| {
+                after
+                    .get(&rule.path[..rule.path.len() - 1])
+                    .and_then(|parent| parent.iter().find(|(other, _)| other == name))
+                    .map_or_else(|| "initial".to_owned(), |(_, value)| value.clone())
+            };
+            let decls = rule
+                .decls
+                .iter()
+                .filter(|decl| !was.contains(decl))
+                .cloned()
+                .chain(
+                    was.iter()
+                        .filter(|(name, _)| rule.decls.iter().all(|(other, _)| other != name))
+                        .map(|(name, _)| (name.clone(), fallback(name))),
+                )
+                .collect::<Vec<_>>();
+            (!decls.is_empty()).then(|| Rule {
+                path: rule.path.clone(),
+                decls,
+            })
+        })
+        .collect()
 }
 
 fn copy_tree(from: &Path, to: &Path, extensions: &[&str]) -> io::Result<()> {
@@ -521,6 +706,15 @@ impl Builder {
             .filter_map(|token| token.strip_prefix("uses="))
             .flat_map(|list| list.split(','))
             .for_each(|name| self.uses(name));
+        for look in code.value.split("data-look=\"").skip(1) {
+            let name = &look[..look.find('"').unwrap_or(0)];
+            if LOOKS.iter().all(|(known, _)| *known != name) {
+                return Err(io::Error::other(format!("no look named {name}")));
+            }
+            self.styles
+                .borrow_mut()
+                .insert(format!("assets/looks/{name}.css"));
+        }
         let body = match story_ref(code) {
             Some(reference) => {
                 let story = self.story_section(reference)?;

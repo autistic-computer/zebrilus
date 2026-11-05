@@ -207,7 +207,7 @@ Browser, Terminal, Hosts, Providers, System, About:
 
 | Section | Contents |
 |---------|----------|
-| Interface | Theme (a Mode segmented control for `theme-mode`, a Theme picker for `interface-theme`, each theme with its accent, with Import from clipboard in its more menu, the Accent swatches for `chrome-accent`, and the Tint and Tint strength sliders for `chrome-tint-hue` and `chrome-tint`), Advanced (`widget-corner-radius` as Corner radius and `chrome-contrast` as Contrast, both sliders, system UI font picker, transient UI zoom, `chrome-density` as Density, macOS app-icon pickers, `animations`, window blur, Linux `window-corner-radius` and `use-system-titlebar`) |
+| Interface | Theme (a Mode segmented control for `theme-mode`, a Theme picker for `interface-theme`, each theme with its accent, with Import from clipboard in its more menu, the Accent swatches for `chrome-accent`, and the Tint and Tint strength sliders for `chrome-tint-hue` and `chrome-tint`), Advanced (`widget-corner-radius` as Corner radius and `chrome-contrast` as Contrast, both sliders, `reduce-transparency` as Reduce transparency, system UI font picker, transient UI zoom, `chrome-density` as Density, macOS app-icon pickers, `animations`, window blur, Linux `window-corner-radius` and `use-system-titlebar`) |
 | Status bar | Session chip, window badges and alignment, Agent count, remote host, update, and clock; visible in the title bar when the sidebar is retracted |
 | Editor | Editor-pane typography and display controls, when compiled in |
 | Panes | Layout (`pane-gaps`), PiP (`pip-background-opacity`), Focus (`pane-inactive-opacity`, `pane-glow-strength`), Frame (`pane-margin`); gapped panes draw their frame in glass, with corners from the theme's radius and the rim from the theme's glass (a hairline the outline's width without glass) |
@@ -287,12 +287,11 @@ paths, which is how flipping the pin takes effect without a restart.
 The theme on screen is `config::shown_theme`: the active theme with the style, radius, accent and
 tint keys `zz/config` sets composed over it (`config::theme_overrides` returns them as a
 `ThemeOverrides`, and `ThemeOverrides::apply_to` composes them). `activate` switches the kit
-`Theme` to the mode, writes that theme's colors for it (`InterfaceTheme::colors`: the six roots,
-the shadow color and the text on the accent), its materials (`Materials::apply`) and its role
-patches (`InterfaceTheme::apply_roles`) in one step, so a light/dark switch never keeps the last
-theme's materials or roles over the new colors. Only the roots are written; every elevation, hover
-state, muted text, and focus ring derives from them at paint time, and every surface resolves its
-role against the materials when it paints, so a theme and its overrides reach the whole UI with no
+`Theme` to the mode, writes that theme's colors for it (`InterfaceTheme::colors`: the base colors
+moved by its neutral, the accent from its tint) and its knobs (`InterfaceTheme::apply`) in one step,
+so a light/dark switch never keeps the last theme's knobs over the new colors. Only the roots are
+written; every elevation, hover state, muted text, and focus ring derives from them at paint time,
+and every surface resolves its role against the theme when it paints, so a theme and its overrides reach the whole UI with no
 per-component plumbing.
 
 `apply_zz_overrides` then writes what zz adds over the theme:
@@ -301,6 +300,7 @@ per-component plumbing.
 - `mono_font_family` from the terminal's resolved primary family, so Agent Markdown, tool previews,
   and code blocks match the terminal typeface;
 - `contrast` from `chrome-contrast`, which scales derived colors and survives mode changes;
+- no glass under `reduce-transparency`;
 - `pane_margin` from `pane-margin`, the `zz_ui::pane_look::PaneLook` global (`glow_strength` and
   `frames`) from `pane-glow-strength` and `pane-gaps`, and the `zz_ui::pip::PipOpacity` global from
   `pip-background-opacity`.

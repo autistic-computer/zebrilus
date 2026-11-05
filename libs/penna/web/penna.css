@@ -59,6 +59,22 @@ button[data-penna] {
   outline-offset: 0;
 }
 
+[data-rule]:is(:not([data-edge]), [data-edge~="bottom"]) {
+  border-bottom: 1px solid var(--penna-divider);
+}
+
+[data-rule][data-edge~="top"] {
+  border-top: 1px solid var(--penna-divider);
+}
+
+[data-rule][data-edge~="right"] {
+  border-right: 1px solid var(--penna-divider);
+}
+
+[data-rule][data-edge~="left"] {
+  border-left: 1px solid var(--penna-divider);
+}
+
 .penna-muted {
   color: var(--penna-muted);
 }
@@ -456,7 +472,7 @@ button[data-penna] {
   height: 16px;
   border-radius: 50%;
   background: var(--penna-knob);
-  box-shadow: var(--penna-shadow-lifted);
+  box-shadow: var(--penna-shadow-contact);
 }
 
 .penna-switch[data-on] {

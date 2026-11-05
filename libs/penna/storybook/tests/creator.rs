@@ -1,17 +1,13 @@
-use std::fmt::Write as _;
-
 use ala::{
     AnyElement, App, Context, InteractiveElement as _, IntoElement, ParentElement as _, Render,
     Styled as _, TestAppContext, Window, div, px, size,
 };
 use penna::{
-    Fill, IconName, Kind, Shadow, StylePatch, StyledExt as _, Surface, SurfaceRole,
-    foundation::interface_theme,
+    IconName, StyledExt as _, Surface, SurfaceRole,
+    foundation::interface_theme::{self, ControlRadius, Glass, Tint},
 };
 use penna_storybook::{Catalog, Section, creator, story::stateless};
 use serde_json::{Value, json};
-
-const P: StylePatch = StylePatch::EMPTY;
 
 const BOARD_PLATE: Section = Section {
     id: "desk",
@@ -60,33 +56,6 @@ fn install() {
     penna_storybook::install(&BOARD_APP);
 }
 
-fn tree() -> Vec<Value> {
-    let regions = serde_json::from_str::<Vec<Value>>(&penna_storybook::roles_json()).unwrap();
-    regions
-        .into_iter()
-        .flat_map(|region| region["roles"].as_array().cloned().unwrap_or_default())
-        .collect()
-}
-
-fn role<'a>(tree: &'a [Value], id: &str) -> &'a Value {
-    tree.iter()
-        .find(|role| role["id"] == id)
-        .unwrap_or_else(|| panic!("the role tree has no {id}"))
-}
-
-fn query(roles: &Value) -> String {
-    let json = roles.to_string();
-    let mut encoded = String::new();
-    for byte in json.bytes() {
-        if byte.is_ascii_alphanumeric() || b"-_.".contains(&byte) {
-            encoded.push(char::from(byte));
-        } else {
-            write!(encoded, "%{byte:02X}").unwrap();
-        }
-    }
-    format!("roles={encoded}")
-}
-
 fn draw(cx: &mut TestAppContext) {
     cx.run_until_parked();
     cx.update(|cx| {
@@ -113,57 +82,44 @@ fn the_app_catalog_puts_the_creator_first_with_its_plates() {
     assert_eq!(sections, ["controls", "desk"]);
 }
 
-#[test]
-fn the_roles_a_plate_draws_show_in_the_tree_under_their_parents() {
-    install();
-    let tree = tree();
-    let well = role(&tree, "well");
-    assert_eq!(well["kind"], "card");
-    assert_eq!(well["group"], Kind::Card.role().label());
-    assert_eq!(well["style"]["shadow"], "none");
-    assert_eq!(well["style"]["fill"], "tint");
-    let screen = role(&tree, "tile.screen");
-    assert_eq!(screen["style"]["shadow"], "contact");
-    let chip = role(&tree, "chip");
-    assert_eq!(chip["group"], SurfaceRole::BADGE.label());
-    assert_eq!(chip["style"]["shape"], "pill");
-}
-
 #[ala::test]
-fn an_edit_to_a_recipe_lands_in_the_export_and_parses_back(cx: &mut TestAppContext) {
+fn a_knob_edit_lands_in_the_export_and_parses_back(cx: &mut TestAppContext) {
     install();
     cx.update(penna::init);
-    let edit = json!({ "tile.screen": { "fill": "tint", "shadow": "contact" } });
-    cx.update(|cx| penna_storybook::set_knobs(&query(&edit), cx))
-        .unwrap();
-    assert_eq!(role(&tree(), "tile.screen")["patch"], edit["tile.screen"]);
+    cx.update(|cx| {
+        penna_storybook::set_knobs(
+            "radius=8&tint-color=orange&glass=none&control-radius=full",
+            cx,
+        )
+    })
+    .unwrap();
     let exported = penna_storybook::theme_file_json();
     let theme = interface_theme::parse_theme(&exported).unwrap();
     assert_eq!(
-        theme.roles.get("tile.screen"),
-        Some(&P.fill(Fill::Tint).shadow(Shadow::Contact))
+        (theme.radius, theme.control_radius, theme.glass.clone()),
+        (8.0, Some(ControlRadius::Full), Some(Glass::None))
     );
+    assert_eq!(theme.tint, Tint::named("orange").unwrap());
     let knobs =
         serde_json::from_str::<Value>(&penna_storybook::import_theme(&exported).unwrap()).unwrap();
-    assert_eq!(knobs["roles"]["tile.screen"], edit["tile.screen"]);
+    assert_eq!(knobs["light-tint-color"], "#ad4f00");
+    assert_eq!(knobs["control-radius"], "full");
 }
 
 #[test]
-fn import_drops_retired_ids_and_names_unknown_ones() {
+fn import_keeps_the_name_and_ignores_what_a_theme_no_longer_sets() {
     install();
-    let theme = json!({ "roles": {
-        "board.screen": { "fill": "tint" },
-        "tile.screen": { "fill": "tint" },
-    } });
+    let theme = json!({
+        "name": "Old",
+        "materials": { "radius": 3 },
+        "roles": { "tile.screen": { "fill": "tint" } },
+    });
     let knobs =
         serde_json::from_str::<Value>(&penna_storybook::import_theme(&theme.to_string()).unwrap())
             .unwrap();
-    assert_eq!(knobs["roles"], json!({ "tile.screen": { "fill": "tint" } }));
-    let error = penna_storybook::import_theme(
-        &json!({ "roles": { "tile.scren": { "fill": "tint" } } }).to_string(),
-    )
-    .unwrap_err();
-    assert!(error.contains("unknown role `tile.scren`"), "{error}");
+    assert_eq!(knobs["name"], "Old");
+    assert_eq!(knobs["radius"], 12.0);
+    assert!(knobs.get("roles").is_none());
 }
 
 #[ala::test]

@@ -2,10 +2,6 @@
 
 Switches between open things in one place: windows, pages, tasks. To pick a view of one thing use a segmented control.
 
-```figure uses=notice
-<div class="docs-full penna-notice" data-penna="notice" data-tone="warning"><div class="penna-notice-tone" data-penna="chip" data-tone="warning"><span class="penna-notice-lead"><i data-icon="triangle-alert"></i></span><div class="penna-notice-body"><span class="penna-text penna-notice-title" data-penna-text>Being reworked</span><span class="penna-text penna-notice-detail" data-penna-text>Tabs can't share the width equally yet, and icons are a size too large.</span></div></div></div>
-```
-
 ## Looks
 
 ```figure uses=tab
@@ -39,11 +35,11 @@ Tab::new(("tab", ix), TabLook::Window)
 ```
 
 1. **Container**: the size sets its height, the look its fill and corners.
-2. **Icon**: optional.
+2. **Icon**: optional, 12 beside a `small` label.
 3. **Label**: `small`, short.
 4. **Aside**: optional, muted: a count or the program.
 
-Inset and content are yours; the stories use 10 at the sides.
+Inset and content are yours; the stories use 10 at the sides. A tab is as wide as its content; give tabs one width to make them equal.
 
 ## Sizes
 

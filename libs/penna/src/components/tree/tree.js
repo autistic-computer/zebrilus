@@ -23,13 +23,15 @@ function treeDraw(tree) {
   const offset = length("--penna-tree-offset");
   const end = length("--penna-tree-end");
   const height = rows.length ? rows[0].getBoundingClientRect().height : 0;
+  const left = parseFloat(style.paddingLeft) || 0;
+  const top = parseFloat(style.paddingTop) || 0;
   treeGuides(depths).forEach((guide) => {
     const line = document.createElement("div");
     line.className = "penna-tree-guide";
     const lit = active >= 0 && guide.level + 1 === depths[active] && guide.start <= active && active < guide.start + guide.count;
     if (lit) line.dataset.active = "";
-    line.style.left = `${guide.level * indent + offset}px`;
-    line.style.top = `${guide.start * height + end}px`;
+    line.style.left = `${left + guide.level * indent + offset}px`;
+    line.style.top = `${top + guide.start * height + end}px`;
     line.style.height = `${guide.count * height - end * 2}px`;
     line.style.width = `${hairline}px`;
     tree.append(line);

@@ -17,54 +17,16 @@
   --penna-ink: color-mix(in oklab, var(--penna-primary) 70%, var(--penna-fg));
 }
 
-.penna-tile[data-variant="screen"] {
-  display: flex;
-  align-items: flex-end;
-  width: 150px;
-  height: 90px;
-  padding: var(--penna-space-6);
-}
-
-.penna-tile[data-variant="card"] {
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-end;
-  width: 132px;
-  height: 64px;
-  padding: var(--penna-space-8) var(--penna-space-10);
-}
-
-.penna-tile[data-variant="drop"] {
-  position: absolute;
-  top: var(--penna-space-4);
-  right: var(--penna-space-4);
-  bottom: var(--penna-space-4);
-  width: 96px;
-  --penna-r: var(--penna-radius);
-  --penna-k: var(--penna-style-k);
-}
-
 .penna-tile[data-variant="drop"][data-edge] {
   border-width: clamp(0px, calc(var(--penna-bw) * 1000), 1px);
 }
 
 .penna-tile[data-variant="veil"] {
-  position: absolute;
-  inset: 0;
   border-width: 0;
 }
 
-.penna-tile[data-variant="mini"] {
-  flex: 1 1 0;
-  height: 100%;
-  padding: var(--penna-space-6);
-  --penna-fill: var(--penna-bg);
-  --penna-r: 6px;
-  --penna-k: var(--penna-style-k);
-}
-
-.penna-tile[data-dragging] {
-  z-index: 1;
+.penna-tile[data-penna]:not([data-penna="tile.drop"])[data-state~="hover"] {
+  --penna-shadow: var(--penna-shadow-lifted);
 }
 
 .penna-tile[data-penna]:not([data-penna="tile.drop"]):is([data-state~="selected"], [data-state~="current"], [aria-selected="true"])::before {
@@ -73,7 +35,7 @@
   inset: calc(-1 * round(down, var(--penna-tile-bw, 0px), 0.5px));
   border-radius: inherit;
   corner-shape: inherit;
-  box-shadow: 0 0 0 2px var(--penna-accent);
+  box-shadow: 0 0 0 2px var(--penna-primary);
   pointer-events: none;
 }
 

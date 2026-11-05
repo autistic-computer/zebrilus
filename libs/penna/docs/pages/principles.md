@@ -67,4 +67,4 @@ Each state has its own look. Motion is short and stops for reduced motion.
 
 ## One kit
 
-The same components draw native windows, the phone and this site, in every look. A look changes materials, never sizes or behavior.
+The same components draw native windows, the phone and this site, in one look. Knobs change color, corners, glass and faces, never a component's fills, sizes or behavior.

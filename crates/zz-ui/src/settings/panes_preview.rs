@@ -384,6 +384,19 @@ mod tests {
         }
     }
 
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "the test measures the settings preview's edge, which no look names"
+    )]
+    fn preview_edge(cx: &App) -> Pixels {
+        cx.theme()
+            .layer(
+                crate::Surface::new(penna::foundation::roles::SETTINGS_PREVIEW),
+                crate::PaintState::Rest,
+            )
+            .border_width
+    }
+
     fn preview() -> PanesPreview {
         PanesPreview {
             gaps: true,
@@ -447,7 +460,7 @@ mod tests {
             let browser = cx.debug_bounds("settings-preview-browser").unwrap();
             let terminal_content = cx.debug_bounds("settings-preview-active-0-true").unwrap();
             let gap = px(if gaps { margin } else { 1.0 });
-            let edge = cx.update(|_, cx| cx.theme().outline);
+            let edge = cx.update(|_, cx| preview_edge(cx));
             assert_eq!(agent.origin.x - terminal.right(), gap);
             assert_eq!(browser.origin.y - agent.bottom(), gap);
             assert_eq!(

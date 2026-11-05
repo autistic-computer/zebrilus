@@ -32,7 +32,7 @@ Input::new(&search).cleanable(true)
 </div>
 ```
 
-1. **Container**: fill, edge, corners. The size sets its height and side padding.
+1. **Container**: a wash and corners; an edge only while typing. The size sets its height and side padding.
 2. **Prefix**: optional, before the text. Icons are muted.
 3. **Text**: the value, or a faint placeholder.
 4. **Suffix**: optional. Also holds the spinner and the clear button.

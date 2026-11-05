@@ -452,7 +452,11 @@ mod tests {
             cx.update(|cx| {
                 crate::init(cx);
                 cx.set_reduce_motion(true);
-                crate::interface_theme::InterfaceTheme::default().activate(Some(mode), None, cx);
+                crate::interface_theme::InterfaceTheme {
+                    glass: Some(penna::foundation::interface_theme::Glass::None),
+                    ..crate::interface_theme::InterfaceTheme::default()
+                }
+                .activate(Some(mode), None, cx);
                 Theme::global_mut(cx).radius = px(radius);
             });
             let (_, cx) = cx.add_window_view(|window, cx| {
@@ -496,10 +500,10 @@ mod tests {
                 assert!(
                     quads.iter().any(|quad| {
                         quad.border_color
-                            == cx
-                                .theme()
-                                .paint(Tone::Neutral, Emphasis::Ghost)
-                                .muted_at(PaintState::Selected)
+                            == muted_on(
+                                cx.theme().ground_at(RowLook::Menu, PaintState::Selected),
+                                cx,
+                            )
                             && quad.bounds.size.width.0
                                 == crate::sidebar::STATUS_DOT_SIZE * window.scale_factor()
                             && quad.border_widths.top.0 > 0.0

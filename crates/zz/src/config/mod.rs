@@ -396,7 +396,7 @@ fn load_themes(config_path: &Path, parsed: &mut ParsedConfig, previous: &Themes)
         ..theme_overrides_from(&parsed.config)
     }
     .apply_to(&mut shown);
-    parsed.config.follow_theme_radius(shown.materials.radius);
+    parsed.config.follow_theme_radius(shown.radius);
     Themes {
         active,
         selected,
@@ -945,7 +945,7 @@ mod tests {
         themes::save_theme(
             &themes_directory,
             "square",
-            r##"{"name": "Square", "materials": {"radius": 3, "primary": "accent"}, "dark": {"accent": "#ff0000"}}"##,
+            r##"{"name": "Square", "radius": 3, "tint": {"light": "#cc0000", "dark": "#ff0000"}}"##,
         )
         .expect("save theme");
         themes::save_theme(&themes_directory, "broken", "[1, 2]").expect("save theme");
@@ -962,7 +962,7 @@ mod tests {
             ["square"]
         );
         assert_eq!(loaded.active.name, "Square");
-        assert_f32_eq(loaded.active.materials.radius, 3.0);
+        assert_f32_eq(loaded.active.radius, 3.0);
         assert_f32_eq(parsed.config.widget_corner_radius.value, 3.0);
 
         let mut parsed = parse_config("interface-theme = square\nwidget-corner-radius = 9\n");
@@ -972,7 +972,7 @@ mod tests {
         let mut parsed = parse_config("interface-theme = macos\n");
         let loaded = load_themes(&path, &mut parsed, &Themes::default());
         assert_eq!(loaded.active.name, "macOS");
-        assert_f32_eq(parsed.config.widget_corner_radius.value, 24.0);
+        assert_f32_eq(parsed.config.widget_corner_radius.value, 12.0);
 
         let mut parsed = parse_config("interface-theme = missing\n");
         let loaded = load_themes(&path, &mut parsed, &Themes::default());
@@ -987,7 +987,29 @@ mod tests {
         );
         assert_f32_eq(
             parsed.config.widget_corner_radius.value,
-            loaded.active.materials.radius,
+            loaded.active.radius,
+        );
+    }
+
+    #[test]
+    fn a_theme_file_from_before_knobs_loads_as_the_default_look_under_its_name() {
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let path = directory.path().join(CONFIG_FILE_NAME);
+        themes::save_theme(
+            &themes::themes_directory_for(&path),
+            "older",
+            r##"{"name": "Older", "materials": {"radius": 3, "outline": 0.4}, "roles": {"button": {"shape": "pill"}}, "dark": {"accent": "#ff0000"}}"##,
+        )
+        .expect("save theme");
+        let mut parsed = parse_config("interface-theme = older\n");
+        let loaded = load_themes(&path, &mut parsed, &Themes::default());
+        assert_eq!(loaded.error, None);
+        assert_eq!(
+            loaded.active,
+            InterfaceTheme {
+                name: "Older".to_owned(),
+                ..interface_theme::default_theme().clone()
+            }
         );
     }
 
@@ -999,7 +1021,7 @@ mod tests {
         themes::save_theme(
             &themes_directory,
             "neon",
-            r#"{"name": "Neon", "materials": {"radius": 3}}"#,
+            r#"{"name": "Neon", "radius": 3}"#,
         )
         .expect("save theme");
         let mut parsed = parse_config("interface-theme = neon\n");
@@ -1010,7 +1032,7 @@ mod tests {
         themes::save_theme(
             &themes_directory,
             "neon",
-            r#"{"name": "Neon", "materials": {"row_inset": 2}}"#,
+            r#"{"name": "Neon", "control-radius": "round"}"#,
         )
         .expect("break theme");
         let mut parsed = parse_config("interface-theme = neon\n");
@@ -1021,7 +1043,7 @@ mod tests {
         assert_f32_eq(parsed.config.widget_corner_radius.value, 3.0);
         let error = kept.error.expect("the broken file is reported");
         assert!(error.contains("neon.json does not load"), "{error}");
-        assert!(error.contains("did you mean `row-inset`"), "{error}");
+        assert!(error.contains("control-radius"), "{error}");
         assert!(error.ends_with("Showing Neon until it does."), "{error}");
 
         let mut parsed = parse_config("interface-theme = default\n");
@@ -1052,20 +1074,26 @@ mod tests {
         let loaded = load_themes(&path, &mut parsed, &Themes::default());
         assert_eq!(parsed.diagnostics.len(), 2, "{:?}", parsed.diagnostics);
         assert_f32_eq(
-            loaded.active.materials.radius,
+            loaded.active.radius,
             zz_config::DEFAULT_WIDGET_CORNER_RADIUS,
         );
         assert_eq!(
             parsed.config.widget_corner_radius,
-            ConfigValue::from_default(loaded.active.materials.radius)
+            ConfigValue::from_default(loaded.active.radius)
         );
     }
 
     #[test]
     fn config_defaults_match_the_default_theme() {
-        assert_f32_eq(
-            interface_theme::default_theme().materials.radius,
-            zz_config::DEFAULT_WIDGET_CORNER_RADIUS,
+        let defaults = zz_config::AppConfig::default();
+        let theme = interface_theme::default_theme();
+        assert_eq!(
+            (
+                defaults.widget_corner_radius.value,
+                defaults.chrome_tint_hue.value,
+                defaults.chrome_tint.value,
+            ),
+            (theme.radius, theme.neutral.hue, theme.neutral.amount)
         );
     }
 
@@ -2037,7 +2065,10 @@ mod tests {
              malformed\n",
         );
 
-        assert_f32_eq(parsed.config.chrome_tint.value, 0.0);
+        assert_f32_eq(
+            parsed.config.chrome_tint.value,
+            zz_config::DEFAULT_CHROME_TINT,
+        );
         assert_f32_eq(
             parsed.config.pane_margin.value,
             zz_config::DEFAULT_PANE_MARGIN,
@@ -2402,11 +2433,10 @@ mod tests {
                 .apply_to(&mut expected);
                 let theme = penna::Theme::global(cx);
                 assert_eq!(theme.colors, expected.colors(theme.mode));
-                assert_eq!(theme.outline, px(expected.materials.outline));
-                assert_eq!(theme.radius, px(expected.materials.radius));
+                assert_eq!(theme.radius, px(expected.radius));
                 assert_f32_eq(
                     resolved_config(cx).widget_corner_radius.value,
-                    expected.materials.radius,
+                    expected.radius,
                 );
             });
         }
@@ -3150,6 +3180,7 @@ mod tests {
             "pane-margin",
             "widget-corner-radius",
             "chrome-contrast",
+            "reduce-transparency",
             "chrome-accent",
             "chrome-tint",
             "chrome-tint-hue",

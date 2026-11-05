@@ -64,7 +64,11 @@ fn register_tmux_language() {
 #[cfg(test)]
 pub(crate) fn init_without_theme(cx: &mut ala::App) {
     init(cx);
-    interface_theme::InterfaceTheme::default().activate(Some(ThemeMode::Light), None, cx);
+    interface_theme::InterfaceTheme {
+        glass: Some(penna::foundation::interface_theme::Glass::None),
+        ..interface_theme::InterfaceTheme::default()
+    }
+    .activate(Some(ThemeMode::Light), None, cx);
 }
 
 pub const LABEL_FADE: ala::Pixels = ala::px(28.0);

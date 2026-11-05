@@ -5,17 +5,11 @@
   align-items: center;
   gap: var(--penna-space-8);
   box-sizing: border-box;
-  width: 200px;
-  height: 32px;
   margin: 0;
-  padding: 0 var(--penna-space-12);
-  font-size: var(--penna-text-small-size);
-  line-height: var(--penna-text-small-line);
   white-space: nowrap;
   cursor: default;
   user-select: none;
   outline: none;
-  --penna-icon-size: 14px;
 }
 
 .penna-row .penna-text,

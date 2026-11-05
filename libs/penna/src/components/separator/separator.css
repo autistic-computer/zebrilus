@@ -39,6 +39,22 @@
   background: var(--penna-separator-color);
 }
 
-.penna-separator-rule[data-color="danger"] > [data-penna] {
+.penna-separator-rule[data-tone="primary"] > [data-penna] {
+  --penna-separator-color: var(--penna-primary);
+}
+
+.penna-separator-rule[data-tone="danger"] > [data-penna] {
   --penna-separator-color: var(--penna-danger);
+}
+
+.penna-separator-rule[data-tone="warning"] > [data-penna] {
+  --penna-separator-color: var(--penna-warning);
+}
+
+.penna-separator-rule[data-tone="success"] > [data-penna] {
+  --penna-separator-color: var(--penna-success);
+}
+
+.penna-separator-rule[data-tone="accent"] > [data-penna] {
+  --penna-separator-color: var(--penna-accent);
 }

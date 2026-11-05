@@ -96,12 +96,18 @@ impl RenderOnce for Tile {
             plate.role = plate.role.or(Some(role));
             let edge = self.edge;
             let mini = self.variant == TileVariant::Mini;
+            let lifted = (plate.state == PaintState::Hover && self.variant != TileVariant::Drop)
+                .then(|| cx.theme().lifted_shadows());
             return plate.paint_with(window, cx, move |layer| {
                 if let Some(width) = edge.filter(|_| layer.border_width > Pixels::ZERO) {
                     layer.border_width = width;
                 }
                 if mini {
                     layer.glass = None;
+                }
+                if let Some(float) = &lifted {
+                    layer.shadow.retain(|shadow| shadow.inset);
+                    layer.shadow.extend(float.iter().cloned());
                 }
             });
         }

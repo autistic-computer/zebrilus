@@ -164,7 +164,7 @@ mod tests {
 
     #[ala::test]
     fn keyboard_focus_shows_the_tooltip_until_the_pointer_or_escape(cx: &mut TestAppContext) {
-        cx.update(crate::init);
+        cx.update(crate::init_without_theme);
         let (_, cx) = cx.add_window_view(|_, _| Host);
         let cx: &mut VisualTestContext = cx;
         let tip = point(ScaledPixels(94.0), ScaledPixels(122.0));

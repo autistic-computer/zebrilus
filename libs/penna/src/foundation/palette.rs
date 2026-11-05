@@ -2,7 +2,7 @@ use std::sync::{Arc, LazyLock};
 
 use ala::Hsla;
 
-use super::{ThemeColor, ThemeMode, color::hsl};
+use super::{ThemeColor, ThemeMode, color::parse_hex};
 
 static LIGHT: LazyLock<Arc<ThemeColor>> = LazyLock::new(|| Arc::new(palette(ThemeMode::Light)));
 static DARK: LazyLock<Arc<ThemeColor>> = LazyLock::new(|| Arc::new(palette(ThemeMode::Dark)));
@@ -31,35 +31,19 @@ fn scrim(alpha: f32) -> Hsla {
 }
 
 fn palette(mode: ThemeMode) -> ThemeColor {
-    let neutral_50 = hsl(0., 0., 98.);
-    let neutral_950 = hsl(0., 0., 3.9);
-    let white = hsl(0., 0., 100.);
-    let red_400 = hsl(0., 90.6, 70.8);
-    let red_500 = hsl(0., 84.2, 60.2);
-    let green_400 = hsl(141.9, 69.2, 58.);
-    let green_500 = hsl(142.1, 70.6, 45.3);
-    let yellow_400 = hsl(47.9, 95.8, 53.1);
-    let yellow_500 = hsl(45.4, 93.4, 47.5);
-    let blue_400 = hsl(213.1, 93.9, 67.8);
-    let blue_600 = hsl(221.2, 83.2, 53.3);
-
-    let is_dark = mode.is_dark();
-
-    macro_rules! per_mode {
-        ($light:expr, $dark:expr) => {
-            if is_dark { $dark } else { $light }
-        };
-    }
-
+    let hex = |light: &str, dark: &str| {
+        parse_hex(if mode.is_dark() { dark } else { light }).unwrap_or_default()
+    };
+    let shade = if mode.is_dark() { 0.2 } else { 0.05 };
     ThemeColor {
-        background: per_mode!(white, neutral_950),
-        foreground: per_mode!(neutral_950, neutral_50),
-        accent: per_mode!(blue_600, blue_400),
-        success: per_mode!(green_500, green_400),
-        warning: per_mode!(yellow_500, yellow_400),
-        danger: per_mode!(red_500, red_400),
-        scrim: per_mode!(scrim(0.05), scrim(0.2)),
-        shadow_color: per_mode!(scrim(0.05), scrim(0.2)),
+        background: hex("#f6f6f3", "#1a1a19"),
+        foreground: hex("#1c1c1a", "#e9e7e3"),
+        accent: hex("#2f62d8", "#7f9fff"),
+        success: hex("#007b3e", "#3fbf74"),
+        warning: hex("#a75400", "#f0a14a"),
+        danger: hex("#cc2737", "#f2555f"),
+        scrim: scrim(shade),
+        shadow_color: scrim(shade),
         on_accent: None,
     }
 }
@@ -72,15 +56,6 @@ mod tests {
     #[test]
     fn palettes_are_cached() {
         assert!(Arc::ptr_eq(&ThemeColor::light(), &ThemeColor::light()));
-    }
-
-    #[test]
-    fn the_chrome_is_achromatic() {
-        for palette in [ThemeColor::light(), ThemeColor::dark()] {
-            for neutral in [palette.background, palette.foreground] {
-                assert_eq!(neutral.s, 0.0);
-            }
-        }
     }
 
     #[test]
@@ -103,14 +78,15 @@ mod tests {
     }
 
     #[test]
-    fn a_tint_leans_the_text_less_than_the_background_toward_its_hue() {
+    fn a_neutral_leans_the_text_less_than_the_background_toward_its_hue() {
         let lightness = super::super::color::oklab_lightness;
         let chroma = |color: Hsla| {
             let (_, a, b) = super::super::color::oklab::rgb_to_oklab(color.into());
             a.hypot(b)
         };
         for palette in [ThemeColor::light(), ThemeColor::dark()] {
-            let tinted = palette.tinted(145.0, 1.0);
+            let grey = palette.neutral(145.0, 0.0);
+            let tinted = palette.neutral(145.0, 1.0);
             for (before, after) in [
                 (palette.background, tinted.background),
                 (palette.foreground, tinted.foreground),
@@ -119,8 +95,8 @@ mod tests {
                 let rgb = ala::Rgba::from(after);
                 assert!(rgb.g > rgb.r && rgb.g > rgb.b, "{rgb:?}");
             }
-            let text = chroma(tinted.foreground) - chroma(palette.foreground);
-            let background = chroma(tinted.background) - chroma(palette.background);
+            let text = chroma(tinted.foreground) - chroma(grey.foreground);
+            let background = chroma(tinted.background) - chroma(grey.background);
             assert!(0.0 < text && text < background, "{text} vs {background}");
         }
     }

@@ -4,3 +4,8 @@
   box-sizing: border-box;
   border-radius: 0;
 }
+
+.penna-bar:where([data-penna]) {
+  height: var(--penna-bar);
+  padding: 0 var(--penna-inset-chrome);
+}

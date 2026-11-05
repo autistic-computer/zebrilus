@@ -72,7 +72,7 @@ defines roles: zz has none of its own, and no widget takes a role from outside p
    `hover`, `active`, `on`, `floating`), and the shape rule by disallowing
    `ala::Styled::border` with its sized and per-side forms, `shadow_2xs` through `shadow_2xl`,
    the type `ala::BoxShadow`, and the kit helpers that would get around the roles
-   (`StyledExt::surface_edge`, `surface_outline` and `chosen_ring`, `lifted_shadow`, and
+   (`StyledExt::surface_edge`, `surface_outline` and `chosen_ring`, `knob_shadow`, and
    `Theme::control_radius`, `menu_radius` and `row_radius`), so edges, corners and shadows come
    from surface roles and follow the theme. The kit builds the engine from them, so
    `libs/penna/clippy.toml` keeps only the raw-color ban. Keep any exemption narrowly
@@ -236,9 +236,8 @@ full-width bands with square corners; the workspace tree and command palette fol
 Which surfaces cast drop shadows is each role's `shadow`, all drawn in the theme's shadow color:
 `contact` is the tight shadow a surface sits on (panes, cards, resting controls on the window) and
 `float` the contact shadow with a deep, soft one under it (popovers, dialogs, floating panes, a
-dragged pane chip). The theme's `contact` and `float` materials set their offset, blur, spread and
-strength. `lifted_shadow` is the small shadow under a
-switch thumb and follows the contact strength. `Theme::shadows_of`, `contact_shadows`,
+dragged pane chip). Their offset, blur, spread and strength are fixed by the look, not the theme.
+`knob_shadow` is the contact shadow under the knob of a switch or slider. `Theme::shadows_of`, `contact_shadows`,
 `float_shadows` and `casts_shadow(look)` read them.
 
 Corners come from the role's shape through its layer's `radius` (`Theme::shape_radius`), so new
@@ -418,10 +417,10 @@ It applies the theme on screen (`config::shown_theme`: the active theme, a built
 file from the `themes` folder, with the `widget-corner-radius`, `chrome-accent` and tint keys
 `zz/config` sets composed over it by `ThemeOverrides::apply_to`) with `InterfaceTheme::activate`,
 which switches to the effective mode and writes, in one step, its colors for that mode
-(`InterfaceTheme::colors`), its materials (`Materials::apply`: radius, outline width, both
-shadows, row inset, primary, the interface font and the glass) and its role patches
-(`InterfaceTheme::apply_roles` into `Theme.styles`). One radius therefore reaches every role that
-rounds, and gapped pane corners (`Theme::pane_radius()`), and survives a light/dark switch.
+(`InterfaceTheme::colors`: the base colors moved by its neutral, the accent from its tint) and its
+knobs (`InterfaceTheme::apply`: radius, control radius, smoothing, primary, the interface face and
+the glass; outline width, row inset and the shadows are fixed). One radius therefore reaches every
+role that rounds, and gapped pane corners (`Theme::pane_radius()`), and survives a light/dark switch.
 Corner smoothing is not a material: every window draws `CORNER_SMOOTHING` (4), which
 `penna::Root::new` sets. `apply_zz_overrides` then layers zz's own values over it:
 
@@ -430,6 +429,7 @@ Corner smoothing is not a material: every window draws `CORNER_SMOOTHING` (4), w
 - `mono_font_family` from the terminal's resolved primary family, so Agent Markdown and code blocks
   match the terminal typeface;
 - the contrast (`Theme::set_contrast`) from `chrome-contrast`, preserved across the same refreshes;
+- no glass under `reduce-transparency`;
 - the pane glow and gaps (the `zz_ui::pane_look::PaneLook` global) from `pane-glow-strength` and
   `pane-gaps`, and the margin from `pane-margin`.
 

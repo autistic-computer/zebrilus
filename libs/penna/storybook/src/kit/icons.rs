@@ -13,12 +13,12 @@ pub const STORY: Story = Story {
     id: "icons",
     name: "Icons",
     group: "Kit",
-    summary: "penna's own glyphs, drawn for the theme radius and smoothing, and the app's logo. An Icon takes the ambient text size and color unless a size or color is set.",
+    summary: "penna's own glyphs, drawn for the theme radius and smoothing, and the app's logo. An Icon is medium (14) and takes the text color unless a size or color is set.",
     sections: &[
         Section {
             id: "gallery",
             name: "Gallery",
-            summary: "Every IconName as Icon::new draws it with no size set, so at the ambient text size, named as in code.",
+            summary: "Every IconName as Icon::new draws it with no size set, so at medium (14), named as in code.",
             build: |_, cx| stateless(gallery, cx),
         },
         Section {

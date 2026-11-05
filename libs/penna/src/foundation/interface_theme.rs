@@ -1,9 +1,13 @@
-use std::{collections::BTreeMap, sync::OnceLock};
+use std::sync::OnceLock;
 
 use ala::{App, GlassMaterial, Hsla, SharedString, Window, px};
-use serde::{Deserialize, Deserializer, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-use crate::{PrimaryStyle, ShadowMaterial, Smoothing, StylePatch, Theme, ThemeColor, ThemeMode};
+use crate::{
+    Colorize as _, Elevation, PrimaryStyle, ShadowMaterial, Smoothing, Theme, ThemeColor,
+    ThemeMode,
+    foundation::{color::contrast_ratio, theme::DEFAULT_RADIUS, theme_color},
+};
 
 pub const DEFAULT_THEME: &str = "default";
 
@@ -14,94 +18,6 @@ pub const MAX_CORNER_RADIUS: f32 = 25.0;
 pub const ACCENTS: [&str; 8] = [
     "blue", "purple", "pink", "red", "orange", "yellow", "green", "graphite",
 ];
-
-pub const DEFAULT_TINT_HUE: f32 = 260.0;
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(default, rename_all = "kebab-case", deny_unknown_fields)]
-pub struct Materials {
-    pub radius: f32,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub control_radius: Option<f32>,
-    pub smoothing: Smoothing,
-    #[serde(skip_serializing_if = "std::ops::Not::not")]
-    pub picked_smoothing: bool,
-    pub outline: f32,
-    #[serde(skip_serializing_if = "std::ops::Not::not")]
-    pub picked_outlines: bool,
-    pub row_inset: f32,
-    pub primary: PrimaryStyle,
-    #[serde(skip_serializing_if = "std::ops::Not::not")]
-    pub flat_highlights: bool,
-    #[serde(skip_serializing_if = "std::ops::Not::not")]
-    pub bright_surfaces: bool,
-    pub highlight_strength: f32,
-    pub font: Option<SharedString>,
-    #[serde(deserialize_with = "deserialize_glass")]
-    pub glass: Option<GlassMaterial>,
-    #[serde(
-        deserialize_with = "deserialize_glass",
-        skip_serializing_if = "Option::is_none"
-    )]
-    pub light_glass: Option<GlassMaterial>,
-    #[serde(skip_serializing_if = "std::ops::Not::not")]
-    pub picked_shadows: bool,
-    #[serde(deserialize_with = "deserialize_contact")]
-    pub contact: ShadowMaterial,
-    #[serde(deserialize_with = "deserialize_float")]
-    pub float: ShadowMaterial,
-}
-
-impl Default for Materials {
-    fn default() -> Self {
-        Self {
-            radius: 10.0,
-            control_radius: None,
-            smoothing: Smoothing::THEME,
-            picked_smoothing: false,
-            outline: 0.5,
-            picked_outlines: false,
-            row_inset: 4.0,
-            primary: PrimaryStyle::Foreground,
-            flat_highlights: false,
-            bright_surfaces: false,
-            highlight_strength: 1.0,
-            font: None,
-            glass: None,
-            light_glass: None,
-            picked_shadows: false,
-            contact: ShadowMaterial::CONTACT,
-            float: ShadowMaterial::FLOAT,
-        }
-    }
-}
-
-impl Materials {
-    pub fn apply(&self, theme: &mut Theme) {
-        theme.radius = px(self.radius);
-        theme.control_radius = self.control_radius.map(px);
-        theme.smoothing = self.smoothing;
-        theme.picked_smoothing = self.picked_smoothing;
-        theme.outline = px(self.outline);
-        theme.picked_outlines = self.picked_outlines;
-        theme.row_inset = px(self.row_inset);
-        theme.primary = self.primary;
-        theme.flat_highlights = self.flat_highlights;
-        theme.bright_surfaces = self.bright_surfaces;
-        theme.highlight_strength = self.highlight_strength.max(0.0);
-        theme.font_family = self
-            .font
-            .clone()
-            .unwrap_or_else(|| ala::Font::default().family);
-        theme.glass = match theme.mode {
-            ThemeMode::Light => self.light_glass.or(self.glass),
-            ThemeMode::Dark => self.glass,
-        };
-        theme.picked_shadows = self.picked_shadows;
-        theme.contact_shadow = self.contact;
-        theme.float_shadow = self.float;
-    }
-}
 
 const ACCENT_COLORS: [(&str, &str, &str); ACCENTS.len()] = [
     ("blue", "#0a64dd", "#76abfd"),
@@ -114,6 +30,8 @@ const ACCENT_COLORS: [(&str, &str, &str); ACCENTS.len()] = [
     ("graphite", "#6a6a6a", "#aaaaaa"),
 ];
 
+const TEXT_ON_GLASS: f32 = 4.5;
+
 pub fn accent_color(value: &str, mode: ThemeMode) -> Option<Hsla> {
     let value = value.trim();
     match ACCENT_COLORS.iter().find(|(name, ..)| *name == value) {
@@ -122,215 +40,439 @@ pub fn accent_color(value: &str, mode: ThemeMode) -> Option<Hsla> {
     }
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
-#[serde(default, rename_all = "kebab-case")]
-pub struct ThemeOverrides {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub radius: Option<f32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub accent: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub tint: Option<f32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub tint_hue: Option<f32>,
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub enum Tint {
+    #[default]
+    Ink,
+    Color {
+        light: Hsla,
+        dark: Hsla,
+    },
 }
 
-impl ThemeOverrides {
-    pub fn apply_to(&self, theme: &mut InterfaceTheme) {
-        if let Some(radius) = self.radius {
-            theme.materials.radius = radius;
+impl Tint {
+    pub fn named(value: &str) -> Option<Self> {
+        if value.trim() == "ink" {
+            return Some(Self::Ink);
         }
-        let tint = self.tint.unwrap_or(0.0).clamp(0.0, 1.0);
-        let hue = self.tint_hue.unwrap_or(DEFAULT_TINT_HUE);
-        for (colors, mode) in [
-            (&mut theme.light, ThemeMode::Light),
-            (&mut theme.dark, ThemeMode::Dark),
-        ] {
-            if let Some(accent) = self
-                .accent
-                .as_deref()
-                .and_then(|accent| accent_color(accent, mode))
-            {
-                colors.accent = Some(accent);
-                colors.on_accent = None;
-            }
-            if tint > 0.0 {
-                let tinted = colors.resolve(mode).tinted(hue, tint);
-                colors.background = Some(tinted.background);
-                colors.foreground = Some(tinted.foreground);
-            }
+        Some(Self::Color {
+            light: accent_color(value, ThemeMode::Light)?,
+            dark: accent_color(value, ThemeMode::Dark)?,
+        })
+    }
+
+    pub fn color(self, mode: ThemeMode) -> Option<Hsla> {
+        match self {
+            Self::Ink => None,
+            Self::Color { light, dark } => Some(if mode.is_dark() { dark } else { light }),
         }
     }
+}
 
-    pub fn pick_theme(&mut self) {
-        self.radius = None;
+impl Serialize for Tint {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Ink => serializer.serialize_str("ink"),
+            Self::Color { light, dark } => {
+                let pair = [
+                    ("light", crate::to_hex(*light)),
+                    ("dark", crate::to_hex(*dark)),
+                ];
+                serializer.collect_map(pair)
+            }
+        }
     }
 }
 
-fn over<'de, T, D>(base: T, deserializer: D) -> Result<T, D::Error>
-where
-    T: Serialize + serde::de::DeserializeOwned,
-    D: Deserializer<'de>,
-{
-    use serde::de::Error as _;
-    let fields = serde_json::Map::<String, serde_json::Value>::deserialize(deserializer)?;
-    let mut merged = serde_json::to_value(base).map_err(D::Error::custom)?;
-    if let serde_json::Value::Object(target) = &mut merged {
-        target.extend(fields);
+impl<'de> Deserialize<'de> for Tint {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        use serde::de::Error as _;
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum Spelled {
+            One(String),
+            Pair { light: String, dark: String },
+        }
+        let unknown = |value: &str| D::Error::custom(format!("`{value}` is no tint"));
+        match Spelled::deserialize(deserializer)? {
+            Spelled::One(value) => Self::named(&value).ok_or_else(|| unknown(&value)),
+            Spelled::Pair { light, dark } => Ok(Self::Color {
+                light: accent_color(&light, ThemeMode::Light).ok_or_else(|| unknown(&light))?,
+                dark: accent_color(&dark, ThemeMode::Dark).ok_or_else(|| unknown(&dark))?,
+            }),
+        }
     }
-    serde_json::from_value(merged).map_err(D::Error::custom)
 }
 
-fn deserialize_contact<'de, D: Deserializer<'de>>(
-    deserializer: D,
-) -> Result<ShadowMaterial, D::Error> {
-    over(ShadowMaterial::CONTACT, deserializer)
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Neutral {
+    pub hue: f32,
+    pub amount: f32,
 }
 
-fn deserialize_float<'de, D: Deserializer<'de>>(
-    deserializer: D,
-) -> Result<ShadowMaterial, D::Error> {
-    over(ShadowMaterial::FLOAT, deserializer)
+impl Default for Neutral {
+    fn default() -> Self {
+        Self {
+            hue: theme_color::NEUTRAL_HUE,
+            amount: theme_color::NEUTRAL_AMOUNT,
+        }
+    }
 }
 
-fn deserialize_roles<'de, D: Deserializer<'de>>(
-    deserializer: D,
-) -> Result<BTreeMap<String, StylePatch>, D::Error> {
-    use serde::de::Error as _;
-    let mut roles = BTreeMap::<String, StylePatch>::deserialize(deserializer)?;
-    roles.retain(|id, _| !crate::foundation::roles::is_retired(id));
-    for (id, patch) in &roles {
-        let Some(role) = crate::foundation::roles::find(id) else {
-            return Err(D::Error::custom(unknown_role(id)));
+impl Neutral {
+    #[must_use]
+    pub fn clamped(self) -> Self {
+        let finite = |value: f32, fallback: f32| if value.is_finite() { value } else { fallback };
+        let default = Self::default();
+        Self {
+            hue: finite(self.hue, default.hue).rem_euclid(360.0),
+            amount: finite(self.amount, default.amount).clamp(0.0, 1.0),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum ControlRadius {
+    Radius(f32),
+    Full,
+}
+
+impl ControlRadius {
+    pub fn pixels(self) -> ala::Pixels {
+        match self {
+            Self::Radius(radius) => px(radius),
+            Self::Full => px(MAX_CORNER_RADIUS),
+        }
+    }
+}
+
+impl Serialize for ControlRadius {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Radius(radius) => serializer.serialize_f32(*radius),
+            Self::Full => serializer.serialize_str("full"),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ControlRadius {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        use serde::de::Error as _;
+        match serde_json::Value::deserialize(deserializer)? {
+            serde_json::Value::String(full) if full == "full" => Ok(Self::Full),
+            serde_json::Value::Number(radius) => Ok(Self::Radius(clamp_radius(
+                radius.as_f64().unwrap_or_default() as f32,
+            ))),
+            other => Err(D::Error::custom(format!(
+                "control-radius is a number from 0 to 25 or \"full\", not {other}"
+            ))),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum Glass {
+    None,
+    Frosted,
+    Liquid,
+    Material(Box<GlassPair>),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Serialize)]
+pub struct GlassPair {
+    pub light: GlassMaterial,
+    pub dark: GlassMaterial,
+}
+
+impl Glass {
+    pub fn platform() -> Self {
+        if cfg!(target_os = "macos") {
+            Self::Liquid
+        } else {
+            Self::Frosted
+        }
+    }
+
+    pub fn material(&self, mode: ThemeMode) -> Option<GlassMaterial> {
+        match self {
+            Self::None => None,
+            Self::Frosted => Some(frosted()),
+            Self::Liquid => Some(liquid(mode)),
+            Self::Material(pair) => Some(if mode.is_dark() {
+                pair.dark
+            } else {
+                pair.light
+            }),
+        }
+    }
+}
+
+impl Serialize for Glass {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::None => serializer.serialize_str("none"),
+            Self::Frosted => serializer.serialize_str("frosted"),
+            Self::Liquid => serializer.serialize_str("liquid"),
+            Self::Material(pair) => pair.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for Glass {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        use serde::de::Error as _;
+        use serde_json::Value;
+        let over = |fields: Value| -> Result<GlassMaterial, D::Error> {
+            let mut merged = serde_json::to_value(frosted()).map_err(D::Error::custom)?;
+            if let (Value::Object(base), Value::Object(fields)) = (&mut merged, fields) {
+                base.extend(fields);
+            }
+            serde_json::from_value(merged).map_err(D::Error::custom)
         };
-        if let Some(refusal) = role.knobs().refusal(patch) {
-            return Err(D::Error::custom(format!(
-                "`{id}` is a {}: {refusal}",
-                role.kind.name()
-            )));
+        match Value::deserialize(deserializer)? {
+            Value::String(name) => match name.as_str() {
+                "none" => Ok(Self::None),
+                "frosted" => Ok(Self::Frosted),
+                "liquid" => Ok(Self::Liquid),
+                _ => Err(D::Error::custom(format!(
+                    "glass is none, frosted, liquid or a material, not {name}"
+                ))),
+            },
+            Value::Object(mut fields) => {
+                let light = fields.remove("light");
+                let dark = fields.remove("dark");
+                let both = Value::Object(fields);
+                let light = light.map_or_else(|| over(both.clone()), over)?;
+                let dark = dark.map_or_else(|| over(both), over)?;
+                Ok(Self::Material(Box::new(GlassPair { light, dark })))
+            }
+            _ => Err(D::Error::custom(
+                "glass is none, frosted, liquid or a material",
+            )),
         }
     }
-    Ok(roles)
 }
 
-fn unknown_role(id: &str) -> String {
-    let spelled = |name: &str| name.replace(['-', '_', '.'], "").to_ascii_lowercase();
-    let near = crate::foundation::roles::all()
-        .map(|role| role.id)
-        .find(|known| spelled(known) == spelled(id))
-        .or_else(|| {
-            crate::foundation::roles::all()
-                .map(|role| role.id)
-                .find(|known| known.ends_with(&format!(".{id}")))
-        });
-    match near {
-        Some(known) => format!("unknown role `{id}`, did you mean `{known}`?"),
-        None => format!("unknown role `{id}`"),
+pub fn frosted() -> GlassMaterial {
+    GlassMaterial {
+        blur: px(20.0),
+        bezel: px(0.0),
+        refraction: px(0.0),
+        dispersion: 0.0,
+        tint: crate::parse_hex("#ffffffb3").unwrap_or_default(),
+        saturation: 1.0,
+        brightness: 0.0,
+        contrast: 1.0,
+        specular: 0.2,
+        glint_width: px(1.0),
+        light_angle: -std::f32::consts::FRAC_PI_2,
+        light_directionality: 0.85,
+        fresnel: 0.0,
+        edge_shadow: 0.0,
+        ..GlassMaterial::regular()
     }
 }
 
-fn deserialize_glass<'de, D: Deserializer<'de>>(
-    deserializer: D,
-) -> Result<Option<GlassMaterial>, D::Error> {
-    use serde::de::Error as _;
-    let preset = |name: &str| {
-        GlassMaterial::preset(name)
-            .ok_or_else(|| D::Error::custom(format!("no glass preset named {name}")))
+pub fn liquid(mode: ThemeMode) -> GlassMaterial {
+    let dark = GlassMaterial {
+        blur: px(20.0),
+        bezel: px(3.0),
+        refraction: px(4.0),
+        dispersion: 0.015,
+        tint: crate::parse_hex("#ffffff8c").unwrap_or_default(),
+        saturation: 1.2,
+        brightness: 0.07,
+        contrast: 1.12,
+        specular: 0.26,
+        glint_width: px(0.85),
+        light_angle: -std::f32::consts::FRAC_PI_2,
+        light_directionality: 0.85,
+        inactive_flattening: 0.85,
+        fresnel: 0.045,
+        edge_shadow: 0.4,
+        edge_width: px(0.65),
+        edge_spread: 0.0,
+        ..GlassMaterial::regular()
     };
-    match Option::<serde_json::Value>::deserialize(deserializer)? {
-        None | Some(serde_json::Value::Null) => Ok(None),
-        Some(serde_json::Value::String(name)) => preset(&name).map(Some),
-        Some(serde_json::Value::Object(mut fields)) => {
-            let base = match fields.remove("preset") {
-                Some(serde_json::Value::String(name)) => preset(&name)?,
-                Some(_) => return Err(D::Error::custom("glass preset must be a name")),
-                None => GlassMaterial::regular(),
-            };
-            let mut merged = serde_json::to_value(base).map_err(D::Error::custom)?;
-            if let serde_json::Value::Object(target) = &mut merged {
-                target.extend(fields);
-            }
-            serde_json::from_value(merged)
-                .map(Some)
-                .map_err(D::Error::custom)
-        }
-        Some(_) => Err(D::Error::custom("glass must be a preset name or an object")),
+    if mode.is_dark() {
+        return dark;
+    }
+    GlassMaterial {
+        tint: crate::parse_hex("#ffffff99").unwrap_or_default(),
+        saturation: 1.0,
+        brightness: 0.0,
+        contrast: 1.0,
+        specular: 0.32,
+        glint_width: px(0.65),
+        fresnel: 0.025,
+        edge_shadow: 0.14,
+        edge_width: px(0.5),
+        edge_spread: 0.3,
+        ..dark
     }
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
-#[serde(default, rename_all = "kebab-case", deny_unknown_fields)]
-pub struct ThemeColors {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub background: Option<Hsla>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub foreground: Option<Hsla>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub accent: Option<Hsla>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub success: Option<Hsla>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub warning: Option<Hsla>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub danger: Option<Hsla>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub on_accent: Option<Hsla>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub shadow_color: Option<Hsla>,
+pub fn tint_floor(fill: Hsla, text: Hsla) -> f32 {
+    let fill = ala::Rgba::from(fill.opaque());
+    let worst = if contrast_ratio(text, crate::parse_hex("#ffffff").unwrap_or_default())
+        < contrast_ratio(text, crate::parse_hex("#000000").unwrap_or_default())
+    {
+        1.0
+    } else {
+        0.0
+    };
+    let over = |alpha: f32| {
+        let mix = |channel: f32| channel * alpha + worst * (1.0 - alpha);
+        Hsla::from(ala::Rgba {
+            r: mix(fill.r),
+            g: mix(fill.g),
+            b: mix(fill.b),
+            a: 1.0,
+        })
+    };
+    let (mut low, mut high) = (0.0_f32, 1.0_f32);
+    if contrast_ratio(text, over(high)) < TEXT_ON_GLASS {
+        return high;
+    }
+    for _ in 0..24 {
+        let middle = (low + high) / 2.0;
+        if contrast_ratio(text, over(middle)) >= TEXT_ON_GLASS {
+            high = middle;
+        } else {
+            low = middle;
+        }
+    }
+    (high * 1000.0).ceil() / 1000.0
 }
 
-impl ThemeColors {
-    pub fn resolve(&self, mode: ThemeMode) -> ThemeColor {
-        let mut colors = *ThemeColor::for_mode(mode);
-        let roots = [
-            (&mut colors.background, self.background),
-            (&mut colors.foreground, self.foreground),
-            (&mut colors.accent, self.accent),
-            (&mut colors.success, self.success),
-            (&mut colors.warning, self.warning),
-            (&mut colors.danger, self.danger),
-            (&mut colors.shadow_color, self.shadow_color),
-        ];
-        for (root, value) in roots {
-            if let Some(value) = value {
-                *root = value;
-            }
-        }
-        colors.on_accent = self.on_accent.or(colors.on_accent);
-        colors
+fn holding_text(material: GlassMaterial, fill: Hsla, text: Hsla) -> GlassMaterial {
+    let floor = tint_floor(fill, text);
+    GlassMaterial {
+        tint: material.tint.alpha(material.tint.a.max(floor)),
+        ..material
     }
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
-#[serde(default, rename_all = "kebab-case", deny_unknown_fields)]
+fn clamp_radius(radius: f32) -> f32 {
+    if radius.is_finite() {
+        radius.clamp(0.0, MAX_CORNER_RADIUS)
+    } else {
+        DEFAULT_RADIUS
+    }
+}
+
+fn deserialize_radius<'de, D: Deserializer<'de>>(deserializer: D) -> Result<f32, D::Error> {
+    f32::deserialize(deserializer).map(clamp_radius)
+}
+
+fn deserialize_smoothing<'de, D: Deserializer<'de>>(deserializer: D) -> Result<f32, D::Error> {
+    f32::deserialize(deserializer).map(|smoothing| Smoothing::clamped(smoothing).exponent())
+}
+
+fn deserialize_neutral<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Neutral, D::Error> {
+    Neutral::deserialize(deserializer).map(Neutral::clamped)
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ModeLock {
+    #[default]
+    Follow,
+    Light,
+    Dark,
+}
+
+impl ModeLock {
+    pub fn locked(self) -> Option<ThemeMode> {
+        match self {
+            Self::Follow => None,
+            Self::Light => Some(ThemeMode::Light),
+            Self::Dark => Some(ThemeMode::Dark),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default, rename_all = "kebab-case")]
 pub struct InterfaceTheme {
     pub name: String,
-    pub materials: Materials,
-    #[serde(
-        skip_serializing_if = "BTreeMap::is_empty",
-        deserialize_with = "deserialize_roles"
-    )]
-    pub roles: BTreeMap<String, StylePatch>,
-    pub light: ThemeColors,
-    pub dark: ThemeColors,
+    pub tint: Tint,
+    #[serde(deserialize_with = "deserialize_neutral")]
+    pub neutral: Neutral,
+    #[serde(deserialize_with = "deserialize_radius")]
+    pub radius: f32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub control_radius: Option<ControlRadius>,
+    #[serde(deserialize_with = "deserialize_smoothing")]
+    pub smoothing: f32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub glass: Option<Glass>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub face: Option<SharedString>,
+    pub mode: ModeLock,
+}
+
+impl Default for InterfaceTheme {
+    fn default() -> Self {
+        Self {
+            name: String::new(),
+            tint: Tint::Ink,
+            neutral: Neutral::default(),
+            radius: DEFAULT_RADIUS,
+            control_radius: None,
+            smoothing: Smoothing::THEME.exponent(),
+            glass: None,
+            face: None,
+            mode: ModeLock::Follow,
+        }
+    }
 }
 
 impl InterfaceTheme {
     pub fn colors(&self, mode: ThemeMode) -> ThemeColor {
-        match mode {
-            ThemeMode::Light => self.light.resolve(mode),
-            ThemeMode::Dark => self.dark.resolve(mode),
+        let neutral = self.neutral.clamped();
+        let mut colors = ThemeColor::for_mode(mode).neutral(neutral.hue, neutral.amount);
+        if let Some(tint) = self.tint.color(mode) {
+            colors.accent = tint;
         }
+        colors
+    }
+
+    pub fn glass(&self, mode: ThemeMode) -> Option<GlassMaterial> {
+        self.glass.as_ref().map_or_else(
+            || Glass::platform().material(mode),
+            |glass| glass.material(mode),
+        )
     }
 
     pub fn apply(&self, theme: &mut Theme) {
-        theme.colors = self.colors(theme.mode);
-        self.materials.apply(theme);
-        self.apply_roles(theme);
+        let mode = theme.mode;
+        theme.colors = self.colors(mode);
+        theme.primary = match self.tint {
+            Tint::Ink => PrimaryStyle::Foreground,
+            Tint::Color { .. } => PrimaryStyle::Accent,
+        };
+        theme.radius = px(clamp_radius(self.radius));
+        theme.control_radius = self.control_radius.map(ControlRadius::pixels);
+        theme.smoothing = Smoothing::clamped(self.smoothing);
+        theme.outline = px(1.0);
+        theme.row_inset = px(6.0);
+        theme.contact_shadow = ShadowMaterial::CONTACT;
+        theme.float_shadow = ShadowMaterial::FLOAT;
+        theme.font_family = self
+            .face
+            .clone()
+            .unwrap_or_else(|| ala::Font::default().family);
+        let popover = theme.surface(Elevation::Popover).fill;
+        let text = theme.foreground;
+        theme.glass = self
+            .glass(mode)
+            .map(|material| holding_text(material, popover, text));
     }
 
     pub fn activate(&self, mode: Option<ThemeMode>, window: Option<&mut Window>, cx: &mut App) {
-        let mode = mode.unwrap_or_else(|| {
+        let mode = self.mode.locked().or(mode).unwrap_or_else(|| {
             window
                 .as_ref()
                 .map_or_else(|| cx.window_appearance(), |window| window.appearance())
@@ -339,14 +481,6 @@ impl InterfaceTheme {
         Theme::change(mode, window, cx);
         self.apply(Theme::global_mut(cx));
         cx.refresh_windows();
-    }
-
-    pub fn apply_roles(&self, theme: &mut Theme) {
-        theme.styles = self
-            .roles
-            .iter()
-            .map(|(id, patch)| (SharedString::from(id.clone()), *patch))
-            .collect();
     }
 
     pub fn to_json(&self) -> String {
@@ -378,8 +512,7 @@ pub fn parse_layers(sources: &[&str]) -> Result<InterfaceTheme, String> {
         }
         lay(&mut value, layer);
     }
-    light_glass_over_glass(&mut value);
-    serde_json::from_value(value).map_err(|error| with_spelling_hint(error.to_string()))
+    serde_json::from_value(value).map_err(|error| error.to_string())
 }
 
 fn lay(base: &mut serde_json::Value, layer: serde_json::Value) {
@@ -397,45 +530,6 @@ fn lay(base: &mut serde_json::Value, layer: serde_json::Value) {
         }
         (base, layer) => *base = layer,
     }
-}
-
-fn light_glass_over_glass(theme: &mut serde_json::Value) {
-    use serde_json::Value;
-    let Some(materials) = theme.get_mut("materials").and_then(Value::as_object_mut) else {
-        return;
-    };
-    let mut glass = match materials.get("glass") {
-        Some(Value::String(name)) => {
-            serde_json::Map::from_iter([("preset".to_owned(), Value::String(name.clone()))])
-        }
-        Some(Value::Object(glass)) => glass.clone(),
-        _ => return,
-    };
-    if let Some(Value::Object(light)) = materials.get_mut("light-glass")
-        && !light.contains_key("preset")
-    {
-        glass.extend(std::mem::take(light));
-        *light = glass;
-    }
-}
-
-fn with_spelling_hint(message: String) -> String {
-    let Some((key, expected)) = message
-        .strip_prefix("unknown field `")
-        .and_then(|rest| rest.split_once("`, expected "))
-    else {
-        return message;
-    };
-    let spelled = |name: &str| name.replace(['-', '_'], "").to_ascii_lowercase();
-    expected
-        .split('`')
-        .skip(1)
-        .step_by(2)
-        .find(|name| spelled(name) == spelled(key))
-        .map_or_else(
-            || message.clone(),
-            |name| format!("unknown field `{key}`, did you mean `{name}`?"),
-        )
 }
 
 const BUILTIN_SOURCES: [&str; BUILTIN_THEMES.len()] = [
@@ -475,6 +569,41 @@ pub fn default_theme() -> &'static InterfaceTheme {
     builtin_theme(DEFAULT_THEME).expect("the default theme is built in")
 }
 
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default, rename_all = "kebab-case")]
+pub struct ThemeOverrides {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub radius: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub accent: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tint: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tint_hue: Option<f32>,
+}
+
+impl ThemeOverrides {
+    pub fn apply_to(&self, theme: &mut InterfaceTheme) {
+        if let Some(radius) = self.radius {
+            theme.radius = clamp_radius(radius);
+        }
+        if let Some(tint) = self.accent.as_deref().and_then(Tint::named) {
+            theme.tint = tint;
+        }
+        if let Some(amount) = self.tint {
+            theme.neutral.amount = amount;
+        }
+        if let Some(hue) = self.tint_hue {
+            theme.neutral.hue = hue;
+        }
+        theme.neutral = theme.neutral.clamped();
+    }
+
+    pub fn pick_theme(&mut self) {
+        self.radius = None;
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Appearance {
@@ -483,6 +612,7 @@ pub struct Appearance {
     #[serde(flatten)]
     pub overrides: ThemeOverrides,
     pub contrast: f32,
+    pub reduce_transparency: bool,
     pub ui_font_family: String,
     pub zoom: f32,
     pub animations: bool,
@@ -497,6 +627,7 @@ impl Default for Appearance {
             theme: None,
             overrides: ThemeOverrides::default(),
             contrast: 1.0,
+            reduce_transparency: false,
             ui_font_family: String::new(),
             zoom: 1.0,
             animations: true,
@@ -515,6 +646,7 @@ pub enum AppearanceChange {
     Tint(f32),
     Radius(f32),
     Contrast(f32),
+    ReduceTransparency(bool),
     UiFont(String),
     Zoom(f32),
     Animations(bool),
@@ -563,18 +695,16 @@ impl Appearance {
     }
 
     pub fn corner_radius(&self, saved: &SavedThemes) -> f32 {
-        self.overrides
-            .radius
-            .unwrap_or_else(|| self.interface_theme(saved).materials.radius)
+        self.shown_theme(saved).radius
+    }
+
+    pub fn neutral(&self, saved: &SavedThemes) -> Neutral {
+        self.shown_theme(saved).neutral
     }
 
     pub fn ui_font<'a>(&'a self, saved: &'a SavedThemes) -> &'a str {
         if self.ui_font_family.is_empty() {
-            self.interface_theme(saved)
-                .materials
-                .font
-                .as_deref()
-                .unwrap_or("")
+            self.interface_theme(saved).face.as_deref().unwrap_or("")
         } else {
             &self.ui_font_family
         }
@@ -583,7 +713,7 @@ impl Appearance {
     pub fn pick_theme(&mut self, id: &str, saved: &SavedThemes) {
         self.theme = knows_theme(id, saved).then(|| id.to_owned());
         self.overrides.pick_theme();
-        if self.interface_theme(saved).materials.font.is_some() {
+        if self.interface_theme(saved).face.is_some() {
             self.ui_font_family.clear();
         }
     }
@@ -595,8 +725,11 @@ impl Appearance {
             AppearanceChange::Accent(accent) => self.overrides.accent = accent,
             AppearanceChange::TintHue(hue) => self.overrides.tint_hue = Some(hue),
             AppearanceChange::Tint(tint) => self.overrides.tint = Some(tint),
-            AppearanceChange::Radius(radius) => self.overrides.radius = Some(radius),
+            AppearanceChange::Radius(radius) => {
+                self.overrides.radius = Some(clamp_radius(radius));
+            }
             AppearanceChange::Contrast(contrast) => self.contrast = contrast,
+            AppearanceChange::ReduceTransparency(reduce) => self.reduce_transparency = reduce,
             AppearanceChange::UiFont(family) => self.ui_font_family = family,
             AppearanceChange::Zoom(zoom) => self.zoom = zoom,
             AppearanceChange::Animations(animations) => self.animations = animations,
@@ -619,6 +752,9 @@ impl Appearance {
         let theme = Theme::global_mut(cx);
         theme.font_family = family;
         theme.set_contrast(self.contrast);
+        if self.reduce_transparency {
+            theme.glass = None;
+        }
         self.density.set();
         cx.set_global(crate::UiZoom(self.zoom));
         if let Some(window) = window {
@@ -649,49 +785,64 @@ fn knows_theme(id: &str, saved: &SavedThemes) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Colorize as _, Elevation};
+    use crate::{Emphasis, PaintState, Tone};
 
-    fn luminance(color: Hsla) -> f32 {
-        let rgba: ala::Rgba = color.into();
-        let linear = |channel: f32| {
-            if channel <= 0.04045 {
-                channel / 12.92
-            } else {
-                ((channel + 0.055) / 1.055).powf(2.4)
-            }
-        };
-        0.2126 * linear(rgba.r) + 0.7152 * linear(rgba.g) + 0.0722 * linear(rgba.b)
-    }
-
-    fn contrast(left: Hsla, right: Hsla) -> f32 {
-        let left = luminance(left);
-        let right = luminance(right);
-        (left.max(right) + 0.05) / (left.min(right) + 0.05)
+    fn kit(theme: &InterfaceTheme, mode: ThemeMode) -> Theme {
+        let mut kit = Theme::from(&*ThemeColor::for_mode(mode));
+        kit.mode = mode;
+        theme.apply(&mut kit);
+        kit
     }
 
     #[test]
-    fn every_builtin_parses_with_its_id_and_a_name() {
-        let ids = builtin_themes()
-            .iter()
-            .map(|(id, _)| *id)
-            .collect::<Vec<_>>();
-        assert_eq!(ids, BUILTIN_THEMES);
-        for (id, theme) in builtin_themes() {
-            assert!(!theme.name.is_empty(), "{id} has no name");
-            sets_every_root(id, &theme.light, &theme.dark);
+    fn the_default_knobs_draw_the_color_table() {
+        for (mode, table) in [
+            (
+                ThemeMode::Light,
+                [
+                    "#f6f6f3", "#e9e9e6", "#dcdcda", "#1c1c1a", "#575756", "#555553", "#90908e",
+                    "#2f62d8", "#ebebeb", "#1c1c1a", "#007b3e", "#a75400", "#cc2737",
+                ],
+            ),
+            (
+                ThemeMode::Dark,
+                [
+                    "#1a1a19", "#212120", "#292928", "#e9e7e3", "#908f8c", "#a4a3a0", "#4d4c4b",
+                    "#7f9fff", "#010101", "#e9e7e3", "#3fbf74", "#f0a14a", "#f2555f",
+                ],
+            ),
+        ] {
+            let kit = kit(default_theme(), mode);
+            let primary = kit.paint(Tone::Primary, Emphasis::Solid);
+            let drawn = [
+                kit.background,
+                kit.surface(Elevation::Panel).fill,
+                kit.surface(Elevation::Popover).fill,
+                kit.foreground,
+                kit.foreground.muted(),
+                kit.paint(Tone::Neutral, Emphasis::Ghost)
+                    .muted_at(PaintState::Rest),
+                kit.foreground.faint(),
+                kit.accent,
+                primary.text,
+                primary.fill,
+                kit.success,
+                kit.warning,
+                kit.danger,
+            ]
+            .map(crate::to_hex);
+            assert_eq!(drawn, table, "{mode:?}");
         }
     }
 
     fn assert_reads(id: &str, theme: &InterfaceTheme) {
         for mode in [ThemeMode::Light, ThemeMode::Dark] {
-            let mut kit = Theme::from(&*ThemeColor::for_mode(mode));
-            kit.mode = mode;
-            theme.apply(&mut kit);
+            let kit = kit(theme, mode);
             for surface in [
                 kit.background,
                 kit.surface(Elevation::Popover).fill.opaque(),
             ] {
-                let ratio = contrast(kit.foreground, surface);
+                let ratio = contrast_ratio(kit.foreground, surface);
                 assert!(ratio >= 7.0, "{id} {mode:?} foreground is {ratio:.2}:1");
                 for (name, color) in [
                     ("accent", kit.accent),
@@ -699,7 +850,7 @@ mod tests {
                     ("warning", kit.warning),
                     ("danger", kit.danger),
                 ] {
-                    let ratio = contrast(color, surface);
+                    let ratio = contrast_ratio(color, surface);
                     assert!(ratio >= 3.0, "{id} {mode:?} {name} is {ratio:.2}:1");
                 }
             }
@@ -710,17 +861,18 @@ mod tests {
                 ("warning", kit.warning),
                 ("danger", kit.danger),
             ] {
-                let ratio = contrast(color, kit.background);
+                let ratio = contrast_ratio(color, kit.background);
                 assert!(ratio >= 4.5, "{id} {mode:?} {name} as text is {ratio:.2}:1");
             }
             for tone in [
-                crate::Tone::Accent,
-                crate::Tone::Success,
-                crate::Tone::Warning,
-                crate::Tone::Danger,
+                Tone::Primary,
+                Tone::Accent,
+                Tone::Success,
+                Tone::Warning,
+                Tone::Danger,
             ] {
-                let solid = kit.paint(tone, crate::Emphasis::Solid);
-                let ratio = contrast(solid.text, solid.fill);
+                let solid = kit.paint(tone, Emphasis::Solid);
+                let ratio = contrast_ratio(solid.text, solid.fill);
                 assert!(
                     ratio >= 4.5,
                     "{id} {mode:?} text on a solid {tone:?} fill is {ratio:.2}:1"
@@ -729,256 +881,130 @@ mod tests {
         }
     }
 
-    fn sets_every_root(id: &str, light: &ThemeColors, dark: &ThemeColors) {
-        for colors in [light, dark] {
-            for root in [
-                colors.background,
-                colors.foreground,
-                colors.accent,
-                colors.success,
-                colors.warning,
-                colors.danger,
-            ] {
-                assert!(root.is_some(), "{id} leaves a root to the fallback palette");
+    #[test]
+    fn every_accent_reads_in_every_theme_at_any_neutral() {
+        assert_eq!(ACCENT_COLORS.map(|(name, ..)| name), ACCENTS);
+        for (id, builtin) in builtin_themes() {
+            assert!(!builtin.name.is_empty(), "{id} has no name");
+            assert_reads(id, builtin);
+            for amount in [0.0, 0.25, 0.5, 1.0] {
+                for hue in (0..360).step_by(30) {
+                    for accent in ACCENTS {
+                        let mut theme = builtin.clone();
+                        ThemeOverrides {
+                            accent: Some(accent.to_owned()),
+                            tint: Some(amount),
+                            tint_hue: Some(hue as f32),
+                            ..ThemeOverrides::default()
+                        }
+                        .apply_to(&mut theme);
+                        assert_reads(&format!("{id} {accent} at {amount} of hue {hue}"), &theme);
+                    }
+                }
             }
         }
     }
 
     #[test]
-    fn builtin_text_and_status_colors_read_on_their_surfaces() {
-        for (id, theme) in builtin_themes() {
-            assert_reads(id, theme);
-        }
-    }
-
-    #[test]
-    fn themes_round_trip_through_json() {
-        for (id, theme) in builtin_themes() {
-            let once = parse_theme(&theme.to_json()).unwrap();
-            let twice = parse_theme(&once.to_json()).unwrap();
-            assert_eq!(once, twice, "{id} drifts through JSON");
-            assert_eq!(once.roles, theme.roles, "{id} loses its roles");
+    fn glass_holds_text_at_four_and_a_half_over_any_backdrop() {
+        for (glass, mode, floor, alpha) in [
+            (Glass::Frosted, ThemeMode::Light, 0.596, 0.702),
+            (Glass::Frosted, ThemeMode::Dark, 0.705, 0.705),
+            (Glass::Liquid, ThemeMode::Light, 0.596, 0.6),
+            (Glass::Liquid, ThemeMode::Dark, 0.705, 0.705),
+        ] {
+            let theme = InterfaceTheme {
+                glass: Some(glass.clone()),
+                ..InterfaceTheme::default()
+            };
+            let kit = kit(&theme, mode);
+            let popover = kit.surface(Elevation::Popover).fill;
             assert_eq!(
-                Materials {
-                    glass: None,
-                    ..once.materials.clone()
-                },
-                Materials {
-                    glass: None,
-                    ..theme.materials.clone()
-                },
+                tint_floor(popover, kit.foreground),
+                floor,
+                "{glass:?} {mode:?}"
+            );
+            let drawn = kit.glass.expect("glass draws").tint.a;
+            assert_eq!(
+                (drawn * 1000.0).round() / 1000.0,
+                alpha,
+                "{glass:?} {mode:?}"
             );
         }
+        let none = InterfaceTheme {
+            glass: Some(Glass::None),
+            ..InterfaceTheme::default()
+        };
+        assert_eq!(kit(&none, ThemeMode::Dark).glass, None);
     }
 
     #[test]
-    fn partial_themes_keep_the_defaults_they_leave_out() {
+    fn knobs_clamp_where_a_theme_is_parsed_and_where_overrides_apply() {
         let theme = parse_theme(
-            r##"{"materials":{"outline":0.4,"float":{"y":4}},"dark":{"accent":"#ff0000"}}"##,
+            r#"{"radius":40,"control-radius":-3,"smoothing":9,"neutral":{"hue":-30,"amount":2}}"#,
         )
         .unwrap();
+        assert_eq!(theme.radius, 25.0);
+        assert_eq!(theme.control_radius, Some(ControlRadius::Radius(0.0)));
+        assert_eq!(theme.smoothing, 5.0);
         assert_eq!(
-            theme.materials,
-            Materials {
-                outline: 0.4,
-                float: ShadowMaterial {
-                    y: 4.0,
-                    ..ShadowMaterial::FLOAT
-                },
-                ..Materials::default()
+            theme.neutral,
+            Neutral {
+                hue: 330.0,
+                amount: 1.0
             }
         );
-        assert!(theme.roles.is_empty());
-        let dark = theme.colors(ThemeMode::Dark);
-        assert_eq!(dark.accent, crate::parse_hex("#ff0000").unwrap());
-        assert_eq!(dark.background, ThemeColor::dark().background);
-        assert_eq!(theme.colors(ThemeMode::Light), *ThemeColor::light());
-    }
+        let pills = parse_theme(r#"{"control-radius":"full","smoothing":1}"#).unwrap();
+        assert_eq!(pills.control_radius, Some(ControlRadius::Full));
+        assert_eq!(pills.smoothing, 2.0);
+        assert!(pills.to_json().contains("\"control-radius\": \"full\""));
+        assert!(parse_theme(r#"{"control-radius":"round"}"#).is_err());
 
-    #[test]
-    fn a_control_radius_reaches_the_kit_and_built_ins_follow_the_radius() {
-        let theme = parse_theme(r#"{"materials":{"radius":8,"control-radius":4}}"#).unwrap();
-        assert_eq!(theme.materials.control_radius, Some(4.0));
-        let mut kit = Theme::from(&*ThemeColor::for_mode(ThemeMode::Dark));
-        theme.apply(&mut kit);
-        assert_eq!(kit.control_radius, Some(px(4.0)));
-        assert!(theme.to_json().contains("\"control-radius\": 4.0"));
-
-        for (id, builtin) in builtin_themes() {
-            assert_eq!(builtin.materials.control_radius, None, "{id}");
-            assert!(!builtin.to_json().contains("control-radius"), "{id}");
-        }
-    }
-
-    #[test]
-    fn roles_change_only_what_they_name() {
-        use crate::{Fill, Kind, Shape};
-        let theme = parse_theme(
-            r#"{"roles":{"chrome.button":{"fill":"glass","shape":"pill"},"button":{"outline":false}}}"#,
-        )
-        .unwrap();
-        let mut kit = Theme::default();
-        theme.apply(&mut kit);
-        let chrome = kit.style(crate::foundation::roles::CHROME_BUTTON);
-        assert_eq!((chrome.fill, chrome.shape), (Fill::Glass, Shape::Pill));
-        assert_eq!(
-            chrome.hover,
-            kit.style(crate::SurfaceRole::ICON_BUTTON).hover
-        );
-        assert!(!kit.style(Kind::Button.role()).outline);
-        assert!(kit.style(crate::SurfaceRole::BADGE).outline);
-    }
-
-    #[test]
-    fn picked_outlines_go_only_where_the_theme_turns_them_on() {
-        use crate::Kind;
-        let theme = parse_theme(
-            r#"{"materials":{"outline":1,"picked-outlines":true},"roles":{"popover":{"outline":true}}}"#,
-        )
-        .unwrap();
-        let mut kit = Theme::default();
-        theme.apply(&mut kit);
-        assert!(kit.style(crate::SurfaceRole::POPOVER).outline);
-        assert!(!kit.style(Kind::Button.role()).outline);
-        assert!(!kit.style(crate::SurfaceRole::BADGE).outline);
-        assert!(kit.style(crate::foundation::roles::BAR_RULE).outline);
-        assert!(theme.to_json().contains("\"picked-outlines\": true"));
-        assert!(!default_theme().to_json().contains("picked-outlines"));
-    }
-
-    #[test]
-    fn picked_shadows_go_only_where_the_theme_casts_them() {
-        use crate::{Kind, Shadow};
-        let theme = parse_theme(
-            r#"{"materials":{"picked-shadows":true},"roles":{"popover":{"shadow":"float"}}}"#,
-        )
-        .unwrap();
-        let mut kit = Theme::default();
-        theme.apply(&mut kit);
-        assert_eq!(kit.style(crate::SurfaceRole::POPOVER).shadow, Shadow::Float);
-        assert_eq!(kit.style(Kind::Button.role()).shadow, Shadow::None);
-        assert_eq!(kit.style(crate::SurfaceRole::DIALOG).shadow, Shadow::None);
-        assert_eq!(
-            kit.style(crate::foundation::roles::WINDOW).shadow,
-            Shadow::Float
-        );
-        assert!(theme.to_json().contains("\"picked-shadows\": true"));
-        assert!(!default_theme().to_json().contains("picked-shadows"));
-    }
-
-    #[test]
-    fn unknown_roles_are_errors_that_suggest_the_role() {
-        let error = parse_theme(r#"{"roles":{"chromebutton":{}}}"#).unwrap_err();
-        assert!(error.contains("did you mean `chrome.button`"), "{error}");
-        let error = parse_theme(r#"{"roles":{"preview":{}}}"#).unwrap_err();
-        assert!(error.contains("did you mean `settings.preview`"), "{error}");
-        assert!(parse_theme(r#"{"roles":{"sparkle":{}}}"#).is_err());
-        assert!(parse_theme(r#"{"roles":{"row":{"fill":"neon"}}}"#).is_err());
-    }
-
-    #[test]
-    fn roles_take_only_what_their_kind_offers() {
-        let error = parse_theme(r#"{"roles":{"settings.card":{"shape":"pill"}}}"#).unwrap_err();
-        assert!(error.contains("`settings.card` is a card"), "{error}");
-        assert!(error.contains("`shape` can't be \"pill\""), "{error}");
-        let error = parse_theme(r#"{"roles":{"titlebar":{"hover":"tint"}}}"#).unwrap_err();
-        assert!(error.contains("`hover` is fixed"), "{error}");
-        assert!(parse_theme(r#"{"roles":{"settings.card":{"shape":"square"}}}"#).is_ok());
-    }
-
-    #[test]
-    fn glass_takes_a_preset_or_a_preset_with_changes() {
-        let named = parse_theme(r#"{"materials":{"glass":"frosted"}}"#).unwrap();
-        assert_eq!(named.materials.glass, GlassMaterial::preset("frosted"));
-        let changed =
-            parse_theme(r#"{"materials":{"glass":{"preset":"clear","blur":3}}}"#).unwrap();
-        let clear = GlassMaterial::preset("clear").unwrap();
-        assert_eq!(
-            changed.materials.glass,
-            Some(GlassMaterial {
-                blur: px(3.0),
-                ..clear
-            })
-        );
-        let lit =
-            parse_theme(r##"{"materials":{"glass":{"preset":"clear","light_color":"#ff0000"}}}"##)
-                .unwrap();
-        assert_eq!(
-            lit.materials.glass.map(|glass| glass.light_color),
-            Some(crate::parse_hex("#ff0000").unwrap())
-        );
-        assert!(parse_theme(r#"{"materials":{"glass":"stained"}}"#).is_err());
-        assert!(parse_theme("[]").is_err());
-    }
-
-    #[test]
-    fn light_mode_draws_the_light_glass_laid_over_the_glass() {
-        let theme = parse_theme(
-            r#"{"materials":{"glass":{"preset":"clear","blur":3},"light-glass":{"edge_shadow":0.7}}}"#,
-        )
-        .unwrap();
-        let glass = theme.materials.glass.unwrap();
-        let mut kit = Theme::default();
-        kit.mode = ThemeMode::Light;
-        theme.apply(&mut kit);
-        assert_eq!(
-            kit.glass,
-            Some(GlassMaterial {
-                edge_shadow: 0.7,
-                ..glass
-            })
-        );
-        kit.mode = ThemeMode::Dark;
-        theme.apply(&mut kit);
-        assert_eq!(kit.glass, Some(glass));
-        assert_eq!(parse_theme(&theme.to_json()).unwrap(), theme);
-
-        let preset =
-            parse_theme(r#"{"materials":{"glass":"clear","light-glass":"frosted"}}"#).unwrap();
-        assert_eq!(
-            preset.materials.light_glass,
-            GlassMaterial::preset("frosted")
-        );
-        assert!(!default_theme().to_json().contains("light-glass"));
-    }
-
-    #[test]
-    fn overrides_compose_a_radius_accent_and_tint_over_the_theme() {
-        let mut theme = default_theme().clone();
-        theme.materials.font = Some("Inter".into());
-        theme.roles.insert(
-            "badge".to_owned(),
-            StylePatch::EMPTY.shape(crate::Shape::Pill),
-        );
-        theme.dark.on_accent = Some(crate::parse_hex("#000000").unwrap());
-        let roles = theme.roles.clone();
-        let colors = theme.dark.clone();
+        let mut theme = InterfaceTheme::default();
         ThemeOverrides {
-            radius: Some(14.0),
-            accent: Some("green".to_owned()),
-            tint: Some(1.0),
-            tint_hue: Some(145.0),
+            radius: Some(99.0),
+            tint: Some(-1.0),
+            tint_hue: Some(400.0),
+            ..ThemeOverrides::default()
         }
         .apply_to(&mut theme);
-        assert_eq!(theme.roles, roles);
-        assert_eq!(theme.materials.font.as_deref(), Some("Inter"));
-        assert_eq!(theme.materials.outline, default_theme().materials.outline);
-        assert_eq!(theme.materials.radius, 14.0);
-        assert_eq!(theme.light.accent, accent_color("green", ThemeMode::Light));
-        assert_eq!(theme.dark.accent, accent_color("green", ThemeMode::Dark));
-        assert_eq!(theme.dark.on_accent, None);
-        let tinted = colors.resolve(ThemeMode::Dark).tinted(145.0, 1.0);
-        assert_eq!(theme.dark.background, Some(tinted.background));
-        assert_eq!(theme.dark.foreground, Some(tinted.foreground));
-
-        let mut plain = default_theme().clone();
-        ThemeOverrides::default().apply_to(&mut plain);
-        assert_eq!(&plain, default_theme());
+        assert_eq!(theme.radius, 25.0);
         assert_eq!(
-            accent_color("#ff8800", ThemeMode::Dark),
-            crate::parse_hex("#ff8800").ok()
+            theme.neutral,
+            Neutral {
+                hue: 40.0,
+                amount: 0.0
+            }
         );
-        assert_eq!(accent_color("chartreuse", ThemeMode::Dark), None);
+        let mut appearance = Appearance::default();
+        appearance.change(AppearanceChange::Radius(-4.0), &[]);
+        assert_eq!(appearance.corner_radius(&[]), 0.0);
+    }
+
+    #[test]
+    fn presets_are_knobs_with_names() {
+        let macos = builtin_theme("macos").unwrap();
+        assert_eq!(
+            macos.tint.color(ThemeMode::Light),
+            crate::parse_hex("#0a64dd").ok()
+        );
+        assert_eq!(
+            macos.tint.color(ThemeMode::Dark),
+            crate::parse_hex("#76abfd").ok()
+        );
+        assert_eq!(
+            (macos.control_radius, macos.smoothing, macos.glass.clone()),
+            (Some(ControlRadius::Full), 4.0, Some(Glass::Liquid))
+        );
+        let yaru = builtin_theme("yaru").unwrap();
+        assert_eq!(yaru.tint, Tint::named("orange").unwrap());
+        assert_eq!(
+            (yaru.radius, yaru.smoothing, yaru.glass.clone()),
+            (8.0, 2.0, Some(Glass::None))
+        );
+        for (id, theme) in builtin_themes() {
+            assert_eq!(&parse_theme(&theme.to_json()).unwrap(), theme, "{id}");
+        }
     }
 
     #[test]
@@ -987,7 +1013,7 @@ mod tests {
             serde_json::from_str::<Appearance>("{}").unwrap(),
             Appearance::default()
         );
-        let source = r#"{"mode":"dark","theme":"macos","radius":12,"accent":"green","tint":0.25,"tint-hue":145,"contrast":1.5,"ui_font_family":"Inter","zoom":1.25,"animations":false,"animation_speed":0.5,"density":"comfortable","sidebar":true}"#;
+        let source = r#"{"mode":"dark","theme":"macos","radius":12,"accent":"green","tint":0.25,"tint-hue":145,"contrast":1.5,"reduce_transparency":true,"ui_font_family":"Inter","zoom":1.25,"animations":false,"animation_speed":0.5,"density":"comfortable","sidebar":true}"#;
         let appearance = serde_json::from_str::<Appearance>(source).unwrap();
         assert_eq!(
             appearance,
@@ -1001,6 +1027,7 @@ mod tests {
                     tint_hue: Some(145.0),
                 },
                 contrast: 1.5,
+                reduce_transparency: true,
                 ui_font_family: "Inter".into(),
                 zoom: 1.25,
                 animations: false,
@@ -1009,30 +1036,6 @@ mod tests {
             }
         );
         let written = serde_json::to_value(&appearance).unwrap();
-        let mut keys = written
-            .as_object()
-            .unwrap()
-            .keys()
-            .map(String::as_str)
-            .collect::<Vec<_>>();
-        keys.sort_unstable();
-        assert_eq!(
-            keys,
-            [
-                "accent",
-                "animation_speed",
-                "animations",
-                "contrast",
-                "density",
-                "mode",
-                "radius",
-                "theme",
-                "tint",
-                "tint-hue",
-                "ui_font_family",
-                "zoom"
-            ]
-        );
         assert_eq!(
             serde_json::from_value::<Appearance>(written).unwrap(),
             appearance
@@ -1041,23 +1044,13 @@ mod tests {
 
     #[test]
     fn appearance_changes_follow_the_theme_rules() {
-        let font = parse_theme(r#"{"name":"Mono","materials":{"font":"Lilex","radius":2}}"#);
-        let saved = [(SharedString::from("theme-1"), font.unwrap())];
+        let face = parse_theme(r#"{"name":"Mono","face":"Lilex","radius":2}"#);
+        let saved = [(SharedString::from("theme-1"), face.unwrap())];
         let mut appearance = Appearance {
             ui_font_family: "Inter".into(),
             ..Appearance::default()
         };
-        assert_eq!(appearance.theme_mode(), None);
         assert_eq!(appearance.theme_id(&saved), DEFAULT_THEME);
-        for (mode, spelled) in [
-            (Some(ThemeMode::Dark), "dark"),
-            (Some(ThemeMode::Light), "light"),
-            (None, "system"),
-        ] {
-            appearance.change(AppearanceChange::Mode(mode), &saved);
-            assert_eq!(appearance.mode.as_deref(), Some(spelled));
-            assert_eq!(appearance.theme_mode(), mode);
-        }
         appearance.change(AppearanceChange::Radius(7.0), &saved);
         appearance.change(AppearanceChange::Accent(Some("pink".into())), &saved);
         assert_eq!(appearance.corner_radius(&saved), 7.0);
@@ -1066,14 +1059,15 @@ mod tests {
         appearance.change(AppearanceChange::Theme("macos".into()), &saved);
         assert_eq!(appearance.theme_id(&saved), "macos");
         assert_eq!(appearance.overrides.radius, None);
-        assert_eq!(appearance.overrides.accent.as_deref(), Some("pink"));
-        assert_eq!(appearance.ui_font(&saved), "Inter");
+        assert_eq!(
+            appearance.shown_theme(&saved).tint,
+            Tint::named("pink").unwrap()
+        );
 
         appearance.change(AppearanceChange::Theme("theme-1".into()), &saved);
         assert_eq!(appearance.interface_theme(&saved).name, "Mono");
         assert_eq!(appearance.ui_font(&saved), "Lilex");
         assert_eq!(appearance.corner_radius(&saved), 2.0);
-        assert_eq!(appearance.shown_theme(&saved).materials.radius, 2.0);
 
         appearance.change(AppearanceChange::Theme("vaporwave".into()), &saved);
         assert_eq!(appearance.theme, None);
@@ -1081,7 +1075,7 @@ mod tests {
     }
 
     #[ala::test]
-    fn applying_an_appearance_shows_its_theme_contrast_zoom_density_and_reduced_motion(
+    fn applying_an_appearance_shows_its_theme_contrast_transparency_zoom_and_density(
         cx: &mut ala::TestAppContext,
     ) {
         let appearance = Appearance {
@@ -1092,6 +1086,7 @@ mod tests {
                 ..ThemeOverrides::default()
             },
             contrast: 1.5,
+            reduce_transparency: true,
             zoom: 1.25,
             animations: false,
             density: crate::Density::Compact,
@@ -1099,24 +1094,23 @@ mod tests {
         };
         cx.update(|cx| {
             crate::init(cx);
+            assert!(Theme::global(cx).glass.is_some());
             appearance.apply(&[], None, cx);
             let theme = Theme::global(cx);
             assert_eq!(theme.mode, ThemeMode::Dark);
             assert_eq!(theme.radius, px(5.0));
             assert_eq!(Some(theme.accent), accent_color("green", ThemeMode::Dark));
+            assert!(theme.tinted());
             assert_eq!(theme.contrast(), 1.5);
-            assert_eq!(theme.font_family, ala::Font::default().family);
+            assert_eq!(theme.glass, None);
             assert_eq!(crate::UiZoom::get(cx), 1.25);
             assert!(cx.reduce_motion());
             assert_eq!(
                 crate::Size::LADDER.map(|size| size.control_px()),
                 [20.0, 24.0, 24.0, 32.0, 40.0, 44.0]
             );
-            assert_eq!(
-                [22.0, 28.0].map(|height| crate::Size::Size(px(height)).rung()),
-                [crate::Size::Small, crate::Size::Medium]
-            );
             crate::Density::Regular.set();
+            Theme::global_mut(cx).set_contrast(1.0);
         });
     }
 
@@ -1141,109 +1135,21 @@ mod tests {
     #[test]
     fn layers_merge_objects_and_replace_everything_else() {
         let theme = parse_layers(&[
-            r#"{"name":"Base","materials":{"glass":{"preset":"clear","blur":3},"outline":1}}"#,
-            r#"{"materials":{"glass":{"edge_shadow":0.7},"font":"Inter"}}"#,
+            r#"{"name":"Base","neutral":{"hue":200,"amount":0.5},"radius":4}"#,
+            r#"{"neutral":{"amount":0.25},"face":"Inter"}"#,
         ])
         .unwrap();
         assert_eq!(theme.name, "Base");
-        assert_eq!(theme.materials.outline, 1.0);
-        assert_eq!(theme.materials.font.as_deref(), Some("Inter"));
         assert_eq!(
-            theme.materials.glass,
-            Some(GlassMaterial {
-                blur: px(3.0),
-                edge_shadow: 0.7,
-                ..GlassMaterial::preset("clear").unwrap()
-            })
+            theme.neutral,
+            Neutral {
+                hue: 200.0,
+                amount: 0.25
+            }
         );
-        let named = parse_layers(&[
-            r#"{"materials":{"glass":{"preset":"clear","blur":3}}}"#,
-            r#"{"materials":{"glass":"frosted"}}"#,
-        ])
-        .unwrap();
-        assert_eq!(named.materials.glass, GlassMaterial::preset("frosted"));
+        assert_eq!(theme.radius, 4.0);
+        assert_eq!(theme.face.as_deref(), Some("Inter"));
         assert!(parse_layers(&[r#"{"name":"Base"}"#, "[]"]).is_err());
-        assert!(parse_layers(&[r#"{"name":"Base"}"#, r#"{"roles":{"sparkle":{}}}"#]).is_err());
-        assert_eq!(parse_layers(&[]).unwrap(), parse_theme("{}").unwrap());
-    }
-
-    #[test]
-    fn picking_a_theme_keeps_the_accent_and_tint() {
-        let mut overrides = ThemeOverrides {
-            radius: Some(14.0),
-            accent: Some("green".to_owned()),
-            tint: Some(0.5),
-            tint_hue: Some(145.0),
-        };
-        overrides.pick_theme();
-        assert_eq!(
-            overrides,
-            ThemeOverrides {
-                accent: Some("green".to_owned()),
-                tint: Some(0.5),
-                tint_hue: Some(145.0),
-                ..ThemeOverrides::default()
-            }
-        );
-    }
-
-    #[test]
-    fn every_named_accent_reads_in_every_theme_at_any_tint() {
-        let names = ACCENT_COLORS.map(|(name, ..)| name);
-        assert_eq!(names, ACCENTS);
-        for (id, builtin) in builtin_themes() {
-            for tint in [0.0, 0.25, 0.5, 1.0] {
-                for hue in (0..360).step_by(30) {
-                    for accent in ACCENTS {
-                        let mut theme = builtin.clone();
-                        ThemeOverrides {
-                            accent: Some(accent.to_owned()),
-                            tint: Some(tint),
-                            tint_hue: Some(hue as f32),
-                            ..ThemeOverrides::default()
-                        }
-                        .apply_to(&mut theme);
-                        assert_reads(&format!("{id} {accent} at tint {tint} hue {hue}"), &theme);
-                    }
-                }
-            }
-        }
-    }
-
-    #[test]
-    fn unknown_keys_are_errors_that_name_the_key() {
-        for (source, key, spelling) in [
-            (
-                r#"{"materials":{"row_inset":2}}"#,
-                "row_inset",
-                Some("row-inset"),
-            ),
-            (
-                r##"{"materials":{"glass":{"preset":"clear","Light-Color":"#ff0000"}}}"##,
-                "Light-Color",
-                Some("light_color"),
-            ),
-            (
-                r##"{"dark":{"onAccent":"#ffffff"}}"##,
-                "onAccent",
-                Some("on-accent"),
-            ),
-            (r#"{"Materials":{}}"#, "Materials", Some("materials")),
-            (r#"{"materials":{"sparkle":1}}"#, "sparkle", None),
-            (r#"{"materials":{"glass":{"sparkle":1}}}"#, "sparkle", None),
-            (r#"{"look":{}}"#, "look", None),
-        ] {
-            let error = parse_theme(source).unwrap_err();
-            match spelling {
-                Some(spelling) => assert_eq!(
-                    error,
-                    format!("unknown field `{key}`, did you mean `{spelling}`?")
-                ),
-                None => assert!(
-                    error.starts_with(&format!("unknown field `{key}`, expected ")),
-                    "{error}"
-                ),
-            }
-        }
+        assert_eq!(parse_layers(&[]).unwrap(), InterfaceTheme::default());
     }
 }

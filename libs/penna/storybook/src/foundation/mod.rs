@@ -10,6 +10,7 @@ pub const STORIES: &[Story] = &[
     colors::STORY,
     type_scale::STORY,
     spacing::STORY,
+    crate::kit::layout::STORY,
     design_system::STORY,
     icon_set::STORY,
 ];

@@ -4,7 +4,7 @@ disallowed-methods = [
     { path = "penna::StyledExt::surface_edge", reason = "paint chrome with a kit component and its look so the theme reaches it; see penna's knowledge/designs/kit.md" },
     { path = "penna::StyledExt::surface_outline", reason = "paint chrome with a kit component and its look so the theme reaches it; see penna's knowledge/designs/kit.md" },
     { path = "penna::StyledExt::chosen_ring", reason = "paint chrome with a kit component and its look so the theme reaches it; see penna's knowledge/designs/kit.md" },
-    { path = "penna::lifted_shadow", reason = "paint chrome with a kit component and its look so the theme reaches it; see penna's knowledge/designs/kit.md" },
+    { path = "penna::knob_shadow", reason = "paint chrome with a kit component and its look so the theme reaches it; see penna's knowledge/designs/kit.md" },
     { path = "penna::Theme::control_radius", reason = "paint chrome with a kit component and its look so the theme reaches it; see penna's knowledge/designs/kit.md" },
     { path = "penna::Theme::menu_radius", reason = "paint chrome with a kit component and its look so the theme reaches it; see penna's knowledge/designs/kit.md" },
     { path = "penna::Theme::row_radius", reason = "paint chrome with a kit component and its look so the theme reaches it; see penna's knowledge/designs/kit.md" },

@@ -13,7 +13,7 @@ use crate::{
     components::icon::glyphs,
     components::input::field_layer,
     foundation::highlighter::HighlightTheme,
-    foundation::interface_theme::{InterfaceTheme, builtin_themes},
+    foundation::interface_theme::{Glass, InterfaceTheme, builtin_themes},
     foundation::roles,
     oklab_lightness, to_hex,
 };
@@ -73,6 +73,10 @@ pub const SYNTAX: [(&str, &str); 15] = [
 ];
 
 pub fn kit_theme(theme: &InterfaceTheme, mode: ThemeMode) -> Theme {
+    let theme = InterfaceTheme {
+        glass: Some(theme.glass.clone().unwrap_or(Glass::Frosted)),
+        ..theme.clone()
+    };
     let mut kit = Theme::from(&theme.colors(mode));
     kit.mode = mode;
     kit.highlight_theme = if mode.is_dark() {
@@ -93,8 +97,33 @@ pub fn stylesheet(theme: &Theme, toned: &[SurfaceRole]) -> String {
         );
     }
     write_root(&mut css, theme);
+    for (_, rule) in rules(theme, toned, false) {
+        css.push_str(&rule);
+    }
+    if theme.glass.is_some() {
+        let mut solid = theme.clone();
+        solid.glass = None;
+        let glassy = rules(theme, toned, true);
+        let _ = writeln!(css, "@media (prefers-reduced-transparency: reduce) {{");
+        for (key, rule) in rules(&solid, toned, true) {
+            if !glassy.contains(&(key, rule.clone())) {
+                css.push_str(&rule);
+            }
+        }
+        let _ = writeln!(css, "}}");
+    }
+    css
+}
+
+fn rules(theme: &Theme, toned: &[SurfaceRole], full: bool) -> Vec<(String, String)> {
+    let mut rules = Vec::new();
+    let mut rule = |key: String, surface: Surface, indent: &str| {
+        let mut css = String::new();
+        write_role(&mut css, theme, &key, surface, indent, full);
+        rules.push((key, css));
+    };
     for role in roles::all() {
-        write_role(&mut css, theme, &selector(role), Surface::new(role), "");
+        rule(selector(role), Surface::new(role), "");
     }
     let window = theme.ground();
     let mut grounds: Vec<(Ground, Vec<String>)> = Vec::new();
@@ -109,10 +138,12 @@ pub fn stylesheet(theme: &Theme, toned: &[SurfaceRole]) -> String {
         }
     }
     for (ground, containers) in grounds {
-        let _ = writeln!(css, ":is({}) {{", containers.join(", "));
+        let scope = format!(":is({})", containers.join(", "));
+        let mut css = format!("{scope} {{\n");
         for role in SurfaceRole::KIT
             .into_iter()
             .filter(|role| is_content(role.kind))
+            .chain(roles::all().filter(|role| role.kind == Kind::Card))
         {
             let surface = Surface::new(role).on(ground);
             let differs = STATES.iter().any(|state| {
@@ -121,42 +152,49 @@ pub fn stylesheet(theme: &Theme, toned: &[SurfaceRole]) -> String {
                     != vars(theme, plain, &drawn(theme, plain, *state))
             });
             if differs {
-                write_role(&mut css, theme, &selector(role), surface, "  ");
+                write_role(&mut css, theme, &selector(role), surface, "  ", full);
+                if has_tones(role.kind) {
+                    for (key, variant) in variants(role) {
+                        write_over(&mut css, theme, &key, variant.on(ground), surface);
+                    }
+                }
             }
         }
         let _ = writeln!(css, "}}");
+        rules.push((scope, css));
     }
     for container in roles::all().filter(|role| is_container(role.kind)) {
         let ground = theme.ground_of(Surface::new(container));
-        let _ = writeln!(
-            css,
-            "[data-on=\"{}\"] {{ --penna-ground: {}; }}",
-            container.id,
-            color(ground.fill)
-        );
+        let key = format!("[data-on=\"{}\"]", container.id);
+        let css = format!("{key} {{ --penna-ground: {}; }}\n", color(ground.fill));
+        rules.push((key, css));
     }
     for role in SurfaceRole::KIT
         .into_iter()
         .chain(toned.iter().copied())
         .filter(|role| has_tones(role.kind))
     {
-        for (tone, tone_name) in TONES {
-            let toned = format!("{}[data-tone=\"{tone_name}\"]", selector(role));
-            let surface = Surface::new(role).tone(tone);
-            write_role(&mut css, theme, &toned, surface, "");
-        }
-        if role.kind == Kind::Button {
-            let prominent = format!("{}[data-prominent]", selector(role));
-            let surface = Surface::new(role).prominent(true);
-            write_role(&mut css, theme, &prominent, surface, "");
-            for (tone, tone_name) in TONES {
-                let toned = format!("{prominent}[data-tone=\"{tone_name}\"]");
-                let surface = Surface::new(role).tone(tone).prominent(true);
-                write_role(&mut css, theme, &toned, surface, "");
-            }
+        for (key, surface) in variants(role) {
+            let mut css = String::new();
+            write_role(&mut css, theme, &key, surface, "", full);
+            rules.push((key, css));
         }
     }
-    css
+    rules
+}
+
+fn variants(role: SurfaceRole) -> Vec<(String, Surface)> {
+    let base = Surface::new(role);
+    let toned = |key: &str, surface: Surface| {
+        TONES.map(|(tone, name)| (format!("{key}[data-tone=\"{name}\"]"), surface.tone(tone)))
+    };
+    let mut variants = toned(&selector(role), base).to_vec();
+    if role.kind == Kind::Button {
+        let prominent = format!("{}[data-prominent]", selector(role));
+        variants.push((prominent.clone(), base.prominent(true)));
+        variants.extend(toned(&prominent, base.prominent(true)));
+    }
+    variants
 }
 
 pub fn icons(theme: &Theme) -> String {
@@ -245,17 +283,33 @@ fn state_selector(state: PaintState, kind: Kind) -> &'static str {
     }
 }
 
-fn write_role(css: &mut String, theme: &Theme, base: &str, surface: Surface, indent: &str) {
-    let declarations = |vars: &[&(&str, String)]| {
-        vars.iter()
-            .map(|(name, value)| format!("--penna-{name}: {value};"))
-            .collect::<Vec<_>>()
-            .join(" ")
-    };
-    let rest = vars(theme, surface, &drawn(theme, surface, PaintState::Rest));
+fn declarations(vars: &[&(&str, String)]) -> String {
+    vars.iter()
+        .map(|(name, value)| format!("--penna-{name}: {value};"))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn write_role(
+    css: &mut String,
+    theme: &Theme,
+    base: &str,
+    surface: Surface,
+    indent: &str,
+    full: bool,
+) {
+    let mut rest = vars(theme, surface, &drawn(theme, surface, PaintState::Rest));
+    if full {
+        let unset = PAINT
+            .iter()
+            .filter(|(name, _)| rest.iter().all(|(set, _)| set != name))
+            .map(|(name, initial)| (*name, (*initial).to_owned()))
+            .collect::<Vec<_>>();
+        rest.extend(unset);
+    }
     let set = rest
         .iter()
-        .filter(|(name, value)| !PAINT.contains(&(name, value.as_str())))
+        .filter(|(name, value)| full || !PAINT.contains(&(name, value.as_str())))
         .collect::<Vec<_>>();
     let _ = writeln!(css, "{indent}{base} {{ {}", declarations(&set));
     for state in STATES.into_iter().skip(1) {
@@ -276,12 +330,51 @@ fn write_role(css: &mut String, theme: &Theme, base: &str, surface: Surface, ind
     let _ = writeln!(css, "{indent}}}");
 }
 
+fn write_over(css: &mut String, theme: &Theme, base: &str, surface: Surface, under: Surface) {
+    let at = |surface: Surface, state| vars(theme, surface, &drawn(theme, surface, state));
+    let rest = at(surface, PaintState::Rest);
+    let below = at(under, PaintState::Rest);
+    let set = rest
+        .iter()
+        .filter(|var| !below.contains(var))
+        .collect::<Vec<_>>();
+    let states = STATES
+        .into_iter()
+        .skip(1)
+        .filter_map(|state| {
+            let below = at(under, state);
+            let all = at(surface, state);
+            let changed = all
+                .iter()
+                .filter(|var| {
+                    if set.iter().any(|(name, _)| *name == var.0) {
+                        !rest.contains(var)
+                    } else {
+                        !below.contains(var)
+                    }
+                })
+                .collect::<Vec<_>>();
+            (!changed.is_empty()).then(|| {
+                format!(
+                    "    {} {{ {} }}\n",
+                    state_selector(state, surface.role.kind),
+                    declarations(&changed)
+                )
+            })
+        })
+        .collect::<String>();
+    if set.is_empty() && states.is_empty() {
+        return;
+    }
+    let _ = writeln!(css, "  {base} {{ {}", declarations(&set));
+    css.push_str(&states);
+    let _ = writeln!(css, "  }}");
+}
+
 fn vars(theme: &Theme, surface: Surface, layer: &Layer) -> Vec<(&'static str, String)> {
     let role = surface.role;
     let fill = layer.glass.map_or(layer.fill, |material| material.tint);
-    let muted = theme
-        .paint_on(layer.ground, Tone::Neutral, Emphasis::Ghost)
-        .muted_at(PaintState::Rest);
+    let muted = layer.muted_text();
     let mut vars = vec![
         ("fill", color(fill)),
         ("ink", color(layer.text)),
@@ -332,9 +425,7 @@ fn vars(theme: &Theme, surface: Surface, layer: &Layer) -> Vec<(&'static str, St
 
 fn write_root(css: &mut String, theme: &Theme) {
     let primary = theme.paint(Tone::Primary, Emphasis::Solid);
-    let muted = theme
-        .paint(Tone::Neutral, Emphasis::Ghost)
-        .muted_at(PaintState::Rest);
+    let ghost = theme.paint(Tone::Neutral, Emphasis::Ghost);
     let control = theme
         .paint(Tone::Neutral, Emphasis::Soft)
         .fill_at(PaintState::Active);
@@ -358,7 +449,14 @@ fn write_root(css: &mut String, theme: &Theme) {
             "--penna-fg-faint".to_owned(),
             color(theme.foreground.faint()),
         ),
-        ("--penna-muted".to_owned(), color(muted)),
+        (
+            "--penna-muted".to_owned(),
+            color(ghost.muted_at(PaintState::Rest)),
+        ),
+        (
+            "--penna-faint".to_owned(),
+            color(ghost.faint_at(PaintState::Rest)),
+        ),
         ("--penna-accent".to_owned(), color(theme.accent)),
         ("--penna-on-accent".to_owned(), color(primary.text)),
         ("--penna-primary".to_owned(), color(primary.fill)),
@@ -385,6 +483,10 @@ fn write_root(css: &mut String, theme: &Theme) {
         ),
         ("--penna-radius".to_owned(), length(f32::from(theme.radius))),
         (
+            "--penna-control-radius".to_owned(),
+            length(f32::from(theme.control_radius())),
+        ),
+        (
             "--penna-window-k".to_owned(),
             number(theme.smoothing.exponent().log2()),
         ),
@@ -402,6 +504,10 @@ fn write_root(css: &mut String, theme: &Theme) {
         (
             "--penna-pane-radius".to_owned(),
             length(f32::from(theme.pane_radius())),
+        ),
+        (
+            "--penna-bar".to_owned(),
+            length(f32::from(theme.pane_header_height())),
         ),
         (
             "--penna-outline".to_owned(),
@@ -450,15 +556,32 @@ fn write_root(css: &mut String, theme: &Theme) {
 
 fn paint_vars(theme: &Theme) -> Vec<(String, String)> {
     let outline = theme.paint(Tone::Neutral, Emphasis::Outline);
+    let quiet = |state| {
+        theme
+            .layer(Surface::new(SurfaceRole::QUIET_BUTTON), state)
+            .fill
+    };
     let mut vars = vec![
         ("--penna-outline-hover".to_owned(), color(outline.hover)),
         ("--penna-outline-pressed".to_owned(), color(outline.active)),
+        (
+            "--penna-quiet-hover".to_owned(),
+            color(quiet(PaintState::Hover)),
+        ),
+        (
+            "--penna-quiet-pressed".to_owned(),
+            color(quiet(PaintState::Active)),
+        ),
     ];
     for (tone, name) in TONES {
         let solid = theme.paint(tone, Emphasis::Solid);
         vars.push((format!("--penna-{name}-hover"), color(solid.hover)));
         vars.push((format!("--penna-{name}-pressed"), color(solid.active)));
         vars.push((format!("--penna-on-{name}"), color(solid.text)));
+    }
+    for (tone, name) in TONES.into_iter().chain([(Tone::Accent, "accent")]) {
+        let ghost = theme.paint(tone, Emphasis::Ghost);
+        vars.push((format!("--penna-{name}-ink"), color(ghost.text)));
     }
     vars
 }
@@ -580,10 +703,11 @@ fn rim(material: &GlassMaterial) -> String {
     let edge = f32::from(material.edge_width);
     let bezel = f32::from(material.bezel);
     let light = material.light_color;
-    let facing = light.alpha((light.a * material.specular).min(1.0));
+    let lit = if bezel > 0.0 { light.a } else { 0.0 };
+    let facing = light.alpha((lit * material.specular).min(1.0));
     let far =
-        light.alpha((light.a * material.specular * (1.0 - material.light_directionality)).min(1.0));
-    let fresnel = light.alpha((light.a * material.fresnel).min(1.0));
+        light.alpha((lit * material.specular * (1.0 - material.light_directionality)).min(1.0));
+    let fresnel = light.alpha((lit * material.fresnel).min(1.0));
     let dark = material.edge_color;
     let ring_alpha =
         material.edge_shadow * (material.edge_spread + (1.0 - material.edge_spread) * 0.35);
@@ -701,6 +825,23 @@ mod tests {
         assert_eq!(tone(1.12, 0.07), "contrast(0.982) brightness(1.14)");
         assert_eq!(tone(1.0, -0.02), "brightness(0.962) contrast(1.04)");
         assert_eq!(tone(1.0, 0.0), "contrast(1) brightness(1)");
+    }
+
+    #[test]
+    fn toned_and_prominent_controls_keep_their_paint_on_a_ground() {
+        let theme = kit_theme(&builtin_themes()[0].1, ThemeMode::Light);
+        let css = stylesheet(&theme, &[]);
+        let start = css
+            .find(":is([data-penna=\"panel\"][data-ground]")
+            .expect("the panel's ground has a scope");
+        let end = start + css[start..].find("\n}\n").expect("the scope closes");
+        let scope = &css[start..end];
+        assert!(scope.contains(
+            "  [data-penna=\"badge\"][data-tone=\"danger\"] { --penna-fill: #cc27371f; --penna-ink: #942c2f;"
+        ));
+        assert!(scope.contains(
+            "  [data-penna=\"button\"][data-prominent] { --penna-fill: #1c1c1a; --penna-ink: #ebebeb;"
+        ));
     }
 
     #[test]

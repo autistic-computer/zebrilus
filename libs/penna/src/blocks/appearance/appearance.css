@@ -204,7 +204,7 @@
   padding: 2px;
   border: 1.5px solid transparent;
   border-radius: var(--appearance-ring-r, 0px);
-  corner-shape: superellipse(var(--penna-window-k));
+  corner-shape: superellipse(var(--appearance-swatch-k, var(--penna-window-k)));
 }
 
 .appearance-ring[data-selected] {
@@ -217,7 +217,7 @@
   width: 18px;
   height: 18px;
   border-radius: var(--appearance-swatch-r, 0px);
-  corner-shape: superellipse(var(--penna-window-k));
+  corner-shape: superellipse(var(--appearance-swatch-k, var(--penna-window-k)));
   background: var(--appearance-swatch, var(--penna-accent));
   cursor: pointer;
   outline: none;
@@ -293,7 +293,7 @@
   margin-left: -8px;
   border-radius: 9999px;
   background: var(--penna-knob);
-  box-shadow: var(--penna-shadow-lifted);
+  box-shadow: var(--penna-shadow-contact);
 }
 
 .appearance-slider:is(:focus-visible, [data-focused]) .appearance-knob {
@@ -346,11 +346,7 @@
   --penna-shadow: initial;
 }
 
-.appearance-run .penna-segmented[data-penna="field"]:active {
-  --penna-fill: var(--appearance-field-hover);
-}
-
 .appearance-ring .penna-color-picker > .penna-button[data-swatch] {
-  --penna-k: var(--penna-style-k);
+  --penna-k: var(--appearance-swatch-k, var(--penna-style-k));
   border-radius: var(--appearance-swatch-r) !important;
 }

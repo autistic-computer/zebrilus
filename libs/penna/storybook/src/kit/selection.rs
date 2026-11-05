@@ -1,6 +1,6 @@
 use ala::{
-    AnyView, App, AppContext as _, Context, Entity, IntoElement, ParentElement as _, Render,
-    SharedString, Styled as _, Window, div, px,
+    AnyView, App, AppContext as _, Context, Entity, IntoElement, MouseButton, ParentElement as _,
+    Render, SharedString, Styled as _, Subscription, Window, div, px,
 };
 use penna::{
     Disableable as _, IndexPath, Sizable as _, Size,
@@ -11,7 +11,7 @@ use penna::{
     h_flex,
 };
 
-use super::support::{after_first_frame, dispatch, tab};
+use super::support::{Probe, after_first_frame, dispatch, hover, press, tab, when_visible};
 use crate::story::{Section, Story, row, states};
 
 pub const STORY: Story = Story {
@@ -67,6 +67,18 @@ pub const STORY: Story = Story {
             name: "Switch, focused",
             summary: "Tab focus rings the track; Space or Enter flips it. A click flips it on release without focusing.",
             build: |window, cx| FocusedSwitch::view(window, cx),
+        },
+        Section {
+            id: "switch-hovered",
+            name: "Switch, hovered",
+            summary: "The pointer rests on the first switch: its track takes one fill step deeper, and the thumb doesn't change.",
+            build: |window, cx| PointedSwitch::view(Gesture::Hover, window, cx),
+        },
+        Section {
+            id: "switch-pressed",
+            name: "Switch, pressed",
+            summary: "The first switch is held down: an on track takes the primary's active fill, an off one a second step deeper. It flips on release.",
+            build: |window, cx| PointedSwitch::view(Gesture::Press, window, cx),
         },
         Section {
             id: "slider",
@@ -433,6 +445,75 @@ impl Render for FocusedSwitch {
             row()
                 .child(switch("switch-focused", 0))
                 .child(switch("switch-resting", 1)),
+        )
+    }
+}
+
+#[derive(Clone, Copy)]
+enum Gesture {
+    Hover,
+    Press,
+}
+
+struct PointedSwitch {
+    gesture: Gesture,
+    on: [bool; 2],
+    target: Probe,
+    _bounds: Subscription,
+}
+
+impl PointedSwitch {
+    fn view(gesture: Gesture, window: &mut Window, cx: &mut App) -> AnyView {
+        let target = Probe::default();
+        let probe = target.clone();
+        when_visible(&target, window, move |window, cx| match gesture {
+            Gesture::Hover => hover(&probe, window, cx),
+            Gesture::Press => press(&probe, MouseButton::Left, window, cx),
+        });
+        cx.new(|cx| Self {
+            gesture,
+            on: [matches!(gesture, Gesture::Press); 2],
+            _bounds: cx.observe_window_bounds(window, |this: &mut Self, window, cx| {
+                hover(&this.target, window, cx);
+            }),
+            target,
+        })
+        .into()
+    }
+}
+
+impl Render for PointedSwitch {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let (caption, target, rest) = match self.gesture {
+            Gesture::Hover => (
+                "hovered, resting",
+                "switch-hover-target",
+                "switch-hover-rest",
+            ),
+            Gesture::Press => (
+                "pressed, resting",
+                "switch-press-target",
+                "switch-press-rest",
+            ),
+        };
+        let switch = |id: &'static str, at: usize| {
+            Switch::new(id).checked(self.on[at]).on_click(cx.listener(
+                move |this, on: &bool, _, cx| {
+                    this.on[at] = *on;
+                    cx.notify();
+                },
+            ))
+        };
+        states().state(
+            caption,
+            row()
+                .child(
+                    div()
+                        .relative()
+                        .child(switch(target, 0))
+                        .child(self.target.measure()),
+                )
+                .child(switch(rest, 1)),
         )
     }
 }

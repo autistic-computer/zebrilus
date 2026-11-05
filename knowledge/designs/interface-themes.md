@@ -1,7 +1,7 @@
 ---
 type: Design Plan
-title: "Interface themes: materials, roles and colors in one file"
-description: "A theme is one JSON file holding its materials, how each piece of UI uses them (its roles), and the colors it is drawn in for light and for dark, so it can imitate a whole app; the mode only picks the color set. Default, macOS and Yaru ship built in. Settings draws the theme with an accent and a background tint over it, and saves the result as a theme; the 34 old palette presets, the color and material presets, Flat/Modern/Full, the chrome color overrides, the nine-key look and the per-material keys are gone."
+title: "Interface themes: knobs over one look"
+description: "A theme is one JSON file of knobs over penna's one look: tint, neutral, radius, control radius, smoothing, glass, face and mode. Default, macOS and Yaru ship built in as presets. Settings draws the theme with a radius, an accent and a neutral tint over it, plus Reduce transparency; the materials, role patches and color sets themes used to carry are gone, and files that still hold them load as the default look under their name."
 status: Built
 resource: libs/penna/src/foundation/interface_theme.rs
 tags:
@@ -10,7 +10,7 @@ tags:
 - design-system
 - configuration
 - design-plan
-timestamp: 2026-10-31T00:00:00Z
+timestamp: 2026-11-05T00:00:00Z
 ---
 
 # Why
@@ -25,45 +25,39 @@ The editor palettes were made for syntax colors and gave six roots; everything e
 
 # The model
 
-A theme (`InterfaceTheme`) is one object:
+A theme (`InterfaceTheme`) is the knobs penna's one look takes, and nothing else (penna's `knowledge/designs/foundations.md`, Look, is the spec):
 
 - `name`: what Settings calls it;
-- `materials`: the `Materials`, every value that is not a color, defined once: `radius`, `control-radius` (the corners of buttons, fields, tabs, chips and other controls, so a theme can round them tighter than its menus, cards and panes, as WinUI's 4px controls sit in 8px flyouts; left out, controls follow `radius`, and the pane corner, concentric with the controls in its header, follows it too), `smoothing` (the corner every role follows unless the theme sets its own), `picked-smoothing` (only the roles the theme sets `smoothing` for curve that way; the rest draw circular corners), `outline` (the width of every outline; 0 draws none), `picked-outlines` (only the roles the theme turns `outline` on for draw it), `row-inset`, `primary` (`foreground` or `accent`), `flat-highlights` (a lift washes a step deeper instead of rising), `bright-surfaces` (cards, panes and floating surfaces rise toward white in light mode instead of darkening), `highlight-strength` (how far a tint or lift washes from the resting fill; 1 is the built-in), `font`, `glass`, `light-glass` (what glass becomes in light mode, as the fields it changes from `glass`; left out, light mode draws `glass`), `picked-shadows` (only the roles the theme gives a `shadow` cast one), and the two shadows `contact` and `float`, each `y`, `blur`, `spread` and `strength`;
-- `roles`: how the theme changes each kit kind and each zz role, by id, as a patch of the seven style props (`fill`, `outline`, `shadow`, `shape`, `smoothing`, `hover`, `selected`); what it leaves out draws as built in. The model is in [surface roles](/designs/surface-roles.md);
-- `light` and `dark`: a `ThemeColors` each, the six roots plus `on-accent` (text on an accent fill) and `shadow-color` (the ink of every drop shadow).
+- `tint`: `ink`, a named accent, one hex color, or `{ "light": ..., "dark": ... }`. A color sets the accent and makes primary fills and the highlight the tint;
+- `neutral`: `{ "hue", "amount" }`, how far `bg`, `fg` and the surfaces above them lean toward a hue; the default (hue 60, amount 0.15) draws the base colors exactly;
+- `radius` (containers) and `control-radius` (controls, or `full` for pills), both 0 to 25, and `smoothing` (2 to 5);
+- `glass`: `none`, `frosted`, `liquid` or a material of its own; left out, the platform's (`liquid` on macOS, `frosted` elsewhere). Every material's tint rises until text on it reads at 4.5:1;
+- `face`: the interface font;
+- `mode`: `follow`, `light` or `dark`; anything but `follow` beats the person's mode.
 
-The mode (`theme-mode`, or the OS appearance on System) only picks which color set applies. Materials and roles never pick a color, and a color set never changes the shape. Every other color is still derived from the roots at paint time, as the [design system](/designs/design-system.md) describes.
-
-A file can leave keys out: materials fall back to `Materials::default()` (Default's, without glass), roles to their built-in styles, and a color to the built-in palette for the mode. Glass is a preset name or a preset with the fields it changes, and a shadow object names only the fields it changes, so a hand-written theme stays short. A key the format does not have, such as the removed `look`, is an error that names it, and a role id `penna::foundation::roles::find` does not know is an error, which names the one meant when the id differs from it only in case, `-`, `_` or `.` or is its part after a dot, so a file written for the older format loads only once it is rewritten (see [app config](/configuration/app-config.md)).
+Outline width (1), row inset (6), highlight strength, every kind's fill, edge and shadow, and the status colors are the look and have no knob. Unknown keys are ignored, so a file from before the knobs (with `materials`, `roles`, `light` and `dark`) loads as the default look under its own name, and a knob with a bad value (`"control-radius": "round"`) is an error that names it.
 
 # Built-ins
 
-penna ships them in `libs/penna/themes/*.json`: each theme's materials, its colors and the patches for every role, the recipes zz draws included. Apps add no themes and no patches of their own. All of it is compiled in and parsed by the same code as a user's file (`parse_theme`, over `parse_layers`: objects merge, any other value replaces):
+penna ships them in `libs/penna/themes/*.json`, compiled in and parsed by the same code as a user's file (`parse_theme`, over `parse_layers`: objects merge, any other value replaces). They are presets: knob values with names.
 
-| Theme | Materials and roles | Colors |
-|---|---|---|
-| Default | 24px corners, 0.75px outlines, both shadows at their built-in geometry, no glass, foreground primary, 5px row inset; 7 role patches (`tab.window`, `row.nav`, `tile.stack`, `menu-item`, `field.composer`, `field.address`, `button.send`), and every other piece draws as its kind's built-in | neutral planes `#fcfcfc` / `#18181a`, near-black and near-white ink, a blue accent `#3d6df2` / `#6b8cff`, status colors that read on both planes |
-| macOS | 24px corners, 0.5px outlines, 5px row inset, accent primary, glass (blur 20, bezel 3, refraction 4, tint `#ffffff8c`, light from above; in light mode a lighter contour spread evenly around the edge) on chrome buttons, selected tabs and sidebar entries and floating surfaces, contact and float shadows, 39 role patches | `#f5f5f7` / `#242424` planes, `#1d1d1f` / `#f5f5f7` ink, accent `#006fe8` / `#0a84ff`, the system green, orange and red darkened in light to pass the 3:1 floor |
-| Yaru | 16px circular corners, 1px outlines only where picked, 6px row inset, accent primary, bright surfaces, highlight strength 0.8, the platform font, no glass; buttons and fields tinted with no outline or shadow, quiet, icon and chrome buttons and menu items unfilled, rows, sidebar entries and tabs tinted on hover and when selected, menus and cards outlined with a soft shadow, 22 role patches | Yaru's `#fafafa` / `#2c2c2c` planes, `#3d3d3d` / `#f7f7f7` ink, Ubuntu orange (`#e95420`, darkened to `#d6421d` in light the way Yaru's build tunes it for white text), Yaru's green, yellow and red, moved in lightness where they missed the 3:1 floor |
+| Theme | Knobs |
+|---|---|
+| Default | none: ink tint, the warm neutral, 12 corners, smoothing 3, the platform's glass |
+| macOS | tint blue (`#0a64dd` / `#76abfd`), `control-radius` `full`, smoothing 4, `liquid` glass |
+| Yaru | tint orange, radius 8, smoothing 2, no glass |
 
-An app puts a theme on screen with `InterfaceTheme::activate`, which switches the mode and writes
-the theme's colors, materials and role patches in one step, or with `Appearance::apply` when the
-user's settings go over it; [penna](/references/penna.md) has the setup.
-
-There are no color or material presets: a theme's materials and palettes are its own, and Settings
-colors the interface with the accent and the tint below. A test holds every built-in to contrast floors in both modes: foreground 7:1 on the window and a popover, accent and status colors 3:1, text on the accent 3:1.
-
-A surface whose role takes glass draws the theme's glass, tinted with its own fill, and its glass rim stands in for the outline; on a glass ground it paints a tint instead, and in a theme without glass a solid fill.
+An app puts a theme on screen with `InterfaceTheme::activate`, which switches the mode and writes the theme's colors and knobs in one step, or with `Appearance::apply` when the person's settings go over it; [penna](/references/penna.md) has the setup. penna's tests hold every built-in, at every accent and neutral, to the contrast floors.
 
 # Over the theme
 
-Settings > Interface draws the active theme with up to three things set over it, each `None` in `ThemeOverrides` until set. `ThemeOverrides::apply_to` applies them in this order:
+Settings > Interface draws the active theme with up to three things set over it, each `None` in `ThemeOverrides` until set. `ThemeOverrides::apply_to` applies them:
 
-1. **Corner radius** (`widget-corner-radius`): the radius alone, over the theme's.
-2. **Accent** (`chrome-accent`): replaces the accent root in each mode and drops the theme's `on-accent`, so text on the accent is picked by its lightness again. A named accent takes its light or dark color; a hex color is used in both modes.
-3. **Tint** (`chrome-tint`, `chrome-tint-hue`): mixes each mode's background in Oklab toward the color of the same lightness at the tint hue with 0.02 chroma, all the way at full strength (`ThemeColor::tinted`). Panels, hover fills, edges and glass tints derive from the background, so they lean with it; text, the accent and the status colors keep theirs. The hue defaults to 260, a cool blue.
+1. **Corner radius** (`widget-corner-radius`): the `radius` knob, clamped to 0 to 25.
+2. **Accent** (`chrome-accent`): replaces the theme's tint, so the accent becomes the highlight. A named accent takes its light or dark color; a hex color is used in both modes.
+3. **Tint** (`chrome-tint`, `chrome-tint-hue`): the amount and hue of the theme's `neutral`. Set alone, each keeps the other from the theme.
 
-Roles always stay the theme's, and so do its materials apart from the radius and its colors apart from the accent and the tinted background.
+`reduce-transparency` (Appearance's `reduce_transparency`) draws glass as the solid `popover` fill; it is a person's setting and stays across theme changes, like `chrome-contrast`.
 
 The named accents (`penna::foundation::interface_theme::ACCENTS`, their colors through `accent_color`; zz's config checks names against `zz_client::appearance::ACCENTS`):
 
@@ -78,7 +72,7 @@ The named accents (`penna::foundation::interface_theme::ACCENTS`, their colors t
 | Green | `#028132` | `#59be6d` |
 | Graphite | `#6f6f6f` | `#aaaaaa` |
 
-A test (`every_named_accent_reads_at_any_tint`) holds each one to the built-in contrast floors on Default in both modes at full tint, with the hue every 30 degrees.
+penna's `every_accent_reads_in_every_theme_at_any_neutral` holds each one to the contrast floors on every built-in in both modes, at neutral amounts 0 to 1 and the hue every 30 degrees.
 
 Picking a theme clears the radius (`ThemeOverrides::pick_theme`, `ConfigKey::THEME_PICKS` on desktop), so it shows as designed; the accent and the tint stay, like `chrome-contrast`. Settings has no Save since 2026-10-27; a look kept as a theme is made in the theme creator and imported.
 
@@ -86,25 +80,24 @@ Picking a theme clears the radius (`ThemeOverrides::pick_theme`, `ConfigKey::THE
 
 | Piece | Code |
 |---|---|
-| Theme, materials, roles and colors; parser; built-in registry; `InterfaceTheme::activate`; the settings model `Appearance` with `AppearanceChange` and `Appearance::apply` | `libs/penna/src/foundation/interface_theme.rs` |
+| Theme knobs (`Tint`, `Neutral`, `ControlRadius`, `Glass`, `ModeLock`); parser; built-in registry; `InterfaceTheme::activate`; the settings model `Appearance` with `AppearanceChange` and `Appearance::apply` | `libs/penna/src/foundation/interface_theme.rs` |
 | The built-ins (Default, macOS, Yaru) | `libs/penna/themes/*.json` (`BUILTIN_THEMES`, `builtin_themes`, `parse_layers` in `libs/penna/src/foundation/interface_theme.rs`) |
-| Role ids a theme may name | `penna::foundation::roles` (`libs/penna/src/foundation/roles.rs`: `find`, and `is_retired` for the ids a theme may still name and that load dropped) |
-| Built-in ids, named accents and the radius limit for config validation | `zz_client::appearance::BUILTIN_THEMES`, `ACCENTS`, `AccentSetting`, `DEFAULT_TINT_HUE`, `MAX_CORNER_RADIUS` |
+| Built-in ids, named accents, the radius limit and the default neutral hue for config validation | `zz_client::appearance::BUILTIN_THEMES`, `ACCENTS`, `AccentSetting`, `DEFAULT_TINT_HUE`, `MAX_CORNER_RADIUS` (zz's `config_defaults_match_the_default_theme` checks the config defaults against the default theme) |
 | `interface-theme`, `chrome-accent` and the tint keys, `themes/` folder, writer, retired keys | `crates/zz-config/src/lib.rs` (`ConfigKey::THEME_PICKS`, `RETIRED_MATERIAL_KEYS`), `crates/zz-config/src/themes.rs` |
 | Overrides over the theme | `penna::foundation::interface_theme::ThemeOverrides` (`apply_to`, `pick_theme`) and `accent_color`, re-exported by `zz_ui::interface_theme`; `Appearance::shown_theme` composes them over the theme; desktop `config::theme_overrides` and `config::shown_theme` in `crates/zz/src/config/mod.rs` |
-| The tint | `ThemeColor::tinted` and the `oklch` helper in `libs/penna/src/foundation/` |
+| The neutral | `ThemeColor::neutral` and the `oklch` helper in `libs/penna/src/foundation/` |
 | Desktop: load, apply, Settings rows and Import | `crates/zz/src/config/mod.rs`, `crates/zz/src/theme.rs`, `crates/zz/src/config/settings.rs` |
 | Thin clients: the selected id, saved themes and overrides in preferences; the same rows, Import and Delete | `clients/app/src/preferences.rs`, `clients/app/src/app/settings.rs` |
 | The Interface page and its rows | `penna::blocks::appearance`: `appearance_page`, `AppearancePageItem`, `appearance_page_items`, `kit_row` and `AppearanceControls` over a `penna::foundation::interface_theme::Appearance` (edits come back as `AppearanceChange`), and the parts they use: `ThemePicks`, `theme_picks`, `theme_mode_control`, `theme_picker`, `theme_labels`, `accent_swatches`, `tint_hue_slider`, `tint_slider`, `corner_radius_slider`, `contrast_slider`; zz's own rows (Program colors, App Icon and the window rows) are `zz_ui::settings::appearance::ZzRow`, added by `zz_ui::settings::appearance::appearance_page_items` |
 | Tile preview | `penna::blocks::appearance::interface_theme_preview` |
 | The sliders | the kit's continuous `Slider` in `libs/penna/src/components/slider/mod.rs` |
 | The custom accent | the kit's `ColorPicker` (`libs/penna/src/blocks/color_picker/mod.rs`) drawn as a bare swatch with `.swatch(size)`; swatches round with `Theme::swatch_radius()` |
-| Kit values the theme sets | `ThemeColor::shadow_color`, `ThemeColor::on_accent`; `Theme::radius`, `outline`, `row_inset`, `primary`, `glass` (`light-glass` in light mode), `contact_shadow`, `float_shadow` and the role patches (read through `Theme::styles()`); `Theme::pane_radius()` follows the radius, and zz-ui's `PaneLook::edge_width` the outline |
+| Kit values the theme sets | `Theme::colors`, `radius`, `control_radius`, `smoothing`, `primary` (`Theme::tinted()`), `glass` and `font_family`; `outline` (1), `row_inset` (6) and the shadows are fixed. `Theme::pane_radius()` follows the control radius, and zz-ui's `PaneLook::edge_width` the outline |
 | Theme creator and knobs | `penna_storybook::creator` (`libs/penna/storybook/src/creator/`: the creator story, penna's plates and the parts plates share), `libs/penna/storybook/src/knobs.rs`, `libs/penna/storybook/web/main.js`; an app's plates are its catalog's `plates`, zz's in `clients/storybook/src/stories/theme_creator.rs` |
 
-Settings changes a theme only through the overrides above; anything finer means editing a file. Settings' Import writes the theme on the clipboard to `themes/theme-N.json` and selects it. The storybook's theme creator edits a theme live (each mode's colors, the materials and every role) and copies it as JSON for Import. It lives in penna's storybook, so any app on penna gets it: the app lists plates that draw its pieces in its catalog's `plates`; the Roles step shows every penna role under its parent, Copy JSON writes the patches and Import reads a theme, dropping retired ids and refusing unknown ones like every theme file. See [storybook](/playbooks/storybook.md). There is no override layer for roles in `zz/config`, and none for a single color besides the accent. `chrome-contrast` stays its own setting and survives a theme change. `interface-style`, `widget-outline-width`, `widget-shadow-strength`, `widget-row-inset`, `widget-primary` and `widget-glass` are retired into the theme (`RETIRED_MATERIAL_KEYS`) and `pane-corner-radius` and `pane-border-width` into the theme's radius and outline; `widget-shadows`, `widget-selection` and `widget-field` are retired into role props, and `shadow-strength` points to `interface-theme`. A line with any of them is reported and ignored, and picking a theme in Settings drops it.
+Settings changes a theme only through the overrides above; anything finer means editing a file. Settings' Import writes the theme on the clipboard to `themes/theme-N.json` and selects it. The storybook's theme creator edits a theme's knobs live and copies it as JSON for Import. It lives in penna's storybook, so any app on penna gets it: the app lists plates that draw its pieces in its catalog's `plates`; Copy JSON writes the knobs and Import reads a theme like every theme file. See [storybook](/playbooks/storybook.md). There is no override for a single color besides the accent. `chrome-contrast` stays its own setting and survives a theme change. `interface-style`, `widget-outline-width`, `widget-shadow-strength`, `widget-row-inset`, `widget-primary` and `widget-glass` are retired into the theme (`RETIRED_MATERIAL_KEYS`) and `pane-corner-radius` and `pane-border-width` into the theme's radius and outline; `widget-shadows`, `widget-selection` and `widget-field` are retired into role props, and `shadow-strength` points to `interface-theme`. A line with any of them is reported and ignored, and picking a theme in Settings drops it.
 
-The web and iOS clients pick their theme themselves and never take the host's. Their preferences (local storage on web, `preferences.json` on iOS) hold the selected id and up to 32 saved themes as `[id, theme]` pairs. Import works as on desktop, saving under the first free `theme-N` id, and Delete removes the selected saved theme and falls back to Default. A saved theme this build cannot read is skipped instead of losing the other preferences (one saved before materials and roles still carries `look`, so it is skipped too), a selection that names no theme falls back to Default, and Import refuses text over 64 KB so local storage stays well under its quota. Their overrides live in the same preferences (`Preferences.appearance`, a `penna::foundation::interface_theme::Appearance` flattened into the stored JSON, with its `ThemeOverrides` as `radius`, `accent`, `tint` and `tint-hue`), and `Preferences::shown_theme` composes them over the theme as on desktop. Picking a theme clears the radius. Loading drops an override of the wrong type or an unknown accent, and clamps the numbers; the values older builds stored (`style`, and the material values `outline`, `shadow-strength`, `row-inset`, `primary`, `glass`, and `shadows`, `selection` and `field` before them) are ignored.
+The web and iOS clients pick their theme themselves and never take the host's. Their preferences (local storage on web, `preferences.json` on iOS) hold the selected id and up to 32 saved themes as `[id, theme]` pairs. Import works as on desktop, saving under the first free `theme-N` id, and Delete removes the selected saved theme and falls back to Default. A saved theme this build cannot read is skipped instead of losing the other preferences (one saved before the knobs loads as the default look under its name), a selection that names no theme falls back to Default, and Import refuses text over 64 KB so local storage stays well under its quota. Their overrides live in the same preferences (`Preferences.appearance`, a `penna::foundation::interface_theme::Appearance` flattened into the stored JSON, with its `ThemeOverrides` as `radius`, `accent`, `tint` and `tint-hue`), and `Preferences::shown_theme` composes them over the theme as on desktop. Picking a theme clears the radius. Loading drops an override of the wrong type or an unknown accent, and clamps the numbers; the values older builds stored (`style`, and the material values `outline`, `shadow-strength`, `row-inset`, `primary`, `glass`, and `shadows`, `selection` and `field` before them) are ignored.
 
 # Decisions
 
@@ -121,4 +114,5 @@ The web and iOS clients pick their theme themselves and never take the host's. T
 - **Materials and roles instead of a look (2026-10-13, same day).** A global look could not put glass on toolbar buttons and flat fills on the chips under them. `shadows`, `selection` and `field` became role props (`shadow`, `selected`, a field role's `fill` and `outline`), the shadows became two materials with their own geometry, and `look` became `materials` plus `roles`. Unreleased, so there is no migration: a file with `look` stops loading until rewritten. See [surface roles](/designs/surface-roles.md).
 - **`interface-theme` keeps `theme-mode`.** The mode stays its own setting, as in the apps themes imitate.
 - **Thin clients keep their own themes.** Web and iOS save themes in their preferences instead of syncing the host's `themes/` folder, so a phone can look different from the desktop it attaches to, and a theme carries over by Import.
+- **Knobs over one look (2026-11-05).** penna's step 10 draws every kind from one look and shrinks a theme to its knobs: the materials, the role patches and each mode's color set went, Default, macOS and Yaru became presets, and Appearance gained Reduce transparency (`reduce-transparency`). zz kept its keys; `chrome-tint` and `chrome-tint-hue` now set the theme's neutral, which defaults to a warm 0.15 at hue 60 where the tint used to default to none at 260.
 - **Terminal colors untouched.** Ghostty theme files still color terminal content; chrome never follows them.

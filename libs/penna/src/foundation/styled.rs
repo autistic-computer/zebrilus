@@ -93,12 +93,7 @@ pub trait StyledExt: Styled + Sized {
     }
 
     fn surface_outline(self, color: Hsla, cx: &App) -> Self {
-        let this = self.border_color(color);
-        if cx.theme().outlines_edges() {
-            this.border(cx.theme().outline)
-        } else {
-            this
-        }
+        self.border_color(color).border(cx.theme().outline)
     }
 
     fn surface_edge(self, cx: &App) -> Self {
@@ -281,8 +276,8 @@ pub const FOCUS_RING_WIDTH: Pixels = px(1.5);
 
 const CHOSEN_RING_WIDTH: Pixels = px(2.0);
 
-pub fn lifted_shadow(cx: &App) -> Vec<BoxShadow> {
-    cx.theme().lifted_shadows()
+pub fn knob_shadow(cx: &App) -> Vec<BoxShadow> {
+    cx.theme().contact_shadows()
 }
 
 #[derive(Clone, Default, Copy, PartialEq, Eq, Debug, serde::Serialize, serde::Deserialize)]
@@ -507,23 +502,5 @@ pub trait Sizable: Sized {
     #[inline(always)]
     fn touch(self) -> Self {
         self.with_size(Size::Touch)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::Theme;
-
-    #[ala::test]
-    fn a_knobs_shadow_follows_the_contact_strength(cx: &mut ala::TestAppContext) {
-        cx.update(crate::init);
-        cx.update(|cx| {
-            assert!(!super::lifted_shadow(cx).is_empty());
-            Theme::global_mut(cx).picked_shadows = true;
-            assert!(super::lifted_shadow(cx).is_empty());
-            Theme::global_mut(cx).picked_shadows = false;
-            Theme::global_mut(cx).contact_shadow.strength = 0.0;
-            assert!(super::lifted_shadow(cx).is_empty());
-        });
     }
 }

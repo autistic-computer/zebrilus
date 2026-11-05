@@ -1,26 +1,36 @@
-use penna::{Shape, Theme, foundation::interface_theme, foundation::roles};
+use penna::{
+    Fill, Kind, Theme, ThemeMode,
+    foundation::interface_theme::{self, InterfaceTheme},
+    to_hex,
+};
 
 #[test]
-fn builtins_parse_and_a_theme_reaches_every_kind_of_role() {
+fn an_old_theme_file_loads_as_the_look_with_its_name() {
     let ids = interface_theme::builtin_themes()
         .iter()
         .map(|(id, _)| *id)
         .collect::<Vec<_>>();
     assert_eq!(ids, interface_theme::BUILTIN_THEMES);
 
-    let error = interface_theme::parse_theme(r#"{"roles":{"app.card":{}}}"#).unwrap_err();
-    assert!(error.contains("unknown role `app.card`"), "{error}");
-
-    let theme = interface_theme::parse_theme(
-        r#"{"roles":{"pane.chip":{"shape":"square"},"chip.floating":{"shape":"square"},"chrome.button":{"shape":"pill"}}}"#,
+    let old = interface_theme::parse_theme(
+        r##"{"name":"Neon","materials":{"radius":3,"outline":0,"primary":"accent"},"roles":{"button":{"fill":"none","outline":true},"floating":{"fill":"solid","shadow":"none"},"sparkle":{}},"light":{"background":"#ff0000"}}"##,
     )
     .unwrap();
     assert_eq!(
-        theme.roles.keys().collect::<Vec<_>>(),
-        ["chip.floating", "chrome.button"]
+        old,
+        InterfaceTheme {
+            name: "Neon".to_owned(),
+            ..InterfaceTheme::default()
+        }
     );
     let mut kit = Theme::default();
-    theme.apply(&mut kit);
-    assert_eq!(kit.style(roles::CHIP_FLOATING).shape, Shape::Square);
-    assert_eq!(kit.style(roles::CHROME_BUTTON).shape, Shape::Pill);
+    kit.mode = ThemeMode::Light;
+    old.apply(&mut kit);
+    let button = kit.style(Kind::Button.role());
+    let floating = kit.style(Kind::Floating.role());
+    assert_eq!((button.fill, button.outline), (Fill::Tint, false));
+    assert_eq!(floating.fill, Fill::Glass);
+    assert_eq!(to_hex(kit.background), "#f6f6f3");
+    assert_eq!(f32::from(kit.radius), 12.0);
+    assert_eq!(f32::from(kit.outline), 1.0);
 }

@@ -12,6 +12,7 @@
     { "name": "press-cancel", "section": "popover", "press": "popover-cancel" },
     { "name": "close-popover", "section": "popover", "click": "rename-trigger" },
     { "name": "reopen-popover", "section": "popover", "click": "rename-trigger", "keep": true },
-    { "name": "escape-close", "section": "popover", "key": "Escape", "keep": false, "wait": 1000 }
+    { "name": "escape-close", "section": "popover", "key": "Escape", "keep": false, "wait": 1000 },
+    { "name": "open-center", "section": "popover-center", "click": { "selector": ".penna-popover-trigger" } }
   ]
 }

@@ -2,18 +2,16 @@
 
 One run of interface text in a text style. For documents and chat, use text.
 
-```figure uses=notice
-<div class="docs-full penna-notice" data-penna="notice" data-tone="warning"><div class="penna-notice-tone" data-penna="chip" data-tone="warning"><span class="penna-notice-lead"><i data-icon="triangle-alert"></i></span><div class="penna-notice-body"><span class="penna-text penna-notice-title" data-penna-text>Being reworked</span><span class="penna-text penna-notice-detail" data-penna-text>The HTML version has no faint ink, no tone and no code face outside mono. It never wraps.</span></div></div></div>
-```
-
 ## Kinds
 
 ```figure uses=label
 <div class="docs-show" data-gap="wide">
   <div class="docs-cell"><span class="penna-type" data-type="body" data-penna-text>Ready</span><span class="docs-note">Full</span></div>
   <div class="docs-cell"><span class="penna-type" data-type="body" data-muted data-penna-text>ubuntu is to the right</span><span class="docs-note">Muted</span></div>
+  <div class="docs-cell"><span class="penna-type" data-type="body" data-faint data-penna-text>Last seen</span><span class="docs-note">Faint</span></div>
+  <div class="docs-cell"><span class="penna-type" data-type="body" data-tone="danger" data-penna-text>Failed</span><span class="docs-note">Tone</span></div>
   <div class="docs-cell"><span class="penna-type" data-type="body" data-strong data-penna-text>Paired computers</span><span class="docs-note">Strong</span></div>
-  <div class="docs-cell"><span class="penna-type" data-type="mono" data-penna-text>git log --stat</span><span class="docs-note">Code</span></div>
+  <div class="docs-cell"><span class="penna-type" data-type="body" data-mono data-penna-text>git log --stat</span><span class="docs-note">Code</span></div>
 </div>
 ```
 
@@ -30,7 +28,14 @@ Label::new(TextStyle::Small, "ubuntu is to the right").muted()
 
 ## Anatomy
 
-Just the text, no box. Its style sets size, line height and weight together. Truncated, it stays on one line and ends in an ellipsis.
+Just the text, no box. Its style sets size, line height and weight together. It wraps when it runs out of room; truncated, it stays on one line and ends in an ellipsis.
+
+```figure uses=label
+<div class="docs-show" data-gap="wide">
+  <div class="docs-cell" style="width: 180px"><span class="penna-type" data-type="body" data-penna-text>Keyboard and pointer follow the cursor to the next computer</span><span class="docs-note">Wraps</span></div>
+  <div class="docs-cell" style="width: 180px"><span class="penna-type" data-type="body" data-truncate data-penna-text>Keyboard and pointer follow the cursor to the next computer</span><span class="docs-note">Truncated</span></div>
+</div>
+```
 
 ## Sizes
 
@@ -72,9 +77,9 @@ Sentence case. Two or three text styles in a view.
 | --- | --- | --- |
 | `Label::new(style, text)` | `.penna-type`, `data-type` | Text in a style |
 | `.muted()` | `data-muted` | Muted ink |
-| `.faint()` | none yet | Faint ink |
-| `.tone(tone)` | none yet | Ink in a tone |
+| `.faint()` | `data-faint` | Faint ink |
+| `.tone(tone)` | `data-tone` | Ink in a tone |
 | `.strong()` | `data-strong` | Heavier weight |
-| `.mono()` | `data-type="mono"`, body size only | Code face |
+| `.mono()` | `data-mono` | Code face at the style's size |
 | `.truncate()` | `data-truncate` | One line, ends in an ellipsis |
 | `.on(ground)` | the surface around it | Works out its ink for that ground |

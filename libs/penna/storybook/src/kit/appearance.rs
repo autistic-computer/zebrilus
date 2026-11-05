@@ -22,7 +22,7 @@ pub const STORY: Story = Story {
         Section {
             id: "page",
             name: "Page",
-            summary: "Mode, Theme, Accent and Tint, then the Advanced rows: corner radius, contrast, UI font, UI zoom, density, animations and their speed. Without a theme menu the Theme row has no more button.",
+            summary: "Mode, Theme, Accent and Tint, then the Advanced rows: corner radius, contrast, reduce transparency, UI font, UI zoom, density, animations and their speed. Without a theme menu the Theme row has no more button.",
             build: |window, cx| page(false, window, cx),
         },
         Section {
