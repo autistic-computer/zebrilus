@@ -2430,8 +2430,10 @@ impl Render for TerminalView {
             top_right.push(self.search_bar(search_status, cx));
         }
         if let Some(indicator) = mode_indicator {
-            top_right
-                .push(terminal_mode_tag(indicator.label, indicator.detail, cx).into_any_element());
+            top_right.push(
+                terminal_mode_tag("terminal-mode", indicator.label, indicator.detail, cx)
+                    .into_any_element(),
+            );
         }
         if let Some(dead) = &self.pane_status.0 {
             top_right

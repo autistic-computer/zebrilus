@@ -11,9 +11,9 @@ use crate::{
     tooltip::Tooltip,
 };
 use ala::{
-    AnyElement, App, Context, Entity, Focusable as _, IntoElement, MouseButton, ParentElement as _,
-    Pixels, RenderOnce, SharedString, Styled as _, StyledImage as _, Window, canvas, deferred, div,
-    prelude::*, px,
+    AnyElement, App, Context, Entity, Focusable as _, Hsla, IntoElement, MouseButton,
+    ParentElement as _, Pixels, RenderOnce, SharedString, Styled as _, StyledImage as _, Window,
+    canvas, deferred, div, prelude::*, px,
 };
 use penna::{
     Bar, BarLook, Chip, ChipLook, Label, Panel, PanelLook, Row, RowLook, RuleLook, Tab, TabLook,
@@ -536,11 +536,12 @@ fn browser_tab_pill(
     } else {
         PaintState::Rest
     };
+    let muted = crate::muted_on(cx.theme().ground_at(TabLook::Page, state), cx);
     let favicon = div()
         .flex_none()
         .relative()
         .top(px(0.5))
-        .child(browser_favicon(favicon, cx));
+        .child(browser_favicon(favicon, muted));
     Tab::new(("browser-tab", id), TabLook::Page)
         .state(state)
         .debug_selector(move || format!("browser-tab-{id}"))
@@ -550,12 +551,7 @@ fn browser_tab_pill(
         .min_w(px(BROWSER_TAB_MIN_WIDTH))
         .flex()
         .items_center()
-        .when(!active, |tab| {
-            tab.text_color(crate::muted_on(
-                cx.theme().ground_at(TabLook::Page, state),
-                cx,
-            ))
-        })
+        .when(!active, |tab| tab.text_color(muted))
         .map(|tab| {
             if narrow {
                 tab.justify_center().child(
@@ -574,7 +570,7 @@ fn browser_tab_pill(
                                 div()
                                     .absolute()
                                     .inset_0()
-                                    .child(browser_tab_close_button(id, on_close, cx)),
+                                    .child(browser_tab_close_button(id, on_close, muted)),
                             )
                         }),
                 )
@@ -606,7 +602,7 @@ fn browser_tab_pill(
                                 .right_0()
                                 .flex()
                                 .items_center()
-                                .child(browser_tab_close_button(id, on_close, cx)),
+                                .child(browser_tab_close_button(id, on_close, muted)),
                         )
                     })
             }
@@ -626,7 +622,7 @@ fn browser_tab_group(id: u64) -> SharedString {
     format!("browser-tab-{id}").into()
 }
 
-fn browser_tab_close_button(id: u64, on_close: &BrowserTabAction, cx: &App) -> impl IntoElement {
+fn browser_tab_close_button(id: u64, on_close: &BrowserTabAction, color: Hsla) -> impl IntoElement {
     let close = Rc::clone(on_close);
     div()
         .flex_none()
@@ -636,7 +632,7 @@ fn browser_tab_close_button(id: u64, on_close: &BrowserTabAction, cx: &App) -> i
             Button::compact_icon(("browser-tab-close", id), IconName::Xmark)
                 .size(crate::rems_from_px(BROWSER_CONTROL_HEIGHT))
                 .text()
-                .text_color(cx.theme().foreground.muted())
+                .text_color(color)
                 .debug_selector(move || format!("browser-tab-close-{id}"))
                 .on_click(move |_, window, cx| {
                     cx.stop_propagation();
@@ -655,7 +651,7 @@ pub fn browser_toolbar_button(
 ) -> Button {
     Button::compact_icon(id, icon)
         .size(crate::rems_from_px(BROWSER_CONTROL_HEIGHT))
-        .when(!disabled, |this| {
+        .when(!disabled && !selected, |this| {
             this.text_color(cx.theme().foreground.muted())
         })
         .disabled(disabled)
@@ -745,12 +741,11 @@ impl RenderOnce for BrowserEmptyHint {
     }
 }
 
-pub fn browser_favicon(png: Option<Arc<[u8]>>, cx: &App) -> AnyElement {
-    let foreground = cx.theme().foreground.muted();
+pub fn browser_favicon(png: Option<Arc<[u8]>>, color: Hsla) -> AnyElement {
     let fallback = move || {
         Icon::new(IconName::Globe)
             .size(px(14.0))
-            .text_color(foreground)
+            .text_color(color)
             .into_any_element()
     };
     match png {
@@ -786,7 +781,7 @@ pub fn browser_recent_row(
         .px(px(12.0))
         .cursor_pointer()
         .type_style(TextStyle::Small, cx)
-        .child(browser_favicon(favicon, cx))
+        .child(browser_favicon(favicon, cx.theme().foreground.muted()))
         .child(
             div()
                 .min_w_0()
@@ -856,7 +851,7 @@ pub fn browser_omnibox_row(
             .flex_none()
             .relative()
             .top(px(0.5))
-            .child(browser_favicon(favicon, cx)),
+            .child(browser_favicon(favicon, muted)),
     )
     .child(
         div()

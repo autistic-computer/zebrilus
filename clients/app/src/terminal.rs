@@ -1847,7 +1847,9 @@ impl Render for TerminalPane {
             root = root.cursor_pointer();
         }
         if let Some((label, detail)) = mode {
-            top_right.push(terminal_mode_indicator(label, detail, cx).into_any_element());
+            top_right.push(
+                terminal_mode_indicator("terminal-mode", label, detail, cx).into_any_element(),
+            );
         }
         if let Some(dead) = &self.pane_status.0 {
             top_right

@@ -17,7 +17,7 @@ use crate::{
     touch::{CoarsePointer, TOUCH_TARGET},
 };
 use ala::{
-    App, ElementId, IntoElement, Keystroke, MouseButton, MouseDownEvent, ParentElement as _,
+    App, ElementId, Hsla, IntoElement, Keystroke, MouseButton, MouseDownEvent, ParentElement as _,
     Pixels, SharedString, Stateful, StatefulInteractiveElement as _, Styled as _, Window, div,
     prelude::*, px,
 };
@@ -302,6 +302,60 @@ pub fn workspace_row_fill(
     }
 }
 
+const fn tree_row_state(active: bool, selected: bool, focused: bool) -> PaintState {
+    if selected || active && focused {
+        PaintState::Current
+    } else {
+        PaintState::Rest
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct WorkspaceTreeInk {
+    pub ground: Ground,
+    pub text: Hsla,
+    pub muted: Hsla,
+    pub faint: Hsla,
+}
+
+impl WorkspaceTreeInk {
+    #[must_use]
+    pub fn new(active: bool, selected: bool, focused: bool, ground: Ground, cx: &App) -> Self {
+        Self::at(tree_row_state(active, selected, focused), ground, cx)
+    }
+
+    #[must_use]
+    pub fn rest(cx: &App) -> Self {
+        Self::at(PaintState::Rest, cx.theme().ground(), cx)
+    }
+
+    fn at(lit: PaintState, ground: Ground, cx: &App) -> Self {
+        let theme = cx.theme();
+        let ground = theme.ground_at(Surface::from(RowLook::Sidebar).on(ground), lit);
+        if ground.solid {
+            let paint = theme.paint_on(ground, Tone::Neutral, Emphasis::Ghost);
+            Self {
+                ground,
+                text: ground.ink,
+                muted: paint.muted_at(PaintState::Rest),
+                faint: paint.faint_at(PaintState::Rest),
+            }
+        } else {
+            Self {
+                ground,
+                text: theme.foreground,
+                muted: theme.foreground.muted(),
+                faint: theme.foreground.faint(),
+            }
+        }
+    }
+
+    #[must_use]
+    pub const fn node(self, emphasized: bool) -> Hsla {
+        if emphasized { self.text } else { self.muted }
+    }
+}
+
 #[must_use]
 #[allow(clippy::fn_params_excessive_bools)]
 pub fn workspace_tree_row(
@@ -332,16 +386,8 @@ pub fn workspace_tree_row(
         })
         .child(actions);
     let id = id.into();
-    let lit = if selected || active && focused {
-        PaintState::Current
-    } else {
-        PaintState::Rest
-    };
-    let foreground = cx.theme().foreground;
-    let ink = cx
-        .theme()
-        .ground_at(Surface::from(RowLook::Sidebar).on(ground), lit)
-        .ink;
+    let lit = tree_row_state(active, selected, focused);
+    let ink = WorkspaceTreeInk::at(lit, ground, cx);
     let fill = workspace_row_fill(
         &id,
         RowLook::Sidebar,
@@ -361,9 +407,9 @@ pub fn workspace_tree_row(
         .pr(workspace_tree_trailing_inset(cx))
         .group(row_group)
         .child(fill)
-        .text_color(if connected { ink } else { foreground.muted() })
+        .text_color(if connected { ink.ground.ink } else { ink.muted })
         .when(connected, |row| {
-            row.hover(move |row| row.text_color(foreground))
+            row.hover(move |row| row.text_color(ink.text))
         })
         .when(clickable, ala::Styled::cursor_pointer)
         .child(marker)
@@ -396,13 +442,14 @@ pub fn workspace_tree_action_button(
     icon: IconName,
     tooltip: impl Into<SharedString>,
     disabled: bool,
+    ground: Ground,
     cx: &App,
 ) -> Button {
     workspace_row_action(
         Button::compact_icon(id, icon)
             .hit_slop(TREE_TOUCH_SLOP, TREE_TOUCH_SLOP)
             .tooltip(tooltip),
-        cx.theme().ground(),
+        ground,
         disabled,
         cx,
     )
@@ -490,9 +537,8 @@ pub fn workspace_tree_disclosure(
     marker: impl IntoElement,
     expanded: bool,
     row_group: SharedString,
-    cx: &App,
+    ink: WorkspaceTreeInk,
 ) -> Stateful<ala::Div> {
-    let foreground = cx.theme().foreground;
     let id = id.into();
     let chevron = crate::motion::Disclosure::new(
         workspace_tree_turn(id.clone()),
@@ -508,8 +554,8 @@ pub fn workspace_tree_disclosure(
         .items_center()
         .justify_center()
         .cursor_pointer()
-        .text_color(foreground.muted())
-        .hover(move |this| this.text_color(foreground))
+        .text_color(ink.muted)
+        .hover(move |this| this.text_color(ink.text))
         .child(
             div()
                 .h_full()

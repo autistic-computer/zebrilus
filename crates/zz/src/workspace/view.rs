@@ -3392,7 +3392,7 @@ impl AppView {
         let border = PaneLook::global(cx).edge_width(cx.theme()).max(px(1.0));
         let rendered = self.pane_drop_preview.clone();
         Some(
-            pane_drop_preview(radius, border, cx)
+            pane_drop_preview("pane-drop-preview", radius, border, cx)
                 .with_animation(
                     ("pane-drop-preview", preview.sequence),
                     Animation::new(preview.duration).with_easing(ease_out_quint()),

@@ -1699,6 +1699,7 @@ impl AppShell {
         let rendered = Rc::clone(&self.rendered_drop_preview);
         let theme = cx.theme();
         let surface = pane_drop_preview(
+            "pane-drop-preview",
             if self.preferences.gaps {
                 theme.pane_radius()
             } else {

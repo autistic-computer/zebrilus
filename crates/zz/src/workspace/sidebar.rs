@@ -28,7 +28,7 @@ use zz_protocol::{CommandInvocation, MuxSnapshot, PaneId, PaneStatusState, Sessi
 use zz_ui::navigation::{
     WORKSPACE_SIDEBAR_FADE_HEIGHT, WORKSPACE_TREE_INDENT_WIDTH as TREE_INDENT_WIDTH,
     WORKSPACE_TREE_MARKER_SLOT_WIDTH as TREE_MARKER_SLOT_WIDTH,
-    WORKSPACE_TREE_NODE_ICON_SIZE as TREE_NODE_ICON_SIZE,
+    WORKSPACE_TREE_NODE_ICON_SIZE as TREE_NODE_ICON_SIZE, WorkspaceTreeInk,
     sidebar::{
         TreeNavigation, TreeNavigationResult, TreeNavigationRow, TreeRowMenuItem,
         tree_action_strip, tree_host_indicator, tree_host_marker, tree_navigation,
@@ -1381,11 +1381,8 @@ fn render_tree_row(
     } else {
         None
     };
-    let node_color = if target.is_none() || connected && entry.on_active_path {
-        cx.theme().foreground
-    } else {
-        cx.theme().foreground.muted()
-    };
+    let ink = WorkspaceTreeInk::new(active, selected, runtime.focused, runtime.ground, cx);
+    let node_color = ink.node(target.is_none() || connected && entry.on_active_path);
 
     let label = div()
         .flex()
@@ -1400,7 +1397,7 @@ fn render_tree_row(
                 entry.label.clone()
             },
         ));
-    let actions = render_node_actions(entry, runtime, cx);
+    let actions = render_node_actions(entry, runtime, ink.ground, cx);
     let actions = if is_host {
         div()
             .flex_none()
@@ -1431,7 +1428,7 @@ fn render_tree_row(
         .child(actions);
     let marker = render_node_marker(
         entry,
-        connected && entry.on_active_path,
+        ink.node(connected && entry.on_active_path),
         runtime.tree_model.has_pending_bell(node),
         node_agent_badge(&runtime.tree_model, &runtime.badges, node),
         cx,
@@ -1443,7 +1440,7 @@ fn render_tree_row(
             marker,
             entry.expanded,
             row_group.clone(),
-            cx,
+            ink,
         )
         .on_click(move |_, _, cx| {
             cx.stop_propagation();
@@ -1474,7 +1471,7 @@ fn render_tree_row(
             cx,
         ),
         shortcut,
-        runtime.ground,
+        ink.ground,
     )
     .on_mouse_down(MouseButton::Left, move |_, window, cx| {
         focus_handle.focus(window, cx);
@@ -1570,7 +1567,7 @@ const fn pane_kind_icon(kind: MuxTreePaneKind) -> IconName {
 
 fn render_node_marker(
     entry: &VisibleTreeEntry,
-    on_active_path: bool,
+    color: Hsla,
     belled: bool,
     badge: Option<AgentBadge>,
     cx: &mut App,
@@ -1582,11 +1579,6 @@ fn render_node_marker(
         TreeNodeKind::Session => IconName::Layers,
         TreeNodeKind::Window => IconName::AppWindow,
         TreeNodeKind::Pane { kind } => pane_kind_icon(*kind),
-    };
-    let color = if on_active_path {
-        cx.theme().foreground
-    } else {
-        cx.theme().foreground.muted()
     };
     let size = rems_from_px(TREE_NODE_ICON_SIZE);
     tree_node_marker(
@@ -1649,16 +1641,19 @@ fn node_actions(entry: &VisibleTreeEntry) -> Vec<NodeAction> {
 fn render_node_actions(
     entry: &VisibleTreeEntry,
     runtime: &TreeRowRuntime,
+    ground: Ground,
     cx: &mut App,
 ) -> AnyElement {
     let actions = node_actions(entry)
         .into_iter()
         .map(|action| match action {
-            NodeAction::NewSession(host) => render_new_session_action(host, runtime, cx),
+            NodeAction::NewSession(host) => render_new_session_action(host, runtime, ground, cx),
             NodeAction::NewWindow(host, session) => {
-                render_new_window_action(host, session, runtime, cx)
+                render_new_window_action(host, session, runtime, ground, cx)
             }
-            NodeAction::Delete(host, target) => render_delete_action(host, target, runtime, cx),
+            NodeAction::Delete(host, target) => {
+                render_delete_action(host, target, runtime, ground, cx)
+            }
         })
         .collect::<Vec<_>>();
 
@@ -1669,7 +1664,12 @@ fn render_node_actions(
     )
 }
 
-fn render_new_session_action(host: HostId, runtime: &TreeRowRuntime, cx: &App) -> AnyElement {
+fn render_new_session_action(
+    host: HostId,
+    runtime: &TreeRowRuntime,
+    ground: Ground,
+    cx: &App,
+) -> AnyElement {
     let connected = runtime
         .tree_model
         .host(host)
@@ -1680,6 +1680,7 @@ fn render_new_session_action(host: HostId, runtime: &TreeRowRuntime, cx: &App) -
         IconName::LayersPlus,
         "New session",
         !connected,
+        ground,
         cx,
     )
     .on_click(move |_, _, cx| {
@@ -1703,6 +1704,7 @@ fn render_new_window_action(
     host: HostId,
     session: SessionId,
     runtime: &TreeRowRuntime,
+    ground: Ground,
     cx: &App,
 ) -> AnyElement {
     let connected = runtime
@@ -1718,6 +1720,7 @@ fn render_new_window_action(
         IconName::WindowPlus,
         "New window",
         !connected,
+        ground,
         cx,
     )
     .on_click(move |_, _, cx| {
@@ -1733,6 +1736,7 @@ fn render_delete_action(
     host: HostId,
     target: TreeTarget,
     runtime: &TreeRowRuntime,
+    ground: Ground,
     cx: &mut App,
 ) -> AnyElement {
     let delete_mux = runtime.mux.clone();
@@ -1752,6 +1756,7 @@ fn render_delete_action(
             TreeTarget::Pane(_) => "Delete pane",
         },
         !connected,
+        ground,
         cx,
     )
     .on_click(move |_, _, cx| {

@@ -30,7 +30,7 @@ use zz_ui::{
     command::PaletteHostId,
     navigation::{
         WORKSPACE_SIDEBAR_FADE_HEIGHT, WORKSPACE_TREE_INDENT_WIDTH,
-        WORKSPACE_TREE_MARKER_SLOT_WIDTH, WORKSPACE_TREE_NODE_ICON_SIZE,
+        WORKSPACE_TREE_MARKER_SLOT_WIDTH, WORKSPACE_TREE_NODE_ICON_SIZE, WorkspaceTreeInk,
         flat::{
             FlatEvent, FlatHandler, FlatHost, FlatMenu, FlatState, HostConnection, flat_sidebar,
         },
@@ -498,11 +498,9 @@ fn render_row(
     let id = target_id(target);
     let group = format!("web-tree-group-{id}");
     let is_host = matches!(target, Target::Host);
-    let color = if is_host || connected && entry.on_active_path {
-        cx.theme().foreground
-    } else {
-        cx.theme().foreground.muted()
-    };
+    let selected = runtime.focused && runtime.selected == Some(target);
+    let ink = WorkspaceTreeInk::new(active, selected, runtime.focused, runtime.ground, cx);
+    let color = ink.node(is_host || connected && entry.on_active_path);
     let mut actions = Vec::new();
     if let Some((label, command)) = sidebar_add_command(target) {
         let icon = if is_host {
@@ -512,14 +510,21 @@ fn render_row(
         };
         let connection = connection.clone();
         actions.push(
-            workspace_tree_action_button(format!("web-tree-add-{id}"), icon, label, disabled, cx)
-                .on_click(move |_, _, cx| {
-                    connection.update(cx, |connection, cx| {
-                        connection.invoke(command.clone(), cx);
-                    });
-                    cx.stop_propagation();
-                })
-                .into_any_element(),
+            workspace_tree_action_button(
+                format!("web-tree-add-{id}"),
+                icon,
+                label,
+                disabled,
+                ink.ground,
+                cx,
+            )
+            .on_click(move |_, _, cx| {
+                connection.update(cx, |connection, cx| {
+                    connection.invoke(command.clone(), cx);
+                });
+                cx.stop_propagation();
+            })
+            .into_any_element(),
         );
     }
 
@@ -531,6 +536,7 @@ fn render_row(
                 IconName::Xmark,
                 label,
                 disabled,
+                ink.ground,
                 cx,
             )
             .on_click(move |_, _, cx| {
@@ -587,7 +593,7 @@ fn render_row(
             marker,
             entry.expanded,
             group.clone().into(),
-            cx,
+            ink,
         )
         .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
         .on_click(move |_, _, cx| {
@@ -608,7 +614,7 @@ fn render_row(
         format!("web-tree-row-{id}"),
         entry.depth,
         active,
-        runtime.focused && runtime.selected == Some(target),
+        selected,
         runtime.focused,
         connected,
         entry.expandable || connected && !is_host,
@@ -622,12 +628,12 @@ fn render_row(
             .gap_2()
             .text_color(color)
             .child(div().min_w_0().overflow_hidden().child(entry.label.clone()))
-            .children(entry.index.clone().map(|index| {
-                div()
-                    .flex_none()
-                    .text_color(cx.theme().foreground.faint())
-                    .child(index)
-            })),
+            .children(
+                entry
+                    .index
+                    .clone()
+                    .map(|index| div().flex_none().text_color(ink.faint).child(index)),
+            ),
         actions,
         runtime.ground,
         cx,

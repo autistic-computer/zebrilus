@@ -77,6 +77,7 @@ impl Render for PaneDragPreview {
             .pl(self.grab.x + px(12.0))
             .pt(self.grab.y + px(12.0))
             .child(super::pane_drag_chip(
+                "pane-drag-chip",
                 self.pane.to_string(),
                 self.title.clone(),
                 cx,

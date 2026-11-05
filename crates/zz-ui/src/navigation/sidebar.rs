@@ -175,12 +175,26 @@ mod tests {
             let actions = tree_action_strip(
                 "actions",
                 vec![
-                    workspace_tree_action_button("add", IconName::Plus, "Add", false, cx)
-                        .debug_selector(|| "add".to_owned())
-                        .into_any_element(),
-                    workspace_tree_action_button("close", IconName::Xmark, "Close", false, cx)
-                        .debug_selector(|| "close".to_owned())
-                        .into_any_element(),
+                    workspace_tree_action_button(
+                        "add",
+                        IconName::Plus,
+                        "Add",
+                        false,
+                        cx.theme().ground(),
+                        cx,
+                    )
+                    .debug_selector(|| "add".to_owned())
+                    .into_any_element(),
+                    workspace_tree_action_button(
+                        "close",
+                        IconName::Xmark,
+                        "Close",
+                        false,
+                        cx.theme().ground(),
+                        cx,
+                    )
+                    .debug_selector(|| "close".to_owned())
+                    .into_any_element(),
                 ],
                 cx,
             );

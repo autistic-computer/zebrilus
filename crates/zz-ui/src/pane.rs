@@ -708,7 +708,7 @@ pub fn pane_surface(
         } else {
             frame
         };
-        pane_frame_layer(frame, glass, rest, cx)
+        pane_frame_layer(frame, glass, rest)
     });
     div()
         .id(id)
@@ -774,7 +774,7 @@ fn paint_material(surface: Stateful<ala::Div>, material: &Layer) -> Stateful<ala
     surface.layer(material)
 }
 
-fn pane_frame_layer(frame: GlassMaterial, glass: bool, rest: Layer, cx: &App) -> Layer {
+fn pane_frame_layer(frame: GlassMaterial, glass: bool, rest: Layer) -> Layer {
     if glass {
         return Layer {
             glass: Some(frame),
@@ -782,12 +782,8 @@ fn pane_frame_layer(frame: GlassMaterial, glass: bool, rest: Layer, cx: &App) ->
             ..rest
         };
     }
-    let solid = matches!(
-        cx.theme().style_of(ContentLook::Pane).fill,
-        Fill::Solid | Fill::Glass
-    );
     Layer {
-        fill: if solid { frame.tint } else { rest.fill },
+        fill: frame.tint,
         border_width: Pixels::ZERO,
         ..rest
     }
@@ -925,11 +921,14 @@ impl RenderOnce for FloatingSurface {
         if let Some(text) = self.foreground {
             layer.text = text;
         }
-        if !self.bordered {
-            layer.border_width = Pixels::ZERO;
-        } else if let Some(color) = self.border_color.filter(|color| *color != theme.border()) {
+        if self.bordered {
             layer.border_width = forced_edge_width(cx);
-            layer.border = color;
+            layer.border = self
+                .border_color
+                .filter(|color| *color != theme.border())
+                .unwrap_or_else(|| theme.divider_color());
+        } else {
+            layer.border_width = Pixels::ZERO;
         }
         let border = layer.border_width;
         let inset_x = (self.inset_x - border).max(Pixels::ZERO);
@@ -1043,8 +1042,13 @@ fn pane_drag_source_veil(cx: &App) -> Hsla {
         .opacity(PANE_DRAG_SOURCE_FADE)
 }
 
-pub fn pane_drop_preview(radius: Pixels, border_width: Pixels, _: &App) -> Tile {
-    Tile::new("pane-drop-preview")
+pub fn pane_drop_preview(
+    id: impl Into<ElementId>,
+    radius: Pixels,
+    border_width: Pixels,
+    _: &App,
+) -> Tile {
+    Tile::new(id)
         .variant(TileVariant::Drop)
         .state(PaintState::Selected)
         .edge(border_width)
@@ -1053,12 +1057,13 @@ pub fn pane_drop_preview(radius: Pixels, border_width: Pixels, _: &App) -> Tile 
 }
 
 pub fn pane_drag_chip(
+    id: impl Into<ElementId>,
     pane: impl Into<SharedString>,
     title: impl Into<SharedString>,
     cx: &App,
 ) -> Chip {
     let ground = cx.theme().ground_of(ChipLook::Drag);
-    Chip::empty("pane-drag-chip")
+    Chip::empty(id)
         .look(ChipLook::Drag)
         .min_w_auto()
         .h_auto()
@@ -1450,6 +1455,7 @@ pub fn pane_unzoom_control() -> Button {
 }
 
 pub fn terminal_mode_indicator(
+    id: impl Into<ElementId>,
     label: Option<impl Into<SharedString>>,
     detail: impl Into<SharedString>,
     cx: &App,
@@ -1462,7 +1468,7 @@ pub fn terminal_mode_indicator(
     };
     let detail = detail.into();
     status_badge(
-        "terminal-mode",
+        id,
         icon,
         div()
             .flex()

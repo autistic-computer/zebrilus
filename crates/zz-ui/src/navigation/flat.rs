@@ -238,7 +238,7 @@ impl RowInk {
             ground,
             text: ground.ink,
             muted: muted_on(ground, cx),
-            plain: lit && theme.style_of(look).selected == Highlight::Accent,
+            plain: ground.solid || lit && theme.style_of(look).selected == Highlight::Accent,
             dimmed: state.dimmed,
         }
     }
@@ -552,7 +552,7 @@ pub fn flat_window_row(
             window
                 .shortcut
                 .clone()
-                .map(|stroke| super::window_shortcut_cap(stroke, ground).flex_none()),
+                .map(|stroke| super::window_shortcut_cap(stroke, ink.ground).flex_none()),
         )
         .context_menu(move |popup, window_handle, cx| context(host, id, popup, window_handle, cx))
         .into_any_element()

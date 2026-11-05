@@ -237,7 +237,9 @@ impl PaneStack {
 
     fn tile_ground(&self, cx: &App) -> Ground {
         let theme = cx.theme();
-        if oklab_lightness(self.ground.ink) < oklab_lightness(self.ground.fill) {
+        if !self.ground.solid
+            && oklab_lightness(self.ground.ink) < oklab_lightness(self.ground.fill)
+        {
             Ground {
                 fill: theme.foreground,
                 ink: theme.background,
