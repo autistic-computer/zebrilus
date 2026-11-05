@@ -260,10 +260,10 @@ pub fn palette_badged_row(
     id: impl Into<ElementId>,
     row: &PaletteRow,
     selected: bool,
-    badge: impl IntoElement,
+    badge: Badge,
     cx: &App,
 ) -> ListItem {
-    palette_entry(id, row, selected, Some(badge.into_any_element()), None, cx)
+    palette_entry(id, row, selected, Some(badge), None, cx)
 }
 
 type ToggleHandler = Box<dyn Fn(&ClickEvent, &mut Window, &mut App) + 'static>;
@@ -272,7 +272,7 @@ fn palette_entry(
     id: impl Into<ElementId>,
     row: &PaletteRow,
     selected: bool,
-    badge: Option<AnyElement>,
+    badge: Option<Badge>,
     on_toggle: Option<ToggleHandler>,
     cx: &App,
 ) -> ListItem {
@@ -377,7 +377,12 @@ fn palette_entry(
                     )
                 })
                 .children(row.status.map(|status| {
-                    palette_status_dot(status, cx).when(selected, |dot| ringed(dot, secondary, cx))
+                    if ground.solid {
+                        status_dot(secondary)
+                    } else {
+                        palette_status_dot(status, cx)
+                            .when(selected, |dot| ringed(dot, secondary, cx))
+                    }
                 }))
                 .child(
                     div()
@@ -414,7 +419,7 @@ fn palette_entry(
                 .when_some(row.shortcut.as_ref(), |element, shortcut| {
                     element.child(palette_shortcut(shortcut, ground, cx))
                 })
-                .children(badge)
+                .children(badge.map(|badge| badge.on(ground)))
                 .when(row.running, |element| element.child(status_dot(secondary))),
         )
 }

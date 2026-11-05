@@ -55,6 +55,7 @@ pub struct Chip {
     emphasis: Emphasis,
     ring: Option<Hsla>,
     size: Size,
+    multiline: bool,
     children: Vec<AnyElement>,
 }
 
@@ -80,8 +81,15 @@ impl Chip {
             emphasis: Emphasis::Soft,
             ring: None,
             size: Size::Small,
+            multiline: false,
             children: Vec::new(),
         }
+    }
+
+    #[must_use]
+    pub const fn multiline(mut self, multiline: bool) -> Self {
+        self.multiline = multiline;
+        self
     }
 
     #[must_use]
@@ -231,6 +239,7 @@ impl RenderOnce for Chip {
             detail,
             ring,
             size,
+            multiline,
             children,
             ..
         } = self;
@@ -242,6 +251,7 @@ impl RenderOnce for Chip {
         let theme = cx.theme();
         let ground = theme.ground_at(surface, plate.state);
         let accent = theme.accent.opaque();
+        let radius = theme.radius;
         let (padding, gap, _) = metrics(size);
         let text = size.control_text();
         plate.surface = surface;
@@ -281,6 +291,9 @@ impl RenderOnce for Chip {
         .chain(children)
         .collect();
         plate.paint_with(window, cx, move |layer| {
+            if multiline {
+                layer.radius = layer.radius.min(radius);
+            }
             if let Some(ring) = ring {
                 for shadow in &mut layer.shadow {
                     if shadow.color == accent {

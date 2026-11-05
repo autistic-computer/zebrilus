@@ -58,6 +58,7 @@
     {
       "title": "Blocks",
       "pages": [
+        "chat",
         "palette"
       ]
     }
