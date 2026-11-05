@@ -162,7 +162,7 @@ debug_mode=()
 [[ "$cargo_profile" == dev || "$dev_build" == 1 ]] && debug_mode=(--debug-mode)
 "$build_tools/aapt2" compile --dir "$out/stage/res" -o "$out/res.zip"
 "$build_tools/aapt2" link -o "$out/base.apk" -I "$android_jar" --manifest "$out/stage/AndroidManifest.xml" \
-    --min-sdk-version "$min_sdk" --target-sdk-version "$platform_version" "${debug_mode[@]}" "$out/res.zip"
+    --min-sdk-version "$min_sdk" --target-sdk-version "$platform_version" ${debug_mode[@]+"${debug_mode[@]}"} "$out/res.zip"
 javac --release 11 -nowarn -classpath "$android_jar:$webkit_jar" -d "$out/classes" $(find "$repo_root/clients/android/java" -name '*.java')
 "$build_tools/d8" --min-api "$min_sdk" --lib "$android_jar" --output "$out/dex" \
     $(find "$out/classes" -name '*.class') "$webkit_jar" 2> "$out/d8.log" \
@@ -202,5 +202,5 @@ if [[ "$mode" == run && -z "${ZZ_ALA_ENDPOINT:-}" ]]; then
     fi
 fi
 "$adb" -s "$serial" shell am force-stop "$package"
-"$adb" -s "$serial" shell am start -W -n "$package/dev.zz.android.ZzActivity" "${extras[@]}" >/dev/null
+"$adb" -s "$serial" shell am start -W -n "$package/dev.zz.android.ZzActivity" ${extras[@]+"${extras[@]}"} >/dev/null
 echo "==> launched $package on $serial; just android logs follows its log"
