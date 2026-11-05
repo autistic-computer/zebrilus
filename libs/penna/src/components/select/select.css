@@ -101,7 +101,7 @@
   box-sizing: content-box;
   min-width: max(128px, 100% - 2 * var(--penna-row-inset));
   max-width: 500px;
-  max-height: calc(var(--penna-select-max, 450px) - 8px);
+  max-height: calc(var(--penna-select-max, 450px) - 2 * var(--penna-row-inset));
   overflow-y: auto;
   scrollbar-width: none;
 }

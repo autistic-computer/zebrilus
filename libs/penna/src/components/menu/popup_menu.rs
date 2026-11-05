@@ -1165,7 +1165,7 @@ impl PopupMenu {
                                     .id("submenu")
                                     .occlude()
                                     .when(is_bottom_pos, |this| this.bottom_0())
-                                    .when(!is_bottom_pos, |this| this.top_neg_1())
+                                    .when(!is_bottom_pos, |this| this.top(-cx.theme().row_inset))
                                     .left(left)
                                     .child(menu.clone()),
                             )
@@ -1225,7 +1225,7 @@ impl Render for PopupMenu {
             .child(
                 v_flex()
                     .id("items")
-                    .py(Space::S4)
+                    .py(cx.theme().row_inset)
                     .list_inset(cx)
                     .min_w(rems(8.))
                     .when_some(self.min_width, |this, min_width| this.min_w(min_width))

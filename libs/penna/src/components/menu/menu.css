@@ -37,7 +37,7 @@
   gap: var(--penna-space-2);
   min-width: 128px;
   max-width: 500px;
-  padding: var(--penna-space-4) var(--penna-row-inset);
+  padding: var(--penna-row-inset);
   outline: none;
 }
 
@@ -198,7 +198,7 @@
 
 .penna-popup-sub {
   position: absolute;
-  top: -4px;
+  top: calc(-1 * var(--penna-row-inset));
   left: calc(100% + 2 * var(--penna-row-inset));
   z-index: 1;
 }

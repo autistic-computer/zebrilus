@@ -80,7 +80,7 @@ Insets, set by the container:
 | `inset-card` | 12 | cards and popovers |
 | `inset-pane` | 16 | panes and dialogs |
 | `inset-page` | 32 | document pages |
-| row inset | theme | lists and menus around their rows: `theme.row_inset` at the sides, 6; menus add `space-4` above and below |
+| row inset | theme | lists and menus around their rows: `theme.row_inset`, 6, at the sides; a menu pads its rows by it on every side |
 
 Rows in a plain list (row inset 0) touch: their height keeps the rhythm. In an inset list (`theme.inset_rows()`, a row inset above 0, as in the look) rows sit `space-2` apart, so their rounded highlights never merge: menus, select lists, settings navigation and the touch which-key list. `list_inset` sets both the side inset and that gap. The docs navigation keeps its rows `space-2` apart in every theme.
 
@@ -814,7 +814,7 @@ Row kinds (`PopupMenuItem`): an action (`new`, with `.icon()` and `.action()`), 
 
 Anatomy:
 
-- Surface: the `popover` look (popover fill, `shadow-float`), the theme radius capped at 45% of its height. Its rows sit `space-4` from the top and bottom and the row inset from the sides (`theme.row_inset`, 6), `space-2` apart. At least 128 wide (8 rem), at most 500 (`max_w`); a scrollable menu stops at half the window's height, 450 at most (`max_h`).
+- Surface: the `popover` look (popover fill, `shadow-float`), the theme radius capped at 45% of its height. Its rows sit the row inset (`theme.row_inset`, 6) from every edge, `space-2` apart. At least 128 wide (8 rem), at most 500 (`max_w`); a scrollable menu stops at half the window's height, 450 at most (`max_h`).
 - Row: `row` height, `control-md` (28, follows density), 44 under a coarse pointer; inset `space-8` at both sides; text `small`, `body` under a coarse pointer. Corners: the theme radius less 4, capped at 40% of the row height (11.2 at 28), smoothing 2.5.
 - Icon slot: 12 (14 under a coarse pointer), `space-8` before the label, at 0.8 opacity. Every row keeps the slot when any row has an icon or a check, so labels line up; a checked row draws a check in it.
 - Label: `small`, one line.

@@ -324,7 +324,7 @@ button[data-penna] {
   gap: var(--penna-space-2);
   min-width: 128px;
   max-width: 500px;
-  padding: var(--penna-space-4) var(--penna-row-inset);
+  padding: var(--penna-row-inset);
 }
 
 [data-penna="menu-item"] {
