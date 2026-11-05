@@ -4,8 +4,8 @@ use ala::{
 };
 
 use crate::{
-    ActiveTheme as _, Colorize as _, Emphasis, Ground, Icon, IconName, Layer, PaintState, Shape,
-    Space, StyledExt as _, Surface, Tone,
+    ActiveTheme as _, Colorize as _, Emphasis, Ground, Icon, IconName, Kind, Layer, PaintState,
+    Shape, Space, StyledExt as _, Surface, Tone,
     components::button::{Button, ButtonVariants as _},
     foundation::roles,
     rems_from_px,
@@ -88,7 +88,7 @@ pub fn compact_floating_bar(pill: impl IntoElement, placement: &PillPlacement, c
 
 pub(super) fn floating_layer(placement: &PillPlacement, cx: &App) -> Layer {
     let theme = cx.theme();
-    let resting = theme.layer(Surface::new(roles::PHONE_PILL), PaintState::Rest);
+    let resting = theme.layer(Surface::new(Kind::Floating.role()), PaintState::Rest);
     let radius = match placement.radius {
         Some(radius) if theme.style(roles::PHONE_PILL).shape != Shape::Square => {
             if radius * 2.0 >= px(COMPACT_PILL_HEIGHT) {
@@ -118,7 +118,7 @@ pub(super) fn floating_layer(placement: &PillPlacement, cx: &App) -> Layer {
 
 pub fn pill_backdrop_reach(cx: &App) -> Option<Pixels> {
     cx.theme()
-        .layer(Surface::new(roles::PHONE_PILL), PaintState::Rest)
+        .layer(Surface::new(Kind::Floating.role()), PaintState::Rest)
         .glass
         .filter(GlassMaterial::reads_backdrop)
         .map(|glass| glass.backdrop_reach())
@@ -127,7 +127,7 @@ pub fn pill_backdrop_reach(cx: &App) -> Option<Pixels> {
 pub fn pill_glass_over(backdrop: Hsla, cx: &App) -> Option<PillGlass> {
     let layer = cx
         .theme()
-        .layer(Surface::new(roles::PHONE_PILL), PaintState::Rest);
+        .layer(Surface::new(Kind::Floating.role()), PaintState::Rest);
     let tint = layer.glass.filter(GlassMaterial::reads_backdrop)?.tint;
     let under = Rgba::from(backdrop.opaque());
     let over = Rgba::from(tint.opaque());

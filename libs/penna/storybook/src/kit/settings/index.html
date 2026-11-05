@@ -1,0 +1,323 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Settings</title>
+    <link rel="stylesheet" href="../../../../web/penna.css" />
+    <link rel="stylesheet" href="../../../../web/story.css" />
+    <link rel="stylesheet" href="../../../../src/components/icon/icon.css" />
+    <link rel="stylesheet" href="../../../../src/components/button/button.css" />
+    <link rel="stylesheet" href="../../../../src/components/badge/badge.css" />
+    <link rel="stylesheet" href="../../../../src/components/card/card.css" />
+    <link rel="stylesheet" href="../../../../src/components/select/select.css" />
+    <link rel="stylesheet" href="../../../../src/components/switch/switch.css" />
+    <link rel="stylesheet" href="../../../../src/blocks/settings/settings.css" />
+    <link rel="stylesheet" href="page.css" />
+    <script src="../../../../web/kit.js" data-tokens="../../../../web/tokens/"></script>
+    <script src="../../../../src/components/button/button.js" defer></script>
+    <script src="../../../../src/components/select/select.js" defer></script>
+    <script src="../../../../src/components/switch/switch.js" defer></script>
+  </head>
+  <body>
+    <section data-section="entries">
+      <div class="story-states" data-columns style="--columns: 2">
+        <div class="story-state">
+          <div class="story-label">page heading</div>
+          <div class="penna-settings-heading"><span data-penna-text>General</span></div>
+        </div>
+
+        <div class="story-state">
+          <div class="story-label">titled stack: switch, select and button controls</div>
+          <div class="penna-settings-stack">
+            <div class="penna-settings-group"><span data-penna-text>Startup</span></div>
+            <div class="penna-settings-list" role="list" data-id="stack-startup">
+              <div class="penna-setting-entry" role="listitem" data-id="entry-login">
+                <div data-penna="settings.card" data-ground>
+                  <div class="penna-setting-body">
+                    <div class="penna-setting-heading">
+                      <div class="penna-setting-copy"><div class="penna-setting-title"><span data-penna-text>Open at login</span></div></div>
+                      <button class="penna-toggle" aria-checked="true" aria-label="Open at login" data-id="switch-login"></button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="penna-setting-entry" role="listitem" data-id="entry-start">
+                <div data-penna="settings.card" data-ground>
+                  <div class="penna-setting-rule"><div data-penna="rule.list"></div></div>
+                  <div class="penna-setting-body">
+                    <div class="penna-setting-heading">
+                      <div class="penna-setting-copy"><div class="penna-setting-title"><span data-penna-text>Start with</span></div></div>
+                      <div class="penna-select" data-options="Last session, New window" data-value="0" aria-label="Start with"></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="penna-setting-entry" role="listitem" data-id="entry-theme-file">
+                <div data-penna="settings.card" data-ground>
+                  <div class="penna-setting-rule"><div data-penna="rule.list"></div></div>
+                  <div class="penna-setting-body">
+                    <div class="penna-setting-heading">
+                      <div class="penna-setting-copy"><div class="penna-setting-title"><span data-penna-text>Theme file</span></div></div>
+                      <button class="penna-button" data-penna="button" data-id="choose-theme"><span class="penna-label" data-penna-text>Choose…</span></button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="story-state">
+          <div class="story-label">a single entry rounds all four corners</div>
+          <div class="penna-settings-stack">
+            <div class="penna-settings-list" role="list" data-id="stack-single">
+              <div class="penna-setting-entry" role="listitem" data-id="entry-sidebar">
+                <div data-penna="settings.card" data-ground>
+                  <div class="penna-setting-body">
+                    <div class="penna-setting-heading">
+                      <div class="penna-setting-copy"><div class="penna-setting-title"><span data-penna-text>Show the sidebar</span></div></div>
+                      <button class="penna-toggle" aria-checked="true" aria-label="Show the sidebar" data-id="switch-sidebar"></button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="story-state">
+          <div class="story-label">a description under the title</div>
+          <div class="penna-settings-stack">
+            <div class="penna-settings-group"><span data-penna-text>Updates</span></div>
+            <div class="penna-settings-list" role="list" data-id="stack-updates">
+              <div class="penna-setting-entry" role="listitem" data-id="entry-updates">
+                <div data-penna="settings.card" data-ground>
+                  <div class="penna-setting-body">
+                    <div class="penna-setting-heading">
+                      <div class="penna-setting-copy">
+                        <div class="penna-setting-title"><span data-penna-text>Check for updates</span></div>
+                        <div class="penna-setting-description"><span data-penna-text>Looks for a new version once a day</span></div>
+                      </div>
+                      <button class="penna-toggle" aria-checked="true" aria-label="Check for updates" data-id="switch-updates"></button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="penna-setting-entry" role="listitem" data-id="entry-early">
+                <div data-penna="settings.card" data-ground>
+                  <div class="penna-setting-rule"><div data-penna="rule.list"></div></div>
+                  <div class="penna-setting-body">
+                    <div class="penna-setting-heading">
+                      <div class="penna-setting-copy">
+                        <div class="penna-setting-title"><span data-penna-text>Early builds</span></div>
+                        <div class="penna-setting-description"><span data-penna-text>Get each version a week before it ships</span></div>
+                      </div>
+                      <button class="penna-toggle" aria-checked="false" aria-label="Early builds" data-id="switch-early"></button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="story-state">
+          <div class="story-label">disabled: no effect with the current configuration</div>
+          <div class="penna-settings-stack">
+            <div class="penna-settings-group"><span data-penna-text>Sync</span></div>
+            <div class="penna-settings-list" role="list" data-id="stack-sync">
+              <div class="penna-setting-entry" role="listitem" aria-disabled="true" data-id="entry-sync-settings">
+                <div data-penna="settings.card" data-ground>
+                  <div class="penna-setting-body">
+                    <div class="penna-setting-heading">
+                      <div class="penna-setting-copy">
+                        <div class="penna-setting-title"><span data-penna-text>Sync settings</span></div>
+                        <div class="penna-setting-description"><span data-penna-text>Needs an account</span></div>
+                      </div>
+                      <button class="penna-toggle" aria-checked="false" aria-label="Sync settings" data-id="switch-sync-settings"></button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="penna-setting-entry" role="listitem" aria-disabled="true" data-id="entry-sync-themes">
+                <div data-penna="settings.card" data-ground>
+                  <div class="penna-setting-rule"><div data-penna="rule.list"></div></div>
+                  <div class="penna-setting-body">
+                    <div class="penna-setting-heading">
+                      <div class="penna-setting-copy">
+                        <div class="penna-setting-title"><span data-penna-text>Sync themes</span></div>
+                        <div class="penna-setting-description"><span data-penna-text>Needs an account</span></div>
+                      </div>
+                      <button class="penna-toggle" aria-checked="false" aria-label="Sync themes" data-id="switch-sync-themes"></button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="story-state">
+          <div class="story-label">a stack note saying why its rows are off</div>
+          <div class="penna-settings-stack">
+            <div class="penna-settings-group"><span data-penna-text>Shortcuts</span></div>
+            <div class="penna-settings-note"><span data-penna-text>Connect to a local session to edit shortcuts.</span></div>
+            <div class="penna-settings-list" role="list" data-id="stack-shortcuts">
+              <div class="penna-setting-entry" role="listitem" aria-disabled="true" data-id="entry-split">
+                <div data-penna="settings.card" data-ground>
+                  <div class="penna-setting-body">
+                    <div class="penna-setting-heading">
+                      <div class="penna-setting-copy"><div class="penna-setting-title"><span data-penna-text>Split below</span></div></div>
+                      <button class="penna-button" data-penna="button" data-id="record-split"><span class="penna-label" data-penna-text>Record</span></button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="story-state">
+          <div class="story-label">a state glyph before the title</div>
+          <div class="penna-settings-stack">
+            <div class="penna-settings-group"><span data-penna-text>Devices</span></div>
+            <div class="penna-settings-list" role="list" data-id="stack-devices">
+              <div class="penna-setting-entry" role="listitem" data-id="entry-studio">
+                <div data-penna="settings.card" data-ground>
+                  <div class="penna-setting-body">
+                    <div class="penna-setting-heading">
+                      <div class="penna-setting-copy">
+                        <div class="penna-setting-title"><i data-icon="circle-check" data-tone="success"></i><span data-penna-text>studio</span></div>
+                        <div class="penna-setting-description"><span data-penna-text>fabrico@studio.local</span></div>
+                      </div>
+                      <button class="penna-button" data-penna="button" data-id="disconnect-studio"><span class="penna-label" data-penna-text>Disconnect</span></button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="story-state">
+          <div class="story-label">full-width content under the copy</div>
+          <div class="penna-settings-stack">
+            <div class="penna-settings-list" role="list" data-id="stack-config">
+              <div class="penna-setting-entry" role="listitem" data-id="entry-config">
+                <div data-penna="settings.card" data-ground>
+                  <div class="penna-setting-body">
+                    <div class="penna-setting-heading">
+                      <div class="penna-setting-copy"><div class="penna-setting-title"><span data-penna-text>Colors, cursor, and spacing</span></div></div>
+                    </div>
+                    <div class="penna-card settings-config" data-penna="card.code" data-id="config-preview" role="group">
+                      <span data-penna-text>font-family = Inter</span>
+                      <span data-penna-text>cursor-style = bar</span>
+                      <span data-penna-text>window-padding-x = 8</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section data-section="about">
+      <div class="story-states">
+        <div class="story-state">
+          <div class="story-label">page</div>
+          <div class="settings-page">
+            <div class="penna-about-hero">
+              <i data-icon="pencil" data-tone="accent"></i>
+              <div class="penna-about-copy">
+                <div class="penna-about-name"><span data-penna-text>Nestling</span></div>
+                <div class="penna-about-tagline"><span data-penna-text>Notes that never leave the nest.</span></div>
+                <span class="penna-badge" data-penna="badge.outline"><span class="badge-text" data-penna-text>v0.3.1</span></span>
+              </div>
+            </div>
+
+            <div class="penna-settings-stack">
+              <div class="penna-settings-group"><span data-penna-text>Build</span></div>
+              <div class="penna-settings-list" role="list" data-id="stack-build">
+                <div class="penna-setting-entry">
+                  <div data-penna="settings.card" data-ground>
+                    <div class="penna-setting-body">
+                      <div class="penna-setting-heading">
+                        <div class="penna-setting-copy">
+                          <div class="penna-setting-title"><span data-penna-text>Version</span><button class="penna-button" data-penna="icon-button" data-shape="icon" data-size="small" aria-label="Copy build information" data-tooltip="Copy build information" data-id="copy-build"><i data-icon="copy"></i></button></div>
+                        </div>
+                        <div class="penna-settings-value"><span data-penna-text>0.3.1</span></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div class="penna-setting-entry">
+                  <div data-penna="settings.card" data-ground>
+                    <div class="penna-setting-rule"><div data-penna="rule.list"></div></div>
+                    <div class="penna-setting-body">
+                      <div class="penna-setting-heading">
+                        <div class="penna-setting-copy"><div class="penna-setting-title"><span data-penna-text>Platform</span></div></div>
+                        <div class="penna-settings-value"><span data-penna-text>browser · wasm32</span></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="penna-settings-stack">
+              <div class="penna-settings-group"><span data-penna-text>Project</span></div>
+              <div class="penna-settings-list" role="list" data-id="stack-project">
+                <div class="penna-setting-entry">
+                  <div data-penna="settings.card" data-ground>
+                    <div class="penna-setting-body">
+                      <div class="penna-setting-heading">
+                        <div class="penna-setting-copy"><div class="penna-setting-title"><span data-penna-text>Source code</span></div></div>
+                        <button class="penna-button" data-penna="button" data-id="about-source"><i data-icon="external-link"></i><span class="penna-label" data-penna-text>Repository</span></button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div class="penna-setting-entry">
+                  <div data-penna="settings.card" data-ground>
+                    <div class="penna-setting-rule"><div data-penna="rule.list"></div></div>
+                    <div class="penna-setting-body">
+                      <div class="penna-setting-heading">
+                        <div class="penna-setting-copy"><div class="penna-setting-title"><span data-penna-text>Releases</span></div></div>
+                        <button class="penna-button" data-penna="button" data-id="about-releases"><i data-icon="external-link"></i><span class="penna-label" data-penna-text>Releases</span></button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div class="penna-setting-entry">
+                  <div data-penna="settings.card" data-ground>
+                    <div class="penna-setting-rule"><div data-penna="rule.list"></div></div>
+                    <div class="penna-setting-body">
+                      <div class="penna-setting-heading">
+                        <div class="penna-setting-copy"><div class="penna-setting-title"><span data-penna-text>Report an issue</span></div></div>
+                        <button class="penna-button" data-penna="button" data-id="about-issues"><i data-icon="external-link"></i><span class="penna-label" data-penna-text>New issue</span></button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div class="penna-setting-entry">
+                  <div data-penna="settings.card" data-ground>
+                    <div class="penna-setting-rule"><div data-penna="rule.list"></div></div>
+                    <div class="penna-setting-body">
+                      <div class="penna-setting-heading">
+                        <div class="penna-setting-copy"><div class="penna-setting-title"><span data-penna-text>License</span></div></div>
+                        <div class="penna-settings-value"><span data-penna-text>MIT or Apache-2.0</span></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </body>
+</html>

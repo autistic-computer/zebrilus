@@ -25,6 +25,7 @@ mod panels;
 mod rows;
 mod scrollbars;
 mod selection;
+mod settings;
 mod sheet;
 mod status;
 mod support;
@@ -55,6 +56,7 @@ pub const STORIES: &[Story] = &[
     icons::STORY,
     title_bar::STORY,
     navigation::STORY,
+    settings::STORY,
     appearance::STORY,
     which_key::STORY,
     compact::STORY,

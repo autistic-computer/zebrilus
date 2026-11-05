@@ -1,0 +1,14 @@
+{
+  "story": "settings",
+  "page": "index.html",
+  "steps": [
+    { "name": "hover-choose", "section": "entries", "hover": "choose-theme" },
+    { "name": "press-choose", "section": "entries", "press": "choose-theme" },
+    { "name": "hover-switch", "section": "entries", "hover": "switch-early" },
+    { "name": "press-switch", "section": "entries", "press": "switch-early" },
+    { "name": "click-switch", "section": "entries", "click": "switch-early" },
+    { "name": "hover-disabled-switch", "section": "entries", "hover": "switch-sync-settings", "still": true },
+    { "name": "hover-repository", "section": "about", "hover": "about-source" },
+    { "name": "press-repository", "section": "about", "press": "about-source" }
+  ]
+}

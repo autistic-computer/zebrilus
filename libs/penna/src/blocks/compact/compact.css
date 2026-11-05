@@ -37,8 +37,19 @@
   --penna-k: 1;
 }
 
-.penna-compact-pill[data-penna]:active {
-  background: linear-gradient(var(--penna-fill), var(--penna-fill)), var(--penna-rest-fill);
+.penna-compact-pill-press[data-penna] {
+  position: absolute;
+  inset: 0;
+  display: none;
+  border: 0;
+  border-radius: inherit;
+  box-shadow: none;
+  background: var(--penna-fill);
+  pointer-events: none;
+}
+
+.penna-compact-pill[data-penna]:active > .penna-compact-pill-press {
+  display: block;
 }
 
 .penna-pill-tile[data-penna] {

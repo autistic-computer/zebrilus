@@ -1,0 +1,19 @@
+.settings-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--penna-gap-group);
+  width: 100%;
+  min-width: 0;
+  max-width: 760px;
+  margin: 0 auto;
+}
+
+.settings-config {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  font-family: var(--penna-mono);
+  font-size: var(--penna-text-mono-size);
+  line-height: var(--penna-text-mono-line);
+  font-weight: var(--penna-text-mono-weight);
+}

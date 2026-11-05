@@ -12,7 +12,7 @@ use crate::foundation::interface_theme::{
 };
 use crate::{
     ActiveTheme as _, AuthoredElement as _, Colorize as _, Density, IconName, Space,
-    StyledExt as _, Surface, ThemeColor, ThemeMode,
+    StyledExt as _, ThemeColor, ThemeMode,
 };
 use ala::{
     Anchor, AnyElement, App, Context, Entity, FocusHandle, IntoElement, SharedString, Subscription,
@@ -1093,122 +1093,6 @@ pub fn theme_preview(
                 )
         }
     }
-}
-
-#[allow(
-    clippy::disallowed_methods,
-    reason = "previews draw another theme's colors and surfaces, not the live one's"
-)]
-pub fn interface_theme_preview(theme: &InterfaceTheme, mode: ThemeMode, _: &App) -> ala::Div {
-    let colors = theme.colors(mode);
-    let mut kit = crate::Theme::from(&colors);
-    kit.mode = mode;
-    theme.apply(&mut kit);
-    let popover = kit.style(crate::SurfaceRole::POPOVER);
-    let surface_radius = (f32::from(kit.radius) / 3.0).min(10.0);
-    let row_radius = surface_radius / 2.0;
-    let inset = f32::from(kit.row_inset).min(3.0);
-    let frosted =
-        popover.fill == crate::Fill::Glass && kit.glass.is_some_and(|glass| glass.blur > px(0.0));
-    let menu_ground = kit.surface(crate::Elevation::Popover);
-    let picked = kit.layer(
-        Surface::new(crate::SurfaceRole::MENU_ITEM).on(menu_ground),
-        crate::PaintState::Selected,
-    );
-    let (selection, selected_text) = (picked.fill, picked.text);
-    let text = colors.foreground.muted();
-    let row = |width: f32, selected: bool| {
-        div()
-            .h(px(10.0))
-            .flex()
-            .items_center()
-            .px(px(5.0))
-            .rounded(px(row_radius))
-            .when(selected, |row| row.bg(selection))
-            .child(
-                div()
-                    .w(px(width))
-                    .h(px(3.0))
-                    .rounded_full()
-                    .bg(if selected { selected_text } else { text }),
-            )
-    };
-    let surface = menu_ground.fill.opaque();
-    let menu = div()
-        .w(px(44.0))
-        .flex()
-        .flex_col()
-        .py(px(3.0))
-        .px(px(inset))
-        .when(inset > 0.0, |menu| menu.gap(px(1.0)))
-        .rounded(px(surface_radius))
-        .bg(if frosted {
-            surface.opacity(0.7)
-        } else {
-            surface
-        })
-        .when(popover.outline, |menu| {
-            menu.border(px(0.5))
-                .border_color(colors.foreground.opacity(0.15))
-        })
-        .when(
-            kit.casts_shadow(Surface::new(crate::SurfaceRole::POPOVER)),
-            |menu| {
-                menu.shadow(vec![ala::BoxShadow {
-                    color: colors.shadow_color,
-                    offset: ala::point(px(0.0), px(3.0)),
-                    blur_radius: px(8.0),
-                    spread_radius: px(-1.0),
-                    inset: false,
-                }])
-            },
-        )
-        .children([row(24.0, false), row(18.0, true), row(21.0, false)]);
-    let primary = kit.paint(crate::Tone::Primary, crate::Emphasis::Solid);
-    let button = div()
-        .w(px(20.0))
-        .h(px(8.0))
-        .flex()
-        .items_center()
-        .justify_center()
-        .rounded(px(row_radius.max(2.0)))
-        .bg(primary.fill)
-        .child(div().w(px(10.0)).h(px(2.0)).rounded_full().bg(primary.text));
-    div()
-        .w(px(THEME_PREVIEW_WIDTH))
-        .h(px(THEME_PREVIEW_HEIGHT))
-        .flex()
-        .overflow_hidden()
-        .rounded(px(surface_radius.max(4.0)))
-        .bg(theme_preview_split_background(
-            kit.surface(crate::Elevation::Panel).fill,
-            colors.background,
-            THEME_PREVIEW_SIDEBAR_WIDTH / THEME_PREVIEW_WIDTH,
-        ))
-        .child(div().w(px(THEME_PREVIEW_SIDEBAR_WIDTH)).flex_none())
-        .child(
-            div()
-                .flex()
-                .flex_col()
-                .flex_1()
-                .min_w_0()
-                .gap(px(4.0))
-                .p(px(6.0))
-                .child(
-                    div()
-                        .flex()
-                        .items_center()
-                        .justify_between()
-                        .child(
-                            div().flex().items_center().gap(px(3.0)).children(
-                                [colors.danger, colors.warning, colors.success]
-                                    .map(|light| div().size(px(4.0)).rounded_full().bg(light)),
-                            ),
-                        )
-                        .child(button),
-                )
-                .child(menu),
-        )
 }
 
 #[allow(
