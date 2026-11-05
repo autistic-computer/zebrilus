@@ -209,6 +209,7 @@ pub const CHIP_DRAG: SurfaceRole = SurfaceRole::new(
     "The chip that follows the pointer while you drag a pane",
 )
 .capsule(true);
+pub(crate) const FLOATING_CHIPS: [SurfaceRole; 3] = [CHIP_FLOATING, CHIP_MARKER, CHIP_DRAG];
 pub const BADGE_ICON: SurfaceRole = SurfaceRole::under(
     &SurfaceRole::BADGE,
     "badge.icon",

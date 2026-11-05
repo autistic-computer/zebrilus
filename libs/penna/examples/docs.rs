@@ -53,7 +53,7 @@ const LOOKS: [(&str, &str); 10] = [
     ("glass-liquid", r#"{ "glass": "liquid" }"#),
 ];
 
-const LOOK_ROLES: [&str; 7] = [
+const LOOK_ROLES: [&str; 8] = [
     "button",
     "button.quiet",
     "field",
@@ -61,6 +61,7 @@ const LOOK_ROLES: [&str; 7] = [
     "popover",
     "card",
     "tile.card",
+    "chip",
 ];
 
 const KIT: &str = "../../../../src/";
@@ -264,9 +265,11 @@ fn drawn_in_looks(rule: &Rule) -> bool {
         .find(|selector| !selector.starts_with('&'))
         .is_some_and(|selector| {
             selector == ":root"
-                || LOOK_ROLES
-                    .iter()
-                    .any(|role| selector.starts_with(&format!("[data-penna=\"{role}\"]")))
+                || LOOK_ROLES.iter().any(|role| {
+                    let named = format!("[data-penna=\"{role}\"]");
+                    selector.starts_with(&named)
+                        || (selector.starts_with(":is(") && selector.contains(&named))
+                })
         })
 }
 

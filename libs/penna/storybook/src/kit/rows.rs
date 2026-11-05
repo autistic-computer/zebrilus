@@ -4,9 +4,12 @@ use ala::{
     prelude::FluentBuilder as _, px,
 };
 use penna::{
-    ActiveTheme as _, BarLook, Disableable as _, IconName, Label, PaintState, Row, RowLook,
-    Sizable as _, Size, Space, Surface, Tab, TabLook, TextStyle, Tone, components::icon::Icon,
-    components::list::ListItem, h_flex, v_flex,
+    ActiveTheme as _, BarLook, Chip, Disableable as _, IconName, Label, PaintState, Row, RowLook,
+    Sizable as _, Size, Space, Surface, Tab, TabLook, TextStyle, Tone,
+    components::button::{Button, ButtonLook},
+    components::icon::Icon,
+    components::list::ListItem,
+    h_flex, v_flex,
 };
 
 use crate::story::{Section, Story, row, stateless, states};
@@ -28,6 +31,12 @@ pub const STORY: Story = Story {
             name: "Rows",
             summary: "Row::new(id, look).state(state).row_height(height) for menu, picker, sidebar and navigation rows. A focused row draws the focus ring and keeps its own fill; .focused(true) adds the ring to a selected one. row_height sizes the corners only; the app sets the height.",
             build: |_, cx| stateless(rows, cx),
+        },
+        Section {
+            id: "content",
+            name: "Content on a row",
+            summary: "What sits on a row passes cx.theme().ground_at(look, state) to .on(), with the row's tone when it has one. On a solid highlight the label, the muted aside, the icon, a toned chip and a row button take the row's ink, the chip as a wash of it. While the tint is the ink a neutral highlight is a wash and they keep their own; a toned row's highlight is its tone's solid fill in every look.",
+            build: |_, cx| stateless(content, cx),
         },
         Section {
             id: "fills",
@@ -214,6 +223,105 @@ fn rows(_: &mut Window, cx: &mut App) -> AnyElement {
             v_flex().gap(Space::S2).child(
                 list_row(RowLook::Menu, "still", PaintState::Rest, "Rest").interactive(false),
             ),
+        )
+        .into_any_element()
+}
+
+fn content_row(look: RowLook, name: &str, state: PaintState, cx: &App) -> Row {
+    let ground = cx.theme().ground_at(look, state);
+    let id = format!("content-{name}-{}", state.name());
+    let height = px(32.0);
+    Row::new(SharedString::from(id.clone()), look)
+        .state(state)
+        .row_height(height)
+        .h(height)
+        .w(px(240.0))
+        .px(Space::S12)
+        .flex()
+        .items_center()
+        .gap(Space::S8)
+        .child(Icon::new(IconName::Folder).small())
+        .child(Label::new(TextStyle::Small, "ubuntu"))
+        .child(
+            Label::new(TextStyle::Caption, "this Mac")
+                .muted()
+                .on(ground),
+        )
+        .child(
+            Chip::new(SharedString::from(format!("{id}-chip")), "Ready")
+                .dot(Tone::Success)
+                .tone(Tone::Success)
+                .xsmall()
+                .on(ground),
+        )
+}
+
+fn toned_row(state: PaintState, cx: &App) -> Row {
+    let surface = Surface::from(RowLook::Menu).tone(Tone::Danger);
+    let ground = cx.theme().ground_at(surface, state);
+    let id = format!("content-danger-{}", state.name());
+    let height = px(32.0);
+    Row::new(SharedString::from(id.clone()), RowLook::Menu)
+        .tone(Tone::Danger)
+        .state(state)
+        .row_height(height)
+        .h(height)
+        .w(px(240.0))
+        .px(Space::S12)
+        .flex()
+        .items_center()
+        .gap(Space::S8)
+        .child(Icon::new(IconName::Folder).small())
+        .child(Label::new(TextStyle::Small, "ubuntu"))
+        .child(
+            Chip::new(SharedString::from(format!("{id}-chip")), "Ready")
+                .dot(Tone::Success)
+                .tone(Tone::Success)
+                .xsmall()
+                .on(ground),
+        )
+        .child(
+            Button::compact_icon(SharedString::from(format!("{id}-close")), IconName::Xmark)
+                .look(ButtonLook::RowIcon)
+                .tooltip("Close")
+                .on(ground),
+        )
+}
+
+fn content(_: &mut Window, cx: &mut App) -> AnyElement {
+    let cx: &App = cx;
+    states()
+        .columns(2)
+        .state(
+            "menu",
+            v_flex()
+                .gap(Space::S2)
+                .child(content_row(RowLook::Menu, "menu", PaintState::Rest, cx))
+                .child(content_row(RowLook::Menu, "menu", PaintState::Selected, cx)),
+        )
+        .state(
+            "sidebar",
+            v_flex()
+                .gap(Space::S2)
+                .child(content_row(
+                    RowLook::Sidebar,
+                    "sidebar",
+                    PaintState::Rest,
+                    cx,
+                ))
+                .child(content_row(
+                    RowLook::Sidebar,
+                    "sidebar",
+                    PaintState::Current,
+                    cx,
+                )),
+        )
+        .state(
+            "toned, with a button",
+            v_flex()
+                .gap(Space::S2)
+                .child(toned_row(PaintState::Rest, cx))
+                .child(toned_row(PaintState::Selected, cx)),
         )
         .into_any_element()
 }

@@ -37,6 +37,12 @@ pub const STORY: Story = Story {
             build: |_, cx| stateless(labels, cx),
         },
         Section {
+            id: "label-ground",
+            name: "Label on a card",
+            summary: "Muted, faint and tone ink are worked out for the ground under the text: on a card, pass cx.theme().ground_of(look) to .on().",
+            build: |_, cx| stateless(label_ground, cx),
+        },
+        Section {
             id: "spinner",
             name: "Spinner",
             summary: "The Loader glyph on a 800ms turn, at every size and in a few tints. It stops with motion off.",
@@ -202,6 +208,33 @@ fn labels(_: &mut Window, _: &mut App) -> AnyElement {
                 .gap(Space::S8)
                 .child(Label::new(TextStyle::Body, sentence))
                 .child(Label::new(TextStyle::Body, sentence).truncate()),
+        )
+        .into_any_element()
+}
+
+fn label_ground(_: &mut Window, cx: &mut App) -> AnyElement {
+    let code = cx.theme().ground_of(CardLook::Code);
+    states()
+        .state(
+            "full, muted, faint and danger on a code card",
+            h_flex().child(
+                Card::new("label-card", CardLook::Code)
+                    .flex()
+                    .items_center()
+                    .gap(Space::S12)
+                    .child(Label::new(TextStyle::Body, "Ready"))
+                    .child(
+                        Label::new(TextStyle::Body, "ubuntu is to the right")
+                            .muted()
+                            .on(code),
+                    )
+                    .child(Label::new(TextStyle::Body, "Last seen").faint().on(code))
+                    .child(
+                        Label::new(TextStyle::Body, "Failed")
+                            .tone(Tone::Danger)
+                            .on(code),
+                    ),
+            ),
         )
         .into_any_element()
 }

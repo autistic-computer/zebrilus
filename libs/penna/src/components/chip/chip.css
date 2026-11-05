@@ -91,27 +91,27 @@
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: var(--penna-muted);
+  background: var(--penna-dot, var(--penna-muted));
 }
 
 .penna-dot[data-tone="success"] {
-  background: var(--penna-success);
+  background: var(--penna-dot, var(--penna-success));
 }
 
 .penna-dot[data-tone="warning"] {
-  background: var(--penna-warning);
+  background: var(--penna-dot, var(--penna-warning));
 }
 
 .penna-dot[data-tone="danger"] {
-  background: var(--penna-danger);
+  background: var(--penna-dot, var(--penna-danger));
 }
 
 .penna-dot[data-tone="accent"] {
-  background: var(--penna-accent);
+  background: var(--penna-dot, var(--penna-accent));
 }
 
 .penna-dot[data-tone="primary"] {
-  background: var(--penna-primary);
+  background: var(--penna-dot, var(--penna-primary));
 }
 
 .penna-chip[data-look="icon-disc"] {

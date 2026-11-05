@@ -82,4 +82,4 @@ Sentence case. Two or three text styles in a view.
 | `.strong()` | `data-strong` | Heavier weight |
 | `.mono()` | `data-mono` | Code face at the style's size |
 | `.truncate()` | `data-truncate` | One line, ends in an ellipsis |
-| `.on(ground)` | the surface around it | Works out its ink for that ground |
+| `.on(ground)` | `data-ground` or `data-on` around it | Works out its ink for that ground |

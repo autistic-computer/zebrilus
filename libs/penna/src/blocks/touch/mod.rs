@@ -25,6 +25,7 @@ pub use key_row::{
 pub use lift::{Lift, LiftEvent, LiftResponse};
 pub use pager::{Pager, PagerEvent, PagerLayout, PagerResponse};
 pub use popover_key::{PopoverKey, PopoverKeyEvent, PopoverKeyItem, PopoverKeyTap};
+pub(crate) use press::over_hover;
 pub use press::{
     PressCorners, PressFeedback, instant_press_highlight, press_feedback, press_highlight,
 };

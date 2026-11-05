@@ -286,7 +286,12 @@ fn row_shell(
     cx: &App,
 ) -> Stateful<Div> {
     let id = id.into();
-    let layer = cx.theme().layer(surface, PaintState::Rest);
+    let theme = cx.theme();
+    let layer = theme.layer(surface, PaintState::Rest);
+    let pressed = crate::blocks::touch::over_hover(
+        theme.layer(surface, PaintState::Hover).fill,
+        theme.layer(surface, PaintState::Active).fill,
+    );
     row_corners(
         h_flex()
             .id(id.clone())
@@ -303,7 +308,7 @@ fn row_shell(
     .cursor_pointer()
     .child(crate::blocks::touch::instant_press_highlight(
         id,
-        cx.theme().layer(surface, PaintState::Active).fill,
+        pressed,
         crate::blocks::touch::PressCorners::Row(row_radius(&layer, height), layer.smoothing),
     ))
 }

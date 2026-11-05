@@ -9,9 +9,12 @@
     <link rel="stylesheet" href="../../../../src/components/list/list.css" />
     <link rel="stylesheet" href="../../../../src/components/tab/tab.css" />
     <link rel="stylesheet" href="../../../../src/components/row/row.css" />
+    <link rel="stylesheet" href="../../../../src/components/chip/chip.css" />
+    <link rel="stylesheet" href="../../../../src/components/button/button.css" />
     <link rel="stylesheet" href="page.css" />
     <script src="../../../../web/kit.js" data-tokens="../../../../web/tokens/"></script>
     <script src="../../../../src/components/tab/tab.js" defer></script>
+    <script src="../../../../src/components/button/button.js" defer></script>
     <script src="page.js" defer></script>
   </head>
   <body>
@@ -89,6 +92,23 @@
         <div class="story-state">
           <div class="story-label">not interactive</div>
           <div class="penna-rows" role="listbox"><div class="penna-row" data-id="row-still-Rest" role="option" data-penna="menu-item" data-still><i data-icon="folder"></i><span class="penna-row-label"><span class="penna-text" data-penna-text>Rest</span></span></div></div>
+        </div>
+      </div>
+    </section>
+
+    <section data-section="content">
+      <div class="story-states" data-columns="2" style="--columns: 2">
+        <div class="story-state">
+          <div class="story-label">menu</div>
+          <div class="penna-rows" role="listbox"><div class="penna-row" data-id="content-menu-rest" role="option" data-penna="menu-item" tabindex="0" style="width: 240px"><i data-icon="folder"></i><span class="penna-row-label"><span class="penna-text" data-penna-text>ubuntu</span></span><span class="penna-row-aside"><span class="penna-text" data-penna-text>this Mac</span></span><span class="penna-chip" data-id="content-menu-rest-chip" data-penna="chip" data-tone="success" data-size="xsmall"><i class="penna-dot" data-tone="success"></i><span class="penna-text penna-chip-label" data-penna-text>Ready</span></span></div><div class="penna-row" data-id="content-menu-selected" role="option" data-penna="menu-item" data-state="selected" aria-selected="true" data-still style="width: 240px"><i data-icon="folder"></i><span class="penna-row-label"><span class="penna-text" data-penna-text>ubuntu</span></span><span class="penna-row-aside"><span class="penna-text" data-penna-text>this Mac</span></span><span class="penna-chip" data-id="content-menu-selected-chip" data-penna="chip" data-tone="success" data-size="xsmall"><i class="penna-dot" data-tone="success"></i><span class="penna-text penna-chip-label" data-penna-text>Ready</span></span></div></div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">sidebar</div>
+          <div class="penna-rows" role="listbox"><div class="penna-row" data-id="content-sidebar-rest" role="option" data-penna="sidebar.row" tabindex="0" style="width: 240px"><i data-icon="folder"></i><span class="penna-row-label"><span class="penna-text" data-penna-text>ubuntu</span></span><span class="penna-row-aside"><span class="penna-text" data-penna-text>this Mac</span></span><span class="penna-chip" data-id="content-sidebar-rest-chip" data-penna="chip" data-tone="success" data-size="xsmall"><i class="penna-dot" data-tone="success"></i><span class="penna-text penna-chip-label" data-penna-text>Ready</span></span></div><div class="penna-row" data-id="content-sidebar-current" role="option" data-penna="sidebar.row" data-state="current" data-still style="width: 240px"><i data-icon="folder"></i><span class="penna-row-label"><span class="penna-text" data-penna-text>ubuntu</span></span><span class="penna-row-aside"><span class="penna-text" data-penna-text>this Mac</span></span><span class="penna-chip" data-id="content-sidebar-current-chip" data-penna="chip" data-tone="success" data-size="xsmall"><i class="penna-dot" data-tone="success"></i><span class="penna-text penna-chip-label" data-penna-text>Ready</span></span></div></div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">toned, with a button</div>
+          <div class="penna-rows" role="listbox"><div class="penna-row" data-id="content-danger-rest" role="option" data-penna="menu-item" data-tone="danger" tabindex="0" style="width: 240px"><i data-icon="folder"></i><span class="penna-row-label"><span class="penna-text" data-penna-text>ubuntu</span></span><span class="penna-chip" data-id="content-danger-rest-chip" data-penna="chip" data-tone="success" data-size="xsmall"><i class="penna-dot" data-tone="success"></i><span class="penna-text penna-chip-label" data-penna-text>Ready</span></span><button class="penna-button" data-penna="icon-button.row" data-shape="compact-icon" aria-label="Close" data-tooltip="Close" data-id="content-danger-rest-close"><i data-icon="xmark"></i></button></div><div class="penna-row" data-id="content-danger-selected" role="option" data-penna="menu-item" data-tone="danger" data-state="selected" aria-selected="true" data-still style="width: 240px"><i data-icon="folder"></i><span class="penna-row-label"><span class="penna-text" data-penna-text>ubuntu</span></span><span class="penna-chip" data-id="content-danger-selected-chip" data-penna="chip" data-tone="success" data-size="xsmall"><i class="penna-dot" data-tone="success"></i><span class="penna-text penna-chip-label" data-penna-text>Ready</span></span><button class="penna-button" data-penna="icon-button.row" data-shape="compact-icon" aria-label="Close" data-tooltip="Close" data-id="content-danger-selected-close"><i data-icon="xmark"></i></button></div></div>
         </div>
       </div>
     </section>

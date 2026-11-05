@@ -36,7 +36,7 @@ Chip::new("host", "Ready").dot(Tone::Success).detail("this Mac")
 
 - **Plain**: panes, lists, dialogs.
 - **Bar**: title bars and pane headers.
-- **Floating**: over a pane's content.
+- **Floating**: over a pane's content. Glass when neutral; with a tone it draws the tone opaque.
 - **Marker**: pane markers. A ring lights it.
 - **Drag**: follows a dragged pane.
 

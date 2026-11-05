@@ -6,7 +6,7 @@ use ala::{
 
 use crate::{
     ActiveTheme as _, Emphasis, Layer, PaintState, StyledExt as _, Surface, SurfaceRole,
-    blocks::touch::{CoarsePointer, PressCorners, press_highlight},
+    blocks::touch::{CoarsePointer, PressCorners, over_hover, press_highlight},
     components::button::rings_focus,
     foundation::{author_name, focus::with_focus_ring, restyle, row_corners, row_radius},
 };
@@ -141,7 +141,8 @@ impl Plate {
                 Some(height) => PressCorners::Row(row_radius(&pressed, height), pressed.smoothing),
                 None => PressCorners::Adaptive(pressed.radius),
             };
-            press_highlight(id, pressed.fill, corners)
+            let shown = if lively { PaintState::Hover } else { state };
+            press_highlight(id, over_hover(layer_at(shown).fill, pressed.fill), corners)
         });
         let (hover, active) = match (lively, hover_group) {
             (false, _) => (None, None),
@@ -155,10 +156,9 @@ impl Plate {
                     StyleRefinement::default(),
                     &layer_at(PaintState::Hover),
                 )),
-                Some(restyle(
-                    StyleRefinement::default(),
-                    &layer_at(PaintState::Active),
-                )),
+                press
+                    .is_none()
+                    .then(|| restyle(StyleRefinement::default(), &layer_at(PaintState::Active))),
             ),
         };
         let plate = match on_top(hover, caller_hover) {

@@ -209,6 +209,10 @@ fn minis(_: &mut Window, cx: &mut App) -> AnyElement {
             "focused",
             window("mini-focused", "mini-focused-other", PaintState::Focused),
         )
+        .state(
+            "dragged",
+            window("mini-dragged", "mini-dragged-other", PaintState::Hover),
+        )
         .into_any_element()
 }
 

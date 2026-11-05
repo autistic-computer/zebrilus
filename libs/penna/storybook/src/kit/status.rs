@@ -110,6 +110,7 @@ fn chips(_: &mut Window, _: &mut App) -> AnyElement {
             "tones, solid",
             row().children(Tone::ALL.map(|tone| {
                 Chip::new(tone.name(), tone.name())
+                    .dot(tone)
                     .tone(tone)
                     .emphasis(Emphasis::Solid)
             })),
@@ -217,6 +218,21 @@ fn chip_looks(_: &mut Window, cx: &mut App) -> AnyElement {
                     Chip::new("chip-vim-mode", "INSERT")
                         .look(ChipLook::Floating)
                         .tone(Tone::Primary)
+                        .emphasis(Emphasis::Solid),
+                ),
+        )
+        .state(
+            "floating with a tone",
+            row()
+                .child(
+                    Chip::new("chip-floating-danger", "Dead")
+                        .look(ChipLook::Floating)
+                        .tone(Tone::Danger),
+                )
+                .child(
+                    Chip::new("chip-floating-solid", "Sync")
+                        .look(ChipLook::Floating)
+                        .tone(Tone::Danger)
                         .emphasis(Emphasis::Solid),
                 ),
         )

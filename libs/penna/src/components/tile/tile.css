@@ -26,7 +26,7 @@
 }
 
 .penna-tile[data-penna]:not([data-penna="tile.drop"])[data-state~="hover"] {
-  --penna-shadow: var(--penna-shadow-lifted);
+  --penna-shadow: inset 0 0 0 100vmax var(--penna-wash), var(--penna-shadow-lifted);
 }
 
 .penna-tile[data-penna]:not([data-penna="tile.drop"]):is([data-state~="selected"], [data-state~="current"], [aria-selected="true"])::before {

@@ -1,5 +1,5 @@
 use crate::{
-    ActiveTheme as _, Ground, PaintState, Surface, SurfaceRole, Tone,
+    ActiveTheme as _, Colorize as _, Ground, PaintState, Surface, SurfaceRole, Tone,
     components::plate::{Plate, plate_element},
     foundation::roles,
 };
@@ -97,7 +97,21 @@ impl RenderOnce for Tile {
             let edge = self.edge;
             let mini = self.variant == TileVariant::Mini;
             let lifted = (plate.state == PaintState::Hover && self.variant != TileVariant::Drop)
-                .then(|| cx.theme().lifted_shadows());
+                .then(|| {
+                    let theme = cx.theme();
+                    let ground = plate.surface.ground.unwrap_or_else(|| theme.ground());
+                    (theme.lifted_shadows(), ground.fill.washed(1))
+                });
+            if let Some((_, wash)) = lifted
+                && let Some(fill) = plate
+                    .style
+                    .background
+                    .as_ref()
+                    .and_then(ala::Fill::color)
+                    .and_then(|fill| fill.as_solid())
+            {
+                plate.style.background = Some(fill.blend(wash).into());
+            }
             return plate.paint_with(window, cx, move |layer| {
                 if let Some(width) = edge.filter(|_| layer.border_width > Pixels::ZERO) {
                     layer.border_width = width;
@@ -105,7 +119,8 @@ impl RenderOnce for Tile {
                 if mini {
                     layer.glass = None;
                 }
-                if let Some(float) = &lifted {
+                if let Some((float, wash)) = &lifted {
+                    layer.fill = layer.fill.blend(*wash);
                     layer.shadow.retain(|shadow| shadow.inset);
                     layer.shadow.extend(float.iter().cloned());
                 }

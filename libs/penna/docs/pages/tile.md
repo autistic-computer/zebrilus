@@ -41,7 +41,7 @@ Tile::new("dp-1")
 - Selected: a 2px ring outside the edge.
 - Focused: the focus ring. A tile with a click handler takes keyboard focus and runs on Space and Enter; a click never focuses it.
 - Off: half the fill, faint label, no shadow.
-- Dragged: the app sets hover, and the tile lifts on a close shadow.
+- Dragged: the app sets hover, and the tile rises a step of fill and lifts on a close shadow, so it reads in dark too.
 
 ## Tone
 

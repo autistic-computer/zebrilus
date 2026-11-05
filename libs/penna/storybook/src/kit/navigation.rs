@@ -6,12 +6,13 @@ use ala::{
     Role, Styled as _, Window, div, px, uniform_list,
 };
 use penna::{
-    ActiveTheme as _, Colorize as _, Icon, IconName, RowLook, Space, StyledExt as _, Surface,
+    ActiveTheme as _, Colorize as _, Icon, IconName, PaintState, RowLook, Space, StyledExt as _,
+    Surface,
     blocks::settings::{NavSection, settings_navigation},
     blocks::sidebar::SIDEBAR_DEFAULT_WIDTH,
     components::list::ListItem,
     foundation::roles,
-    h_flex,
+    h_flex, muted_on,
 };
 
 use crate::story::{Framed as _, Section, Story, stateless, states};
@@ -124,9 +125,18 @@ fn tree(
         .collect();
     let rows = uniform_list(id, TREE.len(), move |range, _, cx| {
         let muted = cx.theme().foreground.muted();
+        let picked = muted_on(
+            cx.theme().ground_at(RowLook::Sidebar, PaintState::Selected),
+            cx,
+        );
         range
             .map(|index| {
                 let (depth, icon, label) = &TREE[index];
+                let muted = if active_row == Some(index) {
+                    picked
+                } else {
+                    muted
+                };
                 ListItem::new(("tree-row", index))
                     .role(Role::TreeItem)
                     .look(RowLook::Sidebar)

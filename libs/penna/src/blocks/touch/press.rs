@@ -142,6 +142,13 @@ impl From<Pixels> for PressCorners {
     }
 }
 
+pub(crate) fn over_hover(hover: Hsla, pressed: Hsla) -> Hsla {
+    if pressed.a >= 1.0 || hover.a <= 0.0 || hover.a >= 1.0 {
+        return pressed;
+    }
+    pressed.alpha(((pressed.a - hover.a) / (1.0 - hover.a)).max(0.0))
+}
+
 pub fn press_highlight(
     id: impl Into<ElementId>,
     color: impl Into<Option<Hsla>>,
@@ -390,6 +397,24 @@ mod tests {
     fn tap(cx: &mut VisualTestContext, at: Point<Pixels>) {
         cx.simulate_mouse_down(at, MouseButton::Left, Modifiers::none());
         cx.simulate_mouse_up(at, MouseButton::Left, Modifiers::none());
+    }
+
+    #[test]
+    fn a_press_on_a_hovered_row_draws_only_the_pressed_wash() {
+        let theme = crate::Theme::from(&*crate::ThemeColor::light());
+        let row = crate::Surface::new(crate::SurfaceRole::MENU_ITEM);
+        let hover = theme.layer(row, crate::PaintState::Hover).fill;
+        let pressed = theme.layer(row, crate::PaintState::Active).fill;
+        let drawn = ala::Rgba::from(
+            theme
+                .background
+                .blend(hover)
+                .blend(over_hover(hover, pressed)),
+        );
+        let want = ala::Rgba::from(theme.background.blend(pressed));
+        for (drawn, want) in [(drawn.r, want.r), (drawn.g, want.g), (drawn.b, want.b)] {
+            assert!((drawn - want).abs() < 0.5 / 255.0, "{drawn} != {want}");
+        }
     }
 
     #[ala::test]

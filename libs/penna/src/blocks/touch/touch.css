@@ -265,10 +265,6 @@
   text-align: left;
 }
 
-.penna-which-key-list-row[data-penna]:active {
-  background: linear-gradient(var(--penna-fill), var(--penna-fill)), var(--penna-fill);
-}
-
 .penna-which-key-list-caps {
   display: flex;
   flex: none;

@@ -891,7 +891,7 @@ pub struct Layer {
 
 impl Layer {
     pub(crate) fn muted_text(&self) -> Hsla {
-        if super::color::is_colored(self.ground.fill) {
+        if self.ground.solid {
             return self.text;
         }
         self.text
@@ -1013,19 +1013,26 @@ impl Theme {
         let kind = surface.role.kind;
         let style = self.style(surface.role);
         let ground = surface.ground.unwrap_or_else(|| self.ground());
+        let tone = if surface.prominent && surface.tone == Tone::Neutral {
+            Tone::Primary
+        } else if !surface.prominent && ground.solid {
+            Tone::Neutral
+        } else {
+            surface.tone
+        };
+        let opaque = tone != Tone::Neutral
+            && super::roles::FLOATING_CHIPS
+                .iter()
+                .any(|chip| chip.id == surface.role.id);
         let mut glass = match style.fill {
-            Fill::Glass if !ground.glass => self.drawn_glass(),
+            Fill::Glass if !ground.glass && !opaque => self.drawn_glass(),
             _ => None,
         };
         let fill = match style.fill {
+            Fill::Glass if opaque => Fill::Solid,
             Fill::Glass if ground.glass => Fill::Tint,
             Fill::Glass if glass.is_none() => Fill::Solid,
             fill => fill,
-        };
-        let tone = if surface.prominent && surface.tone == Tone::Neutral {
-            Tone::Primary
-        } else {
-            surface.tone
         };
 
         let soft = self.paint_on(ground, tone, Emphasis::Soft);
@@ -1044,7 +1051,7 @@ impl Theme {
         let glass_fill = soft.opaque().fill;
         let paint = if surface.prominent && fill != Fill::Glass {
             solid
-        } else if kind.is_control() {
+        } else if kind.is_control() || opaque {
             match fill {
                 Fill::None => self.paint_on(ground, tone, Emphasis::Ghost),
                 Fill::Tint => soft,
@@ -1247,6 +1254,8 @@ impl Theme {
                     length: BAR_LENGTH,
                 });
         let under = ground.fill.opaque().blend(fill_color);
+        let solid_fill =
+            highlight == Highlight::Accent || (surface.prominent && fill != Fill::Glass);
         let radius = self.shape_radius(surface, style.shape);
         Layer {
             fill: fill_color,
@@ -1272,6 +1281,7 @@ impl Theme {
                     ground.elevation.max(kind.elevation())
                 },
                 glass: ground.glass || glass.is_some(),
+                solid: ground.solid || solid_fill,
             },
             glass,
         }
@@ -1499,6 +1509,37 @@ mod tests {
     }
 
     #[test]
+    fn a_toned_floating_chip_draws_its_tone_opaque_and_only_the_neutral_one_is_glass() {
+        let mut theme = theme();
+        theme.glass = Some(GlassMaterial::frosted());
+        let chip = Surface::new(crate::foundation::roles::CHIP_FLOATING);
+        let ground = theme.ground();
+        assert!(theme.layer(chip, PaintState::Rest).glass.is_some());
+
+        let soft = theme.layer(chip.tone(Tone::Danger), PaintState::Rest);
+        assert!(soft.glass.is_none());
+        assert_eq!(
+            soft.fill,
+            theme
+                .paint_on(ground, Tone::Danger, Emphasis::Soft)
+                .opaque()
+                .fill
+        );
+        assert_eq!(soft.fill.a, 1.0);
+
+        let solid = theme.layer(chip.tone(Tone::Danger).prominent(true), PaintState::Rest);
+        assert!(solid.glass.is_none());
+        assert_eq!(
+            solid.fill,
+            theme.paint_on(ground, Tone::Danger, Emphasis::Solid).fill
+        );
+        assert_eq!(solid.shadow, theme.float_shadows());
+
+        let callout = Surface::new(crate::foundation::roles::INLINE_PANEL).tone(Tone::Danger);
+        assert!(theme.layer(callout, PaintState::Rest).glass.is_some());
+    }
+
+    #[test]
     fn restyling_a_glass_layer_carries_its_glass() {
         let mut theme = theme();
         theme.glass = Some(GlassMaterial::frosted());
@@ -1663,6 +1704,58 @@ mod tests {
         );
         theme.style(Kind::Card.role());
         assert!(drawn_roles().is_empty());
+    }
+
+    #[test]
+    fn content_on_a_tinted_selection_takes_its_ink() {
+        let mut theme = theme();
+        let chip = |theme: &Theme, tone, ground| {
+            theme.layer(
+                Surface::new(SurfaceRole::CHIP).tone(tone).on(ground),
+                PaintState::Rest,
+            )
+        };
+        let washed = theme.ground_at(Surface::new(SurfaceRole::MENU_ITEM), PaintState::Selected);
+        assert_eq!(
+            chip(&theme, Tone::Success, washed).fill,
+            theme.success.opacity(0.12)
+        );
+
+        theme.accent = crate::parse_hex("#ad4f00").unwrap();
+        theme.primary = PrimaryStyle::Accent;
+        let picked = theme.ground_at(Surface::new(SurfaceRole::MENU_ITEM), PaintState::Selected);
+        let toned = chip(&theme, Tone::Success, picked);
+        let neutral = chip(&theme, Tone::Neutral, picked);
+        assert_eq!(toned.fill, neutral.fill);
+        assert_eq!(crate::to_hex(toned.text), "#ebebeb");
+        let label = theme.paint_on(picked, Tone::Danger, Emphasis::Ghost);
+        assert_eq!(crate::to_hex(label.text), "#ebebeb");
+        assert_eq!(crate::to_hex(label.muted_at(PaintState::Rest)), "#ebebeb");
+    }
+
+    #[test]
+    fn a_graphite_selection_gives_its_content_the_row_ink() {
+        let mut theme = theme();
+        theme.accent = crate::parse_hex("#aaaaaa").unwrap();
+        theme.primary = PrimaryStyle::Accent;
+        let picked = theme.ground_at(Surface::new(SurfaceRole::MENU_ITEM), PaintState::Selected);
+        assert_eq!(crate::to_hex(picked.fill), "#aaaaaa");
+        let chip = |tone| {
+            theme.layer(
+                Surface::new(SurfaceRole::CHIP).tone(tone).on(picked),
+                PaintState::Rest,
+            )
+        };
+        assert_eq!(chip(Tone::Success).fill, chip(Tone::Neutral).fill);
+        assert_eq!(crate::to_hex(chip(Tone::Success).text), "#010101");
+        let label = theme.paint_on(picked, Tone::Danger, Emphasis::Ghost);
+        assert_eq!(crate::to_hex(label.text), "#010101");
+        assert_eq!(crate::to_hex(label.muted_at(PaintState::Rest)), "#010101");
+        let listed = theme
+            .paint(Tone::Neutral, Emphasis::Ghost)
+            .ground_at(PaintState::Selected);
+        let label = theme.paint_on(listed, Tone::Danger, Emphasis::Ghost);
+        assert_eq!(crate::to_hex(label.muted_at(PaintState::Rest)), "#010101");
     }
 
     #[test]

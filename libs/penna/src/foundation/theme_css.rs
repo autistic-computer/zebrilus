@@ -35,6 +35,14 @@ const TONES: [(Tone, &str); 4] = [
     (Tone::Success, "success"),
 ];
 
+const INKED: [(Tone, &str); 5] = [
+    (Tone::Primary, "primary"),
+    (Tone::Danger, "danger"),
+    (Tone::Warning, "warning"),
+    (Tone::Success, "success"),
+    (Tone::Accent, "accent"),
+];
+
 const PAINT: [(&str, &str); 14] = [
     ("fill", "transparent"),
     ("edge", "transparent"),
@@ -50,6 +58,13 @@ const PAINT: [(&str, &str); 14] = [
     ("glass", "0"),
     ("focus", "transparent"),
     ("ring-gap", "0px"),
+];
+
+const ROW_BUTTONS: [SurfaceRole; 4] = [
+    SurfaceRole::QUIET_BUTTON,
+    SurfaceRole::ICON_BUTTON,
+    SurfaceRole::FLAT_ICON_BUTTON,
+    roles::ICON_BUTTON_ROW,
 ];
 
 const ROW_RADIUS_SHARE: f32 = 0.4;
@@ -112,6 +127,7 @@ pub fn stylesheet(theme: &Theme, toned: &[SurfaceRole]) -> String {
         }
         let _ = writeln!(css, "}}");
     }
+    css.push_str(&solid_rules(theme, toned));
     css
 }
 
@@ -140,6 +156,7 @@ fn rules(theme: &Theme, toned: &[SurfaceRole], full: bool) -> Vec<(String, Strin
     for (ground, containers) in grounds {
         let scope = format!(":is({})", containers.join(", "));
         let mut css = format!("{scope} {{\n");
+        write_inks(&mut css, theme, ground);
         for role in SurfaceRole::KIT
             .into_iter()
             .filter(|role| is_content(role.kind))
@@ -166,16 +183,23 @@ fn rules(theme: &Theme, toned: &[SurfaceRole], full: bool) -> Vec<(String, Strin
     for container in roles::all().filter(|role| is_container(role.kind)) {
         let ground = theme.ground_of(Surface::new(container));
         let key = format!("[data-on=\"{}\"]", container.id);
-        let css = format!("{key} {{ --penna-ground: {}; }}\n", color(ground.fill));
+        let inks = declared_inks(theme, ground);
+        let css = format!(
+            "{key} {{ --penna-ground: {};{}{inks} }}\n",
+            color(ground.fill),
+            if inks.is_empty() { "" } else { " " }
+        );
         rules.push((key, css));
     }
     for role in SurfaceRole::KIT
         .into_iter()
         .chain(toned.iter().copied())
         .filter(|role| has_tones(role.kind))
+        .chain(roles::FLOATING_CHIPS)
     {
         for (key, surface) in variants(role) {
             let mut css = String::new();
+            let full = full || role.kind == Kind::Floating;
             write_role(&mut css, theme, &key, surface, "", full);
             rules.push((key, css));
         }
@@ -195,6 +219,148 @@ fn variants(role: SurfaceRole) -> Vec<(String, Surface)> {
         variants.extend(toned(&prominent, base.prominent(true)));
     }
     variants
+}
+
+fn solid_rules(theme: &Theme, toned: &[SurfaceRole]) -> String {
+    let mut bodies: Vec<(String, Vec<String>)> = Vec::new();
+    for (ground, scope) in solid_rows(theme, toned) {
+        let mut inks = String::new();
+        write_inks(&mut inks, theme, ground);
+        let dot = theme
+            .paint_on(ground, Tone::Neutral, Emphasis::Ghost)
+            .muted_at(PaintState::Rest);
+        let _ = writeln!(inks, "  --penna-dot: {};", color(dot));
+        let mut looks = String::new();
+        for role in SurfaceRole::KIT
+            .into_iter()
+            .filter(|role| role.kind == Kind::Label)
+        {
+            let surface = Surface::new(role).on(ground);
+            write_role(&mut looks, theme, &selector(role), surface, "  ", false);
+            for (key, variant) in variants(role) {
+                write_over(&mut looks, theme, &key, variant.on(ground), surface);
+            }
+        }
+        for role in ROW_BUTTONS {
+            let key = format!(
+                "{}:not([data-prominent], [data-penna^=\"field\"] *)",
+                selector(role)
+            );
+            write_role(
+                &mut looks,
+                theme,
+                &key,
+                Surface::new(role).on(ground),
+                "  ",
+                true,
+            );
+        }
+        for body in [inks, looks] {
+            match bodies.iter_mut().find(|(seen, _)| *seen == body) {
+                Some((_, scopes)) => scopes.push(scope.clone()),
+                None => bodies.push((body, vec![scope.clone()])),
+            }
+        }
+    }
+    bodies
+        .into_iter()
+        .map(|(body, scopes)| format!("{} {{\n{body}}}\n", scopes.join(", ")))
+        .collect()
+}
+
+fn solid_rows(theme: &Theme, toned: &[SurfaceRole]) -> Vec<(Ground, String)> {
+    let tonable = SurfaceRole::KIT
+        .into_iter()
+        .chain(toned.iter().copied())
+        .filter(|role| has_tones(role.kind))
+        .collect::<Vec<_>>();
+    let mut grounds: Vec<(Ground, Vec<(PaintState, Vec<String>)>)> = Vec::new();
+    for state in [PaintState::Selected, PaintState::Current] {
+        for role in roles::all() {
+            let plain = Surface::new(role);
+            let rows = if tonable.contains(&role) {
+                let mut rows = vec![(plain, format!("{}:not([data-tone])", selector(role)))];
+                rows.extend(TONES.map(|(tone, name)| {
+                    (
+                        plain.tone(tone),
+                        format!("{}[data-tone=\"{name}\"]", selector(role)),
+                    )
+                }));
+                rows
+            } else {
+                vec![(plain, selector(role))]
+            };
+            for (surface, row) in rows {
+                let ground = theme.ground_at(surface, state);
+                if !ground.solid {
+                    continue;
+                }
+                let states = match grounds.iter_mut().find(|(seen, _)| *seen == ground) {
+                    Some((_, states)) => states,
+                    None => {
+                        grounds.push((ground, Vec::new()));
+                        &mut grounds.last_mut().expect("just pushed").1
+                    }
+                };
+                match states.iter_mut().find(|(seen, _)| *seen == state) {
+                    Some((_, rows)) => rows.push(row),
+                    None => states.push((state, vec![row])),
+                }
+            }
+        }
+    }
+    grounds
+        .into_iter()
+        .map(|(ground, states)| {
+            let rows = states
+                .iter()
+                .map(|(state, rows)| {
+                    format!(
+                        ":is({}):is({})",
+                        rows.join(", "),
+                        state_selector(*state, Kind::Item).replace('&', "")
+                    )
+                })
+                .collect::<Vec<_>>();
+            (ground, format!(":is({})", rows.join(", ")))
+        })
+        .collect()
+}
+
+fn inks(theme: &Theme, ground: Ground) -> Vec<(String, String)> {
+    let neutral = theme.paint_on(ground, Tone::Neutral, Emphasis::Ghost);
+    let mut inks = vec![
+        (
+            "--penna-muted".to_owned(),
+            color(neutral.muted_at(PaintState::Rest)),
+        ),
+        (
+            "--penna-faint".to_owned(),
+            color(neutral.faint_at(PaintState::Rest)),
+        ),
+    ];
+    inks.extend(INKED.map(|(tone, name)| {
+        let ink = theme.paint_on(ground, tone, Emphasis::Ghost).text;
+        (format!("--penna-{name}-ink"), color(ink))
+    }));
+    inks
+}
+
+fn declared_inks(theme: &Theme, ground: Ground) -> String {
+    let window = inks(theme, theme.ground());
+    inks(theme, ground)
+        .into_iter()
+        .filter(|ink| !window.contains(ink))
+        .map(|(name, value)| format!("{name}: {value};"))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn write_inks(css: &mut String, theme: &Theme, ground: Ground) {
+    let inks = declared_inks(theme, ground);
+    if !inks.is_empty() {
+        let _ = writeln!(css, "  {inks}");
+    }
 }
 
 pub fn icons(theme: &Theme) -> String {
@@ -425,7 +591,6 @@ fn vars(theme: &Theme, surface: Surface, layer: &Layer) -> Vec<(&'static str, St
 
 fn write_root(css: &mut String, theme: &Theme) {
     let primary = theme.paint(Tone::Primary, Emphasis::Solid);
-    let ghost = theme.paint(Tone::Neutral, Emphasis::Ghost);
     let control = theme
         .paint(Tone::Neutral, Emphasis::Soft)
         .fill_at(PaintState::Active);
@@ -449,18 +614,11 @@ fn write_root(css: &mut String, theme: &Theme) {
             "--penna-fg-faint".to_owned(),
             color(theme.foreground.faint()),
         ),
-        (
-            "--penna-muted".to_owned(),
-            color(ghost.muted_at(PaintState::Rest)),
-        ),
-        (
-            "--penna-faint".to_owned(),
-            color(ghost.faint_at(PaintState::Rest)),
-        ),
         ("--penna-accent".to_owned(), color(theme.accent)),
         ("--penna-on-accent".to_owned(), color(primary.text)),
         ("--penna-primary".to_owned(), color(primary.fill)),
         ("--penna-control".to_owned(), color(control)),
+        ("--penna-wash".to_owned(), color(theme.background.washed(1))),
         ("--penna-knob".to_owned(), color(knob)),
         ("--penna-thumb".to_owned(), color(thumb)),
         ("--penna-success".to_owned(), color(theme.success)),
@@ -541,6 +699,7 @@ fn write_root(css: &mut String, theme: &Theme) {
             length(f32::from(theme.font_size)),
         ),
     ];
+    root.extend(inks(theme, theme.ground()));
     root.extend(paint_vars(theme));
     root.extend(scale_vars());
     root.extend(syntax_vars(theme));
@@ -578,10 +737,6 @@ fn paint_vars(theme: &Theme) -> Vec<(String, String)> {
         vars.push((format!("--penna-{name}-hover"), color(solid.hover)));
         vars.push((format!("--penna-{name}-pressed"), color(solid.active)));
         vars.push((format!("--penna-on-{name}"), color(solid.text)));
-    }
-    for (tone, name) in TONES.into_iter().chain([(Tone::Accent, "accent")]) {
-        let ghost = theme.paint(tone, Emphasis::Ghost);
-        vars.push((format!("--penna-{name}-ink"), color(ghost.text)));
     }
     vars
 }
@@ -842,6 +997,63 @@ mod tests {
         assert!(scope.contains(
             "  [data-penna=\"button\"][data-prominent] { --penna-fill: #1c1c1a; --penna-ink: #ebebeb;"
         ));
+    }
+
+    #[test]
+    fn a_ground_carries_the_inks_that_differ_from_the_windows() {
+        let css = stylesheet(&kit_theme(&builtin_themes()[0].1, ThemeMode::Light), &[]);
+        let start = css
+            .find(":is([data-penna=\"panel\"][data-ground]")
+            .expect("the panel's ground has a scope");
+        let scope = &css[start..];
+        let inks = &scope[scope.find('\n').expect("the scope opens")..];
+        assert!(inks.starts_with("\n  --penna-muted: #525250; --penna-faint: #858582;\n"));
+        assert!(css.contains(
+            "[data-on=\"card\"] { --penna-ground: #e9e9e6; --penna-muted: #525250; --penna-faint: #858582; }"
+        ));
+        assert!(css.contains("[data-on=\"bar\"] { --penna-ground: #f6f6f3; }"));
+    }
+
+    #[test]
+    fn a_solid_selection_sets_the_ground_inside_it_after_every_other_scope() {
+        let (_, macos) = &builtin_themes()[1];
+        let css = stylesheet(&kit_theme(macos, ThemeMode::Light), &[]);
+        let media = css
+            .find("@media (prefers-reduced-transparency: reduce)")
+            .expect("glass has a reduced transparency block");
+        let solid = &css[media..];
+        let scope = |opening: &str| {
+            let start = solid.find(opening).expect("the selection has a scope");
+            let end = start + solid[start..].find("\n}\n").expect("the scope closes");
+            &solid[start..end]
+        };
+        let tint = scope("\n:is(:is([data-penna=\"button.quiet\"]:not([data-tone])");
+        assert!(tint.contains("[data-penna=\"sidebar.row\"]"));
+        assert!(tint.contains("[data-penna=\"menu-item\"][data-tone=\"primary\"]"));
+        assert!(tint.contains("  --penna-muted: #ebebeb; --penna-faint: #79a4e8;"));
+        assert!(tint.contains("--penna-success-ink: #ebebeb;"));
+        assert!(tint.ends_with("\n  --penna-dot: #ebebeb;"));
+        let danger = scope("\n:is(:is([data-penna=\"button.quiet\"][data-tone=\"danger\"]");
+        assert!(danger.contains("[data-penna=\"menu-item\"][data-tone=\"danger\"]"));
+        assert!(danger.contains("  --penna-muted: #ebebeb; --penna-faint: #e38a87;"));
+        assert!(
+            solid.contains(
+                "  [data-penna=\"chip\"] { --penna-fill: #ffffff0a; --penna-ink: #ebebeb;"
+            )
+        );
+        assert!(solid.contains(
+            "  [data-penna=\"icon-button.row\"]:not([data-prominent], [data-penna^=\"field\"] *) { --penna-fill: transparent; --penna-ink: #ebebeb; --penna-muted: #ebebeb; --penna-edge: transparent; --penna-bw: 0px; --penna-shadow: 0 0 #0000; --penna-r: 9999px; --penna-k: 1; --penna-style-k: 2; --penna-row: 0; --penna-mark: transparent; --penna-focus: #0a64ddcc; --penna-ring-gap: 0px;"
+        ));
+        let ink = stylesheet(&kit_theme(&builtin_themes()[0].1, ThemeMode::Light), &[]);
+        assert!(!ink.contains("[data-penna=\"menu-item\"]:not([data-tone])"));
+        assert!(ink.contains("[data-penna=\"menu-item\"][data-tone=\"primary\"]"));
+        let quiet =
+            "  [data-penna=\"button.quiet\"]:not([data-prominent], [data-penna^=\"field\"] *) {";
+        let start = ink
+            .find(quiet)
+            .expect("a toned row's selection repaints its quiet buttons");
+        let rule = &ink[start..start + ink[start..].find('\n').expect("the rule ends")];
+        assert!(rule.contains("--penna-ring-gap: 0px;"));
     }
 
     #[test]

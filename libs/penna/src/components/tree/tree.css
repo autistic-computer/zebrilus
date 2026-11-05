@@ -46,6 +46,10 @@
   pointer-events: none;
 }
 
+.penna-tree-row:is([data-state~="selected"], [aria-selected="true"], [data-state~="current"]) {
+  --penna-tree-muted: var(--penna-muted);
+}
+
 .penna-tree-row > .penna-tree-content {
   display: flex;
   align-items: center;

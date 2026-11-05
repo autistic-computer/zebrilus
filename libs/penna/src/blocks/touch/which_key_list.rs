@@ -8,7 +8,7 @@ use ala::{
 use crate::{
     ActiveTheme as _, Colorize as _, PaintState, Space, StyledExt as _, Surface,
     blocks::which_key::{WhichKeyCap, WhichKeyRow, cap_text, groups},
-    foundation::roles,
+    foundation::{InteractiveSurfaceExt as _, roles},
     rems_from_px,
 };
 
@@ -57,23 +57,27 @@ impl WhichKeyList {
         let on_pick = self.on_pick.clone();
         let element_id = ElementId::named_usize("which-key-list-row", index);
         let height = px(ROW_HEIGHT);
-        let pressed = cx
-            .theme()
-            .layer(Surface::new(roles::PHONE_ROW), PaintState::Active);
+        let surface = Surface::new(roles::PHONE_ROW);
+        let theme = cx.theme();
+        let rest = theme.layer(surface, PaintState::Rest);
+        let pressed = theme.layer(surface, PaintState::Active);
         let press = crate::blocks::touch::press_highlight(
             element_id.clone(),
-            pressed.fill,
+            crate::blocks::touch::over_hover(
+                theme.layer(surface, PaintState::Hover).fill,
+                pressed.fill,
+            ),
             crate::blocks::touch::PressCorners::Row(
                 crate::foundation::row_radius(&pressed, height),
                 pressed.smoothing,
             ),
         );
-        crate::foundation::row_surface(
-            div().id(element_id),
-            Surface::new(roles::PHONE_ROW),
-            PaintState::Rest,
+        crate::foundation::row_corners(
+            div()
+                .id(element_id)
+                .surface_hover(surface, PaintState::Rest, cx),
+            &rest,
             height,
-            cx,
         )
         .relative()
         .debug_selector(move || selector)

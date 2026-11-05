@@ -5,6 +5,13 @@
   padding: var(--penna-space-8) var(--penna-space-12);
 }
 
+.display-card {
+  display: flex;
+  align-items: center;
+  gap: var(--penna-space-12);
+  width: fit-content;
+}
+
 .display-labels {
   display: flex;
   flex-direction: column;

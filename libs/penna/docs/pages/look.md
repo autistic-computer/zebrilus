@@ -4,7 +4,7 @@ penna draws one look. An app sets a few knobs in its theme file, a person sets a
 
 ## Kinds
 
-Steps of fill carry the structure, so a dense screen holds few lines. Only what floats over content casts a shadow.
+Steps of fill carry the structure, so a dense screen holds few lines. Only what floats over content casts a shadow. A press replaces the hover wash, never stacks on it.
 
 ```figure uses=badge,input,list,separator
 <div class="docs-tokens">
@@ -37,6 +37,15 @@ Hairlines mean something: a rule, an outline variant, a field being typed in. In
   <div class="docs-cell"><div class="docs-look"><button class="penna-button" data-penna="button" data-tone="primary" data-prominent><span class="penna-label" data-penna-text>Save</span></button><button class="penna-toggle" aria-checked="true" aria-label="Sync"></button><label class="penna-checkbox" aria-checked="true"><span class="penna-check"></span><span class="penna-label" data-penna-text>Restore</span></label><span class="penna-list" style="width: 132px"><span class="penna-list-item" data-penna="menu-item" role="option" data-state="selected" aria-selected="true"><span class="penna-list-content"><i class="penna-list-icon" data-icon="square-terminal"></i><span class="penna-list-label"><span class="penna-text" data-penna-text>work</span></span></span></span></span></div><span class="docs-note"><code>ink</code></span></div>
   <div class="docs-cell" data-look="blue"><div class="docs-look"><button class="penna-button" data-penna="button" data-tone="primary" data-prominent><span class="penna-label" data-penna-text>Save</span></button><button class="penna-toggle" aria-checked="true" aria-label="Sync"></button><label class="penna-checkbox" aria-checked="true"><span class="penna-check"></span><span class="penna-label" data-penna-text>Restore</span></label><span class="penna-list" style="width: 132px"><span class="penna-list-item" data-penna="menu-item" role="option" data-state="selected" aria-selected="true"><span class="penna-list-content"><i class="penna-list-icon" data-icon="square-terminal"></i><span class="penna-list-label"><span class="penna-text" data-penna-text>work</span></span></span></span></span></div><span class="docs-note"><code>blue</code></span></div>
   <div class="docs-cell" data-look="pink"><div class="docs-look"><button class="penna-button" data-penna="button" data-tone="primary" data-prominent><span class="penna-label" data-penna-text>Save</span></button><button class="penna-toggle" aria-checked="true" aria-label="Sync"></button><label class="penna-checkbox" aria-checked="true"><span class="penna-check"></span><span class="penna-label" data-penna-text>Restore</span></label><span class="penna-list" style="width: 132px"><span class="penna-list-item" data-penna="menu-item" role="option" data-state="selected" aria-selected="true"><span class="penna-list-content"><i class="penna-list-icon" data-icon="square-terminal"></i><span class="penna-list-label"><span class="penna-text" data-penna-text>work</span></span></span></span></span></div><span class="docs-note"><code>pink</code></span></div>
+</div>
+```
+
+On a tint's solid selection everything in the row takes its ink, and a toned chip turns to a wash of it. With the ink as tint the highlight is a wash and the chip keeps its tone.
+
+```figure uses=list,chip
+<div class="docs-show" data-gap="wide">
+  <div class="docs-cell"><span class="penna-list" style="width: 220px"><span class="penna-list-item" data-penna="menu-item" role="option" data-state="selected" aria-selected="true"><span class="penna-list-content"><i class="penna-list-icon" data-icon="square-terminal"></i><span class="penna-list-label"><span class="penna-text" data-penna-text>work</span></span><span class="penna-chip" data-penna="chip" data-tone="success" data-size="xsmall"><i class="penna-dot" data-tone="success"></i><span class="penna-text penna-chip-label" data-penna-text>Ready</span></span></span></span></span><span class="docs-note"><code>ink</code></span></div>
+  <div class="docs-cell" data-look="blue"><span class="penna-list" style="width: 220px"><span class="penna-list-item" data-penna="menu-item" role="option" data-state="selected" aria-selected="true"><span class="penna-list-content"><i class="penna-list-icon" data-icon="square-terminal"></i><span class="penna-list-label"><span class="penna-text" data-penna-text>work</span></span><span class="penna-chip" data-penna="chip" data-tone="success" data-size="xsmall"><i class="penna-dot" data-tone="success"></i><span class="penna-text penna-chip-label" data-penna-text>Ready</span></span></span></span></span><span class="docs-note"><code>blue</code></span></div>
 </div>
 ```
 
@@ -83,7 +92,7 @@ Glass is for what floats over content: menus, popovers, tooltips, toasts. `none`
 </div>
 ```
 
-Text on any glass reads at 4.5:1 over the worst content, and Reduce transparency draws it as the popover fill. Where the renderer can't bend light, `liquid` draws as `frosted`.
+Text on any glass reads at 4.5:1 over the worst content, and Reduce transparency draws it as the popover fill. Where the renderer can't bend light, `liquid` draws as `frosted`. Glass is neutral: a floating chip with a tone draws its tone opaque.
 
 ```figure uses=menu
 <div class="docs-dodont">

@@ -175,7 +175,7 @@ Roles (CSS root names, the look with the default knobs):
 | `primary` | #1c1c1a | #e9e7e3 | primary fills and the highlight; follows `fg` while the tint is the ink |
 | `success`, `warning`, `danger` | #007b3e, #a75400, #cc2737 | #3fbf74, #f0a14a, #f2555f | status, always with an icon or a word |
 
-The kit's base colors are these values and the default `neutral` reproduces them exactly (Look). Muted is 0.30 of the way to the pole: `fg-muted` mixes `fg` 0.30 toward its contrast pole (white under dark ink, black under light), and `muted` mixes the ghost paint's ink 0.30 toward the ground under it.
+The kit's base colors are these values and the default `neutral` reproduces them exactly (Look). Muted is 0.30 of the way to the pole: `fg-muted` mixes `fg` 0.30 toward its contrast pole (white under dark ink, black under light), and `muted` mixes the ghost paint's ink 0.30 toward the ground under it (on a tint's solid fill it is the ink itself, Look).
 
 Surfaces stack in this order, each layer a step away from the one under it (darker in light, lighter in dark): window `bg`, then `panel`, then cards (`settings.card`), then `popover` and floating panels.
 
@@ -209,7 +209,10 @@ How each kind draws, at rest and under the pointer:
 | Label (badge, keycap) | a soft wash in its tone, no edge | | |
 | Rule | a hairline in `divider` | | |
 
-- The highlight on a selected row is a wash of the ink while the tint is the ink, and the tint's solid fill once a tint is set.
+- The highlight on a selected row is a wash of the ink while the tint is the ink, and the tint's solid fill once a tint is set. A toned row's highlight is its tone's solid fill in every look.
+- On that solid fill everything in the row takes the selected ink: label, muted text, icons, and a toned chip or badge, which draws as a wash of the selected ink in place of its tone. The word still says the status (Content). Natively the row hands its fill to its children as their ground (`.on(ground)`, with `cx.theme().ground_at(look, state)`); in HTML a row with `data-state~="selected"` or `"current"` and a solid highlight sets the ground inside it.
+- The rule is one for every solid ground, whatever its color, so a graphite tint or a primary row in the ink counts as much as blue: the tint's or a tone's solid fill under a selected or current row, and a prominent surface (a solid button, chip or badge). Natively the ground says so (`Ground::solid`: a layer's when it sits on a solid ground, its highlight is the solid fill, or it is prominent and not glass; a paint's when its ground is solid or its fill in that state is more than half opaque). There every tone but a solid one reads as neutral, and muted ink is the ink itself; faint keeps its mix toward the fill. A solid chip or badge keeps its tone, since its own fill carries its label. A status dot turns to the muted ink with the rest, and a dot on a solid chip takes the chip's ink.
+- In HTML the tokens write one scope per solid ground, listing every role whose selected or current highlight is that fill (rows, list items, menu, sidebar and tree rows, tabs, toggled buttons). A role with toned rules lists its untoned rows (`:not([data-tone])`) in the neutral highlight's scope and each `[data-tone]` in its tone's. A scope carries the inks that differ and `--penna-dot` for dots. The looks painted on a solid fill are written once for every scope they fit: the labels (badges, chips, keycaps) and the buttons rows hold (quiet, icon, flat icon and row icon buttons, not prominent ones and none inside a field set in the row), each button with every value it sets and every other value at its initial, so a toned one loses its tone as it does natively. Soft and prominent buttons keep their window paint there, and rows hold neither. A button inside a field set in the row (a menu stepper's quiet buttons) paints on that field's ground natively, so the scopes leave it alone. The solid scopes come last in the tokens, after the reduced-transparency block, so they beat a ground scope around the row at equal specificity. A dot reads `--penna-dot` before its own color, and `data-solid` sets it to the tone's on-ink. Tree rows, like list items, switch their icons to the row's muted ink on selection.
 - Hairlines appear only where they mean something: rules, the outline variants (`button.outline`, `field.outline`, `badge.outline`, `chip.outline`), a field being typed in, and every surface and control under Increase contrast. Outlines are 1 wide.
 - The knob of a switch or a slider keeps `shadow-contact`, the one control shadow in the look, so a light knob reads on a light ground.
 - Variants (quiet, outline, solid, ghost) are drawn by the kit from their kind's style, so no knob can change one without the others.
@@ -251,6 +254,8 @@ Glass is only for floating surfaces, since it reads only with content behind it;
 - `liquid`: blur 20, bezel 3, refraction 4, a specular rim lit from above, one set of values for light and one for dark (`interface_theme::liquid`). Where the renderer can't bend light, it draws as `frosted`: the web draws it with its lens only where `kit.js` refracts, and natively a window that can't sample its backdrop draws the fallback.
 - A material of an app's own takes the same fields. The kit holds every material to two rules: text on it reaches 4.5:1, so its tint never drops below the opacity that gives that over the worst content, and it has a solid fallback, the `popover` fill.
 
+Natively the blur reads the backdrop up to 2.5 blur radii past a glass surface's edge; the web's backdrop filter reads only what is under the surface. Where the backdrop changes just outside a glass edge, as under a dialog stacked over another, the two blend it a little differently. That is a raster difference, like text, not a choice.
+
 Presets: `macos` (tint blue, #0a64dd and #76abfd, since ala exposes no system accent; `control-radius` `full`; `smoothing` 4; `glass` `liquid`) and `yaru` (tint orange; `radius` 8; `smoothing` 2; `glass` `none`) are knob values with names, nothing more.
 
 HTML: a theme file's knobs generate its tokens (`cargo run --example theme_css`), so the HTML twin follows the same look. A theme that leaves `glass` out gets `frosted` in its tokens. `--penna-control-radius` carries the control corner (9999px for `full`). Under `prefers-reduced-transparency: reduce` the tokens give every glass role the `popover` fill and no backdrop. A card inside a container marked `data-ground` rises one step from that container's fill.
@@ -267,9 +272,12 @@ How the knobs are spelled and decided:
 - Keyboard focus changes no fill but a field's; everything else shows the ring.
 - Rings on a selected pane, card or tile, and a row's bar mark, take the highlight color, not `accent`.
 - Panels (the sidebar and the inspector) take the `panel` fill; panes take their ground. Tooltips and pane chips cast `shadow-float` like every floating surface; drop zones cast none.
+- Glass is neutral: a floating surface with a tone (a solid or soft toned floating chip) draws its tone's own fill, opaque, under `shadow-float`, since a toned tint can't hold text at 4.5:1 over any backdrop. Only the neutral floating chip is glass; a callout keeps neutral glass and shows its tone in its icon. A soft toned chip lays its soft fill opaque on its ground with the soft ink, a solid one its solid fill; any tone counts, `primary` included, and a solid neutral chip is solid `primary`. In HTML a floating chip (`chip.floating`, `chip.marker`, `chip.drag`) takes `data-tone` like a badge, and `data-emphasis="solid"` draws no glass.
+- A press replaces the look the row shows; nothing draws its pressed wash over its hover or selected wash. Natively a press highlight (sheet rows, touch which-key rows, and menu rows and rows under a coarse pointer) paints the wash that turns the row's hover wash, or its selection when it is selected, into the pressed one; over a tint's solid selection that is the whole pressed wash. A row that has one sets no pressed style of its own; tabs and chips keep their pressed style, which replaces the hover style.
+- Muted, faint and tone ink are worked out for the ground under the text, natively and in HTML, where each ground scope (`data-ground`, `data-on`) carries the inks that differ from the window's: `--penna-muted`, `--penna-faint` and `--penna-<tone>-ink`, as values. Natively they mix the ink toward the ground's fill in OKLab rather than fade it, so the tokens write the mixed color. Cards, panels and floating grounds differ in muted and faint only; tone inks follow the ground's ink, which only a solid selection changes.
 - Row inset (6), outline width (1) and highlight strength (0.8 of the wash) are fixed.
 
-Status: built (step 10). Theme files are knobs only, the kinds and the built-in role patches draw the table above, and `default`, `macos` and `yaru` are presets. The storybook's theme creator edits these knobs and exports a theme file, the docs Look page shows their range live, and the parity baselines hold the one look. Known gaps between native and HTML: a solid-toned floating chip draws its tone as a glass tint natively and opaque in HTML; glass over a stacked dialog blends what is under it a little differently on the two sides; sheet rows natively draw the press wash over the hover wash.
+Status: built (steps 10 and 12). Theme files are knobs only, the kinds and the built-in role patches draw the table above, and `default`, `macos` and `yaru` are presets. The storybook's theme creator edits these knobs and exports a theme file, the docs Look page shows their range live, and the parity baselines hold the one look. Step 12 closed the last differences between native and HTML but one: a soft or prominent button set straight on a solid selection keeps its window paint in HTML, and rows hold none that way. What else remains is raster: text, and glass blur at its edges.
 
 ## Focus and keys
 
@@ -527,7 +535,7 @@ Kinds: tone and emphasis paint it like a badge (`.tone()`, `.emphasis()`): soft 
 Anatomy, left to right, all from the chip's rung of the control ladder (Size):
 
 - Container: height `control_px` (20, 24, 28, 32, 40, 44 from `xs` to `touch`); full pill corners; inset `inset` at both sides (8, 8, 12, 16, 16, 16).
-- Lead (optional): a dot (`.dot(tone)`), 6 across, in its tone (a neutral dot is muted ink), or an icon (`.icon()`) at `icon_px` (12, 12, 14, 16, 16, 16).
+- Lead (optional): a dot (`.dot(tone)`), 6 across, in its tone (a neutral dot is muted ink; on a solid chip every dot is the chip's ink), or an icon (`.icon()`) at `icon_px` (12, 12, 14, 16, 16, 16).
 - Label: the rung's text style (`caption`, `small`, `body`, `body`, `lead`, `touch-body`) at 500.
 - Detail (optional, `.detail()`): a middle dot and one short fact in the same style, muted. It is the only part that shrinks, and it ends in an ellipsis when it runs out of room.
 - Gaps: `icon_gap` between every part (4, 4, 6, 6, 8, 8).
@@ -553,7 +561,7 @@ Content: the label is the state ("Ready", "Paused") or the thing's own name ("ub
 
 Placement: chips in a row sit `gap-related` (8) apart.
 
-HTML: `.penna-chip` with `data-penna` (the look and emphasis: `chip`, `chip.outline`, `chip.bar`, `chip.floating`, `chip.marker`, `chip.drag`, or `badge.icon` with `data-look="icon-disc"`), `data-tone`, `data-size` (`xsmall` to `touch`; small when absent), `data-state` (`hover`, `active`, `focused`, `selected`, `current`, `disabled`), `data-emphasis` (`ghost`, or `solid` with `data-solid="<tone>"` and the label wrapped in `.penna-solid-ink` carrying the solid button's `data-penna="button" data-prominent`), `data-interactive` (with `role="button"` and `tabindex="0"` when it takes focus; `chip.js` runs it on Space and Enter and keeps a click from focusing it), `data-ring="<tone>"`, and `data-detail` when it holds a detail. Its parts: `i.penna-dot[data-tone]`, `<i data-icon>`, `.penna-chip-label` and `.penna-chip-detail` (which `chip.js` truncates), each text run marked `data-penna-text`.
+HTML: `.penna-chip` with `data-penna` (the look and emphasis: `chip`, `chip.outline`, `chip.bar`, `chip.floating`, `chip.marker`, `chip.drag`, or `badge.icon` with `data-look="icon-disc"`), `data-tone`, `data-size` (`xsmall` to `touch`; small when absent), `data-state` (`hover`, `active`, `focused`, `selected`, `current`, `disabled`), `data-emphasis` (`ghost`, or `solid` with `data-solid="<tone>"` and the dot and label wrapped in `.penna-solid-ink` carrying the solid button's `data-penna="button" data-prominent`, or `data-solid-ink="accent"` for the accent, which has no prominent button and takes `--penna-on-accent`), `data-interactive` (with `role="button"` and `tabindex="0"` when it takes focus; `chip.js` runs it on Space and Enter and keeps a click from focusing it), `data-ring="<tone>"`, and `data-detail` when it holds a detail. Its parts: `i.penna-dot[data-tone]`, `<i data-icon>`, `.penna-chip-label` and `.penna-chip-detail` (which `chip.js` truncates), each text run marked `data-penna-text`.
 
 Status: matches.
 
@@ -748,7 +756,7 @@ Content: sentence case, no closing period on a single line. Two or three text st
 
 Placement: a label and what it names sit `gap-tight` (4) apart: a title and its description, a field label and its field.
 
-HTML: `.penna-type` with `data-type` (the style's name: `micro` to `display`, `mono`, `read-h1` to `read-body`, `touch-small` to `touch-title`), `data-strong`, `data-muted`, `data-faint`, `data-tone` (`primary`, `danger`, `warning`, `success`, `accent`), `data-mono` (the code face at the style's own size) and `data-truncate`; the run is marked `data-penna-text`. It wraps unless `data-truncate`. Muted takes the ink of the surface around it, as `.on(ground)` does natively; faint and tone take the root `--penna-faint` and `--penna-<tone>-ink`, worked out for the window, so a faint label on a card mixes toward the window's fill.
+HTML: `.penna-type` with `data-type` (the style's name: `micro` to `display`, `mono`, `read-h1` to `read-body`, `touch-small` to `touch-title`), `data-strong`, `data-muted`, `data-faint`, `data-tone` (`primary`, `danger`, `warning`, `success`, `accent`), `data-mono` (the code face at the style's own size) and `data-truncate`; the run is marked `data-penna-text`. It wraps unless `data-truncate`. Muted, faint and tone take `--penna-muted`, `--penna-faint` and `--penna-<tone>-ink`, which the surface around it and each ground scope (`data-ground`, `data-on`, a tint's solid selection) set for their ground, as `.on(ground)` does natively.
 
 Status: matches.
 
@@ -1353,7 +1361,7 @@ States:
 | State | Look | Notes |
 |---|---|---|
 | rest | the variant's paint | |
-| hover | Card, Screen and Mini lift: `shadow-lifted` under them (Depth); Drop one tint step deeper | the app sets it while the tile is dragged |
+| hover | Card, Screen and Mini lift: one step of fill above rest and `shadow-lifted` under them (Depth), so the lift reads in dark too, where a shadow barely shows; Drop one tint step deeper | the app sets it while the tile is dragged; the step is one wash of the ground's pole (`washed(1)`, the hover step of a solid surface) over the fill, a Mini's caller fill included |
 | selected | a 2px ring in the highlight color (Card, Screen, Mini); Drop's selected tint | the one picked |
 | focused | the variant's rest paint and the focus ring, 1.5 outside | from the keyboard on a tile that takes focus, or set by the app |
 | disabled | fill at half strength, faint label, no shadow | a thing that is away or can't be placed |
@@ -1362,7 +1370,7 @@ Behavior: the native tile paints a state; the app picks, drags and drops. A tile
 
 Placement: on a well or in a dock, `gap-group` 16 apart in a row, or where the app arranges them. Drop and veil sit absolutely over the panes they cover. A tile rises one step of fill from its ground, and casts a shadow only while dragged.
 
-HTML: `.penna-tile` with `data-penna` (`tile.card`, `tile.screen`, `tile.drop`, `tile.mini`) and `data-variant` (`card`, `screen`, `drop`, `veil`, `mini`); `data-state` (`hover`, `selected`, `focused`, `disabled`), `data-tone` (`primary`, `danger`), `data-edge` on a drop zone, and `role="button"` with `tabindex="0"` on a tile that takes focus. `tile.css` draws the variants and states, the lift as `--penna-shadow-lifted`, the selected ring in `::before` and the focus ring in `::after`; size, inset, placement and a mini's fill and corners are the page's, as natively. `tile.js` runs a focusable tile on Space and Enter and keeps a click from focusing it. Picking and dragging are the page's, as natively the app's.
+HTML: `.penna-tile` with `data-penna` (`tile.card`, `tile.screen`, `tile.drop`, `tile.mini`) and `data-variant` (`card`, `screen`, `drop`, `veil`, `mini`); `data-state` (`hover`, `selected`, `focused`, `disabled`), `data-tone` (`primary`, `danger`), `data-edge` on a drop zone, and `role="button"` with `tabindex="0"` on a tile that takes focus. `tile.css` draws the variants and states, the lift as `--penna-shadow-lifted` under an inset `--penna-wash` (one wash step, laid over whatever fill the tile or its well draws), the selected ring in `::before` and the focus ring in `::after`; size, inset, placement and a mini's fill and corners are the page's, as natively. `tile.js` runs a focusable tile on Space and Enter and keeps a click from focusing it. Picking and dragging are the page's, as natively the app's.
 
 Status: matches.
 
@@ -1467,5 +1475,6 @@ Status: matches.
 | 9 | Density setting | new option | built |
 | 10 | One look: the default theme becomes the look above, theme files shrink to knobs, `macos` and `yaru` become presets, role overrides go, and the kit draws variants from their kind | every screen: fewer edges and shadows, a warm ground, 12 corners | built |
 | 11 | Every component matches its section: bars and cards set their own size and inset, the HTML twins take their roles, hover and pressed on switches and segmented controls, a lifted tile while dragged, no free separator color, 14 icons when no size is given | bars move to the pane header height, unsized icons grow 1px beside `body` | built |
+| 12 | The Look's last native and HTML differences: toned floating chips opaque, presses replacing hovers, glass over stacked dialogs, label inks per ground in HTML, selected-row content in the selected ink, a dragged tile one fill step up | toned pane chips turn opaque, dragged tiles read in dark, chips on picked rows turn to the row's ink | built |
 
 Each step lands in penna with its stories, scores parity, rebaselines only what the step meant to move, and is pulled into zz and nidus.

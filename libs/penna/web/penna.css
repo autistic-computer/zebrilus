@@ -410,27 +410,41 @@ button[data-penna] {
 
 [data-penna][data-emphasis="solid"] {
   background: var(--penna-solid);
+  --penna-backdrop: none;
+  --penna-rim: 0 0 #0000;
+  --penna-glass: 0;
 }
 
 [data-penna][data-solid="primary"] {
   --penna-solid: var(--penna-primary);
+  --penna-dot: var(--penna-on-primary);
 }
 
 [data-penna][data-solid="danger"] {
   --penna-solid: var(--penna-danger);
+  --penna-dot: var(--penna-on-danger);
 }
 
 [data-penna][data-solid="warning"] {
   --penna-solid: var(--penna-warning);
+  --penna-dot: var(--penna-on-warning);
 }
 
 [data-penna][data-solid="success"] {
   --penna-solid: var(--penna-success);
+  --penna-dot: var(--penna-on-success);
 }
 
 [data-penna][data-solid="accent"] {
   --penna-solid: var(--penna-accent);
+  --penna-dot: var(--penna-on-accent);
   border-color: rgb(from var(--penna-accent) r g b / 0.184);
+}
+
+.penna-solid-ink[data-solid-ink="accent"] {
+  --penna-ink: var(--penna-on-accent);
+  --penna-muted: var(--penna-on-accent);
+  color: var(--penna-on-accent);
 }
 
 .penna-solid-ink {

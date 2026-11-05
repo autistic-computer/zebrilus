@@ -332,11 +332,12 @@ pub(crate) fn dot(tone: Tone, ground: Ground, cx: &App) -> Div {
 
 fn dot_color(tone: Tone, ground: Ground, cx: &App) -> Hsla {
     let theme = cx.theme();
-    match tone {
-        Tone::Neutral => theme
+    if tone == Tone::Neutral || ground.solid {
+        theme
             .paint_on(ground, Tone::Neutral, Emphasis::Ghost)
-            .muted_at(PaintState::Rest),
-        tone => theme.tone(tone),
+            .muted_at(PaintState::Rest)
+    } else {
+        theme.tone(tone)
     }
 }
 

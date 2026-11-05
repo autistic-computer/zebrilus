@@ -63,7 +63,6 @@ const GLOW_ALPHA: f32 = 0.35;
 const WASH_ALPHA: f32 = 0.28;
 const FLOATING_ALPHA: f32 = 0.90;
 const TINT_CHROMA: f32 = 0.02;
-const COLORED_CHROMA: f32 = 0.06;
 
 thread_local! {
     static CONTRAST: Cell<f32> = const { Cell::new(1.0) };
@@ -193,11 +192,6 @@ pub(super) fn contrast_ratio(left: Hsla, right: Hsla) -> f32 {
 
 pub(super) fn edge_weight() -> f32 {
     scaled(EDGE_WEIGHT)
-}
-
-pub(super) fn is_colored(color: Hsla) -> bool {
-    let (_, a, b) = oklab::rgb_to_oklab(color.into());
-    a.hypot(b) > COLORED_CHROMA
 }
 
 #[must_use]
