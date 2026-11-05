@@ -2,10 +2,6 @@
 
 Nested rows joined by guide lines: a host, its sessions, their windows. For a flat set use a list.
 
-```figure uses=notice
-<div class="docs-full penna-notice" data-penna="notice" data-tone="warning"><div class="penna-notice-tone" data-penna="chip" data-tone="warning"><span class="penna-notice-lead"><i data-icon="triangle-alert"></i></span><div class="penna-notice-body"><span class="penna-text penna-notice-title" data-penna-text>Being reworked</span><span class="penna-text penna-notice-detail" data-penna-text>A focused row runs the full width of its list, so natively the list clips the sides of its focus ring.</span></div></div></div>
-```
-
 ## Anatomy
 
 ```figure uses=tree
@@ -20,7 +16,7 @@ Nested rows joined by guide lines: a host, its sessions, their windows. For a fl
 
 ## States
 
-A row's states are a list row's. Selecting a row lights its parent's guide. The app marks the row the keyboard is on `.focused(true)`.
+A row's states are a list row's. Selecting a row lights its parent's guide. The app marks the row the keyboard is on `.focused(true)`, and pads the list 2 on every side so the ring shows whole.
 
 ```figure uses=tree
 <div class="docs-show" data-gap="wide">
@@ -50,7 +46,9 @@ let guides = IndentGuides::new(
     px(4.0),
     IndentGuideColors::tree(cx),
 );
-uniform_list("files", rows.len(), render_row).with_decoration(guides)
+uniform_list("files", rows.len(), render_row)
+    .p(Space::S2)
+    .with_decoration(guides)
 ```
 
 ## API

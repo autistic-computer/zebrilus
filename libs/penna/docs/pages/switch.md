@@ -2,10 +2,6 @@
 
 Turns a setting on or off, and the change applies at once. For one of a few modes use a segmented control.
 
-```figure uses=notice
-<div class="docs-full penna-notice" data-penna="notice" data-tone="warning"><div class="penna-notice-tone" data-penna="chip" data-tone="warning"><span class="penna-notice-lead"><i data-icon="triangle-alert"></i></span><div class="penna-notice-body"><span class="penna-text penna-notice-title" data-penna-text>Being reworked</span><span class="penna-text penna-notice-detail" data-penna-text>It has no hover or pressed look.</span></div></div></div>
-```
-
 ## Anatomy
 
 ```figure uses=switch
@@ -42,16 +38,25 @@ Medium is the default and stays put with density. Under touch, medium and up dra
 ## States
 
 ```figure uses=switch
-<div class="docs-show" data-gap="wide">
-  <div class="docs-cell"><button class="penna-toggle" aria-checked="false" aria-label="Off"></button><span class="docs-note">Off</span></div>
-  <div class="docs-cell"><button class="penna-toggle" aria-checked="true" aria-label="On"></button><span class="docs-note">On</span></div>
-  <div class="docs-cell"><button class="penna-toggle" aria-checked="false" data-state="focused" aria-label="Focused"></button><span class="docs-note">Focused</span></div>
-  <div class="docs-cell"><button class="penna-toggle" aria-checked="true" data-state="focused" aria-label="Focused on"></button><span class="docs-note">On, focused</span></div>
-  <div class="docs-cell"><button class="penna-toggle" aria-checked="false" disabled aria-label="Disabled off"></button><span class="docs-note">Off, disabled</span></div>
-  <div class="docs-cell"><button class="penna-toggle" aria-checked="true" disabled aria-label="Disabled on"></button><span class="docs-note">On, disabled</span></div>
+<div class="penna-stack" data-gap="group">
+  <div class="docs-show" data-gap="wide">
+    <div class="docs-cell"><button class="penna-toggle" aria-checked="false" aria-label="Off"></button><span class="docs-note">Off</span></div>
+    <div class="docs-cell"><button class="penna-toggle" aria-checked="false" data-state="hover" aria-label="Hover"></button><span class="docs-note">Hover</span></div>
+    <div class="docs-cell"><button class="penna-toggle" aria-checked="false" data-state="hover active" aria-label="Pressed"></button><span class="docs-note">Pressed</span></div>
+    <div class="docs-cell"><button class="penna-toggle" aria-checked="false" data-state="focused" aria-label="Focused"></button><span class="docs-note">Focused</span></div>
+    <div class="docs-cell"><button class="penna-toggle" aria-checked="false" disabled aria-label="Disabled"></button><span class="docs-note">Disabled</span></div>
+  </div>
+  <div class="docs-show" data-gap="wide">
+    <div class="docs-cell"><button class="penna-toggle" aria-checked="true" aria-label="On"></button><span class="docs-note">On</span></div>
+    <div class="docs-cell"><button class="penna-toggle" aria-checked="true" data-state="hover" aria-label="Hover"></button><span class="docs-note">Hover</span></div>
+    <div class="docs-cell"><button class="penna-toggle" aria-checked="true" data-state="hover active" aria-label="Pressed"></button><span class="docs-note">Pressed</span></div>
+    <div class="docs-cell"><button class="penna-toggle" aria-checked="true" data-state="focused" aria-label="Focused"></button><span class="docs-note">Focused</span></div>
+    <div class="docs-cell"><button class="penna-toggle" aria-checked="true" disabled aria-label="Disabled"></button><span class="docs-note">Disabled</span></div>
+  </div>
 </div>
 ```
 
+- Hover and pressed: the track a step deeper, then another while held. The thumb stays.
 - Focused: a ring outside the track, one ring width off it when on, from the keyboard only. Space or Enter flips it.
 - Disabled: half strength, presses ignored, out of the focus order.
 - The thumb holds still with reduced motion.

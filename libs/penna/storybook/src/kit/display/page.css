@@ -5,6 +5,13 @@
   padding: var(--penna-space-8) var(--penna-space-12);
 }
 
+.display-labels {
+  display: flex;
+  flex-direction: column;
+  gap: var(--penna-space-8);
+  width: 180px;
+}
+
 .display-stack {
   display: flex;
   flex-direction: column;

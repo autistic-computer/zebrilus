@@ -1,3 +1,7 @@
 .penna-card[data-penna] {
   box-sizing: border-box;
 }
+
+.penna-card:where([data-penna]) {
+  padding: var(--penna-inset-card);
+}

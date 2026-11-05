@@ -145,6 +145,7 @@ fn tree(
             .collect::<Vec<_>>()
     })
     .size_full()
+    .p(Space::S2)
     .with_sizing_behavior(ListSizingBehavior::Auto)
     .with_decoration(IndentGuides::new(
         depths,
@@ -157,7 +158,10 @@ fn tree(
     sidebar(
         id,
         div()
-            .h(px(penna::Size::Medium.control_px() * f32::from(TREE_ROWS)))
+            .h(px(penna::Size::Medium.control_px().mul_add(
+                f32::from(TREE_ROWS),
+                2.0 * Space::S2.design_px(),
+            )))
             .child(rows),
         cx,
     )

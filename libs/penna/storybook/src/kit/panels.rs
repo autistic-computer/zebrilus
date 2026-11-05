@@ -27,13 +27,13 @@ pub const STORY: Story = Story {
         Section {
             id: "cards",
             name: "Cards",
-            summary: "Card::new(id, look).on(ground) for message bubbles, code, tables and image tiles. Pieces inside a card pass cx.theme().ground_of(look), like the badge here.",
+            summary: "Card::new(id, look).on(ground) for message bubbles, code, tables and image tiles, inset-card 12 all round unless the caller pads it. Pieces inside a card pass cx.theme().ground_of(look), like the badge here; a card on a panel rises one step from the panel's fill.",
             build: |_, cx| stateless(cards, cx),
         },
         Section {
             id: "bars",
             name: "Bars",
-            summary: "Bar::new(id, look) for a strip across a sheet, a pane header or the title bar. Edge lines come from .rule(RuleLook::Bar, edge, cx) on the bar itself.",
+            summary: "Bar::new(id, look) for a strip across a sheet, a pane header or the title bar: the pane header height and inset-chrome at the sides unless the caller sets them. Edge lines come from .rule(RuleLook::Bar, edge, cx) on the bar itself.",
             build: |_, cx| stateless(bars, cx),
         },
         Section {
@@ -92,14 +92,13 @@ fn panels(_: &mut Window, _: &mut App) -> AnyElement {
 fn cards(_: &mut Window, cx: &mut App) -> AnyElement {
     let bubble = cx.theme().ground_of(CardLook::Bubble);
     let code = cx.theme().ground_of(CardLook::Code);
+    let panel = cx.theme().ground_of(PanelLook::Plain);
     states()
         .columns(2)
         .state(
             "bubble",
             Card::new("card-bubble", CardLook::Bubble)
                 .max_w(px(260.0))
-                .px(Space::S12)
-                .py(Space::S8)
                 .flex()
                 .items_center()
                 .gap(Space::S8)
@@ -113,7 +112,6 @@ fn cards(_: &mut Window, cx: &mut App) -> AnyElement {
             "code",
             Card::new("card-code", CardLook::Code)
                 .w(px(260.0))
-                .p(Space::S12)
                 .flex()
                 .flex_col()
                 .gap(Space::S4)
@@ -127,7 +125,6 @@ fn cards(_: &mut Window, cx: &mut App) -> AnyElement {
             "figure",
             Card::new("card-figure", CardLook::Figure)
                 .w(px(260.0))
-                .p(Space::S12)
                 .child(Label::new(TextStyle::Small, "Name · Size · Kind")),
         )
         .state(
@@ -139,6 +136,17 @@ fn cards(_: &mut Window, cx: &mut App) -> AnyElement {
                 .justify_center()
                 .child(Label::new(TextStyle::Caption, "image")),
         )
+        .state(
+            "on a panel",
+            Panel::new("card-panel", PanelLook::Plain)
+                .w(px(260.0))
+                .p(Space::INSET_CARD)
+                .child(
+                    Card::new("card-on-panel", CardLook::Bubble)
+                        .on(panel)
+                        .child(Label::new(TextStyle::Body, "A step above the panel")),
+                ),
+        )
         .into_any_element()
 }
 
@@ -147,8 +155,6 @@ fn bars(_: &mut Window, cx: &mut App) -> AnyElement {
     let bar = |id: &'static str, look: BarLook, name: &'static str, cx: &App| {
         Bar::new(id, look)
             .w(px(420.0))
-            .h(px(36.0))
-            .px(Space::S12)
             .flex()
             .items_center()
             .justify_between()
@@ -177,8 +183,8 @@ fn bars(_: &mut Window, cx: &mut App) -> AnyElement {
                 .child(
                     Bar::new("bar-notice", BarLook::Plain)
                         .on(picker)
-                        .px(Space::S12)
-                        .py(Space::S8)
+                        .flex()
+                        .items_center()
                         .rule(RuleLook::Bar, Edge::Bottom, cx)
                         .child(Label::new(
                             TextStyle::Caption,

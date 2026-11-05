@@ -2,10 +2,6 @@
 
 The fill behind a row the app lays out itself: menu options, sidebar entries, the sidebar's cursor. For a ready list row use a list.
 
-```figure uses=notice
-<div class="docs-full penna-notice" data-penna="notice" data-tone="warning"><div class="penna-notice-tone" data-penna="chip" data-tone="warning"><span class="penna-notice-lead"><i data-icon="triangle-alert"></i></span><div class="penna-notice-body"><span class="penna-text penna-notice-title" data-penna-text>Being reworked</span><span class="penna-text penna-notice-detail" data-penna-text>The HTML row fixes a size, text and icon that the native row leaves to you.</span></div></div></div>
-```
-
 ## Looks
 
 ```figure uses=row
@@ -31,9 +27,9 @@ The fill behind a row the app lays out itself: menu options, sidebar entries, th
 ```
 
 1. **Fill**: the look's fill, outline and corners.
-2. **Content**: yours: icon, label, a muted aside.
+2. **Content**: yours: icon, label, a muted aside. The stories use a 32 row, 12 at the sides, a 12 icon and a `small` label.
 
-`.row_height()` sizes the corners. The height is yours.
+`.row_height()` sizes the corners. The height, inset and text are yours, in HTML too.
 
 ## States
 

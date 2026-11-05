@@ -2,6 +2,51 @@ section[data-section="screens"] > .penna-well {
   padding: var(--penna-space-24);
 }
 
+.penna-tile[data-variant="screen"] {
+  display: flex;
+  align-items: flex-end;
+  width: 150px;
+  height: 90px;
+  padding: var(--penna-space-6);
+}
+
+.penna-tile[data-variant="card"] {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  width: 132px;
+  height: 64px;
+  padding: var(--penna-space-8) var(--penna-space-10);
+}
+
+.penna-tile[data-variant="drop"] {
+  position: absolute;
+  top: var(--penna-space-4);
+  right: var(--penna-space-4);
+  bottom: var(--penna-space-4);
+  width: 96px;
+  --penna-r: var(--penna-radius);
+  --penna-k: var(--penna-style-k);
+}
+
+.penna-tile[data-variant="veil"] {
+  position: absolute;
+  inset: 0;
+}
+
+.penna-tile[data-variant="mini"] {
+  flex: 1 1 0;
+  height: 100%;
+  padding: var(--penna-space-6);
+  --penna-fill: var(--penna-bg);
+  --penna-r: 6px;
+  --penna-k: var(--penna-style-k);
+}
+
+.penna-tile[data-dragging] {
+  z-index: 1;
+}
+
 .canvas-area {
   position: relative;
   width: 200px;

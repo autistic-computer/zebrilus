@@ -12,6 +12,7 @@
   display: flex;
   flex-direction: column;
   box-sizing: border-box;
+  width: max-content;
   padding: var(--penna-inset-card);
   font-family: var(--penna-font);
   font-size: var(--penna-text-body-size);
@@ -29,6 +30,11 @@
 .penna-popover[data-anchor~="right"] > .penna-popover-panel {
   left: auto;
   right: 0;
+}
+
+.penna-popover[data-anchor~="center"] > .penna-popover-panel {
+  left: 50%;
+  transform: translateX(-50%);
 }
 
 .penna-popover:not([data-open]) > .penna-popover-panel {

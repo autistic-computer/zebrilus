@@ -91,6 +91,7 @@ impl RenderOnce for Example {
             ..TextViewStyle::default()
         };
         Card::new(self.id.clone(), CardLook::Figure)
+            .p_0()
             .flex()
             .flex_col()
             .w_full()

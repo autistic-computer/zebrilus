@@ -9,8 +9,9 @@ use ala::{
 };
 
 use crate::{
-    ActiveTheme as _, AuthoredElement as _, Disableable, Emphasis, PaintState, Sizable, Size,
-    Smoothing, StyledExt as _, Tone, foundation::focus::with_focus_ring, h_flex, oklab_lightness,
+    ActiveTheme as _, AuthoredElement as _, Disableable, Emphasis, Paint, PaintState, Sizable,
+    Size, Smoothing, StyledExt as _, Tone, foundation::focus::with_focus_ring, h_flex,
+    oklab_lightness,
 };
 
 const TOGGLE_ANIMATION: Duration = Duration::from_millis(150);
@@ -177,6 +178,13 @@ fn lighter(a: Hsla, b: Hsla) -> Hsla {
     }
 }
 
+fn deeper(paint: &Paint, steps: f32) -> Hsla {
+    let step = (paint.active.a - paint.hover.a).max(0.0);
+    paint
+        .active
+        .alpha(step.mul_add(steps, paint.active.a).min(1.0))
+}
+
 fn hold(_: &MouseDownEvent, window: &mut Window, cx: &mut App) {
     cx.stop_propagation();
     window.prevent_default();
@@ -226,7 +234,13 @@ impl RenderOnce for Switch {
             knob
         }
         .into();
+        let (hover, pressed) = if checked {
+            (paint.hover, paint.active)
+        } else {
+            (deeper(&paint, 1.0), deeper(&paint, 2.0))
+        };
         let ring = theme.paint(Tone::Neutral, Emphasis::Ghost);
+        let interactive = on_click.is_some();
 
         let track = div()
             .id(self.id.clone())
@@ -238,6 +252,10 @@ impl RenderOnce for Switch {
             .border(m.inset)
             .border_color(cx.theme().transparent)
             .bg(track)
+            .when(interactive, |this| {
+                this.hover(move |style| style.bg(hover))
+                    .active(move |style| style.bg(pressed))
+            })
             .when_some(self.tooltip.clone(), |this, tooltip| {
                 this.tooltip(move |window, cx| {
                     crate::components::tooltip::Tooltip::new(tooltip.clone()).build(window, cx)

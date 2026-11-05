@@ -71,18 +71,6 @@ function shapeRuns(root) {
   });
 }
 
-function holdHover(root) {
-  const run = root.querySelector(".appearance-run");
-  if (!run) return;
-  const probe = document.createElement("span");
-  probe.dataset.penna = "field";
-  probe.dataset.state = "hover";
-  probe.hidden = true;
-  run.append(probe);
-  root.style.setProperty("--appearance-field-hover", getComputedStyle(probe).getPropertyValue("--penna-fill").trim());
-  probe.remove();
-}
-
 function shapeSwatches(root) {
   const radius = controlRadius();
   const swatch = radius >= 9999 ? 9 : adaptive(radius, 18, 18);
@@ -413,7 +401,6 @@ function settleAppearance() {
     pennaKit.ceilText(frame);
     settleSliders(frame);
     shapeSwatches(frame);
-    holdHover(frame);
   });
   if (typeof snap === "function") snap();
   document.querySelectorAll(".appearance-frame").forEach(shapeRuns);

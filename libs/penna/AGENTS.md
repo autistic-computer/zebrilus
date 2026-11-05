@@ -159,7 +159,8 @@ How parity drives the pages:
 - The storybook host ceils each section's height to a whole px; `web/story.js` does the same for every
   `section[data-section]` (`pennaStory.fit()` reruns it).
 - Root tokens a page reaches for instead of mixing its own: `--penna-fg-muted` (the foreground's muted ink, which
-  `.story-label` and `states()` labels draw in; `--penna-muted` is the ghost paint's, lighter in dark), `--penna-fg-faint` (the foreground's faint ink, for disabled link and text),
+  `.story-label` and `states()` labels draw in; `--penna-muted` is the ghost paint's, lighter in dark), `--penna-fg-faint` (the foreground's faint ink, for disabled link and text), `--penna-faint` and
+  `--penna-{primary,danger,warning,success,accent}-ink` (the ghost paint's faint and toned ink on the window, which faint and toned labels draw in),
   `--penna-syntax-{keyword,type,constructor,function,comment,string,number,boolean,property,constant,title,literal}`
   (the highlighter's palette for the mode) and `--penna-glass-backdrop`, already in the shader's order: contrast,
   then brightness added, not multiplied.

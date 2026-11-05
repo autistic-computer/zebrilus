@@ -2,10 +2,6 @@
 
 A glyph beside a label, or alone on an icon button in a bar. One set, drawn for the theme.
 
-```figure uses=notice
-<div class="docs-full penna-notice" data-penna="notice" data-tone="warning"><div class="penna-notice-tone" data-penna="chip" data-tone="warning"><span class="penna-notice-lead"><i data-icon="triangle-alert"></i></span><div class="penna-notice-body"><span class="penna-text penna-notice-title" data-penna-text>Being reworked</span><span class="penna-text penna-notice-detail" data-penna-text>With no size set, an icon takes the font size around it, off the icon sizes. On the web it falls back to 14.</span></div></div></div>
-```
-
 ## Set
 
 24 grid, 1.5 stroke, no fill. Corners follow the theme radius.
@@ -50,7 +46,7 @@ Pair an icon with a word. Alone, only on an icon button in a bar or row, with a 
 | --- | --- | --- |
 | `Icon::new(IconName::Bell)` | `<i data-icon="bell">` | A glyph from the set |
 | `IconName::Asset(path)` | none | The app's own file, as it is |
-| `.xsmall()`, `.small()`, `.medium()`, `.large()` | `data-size` | Size; the text size around it when unset |
+| `.xsmall()`, `.small()`, `.medium()`, `.large()` | `data-size` | Size; medium (14) when unset |
 | `.with_size(Size::Size(px))` | `--penna-icon-size` | Any size |
 | `.text_color(color)` | `data-tone` | Color; the text color by default |
 | `.transform(Transformation::rotate(..))` | `data-turn` | Turns it, paint only |

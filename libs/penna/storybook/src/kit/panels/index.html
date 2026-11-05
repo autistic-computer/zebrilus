@@ -23,18 +23,18 @@
         <div class="story-state">
           <div class="story-label">looks</div>
           <div class="story-row">
-            <div class="penna-panel demo-panel" data-penna="popover" data-id="Popover"><span data-penna-text class="panel-text panel-type-body panel-strong">Popover</span><span data-penna-text class="panel-text panel-type-small panel-dim">What sits in it.</span></div>
-            <div class="penna-panel demo-panel" data-penna="inline-panel" data-id="Inline"><span data-penna-text class="panel-text panel-type-body panel-strong">Inline</span><span data-penna-text class="panel-text panel-type-small panel-dim">What sits in it.</span></div>
-            <div class="penna-panel demo-panel" data-penna="picker" data-id="Picker"><span data-penna-text class="panel-text panel-type-body panel-strong">Picker</span><span data-penna-text class="panel-text panel-type-small panel-dim">What sits in it.</span></div>
-            <div class="penna-panel demo-panel" data-penna="toast" data-id="Toast"><span data-penna-text class="panel-text panel-type-body panel-strong">Toast</span><span data-penna-text class="panel-text panel-type-small panel-dim">What sits in it.</span></div>
-            <div class="penna-panel demo-panel" data-penna="panel" data-id="Plain"><span data-penna-text class="panel-text panel-type-body panel-strong">Plain</span><span data-penna-text class="panel-text panel-type-small panel-dim">What sits in it.</span></div>
+            <div class="penna-panel demo-panel" data-penna="popover" role="group" data-id="Popover"><span data-penna-text class="panel-text panel-type-body panel-strong">Popover</span><span data-penna-text class="panel-text panel-type-small panel-dim">What sits in it.</span></div>
+            <div class="penna-panel demo-panel" data-penna="inline-panel" role="group" data-id="Inline"><span data-penna-text class="panel-text panel-type-body panel-strong">Inline</span><span data-penna-text class="panel-text panel-type-small panel-dim">What sits in it.</span></div>
+            <div class="penna-panel demo-panel" data-penna="picker" role="group" data-id="Picker"><span data-penna-text class="panel-text panel-type-body panel-strong">Picker</span><span data-penna-text class="panel-text panel-type-small panel-dim">What sits in it.</span></div>
+            <div class="penna-panel demo-panel" data-penna="toast" role="status" data-id="Toast"><span data-penna-text class="panel-text panel-type-body panel-strong">Toast</span><span data-penna-text class="panel-text panel-type-small panel-dim">What sits in it.</span></div>
+            <div class="penna-panel demo-panel" data-penna="panel" role="group" data-id="Plain"><span data-penna-text class="panel-text panel-type-body panel-strong">Plain</span><span data-penna-text class="panel-text panel-type-small panel-dim">What sits in it.</span></div>
           </div>
         </div>
         <div class="story-state">
           <div class="story-label">inset</div>
           <div class="story-row">
-            <div class="penna-panel demo-panel" data-penna="picker" data-id="picker-plain"><span data-penna-text class="panel-text panel-type-body panel-strong">No inset</span><span data-penna-text class="panel-text panel-type-small panel-dim">What sits in it.</span></div>
-            <div class="penna-panel demo-inset" data-penna="picker" data-id="picker-inset" data-inset="8"><div class="demo-inset-row"><span data-penna-text class="panel-text panel-type-body panel-strong">Inset 8px</span></div></div>
+            <div class="penna-panel demo-panel" data-penna="picker" role="group" data-id="picker-plain"><span data-penna-text class="panel-text panel-type-body panel-strong">No inset</span><span data-penna-text class="panel-text panel-type-small panel-dim">What sits in it.</span></div>
+            <div class="penna-panel demo-inset" data-penna="picker" role="group" data-id="picker-inset" data-inset="8"><div class="demo-inset-row"><span data-penna-text class="panel-text panel-type-body panel-strong">Inset 8px</span></div></div>
           </div>
         </div>
       </div>
@@ -44,28 +44,36 @@
       <div class="story-states" data-columns style="--columns: 2">
         <div class="story-state">
           <div class="story-label">bubble</div>
-          <div class="penna-card demo-bubble" data-penna="card.bubble" data-id="card-bubble">
+          <div class="penna-card demo-bubble" data-penna="card.bubble" data-ground role="group" data-id="card-bubble">
             <span data-penna-text class="panel-text panel-type-body">Can you look at the failing test?</span>
             <span class="penna-badge" data-penna="badge" data-tone="danger" data-opaque data-on="card.bubble"><span data-penna-text class="panel-text badge-text">2</span></span>
           </div>
         </div>
         <div class="story-state">
           <div class="story-label">code</div>
-          <div class="penna-card demo-code" data-penna="card.code" data-id="card-code">
+          <div class="penna-card demo-code" data-penna="card.code" role="group" data-id="card-code">
             <span data-penna-text class="panel-text panel-type-caption panel-dim">rust</span>
             <span class="panel-text panel-type-mono panel-wrap">let ground = theme.ground_of<wbr>(look);</span>
           </div>
         </div>
         <div class="story-state">
           <div class="story-label">figure</div>
-          <div class="penna-card demo-figure" data-penna="card.figure" data-id="card-figure">
+          <div class="penna-card demo-figure" data-penna="card.figure" role="figure" data-id="card-figure">
             <span data-penna-text class="panel-text panel-type-small">Name · Size · Kind</span>
           </div>
         </div>
         <div class="story-state">
           <div class="story-label">image</div>
-          <div class="penna-card demo-image" data-penna="card.image" data-id="card-image">
+          <div class="penna-card demo-image" data-penna="card.image" role="figure" data-id="card-image">
             <span data-penna-text class="panel-text panel-type-caption">image</span>
+          </div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">on a panel</div>
+          <div class="penna-panel demo-card-panel" data-penna="panel" data-ground role="group" data-id="card-panel">
+            <div class="penna-card" data-penna="card.bubble" role="group" data-id="card-on-panel">
+              <span data-penna-text class="panel-text panel-type-body">A step above the panel</span>
+            </div>
           </div>
         </div>
       </div>
@@ -75,29 +83,29 @@
       <div class="story-states">
         <div class="story-state">
           <div class="story-label">plain</div>
-          <div class="penna-bar demo-bar panel-rule-bottom" data-rule="rule.bar" data-penna="bar" data-id="bar-plain">
+          <div class="penna-bar demo-bar" data-rule="rule.bar" data-penna="bar" role="toolbar" data-id="bar-plain">
             <span data-penna-text class="panel-text panel-type-body">Sheet header</span>
             <button class="penna-button" data-penna="button.quiet" data-shape="icon" aria-label="Add" data-id="bar-plain-action"><i data-icon="plus"></i></button>
           </div>
         </div>
         <div class="story-state">
           <div class="story-label">pane</div>
-          <div class="penna-bar demo-bar panel-rule-bottom" data-rule="rule.bar" data-penna="bar.pane" data-id="bar-pane">
+          <div class="penna-bar demo-bar" data-rule="rule.bar" data-penna="bar.pane" role="toolbar" data-id="bar-pane">
             <span data-penna-text class="panel-text panel-type-body">Pane header</span>
             <button class="penna-button" data-penna="button.quiet" data-shape="icon" aria-label="Add" data-id="bar-pane-action"><i data-icon="plus"></i></button>
           </div>
         </div>
         <div class="story-state">
           <div class="story-label">window</div>
-          <div class="penna-bar demo-bar panel-rule-bottom" data-rule="rule.bar" data-penna="titlebar" data-id="bar-window">
+          <div class="penna-bar demo-bar" data-rule="rule.bar" data-penna="titlebar" role="banner" data-id="bar-window">
             <span data-penna-text class="panel-text panel-type-body">Title bar</span>
             <button class="penna-button" data-penna="button.quiet" data-shape="icon" aria-label="Add" data-id="bar-window-action"><i data-icon="plus"></i></button>
           </div>
         </div>
         <div class="story-state">
           <div class="story-label">on a picker</div>
-          <div class="penna-panel demo-bar-picker" data-penna="picker" data-id="bar-picker">
-            <div class="penna-bar demo-notice panel-rule-bottom" data-rule="rule.bar" data-penna="bar" data-id="bar-notice">
+          <div class="penna-panel demo-bar-picker" data-penna="picker" role="group" data-id="bar-picker">
+            <div class="penna-bar" data-rule="rule.bar" data-penna="bar" role="toolbar" data-id="bar-notice">
               <span data-penna-text class="panel-text panel-type-caption">A notice across the top of a picker</span>
             </div>
           </div>
@@ -119,10 +127,10 @@
         <div class="story-state">
           <div class="story-label">edges</div>
           <div class="demo-edges">
-            <div class="demo-edge panel-rule-top panel-rule-left" data-rule="rule"><span data-penna-text class="panel-text panel-type-caption">Plain</span></div>
-            <div class="demo-edge panel-rule-top panel-rule-left" data-rule="rule.bar"><span data-penna-text class="panel-text panel-type-caption">Bar</span></div>
-            <div class="demo-edge panel-rule-top panel-rule-left" data-rule="rule.list"><span data-penna-text class="panel-text panel-type-caption">List</span></div>
-            <div class="demo-edge panel-rule-top panel-rule-left" data-rule="rule.tree"><span data-penna-text class="panel-text panel-type-caption">Tree</span></div>
+            <div class="demo-edge" data-rule="rule" data-edge="top left"><span data-penna-text class="panel-text panel-type-caption">Plain</span></div>
+            <div class="demo-edge" data-rule="rule.bar" data-edge="top left"><span data-penna-text class="panel-text panel-type-caption">Bar</span></div>
+            <div class="demo-edge" data-rule="rule.list" data-edge="top left"><span data-penna-text class="panel-text panel-type-caption">List</span></div>
+            <div class="demo-edge" data-rule="rule.tree" data-edge="top left"><span data-penna-text class="panel-text panel-type-caption">Tree</span></div>
           </div>
         </div>
       </div>

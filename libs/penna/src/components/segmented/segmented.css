@@ -119,6 +119,7 @@
   height: calc(var(--penna-segmented-h) - 2 * var(--penna-space-2) - 2 * max(1px, var(--penna-bw)));
   padding: 0;
   border: var(--penna-pill-bw) solid var(--penna-pill-edge);
+  border-radius: var(--penna-pill-r, 0);
   background: var(--penna-pill-fill);
   box-shadow: var(--penna-pill-shadow);
   pointer-events: none;
@@ -152,6 +153,16 @@
 
 .penna-segmented .penna-segment[aria-selected="false"] {
   color: var(--penna-segment-ink);
+  border-radius: var(--penna-pill-r, 0);
+  corner-shape: superellipse(var(--penna-pill-k));
+}
+
+.penna-segmented:not([aria-disabled="true"]) .penna-segment[aria-selected="false"]:is(:hover, [data-state~="hover"]) {
+  background: var(--penna-quiet-hover);
+}
+
+.penna-segmented:not([aria-disabled="true"]) .penna-segment[aria-selected="false"]:is(:active, [data-state~="active"]) {
+  background: var(--penna-quiet-pressed);
 }
 
 .penna-segmented .penna-segment > .penna-label {

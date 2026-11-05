@@ -14,7 +14,7 @@
   cursor: default;
   user-select: none;
   outline: none;
-  --penna-icon-size: 14px;
+  --penna-icon-size: 12px;
 }
 
 .penna-tab[data-penna][data-size="xsmall"] {

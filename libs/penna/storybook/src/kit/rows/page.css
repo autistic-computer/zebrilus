@@ -4,6 +4,16 @@
   gap: 2px;
 }
 
+.penna-rows > .penna-row {
+  width: 200px;
+  height: 32px;
+  padding: 0 var(--penna-space-12);
+  font-size: var(--penna-text-small-size);
+  font-weight: var(--penna-text-small-weight);
+  line-height: var(--penna-text-small-line);
+  --penna-icon-size: 12px;
+}
+
 .penna-fills {
   display: flex;
   flex-direction: column;

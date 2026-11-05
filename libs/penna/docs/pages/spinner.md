@@ -2,16 +2,12 @@
 
 Something is under way and how long it takes is unknown.
 
-```figure uses=notice
-<div class="docs-full penna-notice" data-penna="notice" data-tone="warning"><div class="penna-notice-tone" data-penna="chip" data-tone="warning"><span class="penna-notice-lead"><i data-icon="triangle-alert"></i></span><div class="penna-notice-body"><span class="penna-text penna-notice-title" data-penna-text>Being reworked</span><span class="penna-text penna-notice-detail" data-penna-text>The HTML version announces itself as a status, where the native one is a progress indicator.</span></div></div></div>
-```
-
 ## Kinds
 
 ```figure uses=spinner
 <div class="docs-show" data-gap="wide">
-  <div class="docs-cell"><div class="penna-spinner" role="status" aria-label="Loading"><i data-icon="loader"></i></div><span class="docs-note">Ink</span></div>
-  <div class="docs-cell"><div class="penna-spinner" role="status" aria-label="Loading" data-color="muted"><i data-icon="loader"></i></div><span class="docs-note">Muted</span></div>
+  <div class="docs-cell"><div class="penna-spinner" role="progressbar" aria-label="Loading"><i data-icon="loader"></i></div><span class="docs-note">Ink</span></div>
+  <div class="docs-cell"><div class="penna-spinner" role="progressbar" aria-label="Loading" data-color="muted"><i data-icon="loader"></i></div><span class="docs-note">Muted</span></div>
 </div>
 ```
 
@@ -24,7 +20,7 @@ Spinner::new().small().color(cx.theme().foreground.muted())
 ## Anatomy
 
 ```figure uses=spinner,label
-<div class="docs-row"><div class="penna-spinner" role="status" aria-label="Loading" data-color="muted"><i data-icon="loader"></i></div><span class="penna-type" data-type="body" data-penna-text>Connecting to devbox</span></div>
+<div class="docs-row"><div class="penna-spinner" role="progressbar" aria-label="Loading" data-color="muted"><i data-icon="loader"></i></div><span class="penna-type" data-type="body" data-penna-text>Connecting to devbox</span></div>
 ```
 
 1. **Icon**: the loader, at its size's icon size.
@@ -60,8 +56,8 @@ On its own, a spinner doesn't say what is loading. Put a line beside it.
 
 ```figure uses=spinner,label
 <div class="docs-dodont">
-  <figure data-verdict="do"><div class="docs-dodont-panel"><i class="docs-mark" data-icon="circle-check"></i><div class="penna-spinner" role="status" aria-label="Loading" data-color="muted"><i data-icon="loader"></i></div><span class="penna-type" data-type="body" data-penna-text>Connecting to devbox</span></div><figcaption>Say what is under way</figcaption></figure>
-  <figure data-verdict="dont"><div class="docs-dodont-panel"><i class="docs-mark" data-icon="circle-x"></i><div class="penna-spinner" role="status" aria-label="Loading" data-color="muted"><i data-icon="loader"></i></div></div><figcaption>Don't leave a spinner alone</figcaption></figure>
+  <figure data-verdict="do"><div class="docs-dodont-panel"><i class="docs-mark" data-icon="circle-check"></i><div class="penna-spinner" role="progressbar" aria-label="Loading" data-color="muted"><i data-icon="loader"></i></div><span class="penna-type" data-type="body" data-penna-text>Connecting to devbox</span></div><figcaption>Say what is under way</figcaption></figure>
+  <figure data-verdict="dont"><div class="docs-dodont-panel"><i class="docs-mark" data-icon="circle-x"></i><div class="penna-spinner" role="progressbar" aria-label="Loading" data-color="muted"><i data-icon="loader"></i></div></div><figcaption>Don't leave a spinner alone</figcaption></figure>
 </div>
 ```
 
@@ -73,4 +69,4 @@ On its own, a spinner doesn't say what is loading. Put a line beside it.
 | `.small()` … `.touch()` | `data-size` | Size; medium by default |
 | `.with_size(px(32.))` | `--penna-icon-size` | Size off the ladder |
 | `.color(color)` | `data-color` | Tint |
-| `.id(id)` | `role="status"`, `aria-label` | Announces it as loading |
+| `.id(id)` | `role="progressbar"`, `aria-label` | Announces it as loading |

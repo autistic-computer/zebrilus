@@ -85,16 +85,15 @@ impl RenderOnce for Icon {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let path = self.drawn_path(cx);
         let color = self.text_color.unwrap_or_else(|| window.text_style().color);
-        let ambient = window.text_style().font_size.to_pixels(window.rem_size());
         let styled_size = self.style.size.width.is_some() || self.style.size.height.is_some();
+        let size = self.size.or_else(|| (!styled_size).then_some(Size::Medium));
 
         let mut base = svg();
         *base.style() = self.style;
 
         base.flex_shrink_0()
             .text_color(color)
-            .when(!styled_size, |this| this.size(ambient))
-            .when_some(self.size, |this, size| match size {
+            .when_some(size, |this, size| match size {
                 Size::Size(size) => this.size(size),
                 size => this.size(rems_from_px(size.icon_px())),
             })

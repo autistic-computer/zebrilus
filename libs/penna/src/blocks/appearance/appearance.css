@@ -346,10 +346,6 @@
   --penna-shadow: initial;
 }
 
-.appearance-run .penna-segmented[data-penna="field"]:active {
-  --penna-fill: var(--appearance-field-hover);
-}
-
 .appearance-ring .penna-color-picker > .penna-button[data-swatch] {
   --penna-k: var(--appearance-swatch-k, var(--penna-style-k));
   border-radius: var(--appearance-swatch-r) !important;

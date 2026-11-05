@@ -1,10 +1,6 @@
 # Tooltip
 
-Names a control on hover or keyboard focus. For more than a phrase, use a popover.
-
-```figure uses=notice
-<div class="docs-full penna-notice" data-penna="notice" data-tone="warning"><div class="penna-notice-tone" data-penna="chip" data-tone="warning"><span class="penna-notice-lead"><i data-icon="triangle-alert"></i></span><div class="penna-notice-body"><span class="penna-text penna-notice-title" data-penna-text>Being reworked</span><span class="penna-text penna-notice-detail" data-penna-text>On the web a long press doesn't show one.</span></div></div></div>
-```
+Names a control on hover, keyboard focus or a long press. For more than a phrase, use a popover.
 
 ## Anatomy
 
@@ -28,6 +24,7 @@ Button::new("split").icon(IconName::PanelRight).tooltip("Split right")
 
 - Shows 500ms after the pointer rests, just below and right of it.
 - Shows at once when the keyboard focuses the control, below its middle.
+- On touch, shows after a 500ms press, at the finger, until it lifts.
 - Flips at the window edge.
 - Hides when the pointer leaves or presses. After keyboard focus it hides on Escape, a pointer move or when focus leaves.
 

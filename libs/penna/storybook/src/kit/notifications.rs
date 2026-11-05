@@ -1,9 +1,9 @@
 use std::cell::Cell;
 
 use ala::{
-    AnyView, App, AppContext as _, Context, DismissEvent, Entity, EntityId, IntoElement,
-    KeyBinding, MouseButton, ParentElement as _, Render, Styled as _, Subscription, Window,
-    actions, div, prelude::FluentBuilder as _, px,
+    Anchor, AnyElement, AnyView, App, AppContext as _, Context, DismissEvent, Entity, EntityId,
+    IntoElement, KeyBinding, MouseButton, ParentElement as _, Render, Styled as _, Subscription,
+    Window, actions, div, prelude::FluentBuilder as _, px,
 };
 use penna::{
     ActiveTheme as _, Colorize as _, IconName, Space, StyledExt as _, TextStyle, WindowExt as _,
@@ -16,7 +16,7 @@ use penna::{
 };
 
 use super::support::{Probe, after_first_frame, hover, nudge, press, tab, when_visible};
-use crate::story::{Section, Story, row, states};
+use crate::story::{Section, Story, row, stateless, states};
 
 actions!(storybook_tooltip, [SplitRight, CopyPath]);
 
@@ -79,8 +79,29 @@ pub const STORY: Story = Story {
             summary: "A press on the trigger opens the panel under it and selects the trigger. A press outside closes it. There is no API to open one from code.",
             build: |window, cx| Panel::view(window, cx),
         },
+        Section {
+            id: "popover-center",
+            name: "Popover, centered",
+            summary: ".anchor(Anchor::TopCenter) hangs the panel from the middle of the trigger's bottom edge. A press on the trigger opens it.",
+            build: |_, cx| stateless(centered, cx),
+        },
     ],
 };
+
+fn centered(_: &mut Window, _: &mut App) -> AnyElement {
+    h_flex()
+        .w(px(320.0))
+        .h(px(120.0))
+        .items_start()
+        .justify_center()
+        .child(
+            Popover::new("center-popover")
+                .anchor(Anchor::TopCenter)
+                .trigger(Button::new("center-trigger").label("Center"))
+                .content(|_, _, _| div().w(px(200.0)).child("Opens centered on its button")),
+        )
+        .into_any_element()
+}
 
 struct Toasts {
     items: Vec<(&'static str, Entity<Notification>)>,

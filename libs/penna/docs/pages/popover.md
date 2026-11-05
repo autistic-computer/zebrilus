@@ -2,10 +2,6 @@
 
 A panel that opens from a button for one short task. For a list of actions use a menu, for a hint a tooltip.
 
-```figure uses=notice
-<div class="docs-full penna-notice" data-penna="notice" data-tone="warning"><div class="penna-notice-tone" data-penna="chip" data-tone="warning"><span class="penna-notice-lead"><i data-icon="triangle-alert"></i></span><div class="penna-notice-body"><span class="penna-text penna-notice-title" data-penna-text>Being reworked</span><span class="penna-text penna-notice-detail" data-penna-text>The HTML one can't center on its button or stay inside the window.</span></div></div></div>
-```
-
 ## Anatomy
 
 ```figure uses=popover,input
@@ -30,7 +26,16 @@ A panel that opens from a button for one short task. For a list of actions use a
 2. **Panel**: the popover look, `inset-card` 12, `body` text.
 3. **Offset**: `space-4` below the trigger, leading edges aligned.
 
-`.anchor()` picks the corner. Bottom anchors open above.
+`.anchor()` picks the corner. Bottom anchors open above, center anchors center on the trigger.
+
+```figure uses=popover,label
+<div style="height: 96px; width: 320px; display: flex; align-items: flex-start; justify-content: center">
+  <div class="penna-popover" data-anchor="center" data-open>
+    <button class="penna-button penna-popover-trigger" data-penna="button" data-state="current" type="button" aria-haspopup="dialog"><span class="penna-label" data-penna-text>Center</span></button>
+    <div class="penna-popover-panel" data-penna="popover" tabindex="-1" role="dialog" aria-label="Centered popover"><span class="penna-type" data-type="body" data-penna-text>Opens centered on its button</span></div>
+  </div>
+</div>
+```
 
 ```rust
 Popover::new("rename")
@@ -63,7 +68,7 @@ One short task with its actions. A list of actions belongs in a menu.
 | `Popover::new(id)` | `.penna-popover` | Holds the trigger and the panel |
 | `.trigger(button)` | `.penna-popover-trigger` | Opens it; selected while open |
 | `.content(builder)` | `.penna-popover-panel`, `data-penna="popover"` | What the panel holds |
-| `.anchor(anchor)` | `data-anchor="right"`, `"bottom"` | Corner it hangs from |
+| `.anchor(anchor)` | `data-anchor`: `right`, `center`, `bottom`, `bottom right`, `bottom center` | Corner it hangs from |
 | `.overlay_closable(false)` | `data-closable="false"` | Stays open on a press outside |
 | `.on_dismiss(handler)` | `penna-dismiss` | Runs when it closes |
 | `.appearance(false)` | | Drops the look, inset and text style |

@@ -78,7 +78,7 @@ fn tab(look: TabLook, name: &str, state: PaintState, label: &'static str, cx: &A
         .flex()
         .items_center()
         .gap(Space::S6)
-        .child(Icon::new(IconName::Terminal).size(px(14.0)))
+        .child(Icon::new(IconName::Terminal).small())
         .child(Label::new(TextStyle::Small, label))
         .child(Label::new(TextStyle::Caption, "zz").muted().on(ground))
 }
@@ -166,7 +166,7 @@ fn list_row(look: RowLook, name: &str, state: PaintState, label: &'static str) -
         .flex()
         .items_center()
         .gap(Space::S8)
-        .child(Icon::new(IconName::Folder).size(px(14.0)))
+        .child(Icon::new(IconName::Folder).small())
         .child(Label::new(TextStyle::Small, label))
 }
 

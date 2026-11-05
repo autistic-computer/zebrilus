@@ -2,9 +2,9 @@ use std::{rc::Rc, time::Duration};
 
 use ala::{
     Animation, AnimationExt as _, AnyElement, App, Bounds, ClickEvent, ElementId,
-    InteractiveElement as _, IntoElement, MouseButton, ParentElement as _, Pixels, RenderOnce,
-    Role, SharedString, StatefulInteractiveElement as _, Styled as _, Window, div,
-    prelude::FluentBuilder as _, px,
+    FULL_CORNER_RADIUS, InteractiveElement as _, IntoElement, MouseButton, ParentElement as _,
+    Pixels, RenderOnce, Role, SharedString, StatefulInteractiveElement as _, Styled as _, Window,
+    div, prelude::FluentBuilder as _, px,
 };
 
 use crate::{
@@ -110,7 +110,11 @@ impl RenderOnce for SegmentedControl {
         let height = rems_from_px(size.control_px()).to_pixels(window.rem_size());
         let inset = Space::S2.rems().to_pixels(window.rem_size());
         let inner = height - inset * 2.0 - border * 2.0;
-        let radius = (layer.radius.min(height / 2.0) - border - inset).max(px(0.0));
+        let radius = if layer.radius >= FULL_CORNER_RADIUS {
+            FULL_CORNER_RADIUS
+        } else {
+            (layer.radius.min(height / 2.0) - border - inset).max(px(0.0))
+        };
         let pill = Surface::new(SurfaceRole::QUIET_BUTTON).on(ground);
         let picked = cx.theme().layer(pill, PaintState::Current);
         let (picked, rest) = if disabled {
@@ -121,7 +125,10 @@ impl RenderOnce for SegmentedControl {
         } else {
             (picked, cx.theme().layer(pill, PaintState::Rest).text)
         };
-        let hover = cx.theme().layer(pill, PaintState::Hover).text;
+        let hover = cx.theme().layer(pill, PaintState::Hover);
+        let (hover_fill, hover) = (hover.fill, hover.text);
+        let pressed_fill = cx.theme().layer(pill, PaintState::Active).fill;
+        let smoothing = picked.smoothing;
         let coarse = crate::blocks::touch::CoarsePointer::get(cx);
         let slop = crate::blocks::touch::control_slop(size);
         let ring = cx.theme().paint_on(
@@ -213,7 +220,10 @@ impl RenderOnce for SegmentedControl {
                         } else {
                             segment
                                 .text_color(rest)
-                                .hover(move |style| style.text_color(hover))
+                                .rounded(radius)
+                                .corner_smoothing(smoothing)
+                                .hover(move |style| style.bg(hover_fill).text_color(hover))
+                                .active(move |style| style.bg(pressed_fill))
                         }
                     })
                     .child(label)
@@ -246,6 +256,8 @@ impl RenderOnce for SegmentedControl {
         );
         let mut hover = field_layer(cx.theme(), track, PaintState::Hover, true);
         hover.border = chrome.border;
+        let mut held = field_layer(cx.theme(), track, PaintState::Active, true);
+        held.border = chrome.border;
         let control = h_flex()
             .id(self.id)
             .flex_none()
@@ -253,6 +265,7 @@ impl RenderOnce for SegmentedControl {
             .layer(&chrome)
             .when(!disabled, |this| {
                 this.hover(move |style| crate::foundation::restyle(style, &hover))
+                    .active(move |style| crate::foundation::restyle(style, &held))
             })
             .role(Role::RadioGroup)
             .aria_disabled(disabled)
