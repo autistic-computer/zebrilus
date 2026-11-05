@@ -263,9 +263,9 @@ mod tests {
     use crate::Space;
     use ala::{
         Context, InteractiveElement as _, IntoElement, KeyDownEvent, KeyUpEvent, Keystroke,
-        Modifiers, ParentElement as _, Render, Role, ScaledPixels,
-        StatefulInteractiveElement as _, StyleRefinement, Styled as _, TestAppContext,
-        VisualTestContext, Window, blue, div, point, px, red, solid_background,
+        Modifiers, ParentElement as _, Render, Role, ScaledPixels, StatefulInteractiveElement as _,
+        StyleRefinement, Styled as _, TestAppContext, VisualTestContext, Window, blue, div, point,
+        px, red, solid_background,
     };
 
     use crate::{

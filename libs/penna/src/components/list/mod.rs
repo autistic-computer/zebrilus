@@ -7,8 +7,8 @@ use ala::{
 };
 
 use crate::{
-    ActiveTheme as _, AuthoredElement as _, Disableable, Emphasis, PaintState, RowLook,
-    Selectable, Size, StyledExt as _, Surface, SurfaceRole, TextStyle, Tone,
+    ActiveTheme as _, AuthoredElement as _, Disableable, Emphasis, PaintState, RowLook, Selectable,
+    Size, StyledExt as _, Surface, SurfaceRole, TextStyle, Tone,
     foundation::{focus::with_focus_ring, restyle, row_corners, row_state},
     h_flex, rems_from_px,
 };

@@ -65,6 +65,12 @@ pub const STORY: Story = Story {
             summary: "Keyboard focus draws an accent ring outside the border. Only tab focus reaches it; a click does not.",
             build: |window, cx| Pointer::view(Gesture::Focus, window, cx),
         },
+        Section {
+            id: "focused-primary",
+            name: "Focused primary",
+            summary: "On a fill of the ring's own color, the ring stands one ring width off the edge.",
+            build: |window, cx| Pointer::view(Gesture::FocusPrimary, window, cx),
+        },
     ],
 };
 
@@ -343,6 +349,7 @@ enum Gesture {
     Hover,
     Press,
     Focus,
+    FocusPrimary,
 }
 
 struct Pointer {
@@ -362,12 +369,12 @@ impl Pointer {
             Gesture::Press => when_visible(&target, window, move |window, cx| {
                 press(&probe, MouseButton::Left, window, cx);
             }),
-            Gesture::Focus => after_first_frame(window, Window::focus_next),
+            Gesture::Focus | Gesture::FocusPrimary => after_first_frame(window, Window::focus_next),
         }
         cx.new(|cx| Self {
             gesture,
             _bounds: cx.observe_window_bounds(window, |this: &mut Self, window, cx| {
-                if this.gesture != Gesture::Focus {
+                if !matches!(this.gesture, Gesture::Focus | Gesture::FocusPrimary) {
                     hover(&this.target, window, cx);
                 }
             }),
@@ -401,7 +408,7 @@ impl Render for Pointer {
     fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
         let (label, variant) = match self.gesture {
             Gesture::Hover => ("Secondary", ButtonVariant::default()),
-            Gesture::Press => (
+            Gesture::Press | Gesture::FocusPrimary => (
                 "Primary",
                 ButtonVariant::Paint(Tone::Primary, Emphasis::Solid),
             ),
@@ -410,7 +417,7 @@ impl Render for Pointer {
         let caption = match self.gesture {
             Gesture::Hover => "hovered, resting",
             Gesture::Press => "pressed, resting",
-            Gesture::Focus => "focused, resting",
+            Gesture::Focus | Gesture::FocusPrimary => "focused, resting",
         };
         states().state(caption, self.pair(label, variant))
     }

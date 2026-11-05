@@ -35,7 +35,7 @@ const TONES: [(Tone, &str); 4] = [
     (Tone::Success, "success"),
 ];
 
-const PAINT: [(&str, &str); 13] = [
+const PAINT: [(&str, &str); 14] = [
     ("fill", "transparent"),
     ("edge", "transparent"),
     ("bw", "0px"),
@@ -49,6 +49,7 @@ const PAINT: [(&str, &str); 13] = [
     ("rim", "0 0 #0000"),
     ("glass", "0"),
     ("focus", "transparent"),
+    ("ring-gap", "0px"),
 ];
 
 const ROW_RADIUS_SHARE: f32 = 0.4;
@@ -297,6 +298,10 @@ fn vars(theme: &Theme, surface: Surface, layer: &Layer) -> Vec<(&'static str, St
         let ground = surface.ground.unwrap_or_else(|| theme.ground());
         let ring = theme.paint_on(ground, surface.tone, Emphasis::Ghost).focus;
         vars.push(("focus", color(ring)));
+        vars.push((
+            "ring-gap",
+            length(f32::from(super::focus::ring_gap(fill, ring))),
+        ));
     }
     if let Some(material) = layer.glass {
         let themed = theme.glass.as_ref();
@@ -377,6 +382,13 @@ fn write_root(css: &mut String, theme: &Theme) {
         (
             "--penna-focus-neutral".to_owned(),
             color(theme.paint(Tone::Neutral, Emphasis::Ghost).focus),
+        ),
+        (
+            "--penna-knob-ring-gap".to_owned(),
+            length(f32::from(super::focus::ring_gap(
+                knob,
+                theme.paint(Tone::Neutral, Emphasis::Ghost).focus,
+            ))),
         ),
         (
             "--penna-pane-radius".to_owned(),

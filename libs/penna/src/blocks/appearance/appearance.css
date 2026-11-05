@@ -297,7 +297,8 @@
 }
 
 .appearance-slider:is(:focus-visible, [data-focused]) .appearance-knob {
-  box-shadow: 0 0 0 1.5px var(--penna-focus-neutral), var(--penna-shadow-lifted);
+  outline: 1.5px solid var(--penna-focus-neutral);
+  outline-offset: var(--penna-knob-ring-gap, 0px);
 }
 
 .appearance-trailing {

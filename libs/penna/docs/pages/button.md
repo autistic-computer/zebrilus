@@ -2,10 +2,6 @@
 
 Starts an action. To go somewhere use a link, in a menu a menu row, for a setting a switch.
 
-```figure uses=notice
-<div class="docs-full penna-notice" data-penna="notice" data-tone="warning"><div class="penna-notice-tone" data-penna="chip" data-tone="warning"><span class="penna-notice-lead"><i data-icon="triangle-alert"></i></span><div class="penna-notice-body"><span class="penna-text penna-notice-title" data-penna-text>Being reworked</span><span class="penna-text penna-notice-detail" data-penna-text>On a primary button in the default look, the focus ring blends into the fill.</span></div></div></div>
-```
-
 ## Kinds
 
 ```figure
@@ -76,9 +72,16 @@ Medium is the default and follows density. One size per row.
 </div>
 ```
 
-- Focus ring: keyboard only.
+- Focus ring: keyboard only, one ring width off a solid fill.
 - Off: leaves the keyboard path, keeps its tooltip.
 - Busy: a spinner, the label stays, clicks are ignored.
+
+```figure
+<div class="docs-dodont">
+  <figure data-verdict="do"><div class="docs-dodont-panel"><i class="docs-mark" data-icon="circle-check"></i><button class="penna-button" data-penna="button" data-tone="primary" data-prominent data-state="focused"><span class="penna-label" data-penna-text>Share</span></button></div><figcaption>The ring stands off a fill of its color</figcaption></figure>
+  <figure data-verdict="dont"><div class="docs-dodont-panel"><i class="docs-mark" data-icon="circle-x"></i><button class="penna-button" data-penna="button" data-tone="primary" data-prominent data-state="focused" style="--penna-ring-gap: 0px"><span class="penna-label" data-penna-text>Share</span></button></div><figcaption>Don't let it touch and blend in</figcaption></figure>
+</div>
+```
 
 ## Labels
 

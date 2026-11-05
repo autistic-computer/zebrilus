@@ -196,7 +196,7 @@ How Principles 1 is kept, for every component:
 
 - A control (button, switch, segmented control, slider, select, field, checkbox, an interactive chip or tile) is one tab stop unless it is disabled, and Space and Enter act on it the way a click does. It acts on release of a click, never on press.
 - A group of parts (a tab strip, a list, a tree, a segmented control's segments, a radio group) is one tab stop: the arrow keys move within it, Home and End go to its ends. Where penna draws the parts (`Tab`, `ListItem`, `Row`, tree rows), the container that holds them owns focus and the keys and tells the focused part with `PaintState::Focused`; penna owns how that looks.
-- Focus shows as the 1.5px ring outside the border box, and only from the keyboard: a press on a control does not focus it. A focused part draws the ring, never its selected fill, so focus and selection always look different; selected and focused draws both. Where a control's fill is the ring's own color (a primary button or an on switch in the default look, where both are the ink), the ring stands one ring width off the edge so it still shows.
+- Focus shows as the 1.5px ring outside the border box, and only from the keyboard: a press on a control does not focus it. A focused part draws the ring, never its selected fill, so focus and selection always look different; selected and focused draws both. Where a control's fill is the ring's own color (a solid button, an on switch, a row selected in the accent), the ring stands one ring width off the edge so it still shows. `foundation::focus::ring_gap` decides it from the two colors, and the themes export it to HTML as `--penna-ring-gap`.
 - A menu or popover trigger opens on Enter, Space and Down; focus goes into the menu, Escape closes it and returns focus to the trigger.
 - A control's tooltip shows when the keyboard focuses it, as on hover.
 - Keys never leave a focused terminal or text field: app shortcuts that act while one has focus need a modifier.
@@ -252,7 +252,7 @@ Anatomy, left to right, all from the button's rung of the control ladder (Size):
 - Icon (optional): `icon_px` (12, 12, 14, 16, 16, 16), before the label, `icon_gap` from it (4, 4, 6, 6, 8, 8). While loading it is a spinner of the same size.
 - Label: the rung's text style (`caption`, `small`, `body`, `body`, `lead`, `touch-body`) at weight 400. A primary's label takes whichever of near-white or near-black reads better on its fill.
 - Caret (optional, `.dropdown_caret(true)`): a chevron at the end, `icon_gap` after the label, for a button that opens a menu. It is the same mark as a select's chevron at that size: a rung smaller than the button's icon from `md` up.
-- Focus ring: 1.5px, outside the container, its own radius (Corners, depth, focus, motion).
+- Focus ring: 1.5px, outside the container, its own radius, one ring width further out on a solid fill (Corners, depth, focus, motion).
 
 Icon only: the button is square (width = height) and must carry a tooltip that names the action, which is also its accessible name. A row's trailing actions use `Button::compact_icon` (24, ghost).
 
@@ -265,7 +265,7 @@ States:
 | rest | the kind's paint | |
 | hover | the paint's hover step (a lift) | not under a coarse pointer, not when selected or disabled |
 | pressed | the paint's active step, while held | not under a coarse pointer, which draws the press highlight instead |
-| focused | the focus ring; fill unchanged | from the keyboard only, never from a click |
+| focused | the focus ring; fill unchanged | from the keyboard only, never from a click; one ring width off a solid fill |
 | selected | the picked look (`data-state="current"`) | a button that stands for an on state in a group |
 | disabled | faint label, no hover or press | leaves the focus order; its tooltip still shows |
 | loading | a spinner in the icon's place, or before the label when there is no icon | clicks are ignored; the label stays |
@@ -280,7 +280,7 @@ Placement: buttons in a group sit `gap-related` 8 apart. A dialog's or a form's 
 
 HTML: `.penna-button` with `data-penna` (the recipe: `button`, `button.quiet` for ghost, `button.outline`), `data-tone`, `data-prominent` (solid), `data-size` (`xsmall` to `touch`), `data-state="current"` (selected), `data-variant` (`link`, `text`), `disabled`, `data-loading`; the label is `.penna-label`, the icon `<i data-icon>`, and a button with a caret takes `data-caret` and holds a `.penna-caret`.
 
-Status: one gap. The ring touches the edge, so on a primary button in the default look, whose fill is the ring's own color, it disappears (Focus and keys).
+Status: matches.
 
 ### Badge
 
@@ -1011,7 +1011,7 @@ States:
 | rest | as above | |
 | hover | a stepped pill's fill takes its hover step | the continuous slider has none |
 | pressed | the knob follows the pointer | continuous |
-| focused | the focus ring outside the knob or the picked pill's bar, in the neutral focus ink | from the keyboard only: Tab, or a key that moves it after a press. A press focuses it with no ring |
+| focused | the focus ring outside the knob or the picked pill's bar, one ring width off when that fill is the ring's color, in the neutral focus ink | from the keyboard only: Tab, or a key that moves it after a press. A press focuses it with no ring |
 
 Both kinds are tab stops. Behavior, continuous: a press anywhere on the box moves the knob there and focuses it, and a drag follows. `on_change` fires on every move, or once on release with `.commit_on_release()`. Left and Down step down, Right and Up step up (a hundredth of the range without `.step()`), Shift moves ten steps, Home and End go to the ends.
 
@@ -1085,7 +1085,7 @@ States:
 |---|---|---|
 | off | neutral track, thumb at the start | |
 | on | primary track, thumb at the end | |
-| focused | the focus ring, 1.5 outside the track | from the keyboard only, never from a click |
+| focused | the focus ring, 1.5 outside the track, one ring width off it when on | from the keyboard only, never from a click |
 | disabled | track and thumb at half strength | presses are ignored, and it leaves the focus order |
 
 Behavior: it flips on release of a click or tap inside it, and on Space or Enter while focused, and calls `on_click` with the new value; the caller sets `checked`. It is a tab stop when it has `on_click`. The thumb slides in 150ms and holds still with motion off.
@@ -1096,7 +1096,7 @@ Placement: at the trailing end of a settings row, one switch per row.
 
 HTML: `button.penna-toggle` with `aria-checked` (`true`, `false`), `data-size` (`xsmall` to `touch`), `disabled` and `aria-label`. `switch.js` sets `role="switch"`, adds `.penna-toggle-track` holding `.penna-toggle-thumb`, flips `aria-checked` on click and fires `change` with `{ checked }`. `:focus-visible` or `data-state="focused"` draws the ring.
 
-Status: two gaps. It has no hover or pressed look. The ring touches the track, so an on switch in the default look, whose fill is the ring's own color, shows no ring (Focus and keys).
+Status: one gap. It has no hover or pressed look.
 
 ### Tabs
 

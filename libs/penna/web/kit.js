@@ -90,9 +90,10 @@ function focusRing(element, style = getComputedStyle(element)) {
   const box = element.getBoundingClientRect();
   const row = style.getPropertyValue("--penna-row").trim() === "1";
   const base = row ? Math.min(radius, box.height * 0.4) : radius;
-  const cap = (Math.min(box.width, box.height) + 3) * 0.45;
-  const ring = radius >= 9999 ? 9999 : cap > 0 ? cap * Math.tanh((base + 1.5) / cap) : 0;
-  element.style.setProperty("--penna-ring-inset", `${-(1.5 + (parseFloat(style.borderTopWidth) || 0))}px`);
+  const reach = 1.5 + (parseFloat(style.getPropertyValue("--penna-ring-gap")) || 0);
+  const cap = (Math.min(box.width, box.height) + 2 * reach) * 0.45;
+  const ring = radius >= 9999 ? 9999 : cap > 0 ? cap * Math.tanh((base + reach) / cap) : 0;
+  element.style.setProperty("--penna-ring-inset", `${-(reach + (parseFloat(style.borderTopWidth) || 0))}px`);
   element.style.setProperty("--penna-ring-r", `${ring}px`);
 }
 
