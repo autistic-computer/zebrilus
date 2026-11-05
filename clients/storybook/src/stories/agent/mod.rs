@@ -46,12 +46,6 @@ const STORY: Story = Story {
             build: cards::slash_menu,
         },
         Section {
-            id: "task-tray",
-            name: "Task tray",
-            summary: "The plan chip and background tasks, above the composer. Each opens a panel; click the chips to toggle.",
-            build: cards::trays,
-        },
-        Section {
             id: "live",
             name: "Live turn",
             summary: "The last line of a running turn says what the agent is doing now, with a turning sparkle, a shimmer and the time since the prompt. It takes the newest of three things: the CLI's own activity line, the running tool's own description (a command's own text when it has none), and the latest reasoning heading. It says Thinking only when nothing more specific is known. While the newest run of tools is still going, the line opens to its steps. A reply that lands while you watch types itself in over under a second.",

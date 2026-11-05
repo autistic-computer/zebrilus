@@ -10,8 +10,10 @@ use zz_client::{
 use zz_protocol::{CommandInvocation, MAX_COMMAND_PROMPT_BYTES, catalog_command_spec};
 
 use super::{CommandPaletteView, has_command_arguments};
+use penna::blocks::palette::PaletteHint;
+
 use crate::command::{
-    ActionContext, ActionKey, PaletteHint, PaletteHostId, PaletteTarget,
+    ActionContext, ActionKey, PaletteHostId, PaletteTarget,
     palette_model::{PaletteAction, UnifiedPalette, needs_arguments},
     palette_places::{Chip, Draft, chip_for, palette_fleet, place_label},
     record_recent,

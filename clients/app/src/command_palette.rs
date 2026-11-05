@@ -7,6 +7,7 @@ use std::{
 };
 
 use ala::{App, Entity, KeyDownEvent, SharedString, Subscription};
+use penna::blocks::palette::PaletteStatus;
 use penna::{ActiveTheme as _, IconName};
 use zz_client::completion::PaneKindAvailability;
 use zz_client::navigation::{ordered_panes, pane_index, pane_label, session_label};
@@ -22,8 +23,8 @@ use zz_terminal::TerminalViewAction;
 use zz_ui::{
     command::{
         GuiLevel, PaletteActionLevel, PaletteBackend, PaletteHostId, PaletteSettings,
-        PaletteStatus, PaletteTarget, PaletteTree, PaletteTreeHost, PaletteTreePane,
-        PaletteTreeSession, PaletteTreeWindow, palette_chats,
+        PaletteTarget, PaletteTree, PaletteTreeHost, PaletteTreePane, PaletteTreeSession,
+        PaletteTreeWindow, palette_chats,
     },
     files::{FilesAction, ListingSink, ListingUpdate, listing_pane},
 };

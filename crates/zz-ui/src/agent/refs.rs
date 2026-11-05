@@ -341,9 +341,11 @@ mod tests {
     use super::open_path;
 
     use super::{ChatRefs, linkify_markdown, ref_spans};
+    use penna::blocks::palette::PaletteStatus;
+
     use crate::{
         IconName,
-        command::{PaletteHostId, PaletteStatus},
+        command::PaletteHostId,
         target::{RefTarget, TargetHost, TargetPane, TargetSession, TargetWindow},
     };
 

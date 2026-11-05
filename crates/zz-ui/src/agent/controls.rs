@@ -1,14 +1,13 @@
-use std::{f32::consts::PI, rc::Rc};
+use std::rc::Rc;
 
 use ala::{
-    AnyElement, App, ElementId, IntoElement, PathBuilder, Role, SharedString, Window, canvas, div,
-    point, prelude::*, px,
+    AnyElement, App, ElementId, IntoElement, SharedString, Window, div, prelude::*, px,
 };
 
 use crate::{
-    ActiveTheme as _, Colorize as _, Disableable as _, Emphasis, Icon, IconName, PaintState,
-    Sizable as _, StyledExt as _, Tone,
-    button::{Button, ButtonLook, ButtonVariants},
+    ActiveTheme as _, Colorize as _, Disableable as _, Icon, IconName,
+    Sizable as _, StyledExt as _,
+    button::{Button, ButtonLook},
     h_flex,
     menu::{DropdownMenu as _, PopupMenu, PopupMenuItem},
     tooltip::Tooltip,
@@ -16,7 +15,7 @@ use crate::{
 use penna::TextStyle;
 use zz_client::agent_settings::{self, LensSettings};
 
-use super::composer::{COMPOSER_BUTTON, COMPOSER_FOOTER_HEIGHT, composer_ground};
+use penna::blocks::chat::{self, COMPOSER_FOOTER_HEIGHT};
 
 pub use zz_client::agent_timeline::{
     ComposerAction, composer_action, context_usage_fraction, context_usage_tooltip,
@@ -29,32 +28,12 @@ pub fn composer_action_button(
     enabled: bool,
     cx: &App,
 ) -> Button {
-    let (icon, tooltip) = match action {
-        ComposerAction::Send => (IconName::ArrowUp, "Send message"),
-        ComposerAction::Queue => (IconName::Plus, "Queue this as the next turn"),
-        ComposerAction::Stop => (IconName::Stop, "Stop the current turn"),
+    let action = match action {
+        ComposerAction::Send => chat::ComposerAction::Send,
+        ComposerAction::Queue => chat::ComposerAction::Queue,
+        ComposerAction::Stop => chat::ComposerAction::Stop,
     };
-    Button::compact_icon(id, icon)
-        .size(crate::rems_from_px(COMPOSER_BUTTON))
-        .when(action != ComposerAction::Queue, ButtonVariants::primary)
-        .when(action == ComposerAction::Queue, ButtonVariants::secondary)
-        .look(ButtonLook::Send)
-        .on(composer_ground(cx))
-        .tooltip(tooltip)
-        .disabled(!enabled)
-}
-
-pub fn composer_add_button(id: impl Into<ElementId>, tooltip: &'static str, cx: &App) -> Button {
-    Button::compact_icon(id, IconName::Plus)
-        .size(crate::rems_from_px(COMPOSER_BUTTON))
-        .secondary()
-        .look(ButtonLook::Send)
-        .on(composer_ground(cx))
-        .tooltip(tooltip)
-}
-
-pub fn agent_chrome_button(id: impl Into<ElementId>) -> Button {
-    Button::new(id).ghost().small().h(px(24.0)).px_2()
+    chat::composer_action_button(id, action, enabled, cx)
 }
 
 pub fn agent_directory_chip(
@@ -63,7 +42,7 @@ pub fn agent_directory_chip(
     enabled: bool,
     cx: &App,
 ) -> Button {
-    agent_chrome_button(id)
+    chat::chrome_button(id)
         .min_w_0()
         .flex_shrink_1()
         .max_w(px(220.0))
@@ -84,7 +63,7 @@ pub fn agent_settings_menu(
 ) -> AnyElement {
     let summary = settings.summary();
     let choices = !settings.models.is_empty() || !settings.efforts.is_empty();
-    let button = agent_chrome_button(id)
+    let button = chat::chrome_button(id)
         .text_color(cx.theme().foreground.muted())
         .disabled(!enabled || !choices)
         .child(if summary.is_empty() {
@@ -147,35 +126,12 @@ pub fn agent_side_chat_button(
     enabled: bool,
     on_click: impl Fn(&mut Window, &mut App) + 'static,
 ) -> Button {
-    agent_chrome_button(id)
+    chat::chrome_button(id)
         .look(ButtonLook::Quiet)
         .icon(IconName::ChatPlus)
         .tooltip("Side chat: a floating copy of this chat for a quick question")
         .disabled(!enabled)
         .on_click(move |_, window, cx| on_click(window, cx))
-}
-
-pub fn agent_queue_chip(
-    id: impl Into<ElementId>,
-    queued: impl std::fmt::Display,
-    enabled: bool,
-    on_click: impl Fn(&mut Window, &mut App) + 'static,
-    cx: &App,
-) -> ala::Div {
-    h_flex().w_full().justify_end().child(
-        Button::new(id)
-            .ghost()
-            .small()
-            .icon(IconName::Undo2)
-            .label(format!("{queued} queued"))
-            .tooltip("Return the queued prompts to the composer")
-            .text_color(cx.theme().foreground.muted())
-            .disabled(!enabled)
-            .on_click(move |_, window, cx| {
-                on_click(window, cx);
-                cx.stop_propagation();
-            }),
-    )
 }
 
 pub fn git_summary_footer(
@@ -242,107 +198,12 @@ pub fn git_summary_footer(
         .into_any_element()
 }
 
-const CONTEXT_USAGE_RING_SIZE: f32 = 16.0;
-const CONTEXT_USAGE_STROKE_WIDTH: f32 = 2.0;
-
 #[allow(clippy::cast_possible_truncation)]
-pub fn context_usage_meter(
-    id: impl Into<ElementId>,
-    used: u64,
-    size: u64,
-    cx: &ala::App,
-) -> AnyElement {
-    let progress = context_usage_fraction(used, size) as f32;
-    let tooltip = context_usage_tooltip(used, size);
-    let track_color = cx
-        .theme()
-        .paint(Tone::Neutral, Emphasis::Soft)
-        .fill_at(PaintState::Active);
-    let progress_color = cx.theme().foreground.muted();
-    let ring = canvas(
-        |_, _, _| (),
-        move |bounds, (), window, _| {
-            let stroke = px(CONTEXT_USAGE_STROKE_WIDTH);
-            let radius = px((CONTEXT_USAGE_RING_SIZE - CONTEXT_USAGE_STROKE_WIDTH) / 2.0);
-            let center_x = bounds.origin.x + bounds.size.width / 2.0;
-            let center_y = bounds.origin.y + bounds.size.height / 2.0;
-
-            let mut track = PathBuilder::stroke(stroke);
-            track.move_to(point(center_x + radius, center_y));
-            track.arc_to(
-                point(radius, radius),
-                px(0.0),
-                false,
-                true,
-                point(center_x - radius, center_y),
-            );
-            track.arc_to(
-                point(radius, radius),
-                px(0.0),
-                false,
-                true,
-                point(center_x + radius, center_y),
-            );
-            track.close();
-            if let Ok(path) = track.build() {
-                window.paint_path(path, track_color);
-            }
-
-            if progress <= 0.0 {
-                return;
-            }
-            let mut fill = PathBuilder::stroke(stroke);
-            if progress >= 0.999 {
-                fill.move_to(point(center_x + radius, center_y));
-                fill.arc_to(
-                    point(radius, radius),
-                    px(0.0),
-                    false,
-                    true,
-                    point(center_x - radius, center_y),
-                );
-                fill.arc_to(
-                    point(radius, radius),
-                    px(0.0),
-                    false,
-                    true,
-                    point(center_x + radius, center_y),
-                );
-                fill.close();
-            } else {
-                fill.move_to(point(center_x, center_y - radius));
-                let angle = -PI / 2.0 + progress * 2.0 * PI;
-                fill.arc_to(
-                    point(radius, radius),
-                    px(0.0),
-                    progress > 0.5,
-                    true,
-                    point(
-                        center_x + radius * angle.cos(),
-                        center_y + radius * angle.sin(),
-                    ),
-                );
-            }
-            if let Ok(path) = fill.build() {
-                window.paint_path(path, progress_color);
-            }
-        },
+pub fn context_usage_meter(id: impl Into<ElementId>, used: u64, size: u64, cx: &App) -> AnyElement {
+    chat::context_meter(
+        id,
+        context_usage_fraction(used, size) as f32,
+        context_usage_tooltip(used, size),
+        cx,
     )
-    .size(px(CONTEXT_USAGE_RING_SIZE));
-    let aria_value = format!("{:.0}%", f64::from(progress) * 100.0);
-    let hover_tooltip = tooltip.clone();
-
-    div()
-        .id(id)
-        .role(Role::ProgressIndicator)
-        .aria_label(tooltip)
-        .aria_value(aria_value)
-        .flex()
-        .flex_none()
-        .size(px(COMPOSER_BUTTON))
-        .items_center()
-        .justify_center()
-        .tooltip(move |window, cx| Tooltip::new(hover_tooltip.clone()).build(window, cx))
-        .child(ring)
-        .into_any_element()
 }

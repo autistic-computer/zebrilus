@@ -12,12 +12,14 @@ use zz_client::{
 
 use super::{
     ActionContext, ActionKey, CommandPaletteEvent, CommandPaletteView, GuiEvent, LevelEffect,
-    PaletteActionLevel, PaletteHint, PaletteRow, command_palette_empty, command_palette_entry,
-    command_palette_list_height, command_palette_row_height, command_palette_section,
-    record_recent,
+    PaletteActionLevel, record_recent,
 };
 use crate::IconName;
 use penna::blocks::appearance::{ThemePicks, theme_labels};
+use penna::blocks::palette::{
+    PaletteHint, PaletteRow, palette_empty, palette_list_height, palette_row, palette_row_height,
+    palette_section,
+};
 
 #[must_use]
 pub fn theme_offer(picks: &ThemePicks) -> Option<GuiOffer> {
@@ -307,23 +309,21 @@ impl PaletteActionLevel for GuiLevel {
 
     fn rows(&mut self, window: &mut Window, cx: &mut App) -> AnyElement {
         if self.rows.is_empty() {
-            return command_palette_empty(cx).into_any_element();
+            return palette_empty("No matches", cx).into_any_element();
         }
-        let height = (self.rows.len() as f32 * command_palette_row_height()).min(
-            command_palette_list_height(window.viewport_size().height, false),
-        );
+        let height = (self.rows.len() as f32 * palette_row_height())
+            .min(palette_list_height(window.viewport_size().height, false));
         let selected = self.selected.get();
         let header = self
             .action
-            .map(|action| command_palette_section(action.title, ">", cx));
+            .map(|action| palette_section(action.title, ">", cx));
         div()
             .id("gui-level-rows")
             .flex()
             .flex_col()
-            .max_h(px(height
-                + header
-                    .as_ref()
-                    .map_or(0.0, |_| command_palette_row_height())))
+            .max_h(px(
+                height + header.as_ref().map_or(0.0, |_| palette_row_height())
+            ))
             .overflow_y_scroll()
             .track_scroll(&self.scroll)
             .children(header)
@@ -332,7 +332,7 @@ impl PaletteActionLevel for GuiLevel {
                 let click = Rc::clone(&self.selected);
                 let hover_palette = self.palette.clone();
                 let click_palette = self.palette.clone();
-                command_palette_entry(("gui-level-row", index), &row.row, index == selected, cx)
+                palette_row(("gui-level-row", index), &row.row, index == selected, cx)
                     .on_mouse_enter(move |_, _, cx| {
                         if hover.replace(index) != index
                             && let Some(palette) = hover_palette.as_ref()

@@ -12,6 +12,11 @@ use ala::{
 };
 use penna::{
     Disableable as _,
+    blocks::chat::{
+        COMPOSER_OUTER_PADDING, ChatComposer, Composer, TaskTrayAction, TrayPanel,
+        composer_add_button, empty_state, permission_card, permission_option, queue_chip,
+        spinner_phase, suggestion_list, suggestion_list_height, suggestion_row,
+    },
     components::button::Button,
     components::input::{IndentInline, InputEvent, InputState, MoveDown, MoveUp},
     components::scroll::Scrollbar,
@@ -45,20 +50,16 @@ use zz_ui::{
             ChatClick, ChatClicks, ChatHooks, ChatPane, chat_agent_pip, chat_column, chat_live,
             chat_thread, shows_chat,
         },
-        composer::{AgentComposer, COMPOSER_OUTER_PADDING, Composer},
         composer_attachment,
         controls::{
-            ComposerAction, agent_directory_chip, agent_queue_chip, agent_settings_menu,
-            agent_side_chat_button, composer_action, composer_action_button, composer_add_button,
-            context_usage_meter, git_summary_footer,
+            ComposerAction, agent_directory_chip, agent_settings_menu, agent_side_chat_button,
+            composer_action, composer_action_button, context_usage_meter, git_summary_footer,
         },
         fold_timeline_rows,
-        presentation::{
-            agent_welcome, empty_state, error_card, permission_card, permission_option,
-        },
+        presentation::{agent_welcome, error_card},
         question::{QuestionCardAction, QuestionCardState, QuestionCardStep},
         refs::{ChatRefs, open_path},
-        tasks::{TaskTrayAction, TrayPanel, task_tray},
+        tasks::task_tray,
         tool_output_text,
     },
     command::{PaletteSettings, PaletteTarget, target_hosts, target_picker},
@@ -598,12 +599,12 @@ impl AgentPane {
                         let hover = view.clone();
                         let click = view.clone();
                         Some(
-                            zz_ui::agent::slash::suggestion_row(
+                            suggestion_row(
                                 format!("web-agent-completion-{}-{index}", pane.0),
-                                &command_label(&command.name),
+                                command_label(&command.name),
                                 meaningful_command_description(&command.description)
                                     .map(|description| description.to_owned().into()),
-                                zz_ui::agent::slash::SlashKind::of(command.skill),
+                                command.skill.then(|| "skill".into()),
                                 selected == Some(index),
                                 cx,
                             )
@@ -629,11 +630,11 @@ impl AgentPane {
             },
         )
         .w_full()
-        .h(zz_ui::agent::slash::suggestion_list_height(
+        .h(suggestion_list_height(
             self.completions.len(),
         ))
         .track_scroll(&self.completion_scroll);
-        Some(zz_ui::agent::slash::suggestion_list(rows, cx).into_any_element())
+        Some(suggestion_list("agent-slash-suggestions", rows, cx).into_any_element())
     }
 
     fn send_prompt(&mut self, text: &str, images: &[AgentImage], cx: &mut Context<Self>) -> bool {
@@ -1195,7 +1196,13 @@ impl AgentPane {
             TaskTrayAction::Stop(task_id) => {
                 let pane = self.pane;
                 self.connection.update(cx, |connection, cx| {
-                    connection.send(ProtocolMessage::AgentStopTask { pane, task_id }, cx);
+                    connection.send(
+                        ProtocolMessage::AgentStopTask {
+                            pane,
+                            task_id: task_id.to_string(),
+                        },
+                        cx,
+                    );
                 });
             }
             TaskTrayAction::Reveal(tool_call_id) => {
@@ -1449,7 +1456,7 @@ impl Render for AgentPane {
             let connection = self.connection.clone();
             let pane = self.pane;
             prefix.push(
-                agent_queue_chip(
+                queue_chip(
                     ("agent-unqueue", self.pane.0),
                     state.queued_prompts,
                     writable,
@@ -1468,7 +1475,7 @@ impl Render for AgentPane {
         let phase = if state.tasks.is_empty() {
             0.0
         } else {
-            zz_ui::agent::presentation::spinner_phase(entity.entity_id(), cx)
+            spinner_phase(entity.entity_id(), cx)
         };
         prefix.extend(
             task_tray(
@@ -1534,8 +1541,7 @@ impl Render for AgentPane {
                 .into_any_element()
         } else {
             let (directory, controls) = self.harness_controls(&state, ready, cx);
-            AgentComposer {
-                directory,
+            ChatComposer {
                 controls,
                 composer: Composer {
                     input: self.input.clone(),
@@ -1585,16 +1591,19 @@ impl Render for AgentPane {
                         .map(Into::into),
                     ground: None,
                 },
-                git: state.git.as_ref().map(|git| {
-                    git_summary_footer(
-                        ("agent-git-summary", self.pane.0),
-                        git.branch.clone().map(Into::into),
-                        git.changed_files,
-                        git.additions,
-                        git.deletions,
-                        cx,
-                    )
-                }),
+                footer: directory
+                    .into_iter()
+                    .chain(state.git.as_ref().map(|git| {
+                        git_summary_footer(
+                            ("agent-git-summary", self.pane.0),
+                            git.branch.clone().map(Into::into),
+                            git.changed_files,
+                            git.additions,
+                            git.deletions,
+                            cx,
+                        )
+                    }))
+                    .collect(),
                 prefix,
             }
             .into_any_element()
@@ -1706,7 +1715,7 @@ impl AgentPane {
     ) -> AnyElement {
         let now = zz_client::chat_rows::now_ms();
         let phase = if chat_live(&self.transcript.lens.chat) || self.chat.revealing(now) {
-            zz_ui::agent::presentation::spinner_phase(cx.entity_id(), cx)
+            spinner_phase(cx.entity_id(), cx)
         } else {
             0.0
         };

@@ -5,19 +5,22 @@ use ala::{
     ParentElement as _, Render, SharedString, Styled as _, Window, div, px,
 };
 use penna::{
-    ActiveTheme as _, Colorize as _, Disableable as _, IconName, Sizable as _,
-    components::button::{Button, ButtonVariants as _},
+    Disableable as _, IconName,
+    components::button::Button,
+    blocks::chat::{
+        COMPOSER_ATTACHMENT, COMPOSER_MAX_WIDTH, COMPOSER_OUTER_PADDING, ChatComposer, Composer,
+        composer_add_button,
+    },
     components::input::InputState,
     h_flex,
 };
 use zz_client::agent_completion::{active_command_hint, pane_commands};
 use zz_client::agent_settings::{Choice, LensSettings};
 use zz_ui::agent::{
-    COMPOSER_ATTACHMENT, agent_attachment_thumbnail,
-    composer::{AgentComposer, COMPOSER_MAX_WIDTH, COMPOSER_OUTER_PADDING, Composer},
+    agent_attachment_thumbnail,
     controls::{
         ComposerAction, agent_directory_chip, agent_settings_menu, agent_side_chat_button,
-        composer_action, composer_action_button, composer_add_button, context_usage_meter,
+        composer_action, composer_action_button, context_usage_meter,
         git_summary_footer,
     },
     presentation::error_card,
@@ -109,7 +112,7 @@ pub fn composer(draft: Draft, cx: &mut App) -> AnyElement {
     )
     .into_any_element();
     let command_hint = active_command_hint(&value, &pane_commands(&[], true)).map(Into::into);
-    AgentComposer {
+    ChatComposer {
         composer: Composer {
             input: draft.input,
             leading: Some(leading),
@@ -130,16 +133,7 @@ pub fn composer(draft: Draft, cx: &mut App) -> AnyElement {
             command_hint,
             ground: None,
         },
-        git: Some(git_summary_footer(
-            SharedString::from(format!("{id}-git")),
-            Some("fix/pinned-tab-width".into()),
-            3,
-            42,
-            17,
-            cx,
-        )),
-        prefix: draft.prefix,
-        directory: Some(
+        footer: vec![
             agent_directory_chip(
                 SharedString::from(format!("{id}-directory")),
                 "~/src/zebrilus",
@@ -147,7 +141,16 @@ pub fn composer(draft: Draft, cx: &mut App) -> AnyElement {
                 cx,
             )
             .into_any_element(),
-        ),
+            git_summary_footer(
+                SharedString::from(format!("{id}-git")),
+                Some("fix/pinned-tab-width".into()),
+                3,
+                42,
+                17,
+                cx,
+            ),
+        ],
+        prefix: draft.prefix,
         controls: footer_controls(&id, &draft.settings, draft.writable, cx),
     }
     .into_any_element()
@@ -232,20 +235,7 @@ pub fn footer_controls(
 }
 
 pub fn queue_chip(id: SharedString, queued: usize, enabled: bool, cx: &App) -> AnyElement {
-    h_flex()
-        .w_full()
-        .justify_end()
-        .child(
-            Button::new(id)
-                .ghost()
-                .small()
-                .icon(IconName::Undo2)
-                .label(format!("{queued} queued"))
-                .tooltip("Return the queued prompts to the composer")
-                .text_color(cx.theme().foreground.muted())
-                .disabled(!enabled),
-        )
-        .into_any_element()
+    penna::blocks::chat::queue_chip(id, queued, enabled, |_, _| {}, cx).into_any_element()
 }
 
 struct Case {

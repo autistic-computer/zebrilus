@@ -1,12 +1,15 @@
 use ala::{App, ElementId, IntoElement, Pixels, SharedString, prelude::*, px};
-use penna::{Label, Panel, PanelLook, Row, RowLook, TextStyle};
 
-use crate::{ActiveTheme as _, StyledExt as _, row_state, v_flex};
+use crate::{
+    ActiveTheme as _, Label, Panel, PanelLook, Row, RowLook, StyledExt as _, TextStyle, row_state,
+    v_flex,
+};
 
 const ROW_HEIGHT: f32 = 40.0;
 const MAX_VISIBLE_ROWS: u8 = 6;
 const LIST_PADDING: f32 = 4.0;
 
+#[must_use]
 pub fn suggestion_list_height(count: usize) -> Pixels {
     px(ROW_HEIGHT
         * f32::from(
@@ -16,31 +19,11 @@ pub fn suggestion_list_height(count: usize) -> Pixels {
         ))
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum SlashKind {
-    Command,
-    Skill,
-}
-
-impl SlashKind {
-    #[must_use]
-    pub const fn of(skill: bool) -> Self {
-        if skill { Self::Skill } else { Self::Command }
-    }
-
-    const fn badge(self) -> Option<&'static str> {
-        match self {
-            Self::Command => None,
-            Self::Skill => Some("skill"),
-        }
-    }
-}
-
 pub fn suggestion_row(
     id: impl Into<ElementId>,
-    label: &str,
+    label: impl Into<SharedString>,
     description: Option<SharedString>,
-    kind: SlashKind,
+    badge: Option<SharedString>,
     selected: bool,
     cx: &App,
 ) -> Row {
@@ -60,7 +43,7 @@ pub fn suggestion_row(
                 .flex_1()
                 .min_w_0()
                 .child(
-                    Label::new(TextStyle::Small, label.to_owned())
+                    Label::new(TextStyle::Small, label)
                         .strong()
                         .truncate()
                         .w_full()
@@ -78,7 +61,7 @@ pub fn suggestion_row(
                     )
                 }),
         )
-        .children(kind.badge().map(|badge| {
+        .children(badge.map(|badge| {
             Label::new(TextStyle::Micro, badge)
                 .muted()
                 .on(ground)
@@ -86,8 +69,8 @@ pub fn suggestion_row(
         }))
 }
 
-pub fn suggestion_list(rows: impl IntoElement, cx: &App) -> Panel {
-    Panel::new("agent-slash-suggestions", PanelLook::Inline)
+pub fn suggestion_list(id: impl Into<ElementId>, rows: impl IntoElement, cx: &App) -> Panel {
+    Panel::new(id, PanelLook::Inline)
         .v_flex()
         .w_full()
         .list_inset(cx)

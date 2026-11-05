@@ -54,6 +54,13 @@
         "tree",
         "well"
       ]
+    },
+    {
+      "title": "Blocks",
+      "pages": [
+        "chat",
+        "palette"
+      ]
     }
   ]
 }

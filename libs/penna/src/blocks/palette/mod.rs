@@ -1,21 +1,42 @@
+mod vim;
+
+pub use vim::{PaletteVim, PaletteVimMode, Twin, VimCommand};
+
 use std::ops::Range;
 
 use ala::{
     AnyElement, App, ClickEvent, Div, ElementId, Entity, FontWeight, HighlightStyle, Hsla,
-    MouseButton, SharedString, StyledText, Window, div, prelude::*, px, relative,
+    IntoElement, Keystroke, MouseButton, ParentElement as _, Pixels, RenderOnce, SharedString,
+    StyledText, Window, deferred, div, prelude::*, px, relative,
 };
-
-use penna::{Label, RowLook, TextStyle};
 
 use crate::{
-    ActiveTheme as _, Colorize as _, Emphasis, Icon, IconName, PaintState, StyledExt as _, Tone,
-    badge::Badge,
-    input::{Input, InputState},
-    list::ListItem,
-    muted_on,
+    ActiveTheme as _, Colorize as _, Edge, Emphasis, Ground, Icon, IconName, Label, PaintState,
+    Panel, PanelLook, RowLook, RuleLook, Sizable as _, StyledExt as _, TextStyle, Tone,
+    blocks::sidebar::status_dot,
+    components::badge::Badge,
+    components::input::{Input, InputState},
+    components::kbd::{Kbd, KeyGlyphs, Keycap},
+    components::list::ListItem,
+    h_flex, muted_on,
 };
 
-use super::{command_palette_row_height, palette_vim::PaletteVimMode};
+pub const PALETTE_MAX_WIDTH: f32 = 560.0;
+pub const PALETTE_INSET: f32 = 8.0;
+pub const PALETTE_ROW_HEIGHT: f32 = 28.0;
+pub const PALETTE_INPUT_HEIGHT: f32 = 40.0;
+pub const PALETTE_FOOTER_HEIGHT: f32 = 32.0;
+const PALETTE_LIST_MAX: f32 = 440.0;
+
+#[must_use]
+pub fn palette_list_height(viewport: Pixels, usage: bool) -> f32 {
+    (f32::from(viewport) * 0.88 - if usage { 175.0 } else { 140.0 }).clamp(40.0, PALETTE_LIST_MAX)
+}
+
+#[must_use]
+pub fn palette_row_height() -> f32 {
+    px(PALETTE_ROW_HEIGHT).as_f32()
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum PaletteStatus {
@@ -26,6 +47,7 @@ pub enum PaletteStatus {
 }
 
 impl PaletteStatus {
+    #[must_use]
     pub fn color(self, cx: &App) -> Hsla {
         match self {
             Self::Online => cx.theme().success,
@@ -41,13 +63,19 @@ pub enum PalettePill {
         prefix: SharedString,
         label: SharedString,
     },
-    Host {
+    Status {
         label: SharedString,
         status: PaletteStatus,
     },
-    Command(SharedString),
-    Place(SharedString),
-    Verb(SharedString),
+    Code(SharedString),
+    Crumb(SharedString),
+    Action(SharedString),
+}
+
+#[derive(Clone, Debug)]
+pub enum PaletteShortcut {
+    Keys(Vec<Keystroke>),
+    Text(SharedString),
 }
 
 #[derive(Clone, Debug, Default)]
@@ -60,13 +88,19 @@ pub struct PaletteRow {
     pub status: Option<PaletteStatus>,
     pub running: bool,
     pub indent: f32,
-    pub shortcut: Option<SharedString>,
+    pub shortcut: Option<PaletteShortcut>,
     pub icon: Option<IconName>,
     pub expanded: Option<bool>,
 }
 
-fn status_dot(status: PaletteStatus, cx: &App) -> Div {
-    crate::sidebar::status_dot(status.color(cx))
+#[derive(Clone, Copy)]
+pub struct PaletteHint {
+    pub key: &'static str,
+    pub label: &'static str,
+}
+
+fn palette_status_dot(status: PaletteStatus, cx: &App) -> Div {
+    status_dot(status.color(cx))
 }
 
 #[allow(
@@ -93,20 +127,23 @@ fn pill(pill: PalettePill, cx: &App) -> Badge {
                     .child(prefix),
             )
             .child(label),
-        PalettePill::Host { label, status } => tag.child(status_dot(status, cx)).child(label),
-        PalettePill::Command(label) => tag
+        PalettePill::Status { label, status } => {
+            tag.child(palette_status_dot(status, cx)).child(label)
+        }
+        PalettePill::Code(label) => tag
             .font_family(cx.theme().mono_font_family.clone())
             .child(label),
-        PalettePill::Place(label) => tag
+        PalettePill::Crumb(label) => tag
             .flex_shrink(u16::try_from(label.chars().count()).map_or(f32::MAX, f32::from))
             .min_w(px(28.0))
             .child(div().min_w_0().truncate().child(label)),
-        PalettePill::Verb(label) => tag
+        PalettePill::Action(label) => tag
             .text_color(cx.theme().paint(Tone::Primary, Emphasis::Ghost).text)
             .child(label),
     }
 }
 
+#[must_use]
 pub fn palette_vim_badge(mode: PaletteVimMode, pending: Option<char>, cx: &App) -> Badge {
     let label: SharedString = match pending {
         Some(key) => format!("{} {key}", mode.label()).into(),
@@ -121,7 +158,15 @@ pub fn palette_vim_badge(mode: PaletteVimMode, pending: Option<char>, cx: &App) 
     }
 }
 
-pub fn unified_command_palette_input(
+#[must_use]
+pub fn palette_kind_badge(
+    label: impl Into<SharedString>,
+    font_family: impl Into<SharedString>,
+) -> Badge {
+    Badge::new(label).small().font_family(font_family.into())
+}
+
+pub fn palette_input(
     input: &Entity<InputState>,
     pills: impl IntoIterator<Item = PalettePill>,
     cx: &App,
@@ -130,7 +175,7 @@ pub fn unified_command_palette_input(
     Input::new(input)
         .appearance(false)
         .w_full()
-        .h(px(super::COMMAND_PALETTE_INPUT_HEIGHT))
+        .h(px(PALETTE_INPUT_HEIGHT))
         .px(px(14.0))
         .py(px(8.0))
         .gap(px(6.0))
@@ -148,7 +193,51 @@ pub fn unified_command_palette_input(
         })
 }
 
-pub fn command_palette_entry(
+pub fn palette_prompt_input(
+    input: &Entity<InputState>,
+    prompt: impl Into<SharedString>,
+    font_family: impl Into<SharedString>,
+    cx: &App,
+) -> Input {
+    let font_family = font_family.into();
+    Input::new(input)
+        .w_full()
+        .appearance(false)
+        .h(px(PALETTE_INPUT_HEIGHT))
+        .px(px(14.0))
+        .py(px(8.0))
+        .gap(px(8.0))
+        .font_family(font_family.clone())
+        .type_style(TextStyle::Small, cx)
+        .prefix(
+            Label::new(TextStyle::Small, prompt)
+                .font_family(font_family)
+                .text_color(cx.theme().foreground),
+        )
+}
+
+#[must_use]
+pub fn palette_shortcut(shortcut: &PaletteShortcut, ground: Ground, cx: &App) -> AnyElement {
+    match shortcut {
+        PaletteShortcut::Keys(keys) if !keys.is_empty() => h_flex()
+            .flex_none()
+            .gap(px(2.0))
+            .children(
+                keys.iter()
+                    .map(|key| Kbd::new(key.clone()).lowercase().small().on(ground)),
+            )
+            .into_any_element(),
+        PaletteShortcut::Keys(_) => div().into_any_element(),
+        PaletteShortcut::Text(text) => Keycap::new(text.clone())
+            .small()
+            .on(ground)
+            .font_family(cx.theme().mono_font_family.clone())
+            .into_any_element(),
+    }
+}
+
+#[must_use]
+pub fn palette_row(
     id: impl Into<ElementId>,
     row: &PaletteRow,
     selected: bool,
@@ -157,7 +246,7 @@ pub fn command_palette_entry(
     palette_entry(id, row, selected, None, None, cx)
 }
 
-pub fn command_palette_tree_entry(
+pub fn palette_tree_row(
     id: impl Into<ElementId>,
     row: &PaletteRow,
     selected: bool,
@@ -167,13 +256,23 @@ pub fn command_palette_tree_entry(
     palette_entry(id, row, selected, None, Some(Box::new(on_toggle)), cx)
 }
 
-type ToggleHandler = Box<dyn Fn(&ClickEvent, &mut Window, &mut App) + 'static>;
-
-pub(super) fn palette_entry(
+pub fn palette_badged_row(
     id: impl Into<ElementId>,
     row: &PaletteRow,
     selected: bool,
-    badge: Option<AnyElement>,
+    badge: Badge,
+    cx: &App,
+) -> ListItem {
+    palette_entry(id, row, selected, Some(badge), None, cx)
+}
+
+type ToggleHandler = Box<dyn Fn(&ClickEvent, &mut Window, &mut App) + 'static>;
+
+fn palette_entry(
+    id: impl Into<ElementId>,
+    row: &PaletteRow,
+    selected: bool,
+    badge: Option<Badge>,
     on_toggle: Option<ToggleHandler>,
     cx: &App,
 ) -> ListItem {
@@ -213,9 +312,9 @@ pub(super) fn palette_entry(
         .collect::<Vec<_>>();
 
     let height = px(if cx.theme().inset_rows() {
-        command_palette_row_height() - 2.0
+        palette_row_height() - 2.0
     } else {
-        command_palette_row_height()
+        palette_row_height()
     });
     ListItem::new(id)
         .row_height(height)
@@ -238,7 +337,7 @@ pub(super) fn palette_entry(
                     element.child(
                         div()
                             .id("disclosure")
-                            .debug_selector(|| "command-palette-disclosure".to_owned())
+                            .debug_selector(|| "palette-disclosure".to_owned())
                             .flex_none()
                             .size(px(12.0))
                             .relative()
@@ -278,7 +377,12 @@ pub(super) fn palette_entry(
                     )
                 })
                 .children(row.status.map(|status| {
-                    status_dot(status, cx).when(selected, |dot| ringed(dot, secondary, cx))
+                    if ground.solid {
+                        status_dot(secondary)
+                    } else {
+                        palette_status_dot(status, cx)
+                            .when(selected, |dot| ringed(dot, secondary, cx))
+                    }
                 }))
                 .child(
                     div()
@@ -313,22 +417,20 @@ pub(super) fn palette_entry(
                     )
                 })
                 .when_some(row.shortcut.as_ref(), |element, shortcut| {
-                    element.child(super::tmux_shortcut(shortcut, ground, cx))
+                    element.child(palette_shortcut(shortcut, ground, cx))
                 })
-                .children(badge)
-                .when(row.running, |element| {
-                    element.child(crate::sidebar::status_dot(secondary))
-                }),
+                .children(badge.map(|badge| badge.on(ground)))
+                .when(row.running, |element| element.child(status_dot(secondary))),
         )
 }
 
-pub fn command_palette_section(
+pub fn palette_section(
     label: impl Into<SharedString>,
     hint: impl Into<SharedString>,
     cx: &App,
 ) -> Div {
     div()
-        .h(px(command_palette_row_height()))
+        .h(px(palette_row_height()))
         .flex()
         .items_center()
         .justify_between()
@@ -340,24 +442,226 @@ pub fn command_palette_section(
         .child(Label::new(TextStyle::Micro, hint).mono())
 }
 
-pub fn command_palette_empty(cx: &App) -> Div {
+pub fn palette_empty(label: impl Into<SharedString>, cx: &App) -> Div {
     div()
         .py(px(16.0))
         .text_center()
         .type_style(TextStyle::Small, cx)
         .text_color(cx.theme().foreground.muted())
-        .child("No matches")
+        .child(label.into())
+}
+
+pub fn palette_hint(hint: PaletteHint, cx: &App) -> impl IntoElement {
+    div()
+        .flex()
+        .items_center()
+        .gap(px(5.0))
+        .whitespace_nowrap()
+        .child(
+            h_flex()
+                .gap(px(3.0))
+                .text_color(cx.theme().foreground)
+                .children(
+                    hint.key
+                        .split([' ', '/'])
+                        .filter(|key| !key.is_empty())
+                        .map(|key| match Keystroke::parse(key) {
+                            Ok(stroke) => KeyGlyphs::new(stroke).into_any_element(),
+                            Err(_) => key.to_owned().into_any_element(),
+                        }),
+                ),
+        )
+        .child(hint.label)
+}
+
+pub fn palette_key_hint(
+    keys: impl IntoIterator<Item = &'static str>,
+    label: impl Into<SharedString>,
+) -> impl IntoElement {
+    div()
+        .flex()
+        .items_center()
+        .gap(px(crate::CHROME_GAP))
+        .children(
+            keys.into_iter()
+                .filter_map(|key| Keystroke::parse(key).ok())
+                .map(Kbd::new),
+        )
+        .child(label.into())
+}
+
+#[derive(IntoElement)]
+pub struct PaletteSurface {
+    input: AnyElement,
+    usage: Option<SharedString>,
+    reserve_usage: bool,
+    rows: Option<AnyElement>,
+    hints: Vec<PaletteHint>,
+    revision: u64,
+    input_last: bool,
+    over_input: Option<AnyElement>,
+    footer_leading: Option<AnyElement>,
+    max_width: Pixels,
+}
+
+impl PaletteSurface {
+    pub fn new(input: impl IntoElement, revision: u64) -> Self {
+        Self {
+            input: input.into_any_element(),
+            usage: None,
+            reserve_usage: false,
+            rows: None,
+            hints: Vec::new(),
+            revision,
+            input_last: false,
+            over_input: None,
+            footer_leading: None,
+            max_width: px(PALETTE_MAX_WIDTH),
+        }
+    }
+
+    #[must_use]
+    pub fn footer_leading(mut self, element: impl IntoElement) -> Self {
+        self.footer_leading = Some(element.into_any_element());
+        self
+    }
+
+    #[must_use]
+    pub fn over_input(mut self, element: impl IntoElement) -> Self {
+        self.over_input = Some(element.into_any_element());
+        self
+    }
+
+    #[must_use]
+    pub const fn input_last(mut self) -> Self {
+        self.input_last = true;
+        self
+    }
+
+    #[must_use]
+    pub const fn max_width(mut self, width: Pixels) -> Self {
+        self.max_width = width;
+        self
+    }
+
+    #[must_use]
+    pub fn rows(mut self, rows: impl IntoElement) -> Self {
+        self.rows = Some(rows.into_any_element());
+        self
+    }
+
+    #[must_use]
+    pub fn hints(mut self, hints: impl IntoIterator<Item = PaletteHint>) -> Self {
+        self.hints = hints.into_iter().collect();
+        self
+    }
+
+    #[must_use]
+    pub const fn reserve_usage(mut self) -> Self {
+        self.reserve_usage = true;
+        self
+    }
+
+    #[must_use]
+    pub fn usage(mut self, usage: impl Into<SharedString>) -> Self {
+        let usage = usage.into();
+        self.usage = (!usage.is_empty()).then_some(usage);
+        self
+    }
+}
+
+impl RenderOnce for PaletteSurface {
+    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
+        let (input, input_last) = if self.input_last {
+            (None, Some(self.input))
+        } else {
+            (Some(self.input), None)
+        };
+        let surface = Panel::new("palette-surface", PanelLook::Popover)
+            .inset(px(PALETTE_INSET))
+            .relative()
+            .w_full()
+            .max_w(self.max_width)
+            .flex()
+            .flex_col()
+            .overflow_hidden()
+            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+            .children(input)
+            .children((self.usage.is_some() || self.reserve_usage).then(|| {
+                div()
+                    .h(px(24.0))
+                    .min_w_0()
+                    .flex_none()
+                    .px(px(18.0))
+                    .pb(px(8.0))
+                    .overflow_hidden()
+                    .whitespace_nowrap()
+                    .text_ellipsis()
+                    .type_style_mono(TextStyle::Micro, cx)
+                    .line_height(px(16.0))
+                    .text_color(cx.theme().foreground.muted())
+                    .children(self.usage)
+            }))
+            .children(self.rows.map(|rows| {
+                div()
+                    .list_inset(cx)
+                    .pt(px(if self.input_last { PALETTE_INSET } else { 2.0 }))
+                    .pb(px(if self.input_last { 0.0 } else { PALETTE_INSET }))
+                    .child(rows)
+            }))
+            .when_some(input_last, |surface, input| {
+                surface.child(div().flex_none().relative().child(input).children(
+                    self.over_input.map(|over| {
+                        deferred(
+                            div()
+                                .absolute()
+                                .left_0()
+                                .right_0()
+                                .bottom(relative(1.0))
+                                .child(over),
+                        )
+                        .with_priority(1)
+                    }),
+                ))
+            })
+            .child(
+                div()
+                    .min_h(px(PALETTE_FOOTER_HEIGHT))
+                    .flex_none()
+                    .flex()
+                    .flex_wrap()
+                    .items_center()
+                    .justify_end()
+                    .gap(px(14.0))
+                    .px(px(18.0))
+                    .py(px(8.0))
+                    .rule(RuleLook::Bar, Edge::Top, cx)
+                    .type_style(TextStyle::Micro, cx)
+                    .line_height(px(16.0))
+                    .text_color(cx.theme().foreground.muted())
+                    .children(self.footer_leading.map(|leading| {
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .flex()
+                            .items_center()
+                            .child(leading)
+                    }))
+                    .children(self.hints.into_iter().map(|hint| palette_hint(hint, cx))),
+            );
+        crate::foundation::surface_enter(
+            surface,
+            ElementId::NamedInteger("palette-open".into(), self.revision),
+            px(0.0),
+        )
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        Elevation, ThemeMode,
-        command::{CommandPaletteSurface, PaletteHint},
-    };
+    use crate::{Elevation, Root, Theme, ThemeMode};
     use ala::{Context, Focusable as _, Render, TestAppContext, Window};
-    use penna::{Root, Theme};
 
     struct Preview {
         input: Entity<InputState>,
@@ -371,11 +675,11 @@ mod tests {
             let toggle = cx.entity();
             let activate = cx.entity();
             div().w(px(self.width)).px(px(16.0)).child(
-                CommandPaletteSurface::new(
-                    unified_command_palette_input(
+                PaletteSurface::new(
+                    palette_input(
                         &self.input,
                         [
-                            PalettePill::Host {
+                            PalettePill::Status {
                                 label: "gpu-box".into(),
                                 status: PaletteStatus::Online,
                             },
@@ -383,7 +687,7 @@ mod tests {
                                 prefix: ":".into(),
                                 label: "Command".into(),
                             },
-                            PalettePill::Command("join-pane".into()),
+                            PalettePill::Code("join-pane".into()),
                         ],
                         cx,
                     ),
@@ -392,7 +696,7 @@ mod tests {
                 .usage("join-pane [-bdhv] [-s src-pane] [-t dst-pane]")
                 .rows(
                     div().child(
-                        command_palette_tree_entry(
+                        palette_tree_row(
                             "selected",
                             &PaletteRow {
                                 label: "zz-dev / editor".into(),
@@ -452,9 +756,9 @@ mod tests {
             cx.update(|cx| {
                 crate::init(cx);
                 cx.set_reduce_motion(true);
-                crate::interface_theme::InterfaceTheme {
-                    glass: Some(penna::foundation::interface_theme::Glass::None),
-                    ..crate::interface_theme::InterfaceTheme::default()
+                crate::foundation::interface_theme::InterfaceTheme {
+                    glass: Some(crate::foundation::interface_theme::Glass::None),
+                    ..crate::foundation::interface_theme::InterfaceTheme::default()
                 }
                 .activate(Some(mode), None, cx);
                 Theme::global_mut(cx).radius = px(radius);
@@ -505,7 +809,7 @@ mod tests {
                                 cx,
                             )
                             && quad.bounds.size.width.0
-                                == crate::sidebar::STATUS_DOT_SIZE * window.scale_factor()
+                                == crate::blocks::sidebar::STATUS_DOT_SIZE * window.scale_factor()
                             && quad.border_widths.top.0 > 0.0
                     }),
                     "selected running agent remains visible on the accent selection"
@@ -528,7 +832,7 @@ mod tests {
             }
         });
         cx.run_until_parked();
-        let disclosure = cx.debug_bounds("command-palette-disclosure").unwrap();
+        let disclosure = cx.debug_bounds("palette-disclosure").unwrap();
         cx.simulate_click(disclosure.center(), ala::Modifiers::default());
         cx.run_until_parked();
         preview.read_with(cx, |preview, _| {

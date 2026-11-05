@@ -17,13 +17,16 @@ use zz_protocol::{
 
 use penna::TextStyle;
 
+use penna::blocks::palette::{
+    PaletteHint, PaletteRow, palette_list_height, palette_row, palette_row_height,
+};
+
 use crate::{
     ActiveTheme as _, Colorize as _, IconName, StyledExt as _,
     button::{Button, ButtonVariants as _},
     command::{
         ActionContext, ActionKey, CommandPaletteView, LevelEffect, PaletteActionLevel,
-        PaletteBackend, PaletteHint, PaletteHostId, PaletteRow, command_palette_entry,
-        command_palette_list_height, command_palette_row_height, record_recent,
+        PaletteBackend, PaletteHostId, record_recent,
     },
     h_flex,
     touch::CoarsePointer,
@@ -527,7 +530,7 @@ impl FilesLevel {
     }
 
     pub fn fit(&mut self, room: Pixels) {
-        let rows = (f32::from(room) / command_palette_row_height()).floor();
+        let rows = (f32::from(room) / palette_row_height()).floor();
         self.visible = rows.max(1.0) as usize;
     }
 
@@ -902,7 +905,7 @@ impl FilesLevel {
             Some(mark) => format!("{} {kind}", mark_letter(mark)),
             None => kind.to_owned(),
         };
-        command_palette_entry(
+        palette_row(
             ("files-row", index),
             &PaletteRow {
                 label: row.name.clone().into(),
@@ -934,7 +937,7 @@ impl FilesLevel {
             cx.stop_propagation();
         })
         .map(|row| {
-            let row = div().h(px(command_palette_row_height())).child(row);
+            let row = div().h(px(palette_row_height())).child(row);
             match insert {
                 Some(insert) => h_flex().child(row.flex_1().min_w_0()).child(insert),
                 None => row,
@@ -979,7 +982,7 @@ impl Render for FilesLevel {
                             .collect::<Vec<_>>()
                     }),
                 )
-                .h(px(command_palette_row_height() * visible))
+                .h(px(palette_row_height() * visible))
                 .track_scroll(&self.scroll),
             )
             .into_any_element()
@@ -1137,10 +1140,7 @@ impl PaletteActionLevel for FilesAction {
         let Some(level) = self.level().cloned() else {
             return div().into_any_element();
         };
-        let room = px(command_palette_list_height(
-            window.viewport_size().height,
-            false,
-        ));
+        let room = px(palette_list_height(window.viewport_size().height, false));
         level.update(cx, |level, _| level.fit(room));
         level.into_any_element()
     }

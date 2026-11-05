@@ -3,6 +3,7 @@ use crate::story::Story;
 mod appearance;
 mod buttons;
 mod canvas;
+mod chat;
 mod checks;
 #[cfg(feature = "editor")]
 mod code_editor;
@@ -19,6 +20,7 @@ mod markdown;
 pub mod menus;
 mod navigation;
 mod notifications;
+mod palette;
 mod panels;
 mod rows;
 mod scrollbars;
@@ -36,6 +38,7 @@ pub const STORIES: &[Story] = &[
     checks::STORY,
     display::STORY,
     menus::STORY,
+    palette::STORY,
     dialogs::STORY,
     feedback::STORY,
     status::STORY,
@@ -55,5 +58,6 @@ pub const STORIES: &[Story] = &[
     appearance::STORY,
     which_key::STORY,
     compact::STORY,
+    chat::STORY,
     docs::STORY,
 ];

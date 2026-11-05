@@ -10,7 +10,7 @@ use zz_ui::agent::chat::{
     ChatClick, ChatClicks, ChatHooks, chat_agent_pip, chat_column, chat_live, chat_thread,
     shows_chat,
 };
-use zz_ui::agent::presentation::spinner_phase;
+use penna::blocks::chat::spinner_phase;
 
 use super::{AgentPaneState, AgentView, COMPOSER_OUTER_PADDING};
 

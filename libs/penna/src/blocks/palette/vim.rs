@@ -18,17 +18,17 @@ impl PaletteVimMode {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum Twin {
+pub enum Twin {
     Down,
     Up,
     Into,
     Out,
     Drop,
-    CopyAddress,
+    Copy,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum VimCommand {
+pub enum VimCommand {
     Pass,
     Swallow,
     Twin(Twin),
@@ -42,16 +42,18 @@ pub(crate) enum VimCommand {
 }
 
 #[derive(Debug, Default)]
-pub(crate) struct PaletteVim {
+pub struct PaletteVim {
     mode: PaletteVimMode,
     pending: Option<char>,
 }
 
 impl PaletteVim {
+    #[must_use]
     pub const fn mode(&self) -> PaletteVimMode {
         self.mode
     }
 
+    #[must_use]
     pub const fn pending(&self) -> Option<char> {
         self.pending
     }
@@ -90,7 +92,7 @@ impl PaletteVim {
         };
         match (self.pending.take(), typed) {
             (Some('g'), 'g') => return VimCommand::First,
-            (Some('y'), 'y') => return VimCommand::Twin(Twin::CopyAddress),
+            (Some('y'), 'y') => return VimCommand::Twin(Twin::Copy),
             _ => {}
         }
         match typed {
@@ -150,9 +152,12 @@ fn typed(keystroke: &Keystroke) -> Option<char> {
 #[cfg(test)]
 mod tests {
     use ala::{Keystroke, Modifiers};
-    use zz_client::place::is_sigil;
 
     use super::*;
+
+    const fn is_sigil(character: char) -> bool {
+        character == ':'
+    }
 
     fn press(vim: &mut PaletteVim, keys: &str) -> Vec<VimCommand> {
         keys.split(' ')
@@ -241,7 +246,7 @@ mod tests {
         assert_eq!(vim.pending(), None);
         assert_eq!(
             press(&mut vim, "y y"),
-            [VimCommand::Swallow, VimCommand::Twin(Twin::CopyAddress)]
+            [VimCommand::Swallow, VimCommand::Twin(Twin::Copy)]
         );
     }
 

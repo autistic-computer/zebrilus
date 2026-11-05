@@ -2,10 +2,13 @@ use std::{
     collections::{BTreeSet, HashMap},
     sync::Arc,
 };
-use zz_ui::agent::composer::{COMPOSER_OUTER_PADDING, Composer};
+use penna::blocks::chat::{
+    CHAT_CONTENT_MAX_WIDTH, COMPOSER_OUTER_PADDING, ChatComposer, Composer, TaskTrayAction,
+    TrayPanel, composer_add_button, empty_state, permission_card, permission_option, queue_chip,
+    spinner_phase, suggestion_list, suggestion_list_height, suggestion_row,
+};
 use zz_ui::agent::controls::{
-    ComposerAction, agent_queue_chip, composer_action, composer_action_button, composer_add_button,
-    context_usage_meter, git_summary_footer,
+    ComposerAction, composer_action, composer_action_button, context_usage_meter, git_summary_footer,
 };
 #[cfg(test)]
 use zz_ui::agent::controls::{context_usage_fraction, context_usage_tooltip, git_file_count_label};
@@ -13,11 +16,9 @@ use zz_ui::agent::controls::{context_usage_fraction, context_usage_tooltip, git_
 use zz_ui::agent::presentation::MAX_RENDERED_ERROR_BYTES;
 #[cfg(test)]
 use zz_ui::agent::presentation::rendered_error;
-use zz_ui::agent::presentation::{
-    agent_welcome, empty_state, error_card, permission_card, permission_option, spinner_phase,
-};
+use zz_ui::agent::presentation::{agent_welcome, error_card};
 use zz_ui::agent::question::{QuestionCardAction, QuestionCardState, QuestionCardStep};
-use zz_ui::agent::tasks::{TaskTrayAction, TrayPanel, task_tray};
+use zz_ui::agent::tasks::task_tray;
 
 use ala::{
     AnyElement, Context, Entity, EntityId, FocusHandle, Focusable, Image, IntoElement,
@@ -44,9 +45,8 @@ use penna::{
 };
 use zz_protocol::{AgentProvider, CommandInvocation, PaneId};
 use zz_ui::agent::DisclosureKind;
-use zz_ui::agent::slash::SlashKind;
 use zz_ui::agent::{
-    AGENT_CONTENT_MAX_WIDTH, AgentAside, AgentEntry, AgentMarkdown, AgentTimeline,
+    AgentAside, AgentEntry, AgentMarkdown, AgentTimeline,
     AgentTimelineStore, AgentToolEntry, AgentToolKind, AgentToolPayload, AgentToolStatus,
     AgentToolText, FoldedTimelineRows, MarkdownSlot, TimelineRow, TimelineStick,
     agent_jump_to_bottom_button, append_timeline_row, composer_attachment, fold_timeline_rows,
@@ -1337,7 +1337,7 @@ impl AgentView {
         }
         let controller = self.controller.clone();
         let pane = self.pane;
-        Some(agent_queue_chip(
+        Some(queue_chip(
             format!("agent-unqueue-{}", self.pane.0),
             queued,
             true,
@@ -1489,7 +1489,7 @@ impl AgentView {
             TaskTrayAction::Stop(task_id) => {
                 let pane = self.pane;
                 self.controller.update(cx, |controller, cx| {
-                    controller.stop_task(pane, task_id, cx);
+                    controller.stop_task(pane, task_id.to_string(), cx);
                 });
             }
             TaskTrayAction::Reveal(tool_call_id) => self.reveal_tool(&tool_call_id, cx),
@@ -1621,11 +1621,11 @@ impl AgentView {
                         let hover_view = rows_view.clone();
                         let click_view = rows_view.clone();
                         Some(
-                            zz_ui::agent::slash::suggestion_row(
+                            suggestion_row(
                                 format!("agent-completion-{}-{index}", pane.0),
-                                &label,
+                                label,
                                 description.map(Into::into),
-                                SlashKind::of(command.skill),
+                                command.skill.then(|| "skill".into()),
                                 is_selected,
                                 cx,
                             )
@@ -1651,11 +1651,11 @@ impl AgentView {
             },
         )
         .w_full()
-        .h(zz_ui::agent::slash::suggestion_list_height(
+        .h(suggestion_list_height(
             self.completions.len(),
         ))
         .track_scroll(&self.completion_scroll);
-        Some(zz_ui::agent::slash::suggestion_list(rows, cx).into_any_element())
+        Some(suggestion_list("agent-slash-suggestions", rows, cx).into_any_element())
     }
 
     fn render_composer(
@@ -1720,8 +1720,7 @@ impl AgentView {
             .is_open()
             .then(|| self.mention.clone().into_any_element());
         let (directory, controls) = self.render_harness_controls(state, view, cx);
-        zz_ui::agent::composer::AgentComposer {
-            directory,
+        ChatComposer {
             controls,
             composer: Composer {
                 input: self.input.clone(),
@@ -1734,7 +1733,10 @@ impl AgentView {
                 command_hint: command_hint.map(Into::into),
                 ground: None,
             },
-            git: git.map(IntoElement::into_any_element),
+            footer: directory
+                .into_iter()
+                .chain(git.map(IntoElement::into_any_element))
+                .collect(),
             prefix: self
                 .render_permission_wizard(state, view, cx)
                 .filter(|_| !self.chat_inline)
@@ -1907,7 +1909,7 @@ impl Render for AgentView {
                             div().size_full().px_3().child(
                                 div()
                                     .size_full()
-                                    .max_w(px(AGENT_CONTENT_MAX_WIDTH))
+                                    .max_w(px(CHAT_CONTENT_MAX_WIDTH))
                                     .mx_auto()
                                     .child(Self::render_empty_state(&state, cx.entity_id(), cx)),
                             ),
@@ -2766,9 +2768,9 @@ mod completion_tests {
         cx.update(|window, cx| {
             _ = window.draw(cx);
         });
-        assert!(cx.debug_bounds("agent-task-stop-0").is_none());
+        assert!(cx.debug_bounds("chat-task-stop-0").is_none());
         let chip = cx
-            .debug_bounds("agent-task-tray")
+            .debug_bounds("chat-task-tray")
             .expect("the tray chip should be painted");
         cx.simulate_click(chip.center(), ala::Modifiers::none());
         cx.run_until_parked();
@@ -2780,7 +2782,7 @@ mod completion_tests {
             Some(TrayPanel::Tasks)
         );
         let stop = cx
-            .debug_bounds("agent-task-stop-0")
+            .debug_bounds("chat-task-stop-0")
             .expect("an open tray lists the task");
         cx.simulate_click(stop.center(), ala::Modifiers::none());
         cx.run_until_parked();
@@ -3225,7 +3227,7 @@ mod completion_tests {
     #[cfg(not(target_os = "macos"))]
     fn hover_prompt(cx: &mut VisualTestContext) -> Option<ala::Bounds<ala::Pixels>> {
         let bubble = cx
-            .debug_bounds("agent-user-bubble")
+            .debug_bounds("chat-user-bubble")
             .expect("the prompt row is painted");
         cx.simulate_mouse_move(bubble.center(), None, ala::Modifiers::none());
         cx.update(|window, cx| {

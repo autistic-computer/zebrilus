@@ -21,7 +21,7 @@ use crate::{
     v_flex,
 };
 
-use super::presentation::{
+use penna::blocks::chat::{
     CARD_GAP, CARD_GUTTER, CARD_TITLE_LINE, CardTile, card_button, card_chip, card_close,
     card_divider, card_footer, card_header, card_surface, card_tiles, card_title, card_trailing,
 };

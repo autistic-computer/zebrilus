@@ -5,11 +5,13 @@ use zz_client::recents::RecentKey;
 use zz_protocol::{ChooseTreeItem, ChooseTreeKind, PathKind, SessionId, WindowId};
 
 use super::*;
+use penna::blocks::palette::PaletteStatus;
+
 use crate::{
     ActiveTheme as _, Colorize as _, Elevation, IconName,
     command::{
-        ActionContext, PaletteStatus, PaletteTreeHost, PaletteTreePane, PaletteTreeSession,
-        PaletteTreeWindow, record_recent,
+        ActionContext, PaletteTreeHost, PaletteTreePane, PaletteTreeSession, PaletteTreeWindow,
+        record_recent,
     },
     files::{ListingSink, ListingUpdate},
 };
@@ -646,7 +648,7 @@ fn palette_navigation_scrolls_at_most_one_row_per_step(cx: &mut TestAppContext) 
                 }
                 let delta = (offset - previous_offset).abs();
                 assert!(
-                    delta <= px(crate::command::COMMAND_PALETTE_ROW_HEIGHT + 0.01),
+                    delta <= px(penna::blocks::palette::PALETTE_ROW_HEIGHT + 0.01),
                     "unified={unified}, direction={direction}, selected={selected}, delta={delta:?}"
                 );
                 scrolled |= delta > px(0.0);

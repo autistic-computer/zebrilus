@@ -6,7 +6,11 @@ use ala::{
     prelude::*, px,
 };
 use penna::{
-    ActiveTheme as _, IconName, WindowExt as _, blocks::notification::Notification,
+    ActiveTheme as _, IconName, WindowExt as _,
+    blocks::chat::{
+        CHAT_CONTENT_MAX_WIDTH, COMPOSER_OUTER_PADDING, permission_card, permission_option,
+    },
+    blocks::notification::Notification,
     components::button::Button, components::input::InputEvent, v_flex,
 };
 use zz_protocol::chat::{
@@ -15,13 +19,11 @@ use zz_protocol::chat::{
 };
 use zz_protocol::{MAX_AGENT_OPTION_BYTES, agent_stream::AgentQuestion};
 use zz_ui::agent::{
-    AGENT_CONTENT_MAX_WIDTH, agent_jump_to_bottom_button,
+    agent_jump_to_bottom_button,
     chat::{
         ChatClick, ChatClicks, ChatHooks, ChatOpen, ChatPane, chat_agent_pip, chat_column,
         chat_thread, shows_chat,
     },
-    composer::COMPOSER_OUTER_PADDING,
-    presentation::{permission_card, permission_option},
     question::{QuestionCardAction, QuestionCardState, QuestionCardStep},
     refs::ChatRefs,
 };
@@ -57,7 +59,7 @@ pub fn empty_column(body: impl IntoElement) -> Div {
     div().size_full().px_3().child(
         div()
             .size_full()
-            .max_w(px(AGENT_CONTENT_MAX_WIDTH))
+            .max_w(px(CHAT_CONTENT_MAX_WIDTH))
             .mx_auto()
             .child(body),
     )

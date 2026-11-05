@@ -15,11 +15,9 @@ use zz_protocol::{
     SessionSnapshot, WindowId, command_specs,
 };
 
-use super::{
-    PalettePill, PaletteRow, PaletteStatus,
-    palette_places::{Chip, Draft},
-};
+use super::palette_places::{Chip, Draft};
 use crate::IconName;
+use penna::blocks::palette::{PalettePill, PaletteRow, PaletteStatus};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PaletteMode {
@@ -372,7 +370,7 @@ impl UnifiedPalette {
         }
         let mut pills = Vec::new();
         if let Some(host) = self.host.and_then(|id| self.tree.host(id)) {
-            pills.push(PalettePill::Host {
+            pills.push(PalettePill::Status {
                 label: host.name.clone().into(),
                 status: host.status,
             });
@@ -384,7 +382,7 @@ impl UnifiedPalette {
             });
         }
         if let Some(command) = self.command {
-            pills.push(PalettePill::Command(command.name.into()));
+            pills.push(PalettePill::Code(command.name.into()));
         }
         pills
     }
@@ -592,7 +590,7 @@ pub(crate) fn command_entries(
                     label: spec.name.into(),
                     detail: spec.description.into(),
                     icon: Some(IconName::Terminal),
-                    shortcut: shortcut(spec.name),
+                    shortcut: shortcut(spec.name).map(|keys| super::tmux_shortcut(&keys)),
                     ..Default::default()
                 },
                 PaletteAction::Command(spec),

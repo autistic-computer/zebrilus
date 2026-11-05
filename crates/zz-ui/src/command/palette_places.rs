@@ -11,12 +11,11 @@ use zz_client::{
     verbs::{self, Filled, Slot, Verb, VerbKind, VerbMatch},
 };
 
-use super::{
-    PalettePill, PaletteRow, PaletteStatus,
-    palette_model::{
-        PaletteAction, PaletteChat, PaletteEntry, PaletteTree, PaletteTreePane, UnifiedPalette,
-        command_entries, count,
-    },
+use penna::blocks::palette::{PalettePill, PaletteRow, PaletteStatus};
+
+use super::palette_model::{
+    PaletteAction, PaletteChat, PaletteEntry, PaletteTree, PaletteTreePane, UnifiedPalette,
+    command_entries, count,
 };
 use crate::IconName;
 
@@ -399,7 +398,11 @@ fn verb_entry(
             detail: verb.description.clone().into(),
             right: verb.spelled().into(),
             icon: Some(verb_icon(verb)),
-            shortcut: verb.command().filter(|_| plain).and_then(shortcut),
+            shortcut: verb
+                .command()
+                .filter(|_| plain)
+                .and_then(shortcut)
+                .map(|keys| super::tmux_shortcut(&keys)),
             ..Default::default()
         },
         PaletteAction::Verb(found.index),
@@ -434,7 +437,7 @@ impl UnifiedPalette {
             .chips
             .iter()
             .map(|chip| match chip.level {
-                Level::Host => PalettePill::Host {
+                Level::Host => PalettePill::Status {
                     label: chip.label.clone().into(),
                     status: self
                         .tree
@@ -443,17 +446,17 @@ impl UnifiedPalette {
                         .find(|host| Some(host.id.0) == chip.place.host)
                         .map_or(PaletteStatus::Offline, |host| host.status),
                 },
-                _ => PalettePill::Place(chip.label.clone().into()),
+                _ => PalettePill::Crumb(chip.label.clone().into()),
             })
             .collect::<Vec<_>>();
         if let Some(draft) = &self.draft {
-            pills.push(PalettePill::Verb(draft.verb.name.clone().into()));
+            pills.push(PalettePill::Action(draft.verb.name.clone().into()));
             pills.extend(
                 draft
                     .filled
                     .iter()
                     .filter(|(_, label)| !label.is_empty())
-                    .map(|(_, label)| PalettePill::Place(label.clone().into())),
+                    .map(|(_, label)| PalettePill::Crumb(label.clone().into())),
             );
         }
         pills

@@ -5,6 +5,10 @@ use ala::{
     Keystroke, ParentElement as _, Render, Styled as _, Window, div, prelude::*, px, relative,
     size,
 };
+use penna::blocks::palette::{
+    PaletteHint, PalettePill, PaletteRow, PaletteStatus, PaletteSurface, palette_input,
+    palette_row, palette_row_height, palette_section,
+};
 use penna::{
     ActiveTheme as _, Colorize as _, Elevation, IconName, IndexPath, Label, RuleLook, TextStyle,
     blocks::appearance::{picker_tile, theme_preview},
@@ -27,11 +31,6 @@ use zz_terminal::{SearchQuery, SearchStatus};
 use zz_ui::{
     agent::agent_jump_to_bottom_button,
     browser::{BrowserHeader, browser_recent_row, browser_start_surface},
-    command::{
-        CommandPaletteSurface, PaletteHint, PalettePill, PaletteRow, PaletteStatus,
-        command_palette_entry, command_palette_row_height, command_palette_section,
-        unified_command_palette_input,
-    },
     compact::{ToolKeys, overview_count},
     interface_theme::{ThemeModeSetting, pinned_theme_mode},
     pane::{
@@ -626,16 +625,16 @@ impl Floating {
             row("zz › 2 agents › 0 claude", "Agent · running", "", true),
             row("logs › 1 tail › 0 tail -f", "Terminal", "", false),
         ];
-        let height = px(command_palette_row_height());
-        CommandPaletteSurface::new(
-            unified_command_palette_input(
+        let height = px(palette_row_height());
+        PaletteSurface::new(
+            palette_input(
                 &self.search,
                 [
-                    PalettePill::Host {
+                    PalettePill::Status {
                         label: "devbox".into(),
                         status: PaletteStatus::Online,
                     },
-                    PalettePill::Verb("read pane".into()),
+                    PalettePill::Action("read pane".into()),
                 ],
                 cx,
             ),
@@ -647,10 +646,10 @@ impl Floating {
                 .child(
                     div()
                         .h(height)
-                        .child(command_palette_section("Panes on devbox", "", cx)),
+                        .child(palette_section("Panes on devbox", "", cx)),
                 )
                 .children(rows.iter().enumerate().map(|(index, row)| {
-                    div().h(height).child(command_palette_entry(
+                    div().h(height).child(palette_row(
                         ("showcase-palette-row", index),
                         row,
                         index == 0,

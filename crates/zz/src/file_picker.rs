@@ -14,13 +14,13 @@ use ala::{Context, SharedString, Task};
 use fff_search::FilePickerOptions;
 use fff_search::{FilePicker, FuzzySearchOptions, PaginationArgs, QueryParser};
 use ignore::WalkBuilder;
+use penna::blocks::palette::palette_key_hint;
 use penna::{
     ActiveTheme as _, CHROME_GAP, IconName, Label, PanelLook, StyledExt as _, TextStyle,
     components::input::{InputEvent, InputState, MoveDown, MoveUp},
     components::scroll::ScrollableElement as _,
     h_flex, v_flex,
 };
-use zz_ui::command::palette_shortcut_hint;
 
 const MAX_PICKER_ROWS: usize = 500;
 const WORKSPACE_PRIOR: u32 = 1 << 10;
@@ -691,9 +691,9 @@ impl Render for FilePickerView {
                     )
                     .child(
                         penna::blocks::picker::picker_footer(cx)
-                            .child(palette_shortcut_hint(["up", "down"], "select"))
-                            .child(palette_shortcut_hint(["enter"], "open"))
-                            .child(palette_shortcut_hint(["escape"], "close"))
+                            .child(palette_key_hint(["up", "down"], "select"))
+                            .child(palette_key_hint(["enter"], "open"))
+                            .child(palette_key_hint(["escape"], "close"))
                             .child(div().flex_1())
                             .when_some(self.error.clone(), |this, error| {
                                 this.child(

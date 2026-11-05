@@ -1,4 +1,5 @@
 pub mod appearance;
+pub mod chat;
 #[cfg(feature = "editor")]
 pub mod code_editor;
 pub mod color_picker;
@@ -10,6 +11,7 @@ pub mod feedback;
 pub mod inspector;
 pub mod notice;
 pub mod notification;
+pub mod palette;
 pub mod picker;
 pub mod settings;
 pub mod sheet;

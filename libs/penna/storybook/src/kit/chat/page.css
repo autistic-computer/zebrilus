@@ -1,0 +1,9 @@
+.chat-column {
+  width: 560px;
+}
+
+.chat-frame {
+  box-sizing: border-box;
+  padding-top: 12px;
+  border: 1px solid var(--penna-border);
+}
