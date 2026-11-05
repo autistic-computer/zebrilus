@@ -2,15 +2,14 @@ use std::{
     cell::RefCell,
     collections::{HashMap, HashSet},
     hash::{DefaultHasher, Hash as _, Hasher as _},
-    ops::Range,
     rc::{Rc, Weak},
     sync::Arc,
     time::Duration,
 };
 
 use ala::{
-    AnyElement, App, ClipboardItem, Context, Div, Global, HighlightStyle, Image, ImageFormat,
-    IntoElement, ScrollHandle, ScrollWheelEvent, SharedString, Stateful, StyledText, Subscription,
+    AnyElement, App, ClipboardItem, Context, Div, Global, Image, ImageFormat,
+    IntoElement, ScrollHandle, ScrollWheelEvent, SharedString, Stateful, Subscription,
     Window, div, prelude::*, px, relative,
 };
 use penna::{Card, CardLook, Label, Panel, PanelLook, TextStyle, components::button::ButtonLook};
@@ -23,14 +22,14 @@ use zz_protocol::{
     },
 };
 
-use super::presentation::{
+use penna::blocks::chat::{
     card_chip, card_glyph, card_header, card_surface, card_tiles, card_title, permission_card,
     permission_option,
 };
 use super::refs::{ChatRefs, RefLinks, linkify_markdown, ref_text};
-use super::{
-    ActivityMark, RowEnd, TRANSCRIPT_ATTACHMENT, activity_row_marked, agent_text_view,
-    assistant_markdown_extensions, attachment_tile, transcript_text,
+use super::{agent_text_view, assistant_markdown_extensions, attachment_tile};
+use penna::blocks::chat::{
+    ActivityEnd, ActivityMark, CHAT_CONTENT_MAX_WIDTH, TRANSCRIPT_ATTACHMENT, activity_row, transcript_text,
 };
 use crate::{
     ActiveTheme as _, Colorize as _, Disableable as _, Emphasis, Icon, IconName, StyledExt as _,
@@ -98,7 +97,6 @@ const REVEAL_MIN_MS: u64 = 220;
 const REVEAL_MS_PER_CHAR: u64 = 2;
 const USER_MAX_HEIGHT: f32 = 260.0;
 const THOUGHT_MAX_HEIGHT: f32 = 260.0;
-const SHIMMER_MS: u64 = 1600;
 
 #[derive(Default)]
 pub struct ChatPane {
@@ -327,10 +325,10 @@ pub fn chat_column(body: impl IntoElement) -> Div {
     div().w_full().px_3().child(
         div()
             .w_full()
-            .max_w(px(super::AGENT_CONTENT_MAX_WIDTH))
+            .max_w(px(CHAT_CONTENT_MAX_WIDTH))
             .mx_auto()
             .pt_3()
-            .pb(px(super::composer::COMPOSER_OUTER_PADDING + 12.0))
+            .pb(px(penna::blocks::chat::COMPOSER_OUTER_PADDING + 12.0))
             .child(body),
     )
 }
@@ -522,14 +520,14 @@ impl Draw<'_, '_> {
         };
         let opens = chat_rows::run_shows(view, &run.items);
         let expanded = opens && self.open.runs.contains(&first);
-        let row = activity_row_marked(
+        let row = activity_row(
             SharedString::from(format!("chat-run-{}", first.as_str())),
             mark,
             label,
             if opens {
-                RowEnd::Disclosure(expanded)
+                ActivityEnd::Disclosure(expanded)
             } else {
-                RowEnd::None
+                ActivityEnd::None
             },
             self.cx,
         );
@@ -591,14 +589,14 @@ impl Draw<'_, '_> {
         let expanded = first
             .as_ref()
             .is_some_and(|first| self.open.runs.contains(first));
-        let row = activity_row_marked(
+        let row = activity_row(
             ("chat-live", turn.id.0),
             mark,
             SharedString::from(activity.unwrap_or("Thinking").to_owned()),
             if first.is_some() {
-                RowEnd::Disclosure(expanded)
+                ActivityEnd::Disclosure(expanded)
             } else {
-                RowEnd::None
+                ActivityEnd::None
             },
             self.cx,
         );
@@ -786,37 +784,6 @@ fn agent_status(state: Option<&AgentState>, phase: f32, cx: &App) -> Option<AnyE
     })
 }
 
-pub(super) fn shimmer(label: &str, now: u64, cx: &App) -> StyledText {
-    let text = format!("{label}…");
-    let count = text.chars().count();
-    let span = u64::try_from(count + 8).unwrap_or(u64::MAX);
-    let head = usize::try_from((now % SHIMMER_MS) * span / SHIMMER_MS).unwrap_or_default();
-    let theme = cx.theme();
-    let mut highlights: Vec<(Range<usize>, HighlightStyle)> = Vec::new();
-    for (index, (offset, character)) in text.char_indices().enumerate() {
-        let distance = (index + 4).abs_diff(head);
-        let color = match distance {
-            0 | 1 => theme.foreground,
-            2 | 3 => theme.foreground.muted(),
-            _ => theme.foreground.faint(),
-        };
-        let range = offset..offset + character.len_utf8();
-        match highlights.last_mut() {
-            Some((last, style)) if style.color == Some(color) && last.end == range.start => {
-                last.end = range.end;
-            }
-            _ => highlights.push((
-                range,
-                HighlightStyle {
-                    color: Some(color),
-                    ..HighlightStyle::default()
-                },
-            )),
-        }
-    }
-    StyledText::new(text).with_highlights(highlights)
-}
-
 #[must_use]
 pub fn chat_agent_pip(
     view: &ChatView,
@@ -912,11 +879,11 @@ fn fold_row(turn: TurnId, fold: Fold, expanded: bool, cx: &App) -> Stateful<Div>
         mark.icon = Some(IconName::TriangleAlert);
         mark.tint = Some(cx.theme().danger);
     }
-    activity_row_marked(
+    activity_row(
         ("chat-fold", turn.0),
         mark,
         fold.label().into(),
-        RowEnd::Disclosure(expanded),
+        ActivityEnd::Disclosure(expanded),
         cx,
     )
 }
@@ -970,7 +937,7 @@ fn message_actions(
         })
         .when_some(copy, |row, text| {
             row.child(
-                super::message_action(
+                penna::blocks::chat::message_action(
                     Button::compact_icon(
                         SharedString::from(format!("chat-copy-{key}")),
                         IconName::Copy,
@@ -993,7 +960,7 @@ fn message_actions(
         .when_some(fork, |row, (fork, id)| {
             let target = ChatClick::Fork(id);
             row.child(
-                super::message_action(
+                penna::blocks::chat::message_action(
                     Button::compact_icon(
                         SharedString::from(format!("chat-fork-{key}")),
                         IconName::GitBranch,
@@ -1149,11 +1116,11 @@ fn step_row(item: &zz_protocol::chat::ItemView, phase: f32, cx: &App) -> AnyElem
         .clone()
         .filter(|target| !target.is_empty())
         .unwrap_or_else(|| item.body.title.clone());
-    activity_row_marked(
+    activity_row(
         SharedString::from(format!("chat-step-{}", item.id.as_str())),
         mark,
         label.into(),
-        RowEnd::None,
+        ActivityEnd::None,
         cx,
     )
     .into_any_element()
@@ -1258,11 +1225,11 @@ fn notice_row(view: &ChatView, id: &ItemId, cx: &App) -> AnyElement {
     if item.kind == ItemKind::Error {
         mark.tint = Some(cx.theme().danger);
     }
-    activity_row_marked(
+    activity_row(
         SharedString::from(format!("chat-notice-{}", id.as_str())),
         mark,
         item.body.text.clone().into(),
-        RowEnd::None,
+        ActivityEnd::None,
         cx,
     )
     .into_any_element()
@@ -1383,11 +1350,11 @@ fn record_row(request: &RequestView, cx: &App) -> AnyElement {
         None => String::new(),
     };
     let noun = if count == 1 { "question" } else { "questions" };
-    activity_row_marked(
+    activity_row(
         SharedString::from(format!("chat-record-{}", request.id.0)),
         ActivityMark::plain(IconName::CheckRead),
         format!("Asked {count} {noun} · {answers}").into(),
-        RowEnd::None,
+        ActivityEnd::None,
         cx,
     )
     .into_any_element()

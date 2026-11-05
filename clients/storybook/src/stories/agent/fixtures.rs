@@ -485,10 +485,6 @@ pub const PLAN: &str = "- [x] Find where the tab strip divides its width\n\
 - [ ] Run the browser test suite\n\
 - [ ] Update the tab strip notes in knowledge/";
 
-pub const PLAN_DONE: &str = "- [x] Find where the tab strip divides its width\n\
-- [x] Give pinned tabs a floor at their icon width\n\
-- [x] Fix drag reorder offsets across the pinned boundary";
-
 pub const PLAN_STEPS: &[(&str, StepStatus)] = &[
     (
         "Find where the tab strip divides its width",

@@ -5,12 +5,11 @@ pub(crate) use penna::{
     components::badge, components::button, components::check, components::icon, components::input,
     components::kbd, components::list, components::menu, components::scroll, components::separator,
     components::spinner, components::text, components::tooltip, foundation::motion,
-    foundation::pulse,
 };
 
 pub(crate) use penna::{
     ActiveTheme, CHROME_GAP, Colorize, Disableable, Edge, ElementExt, Elevation, Emphasis, Fill,
-    Ground, Highlight, Icon, IconName, Layer, PANE_HEADER_CONTROL_HEIGHT, Paint, PaintExt,
+    Ground, Highlight, Icon, IconName, Layer, PANE_HEADER_CONTROL_HEIGHT, Paint,
     PaintState, RULE_WIDTH, Selectable, Shape, Sizable, StyledExt, Surface, ThemeMode, Tone,
     WindowExt, h_flex, list_row, muted_on, oklab_lightness, oklch, rems_from_px, row_state,
     to_oklch, v_flex,

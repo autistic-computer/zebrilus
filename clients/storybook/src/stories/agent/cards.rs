@@ -1,23 +1,22 @@
 use std::sync::Arc;
 
 use ala::{
-    AnyElement, AnyView, App, AppContext as _, Context, IntoElement, ParentElement as _, Render,
+    AnyElement, AnyView, App, IntoElement, ParentElement as _,
     SharedString, Styled as _, Window, div, px, uniform_list,
 };
-use penna::{Disableable as _, components::button::Button};
+use penna::{
+    Disableable as _,
+    blocks::chat::{
+        COMPOSER_MAX_WIDTH, permission_card, permission_option, suggestion_list,
+        suggestion_list_height, suggestion_row,
+    },
+    components::button::Button,
+};
 use zz_client::agent_completion::{
     AgentCommand, CommandCompletion, command_label, completion_query,
     meaningful_command_description, pane_commands, ranked_completions,
 };
-use zz_protocol::AgentTaskWire;
-use zz_ui::agent::{
-    composer::COMPOSER_MAX_WIDTH,
-    presentation::{permission_card, permission_option, spinner_phase},
-    slash::{SlashKind, suggestion_list, suggestion_list_height, suggestion_row},
-    tasks::{TaskTrayAction, TrayPanel, task_tray},
-};
 
-use super::fixtures::{PLAN, PLAN_DONE, tasks};
 use crate::story::{stateless, states};
 
 fn prefix_width(element: impl IntoElement) -> impl IntoElement {
@@ -129,10 +128,10 @@ pub fn slash_list(
                     let command = &completions.get(index)?.command;
                     Some(suggestion_row(
                         SharedString::from(format!("{prefix}-{index}")),
-                        &command_label(&command.name),
+                        command_label(&command.name),
                         meaningful_command_description(&command.description)
                             .map(|description| description.to_owned().into()),
-                        SlashKind::of(command.skill),
+                        command.skill.then(|| "skill".into()),
                         selected == Some(index),
                         cx,
                     ))
@@ -142,7 +141,7 @@ pub fn slash_list(
     })
     .w_full()
     .h(suggestion_list_height(count));
-    suggestion_list(rows, cx).into_any_element()
+    suggestion_list("agent-slash-suggestions", rows, cx).into_any_element()
 }
 
 pub fn slash_menu(_: &mut Window, cx: &mut App) -> AnyView {
@@ -191,94 +190,4 @@ fn render_slash_menu(_: &mut Window, cx: &mut App) -> AnyElement {
             )),
         )
         .into_any_element()
-}
-
-struct TrayCase {
-    label: &'static str,
-    plan: Option<&'static str>,
-    tasks: Vec<AgentTaskWire>,
-    open: Option<TrayPanel>,
-    enabled: bool,
-}
-
-pub struct Trays {
-    cases: Vec<TrayCase>,
-}
-
-pub fn trays(_: &mut Window, cx: &mut App) -> AnyView {
-    let case = |label, plan, tasks, open, enabled| TrayCase {
-        label,
-        plan,
-        tasks,
-        open,
-        enabled,
-    };
-    let cases = vec![
-        case("plan, closed", Some(PLAN), Vec::new(), None, true),
-        case(
-            "plan, open",
-            Some(PLAN),
-            Vec::new(),
-            Some(TrayPanel::Plan),
-            true,
-        ),
-        case("background tasks, closed", None, tasks(), None, true),
-        case(
-            "background tasks, open",
-            None,
-            tasks(),
-            Some(TrayPanel::Tasks),
-            true,
-        ),
-        case("plan and tasks", Some(PLAN), tasks(), None, true),
-        case(
-            "finished plan, open",
-            Some(PLAN_DONE),
-            Vec::new(),
-            Some(TrayPanel::Plan),
-            true,
-        ),
-        case(
-            "read-only, tasks open",
-            None,
-            tasks(),
-            Some(TrayPanel::Tasks),
-            false,
-        ),
-    ];
-    cx.new(|_| Trays { cases }).into()
-}
-
-impl Render for Trays {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let entity = cx.entity();
-        let view = cx.entity_id();
-        let phase = spinner_phase(view, cx);
-        self.cases
-            .iter()
-            .enumerate()
-            .fold(states(), |states, (index, case)| {
-                let entity = entity.clone();
-                let tray = task_tray(
-                    &format!("tray-{index}"),
-                    case.plan,
-                    &case.tasks,
-                    case.open,
-                    case.enabled,
-                    phase,
-                    move |action, _, cx| {
-                        if let TaskTrayAction::Toggle(panel) = action {
-                            entity.update(cx, |view, cx| {
-                                if let Some(case) = view.cases.get_mut(index) {
-                                    case.open = (case.open != Some(panel)).then_some(panel);
-                                    cx.notify();
-                                }
-                            });
-                        }
-                    },
-                    cx,
-                );
-                states.state(case.label, prefix_width(div().children(tray)))
-            })
-    }
 }

@@ -2,14 +2,18 @@ use ala::{
     AnyElement, AnyView, App, AppContext as _, Context, Div, Entity, IntoElement,
     ParentElement as _, Render, SharedString, Styled as _, Window, div, prelude::*, px,
 };
-use penna::{ActiveTheme as _, components::input::InputState};
+use penna::{
+    ActiveTheme as _,
+    blocks::chat::{TaskTrayAction, TrayPanel, spinner_phase},
+    components::input::InputState,
+};
 use zz_client::agent_flip::{AgentFlips, Flip, FlipMode};
 use zz_protocol::chat::{ItemKind, ItemStatus};
 use zz_protocol::{AgentProvider, PaneId};
 use zz_ui::{
     agent::{
-        presentation::{agent_welcome, spinner_phase},
-        tasks::{TaskTrayAction, TrayPanel, task_tray},
+        presentation::agent_welcome,
+        tasks::task_tray,
     },
     pane::{
         FlipChoice, FlipTo, PaneDragSource, PaneFlip, PaneOverlayCorner, TerminalPaneAction,

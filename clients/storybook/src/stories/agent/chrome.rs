@@ -2,11 +2,12 @@ use ala::{
     AnyElement, AnyView, App, AppContext as _, Context, IntoElement, ParentElement as _, Render,
     SharedString, Styled as _, Window, px,
 };
+use penna::blocks::chat::empty_state;
 use zz_protocol::AgentProvider;
 use zz_protocol::chat::ItemKind;
 use zz_ui::agent::{
     agent_jump_to_bottom_button,
-    presentation::{agent_welcome, empty_state, error_card},
+    presentation::{agent_welcome, error_card},
 };
 
 use super::{

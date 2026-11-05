@@ -1,10 +1,8 @@
 pub mod chat;
-pub mod composer;
 pub mod controls;
 pub mod presentation;
 pub mod question;
 pub mod refs;
-pub mod slash;
 pub mod tasks;
 
 use std::{
@@ -19,12 +17,9 @@ use std::{
 use web_time::{Duration, Instant};
 
 use crate::{
-    ActiveTheme as _, CHROME_GAP, Colorize as _, Edge, Emphasis, Ground, Icon, IconName,
-    PaintExt as _, PaintState, Sizable as _, StyledExt as _, Tone,
+    ActiveTheme as _, CHROME_GAP, Colorize as _, Edge, Emphasis, Ground, Icon, IconName, StyledExt as _, Tone,
     attachment::{open_attachment_preview, open_render_image_preview},
-    badge::Badge,
     button::{Button, ButtonLook, ButtonVariants as _},
-    check::Check,
     h_flex,
     mend::{PENDING_LINK_URL, mend},
     text::{
@@ -35,13 +30,22 @@ use crate::{
 };
 use ala::{
     AnyElement, App, ClipboardItem, Context, Div, ElementId, Entity, FollowMode, Global, Hsla,
-    Image, ImageSource, IntoElement, ListOffset, ListSizingBehavior, ListState, ObjectFit, Pixels,
-    RenderImage, Rgba, SharedString, Stateful, Task, Window, canvas, div, img, list, prelude::*,
-    px, relative,
+    Image, ImageSource, IntoElement, ListOffset, ListSizingBehavior, ListState, Pixels,
+    RenderImage, Rgba, SharedString, Task, Window, canvas, div, img, list, prelude::*,
+    px,
 };
 use parking_lot::RwLock;
-use penna::{Card, CardLook, Label, Panel, PanelLook, RuleLook, TextStyle};
-use presentation::{spinner, spinner_phase};
+use penna::{Card, CardLook, Panel, RuleLook, TextStyle};
+use penna::blocks::chat::{
+    ACTIVITY_ROW_FONT_SIZE, ASSISTANT_MESSAGE_GROUP,
+    CHAT_CONTENT_MAX_WIDTH, COMPOSER_ATTACHMENT, PlanState, TRANSCRIPT_ATTACHMENT, UserMessage,
+    activity_color, activity_row, message_action, notice_row,
+    reply_bubble, shown_on_hover, spinner, spinner_phase, transcript_ground,
+    transcript_text,
+};
+pub use penna::blocks::chat::{ActivityCount, ActivityEnd, ActivityMark, disclosure_icon};
+#[cfg(test)]
+use penna::blocks::chat::{ACTIVITY_ROW_HEIGHT, single_line};
 
 const MERMAID_NODE_NAME: &str = "zz-mermaid";
 const SVG_NODE_NAME: &str = "zz-svg";
@@ -49,10 +53,6 @@ const RICH_MARKDOWN_NODE_NAME: &str = "zz-rich-markdown";
 const FIGURE_HEADER_HEIGHT: f32 = 30.0;
 const FIGURE_MAX_SOURCE_BYTES: usize = 32 * 1024;
 const FIGURE_RENDER_DEBOUNCE: Duration = Duration::from_millis(250);
-const ACTIVITY_ROW_HEIGHT: f32 = 28.0;
-const ACTIVITY_ROW_FONT_SIZE: f32 = 13.0;
-const ACTIVITY_ROW_LINE_HEIGHT: f32 = 16.0;
-const ACTIVITY_DISCLOSURE_SIZE: f32 = 12.0;
 const FIGURE_CACHE_CAPACITY: usize = 16;
 const HTML_PREVIEW_BUDGET_BYTES: usize = 64 * 1024 * 1024;
 const HTML_PREVIEW_WIDTH_STEP: f32 = 32.0;
@@ -63,10 +63,7 @@ const MARKDOWN_PREVIEW_HEIGHT: f32 = 420.0;
 const MARKDOWN_PREVIEW_MARKER: &str =
     "\n\n… [large message preview stopped; copy the full message below]";
 const INERT_LINK_URL: &str = "data:,";
-pub const AGENT_CONTENT_MAX_WIDTH: f32 = 680.0;
 const TURN_GAP: f32 = 16.0;
-pub const TRANSCRIPT_ATTACHMENT: Pixels = px(140.0);
-pub const COMPOSER_ATTACHMENT: Pixels = px(56.0);
 
 #[cfg(test)]
 use zz_client::agent_timeline::duration_label;
@@ -1146,7 +1143,7 @@ impl ala::RenderOnce for AgentTimeline {
                 .child(
                     div()
                         .w_full()
-                        .max_w(px(AGENT_CONTENT_MAX_WIDTH))
+                        .max_w(px(CHAT_CONTENT_MAX_WIDTH))
                         .mx_auto()
                         .child(render_timeline_row(
                             &store,
@@ -1308,7 +1305,7 @@ fn render_answer(
         v_flex()
             .id(("agent-assistant-entry", id))
             .debug_selector(|| "agent-answer".to_owned())
-            .group(ASSISTANT_ENTRY_GROUP)
+            .group(ASSISTANT_MESSAGE_GROUP)
             .w_full()
             .gap_1(),
         cx,
@@ -1317,7 +1314,7 @@ fn render_answer(
     .when(copyable, |this| {
         this.child(
             h_flex().w_full().h(px(28.0)).items_center().child(
-                shown_on_hover(ASSISTANT_ENTRY_GROUP, cx).child(
+                shown_on_hover(ASSISTANT_MESSAGE_GROUP, cx).child(
                     message_action(
                         Button::compact_icon(("agent-copy-assistant", id), IconName::Copy)
                             .tooltip("Copy message")
@@ -1358,11 +1355,11 @@ fn render_trace(
         .id(("agent-trace", id))
         .w_full()
         .child(
-            activity_row_marked(
+            activity_row(
                 ("agent-trace-toggle", id),
                 mark,
                 label,
-                RowEnd::Disclosure(expanded),
+                ActivityEnd::Disclosure(expanded),
                 cx,
             )
             .debug_selector(|| "agent-trace".to_owned())
@@ -1379,7 +1376,7 @@ fn render_trace(
                     .pl(px(TRACE_INDENT))
                     .type_style(TextStyle::Small, cx)
                     .line_height(px(18.0))
-                    .text_color(timeline_affordance_color(cx))
+                    .text_color(activity_color(cx))
                     .line_clamp(2)
                     .child(thought),
             )
@@ -1427,17 +1424,17 @@ fn trace_header(
             }
         }
         TraceHeader::Done { counts, .. } => {
-            mark.counts = counts.iter().map(TraceCount::from).collect();
+            mark.counts = counts.iter().map(activity_count).collect();
         }
     }
     (mark, label)
 }
 
 #[cfg(test)]
-fn trace_counts(trace: &Trace<'_>) -> Vec<TraceCount> {
+fn trace_counts(trace: &Trace<'_>) -> Vec<ActivityCount> {
     zz_client::agent_timeline::trace_counts(trace.members, trace.nesting, trace.steps)
         .iter()
-        .map(TraceCount::from)
+        .map(activity_count)
         .collect()
 }
 
@@ -1464,7 +1461,7 @@ fn render_trace_steps(
                     render_thought(store, *id, markdown.clone(), cx)
                 }
                 AgentEntry::Assistant { id, markdown, .. } => transcript_text(div().py_1(), cx)
-                    .text_color(timeline_affordance_color(cx))
+                    .text_color(activity_color(cx))
                     .child(markdown_view(
                         store,
                         *id,
@@ -1491,17 +1488,17 @@ fn render_thought(
     v_flex()
         .id(("agent-trace-thought", id))
         .w_full()
-        .child(activity_row_marked(
+        .child(activity_row(
             ("agent-trace-thought-row", id),
             ActivityMark::plain(IconName::Cpu),
             "Thought".into(),
-            RowEnd::None,
+            ActivityEnd::None,
             cx,
         ))
         .when(!empty, |this| {
             this.child(
                 transcript_text(div().pl(px(TRACE_INDENT)).pb_1(), cx)
-                    .text_color(timeline_affordance_color(cx))
+                    .text_color(activity_color(cx))
                     .child(markdown_view(store, id, MarkdownSlot::Body, markdown, cx)),
             )
         })
@@ -1521,14 +1518,14 @@ fn render_trace_tool(
         mark.icon = Some(IconName::Bot);
     }
     let open = open_output.filter(|_| tool_opens_output(tool)).cloned();
-    let row = activity_row_marked(
+    let row = activity_row(
         ("agent-trace-tool", tool.id),
         mark,
         tool.label.clone(),
         if open.is_some() {
-            RowEnd::Open
+            ActivityEnd::Open
         } else {
-            RowEnd::None
+            ActivityEnd::None
         },
         cx,
     );
@@ -1572,7 +1569,7 @@ fn render_failure(
                 .whitespace_nowrap()
                 .text_ellipsis()
                 .map(|tail| failure_text(tail, cx))
-                .text_color(timeline_affordance_color(cx))
+                .text_color(activity_color(cx))
                 .child(line)
         }))
         .into_any_element()
@@ -1661,6 +1658,7 @@ fn render_replied_prompt(
         .into_any_element()
 }
 
+
 fn reply_popover(
     store: &Entity<AgentTimelineStore>,
     id: u64,
@@ -1668,23 +1666,13 @@ fn reply_popover(
     side: bool,
     cx: &mut App,
 ) -> Panel {
-    transcript_text(
-        Panel::new(("agent-reply-popover", id), PanelLook::Inline)
-            .debug_selector(|| "agent-reply-popover".to_owned())
-            .v_flex()
-            .max_w(relative(0.85))
-            .gap_1()
-            .px_3()
-            .py_2(),
+    let body = markdown_view(store, id, MarkdownSlot::Body, markdown, cx);
+    reply_bubble(
+        ("chat-reply", id),
+        side.then(|| "Side answer · not in the conversation".into()),
+        body,
         cx,
     )
-    .when(side, |popover| {
-        popover.child(
-            Label::new(TextStyle::Micro, "Side answer · not in the conversation")
-                .text_color(cx.theme().foreground.muted()),
-        )
-    })
-    .child(markdown_view(store, id, MarkdownSlot::Body, markdown, cx))
 }
 
 fn render_notice(
@@ -1693,38 +1681,19 @@ fn render_notice(
     markdown: AgentMarkdown,
     cx: &mut App,
 ) -> AnyElement {
-    transcript_text(
-        h_flex()
-            .id(("agent-notice-entry", id))
-            .debug_selector(|| "agent-notice".to_owned())
-            .w_full()
-            .items_start()
-            .gap_2(),
-        cx,
-    )
-    .text_color(timeline_affordance_color(cx))
-    .child(
-        div()
-            .flex_none()
-            .h(px(TextStyle::ReadBody.line_height_px()))
-            .flex()
-            .items_center()
-            .relative()
-            .top(crate::icon::cap_center_drop(
-                px(TextStyle::ReadBody.design_px()),
-                px(TextStyle::ReadBody.design_px()),
-                cx,
-            ))
-            .child(Icon::new(IconName::Info).size(px(TextStyle::ReadBody.design_px()))),
-    )
-    .child(div().flex_1().min_w_0().child(markdown_view(
-        store,
-        id,
-        MarkdownSlot::Body,
-        markdown,
-        cx,
-    )))
-    .into_any_element()
+    let body = markdown_view(store, id, MarkdownSlot::Body, markdown, cx);
+    notice_row(("agent-notice-entry", id), body, cx).into_any_element()
+}
+
+fn attachment_tile(
+    id: impl Into<ElementId>,
+    image: Arc<Image>,
+    side: Pixels,
+    ground: Ground,
+) -> Card {
+    penna::blocks::chat::attachment_tile(id, image, side, ground, |image, window, cx| {
+        open_attachment_preview(image, window, cx);
+    })
 }
 
 pub fn agent_attachment_thumbnail(
@@ -1733,7 +1702,7 @@ pub fn agent_attachment_thumbnail(
     side: Pixels,
     cx: &App,
 ) -> Card {
-    attachment_tile(id, image, side, composer::composer_ground(cx))
+    attachment_tile(id, image, side, penna::blocks::chat::composer_ground(cx))
 }
 
 pub fn composer_attachment(
@@ -1743,123 +1712,17 @@ pub fn composer_attachment(
     on_remove: impl Fn(&mut Window, &mut App) + 'static,
     cx: &App,
 ) -> Div {
-    div()
-        .relative()
-        .child(agent_attachment_thumbnail(
-            id,
-            image,
-            COMPOSER_ATTACHMENT,
-            cx,
-        ))
-        .child(
-            div().absolute().top(px(-6.0)).right(px(-6.0)).child(
-                Button::compact_icon(remove, IconName::Xmark)
-                    .tooltip("Remove this image")
-                    .on_click(move |_, window, cx| {
-                        on_remove(window, cx);
-                        cx.stop_propagation();
-                    }),
-            ),
-        )
+    penna::blocks::chat::composer_attachment(
+        agent_attachment_thumbnail(id, image, COMPOSER_ATTACHMENT, cx),
+        remove,
+        on_remove,
+    )
 }
 
-fn attachment_tile(
-    id: impl Into<ElementId>,
-    image: Arc<Image>,
-    side: Pixels,
-    ground: Ground,
-) -> Card {
-    let preview = Arc::clone(&image);
-    Card::new(id, CardLook::Image)
-        .on(ground)
-        .p_0()
-        .size(side)
-        .flex_none()
-        .overflow_hidden()
-        .cursor_pointer()
-        .child(
-            img(ImageSource::Image(image))
-                .size_full()
-                .object_fit(ObjectFit::ScaleDown),
-        )
-        .on_click(move |_, window, cx| {
-            open_attachment_preview(Arc::clone(&preview), window, cx);
-        })
-}
 
-fn single_line(text: SharedString) -> SharedString {
-    match zz_client::agent_timeline::single_line(&text) {
-        std::borrow::Cow::Borrowed(_) => text,
-        std::borrow::Cow::Owned(line) => line.into(),
-    }
-}
 
-fn activity_row_glyph(icon: IconName, size: f32, cx: &App) -> Div {
-    div()
-        .flex_none()
-        .relative()
-        .top(crate::icon::cap_center_drop(
-            px(ACTIVITY_ROW_FONT_SIZE),
-            px(size),
-            cx,
-        ))
-        .child(Icon::new(icon).size(px(size)))
-}
 
-struct ActivityMark {
-    icon: Option<IconName>,
-    spin: Option<f32>,
-    turn: Option<f32>,
-    shimmer: Option<u64>,
-    tint: Option<Hsla>,
-    label_color: Option<Hsla>,
-    detail: Option<SharedString>,
-    counts: Vec<TraceCount>,
-    tag: Option<(SharedString, Tone)>,
-    spread: bool,
-}
 
-impl ActivityMark {
-    const fn bare() -> Self {
-        Self {
-            icon: None,
-            spin: None,
-            turn: None,
-            shimmer: None,
-            tint: None,
-            label_color: None,
-            detail: None,
-            counts: Vec::new(),
-            tag: None,
-            spread: false,
-        }
-    }
-
-    const fn plain(icon: IconName) -> Self {
-        let mut mark = Self::bare();
-        mark.icon = Some(icon);
-        mark
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-struct TraceCount {
-    icon: IconName,
-    count: usize,
-    noun: (&'static str, &'static str),
-    failed: bool,
-}
-
-impl TraceCount {
-    fn describe(&self) -> String {
-        let (one, many) = self.noun;
-        format!(
-            "{} {}",
-            self.count,
-            if self.count == 1 { one } else { many }
-        )
-    }
-}
 
 const TRACE_COUNT_ICONS: [IconName; 8] = [
     IconName::File,
@@ -1872,14 +1735,19 @@ const TRACE_COUNT_ICONS: [IconName; 8] = [
     IconName::TriangleAlert,
 ];
 
-impl From<&zz_client::agent_timeline::TraceCount> for TraceCount {
-    fn from(count: &zz_client::agent_timeline::TraceCount) -> Self {
-        Self {
-            icon: TRACE_COUNT_ICONS[count.slot].clone(),
-            count: count.count,
-            noun: zz_client::agent_timeline::TRACE_COUNT_NOUNS[count.slot],
-            failed: count.failed,
-        }
+
+fn activity_count(count: &zz_client::agent_timeline::TraceCount) -> ActivityCount {
+    let (one, many) = zz_client::agent_timeline::TRACE_COUNT_NOUNS[count.slot];
+    ActivityCount {
+        icon: TRACE_COUNT_ICONS[count.slot].clone(),
+        count: count.count,
+        tooltip: format!(
+            "{} {}",
+            count.count,
+            if count.count == 1 { one } else { many }
+        )
+        .into(),
+        failed: count.failed,
     }
 }
 
@@ -1912,217 +1780,13 @@ fn tool_mark(
     mark
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum RowEnd {
-    None,
-    Disclosure(bool),
-    Open,
-}
 
-fn activity_row_marked(
-    id: impl Into<ElementId>,
-    mark: ActivityMark,
-    label: SharedString,
-    end: RowEnd,
-    cx: &App,
-) -> Stateful<Div> {
-    let drop =
-        crate::icon::cap_center_drop(px(ACTIVITY_ROW_FONT_SIZE), px(ACTIVITY_ROW_FONT_SIZE), cx);
-    let glyph = match (mark.spin, mark.icon) {
-        (Some(phase), _) => Some(spinner(phase)),
-        (None, Some(icon)) => Some(match mark.turn {
-            Some(phase) => {
-                Icon::new(icon).transform(ala::Transformation::rotate(ala::percentage(phase)))
-            }
-            None => Icon::new(icon),
-        }),
-        (None, None) => None,
-    }
-    .map(|glyph| {
-        let glyph = glyph.size(px(ACTIVITY_ROW_FONT_SIZE));
-        match mark.tint {
-            Some(tint) => glyph.text_color(tint),
-            None => glyph,
-        }
-    });
-    let spread = mark.spread;
-    let live = mark.shimmer.is_some();
-    let end_icon = match end {
-        RowEnd::None => None,
-        RowEnd::Disclosure(expanded) => Some(disclosure_icon(expanded)),
-        RowEnd::Open => Some(IconName::ExternalLink),
-    };
-    let clickable = end != RowEnd::None;
-    h_flex()
-        .id(id)
-        .h(px(ACTIVITY_ROW_HEIGHT))
-        .flex_none()
-        .gap_2()
-        .overflow_hidden()
-        .font_family(cx.theme().font_family.clone())
-        .type_style(TextStyle::Body, cx)
-        .line_height(px(ACTIVITY_ROW_LINE_HEIGHT))
-        .text_color(timeline_affordance_color(cx))
-        .when(clickable, |row| {
-            let foreground = cx.theme().foreground;
-            row.cursor_pointer()
-                .hover(move |row| row.text_color(foreground))
-        })
-        .when_some(glyph, |this, glyph| {
-            this.child(
-                div()
-                    .debug_selector(|| "agent-activity-glyph".to_owned())
-                    .flex_none()
-                    .relative()
-                    .top(drop)
-                    .child(glyph),
-            )
-        })
-        .child(
-            div()
-                .debug_selector(|| "agent-activity-label".to_owned())
-                .min_w_0()
-                .flex_shrink_0()
-                .when(spread, |label| label.max_w(relative(0.6)))
-                .max_w_full()
-                .overflow_hidden()
-                .text_ellipsis()
-                .whitespace_nowrap()
-                .when_some(mark.label_color, ala::Styled::text_color)
-                .map(|this| match mark.shimmer {
-                    Some(now) => {
-                        this.flex_shrink(1.0)
-                            .child(chat::shimmer(&single_line(label), now, cx))
-                    }
-                    None => this.child(single_line(label)),
-                }),
-        )
-        .when_some(mark.detail, |this, detail| {
-            this.child(
-                div()
-                    .debug_selector(|| "agent-activity-detail".to_owned())
-                    .when(live, ala::Styled::flex_none)
-                    .min_w_0()
-                    .overflow_hidden()
-                    .text_ellipsis()
-                    .whitespace_nowrap()
-                    .text_color(cx.theme().foreground.faint())
-                    .child(detail),
-            )
-        })
-        .when(spread, |this| this.child(div().flex_1()))
-        .when(!mark.counts.is_empty(), |this| {
-            this.child(
-                h_flex()
-                    .debug_selector(|| "agent-activity-counts".to_owned())
-                    .flex_none()
-                    .gap(px(TRACE_COUNT_GAP))
-                    .pl_1()
-                    .pr(px(TRACE_COUNT_BADGE_OVERHANG))
-                    .children(
-                        mark.counts
-                            .into_iter()
-                            .enumerate()
-                            .map(|(slot, count)| trace_count_glyph(slot, count, drop, cx)),
-                    ),
-            )
-        })
-        .when_some(mark.tag, |this, (tag, tone)| {
-            this.child(
-                div()
-                    .debug_selector(|| "agent-activity-tag".to_owned())
-                    .flex_none()
-                    .child(Badge::new(tag).tone(tone)),
-            )
-        })
-        .when_some(end_icon, |this, icon| {
-            this.child(
-                activity_row_glyph(icon, ACTIVITY_DISCLOSURE_SIZE, cx)
-                    .debug_selector(|| "agent-activity-chevron".to_owned()),
-            )
-        })
-}
 
-const TRACE_COUNT_BADGE: f32 = 15.0;
-const TRACE_COUNT_RING: f32 = 1.5;
-const TRACE_COUNT_BADGE_LEFT: f32 = 7.5;
-const TRACE_COUNT_BADGE_OVERHANG: f32 =
-    TRACE_COUNT_BADGE_LEFT + TRACE_COUNT_BADGE - ACTIVITY_ROW_FONT_SIZE;
-const TRACE_COUNT_GAP: f32 = TRACE_COUNT_BADGE_OVERHANG + 6.0;
 
-fn transcript_text<E: Styled>(element: E, cx: &App) -> E {
-    element.type_style(TextStyle::ReadBody, cx)
-}
 
-fn transcript_ground(cx: &App) -> Ground {
-    let theme = cx.theme();
-    Ground {
-        fill: theme.background,
-        ..theme.ground()
-    }
-}
 
-#[allow(
-    clippy::disallowed_methods,
-    reason = "the ring is a cutout in the color the badge sits on that parts it from the icon it overlaps, not an edge"
-)]
-fn trace_count_glyph(slot: usize, count: TraceCount, drop: Pixels, cx: &App) -> Stateful<Div> {
-    let ground = transcript_ground(cx);
-    let (tone, emphasis) = if count.failed {
-        (Tone::Danger, Emphasis::Solid)
-    } else {
-        (Tone::Neutral, Emphasis::Soft)
-    };
-    let tooltip = SharedString::from(count.describe());
-    div()
-        .id(("agent-trace-count", slot))
-        .debug_selector(|| "agent-trace-count".to_owned())
-        .flex_none()
-        .relative()
-        .top(drop)
-        .when(count.failed, |this| this.text_color(cx.theme().danger))
-        .child(Icon::new(count.icon).size(px(ACTIVITY_ROW_FONT_SIZE)))
-        .child(
-            div()
-                .debug_selector(|| "agent-trace-count-badge".to_owned())
-                .absolute()
-                .top(px(-6.5))
-                .left(px(TRACE_COUNT_BADGE_LEFT))
-                .child(
-                    Badge::new(count.count.to_string())
-                        .tone(tone)
-                        .emphasis(emphasis)
-                        .opaque()
-                        .on(ground)
-                        .small()
-                        .min_w(px(TRACE_COUNT_BADGE))
-                        .h(px(TRACE_COUNT_BADGE))
-                        .px(px(3.0))
-                        .justify_center()
-                        .border(px(TRACE_COUNT_RING))
-                        .border_color(ground.fill)
-                        .line_height(px(TRACE_COUNT_BADGE - 2.0 * TRACE_COUNT_RING)),
-                ),
-        )
-        .tooltip(move |window, cx| crate::tooltip::Tooltip::new(tooltip.clone()).build(window, cx))
-}
 
-const USER_ENTRY_GROUP: &str = "agent-user-entry";
-const ASSISTANT_ENTRY_GROUP: &str = "agent-assistant-entry";
 
-fn message_action(button: Button, cx: &App) -> Button {
-    button
-        .look(ButtonLook::RowIcon)
-        .text_color(timeline_affordance_color(cx))
-}
-
-fn shown_on_hover(group: &'static str, cx: &App) -> Div {
-    div()
-        .flex_none()
-        .when(!crate::touch::CoarsePointer::get(cx), |slot| {
-            slot.invisible().group_hover(group, ala::Styled::visible)
-        })
-}
 
 fn render_user_entry(
     store: &Entity<AgentTimelineStore>,
@@ -2133,136 +1797,57 @@ fn render_user_entry(
     cx: &mut App,
 ) -> AnyElement {
     let bubble_ground = cx.theme().ground_of(CardLook::Bubble);
-    let bubble = transcript_text(
-        Card::new("agent-user-bubble", CardLook::Bubble)
-            .debug_selector(|| "agent-user-bubble".to_owned())
-            .v_flex()
-            .max_w(relative(1.0))
-            .gap_2()
-            .px_3()
-            .py_2(),
+    let message = images
+        .iter()
+        .enumerate()
+        .fold(UserMessage::new(("agent-user-entry", id)), |message, (index, image)| {
+            message.attachment(
+                attachment_tile(
+                    (
+                        SharedString::from(format!("agent-user-attachment-{id}")),
+                        index,
+                    ),
+                    Arc::clone(image),
+                    TRANSCRIPT_ATTACHMENT,
+                    bubble_ground,
+                )
+                .debug_selector(|| "agent-user-attachment".to_owned()),
+            )
+        })
+        .when(!markdown.is_empty(), |message| {
+            message.body(markdown_view(store, id, MarkdownSlot::Body, markdown, cx))
+        });
+    match rewind {
+        Some((rewind, message_id)) => message
+            .action(rewind_button(id, rewind, message_id, cx), rewind.enabled)
+            .into_any_element(),
+        None => message.into_any_element(),
+    }
+}
+
+fn rewind_button(id: u64, rewind: &TimelineRewind, message_id: SharedString, cx: &App) -> Button {
+    let handler = Rc::clone(&rewind.handler);
+    message_action(
+        Button::compact_icon(("agent-rewind", id), IconName::History)
+            .tooltip("Rewind to here: continue from before this prompt. Files stay as they are.")
+            .on_click(move |_, window, cx| handler(&message_id, window, cx)),
         cx,
     )
-    .when(!images.is_empty(), |this| {
-        this.child(
-            h_flex()
-                .flex_wrap()
-                .gap_1()
-                .children(images.iter().enumerate().map(|(index, image)| {
-                    attachment_tile(
-                        (
-                            SharedString::from(format!("agent-user-attachment-{id}")),
-                            index,
-                        ),
-                        Arc::clone(image),
-                        TRANSCRIPT_ATTACHMENT,
-                        bubble_ground,
-                    )
-                    .debug_selector(|| "agent-user-attachment".to_owned())
-                })),
-        )
-    })
-    .when(!markdown.is_empty(), |this| {
-        this.child(markdown_view(store, id, MarkdownSlot::Body, markdown, cx))
-    });
-    let entry = v_flex().id(("agent-user-entry", id)).w_full().items_end();
-    let Some((rewind, message_id)) = rewind else {
-        return entry.child(bubble).into_any_element();
-    };
-    entry
-        .group(USER_ENTRY_GROUP)
-        .child(
-            h_flex()
-                .w_full()
-                .justify_end()
-                .items_center()
-                .gap_1()
-                .child(rewind_button(id, rewind, message_id, cx))
-                .child(bubble.min_w_0()),
-        )
-        .into_any_element()
+    .debug_selector(|| "agent-user-rewind".to_owned())
 }
 
-fn rewind_button(id: u64, rewind: &TimelineRewind, message_id: SharedString, cx: &App) -> Div {
-    let handler = Rc::clone(&rewind.handler);
-    div()
-        .flex_none()
-        .invisible()
-        .when(rewind.enabled, |slot| {
-            slot.group_hover(USER_ENTRY_GROUP, ala::Styled::visible)
-        })
-        .child(
-            message_action(
-                Button::compact_icon(("agent-rewind", id), IconName::History)
-                    .tooltip(
-                        "Rewind to here: continue from before this prompt. Files stay as they are.",
-                    )
-                    .on_click(move |_, window, cx| handler(&message_id, window, cx)),
-                cx,
-            )
-            .debug_selector(|| "agent-user-rewind".to_owned()),
-        )
-}
-
-pub(crate) fn render_plan_items(source: &str, cx: &App) -> Div {
-    const FONT: f32 = 12.0;
-    const MARKER: f32 = 12.0;
-    const LINE: f32 = 19.0;
-    let drop = crate::icon::cap_center_drop(px(FONT), px(MARKER), cx);
-    let muted = cx.theme().foreground.muted();
-    let ring = cx.theme().paint(Tone::Primary, Emphasis::Outline);
-    let dot = cx.theme().paint(Tone::Primary, Emphasis::Solid).fill;
-    v_flex()
-        .w_full()
-        .children(plan_items(source).into_iter().map(|(state, text)| {
-            let marker = match state {
-                PlanItemState::Pending | PlanItemState::Done => {
-                    Check::checkbox(state == PlanItemState::Done)
-                        .with_size(px(MARKER))
-                        .into_any_element()
-                }
-                PlanItemState::InProgress => h_flex()
-                    .size(px(MARKER))
-                    .flex_none()
-                    .justify_center()
-                    .rounded(cx.theme().radius / 2.0)
-                    .painted(ring, PaintState::Rest)
-                    .child(div().size(px(6.0)).rounded(px(1.5)).bg(dot))
-                    .into_any_element(),
+pub(crate) fn plan_entries(source: &str) -> Vec<(PlanState, SharedString)> {
+    plan_items(source)
+        .into_iter()
+        .map(|(state, text)| {
+            let state = match state {
+                PlanItemState::Pending => PlanState::Pending,
+                PlanItemState::InProgress => PlanState::Current,
+                PlanItemState::Done => PlanState::Done,
             };
-            h_flex()
-                .w_full()
-                .items_start()
-                .gap(px(CHROME_GAP))
-                .child(
-                    div()
-                        .h(px(LINE))
-                        .flex_none()
-                        .flex()
-                        .items_center()
-                        .relative()
-                        .top(drop)
-                        .child(marker),
-                )
-                .child(
-                    Label::new(TextStyle::Small, text.to_owned())
-                        .line_height(px(LINE))
-                        .flex_1()
-                        .min_w_0()
-                        .when(state == PlanItemState::Done, |text| {
-                            text.text_color(muted).line_through()
-                        })
-                        .when(state == PlanItemState::InProgress, Label::strong),
-                )
-        }))
-}
-
-const fn disclosure_icon(expanded: bool) -> IconName {
-    if expanded {
-        IconName::ChevronUp
-    } else {
-        IconName::ChevronRight
-    }
+            (state, SharedString::from(text.to_owned()))
+        })
+        .collect()
 }
 
 fn tool_icon(kind: AgentToolKind) -> IconName {
@@ -2277,9 +1862,6 @@ fn tool_icon(kind: AgentToolKind) -> IconName {
     }
 }
 
-fn timeline_affordance_color(cx: &App) -> Hsla {
-    cx.theme().foreground.muted()
-}
 
 fn markdown_view(
     store: &Entity<AgentTimelineStore>,
@@ -4121,7 +3703,7 @@ mod tests {
         assert_eq!(
             trace_counts(&trace)
                 .iter()
-                .map(TraceCount::describe)
+                .map(|count| count.tooltip.to_string())
                 .collect::<Vec<_>>(),
             ["2 reads", "1 edit", "1 command", "1 agent", "1 failed"]
         );
@@ -4727,7 +4309,7 @@ mod tests {
     fn transcript_affordances_use_the_muted_foreground(cx: &mut TestAppContext) {
         cx.update(crate::init);
         cx.update(|cx| {
-            assert_eq!(timeline_affordance_color(cx), cx.theme().foreground.muted());
+            assert_eq!(activity_color(cx), cx.theme().foreground.muted());
         });
     }
 
@@ -4903,15 +4485,15 @@ mod tests {
         });
 
         let counts = cx
-            .debug_bounds("agent-activity-counts")
+            .debug_bounds("chat-activity-counts")
             .expect("the trace counts should be painted");
         let badge = cx
-            .debug_bounds("agent-trace-count-badge")
+            .debug_bounds("chat-activity-count-badge")
             .expect("the count should sit in a badge");
         let chevron = cx
-            .debug_bounds("agent-activity-chevron")
+            .debug_bounds("chat-activity-chevron")
             .expect("the trace disclosure should be painted");
-        assert!(cx.debug_bounds("agent-activity-glyph").is_none());
+        assert!(cx.debug_bounds("chat-activity-glyph").is_none());
         assert!(chevron.left() >= counts.right());
         assert!(chevron.left() - counts.right() <= px(8.0));
         assert!(chevron.left() > badge.right());
@@ -4947,7 +4529,7 @@ mod tests {
         });
 
         let bubble = cx
-            .debug_bounds("agent-user-bubble")
+            .debug_bounds("chat-user-bubble")
             .expect("the user bubble should be painted");
         assert!(
             bubble.origin.x >= px(0.0),
@@ -5025,7 +4607,7 @@ mod tests {
             "the action waits for the pointer"
         );
         let bubble = cx
-            .debug_bounds("agent-user-bubble")
+            .debug_bounds("chat-user-bubble")
             .expect("the user bubble should be painted");
         assert!(bubble.origin.x >= px(0.0) && bubble.right() <= PANE_WIDTH);
 
@@ -5041,7 +4623,7 @@ mod tests {
             "the action sits beside the bubble"
         );
         assert_eq!(
-            cx.debug_bounds("agent-user-bubble"),
+            cx.debug_bounds("chat-user-bubble"),
             Some(bubble),
             "revealing the action does not move the bubble"
         );
@@ -5054,7 +4636,7 @@ mod tests {
     fn rewind_stays_hidden_while_a_turn_runs(cx: &mut TestAppContext) {
         let (rewinds, cx) = rewind_point(cx, px(420.0), true);
         let bubble = cx
-            .debug_bounds("agent-user-bubble")
+            .debug_bounds("chat-user-bubble")
             .expect("the user bubble should be painted");
         cx.simulate_mouse_move(bubble.center(), None, ala::Modifiers::none());
         cx.update(|window, cx| {
@@ -5068,18 +4650,6 @@ mod tests {
         assert!(rewinds.borrow().is_empty());
     }
 
-    #[test]
-    fn single_line_collapses_embedded_breaks() {
-        assert_eq!(
-            single_line("sed -n '110,280p' worker.ts\nsed -n '90,230p' api.rs".into()),
-            "sed -n '110,280p' worker.ts · sed -n '90,230p' api.rs"
-        );
-        assert_eq!(
-            single_line("first\r\n\n   second   \n".into()),
-            "first · second"
-        );
-        assert_eq!(single_line("no breaks at all".into()), "no breaks at all");
-    }
 
     fn test_color([r, g, b]: [u8; 3]) -> Hsla {
         Rgba {

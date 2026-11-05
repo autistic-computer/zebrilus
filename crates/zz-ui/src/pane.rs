@@ -355,6 +355,7 @@ pub fn pane_flip_busy(
     let on_choice: std::rc::Rc<dyn Fn(FlipChoice, &mut Window, &mut App)> =
         std::rc::Rc::new(on_choice);
     pane_chip(("pane-flip-busy", pane.0), PaintState::Rest, cx)
+        .multiline(true)
         .debug_selector(|| "pane-flip-busy".into())
         .flex()
         .flex_col()
