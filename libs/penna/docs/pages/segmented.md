@@ -3,7 +3,7 @@
 Picks one of two to five short options, all in view, and applies the pick at once. For more use a select.
 
 ```figure uses=notice
-<div class="docs-full penna-notice" data-penna="notice" data-tone="warning"><div class="penna-notice-tone" data-penna="chip" data-tone="warning"><span class="penna-notice-lead"><i data-icon="triangle-alert"></i></span><div class="penna-notice-body"><span class="penna-text penna-notice-title" data-penna-text>Being reworked</span><span class="penna-text penna-notice-detail" data-penna-text>It has no keyboard path, no disabled state and no hover look. It comes in one size.</span></div></div></div>
+<div class="docs-full penna-notice" data-penna="notice" data-tone="warning"><div class="penna-notice-tone" data-penna="chip" data-tone="warning"><span class="penna-notice-lead"><i data-icon="triangle-alert"></i></span><div class="penna-notice-body"><span class="penna-text penna-notice-title" data-penna-text>Being reworked</span><span class="penna-text penna-notice-detail" data-penna-text>It has no disabled state and no hover look. It comes in one size.</span></div></div></div>
 ```
 
 ## Anatomy
@@ -32,11 +32,13 @@ One size: medium, which follows density.
 <div class="docs-show" data-gap="wide">
   <div class="docs-cell"><div class="penna-segmented" data-penna="field" data-value="0" role="radiogroup"><div class="penna-segments" data-penna="button.quiet" data-state="current"><span class="penna-segment-pill"></span><span class="penna-segment" role="button"><span class="penna-label" data-penna-text>Tiled</span></span><span class="penna-segment" role="button"><span class="penna-label" data-penna-text>Floating</span></span></div></div><span class="docs-note">First picked</span></div>
   <div class="docs-cell"><div class="penna-segmented" data-penna="field" data-value="1" role="radiogroup"><div class="penna-segments" data-penna="button.quiet" data-state="current"><span class="penna-segment-pill"></span><span class="penna-segment" role="button"><span class="penna-label" data-penna-text>Tiled</span></span><span class="penna-segment" role="button"><span class="penna-label" data-penna-text>Floating</span></span></div></div><span class="docs-note">Second picked</span></div>
+  <div class="docs-cell"><div class="penna-segmented" data-penna="field" data-value="1" data-state="focused" role="radiogroup"><div class="penna-segments" data-penna="button.quiet" data-state="current"><span class="penna-segment-pill"></span><span class="penna-segment" role="button"><span class="penna-label" data-penna-text>Tiled</span></span><span class="penna-segment" role="button"><span class="penna-label" data-penna-text>Floating</span></span></div></div><span class="docs-note">Focused</span></div>
 </div>
 ```
 
 - Picked: the pill under it. Always exactly one.
 - Press one to slide the pill there.
+- Focused: a ring outside the track, from the keyboard only. The arrow keys move the pick, Home and End jump to the ends.
 
 ## Labels
 

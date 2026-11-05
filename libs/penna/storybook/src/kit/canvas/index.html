@@ -28,6 +28,7 @@
           <div class="penna-tile" data-id="rest" data-penna="tile.screen" data-variant="screen"><span data-penna-text class="penna-type" data-type="caption">Rest</span></div>
           <div class="penna-tile" data-id="hover" data-penna="tile.screen" data-variant="screen" data-state="hover"><span data-penna-text class="penna-type" data-type="caption">Moving</span></div>
           <div class="penna-tile" data-id="selected" data-penna="tile.screen" data-variant="screen" data-state="selected"><span data-penna-text class="penna-type" data-type="caption">Selected</span></div>
+          <div class="penna-tile" data-id="focused" data-penna="tile.screen" data-variant="screen" data-state="focused"><span data-penna-text class="penna-type" data-type="caption">Focused</span></div>
           <div class="penna-tile" data-id="here" data-penna="tile.screen" data-variant="screen" data-tone="primary"><span data-penna-text class="penna-type" data-type="caption">Pointer is here</span></div>
           <div class="penna-tile" data-id="refused" data-penna="tile.screen" data-variant="screen" data-tone="danger" data-state="hover"><span data-penna-text class="penna-type" data-type="caption">Can't go there</span></div>
           <div class="penna-tile" data-id="away" data-penna="tile.screen" data-variant="screen" data-state="disabled"><span data-penna-text class="penna-type" data-type="caption">Away</span></div>
@@ -77,6 +78,13 @@
             <div class="penna-tile" data-id="mini-selected-other" data-penna="tile.mini" data-variant="mini"><span data-penna-text class="penna-type" data-type="micro">zsh</span></div>
           </div>
         </div>
+        <div class="story-state">
+          <div class="story-label">focused</div>
+          <div class="canvas-window" data-tiles>
+            <div class="penna-tile" data-id="mini-focused" data-penna="tile.mini" data-variant="mini" data-state="focused"><span data-penna-text class="penna-type" data-type="micro">zsh</span></div>
+            <div class="penna-tile" data-id="mini-focused-other" data-penna="tile.mini" data-variant="mini"><span data-penna-text class="penna-type" data-type="micro">zsh</span></div>
+          </div>
+        </div>
       </div>
     </section>
 
@@ -93,10 +101,11 @@
               <button class="penna-button" data-penna="button" data-size="small" data-id="by-address"><i data-icon="plus"></i><span class="penna-label" data-penna-text>By address…</span></button>
             </div>
             <div class="penna-dock-tiles" data-tiles data-pick>
-              <div class="penna-tile" data-id="xps" data-penna="tile.card" data-variant="card"><span data-penna-text class="penna-type" data-type="body" data-strong data-truncate>xps</span><span data-penna-text class="penna-type" data-type="caption" data-truncate>Linux · 1 screen</span></div>
-              <div class="penna-tile" data-id="picked" data-penna="tile.card" data-variant="card" data-state="selected"><span data-penna-text class="penna-type" data-type="body" data-strong data-truncate>thinkpad</span><span data-penna-text class="penna-type" data-type="caption" data-truncate>Picked</span></div>
-              <div class="penna-tile" data-id="carried" data-penna="tile.card" data-variant="card" data-state="hover"><span data-penna-text class="penna-type" data-type="body" data-strong data-truncate>mini</span><span data-penna-text class="penna-type" data-type="caption" data-truncate>Being dragged</span></div>
-              <div class="penna-tile" data-id="old" data-penna="tile.card" data-variant="card" data-state="disabled"><span data-penna-text class="penna-type" data-type="body" data-strong data-truncate>gaming-pc</span><span data-penna-text class="penna-type" data-type="caption" data-truncate>Needs Nidus 0.8</span></div>
+              <div class="penna-tile" data-id="xps" role="button" tabindex="0" data-penna="tile.card" data-variant="card"><span data-penna-text class="penna-type" data-type="body" data-strong data-truncate>xps</span><span data-penna-text class="penna-type" data-type="caption" data-truncate>Linux · 1 screen</span></div>
+              <div class="penna-tile" data-id="picked" role="button" tabindex="0" data-penna="tile.card" data-variant="card" data-state="selected"><span data-penna-text class="penna-type" data-type="body" data-strong data-truncate>thinkpad</span><span data-penna-text class="penna-type" data-type="caption" data-truncate>Picked</span></div>
+              <div class="penna-tile" data-id="carried" role="button" tabindex="0" data-penna="tile.card" data-variant="card" data-state="hover"><span data-penna-text class="penna-type" data-type="body" data-strong data-truncate>mini</span><span data-penna-text class="penna-type" data-type="caption" data-truncate>Being dragged</span></div>
+              <div class="penna-tile" data-id="nuc" role="button" tabindex="0" data-penna="tile.card" data-variant="card" data-state="focused"><span data-penna-text class="penna-type" data-type="body" data-strong data-truncate>nuc</span><span data-penna-text class="penna-type" data-type="caption" data-truncate>Focused</span></div>
+              <div class="penna-tile" data-id="old" role="button" data-penna="tile.card" data-variant="card" data-state="disabled"><span data-penna-text class="penna-type" data-type="body" data-strong data-truncate>gaming-pc</span><span data-penna-text class="penna-type" data-type="caption" data-truncate>Needs Nidus 0.8</span></div>
             </div>
           </div>
         </div>

@@ -468,8 +468,8 @@ button[data-penna] {
   box-shadow: var(--penna-shadow-lifted);
 }
 
-.penna-slider:focus-visible > .penna-rail > .penna-knob {
-  border: 1.5px solid var(--penna-accent);
+.penna-slider:is(:focus-visible, [data-focused]) > .penna-rail > .penna-knob {
+  box-shadow: 0 0 0 1.5px var(--penna-focus-neutral), var(--penna-shadow-lifted);
 }
 
 .penna-check {

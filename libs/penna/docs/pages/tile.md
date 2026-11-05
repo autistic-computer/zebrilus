@@ -3,7 +3,7 @@
 A thumbnail you pick or drag, drawn to scale. For a box of content use a card, for a list a row.
 
 ```figure uses=notice
-<div class="docs-full penna-notice" data-penna="notice" data-tone="warning"><div class="penna-notice-tone" data-penna="chip" data-tone="warning"><span class="penna-notice-lead"><i data-icon="triangle-alert"></i></span><div class="penna-notice-body"><span class="penna-text penna-notice-title" data-penna-text>Being reworked</span><span class="penna-text penna-notice-detail" data-penna-text>The picked ring is the accent, not the highlight. Tiles take no focus and don't lift while dragged. The HTML tile fixes its size and drags on its own.</span></div></div></div>
+<div class="docs-full penna-notice" data-penna="notice" data-tone="warning"><div class="penna-notice-tone" data-penna="chip" data-tone="warning"><span class="penna-notice-lead"><i data-icon="triangle-alert"></i></span><div class="penna-notice-body"><span class="penna-text penna-notice-title" data-penna-text>Being reworked</span><span class="penna-text penna-notice-detail" data-penna-text>The picked ring is the accent, not the highlight. Tiles don't lift while dragged. The HTML tile fixes its size and drags on its own.</span></div></div></div>
 ```
 
 ## Variants
@@ -35,12 +35,14 @@ Tile::new("dp-1")
   <div class="penna-well-row">
     <div class="penna-tile" data-penna="tile.screen" data-variant="screen"><span class="penna-type" data-type="caption" data-penna-text>Rest</span></div>
     <div class="penna-tile" data-penna="tile.screen" data-variant="screen" data-state="selected"><span class="penna-type" data-type="caption" data-penna-text>Selected</span></div>
+    <div class="penna-tile" data-penna="tile.screen" data-variant="screen" data-state="focused"><span class="penna-type" data-type="caption" data-penna-text>Focused</span></div>
     <div class="penna-tile" data-penna="tile.screen" data-variant="screen" data-state="disabled"><span class="penna-type" data-type="caption" data-penna-text>Away</span></div>
   </div>
 </div>
 ```
 
 - Selected: a 2px ring outside the edge.
+- Focused: the focus ring. A tile with a click handler takes keyboard focus and runs on Space and Enter; a click never focuses it.
 - Off: half the fill, faint label, no shadow.
 - Dragged: the app sets hover; a screen draws as at rest.
 
@@ -62,6 +64,7 @@ A tone tints the label. Say what it means in words.
 | `Tile::new(id)` | `.penna-tile`, `data-penna="tile.card"`, `data-variant="card"` | Card variant |
 | `.variant(TileVariant::Screen)` | `tile.screen`, `screen` | Also `Drop`, `Veil`, `Mini` |
 | `.state(PaintState::Selected)` | `data-state="selected"` | Also `Hover`, `Focused`, `Disabled` |
+| `.on_click(handler)` | `role="button"`, `tabindex="0"`, `click` | Takes focus; Space and Enter run it |
 | `.tone(Tone::Danger)` | `data-tone="danger"` | Tints the label |
 | `.on(ground)` | inside `.penna-well` | Paints it on a ground |
 | `.edge(width)` | `data-edge` | Drop zone edge width |

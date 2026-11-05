@@ -3,7 +3,7 @@
 Switches between open things in one place: windows, pages, tasks. To pick a view of one thing use a segmented control.
 
 ```figure uses=notice
-<div class="docs-full penna-notice" data-penna="notice" data-tone="warning"><div class="penna-notice-tone" data-penna="chip" data-tone="warning"><span class="penna-notice-lead"><i data-icon="triangle-alert"></i></span><div class="penna-notice-body"><span class="penna-text penna-notice-title" data-penna-text>Being reworked</span><span class="penna-text penna-notice-detail" data-penna-text>Tabs can't share the width equally yet. Most looks show focus as a fill, native tabs take no arrow keys, and icons are a size too large.</span></div></div></div>
+<div class="docs-full penna-notice" data-penna="notice" data-tone="warning"><div class="penna-notice-tone" data-penna="chip" data-tone="warning"><span class="penna-notice-lead"><i data-icon="triangle-alert"></i></span><div class="penna-notice-body"><span class="penna-text penna-notice-title" data-penna-text>Being reworked</span><span class="penna-text penna-notice-detail" data-penna-text>Tabs can't share the width equally yet, and icons are a size too large.</span></div></div></div>
 ```
 
 ## Looks
@@ -69,12 +69,14 @@ Large is the default. Only the height changes. One size per bar.
   <div class="docs-cell"><div class="penna-tab" role="tab" data-penna="tab.window" data-state="hover" data-still><span class="penna-tab-label"><span class="penna-text" data-penna-text>main</span></span></div><span class="docs-note">Hover</span></div>
   <div class="docs-cell"><div class="penna-tab" role="tab" data-penna="tab.window" data-state="hover active" data-still><span class="penna-tab-label"><span class="penna-text" data-penna-text>main</span></span></div><span class="docs-note">Pressed</span></div>
   <div class="docs-cell"><div class="penna-tab" role="tab" data-penna="tab.window" data-state="selected" aria-selected="true" data-still><span class="penna-tab-label"><span class="penna-text" data-penna-text>main</span></span></div><span class="docs-note">Selected</span></div>
-  <div class="docs-cell"><div class="penna-tab" role="tab" data-penna="tab.tray" data-state="focused" tabindex="0"><span class="penna-tab-label"><span class="penna-text" data-penna-text>main</span></span></div><span class="docs-note">Focused, tray</span></div>
+  <div class="docs-cell"><div class="penna-tab" role="tab" data-penna="tab.window" data-state="focused" tabindex="0"><span class="penna-tab-label"><span class="penna-text" data-penna-text>main</span></span></div><span class="docs-note">Focused</span></div>
+  <div class="docs-cell"><div class="penna-tab" role="tab" data-penna="tab.window" data-state="selected focused" aria-selected="true" data-still><span class="penna-tab-label"><span class="penna-text" data-penna-text>main</span></span></div><span class="docs-note">Selected, focused</span></div>
   <div class="docs-cell"><div class="penna-tab" role="tab" data-penna="tab.window" data-state="disabled" aria-disabled="true" data-still><span class="penna-tab-label"><span class="penna-text" data-penna-text>main</span></span></div><span class="docs-note">Off</span></div>
 </div>
 ```
 
 - The app sets the state; a tab lights on hover and press at rest.
+- Focus is a ring, never a fill. The bar owns focus and the arrow keys.
 - In HTML, Left, Right, Home and End move along a tab list.
 
 ## Selection
@@ -94,6 +96,7 @@ One open tab per bar.
 | --- | --- | --- |
 | `Tab::new(id, look)` | `.penna-tab[role="tab"][data-penna]` | Tab in a look |
 | `.state(state)` | `data-state`, `aria-selected`, `aria-disabled` | State from the app |
+| `.focused(true)` | `data-state="focused"` | Focus ring over any state |
 | `.with_size(size)`, `.small()` … `.touch()` | `data-size` | Height; large by default |
 | `.interactive(false)` | `data-still` | State only |
 | `.on(ground)` | none | Paints on a ground |

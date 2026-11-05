@@ -31,6 +31,20 @@
   outline: none;
 }
 
+.penna-tree-row[data-penna]:is([data-state~="focused"], :focus-visible) {
+  --penna-ring: var(--penna-focus);
+}
+
+.penna-tree-row[data-penna]:is([data-state~="focused"], :focus-visible)::after {
+  content: "";
+  position: absolute;
+  inset: var(--penna-ring-inset, -1.5px);
+  border: 1.5px solid var(--penna-ring);
+  border-radius: var(--penna-ring-r, 12px);
+  corner-shape: inherit;
+  pointer-events: none;
+}
+
 .penna-tree-row > .penna-tree-content {
   display: flex;
   align-items: center;

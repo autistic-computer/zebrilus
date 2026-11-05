@@ -21,6 +21,21 @@
   border-radius: min(var(--penna-r), calc(var(--penna-list-row, var(--penna-control-md)) * 0.4)) !important;
   cursor: default;
   user-select: none;
+  outline: none;
+}
+
+.penna-list-item[data-penna]:is([data-state~="focused"], :focus-visible) {
+  --penna-ring: var(--penna-focus);
+}
+
+.penna-list-item[data-penna]:is([data-state~="focused"], :focus-visible)::after {
+  content: "";
+  position: absolute;
+  inset: var(--penna-ring-inset, -1.5px);
+  border: 1.5px solid var(--penna-ring);
+  border-radius: var(--penna-ring-r, 12px);
+  corner-shape: inherit;
+  pointer-events: none;
 }
 
 .penna-list-item > .penna-list-content {

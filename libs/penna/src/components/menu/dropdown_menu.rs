@@ -102,6 +102,9 @@ where
                             state.menu = Some(menu.clone());
                         });
                         menu.focus_handle(cx).focus(window, cx);
+                        if window.last_input_was_keyboard() {
+                            menu.update(cx, |menu, cx| menu.select_first(cx));
+                        }
 
                         let popover_state = cx.entity().downgrade();
                         window
@@ -129,6 +132,8 @@ where
 
 #[cfg(test)]
 mod tests {
+    use std::cell::RefCell;
+
     use ala::{
         Modifiers, ParentElement as _, Render, TestAppContext, VisualTestContext, div, point, px,
     };
@@ -146,6 +151,71 @@ mod tests {
                     .dropdown_menu(|menu, _, _| menu.item(PopupMenuItem::new("Open"))),
             )
         }
+    }
+
+    struct Recorded {
+        ran: Rc<RefCell<Vec<&'static str>>>,
+    }
+
+    impl Render for Recorded {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            let ran = self.ran.clone();
+            div()
+                .size_full()
+                .child(
+                    Button::new("more")
+                        .label("More")
+                        .dropdown_menu(move |menu, _, _| {
+                            let record = |name: &'static str| {
+                                let ran = ran.clone();
+                                move |_: &ala::ClickEvent, _: &mut Window, _: &mut ala::App| {
+                                    ran.borrow_mut().push(name);
+                                }
+                            };
+                            menu.label("Pane")
+                                .item(PopupMenuItem::new("Rename").disabled(true))
+                                .item(PopupMenuItem::new("Open").on_click(record("open")))
+                                .item(PopupMenuItem::new("Close").on_click(record("close")))
+                        }),
+                )
+        }
+    }
+
+    #[ala::test]
+    fn keys_on_the_focused_trigger_open_the_menu_on_its_first_enabled_row(cx: &mut TestAppContext) {
+        cx.update(crate::init);
+        let ran = Rc::new(RefCell::new(Vec::new()));
+        let (_, cx) = cx.add_window_view({
+            let ran = ran.clone();
+            move |_, _| Recorded { ran }
+        });
+        let draw = |cx: &mut VisualTestContext| {
+            cx.run_until_parked();
+            cx.update(|window, cx| _ = window.draw(cx));
+        };
+        draw(cx);
+        cx.update(Window::focus_next);
+
+        for key in ["enter", "space", "down"] {
+            cx.simulate_keystrokes(key);
+            draw(cx);
+            draw(cx);
+            cx.simulate_keystrokes("enter");
+            draw(cx);
+        }
+        assert_eq!(*ran.borrow(), ["open", "open", "open"]);
+
+        cx.simulate_keystrokes("down");
+        draw(cx);
+        draw(cx);
+        cx.simulate_keystrokes("escape");
+        draw(cx);
+        cx.simulate_keystrokes("enter");
+        draw(cx);
+        draw(cx);
+        cx.simulate_keystrokes("down enter");
+        draw(cx);
+        assert_eq!(*ran.borrow(), ["open", "open", "open", "close"]);
     }
 
     #[ala::test]

@@ -29,6 +29,16 @@ section[data-section="toast-stack"] {
   top: 15px;
 }
 
+.focused-host {
+  position: relative;
+  display: inline-flex;
+}
+
+.focused-host > .penna-tooltip[data-floating] {
+  left: 15px;
+  top: 29px;
+}
+
 .popover-frame {
   height: 260px;
   display: flex;

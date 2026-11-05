@@ -189,11 +189,8 @@ fn data_uri(svg: &str) -> String {
 }
 
 fn drawn(theme: &Theme, surface: Surface, state: PaintState) -> Layer {
-    match (surface.role.kind, state) {
-        (_, PaintState::Focused) if rings_focus(surface.role) => {
-            theme.layer(surface, PaintState::Rest)
-        }
-        (Kind::Field, _) => field_layer(theme, surface, state, true),
+    match surface.role.kind {
+        Kind::Field => field_layer(theme, surface, state, true),
         _ => theme.layer(surface, state),
     }
 }

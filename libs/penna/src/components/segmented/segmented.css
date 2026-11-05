@@ -1,4 +1,5 @@
 .penna-segmented {
+  position: relative;
   display: inline-flex;
   flex: none;
   align-items: center;
@@ -6,6 +7,20 @@
   height: var(--penna-control-md);
   padding: var(--penna-space-2);
   border-width: max(1px, var(--penna-bw));
+}
+
+.penna-segmented[data-penna] {
+  outline: none;
+}
+
+.penna-segmented:is(:focus-visible, [data-state~="focused"])::after {
+  content: "";
+  position: absolute;
+  inset: var(--penna-ring-inset, -2.5px);
+  border: 1.5px solid var(--penna-focus-neutral);
+  border-radius: var(--penna-ring-r, 14px);
+  corner-shape: inherit;
+  pointer-events: none;
 }
 
 .penna-segmented > .penna-segments {

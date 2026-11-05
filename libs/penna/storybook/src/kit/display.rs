@@ -269,9 +269,30 @@ impl Render for ListRows {
                 )
                 .selected(true)
                 .disabled(true),
+            )
+            .child(
+                list_row(
+                    "row-focused",
+                    IconName::SquareTerminal,
+                    "build",
+                    "1 pane",
+                    cx,
+                )
+                .focused(true),
+            )
+            .child(
+                list_row(
+                    "row-selected-focused",
+                    IconName::SquareTerminal,
+                    "deploy",
+                    "4 panes",
+                    cx,
+                )
+                .selected(true)
+                .focused(true),
             );
         states().state(
-            "resting, hovered, selected, disabled, disabled and selected",
+            "resting, hovered, selected, disabled, disabled and selected, focused, selected and focused",
             list,
         )
     }

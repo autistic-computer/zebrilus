@@ -2,15 +2,15 @@ use crate::Space;
 use std::{rc::Rc, time::Duration};
 
 use ala::{
-    Animation, AnimationExt as _, App, Background, ElementId, Entity, Hsla,
-    InteractiveElement as _, IntoElement, MouseButton, ParentElement as _, Pixels, RenderOnce,
-    Role, SharedString, StatefulInteractiveElement as _, StyleRefinement, Styled, Window,
-    accesskit::Toggled, div, prelude::FluentBuilder as _, px,
+    Animation, AnimationExt as _, App, Background, ClickEvent, ElementId, Entity, Hsla,
+    InteractiveElement as _, IntoElement, MouseButton, MouseDownEvent, ParentElement as _, Pixels,
+    RenderOnce, Role, SharedString, StatefulInteractiveElement as _, StyleRefinement, Styled,
+    Window, accesskit::Toggled, div, prelude::FluentBuilder as _, px,
 };
 
 use crate::{
     ActiveTheme as _, AuthoredElement as _, Disableable, Emphasis, PaintState, Sizable, Size,
-    StyledExt as _, Tone, h_flex, oklab_lightness,
+    Smoothing, StyledExt as _, Tone, foundation::focus::with_focus_ring, h_flex, oklab_lightness,
 };
 
 const TOGGLE_ANIMATION: Duration = Duration::from_millis(150);
@@ -177,6 +177,11 @@ fn lighter(a: Hsla, b: Hsla) -> Hsla {
     }
 }
 
+fn hold(_: &MouseDownEvent, window: &mut Window, cx: &mut App) {
+    cx.stop_propagation();
+    window.prevent_default();
+}
+
 impl RenderOnce for Switch {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let checked = self.checked;
@@ -184,6 +189,12 @@ impl RenderOnce for Switch {
         let m = Metrics::new(self.size, coarse);
 
         let toggle_state = window.use_keyed_state(self.id.clone(), cx, |_, _| checked);
+        let focus_handle = window
+            .use_keyed_state(self.id.clone(), cx, |_, cx| cx.focus_handle())
+            .read(cx)
+            .clone();
+        let on_click = self.on_click.filter(|_| !self.disabled);
+        let focused = on_click.is_some() && focus_handle.is_focused(window);
 
         let theme = cx.theme();
         let paint = if checked {
@@ -215,6 +226,31 @@ impl RenderOnce for Switch {
             knob
         }
         .into();
+        let ring = theme.paint(Tone::Neutral, Emphasis::Ghost);
+
+        let track = div()
+            .id(self.id.clone())
+            .w(m.track_w)
+            .h(m.track_h)
+            .rounded_full()
+            .flex()
+            .items_center()
+            .border(m.inset)
+            .border_color(cx.theme().transparent)
+            .bg(track)
+            .when_some(self.tooltip.clone(), |this, tooltip| {
+                this.tooltip(move |window, cx| {
+                    crate::components::tooltip::Tooltip::new(tooltip.clone()).build(window, cx)
+                })
+            })
+            .child(thumb(
+                checked,
+                self.disabled,
+                thumb_fill,
+                &m,
+                &toggle_state,
+                cx,
+            ));
 
         div().refine_style(&self.style).child(
             h_flex()
@@ -231,64 +267,51 @@ impl RenderOnce for Switch {
                 })
                 .gap(Space::S8)
                 .items_start()
-                .child(
-                    div()
-                        .id(self.id.clone())
-                        .w(m.track_w)
-                        .h(m.track_h)
-                        .rounded_full()
-                        .flex()
-                        .items_center()
-                        .border(m.inset)
-                        .border_color(cx.theme().transparent)
-                        .bg(track)
-                        .when_some(self.tooltip.clone(), |this, tooltip| {
-                            this.tooltip(move |window, cx| {
-                                crate::components::tooltip::Tooltip::new(tooltip.clone())
-                                    .build(window, cx)
-                            })
-                        })
-                        .child(thumb(
-                            checked,
-                            self.disabled,
-                            thumb_fill,
-                            &m,
-                            &toggle_state,
-                            cx,
-                        )),
-                )
-                .when_some(
-                    self.on_click.clone().filter(|_| !self.disabled),
-                    |this, on_click| {
-                        let toggle_state = toggle_state.clone();
-                        let toggle =
-                            move |_: &ala::MouseDownEvent, window: &mut Window, cx: &mut App| {
-                                cx.stop_propagation();
-                                let () = toggle_state.update(cx, |this, _| *this = checked);
-                                on_click(&!checked, window, cx);
-                            };
-                        this.on_mouse_down(MouseButton::Left, toggle.clone())
-                            .when(coarse, |this| {
-                                this.child(
-                                    crate::blocks::touch::hit_area(
-                                        "touch",
-                                        (crate::blocks::touch::TOUCH_TARGET - f32::from(m.track_w))
-                                            / 2.0,
-                                        (crate::blocks::touch::TOUCH_TARGET - f32::from(m.track_h))
-                                            / 2.0,
-                                    )
-                                    .on_mouse_down(MouseButton::Left, toggle),
+                .child(with_focus_ring(
+                    track,
+                    focused,
+                    px(0.),
+                    &ring,
+                    Smoothing::CIRCLE.exponent(),
+                    window,
+                ))
+                .when_some(on_click, |this, on_click| {
+                    let toggle =
+                        Rc::new(move |_: &ClickEvent, window: &mut Window, cx: &mut App| {
+                            cx.stop_propagation();
+                            let () = toggle_state.update(cx, |this, _| *this = checked);
+                            on_click(&!checked, window, cx);
+                        });
+                    let tap = Rc::clone(&toggle);
+                    this.track_focus(&focus_handle.tab_stop(true))
+                        .on_mouse_down(MouseButton::Left, hold)
+                        .on_click(move |event, window, cx| toggle(event, window, cx))
+                        .when(coarse, |this| {
+                            this.child(
+                                crate::blocks::touch::hit_area(
+                                    "touch",
+                                    (crate::blocks::touch::TOUCH_TARGET - f32::from(m.track_w))
+                                        / 2.0,
+                                    (crate::blocks::touch::TOUCH_TARGET - f32::from(m.track_h))
+                                        / 2.0,
                                 )
-                            })
-                    },
-                ),
+                                .on_mouse_down(MouseButton::Left, hold)
+                                .on_click(move |event, window, cx| tap(event, window, cx)),
+                            )
+                        })
+                }),
         )
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use ala::{Context, Render, TestAppContext};
+    use std::cell::RefCell;
+
+    use ala::{
+        Context, KeyDownEvent, KeyUpEvent, Keystroke, Modifiers, MouseUpEvent, Render,
+        TestAppContext, VisualTestContext, point,
+    };
 
     use super::*;
 
@@ -339,5 +362,68 @@ mod tests {
                 (Some("on".to_owned()), Some(Toggled::True), None, true),
             ]
         );
+    }
+
+    struct Flip(Rc<RefCell<Vec<bool>>>);
+
+    impl Render for Flip {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            let flips = Rc::clone(&self.0);
+            div()
+                .size_full()
+                .child(Switch::new("flip").on_click(move |on, _, _| flips.borrow_mut().push(*on)))
+        }
+    }
+
+    #[ala::test]
+    fn a_switch_flips_on_release_and_on_space_or_enter_but_a_click_never_focuses_it(
+        cx: &mut TestAppContext,
+    ) {
+        cx.update(crate::init);
+        let flips = Rc::new(RefCell::new(Vec::new()));
+        let (_, cx) = cx.add_window_view({
+            let flips = Rc::clone(&flips);
+            move |_, _| Flip(flips)
+        });
+        let cx: &mut VisualTestContext = cx;
+        let draw = |cx: &mut VisualTestContext| {
+            cx.run_until_parked();
+            cx.update(|window, cx| window.draw(cx).clear(cx));
+        };
+        let key = |cx: &mut VisualTestContext, key: &str| {
+            let keystroke = Keystroke::parse(key).expect("valid keystroke");
+            cx.simulate_event(KeyDownEvent {
+                keystroke: keystroke.clone(),
+                is_held: false,
+                prefer_character_input: false,
+            });
+            cx.simulate_event(KeyUpEvent { keystroke });
+            draw(cx);
+        };
+        draw(cx);
+        let center = point(px(18.), px(10.));
+        cx.simulate_event(MouseDownEvent {
+            position: center,
+            modifiers: Modifiers::default(),
+            button: MouseButton::Left,
+            click_count: 1,
+            first_mouse: false,
+        });
+        assert_eq!(*flips.borrow(), [false; 0]);
+        cx.simulate_event(MouseUpEvent {
+            position: center,
+            modifiers: Modifiers::default(),
+            button: MouseButton::Left,
+            click_count: 1,
+        });
+        draw(cx);
+        assert_eq!(*flips.borrow(), [true]);
+        assert!(cx.update(|window, cx| window.focused(cx).is_none()));
+        cx.update(Window::focus_next);
+        draw(cx);
+        key(cx, "space");
+        key(cx, "enter");
+        key(cx, "a");
+        assert_eq!(*flips.borrow(), [true, true, true]);
     }
 }

@@ -3,7 +3,7 @@
 A panel that opens from a button for one short task. For a list of actions use a menu, for a hint a tooltip.
 
 ```figure uses=notice
-<div class="docs-full penna-notice" data-penna="notice" data-tone="warning"><div class="penna-notice-tone" data-penna="chip" data-tone="warning"><span class="penna-notice-lead"><i data-icon="triangle-alert"></i></span><div class="penna-notice-body"><span class="penna-text penna-notice-title" data-penna-text>Being reworked</span><span class="penna-text penna-notice-detail" data-penna-text>Space and Enter don't open it yet, only a press. The HTML one can't center on its button or stay inside the window.</span></div></div></div>
+<div class="docs-full penna-notice" data-penna="notice" data-tone="warning"><div class="penna-notice-tone" data-penna="chip" data-tone="warning"><span class="penna-notice-lead"><i data-icon="triangle-alert"></i></span><div class="penna-notice-body"><span class="penna-text penna-notice-title" data-penna-text>Being reworked</span><span class="penna-text penna-notice-detail" data-penna-text>The HTML one can't center on its button or stay inside the window.</span></div></div></div>
 ```
 
 ## Anatomy
@@ -40,7 +40,7 @@ Popover::new("rename")
 
 ## Behavior
 
-- A press on the trigger opens it; another press closes it.
+- A press on the trigger, or Enter, Space or Down while it has focus, opens it; the same again closes it.
 - Focus moves in, and back to the trigger on close.
 - Escape or a press outside closes it.
 - It stays 8 inside the window and moves up for the keyboard.

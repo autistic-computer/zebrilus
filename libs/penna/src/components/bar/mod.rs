@@ -60,7 +60,7 @@ impl Bar {
 plate_element!(Bar);
 
 impl RenderOnce for Bar {
-    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
-        self.plate.paint(cx)
+    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+        self.plate.paint(window, cx)
     }
 }

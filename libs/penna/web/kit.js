@@ -85,8 +85,20 @@ function apply() {
   document.dispatchEvent(new CustomEvent("penna-theme", { detail: { ...choice } }));
 }
 
+function focusRing(element, style = getComputedStyle(element)) {
+  const radius = parseFloat(style.getPropertyValue("--penna-r")) || 0;
+  const box = element.getBoundingClientRect();
+  const row = style.getPropertyValue("--penna-row").trim() === "1";
+  const base = row ? Math.min(radius, box.height * 0.4) : radius;
+  const cap = (Math.min(box.width, box.height) + 3) * 0.45;
+  const ring = radius >= 9999 ? 9999 : cap > 0 ? cap * Math.tanh((base + 1.5) / cap) : 0;
+  element.style.setProperty("--penna-ring-inset", `${-(1.5 + (parseFloat(style.borderTopWidth) || 0))}px`);
+  element.style.setProperty("--penna-ring-r", `${ring}px`);
+}
+
 function round(element) {
   const style = getComputedStyle(element);
+  focusRing(element, style);
   const radius = parseFloat(style.getPropertyValue("--penna-r")) || 0;
   if (radius <= 0 || radius >= 9999) {
     element.style.removeProperty("border-radius");
@@ -287,4 +299,4 @@ addEventListener("DOMContentLoaded", () => {
   document.fonts?.ready.then(() => ceilTextRuns());
 });
 
-window.pennaKit = { choice, apply, roundAll, ceilText: ceilTextRuns };
+window.pennaKit = { choice, apply, roundAll, ceilText: ceilTextRuns, focusRing };

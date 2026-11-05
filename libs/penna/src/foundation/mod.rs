@@ -5,6 +5,7 @@ mod color;
 pub mod content;
 pub mod dismissal;
 mod element_ext;
+pub(crate) mod focus;
 mod geometry;
 pub mod highlighter;
 mod index_path;

@@ -107,6 +107,24 @@
       </div>
     </section>
 
+    <section data-section="segmented-focused">
+      <div class="story-states">
+        <div class="story-state">
+          <div class="story-label">focused</div>
+          <div class="story-row">
+            <div class="penna-segmented" data-penna="field" data-value="1" data-state="focused" role="radiogroup">
+              <div class="penna-segments" data-penna="button.quiet" data-state="current">
+                <span class="penna-segment-pill"></span>
+                <span class="penna-segment" role="button" data-id="button:System"><span class="penna-label" data-penna-text>System</span></span>
+                <span class="penna-segment" role="button" data-id="button:Light"><span class="penna-label" data-penna-text>Light</span></span>
+                <span class="penna-segment" role="button" data-id="button:Dark"><span class="penna-label" data-penna-text>Dark</span></span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <section data-section="switch">
       <div class="story-states" data-columns="3">
         <div class="story-state">
@@ -156,6 +174,18 @@
           <div class="story-row">
             <button class="penna-toggle" data-id="switch-touch-off" data-size="touch" aria-checked="false" aria-label="Touch off"></button>
             <button class="penna-toggle" data-id="switch-touch-on" data-size="touch" aria-checked="true" aria-label="Touch on"></button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section data-section="switch-focused">
+      <div class="story-states">
+        <div class="story-state">
+          <div class="story-label">focused, resting</div>
+          <div class="story-row">
+            <button class="penna-toggle" data-id="switch-focused" data-state="focused" aria-checked="false" aria-label="Focused"></button>
+            <button class="penna-toggle" data-id="switch-resting" aria-checked="false" aria-label="Resting"></button>
           </div>
         </div>
       </div>

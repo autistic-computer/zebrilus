@@ -1,15 +1,14 @@
 use ala::{
-    AnyElement, App, Div, ElementId, InteractiveElement as _, ParentElement as _, Pixels,
-    Refineable as _, Role, SharedString, Stateful, StatefulInteractiveElement as _,
-    StyleRefinement, Styled, div, prelude::FluentBuilder as _,
+    AnyElement, App, Div, ElementId, InteractiveElement as _, MouseButton, ParentElement as _,
+    Pixels, Refineable as _, Role, SharedString, Stateful, StatefulInteractiveElement as _,
+    StyleRefinement, Styled, Window, div, prelude::FluentBuilder as _, px,
 };
 
 use crate::{
-    ActiveTheme as _, Emphasis, FOCUS_RING_WIDTH, Layer, PaintState, StyledExt as _, Surface,
-    SurfaceRole,
+    ActiveTheme as _, Emphasis, Layer, PaintState, StyledExt as _, Surface, SurfaceRole,
     blocks::touch::{CoarsePointer, PressCorners, press_highlight},
     components::button::rings_focus,
-    foundation::{author_name, restyle, row_corners, row_radius},
+    foundation::{author_name, focus::with_focus_ring, restyle, row_corners, row_radius},
 };
 
 pub(crate) struct Plate {
@@ -25,6 +24,8 @@ pub(crate) struct Plate {
     pub(crate) hover: Option<StyleRefinement>,
     pub(crate) active: Option<StyleRefinement>,
     pub(crate) role: Option<Role>,
+    pub(crate) focused: bool,
+    pub(crate) clickable: bool,
     id: ElementId,
 }
 
@@ -44,8 +45,27 @@ impl Plate {
             hover: None,
             active: None,
             role: None,
+            focused: false,
+            clickable: false,
             id,
         }
+    }
+
+    pub(crate) fn take_focus(mut self, window: &mut Window, cx: &mut App) -> Self {
+        if !self.clickable || self.state == PaintState::Disabled {
+            return self;
+        }
+        let handle = window
+            .use_keyed_state(self.id.clone(), cx, |_, cx| cx.focus_handle())
+            .read(cx)
+            .clone()
+            .tab_stop(true);
+        self.focused |= handle.is_focused(window);
+        self.base = self
+            .base
+            .track_focus(&handle)
+            .on_mouse_down(MouseButton::Left, |_, window, _| window.prevent_default());
+        self
     }
 
     pub(crate) fn announce(mut self, role: Role) -> Self {
@@ -66,11 +86,16 @@ impl Plate {
         self.with_state(state)
     }
 
-    pub(crate) fn paint(self, cx: &App) -> Stateful<Div> {
-        self.paint_with(cx, |_| {})
+    pub(crate) fn paint(self, window: &Window, cx: &App) -> Stateful<Div> {
+        self.paint_with(window, cx, |_| {})
     }
 
-    pub(crate) fn paint_with(self, cx: &App, adjust: impl Fn(&mut Layer)) -> Stateful<Div> {
+    pub(crate) fn paint_with(
+        self,
+        window: &Window,
+        cx: &App,
+        adjust: impl Fn(&mut Layer),
+    ) -> Stateful<Div> {
         let Self {
             base,
             style,
@@ -84,6 +109,8 @@ impl Plate {
             hover: caller_hover,
             active: caller_active,
             role,
+            focused,
+            clickable: _,
             id,
         } = self;
         let theme = cx.theme();
@@ -92,26 +119,11 @@ impl Plate {
             adjust(&mut layer);
             layer
         };
-        let ringed = state == PaintState::Focused && rings_focus(surface.role);
-        let layer = layer_at(if ringed { PaintState::Rest } else { state });
-        let ring = ringed.then(|| {
-            let ground = surface.ground.unwrap_or_else(|| theme.ground());
-            let paint = theme.paint_on(ground, surface.tone, Emphasis::Ghost);
-            let radius = row_height.map_or(layer.radius, |height| row_radius(&layer, height));
-            let inset = -(FOCUS_RING_WIDTH + layer.border_width);
-            div()
-                .absolute()
-                .top(inset)
-                .left(inset)
-                .right(inset)
-                .bottom(inset)
-                .rounded(radius + FOCUS_RING_WIDTH)
-                .when(row_height.is_some(), |ring| {
-                    ring.corner_radius_mode(ala::CornerRadiusMode::Fixed)
-                })
-                .corner_smoothing(layer.smoothing)
-                .focus_ring(&paint)
-        });
+        let ringed = focused || (state == PaintState::Focused && rings_focus(surface.role));
+        let layer = layer_at(state);
+        let ground = surface.ground.unwrap_or_else(|| theme.ground());
+        let focus = theme.paint_on(ground, surface.tone, Emphasis::Ghost);
+        let smoothing = layer.smoothing;
         let base = match role {
             Some(role) => base.role(role).accessibility_id(author_name(&id)),
             None => base,
@@ -157,12 +169,12 @@ impl Plate {
             Some(active) => plate.active(move |_| active),
             None => plate,
         };
-        plate
-            .when(ring.is_some(), Styled::relative)
+        let plate = plate
+            .when(ringed, Styled::relative)
             .refine_style(&style)
             .children(press)
-            .children(ring)
-            .children(children)
+            .children(children);
+        with_focus_ring(plate, ringed, px(0.), &focus, smoothing, window)
     }
 }
 
@@ -216,6 +228,18 @@ macro_rules! plate_element {
                 self
             }
 
+            fn on_click(
+                mut self,
+                listener: impl Fn(&ala::ClickEvent, &mut ala::Window, &mut ala::App) + 'static,
+            ) -> Self
+            where
+                Self: Sized,
+            {
+                self.plate.clickable = true;
+                ala::InteractiveElement::interactivity(&mut self.plate.base).on_click(listener);
+                self
+            }
+
             fn active(
                 mut self,
                 f: impl FnOnce(ala::StyleRefinement) -> ala::StyleRefinement,
@@ -234,15 +258,18 @@ pub(crate) use plate_element;
 
 #[cfg(test)]
 mod tests {
+    use std::{cell::RefCell, rc::Rc};
+
     use crate::Space;
     use ala::{
-        Context, InteractiveElement as _, IntoElement, ParentElement as _, Render, Role,
-        ScaledPixels, StatefulInteractiveElement as _, StyleRefinement, Styled as _,
-        TestAppContext, Window, blue, div, px, red, solid_background,
+        Context, InteractiveElement as _, IntoElement, KeyDownEvent, KeyUpEvent, Keystroke,
+        Modifiers, ParentElement as _, Render, Role, ScaledPixels,
+        StatefulInteractiveElement as _, StyleRefinement, Styled as _, TestAppContext,
+        VisualTestContext, Window, blue, div, point, px, red, solid_background,
     };
 
     use crate::{
-        ActiveTheme as _, Emphasis, PaintState, Row, RowLook, Surface, Tab, TabLook, Tile,
+        ActiveTheme as _, Chip, Emphasis, PaintState, Row, RowLook, Surface, Tab, TabLook, Tile,
         TileVariant, Tone,
     };
 
@@ -370,41 +397,136 @@ mod tests {
 
     impl Render for Focused {
         fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-            div().size_full().p(Space::S10).child(
-                Row::new("row", RowLook::Sidebar)
-                    .state(PaintState::Focused)
+            let row = |id: &'static str| {
+                Row::new(id, RowLook::Menu)
                     .row_height(px(28.0))
                     .w(px(120.0))
-                    .h(px(28.0)),
-            )
+                    .h(px(28.0))
+            };
+            div()
+                .size_full()
+                .p(Space::S10)
+                .flex()
+                .flex_col()
+                .gap(Space::S10)
+                .child(row("focused").state(PaintState::Focused))
+                .child(row("picked").state(PaintState::Selected).focused(true))
         }
     }
 
     #[ala::test]
-    fn a_focused_ringing_row_keeps_its_rest_fill_and_draws_the_focus_ring(cx: &mut TestAppContext) {
+    fn a_focused_row_draws_the_ring_and_keeps_its_own_fill(cx: &mut TestAppContext) {
         cx.update(crate::init_without_theme);
         let (_, cx) = cx.add_window_view(|_, _| Focused);
         cx.update(|window, cx| {
             _ = window.draw(cx);
             let theme = cx.theme();
-            let row = Surface::new(RowLook::Sidebar.role());
-            let selected = theme.layer(row, PaintState::Selected).fill;
+            let row = Surface::new(RowLook::Menu.role());
+            let selected = solid_background(theme.layer(row, PaintState::Selected).fill);
             let focus = theme
                 .paint_on(theme.ground(), Tone::Neutral, Emphasis::Ghost)
                 .focus;
             let quads = window.painted_quads();
-            assert!(
+            assert_eq!(
                 quads
                     .iter()
-                    .all(|quad| quad.background != solid_background(selected)),
-                "a focused sidebar row painted the selected fill"
+                    .filter(|quad| quad.background == selected)
+                    .count(),
+                1,
+                "only the selected row paints the selected fill"
             );
-            let ring = quads
+            let mut rings = quads
                 .iter()
-                .find(|quad| quad.border_color == focus)
-                .expect("a focused sidebar row draws a focus ring");
-            assert_eq!(ring.border_widths.top, ScaledPixels(3.0));
-            assert_eq!(ring.bounds.size.height, ScaledPixels(62.0));
+                .filter(|quad| quad.border_color == focus)
+                .map(|quad| {
+                    (
+                        quad.bounds.origin.y,
+                        quad.bounds.size.height,
+                        quad.border_widths.top,
+                    )
+                })
+                .collect::<Vec<_>>();
+            rings.dedup();
+            assert_eq!(
+                rings,
+                [
+                    (ScaledPixels(17.0), ScaledPixels(62.0), ScaledPixels(3.0)),
+                    (ScaledPixels(93.0), ScaledPixels(62.0), ScaledPixels(3.0)),
+                ]
+            );
         });
+    }
+
+    struct Keyed {
+        clicks: Rc<RefCell<Vec<&'static str>>>,
+    }
+
+    impl Render for Keyed {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            let (chip, tile) = (Rc::clone(&self.clicks), Rc::clone(&self.clicks));
+            div()
+                .size_full()
+                .p(Space::S10)
+                .flex()
+                .gap(Space::S10)
+                .child(
+                    Chip::new("chip", "Ready")
+                        .interactive(true)
+                        .on_click(move |_, _, _| chip.borrow_mut().push("chip")),
+                )
+                .child(
+                    Tile::new("tile")
+                        .size(px(40.0))
+                        .on_click(move |_, _, _| tile.borrow_mut().push("tile")),
+                )
+        }
+    }
+
+    fn press(cx: &mut VisualTestContext, key: &str) {
+        let keystroke = Keystroke::parse(key).expect("a key name");
+        cx.simulate_event(KeyDownEvent {
+            keystroke: keystroke.clone(),
+            is_held: false,
+            prefer_character_input: false,
+        });
+        cx.simulate_event(KeyUpEvent { keystroke });
+    }
+
+    fn rings(cx: &mut VisualTestContext) -> usize {
+        cx.update(|window, cx| {
+            _ = window.draw(cx);
+            let theme = cx.theme();
+            let focus = theme
+                .paint_on(theme.ground(), Tone::Neutral, Emphasis::Ghost)
+                .focus;
+            let mut rings = window
+                .painted_quads()
+                .into_iter()
+                .filter(|quad| quad.border_color == focus)
+                .map(|quad| quad.bounds)
+                .collect::<Vec<_>>();
+            rings.dedup();
+            rings.len()
+        })
+    }
+
+    #[ala::test]
+    fn clickable_chips_and_tiles_take_focus_from_the_keyboard_only(cx: &mut TestAppContext) {
+        cx.update(crate::init_without_theme);
+        let clicks = Rc::new(RefCell::new(Vec::new()));
+        let (_, cx) = cx.add_window_view({
+            let clicks = Rc::clone(&clicks);
+            move |_, _| Keyed { clicks }
+        });
+        assert_eq!(rings(cx), 0);
+        cx.simulate_click(point(px(20.0), px(20.0)), Modifiers::default());
+        assert_eq!(rings(cx), 0, "a click focused the chip");
+        cx.update(Window::focus_next);
+        assert_eq!(rings(cx), 1);
+        press(cx, "enter");
+        cx.update(Window::focus_next);
+        assert_eq!(rings(cx), 1);
+        press(cx, "space");
+        assert_eq!(*clicks.borrow(), ["chip", "chip", "tile"]);
     }
 }

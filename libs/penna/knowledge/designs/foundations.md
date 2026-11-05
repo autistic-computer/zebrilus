@@ -187,8 +187,19 @@ Contrast (WCAG 2, built in step 8): in all six theme variants (three looks, ligh
 
 - Corners: `radius-theme` is a theme knob people change (24 in default and macOS, 16 in Yaru; 25 at most). A control's radius is the theme radius capped at 45% of its height (`corner-fraction`). A corner inside another is concentric: inner radius = outer radius minus the inset between them. Rows draw at most smoothing 2.5.
 - Depth: `shadow-contact` (0 1 4 #00000033) for controls on a surface; `shadow-lifted` for cards that move; `shadow-float` for menus, popovers, dialogs and the window. Themes can turn outlines and shadows off, so never let a shadow alone separate two surfaces.
-- Focus: a 1.5px ring (`FOCUS_RING_WIDTH`) drawn outside the border box with its own adaptive radius. Only fields change their fill or edge on focus.
+- Focus: a 1.5px ring (`FOCUS_RING_WIDTH`) drawn outside the border box with its own adaptive radius (`foundation::focus::with_focus_ring`), from the keyboard only; see Focus and keys. Only fields change their fill or edge on focus.
 - Motion: appear 120ms, enter 200ms, turn 220ms, scaled by the animation speed setting (0.25 to 2). Respect reduced motion.
+
+## Focus and keys
+
+How Principles 1 is kept, for every component:
+
+- A control (button, switch, segmented control, slider, select, field, checkbox, an interactive chip or tile) is one tab stop unless it is disabled, and Space and Enter act on it the way a click does. It acts on release of a click, never on press.
+- A group of parts (a tab strip, a list, a tree, a segmented control's segments, a radio group) is one tab stop: the arrow keys move within it, Home and End go to its ends. Where penna draws the parts (`Tab`, `ListItem`, `Row`, tree rows), the container that holds them owns focus and the keys and tells the focused part with `PaintState::Focused`; penna owns how that looks.
+- Focus shows as the 1.5px ring outside the border box, and only from the keyboard: a press on a control does not focus it. A focused part draws the ring, never its selected fill, so focus and selection always look different; selected and focused draws both. Where a control's fill is the ring's own color (a primary button or an on switch in the default look, where both are the ink), the ring stands one ring width off the edge so it still shows.
+- A menu or popover trigger opens on Enter, Space and Down; focus goes into the menu, Escape closes it and returns focus to the trigger.
+- A control's tooltip shows when the keyboard focuses it, as on hover.
+- Keys never leave a focused terminal or text field: app shortcuts that act while one has focus need a modifier.
 
 ## Layout primitives (built)
 
@@ -261,7 +272,7 @@ States:
 
 In a window that is not active, a glass button flattens and its label fades, like the rest of the window's chrome.
 
-Behavior: it fires on release of a click or tap inside it, and on Space or Enter while focused. A button with a caret opens its menu below it. A tooltip shows after the hover delay.
+Behavior: it fires on release of a click or tap inside it, and on Space or Enter while focused. A button with a caret opens its menu below it. A tooltip shows after the hover delay, and at once when the keyboard focuses the button.
 
 Content: the label is a verb or a short verb phrase in sentence case, one to three words ("Save", "Add host", "Open in browser"), with no closing period. It names the action, never "OK" or "Yes". End it with an ellipsis ("Allow…") when the action asks for more before it happens, such as opening a dialog. A danger button names what it removes ("Delete branch").
 
@@ -269,7 +280,7 @@ Placement: buttons in a group sit `gap-related` 8 apart. A dialog's or a form's 
 
 HTML: `.penna-button` with `data-penna` (the recipe: `button`, `button.quiet` for ghost, `button.outline`), `data-tone`, `data-prominent` (solid), `data-size` (`xsmall` to `touch`), `data-state="current"` (selected), `data-variant` (`link`, `text`), `disabled`, `data-loading`; the label is `.penna-label`, the icon `<i data-icon>`, and a button with a caret takes `data-caret` and holds a `.penna-caret`.
 
-Status: matches.
+Status: one gap. The ring touches the edge, so on a primary button in the default look, whose fill is the ring's own color, it disappears (Focus and keys).
 
 ### Badge
 
@@ -446,20 +457,20 @@ States (`.state(PaintState)`, `.selected(true)`):
 | rest | the look's paint | |
 | hover | marker: the accent ring | other looks keep their rest paint; lights on its own only with `.interactive(true)` |
 | pressed | marker: the accent ring | as hover |
-| focused | plain, bar, drag: the selected fill; marker and floating: a ring | |
+| focused | the look's rest paint and the focus ring, 1.5 outside | from the keyboard on a chip that takes focus, or set by the app |
 | selected | a stronger fill in its tone; marker: the accent ring | |
 | current | as selected; `.ring(color)` recolors the marker's ring | the marker of the pane in front |
 | disabled | faded fill and ink | |
 
-Behavior: read-only by default: the pointer passes through it and it is never in the focus order. `.interactive(true)` lights it on hover and press and announces it as a button; the caller adds the click.
+Behavior: read-only by default: the pointer passes through it and it is never in the focus order. `.interactive(true)` lights it on hover and press and announces it as a button; the caller adds the click. An interactive chip with a click handler is a tab stop: Space and Enter run it, and it shows the focus ring from the keyboard only, since a click never focuses it.
 
 Content: the label is the state ("Ready", "Paused") or the thing's own name ("ubuntu"), one or two words, sentence case unless it is a name. The detail adds one fact ("this Mac", "offline"). A status dot always sits beside a word that says the status (Rules 8).
 
 Placement: chips in a row sit `gap-related` (8) apart.
 
-HTML: `.penna-chip` with `data-penna` (the look and emphasis: `chip`, `chip.outline`, `chip.bar`, `chip.floating`, `chip.marker`, `chip.drag`, or `badge.icon` with `data-look="icon-disc"`), `data-tone`, `data-size` (`xsmall` to `touch`; small when absent), `data-state` (`hover`, `active`, `focused`, `selected`, `current`, `disabled`), `data-emphasis` (`ghost`, or `solid` with `data-solid="<tone>"` and the label wrapped in `.penna-solid-ink` carrying the solid button's `data-penna="button" data-prominent`), `data-interactive`, `data-ring="<tone>"`, and `data-detail` when it holds a detail. Its parts: `i.penna-dot[data-tone]`, `<i data-icon>`, `.penna-chip-label` and `.penna-chip-detail` (which `chip.js` truncates), each text run marked `data-penna-text`.
+HTML: `.penna-chip` with `data-penna` (the look and emphasis: `chip`, `chip.outline`, `chip.bar`, `chip.floating`, `chip.marker`, `chip.drag`, or `badge.icon` with `data-look="icon-disc"`), `data-tone`, `data-size` (`xsmall` to `touch`; small when absent), `data-state` (`hover`, `active`, `focused`, `selected`, `current`, `disabled`), `data-emphasis` (`ghost`, or `solid` with `data-solid="<tone>"` and the label wrapped in `.penna-solid-ink` carrying the solid button's `data-penna="button" data-prominent`), `data-interactive` (with `role="button"` and `tabindex="0"` when it takes focus; `chip.js` runs it on Space and Enter and keeps a click from focusing it), `data-ring="<tone>"`, and `data-detail` when it holds a detail. Its parts: `i.penna-dot[data-tone]`, `<i data-icon>`, `.penna-chip-label` and `.penna-chip-detail` (which `chip.js` truncates), each text run marked `data-penna-text`.
 
-Status: two gaps. A plain, bar or drag chip shows focus only as its selected fill, with no focus ring, and an interactive chip takes no keyboard focus. Its icon is sized in plain pixels (`px`), so it doesn't grow with the interface font size the way the label does.
+Status: one gap. Its icon is sized in plain pixels (`px`), so it doesn't grow with the interface font size the way the label does.
 
 ### Icon
 
@@ -643,17 +654,18 @@ States:
 | hover | the look's hover step | only at rest |
 | pressed | the look's active step, while held | only at rest |
 | selected | the look's selected fill | `.selected(true)`; no hover or press over it |
+| focused | the focus ring, 1.5 outside, over the row's own fill | `.focused(true)`, set by the app; a selected row keeps its selected fill |
 | disabled | the look's disabled paint, dimmed text | no hover, press or click |
 
-Behavior: a click runs `on_click` on release; `on_mouse_down(button, handler)` takes other buttons, such as a right press, and `on_mouse_enter` follows the pointer, as a picker's highlight does. A disabled row runs none of them. The row announces itself as a list item (`.role()` changes that, to a tree item or an option). It has no keys of its own: the app moves the selection and runs the picked row.
+Behavior: a click runs `on_click` on release; `on_mouse_down(button, handler)` takes other buttons, such as a right press, and `on_mouse_enter` follows the pointer, as a picker's highlight does. A disabled row runs none of them. The row announces itself as a list item (`.role()` changes that, to a tree item or an option). It has no keys of its own: the list the app lays out moves the selection and focus, marks the focused row `.focused(true)` and runs the picked row.
 
 Content: the label is the thing's name as people know it (a host, a session, a file), on one line. The detail is a short fact in a word or two: a count, a state. Status reads as a word, never as color alone.
 
 Placement: in a sidebar, a pane or a picker, full width, in a column of rows `space-2` apart with the row inset at the sides. One selected row shows which one is open.
 
-HTML: `.penna-list` is the column (rows `space-2` apart). A row is `.penna-list-item[data-penna]` (`menu-item`, `sidebar.row`, `menu-item.tint`) with `role="option"`, `aria-selected="true"` or `data-state="selected"`, `aria-disabled="true"` or `data-state="disabled"`, and `--penna-list-row` for its height. Inside, `.penna-list-content` holds `i.penna-list-icon[data-icon]`, `.penna-list-label` and `.penna-list-detail`, each text run in `.penna-text[data-penna-text]`. No script.
+HTML: `.penna-list` is the column (rows `space-2` apart). A row is `.penna-list-item[data-penna]` (`menu-item`, `sidebar.row`, `menu-item.tint`) with `role="option"`, `aria-selected="true"` or `data-state="selected"`, `aria-disabled="true"` or `data-state="disabled"`, `data-state="focused"` (or keyboard focus) for the focus ring, and `--penna-list-row` for its height. Inside, `.penna-list-content` holds `i.penna-list-icon[data-icon]`, `.penna-list-label` and `.penna-list-detail`, each text run in `.penna-text[data-penna-text]`. No script.
 
-Status: one gap. A `ListItem` takes no focus and has no focused look, so a list has no keyboard path unless the app adds one.
+Status: matches.
 
 ### Menu
 
@@ -663,8 +675,8 @@ Kinds, by how it opens (`PopupMenu` is the one surface; the select opens it too)
 
 | Kind | Call | Opens | Use |
 |---|---|---|---|
-| Dropdown | `Button::dropdown_menu(build)` | `space-4` below its button, on a press | a button's set of actions; give the button a caret |
-| Context | `.context_menu(build)` on any element | at the pointer, on a right press or a long press | actions on the thing under the pointer |
+| Dropdown | `Button::dropdown_menu(build)` | `space-4` below its button, on a press, or on Enter, Space or Down while the button has focus | a button's set of actions; give the button a caret |
+| Context | `.context_menu(build)` on any element | at the pointer, on a right press or a long press; at the element's top-left on Shift+F10 or the Menu key while focus is in it | actions on the thing under the pointer |
 | Submenu | `.submenu_with_icon(icon, label, window, cx, build)` | beside its row, when the row is highlighted | a group that would crowd the parent |
 
 Row kinds (`PopupMenuItem`): an action (`new`, with `.icon()` and `.action()`), a checked row (`.checked(true)`), a link (`link(label, href)`), custom content (`element`), a stepper (`stepper`), a submenu row, a section label (`label`) and a separator (`separator`).
@@ -696,7 +708,7 @@ States:
 
 Behavior:
 
-- Opening: a dropdown opens on a press of its trigger, focused; a context menu opens on a right press or a long press, at the pointer, kept 8 from the window's edges. A submenu opens when its row is highlighted, beside the row with 8 of overlap, on the left when the right has no room, kept 4 from the window's edges.
+- Opening: a dropdown opens on a press of its trigger, or on Enter, Space or Down while the trigger has focus; a context menu opens on a right press or a long press, at the pointer, or on Shift+F10 or the Menu key while focus is in its region, at the region's top-left. `.context_menu` doesn't make the region focusable: give it `.track_focus` for the keys to reach it. Either way the menu opens focused, kept 8 from the window's edges; opened from the keyboard, its first enabled row is highlighted. A submenu opens when its row is highlighted, beside the row with 8 of overlap, on the left when the right has no room, kept 4 from the window's edges.
 - Keys while open: Up and Down move the highlight over enabled rows and wrap. Right opens a highlighted submenu and moves into it; Left steps back to the parent. On a stepper Left and Right step and Enter resets. Enter runs the highlighted row and closes the menu. Escape closes it and every parent, and gives focus back to where it was. No type-ahead.
 - Pointer: pointing at a row highlights it; leaving clears it unless the last input was a key. A click runs the row on release and closes the whole chain; a press outside closes it. Stepper buttons step without closing.
 - A row runs its handler, or else dispatches its action to the menu's action context.
@@ -706,9 +718,9 @@ Content: a row's label is a verb or a short verb phrase in sentence case with no
 
 Placement: a dropdown hangs `space-4` below its trigger, aligned to the trigger's start, and its trigger carries a caret. A context menu opens where the pointer is. Keep submenus to one level where you can.
 
-HTML: built at runtime by `menu.js`: `pennaMenu.dropdown(trigger, items)`, `pennaMenu.context(region, items)` or `new pennaMenu.Menu(items)`, where an item is `{ label, icon, key, checked, disabled, link }` or `{ kind: "label" | "separator" | "submenu" | "stepper" | "note", ... }`. The markup: `.penna-popup[data-penna="popover"]` holds `.penna-popup-items[role="menu"]`, whose rows are `.penna-popup-row[data-penna="menu-item"][role="menuitem"]` with `data-kind` (`item`, `label`, `submenu`, `stepper`, `note`), `data-disabled`, and `data-selected` with `data-state="selected"` (`"hover"` on a submenu row) while highlighted. A row holds `.penna-popup-icon`, then `.penna-popup-main` with the `.penna-label` and a `.penna-label.penna-popup-key`; labels and submenu rows wrap theirs in `.penna-popup-line`; marks are `i.penna-popup-detail`, a link's label `.penna-popup-link`, a stepper's group `.penna-popup-stepper`. Separators are `.penna-popup-separator[role="separator"]`; an open submenu is a `.penna-popup.penna-popup-sub` inside its row. `@media (pointer: coarse)` switches rows to 44, `body` and 14 icons. A dropdown also opens on Enter, Space and Down (Down highlights the first row), a context menu on the Menu key or Shift+F10.
+HTML: built at runtime by `menu.js`: `pennaMenu.dropdown(trigger, items)`, `pennaMenu.context(region, items)` or `new pennaMenu.Menu(items)`, where an item is `{ label, icon, key, checked, disabled, link }` or `{ kind: "label" | "separator" | "submenu" | "stepper" | "note", ... }`. The markup: `.penna-popup[data-penna="popover"]` holds `.penna-popup-items[role="menu"]`, whose rows are `.penna-popup-row[data-penna="menu-item"][role="menuitem"]` with `data-kind` (`item`, `label`, `submenu`, `stepper`, `note`), `data-disabled`, and `data-selected` with `data-state="selected"` (`"hover"` on a submenu row) while highlighted. A row holds `.penna-popup-icon`, then `.penna-popup-main` with the `.penna-label` and a `.penna-label.penna-popup-key`; labels and submenu rows wrap theirs in `.penna-popup-line`; marks are `i.penna-popup-detail`, a link's label `.penna-popup-link`, a stepper's group `.penna-popup-stepper`. Separators are `.penna-popup-separator[role="separator"]`; an open submenu is a `.penna-popup.penna-popup-sub` inside its row. `@media (pointer: coarse)` switches rows to 44, `body` and 14 icons. A dropdown also opens on Enter, Space and Down, a context menu on the Menu key or Shift+F10 at the region's top-left, each with its first enabled row highlighted.
 
-Status: one gap. Natively a menu opens only from the pointer: a dropdown on a press and a context menu on a right press or long press, while the HTML twin also opens them from the keyboard.
+Status: matches.
 
 ### Panel
 
@@ -764,17 +776,14 @@ States: closed, or open. While open the trigger is selected and the panel holds 
 
 Behavior:
 
-- A pointer press on the trigger opens the panel; another press on the trigger closes it.
+- A pointer press on the trigger, or Enter, Space or Down while the trigger has focus, opens the panel; the same again closes it. Keys pressed inside the panel stay with the panel.
 - Opening moves focus into the panel; closing returns it to what had it, when focus was still inside.
 - Escape closes it. A press outside closes it unless `.overlay_closable(false)`.
 - `.on_dismiss` runs whenever it closes. There is no call to open it from code.
 
-HTML: `.penna-popover` holds a `.penna-popover-trigger` (a button with `aria-haspopup`) and a `.penna-popover-panel` with `data-penna="popover"`, `tabindex="-1"` and `role="dialog"`. `data-open` marks it open; `data-anchor` takes `bottom` (opens above) and `right` (aligns trailing edges); `data-closable="false"` keeps it open on a press outside. `popover.js` sets `aria-expanded` and `data-state="current"` on the trigger, moves focus, closes on Escape and outside presses, fires `penna-open` and `penna-dismiss`, and exposes `pennaPopover.setOpen(popover, open)`.
+HTML: `.penna-popover` holds a `.penna-popover-trigger` (a button with `aria-haspopup`) and a `.penna-popover-panel` with `data-penna="popover"`, `tabindex="-1"` and `role="dialog"`. `data-open` marks it open; `data-anchor` takes `bottom` (opens above) and `right` (aligns trailing edges); `data-closable="false"` keeps it open on a press outside. `popover.js` sets `aria-expanded` and `data-state="current"` on the trigger, opens on Enter, Space and Down on the trigger, moves focus, closes on Escape and outside presses, fires `penna-open` and `penna-dismiss`, and exposes `pennaPopover.setOpen(popover, open)`.
 
-Status: two gaps.
-
-- Only a pointer press opens it: Space and Enter on the focused trigger do nothing, natively and in HTML.
-- The HTML twin has no centered anchor and doesn't keep the panel inside the window.
+Status: one gap. The HTML twin has no centered anchor and doesn't keep the panel inside the window.
 
 ### Row
 
@@ -810,7 +819,7 @@ States:
 | pressed | the look's active step, while held | as hover; under a coarse pointer a fill row draws the press highlight instead |
 | selected | the look's selected fill | `PaintState::Selected` |
 | current | the same fill as selected | `PaintState::Current`, the open page or section |
-| focused | sidebar: the rest fill and the focus ring, 1.5 outside; every other look: its selected fill | the app sets it |
+| focused | the rest fill and the focus ring, 1.5 outside | the app sets it; `.focused(true)` adds the ring to any state, so a selected row keeps its selected fill |
 | disabled | the look's disabled paint, dimmed text | |
 
 `.interactive(false)` paints the state alone, with no hover or press.
@@ -821,9 +830,9 @@ Content: one line, the item's name; a short muted aside at the end.
 
 Placement: rows in an inset list sit `space-2` apart with the row inset at the sides, so their highlights never merge; a plain list's rows touch.
 
-HTML: `.penna-row[data-penna]` (the look's recipe) with `data-state` (`hover`, `active`, `selected`, `current`, `focused`, `disabled`), `aria-selected`, `aria-disabled`, `data-tone`, and `data-still` for a row that is not interactive. It holds `<i data-icon>`, `.penna-row-label` and `.penna-row-aside`, each text run in `.penna-text[data-penna-text]`. A fill row is `.penna-row-fill[data-penna]` inside the caller's row, `data-round` for the 24 radius. `.penna-item.penna-list-item` draws a list item with a Row's focus ring. `tab.js` marks keyboard focus and sizes the ring (`--penna-ring-r`).
+HTML: `.penna-row[data-penna]` (the look's recipe) with `data-state` (`hover`, `active`, `selected`, `current`, `focused`, `disabled`), `aria-selected`, `aria-disabled`, `data-tone`, and `data-still` for a row that is not interactive. It holds `<i data-icon>`, `.penna-row-label` and `.penna-row-aside`, each text run in `.penna-text[data-penna-text]`. A fill row is `.penna-row-fill[data-penna]` inside the caller's row, `data-round` for the 24 radius. `data-state="selected focused"` is a selected row with the ring. `.penna-item.penna-list-item` draws a list item with a Row's focus ring. `tab.js` marks keyboard focus and `kit.js` sizes the ring (`--penna-ring-r`).
 
-Status: two gaps. Only the sidebar look draws the focus ring; every other look shows focus with its selected fill, so focus and selection look the same. `.penna-row` fixes a 200 by 32 box, `small` text and a 14 icon that the native Row leaves to its caller, and a 14 icon beside `small` text breaks the pairing in Size.
+Status: one gap. `.penna-row` fixes a 200 by 32 box, `small` text and a 14 icon that the native Row leaves to its caller, and a 14 icon beside `small` text breaks the pairing in Size.
 
 ### Scrollbar
 
@@ -887,16 +896,17 @@ States:
 | rest | the track, labels in the quiet ink | |
 | hover | the label takes the quiet button's hover ink, which no shipped theme sets apart from its rest ink | not on the picked segment |
 | selected | the pill under it, its label in the selected ink | exactly one segment |
+| focused | the focus ring, 1.5 outside the track; the track takes the field's focused edge, which only the default theme sets apart | from the keyboard only, never from a click |
 
-Behavior: a click on a segment picks it and calls `on_select` with its index; the caller sets `selected`. The pill slides to the new segment in 220ms (`turn`) with an ease out, and holds still with reduced motion. Under a coarse pointer each segment's hit area grows to the touch slop.
+Behavior: a click on a segment picks it and calls `on_select` with its index; the caller sets `selected`. With `on_select` the control is one tab stop: Left and Up pick the previous segment, Right and Down the next, Home and End the first and last, each through `on_select`, and they stop at the ends. A click picks without focusing. The pill slides to the new segment in 220ms (`turn`) with an ease out, and holds still with reduced motion. Under a coarse pointer each segment's hit area grows to the touch slop.
 
 Content: one or two words per segment, sentence case, no period ("System", "Light", "Dark"). Keep the labels about the same length, since each segment is as wide as its own.
 
 Placement: at the trailing end of a settings row (Appearance's mode and density), or above content to switch its view (the docs' Rust and HTML tabs).
 
-HTML: `.penna-segmented` (`data-penna="field"`, `role="radiogroup"`, `data-value` the picked index) holding `.penna-segments` (`data-penna="button.quiet"`, `data-state="current"`), which holds a `.penna-segment-pill` and a `.penna-segment` (`role="button"`) per option with a `.penna-label` inside. `segmented.js` places the pill, sets `aria-selected`, moves the pick on click and fires `change` with `{ index }`.
+HTML: `.penna-segmented` (`data-penna="field"`, `role="radiogroup"`, `data-value` the picked index) holding `.penna-segments` (`data-penna="button.quiet"`, `data-state="current"`), which holds a `.penna-segment-pill` and a `.penna-segment` (`role="button"`) per option with a `.penna-label` inside. `segmented.js` makes the track a tab stop, places the pill, sets `aria-selected`, moves the pick on click and on the keys above, fires `change` with `{ index }`, and sizes the ring (`--penna-ring-r`) that `:focus-visible` or `data-state="focused"` draws.
 
-Status: three gaps. It has no keyboard path: segments can't take focus and the arrow keys do nothing, natively and in HTML (Principles 1). It has no disabled state, and no hover look in any shipped theme. It has one size only, `control-md`.
+Status: two gaps. It has no disabled state, and no hover look in any shipped theme. It has one size only, `control-md`.
 
 ### Select
 
@@ -1001,9 +1011,9 @@ States:
 | rest | as above | |
 | hover | a stepped pill's fill takes its hover step | the continuous slider has none |
 | pressed | the knob follows the pointer | continuous |
-| focused | a 1.5px edge in the primary's focus ink, inside the knob or the picked pill's bar | from a press or the keyboard; see Status |
+| focused | the focus ring outside the knob or the picked pill's bar, in the neutral focus ink | from the keyboard only: Tab, or a key that moves it after a press. A press focuses it with no ring |
 
-Behavior, continuous: a press anywhere on the box moves the knob there and focuses it, and a drag follows. `on_change` fires on every move, or once on release with `.commit_on_release()`. Left and Down step down, Right and Up step up (a hundredth of the range without `.step()`), Shift moves ten steps, Home and End go to the ends.
+Both kinds are tab stops. Behavior, continuous: a press anywhere on the box moves the knob there and focuses it, and a drag follows. `on_change` fires on every move, or once on release with `.commit_on_release()`. Left and Down step down, Right and Up step up (a hundredth of the range without `.step()`), Shift moves ten steps, Home and End go to the ends.
 
 Behavior, stepped: a click on a pill picks that step and focuses the slider. The arrow keys move one step, Home and End go to the ends. Each pill's tooltip names its step.
 
@@ -1011,9 +1021,9 @@ Content: the label names the setting in sentence case ("Scrollback", "Opacity").
 
 Placement: in a settings row, between its title and its value; a stepped slider fills the row it sits in.
 
-HTML: the stepped slider is `.penna-steps` with `data-label`, `data-steps` (a comma list), `data-value` (the picked index) and `data-focused` to draw focus. `slider.js` builds `.penna-steps-label`, `.penna-steps-pills` of `.penna-step` (`role="button"`, `data-filled`, `data-picked`) and `.penna-steps-value`, sets `role="slider"`, answers the same keys and fires `change` with `{ index, value }`. The continuous slider is `.penna-slider` in `penna.css`: `--penna-value` as a percentage, and a `.penna-rail` holding `.penna-fill` and `.penna-knob`.
+HTML: the stepped slider is `.penna-steps` with `data-label`, `data-steps` (a comma list), `data-value` (the picked index) and `data-focused` to draw focus. `slider.js` builds `.penna-steps-label`, `.penna-steps-pills` of `.penna-step` (`role="button"`, `data-filled`, `data-picked`) and `.penna-steps-value`, sets `role="slider"`, answers the same keys and fires `change` with `{ index, value }`. The ring shows on `:focus-visible` or `data-focused`, which the script sets when a key moves the slider and clears on a press or blur. The continuous slider is `.penna-slider` in `penna.css`: `--penna-value` as a percentage, a `.penna-rail` holding `.penna-fill` and `.penna-knob`, and the same ring on `:focus-visible` or `data-focused`.
 
-Status: three gaps. Neither kind has a disabled state or a size API; both draw at `control-md`. Focus is an edge drawn inside the knob or the picked pill in the primary's own ink, so it barely shows where the fill matches it (every stepped slider in the default look, the knob in dark), where Corners asks for a ring outside the box. The continuous slider's HTML twin is a picture: `.penna-slider` has no script and draws focus as an accent edge on the knob, while the working one lives in the Appearance block as `.appearance-slider`.
+Status: two gaps. Neither kind has a disabled state or a size API; both draw at `control-md`. The continuous slider's HTML twin is a picture: `.penna-slider` has no script, while the working one lives in the Appearance block as `.appearance-slider`.
 
 ### Spinner
 
@@ -1075,17 +1085,18 @@ States:
 |---|---|---|
 | off | neutral track, thumb at the start | |
 | on | primary track, thumb at the end | |
-| disabled | track and thumb at half strength | presses are ignored |
+| focused | the focus ring, 1.5 outside the track | from the keyboard only, never from a click |
+| disabled | track and thumb at half strength | presses are ignored, and it leaves the focus order |
 
-Behavior: a press flips it and calls `on_click` with the new value; the caller sets `checked`. The thumb slides in 150ms and holds still with motion off.
+Behavior: it flips on release of a click or tap inside it, and on Space or Enter while focused, and calls `on_click` with the new value; the caller sets `checked`. It is a tab stop when it has `on_click`. The thumb slides in 150ms and holds still with motion off.
 
 Content: the row title names the setting in sentence case ("Share clipboard"), never its state ("On", "Enabled"). A description under the title says what on does.
 
 Placement: at the trailing end of a settings row, one switch per row.
 
-HTML: `button.penna-toggle` with `aria-checked` (`true`, `false`), `data-size` (`xsmall` to `touch`), `disabled` and `aria-label`. `switch.js` sets `role="switch"`, adds `.penna-toggle-track` holding `.penna-toggle-thumb`, flips `aria-checked` on click and fires `change` with `{ checked }`.
+HTML: `button.penna-toggle` with `aria-checked` (`true`, `false`), `data-size` (`xsmall` to `touch`), `disabled` and `aria-label`. `switch.js` sets `role="switch"`, adds `.penna-toggle-track` holding `.penna-toggle-thumb`, flips `aria-checked` on click and fires `change` with `{ checked }`. `:focus-visible` or `data-state="focused"` draws the ring.
 
-Status: three gaps. Natively it can't take focus and doesn't answer Space or Enter (Principles 1); the HTML button takes focus but draws no ring. It has no hover or pressed look. It flips on press natively and on release in HTML.
+Status: two gaps. It has no hover or pressed look. The ring touches the track, so an on switch in the default look, whose fill is the ring's own color, shows no ring (Focus and keys).
 
 ### Tabs
 
@@ -1104,7 +1115,7 @@ Anatomy:
 
 - Container: the rung's height, `control-lg` 32 by default; the look's fill, outline and corners (its radius, capped at 45% of the height).
 - Inset, gap, icon and label are the caller's. The story and `tab.css` use `space-10` at the sides and `space-6` gaps, a 14 icon, a `small` label and an optional `caption` aside in muted ink; a title uses `space-8` and a `small` muted path.
-- Focus ring (tray): 1.5px, outside the container, with its own radius.
+- Focus ring: 1.5px, outside the container, with its own radius.
 
 Sizes: `.with_size()` (or `.xsmall()` to `.touch()`) moves only the height along the control ladder: 20, 24, 28 (follows density), 32 (the default), 40, 44. Text, inset and icons stay the caller's. Every tab in a bar has the same size (Rules 6).
 
@@ -1117,12 +1128,12 @@ States:
 | pressed | the look's active step, while held | as hover |
 | selected | the look's selected fill | the open tab; `aria-selected` |
 | current | the same fill as selected | |
-| focused | tray: the rest fill and the focus ring; window, page and title: their selected fill | the app sets it |
+| focused | the rest fill and the focus ring | the app sets it; `.focused(true)` adds the ring to any state, so the open tab keeps its selected fill |
 | disabled | the look's disabled paint, dimmed text | |
 
 `.interactive(false)` paints the state alone, with no hover or press.
 
-Behavior: a Tab paints the state the app gives it and announces itself as a tab with its id. The app switches on click (`on_click`, like any element) and marks the open tab selected. Natively a Tab takes no focus or keys of its own. In the HTML twin, `tab.js` moves focus inside a `[role="tablist"]`: Left and Right go to the previous or next tab with a `tabindex` and wrap, Home and End to the first and last; keyboard focus sets `data-state="focused"` and sizes the ring.
+Behavior: a Tab paints the state the app gives it and announces itself as a tab with its id. The app switches on click (`on_click`, like any element) and marks the open tab selected. Natively a Tab takes no focus or keys of its own: the bar the app lays out owns focus and the arrow keys and marks the focused tab. In the HTML twin, `tab.js` moves focus inside a `[role="tablist"]`: Left and Right go to the previous or next tab with a `tabindex` and wrap, Home and End to the first and last; keyboard focus sets `data-state="focused"`, and `kit.js` sizes the ring.
 
 Content: the label names what the tab shows, as people name it: a session, a page title, a task. Keep it short; a count or the program goes in the muted aside. No closing period.
 
@@ -1130,7 +1141,7 @@ Placement: tabs sit side by side in a bar, as wide as their content. One tab per
 
 HTML: `.penna-tab[role="tab"][data-penna]` (`tab.window`, `tab.page`, `tab.tray`, `button.title`) inside a `[role="tablist"]`, with `data-size` (`xsmall` to `touch`; large when absent), `data-state`, `aria-selected`, `aria-disabled`, `data-still` and `tabindex`. It holds `<i data-icon>`, `.penna-tab-label`, `.penna-tab-aside` or `.penna-tab-path`, each text run in `.penna-text[data-penna-text]`. A title is `.penna-tab.penna-title-tab` in a `.penna-pane-header[data-penna="bar.pane"]`.
 
-Status: four gaps. Equal-width tabs are not built: a tab is as wide as its content. Window, page and title tabs show focus with their selected fill, where only the tray look draws the focus ring. Left, Right, Home and End move between tabs only in the HTML twin; a native Tab takes no focus or keys of its own. The story and `tab.css` put 14 icons beside `small` labels, where Size pairs 12 with `small`.
+Status: two gaps. Equal-width tabs are not built: a tab is as wide as its content. The story and `tab.css` put 14 icons beside `small` labels, where Size pairs 12 with `small`.
 
 ### Text
 
@@ -1206,19 +1217,18 @@ States:
 | rest | the variant's paint | |
 | hover | Card, Screen and Mini as rest; Drop one tint step deeper | the app sets it while the tile is dragged |
 | selected | a 2px ring in `accent` (Card, Screen, Mini); Drop's selected tint | the one picked |
-| focused | as selected | set by the app; the tile tracks no focus |
+| focused | the variant's rest paint and the focus ring, 1.5 outside | from the keyboard on a tile that takes focus, or set by the app |
 | disabled | fill at half strength, faint label, no shadow | a thing that is away or can't be placed |
 
-Behavior: the native tile paints a state and does nothing else; the app picks, drags and drops. `Tile::on(ground)` paints it on a ground, `Well::ground(cx)` on a well.
+Behavior: the native tile paints a state; the app picks, drags and drops. A tile with a click handler is a tab stop announced as a button: Space and Enter run it, and it shows the focus ring from the keyboard only, since a click never focuses it. `Tile::on(ground)` paints it on a ground, `Well::ground(cx)` on a well.
 
 Placement: on a well or in a dock, `gap-group` 16 apart in a row, or where the app arranges them. Drop and veil sit absolutely over the panes they cover. A tile rises one step from its ground with a contact shadow.
 
-HTML: `.penna-tile` with `data-penna` (`tile.card`, `tile.screen`, `tile.drop`, `tile.mini`) and `data-variant` (`card`, `screen`, `drop`, `veil`, `mini`); `data-state` (`hover`, `selected`, `focused`, `disabled`), `data-tone` (`primary`, `danger`), `data-edge` on a drop zone. `tile.css` sizes each variant (a screen 150 by 90, a card 132 by 64) and draws the selected ring in `::after`. `tile.js` makes tiles under `[data-tiles]` draggable (3px slop, `data-dragging`, a `penna-drop` event with the point) and, under `[data-pick]`, selects the one clicked and fires `penna-pick`.
+HTML: `.penna-tile` with `data-penna` (`tile.card`, `tile.screen`, `tile.drop`, `tile.mini`) and `data-variant` (`card`, `screen`, `drop`, `veil`, `mini`); `data-state` (`hover`, `selected`, `focused`, `disabled`), `data-tone` (`primary`, `danger`), `data-edge` on a drop zone, and `role="button"` with `tabindex="0"` on a tile that takes focus. `tile.css` sizes each variant (a screen 150 by 90, a card 132 by 64), draws the selected ring in `::before` and the focus ring in `::after`. `tile.js` makes tiles under `[data-tiles]` draggable (3px slop, `data-dragging`, a `penna-drop` event with the point), under `[data-pick]` selects the one clicked and fires `penna-pick`, runs a focusable tile on Space and Enter, and keeps a click from focusing it.
 
-Status: four gaps.
+Status: three gaps.
 
 - The selected ring is `accent`, not `primary`, so in the default look a picked tile is blue where every other highlight is the ink.
-- A tile takes no focus and has no key to pick it, natively or in HTML.
 - A tile being dragged (hover) draws like one at rest, where Depth gives things that move `shadow-lifted`.
 - The HTML twin fixes each variant's size and padding and picks and drags on its own, where the native tile leaves both to the app.
 
@@ -1233,7 +1243,7 @@ Kinds:
 | Label | `Tooltip::new(text)`; `.tooltip(text)` on a button, switch or slider | names the control |
 | Label and key | `Tooltip::new(text).action(&action, context)` | names it and shows the key bound to that action in that key context |
 
-Any element takes one with ala's `.tooltip(|window, cx| Tooltip::new(..).build(window, cx))`.
+Any element takes one with ala's `.tooltip(|window, cx| Tooltip::new(..).build(window, cx))`; that one shows on hover only. A button's `.tooltip(text)` also shows on keyboard focus.
 
 Anatomy, left to right:
 
@@ -1248,15 +1258,15 @@ States:
 | hidden | nothing | |
 | shown | the box, at once | no fade in or out |
 
-Behavior: it shows 500ms after the pointer comes to rest on its target. Its frame starts 1px right of and below the pointer and the box sits `space-12` inside that frame, so it clears the cursor by 13. Where it would cross the window's right or bottom edge it flips to the other side of the pointer. It hides when the pointer leaves the target or presses. Natively, a long press on touch shows it until the finger lifts. One tooltip shows at a time, and a disabled button's tooltip still shows.
+Behavior: it shows 500ms after the pointer comes to rest on its target. Its frame starts 1px right of and below the pointer and the box sits `space-12` inside that frame, so it clears the cursor by 13. Where it would cross the window's right or bottom edge it flips to the other side of the pointer. It hides when the pointer leaves the target or presses. When the keyboard focuses its target it shows at once, placed as if the pointer rested on the middle of the target's bottom edge, and hides when focus leaves, on Escape (which still reaches the rest of the window) or when the pointer moves; it comes back only on the next keyboard focus. Natively, a long press on touch shows it until the finger lifts. One tooltip shows at a time, and a disabled button's tooltip still shows.
 
 Content: a noun or a short verb phrase in sentence case that names the action or the thing ("Split right", "Notifications", "Copy path"), with no closing period. Never an instruction ("Click to split") or a sentence. On an icon-only button it is required and is the button's accessible name too. Don't repeat a label that is already visible; on a labeled control a tooltip adds the key or nothing. Give the key with `.action()` (`data-tooltip-key`), never typed into the text.
 
 Placement: it follows the pointer, not the target, so there is nothing to place. Give one to every icon-only button (Button) and to controls whose key is worth learning.
 
-HTML: any element with `data-tooltip="Label"` gets one from `tooltip.js`; `data-tooltip-key="cmd-d"` adds the key, written by `kbd.js` as a keycap's text. The script builds `.penna-tooltip[data-penna="tooltip"][role="tooltip"][data-floating]` with a `span[data-penna-text]` per run and `.penna-tooltip-key` for the key, sets `data-open` while shown, and places it with the same delay, offset and edge flip: on the window with `data-fixed`, or inside the nearest `[data-tooltip-host]` within a story section. `data-tooltip-pinned` keeps it open. A static box is the same markup without `data-floating`; the key run takes `data-kbd-text`.
+HTML: any element with `data-tooltip="Label"` gets one from `tooltip.js`; `data-tooltip-key="cmd-d"` adds the key, written by `kbd.js` as a keycap's text. The script builds `.penna-tooltip[data-penna="tooltip"][role="tooltip"][data-floating]` with a `span[data-penna-text]` per run and `.penna-tooltip-key` for the key, sets `data-open` while shown, and places it with the same delay, offset and edge flip: on the window with `data-fixed`, or inside the nearest `[data-tooltip-host]` within a story section. A `[data-tooltip]` element that takes focus matching `:focus-visible` shows its tooltip at once from the middle of its bottom edge, until `focusout`, Escape or a pointer move. `data-tooltip-pinned` keeps it open. A static box is the same markup without `data-floating`; the key run takes `data-kbd-text`.
 
-Status: two gaps. A tooltip shows on hover only, never when the keyboard focuses its target (Principles 1). The HTML twin has no long press, so touch never shows a tooltip on the web.
+Status: one gap. The HTML twin has no long press, so touch never shows a tooltip on the web.
 
 ### Tree
 
@@ -1275,17 +1285,17 @@ The indent and the guide's place are the caller's (`IndentGuides::new(depths, ac
 
 Sizes: one. Rows follow density; text stays `lead` and icons 14.
 
-States: a row's states are a list item's: rest, hover, pressed, selected and disabled. A selected row also lights its parent's guide.
+States: a row's states are a list item's: rest, hover, pressed, selected, focused and disabled. A selected row also lights its parent's guide.
 
-Behavior: the app owns the rows, the selection (`active_row`) and what a click does; the guides follow the depths and the active row of the rows in view. Natively a tree takes no keys of its own. In the HTML twin, `tree.js` selects and focuses a row on click, Up and Down move the selection and focus (stopping at the ends), only the selected row is in the tab order, and the guides redraw on every change. Neither folds a level open or closed.
+Behavior: the app owns the rows, the selection (`active_row`), focus and what a click does; the guides follow the depths and the active row of the rows in view. Natively a tree takes no keys of its own: the app moves the selection and marks the row the keyboard is on `.focused(true)`, which draws the focus ring. In the HTML twin, `tree.js` selects and focuses a row on click, Up and Down move the selection and focus (stopping at the ends), only the selected row is in the tab order, and the guides redraw on every change. Neither folds a level open or closed.
 
 Content: a row's label is the thing's own name ("lib.rs"), never its path: the depth already says where it is. One icon per kind of thing.
 
 Placement: in a sidebar or a side panel, full width, rows touching so the guides run unbroken.
 
-HTML: `.penna-tree[role="tree"]` with `--penna-tree-row` (`control-md`), `--penna-tree-indent` (16), `--penna-tree-inset` (`space-12`), `--penna-tree-offset` (20) and `--penna-tree-end` (4). Rows are `.penna-tree-row[data-penna="sidebar.row"][role="treeitem"]` with `data-depth` and `style="--depth: n"`, `aria-selected` and `tabindex`, holding `.penna-tree-content` with `i.penna-tree-icon[data-icon]` and a `.penna-label[data-penna-text]`. `tree.js` adds a `.penna-tree-guide` per guide, `data-active` on the lit one.
+HTML: `.penna-tree[role="tree"]` with `--penna-tree-row` (`control-md`), `--penna-tree-indent` (16), `--penna-tree-inset` (`space-12`), `--penna-tree-offset` (20) and `--penna-tree-end` (4). Rows are `.penna-tree-row[data-penna="sidebar.row"][role="treeitem"]` with `data-depth` and `style="--depth: n"`, `aria-selected`, `tabindex` and `data-state="focused"` (keyboard focus draws the ring too), holding `.penna-tree-content` with `i.penna-tree-icon[data-icon]` and a `.penna-label[data-penna-text]`. `tree.js` adds a `.penna-tree-guide` per guide, `data-active` on the lit one.
 
-Status: one gap. Up and Down move the selection and focus only in the HTML twin; natively tree rows take no focus and no keys, and show no focused look.
+Status: one gap. A focused row runs the full width of its `uniform_list`, which clips the sides of its ring natively; the HTML tree doesn't clip, so the twin shows the whole ring.
 
 ### Well
 

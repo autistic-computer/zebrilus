@@ -2,10 +2,6 @@
 
 Actions that open from a button, a right click or a long press. To pick a value use a select.
 
-```figure uses=notice
-<div class="docs-full penna-notice" data-penna="notice" data-tone="warning"><div class="penna-notice-tone" data-penna="chip" data-tone="warning"><span class="penna-notice-lead"><i data-icon="triangle-alert"></i></span><div class="penna-notice-body"><span class="penna-text penna-notice-title" data-penna-text>Being reworked</span><span class="penna-text penna-notice-detail" data-penna-text>Natively a menu opens only from the pointer. The keyboard can't open a dropdown or a context menu yet.</span></div></div></div>
-```
-
 ## Kinds
 
 ```figure uses=menu,button
@@ -14,8 +10,8 @@ Actions that open from a button, a right click or a long press. To pick a value 
 </div>
 ```
 
-- **Dropdown**: below a button with a caret.
-- **Context**: at the pointer, on a right click or a long press.
+- **Dropdown**: below a button with a caret, on a press or on Enter, Space or Down.
+- **Context**: at the pointer, on a right click or a long press; at the region's top-left on Shift+F10 or the Menu key.
 - **Submenu**: beside its row, once the row is highlighted.
 
 ```rust
@@ -69,6 +65,7 @@ Rows follow density: 24 compact, 32 comfortable.
 
 ## Keys
 
+- **Enter**, **Space**, **Down** on a dropdown's button, **Shift+F10** or **Menu** in a context region: open it on the first enabled row.
 - **Up**, **Down**: move the highlight, wrapping.
 - **Right**, **Left**: into and out of a submenu.
 - **Enter**: run the row and close.
@@ -101,7 +98,7 @@ Related rows together, a separator between groups.
 | Rust | HTML | Does |
 | --- | --- | --- |
 | `.dropdown_menu(build)` on a button | `pennaMenu.dropdown(trigger, items)` | Opens below the button |
-| `.context_menu(build)` | `pennaMenu.context(region, items)` | Opens at the pointer |
+| `.context_menu(build)` | `pennaMenu.context(region, items)` | Opens at the pointer, or at its top-left from the keys |
 | `PopupMenuItem::new(label)` | `{ label }` | Row |
 | `.icon(name)` | `{ icon }` | Icon |
 | `.action(action)` | `{ key }` | Runs an action; shows its key |

@@ -64,6 +64,17 @@
 
   document.querySelectorAll("[data-tiles] > .penna-tile").forEach(draggable);
 
+  const focusable = (event) => event.target.closest?.(".penna-tile[tabindex]");
+
+  document.addEventListener("mousedown", (event) => focusable(event) && event.preventDefault());
+  document.addEventListener("keydown", (event) => {
+    const tile = focusable(event);
+    if (!tile || states(tile).has("disabled") || (event.key !== "Enter" && event.key !== " ")) return;
+    event.preventDefault();
+    pick(tile);
+    tile.click();
+  });
+
   function glass() {
     document.querySelectorAll(".penna-tile").forEach((tile) => {
       tile.toggleAttribute("data-glass", getComputedStyle(tile).getPropertyValue("--penna-glass").trim() === "1");

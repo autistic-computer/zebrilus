@@ -1,8 +1,8 @@
 use std::{cell::Cell, rc::Rc};
 
 use ala::{
-    App, Bounds, IntoElement, Modifiers, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent,
-    Pixels, PlatformInput, Point, Styled as _, Window, canvas,
+    App, Bounds, IntoElement, KeyDownEvent, Keystroke, Modifiers, MouseButton, MouseDownEvent,
+    MouseMoveEvent, Pixels, PlatformInput, Point, Styled as _, Window, canvas,
 };
 
 #[derive(Clone, Default)]
@@ -99,18 +99,17 @@ pub fn press(probe: &Probe, button: MouseButton, window: &mut Window, cx: &mut A
     nudge(8, window);
 }
 
-pub fn click(probe: &Probe, window: &mut Window, cx: &mut App) {
-    press(probe, MouseButton::Left, window, cx);
-    if let Some(position) = probe.center(window) {
-        window.dispatch_event(
-            PlatformInput::MouseUp(MouseUpEvent {
-                button: MouseButton::Left,
-                position,
-                modifiers: Modifiers::default(),
-                click_count: 1,
-            }),
-            cx,
-        );
+pub fn tab(window: &mut Window, cx: &mut App) {
+    let result = window.dispatch_event(
+        PlatformInput::KeyDown(KeyDownEvent {
+            keystroke: Keystroke::parse("tab").expect("tab is a keystroke"),
+            is_held: false,
+            prefer_character_input: false,
+        }),
+        cx,
+    );
+    if result.propagate {
+        window.focus_next(cx);
     }
 }
 

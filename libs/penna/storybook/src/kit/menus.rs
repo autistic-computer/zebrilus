@@ -77,6 +77,12 @@ pub const STORY: Story = Story {
             build: |window, cx| Triggers::view(Open::Dropdown, window, cx),
         },
         Section {
+            id: "dropdown-focused",
+            name: "Dropdown focused",
+            summary: "The trigger holds focus. Enter, Space or Down opens the menu with its first enabled row highlighted; Escape closes it and gives focus back.",
+            build: |window, cx| Triggers::view(Open::Focused, window, cx),
+        },
+        Section {
             id: "context-menu-open",
             name: "Context menu open",
             summary: "A right press opens the menu at the pointer.",
@@ -233,6 +239,7 @@ impl Render for Menus {
 enum Open {
     None,
     Dropdown,
+    Focused,
     Context,
 }
 
@@ -254,6 +261,7 @@ impl Triggers {
             Open::Dropdown => when_visible(&dropdown, window, move |window, cx| {
                 press(&dropdown_probe, MouseButton::Left, window, cx);
             }),
+            Open::Focused => after_first_frame(window, Window::focus_next),
             Open::Context => when_visible(&region, window, move |window, cx| {
                 press(&region_probe, MouseButton::Right, window, cx);
             }),
@@ -264,7 +272,7 @@ impl Triggers {
             region,
             _bounds: cx.observe_window_bounds(window, |this: &mut Self, window, cx| {
                 match this.open {
-                    Open::None => {}
+                    Open::None | Open::Focused => {}
                     Open::Dropdown => hover(&this.dropdown, window, cx),
                     Open::Context => hover(&this.region, window, cx),
                 }
@@ -329,7 +337,7 @@ impl Render for Triggers {
             });
         let content = match self.open {
             Open::None => row().child(trigger).child(region).into_any_element(),
-            Open::Dropdown => div()
+            Open::Dropdown | Open::Focused => div()
                 .h(px(240.0))
                 .child(h_flex().child(trigger))
                 .into_any_element(),
@@ -338,6 +346,7 @@ impl Render for Triggers {
         let caption = match self.open {
             Open::None => "dropdown button, context-menu region",
             Open::Dropdown => "dropdown open",
+            Open::Focused => "trigger focused",
             Open::Context => "context menu open",
         };
         states().state(caption, content)

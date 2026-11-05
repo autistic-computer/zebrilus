@@ -123,7 +123,7 @@
     <section data-section="list-item">
       <div class="story-states">
         <div class="story-state">
-          <div class="story-label">resting, hovered, selected, disabled, disabled and selected</div>
+          <div class="story-label">resting, hovered, selected, disabled, disabled and selected, focused, selected and focused</div>
           <div class="penna-list" role="listbox" style="width: 360px">
             <div class="penna-list-item" data-id="row-rest" data-penna="menu-item" role="option">
               <div class="penna-list-content">
@@ -158,6 +158,20 @@
                 <i class="penna-list-icon" data-icon="square-terminal"></i>
                 <span class="penna-list-label"><span class="penna-text" data-penna-text>stale</span></span>
                 <span class="penna-list-detail"><span class="penna-text" data-penna-text>gone</span></span>
+              </div>
+            </div>
+            <div class="penna-list-item" data-id="row-focused" data-penna="menu-item" role="option" data-state="focused">
+              <div class="penna-list-content">
+                <i class="penna-list-icon" data-icon="square-terminal"></i>
+                <span class="penna-list-label"><span class="penna-text" data-penna-text>build</span></span>
+                <span class="penna-list-detail"><span class="penna-text" data-penna-text>1 pane</span></span>
+              </div>
+            </div>
+            <div class="penna-list-item" data-id="row-selected-focused" data-penna="menu-item" role="option" data-state="selected focused" aria-selected="true">
+              <div class="penna-list-content">
+                <i class="penna-list-icon" data-icon="square-terminal"></i>
+                <span class="penna-list-label"><span class="penna-text" data-penna-text>deploy</span></span>
+                <span class="penna-list-detail"><span class="penna-text" data-penna-text>4 panes</span></span>
               </div>
             </div>
           </div>

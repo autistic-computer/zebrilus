@@ -10,6 +10,16 @@ Every action has a key, and the interface shows it.
 <div class="penna-popup" data-penna="popover" style="width: 220px"><div class="penna-popup-items" role="menu"><div class="penna-popup-row" data-penna="menu-item" role="menuitem"><span class="penna-popup-icon"><i data-icon="plus"></i></span><span class="penna-popup-main"><span class="penna-label" data-penna-text>New tab</span><span class="penna-label penna-popup-key" data-penna-text>⌘T</span></span></div><div class="penna-popup-row" data-penna="menu-item" role="menuitem"><span class="penna-popup-icon"><i data-icon="panel-right"></i></span><span class="penna-popup-main"><span class="penna-label" data-penna-text>Split right</span><span class="penna-label penna-popup-key" data-penna-text>⌘D</span></span></div><div class="penna-popup-row" data-penna="menu-item" role="menuitem"><span class="penna-popup-icon"><i data-icon="xmark"></i></span><span class="penna-popup-main"><span class="penna-label" data-penna-text>Close pane</span><span class="penna-label penna-popup-key" data-penna-text>⌘W</span></span></div></div></div>
 ```
 
+Focus is a ring outside the edge, only from the keyboard, and never looks like selection.
+
+```figure uses=switch,tab
+<div class="docs-show" data-gap="wide">
+  <div class="docs-cell"><button class="penna-button" data-penna="button" data-state="focused"><span class="penna-label" data-penna-text>Save</span></button><span class="docs-note">Button</span></div>
+  <div class="docs-cell"><button class="penna-toggle" data-state="focused" aria-checked="false" aria-label="Focused"></button><span class="docs-note">Switch</span></div>
+  <div class="docs-cell"><div class="docs-show" role="tablist"><div class="penna-tab" role="tab" data-penna="tab.window" data-state="selected" aria-selected="true" data-still><i data-icon="terminal"></i><span class="penna-tab-label"><span class="penna-text" data-penna-text>Selected</span></span></div><div class="penna-tab" role="tab" data-penna="tab.window" data-state="focused" tabindex="0"><i data-icon="terminal"></i><span class="penna-tab-label"><span class="penna-text" data-penna-text>Focused</span></span></div></div><span class="docs-note">Tabs</span></div>
+</div>
+```
+
 ## Calm and dense
 
 One text size does most of the work. Weight sets the hierarchy; color is kept for meaning.

@@ -55,6 +55,12 @@ impl Tab {
     }
 
     #[must_use]
+    pub fn focused(mut self, focused: bool) -> Self {
+        self.plate.focused = focused;
+        self
+    }
+
+    #[must_use]
     pub fn on(mut self, ground: Ground) -> Self {
         self.plate.surface = self.plate.surface.on(ground);
         self
@@ -77,9 +83,9 @@ impl Sizable for Tab {
 plate_element!(Tab);
 
 impl RenderOnce for Tab {
-    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
+    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let Self { mut plate, size } = self;
         plate.base = plate.base.h(size.control_h());
-        plate.paint(cx)
+        plate.paint(window, cx)
     }
 }

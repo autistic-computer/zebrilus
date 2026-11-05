@@ -3,7 +3,7 @@
 The fill behind a row the app lays out itself: menu options, sidebar entries, the sidebar's cursor. For a ready list row use a list.
 
 ```figure uses=notice
-<div class="docs-full penna-notice" data-penna="notice" data-tone="warning"><div class="penna-notice-tone" data-penna="chip" data-tone="warning"><span class="penna-notice-lead"><i data-icon="triangle-alert"></i></span><div class="penna-notice-body"><span class="penna-text penna-notice-title" data-penna-text>Being reworked</span><span class="penna-text penna-notice-detail" data-penna-text>Only the sidebar look draws a focus ring; the others show focus as selection. The HTML row also fixes a size, text and icon that the native row leaves to you.</span></div></div></div>
+<div class="docs-full penna-notice" data-penna="notice" data-tone="warning"><div class="penna-notice-tone" data-penna="chip" data-tone="warning"><span class="penna-notice-lead"><i data-icon="triangle-alert"></i></span><div class="penna-notice-body"><span class="penna-text penna-notice-title" data-penna-text>Being reworked</span><span class="penna-text penna-notice-detail" data-penna-text>The HTML row fixes a size, text and icon that the native row leaves to you.</span></div></div></div>
 ```
 
 ## Looks
@@ -43,12 +43,14 @@ The fill behind a row the app lays out itself: menu options, sidebar entries, th
   <div class="docs-cell"><div class="penna-row" data-penna="menu-item" data-state="hover" data-still><i data-icon="folder"></i><span class="penna-row-label"><span class="penna-text" data-penna-text>work</span></span></div><span class="docs-note">Hover</span></div>
   <div class="docs-cell"><div class="penna-row" data-penna="menu-item" data-state="hover active" data-still><i data-icon="folder"></i><span class="penna-row-label"><span class="penna-text" data-penna-text>work</span></span></div><span class="docs-note">Pressed</span></div>
   <div class="docs-cell"><div class="penna-row" data-penna="menu-item" data-state="selected" aria-selected="true" data-still><i data-icon="folder"></i><span class="penna-row-label"><span class="penna-text" data-penna-text>work</span></span></div><span class="docs-note">Selected</span></div>
-  <div class="docs-cell"><div class="penna-row" data-penna="sidebar.row" data-state="focused" tabindex="0"><i data-icon="folder"></i><span class="penna-row-label"><span class="penna-text" data-penna-text>work</span></span></div><span class="docs-note">Focused, sidebar</span></div>
+  <div class="docs-cell"><div class="penna-row" data-penna="menu-item" data-state="focused" tabindex="0"><i data-icon="folder"></i><span class="penna-row-label"><span class="penna-text" data-penna-text>work</span></span></div><span class="docs-note">Focused</span></div>
+  <div class="docs-cell"><div class="penna-row" data-penna="menu-item" data-state="selected focused" aria-selected="true" data-still><i data-icon="folder"></i><span class="penna-row-label"><span class="penna-text" data-penna-text>work</span></span></div><span class="docs-note">Selected, focused</span></div>
   <div class="docs-cell"><div class="penna-row" data-penna="menu-item" data-state="disabled" aria-disabled="true" data-still><i data-icon="folder"></i><span class="penna-row-label"><span class="penna-text" data-penna-text>work</span></span></div><span class="docs-note">Off</span></div>
 </div>
 ```
 
 - Current paints like selected.
+- Focus is a ring, never a fill. The list owns focus and the arrow keys.
 - `.interactive(false)`: the state alone, no hover or press.
 
 ## Spacing
@@ -77,6 +79,7 @@ Row::new("hosts", RowLook::Sidebar)
 | --- | --- | --- |
 | `Row::new(id, look)` | `.penna-row[data-penna]` | Fill in a look |
 | `.state(state)` | `data-state`, `aria-selected`, `aria-disabled` | State from the app |
+| `.focused(true)` | `data-state="focused"` | Focus ring over any state |
 | `.tone(tone)` | `data-tone` | Tone |
 | `.row_height(height)` | none | Corners for that height |
 | `.radius(px)` | `.penna-row-fill[data-round]` | A round look's radius |

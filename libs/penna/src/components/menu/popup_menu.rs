@@ -580,6 +580,13 @@ impl PopupMenu {
         }
     }
 
+    pub(crate) fn select_first(&mut self, cx: &mut Context<Self>) {
+        let first = self.clickable_menu_items().next().map(|(ix, _)| ix);
+        if let Some(ix) = first {
+            self.set_selected_index(ix, cx);
+        }
+    }
+
     fn select_up(&mut self, _: &SelectUp, _: &mut Window, cx: &mut Context<Self>) {
         cx.stop_propagation();
         let ix = self.selected_index.unwrap_or(0);

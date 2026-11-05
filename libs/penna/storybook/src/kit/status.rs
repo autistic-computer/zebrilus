@@ -1,5 +1,6 @@
 use ala::{
-    AnyElement, App, IntoElement, ParentElement as _, SharedString, Styled as _, Window, px,
+    AnyElement, App, IntoElement, ParentElement as _, SharedString,
+    StatefulInteractiveElement as _, Styled as _, Window, px,
 };
 use penna::{
     ActiveTheme as _, Chip, ChipLook, Emphasis, IconName, Label, Notice, PaintState,
@@ -25,7 +26,7 @@ pub const STORY: Story = Story {
         Section {
             id: "chip-looks",
             name: "Chip looks",
-            summary: "Chip::new(id, label).look(look).state(state) for status in a title bar, over a pane, the display-panes markers, the chip that follows a dragged pane and the disc behind a blank page's icon. Chip::empty(id) takes its own children; .ring(color) recolors the ring a look draws; .interactive(true) lights it on hover.",
+            summary: "Chip::new(id, label).look(look).state(state) for status in a title bar, over a pane, the display-panes markers, the chip that follows a dragged pane and the disc behind a blank page's icon. Chip::empty(id) takes its own children; .ring(color) recolors the ring a look draws; .interactive(true) lights it on hover, and with a click handler it takes keyboard focus and runs on Enter and Space.",
             build: |_, cx| stateless(chip_looks, cx),
         },
         Section {
@@ -183,7 +184,8 @@ fn chip_looks(_: &mut Window, cx: &mut App) -> AnyElement {
                 .child(
                     Chip::new("marker-live", "1")
                         .look(ChipLook::Marker)
-                        .interactive(true),
+                        .interactive(true)
+                        .on_click(|_, _, _| {}),
                 )
                 .child(
                     Chip::new("marker-ring", "2")

@@ -15,6 +15,12 @@
     { "name": "hover-trigger", "section": "triggers", "hover": "layout-trigger" },
     { "name": "hover-dropdown-row", "section": "dropdown-open", "hover": "2" },
     { "name": "click-dropdown-row", "section": "dropdown-open", "click": "2" },
-    { "name": "hover-context-row", "section": "context-menu-open", "hover": "1" }
+    { "name": "hover-context-row", "section": "context-menu-open", "hover": "1" },
+    { "name": "click-focused-trigger", "section": "dropdown-focused", "click": "layout-trigger" },
+    { "name": "escape-to-trigger", "section": "dropdown-focused", "key": "Escape" },
+    { "name": "enter-opens", "section": "dropdown-focused", "key": "Enter" },
+    { "name": "down-moves", "section": "dropdown-focused", "key": "ArrowDown" },
+    { "name": "escape-closes", "section": "dropdown-focused", "key": "Escape" },
+    { "name": "down-opens", "section": "dropdown-focused", "key": "ArrowDown" }
   ]
 }

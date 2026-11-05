@@ -15,7 +15,7 @@ use penna::{
     h_flex, v_flex,
 };
 
-use super::support::{Probe, after_first_frame, hover, nudge, press, when_visible};
+use super::support::{Probe, after_first_frame, hover, nudge, press, tab, when_visible};
 use crate::story::{Section, Story, row, states};
 
 actions!(storybook_tooltip, [SplitRight, CopyPath]);
@@ -38,7 +38,7 @@ pub const STORY: Story = Story {
     id: "notifications",
     name: "Notifications and tooltips",
     group: "Kit",
-    summary: "Transient surfaces: toasts pushed into the Root layer, hover tooltips and the Popover panel.",
+    summary: "Transient surfaces: toasts pushed into the Root layer, tooltips on hover and on keyboard focus, and the Popover panel.",
     sections: &[
         Section {
             id: "toast-kinds",
@@ -66,6 +66,12 @@ pub const STORY: Story = Story {
             name: "Tooltip, hovered",
             summary: "The pointer rests on a button; after the show delay its tooltip floats below it.",
             build: |window, cx| Hovered::view(window, cx),
+        },
+        Section {
+            id: "tooltip-focused",
+            name: "Tooltip, focused",
+            summary: "Tab focuses a button: its tooltip shows at once, placed as if the pointer rested on the middle of its bottom edge. Escape, a pointer move or leaving the button hides it.",
+            build: |window, cx| Focused::view(window, cx),
         },
         Section {
             id: "popover",
@@ -266,6 +272,28 @@ impl Render for Hovered {
                             .tooltip("Split right"),
                     )
                     .child(self.target.measure()),
+            ),
+        )
+    }
+}
+
+struct Focused;
+
+impl Focused {
+    fn view(window: &mut Window, cx: &mut App) -> AnyView {
+        after_first_frame(window, tab);
+        cx.new(|_| Self).into()
+    }
+}
+
+impl Render for Focused {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        div().h(px(120.0)).child(
+            h_flex().child(
+                Button::new("focused-split")
+                    .icon(IconName::PanelRight)
+                    .ghost()
+                    .tooltip("Split right"),
             ),
         )
     }

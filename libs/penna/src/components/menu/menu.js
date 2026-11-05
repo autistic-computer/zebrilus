@@ -217,6 +217,11 @@
       return true;
     }
 
+    first() {
+      const ix = this.items.findIndex((_, ix) => this.clickable(ix));
+      this.select(ix < 0 ? null : ix);
+    }
+
     move(delta) {
       const ixs = this.items.map((_, ix) => ix).filter((ix) => this.clickable(ix));
       if (delta > 0) {
@@ -312,6 +317,8 @@
     }
   }
 
+  const chord = (event) => (event.repeat ? null : ["alt", "ctrl", "meta", "shift"].filter((name) => event[`${name}Key`]).join("-"));
+
   addEventListener("mousedown", (event) => {
     for (const menu of [...open]) {
       if (!menu.element.contains(event.target) && !menu.trigger?.contains(event.target)) close(menu);
@@ -332,21 +339,24 @@
       state(trigger, "current", true);
       float(menu, host, options.x ?? 0, trigger.offsetTop + trigger.offsetHeight + (options.gap ?? 4), trigger);
     };
-    trigger.setAttribute("aria-haspopup", "menu");
-    trigger.addEventListener("mousedown", (event) => {
-      if (event.button !== 0) return;
+    const press = () => {
       if (menu && open.has(menu)) close(menu);
       else {
         close();
         show();
       }
+    };
+    trigger.setAttribute("aria-haspopup", "menu");
+    trigger.addEventListener("mousedown", (event) => {
+      if (event.button !== 0) return;
+      press();
       event.preventDefault();
     });
     trigger.addEventListener("keydown", (event) => {
-      if (event.key !== "Enter" && event.key !== " " && event.key !== "ArrowDown") return;
+      if (!["Enter", " ", "ArrowDown"].includes(event.key) || chord(event) !== "") return;
       event.preventDefault();
-      show();
-      if (event.key === "ArrowDown") menu.move(1);
+      press();
+      if (open.has(menu)) menu.first();
     });
     return { show, close: () => menu && close(menu) };
   }
@@ -364,9 +374,12 @@
       show(event.clientX - box.left - region.clientLeft, event.clientY - box.top - region.clientTop);
     });
     region.addEventListener("keydown", (event) => {
-      if (event.key !== "ContextMenu" && !(event.shiftKey && event.key === "F10")) return;
+      const held = chord(event);
+      if (!(event.key === "ContextMenu" && held === "") && !(event.key === "F10" && held === "shift")) return;
       event.preventDefault();
-      show(region.clientWidth / 2, region.clientHeight / 2);
+      close();
+      show(0, 0);
+      menu.first();
     });
     return { show, close: () => menu && close(menu) };
   }

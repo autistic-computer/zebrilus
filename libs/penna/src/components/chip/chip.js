@@ -48,19 +48,17 @@
     });
   }
 
-  function focus(root = document) {
-    root.querySelectorAll('.penna-chip[data-state~="focused"]').forEach((chip) => {
-      const style = getComputedStyle(chip);
-      const radius = parseFloat(style.getPropertyValue("--penna-r")) || 0;
-      const box = chip.getBoundingClientRect();
-      const cap = (Math.min(box.width, box.height) + 3) * 0.45;
-      chip.style.setProperty("--penna-ring-inset", `${-(1.5 + (parseFloat(style.borderTopWidth) || 0))}px`);
-      chip.style.setProperty("--penna-ring-r", `${cap > 0 ? cap * Math.tanh((radius + 1.5) / cap) : 0}px`);
-    });
-  }
+  const focusable = (event) => event.target.closest?.(".penna-chip[data-interactive][tabindex]");
+
+  document.addEventListener("mousedown", (event) => focusable(event) && event.preventDefault());
+  document.addEventListener("keydown", (event) => {
+    const chip = focusable(event);
+    if (!chip || (event.key !== "Enter" && event.key !== " ")) return;
+    event.preventDefault();
+    chip.click();
+  });
 
   function settle() {
-    focus();
     truncate();
     ring();
   }

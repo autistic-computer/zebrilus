@@ -89,4 +89,33 @@
     const target = event.target.closest("[data-tooltip]:not([data-tooltip-pinned])");
     if (target) hide(target);
   });
+
+  let focused;
+
+  function unfocus() {
+    if (focused && shown === focused) {
+      focused.removeAttribute("data-open");
+      shown = undefined;
+    }
+    focused = undefined;
+  }
+
+  document.addEventListener("focusin", (event) => {
+    const target = event.target;
+    if (!(target instanceof Element) || !target.matches("[data-tooltip]:focus-visible")) return;
+    const tip = tipFor(target);
+    if (!tip) return;
+    hide();
+    tip.setAttribute("data-open", "");
+    window.pennaKit?.ceilText(tip);
+    const box = target.getBoundingClientRect();
+    place(tip, box.left + box.width / 2, box.bottom);
+    shown = focused = tip;
+  });
+
+  document.addEventListener("focusout", unfocus);
+  document.addEventListener("pointermove", unfocus);
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") unfocus();
+  });
 })();

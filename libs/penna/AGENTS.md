@@ -141,10 +141,13 @@ How parity drives the pages:
 - An element with no role draws with the window's smoothing, as ala draws a quad with no smoothing of its own:
   give a rounded box with no role `corner-shape: superellipse(var(--penna-window-k))`. A circle or pill keeps
   the plain `round`, since ala draws a full radius round whatever the smoothing.
-- Focus is the tokens' `data-state="focused"`: on a button it leaves the fill alone and sets `--penna-focus`.
-  ala draws the ring 1.5px outside the border box with its own adaptive radius, which a CSS outline can't
-  follow, so `button.css` swaps `penna.css`'s outline for a ring that `button.js` sizes. Link and text
-  buttons have no role, so their ring takes the root `--penna-focus-neutral`. Only fields change their
+- Focus is the tokens' `data-state="focused"`: on a button, row, tab, list item, chip or tile it leaves the
+  fill alone and sets `--penna-focus`. ala draws the ring 1.5px outside the border box with its own adaptive
+  radius, which a CSS outline can't follow, so each widget's CSS swaps `penna.css`'s outline for an `::after`
+  ring that `kit.js` sizes on every `[data-penna]` element (`--penna-ring-inset`, `--penna-ring-r`;
+  `pennaKit.focusRing(element)` for one without a role). `--penna-focus` doesn't inherit, so the ring reads it
+  through `--penna-ring` set on the element. Link and text buttons have no role, so their ring takes the root
+  `--penna-focus-neutral`. Only fields change their
   fill or edge on focus, and only their rule also follows `:focus-within`.
 - `kit.js` and a page's own script are classic scripts sharing one global scope, so a top-level function
   named like one of kit.js's (`settle`, `round`) replaces it and kit.js stops rounding corners.

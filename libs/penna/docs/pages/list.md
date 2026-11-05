@@ -2,10 +2,6 @@
 
 A column of things to open or pick: hosts, sessions, files. For actions use a menu, for nested things a tree.
 
-```figure uses=notice
-<div class="docs-full penna-notice" data-penna="notice" data-tone="warning"><div class="penna-notice-tone" data-penna="chip" data-tone="warning"><span class="penna-notice-lead"><i data-icon="triangle-alert"></i></span><div class="penna-notice-body"><span class="penna-text penna-notice-title" data-penna-text>Being reworked</span><span class="penna-text penna-notice-detail" data-penna-text>A list row takes no focus yet, so a list has no keyboard path unless the app adds one.</span></div></div></div>
-```
-
 ## Anatomy
 
 ```figure uses=list
@@ -40,11 +36,13 @@ Only the height moves. `.row_height()` makes a taller row.
   <div class="docs-cell"><div class="penna-list" style="width: 104px"><div class="penna-list-item" data-penna="menu-item" data-state="hover"><div class="penna-list-content"><i class="penna-list-icon" data-icon="square-terminal"></i><span class="penna-list-label"><span class="penna-text" data-penna-text>work</span></span></div></div></div><span class="docs-note">Hover</span></div>
   <div class="docs-cell"><div class="penna-list" style="width: 104px"><div class="penna-list-item" data-penna="menu-item" data-state="hover active"><div class="penna-list-content"><i class="penna-list-icon" data-icon="square-terminal"></i><span class="penna-list-label"><span class="penna-text" data-penna-text>work</span></span></div></div></div><span class="docs-note">Pressed</span></div>
   <div class="docs-cell"><div class="penna-list" style="width: 104px"><div class="penna-list-item" data-penna="menu-item" data-state="selected" aria-selected="true"><div class="penna-list-content"><i class="penna-list-icon" data-icon="square-terminal"></i><span class="penna-list-label"><span class="penna-text" data-penna-text>work</span></span></div></div></div><span class="docs-note">Selected</span></div>
+  <div class="docs-cell"><div class="penna-list" style="width: 104px"><div class="penna-list-item" data-penna="menu-item" data-state="focused"><div class="penna-list-content"><i class="penna-list-icon" data-icon="square-terminal"></i><span class="penna-list-label"><span class="penna-text" data-penna-text>work</span></span></div></div></div><span class="docs-note">Focused</span></div>
   <div class="docs-cell"><div class="penna-list" style="width: 104px"><div class="penna-list-item" data-penna="menu-item" data-state="disabled" aria-disabled="true"><div class="penna-list-content"><i class="penna-list-icon" data-icon="square-terminal"></i><span class="penna-list-label"><span class="penna-text" data-penna-text>work</span></span></div></div></div><span class="docs-note">Off</span></div>
 </div>
 ```
 
 - Hover and press only at rest.
+- Focused: a ring, over the selected fill when it is selected too. The list owns focus and the arrow keys.
 - Off: dimmed, ignores clicks.
 
 ## Content
@@ -74,6 +72,7 @@ ListItem::new("work").selected(true).on_click(open).child(
 | `ListItem::new(id)` | `.penna-list-item[data-penna="menu-item"]` | Row |
 | `.look(look)` | `data-penna` | Row look |
 | `.selected(true)` | `aria-selected="true"` | Selected |
+| `.focused(true)` | `data-state="focused"` | Focus ring |
 | `.disabled(true)` | `aria-disabled="true"` | Off |
 | `.row_height(height)` | `--penna-list-row` | Minimum height and corners |
 | `.on_click(handler)` | `click` | Runs on release |

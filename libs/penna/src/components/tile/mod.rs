@@ -84,13 +84,19 @@ impl Tile {
 plate_element!(Tile);
 
 impl RenderOnce for Tile {
-    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
+    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let mut plate = self.plate;
         if self.variant != TileVariant::Veil {
-            plate.role = plate.role.or(Some(Role::Group));
+            plate = plate.take_focus(window, cx);
+            let role = if plate.clickable {
+                Role::Button
+            } else {
+                Role::Group
+            };
+            plate.role = plate.role.or(Some(role));
             let edge = self.edge;
             let mini = self.variant == TileVariant::Mini;
-            return plate.paint_with(cx, move |layer| {
+            return plate.paint_with(window, cx, move |layer| {
                 if let Some(width) = edge.filter(|_| layer.border_width > Pixels::ZERO) {
                     layer.border_width = width;
                 }
@@ -105,6 +111,6 @@ impl RenderOnce for Tile {
             ..ground
         });
         plate.state = PaintState::Hover;
-        plate.paint_with(cx, |layer| layer.border_width = Pixels::ZERO)
+        plate.paint_with(window, cx, |layer| layer.border_width = Pixels::ZERO)
     }
 }

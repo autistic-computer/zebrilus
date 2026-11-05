@@ -5,6 +5,7 @@
   min-width: 0;
   user-select: none;
   touch-action: none;
+  outline: none;
   --penna-tile-bw: var(--penna-bw);
 }
 
@@ -66,13 +67,27 @@
   z-index: 1;
 }
 
-.penna-tile[data-penna]:not([data-penna="tile.drop"]):is([data-state~="selected"], [data-state~="current"], [data-state~="focused"], [aria-selected="true"])::after {
+.penna-tile[data-penna]:not([data-penna="tile.drop"]):is([data-state~="selected"], [data-state~="current"], [aria-selected="true"])::before {
   content: "";
   position: absolute;
   inset: calc(-1 * round(down, var(--penna-tile-bw, 0px), 0.5px));
   border-radius: inherit;
   corner-shape: inherit;
   box-shadow: 0 0 0 2px var(--penna-accent);
+  pointer-events: none;
+}
+
+.penna-tile[data-penna]:is([data-state~="focused"], :focus-visible) {
+  --penna-ring: var(--penna-focus);
+}
+
+.penna-tile[data-penna]:is([data-state~="focused"], :focus-visible)::after {
+  content: "";
+  position: absolute;
+  inset: var(--penna-ring-inset, -1.5px);
+  border: 1.5px solid var(--penna-ring);
+  border-radius: var(--penna-ring-r, 12px);
+  corner-shape: inherit;
   pointer-events: none;
 }
 

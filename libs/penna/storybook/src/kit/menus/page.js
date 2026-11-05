@@ -78,11 +78,13 @@
     const handle = dropdown(trigger, menus[trigger.dataset.dropdown]());
     if (trigger.hasAttribute("data-open")) opened.push(handle);
   });
+  const focused = () => document.querySelector("[data-focus]")?.focus({ preventScroll: true });
   let dropped = false;
   const drop = () => {
     if (dropped) return;
     dropped = true;
     opened.forEach((handle) => handle.show());
+    focused();
   };
   if (document.getElementById("penna-tokens")?.sheet) drop();
   else document.addEventListener("load", (event) => event.target.id === "penna-tokens" && drop(), true);
@@ -165,4 +167,5 @@
   regions();
   document.addEventListener("load", (event) => event.target.id === "penna-tokens" && regions(), true);
   focus?.focus();
+  if (dropped) focused();
 })();

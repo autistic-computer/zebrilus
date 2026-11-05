@@ -1,6 +1,6 @@
 use ala::{
     AnyView, App, AppContext as _, Context, Entity, IntoElement, ParentElement as _, Render,
-    SharedString, Styled as _, Subscription, Window, div, px,
+    SharedString, Styled as _, Window, div, px,
 };
 use penna::{
     Disableable as _, IndexPath, Sizable as _, Size,
@@ -11,7 +11,7 @@ use penna::{
     h_flex,
 };
 
-use super::support::{Probe, after_first_frame, click, dispatch, when_visible};
+use super::support::{after_first_frame, dispatch, tab};
 use crate::story::{Section, Story, row, states};
 
 pub const STORY: Story = Story {
@@ -39,10 +39,22 @@ pub const STORY: Story = Story {
             build: |window, cx| Segmented::view(window, cx),
         },
         Section {
+            id: "segmented-focused",
+            name: "Segmented control, focused",
+            summary: "Tab focus rings the whole track. The arrow keys, Home and End move the pick; a click picks without focusing.",
+            build: |window, cx| FocusedSegmented::view(window, cx),
+        },
+        Section {
             id: "switch",
             name: "Switch",
             summary: "Off, on, small and disabled, then every other size on the ladder. A press flips the enabled ones; the thumb slides between states and holds still with motion off.",
             build: |window, cx| Switches::view(window, cx),
+        },
+        Section {
+            id: "switch-focused",
+            name: "Switch, focused",
+            summary: "Tab focus rings the track; Space or Enter flips it. A click flips it on release without focusing.",
+            build: |window, cx| FocusedSwitch::view(window, cx),
         },
         Section {
             id: "slider",
@@ -53,7 +65,7 @@ pub const STORY: Story = Story {
         Section {
             id: "slider-focused",
             name: "Discrete slider, focused",
-            summary: "A press on the slider focuses it; the picked pill then carries a border in the focus color and the arrow keys step it.",
+            summary: "Tab focuses the slider: a ring outside the picked pill, and the arrow keys step it. A press focuses it too, with no ring until a key moves it.",
             build: |window, cx| FocusedSlider::view(window, cx),
         },
     ],
@@ -182,6 +194,34 @@ impl Render for Segmented {
     }
 }
 
+struct FocusedSegmented {
+    picked: usize,
+}
+
+impl FocusedSegmented {
+    fn view(window: &mut Window, cx: &mut App) -> AnyView {
+        after_first_frame(window, Window::focus_next);
+        cx.new(|_| Self { picked: 1 }).into()
+    }
+}
+
+impl Render for FocusedSegmented {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let pick = cx.listener(|this, index: &usize, _, cx| {
+            this.picked = *index;
+            cx.notify();
+        });
+        states().state(
+            "focused",
+            row().child(
+                SegmentedControl::new("segmented-focused", labels(&["System", "Light", "Dark"]))
+                    .selected(self.picked)
+                    .on_select(move |index, window, cx| pick(&index, window, cx)),
+            ),
+        )
+    }
+}
+
 struct Switches {
     on: [bool; 12],
 }
@@ -256,6 +296,36 @@ impl Render for Switches {
     }
 }
 
+struct FocusedSwitch {
+    on: [bool; 2],
+}
+
+impl FocusedSwitch {
+    fn view(window: &mut Window, cx: &mut App) -> AnyView {
+        after_first_frame(window, Window::focus_next);
+        cx.new(|_| Self { on: [false; 2] }).into()
+    }
+}
+
+impl Render for FocusedSwitch {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let switch = |id: &'static str, at: usize| {
+            Switch::new(id).checked(self.on[at]).on_click(cx.listener(
+                move |this, on: &bool, _, cx| {
+                    this.on[at] = *on;
+                    cx.notify();
+                },
+            ))
+        };
+        states().state(
+            "focused, resting",
+            row()
+                .child(switch("switch-focused", 0))
+                .child(switch("switch-resting", 1)),
+        )
+    }
+}
+
 fn labels(names: &[&'static str]) -> Vec<SharedString> {
     names.iter().copied().map(SharedString::from).collect()
 }
@@ -318,23 +388,12 @@ impl Render for Sliders {
 
 struct FocusedSlider {
     picked: usize,
-    label: Probe,
-    _bounds: Subscription,
 }
 
 impl FocusedSlider {
     fn view(window: &mut Window, cx: &mut App) -> AnyView {
-        let label = Probe::default();
-        let probe = label.clone();
-        when_visible(&label, window, move |window, cx| click(&probe, window, cx));
-        cx.new(|cx| Self {
-            picked: 1,
-            label,
-            _bounds: cx.observe_window_bounds(window, |this: &mut Self, window, cx| {
-                click(&this.label, window, cx);
-            }),
-        })
-        .into()
+        after_first_frame(window, tab);
+        cx.new(|_| Self { picked: 1 }).into()
     }
 }
 
@@ -346,25 +405,13 @@ impl Render for FocusedSlider {
         });
         states().state(
             "focused",
-            div()
-                .relative()
-                .w(px(360.0))
-                .child(DiscreteSlider::new(
-                    "slider-focused",
-                    "Scrollback",
-                    labels(&SCROLLBACK),
-                    self.picked,
-                    move |index, window, cx| pick(&index, window, cx),
-                ))
-                .child(
-                    div()
-                        .absolute()
-                        .top_0()
-                        .left_0()
-                        .w(px(24.0))
-                        .h_full()
-                        .child(self.label.measure()),
-                ),
+            div().w(px(360.0)).child(DiscreteSlider::new(
+                "slider-focused",
+                "Scrollback",
+                labels(&SCROLLBACK),
+                self.picked,
+                move |index, window, cx| pick(&index, window, cx),
+            )),
         )
     }
 }

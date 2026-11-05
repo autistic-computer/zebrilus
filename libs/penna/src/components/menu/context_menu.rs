@@ -3,8 +3,9 @@ use std::{cell::RefCell, rc::Rc};
 use ala::{
     Anchor, AnyElement, App, Context, DismissEvent, Element, ElementId, Entity, Focusable,
     GlobalElementId, Hitbox, HitboxBehavior, InspectorElementId, InteractiveElement, IntoElement,
-    LongPressEvent, MouseButton, MouseDownEvent, ParentElement, Pixels, Point, StyleRefinement,
-    Styled, Subscription, TouchPhase, Window, anchored, deferred, div, prelude::FluentBuilder, px,
+    KeyDownEvent, LongPressEvent, Modifiers, MouseButton, MouseDownEvent, ParentElement, Pixels,
+    Point, StyleRefinement, Styled, Subscription, TouchPhase, Window, anchored, deferred, div,
+    prelude::FluentBuilder, px,
 };
 
 use super::PopupMenu;
@@ -75,6 +76,16 @@ impl<E: ParentElement + Styled> ContextMenu<E> {
             },
         )
     }
+}
+
+fn opens_context_menu(event: &KeyDownEvent) -> bool {
+    let stroke = &event.keystroke;
+    !event.is_held
+        && match stroke.key.as_str() {
+            "menu" | "contextmenu" => !stroke.modifiers.modified(),
+            "f10" => stroke.modifiers == Modifiers::shift(),
+            _ => false,
+        }
 }
 
 impl<E: ParentElement + Styled> ParentElement for ContextMenu<E> {
@@ -233,23 +244,19 @@ impl<E: ParentElement + Styled + IntoElement + 'static> Element for ContextMenu<
         &mut self,
         id: Option<&ala::GlobalElementId>,
         _: Option<&InspectorElementId>,
-        _: ala::Bounds<ala::Pixels>,
+        bounds: ala::Bounds<ala::Pixels>,
         request_layout: &mut Self::RequestLayoutState,
         hitbox: &mut Self::PrepaintState,
         window: &mut Window,
         cx: &mut App,
     ) {
-        if let Some(element) = &mut request_layout.element {
-            element.paint(window, cx);
-        }
-
         let builder = self.menu.clone();
 
         self.with_element_state(
             id.unwrap(),
             window,
             cx,
-            |_view, state: &mut ContextMenuState, window, _| {
+            |_view, state: &mut ContextMenuState, window, cx| {
                 let shared_state = state.shared_state.clone();
 
                 let open = Rc::new(
@@ -284,6 +291,9 @@ impl<E: ParentElement + Styled + IntoElement + 'static> Element for ContextMenu<
                                 });
                                 menu.update(cx, |menu, cx| {
                                     menu.set_previous_focus(previous_focus_handle, cx);
+                                    if window.last_input_was_keyboard() {
+                                        menu.select_first(cx);
+                                    }
                                 });
                                 menu.focus_handle(cx).focus(window, cx);
 
@@ -307,6 +317,19 @@ impl<E: ParentElement + Styled + IntoElement + 'static> Element for ContextMenu<
                         });
                     },
                 );
+
+                let key_open = Rc::clone(&open);
+                window.on_key_event(move |event: &KeyDownEvent, phase, window, cx| {
+                    if phase.bubble() && !window.default_prevented() && opens_context_menu(event) {
+                        cx.stop_propagation();
+                        window.prevent_default();
+                        key_open(bounds.origin, window, cx);
+                    }
+                });
+
+                if let Some(element) = &mut request_layout.element {
+                    element.paint(window, cx);
+                }
 
                 let mouse_hitbox = hitbox.clone();
                 let mouse_open = Rc::clone(&open);
@@ -345,6 +368,7 @@ mod tests {
     };
 
     use super::*;
+    use crate::components::menu::PopupMenuItem;
 
     actions!(context_menu_test, [RemoveTab]);
 
@@ -404,6 +428,84 @@ mod tests {
                         .context_menu(|menu, _, _| menu.menu("Close", Box::new(RemoveTab))),
                 )
         }
+    }
+
+    struct FocusableRegion {
+        content_focus: FocusHandle,
+        region_focus: FocusHandle,
+        ran: Rc<Cell<usize>>,
+    }
+
+    impl Render for FocusableRegion {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            let ran = self.ran.clone();
+            div()
+                .size_full()
+                .child(
+                    div()
+                        .id("content")
+                        .h(px(40.))
+                        .track_focus(&self.content_focus),
+                )
+                .child(
+                    div()
+                        .id("tab")
+                        .h(px(60.))
+                        .track_focus(&self.region_focus)
+                        .context_menu(move |menu, _, _| {
+                            let ran = ran.clone();
+                            menu.label("Tab")
+                                .item(PopupMenuItem::new("Rename").disabled(true))
+                                .item(
+                                    PopupMenuItem::new("Close")
+                                        .on_click(move |_, _, _| ran.set(ran.get() + 1)),
+                                )
+                        }),
+                )
+        }
+    }
+
+    #[ala::test]
+    fn shift_f10_and_the_menu_key_open_a_focused_region_on_its_first_enabled_row(
+        cx: &mut TestAppContext,
+    ) {
+        cx.update(crate::init);
+        let ran = Rc::new(Cell::new(0));
+        let (root, cx) = cx.add_window_view({
+            let ran = ran.clone();
+            move |window, cx| {
+                let content_focus = cx.focus_handle();
+                content_focus.focus(window, cx);
+                FocusableRegion {
+                    content_focus,
+                    region_focus: cx.focus_handle(),
+                    ran,
+                }
+            }
+        });
+        let (content_focus, region_focus) = root.read_with(cx, |root, _| {
+            (root.content_focus.clone(), root.region_focus.clone())
+        });
+        let draw = |cx: &mut VisualTestContext| {
+            cx.run_until_parked();
+            cx.update(|window, cx| _ = window.draw(cx));
+        };
+        draw(cx);
+
+        cx.simulate_keystrokes("shift-f10");
+        draw(cx);
+        cx.update(|window, cx| assert_eq!(window.focused(cx).as_ref(), Some(&content_focus)));
+
+        cx.update(|window, cx| region_focus.focus(window, cx));
+        draw(cx);
+        for key in ["shift-f10", "menu", "contextmenu"] {
+            cx.simulate_keystrokes(key);
+            draw(cx);
+            cx.simulate_keystrokes("enter");
+            draw(cx);
+            cx.update(|window, cx| assert_eq!(window.focused(cx).as_ref(), Some(&region_focus)));
+        }
+        assert_eq!(ran.get(), 3);
     }
 
     #[ala::test]

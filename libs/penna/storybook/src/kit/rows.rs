@@ -20,13 +20,13 @@ pub const STORY: Story = Story {
         Section {
             id: "tabs",
             name: "Tabs",
-            summary: "Tab::new(id, look).state(state) for window pills, browser tabs, the tray chips over a composer and a pane's title. A tab is control-lg, 32 tall; .with_size(size) moves it along the control ladder and leaves its text alone. Point at the resting ones to see them light.",
+            summary: "Tab::new(id, look).state(state) for window pills, browser tabs, the tray chips over a composer and a pane's title. A focused tab draws the focus ring and keeps its own fill; .focused(true) adds the ring to a selected one. A tab is control-lg, 32 tall; .with_size(size) moves it along the control ladder and leaves its text alone. Point at the resting ones to see them light.",
             build: |_, cx| stateless(tabs, cx),
         },
         Section {
             id: "rows",
             name: "Rows",
-            summary: "Row::new(id, look).state(state).row_height(height) for menu, picker, sidebar and navigation rows. row_height sizes the corners only; the app sets the height.",
+            summary: "Row::new(id, look).state(state).row_height(height) for menu, picker, sidebar and navigation rows. A focused row draws the focus ring and keeps its own fill; .focused(true) adds the ring to a selected one. row_height sizes the corners only; the app sets the height.",
             build: |_, cx| stateless(rows, cx),
         },
         Section {
@@ -38,7 +38,7 @@ pub const STORY: Story = Story {
         Section {
             id: "list-items",
             name: "List items",
-            summary: "ListItem::new(id).look(look) picks the row look, .row_height(height) its corners and minimum height.",
+            summary: "ListItem::new(id).look(look) picks the row look, .row_height(height) its corners and minimum height. .focused(true) draws the focus ring, over the selected fill when it is selected too.",
             build: |_, cx| stateless(list_items, cx),
         },
     ],
@@ -98,6 +98,12 @@ fn tabs(_: &mut Window, cx: &mut App) -> AnyElement {
                 ),
             )
         })
+        .state(
+            "selected and focused",
+            row().children(TAB_LOOKS.iter().map(|(look, name)| {
+                tab(*look, "picked", PaintState::Selected, name, cx).focused(true)
+            })),
+        )
         .state(
             "sizes",
             row().children(TAB_SIZES.iter().map(|(size, label)| {
@@ -182,6 +188,14 @@ fn rows(_: &mut Window, cx: &mut App) -> AnyElement {
                 ),
             )
         })
+        .state(
+            "selected and focused",
+            v_flex()
+                .gap(Space::S2)
+                .children(ROW_LOOKS.iter().map(|(look, name)| {
+                    list_row(*look, "picked", PaintState::Selected, name).focused(true)
+                })),
+        )
         .state(
             "toned",
             v_flex()
@@ -337,6 +351,19 @@ fn list_items(_: &mut Window, _: &mut App) -> AnyElement {
                             .h(px(40.0))
                             .selected(true)
                             .child("Selected, 40px"),
+                    )
+                    .child(
+                        ListItem::new(("item-focused", index))
+                            .look(*look)
+                            .focused(true)
+                            .child("Focused"),
+                    )
+                    .child(
+                        ListItem::new(("item-picked", index))
+                            .look(*look)
+                            .selected(true)
+                            .focused(true)
+                            .child("Selected, focused"),
                     ),
             )
         })

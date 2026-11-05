@@ -74,6 +74,6 @@
   --penna-step-fill: color-mix(in oklab, var(--penna-primary) 94%, var(--penna-step-pole));
 }
 
-.penna-steps:is(:focus, [data-focused]) .penna-step[data-picked]::before {
-  border: 1.5px solid rgb(from var(--penna-primary) r g b / calc(alpha * 0.8));
+.penna-steps:is(:focus-visible, [data-focused]) .penna-step[data-picked]::before {
+  box-shadow: 0 0 0 1.5px var(--penna-focus-neutral);
 }

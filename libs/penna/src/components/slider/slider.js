@@ -55,10 +55,10 @@ function wireSteps(slider) {
     pill.addEventListener("mousedown", (event) => {
       if (event.button !== 0) return;
       event.preventDefault();
-      slider.focus();
+      slider.focus({ focusVisible: false });
     });
     pill.addEventListener("click", () => {
-      slider.focus();
+      slider.focus({ focusVisible: false });
       pickStep(slider, index);
     });
     pills.append(pill);
@@ -72,8 +72,11 @@ function wireSteps(slider) {
     const moves = { ArrowLeft: at - 1, ArrowDown: at - 1, ArrowRight: at + 1, ArrowUp: at + 1, Home: 0, End: labels.length - 1 };
     if (!(event.key in moves)) return;
     event.preventDefault();
+    slider.toggleAttribute("data-focused", true);
     pickStep(slider, moves[event.key]);
   });
+  slider.addEventListener("mousedown", () => slider.removeAttribute("data-focused"));
+  slider.addEventListener("blur", () => slider.removeAttribute("data-focused"));
   paintSteps(slider);
 }
 

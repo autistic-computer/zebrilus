@@ -31,7 +31,7 @@ pub const STORY: Story = Story {
         Section {
             id: "tree-guides",
             name: "Tree guides",
-            summary: "IndentGuides drawn as a uniform_list decoration in the rule.tree role. Only the guide of the active row's nearest ancestor lights up.",
+            summary: "IndentGuides drawn as a uniform_list decoration in the rule.tree role. Only the guide of the active row's nearest ancestor lights up. The app marks the row the keyboard is on with .focused(true), which draws the focus ring.",
             build: |_, cx| stateless(tree_guides, cx),
         },
     ],
@@ -112,7 +112,12 @@ const INDENT: f32 = 16.0;
 const ROW_INSET: f32 = 12.0;
 const ICON_SLOT: f32 = 16.0;
 
-fn tree(id: &'static str, active_row: Option<usize>, cx: &App) -> AnyElement {
+fn tree(
+    id: &'static str,
+    active_row: Option<usize>,
+    focused_row: Option<usize>,
+    cx: &App,
+) -> AnyElement {
     let depths: Rc<[usize]> = TREE
         .iter()
         .map(|(depth, _, _)| usize::from(*depth))
@@ -126,6 +131,7 @@ fn tree(id: &'static str, active_row: Option<usize>, cx: &App) -> AnyElement {
                     .role(Role::TreeItem)
                     .look(RowLook::Sidebar)
                     .selected(active_row == Some(index))
+                    .focused(focused_row == Some(index))
                     .w_full()
                     .h(px(penna::Size::Medium.control_px()))
                     .pl(px(ROW_INSET + INDENT * f32::from(*depth)))
@@ -161,8 +167,11 @@ fn tree_guides(_: &mut Window, cx: &mut App) -> AnyElement {
     let cx: &App = cx;
     states()
         .columns(3)
-        .state("active row: theme.rs", tree("tree-theme", Some(4), cx))
-        .state("active row: build.log", tree("tree-log", Some(10), cx))
-        .state("no active row", tree("tree-none", None, cx))
+        .state(
+            "active and focused row: theme.rs",
+            tree("tree-theme", Some(4), Some(4), cx),
+        )
+        .state("active row: build.log", tree("tree-log", Some(10), None, cx))
+        .state("no active row", tree("tree-none", None, None, cx))
         .into_any_element()
 }

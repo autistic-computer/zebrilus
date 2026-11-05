@@ -10,11 +10,12 @@ use ala::{
 
 use crate::{
     ActiveTheme as _, AuthoredElement as _, Colorize as _, Emphasis, Kind, Paint, PaintState, Size,
-    StyledExt as _, Surface, TextStyle, Tone,
+    Smoothing, StyledExt as _, Surface, TextStyle, Tone,
     blocks::sheet::{bottom_sheet, close_sheet, floating_sheet, sheet_close, sheet_inset},
     blocks::touch::CoarsePointer,
     components::input::{field_chrome_on, field_text},
     components::tooltip::Tooltip,
+    foundation::focus::with_focus_ring,
     h_flex, oklab_lightness, v_flex,
 };
 
@@ -30,6 +31,18 @@ const TOUCH_HEIGHT: f32 = 44.0;
 const PREVIEW_WIDTH: f32 = 72.0;
 const PREVIEW_TRACK: f32 = 4.0;
 const PREVIEW_THUMB: f32 = 10.0;
+
+fn focus_ring<T: ParentElement + Styled>(this: T, ringed: bool, window: &Window, cx: &App) -> T {
+    let paint = cx.theme().paint(Tone::Neutral, Emphasis::Ghost);
+    with_focus_ring(
+        this,
+        ringed,
+        px(0.),
+        &paint,
+        Smoothing::CIRCLE.exponent(),
+        window,
+    )
+}
 
 pub(crate) fn thumb(cx: &App) -> f32 {
     if CoarsePointer::get(cx) {
@@ -66,13 +79,34 @@ impl DiscreteSlider {
     }
 }
 
+struct StepFocus {
+    focus: FocusHandle,
+    pointer: bool,
+}
+
+impl StepFocus {
+    fn set_pointer(&mut self, pointer: bool, cx: &mut Context<Self>) {
+        if self.pointer != pointer {
+            self.pointer = pointer;
+            cx.notify();
+        }
+    }
+}
+
 impl RenderOnce for DiscreteSlider {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let count = self.labels.len();
         let selected = self.selected.min(count.saturating_sub(1));
-        let state = window.use_keyed_state(self.id.clone(), cx, |_, cx| cx.focus_handle());
-        let focus = state.read(cx).clone();
+        let state = window.use_keyed_state(self.id.clone(), cx, |_, cx| StepFocus {
+            focus: cx.focus_handle().tab_stop(true),
+            pointer: false,
+        });
+        let focus = state.read(cx).focus.clone();
         let focused = focus.is_focused(window);
+        if !focused && state.read(cx).pointer {
+            state.update(cx, |steps, _| steps.pointer = false);
+        }
+        let ringed = focused && !state.read(cx).pointer;
         let foreground = cx.theme().foreground;
         let filled = cx.theme().paint(Tone::Primary, Emphasis::Solid);
         let track = cx.theme().paint(Tone::Neutral, Emphasis::Soft);
@@ -107,23 +141,24 @@ impl RenderOnce for DiscreteSlider {
                     .h(Size::Medium.control_h())
                     .cursor_pointer()
                     .tooltip(move |window, cx| Tooltip::new(tooltip.clone()).build(window, cx))
-                    .child(
+                    .child(focus_ring(
                         div()
                             .w_full()
                             .h(px(6.0))
                             .rounded_full()
                             .bg(fill)
-                            .group_hover(group, move |this| this.bg(hover))
-                            .when(focused && index == selected, |this| {
-                                this.focus_ring(&filled)
-                            }),
-                    )
+                            .group_hover(group, move |this| this.bg(hover)),
+                        ringed && index == selected,
+                        window,
+                        cx,
+                    ))
                     .on_click(move |_, window, cx| {
                         focus.focus(window, cx);
                         change(index, window, cx);
                     }),
             );
         }
+        let pressed = state.clone();
         h_flex()
             .author_id(self.id)
             .role(Role::Slider)
@@ -133,6 +168,9 @@ impl RenderOnce for DiscreteSlider {
             .w_full()
             .gap(Space::S8)
             .type_style(TextStyle::Small, cx)
+            .on_any_mouse_down(move |_, _, cx| {
+                pressed.update(cx, |steps, cx| steps.set_pointer(true, cx));
+            })
             .on_key_down(move |event, window, cx| {
                 let next = match event.keystroke.key.as_str() {
                     "left" | "down" => selected.saturating_sub(1),
@@ -142,6 +180,7 @@ impl RenderOnce for DiscreteSlider {
                     _ => return,
                 };
                 cx.stop_propagation();
+                state.update(cx, |steps, cx| steps.set_pointer(false, cx));
                 if count > 0 && next != selected {
                     (self.on_change)(next, window, cx);
                 }
@@ -323,9 +362,17 @@ struct Drag {
     live: Option<f32>,
     touch: bool,
     sheet: bool,
+    pointer: bool,
 }
 
 impl Drag {
+    fn set_pointer(&mut self, pointer: bool, cx: &mut Context<Self>) {
+        if self.pointer != pointer {
+            self.pointer = pointer;
+            cx.notify();
+        }
+    }
+
     fn set_sheet(&mut self, open: bool, cx: &mut Context<Self>) {
         if self.sheet != open {
             self.sheet = open;
@@ -337,12 +384,16 @@ impl Drag {
 impl RenderOnce for Slider {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let drag = window.use_keyed_state(self.id.clone(), cx, |_, cx| Drag {
-            focus: cx.focus_handle(),
+            focus: cx.focus_handle().tab_stop(true),
             bounds: Bounds::default(),
             live: None,
             touch: false,
             sheet: false,
+            pointer: false,
         });
+        if drag.read(cx).pointer && !self.focus(&drag, cx).is_focused(window) {
+            drag.update(cx, |drag, _| drag.pointer = false);
+        }
         if CoarsePointer::get(cx) && !self.inline {
             self.field(drag, window, cx).into_any_element()
         } else {
@@ -352,7 +403,15 @@ impl RenderOnce for Slider {
 }
 
 impl Slider {
-    fn rail(&self, fraction: f32, track: f32, thumb: f32, focused: bool, cx: &App) -> Div {
+    fn rail(
+        &self,
+        fraction: f32,
+        track: f32,
+        thumb: f32,
+        ringed: bool,
+        window: &Window,
+        cx: &App,
+    ) -> Div {
         let theme = cx.theme();
         let filled = theme.paint(Tone::Primary, Emphasis::Solid);
         let rest = theme
@@ -390,16 +449,20 @@ impl Slider {
                     .bg(filled.fill),
             )
         };
-        let dot = div()
-            .absolute()
-            .top(px((track - thumb) / 2.0))
-            .left(relative(fraction))
-            .ml(px(-thumb / 2.0))
-            .size(px(thumb))
-            .rounded_full()
-            .bg(knob)
-            .shadow(crate::lifted_shadow(cx))
-            .when(focused, |dot| dot.focus_ring(&filled));
+        let dot = focus_ring(
+            div()
+                .absolute()
+                .top(px((track - thumb) / 2.0))
+                .left(relative(fraction))
+                .ml(px(-thumb / 2.0))
+                .size(px(thumb))
+                .rounded_full()
+                .bg(knob)
+                .shadow(crate::lifted_shadow(cx)),
+            ringed,
+            window,
+            cx,
+        );
         div().relative().w_full().child(bar).child(dot)
     }
 
@@ -444,7 +507,7 @@ impl Slider {
                 .flex_none()
                 .w(px(PREVIEW_WIDTH))
                 .px(px(PREVIEW_THUMB / 2.0))
-                .child(self.rail(fraction, PREVIEW_TRACK, PREVIEW_THUMB, false, cx)),
+                .child(self.rail(fraction, PREVIEW_TRACK, PREVIEW_THUMB, false, window, cx)),
         )
         .on_click(move |_, window, cx| {
             opener_focus.focus(window, cx);
@@ -495,9 +558,9 @@ impl Slider {
         let thumb = thumb(cx);
         let coarse = CoarsePointer::get(cx);
         let focus = self.focus(&drag, cx);
-        let focused = focus.is_focused(window);
+        let ringed = focus.is_focused(window) && !drag.read(cx).pointer;
         let value = scale.snap(drag.read(cx).live.unwrap_or(self.value));
-        let rail = self.rail(scale.fraction(value), TRACK, thumb, focused, cx);
+        let rail = self.rail(scale.fraction(value), TRACK, thumb, ringed, window, cx);
         let on_change = self.on_change;
         let deferred = self.commit_on_release;
         let committed = scale.snap(self.value);
@@ -600,6 +663,7 @@ impl Slider {
         )
         .absolute()
         .inset_0();
+        let key_drag = drag.clone();
         let key_emit = Rc::clone(&emit);
         let key_release = Rc::clone(&release);
         div()
@@ -630,11 +694,13 @@ impl Slider {
                     _ => return,
                 };
                 cx.stop_propagation();
+                key_drag.update(cx, |drag, cx| drag.set_pointer(false, cx));
                 key_emit(next, window, cx);
                 key_release(window, cx);
             })
             .on_mouse_down(MouseButton::Left, move |event, window, cx| {
                 focus.focus(window, cx);
+                drag.update(cx, |drag, cx| drag.set_pointer(true, cx));
                 let bounds = drag.read(cx).bounds;
                 emit(scale.at(event.position.x, bounds, thumb), window, cx);
             })
@@ -647,7 +713,8 @@ impl Slider {
 mod tests {
     use super::*;
     use ala::{
-        Context, Modifiers, MouseDownEvent, Render, TestAppContext, VisualTestContext, point,
+        Context, Modifiers, MouseDownEvent, Render, ScaledPixels, TestAppContext,
+        VisualTestContext, point,
     };
     use std::cell::RefCell;
 
@@ -836,6 +903,61 @@ mod tests {
         assert_eq!(*changes.borrow(), [180.0, 179.0]);
         touch(cx, TouchPhase::Ended, 400.0);
         assert_eq!(*changes.borrow(), [180.0, 179.0, 360.0]);
+    }
+
+    #[ala::test]
+    fn the_focus_ring_follows_the_keyboard_and_not_a_press(cx: &mut TestAppContext) {
+        cx.update(crate::init);
+        let (_, cx) = cx.add_window_view(|_, _| SliderTest {
+            value: Rc::new(RefCell::new(0.0)),
+            changes: Rc::new(RefCell::new(Vec::new())),
+            commit_on_release: false,
+        });
+        let cx: &mut VisualTestContext = cx;
+        let rings = |cx: &mut VisualTestContext| {
+            cx.run_until_parked();
+            cx.update(|window, cx| {
+                let _ = window.draw(cx);
+                window
+                    .painted_quads()
+                    .iter()
+                    .filter(|quad| quad.border_widths.top.0 > 0.0)
+                    .map(|quad| quad.bounds)
+                    .collect::<Vec<_>>()
+            })
+        };
+        let click = |cx: &mut VisualTestContext| {
+            cx.simulate_event(MouseDownEvent {
+                position: point(px(108.0), px(12.0)),
+                modifiers: Modifiers::default(),
+                button: MouseButton::Left,
+                click_count: 1,
+                first_mouse: false,
+            });
+            cx.simulate_event(MouseUpEvent {
+                position: point(px(108.0), px(12.0)),
+                modifiers: Modifiers::default(),
+                button: MouseButton::Left,
+                click_count: 1,
+            });
+        };
+        rings(cx);
+        click(cx);
+        assert_eq!(rings(cx), []);
+        cx.simulate_keystrokes("end");
+        assert_eq!(
+            rings(cx),
+            [Bounds::new(
+                point(ScaledPixels(397.0), ScaledPixels(9.0)),
+                ala::size(ScaledPixels(38.0), ScaledPixels(38.0)),
+            )]
+        );
+        click(cx);
+        assert_eq!(rings(cx), []);
+        cx.update(Window::blur);
+        rings(cx);
+        cx.update(Window::focus_next);
+        assert_eq!(rings(cx).len(), 1);
     }
 
     #[test]

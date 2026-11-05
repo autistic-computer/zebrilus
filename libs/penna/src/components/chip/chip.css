@@ -163,15 +163,15 @@
   outline: none;
 }
 
-.penna-chip[data-state~="focused"] {
+.penna-chip:is([data-state~="focused"], :focus-visible) {
   position: relative;
   --penna-ring: var(--penna-focus);
 }
 
-.penna-chip[data-state~="focused"]::after {
+.penna-chip:is([data-state~="focused"], :focus-visible)::after {
   content: "";
   position: absolute;
-  inset: var(--penna-ring-inset, -2px);
+  inset: var(--penna-ring-inset, -1.5px);
   border: 1.5px solid var(--penna-ring);
   border-radius: var(--penna-ring-r, 12px);
   corner-shape: inherit;

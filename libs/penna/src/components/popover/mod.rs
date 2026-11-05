@@ -1,11 +1,13 @@
 mod actions;
 
+use std::rc::Rc;
+
 use crate::Space;
 use ala::{
     Anchor, AnyElement, App, Bounds, Context, DismissEvent, ElementId, EventEmitter, FocusHandle,
-    Focusable, InteractiveElement as _, IntoElement, KeyBinding, MouseButton, ParentElement as _,
-    Pixels, Point, Render, RenderOnce, Size, StyleRefinement, Styled, Subscription, Window,
-    anchored, canvas, deferred, div, prelude::FluentBuilder as _, px,
+    Focusable, InteractiveElement as _, IntoElement, KeyBinding, KeyDownEvent, MouseButton,
+    ParentElement as _, Pixels, Point, Render, RenderOnce, Size, StyleRefinement, Styled,
+    Subscription, Window, anchored, canvas, deferred, div, prelude::FluentBuilder as _, px,
 };
 
 use crate::{Selectable, StyledExt as _, Surface, SurfaceRole, TextStyle, v_flex};
@@ -138,6 +140,13 @@ fn resolved_corner(anchor: Anchor, trigger: Bounds<Pixels>) -> Point<Pixels> {
     }
 }
 
+fn opens_from(event: &KeyDownEvent) -> bool {
+    let stroke = &event.keystroke;
+    !event.is_held
+        && !stroke.modifiers.modified()
+        && matches!(stroke.key.as_str(), "enter" | "space" | "down")
+}
+
 fn bottom_anchor(anchor: Anchor) -> bool {
     matches!(
         anchor,
@@ -185,22 +194,42 @@ impl RenderOnce for Popover {
         };
 
         let parent_view_id = window.current_view();
+        let press = Rc::new({
+            let state = state.clone();
+            move |window: &mut Window, cx: &mut App| {
+                state.update(cx, |state, cx| {
+                    if open {
+                        state.dismiss(window, cx);
+                    } else if !state.open {
+                        state.toggle_open(window, cx);
+                    }
+                });
+                cx.notify(parent_view_id);
+            }
+        });
 
         let el = div()
             .id(self.id)
             .child(trigger(open))
             .on_mouse_down(MouseButton::Left, {
-                let state = state.clone();
+                let press = Rc::clone(&press);
                 move |_, window, cx| {
                     cx.stop_propagation();
-                    state.update(cx, |state, cx| {
-                        if open {
-                            state.dismiss(window, cx);
-                        } else if !state.open {
-                            state.toggle_open(window, cx);
-                        }
-                    });
-                    cx.notify(parent_view_id);
+                    press(window, cx);
+                }
+            })
+            .on_key_down({
+                let state = state.clone();
+                move |event: &KeyDownEvent, window, cx| {
+                    if !opens_from(event)
+                        || window.default_prevented()
+                        || state.read(cx).focus_handle.contains_focused(window, cx)
+                    {
+                        return;
+                    }
+                    cx.stop_propagation();
+                    window.prevent_default();
+                    press(window, cx);
                 }
             })
             .child(
@@ -438,6 +467,38 @@ mod tests {
 
         cx.simulate_keystrokes("escape");
         assert_eq!(dismissed.get(), 1);
+    }
+
+    #[ala::test]
+    fn enter_space_and_down_open_from_the_trigger_but_not_from_the_panel(cx: &mut TestAppContext) {
+        cx.update(crate::init);
+        let dismissed = std::rc::Rc::new(std::cell::Cell::new(0));
+        let (_, cx) = cx.add_window_view({
+            let dismissed = dismissed.clone();
+            move |_, _| Counted { dismissed }
+        });
+        let draw = |cx: &mut VisualTestContext| {
+            cx.run_until_parked();
+            cx.update(|window, cx| _ = window.draw(cx));
+        };
+        draw(cx);
+        cx.update(Window::focus_next);
+
+        for (closed, key) in ["enter", "space", "down"].into_iter().enumerate() {
+            cx.simulate_keystrokes(key);
+            draw(cx);
+            cx.simulate_keystrokes(key);
+            draw(cx);
+            assert_eq!(dismissed.get(), closed, "{key} in the panel closed it");
+
+            cx.simulate_keystrokes("escape");
+            draw(cx);
+            assert_eq!(
+                dismissed.get(),
+                closed + 1,
+                "{key} on the trigger left it shut"
+            );
+        }
     }
 
     #[ala::test]

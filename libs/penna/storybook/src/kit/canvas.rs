@@ -1,6 +1,6 @@
 use ala::{
-    AnyElement, App, InteractiveElement as _, IntoElement, ParentElement as _, Styled as _, Window,
-    div, px,
+    AnyElement, App, InteractiveElement as _, IntoElement, ParentElement as _,
+    StatefulInteractiveElement as _, Styled as _, Window, div, px,
 };
 use penna::{
     ActiveTheme as _, Chip, Dock, IconName, Inspector, Label, PaintState, Sizable as _, Space,
@@ -22,7 +22,7 @@ pub const STORY: Story = Story {
         Section {
             id: "screens",
             name: "Screen tiles",
-            summary: "Tile::new(id).variant(TileVariant::Screen) on a Well, in each state the app gives it.",
+            summary: "Tile::new(id).variant(TileVariant::Screen) on a Well, in each state the app gives it. A focused tile draws the focus ring; a tile with a click handler takes keyboard focus and runs on Enter and Space.",
             build: |_, cx| stateless(screens, cx),
         },
         Section {
@@ -87,6 +87,13 @@ fn screens(_: &mut Window, cx: &mut App) -> AnyElement {
                     "Selected",
                     Tone::Neutral,
                     PaintState::Selected,
+                    cx,
+                ))
+                .child(screen(
+                    "focused",
+                    "Focused",
+                    Tone::Neutral,
+                    PaintState::Focused,
                     cx,
                 ))
                 .child(screen(
@@ -198,12 +205,17 @@ fn minis(_: &mut Window, cx: &mut App) -> AnyElement {
             "selected",
             window("mini-selected", "mini-selected-other", PaintState::Selected),
         )
+        .state(
+            "focused",
+            window("mini-focused", "mini-focused-other", PaintState::Focused),
+        )
         .into_any_element()
 }
 
 fn card(id: &'static str, name: &'static str, detail: &'static str, state: PaintState) -> Tile {
     Tile::new(id)
         .state(state)
+        .on_click(|_, _, _| {})
         .w(px(132.0))
         .h(px(64.0))
         .px(Space::S10)
@@ -236,6 +248,7 @@ fn dock(_: &mut Window, _: &mut App) -> AnyElement {
                         .child(card("xps", "xps", "Linux · 1 screen", PaintState::Rest))
                         .child(card("picked", "thinkpad", "Picked", PaintState::Selected))
                         .child(card("carried", "mini", "Being dragged", PaintState::Hover))
+                        .child(card("nuc", "nuc", "Focused", PaintState::Focused))
                         .child(card(
                             "old",
                             "gaming-pc",

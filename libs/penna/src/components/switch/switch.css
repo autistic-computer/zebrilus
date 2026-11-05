@@ -44,6 +44,7 @@
 }
 
 .penna-toggle > .penna-toggle-track {
+  position: relative;
   display: flex;
   flex: none;
   align-items: center;
@@ -74,6 +75,15 @@
 .penna-toggle[aria-checked="true"] > .penna-toggle-track > .penna-toggle-thumb {
   left: calc(var(--penna-toggle-w) - var(--penna-toggle-thumb) - 2 * var(--penna-toggle-inset));
   background: var(--penna-on-accent);
+}
+
+.penna-toggle:is(:focus-visible, [data-state~="focused"]) > .penna-toggle-track::after {
+  content: "";
+  position: absolute;
+  inset: calc(-1.5px - var(--penna-toggle-inset));
+  border: 1.5px solid var(--penna-focus-neutral);
+  border-radius: 9999px;
+  pointer-events: none;
 }
 
 .penna-toggle:disabled > .penna-toggle-track {

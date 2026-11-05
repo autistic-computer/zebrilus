@@ -68,10 +68,10 @@ impl Panel {
 plate_element!(Panel);
 
 impl RenderOnce for Panel {
-    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
+    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let opaque = self.look == PanelLook::Plain;
         let inset = self.inset;
-        self.plate.paint_with(cx, move |layer| {
+        self.plate.paint_with(window, cx, move |layer| {
             if opaque {
                 layer.fill = layer.ground.fill;
             }

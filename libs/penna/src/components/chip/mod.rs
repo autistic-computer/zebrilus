@@ -225,10 +225,10 @@ impl ParentElement for Chip {
 plate_element!(Chip, children);
 
 impl RenderOnce for Chip {
-    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
+    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let surface = self.paint_surface();
         let Self {
-            mut plate,
+            plate,
             label,
             dot: lead_dot,
             icon,
@@ -238,6 +238,11 @@ impl RenderOnce for Chip {
             children,
             ..
         } = self;
+        let mut plate = if plate.interactive {
+            plate.take_focus(window, cx)
+        } else {
+            plate
+        };
         let theme = cx.theme();
         let ground = theme.ground_at(surface, plate.state);
         let accent = theme.accent.opaque();
@@ -279,7 +284,7 @@ impl RenderOnce for Chip {
         .flatten()
         .chain(children)
         .collect();
-        plate.paint_with(cx, move |layer| {
+        plate.paint_with(window, cx, move |layer| {
             if let Some(ring) = ring {
                 for shadow in &mut layer.shadow {
                     if shadow.color == accent {

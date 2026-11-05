@@ -50,6 +50,15 @@
     if (popover) setOpen(popover, false);
   });
 
+  document.addEventListener("keydown", (event) => {
+    if (!["Enter", " ", "ArrowDown"].includes(event.key) || event.repeat || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+    const trigger = event.target.closest?.(".penna-popover-trigger");
+    if (!trigger) return;
+    event.preventDefault();
+    const popover = trigger.closest(".penna-popover");
+    setOpen(popover, !popover.hasAttribute("data-open"));
+  });
+
   document.querySelectorAll(".penna-popover:not([data-open])").forEach((popover) => {
     panelOf(popover)?.remove();
   });

@@ -3,7 +3,7 @@
 Names the state of a thing: a dot or an icon, a word, a detail. For a tag inside a line of text, use a badge.
 
 ```figure uses=notice
-<div class="docs-full penna-notice" data-penna="notice" data-tone="warning"><div class="penna-notice-tone" data-penna="chip" data-tone="warning"><span class="penna-notice-lead"><i data-icon="triangle-alert"></i></span><div class="penna-notice-body"><span class="penna-text penna-notice-title" data-penna-text>Being reworked</span><span class="penna-text penna-notice-detail" data-penna-text>Focus shows as the selected fill with no ring, and an interactive chip can't take keyboard focus. Icons don't grow with the interface font size.</span></div></div></div>
+<div class="docs-full penna-notice" data-penna="notice" data-tone="warning"><div class="penna-notice-tone" data-penna="chip" data-tone="warning"><span class="penna-notice-lead"><i data-icon="triangle-alert"></i></span><div class="penna-notice-body"><span class="penna-text penna-notice-title" data-penna-text>Being reworked</span><span class="penna-text penna-notice-detail" data-penna-text>Icons don't grow with the interface font size.</span></div></div></div>
 ```
 
 ## Kinds
@@ -87,6 +87,7 @@ Small is the default, not medium. One size per row.
 ```
 
 - Read-only unless interactive, which lights it on hover.
+- An interactive chip with a click handler takes keyboard focus and runs on Space and Enter. A click never focuses it.
 - Hover and press show only on the marker.
 
 ## Content
@@ -126,4 +127,5 @@ Chips sit 8 apart, at the size of the controls beside them.
 | `.selected(true)` | `data-state="selected"` | Selected |
 | `.state(state)` | `data-state` | Any paint state |
 | `.interactive(true)` | `data-interactive` | Lights on hover |
+| `.on_click(handler)` with `.interactive(true)` | `role="button"`, `tabindex="0"`, `click` | Takes focus; Space and Enter run it |
 | `.ring(color)` | `data-ring` | Recolors the marker's ring |

@@ -60,6 +60,12 @@ impl Row {
     }
 
     #[must_use]
+    pub fn focused(mut self, focused: bool) -> Self {
+        self.plate.focused = focused;
+        self
+    }
+
+    #[must_use]
     pub fn tone(mut self, tone: Tone) -> Self {
         self.plate.surface = self.plate.surface.tone(tone);
         self
@@ -110,7 +116,7 @@ impl Row {
 plate_element!(Row);
 
 impl RenderOnce for Row {
-    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
+    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let theme = cx.theme();
         let role = self.plate.surface.role;
         let round = theme.style(role).shape == Shape::Round
@@ -120,7 +126,7 @@ impl RenderOnce for Row {
                 .and_then(|patch| patch.shape)
                 .is_none();
         let radius = self.radius.filter(|_| round);
-        self.plate.paint_with(cx, move |layer| {
+        self.plate.paint_with(window, cx, move |layer| {
             if let Some(radius) = radius {
                 layer.radius = radius;
             }

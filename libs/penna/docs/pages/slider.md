@@ -3,7 +3,7 @@
 Sets a value on a range by dragging or with the arrow keys. For an exact number use a number input.
 
 ```figure uses=notice
-<div class="docs-full penna-notice" data-penna="notice" data-tone="warning"><div class="penna-notice-tone" data-penna="chip" data-tone="warning"><span class="penna-notice-lead"><i data-icon="triangle-alert"></i></span><div class="penna-notice-body"><span class="penna-text penna-notice-title" data-penna-text>Being reworked</span><span class="penna-text penna-notice-detail" data-penna-text>Neither kind has a disabled state or sizes, and focus barely shows in the default look. On the web the continuous slider is a still picture.</span></div></div></div>
+<div class="docs-full penna-notice" data-penna="notice" data-tone="warning"><div class="penna-notice-tone" data-penna="chip" data-tone="warning"><span class="penna-notice-lead"><i data-icon="triangle-alert"></i></span><div class="penna-notice-body"><span class="penna-text penna-notice-title" data-penna-text>Being reworked</span><span class="penna-text penna-notice-detail" data-penna-text>Neither kind has a disabled state or sizes. On the web the continuous slider is a still picture.</span></div></div></div>
 ```
 
 ## Kinds
@@ -43,7 +43,7 @@ One size: medium height, which follows density. Under touch the continuous slide
 </div>
 ```
 
-- Focused: an edge on the picked pill, or on the knob.
+- Focused: a ring outside the picked pill or the knob, from the keyboard only. A press focuses it without one.
 - Hover: a stepped pill brightens.
 - Keys: arrows step, Home and End go to the ends. Shift steps ten on a continuous slider.
 

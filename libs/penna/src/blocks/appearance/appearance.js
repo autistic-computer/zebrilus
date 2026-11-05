@@ -168,6 +168,7 @@ function wireSlider(slider) {
   slider.addEventListener("pointerdown", (event) => {
     if (event.button !== 0) return;
     event.preventDefault();
+    slider.removeAttribute("data-focused");
     slider.focus({ focusVisible: false });
     slider.setPointerCapture(event.pointerId);
     setSlider(slider, valueAt(slider, event.clientX));
@@ -190,8 +191,10 @@ function wireSlider(slider) {
     };
     if (!(event.key in moves)) return;
     event.preventDefault();
+    slider.toggleAttribute("data-focused", true);
     setSlider(slider, moves[event.key]);
   });
+  slider.addEventListener("blur", () => slider.removeAttribute("data-focused"));
 }
 
 function settleSliders(root) {

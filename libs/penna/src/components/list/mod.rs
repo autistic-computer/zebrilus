@@ -3,13 +3,13 @@ use ala::{
     AnyElement, App, ClickEvent, Div, ElementId, InteractiveElement as _, IntoElement, MouseButton,
     MouseDownEvent, MouseMoveEvent, ParentElement, Pixels, RenderOnce, Role, Stateful,
     StatefulInteractiveElement as _, StyleRefinement, Styled, Window, div,
-    prelude::FluentBuilder as _,
+    prelude::FluentBuilder as _, px,
 };
 
 use crate::{
-    ActiveTheme as _, AuthoredElement as _, Disableable, PaintState, RowLook, Selectable, Size,
-    StyledExt as _, Surface, SurfaceRole, TextStyle,
-    foundation::{restyle, row_corners, row_state},
+    ActiveTheme as _, AuthoredElement as _, Disableable, Emphasis, PaintState, RowLook,
+    Selectable, Size, StyledExt as _, Surface, SurfaceRole, TextStyle, Tone,
+    foundation::{focus::with_focus_ring, restyle, row_corners, row_state},
     h_flex, rems_from_px,
 };
 
@@ -23,6 +23,7 @@ pub struct ListItem {
     style: StyleRefinement,
     disabled: bool,
     selected: bool,
+    focused: bool,
     surface_role: Option<SurfaceRole>,
     row_height: Option<Pixels>,
     on_click: Option<ClickHandler>,
@@ -39,6 +40,7 @@ impl ListItem {
             style: StyleRefinement::default(),
             disabled: false,
             selected: false,
+            focused: false,
             surface_role: None,
             row_height: None,
             on_click: None,
@@ -51,6 +53,12 @@ impl ListItem {
     #[must_use]
     pub fn selected(mut self, selected: bool) -> Self {
         self.selected = selected;
+        self
+    }
+
+    #[must_use]
+    pub fn focused(mut self, focused: bool) -> Self {
+        self.focused = focused;
         self
     }
 
@@ -143,6 +151,7 @@ impl RenderOnce for ListItem {
             style,
             disabled,
             selected,
+            focused,
             surface_role,
             row_height,
             on_click,
@@ -159,8 +168,11 @@ impl RenderOnce for ListItem {
         let state = row_state(selected, !disabled);
         let layer = theme.layer(surface, state);
         let lively = state == PaintState::Rest;
+        let focus = theme.paint_on(theme.ground(), Tone::Neutral, Emphasis::Ghost);
+        let smoothing = layer.smoothing;
 
-        base.aria_selected(selected)
+        let item = base
+            .aria_selected(selected)
             .aria_disabled(disabled)
             .relative()
             .justify_between()
@@ -190,7 +202,8 @@ impl RenderOnce for ListItem {
                 this.hover(move |style| restyle(style, &hover))
                     .active(move |style| restyle(style, &active))
             })
-            .child(div().w_full().children(children))
+            .child(div().w_full().children(children));
+        with_focus_ring(item, focused, px(0.), &focus, smoothing, window)
     }
 }
 

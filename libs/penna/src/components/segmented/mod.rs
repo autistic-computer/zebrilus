@@ -2,13 +2,15 @@ use std::{rc::Rc, time::Duration};
 
 use ala::{
     Animation, AnimationExt as _, AnyElement, App, Bounds, ClickEvent, ElementId,
-    InteractiveElement as _, IntoElement, ParentElement as _, Pixels, RenderOnce, SharedString,
-    StatefulInteractiveElement as _, Styled as _, Window, div, prelude::FluentBuilder as _, px,
+    InteractiveElement as _, IntoElement, MouseButton, ParentElement as _, Pixels, RenderOnce,
+    Role, SharedString, StatefulInteractiveElement as _, Styled as _, Window, div,
+    prelude::FluentBuilder as _, px,
 };
 
 use crate::{
-    ActiveTheme as _, Ground, Kind, PaintState, Size, Space, StyledExt as _, Surface, SurfaceRole,
-    components::input::field_chrome_on, h_flex, rems_from_px,
+    ActiveTheme as _, Emphasis, Ground, Kind, PaintState, Size, Space, StyledExt as _, Surface,
+    SurfaceRole, Tone, components::input::field_layer, foundation::focus::with_focus_ring, h_flex,
+    rems_from_px,
 };
 
 const SLIDE: Duration = Duration::from_millis(220);
@@ -86,8 +88,19 @@ impl RenderOnce for SegmentedControl {
         let hover = cx.theme().layer(pill, PaintState::Hover).text;
         let coarse = crate::blocks::touch::CoarsePointer::get(cx);
         let slop = crate::blocks::touch::control_slop(Size::Medium);
+        let ring = cx.theme().paint_on(
+            self.on.unwrap_or_else(|| cx.theme().ground()),
+            Tone::Neutral,
+            Emphasis::Ghost,
+        );
+        let focus = window
+            .use_keyed_state(self.id.clone(), cx, |_, cx| cx.focus_handle())
+            .read(cx)
+            .clone();
+        let focused = self.on_select.is_some() && focus.is_focused(window);
 
-        let selected = self.selected.min(self.segments.len().saturating_sub(1));
+        let last = self.segments.len().saturating_sub(1);
+        let selected = self.selected.min(last);
         let state = window.use_keyed_state(self.id.clone(), cx, |_, _| Slide::default());
         let (to, from, generation) = state.update(cx, |slide, _| {
             let to = slide.segments.get(selected).copied();
@@ -179,36 +192,126 @@ impl RenderOnce for SegmentedControl {
             })
             .collect::<Vec<AnyElement>>();
 
-        field_chrome_on(
-            h_flex().id(self.id).flex_none().p(Space::S2),
+        let chrome = field_layer(
+            cx.theme(),
             track,
-            PaintState::Rest,
+            if focused {
+                PaintState::Focused
+            } else {
+                PaintState::Rest
+            },
             true,
-            false,
-            cx,
-        )
-        .child(
-            h_flex()
-                .relative()
-                .children(pill)
-                .children(segments)
-                .on_children_prepainted(move |bounds, window, cx| {
-                    let Some(first) = bounds.get(skip).copied() else {
-                        return;
-                    };
-                    let segments = bounds[skip..]
-                        .iter()
-                        .map(|bounds| Bounds::new(bounds.origin - first.origin, bounds.size))
-                        .collect::<Vec<_>>();
-                    let changed = measured.update(cx, |slide, _| {
-                        let changed = slide.segments != segments;
-                        slide.segments = segments;
-                        changed
-                    });
-                    if changed {
-                        window.request_animation_frame();
-                    }
-                }),
-        )
+        );
+        let mut hover = field_layer(cx.theme(), track, PaintState::Hover, true);
+        hover.border = chrome.border;
+        let control = h_flex()
+            .id(self.id)
+            .flex_none()
+            .p(Space::S2)
+            .layer(&chrome)
+            .hover(move |style| crate::foundation::restyle(style, &hover))
+            .role(Role::RadioGroup)
+            .when_some(on_select, |this, on_select| {
+                this.track_focus(&focus.tab_stop(true))
+                    .on_mouse_down(MouseButton::Left, |_, window, _| window.prevent_default())
+                    .on_key_down(move |event, window, cx| {
+                        if event.keystroke.modifiers.modified() {
+                            return;
+                        }
+                        let next = match event.keystroke.key.as_str() {
+                            "left" | "up" => selected.saturating_sub(1),
+                            "right" | "down" => (selected + 1).min(last),
+                            "home" => 0,
+                            "end" => last,
+                            _ => return,
+                        };
+                        cx.stop_propagation();
+                        if next != selected {
+                            on_select(next, window, cx);
+                        }
+                    })
+            })
+            .child(
+                h_flex()
+                    .relative()
+                    .children(pill)
+                    .children(segments)
+                    .on_children_prepainted(move |bounds, window, cx| {
+                        let Some(first) = bounds.get(skip).copied() else {
+                            return;
+                        };
+                        let segments = bounds[skip..]
+                            .iter()
+                            .map(|bounds| Bounds::new(bounds.origin - first.origin, bounds.size))
+                            .collect::<Vec<_>>();
+                        let changed = measured.update(cx, |slide, _| {
+                            let changed = slide.segments != segments;
+                            slide.segments = segments;
+                            changed
+                        });
+                        if changed {
+                            window.request_animation_frame();
+                        }
+                    }),
+            );
+        with_focus_ring(control, focused, px(0.), &ring, layer.smoothing, window)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::cell::RefCell;
+
+    use ala::{Context, Modifiers, Render, TestAppContext, VisualTestContext, point};
+
+    use super::*;
+
+    struct Modes(Rc<RefCell<Vec<usize>>>);
+
+    impl Render for Modes {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            let picks = Rc::clone(&self.0);
+            let selected = picks.borrow().last().copied().unwrap_or(1);
+            div().size_full().child(
+                SegmentedControl::new("mode", ["System", "Light", "Dark"])
+                    .selected(selected)
+                    .on_select(move |index, _, _| picks.borrow_mut().push(index)),
+            )
+        }
+    }
+
+    #[ala::test]
+    fn arrows_home_and_end_move_the_pick_and_a_click_picks_without_focus(cx: &mut TestAppContext) {
+        cx.update(crate::init);
+        let picks = Rc::new(RefCell::new(Vec::new()));
+        let (_, cx) = cx.add_window_view({
+            let picks = Rc::clone(&picks);
+            move |_, _| Modes(picks)
+        });
+        let cx: &mut VisualTestContext = cx;
+        let draw = |cx: &mut VisualTestContext| {
+            cx.run_until_parked();
+            cx.update(|window, cx| window.draw(cx).clear(cx));
+        };
+        draw(cx);
+        cx.simulate_click(point(px(12.), px(14.)), Modifiers::default());
+        draw(cx);
+        assert_eq!(*picks.borrow(), [0]);
+        assert!(cx.update(|window, cx| window.focused(cx).is_none()));
+        cx.update(Window::focus_next);
+        draw(cx);
+        for key in [
+            "right",
+            "end",
+            "right",
+            "home",
+            "left",
+            "down",
+            "shift-right",
+        ] {
+            cx.simulate_keystrokes(key);
+            draw(cx);
+        }
+        assert_eq!(*picks.borrow(), [0, 1, 2, 0, 1]);
     }
 }

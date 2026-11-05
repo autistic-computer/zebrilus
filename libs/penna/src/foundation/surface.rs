@@ -1345,6 +1345,12 @@ impl Theme {
 
     pub fn layer(&self, surface: impl Into<Surface>, state: PaintState) -> Layer {
         let surface = surface.into();
+        let state = match state {
+            PaintState::Focused if crate::components::button::rings_focus(surface.role) => {
+                PaintState::Rest
+            }
+            state => state,
+        };
         let kind = surface.role.kind;
         let style = self.style(surface.role);
         let ground = surface.ground.unwrap_or_else(|| self.ground());

@@ -296,8 +296,8 @@
   box-shadow: var(--penna-shadow-lifted);
 }
 
-.appearance-slider:focus .appearance-knob {
-  box-shadow: 0 0 0 1.5px rgb(from var(--penna-primary) r g b / calc(alpha * 0.8)), var(--penna-shadow-lifted);
+.appearance-slider:is(:focus-visible, [data-focused]) .appearance-knob {
+  box-shadow: 0 0 0 1.5px var(--penna-focus-neutral), var(--penna-shadow-lifted);
 }
 
 .appearance-trailing {
