@@ -11,7 +11,7 @@ function shape(mark) {
   const border = parseFloat(getComputedStyle(mark).borderTopWidth) || 0;
   mark.style.setProperty("--penna-ring-inset", `${-(reach + border)}px`);
   if (mark.dataset.kind === "radio") return;
-  const quarter = (parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--penna-radius")) || 0) / 4;
+  const quarter = (parseFloat(getComputedStyle(mark).getPropertyValue("--penna-radius")) || 0) / 4;
   const radius = Math.min(quarter, side / 4);
   const cap = side * CORNER;
   const ring = (side + 2 * reach) * CORNER;

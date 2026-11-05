@@ -1,6 +1,6 @@
 use std::{
     cell::{Cell, RefCell},
-    collections::{BTreeSet, HashMap},
+    collections::{BTreeSet, HashMap, HashSet},
     env,
     fmt::Write as _,
     fs, io,
@@ -40,7 +40,8 @@ const SCRIPTS: [&str; 6] = [
     "blocks/docs/docs.js",
 ];
 
-const LOOKS: [(&str, &str); 10] = [
+const LOOKS: [(&str, &str); 11] = [
+    ("default", "{}"),
     ("blue", r#"{ "tint": "blue" }"#),
     ("pink", r#"{ "tint": "pink" }"#),
     ("radius-4", r#"{ "radius": 4 }"#),
@@ -207,47 +208,262 @@ fn write_looks(dir: &Path) -> io::Result<()> {
         let look = interface_theme::parse_theme(source).map_err(io::Error::other)?;
         fs::write(dir.join(format!("{name}.css")), look_sheet(name, &look))?;
     }
+    fs::write(dir.with_file_name(RESET_SHEET), reset_sheet())?;
     Ok(())
+}
+
+const RESET_SHEET: &str = "looks-reset.css";
+
+const MODES: [ThemeMode; 2] = [ThemeMode::Light, ThemeMode::Dark];
+
+fn mode_rules(theme: &InterfaceTheme, mode: ThemeMode) -> (Vec<Rule>, Vec<String>) {
+    let css = theme_css::stylesheet(&theme_css::kit_theme(theme, mode), &[]);
+    let local = css
+        .lines()
+        .filter_map(|line| line.strip_prefix("@property "))
+        .filter(|line| line.contains("inherits: false"))
+        .filter_map(|line| line.split_whitespace().next())
+        .map(str::to_owned)
+        .collect();
+    (expanded(rules(&css)), local)
 }
 
 fn look_sheet(name: &str, look: &InterfaceTheme) -> String {
     let mut css = String::new();
-    for mode in [ThemeMode::Light, ThemeMode::Dark] {
-        let sheet = |theme| theme_css::stylesheet(&theme_css::kit_theme(theme, mode), &[]);
-        let base = rules(&sheet(interface_theme::default_theme()));
-        let shown = rules(&sheet(look));
-        let _ = writeln!(
-            css,
-            "@scope (:root[data-penna-mode=\"{}\"] [data-look=\"{name}\"]) {{",
+    for mode in MODES {
+        let (base, _) = mode_rules(interface_theme::default_theme(), mode);
+        let (shown, _) = mode_rules(look, mode);
+        let scope = format!(
+            ":root[data-penna-mode=\"{}\"] [data-look=\"{name}\"]",
             mode.name()
         );
-        let changed = changed(&base, &shown);
-        let mut open: Vec<&str> = Vec::new();
-        for rule in changed.iter().filter(|rule| drawn_in_looks(rule)) {
-            let Some((leaf, parents)) = rule.path.split_last() else {
-                continue;
-            };
-            let kept = open
-                .iter()
-                .zip(parents)
-                .take_while(|(open, parent)| **open == parent.as_str())
-                .count();
-            css.push_str(&"}\n".repeat(open.len() - kept));
-            open.truncate(kept);
-            for parent in &parents[kept..] {
-                let _ = writeln!(css, "{} {{", scoped(parent));
-                open.push(parent.as_str());
-            }
-            let _ = write!(css, "{} {{", scoped(leaf));
-            for (name, value) in &rule.decls {
-                let _ = write!(css, " {name}: {value};");
-            }
-            css.push_str(" }\n");
-        }
-        css.push_str(&"}\n".repeat(open.len()));
-        css.push_str("}\n");
+        write_scope(&mut css, &scope, &changed(&base, &shown));
     }
     css
+}
+
+fn reset_sheet() -> String {
+    let default = interface_theme::default_theme();
+    let mut css = String::new();
+    for (name, preset) in interface_theme::builtin_themes() {
+        if std::ptr::eq(preset, default) {
+            continue;
+        }
+        for mode in MODES {
+            let (base, _) = mode_rules(preset, mode);
+            let (shown, local) = mode_rules(default, mode);
+            let mut reset = changed(&base, &shown);
+            reset.extend(removed(&base, &shown, &local));
+            let scope = format!(
+                ":root[data-penna-theme=\"{name}\"][data-penna-mode=\"{}\"] [data-look]",
+                mode.name()
+            );
+            write_scope(&mut css, &scope, &reset);
+        }
+    }
+    css
+}
+
+fn write_scope(css: &mut String, scope: &str, rules: &[Rule]) {
+    let _ = writeln!(css, "@scope ({scope}) {{");
+    let mut outer: Vec<&str> = Vec::new();
+    for rule in rules {
+        if let Some(first) = rule.path.first()
+            && !outer.contains(&first.as_str())
+        {
+            outer.push(first);
+        }
+    }
+    let grouped = outer.iter().flat_map(|first| {
+        rules
+            .iter()
+            .filter(move |rule| rule.path.first().map(String::as_str) == Some(*first))
+    });
+    let mut open: Vec<&str> = Vec::new();
+    for rule in grouped.filter(|rule| drawn_in_looks(rule)) {
+        let Some((leaf, parents)) = rule.path.split_last() else {
+            continue;
+        };
+        let kept = open
+            .iter()
+            .zip(parents)
+            .take_while(|(open, parent)| **open == parent.as_str())
+            .count();
+        css.push_str(&"}\n".repeat(open.len() - kept));
+        open.truncate(kept);
+        for parent in &parents[kept..] {
+            let _ = writeln!(css, "{} {{", scoped(parent));
+            open.push(parent.as_str());
+        }
+        let _ = write!(css, "{} {{", scoped(leaf));
+        for (name, value) in &rule.decls {
+            let _ = write!(css, " {name}: {value};");
+        }
+        css.push_str(" }\n");
+    }
+    css.push_str(&"}\n".repeat(open.len()));
+    css.push_str("}\n");
+}
+
+fn role_of(selector: &str) -> Option<&str> {
+    let rest = selector.strip_prefix("[data-penna=\"")?;
+    Some(&selector[..selector.len() - rest.len() + rest.find("\"]")? + 2])
+}
+
+fn in_cells(rule: &Rule) -> bool {
+    rule.path
+        .iter()
+        .all(|selector| !selector.contains("[data-ground]") && !selector.contains("[data-on="))
+}
+
+fn variants<'a>(rules: &'a [Rule], role: &str) -> Vec<&'a str> {
+    rules
+        .iter()
+        .filter(|rule| rule.path.len() == 1 && role_of(&rule.path[0]) == Some(role))
+        .map(|rule| &rule.path[0][role.len()..])
+        .filter(|extra| !extra.is_empty() && !extra.starts_with(':'))
+        .collect()
+}
+
+fn expanded(rules: Vec<Rule>) -> Vec<Rule> {
+    let known: HashSet<Vec<String>> = rules.iter().map(|rule| rule.path.clone()).collect();
+    let mut copies = Vec::new();
+    for rule in rules.iter().filter(|rule| in_cells(rule)) {
+        let Some(at) = rule.path.iter().rposition(|part| !part.starts_with('&')) else {
+            continue;
+        };
+        let leaf = &rule.path[at];
+        let targets: Vec<(String, String)> = match role_of(leaf) {
+            Some(role) if at > 0 => vec![(leaf.clone(), role.to_owned())],
+            None if leaf.starts_with(":is(") && at + 1 == rule.path.len() => LOOK_ROLES
+                .iter()
+                .map(|role| format!("[data-penna=\"{role}\"]"))
+                .filter(|role| leaf.contains(role.as_str()))
+                .map(|role| (format!("&{role}"), role))
+                .collect(),
+            _ => Vec::new(),
+        };
+        for (selector, role) in targets {
+            for extra in std::iter::once("").chain(variants(&rules, &role)) {
+                let mut path = rule.path.clone();
+                if selector.starts_with('&') {
+                    path.push(format!("{selector}{extra}"));
+                } else {
+                    path[at] = format!("{selector}{extra}");
+                }
+                if path != rule.path && !known.contains(&path) {
+                    copies.push(Rule {
+                        path,
+                        decls: rule.decls.clone(),
+                    });
+                }
+            }
+        }
+    }
+    let mut rules = rules;
+    rules.extend(copies);
+    rules
+}
+
+fn without_not(selector: &str) -> String {
+    let mut kept = String::new();
+    let mut rest = selector;
+    while let Some(start) = rest.find(":not(") {
+        kept.push_str(&rest[..start]);
+        let mut depth = 0;
+        let mut end = rest.len();
+        for (offset, char) in rest[start..].char_indices() {
+            match char {
+                '(' => depth += 1,
+                ')' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        end = start + offset + 1;
+                        break;
+                    }
+                }
+                _ => {}
+            }
+        }
+        rest = &rest[end..];
+    }
+    kept.push_str(rest);
+    kept
+}
+
+fn removed(base: &[Rule], shown: &[Rule], local: &[String]) -> Vec<Rule> {
+    let after: HashMap<&[String], &[(String, String)]> = shown
+        .iter()
+        .map(|rule| (rule.path.as_slice(), rule.decls.as_slice()))
+        .collect();
+    let value = |paths: &[Vec<String>], name: &str| {
+        paths
+            .iter()
+            .find_map(|path| {
+                after.get(path.as_slice()).and_then(|decls| {
+                    decls
+                        .iter()
+                        .find(|(other, _)| other == name)
+                        .map(|(_, value)| value.clone())
+                })
+            })
+            .unwrap_or_else(|| {
+                if local.iter().any(|other| other == name) {
+                    "initial".to_owned()
+                } else {
+                    "inherit".to_owned()
+                }
+            })
+    };
+    let picked = |top: &str| {
+        shown
+            .iter()
+            .find(|rule| {
+                rule.path.len() == 2
+                    && rule.path[0] == top
+                    && rule.path[1].contains("[data-state~=\"selected\"]")
+            })
+            .map(|rule| rule.path[1].clone())
+    };
+    base.iter()
+        .filter(|rule| in_cells(rule) && drawn_in_looks(rule))
+        .filter(|rule| !after.contains_key(rule.path.as_slice()))
+        .filter_map(|rule| {
+            let at = rule.path.iter().rposition(|part| !part.starts_with('&'))?;
+            let leaf = &rule.path[at];
+            let mut states = &rule.path[at + 1..];
+            let (role, extra) = if let Some(role) = role_of(leaf) {
+                (role, &leaf[role.len()..])
+            } else {
+                let copy = states.first()?.strip_prefix('&')?;
+                let role = role_of(copy)?;
+                states = &states[1..];
+                (role, &copy[role.len()..])
+            };
+            let top = format!("{role}{}", without_not(extra));
+            let mut paths = Vec::new();
+            for top in [top.as_str(), role] {
+                let mut path = vec![top.to_owned()];
+                path.extend(states.iter().cloned());
+                if states.is_empty()
+                    && role_of(leaf).is_none()
+                    && let Some(state) = picked(top)
+                {
+                    paths.push(vec![top.to_owned(), state]);
+                }
+                paths.push(path);
+                paths.push(vec![top.to_owned()]);
+            }
+            Some(Rule {
+                path: rule.path.clone(),
+                decls: rule
+                    .decls
+                    .iter()
+                    .map(|(name, _)| (name.clone(), value(&paths, name)))
+                    .collect(),
+            })
+        })
+        .collect()
 }
 
 fn scoped(selector: &str) -> &str {
@@ -714,9 +930,9 @@ impl Builder {
             if LOOKS.iter().all(|(known, _)| *known != name) {
                 return Err(io::Error::other(format!("no look named {name}")));
             }
-            self.styles
-                .borrow_mut()
-                .insert(format!("assets/looks/{name}.css"));
+            let mut styles = self.styles.borrow_mut();
+            styles.insert(format!("assets/{RESET_SHEET}"));
+            styles.insert(format!("assets/looks/{name}.css"));
         }
         let body = match story_ref(code) {
             Some(reference) => {
