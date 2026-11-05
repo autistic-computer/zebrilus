@@ -1,12 +1,12 @@
 use crate::{
-    ActiveTheme as _, Colorize as _, Edge, Emphasis, Icon, IconName, Sizable as _, StyledExt as _,
-    Tone, badge::Badge, kbd::Kbd, list::ListItem,
+    ActiveTheme as _, Colorize as _, Edge, Emphasis, Icon, IconName, PaintState, Sizable as _,
+    StyledExt as _, Tone, badge::Badge, kbd::Kbd, list::ListItem,
 };
 use ala::{
     AnyElement, App, CursorStyle, IntoElement, Keystroke, ParentElement as _, RenderOnce,
     SharedString, Styled as _, div, prelude::*, px, relative,
 };
-use penna::{Bar, BarLook, Label, Panel, PanelLook, RuleLook, TextStyle};
+use penna::{Bar, BarLook, Label, Panel, PanelLook, RowLook, RuleLook, TextStyle};
 use zz_client::chooser::SEARCH_HINTS;
 pub use zz_client::chooser::{ChooserHint, chooser_has_key_gutter, chooser_subtitle};
 
@@ -232,6 +232,23 @@ pub fn chooser_footer(
 }
 
 #[must_use]
+#[derive(IntoElement)]
+struct RowBadge {
+    badge: Badge,
+    selected: bool,
+}
+
+impl RenderOnce for RowBadge {
+    fn render(self, _: &mut ala::Window, cx: &mut App) -> impl IntoElement {
+        let state = if self.selected {
+            PaintState::Selected
+        } else {
+            PaintState::Rest
+        };
+        self.badge.on(cx.theme().ground_at(RowLook::Menu, state))
+    }
+}
+
 pub fn chooser_row(id: &'static str, index: usize, selected: bool) -> ListItem {
     ListItem::new((id, index))
         .h(px(CHOOSER_ROW_HEIGHT))
@@ -351,7 +368,10 @@ pub fn tree_chooser_row(
                     .opacity(if selected { 1.0 } else { 0.8 }),
             )
             .when(tagged, |row| {
-                row.child(Badge::new("Tagged").small().ml(px(8.0)))
+                row.child(RowBadge {
+                    badge: Badge::new("Tagged").small().ml(px(8.0)),
+                    selected,
+                })
             })
             .child(
                 div()
@@ -424,14 +444,15 @@ pub fn buffer_chooser_row(
                         .opacity(if selected { 1.0 } else { 0.8 }),
                 )
                 .when(tagged, |row| {
-                    row.child(
-                        Badge::new("TAGGED")
+                    row.child(RowBadge {
+                        badge: Badge::new("TAGGED")
                             .small()
                             .tone(Tone::Primary)
                             .emphasis(Emphasis::Solid)
                             .ml(px(8.0))
                             .font_family(font_family),
-                    )
+                        selected,
+                    })
                 }),
         )
 }
