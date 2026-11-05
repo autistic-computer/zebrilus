@@ -84,7 +84,6 @@ const KNOBS: &[Knob] = &[
 const FLOATING: &[&str] = &[
     "floating-menus",
     "feedback-dialogs",
-    "command-palette/surface",
     "command-palette/workspace",
     "command-palette/search",
     "command-palette/offline",
