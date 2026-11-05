@@ -5,7 +5,7 @@ use penna::foundation::interface_theme::{
     self, Appearance, ControlRadius, Glass, GlassPair, InterfaceTheme, ModeLock, Neutral,
     ThemeOverrides, Tint,
 };
-use penna::{Smoothing, Style, SurfaceRole, Theme, ThemeMode, UiZoom};
+use penna::{Smoothing, Theme, ThemeMode, UiZoom};
 
 use crate::catalog::{Control, catalog};
 
@@ -174,12 +174,13 @@ impl Knobs {
         if let Some((_, value)) = pairs.iter().find(|(key, _)| *key == "glass") {
             knobs.look.glass = match *value {
                 "" | "theme" => knobs.look.glass,
+                "platform" => None,
                 "none" | "off" => Some(Glass::None),
                 "frosted" => Some(Glass::Frosted),
                 "liquid" => Some(Glass::Liquid),
                 name => {
                     return Err(format!(
-                        "glass is theme, none, frosted or liquid, not {name}"
+                        "glass is theme, platform, none, frosted or liquid, not {name}"
                     ));
                 }
             };
@@ -409,7 +410,7 @@ pub fn theme_knobs(theme: &InterfaceTheme) -> serde_json::Map<String, serde_json
     set(
         "glass",
         serde_json::json!(match &theme.glass {
-            None => "theme",
+            None => "platform",
             Some(Glass::None) => "none",
             Some(Glass::Frosted) => "frosted",
             Some(Glass::Liquid | Glass::Material(_)) => "liquid",
@@ -433,60 +434,6 @@ pub fn theme_knobs(theme: &InterfaceTheme) -> serde_json::Map<String, serde_json
         }),
     );
     knobs
-}
-
-pub const PROPS: [&str; 8] = [
-    "fill",
-    "outline",
-    "shadow",
-    "shape",
-    "smoothing",
-    "hover",
-    "selected",
-    "ink",
-];
-
-pub fn inherited(role: SurfaceRole, smoothing: Smoothing) -> (Style, [Option<SurfaceRole>; 8]) {
-    let mut style = Style {
-        smoothing,
-        ..role.kind().base()
-    };
-    let mut origins = [Some(role.kind().role()); 8];
-    origins[4] = None;
-    let lineage = role.lineage().collect::<Vec<_>>();
-    for node in lineage.iter().rev() {
-        let patch = node.patch();
-        patch.apply(&mut style);
-        let named = [
-            patch.fill.is_some(),
-            patch.outline.is_some(),
-            patch.shadow.is_some(),
-            patch.shape.is_some(),
-            patch.smoothing.is_some(),
-            patch.hover.is_some(),
-            patch.selected.is_some(),
-            patch.ink.is_some(),
-        ];
-        for (from, named) in origins.iter_mut().zip(named) {
-            if named {
-                *from = Some(*node);
-            }
-        }
-    }
-    (style, origins)
-}
-
-pub fn style_json(style: Style) -> serde_json::Value {
-    serde_json::json!({
-        "fill": style.fill,
-        "outline": style.outline,
-        "shadow": style.shadow,
-        "shape": style.shape,
-        "smoothing": style.smoothing,
-        "hover": style.hover,
-        "selected": style.selected,
-        "ink": style.ink,
-    })
 }
 
 fn decode(value: &str) -> String {
@@ -610,6 +557,13 @@ mod tests {
             Knobs::parse("glass=none").unwrap().look.glass,
             Some(Glass::None)
         );
+        assert_eq!(
+            Knobs::parse("interface-theme=macos&glass=platform")
+                .unwrap()
+                .look
+                .glass,
+            None
+        );
     }
 
     #[test]
@@ -631,20 +585,5 @@ mod tests {
             }
         );
         assert_eq!(decode("Fira%20Sans+Mono%"), "Fira Sans Mono%");
-    }
-
-    #[test]
-    fn a_role_inherits_what_the_kit_resolves_and_says_from_where() {
-        let mut kit = Theme::default();
-        interface_theme::default_theme().apply(&mut kit);
-        for role in penna::foundation::roles::all() {
-            let (style, _) = inherited(role, kit.smoothing);
-            assert_eq!(style, kit.style(role), "{}", role.id());
-        }
-        let (style, origins) = inherited(penna::foundation::roles::WINDOW_CONTROLS, kit.smoothing);
-        assert_eq!(style.fill, penna::Fill::None);
-        assert_eq!(origins[0], Some(SurfaceRole::ICON_BUTTON));
-        assert_eq!(origins[3], Some(penna::foundation::roles::WINDOW_CONTROLS));
-        assert_eq!(origins[4], None);
     }
 }

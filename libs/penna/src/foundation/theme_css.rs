@@ -628,10 +628,11 @@ fn rim(material: &GlassMaterial) -> String {
     let edge = f32::from(material.edge_width);
     let bezel = f32::from(material.bezel);
     let light = material.light_color;
-    let facing = light.alpha((light.a * material.specular).min(1.0));
+    let lit = if bezel > 0.0 { light.a } else { 0.0 };
+    let facing = light.alpha((lit * material.specular).min(1.0));
     let far =
-        light.alpha((light.a * material.specular * (1.0 - material.light_directionality)).min(1.0));
-    let fresnel = light.alpha((light.a * material.fresnel).min(1.0));
+        light.alpha((lit * material.specular * (1.0 - material.light_directionality)).min(1.0));
+    let fresnel = light.alpha((lit * material.fresnel).min(1.0));
     let dark = material.edge_color;
     let ring_alpha =
         material.edge_shadow * (material.edge_spread + (1.0 - material.edge_spread) * 0.35);

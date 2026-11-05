@@ -3,7 +3,7 @@
 A thumbnail you pick or drag, drawn to scale. For a box of content use a card, for a list a row.
 
 ```figure uses=notice
-<div class="docs-full penna-notice" data-penna="notice" data-tone="warning"><div class="penna-notice-tone" data-penna="chip" data-tone="warning"><span class="penna-notice-lead"><i data-icon="triangle-alert"></i></span><div class="penna-notice-body"><span class="penna-text penna-notice-title" data-penna-text>Being reworked</span><span class="penna-text penna-notice-detail" data-penna-text>The picked ring is the accent, not the highlight. Tiles don't lift while dragged. The HTML tile fixes its size and drags on its own.</span></div></div></div>
+<div class="docs-full penna-notice" data-penna="notice" data-tone="warning"><div class="penna-notice-tone" data-penna="chip" data-tone="warning"><span class="penna-notice-lead"><i data-icon="triangle-alert"></i></span><div class="penna-notice-body"><span class="penna-text penna-notice-title" data-penna-text>Being reworked</span><span class="penna-text penna-notice-detail" data-penna-text>Tiles don't lift while dragged. The HTML tile fixes its size and drags on its own.</span></div></div></div>
 ```
 
 ## Variants

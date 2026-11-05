@@ -2,90 +2,42 @@ import init, * as wasm from "./wasm/storybook.js";
 
 const CREATOR = "theme-creator";
 const GLASS_KNOBS = [
-    "glass-blur",
-    "glass-tint",
-    "glass-refraction",
-    "glass-bezel",
-    "glass-dispersion",
-    "glass-saturation",
-    "glass-brightness",
-    "glass-contrast",
-    "glass-specular",
-    "glass-glint-width",
-    "glass-light",
-    "glass-light-directionality",
-    "glass-fresnel",
-    "glass-edge",
-    "glass-edge-width",
-    "glass-edge-spread",
-    "glass-noise",
-    "glass-inactive-flattening",
+    ["glass-blur", "Blur", 0, 40, 0.05],
+    ["glass-tint", "Surface tint", 0, 1, 0.01],
+    ["glass-refraction", "Refraction", -60, 150, 1],
+    ["glass-bezel", "Bezel", 0, 60, 1],
+    ["glass-dispersion", "Dispersion", 0, 0.6, 0.01],
+    ["glass-saturation", "Saturation", 0.5, 2.5, 0.05],
+    ["glass-brightness", "Brightness", -0.3, 0.3, 0.01],
+    ["glass-contrast", "Contrast", 0.5, 2, 0.05],
+    ["glass-specular", "Glint", 0, 1.5, 0.05],
+    ["glass-glint-width", "Glint width", 0, 6, 0.1],
+    ["glass-light", "Light angle", -180, 180, 5],
+    ["glass-light-directionality", "Directional light", 0, 1, 0.01],
+    ["glass-fresnel", "Rim glow", 0, 0.5, 0.01],
+    ["glass-edge", "Edge shadow", 0, 1, 0.05],
+    ["glass-edge-width", "Edge shadow width", 0, 4, 0.05],
+    ["glass-edge-spread", "Edge shadow spread", 0, 1, 0.05],
+    ["glass-noise", "Grain", 0, 0.1, 0.005],
+    ["glass-inactive-flattening", "Inactive flattening", 0, 1, 0.01],
 ];
-const LIGHT_GLASS_KNOBS = GLASS_KNOBS.map((name) => `light-${name}`);
-const SHADOW_KNOBS = [
-    "contact-y",
-    "contact-blur",
-    "contact-spread",
-    "contact-strength",
-    "float-y",
-    "float-blur",
-    "float-spread",
-    "float-strength",
-];
-const MATERIAL_KNOBS = ["name", "radius", "control-radius", "smoothing", "smoothed", "outline", "outlines", "row-inset", "shadows", ...SHADOW_KNOBS, "primary", "highlights", "surfaces", "highlight-strength", "font"];
-const COLORS = [
-    ["background", "Background"],
-    ["foreground", "Foreground"],
-    ["accent", "Accent"],
-    ["success", "Success"],
-    ["warning", "Warning"],
-    ["danger", "Danger"],
-    ["on-accent", "Text on accent"],
-    ["shadow-color", "Shadow"],
-];
-const MODES = ["light", "dark"];
-const COLOR_KNOBS = MODES.flatMap((mode) => COLORS.map(([name]) => `${mode}-${name}`));
-const SHUFFLED = ["radius", "outline", "row-inset", "contact-strength", "float-y", "float-blur", "float-strength"];
-const STEPS = ["colors", "materials", "roles", "export", "app"];
-const PROPS = [
-    ["fill", "Fill"],
-    ["outline", "Outline"],
-    ["shadow", "Shadow"],
-    ["shape", "Shape"],
-    ["smoothing", "Smoothing"],
-    ["hover", "Hover"],
-    ["selected", "Selected"],
-    ["ink", "Ink"],
-];
+const GLASS_NAMES = GLASS_KNOBS.map(([name]) => name);
+const PLAIN_THEME_KNOBS = ["name", "neutral-hue", "neutral-amount", "radius", "smoothing", "glass", "face", "lock"];
+const TINT_KNOBS = ["tint-color", "light-tint-color", "dark-tint-color"];
+const PERSON_KNOBS = ["theme", "accent", "contrast", "reduce-transparency", "zoom", "motion", "speed", "backdrop"];
+const STEPS = ["look", "person", "export", "app"];
 const HASH_LIMIT = 2000;
 const KNOBS_MIN_WIDTH = 280;
-const KNOBS = [
-    "theme",
-    "contrast",
-    "tint-hue",
-    "tint",
-    "zoom",
-    "motion",
-    "speed",
-    "backdrop",
-    "interface-theme",
-    ...MATERIAL_KNOBS,
-    ...COLOR_KNOBS,
-    "glass",
-    ...GLASS_KNOBS,
-    ...LIGHT_GLASS_KNOBS,
-];
 const DEFAULTS = {
-    theme: "system",
     "interface-theme": "default",
+    theme: "system",
+    accent: "",
     contrast: "1",
-    "tint-hue": "260",
-    tint: "0",
+    "reduce-transparency": "0",
     zoom: "1",
     motion: "1",
     speed: "1",
     backdrop: "plain",
-    glass: "theme",
 };
 
 const nav = document.getElementById("nav");
@@ -98,14 +50,13 @@ let book = { title: "Storybook", name: "", storage: "storybook", knobs: [] };
 let stories = [];
 let glassPresets = {};
 let themes = {};
+let accents = [];
+let appKnobs = [];
 let current = null;
-let roles = {};
-let roleTree = [];
-let step = "colors";
-let selectedRole = null;
+let step = STEPS[0];
+let inspected = null;
 let focusRetries = 0;
 let solo = false;
-const openRegions = new Set();
 const timeline = { past: [], future: [], last: null };
 
 function parseHash() {
@@ -125,84 +76,111 @@ function knobValue(name) {
 
 function setKnobValue(name, value) {
     const input = field(name);
+    if (!input || value === undefined || value === null) return;
     if (input.type === "checkbox") input.checked = value !== "0" && value !== "false";
-    else input.value = value;
+    else input.value = String(value);
 }
 
-function isRange(name) {
-    return field(name).type === "range";
+function same(name, value, other) {
+    const input = field(name);
+    if (input?.type !== "range") return String(value) === String(other);
+    const step = Number(input.step) || 0.01;
+    return Math.abs(Number(value) - Number(other)) < step / 2;
 }
 
-function glassMaterial(glass = knobValue("glass"), theme = knobValue("interface-theme")) {
-    return (glass === "theme" ? themes[theme]?.glass : glassPresets[glass]) ?? null;
+function preset() {
+    return themes[knobValue("interface-theme")] ?? themes[DEFAULTS["interface-theme"]];
 }
 
-function lightGlassMaterial(glass = knobValue("glass"), theme = knobValue("interface-theme")) {
-    return (glass === "theme" ? themes[theme]?.["light-glass"] : null) ?? null;
+function accentNamed(value) {
+    return accents.find((accent) => accent.name === value);
 }
 
-function editsLightGlass() {
-    return shownMode() === "light" && glassMaterial() !== null && lightGlassMaterial() !== null;
-}
-
-function knobDefault(name, glass = knobValue("glass"), theme = knobValue("interface-theme")) {
-    if (MATERIAL_KNOBS.includes(name) || COLOR_KNOBS.includes(name)) {
-        return String(themes[theme]?.[name] ?? "");
+function tintOf(knobs) {
+    let light = null;
+    let dark = null;
+    const named = knobs["tint-color"];
+    if (named && named !== "ink") {
+        const accent = accentNamed(named);
+        light = accent?.light ?? named;
+        dark = accent?.dark ?? named;
     }
-    if (LIGHT_GLASS_KNOBS.includes(name)) {
-        const value = lightGlassMaterial(glass, theme)?.[name.slice("light-".length)];
-        return value === undefined ? undefined : String(value);
-    }
-    if (!GLASS_KNOBS.includes(name)) return DEFAULTS[name];
-    const value = glassMaterial(glass, theme)?.[name];
-    return value === undefined ? undefined : String(value);
+    light = knobs["light-tint-color"] ?? light ?? knobs["dark-tint-color"] ?? null;
+    dark = knobs["dark-tint-color"] ?? dark ?? light;
+    if (light === null) return { choice: "ink", light, dark };
+    const lower = (color) => color.toLowerCase();
+    const accent = accents.find((each) => lower(each.light) === lower(light) && lower(each.dark) === lower(dark));
+    return { choice: accent?.name ?? "custom", light, dark };
 }
 
-function isDefault(name) {
-    const value = knobValue(name);
-    const fallback = knobDefault(name);
-    if (COLOR_KNOBS.includes(name)) return value.toLowerCase() === fallback.toLowerCase();
-    if (GLASS_KNOBS.includes(name) && glassMaterial() === null) return true;
-    if (LIGHT_GLASS_KNOBS.includes(name) && lightGlassMaterial() === null) return true;
-    if (!isRange(name)) return value === fallback;
-    const step = Number(field(name).step) || 0.01;
-    return Math.abs(Number(value) - Number(fallback)) < step / 2;
+function shownTint() {
+    const choice = knobValue("tint-color");
+    if (choice === "ink") return { choice, light: null, dark: null };
+    return { choice, light: knobValue("light-tint-color"), dark: knobValue("dark-tint-color") };
 }
 
-function propLabel(value) {
-    if (value === true) return "on";
-    if (value === false) return "off";
-    return String(value);
+function setTint(tint) {
+    setKnobValue("tint-color", tint.choice);
+    if (tint.light) setKnobValue("light-tint-color", tint.light);
+    if (tint.dark) setKnobValue("dark-tint-color", tint.dark);
 }
 
-function sortRoles(map) {
-    const sorted = {};
-    for (const id of Object.keys(map ?? {}).sort()) {
-        const patch = {};
-        for (const [prop] of PROPS) {
-            if (map[id]?.[prop] !== undefined) patch[prop] = map[id][prop];
-        }
-        if (Object.keys(patch).length > 0) sorted[id] = patch;
-    }
-    return sorted;
+function cornersOf(controlRadius, radius) {
+    if (controlRadius === "full") return { corners: "full", value: radius };
+    if (controlRadius === undefined || Number(controlRadius) === Number(radius)) return { corners: "same", value: radius };
+    return { corners: "own", value: controlRadius };
 }
 
-function presetRoles(theme = knobValue("interface-theme")) {
-    return sortRoles(themes[theme]?.roles);
+function setCorners({ corners, value }) {
+    setKnobValue("control-corners", corners);
+    setKnobValue("control-radius", value);
+}
+
+function controlRadius() {
+    return { same: knobValue("radius"), own: knobValue("control-radius"), full: "full" }[knobValue("control-corners")];
+}
+
+function glassDefaults(glass = knobValue("glass")) {
+    return glassPresets[glass] ?? null;
+}
+
+function resetGlassSliders() {
+    const material = glassDefaults();
+    if (!material) return;
+    for (const name of GLASS_NAMES) setKnobValue(name, material[name]);
 }
 
 function themeParams() {
     const params = new URLSearchParams();
-    for (const name of KNOBS) {
-        if (!isDefault(name)) params.set(name, knobValue(name));
+    for (const name of [...PERSON_KNOBS, ...appKnobs]) {
+        if (!same(name, knobValue(name), DEFAULTS[name])) params.set(name, knobValue(name));
     }
-    const encoded = JSON.stringify(roles);
-    if (encoded !== JSON.stringify(presetRoles())) params.set("roles", encoded);
+    const base = preset();
+    if (knobValue("interface-theme") !== DEFAULTS["interface-theme"]) params.set("interface-theme", knobValue("interface-theme"));
+    for (const name of PLAIN_THEME_KNOBS) {
+        if (!same(name, knobValue(name), base[name] ?? "")) params.set(name, knobValue(name));
+    }
+    const tint = shownTint();
+    const baseTint = tintOf(base);
+    const moved = tint.choice !== baseTint.choice || (tint.choice === "custom" && (tint.light !== baseTint.light || tint.dark !== baseTint.dark));
+    if (moved && tint.choice === "custom") {
+        params.set("light-tint-color", tint.light);
+        params.set("dark-tint-color", tint.dark);
+    } else if (moved) {
+        params.set("tint-color", tint.choice);
+    }
+    const baseCorners = cornersOf(base["control-radius"], base.radius);
+    const corners = knobValue("control-corners");
+    if (corners !== baseCorners.corners || (corners === "own" && !same("control-radius", knobValue("control-radius"), baseCorners.value))) {
+        params.set("control-radius", controlRadius());
+    }
+    const material = glassDefaults();
+    if (material) {
+        for (const name of GLASS_NAMES) {
+            if (!same(name, knobValue(name), material[name])) params.set(name, knobValue(name));
+        }
+    }
     return params;
-}
-
-function focusedRole() {
-    return step === "roles" ? selectedRole : null;
 }
 
 function knobQuery() {
@@ -211,62 +189,40 @@ function knobQuery() {
 
 function hashQuery() {
     const params = themeParams();
-    if (params.toString().length > HASH_LIMIT) params.delete("roles");
+    if (params.toString().length > HASH_LIMIT) for (const name of GLASS_NAMES) params.delete(name);
     if (step !== STEPS[0]) params.set("step", step);
-    if (step === "roles" && selectedRole) params.set("inspect", selectedRole);
+    if (inspected) params.set("inspect", inspected);
     if (solo) params.set("solo", "1");
     return params.toString();
 }
 
-function storeRoles() {
-    try {
-        const preset = presetRoles();
-        const edits = {};
-        for (const id of new Set([...Object.keys(preset), ...Object.keys(roles)])) {
-            const patch = roles[id] ?? {};
-            if (JSON.stringify(patch) !== JSON.stringify(preset[id] ?? {})) edits[id] = patch;
-        }
-        localStorage.setItem(`${book.storage}-role-edits`, JSON.stringify({ theme: knobValue("interface-theme"), edits }));
-    } catch {}
+function loadKnobs(params) {
+    const id = themes[params.get("interface-theme")] ? params.get("interface-theme") : DEFAULTS["interface-theme"];
+    setKnobValue("interface-theme", id);
+    const knobs = { ...themes[id] };
+    if (params.has("tint-color")) for (const name of TINT_KNOBS) delete knobs[name];
+    for (const [name, value] of params) knobs[name] = value;
+    if (knobs.face) addFontOption(knobs.face);
+    for (const name of [...PERSON_KNOBS, ...appKnobs]) setKnobValue(name, knobs[name] ?? DEFAULTS[name]);
+    for (const name of PLAIN_THEME_KNOBS) setKnobValue(name, knobs[name] ?? "");
+    setTint(tintOf(knobs));
+    setCorners(cornersOf(knobs["control-radius"], knobs.radius));
+    resetGlassSliders();
+    for (const name of GLASS_NAMES) if (params.has(name)) setKnobValue(name, params.get(name));
 }
 
-function validRoles(map) {
-    try {
-        if (typeof map !== "object" || map === null) return null;
-        wasm.import_theme(JSON.stringify({ roles: map }));
-        return sortRoles(map);
-    } catch {
-        return null;
+function personParams() {
+    const params = themeParams();
+    for (const name of [...params.keys()]) {
+        if (!PERSON_KNOBS.includes(name) && !appKnobs.includes(name)) params.delete(name);
     }
-}
-
-function storedRoles(theme) {
-    try {
-        const stored = JSON.parse(localStorage.getItem(`${book.storage}-role-edits`) ?? "null");
-        return stored?.theme === theme ? validRoles({ ...presetRoles(theme), ...stored.edits }) : null;
-    } catch {
-        return null;
-    }
-}
-
-function resetGlassSliders() {
-    for (const name of [...GLASS_KNOBS, ...LIGHT_GLASS_KNOBS]) {
-        const value = knobDefault(name);
-        if (value !== undefined) setKnobValue(name, value);
-    }
+    return params;
 }
 
 function resetThemeKnobs() {
-    for (const name of [...MATERIAL_KNOBS, ...COLOR_KNOBS]) setKnobValue(name, knobDefault(name));
-    setKnobValue("glass", "theme");
-    resetGlassSliders();
-    roles = presetRoles();
-}
-
-function shownMode() {
-    const mode = knobValue("theme");
-    if (mode !== "system") return mode;
-    return matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+    const params = personParams();
+    params.set("interface-theme", knobValue("interface-theme"));
+    loadKnobs(params);
 }
 
 function writeHash(story, section) {
@@ -384,7 +340,7 @@ function show(storyId, sectionId) {
         markCurrent(story.id);
         focusRetries = 0;
         focusShowcase();
-        wasm.inspect("");
+        flash();
         document.title = creator ? `Theme creator · ${book.name}` : `${story.name} · ${book.title}`;
     }
     if (sectionId) {
@@ -405,29 +361,18 @@ function paintSliders() {
 }
 
 function applyKnobs() {
-    form.querySelector("#glass-knobs").hidden = glassMaterial() === null || editsLightGlass();
-    form.querySelector("#light-glass-knobs").hidden = !editsLightGlass();
-    form.querySelector("#outline-note").hidden = glassMaterial() === null;
-    form.querySelector("#smoothed-note").hidden = knobValue("smoothed") !== "picked";
-    form.querySelector("#outlines-note").hidden = knobValue("outlines") !== "picked";
-    form.querySelector("#shadows-note").hidden = knobValue("shadows") !== "picked";
-    const mode = shownMode();
-    for (const each of MODES) form.querySelector(`#colors-${each}`).hidden = each !== mode;
-    for (const name of KNOBS) {
-        const output = form.elements[`${name}-value`];
-        if (output) output.value = knobValue(name);
+    form.querySelector("#tint-colors").hidden = knobValue("tint-color") === "ink";
+    form.querySelector("#control-radius").hidden = knobValue("control-corners") !== "own";
+    form.querySelector("#glass-material").hidden = glassDefaults() === null;
+    for (const output of form.querySelectorAll("output[name$='-value']")) {
+        output.value = knobValue(output.name.slice(0, -"-value".length));
     }
     paintSliders();
     wasm.set_knobs(knobQuery());
-    storeRoles();
     paintChrome();
     paintStep();
     const { story, section } = parseHash();
     writeHash(story || current, section);
-}
-
-function rolesChanged() {
-    return JSON.stringify(roleTree.map((region) => region.roles.map((role) => [role.patch, role.inherited])));
 }
 
 function paintStep() {
@@ -437,43 +382,32 @@ function paintStep() {
         tab.tabIndex = active ? 0 : -1;
     }
     for (const panel of form.querySelectorAll(".step")) panel.hidden = panel.dataset.step !== step;
-    if (step === "roles") {
-        const before = rolesChanged();
-        roleTree = JSON.parse(wasm.roles());
-        if (before !== rolesChanged() || !document.getElementById("role-tree").hasChildNodes()) renderRoles();
-    }
-    focusShowcase();
     if (step === "export") document.getElementById("theme-json").textContent = wasm.theme_file();
 }
 
-function showStep(name, flashing = true) {
+function showStep(name) {
     if (!STEPS.includes(name) || name === step) return;
     step = name;
-    focusRetries = 0;
     paintStep();
-    if (flashing) flash();
     const { story, section } = parseHash();
     writeHash(story || current, section);
 }
 
 function flash() {
-    wasm.inspect(current === CREATOR ? (focusedRole() ?? "") : "");
+    wasm.inspect(current === CREATOR ? (inspected ?? "") : "");
 }
 
 function focusShowcase() {
     if (current !== CREATOR) return;
-    const id = focusedRole();
+    const id = inspected;
     const drawn = id ? JSON.parse(wasm.drawn_roles()) : {};
     const sections = [...storyRoot.querySelectorAll("section.region")];
-    const shows = sections.map((section) => {
-        const names = drawn[section.dataset.region];
-        return !id || !names || names.includes(id);
-    });
-    const found = sections.filter((section, index) => shows[index] && drawn[section.dataset.region]?.includes(id));
+    const found = sections.filter((section) => drawn[section.dataset.region]?.includes(id));
     const filtering = Boolean(id) && found.length > 0;
-    sections.forEach((section, index) => {
-        section.hidden = filtering && !shows[index];
-    });
+    for (const section of sections) {
+        const names = drawn[section.dataset.region];
+        section.hidden = filtering && Boolean(names) && !names.includes(id);
+    }
     for (const link of regions.children) {
         link.hidden = filtering && !found.some((section) => section.dataset.region === link.dataset.region);
     }
@@ -481,11 +415,8 @@ function focusShowcase() {
     note.hidden = !id;
     storyRoot.style.setProperty("--focus-note", note.hidden ? "0px" : `${note.offsetHeight}px`);
     if (id) {
-        const role = findRole(id);
         const names = found.map((section) => section.querySelector("h2").textContent);
-        note.querySelector("span").textContent = `${role?.label ?? id} · ${
-            found.length ? `in ${names.join(", ")}` : "not in the showcase"
-        }`;
+        note.querySelector("span").textContent = `${id} · ${found.length ? `in ${names.join(", ")}` : "not in the showcase"}`;
     }
     const pending = id && sections.some((section) => !drawn[section.dataset.region]);
     if (pending && focusRetries < 25) {
@@ -494,175 +425,14 @@ function focusShowcase() {
     }
 }
 
-function findRole(id) {
-    for (const region of roleTree) {
-        const role = region.roles.find((candidate) => candidate.id === id);
-        if (role) return role;
-    }
-    return null;
-}
-
-function setRoleProp(id, prop, value) {
-    const role = findRole(id);
-    if (!role || !PROPS.some(([name]) => name === prop)) throw new Error(`no role ${id} or prop ${prop}`);
-    const clears = value === "inherit" || value === null || value === undefined;
-    if (!clears && !role.knobs[prop].includes(value)) throw new Error(`${id} can't set ${prop} to ${value}`);
-    const patch = { ...(roles[id] ?? {}) };
-    if (clears || (value === role.inherited[prop].value && role.members === 0)) {
-        delete patch[prop];
-    } else {
-        patch[prop] = value;
-    }
-    roles = sortRoles({ ...roles, [id]: patch });
-}
-
-function selectRole(id, flashing = true) {
-    selectedRole = id && findRole(id) ? id : null;
-    if (selectedRole) {
-        const region = roleTree.find((candidate) => candidate.roles.some((role) => role.id === selectedRole));
-        if (region) openRegions.add(region.title);
-    }
-    renderRoles();
+function inspect(id) {
+    inspected = id || null;
     focusRetries = 0;
     focusShowcase();
     storyRoot.scrollTo?.(0, 0);
-    if (flashing) flash();
+    flash();
     const { story, section } = parseHash();
     writeHash(story || current, section);
-}
-
-function matchesFilter(role, query) {
-    if (!query) return true;
-    return [role.id, role.label, role.about, role.kind].some((text) => text.toLowerCase().includes(query));
-}
-
-function roleSummary(role) {
-    const style = role.style;
-    const parts = [style.fill === "none" ? "no fill" : style.fill];
-    if (style.outline) parts.push("outline");
-    if (style.shadow !== "none") parts.push(style.shadow);
-    parts.push(style.shape);
-    return parts.join(" · ");
-}
-
-function propControl(role, [prop, label]) {
-    const values = role.knobs[prop];
-    const set = role.patch[prop];
-    const inherited = role.inherited[prop];
-    const name = `role-${prop}`;
-    const option = (value, text, checked, extra = "") =>
-        element(
-            "label",
-            { class: extra },
-            element("input", Object.assign(
-                { type: "radio", name, value: propLabel(value), "data-role": role.id, "data-prop": prop },
-                checked ? { checked: "" } : {},
-            )),
-            element("span", { text }),
-        );
-    const segments = element(
-        "div",
-        { class: "segmented compact", role: "radiogroup", "aria-label": label },
-        option("inherit", "inherit", set === undefined),
-        ...values.map((value) =>
-            option(
-                value,
-                propLabel(value),
-                set === value,
-                set === undefined && value === inherited.value ? "inherited" : "",
-            ),
-        ),
-    );
-    return element(
-        "div",
-        { class: "prop" },
-        element(
-            "div",
-            { class: "prop-head" },
-            element("span", { text: label }),
-            element(
-                "small",
-                {},
-                set === undefined ? "inherits " : "set here · inherits ",
-                element("b", { text: propLabel(inherited.value) }),
-                ` from ${inherited.from}${inherited.themed ? " in this theme" : ""}`,
-            ),
-        ),
-        segments,
-    );
-}
-
-function renderRoles() {
-    const tree = document.getElementById("role-tree");
-    const query = document.getElementById("role-filter").value.trim().toLowerCase();
-    const focused = document.activeElement?.closest?.("#role-tree") ? document.activeElement : null;
-    const focus = focused && { name: focused.name, value: focused.value, role: focused.dataset.roleHead };
-    tree.replaceChildren(
-        ...roleTree.flatMap((region) => {
-            const members = region.roles.filter((role) => matchesFilter(role, query));
-            if (members.length === 0) return [];
-            const edited = members.filter((role) => Object.keys(role.patch).length > 0).length;
-            const details = element(
-                "details",
-                { class: "region", "data-region": region.title },
-                element(
-                    "summary",
-                    {},
-                    element("span", { text: region.title }),
-                    element("small", { text: edited ? `${edited} set · ${members.length}` : String(members.length) }),
-                ),
-                ...members.map((role) => {
-                    const selected = role.id === selectedRole;
-                    const next = region.roles[region.roles.indexOf(role) + 1];
-                    const grouping = role.depth === 0 ? "kind" : (next?.depth ?? 0) > role.depth ? "group" : "";
-                    const patched = Object.keys(role.patch).length > 0;
-                    const head = element(
-                        "button",
-                        {
-                            type: "button",
-                            class: "role-head",
-                            "data-role-head": role.id,
-                            "aria-expanded": String(selected),
-                            title: role.about,
-                        },
-                        element("span", { class: "role-label", text: role.label }),
-                        element("span", { class: patched ? "role-dot" : "role-dot hidden", "aria-hidden": "true" }),
-                        element("small", { class: "role-kind", text: grouping }),
-                        element("small", { class: "role-summary", text: roleSummary(role) }),
-                    );
-                    const body = selected
-                        ? [
-                              element(
-                                  "div",
-                                  { class: "role-body" },
-                                  element("p", {}, element("code", { text: role.id }), ` ${role.about}.`),
-                                  ...(PROPS.some(([prop]) => role.knobs[prop].length > 0)
-                                      ? []
-                                      : [element("p", { text: "Themes don't change this one." })]),
-                                  ...PROPS.filter(([prop]) => role.knobs[prop].length > 0).map((spec) =>
-                                      propControl(role, spec),
-                                  ),
-                              ),
-                          ]
-                        : [];
-                    return element(
-                        "div",
-                        { class: selected ? "role selected" : "role", "data-role": role.id, style: `--depth: ${query ? 0 : role.depth}` },
-                        head,
-                        ...body,
-                    );
-                }),
-            );
-            details.open = query !== "" || openRegions.has(region.title);
-            return [details];
-        }),
-    );
-    if (focus) {
-        const selector = focus.role
-            ? `[data-role-head="${CSS.escape(focus.role)}"]`
-            : `input[name="${CSS.escape(focus.name)}"][value="${CSS.escape(focus.value)}"]`;
-        tree.querySelector(selector)?.focus();
-    }
 }
 
 function remember() {
@@ -679,7 +449,7 @@ function travel(from, to) {
     if (from.length === 0) return;
     to.push(timeline.last);
     timeline.last = from.pop();
-    loadKnobs(new URLSearchParams(timeline.last), false);
+    loadKnobs(new URLSearchParams(timeline.last));
     applyKnobs();
     paintHistory();
 }
@@ -699,29 +469,18 @@ function paintChrome() {
     document.documentElement.dataset.mode = theme.mode;
 }
 
-function loadKnobs(params, stored) {
-    const glass = params.get("glass") ?? DEFAULTS.glass;
-    const theme = params.get("interface-theme") ?? DEFAULTS["interface-theme"];
-    setKnobValue("interface-theme", theme);
-    for (const name of KNOBS) {
-        const value = params.get(name) ?? knobDefault(name, glass, theme);
-        if (value !== undefined) setKnobValue(name, value);
-    }
-    let loaded = null;
-    try {
-        loaded = params.has("roles") ? validRoles(JSON.parse(params.get("roles"))) : null;
-    } catch {}
-    roles = loaded ?? (stored ? storedRoles(theme) : null) ?? presetRoles(theme);
-}
-
 function loadView(params) {
     solo = params.has("solo") && params.get("solo") !== "0";
     document.body.classList.toggle("solo", solo);
     if (STEPS.includes(params.get("step"))) step = params.get("step");
-    if (params.has("inspect")) selectedRole = findRole(params.get("inspect")) ? params.get("inspect") : null;
+    inspected = params.get("inspect") || null;
 }
 
-function renderThemes() {
+function title(name) {
+    return name.charAt(0).toUpperCase() + name.slice(1);
+}
+
+function renderKnobs() {
     const choices = document.getElementById("theme-choices");
     for (const [id, theme] of Object.entries(themes)) {
         choices.append(
@@ -733,29 +492,24 @@ function renderThemes() {
             ),
         );
     }
-    const glass = document.getElementById("glass-knobs");
-    const light = glass.cloneNode(true);
-    light.id = "light-glass-knobs";
-    for (const node of light.querySelectorAll("[name]")) node.setAttribute("name", `light-${node.getAttribute("name")}`);
-    light.prepend(element("p", { class: "knob-note", text: "Light mode draws its own glass; these edit it." }));
-    glass.after(light);
-    for (const mode of MODES) {
-        const fieldset = document.getElementById(`colors-${mode}`);
-        for (const [name, label] of COLORS) {
-            fieldset.append(
-                element(
-                    "label",
-                    { class: "row color" },
-                    element("span", { text: label }),
-                    element("input", { type: "color", name: `${mode}-${name}` }),
-                ),
-            );
-        }
-    }
     document.querySelector(".start").hidden = Object.keys(themes).length < 2;
-}
-
-function renderAppKnobs() {
+    const custom = field("tint-color").querySelector("option[value=custom]");
+    for (const accent of accents) {
+        custom.before(element("option", { value: accent.name, text: title(accent.name) }));
+        document.getElementById("accent-choices").append(element("option", { value: accent.name, text: title(accent.name) }));
+    }
+    setTint({ choice: "ink", light: accents[0]?.light, dark: accents[0]?.dark });
+    document.getElementById("glass-knobs").append(
+        ...GLASS_KNOBS.map(([name, label, min, max, step]) =>
+            element(
+                "label",
+                { class: "row slider" },
+                element("span", { text: label }),
+                element("output", { name: `${name}-value` }),
+                element("input", { type: "range", name, min, max, step }),
+            ),
+        ),
+    );
     const app = document.getElementById("step-app");
     const preview = document.getElementById("preview-knobs");
     for (const knob of book.knobs) {
@@ -780,14 +534,13 @@ function renderAppKnobs() {
                       element("input", { type: "range", name: knob.name, min: knob.min, max: knob.max, step: knob.step, value: knob.value }),
                   ),
         );
-        KNOBS.splice(KNOBS.indexOf("motion"), 0, knob.name);
+        appKnobs.push(knob.name);
         DEFAULTS[knob.name] = knob.kind === "check" ? (knob.value ? "1" : "0") : String(knob.value);
     }
-    for (const node of document.querySelectorAll("[data-catalog-name]")) node.textContent = book.name;
 }
 
 function addFontOption(name) {
-    const select = field("font");
+    const select = field("face");
     if (![...select.options].some((option) => option.value === name)) {
         select.append(element("option", { value: name, text: name }));
     }
@@ -810,26 +563,32 @@ function shuffle() {
         const value = min + Math.round((Math.random() * (max - min)) / step) * step;
         setKnobValue(name, String(Number(value.toFixed(4))));
     };
-    for (const name of SHUFFLED) pick(name);
-    setKnobValue("primary", Math.random() < 0.5 ? "foreground" : "accent");
-    setKnobValue("highlights", Math.random() < 0.5 ? "lift" : "flat");
-    setKnobValue("surfaces", Math.random() < 0.5 ? "darker" : "brighter");
-    const glasses = ["theme", "off", ...Object.keys(glassPresets)];
-    setKnobValue("glass", glasses[Math.floor(Math.random() * glasses.length)]);
+    const any = (list) => list[Math.floor(Math.random() * list.length)];
+    for (const name of ["neutral-hue", "radius", "control-radius", "smoothing"]) pick(name);
+    setKnobValue("neutral-amount", String(Math.round(Math.random() * 40) / 100));
+    setKnobValue("control-corners", any(["same", "own", "full"]));
+    const tint = any(["ink", ...accents.map((accent) => accent.name)]);
+    setTint(tintOf({ "tint-color": tint }));
+    setKnobValue("glass", any(["platform", "none", "frosted", "liquid"]));
     resetGlassSliders();
 }
 
 function importTheme(json) {
-    const knobs = JSON.parse(wasm.import_theme(json));
-    if ("glass" in knobs) {
-        setKnobValue("glass", knobs.glass);
-        resetGlassSliders();
+    const params = personParams();
+    params.set("interface-theme", knobValue("interface-theme"));
+    for (const [name, value] of Object.entries(JSON.parse(wasm.import_theme(json)))) params.set(name, String(value));
+    loadKnobs(params);
+}
+
+function setKnobs(knobs) {
+    const params = themeParams();
+    if ("interface-theme" in knobs) {
+        for (const name of [...params.keys()]) if (!PERSON_KNOBS.includes(name) && !appKnobs.includes(name)) params.delete(name);
     }
-    roles = sortRoles(knobs.roles);
-    for (const [name, value] of Object.entries(knobs)) {
-        if (name === "font" && value) addFontOption(value);
-        if (form.elements[name]) setKnobValue(name, String(value));
-    }
+    if ("glass" in knobs) for (const name of GLASS_NAMES) params.delete(name);
+    if ("tint-color" in knobs) for (const name of TINT_KNOBS) params.delete(name);
+    for (const [name, value] of Object.entries(knobs)) params.set(name, String(value));
+    loadKnobs(params);
 }
 
 async function copyTheme() {
@@ -867,6 +626,7 @@ const actions = {
         importDialog.showModal();
     },
     copy: copyTheme,
+    "show-all": () => inspect(null),
 };
 
 function setKnobsWidth(width) {
@@ -940,64 +700,31 @@ await waitFor(wasm.is_ready);
 stories = JSON.parse(wasm.stories());
 glassPresets = JSON.parse(wasm.glass_presets());
 themes = JSON.parse(wasm.interface_themes());
+accents = JSON.parse(wasm.accents());
 renderNav();
-renderThemes();
-renderAppKnobs();
+renderKnobs();
 const initial = parseHash();
-const font = initial.params.get("font");
-if (font) addFontOption(font);
-loadKnobs(initial.params, true);
-roleTree = JSON.parse(wasm.roles());
+loadKnobs(initial.params);
 loadView(initial.params);
-if (selectedRole) {
-    const region = roleTree.find((candidate) => candidate.roles.some((role) => role.id === selectedRole));
-    if (region) openRegions.add(region.title);
-} else {
-    openRegions.add(roleTree[0]?.title);
-}
 applyKnobs();
 remember();
 show(initial.story, initial.section);
-revealSelectedRole();
-
-function revealSelectedRole() {
-    const aside = document.getElementById("knobs");
-    const target = document.querySelector("#role-tree .role.selected");
-    if (!target) return;
-    const offset = target.getBoundingClientRect().top - aside.getBoundingClientRect().top;
-    aside.scrollTop += offset - 120;
-}
 
 form.addEventListener("input", (event) => {
-    const target = event.target;
-    if (target.id === "role-filter") {
-        renderRoles();
-        return;
+    const { name } = event.target;
+    if (name === "interface-theme") resetThemeKnobs();
+    else if (name === "glass") resetGlassSliders();
+    else if (name === "tint-color" && accentNamed(event.target.value)) setTint(tintOf({ "tint-color": event.target.value }));
+    else if (name === "light-tint-color" || name === "dark-tint-color") setKnobValue("tint-color", "custom");
+    else if (name === "control-corners" && event.target.value === "own" && knobValue("control-radius") === knobValue("radius")) {
+        setKnobValue("control-radius", Math.max(0, Number(knobValue("radius")) - 4));
     }
-    if (target.dataset.prop) {
-        const values = findRole(target.dataset.role)?.knobs[target.dataset.prop] ?? [];
-        const value = target.value === "inherit" ? "inherit" : values.find((each) => propLabel(each) === target.value);
-        setRoleProp(target.dataset.role, target.dataset.prop, value);
-        applyKnobs();
-        remember();
-        return;
-    }
-    if (target.name === "interface-theme") resetThemeKnobs();
-    else if (target.name === "glass") resetGlassSliders();
     applyKnobs();
 });
-form.addEventListener("change", (event) => {
-    if (!event.target.dataset.prop && event.target.id !== "role-filter") remember();
-});
+form.addEventListener("change", () => remember());
 form.addEventListener("click", (event) => {
-    const tab = event.target.closest("[data-step], [data-goto]");
-    if (tab && !tab.classList.contains("step")) {
-        showStep(tab.dataset.goto ?? tab.dataset.step);
-        if (tab.dataset.goto) document.getElementById("knobs").scrollTop = 0;
-        return;
-    }
-    const head = event.target.closest("[data-role-head]");
-    if (head) selectRole(head.dataset.roleHead === selectedRole ? null : head.dataset.roleHead);
+    const tab = event.target.closest("[data-step]");
+    if (tab && !tab.classList.contains("step")) showStep(tab.dataset.step);
 });
 form.addEventListener("keydown", (event) => {
     const tab = event.target.closest("[role=tab]");
@@ -1013,13 +740,6 @@ form.addEventListener("keydown", (event) => {
     showStep(STEPS[next]);
     form.querySelector(`[role=tab][data-step="${STEPS[next]}"]`)?.focus();
 });
-const roleTreeNode = document.getElementById("role-tree");
-roleTreeNode.addEventListener("toggle", (event) => {
-    const region = event.target.dataset?.region;
-    if (!region || document.getElementById("role-filter").value.trim()) return;
-    if (event.target.open) openRegions.add(region);
-    else openRegions.delete(region);
-}, true);
 form.addEventListener("reset", () =>
     setTimeout(() => {
         loadKnobs(new URLSearchParams());
@@ -1060,7 +780,7 @@ document.getElementById("font-file").addEventListener("change", async (event) =>
         const names = JSON.parse(wasm.add_font(new Uint8Array(await file.arrayBuffer())));
         if (names.length === 0) throw new Error("no new font family in that file");
         names.forEach(addFontOption);
-        setKnobValue("font", names[0]);
+        setKnobValue("face", names[0]);
         status.value = names[0];
         applyKnobs();
         remember();
@@ -1072,7 +792,7 @@ document.getElementById("font-file").addEventListener("change", async (event) =>
 window.addEventListener("hashchange", () => {
     const { story, section, query, params } = parseHash();
     if (query) {
-        loadKnobs(params, false);
+        loadKnobs(params);
         loadView(params);
         applyKnobs();
         remember();
@@ -1080,9 +800,6 @@ window.addEventListener("hashchange", () => {
     show(story, section);
 });
 matchMedia("(prefers-color-scheme: dark)").addEventListener("change", applyKnobs);
-storyRoot.addEventListener("click", (event) => {
-    if (event.target.closest("[data-action=show-all]")) selectRole(null);
-});
 regions.addEventListener("click", (event) => {
     const link = event.target.closest("a");
     if (!link) return;
@@ -1098,42 +815,18 @@ window.storybook = {
         return globalThis.ala?.idle();
     },
     setKnobs: (knobs) => {
-        if ("interface-theme" in knobs) {
-            setKnobValue("interface-theme", String(knobs["interface-theme"]));
-            resetThemeKnobs();
-        }
-        if ("glass" in knobs) {
-            setKnobValue("glass", String(knobs.glass));
-            resetGlassSliders();
-        }
-        for (const [name, value] of Object.entries(knobs)) {
-            if (form.elements[name]) setKnobValue(name, String(value));
-        }
-        if ("roles" in knobs) {
-            const map = typeof knobs.roles === "string" ? JSON.parse(knobs.roles) : knobs.roles;
-            roles = validRoles(map) ?? roles;
-        }
+        setKnobs(knobs);
         applyKnobs();
         remember();
         return globalThis.ala?.idle();
     },
-    knobs: () => Object.fromEntries(KNOBS.map((name) => [name, knobValue(name)])),
+    knobs: () => Object.fromEntries(themeParams()),
     step: (name) => {
-        if (name !== undefined) showStep(name, false);
+        if (name !== undefined) showStep(name);
         return step;
     },
-    roles: () => (roleTree = JSON.parse(wasm.roles())),
-    setRole: (id, prop, value) => {
-        roleTree = JSON.parse(wasm.roles());
-        setRoleProp(id, prop, value);
-        applyKnobs();
-        remember();
-        return globalThis.ala?.idle();
-    },
     inspect: (id) => {
-        showStep("roles", false);
-        roleTree = JSON.parse(wasm.roles());
-        selectRole(id || null, false);
+        inspect(id);
         return globalThis.ala?.idle();
     },
     theme: () => JSON.parse(wasm.theme_file()),

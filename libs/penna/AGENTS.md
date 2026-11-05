@@ -8,7 +8,7 @@ shares. This file adds what is specific to penna.
 penna is the widget kit on ala, a maintained fork of gpui-component. Read `UPSTREAM.md` before changing ported code or pulling an
 upstream fix.
 
-penna is the only place UI chrome is defined: tokens, surface roles, theme patches and components.
+penna is the only place UI chrome is defined: tokens, surface roles, the look with its knobs, and components.
 Read `knowledge/designs/foundations.md` before any UI work: it is the spec for every value, name
 and rule (space, type, sizes, color, layout) and the order of work bringing penna onto it. Read
 `knowledge/designs/kit.md` before adding a component or a role. Two rules from it:
@@ -63,7 +63,7 @@ labels are hidden inside figures. The site's own CSS is `docs/site.css`.
 
 ## Design system
 
-`knowledge/designs/foundations.md` is penna's design language and the source of truth: principles, the rules and scales, and a section per component (purpose, kinds, anatomy, sizes, states, behavior, content, placement, HTML, Status). Write a change there first, then draw it on its docs page, then make the code match. The docs site is how people see the spec: `docs/pages/principles.md`, the Foundations pages (`foundations.md`, `color.md`, `typography.md`, `spacing.md`, `sizes.md`) and a page per component, drawn with real penna components. Pages are terse: one or two short lines under each heading, then a picture. Pictures sit flush with the text, left-aligned, with no card around them, and show one or two cases built from penna markup (`.docs-show`, `.docs-cell` with a `.docs-note` caption); storybook sections (`story=`) are for pages that need the HTML / Native switch. Rules come as do and don't pairs (`.docs-dodont`: two panels with a mark and a caption). Values may appear as clean tables (`.docs-tokens`: name, value, a live example per row). Component pages add one code sample and an API table. A component page whose component doesn't match its section yet opens with a warning notice that names the gaps, and loses it once the Status reads matches. When a page and the spec disagree, the spec wins and the page gets fixed.
+`knowledge/designs/foundations.md` is penna's design language and the source of truth: principles, the rules and scales, and a section per component (purpose, kinds, anatomy, sizes, states, behavior, content, placement, HTML, Status). Write a change there first, then draw it on its docs page, then make the code match. The docs site is how people see the spec: `docs/pages/principles.md`, the Foundations pages (`foundations.md`, `color.md`, `typography.md`, `spacing.md`, `sizes.md`, `look.md`) and a page per component, drawn with real penna components. Pages are terse: one or two short lines under each heading, then a picture. Pictures sit flush with the text, left-aligned, with no card around them, and show one or two cases built from penna markup (`.docs-show`, `.docs-cell` with a `.docs-note` caption); storybook sections (`story=`) are for pages that need the HTML / Native switch. Rules come as do and don't pairs (`.docs-dodont`: two panels with a mark and a caption). Values may appear as clean tables (`.docs-tokens`: name, value, a live example per row). Component pages add one code sample and an API table. A component page whose component doesn't match its section yet opens with a warning notice that names the gaps, and loses it once the Status reads matches. When a page and the spec disagree, the spec wins and the page gets fixed.
 
 ## Storybook
 

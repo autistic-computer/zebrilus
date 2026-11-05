@@ -45,7 +45,7 @@ pub use surface::{
     Edge, Fill, Highlight, Ink, Kind, Layer, Shadow, ShadowMaterial, Shape, Smoothing, Style,
     StylePatch, Surface, SurfaceRole, drawn_roles, note_drawn_roles,
 };
-pub(crate) use surface::{StatefulSurfaceExt, restyle};
+pub(crate) use surface::{InteractiveSurfaceExt, StatefulSurfaceExt, restyle};
 pub use text_style::TextStyle;
 pub use theme::{
     ADAPTIVE_CORNER_FRACTION, ActiveTheme, CHROME_GAP, CORNER_SMOOTHING,

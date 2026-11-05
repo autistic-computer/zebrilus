@@ -3,7 +3,7 @@
 A one pixel line between things that takes no room. Try a gap first; for a line on an element's edge use `.rule()`.
 
 ```figure uses=notice
-<div class="docs-full penna-notice" data-penna="notice" data-tone="warning"><div class="penna-notice-tone" data-penna="chip" data-tone="warning"><span class="penna-notice-lead"><i data-icon="triangle-alert"></i></span><div class="penna-notice-body"><span class="penna-text penna-notice-title" data-penna-text>Being reworked</span><span class="penna-text penna-notice-detail" data-penna-text>The HTML line draws on every theme, even one that turns that rule off. A custom color takes any color, not only the theme's.</span></div></div></div>
+<div class="docs-full penna-notice" data-penna="notice" data-tone="warning"><div class="penna-notice-tone" data-penna="chip" data-tone="warning"><span class="penna-notice-lead"><i data-icon="triangle-alert"></i></span><div class="penna-notice-body"><span class="penna-text penna-notice-title" data-penna-text>Being reworked</span><span class="penna-text penna-notice-detail" data-penna-text>A custom color takes any color, not only the theme's.</span></div></div></div>
 ```
 
 ## Anatomy
@@ -30,7 +30,7 @@ Separator::horizontal().look(RuleLook::List)
 - **List**: between menu groups, setting rows and stacked cards.
 - **Tree**: the guides that join a tree's children.
 
-Each draws only where the theme draws that rule.
+All four draw a hairline in the same ink.
 
 ## Use
 

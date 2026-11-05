@@ -184,10 +184,9 @@ function refract(element) {
   }
   const width = Math.round(element.offsetWidth);
   const height = Math.round(element.offsetHeight);
-  const root = getComputedStyle(document.documentElement);
   const shorter = Math.min(width, height);
-  const bezel = Math.min(parseFloat(root.getPropertyValue("--penna-glass-bezel")) || 0, shorter / 4);
-  const refraction = Math.min(parseFloat(root.getPropertyValue("--penna-glass-refraction")) || 0, shorter / 2);
+  const bezel = Math.min(parseFloat(style.getPropertyValue("--penna-glass-bezel")) || 0, shorter / 4);
+  const refraction = Math.min(parseFloat(style.getPropertyValue("--penna-glass-refraction")) || 0, shorter / 2);
   if (!width || !height || bezel <= 0 || refraction === 0) {
     dropLens(element);
     return;

@@ -14,7 +14,7 @@ use crate::{
     StyledExt as _, Surface, SurfaceRole, Tone,
     components::button::Button,
     foundation::roles,
-    foundation::{muted_on, row_radius, row_surface},
+    foundation::{InteractiveSurfaceExt as _, muted_on, row_corners, row_radius},
     h_flex,
 };
 
@@ -287,12 +287,14 @@ fn row_shell(
 ) -> Stateful<Div> {
     let id = id.into();
     let layer = cx.theme().layer(surface, PaintState::Rest);
-    row_surface(
-        h_flex().id(id.clone()).flex_none().h(height),
-        surface,
-        PaintState::Rest,
+    row_corners(
+        h_flex()
+            .id(id.clone())
+            .flex_none()
+            .h(height)
+            .surface_hover(surface, PaintState::Rest, cx),
+        &layer,
         height,
-        cx,
     )
     .relative()
     .w_full()

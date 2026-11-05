@@ -21,7 +21,7 @@ A surface that holds chrome where the app puts it. For one that opens from a but
 - **Toast**: notifications. Announced as a status.
 - **Plain**: an opaque cover, such as a slide-over.
 
-The four floating looks match on every shipped theme. A theme can tell them apart.
+The four floating looks paint the same.
 
 ```rust
 Panel::new("find", PanelLook::Popover)
@@ -31,7 +31,7 @@ Panel::new("find", PanelLook::Popover)
 
 ## Anatomy
 
-1. **Container**: the look's fill, hairline outline and float shadow. Theme radius; Plain is square.
+1. **Container**: glass or the popover fill, no outline, the float shadow. The `radius` knob; Plain is square.
 2. **Inset**: none of its own. Pad with `inset-card` 12, or the row inset around rows.
 3. **Corner**: `.inset(px)` grows a rounded corner by the inset its rows sit at.
 

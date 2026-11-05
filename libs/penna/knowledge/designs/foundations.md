@@ -82,7 +82,7 @@ Insets, set by the container:
 | `inset-page` | 32 | document pages |
 | row inset | theme | lists and menus around their rows: `theme.row_inset` at the sides, 6; menus add `space-4` above and below |
 
-Rows in a plain list (row inset 0) touch: their height keeps the rhythm. In an inset list (`theme.inset_rows()`, a row inset above 0, as in every shipped theme) rows sit `space-2` apart, so their rounded highlights never merge: menus, select lists, settings navigation and the touch which-key list. `list_inset` sets both the side inset and that gap. The docs navigation keeps its rows `space-2` apart in every theme.
+Rows in a plain list (row inset 0) touch: their height keeps the rhythm. In an inset list (`theme.inset_rows()`, a row inset above 0, as in the look) rows sit `space-2` apart, so their rounded highlights never merge: menus, select lists, settings navigation and the touch which-key list. `list_inset` sets both the side inset and that gap. The docs navigation keeps its rows `space-2` apart in every theme.
 
 Components take every padding, gap and margin from `Space` (built in step 6), so spacing scales with the rem like type does. Settings pages are a pane (`inset-pane` 16 around the page, `gap-group` 16 between groups); a settings row is inside a card (`inset-card` 12 all round, title and description `gap-tight` 4 apart). Dialogs are panes too (`inset-pane` 16). Sidebar sections are `gap-group` 16 apart. Which-key's columns and lines are `gap-group` 16 apart inside an `inset-card` sheet. What stays in pixels: drawing geometry inside a fixed-size picture (Appearance's theme miniatures), focus halos and swatch rings that feed radius math, window snap margins, and the sidebar title bar's insets, alignment geometry computed from the rows' action column (and the traffic lights on macOS) so the window's buttons line up over the rows.
 
@@ -247,7 +247,7 @@ Corners: `radius` rounds containers and `control-radius` rounds controls. A cont
 
 Glass is only for floating surfaces, since it reads only with content behind it; never for controls, panes or cards. A material is a full glass definition (blur, tint, saturation, bezel, refraction, specular, rim) for light and for dark:
 
-- `frosted`: blur 20 and the `popover` fill at 70% over it, a faint light rim (specular 0.2 lit from above), no bezel, refraction, saturation or edge shadow. It draws the same natively and on the web.
+- `frosted`: blur 20 and the `popover` fill at 70% over it, no bezel, refraction, saturation or edge shadow. Its specular (0.2, lit from above) lights only a bezel, so it draws no rim. It draws the same natively and on the web.
 - `liquid`: blur 20, bezel 3, refraction 4, a specular rim lit from above, one set of values for light and one for dark (`interface_theme::liquid`). Where the renderer can't bend light, it draws as `frosted`: the web draws it with its lens only where `kit.js` refracts, and natively a window that can't sample its backdrop draws the fallback.
 - A material of an app's own takes the same fields. The kit holds every material to two rules: text on it reaches 4.5:1, so its tint never drops below the opacity that gives that over the worst content, and it has a solid fallback, the `popover` fill.
 
@@ -269,7 +269,7 @@ How the knobs are spelled and decided:
 - Panels (the sidebar and the inspector) take the `panel` fill; panes take their ground. Tooltips and pane chips cast `shadow-float` like every floating surface; drop zones cast none.
 - Row inset (6), outline width (1) and highlight strength (0.8 of the wash) are fixed.
 
-Status: built (step 10). Theme files are knobs only, the kinds and the built-in role patches draw the table above, and `default`, `macos` and `yaru` are presets. Left: the parity baselines still hold the old themes, and the storybook's HTML knob panel (`storybook/web/main.js`) still lists the old materials, colors and role editing, which the Rust side now ignores.
+Status: built (step 10). Theme files are knobs only, the kinds and the built-in role patches draw the table above, and `default`, `macos` and `yaru` are presets. The storybook's theme creator edits these knobs and exports a theme file, the docs Look page shows their range live, and the parity baselines hold the one look. Known gaps between native and HTML: a solid-toned floating chip draws its tone as a glass tint natively and opaque in HTML; glass over a stacked dialog blends what is under it a little differently on the two sides; sheet rows natively draw the press wash over the hover wash.
 
 ## Focus and keys
 
@@ -415,21 +415,21 @@ Looks (`BarLook`, `Bar::new(id, look)`):
 | Pane | `bar.pane` | as Plain, with fixed knobs; announced as a toolbar | pane headers, a browser's tabs and toolbar |
 | Window | `titlebar` | as Plain, with fixed knobs; announced as a title bar | the strip across the top of the window |
 
-None of the three paints anything on the shipped themes: a bar takes the color of what it sits on, and its edge rule sets it apart.
+None of the three paints anything in the look: a bar takes the color of what it sits on, and its edge rule sets it apart.
 
 Anatomy:
 
 - Height: `bar`, the theme's `pane_header_height()`: 40 when panes sit flush (the default, `pane_margin` 0), 34 (`control-chrome` 22 + 2 × `inset-chrome`) when panes have a margin. The title bar is that plus 2 × `pane_margin`.
 - Inset: `inset-chrome` 6 between the edge and its controls.
 - Controls: ghost, all one size (Rules 6), `control-chrome` 22 in pane headers, `gap-related` 8 apart. Labels are `body`, a window title `body` at 600.
-- Edge: `.rule(RuleLook::Bar, edge, cx)` draws a 1px divider on the side that meets content, where the theme draws bar rules.
+- Edge: `.rule(RuleLook::Bar, edge, cx)` draws a 1px divider on the side that meets content.
 - Ground: `.on(ground)` puts it on a ground other than the window's, such as a picker; what sits on it reads `cx.theme().ground_of(look)`.
 
 Behavior: none of its own. Its controls are focusable and act as themselves; the bar doesn't light, take focus or move.
 
 Placement: across the top of a sheet, pane or window, or across the top or bottom of a panel, at window level. It runs edge to edge across what holds it, with no inset around it.
 
-HTML: `.penna-bar` with `data-penna` set to `bar`, `bar.pane` or `titlebar`; `bar.css` lays it out as a centered row with square corners. An edge rule is `data-rule="rule.bar"`: `panel.js` marks `data-ruled` where the theme draws that rule, and the page draws the border.
+HTML: `.penna-bar` with `data-penna` set to `bar`, `bar.pane` or `titlebar`; `bar.css` lays it out as a centered row with square corners. An edge rule is `data-rule="rule.bar"`: `panel.js` marks `data-ruled` where the rule has a width, and the page draws the border.
 
 Status: three gaps.
 
@@ -769,7 +769,7 @@ Anatomy:
 - Label: `lead` (14 on 20), centered in the row height; it takes the width left.
 - Detail (optional): `small`, muted, at the end.
 
-Rows in a list: an inset list (`list_inset`, every shipped theme) puts the row inset at the sides and the rows `space-2` apart, so their rounded highlights never merge; a plain list's rows touch.
+Rows in a list: an inset list (`list_inset`, as in the look) puts the row inset at the sides and the rows `space-2` apart, so their rounded highlights never merge; a plain list's rows touch.
 
 Sizes: one. Rows follow density (24, 28, 32) and the text stays `lead`. `.row_height(height)` makes a taller row and sizes its corners for it: a pane's own list rows (`picker::list_row_height`) are `control-lg` 32.
 
@@ -861,9 +861,9 @@ Looks (`PanelLook`, `Panel::new(id, look)`):
 | Inline | `inline-panel` | as Popover | panels raised inside a view: question cards, failure alerts |
 | Picker | `picker`, under `dialog` | as Popover | dialogs that search a list and pick from it |
 | Toast | `toast` | as Popover; announced as a status | notifications and banners |
-| Plain | `panel` | filled with the ground under it (the window `bg`); square, no outline, no shadow | an opaque cover, such as a slide-over |
+| Plain | `panel` | the `panel` fill, opaque; square, no outline, no shadow | an opaque cover, such as a slide-over |
 
-The four floating looks paint the same on every shipped theme; each is its own recipe so a theme can tell them apart.
+The four floating looks paint the same; each is its own recipe.
 
 Anatomy:
 
@@ -1023,7 +1023,7 @@ States:
 | State | Look | Notes |
 |---|---|---|
 | rest | the track, labels in the quiet ink | |
-| hover | the label takes the quiet button's hover ink, which no shipped theme sets apart from its rest ink | not on the picked segment |
+| hover | the label takes the quiet button's hover ink, which the look doesn't set apart from its rest ink | not on the picked segment |
 | selected | the pill under it, its label in the selected ink | exactly one segment |
 | focused | the focus ring, 1.5 outside the track; the track takes the field's focused edge, which only the default theme sets apart | from the keyboard only, never from a click |
 | disabled | the track takes the field's disabled paint; the pill keeps its selected paint at half strength (fill and edge, no shadow), and every label takes its ink at half strength | presses, keys and hover are ignored, and it leaves the focus order; the pick still shows |
@@ -1036,7 +1036,7 @@ Placement: at the trailing end of a settings row (Appearance's mode and density)
 
 HTML: `.penna-segmented` (`data-penna="field"`, `role="radiogroup"`, `data-value` the picked index, `data-size` (`xsmall` to `touch`), `aria-disabled="true"`) holding `.penna-segments` (`data-penna="button.quiet"`, `data-state="current"`), which holds a `.penna-segment-pill` and a `.penna-segment` (`role="button"`) per option with a `.penna-label` inside. `segmented.js` makes the track a tab stop, places the pill, sets `aria-selected`, moves the pick on click and on the keys above, fires `change` with `{ index }`, and sizes the ring (`--penna-ring-r`) that `:focus-visible` or `data-state="focused"` draws. With `aria-disabled="true"` it leaves the track out of the tab order, ignores clicks and keys, and marks `.penna-segments` disabled so the tokens give the labels their disabled ink.
 
-Status: one gap. It has no hover look in any shipped theme.
+Status: one gap. It has no hover look.
 
 ### Select
 
@@ -1088,13 +1088,13 @@ Looks (`RuleLook`, `.look()`):
 | List | `rule.list` | between menu groups, setting rows and stacked cards |
 | Tree | `rule.tree` | the guides that join a tree's children |
 
-Each draws only where the theme draws that rule; every shipped theme draws all four, in the same ink.
+All four draw a hairline in the same ink.
 
 Anatomy:
 
 - Line: `RULE_WIDTH` 1, in `divider` (the ink at the theme's edge weight), centered on the separator's box.
 - Box: full width and zero height (horizontal), or full height and zero width (vertical), so the gap on either side is the parent's alone. A vertical separator needs a parent with a definite height.
-- `.rule(look, edge, cx)`: a 1px border in `divider` on one edge of any element, where the theme draws that look; unlike a separator it takes its pixel of room.
+- `.rule(look, edge, cx)`: a 1px border in `divider` on one edge of any element; unlike a separator it takes its pixel of room.
 
 Behavior: none. `.id(id)` makes it an accessibility node (a splitter, with its orientation); it doesn't drag.
 
@@ -1104,9 +1104,8 @@ Content: plain ink. `.color()` recolors the line; a status color on it comes wit
 
 HTML: `.penna-separator-rule` holding a `div` with `data-penna` set to `rule`, `rule.bar`, `rule.list` or `rule.tree`; `data-axis="vertical"` for a vertical one, `data-color="danger"` for a danger line, `role="separator"` (and `aria-orientation="vertical"`) where native gives it an id. The line is 1px, offset half a pixel to sit centered.
 
-Status: two gaps.
+Status: one gap.
 
-- The HTML separator draws its line on every theme, where native draws it only where the theme draws that look.
 - `.color()` takes any color, where Rule 8 wants colors from the theme's roles; the HTML twin offers only danger.
 
 ### Slider
@@ -1359,7 +1358,7 @@ States:
 |---|---|---|
 | rest | the variant's paint | |
 | hover | Card, Screen and Mini as rest; Drop one tint step deeper | the app sets it while the tile is dragged |
-| selected | a 2px ring in `accent` (Card, Screen, Mini); Drop's selected tint | the one picked |
+| selected | a 2px ring in the highlight color (Card, Screen, Mini); Drop's selected tint | the one picked |
 | focused | the variant's rest paint and the focus ring, 1.5 outside | from the keyboard on a tile that takes focus, or set by the app |
 | disabled | fill at half strength, faint label, no shadow | a thing that is away or can't be placed |
 
@@ -1369,9 +1368,8 @@ Placement: on a well or in a dock, `gap-group` 16 apart in a row, or where the a
 
 HTML: `.penna-tile` with `data-penna` (`tile.card`, `tile.screen`, `tile.drop`, `tile.mini`) and `data-variant` (`card`, `screen`, `drop`, `veil`, `mini`); `data-state` (`hover`, `selected`, `focused`, `disabled`), `data-tone` (`primary`, `danger`), `data-edge` on a drop zone, and `role="button"` with `tabindex="0"` on a tile that takes focus. `tile.css` sizes each variant (a screen 150 by 90, a card 132 by 64), draws the selected ring in `::before` and the focus ring in `::after`. `tile.js` makes tiles under `[data-tiles]` draggable (3px slop, `data-dragging`, a `penna-drop` event with the point), under `[data-pick]` selects the one clicked and fires `penna-pick`, runs a focusable tile on Space and Enter, and keeps a click from focusing it.
 
-Status: three gaps.
+Status: two gaps.
 
-- The selected ring is `accent`, not `primary`, so in the default look a picked tile is blue where every other highlight is the ink.
 - A tile being dragged (hover) draws like one at rest.
 - The HTML twin fixes each variant's size and padding and picks and drags on its own, where the native tile leaves both to the app.
 
@@ -1422,7 +1420,7 @@ Anatomy:
 - Row: a `ListItem` with `.role(Role::TreeItem)` and `.look(RowLook::Sidebar)`, full width, `control-md` tall (28, follows density), text `lead`. Inset `space-12` at the end and `space-12` plus one indent per level at the start.
 - Icon: 14, muted, `space-8` before the label; it tells the kind of thing.
 - Label: `lead`, one line.
-- Guides: one vertical hairline (one device pixel) per open level, in divider ink, clear where the theme draws no `rule.tree` outline. A guide runs down the rows of its level and stops short of its first and last rows, except where it runs past the viewport. The guide of the selected row's nearest parent lights in muted ink; the others stay plain.
+- Guides: one vertical hairline (one device pixel) per open level, in divider ink. A guide runs down the rows of its level and stops short of its first and last rows, except where it runs past the viewport. The guide of the selected row's nearest parent lights in muted ink; the others stay plain.
 
 The indent and the guide's place are the caller's (`IndentGuides::new(depths, active_row, indent, left_offset, end_padding, colors)`): the story indents 16 per level, puts each guide 20 in (the inset plus half the 16 icon slot, under the parent's icon) and stops it 4 short.
 

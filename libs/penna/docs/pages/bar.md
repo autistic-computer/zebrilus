@@ -23,7 +23,7 @@ A strip across a sheet, a pane or the window that holds chrome. For a box use a 
 - **Pane**: pane headers.
 - **Window**: the title bar.
 
-None paints a fill on the shipped themes. The edge rule sets it apart.
+None paints a fill. The edge rule sets it apart.
 
 ```rust
 Bar::new("header", BarLook::Pane)
@@ -58,5 +58,5 @@ Every control in a bar has the same size.
 | `BarLook::Pane`, `Window` | `bar.pane`, `titlebar` | Other looks |
 | `.h(cx.theme().pane_header_height())` | | Height; the caller's |
 | `.px(Space::INSET_CHROME)` | | Inset; the caller's |
-| `.rule(RuleLook::Bar, Edge::Bottom, cx)` | `data-rule="rule.bar"` | Edge rule, where the theme draws one |
+| `.rule(RuleLook::Bar, Edge::Bottom, cx)` | `data-rule="rule.bar"` | Edge rule |
 | `.on(ground)` | | Puts it on another ground |

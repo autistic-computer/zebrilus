@@ -3,7 +3,7 @@ use ala::{
     Styled as _, TestAppContext, Window, div, px, size,
 };
 use penna::{
-    IconName, Kind, StyledExt as _, Surface, SurfaceRole,
+    IconName, StyledExt as _, Surface, SurfaceRole,
     foundation::interface_theme::{self, ControlRadius, Glass, Tint},
 };
 use penna_storybook::{Catalog, Section, creator, story::stateless};
@@ -56,20 +56,6 @@ fn install() {
     penna_storybook::install(&BOARD_APP);
 }
 
-fn tree() -> Vec<Value> {
-    let regions = serde_json::from_str::<Vec<Value>>(&penna_storybook::roles_json()).unwrap();
-    regions
-        .into_iter()
-        .flat_map(|region| region["roles"].as_array().cloned().unwrap_or_default())
-        .collect()
-}
-
-fn role<'a>(tree: &'a [Value], id: &str) -> &'a Value {
-    tree.iter()
-        .find(|role| role["id"] == id)
-        .unwrap_or_else(|| panic!("the role tree has no {id}"))
-}
-
 fn draw(cx: &mut TestAppContext) {
     cx.run_until_parked();
     cx.update(|cx| {
@@ -96,23 +82,6 @@ fn the_app_catalog_puts_the_creator_first_with_its_plates() {
     assert_eq!(sections, ["controls", "desk"]);
 }
 
-#[test]
-fn the_roles_a_plate_draws_show_in_the_tree_under_their_parents() {
-    install();
-    let tree = tree();
-    let well = role(&tree, "well");
-    assert_eq!(well["kind"], "card");
-    assert_eq!(well["group"], Kind::Card.role().label());
-    assert_eq!(well["style"]["shadow"], "none");
-    assert_eq!(well["style"]["fill"], "tint");
-    let screen = role(&tree, "tile.screen");
-    assert_eq!(screen["style"]["shadow"], "none");
-    assert_eq!(screen["style"]["fill"], "solid");
-    let chip = role(&tree, "chip");
-    assert_eq!(chip["group"], SurfaceRole::BADGE.label());
-    assert_eq!(chip["style"]["shape"], "pill");
-}
-
 #[ala::test]
 fn a_knob_edit_lands_in_the_export_and_parses_back(cx: &mut TestAppContext) {
     install();
@@ -135,8 +104,6 @@ fn a_knob_edit_lands_in_the_export_and_parses_back(cx: &mut TestAppContext) {
         serde_json::from_str::<Value>(&penna_storybook::import_theme(&exported).unwrap()).unwrap();
     assert_eq!(knobs["light-tint-color"], "#ad4f00");
     assert_eq!(knobs["control-radius"], "full");
-    let tree = tree();
-    assert_eq!(role(&tree, "tile.screen")["patch"], json!({}));
 }
 
 #[test]

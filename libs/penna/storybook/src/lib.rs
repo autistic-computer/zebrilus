@@ -109,10 +109,29 @@ pub fn stories_json() -> String {
 }
 
 pub fn glass_presets_json() -> String {
+    use penna::foundation::interface_theme::{self, Glass};
+    let dark = penna::ThemeMode::Dark;
     json!({
-        "frosted": knobs::glass_knobs(&penna::foundation::interface_theme::frosted()),
-        "liquid": knobs::glass_knobs(&penna::foundation::interface_theme::liquid(penna::ThemeMode::Dark)),
+        "platform": Glass::platform().material(dark).map(|material| knobs::glass_knobs(&material)),
+        "frosted": knobs::glass_knobs(&interface_theme::frosted()),
+        "liquid": knobs::glass_knobs(&interface_theme::liquid(dark)),
     })
+    .to_string()
+}
+
+pub fn accents_json() -> String {
+    use penna::foundation::interface_theme::{ACCENTS, accent_color};
+    let hex = |name, mode| accent_color(name, mode).map(to_hex);
+    json!(
+        ACCENTS
+            .iter()
+            .map(|name| json!({
+                "name": name,
+                "light": hex(name, penna::ThemeMode::Light),
+                "dark": hex(name, penna::ThemeMode::Dark),
+            }))
+            .collect::<Vec<_>>()
+    )
     .to_string()
 }
 
@@ -120,20 +139,7 @@ pub fn interface_themes_json() -> String {
     json!(
         penna::foundation::interface_theme::builtin_themes()
             .iter()
-            .map(|(id, theme)| {
-                let mut values = knobs::theme_knobs(theme);
-                let glass = |mode| {
-                    json!(
-                        theme
-                            .glass(mode)
-                            .map(|material| knobs::glass_knobs(&material))
-                    )
-                };
-                values.insert("glass".to_owned(), glass(penna::ThemeMode::Dark));
-                values.insert("light-glass".to_owned(), glass(penna::ThemeMode::Light));
-                values.insert("roles".to_owned(), json!({}));
-                ((*id).to_owned(), serde_json::Value::Object(values))
-            })
+            .map(|(id, theme)| ((*id).to_owned(), json!(knobs::theme_knobs(theme))))
             .collect::<serde_json::Map<_, _>>()
     )
     .to_string()
@@ -141,58 +147,6 @@ pub fn interface_themes_json() -> String {
 
 pub fn theme_file_json() -> String {
     knobs().interface_theme().to_json()
-}
-
-pub fn roles_json() -> String {
-    fn walk(group: penna::SurfaceRole, depth: usize, out: &mut Vec<(usize, penna::SurfaceRole)>) {
-        out.push((depth, group));
-        for member in penna::foundation::roles::members(group) {
-            walk(member, depth + 1, out);
-        }
-    }
-    let smoothing = penna::Smoothing::clamped(knobs().look.smoothing);
-    let fixed = knobs::PROPS
-        .iter()
-        .map(|prop| ((*prop).to_owned(), json!([])))
-        .collect::<serde_json::Map<_, _>>();
-    json!(
-        penna::Kind::ALL
-            .iter()
-            .map(|kind| {
-                let mut members = Vec::new();
-                walk(kind.role(), 0, &mut members);
-                json!({
-                    "title": kind.role().label(),
-                    "roles": members.into_iter().map(|(depth, role)| {
-                        let (style, origins) = knobs::inherited(role, smoothing);
-                        let values = knobs::style_json(style);
-                        json!({
-                            "id": role.id(),
-                            "label": role.label(),
-                            "about": role.about(),
-                            "kind": role.kind().name(),
-                            "depth": depth,
-                            "group": role.group().map(|group| group.label()),
-                            "members": penna::foundation::roles::members(role).count(),
-                            "knobs": fixed,
-                            "patch": {},
-                            "inherited": knobs::PROPS
-                                .iter()
-                                .zip(origins)
-                                .map(|(prop, origin)| ((*prop).to_owned(), json!({
-                                    "value": values[prop],
-                                    "from": origin.map_or("the theme's smoothing", |role| role.label()),
-                                    "themed": false,
-                                })))
-                                .collect::<serde_json::Map<_, _>>(),
-                            "style": values,
-                        })
-                    }).collect::<Vec<_>>(),
-                })
-            })
-            .collect::<Vec<_>>()
-    )
-    .to_string()
 }
 
 pub fn inspect(id: &str, cx: &mut App) {
@@ -439,8 +393,8 @@ mod web {
     }
 
     #[wasm_bindgen]
-    pub fn roles() -> String {
-        super::roles_json()
+    pub fn accents() -> String {
+        super::accents_json()
     }
 
     #[wasm_bindgen]

@@ -35,7 +35,7 @@ Button::new("save").label("Save").primary()
 </div>
 ```
 
-1. **Container**: fill, outline, corners. The size sets its height and side padding.
+1. **Container**: a wash, or a solid fill for primary, and corners. The size sets its height and side padding.
 2. **Icon**: optional, before the label. A spinner while busy.
 3. **Label**: a verb in sentence case.
 4. **Caret**: optional. Opens a menu.

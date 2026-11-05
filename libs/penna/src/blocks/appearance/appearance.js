@@ -91,6 +91,8 @@ function shapeSwatches(root) {
   root.style.setProperty("--appearance-swatch-r", `${swatch}px`);
   root.style.setProperty("--appearance-ring-r", `${ring}px`);
   root.style.setProperty("--appearance-dot-r", `${dot}px`);
+  if (radius >= 9999) root.style.setProperty("--appearance-swatch-k", "1");
+  else root.style.removeProperty("--appearance-swatch-k");
   root.querySelectorAll(".appearance-swatch[data-light]").forEach((element) => {
     element.style.setProperty("--appearance-swatch", element.dataset[mode() === "dark" ? "dark" : "light"]);
   });

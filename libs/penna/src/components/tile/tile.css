@@ -73,7 +73,7 @@
   inset: calc(-1 * round(down, var(--penna-tile-bw, 0px), 0.5px));
   border-radius: inherit;
   corner-shape: inherit;
-  box-shadow: 0 0 0 2px var(--penna-accent);
+  box-shadow: 0 0 0 2px var(--penna-primary);
   pointer-events: none;
 }
 

@@ -16,6 +16,6 @@ Every widget has a Rust version and a DOM version. Both read the same theme toke
 
 Each folder holds the Rust next to its CSS and JS, under the same name.
 
-## Themes
+## One look
 
-penna ships three themes, `default`, `macos` and `yaru`, each in light and dark. Switch them with the picker in the corner of this page.
+penna draws one look in light and dark. An app adjusts it with a few knobs (tint, corners, glass, face); `default`, `macos` and `yaru` are presets of those knobs. Switch them with the picker in the corner of this page, and see [Look](look.md) for the knobs.

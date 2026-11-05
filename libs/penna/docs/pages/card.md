@@ -19,7 +19,7 @@ A box in the flow of content that holds one thing. To float over the view use a 
 
 - **Bubble**: your messages in a chat.
 - **Code**: code blocks and inline code.
-- **Figure**: tables. Outline, no fill of its own.
+- **Figure**: tables. No fill of its own, no outline.
 - **Image**: image tiles in messages and the composer.
 
 ```rust
@@ -30,7 +30,7 @@ Card::new("snippet", CardLook::Code)
 
 ## Anatomy
 
-1. **Container**: a step above its ground, hairline outline, contact shadow, theme radius. Code has no outline or shadow.
+1. **Container**: a step above its ground, no outline, no shadow, the `radius` knob.
 2. **Inset**: `inset-card` 12 all round, set by the caller.
 3. **Ground**: what sits on it passes the card's ground, so muted text and badges follow its fill.
 
