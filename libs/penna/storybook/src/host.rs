@@ -13,6 +13,7 @@ pub struct SectionHost {
     section: &'static str,
     content: AnyView,
     floats: bool,
+    padding: f32,
 }
 
 impl SectionHost {
@@ -21,7 +22,14 @@ impl SectionHost {
             section,
             content,
             floats,
+            padding: PADDING,
         }
+    }
+
+    #[must_use]
+    pub fn flush(mut self) -> Self {
+        self.padding = 0.0;
+        self
     }
 }
 
@@ -46,7 +54,7 @@ impl Render for SectionHost {
                     .relative()
                     .w_full()
                     .flex_none()
-                    .p(px(PADDING))
+                    .p(px(self.padding))
                     .child(self.content.clone())
                     .child(
                         canvas(

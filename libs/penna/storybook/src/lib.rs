@@ -217,6 +217,7 @@ fn open_section(
     story: &Story,
     section: &'static Section,
     mount: String,
+    flush: bool,
     cx: &mut App,
 ) -> Result<AnyWindowHandle, String> {
     let knobs = knobs();
@@ -232,7 +233,8 @@ fn open_section(
                 window.set_zoom(knobs.zoom);
                 let content = (section.build)(window, cx);
                 let floats = catalog().floats(story.id, section.id);
-                let host = cx.new(|_| SectionHost::new(section.id, content, floats));
+                let host = SectionHost::new(section.id, content, floats);
+                let host = cx.new(|_| if flush { host.flush() } else { host });
                 cx.new(|cx| Root::new(host, window, cx).bordered(false))
             },
         )
@@ -252,6 +254,7 @@ pub fn show_story(story: Story, cx: &mut App) -> Result<(), String> {
             &story,
             section,
             format!("#{}", mount_id(&story, section)),
+            false,
             cx,
         )?;
         OPEN.with(|open| open.borrow_mut().push(handle));
@@ -265,7 +268,7 @@ pub fn mount_section(story: Story, section: &str, mount: &str, cx: &mut App) -> 
         .iter()
         .find(|candidate| candidate.id == section)
         .ok_or_else(|| format!("{} has no section {section}", story.id))?;
-    open_section(&story, section, mount.to_owned(), cx).map(drop)
+    open_section(&story, section, mount.to_owned(), true, cx).map(drop)
 }
 
 pub fn set_knobs(query: &str, cx: &mut App) -> Result<(), String> {
