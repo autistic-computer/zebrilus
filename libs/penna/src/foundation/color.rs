@@ -2,6 +2,7 @@ use ala::{Hsla, Rgba, hsla};
 use std::cell::{Cell, RefCell};
 
 #[inline]
+#[cfg(test)]
 pub fn hsl(h: f32, s: f32, l: f32) -> Hsla {
     hsla(h / 360., s / 100.0, l / 100.0, 1.0)
 }
@@ -215,26 +216,10 @@ pub fn to_oklch(color: Hsla) -> (f32, f32, f32) {
     )
 }
 
-pub(super) fn tint(color: Hsla, hue: f32, intensity: f32) -> Hsla {
-    let (lightness, ..) = oklab::rgb_to_oklab(color.into());
-    let tinted = oklch(lightness, TINT_CHROMA, hue);
-    color.mix_oklab(tinted.opacity(color.a), 1.0 - intensity.clamp(0.0, 1.0))
-}
-
-pub(super) fn raised_bright(color: Hsla, level: u8) -> Hsla {
-    if color.l < 0.5 {
-        return color.raised(level);
-    }
-    let lightness = oklab_lightness(color);
-    let room = 1.0 - lightness;
-    if room <= f32::EPSILON {
-        return color;
-    }
-    let amount = ((lightness - oklab_lightness(color.raised(level))) / room).clamp(0.0, 1.0);
-    Hsla {
-        a: color.a,
-        ..color.mix_oklab(hsla(0., 0., 1., 1.), 1.0 - amount)
-    }
+pub(super) fn tint_offset(hue: f32, amount: f32) -> (f32, f32) {
+    let chroma = TINT_CHROMA * amount.clamp(0.0, 1.0);
+    let (sin, cos) = hue.to_radians().sin_cos();
+    (chroma * cos, chroma * sin)
 }
 
 pub trait Colorize: Sized {

@@ -43,18 +43,22 @@ pub struct Smoothing(u8);
 
 impl Smoothing {
     pub const CIRCLE: Self = Self(20);
-    pub const THEME: Self = Self(40);
-    pub const ALL: &'static [Self] = &[
-        Self(20),
-        Self(25),
-        Self(30),
-        Self(35),
-        Self::THEME,
-        Self(50),
-    ];
+    pub const THEME: Self = Self(30);
+    pub const MIN: f32 = 2.0;
+    pub const MAX: f32 = 5.0;
 
     pub fn exponent(self) -> f32 {
         f32::from(self.0) / 10.0
+    }
+
+    pub fn clamped(exponent: f32) -> Self {
+        let exponent = if exponent.is_finite() {
+            exponent.clamp(Self::MIN, Self::MAX)
+        } else {
+            Self::THEME.exponent()
+        };
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+        Self((exponent * 10.0).round() as u8)
     }
 }
 
@@ -90,27 +94,11 @@ pub enum Highlight {
     Edge,
 }
 
-impl Highlight {
-    pub const ALL: &'static [Self] = &[
-        Self::None,
-        Self::Tint,
-        Self::Lift,
-        Self::Accent,
-        Self::Ring,
-        Self::Bar,
-        Self::Glass,
-    ];
-}
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Ink {
     Bright,
     Rest,
-}
-
-impl Ink {
-    pub const ALL: &'static [Self] = &[Self::Bright, Self::Rest];
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -125,24 +113,15 @@ pub struct Style {
     pub ink: Ink,
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(default, deny_unknown_fields)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub struct StylePatch {
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub fill: Option<Fill>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub outline: Option<bool>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub shadow: Option<Shadow>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub shape: Option<Shape>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub smoothing: Option<Smoothing>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub hover: Option<Highlight>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub selected: Option<Highlight>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub ink: Option<Ink>,
 }
 
@@ -242,20 +221,6 @@ impl StylePatch {
         }
         if let Some(ink) = self.ink {
             style.ink = ink;
-        }
-    }
-
-    pub fn between(from: Style, to: Style) -> Self {
-        let differs = |same: bool| !same;
-        Self {
-            fill: differs(from.fill == to.fill).then_some(to.fill),
-            outline: differs(from.outline == to.outline).then_some(to.outline),
-            shadow: differs(from.shadow == to.shadow).then_some(to.shadow),
-            shape: differs(from.shape == to.shape).then_some(to.shape),
-            smoothing: differs(from.smoothing == to.smoothing).then_some(to.smoothing),
-            hover: differs(from.hover == to.hover).then_some(to.hover),
-            selected: differs(from.selected == to.selected).then_some(to.selected),
-            ink: differs(from.ink == to.ink).then_some(to.ink),
         }
     }
 }
@@ -370,21 +335,25 @@ impl Kind {
         }
         use Highlight as H;
         match self {
-            Self::Bar | Self::Panel => Style {
+            Self::Bar => Style {
                 shape: Shape::Square,
                 ..style(Fill::None, false, Shadow::None, H::None, H::None)
+            },
+            Self::Panel => Style {
+                shape: Shape::Square,
+                ..style(Fill::Solid, false, Shadow::None, H::None, H::None)
             },
             Self::Rule => Style {
                 shape: Shape::Square,
                 ..style(Fill::None, true, Shadow::None, H::None, H::None)
             },
-            Self::Pane => style(Fill::Glass, true, Shadow::Contact, H::None, H::Ring),
-            Self::Card => style(Fill::Solid, true, Shadow::Contact, H::None, H::Ring),
-            Self::Floating => style(Fill::Glass, true, Shadow::Float, H::None, H::Accent),
-            Self::Button => style(Fill::Solid, true, Shadow::Contact, H::Tint, H::Tint),
-            Self::Item => style(Fill::None, false, Shadow::None, H::Lift, H::Lift),
-            Self::Field => style(Fill::Tint, true, Shadow::None, H::Tint, H::Edge),
-            Self::Label => style(Fill::Tint, true, Shadow::None, H::None, H::None),
+            Self::Pane => style(Fill::None, false, Shadow::None, H::None, H::Ring),
+            Self::Card => style(Fill::Solid, false, Shadow::None, H::None, H::Ring),
+            Self::Floating => style(Fill::Glass, false, Shadow::Float, H::None, H::None),
+            Self::Button => style(Fill::Tint, false, Shadow::None, H::Tint, H::Tint),
+            Self::Item => style(Fill::None, false, Shadow::None, H::Tint, H::Accent),
+            Self::Field => style(Fill::Tint, false, Shadow::None, H::Tint, H::Edge),
+            Self::Label => style(Fill::Tint, false, Shadow::None, H::None, H::None),
         }
     }
 
@@ -396,6 +365,10 @@ impl Kind {
         matches!(self, Self::Floating)
     }
 
+    pub const fn edged(self) -> bool {
+        !matches!(self, Self::Bar | Self::Panel | Self::Rule)
+    }
+
     pub const fn elevation(self) -> Elevation {
         if self.floats() {
             Elevation::Popover
@@ -404,179 +377,6 @@ impl Kind {
         } else {
             Elevation::Panel
         }
-    }
-
-    pub const fn knobs(self) -> Knobs {
-        use Fill as F;
-        use Shadow as S;
-        use Shape as Sh;
-        const FILLS: &[Fill] = &[F::None, F::Tint, F::Solid, F::Glass];
-        const BACKED: &[Fill] = &[F::Tint, F::Solid, F::Glass];
-        const OUTLINE: &[bool] = &[true, false];
-        const SHADOWS: &[Shadow] = &[S::None, S::Contact, S::Float];
-        const RESTING: &[Shadow] = &[S::None, S::Contact];
-        const SHAPES: &[Shape] = &[Sh::Square, Sh::Round, Sh::Pill];
-        const SMOOTH: &[Smoothing] = Smoothing::ALL;
-        const ALL: &[Highlight] = Highlight::ALL;
-        const LIT: &[Highlight] = &[Highlight::None, Highlight::Ring];
-        const FOCUS: &[Highlight] = &[
-            Highlight::None,
-            Highlight::Edge,
-            Highlight::Tint,
-            Highlight::Lift,
-            Highlight::Ring,
-            Highlight::Bar,
-            Highlight::Glass,
-        ];
-        const FIXED: Knobs = Knobs::FIXED;
-        const SURFACE: Knobs = Knobs {
-            fill: FILLS,
-            outline: OUTLINE,
-            shadow: SHADOWS,
-            ..FIXED
-        };
-        const CONTROL: Knobs = Knobs {
-            shape: SHAPES,
-            smoothing: SMOOTH,
-            hover: ALL,
-            selected: ALL,
-            ink: Ink::ALL,
-            ..SURFACE
-        };
-        match self {
-            Self::Bar => Knobs {
-                shadow: RESTING,
-                ..SURFACE
-            },
-            Self::Panel => FIXED,
-            Self::Pane => Knobs {
-                selected: LIT,
-                ..SURFACE
-            },
-            Self::Card => Knobs {
-                shape: Knobs::BOXES,
-                smoothing: SMOOTH,
-                ..SURFACE
-            },
-            Self::Floating => Knobs {
-                fill: BACKED,
-                shape: SHAPES,
-                smoothing: SMOOTH,
-                ..SURFACE
-            },
-            Self::Button => CONTROL,
-            Self::Item => Knobs {
-                shadow: RESTING,
-                ..CONTROL
-            },
-            Self::Field => Knobs {
-                selected: FOCUS,
-                ink: &[],
-                ..CONTROL
-            },
-            Self::Label => Knobs {
-                shadow: RESTING,
-                shape: SHAPES,
-                smoothing: SMOOTH,
-                ..SURFACE
-            },
-            Self::Rule => Knobs {
-                outline: OUTLINE,
-                ..FIXED
-            },
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct Knobs {
-    pub fill: &'static [Fill],
-    pub outline: &'static [bool],
-    pub shadow: &'static [Shadow],
-    pub shape: &'static [Shape],
-    pub smoothing: &'static [Smoothing],
-    pub hover: &'static [Highlight],
-    pub selected: &'static [Highlight],
-    pub ink: &'static [Ink],
-}
-
-impl Knobs {
-    pub const FIXED: Self = Self {
-        fill: &[],
-        outline: &[],
-        shadow: &[],
-        shape: &[],
-        smoothing: &[],
-        hover: &[],
-        selected: &[],
-        ink: &[],
-    };
-
-    pub const BOXES: &'static [Shape] = &[Shape::Square, Shape::Round];
-
-    pub const fn pressable(self) -> Self {
-        Self {
-            hover: Highlight::ALL,
-            selected: Highlight::ALL,
-            ..self
-        }
-    }
-
-    fn open(&self) -> [bool; 8] {
-        [
-            !self.fill.is_empty(),
-            !self.outline.is_empty(),
-            !self.shadow.is_empty(),
-            !self.shape.is_empty(),
-            !self.smoothing.is_empty(),
-            !self.hover.is_empty(),
-            !self.selected.is_empty(),
-            !self.ink.is_empty(),
-        ]
-    }
-
-    pub fn admit(&self, patch: StylePatch) -> StylePatch {
-        fn keep<T: PartialEq>(value: Option<T>, allowed: &[T]) -> Option<T> {
-            value.filter(|value| allowed.contains(value))
-        }
-        StylePatch {
-            fill: keep(patch.fill, self.fill),
-            outline: keep(patch.outline, self.outline),
-            shadow: keep(patch.shadow, self.shadow),
-            shape: keep(patch.shape, self.shape),
-            smoothing: keep(patch.smoothing, self.smoothing),
-            hover: keep(patch.hover, self.hover),
-            selected: keep(patch.selected, self.selected),
-            ink: keep(patch.ink, self.ink),
-        }
-    }
-
-    pub fn refusal(&self, patch: &StylePatch) -> Option<String> {
-        fn check<T: PartialEq + Serialize>(
-            prop: &str,
-            value: Option<T>,
-            allowed: &[T],
-        ) -> Option<String> {
-            let value = value.filter(|value| !allowed.contains(value))?;
-            let spell = |value: &T| serde_json::to_string(value).unwrap_or_default();
-            Some(if allowed.is_empty() {
-                format!("`{prop}` is fixed")
-            } else {
-                format!(
-                    "`{prop}` can't be {}, only {}",
-                    spell(&value),
-                    allowed.iter().map(spell).collect::<Vec<_>>().join(", ")
-                )
-            })
-        }
-        check("fill", patch.fill, self.fill)
-            .or_else(|| check("outline", patch.outline, self.outline))
-            .or_else(|| check("shadow", patch.shadow, self.shadow))
-            .or_else(|| check("shape", patch.shape, self.shape))
-            .or_else(|| check("smoothing", patch.smoothing, self.smoothing))
-            .or_else(|| check("hover", patch.hover, self.hover))
-            .or_else(|| check("selected", patch.selected, self.selected))
-            .or_else(|| check("ink", patch.ink, self.ink))
     }
 }
 
@@ -588,7 +388,6 @@ pub struct SurfaceRole {
     pub(crate) label: &'static str,
     pub(crate) about: &'static str,
     pub(crate) patch: StylePatch,
-    pub(crate) knobs: Option<Knobs>,
     pub(crate) row: bool,
     pub(crate) capsule: Option<bool>,
 }
@@ -607,7 +406,6 @@ impl SurfaceRole {
             label,
             about,
             patch: StylePatch::EMPTY,
-            knobs: None,
             row: false,
             capsule: None,
         }
@@ -628,22 +426,6 @@ impl SurfaceRole {
 
     pub(crate) const fn with(self, patch: StylePatch) -> Self {
         Self { patch, ..self }
-    }
-
-    pub(crate) const fn fixed_emphasis(self) -> Self {
-        let knobs = self.knobs();
-        self.with_knobs(Knobs {
-            fill: &[],
-            outline: &[],
-            ..knobs
-        })
-    }
-
-    pub(crate) const fn with_knobs(self, knobs: Knobs) -> Self {
-        Self {
-            knobs: Some(knobs),
-            ..self
-        }
     }
 
     pub(crate) const fn rows(self) -> Self {
@@ -685,29 +467,6 @@ impl SurfaceRole {
         }
     }
 
-    pub const fn knobs(&self) -> Knobs {
-        match (self.knobs, self.parent) {
-            (Some(knobs), _) => knobs,
-            (None, Some(parent)) => parent.knobs(),
-            (None, None) => self.kind.knobs(),
-        }
-    }
-
-    pub fn picks_outline(&self) -> bool {
-        self.kind != Kind::Rule && self.knobs().outline.contains(&true)
-    }
-
-    pub fn picks_shadow(&self) -> bool {
-        self.knobs()
-            .shadow
-            .iter()
-            .any(|shadow| *shadow != Shadow::None)
-    }
-
-    pub fn picks_smoothing(&self) -> bool {
-        !self.knobs().smoothing.is_empty()
-    }
-
     pub fn is_kind(&self) -> bool {
         self.id == self.kind.name()
     }
@@ -729,33 +488,21 @@ impl SurfaceRole {
         Kind::Floating,
         "Menus and popovers",
         "Menus, dropdowns and popovers",
-    )
-    .with_knobs(Knobs {
-        shape: Knobs::BOXES,
-        ..Kind::Floating.knobs()
-    });
+    );
 
     pub const DIALOG: Self = Self::new(
         "dialog",
         Kind::Floating,
         "Dialogs",
         "Dialogs and modal pickers",
-    )
-    .with_knobs(Knobs {
-        shape: Knobs::BOXES,
-        ..Kind::Floating.knobs()
-    });
+    );
 
     pub const SHEET: Self = Self::new(
         "sheet",
         Kind::Floating,
         "Sheets",
         "Sheets that rise from the bottom",
-    )
-    .with_knobs(Knobs {
-        shape: Knobs::BOXES,
-        ..Kind::Floating.knobs()
-    });
+    );
 
     pub const DRAWER: Self = Self::under(
         &Self::SHEET,
@@ -776,11 +523,6 @@ impl SurfaceRole {
         Kind::Floating,
         "Tooltips",
         "Tooltips and key hints",
-    )
-    .with(
-        StylePatch::EMPTY
-            .shadow(Shadow::Contact)
-            .selected(Highlight::None),
     );
 
     pub const ICON_BUTTON: Self = Self::new(
@@ -792,10 +534,7 @@ impl SurfaceRole {
     .with(
         StylePatch::EMPTY
             .fill(Fill::None)
-            .outline(false)
-            .shadow(Shadow::None)
-            .hover(Highlight::Lift)
-            .selected(Highlight::Lift),
+            .selected(Highlight::Accent),
     );
 
     pub const QUIET_BUTTON: Self = Self::new(
@@ -807,32 +546,24 @@ impl SurfaceRole {
     .with(
         StylePatch::EMPTY
             .fill(Fill::None)
-            .outline(false)
-            .shadow(Shadow::None)
-            .hover(Highlight::Lift)
-            .selected(Highlight::Lift),
+            .selected(Highlight::Accent),
     );
 
     pub const OUTLINE_BUTTON: Self = Self::under(
         &Self::QUIET_BUTTON,
         "button.outline",
         "Outline buttons",
-        "Quiet buttons drawn with an outline on every theme",
+        "Quiet buttons drawn with an outline",
     )
-    .with(StylePatch::EMPTY.fill(Fill::None).outline(true))
-    .fixed_emphasis();
+    .with(StylePatch::EMPTY.fill(Fill::None).outline(true));
 
     pub const FLAT_ICON_BUTTON: Self = Self::under(
         &Self::ICON_BUTTON,
         "icon-button.flat",
         "Flat icon buttons",
-        "Icon buttons set into a bar, a field or a row, that wash but never rise",
+        "Icon buttons set into a bar, a field or a row, that wash and never fill",
     )
-    .with(
-        StylePatch::EMPTY
-            .hover(Highlight::Tint)
-            .selected(Highlight::Tint),
-    );
+    .with(StylePatch::EMPTY.selected(Highlight::Tint));
 
     pub const MENU_ITEM: Self = Self::new(
         "menu-item",
@@ -845,15 +576,8 @@ impl SurfaceRole {
     .with(
         StylePatch::EMPTY
             .fill(Fill::None)
-            .outline(false)
-            .shadow(Shadow::None)
-            .hover(Highlight::Tint)
             .selected(Highlight::Accent),
-    )
-    .with_knobs(Knobs {
-        shadow: &[],
-        ..Kind::Button.knobs()
-    });
+    );
 
     pub const ROW: Self = Self::new(
         "row",
@@ -870,8 +594,6 @@ impl SurfaceRole {
     pub const TILE: Self = Self::new("tile", Kind::Item, "Tiles", "Pickable thumbnails").with(
         StylePatch::EMPTY
             .fill(Fill::Solid)
-            .outline(true)
-            .shadow(Shadow::Contact)
             .hover(Highlight::None)
             .selected(Highlight::Ring),
     );
@@ -882,20 +604,14 @@ impl SurfaceRole {
         "Wells",
         "The area things are arranged on, like screens on a desk",
     )
-    .with(
-        StylePatch::EMPTY
-            .fill(Fill::Tint)
-            .outline(false)
-            .shadow(Shadow::None),
-    );
+    .with(StylePatch::EMPTY.fill(Fill::Tint));
 
     pub const SCREEN_TILE: Self = Self::new(
         "tile.screen",
         Kind::Card,
         "Screen tiles",
         "A screen drawn to scale on a well",
-    )
-    .with(StylePatch::EMPTY.shadow(Shadow::Contact));
+    );
 
     pub const CARD_TILE: Self = Self::new(
         "tile.card",
@@ -924,19 +640,17 @@ impl SurfaceRole {
         "field.outline",
         Kind::Field,
         "Outline fields",
-        "Fields with no fill, drawn with an outline on every theme",
+        "Fields with no fill, drawn with an outline",
     )
-    .with(StylePatch::EMPTY.fill(Fill::None).outline(true))
-    .fixed_emphasis();
+    .with(StylePatch::EMPTY.fill(Fill::None).outline(true));
 
     pub const OUTLINE_TEXT_AREA: Self = Self::under(
         &Self::TEXT_AREA,
         "field.multiline.outline",
         "Outline text areas",
-        "Text areas with no fill, drawn with an outline on every theme",
+        "Text areas with no fill, drawn with an outline",
     )
-    .with(StylePatch::EMPTY.fill(Fill::None).outline(true))
-    .fixed_emphasis();
+    .with(StylePatch::EMPTY.fill(Fill::None).outline(true));
 
     pub const BADGE: Self =
         Self::new("badge", Kind::Label, "Badges", "Small labels and counts").capsule(true);
@@ -945,10 +659,9 @@ impl SurfaceRole {
         &Self::BADGE,
         "badge.outline",
         "Outline badges",
-        "Badges with no fill, drawn with an outline on every theme",
+        "Badges with no fill, drawn with an outline",
     )
-    .with(StylePatch::EMPTY.fill(Fill::None).outline(true))
-    .fixed_emphasis();
+    .with(StylePatch::EMPTY.fill(Fill::None).outline(true));
 
     pub const CHIP: Self = Self::under(
         &Self::BADGE,
@@ -966,10 +679,9 @@ impl SurfaceRole {
         &Self::CHIP,
         "chip.outline",
         "Outline chips",
-        "Chips with no fill, drawn with an outline on every theme",
+        "Chips with no fill, drawn with an outline",
     )
-    .with(StylePatch::EMPTY.fill(Fill::None).outline(true))
-    .fixed_emphasis();
+    .with(StylePatch::EMPTY.fill(Fill::None).outline(true));
 
     pub const STEP: Self = Self::under(
         &Self::BADGE,
@@ -988,8 +700,7 @@ impl SurfaceRole {
         Kind::Card,
         "Notices",
         "A problem or a note above a page or in a panel, tinted by its tone",
-    )
-    .with(StylePatch::EMPTY.shadow(Shadow::None));
+    );
 
     pub const KEYCAP: Self = Self::new("keycap", Kind::Label, "Keycaps", "Key hints");
 
@@ -999,11 +710,7 @@ impl SurfaceRole {
         "Icon tiles",
         "The tile behind the icon that leads a sheet row, and the icon's ink",
     )
-    .with(StylePatch::EMPTY.outline(false).ink(Ink::Rest))
-    .with_knobs(Knobs {
-        ink: Ink::ALL,
-        ..Kind::Label.knobs()
-    });
+    .with(StylePatch::EMPTY.ink(Ink::Rest));
 
     pub const GRABBER: Self = Self::under(
         &Self::BADGE,
@@ -1011,7 +718,7 @@ impl SurfaceRole {
         "Grabbers",
         "The handles on the phone bar and on sheets",
     )
-    .with(StylePatch::EMPTY.shape(Shape::Pill).outline(false));
+    .with(StylePatch::EMPTY.shape(Shape::Pill));
 
     pub(crate) const OUTLINES: [Self; 5] = [
         Self::OUTLINE_BUTTON,
@@ -1088,10 +795,10 @@ impl ShadowMaterial {
         strength: 1.0,
     };
     pub const FLOAT: Self = Self {
-        y: 12.0,
-        blur: 32.0,
-        spread: -4.0,
-        strength: 1.0,
+        y: 10.0,
+        blur: 30.0,
+        spread: -6.0,
+        strength: 0.8,
     };
 }
 
@@ -1106,6 +813,7 @@ const RING_WIDTH: Pixels = px(2.0);
 const BAR_WIDTH: Pixels = px(3.0);
 const BAR_LENGTH: Pixels = px(16.0);
 const CONTROL_EDGE_ALPHA: f32 = 0.1;
+const HIGHLIGHT_STRENGTH: f32 = 0.8;
 const DISABLED: f32 = 0.5;
 const INSPECT_COLOR: Hsla = Hsla {
     h: 0.833,
@@ -1193,31 +901,7 @@ impl Layer {
 
 impl Theme {
     pub fn group_reaches(&self, group: SurfaceRole, role: SurfaceRole) -> bool {
-        if !role.lineage().any(|node| node.id == group.id) {
-            return false;
-        }
-        let named = |patch: StylePatch| {
-            [
-                patch.fill.is_some(),
-                patch.outline.is_some(),
-                patch.shadow.is_some(),
-                patch.shape.is_some(),
-                patch.smoothing.is_some(),
-                patch.hover.is_some(),
-                patch.selected.is_some(),
-                patch.ink.is_some(),
-            ]
-        };
-        let mut held = [false; 8];
-        for node in role.lineage().take_while(|node| node.id != group.id) {
-            let themed = self.styles.get(node.id).copied().unwrap_or_default();
-            for (held, themed) in held.iter_mut().zip(named(themed)) {
-                *held |= themed;
-            }
-        }
-        held.into_iter()
-            .zip(role.knobs().open())
-            .any(|(held, open)| open && !held)
+        role.lineage().any(|node| node.id == group.id)
     }
 
     fn built_in(node: SurfaceRole, style: &mut Style) {
@@ -1227,39 +911,15 @@ impl Theme {
         node.patch.apply(style);
     }
 
-    fn themed(&self, node: SurfaceRole, knobs: Knobs, style: &mut Style) {
-        if let Some(group) = node.group() {
-            self.themed(group, knobs, style);
-        }
-        if let Some(patch) = self.styles.get(node.id) {
-            knobs.admit(*patch).apply(style);
-        }
-    }
-
     pub fn style(&self, role: SurfaceRole) -> Style {
         DRAWN.with_borrow_mut(|drawn| {
             if let Some(drawn) = drawn {
-                drawn.insert(role.id);
-                for group in role.lineage().skip(1) {
-                    if self.group_reaches(group, role) {
-                        drawn.insert(group.id);
-                    }
-                }
+                drawn.extend(role.lineage().map(|node| node.id));
             }
         });
         let mut style = role.kind.base();
         style.smoothing = self.smoothing;
         Self::built_in(role, &mut style);
-        if self.picked_outlines && role.picks_outline() {
-            style.outline = false;
-        }
-        if self.picked_shadows && role.picks_shadow() {
-            style.shadow = Shadow::None;
-        }
-        if self.picked_smoothing && role.picks_smoothing() {
-            style.smoothing = Smoothing::CIRCLE;
-        }
-        self.themed(role, role.knobs(), &mut style);
         style
     }
 
@@ -1296,7 +956,7 @@ impl Theme {
 
     pub fn lifted_shadows(&self) -> Vec<BoxShadow> {
         let strength = self.contact_shadow.strength;
-        if strength <= 0.0 || self.picked_shadows {
+        if strength <= 0.0 {
             return Vec::new();
         }
         let ink = self.shadow_color.alpha((0.1 * strength).min(1.0));
@@ -1320,15 +980,14 @@ impl Theme {
 
     pub fn float_shadows(&self) -> Vec<BoxShadow> {
         let material = self.float_shadow;
-        let mut shadows = self.contact_shadows();
-        if material.strength > 0.0 {
-            let ink = self.shadow_color;
-            shadows.push(shadow_of(
-                material,
-                ink.alpha((ink.a * material.strength).min(1.0)),
-            ));
+        if material.strength <= 0.0 {
+            return Vec::new();
         }
-        shadows
+        let ink = self.shadow_color;
+        vec![shadow_of(
+            material,
+            ink.alpha((ink.a * material.strength).min(1.0)),
+        )]
     }
 
     pub fn shadows_of(&self, shadow: Shadow) -> Vec<BoxShadow> {
@@ -1382,11 +1041,7 @@ impl Theme {
         };
         let toned = !(tone == Tone::Neutral
             || (tone == Tone::Primary && self.primary == PrimaryStyle::Foreground));
-        let glass_fill = if self.bright_surfaces && !self.mode.is_dark() && !toned {
-            self.raise(base, step)
-        } else {
-            soft.opaque().fill
-        };
+        let glass_fill = soft.opaque().fill;
         let paint = if surface.prominent && fill != Fill::Glass {
             solid
         } else if kind.is_control() {
@@ -1431,15 +1086,17 @@ impl Theme {
 
         let highlight = match state {
             PaintState::Hover | PaintState::Active => style.hover,
-            PaintState::Selected | PaintState::Current | PaintState::Focused => style.selected,
+            PaintState::Selected | PaintState::Current => style.selected,
+            PaintState::Focused if kind == Kind::Field => style.selected,
             _ => Highlight::None,
         };
         let highlight = match highlight {
             Highlight::Glass if glass.is_some() || ground.glass => Highlight::Tint,
             Highlight::Glass if self.drawn_glass().is_none() => Highlight::Lift,
+            Highlight::Accent if tone == Tone::Neutral && !self.tinted() => Highlight::Tint,
             highlight => highlight,
         };
-        let flattened = self.flat_highlights && highlight == Highlight::Lift;
+        let flattened = highlight == Highlight::Lift;
         let highlight = if flattened {
             Highlight::Tint
         } else {
@@ -1461,14 +1118,22 @@ impl Theme {
         };
         let (mut fill_color, mut text) = match highlight {
             Highlight::Tint | Highlight::Lift => (
-                super::color::toward(paint.fill, washed(&paint), self.highlight_strength),
+                super::color::toward(paint.fill, washed(&paint), HIGHLIGHT_STRENGTH),
                 paint.text,
             ),
             Highlight::Bar if surface.role.row => (
-                super::color::toward(paint.fill, washed(&paint), self.highlight_strength),
+                super::color::toward(paint.fill, washed(&paint), HIGHLIGHT_STRENGTH),
                 paint.text,
             ),
-            Highlight::Accent => (paint.selected, paint.selected_text),
+            Highlight::Accent => {
+                let lit = if tone == Tone::Neutral {
+                    Tone::Primary
+                } else {
+                    tone
+                };
+                let solid = self.paint_on(ground, lit, Emphasis::Solid);
+                (solid.fill, solid.text)
+            }
             Highlight::Glass if kind.is_control() => (glass_fill, paint.text),
             Highlight::Glass => (self.raise(base, step), paint.text),
             Highlight::None | Highlight::Ring | Highlight::Bar | Highlight::Edge => {
@@ -1495,26 +1160,19 @@ impl Theme {
         } else {
             self.border()
         };
-        let lifts = !self.flat_highlights
-            && [style.hover, style.selected].into_iter().any(|highlight| {
-                highlight == Highlight::Lift
-                    || (highlight == Highlight::Glass && self.drawn_glass().is_none())
-            });
-        let border_width = if (style.outline || lifts) && self.outlined() {
+        let edged = kind.edged() && super::color::contrast() > 1.0;
+        let border_width = if style.outline || edged {
             self.outline
         } else {
             px(0.0)
         };
-        let lifted = highlight == Highlight::Lift && state != PaintState::Disabled;
-        let border = if glass.is_some() || border_width == px(0.0) {
+        let border = if border_width == px(0.0) || (glass.is_some() && !edged) {
             self.transparent
-        } else if style.outline || lifted {
+        } else {
             match state {
                 PaintState::Disabled => edge.opacity(DISABLED),
                 _ => edge,
             }
-        } else {
-            self.transparent
         };
 
         let (border, border_width) = if SurfaceRole::OUTLINES
@@ -1533,24 +1191,21 @@ impl Theme {
         };
         let casts = !kind.is_control() || ground.elevation == Elevation::Window;
         let mut shadow = if casts && state != PaintState::Disabled {
-            let mut shadow = self.shadows_of(style.shadow);
-            if lifted && shadow.is_empty() {
-                shadow = self.contact_shadows();
-            }
-            shadow
+            self.shadows_of(style.shadow)
         } else {
             Vec::new()
         };
+        let lit = self.tone(Tone::Primary).opaque();
         match highlight {
             Highlight::Ring => shadow.push(BoxShadow {
-                color: self.accent.opaque(),
+                color: lit,
                 offset: point(px(0.0), px(0.0)),
                 blur_radius: px(0.0),
                 spread_radius: RING_WIDTH,
                 inset: false,
             }),
             Highlight::Bar if !surface.role.row => shadow.push(BoxShadow {
-                color: self.accent.opaque(),
+                color: lit,
                 offset: point(px(0.0), -BAR_WIDTH),
                 blur_radius: px(0.0),
                 spread_radius: px(0.0),
@@ -1563,14 +1218,10 @@ impl Theme {
         }
 
         if self.inspect_strength > 0.0
-            && self.inspect.as_deref().is_some_and(|inspect| {
-                inspect == surface.role.id
-                    || surface
-                        .role
-                        .lineage()
-                        .skip(1)
-                        .any(|group| inspect == group.id && self.group_reaches(group, surface.role))
-            })
+            && self
+                .inspect
+                .as_deref()
+                .is_some_and(|inspect| surface.role.lineage().any(|node| inspect == node.id))
         {
             shadow.push(BoxShadow {
                 color: INSPECT_COLOR.alpha(self.inspect_strength.min(1.0)),
@@ -1591,7 +1242,7 @@ impl Theme {
         let mark =
             (highlight == Highlight::Bar && surface.role.row && state != PaintState::Disabled)
                 .then(|| EdgeMark {
-                    color: self.accent.opaque(),
+                    color: lit,
                     width: BAR_WIDTH,
                     length: BAR_LENGTH,
                 });
@@ -1705,258 +1356,10 @@ pub(crate) fn restyle(style: ala::StyleRefinement, layer: &Layer) -> ala::StyleR
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{ThemeColor, ThemeMode, oklab_lightness};
+    use crate::ThemeColor;
 
     fn theme() -> Theme {
         Theme::from(&*ThemeColor::dark())
-    }
-
-    #[test]
-    fn flat_highlights_wash_a_step_deeper_instead_of_lifting() {
-        let mut theme = theme();
-        let lifted = theme.layer(Surface::new(SurfaceRole::TAB), PaintState::Selected);
-        assert!(!lifted.shadow.is_empty());
-        assert!(lifted.border_width > px(0.0));
-        let tinted = SurfaceRole::under(&SurfaceRole::TAB, "test.tab", "Test", "")
-            .with(StylePatch::EMPTY.selected(Highlight::Tint));
-        let tint = theme.layer(Surface::new(tinted), PaintState::Selected);
-
-        theme.flat_highlights = true;
-        let flat = theme.layer(Surface::new(SurfaceRole::TAB), PaintState::Selected);
-        assert!(flat.shadow.is_empty());
-        assert_eq!(flat.border_width, px(0.0));
-        assert!(flat.fill.a > tint.fill.a);
-        assert_eq!(
-            theme
-                .layer(Surface::new(SurfaceRole::TILE), PaintState::Hover)
-                .fill,
-            theme
-                .layer(Surface::new(SurfaceRole::TILE), PaintState::Rest)
-                .fill,
-            "a surface that does not highlight stays bare"
-        );
-    }
-
-    #[test]
-    fn bright_surfaces_rise_toward_white_in_light_mode_only() {
-        let fills = |colors: &ThemeColor, bright: bool| {
-            let mut theme = Theme::from(colors);
-            theme.bright_surfaces = bright;
-            let lightness =
-                |role| oklab_lightness(theme.layer(Surface::new(role), PaintState::Rest).fill);
-            (
-                oklab_lightness(theme.background),
-                lightness(SurfaceRole::POPOVER),
-                lightness(Kind::Card.role()),
-                oklab_lightness(theme.surface(Elevation::Popover).fill),
-            )
-        };
-        let mut light = (*ThemeColor::light()).clone();
-        light.background = ala::hsla(0., 0., 0.98, 1.);
-
-        let (window, menu, card, ground) = fills(&light, false);
-        assert!(menu < window && card < window && ground < window);
-        let (window, menu, card, ground) = fills(&light, true);
-        assert!(menu > window && card > window, "light surfaces brighten");
-        assert!((ground - menu).abs() < 1e-3, "a menu's ground is its fill");
-
-        assert_eq!(
-            fills(&ThemeColor::dark(), true),
-            fills(&ThemeColor::dark(), false),
-            "dark surfaces rise lighter either way"
-        );
-    }
-
-    #[test]
-    fn bright_glass_controls_rise_in_light_mode_only() {
-        let button = Kind::Button
-            .role()
-            .with(StylePatch::EMPTY.fill(Fill::Glass));
-        let tab = SurfaceRole::TAB.with(StylePatch::EMPTY.selected(Highlight::Glass));
-        let mut light = (*ThemeColor::light()).clone();
-        light.background = ala::hsla(0., 0., 0.97, 1.);
-        for (mode, colors) in [
-            (ThemeMode::Light, &light),
-            (ThemeMode::Dark, &*ThemeColor::dark()),
-        ] {
-            let mut theme = Theme::from(colors);
-            theme.mode = mode;
-            theme.glass = Some(GlassMaterial::regular());
-            for (role, state) in [(button, PaintState::Rest), (tab, PaintState::Selected)] {
-                theme.bright_surfaces = false;
-                let plain = theme.layer(Surface::new(role), state).glass.unwrap().tint;
-                theme.bright_surfaces = true;
-                let bright = theme.layer(Surface::new(role), state).glass.unwrap().tint;
-                if theme.mode.is_dark() {
-                    assert_eq!(bright, plain);
-                } else {
-                    assert!(oklab_lightness(bright) > oklab_lightness(theme.background));
-                    assert_eq!(bright.a, plain.a);
-                }
-                let toned = Surface::new(role).tone(Tone::Danger);
-                let bright = theme.layer(toned, state);
-                theme.bright_surfaces = false;
-                assert_eq!(bright, theme.layer(toned, state));
-            }
-        }
-    }
-
-    #[test]
-    fn highlight_strength_scales_tint_and_lift_washes() {
-        let mut theme = theme();
-        let tab = SurfaceRole::under(&SurfaceRole::TAB, "test.tab", "Test", "")
-            .with(StylePatch::EMPTY.selected(Highlight::Tint));
-        let button = Kind::Button.role();
-        let fill = |theme: &Theme, role, state| theme.layer(Surface::new(role), state).fill;
-        let tab_wash = fill(&theme, tab, PaintState::Selected);
-        let button_wash = fill(&theme, button, PaintState::Hover);
-        let button_rest = oklab_lightness(fill(&theme, button, PaintState::Rest));
-
-        theme.highlight_strength = 0.0;
-        assert_eq!(
-            fill(&theme, tab, PaintState::Selected),
-            fill(&theme, tab, PaintState::Rest)
-        );
-        assert_eq!(
-            fill(&theme, button, PaintState::Hover),
-            fill(&theme, button, PaintState::Rest)
-        );
-        let lift = theme.layer(Surface::new(SurfaceRole::TAB), PaintState::Selected);
-        assert!(!lift.shadow.is_empty(), "a lift still rises");
-
-        theme.highlight_strength = 2.0;
-        assert!(fill(&theme, tab, PaintState::Selected).a > tab_wash.a);
-        let deeper = oklab_lightness(fill(&theme, button, PaintState::Hover));
-        assert!((deeper - button_rest).abs() > (oklab_lightness(button_wash) - button_rest).abs());
-    }
-
-    #[test]
-    fn a_theme_that_picks_outlines_draws_them_only_where_it_picks() {
-        let mut theme = theme();
-        theme.picked_outlines = true;
-        let card = Kind::Card.role();
-        assert!(!theme.style(card).outline);
-        assert_eq!(
-            theme
-                .layer(Surface::new(card), PaintState::Rest)
-                .border_width,
-            px(0.0)
-        );
-        assert!(theme.style(Kind::Rule.role()).outline, "dividers are lines");
-        let fixed = SurfaceRole::new("test.fixed", Kind::Card, "Test", "")
-            .with(StylePatch::EMPTY.outline(true))
-            .with_knobs(Knobs::FIXED);
-        assert!(theme.style(fixed).outline, "no theme could turn it back on");
-
-        theme
-            .styles
-            .insert("card".into(), StylePatch::EMPTY.outline(true));
-        assert!(
-            theme
-                .layer(Surface::new(card), PaintState::Rest)
-                .border_width
-                > px(0.0)
-        );
-        assert!(!theme.style(Kind::Button.role()).outline);
-    }
-
-    #[test]
-    fn a_theme_smooths_every_corner_or_only_the_ones_it_picks() {
-        let mut theme = theme();
-        let soft = Smoothing::try_from(3.0).unwrap();
-        theme.smoothing = soft;
-        let button = Kind::Button.role();
-        assert_eq!(theme.style(button).smoothing, soft);
-        assert_eq!(
-            theme
-                .layer(Surface::new(button), PaintState::Rest)
-                .smoothing,
-            3.0
-        );
-        let pane = Kind::Pane.role();
-        assert_eq!(theme.style(pane).smoothing, soft);
-
-        theme.picked_smoothing = true;
-        assert_eq!(theme.style(button).smoothing, Smoothing::CIRCLE);
-        assert_eq!(theme.style(pane).smoothing, soft, "no theme could set it");
-        theme.styles.insert(
-            "button".into(),
-            StylePatch::EMPTY.smoothing(Smoothing::THEME),
-        );
-        assert_eq!(theme.style(button).smoothing, Smoothing::THEME);
-        assert_eq!(theme.style(Kind::Card.role()).smoothing, Smoothing::CIRCLE);
-    }
-
-    #[test]
-    fn a_theme_that_picks_shadows_casts_them_only_where_it_picks() {
-        let mut theme = theme();
-        theme.picked_shadows = true;
-        let popover = SurfaceRole::POPOVER;
-        assert_eq!(theme.style(popover).shadow, Shadow::None);
-        assert!(
-            theme
-                .layer(Surface::new(popover), PaintState::Rest)
-                .shadow
-                .is_empty()
-        );
-        assert!(!theme.casts_shadow(Surface::new(Kind::Button.role())));
-        let fixed = SurfaceRole::new("test.fixed", Kind::Card, "Test", "")
-            .with(StylePatch::EMPTY.shadow(Shadow::Float))
-            .with_knobs(Knobs::FIXED);
-        assert_eq!(theme.style(fixed).shadow, Shadow::Float);
-        assert!(
-            !theme
-                .layer(Surface::new(SurfaceRole::TAB), PaintState::Selected)
-                .shadow
-                .is_empty(),
-            "a lift still rises"
-        );
-
-        theme
-            .styles
-            .insert("popover".into(), StylePatch::EMPTY.shadow(Shadow::Float));
-        assert!(
-            !theme
-                .layer(Surface::new(popover), PaintState::Rest)
-                .shadow
-                .is_empty()
-        );
-        assert!(!theme.casts_shadow(Surface::new(SurfaceRole::DIALOG)));
-    }
-
-    #[test]
-    fn a_theme_patch_beats_every_built_in_and_the_closest_patch_wins() {
-        let mut theme = theme();
-        let role = SurfaceRole::under(&SurfaceRole::MENU_ITEM, "test.row", "Test", "")
-            .with(StylePatch::EMPTY.selected(Highlight::Tint));
-        assert_eq!(theme.style(role).selected, Highlight::Tint);
-        assert_eq!(
-            theme.style(role).hover,
-            SurfaceRole::MENU_ITEM.patch.hover.unwrap()
-        );
-        assert!(role.row);
-
-        theme
-            .styles
-            .insert("button".into(), StylePatch::EMPTY.hover(Highlight::Glass));
-        assert_eq!(theme.style(role).hover, Highlight::Glass);
-        assert_eq!(theme.style(role).selected, Highlight::Tint);
-        theme.styles.insert(
-            "menu-item".into(),
-            StylePatch::EMPTY
-                .hover(Highlight::Accent)
-                .selected(Highlight::Bar),
-        );
-        assert_eq!(theme.style(role).hover, Highlight::Accent);
-        assert_eq!(theme.style(role).selected, Highlight::Bar);
-
-        theme.styles.insert(
-            "test.row".into(),
-            StylePatch::EMPTY.selected(Highlight::Ring),
-        );
-        assert_eq!(theme.style(role).selected, Highlight::Ring);
-        assert_eq!(theme.style(SurfaceRole::MENU_ITEM).selected, Highlight::Bar);
-        assert_eq!(theme.style(Kind::Button.role()).hover, Highlight::Glass);
     }
 
     #[test]
@@ -2000,63 +1403,30 @@ mod tests {
 
     #[test]
     fn a_bar_marks_a_row_with_a_washed_pill_and_a_field_with_a_line() {
-        let mut theme = theme();
+        let theme = theme();
         let bar = StylePatch::EMPTY.selected(Highlight::Bar);
-        theme.styles.insert("menu-item".into(), bar);
-        theme.styles.insert("field".into(), bar);
+        let menu_item =
+            SurfaceRole::under(&SurfaceRole::MENU_ITEM, "test.row", "Test", "").with(bar);
+        let field = SurfaceRole::new("test.field", Kind::Field, "Test", "").with(bar);
 
-        let row = theme.layer(Surface::new(SurfaceRole::MENU_ITEM), PaintState::Selected);
+        let row = theme.layer(Surface::new(menu_item), PaintState::Selected);
         let mark = row.mark.expect("a selected row carries the pill");
-        assert_eq!(mark.color, theme.accent.opaque());
+        assert_eq!(mark.color, theme.foreground.opaque());
         assert!(row.shadow.iter().all(|shadow| !shadow.inset));
         assert_ne!(
             row.fill,
-            theme
-                .layer(Surface::new(SurfaceRole::MENU_ITEM), PaintState::Rest)
-                .fill
+            theme.layer(Surface::new(menu_item), PaintState::Rest).fill
         );
         assert!(
             theme
-                .layer(Surface::new(SurfaceRole::MENU_ITEM), PaintState::Rest)
+                .layer(Surface::new(menu_item), PaintState::Rest)
                 .mark
                 .is_none()
         );
 
-        let field = theme.layer(Surface::new(Kind::Field.role()), PaintState::Focused);
+        let field = theme.layer(Surface::new(field), PaintState::Focused);
         assert!(field.mark.is_none());
         assert!(field.shadow.iter().any(|shadow| shadow.inset));
-    }
-
-    #[test]
-    fn a_group_patch_reaches_its_members_and_rings_them() {
-        let mut theme = theme();
-        theme.styles.insert(
-            "icon-button".into(),
-            StylePatch::EMPTY.fill(Fill::Glass).hover(Highlight::Ring),
-        );
-        let flat = theme.style(SurfaceRole::FLAT_ICON_BUTTON);
-        assert_eq!(flat.fill, Fill::Glass);
-        assert_eq!(flat.hover, Highlight::Ring);
-        theme.styles.insert(
-            "icon-button.flat".into(),
-            StylePatch::EMPTY.hover(Highlight::Tint),
-        );
-        assert_eq!(
-            theme.style(SurfaceRole::FLAT_ICON_BUTTON).hover,
-            Highlight::Tint
-        );
-        assert!(theme.group_reaches(SurfaceRole::ICON_BUTTON, SurfaceRole::FLAT_ICON_BUTTON));
-        assert!(!theme.group_reaches(SurfaceRole::ICON_BUTTON, SurfaceRole::QUIET_BUTTON));
-        theme.inspect = Some("icon-button".into());
-        let ringed = |role| {
-            theme
-                .layer(Surface::new(role), PaintState::Rest)
-                .shadow
-                .iter()
-                .any(|shadow| shadow.color == INSPECT_COLOR)
-        };
-        assert!(ringed(SurfaceRole::FLAT_ICON_BUTTON));
-        assert!(!ringed(SurfaceRole::QUIET_BUTTON));
     }
 
     #[test]
@@ -2108,11 +1478,11 @@ mod tests {
         );
 
         theme.glass = None;
-        let lifted = theme.layer(Surface::new(tab), PaintState::Selected);
-        assert!(lifted.glass.is_none());
-        assert!(!lifted.shadow.is_empty());
+        let washed = theme.layer(Surface::new(tab), PaintState::Selected);
+        assert!(washed.glass.is_none());
+        assert!(washed.shadow.is_empty());
         assert_ne!(
-            lifted.fill,
+            washed.fill,
             theme.layer(Surface::new(tab), PaintState::Rest).fill
         );
     }
@@ -2187,7 +1557,8 @@ mod tests {
     #[test]
     fn controls_cast_shadows_only_on_the_window() {
         let theme = theme();
-        let button = Kind::Button.role();
+        let button = SurfaceRole::new("test.button", Kind::Button, "Test", "")
+            .with(StylePatch::EMPTY.shadow(Shadow::Contact));
         assert!(
             !theme
                 .layer(Surface::new(button), PaintState::Rest)
@@ -2203,7 +1574,10 @@ mod tests {
         );
         assert!(
             !theme
-                .layer(Surface::new(Kind::Card.role()).on(panel), PaintState::Rest)
+                .layer(
+                    Surface::new(SurfaceRole::POPOVER).on(panel),
+                    PaintState::Rest
+                )
                 .shadow
                 .is_empty()
         );
@@ -2273,41 +1647,6 @@ mod tests {
         assert!(ringed(&theme, Kind::Button.role()));
         assert!(ringed(&theme, SurfaceRole::QUIET_BUTTON));
         assert!(!ringed(&theme, Kind::Card.role()));
-        let sealed =
-            SurfaceRole::new("button.sealed", Kind::Button, "Sealed", "").with_knobs(Knobs::FIXED);
-        assert!(!ringed(&theme, sealed));
-        theme.styles.insert(
-            "button.quiet".into(),
-            StylePatch::EMPTY
-                .fill(Fill::None)
-                .outline(false)
-                .shadow(Shadow::None)
-                .shape(Shape::Pill)
-                .smoothing(Smoothing::THEME)
-                .hover(Highlight::Lift)
-                .selected(Highlight::Lift)
-                .ink(Ink::Bright),
-        );
-        assert!(!ringed(&theme, SurfaceRole::QUIET_BUTTON));
-    }
-
-    #[test]
-    fn a_kind_patch_reaches_only_what_a_role_takes() {
-        let mut theme = theme();
-        let fixed =
-            SurfaceRole::new("card.fixed", Kind::Card, "Fixed", "").with_knobs(Knobs::FIXED);
-        theme.styles.insert(
-            "card".into(),
-            StylePatch::EMPTY.fill(Fill::Glass).shape(Shape::Pill),
-        );
-        assert_eq!(theme.style(fixed), Kind::Card.base());
-        assert_eq!(theme.style(Kind::Card.role()).fill, Fill::Glass);
-        assert_eq!(theme.style(Kind::Card.role()).shape, Shape::Round);
-        assert!(!theme.group_reaches(Kind::Card.role(), fixed));
-        theme
-            .styles
-            .insert("panel".into(), StylePatch::EMPTY.fill(Fill::Glass));
-        assert_eq!(theme.style(Kind::Panel.role()), Kind::Panel.base());
     }
 
     #[test]
@@ -2327,39 +1666,42 @@ mod tests {
     }
 
     #[test]
-    fn a_patch_between_two_styles_names_only_what_differs() {
-        let from = Kind::Button.base();
-        let to = Style {
-            fill: Fill::Glass,
-            shape: Shape::Pill,
-            ..from
-        };
-        let patch = StylePatch::between(from, to);
-        assert_eq!(
-            patch,
-            StylePatch::EMPTY.fill(Fill::Glass).shape(Shape::Pill)
-        );
-        let mut style = from;
-        patch.apply(&mut style);
-        assert_eq!(style, to);
-    }
+    fn a_picked_row_washes_in_the_ink_until_a_tint_fills_it() {
+        let mut theme = theme();
+        let menu = theme.ground_of(Surface::new(SurfaceRole::POPOVER));
+        let washed = SurfaceRole::under(&SurfaceRole::MENU_ITEM, "test.row", "Test", "")
+            .with(StylePatch::EMPTY.selected(Highlight::Tint));
+        for (role, ground) in [
+            (SurfaceRole::MENU_ITEM, menu),
+            (SurfaceRole::ROW, theme.ground()),
+        ] {
+            let picked = theme.layer(Surface::new(role).on(ground), PaintState::Selected);
+            let wash = theme.layer(Surface::new(washed).on(ground), PaintState::Selected);
+            assert_eq!(
+                (picked.fill, picked.text),
+                (wash.fill, wash.text),
+                "{}",
+                role.id
+            );
+        }
 
-    #[test]
-    fn theme_files_spell_styles_in_lowercase() {
-        let patch: StylePatch = serde_json::from_str(
-            r#"{"fill":"glass","outline":false,"shadow":"float","shape":"pill","hover":"lift","selected":"accent"}"#,
-        )
-        .unwrap();
-        assert_eq!(
-            patch,
-            StylePatch::EMPTY
-                .fill(Fill::Glass)
-                .outline(false)
-                .shadow(Shadow::Float)
-                .shape(Shape::Pill)
-                .hover(Highlight::Lift)
-                .selected(Highlight::Accent)
-        );
-        assert!(serde_json::from_str::<StylePatch>(r#"{"fil":"glass"}"#).is_err());
+        let tint = crate::parse_hex("#ad4f00").unwrap();
+        theme.accent = tint;
+        theme.primary = PrimaryStyle::Accent;
+        let on_tint = crate::parse_hex("#ebebeb").unwrap();
+        for (role, ground) in [
+            (SurfaceRole::MENU_ITEM, menu),
+            (SurfaceRole::ROW, theme.ground()),
+            (SurfaceRole::TAB, theme.ground()),
+        ] {
+            let picked = theme.layer(Surface::new(role).on(ground), PaintState::Selected);
+            assert_eq!(crate::to_hex(picked.fill), "#ad4f00", "{}", role.id);
+            assert_eq!(
+                crate::to_hex(picked.text),
+                crate::to_hex(on_tint),
+                "{}",
+                role.id
+            );
+        }
     }
 }

@@ -38,7 +38,7 @@
   const ramp = (colors) => colors.map((color, index) => `${css(color)} ${(index / (colors.length - 1)) * 100}%`).join(", ");
 
   const swatchRadius = (element) => {
-    const radius = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--penna-radius")) || 0;
+    const radius = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--penna-control-radius")) || 0;
     const size = Math.min(element.offsetWidth, element.offsetHeight);
     if (radius > FULL) return size / 2;
     const cap = size * CORNER;

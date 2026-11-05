@@ -54,7 +54,7 @@ function adaptive(radius, width, height) {
 }
 
 function controlRadius() {
-  const radius = px(rootStyle().getPropertyValue("--penna-radius"));
+  const radius = px(rootStyle().getPropertyValue("--penna-control-radius"));
   return radius > 24 ? 9999 : radius;
 }
 

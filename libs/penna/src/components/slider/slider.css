@@ -186,7 +186,7 @@
   margin-left: calc(var(--penna-slider-knob) / -2);
   border-radius: 50%;
   background: var(--penna-knob);
-  box-shadow: var(--penna-shadow-lifted);
+  box-shadow: var(--penna-shadow-contact);
 }
 
 .penna-slider:is(:focus-visible, [data-focused]) > .penna-rail > .penna-knob {

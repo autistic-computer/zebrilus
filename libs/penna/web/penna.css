@@ -456,7 +456,7 @@ button[data-penna] {
   height: 16px;
   border-radius: 50%;
   background: var(--penna-knob);
-  box-shadow: var(--penna-shadow-lifted);
+  box-shadow: var(--penna-shadow-contact);
 }
 
 .penna-switch[data-on] {

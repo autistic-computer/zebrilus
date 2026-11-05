@@ -38,12 +38,12 @@ pub use layout::{center, inline, inset, split, stack, tiles};
 pub use space::Space;
 pub use styled::{
     Density, Disableable, FOCUS_RING_WIDTH, RULE_WIDTH, RuleLook, Selectable, Sizable, Size,
-    StyledExt, h_flex, lifted_shadow, list_row, muted_on, row_state, v_flex,
+    StyledExt, h_flex, knob_shadow, list_row, muted_on, row_state, v_flex,
 };
 pub(crate) use styled::{ROW_CORNER_SMOOTHING, RoleRuleExt, row_corners, row_radius, row_surface};
 pub use surface::{
-    Edge, Fill, Highlight, Ink, Kind, Knobs, Layer, Shadow, ShadowMaterial, Shape, Smoothing,
-    Style, StylePatch, Surface, SurfaceRole, drawn_roles, note_drawn_roles,
+    Edge, Fill, Highlight, Ink, Kind, Layer, Shadow, ShadowMaterial, Shape, Smoothing, Style,
+    StylePatch, Surface, SurfaceRole, drawn_roles, note_drawn_roles,
 };
 pub(crate) use surface::{StatefulSurfaceExt, restyle};
 pub use text_style::TextStyle;

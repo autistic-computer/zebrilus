@@ -1,5 +1,4 @@
 use std::{
-    collections::HashMap,
     ops::{Deref, DerefMut},
     sync::Arc,
 };
@@ -12,8 +11,7 @@ use ala::{
 use crate::{BASE_UI_FONT_SIZE, TITLE_BAR_HEIGHT, foundation::highlighter::HighlightTheme};
 
 use super::{
-    Colorize as _, PrimaryStyle, ShadowMaterial, Smoothing, Space, StylePatch, Surface, ThemeColor,
-    color,
+    Colorize as _, PrimaryStyle, ShadowMaterial, Smoothing, Space, Surface, ThemeColor, color,
 };
 
 pub const CHROME_GAP: f32 = Space::INSET_CHROME.design_px();
@@ -79,19 +77,12 @@ pub struct Theme {
     pub control_radius: Option<Pixels>,
     contrast: f32,
     pub outline: Pixels,
-    pub picked_outlines: bool,
-    pub picked_shadows: bool,
     pub smoothing: Smoothing,
-    pub picked_smoothing: bool,
     pub contact_shadow: ShadowMaterial,
     pub float_shadow: ShadowMaterial,
     pub row_inset: Pixels,
     pub primary: PrimaryStyle,
-    pub flat_highlights: bool,
-    pub bright_surfaces: bool,
-    pub highlight_strength: f32,
     pub glass: Option<GlassMaterial>,
-    pub(crate) styles: HashMap<SharedString, StylePatch>,
     pub inspect: Option<SharedString>,
     pub inspect_strength: f32,
     pub pane_margin: Pixels,
@@ -107,6 +98,7 @@ impl Default for Theme {
 }
 
 pub const CORNER_SMOOTHING: f32 = 4.0;
+pub const DEFAULT_RADIUS: f32 = 12.0;
 pub const ADAPTIVE_CORNER_FRACTION: f32 = 0.45;
 pub const PANE_HEADER_CONTROL_HEIGHT: Pixels = px(22.0);
 pub const PANE_HEADER_HEIGHT: Pixels = px(22.0 + 2.0 * CHROME_GAP);
@@ -166,8 +158,8 @@ impl Theme {
         self.outline > px(0.0)
     }
 
-    pub fn outlines_edges(&self) -> bool {
-        self.outlined() && !self.picked_outlines
+    pub fn tinted(&self) -> bool {
+        self.primary == PrimaryStyle::Accent
     }
 
     pub fn glass_effect(&self) -> Option<GlassMaterial> {
@@ -176,10 +168,6 @@ impl Theme {
 
     pub fn casts_shadow(&self, surface: impl Into<Surface>) -> bool {
         !self.shadows_of(self.style_of(surface).shadow).is_empty()
-    }
-
-    pub fn styles(&self) -> &HashMap<SharedString, StylePatch> {
-        &self.styles
     }
 
     pub fn pane_radius(&self) -> Pixels {
@@ -299,23 +287,16 @@ impl From<&ThemeColor> for Theme {
                 "DejaVu Sans Mono".into()
             },
             mono_font_size: px(13.),
-            radius: px(6.),
+            radius: px(DEFAULT_RADIUS),
             control_radius: None,
             contrast: 1.0,
-            outline: px(0.5),
-            picked_outlines: false,
-            picked_shadows: false,
+            outline: px(1.0),
             smoothing: Smoothing::THEME,
-            picked_smoothing: false,
             contact_shadow: ShadowMaterial::CONTACT,
             float_shadow: ShadowMaterial::FLOAT,
-            row_inset: px(4.0),
+            row_inset: px(6.0),
             primary: PrimaryStyle::Foreground,
-            flat_highlights: false,
-            bright_surfaces: false,
-            highlight_strength: 1.0,
             glass: None,
-            styles: HashMap::default(),
             inspect: None,
             inspect_strength: 1.0,
             pane_margin: px(0.0),

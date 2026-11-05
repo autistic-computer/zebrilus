@@ -9,6 +9,7 @@
   height: var(--penna-segmented-h);
   padding: var(--penna-space-2);
   border-width: max(1px, var(--penna-bw));
+  --penna-segment-ink: var(--penna-ink);
 }
 
 .penna-segmented[data-size] {
@@ -147,6 +148,10 @@
   cursor: default;
   appearance: none;
   outline: none;
+}
+
+.penna-segmented .penna-segment[aria-selected="false"] {
+  color: var(--penna-segment-ink);
 }
 
 .penna-segmented .penna-segment > .penna-label {

@@ -49,7 +49,7 @@ use penna::{
     components::switch::Switch,
     components::text::{TextView, TextViewStyle},
     components::tooltip::Tooltip,
-    foundation::interface_theme::{ThemeOverrides, builtin_themes},
+    foundation::interface_theme::builtin_themes,
     foundation::roles,
     h_flex, v_flex,
 };
@@ -190,11 +190,8 @@ impl AppWindow {
     fn page(&self, cx: &App) -> AnyElement {
         let knobs = crate::knobs();
         let active = knobs.interface_theme();
-        let overrides = ThemeOverrides {
-            tint: Some(knobs.tint),
-            tint_hue: Some(knobs.tint_hue),
-            ..ThemeOverrides::default()
-        };
+        let overrides = knobs.overrides();
+        let neutral = knobs.neutral();
         let themes = builtin_themes();
         let picks = ThemePicks {
             themes: themes
@@ -240,21 +237,25 @@ impl AppWindow {
                                 cx,
                             )))
                             .child(SettingEntry::new("Tint").control(tint_hue_slider(
-                                knobs.tint_hue,
+                                neutral.hue,
                                 |_, _, _| {},
                                 cx,
                             )))
                             .child(SettingEntry::new("Tint strength").control(tint_slider(
-                                knobs.tint,
+                                neutral.amount,
                                 |_, _, _| {},
                                 cx,
                             ))),
                     )
                     .child(
                         SettingsStack::titled("Advanced")
-                            .child(SettingEntry::new("Corner radius").control(
-                                corner_radius_slider(active.materials.radius, |_, _, _| {}, cx),
-                            ))
+                            .child(
+                                SettingEntry::new("Corner radius").control(corner_radius_slider(
+                                    active.radius,
+                                    |_, _, _| {},
+                                    cx,
+                                )),
+                            )
                             .child(SettingEntry::new("Contrast").control(contrast_slider(
                                 knobs.contrast,
                                 |_, _, _| {},

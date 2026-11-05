@@ -357,7 +357,7 @@ impl ColorPicker {
             .border_2()
             .border_color(ala::white())
             .bg(hsv.color())
-            .shadow(crate::lifted_shadow(cx));
+            .shadow(crate::knob_shadow(cx));
         let state = state.clone();
         div()
             .id(author_part(

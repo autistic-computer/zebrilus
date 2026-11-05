@@ -180,12 +180,8 @@ impl Chip {
         let role = match (self.look, self.emphasis) {
             (_, Emphasis::Solid | Emphasis::Soft) => role,
             (ChipLook::Plain, Emphasis::Outline) => SurfaceRole::OUTLINE_CHIP,
-            (_, Emphasis::Outline) => role
-                .with(role.patch.fill(Fill::None).outline(true))
-                .fixed_emphasis(),
-            (_, Emphasis::Ghost) => role
-                .with(role.patch.fill(Fill::None).outline(false))
-                .fixed_emphasis(),
+            (_, Emphasis::Outline) => role.with(role.patch.fill(Fill::None).outline(true)),
+            (_, Emphasis::Ghost) => role.with(role.patch.fill(Fill::None).outline(false)),
         };
         Surface::new(role)
             .tone(self.tone)

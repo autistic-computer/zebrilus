@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 
 use super::{
     Colorize as _, Theme,
-    color::{faint_weight, muted_weight, raised_bright, readable_on},
+    color::{faint_weight, muted_weight, readable_on},
 };
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
@@ -247,11 +247,7 @@ impl Theme {
     }
 
     pub fn raise(&self, color: Hsla, level: u8) -> Hsla {
-        if self.bright_surfaces {
-            raised_bright(color, level)
-        } else {
-            color.raised(level)
-        }
+        color.raised(level)
     }
 
     pub fn surface(&self, elevation: Elevation) -> Ground {

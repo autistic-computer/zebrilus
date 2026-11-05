@@ -38,6 +38,10 @@
   pointer-events: none;
 }
 
+.penna-list-item:is([data-state~="selected"], [aria-selected="true"], [data-state~="current"]) {
+  --penna-list-muted: var(--penna-muted);
+}
+
 .penna-list-item > .penna-list-content {
   display: flex;
   align-items: center;

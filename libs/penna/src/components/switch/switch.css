@@ -64,7 +64,7 @@
   height: var(--penna-toggle-thumb);
   border-radius: 9999px;
   background: var(--penna-knob);
-  box-shadow: var(--penna-shadow-lifted);
+  box-shadow: var(--penna-shadow-contact);
   transition: left 150ms linear;
 }
 

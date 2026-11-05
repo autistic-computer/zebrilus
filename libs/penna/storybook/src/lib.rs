@@ -109,19 +109,10 @@ pub fn stories_json() -> String {
 }
 
 pub fn glass_presets_json() -> String {
-    json!(
-        ala::GlassMaterial::PRESETS
-            .iter()
-            .map(|(id, material)| {
-                let material = material();
-                let values = knobs::GLASS_KNOBS
-                    .iter()
-                    .map(|(name, get, _)| ((*name).to_owned(), json!(get(&material))))
-                    .collect::<serde_json::Map<_, _>>();
-                ((*id).to_owned(), serde_json::Value::Object(values))
-            })
-            .collect::<serde_json::Map<_, _>>()
-    )
+    json!({
+        "frosted": knobs::glass_knobs(&penna::foundation::interface_theme::frosted()),
+        "liquid": knobs::glass_knobs(&penna::foundation::interface_theme::liquid(penna::ThemeMode::Dark)),
+    })
     .to_string()
 }
 
@@ -131,17 +122,16 @@ pub fn interface_themes_json() -> String {
             .iter()
             .map(|(id, theme)| {
                 let mut values = knobs::theme_knobs(theme);
-                values.insert("name".to_owned(), json!(theme.name));
-                let glass = |material: Option<ala::GlassMaterial>| {
-                    json!(material.map(|material| {
-                        knobs::GLASS_KNOBS
-                            .iter()
-                            .map(|(name, get, _)| ((*name).to_owned(), json!(get(&material))))
-                            .collect::<serde_json::Map<_, _>>()
-                    }))
+                let glass = |mode| {
+                    json!(
+                        theme
+                            .glass(mode)
+                            .map(|material| knobs::glass_knobs(&material))
+                    )
                 };
-                values.insert("glass".to_owned(), glass(theme.materials.glass));
-                values.insert("light-glass".to_owned(), glass(theme.materials.light_glass));
+                values.insert("glass".to_owned(), glass(penna::ThemeMode::Dark));
+                values.insert("light-glass".to_owned(), glass(penna::ThemeMode::Light));
+                values.insert("roles".to_owned(), json!({}));
                 ((*id).to_owned(), serde_json::Value::Object(values))
             })
             .collect::<serde_json::Map<_, _>>()
@@ -160,9 +150,11 @@ pub fn roles_json() -> String {
             walk(member, depth + 1, out);
         }
     }
-    let knobs = knobs();
-    let roles = knobs.roles;
-    let materials = knobs.materials;
+    let smoothing = penna::Smoothing::clamped(knobs().look.smoothing);
+    let fixed = knobs::PROPS
+        .iter()
+        .map(|prop| ((*prop).to_owned(), json!([])))
+        .collect::<serde_json::Map<_, _>>();
     json!(
         penna::Kind::ALL
             .iter()
@@ -172,11 +164,8 @@ pub fn roles_json() -> String {
                 json!({
                     "title": kind.role().label(),
                     "roles": members.into_iter().map(|(depth, role)| {
-                        let (inherited, origins) = knobs::inherited(role, &roles, &materials);
-                        let patch = roles.get(role.id()).copied().unwrap_or_default();
-                        let mut style = inherited;
-                        patch.apply(&mut style);
-                        let values = knobs::style_json(inherited);
+                        let (style, origins) = knobs::inherited(role, smoothing);
+                        let values = knobs::style_json(style);
                         json!({
                             "id": role.id(),
                             "label": role.label(),
@@ -185,18 +174,18 @@ pub fn roles_json() -> String {
                             "depth": depth,
                             "group": role.group().map(|group| group.label()),
                             "members": penna::foundation::roles::members(role).count(),
-                            "knobs": knobs::knobs_json(role.knobs()),
-                            "patch": patch,
+                            "knobs": fixed,
+                            "patch": {},
                             "inherited": knobs::PROPS
                                 .iter()
                                 .zip(origins)
                                 .map(|(prop, origin)| ((*prop).to_owned(), json!({
                                     "value": values[prop],
-                                    "from": origin.role.map_or_else(|| knobs::material_origin(prop, role, &materials), |role| role.label().to_owned()),
-                                    "themed": origin.themed,
+                                    "from": origin.map_or("the theme's smoothing", |role| role.label()),
+                                    "themed": false,
                                 })))
                                 .collect::<serde_json::Map<_, _>>(),
-                            "style": knobs::style_json(style),
+                            "style": values,
                         })
                     }).collect::<Vec<_>>(),
                 })

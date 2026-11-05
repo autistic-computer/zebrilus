@@ -533,7 +533,7 @@ impl Slider {
                 .size(px(thumb))
                 .rounded_full()
                 .bg(knob)
-                .shadow(crate::lifted_shadow(cx)),
+                .shadow(crate::knob_shadow(cx)),
             ringed,
             window,
             cx,

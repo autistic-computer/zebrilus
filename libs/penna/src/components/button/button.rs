@@ -942,7 +942,7 @@ mod tests {
 
         cx.update(crate::init);
         for (id, look, smoothing) in [
-            ("default", None, 4.0),
+            ("default", None, 3.0),
             ("yaru", None, 2.0),
             ("macos", Some(ButtonLook::Send), 2.0),
         ] {

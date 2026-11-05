@@ -1,4 +1,4 @@
-use crate::{Fill, Highlight, Ink, Kind, Knobs, Shadow, Shape, StylePatch, SurfaceRole};
+use crate::{Fill, Highlight, Ink, Kind, Shadow, Shape, StylePatch, SurfaceRole};
 
 const P: StylePatch = StylePatch::EMPTY;
 
@@ -8,15 +8,13 @@ pub const WINDOW: SurfaceRole = SurfaceRole::new(
     "Window",
     "The edge and drop shadow of the window frame the app draws on Linux",
 )
-.with(P.outline(true).shadow(Shadow::Float))
-.with_knobs(Knobs::FIXED);
+.with(P.fill(Fill::None).outline(true).shadow(Shadow::Float));
 pub const TITLEBAR: SurfaceRole = SurfaceRole::new(
     "titlebar",
     Kind::Bar,
     "Title bar",
     "The strip across the top of the window",
-)
-.with_knobs(Knobs::FIXED);
+);
 pub const CHROME_BUTTON: SurfaceRole = SurfaceRole::under(
     &SurfaceRole::ICON_BUTTON,
     "chrome.button",
@@ -40,8 +38,7 @@ pub const SIDEBAR: SurfaceRole = SurfaceRole::new(
     Kind::Panel,
     "Sidebar",
     "The navigation column at the window's leading edge, also when it slides over the content",
-)
-.with_knobs(Knobs::FIXED);
+);
 pub const SIDEBAR_ROW: SurfaceRole = SurfaceRole::under(
     &SurfaceRole::ROW,
     "sidebar.row",
@@ -60,15 +57,14 @@ pub const SETTINGS_PREVIEW: SurfaceRole = SurfaceRole::new(
     Kind::Card,
     "Previews",
     "Wells in Settings that show what a setting draws",
-)
-.with(P.shadow(Shadow::None));
+);
 pub const SETTINGS_TILE: SurfaceRole = SurfaceRole::under(
     &SurfaceRole::TILE,
     "settings.tile",
     "Picker tiles",
     "Pickable tiles in Settings, such as the theme and mode tiles",
 )
-.with(P.fill(Fill::None).outline(false).shadow(Shadow::None));
+.with(P.fill(Fill::None));
 pub const BAR_RULE: SurfaceRole = SurfaceRole::new(
     "rule.bar",
     Kind::Rule,
@@ -99,8 +95,7 @@ pub const INLINE_PANEL: SurfaceRole = SurfaceRole::new(
     Kind::Floating,
     "Inline panels",
     "Panels raised inside a view, such as question cards, menus and failure alerts",
-)
-.with_knobs(SurfaceRole::DIALOG.knobs());
+);
 pub const PHONE_PILL: SurfaceRole = SurfaceRole::new(
     "phone.pill",
     Kind::Button,
@@ -113,7 +108,7 @@ pub const PHONE_KEY: SurfaceRole = SurfaceRole::new(
     "Keys",
     "Keys in the pill over the phone's keyboard",
 )
-.with(P.fill(Fill::None).outline(false).shadow(Shadow::None));
+.with(P.fill(Fill::None));
 pub const ARROW_PAD: SurfaceRole = SurfaceRole::under(
     &SurfaceRole::MENU_ITEM,
     "phone.arrow-pad",
@@ -138,8 +133,7 @@ pub const PHONE_PILL_ICON: SurfaceRole = SurfaceRole::under(
     "phone.pill.icon",
     "Pill icon",
     "The icon tile at the start of the phone pill",
-)
-.with(P.outline(false));
+);
 pub const PHONE_BUTTON: SurfaceRole = SurfaceRole::under(
     &SurfaceRole::ICON_BUTTON,
     "phone.button",
@@ -192,16 +186,14 @@ pub const CHIP_BAR: SurfaceRole = SurfaceRole::under(
     "Status chips",
     "The update offer and the host name in the title bar",
 )
-.with(P.selected(Highlight::Tint))
-.with_knobs(Kind::Label.knobs().pressable());
+.with(P.selected(Highlight::Tint));
 pub const CHIP_FLOATING: SurfaceRole = SurfaceRole::new(
     "chip.floating",
     Kind::Floating,
     "Pane chips",
     "Status over a pane: Dead, Waiting, Sync, Copy mode, the vim mode",
 )
-.with(P.shadow(Shadow::Contact).selected(Highlight::Tint))
-.with_knobs(Kind::Floating.knobs().pressable())
+.with(P.selected(Highlight::Tint))
 .capsule(true);
 pub const CHIP_MARKER: SurfaceRole = SurfaceRole::new(
     "chip.marker",
@@ -209,8 +201,7 @@ pub const CHIP_MARKER: SurfaceRole = SurfaceRole::new(
     "Pane numbers",
     "The big chips display-panes shows on every pane",
 )
-.with(P.hover(Highlight::Ring).selected(Highlight::Ring))
-.with_knobs(Kind::Floating.knobs().pressable());
+.with(P.hover(Highlight::Ring).selected(Highlight::Ring));
 pub const CHIP_DRAG: SurfaceRole = SurfaceRole::new(
     "chip.drag",
     Kind::Floating,
@@ -224,7 +215,7 @@ pub const BADGE_ICON: SurfaceRole = SurfaceRole::under(
     "Blank page icon",
     "The disc behind the globe on a blank browser page",
 )
-.with(P.shape(Shape::Pill).outline(false));
+.with(P.shape(Shape::Pill));
 pub const ROW_NAV: SurfaceRole = SurfaceRole::under(
     &SurfaceRole::ROW,
     "row.nav",
@@ -238,19 +229,13 @@ pub const ROW_CURSOR: SurfaceRole = SurfaceRole::under(
     "Sidebar cursor",
     "The flat sidebar row the keyboard is on",
 )
-.with(
-    P.outline(true)
-        .shadow(Shadow::Contact)
-        .hover(Highlight::Tint)
-        .selected(Highlight::Accent),
-);
+.with(P.outline(true));
 pub const BUTTON_ROW: SurfaceRole = SurfaceRole::new(
     "button.row",
     Kind::Button,
     "Host actions",
     "Connect, Retry and Upgrade on a host in the flat sidebar",
-)
-.with(P.outline(false).shadow(Shadow::None));
+);
 pub const ICON_BUTTON_ROW: SurfaceRole = SurfaceRole::under(
     &SurfaceRole::ICON_BUTTON,
     "icon-button.row",
@@ -278,40 +263,27 @@ pub const ICON_BUTTON_FLOATING: SurfaceRole = SurfaceRole::under(
     "Jump to latest",
     "The button over the transcript that scrolls to the end",
 )
-.with(
-    P.fill(Fill::Solid)
-        .outline(true)
-        .shadow(Shadow::Contact)
-        .hover(Highlight::Tint),
-);
+.with(P.fill(Fill::Solid));
 pub const BUTTON_SEND: SurfaceRole = SurfaceRole::new(
     "button.send",
     Kind::Button,
     "Composer buttons",
     "Send, stop and + in the chat composer, filled in every theme",
 )
-.with(
-    P.fill(Fill::Solid)
-        .outline(true)
-        .shadow(Shadow::Contact)
-        .hover(Highlight::Tint)
-        .selected(Highlight::Tint),
-);
+.with(P.fill(Fill::Solid));
 pub const FLOATING_PANE: SurfaceRole = SurfaceRole::new(
     "floating.pane",
     Kind::Floating,
     "Floating panes",
     "tmux floating and popup panes, and the confirm prompt",
 )
-.with(P.selected(Highlight::Ring))
-.with_knobs(SurfaceRole::DIALOG.knobs());
+.with(P.selected(Highlight::Ring));
 pub const FLOATING_PIP: SurfaceRole = SurfaceRole::under(
     &FLOATING_PANE,
     "floating.pip",
     "PiPs",
     "Floating panes in the GUI: any pane over the window, casting the float shadow",
-)
-.with(P.shadow(Shadow::Float));
+);
 pub const MENU_ITEM_CARD: SurfaceRole = SurfaceRole::under(
     &SurfaceRole::MENU_ITEM,
     "menu-item.card",
@@ -331,12 +303,7 @@ pub const TILE_STACK: SurfaceRole = SurfaceRole::under(
     "Pane stacks",
     "Stacked pane tiles in flat rows and window tabs, and on the plate they fan out on",
 )
-.with(
-    P.outline(false)
-        .shadow(Shadow::None)
-        .hover(Highlight::Tint)
-        .selected(Highlight::Tint),
-)
+.with(P.hover(Highlight::Tint).selected(Highlight::Tint))
 .capsule(true);
 pub const TILE_DROP: SurfaceRole = SurfaceRole::new(
     "tile.drop",
@@ -349,8 +316,7 @@ pub const TILE_DROP: SurfaceRole = SurfaceRole::new(
         .shadow(Shadow::None)
         .hover(Highlight::Tint)
         .selected(Highlight::Tint),
-)
-.with_knobs(Kind::Floating.knobs().pressable());
+);
 pub const TILE_MINI: SurfaceRole = SurfaceRole::under(
     &SurfaceRole::TILE,
     "tile.mini",
@@ -363,8 +329,7 @@ pub const BAR_PANE: SurfaceRole = SurfaceRole::new(
     Kind::Bar,
     "Pane headers",
     "The title row of terminal panes, and the browser's tabs and toolbar",
-)
-.with_knobs(Knobs::FIXED);
+);
 pub const BUTTON_TITLE: SurfaceRole = SurfaceRole::under(
     &SurfaceRole::QUIET_BUTTON,
     "button.title",
@@ -383,8 +348,7 @@ pub const CARD_CODE: SurfaceRole = SurfaceRole::new(
     Kind::Card,
     "Code",
     "Code blocks, diagrams and inline code in messages",
-)
-.with(P.outline(false).shadow(Shadow::None));
+);
 pub const CARD_FIGURE: SurfaceRole =
     SurfaceRole::new("card.figure", Kind::Card, "Tables", "Tables in messages")
         .with(P.fill(Fill::None));
@@ -407,7 +371,7 @@ pub const FIELD_ADDRESS: SurfaceRole = SurfaceRole::new(
     "Address bar",
     "The URL field of a browser pane",
 )
-.with(P.fill(Fill::None).outline(false));
+.with(P.fill(Fill::None));
 
 pub const RECIPES: [SurfaceRole; 31] = [
     TAB_WINDOW,
@@ -445,68 +409,6 @@ pub const RECIPES: [SurfaceRole; 31] = [
 
 pub const TONED: [SurfaceRole; 1] = [BUTTON_SEND];
 
-const RETIRED_IDS: [&str; 59] = [
-    "agent.status",
-    "agent.picker",
-    "chat.bubble",
-    "chat.bubble.mine",
-    "phone.driver-card",
-    "drawer.driver",
-    "rule.chat",
-    "pane.header.lens",
-    "titlebar.window-tab",
-    "browser.tab",
-    "agent.tray",
-    "titlebar.status-chip",
-    "pane.chip",
-    "pane.display-panes",
-    "pane.drag-chip",
-    "browser.empty-icon",
-    "sidebar.entry",
-    "sidebar.cursor",
-    "sidebar.host-action",
-    "sidebar.row-action",
-    "agent.action",
-    "pane.header.button",
-    "pane.header.flip",
-    "browser.button",
-    "agent.jump",
-    "agent.send",
-    "pane.float",
-    "pane.pip",
-    "pane.find-bar",
-    "palette",
-    "pane.picker",
-    "agent.option",
-    "browser.suggestion",
-    "drawer.hosts",
-    "drawer.add-host",
-    "drawer.new-pane",
-    "drawer.tabs",
-    "drawer.bindings",
-    "pane-stack",
-    "pane.drop-zone",
-    "phone.mini",
-    "pane.header",
-    "pane.header.title",
-    "rule.split",
-    "agent.bubble",
-    "code",
-    "figure",
-    "agent.attachment",
-    "agent.composer",
-    "browser.address",
-    "picker.notice",
-    "board",
-    "board.screen",
-    "board.chip",
-    "board.found",
-    "banner",
-    "status",
-    "computer-card",
-    "first-run.step",
-];
-
 pub const CHROME: [SurfaceRole; 24] = [
     WINDOW,
     SIDEBAR,
@@ -533,10 +435,6 @@ pub const CHROME: [SurfaceRole; 24] = [
     PHONE_ROW,
     PICKER,
 ];
-
-pub fn is_retired(id: &str) -> bool {
-    RETIRED_IDS.contains(&id)
-}
 
 pub fn all() -> impl Iterator<Item = SurfaceRole> {
     SurfaceRole::KIT.into_iter().chain(CHROME).chain(RECIPES)
@@ -567,7 +465,6 @@ mod tests {
         for (index, id) in ids.iter().enumerate() {
             assert!(spelled_like_a_theme_file(id), "{id}");
             assert!(!ids[..index].contains(id), "{id} is named twice");
-            assert!(!is_retired(id), "{id} is live and retired");
         }
     }
 

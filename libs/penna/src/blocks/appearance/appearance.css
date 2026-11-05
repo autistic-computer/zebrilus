@@ -293,7 +293,7 @@
   margin-left: -8px;
   border-radius: 9999px;
   background: var(--penna-knob);
-  box-shadow: var(--penna-shadow-lifted);
+  box-shadow: var(--penna-shadow-contact);
 }
 
 .appearance-slider:is(:focus-visible, [data-focused]) .appearance-knob {

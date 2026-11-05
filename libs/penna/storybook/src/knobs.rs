@@ -1,13 +1,11 @@
 use std::collections::BTreeMap;
 
-use ala::{App, GlassMaterial, Hsla, px};
+use ala::{App, GlassMaterial, px};
 use penna::foundation::interface_theme::{
-    self, Appearance, InterfaceTheme, Materials, ThemeColors, ThemeOverrides,
+    self, Appearance, ControlRadius, Glass, GlassPair, InterfaceTheme, ModeLock, Neutral,
+    ThemeOverrides, Tint,
 };
-use penna::{
-    Emphasis, PrimaryStyle, Shadow, Smoothing, Style, StylePatch, SurfaceRole, Theme, ThemeColor,
-    ThemeMode, Tone, UiZoom,
-};
+use penna::{Smoothing, Style, SurfaceRole, Theme, ThemeMode, UiZoom};
 
 use crate::catalog::{Control, catalog};
 
@@ -17,14 +15,12 @@ pub const UI_FONT: &str = "Inter Variable";
 pub struct Knobs {
     pub theme: Option<ThemeMode>,
     pub interface: &'static str,
-    pub name: String,
-    pub materials: Materials,
-    pub roles: BTreeMap<String, StylePatch>,
-    pub light: ThemeColors,
-    pub dark: ThemeColors,
+    pub look: InterfaceTheme,
+    pub accent: Option<String>,
     pub contrast: f32,
-    pub tint_hue: f32,
-    pub tint: f32,
+    pub tint_hue: Option<f32>,
+    pub tint: Option<f32>,
+    pub reduce_transparency: bool,
     pub zoom: f32,
     pub motion: bool,
     pub speed: f32,
@@ -41,74 +37,6 @@ pub enum Backdrop {
 }
 
 type Knob<T> = (&'static str, fn(&T) -> f32, fn(&mut T, f32));
-
-pub const MATERIAL_KNOBS: &[Knob<Materials>] = &[
-    ("radius", |m| m.radius, |m, v| m.radius = v),
-    ("outline", |m| m.outline, |m, v| m.outline = v),
-    ("row-inset", |m| m.row_inset, |m, v| m.row_inset = v),
-    (
-        "highlight-strength",
-        |m| m.highlight_strength,
-        |m, v| m.highlight_strength = v,
-    ),
-    ("contact-y", |m| m.contact.y, |m, v| m.contact.y = v),
-    (
-        "contact-blur",
-        |m| m.contact.blur,
-        |m, v| m.contact.blur = v,
-    ),
-    (
-        "contact-spread",
-        |m| m.contact.spread,
-        |m, v| m.contact.spread = v,
-    ),
-    (
-        "contact-strength",
-        |m| m.contact.strength,
-        |m, v| m.contact.strength = v,
-    ),
-    ("float-y", |m| m.float.y, |m, v| m.float.y = v),
-    ("float-blur", |m| m.float.blur, |m, v| m.float.blur = v),
-    (
-        "float-spread",
-        |m| m.float.spread,
-        |m, v| m.float.spread = v,
-    ),
-    (
-        "float-strength",
-        |m| m.float.strength,
-        |m, v| m.float.strength = v,
-    ),
-];
-
-type ColorKnob = (
-    &'static str,
-    fn(&ThemeColors) -> Option<Hsla>,
-    fn(&mut ThemeColors, Hsla),
-);
-
-pub const COLOR_KNOBS: &[ColorKnob] = &[
-    (
-        "background",
-        |c| c.background,
-        |c, v| c.background = Some(v),
-    ),
-    (
-        "foreground",
-        |c| c.foreground,
-        |c, v| c.foreground = Some(v),
-    ),
-    ("accent", |c| c.accent, |c, v| c.accent = Some(v)),
-    ("success", |c| c.success, |c, v| c.success = Some(v)),
-    ("warning", |c| c.warning, |c, v| c.warning = Some(v)),
-    ("danger", |c| c.danger, |c, v| c.danger = Some(v)),
-    ("on-accent", |c| c.on_accent, |c, v| c.on_accent = Some(v)),
-    (
-        "shadow-color",
-        |c| c.shadow_color,
-        |c, v| c.shadow_color = Some(v),
-    ),
-];
 
 pub const GLASS_KNOBS: &[Knob<GlassMaterial>] = &[
     ("glass-blur", |m| m.blur.as_f32(), |m, v| m.blur = px(v)),
@@ -185,14 +113,12 @@ impl Knobs {
         Self {
             theme: None,
             interface: id,
-            name: theme.name.clone(),
-            materials: theme.materials.clone(),
-            roles: theme.roles.clone(),
-            light: theme.light.clone(),
-            dark: theme.dark.clone(),
+            look: theme.clone(),
+            accent: None,
             contrast: 1.0,
-            tint_hue: interface_theme::DEFAULT_TINT_HUE,
-            tint: 0.0,
+            tint_hue: None,
+            tint: None,
+            reduce_transparency: false,
             zoom: 1.0,
             motion: true,
             speed: 1.0,
@@ -246,23 +172,22 @@ impl Knobs {
             None => Self::default(),
         };
         if let Some((_, value)) = pairs.iter().find(|(key, _)| *key == "glass") {
-            if !matches!(*value, "" | "theme") {
-                knobs.materials.light_glass = None;
-            }
-            knobs.materials.glass = match *value {
-                "" | "theme" => knobs.materials.glass,
-                "off" => None,
-                name => Some(
-                    GlassMaterial::preset(name)
-                        .ok_or_else(|| format!("no glass preset named {name}"))?,
-                ),
+            knobs.look.glass = match *value {
+                "" | "theme" => knobs.look.glass,
+                "none" | "off" => Some(Glass::None),
+                "frosted" => Some(Glass::Frosted),
+                "liquid" => Some(Glass::Liquid),
+                name => {
+                    return Err(format!(
+                        "glass is theme, none, frosted or liquid, not {name}"
+                    ));
+                }
             };
         }
-        let mut control_radius = None;
+        let mut glass = Vec::new();
         for (key, value) in pairs {
             match key {
                 "interface-theme" | "glass" => {}
-                "control-radius" => control_radius = Some(number(key, value)?),
                 "theme" => {
                     knobs.theme = match value {
                         "light" => Some(ThemeMode::Light),
@@ -275,78 +200,61 @@ impl Knobs {
                         }
                     }
                 }
-                "name" => knobs.name = decode(value),
-                "roles" => knobs.roles = parse_roles(&decode(value))?,
-                "primary" => {
-                    knobs.materials.primary = match value {
-                        "foreground" => PrimaryStyle::Foreground,
-                        "accent" => PrimaryStyle::Accent,
-                        _ => {
-                            return Err(format!(
-                                "primary must be foreground or accent, not {value}"
-                            ));
-                        }
-                    }
+                "name" => knobs.look.name = decode(value),
+                "tint-color" => {
+                    let value = decode(value);
+                    knobs.look.tint = Tint::named(&value).ok_or_else(|| {
+                        format!("tint-color is ink, an accent or a hex color, not {value}")
+                    })?;
                 }
-                "outlines" => {
-                    knobs.materials.picked_outlines = match value {
-                        "built-in" => false,
-                        "picked" => true,
-                        _ => {
-                            return Err(format!(
-                                "outlines must be built-in or picked, not {value}"
-                            ));
-                        }
+                "light-tint-color" | "dark-tint-color" => {
+                    let color = penna::parse_hex(&decode(value))
+                        .map_err(|error| format!("{key} must be a hex color: {error}"))?;
+                    let (mut light, mut dark) = match knobs.look.tint {
+                        Tint::Color { light, dark } => (light, dark),
+                        Tint::Ink => (color, color),
+                    };
+                    if key == "light-tint-color" {
+                        light = color;
+                    } else {
+                        dark = color;
                     }
+                    knobs.look.tint = Tint::Color { light, dark };
+                }
+                "neutral-hue" => knobs.look.neutral.hue = number(key, value)?,
+                "neutral-amount" => knobs.look.neutral.amount = number(key, value)?,
+                "radius" => knobs.look.radius = number(key, value)?.clamp(0.0, 25.0),
+                "control-radius" => {
+                    knobs.look.control_radius = Some(match value {
+                        "full" => ControlRadius::Full,
+                        value => ControlRadius::Radius(number(key, value)?.clamp(0.0, 25.0)),
+                    });
                 }
                 "smoothing" => {
-                    knobs.materials.smoothing = Smoothing::try_from(number(key, value)?)?;
+                    knobs.look.smoothing = Smoothing::clamped(number(key, value)?).exponent();
                 }
-                "smoothed" => {
-                    knobs.materials.picked_smoothing = match value {
-                        "global" => false,
-                        "picked" => true,
-                        _ => {
-                            return Err(format!("smoothed must be global or picked, not {value}"));
-                        }
-                    }
-                }
-                "shadows" => {
-                    knobs.materials.picked_shadows = match value {
-                        "built-in" => false,
-                        "picked" => true,
-                        _ => {
-                            return Err(format!("shadows must be built-in or picked, not {value}"));
-                        }
-                    }
-                }
-                "highlights" => {
-                    knobs.materials.flat_highlights = match value {
-                        "lift" => false,
-                        "flat" => true,
-                        _ => {
-                            return Err(format!("highlights must be lift or flat, not {value}"));
-                        }
-                    }
-                }
-                "surfaces" => {
-                    knobs.materials.bright_surfaces = match value {
-                        "darker" => false,
-                        "brighter" => true,
-                        _ => {
-                            return Err(format!(
-                                "surfaces must be darker or brighter, not {value}"
-                            ));
-                        }
-                    }
-                }
-                "font" => {
+                "face" => {
                     let family = decode(value);
-                    knobs.materials.font = (!family.is_empty()).then(|| family.into());
+                    knobs.look.face = (!family.is_empty()).then(|| family.into());
+                }
+                "lock" => {
+                    knobs.look.mode = match value {
+                        "follow" => ModeLock::Follow,
+                        "light" => ModeLock::Light,
+                        "dark" => ModeLock::Dark,
+                        _ => {
+                            return Err(format!("lock must be follow, light or dark, not {value}"));
+                        }
+                    }
+                }
+                "accent" => {
+                    let accent = decode(value);
+                    knobs.accent = (!accent.is_empty()).then_some(accent);
                 }
                 "contrast" => knobs.contrast = number(key, value)?,
-                "tint-hue" => knobs.tint_hue = number(key, value)?,
-                "tint" => knobs.tint = number(key, value)?,
+                "tint-hue" => knobs.tint_hue = Some(number(key, value)?),
+                "tint" => knobs.tint = Some(number(key, value)?),
+                "reduce-transparency" => knobs.reduce_transparency = flag(value),
                 "zoom" => knobs.zoom = number(key, value)?,
                 "motion" => knobs.motion = flag(value),
                 "speed" => knobs.speed = number(key, value)?,
@@ -370,68 +278,65 @@ impl Knobs {
                         };
                         knobs.app.insert(knob.name, value);
                     } else if let Some((_, _, set)) =
-                        MATERIAL_KNOBS.iter().find(|(name, ..)| *name == key)
-                    {
-                        set(&mut knobs.materials, number(key, value)?);
-                    } else if let Some((_, _, set)) =
                         GLASS_KNOBS.iter().find(|(name, ..)| *name == key)
                     {
-                        let value = number(key, value)?;
-                        if let Some(material) = knobs.materials.glass.as_mut() {
-                            set(material, value);
-                        }
-                    } else if let Some((_, _, set)) = key
-                        .strip_prefix("light-")
-                        .and_then(|name| GLASS_KNOBS.iter().find(|(glass, ..)| *glass == name))
-                    {
-                        let value = number(key, value)?;
-                        if let Some(material) = knobs.materials.light_glass.as_mut() {
-                            set(material, value);
-                        }
-                    } else if let Some((colors, mode, name)) = key
-                        .strip_prefix("light-")
-                        .map(|name| (&mut knobs.light, ThemeMode::Light, name))
-                        .or_else(|| {
-                            key.strip_prefix("dark-")
-                                .map(|name| (&mut knobs.dark, ThemeMode::Dark, name))
-                        })
-                        && let Some((_, get, set)) =
-                            COLOR_KNOBS.iter().find(|(color, ..)| *color == name)
-                    {
-                        let previous = get(colors).or_else(|| {
-                            (name == "shadow-color")
-                                .then(|| ThemeColor::for_mode(mode).shadow_color)
-                        });
-                        set(colors, color(key, value, previous)?);
+                        glass.push((*set, number(key, value)?));
                     }
                 }
             }
         }
-        if let Some(radius) = control_radius {
-            knobs.materials.control_radius = (radius != knobs.materials.radius).then_some(radius);
+        knobs.look.neutral = knobs.look.neutral.clamped();
+        if knobs.look.control_radius == Some(ControlRadius::Radius(knobs.look.radius)) {
+            knobs.look.control_radius = None;
+        }
+        if !glass.is_empty() {
+            let pair = [ThemeMode::Light, ThemeMode::Dark].map(|mode| {
+                let mut material = knobs
+                    .look
+                    .glass(mode)
+                    .unwrap_or_else(interface_theme::frosted);
+                for (set, value) in &glass {
+                    set(&mut material, *value);
+                }
+                material
+            });
+            knobs.look.glass = Some(Glass::Material(Box::new(GlassPair {
+                light: pair[0],
+                dark: pair[1],
+            })));
         }
         Ok(knobs)
     }
 
     pub fn interface_theme(&self) -> InterfaceTheme {
-        InterfaceTheme {
-            name: self.name.clone(),
-            materials: self.materials.clone(),
-            roles: self.roles.clone(),
-            light: self.light.clone(),
-            dark: self.dark.clone(),
+        self.look.clone()
+    }
+
+    pub fn overrides(&self) -> ThemeOverrides {
+        ThemeOverrides {
+            accent: self.accent.clone(),
+            tint: self.tint,
+            tint_hue: self.tint_hue,
+            ..ThemeOverrides::default()
         }
+    }
+
+    pub fn shown_theme(&self) -> InterfaceTheme {
+        let mut theme = self.interface_theme();
+        self.overrides().apply_to(&mut theme);
+        theme
+    }
+
+    pub fn neutral(&self) -> Neutral {
+        self.shown_theme().neutral
     }
 
     pub fn appearance(&self) -> Appearance {
         let mut appearance = Appearance {
             theme: Some(self.interface.to_owned()),
-            overrides: ThemeOverrides {
-                tint: Some(self.tint),
-                tint_hue: Some(self.tint_hue),
-                ..ThemeOverrides::default()
-            },
+            overrides: self.overrides(),
             contrast: self.contrast,
+            reduce_transparency: self.reduce_transparency,
             zoom: self.zoom,
             animations: self.motion,
             animation_speed: self.speed,
@@ -442,17 +347,19 @@ impl Knobs {
     }
 
     pub fn apply(&self, cx: &mut App) {
-        self.interface_theme().activate(self.theme, None, cx);
+        self.shown_theme().activate(self.theme, None, cx);
         cx.set_reduce_motion(!self.motion);
         cx.set_animation_speed(self.speed);
-        let font_loads =
-            (self.materials.font.as_ref()).is_some_and(|family| cx.text_system().has_font(family));
+        let face_loads =
+            (self.look.face.as_ref()).is_some_and(|family| cx.text_system().has_font(family));
         let theme = Theme::global_mut(cx);
-        theme.colors = theme.colors.tinted(self.tint_hue, self.tint);
-        if !font_loads {
+        if !face_loads {
             theme.font_family = UI_FONT.into();
         }
         theme.set_contrast(self.contrast);
+        if self.reduce_transparency {
+            theme.glass = None;
+        }
         cx.set_global(UiZoom(self.zoom));
         (catalog().apply)(self, cx);
         let zoom = self.zoom;
@@ -467,127 +374,65 @@ impl Knobs {
     }
 }
 
-pub fn material_knobs(materials: &Materials) -> serde_json::Map<String, serde_json::Value> {
-    let mut knobs = MATERIAL_KNOBS
+pub fn glass_knobs(material: &GlassMaterial) -> serde_json::Map<String, serde_json::Value> {
+    GLASS_KNOBS
         .iter()
-        .map(|(name, get, _)| ((*name).to_owned(), serde_json::json!(get(materials))))
-        .collect::<serde_json::Map<_, _>>();
-    knobs.insert(
-        "control-radius".to_owned(),
-        serde_json::json!(materials.control_radius.unwrap_or(materials.radius)),
-    );
-    knobs.insert("primary".to_owned(), serde_json::json!(materials.primary));
-    knobs.insert(
-        "smoothing".to_owned(),
-        serde_json::json!(materials.smoothing.exponent()),
-    );
-    knobs.insert(
-        "smoothed".to_owned(),
-        serde_json::json!(if materials.picked_smoothing {
-            "picked"
-        } else {
-            "global"
-        }),
-    );
-    knobs.insert(
-        "outlines".to_owned(),
-        serde_json::json!(if materials.picked_outlines {
-            "picked"
-        } else {
-            "built-in"
-        }),
-    );
-    knobs.insert(
-        "shadows".to_owned(),
-        serde_json::json!(if materials.picked_shadows {
-            "picked"
-        } else {
-            "built-in"
-        }),
-    );
-    knobs.insert(
-        "highlights".to_owned(),
-        serde_json::json!(if materials.flat_highlights {
-            "flat"
-        } else {
-            "lift"
-        }),
-    );
-    knobs.insert(
-        "surfaces".to_owned(),
-        serde_json::json!(if materials.bright_surfaces {
-            "brighter"
-        } else {
-            "darker"
-        }),
-    );
-    knobs.insert(
-        "font".to_owned(),
-        serde_json::json!(materials.font.as_ref().map_or("", |font| font.as_ref())),
-    );
-    match materials.glass {
-        None => {
-            knobs.insert("glass".to_owned(), serde_json::json!("off"));
-        }
-        Some(material) => {
-            knobs.insert("glass".to_owned(), serde_json::json!("regular"));
-            for (name, get, _) in GLASS_KNOBS {
-                knobs.insert((*name).to_owned(), serde_json::json!(get(&material)));
-            }
-        }
-    }
-    knobs
+        .map(|(name, get, _)| ((*name).to_owned(), serde_json::json!(get(material))))
+        .collect()
 }
 
 pub fn theme_knobs(theme: &InterfaceTheme) -> serde_json::Map<String, serde_json::Value> {
-    let mut knobs = material_knobs(&theme.materials);
-    knobs.insert("name".to_owned(), serde_json::json!(theme.name));
-    knobs.insert("roles".to_owned(), serde_json::json!(theme.roles));
-    for (mode, prefix) in [(ThemeMode::Light, "light"), (ThemeMode::Dark, "dark")] {
-        for (name, value) in resolved_colors(theme, mode) {
-            knobs.insert(format!("{prefix}-{name}"), serde_json::json!(value));
+    let mut knobs = serde_json::Map::new();
+    let mut set = |name: &str, value: serde_json::Value| {
+        knobs.insert(name.to_owned(), value);
+    };
+    set("name", serde_json::json!(theme.name));
+    match theme.tint {
+        Tint::Ink => set("tint-color", serde_json::json!("ink")),
+        Tint::Color { light, dark } => {
+            set("light-tint-color", serde_json::json!(penna::to_hex(light)));
+            set("dark-tint-color", serde_json::json!(penna::to_hex(dark)));
         }
     }
+    set("neutral-hue", serde_json::json!(theme.neutral.hue));
+    set("neutral-amount", serde_json::json!(theme.neutral.amount));
+    set("radius", serde_json::json!(theme.radius));
+    set(
+        "control-radius",
+        match theme.control_radius {
+            None => serde_json::json!(theme.radius),
+            Some(ControlRadius::Radius(radius)) => serde_json::json!(radius),
+            Some(ControlRadius::Full) => serde_json::json!("full"),
+        },
+    );
+    set("smoothing", serde_json::json!(theme.smoothing));
+    set(
+        "glass",
+        serde_json::json!(match &theme.glass {
+            None => "theme",
+            Some(Glass::None) => "none",
+            Some(Glass::Frosted) => "frosted",
+            Some(Glass::Liquid | Glass::Material(_)) => "liquid",
+        }),
+    );
+    if let Some(Glass::Material(pair)) = &theme.glass {
+        for (name, value) in glass_knobs(&pair.dark) {
+            set(&name, value);
+        }
+    }
+    set(
+        "face",
+        serde_json::json!(theme.face.as_ref().map_or("", |face| face.as_ref())),
+    );
+    set(
+        "lock",
+        serde_json::json!(match theme.mode {
+            ModeLock::Follow => "follow",
+            ModeLock::Light => "light",
+            ModeLock::Dark => "dark",
+        }),
+    );
     knobs
-}
-
-fn resolved_colors(theme: &InterfaceTheme, mode: ThemeMode) -> Vec<(&'static str, String)> {
-    let colors = theme.colors(mode);
-    let ink = accent_ink(colors);
-    let rgb = |color: Hsla| penna::to_hex(color.alpha(1.0));
-    vec![
-        ("background", rgb(colors.background)),
-        ("foreground", rgb(colors.foreground)),
-        ("accent", rgb(colors.accent)),
-        ("success", rgb(colors.success)),
-        ("warning", rgb(colors.warning)),
-        ("danger", rgb(colors.danger)),
-        ("on-accent", rgb(ink)),
-        ("shadow-color", rgb(colors.shadow_color)),
-    ]
-}
-
-fn parse_roles(json: &str) -> Result<BTreeMap<String, StylePatch>, String> {
-    let roles = serde_json::from_str::<serde_json::Value>(json)
-        .map_err(|error| format!("roles must be JSON: {error}"))?;
-    interface_theme::parse_theme(&serde_json::json!({ "roles": roles }).to_string())
-        .map(|theme| theme.roles)
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Origin {
-    pub role: Option<SurfaceRole>,
-    pub themed: bool,
-}
-
-pub fn material_origin(prop: &str, role: SurfaceRole, materials: &Materials) -> String {
-    match prop {
-        "smoothing" if materials.picked_smoothing && role.picks_smoothing() => {
-            "picked smoothing".to_owned()
-        }
-        "smoothing" => "global smoothing".to_owned(),
-        prop => format!("picked {prop}s"),
-    }
 }
 
 pub const PROPS: [&str; 8] = [
@@ -601,25 +446,16 @@ pub const PROPS: [&str; 8] = [
     "ink",
 ];
 
-pub fn inherited(
-    role: SurfaceRole,
-    roles: &BTreeMap<String, StylePatch>,
-    materials: &Materials,
-) -> (Style, [Origin; 8]) {
-    let knobs = role.knobs();
+pub fn inherited(role: SurfaceRole, smoothing: Smoothing) -> (Style, [Option<SurfaceRole>; 8]) {
     let mut style = Style {
-        smoothing: materials.smoothing,
+        smoothing,
         ..role.kind().base()
     };
-    let mut origins = [Origin {
-        role: Some(role.kind().role()),
-        themed: false,
-    }; 8];
-    origins[4] = Origin {
-        role: None,
-        themed: true,
-    };
-    let mut layer = |patch: StylePatch, origin: Origin| {
+    let mut origins = [Some(role.kind().role()); 8];
+    origins[4] = None;
+    let lineage = role.lineage().collect::<Vec<_>>();
+    for node in lineage.iter().rev() {
+        let patch = node.patch();
         patch.apply(&mut style);
         let named = [
             patch.fill.is_some(),
@@ -633,58 +469,11 @@ pub fn inherited(
         ];
         for (from, named) in origins.iter_mut().zip(named) {
             if named {
-                *from = origin;
+                *from = Some(*node);
             }
-        }
-    };
-    let lineage = role.lineage().collect::<Vec<_>>();
-    for node in lineage.iter().rev() {
-        layer(
-            node.patch(),
-            Origin {
-                role: Some(*node),
-                themed: false,
-            },
-        );
-    }
-    let picked = Origin {
-        role: None,
-        themed: true,
-    };
-    if materials.picked_smoothing && role.picks_smoothing() {
-        layer(StylePatch::EMPTY.smoothing(Smoothing::CIRCLE), picked);
-    }
-    if materials.picked_outlines && role.picks_outline() {
-        layer(StylePatch::EMPTY.outline(false), picked);
-    }
-    if materials.picked_shadows && role.picks_shadow() {
-        layer(StylePatch::EMPTY.shadow(Shadow::None), picked);
-    }
-    for node in lineage.iter().rev().filter(|node| node.id() != role.id()) {
-        if let Some(patch) = roles.get(node.id()) {
-            layer(
-                knobs.admit(*patch),
-                Origin {
-                    role: Some(*node),
-                    themed: true,
-                },
-            );
         }
     }
     (style, origins)
-}
-
-pub fn knobs_json(knobs: penna::Knobs) -> serde_json::Value {
-    serde_json::json!({
-        "fill": knobs.fill,
-        "outline": knobs.outline,
-        "shadow": knobs.shadow,
-        "shape": knobs.shape,
-        "smoothing": knobs.smoothing,
-        "hover": knobs.hover,
-        "selected": knobs.selected,
-        "ink": knobs.ink,
-    })
 }
 
 pub fn style_json(style: Style) -> serde_json::Value {
@@ -697,23 +486,6 @@ pub fn style_json(style: Style) -> serde_json::Value {
         "hover": style.hover,
         "selected": style.selected,
         "ink": style.ink,
-    })
-}
-
-fn accent_ink(colors: ThemeColor) -> Hsla {
-    let mut theme = Theme::from(&colors);
-    theme.primary = PrimaryStyle::Accent;
-    theme.paint(Tone::Primary, Emphasis::Solid).text
-}
-
-fn color(key: &str, value: &str, previous: Option<Hsla>) -> Result<Hsla, String> {
-    let value = decode(value);
-    let parsed =
-        penna::parse_hex(&value).map_err(|error| format!("{key} must be a hex color: {error}"))?;
-    let digits = value.trim().trim_start_matches('#').len();
-    Ok(match previous {
-        Some(previous) if digits != 8 && digits != 4 => parsed.alpha(previous.a),
-        _ => parsed,
     })
 }
 
@@ -757,392 +529,122 @@ fn number(key: &str, value: &str) -> Result<f32, String> {
 mod tests {
     use super::*;
 
-    fn themes() -> Vec<(String, InterfaceTheme)> {
-        interface_theme::builtin_themes()
+    fn query(knobs: &serde_json::Map<String, serde_json::Value>) -> String {
+        knobs
             .iter()
-            .map(|(id, theme)| ((*id).to_owned(), theme.clone()))
-            .collect()
+            .map(|(name, value)| {
+                let value = value.as_str().map_or_else(
+                    || value.to_string(),
+                    |text| text.replace(' ', "+").replace('#', "%23"),
+                );
+                format!("{name}={value}")
+            })
+            .collect::<Vec<_>>()
+            .join("&")
     }
 
     #[test]
     fn parses_known_keys_and_ignores_the_rest() {
         let knobs = Knobs::parse(
-            "?theme=dark&radius=12&zoom=1.25&story=buttons&interface-theme=default&motion=0",
+            "?theme=dark&radius=12&zoom=1.25&story=buttons&interface-theme=default&motion=0&roles=%7B%7D&outline=0.5",
         )
         .unwrap();
         assert_eq!(knobs.theme, Some(ThemeMode::Dark));
-        assert_eq!(knobs.materials.radius, 12.0);
+        assert_eq!(knobs.look.radius, 12.0);
         assert_eq!(knobs.zoom, 1.25);
         assert_eq!(knobs.interface, "default");
         assert!(!knobs.motion);
         assert_eq!(Knobs::parse("app-knob=1").unwrap(), Knobs::default());
         assert!(Knobs::parse("radius=wide").is_err());
         assert!(Knobs::parse("interface-theme=sepia").is_err());
-        let controls = |query| Knobs::parse(query).unwrap().materials.control_radius;
-        assert_eq!(controls("control-radius=4&radius=8"), Some(4.0));
-        assert_eq!(controls("radius=8&control-radius=8"), None);
+        assert!(Knobs::parse("glass=lava").is_err());
+        let controls = |query| Knobs::parse(query).unwrap().look.control_radius;
+        assert_eq!(
+            controls("control-radius=4"),
+            Some(ControlRadius::Radius(4.0))
+        );
+        assert_eq!(controls("control-radius=full"), Some(ControlRadius::Full));
         assert_eq!(controls("radius=8"), None);
+        assert_eq!(controls("radius=8&control-radius=8"), None);
     }
 
     #[test]
-    fn the_appearance_knobs_make_an_appearance() {
+    fn the_person_knobs_make_an_appearance() {
         let knobs = Knobs::parse(
-            "theme=light&interface-theme=macos&contrast=1.5&tint=0.3&tint-hue=145&zoom=1.25&motion=0&speed=0.5",
+            "theme=light&interface-theme=macos&contrast=1.5&tint=0.3&tint-hue=145&accent=pink&reduce-transparency=1&zoom=1.25&motion=0&speed=0.5",
         )
         .unwrap();
         let appearance = knobs.appearance();
         assert_eq!(appearance.theme_mode(), Some(ThemeMode::Light));
         assert_eq!(appearance.theme.as_deref(), Some("macos"));
         assert_eq!(
-            (appearance.overrides.tint, appearance.overrides.tint_hue),
-            (Some(0.3), Some(145.0))
+            appearance.overrides,
+            ThemeOverrides {
+                accent: Some("pink".to_owned()),
+                tint: Some(0.3),
+                tint_hue: Some(145.0),
+                ..ThemeOverrides::default()
+            }
         );
-        assert_eq!(appearance.contrast, 1.5);
-        assert_eq!(appearance.zoom, 1.25);
-        assert!(!appearance.animations);
-        assert_eq!(appearance.animation_speed, 0.5);
+        assert!(appearance.reduce_transparency);
+        assert_eq!(
+            knobs.neutral(),
+            Neutral {
+                hue: 145.0,
+                amount: 0.3
+            }
+        );
         assert_eq!(Knobs::default().appearance().theme_mode(), None);
     }
 
     #[test]
-    fn glass_sliders_override_the_preset_in_any_order() {
-        let knobs = Knobs::parse("glass-blur=30&glass=frosted&glass-tint=0.5").unwrap();
-        let glass = knobs.materials.glass.unwrap();
-        assert_eq!(glass.blur, px(30.0));
-        assert_eq!(glass.tint.a, 0.5);
-        assert_eq!(glass.bezel, GlassMaterial::frosted().bezel);
-        assert_eq!(
-            Knobs::parse("glass=off&glass-blur=30")
-                .unwrap()
-                .materials
-                .glass,
-            None
-        );
-        assert!(Knobs::parse("glass=lava").is_err());
-        let lit = Knobs::parse("glass=regular&glass-light=90&glass-glint-width=3").unwrap();
-        let glass = lit.materials.glass.unwrap();
-        assert!((glass.light_angle - std::f32::consts::FRAC_PI_2).abs() < 1e-5);
-        assert_eq!(glass.glint_width, px(3.0));
-    }
-
-    #[test]
-    fn light_glass_sliders_edit_the_themes_light_glass_until_a_preset_replaces_it() {
-        let knobs = Knobs::parse("interface-theme=macos&light-glass-edge=0.3&glass-edge=0.6")
-            .unwrap()
-            .materials;
-        assert_eq!(knobs.light_glass.unwrap().edge_shadow, 0.3);
-        assert_eq!(knobs.glass.unwrap().edge_shadow, 0.6);
-        let preset = Knobs::parse("interface-theme=macos&glass=frosted&light-glass-edge=0.3")
-            .unwrap()
-            .materials;
-        assert_eq!(preset.light_glass, None);
-        assert_eq!(preset.glass, GlassMaterial::preset("frosted"));
-    }
-
-    #[test]
-    fn glass_lighting_and_activity_survive_import_export_and_reset() {
-        let imported = crate::import_theme(
-            r#"{"materials":{"glass":{"preset":"regular","light_directionality":0.37,"inactive_flattening":0.63}}}"#,
-        )
-        .unwrap();
-        let knobs: serde_json::Map<String, serde_json::Value> =
-            serde_json::from_str(&imported).unwrap();
-        let query = knobs
-            .iter()
-            .map(|(name, value)| {
-                let value = value
-                    .as_str()
-                    .map_or_else(|| value.to_string(), |text| text.replace('#', "%23"));
-                format!("{name}={value}")
-            })
-            .collect::<Vec<_>>()
-            .join("&");
-        let restored = Knobs::parse(&query).unwrap().interface_theme();
-        let exported = interface_theme::parse_theme(&restored.to_json()).unwrap();
-        let glass = exported.materials.glass.unwrap();
-        assert_eq!(glass.light_directionality, 0.37);
-        assert_eq!(glass.inactive_flattening, 0.63);
-
-        let regular = Knobs::parse("glass=regular")
-            .unwrap()
-            .materials
-            .glass
-            .unwrap();
-        assert_eq!(regular.light_directionality, 0.0);
-        assert_eq!(regular.inactive_flattening, 0.0);
-        for (id, theme) in interface_theme::builtin_themes() {
-            let Some(expected) = theme.materials.glass else {
-                continue;
-            };
-            let tuned = Knobs::parse(&format!(
-                "interface-theme={id}&glass-light-directionality=0.37&glass-inactive-flattening=0.63"
-            ))
-            .unwrap()
-            .materials
-            .glass
-            .unwrap();
-            assert_eq!(tuned.light_directionality, 0.37);
-            assert_eq!(tuned.inactive_flattening, 0.63);
-            let reset = Knobs::parse(&format!("interface-theme={id}"))
-                .unwrap()
-                .materials
-                .glass
-                .unwrap();
-            assert_eq!(reset.light_directionality, expected.light_directionality);
-            assert_eq!(reset.inactive_flattening, expected.inactive_flattening);
-        }
-    }
-
-    #[test]
-    fn the_shadows_knob_picks_where_shadows_go() {
-        assert!(
-            Knobs::parse("shadows=picked")
-                .unwrap()
-                .materials
-                .picked_shadows
-        );
-        assert!(Knobs::parse("shadows=some").is_err());
-        let picked = Knobs::parse("shadows=picked").unwrap().materials;
-        assert_eq!(material_knobs(&picked)["shadows"], "picked");
-        assert_eq!(material_knobs(&Materials::default())["shadows"], "built-in");
-    }
-
-    #[test]
-    fn the_smoothing_knobs_set_the_corners_and_where_they_go() {
-        let materials = Knobs::parse("smoothing=2.5&smoothed=picked")
-            .unwrap()
-            .materials;
-        assert_eq!(materials.smoothing.exponent(), 2.5);
-        assert!(materials.picked_smoothing);
-        assert_eq!(material_knobs(&materials)["smoothing"], 2.5);
-        assert_eq!(material_knobs(&materials)["smoothed"], "picked");
-        assert_eq!(material_knobs(&Materials::default())["smoothed"], "global");
-        assert!(Knobs::parse("smoothing=1").is_err());
-        assert!(Knobs::parse("smoothed=some").is_err());
-    }
-
-    #[test]
-    fn the_outlines_knob_picks_where_outlines_go() {
-        assert!(
-            Knobs::parse("outlines=picked")
-                .unwrap()
-                .materials
-                .picked_outlines
-        );
-        assert!(
-            !Knobs::parse("outlines=built-in")
-                .unwrap()
-                .materials
-                .picked_outlines
-        );
-        assert!(Knobs::parse("outlines=some").is_err());
-        let picked = Knobs::parse("outlines=picked").unwrap().materials;
-        assert_eq!(material_knobs(&picked)["outlines"], "picked");
-    }
-
-    #[test]
-    fn the_interface_theme_sets_the_knobs_until_one_says_otherwise() {
-        let default = interface_theme::default_theme();
-        let knobs = Knobs::parse("interface-theme=default").unwrap();
-        assert_eq!(knobs.interface_theme(), *default);
-        let tuned = Knobs::parse(
-            "radius=12&primary=accent&dark-on-accent=%23112233&interface-theme=default",
-        )
-        .unwrap();
-        assert_eq!(tuned.materials.radius, 12.0);
-        assert_eq!(tuned.materials.primary, PrimaryStyle::Accent);
-        assert_eq!(tuned.dark.on_accent, penna::parse_hex("#112233").ok());
-        assert_eq!(tuned.light, default.light);
-        assert!(Knobs::parse("primary=loud").is_err());
-        assert!(Knobs::parse("contact-y=low").is_err());
-        assert!(Knobs::parse("light-accent=blue").is_err());
-    }
-
-    #[test]
-    fn shadow_and_role_knobs_change_only_what_they_name() {
-        let default = interface_theme::default_theme();
-        let theme = Knobs::parse(
-            "interface-theme=default&float-y=4&contact-strength=0.5&roles=%7B%22tile%22%3A%7B%22fill%22%3A%22glass%22%7D%7D",
-        )
-        .unwrap()
-        .interface_theme();
-        assert_eq!(theme.materials.float.y, 4.0);
-        assert_eq!(theme.materials.float.blur, default.materials.float.blur);
-        assert_eq!(theme.materials.contact.strength, 0.5);
-        assert_eq!(theme.roles.len(), 1);
-        assert_eq!(
-            theme.roles["tile"],
-            StylePatch::EMPTY.fill(penna::Fill::Glass)
-        );
-        let file = interface_theme::parse_theme(&theme.to_json()).unwrap();
-        assert_eq!(file, theme);
-        assert_eq!(
-            Knobs::parse("interface-theme=default").unwrap().roles,
-            default.roles
-        );
-        assert!(Knobs::parse("roles=%7B%22tilee%22%3A%7B%7D%7D").is_err());
-        assert!(Knobs::parse("roles=chip").is_err());
-        assert!(Knobs::parse("float-blur=soft").is_err());
-    }
-
-    #[test]
-    fn a_role_inherits_what_the_theme_resolves_and_says_from_where() {
-        let group_patches = BTreeMap::from([
-            (
-                "icon-button".to_owned(),
-                StylePatch::EMPTY
-                    .fill(penna::Fill::Tint)
-                    .outline(true)
-                    .hover(penna::Highlight::Ring),
-            ),
-            (
-                "floating".to_owned(),
-                StylePatch::EMPTY
-                    .fill(penna::Fill::Glass)
-                    .shape(penna::Shape::Pill),
-            ),
-        ]);
-        let patched = InterfaceTheme {
-            roles: group_patches.clone(),
-            ..interface_theme::default_theme().clone()
+    fn glass_sliders_turn_the_glass_into_a_material_of_its_own() {
+        let knobs = Knobs::parse("glass=frosted&glass-blur=30&glass-tint=0.8").unwrap();
+        let Some(Glass::Material(pair)) = knobs.look.glass else {
+            panic!("a slider makes a material");
         };
-        let materials = Materials {
-            picked_outlines: true,
-            picked_shadows: true,
-            smoothing: Smoothing::try_from(3.0).unwrap(),
-            picked_smoothing: true,
-            ..patched.materials.clone()
-        };
-        let picked = InterfaceTheme {
-            materials: materials.clone(),
-            ..patched.clone()
-        };
-        for (id, theme) in themes().into_iter().chain([
-            ("patched groups".to_owned(), patched),
-            ("picked outlines, shadows and smoothing".to_owned(), picked),
-        ]) {
-            let mut kit = Theme::default();
-            theme.apply_roles(&mut kit);
-            theme.materials.apply(&mut kit);
-            for role in penna::foundation::roles::all() {
-                let (mut style, _) = inherited(role, &theme.roles, &theme.materials);
-                if let Some(patch) = theme.roles.get(role.id()) {
-                    patch.apply(&mut style);
-                }
-                assert_eq!(style, kit.style(role), "{id} {}", role.id());
-            }
-        }
-        let built_in = Materials::default();
-        let origin = |role, themed| Origin {
-            role: Some(role),
-            themed,
-        };
-        let (style, origins) = inherited(
-            penna::foundation::roles::WINDOW_CONTROLS,
-            &group_patches,
-            &built_in,
-        );
-        assert_eq!(style.fill, penna::Fill::Tint);
-        assert_eq!(origins[0], origin(penna::SurfaceRole::ICON_BUTTON, true));
-        assert_eq!(origins[2], origin(penna::SurfaceRole::ICON_BUTTON, false));
+        assert_eq!(pair.dark.blur, px(30.0));
+        assert_eq!(pair.light.tint.a, 0.8);
+        assert_eq!(pair.dark.bezel, interface_theme::frosted().bezel);
         assert_eq!(
-            origins[3],
-            origin(penna::foundation::roles::WINDOW_CONTROLS, false)
+            Knobs::parse("glass=none").unwrap().look.glass,
+            Some(Glass::None)
         );
-        assert_eq!(style.hover, penna::Highlight::Ring);
-        assert_eq!(origins[5], origin(penna::SurfaceRole::ICON_BUTTON, true));
-        let (style, origins) = inherited(
-            penna::foundation::roles::INLINE_PANEL,
-            &group_patches,
-            &built_in,
-        );
-        assert_eq!(style.fill, penna::Fill::Glass);
-        assert_eq!(origins[0], origin(penna::Kind::Floating.role(), true));
-        let (style, origins) = inherited(penna::SurfaceRole::DIALOG, &group_patches, &built_in);
-        assert_eq!(style.shape, penna::Shape::Round);
-        assert_eq!(origins[3], origin(penna::Kind::Floating.role(), false));
-        assert_eq!(
-            inherited(penna::SurfaceRole::TOAST, &group_patches, &built_in)
-                .0
-                .shape,
-            penna::Shape::Pill
-        );
-        let (style, origins) = inherited(penna::SurfaceRole::DIALOG, &group_patches, &materials);
-        assert!(!style.outline);
-        assert_eq!(style.shadow, Shadow::None);
-        let picked = Origin {
-            role: None,
-            themed: true,
-        };
-        assert_eq!((origins[1], origins[2]), (picked, picked));
-        let (style, origins) = inherited(
-            penna::foundation::roles::WINDOW_CONTROLS,
-            &group_patches,
-            &materials,
-        );
-        assert!(style.outline);
-        assert_eq!(origins[1], origin(penna::SurfaceRole::ICON_BUTTON, true));
-    }
-
-    #[test]
-    fn a_shadow_color_knob_keeps_the_themes_alpha() {
-        let tinted = Knobs::parse("dark-shadow-color=%2310203080&dark-shadow-color=%23405060")
-            .unwrap()
-            .dark
-            .shadow_color
-            .unwrap();
-        assert!((tinted.a - 128.0 / 255.0).abs() < 1e-3);
-        assert_eq!(penna::to_hex(tinted.alpha(1.0)), "#405060");
-        let default = Knobs::parse("dark-shadow-color=%23102030").unwrap();
-        let shadow = default.dark.shadow_color.unwrap();
-        assert_eq!(shadow.a, ThemeColor::dark().shadow_color.a);
-        assert_eq!(penna::to_hex(shadow.alpha(1.0)), "#102030");
     }
 
     #[test]
     fn a_theme_survives_the_trip_through_its_knobs() {
-        for (id, theme) in themes() {
-            let theme = &theme;
-            let query = theme_knobs(theme)
-                .iter()
-                .map(|(name, value)| {
-                    let value = value.as_str().map_or_else(
-                        || value.to_string(),
-                        |text| text.replace(' ', "+").replace('#', "%23"),
-                    );
-                    format!("{name}={value}")
-                })
-                .collect::<Vec<_>>()
-                .join("&");
-            let parsed = Knobs::parse(&format!("interface-theme=default&{query}")).unwrap();
-            assert_eq!(parsed.name, theme.name, "{id}");
-            assert_eq!(
-                Materials {
-                    glass: None,
-                    light_glass: None,
-                    ..parsed.materials.clone()
-                },
-                Materials {
-                    glass: None,
-                    light_glass: None,
-                    ..theme.materials.clone()
-                },
-                "{id}"
-            );
-            assert_eq!(parsed.interface_theme().roles, theme.roles, "{id}");
-            for mode in [ThemeMode::Light, ThemeMode::Dark] {
-                assert_eq!(
-                    resolved_colors(&parsed.interface_theme(), mode),
-                    resolved_colors(theme, mode),
-                    "{id} {mode:?}"
-                );
-            }
-            if let (Some(parsed), Some(theirs)) = (parsed.materials.glass, theme.materials.glass) {
-                for (name, get, _) in GLASS_KNOBS {
-                    assert!((get(&parsed) - get(&theirs)).abs() < 1e-3, "{id} {name}");
-                }
-            }
+        for (id, theme) in interface_theme::builtin_themes() {
+            let parsed = Knobs::parse(&format!(
+                "interface-theme=default&{}",
+                query(&theme_knobs(theme))
+            ))
+            .unwrap();
+            assert_eq!(parsed.interface_theme(), *theme, "{id}");
         }
+        let tinted = Knobs::parse("tint-color=orange&dark-tint-color=%23112233").unwrap();
+        assert_eq!(
+            tinted.look.tint,
+            Tint::Color {
+                light: penna::parse_hex("#ad4f00").unwrap(),
+                dark: penna::parse_hex("#112233").unwrap(),
+            }
+        );
         assert_eq!(decode("Fira%20Sans+Mono%"), "Fira Sans Mono%");
+    }
+
+    #[test]
+    fn a_role_inherits_what_the_kit_resolves_and_says_from_where() {
+        let mut kit = Theme::default();
+        interface_theme::default_theme().apply(&mut kit);
+        for role in penna::foundation::roles::all() {
+            let (style, _) = inherited(role, kit.smoothing);
+            assert_eq!(style, kit.style(role), "{}", role.id());
+        }
+        let (style, origins) = inherited(penna::foundation::roles::WINDOW_CONTROLS, kit.smoothing);
+        assert_eq!(style.fill, penna::Fill::None);
+        assert_eq!(origins[0], Some(SurfaceRole::ICON_BUTTON));
+        assert_eq!(origins[3], Some(penna::foundation::roles::WINDOW_CONTROLS));
+        assert_eq!(origins[4], None);
     }
 }
