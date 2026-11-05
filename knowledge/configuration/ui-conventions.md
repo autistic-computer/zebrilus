@@ -436,8 +436,12 @@ Corner smoothing is not a material: every window draws `CORNER_SMOOTHING` (4), w
 The thin clients keep the selected theme id, their own saved themes and their overrides in their
 preferences as a `penna::foundation::interface_theme::Appearance`, and `Preferences::apply` adjusts its mode,
 contrast, zoom and animations for the platform and calls `Appearance::apply`, which activates the
-theme with the device's `ThemeOverrides` composed as on desktop; it then sets the UI font from the
-preference, else the theme's font, else the bundled Inter.
+theme with the device's `ThemeOverrides` composed as on desktop and drops the glass under
+`reduce_transparency`; it then sets the UI font from the preference, else the theme's font, else
+the bundled Inter. The HTML client's theme engine (`clients/dom/theme`) builds its kit theme from
+the same preferences, sets the contrast and drops the glass under `reduce_transparency` before
+`theme_css::stylesheet` writes the tokens, so every glass role gets the `popover` fill and no
+backdrop, the tokens penna otherwise keeps for `prefers-reduced-transparency: reduce`.
 
 `chrome-contrast` defaults to 1.0 and accepts 1.0–2.0; other values are reported like any numeric
 key. The Interface page shows it as a slider from 100% to 200%, in steps of 5. It scales the elevation step in `raised()` and `washed()`, the amounts in `hover()` and

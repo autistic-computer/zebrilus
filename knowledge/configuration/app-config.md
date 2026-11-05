@@ -156,7 +156,7 @@ The client-local schema includes these scalar settings and chrome colors.
 | `theme-mode` | `system` | `system`, `light`, `dark` | Follow the OS appearance, or pin one mode |
 | `app-icon` | `automatic` | `automatic`, `light`, `dark` | Which render of `assets/zz.icon` the macOS Dock tile wears; `automatic` defers to the bundle's compiled icon when packaged (so tinted/clear dock styles work) and follows the OS appearance in bare builds, independently of `theme-mode` |
 | `chrome-contrast` | `1.0` | `1.0`–`2.0` | Raises the chrome derivations; out-of-range or invalid values are reported and fall back to `1.0`. Settings shows it as a slider from 100% to 200% in steps of 5, written with two decimals. |
-| `reduce-transparency` | `false` | `true` or `false` | Draws glass as the solid `popover` fill. Settings shows it as Reduce transparency under Advanced; a theme change keeps it |
+| `reduce-transparency` | `false` | `true` or `false` | Draws glass as the solid `popover` fill. Settings shows it as Reduce transparency under Advanced, after Contrast; a theme change keeps it. The thin clients keep it in their preferences as `reduce_transparency`, and the HTML client shows the same row |
 | `chrome-density` | `regular` | `compact`, `regular`, `comfortable` | The default control and row height in the chrome: 24, 28 or 32px for buttons, fields, selects and list, menu and picker rows; text, gaps and the other control sizes stay. Invalid values are reported and fall back to `regular`. Settings shows it as Density under UI zoom. |
 
 `chrome-preset`, `chrome-preset-light`, `chrome-preset-dark`, `chrome-background`,

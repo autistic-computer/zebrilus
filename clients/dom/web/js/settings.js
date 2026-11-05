@@ -550,6 +550,10 @@ function appearancePage() {
           control: valueSlider({ label: "Contrast", value: p.contrast, min: 1, max: 2, step: 0.05, display: percent, onchange: (value) => set({ contrast: value }) }),
         }),
         entry({
+          title: "Reduce transparency",
+          control: toggle(p.reduce_transparency, "Reduce transparency", (value) => set({ reduce_transparency: value })),
+        }),
+        entry({
           title: "UI font",
           control: choose({
             value: picks.font,
