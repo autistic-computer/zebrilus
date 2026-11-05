@@ -240,7 +240,7 @@
   width: 6px;
   height: 6px;
   border-radius: 9999px;
-  background: var(--penna-palette-dot);
+  background: var(--penna-dot, var(--penna-palette-dot));
 }
 
 .penna-palette-dot[data-status="online"] {

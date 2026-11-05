@@ -1497,7 +1497,7 @@ States:
 |---|---|---|
 | rest | no fill | |
 | hovered | the `menu-item` hover fill | |
-| selected | the `menu-item` selected fill; a status dot keeps its color | one row; Up and Down move it |
+| selected | the `menu-item` selected fill; on a solid fill the row hands it to its parts as their ground, so the label, detail, keys and kind badge take the selected ink and a status dot turns to the muted ink (`Look`) | one row; Up and Down move it |
 | matched | matched letters semibold | the app passes the ranges |
 | running | a muted dot at the end | |
 | expanded, collapsed | a down or a right chevron | the disclosure toggles without running the row or taking focus from the field |
@@ -1514,7 +1514,7 @@ Content: rows name the place or the command as the app knows it; the detail says
 
 Placement: centered near the top of the window, above everything else. `.input_last()` puts the field at the bottom, for a palette that opens from below.
 
-HTML: `.penna-palette-surface` with `data-penna="popover"` and `data-inset="8"` holds a `.penna-palette-input` (a `label` with `.penna-palette-pills` and an `input`; `data-prompt` and `data-mono` for a prompt), a `.penna-palette-usage`, a `.penna-palette-rows` and a `.penna-palette-footer` with a `.penna-palette-rule` (`data-penna="rule.bar"`) and `.penna-palette-hint`s. A row is `.penna-list-item.penna-palette-row` with `data-penna="menu-item"`, its parts in `.penna-palette-content`: `.penna-palette-disclosure` (`data-toggle` to make it toggle), `.penna-palette-icon`, `.penna-palette-dot` (`data-status`: `online`, `running`, `waiting`, `offline`, `busy`), `.penna-palette-label` (with `.penna-palette-match` and `.penna-palette-muted` runs), `.penna-palette-detail`, `.penna-palette-right` and `.penna-palette-shortcut`; `data-detail` when it has a detail, `--indent` for its indent. `palette.js` gives the surface its inset radius, moves the selection on Up and Down inside a surface, and toggles disclosures (firing `penna-toggle`).
+HTML: `.penna-palette-surface` with `data-penna="popover"` and `data-inset="8"` holds a `.penna-palette-input` (a `label` with `.penna-palette-pills` and an `input`; `data-prompt` and `data-mono` for a prompt), a `.penna-palette-usage`, a `.penna-palette-rows` and a `.penna-palette-footer` with a `.penna-palette-rule` (`data-penna="rule.bar"`) and `.penna-palette-hint`s. A row is `.penna-list-item.penna-palette-row` with `data-penna="menu-item"`, its parts in `.penna-palette-content`: `.penna-palette-disclosure` (`data-toggle` to make it toggle), `.penna-palette-icon`, `.penna-palette-dot` (`data-status`: `online`, `running`, `waiting`, `offline`, `busy`; it reads `--penna-dot` first, so a solid scope recolors it), `.penna-palette-label` (with `.penna-palette-match` and `.penna-palette-muted` runs), `.penna-palette-detail`, `.penna-palette-right` and `.penna-palette-shortcut`; `data-detail` when it has a detail, `--indent` for its indent. `palette.js` gives the surface its inset radius, moves the selection on Up and Down inside a surface, and toggles disclosures (firing `penna-toggle`).
 
 Status: matches.
 
