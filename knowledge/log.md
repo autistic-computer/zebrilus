@@ -1,6 +1,7 @@
 # Update Log
 
 ## 2026-11-05
+* **Update**: The HTML client has Reduce transparency ([app config](/configuration/app-config.md), [UI conventions](/configuration/ui-conventions.md)). Settings > Interface > Advanced shows it after Contrast, as on desktop; it saves as `reduce_transparency` with the other web preferences, and when on the tokens draw every glass role as the `popover` fill with no backdrop.
 * **Update**: zz draws penna's one look, and themes are knobs ([interface themes](/designs/interface-themes.md), [app config](/configuration/app-config.md)). A theme file now holds only `name`, `tint`, `neutral`, `radius`, `control-radius`, `smoothing`, `glass`, `face` and `mode`; Default, macOS and Yaru are presets of those. Saved themes in `themes/` and the thin clients' preferences that still carry `materials`, `roles`, `light` and `dark` load as the default look under their own name. `chrome-tint` and `chrome-tint-hue` set the theme's neutral and default to it (0.15 at hue 60, warm) instead of no tint at 260; `widget-corner-radius` follows the theme's 12 (8 in Yaru) instead of 24. A picked accent becomes the highlight. New key `reduce-transparency` (Settings > Interface > Advanced > Reduce transparency) draws glass as the solid popover fill.
 
 ## 2026-11-04

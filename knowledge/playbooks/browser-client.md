@@ -115,8 +115,8 @@ the busy choice and an armed flip show in the pane's corner, the armed one from 
 `flip_armed` summary. Fork from a message opens a new window with an agent pane on the fork, and
 side chat a floating one. Composer actions share the desktop presentation. Appearance preferences for the
 browser live in local storage: system/light/dark mode, the interface theme (Default or one saved
-in the browser by Import), zoom, animations, and what Interface sets over the theme: the
-style, the corner radius, the accent and the tint. Picking a theme clears the style and radius;
+in the browser by Import), zoom, animations, contrast, reduce transparency, and what Interface
+sets over the theme: the corner radius, the accent and the tint. Picking a theme clears the radius;
 the accent and tint stay.
 The animation switch respects the platform’s reduced-motion preference. Terminal color schemes
 follow the effective light/dark mode after attachment and when that mode changes. Numeric fields,
