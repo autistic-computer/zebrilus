@@ -124,7 +124,7 @@ Reading rhythm (built): blocks (paragraphs, lists, quotes, code, tables) sit `sp
 
 Touch, for the compact, touch and sheet blocks (`TextStyle::TouchSmall`, `TouchBody`, `TouchTitle`, built): `touch-small` 15 on 20, `touch-body` 17 on 22, `touch-title` 34 on 40, weights 400, 400, 600; strong is 500 for the first two.
 
-Component text (step 3, built): list and tree rows `lead`, centered in the row height (which follows density and the rem), their details `small`; sidebar headings strong `small`, under the `body` rows they head; menu rows `small` with 12 icons, and `body` with 14 icons on a 44 row under a coarse pointer; their shortcuts `small`; menu section labels `caption`. Controls take the text of their size from `Size::control_text()`, the Text column of the control ladder: buttons, fields, selects and segmented controls set it once on the control and their label, icon and children inherit it, so a caller's weight (a selected sidebar row's 500) still wins. A field's caret, selection and rows follow its line (18 at `body`). Badges are strong `caption` (`micro` at the `xs` and `sm` rungs), keycaps `caption` (`micro`), the stepped slider `small`, and the touch slider's readout `title`. Surfaces (dialogs, alerts, notifications, callouts, notices, popovers) set `body` on the surface, before the caller's own style, so content with no style of its own is 13 on 18; their titles are `body` at the heading weight, 600, and their descriptions and messages `small`; a stacked notice's title is `lead` at 600. An empty state sets `small` on itself, since its message is its bare content, and its title is `body` at 600. A marker beside a first line (a notification, callout or notice icon) sits in a box as tall as that line: 18 beside a `body` title, 20 beside a stacked notice's `lead` title, 16 beside a message alone. Tooltips are `small`. Chrome: the title bar's content area and the tray panel set `body`; a window title in the title bar is `body` at 600, with a path beside it regular and muted. The docs header's brand is `lead` at 600. Which-key sets `small` on itself, its table name strong `small`, and `caption` for block titles, the repeat mark and its key caps in the code face. Settings: the page heading is `title`, group headers `body` at 600 (so a disclosure's chevron box is 18 tall), row titles `body`, descriptions `small`; the about page's name is `title`, its tagline `small`, its values `caption` in the code face. The picker's rows are `small`, its empty label `caption`, its footer `micro`. The color picker's label is `caption`, the touch trigger's hex `mono`. Appearance: slider values `small`, tile labels `caption`, and the theme picker's label takes the style of the button or menu row around it. Compact and touch: large titles `touch-title`; the HUD strong `touch-body`; the folding title `touch-body` at 600; pill titles and menu chips strong `touch-small`, pill meta `small`, the mini pill strong `body`; key rows `touch-small`; the touch which-key list `touch-body`, its caps `touch-small` in the code face, its group headers strong `body`; popover keys `touch-body`. Sheets: titles `display`, row labels `touch-body`, details `touch-small`. The code editor sets `mono` on itself (13 on 18) and draws line numbers at the `caption` size on the code line. The HTML versions read the `--penna-text-*` variables instead of copying sizes.
+Component text (step 3, built): list and tree rows `lead`, centered in the row height (which follows density and the rem), their details `small`; sidebar headings strong `small`, under the `body` rows they head; menu rows `small` with 12 icons, and `body` with 14 icons on a 44 row under a coarse pointer; their shortcuts `small`; menu section labels `caption`. Controls take the text of their size from `Size::control_text()`, the Text column of the control ladder: buttons, fields, selects and segmented controls set it once on the control and their label, icon and children inherit it, so a caller's weight (a selected sidebar row's 500) still wins. A field's caret, selection and rows follow its line (18 at `body`). Badges are strong `caption` (`micro` at the `xs` and `sm` rungs), keycaps `caption` (`micro`), the stepped slider `small` (`caption` at `xs` and `sm`), and the touch slider's readout `title`. Surfaces (dialogs, alerts, notifications, callouts, notices, popovers) set `body` on the surface, before the caller's own style, so content with no style of its own is 13 on 18; their titles are `body` at the heading weight, 600, and their descriptions and messages `small`; a stacked notice's title is `lead` at 600. An empty state sets `small` on itself, since its message is its bare content, and its title is `body` at 600. A marker beside a first line (a notification, callout or notice icon) sits in a box as tall as that line: 18 beside a `body` title, 20 beside a stacked notice's `lead` title, 16 beside a message alone. Tooltips are `small`. Chrome: the title bar's content area and the tray panel set `body`; a window title in the title bar is `body` at 600, with a path beside it regular and muted. The docs header's brand is `lead` at 600. Which-key sets `small` on itself, its table name strong `small`, and `caption` for block titles, the repeat mark and its key caps in the code face. Settings: the page heading is `title`, group headers `body` at 600 (so a disclosure's chevron box is 18 tall), row titles `body`, descriptions `small`; the about page's name is `title`, its tagline `small`, its values `caption` in the code face. The picker's rows are `small`, its empty label `caption`, its footer `micro`. The color picker's label is `caption`, the touch trigger's hex `mono`. Appearance: slider values `small`, tile labels `caption`, and the theme picker's label takes the style of the button or menu row around it. Compact and touch: large titles `touch-title`; the HUD strong `touch-body`; the folding title `touch-body` at 600; pill titles and menu chips strong `touch-small`, pill meta `small`, the mini pill strong `body`; key rows `touch-small`; the touch which-key list `touch-body`, its caps `touch-small` in the code face, its group headers strong `body`; popover keys `touch-body`. Sheets: titles `display`, row labels `touch-body`, details `touch-small`. The code editor sets `mono` on itself (13 on 18) and draws line numbers at the `caption` size on the code line. The HTML versions read the `--penna-text-*` variables instead of copying sizes.
 
 Code takes the size and line of the text around it, in the code face: `mono` in the interface, `read-body` size in reading text. ala can't size one run differently inside a line.
 
@@ -222,7 +222,7 @@ Arrangement geometry stays with the app: where nidus puts computers on its board
 
 Every component has a section here, written in one shape: what it is for (and what to use instead), anatomy, kinds, sizes, states, behavior, content, placement, its HTML twin, and Status. Its docs page draws each part with the real component and carries the anatomy in plain words; the values stay here. The widget and its HTML twin take the same properties.
 
-Every component page and story shows, where they apply: sizes, variants, tones, and the states rest, hover, pressed, focused, selected, disabled, loading and error, plus icon support. Known gaps across the kit: error states on select, text field, checkbox and radio; helper text; an indeterminate checkbox; radio groups; prefix and suffix on fields; equal-width tabs; a size API on segmented controls and sliders.
+Every component page and story shows, where they apply: sizes, variants, tones, and the states rest, hover, pressed, focused, selected, disabled, loading and error, plus icon support. Known gaps across the kit: equal-width tabs, and the gaps each Status lists.
 
 Status marks for a component: **matches** (the code and its page follow its section), or a list of what does not yet.
 
@@ -389,20 +389,27 @@ Status: two gaps.
 
 ### Checkbox and radio
 
-A check marks a choice: a checkbox for an option that is on or off by itself, a radio for the one picked in a set. It is a mark only; the row, tile or list item that holds it takes the press. For a setting that applies at once, use a switch; for one of a few modes in view, a segmented control; for one of many, a select.
+A checkbox turns one option on or off by itself; a radio picks one option of a set, all in view. Both take effect when the form or dialog they sit in is confirmed. For a setting that applies at once, use a switch; for one of two to five modes that applies at once, a segmented control; for one of many, a select.
 
 Kinds:
 
-- Checkbox, `Check::checkbox(checked)`: a rounded square, with a check when on.
-- Radio, `Check::radio(checked)`: a circle, with a dot when on.
+| Kind | Call | Use |
+|---|---|---|
+| Checkbox | `Checkbox::new(id).label(text).checked(on)` | an option that is on or off by itself |
+| Mixed checkbox | `.indeterminate(true)` | a checkbox over a set of checkboxes that are partly on |
+| Radio group | `RadioGroup::new(id, labels).selected(index)` | one of two to seven options; more go in a select. `.selected(None)` while none is picked |
+| Mark | `Check::checkbox(on)`, `Check::radio(on)`, `.indeterminate(true)` for the minus | the box alone, in a row, tile or task list that takes the press itself |
 
-Anatomy:
+Anatomy, left to right:
 
-- Box: 14 at `xs` and `sm`, 16 from `md` up; `Size(px)` takes that side, as a task list does to match its font. Off, it takes the neutral outline paint (an edge, no fill); on, the tone's solid fill (`primary` by default, `.tone()` to change it). A checkbox's corners are half the theme radius; a radio is round.
-- Mark: a checkbox's `check` icon at 70% of the side (11, or 10 in a 14 box); a radio's dot at 37.5% of it (6, or 5). It takes the fill's ink.
+- Box: 14 at `xs` and `sm`, 16 from `md` up; `Size(px)` takes that side, as a task list does to match its font. Off, it takes the tone's outline paint (an edge, no fill; neutral by default); on or mixed, the tone's solid fill (`primary` by default, `.tone()` to change it). A checkbox's corner is a quarter of the theme radius, at most a quarter of the side (4 in a 16 box with the default and Yaru radii). A radio is round.
+- Mark: a checkbox's `check` icon at 70% of the side (11, or 10 in a 14 box); a mixed checkbox's `minus` at the same size; a radio's dot at 37.5% of the side (6, or 5). It takes the fill's ink.
+- Label (checkbox and radio group): the rung's text style (`caption`, `small`, then `body` from `md` up), `icon_gap` after the box (4, 4, then 6). The box is centered on the label's first line, on its capitals (`cap_center_drop`), and a long label wraps under itself, never under the box.
 - `.on(ground)` paints it for the surface it sits on, such as a picked tile.
 
-Sizes: `md` (16) by default; `xs` and `sm` (14) beside `small` and `caption` text. From `lg` up it draws like `md`, since it sits in a line of text (Size).
+A radio group stacks its radios `gap-related` 8 apart, or lays them in a row `gap-group` 16 apart with `.horizontal()`.
+
+Sizes: `md` by default; `xs` and `sm` beside `caption` and `small` text. From `lg` up it draws like `md`, since it sits in a line of text (Size). Under a coarse pointer the hit area grows to the touch target: 44 tall around the label's line, and 44 wide around the box.
 
 States:
 
@@ -410,19 +417,22 @@ States:
 |---|---|---|
 | off | the edge only | |
 | on | the tone's fill with the mark | |
-| disabled | the paint's disabled step: fainter edge, fill and mark | |
+| mixed | the tone's fill with the minus | a checkbox only |
+| hover | the box takes its paint's hover step | over the box or the label; not under a coarse pointer, not when disabled |
+| pressed | the box takes its paint's active step, while held | not under a coarse pointer |
+| focused | the focus ring, 1.5 outside the box, one ring width off it when filled, in the tone's focus ink | from the keyboard only, never from a click; a radio group rings its picked radio, or its first while none is picked |
+| disabled | the paint's disabled step: fainter edge, fill and mark; the label in `fg-faint` | presses and keys are ignored, and it leaves the focus order |
+| error | `.tone(Tone::Danger)`: the edge, or the fill, in the danger tone | its Field shows the message with an icon (Field) |
 
-Hover, press and focus belong to the row around it.
+Behavior: a checkbox flips on release of a click or tap on its box or its label, and on Space or Enter while focused, and calls `on_click` with the new value; the caller sets `checked`. A mixed checkbox turns on. A radio group is one tab stop: a click on a radio picks it; Up and Left pick the previous radio, Down and Right the next, Home and End the first and last, each through `on_select`, and they stop at the ends; while none is picked they step from the first. Space and Enter pick the ringed radio while none is picked, and pass on to the form once one is, so Enter still confirms a dialog. A click never focuses either. The mark alone has no behavior: the row or tile that holds it takes the press, the focus and the keys, and sets `checked`.
 
-Behavior: none of its own. The row or tile that holds it takes the press, the focus and Space or Enter, and sets `checked`.
+Content: the label names the option in sentence case with no closing period, phrased so that on means yes ("Restore sessions", not "Don't restore sessions"). A radio group's labels are short and parallel, and the Field around it names the set ("Start with").
 
-Content: the label beside it names the option in sentence case, phrased so that on means yes ("Restore sessions", not "Don't restore sessions"). A set of radios has parallel labels.
+Placement: in a form, checkboxes stack one per line `gap-related` 8 apart; a checkbox that needs help or an error, and every radio group, sits in a Field. The mark sits before its label in a list or task row, or at the trailing end of a tile, in place of its key, once that tile is picked.
 
-Placement: before its label in a list or task row; at the trailing end of a tile, in place of its key, once that tile is picked.
+HTML: the mark is `.penna-check` (in `check.css`, with the controls): `data-on` with an `<i data-icon="check">` inside, `data-mixed` with an `<i data-icon="minus">`, `data-kind="radio"` for a radio (its dot is drawn by the CSS), `data-size` (`xsmall`, `small`) for the 14 box, `data-tone` (`danger`, `warning`, `success`), and `data-disabled`. Its fills read the theme's `--penna-outline-hover` and `--penna-outline-pressed` (the neutral edge's steps) and `--penna-<tone>-hover`, `--penna-<tone>-pressed` and `--penna-on-<tone>` (a tone's solid steps and ink). A checkbox is `label.penna-checkbox` with `aria-checked` (`true`, `false`, `mixed`), `data-size`, `data-tone` and `aria-disabled="true"`, holding a `.penna-check` and a `.penna-label`. A radio group is `.penna-radio-group` with `data-value` (the picked index), `data-orientation="horizontal"`, `data-size`, `data-tone` and `aria-disabled="true"`, holding a `.penna-radio` per option, each a `.penna-check[data-kind="radio"]` and a `.penna-label`. `check.js` sets the roles (`checkbox`, `radiogroup`, `radio`), makes each checkbox and each group one tab stop, answers the clicks and keys above, keeps `aria-checked` and the marks in step, rounds each box and its ring, and fires `change` with `{ checked }` or `{ index }`. `:focus-visible` or `data-state="focused"` draws the ring. Reading text's task list draws its own `.md-check` (`role="checkbox"`, `aria-checked`).
 
-HTML: `.penna-check` (in `penna.css`), with `data-on` and an `<i data-icon="check">` inside when on, and `data-size` (`xsmall`, `small`) for the 14 box. Reading text's task list draws its own `.md-check` (`role="checkbox"`, `aria-checked`).
-
-Status: three gaps. It is a mark, not a control: there is no checkbox or radio with its own label, focus and keys, no radio group, no indeterminate checkbox and no error state. A checkbox's corner is half the theme radius, which a 16 box draws as a circle, where Corners caps it at 45% of the side. The HTML twin has no radio, disabled state or tone, fills with `accent` where the native mark uses `primary`, rounds to a quarter of the theme radius, and has no story page.
+Status: matches.
 
 ### Chip
 
@@ -471,6 +481,40 @@ Placement: chips in a row sit `gap-related` (8) apart.
 HTML: `.penna-chip` with `data-penna` (the look and emphasis: `chip`, `chip.outline`, `chip.bar`, `chip.floating`, `chip.marker`, `chip.drag`, or `badge.icon` with `data-look="icon-disc"`), `data-tone`, `data-size` (`xsmall` to `touch`; small when absent), `data-state` (`hover`, `active`, `focused`, `selected`, `current`, `disabled`), `data-emphasis` (`ghost`, or `solid` with `data-solid="<tone>"` and the label wrapped in `.penna-solid-ink` carrying the solid button's `data-penna="button" data-prominent`), `data-interactive` (with `role="button"` and `tabindex="0"` when it takes focus; `chip.js` runs it on Space and Enter and keeps a click from focusing it), `data-ring="<tone>"`, and `data-detail` when it holds a detail. Its parts: `i.penna-dot[data-tone]`, `<i data-icon>`, `.penna-chip-label` and `.penna-chip-detail` (which `chip.js` truncates), each text run marked `data-penna-text`.
 
 Status: one gap. Its icon is sized in plain pixels (`px`), so it doesn't grow with the interface font size the way the label does.
+
+### Field
+
+A field frames a form control with what people need to fill it in: a label above it, help under it, and an error message in place of the help when the value can't be used. Use it around an input, select, checkbox or radio group in a form, dialog or sheet. A settings row names its control with its title and description instead.
+
+Kinds: one, `Field::new().label(text).help(text).error(text).child(control)`.
+
+Anatomy, top to bottom, the parts `gap-tight` 4 apart:
+
+- Label (optional, `.label()`): `body` at 500, in the ink.
+- Control: the input, select, checkbox or radio group, as the caller built it.
+- Help (optional, `.help()`): `small` in `fg-muted`.
+- Error (optional, `.error()`): in place of the help while it is set, `small` in `danger` (the role's own color, text and icon alike), after a 12 `circle-x` icon `space-4` before the text and centered on its first line's capitals: the icon sits in a box one `small` line (16) tall, dropped by `cap_center_drop`. The line is the `sm` rung of the control ladder: its text, icon and icon gap.
+
+A field is as wide as its parent, and its help and errors wrap at that width. It never stretches its control: an input fills the width by itself, and a select stays as wide as its value unless the caller sets a width.
+
+States:
+
+| State | Look | Notes |
+|---|---|---|
+| rest | label, control and help | |
+| error | the error replaces the help; the caller paints the control with `.tone(Tone::Danger)` | the icon and the words carry the error, never the color alone (Rules 8) |
+
+A disabled control keeps its label and help as they are.
+
+Behavior: none of its own. Show an error once the person leaves the control or confirms the form, never while they type, and clear it with the edit that fixes the value.
+
+Content: the label is a noun or a short noun phrase in sentence case, with no colon and no closing period ("Host name"). Help says what the value is for or what shape it takes ("Other computers see this name."). An error says what is wrong and how to fix it ("Use letters, numbers and dashes."), never only "Invalid". Help and errors are one short sentence, with its period.
+
+Placement: fields in a form sit `gap-group` 16 apart. Two short fields can share a line `gap-related` 8 apart, each with its own label.
+
+HTML: `.penna-field` holding `.penna-field-label`, the control, and `.penna-field-help` or `.penna-field-error` (an `<i data-icon="circle-x">` before its text). Text runs are spans marked `data-penna-text`; `field.css` holds the twin.
+
+Status: matches.
 
 ### Icon
 
@@ -543,7 +587,9 @@ States:
 | focused | the edge turns to the ink; the fill stays | from a click or the keyboard; the caret blinks only while the window is active |
 | disabled | a fainter fill and edge; text, placeholder and affixes at half strength | no editing |
 | loading | a spinner in the suffix | the text stays editable |
-| error | `.tone(Tone::Danger)` paints the field in the danger tone | native only; see Status |
+| error | `.tone(Tone::Danger)` paints the field in the danger tone: its edge, at rest and focused | its Field shows the message with an icon (Field) |
+
+A tone paints only the edge: the tone's outline ink at rest and hovered, its focus ink when focused, and half of it when disabled. The fill, its hover step, the text and the placeholder stay the field's, and the edge draws on every theme, even one whose fields have none at rest. Every tone paints this way; forms use danger.
 
 A selection stays painted while the field is not focused.
 
@@ -551,11 +597,11 @@ Behavior: a click places the caret and a drag selects. The keyboard edits as the
 
 Content: the placeholder hints at what to type ("Search sessions", "Write a commit message"), in sentence case with no closing period. It is never the only label, since it disappears with the first key.
 
-Placement: a field's label sits above it, `gap-tight` 4 away, or the field sits at the end of a settings row whose title names it. Form groups sit `gap-group` 16 apart.
+Placement: in a form a field sits in a Field, which puts its label above it and its help or error under it, `gap-tight` 4 away; in settings it sits at the end of a row whose title names it. Fields sit `gap-group` 16 apart.
 
-HTML: `label.penna-input` with `data-penna="field"` (`field.outline` for outline; `field.multiline` with `data-multiline` around a `<textarea>` that takes `data-min-rows` and `data-max-rows`), holding an `<input>`; `data-size` (`xsmall` to `touch`), `data-disabled` with `aria-disabled="true"` and `disabled` on the input, `data-bare`, `data-borderless`, `data-align` (`center`, `right`), and `data-selection="start,end"` on the input for a resting selection. `.penna-input-prefix` and `.penna-input-suffix` sit around the input; the suffix holds `.penna-spinner` while loading and `.penna-input-clear` (a ghost icon button a rung smaller) when cleanable. A number input is `.penna-number` (`data-penna="field"`, `role="spinbutton"`, `data-step`, `data-min`, `data-max`) holding a bare centered field between two buttons with `data-step-by`. `input.js` paints the caret and the resting selection the way ala does, sets `data-state="focused"`, grows text areas and steps number inputs.
+HTML: `label.penna-input` with `data-penna="field"` (`field.outline` for outline; `field.multiline` with `data-multiline` around a `<textarea>` that takes `data-min-rows` and `data-max-rows`), holding an `<input>`; `data-size` (`xsmall` to `touch`), `data-tone="danger"` for an error, `data-disabled` with `aria-disabled="true"` and `disabled` on the input, `data-bare`, `data-borderless`, `data-align` (`center`, `right`), and `data-selection="start,end"` on the input for a resting selection. `.penna-input-prefix` and `.penna-input-suffix` sit around the input; the suffix holds `.penna-spinner` while loading and `.penna-input-clear` (a ghost icon button a rung smaller) when cleanable. A number input is `.penna-number` (`data-penna="field"`, `role="spinbutton"`, `data-step`, `data-min`, `data-max`) holding a bare centered field between two buttons with `data-step-by`. `input.js` paints the caret and the resting selection the way ala does, sets `data-state="focused"`, grows text areas and steps number inputs.
 
-Status: two gaps. An error is only `.tone(Tone::Danger)`: nothing adds the icon or word a status color needs (Rules 8), the HTML twin has no danger field, and the inputs story shows neither an error nor a hovered field. There is no helper text under a field.
+Status: matches.
 
 ### Keycap
 
@@ -880,14 +926,14 @@ A segmented control picks one of two to five short options, all in view, and the
 
 Kinds: one.
 
-Anatomy, from the `md` rung (Size):
+Anatomy, all from the control's rung of the control ladder (Size):
 
-- Track: the field's paint (fill, a hairline edge of at least 1px, corners), height `control-md` (28, follows density), `space-2` inside the edge.
+- Track: the field's paint (fill, a hairline edge of at least 1px, corners), height `control_px` (28 at `md`, which follows density), `space-2` inside the edge.
 - Pill: behind the picked segment, in the quiet button's selected paint (`data-state="current"`). It is as tall as the segments and its radius is concentric with the track's: the track radius less its edge and `space-2`.
-- Segments: one per option, side by side with no gap, each as wide as its label plus `space-10` at both sides, as tall as the track less `space-2` and the edge on each side.
-- Labels: `body`. The picked one takes the selected ink, the others the quiet button's ink.
+- Segments: one per option, side by side with no gap, each as wide as its label plus the rung's field inset and `space-2` at both sides (8, 8, 10, 12, 14, 14 from `xs` to `touch`), as tall as the track less `space-2` and the edge on each side.
+- Labels: the rung's text style (`caption`, `small`, `body`, `body`, `lead`, `touch-body`). The picked one takes the selected ink, the others the quiet button's ink.
 
-Sizes: one, `control-md`. There is no size API.
+Sizes: every rung through `.with_size()` (`Sizable`), `md` by default (follows density). `xs` and `sm` in toolbars and dense rows, `touch` under a coarse pointer. Every control in a row has the same size (Rules 6).
 
 States:
 
@@ -897,6 +943,7 @@ States:
 | hover | the label takes the quiet button's hover ink, which no shipped theme sets apart from its rest ink | not on the picked segment |
 | selected | the pill under it, its label in the selected ink | exactly one segment |
 | focused | the focus ring, 1.5 outside the track; the track takes the field's focused edge, which only the default theme sets apart | from the keyboard only, never from a click |
+| disabled | the track takes the field's disabled paint; the pill keeps its selected paint at half strength (fill and edge, no shadow), and every label takes its ink at half strength | presses, keys and hover are ignored, and it leaves the focus order; the pick still shows |
 
 Behavior: a click on a segment picks it and calls `on_select` with its index; the caller sets `selected`. With `on_select` the control is one tab stop: Left and Up pick the previous segment, Right and Down the next, Home and End the first and last, each through `on_select`, and they stop at the ends. A click picks without focusing. The pill slides to the new segment in 220ms (`turn`) with an ease out, and holds still with reduced motion. Under a coarse pointer each segment's hit area grows to the touch slop.
 
@@ -904,9 +951,9 @@ Content: one or two words per segment, sentence case, no period ("System", "Ligh
 
 Placement: at the trailing end of a settings row (Appearance's mode and density), or above content to switch its view (the docs' Rust and HTML tabs).
 
-HTML: `.penna-segmented` (`data-penna="field"`, `role="radiogroup"`, `data-value` the picked index) holding `.penna-segments` (`data-penna="button.quiet"`, `data-state="current"`), which holds a `.penna-segment-pill` and a `.penna-segment` (`role="button"`) per option with a `.penna-label` inside. `segmented.js` makes the track a tab stop, places the pill, sets `aria-selected`, moves the pick on click and on the keys above, fires `change` with `{ index }`, and sizes the ring (`--penna-ring-r`) that `:focus-visible` or `data-state="focused"` draws.
+HTML: `.penna-segmented` (`data-penna="field"`, `role="radiogroup"`, `data-value` the picked index, `data-size` (`xsmall` to `touch`), `aria-disabled="true"`) holding `.penna-segments` (`data-penna="button.quiet"`, `data-state="current"`), which holds a `.penna-segment-pill` and a `.penna-segment` (`role="button"`) per option with a `.penna-label` inside. `segmented.js` makes the track a tab stop, places the pill, sets `aria-selected`, moves the pick on click and on the keys above, fires `change` with `{ index }`, and sizes the ring (`--penna-ring-r`) that `:focus-visible` or `data-state="focused"` draws. With `aria-disabled="true"` it leaves the track out of the tab order, ignores clicks and keys, and marks `.penna-segments` disabled so the tokens give the labels their disabled ink.
 
-Status: two gaps. It has no disabled state, and no hover look in any shipped theme. It has one size only, `control-md`.
+Status: one gap. It has no hover look in any shipped theme.
 
 ### Select
 
@@ -933,16 +980,17 @@ States:
 | focused | the field's focus edge | also while the menu is open |
 | open | the focused look, with the menu under it and the picked row highlighted | |
 | disabled | the field's disabled paint, faint value | leaves the focus order and never opens |
+| error | `.tone(Tone::Danger)` paints the trigger in the danger tone, like a field: its edge only | its Field shows the message with an icon (Field) |
 
 Behavior: a press on the trigger opens the menu, and a second press closes it. While focused, Enter, Space, Up or Down open it. In the menu, Up and Down move, Enter picks, Escape closes it and returns focus to the trigger. Picking a row closes the menu and emits `SelectEvent::Confirm`. Under a coarse pointer the trigger's hit area grows to the touch slop.
 
 Content: options are short nouns in sentence case ("Rust", "Floating"). The placeholder names what is picked ("Language"), with no closing period.
 
-Placement: like a field: its label above it, `gap-tight` 4 away, or at the end of a settings row whose title names it.
+Placement: like a field: in a Field in a form, or at the end of a settings row whose title names it.
 
-HTML: `div.penna-select` with `data-options` (a comma list), `data-value` (the picked index), `data-placeholder`, `data-size` (`xsmall` to `touch`), `aria-disabled="true"`, and `data-open` (with `data-pinned` to stay open without focus). `select.js` builds `.penna-select-trigger` (`data-penna="field"`) holding `.penna-select-title` (`data-placeholder` while nothing is picked) and `<i data-icon="chevron-down">`, and the menu `.penna-menu.penna-select-menu` (`data-penna="popover"`) of `menu-item` rows, each with a `.penna-select-check`. It sets `role="combobox"`, answers the same keys (Tab also closes), closes on a press outside and fires `change` with `{ index, value }`.
+HTML: `div.penna-select` with `data-options` (a comma list), `data-value` (the picked index), `data-placeholder`, `data-size` (`xsmall` to `touch`), `data-tone="danger"` for an error, `aria-disabled="true"`, and `data-open` (with `data-pinned` to stay open without focus). `select.js` builds `.penna-select-trigger` (`data-penna="field"`, carrying the select's `data-tone`) holding `.penna-select-title` (`data-placeholder` while nothing is picked) and `<i data-icon="chevron-down">`, and the menu `.penna-menu.penna-select-menu` (`data-penna="popover"`) of `menu-item` rows, each with a `.penna-select-check`. It sets `role="combobox"`, answers the same keys (Tab also closes), closes on a press outside and fires `change` with `{ index, value }`.
 
-Status: one gap. There is no error state and no helper text: `Select` takes no tone, natively or in HTML.
+Status: matches.
 
 ### Separator
 
@@ -991,18 +1039,29 @@ Kinds:
 
 Anatomy, continuous:
 
-- Box: `control-md` tall (28, follows density; 44 under a coarse pointer), half the knob inside at each side. The whole box takes the press.
-- Rail: 6 tall, a pill. Up to the value it takes the primary fill, past it the neutral soft paint's pressed fill (`--penna-control`); `.track(colors)` paints a gradient instead, as on the hue slider.
-- Knob: a 16 circle (28 under a coarse pointer) centered on the value, whichever of `bg` and `fg` is lighter (`--penna-knob`), with `shadow-lifted`.
-- Under a coarse pointer, unless `.inline()`: a field showing the value and a 72 wide preview rail (4 tall, 10 knob); a tap opens a bottom sheet titled by the label, with the value in `title` over a full slider.
+- Box: the rung's `control_px` tall (28 at `md`, which follows density; 44 under a coarse pointer at any size), half the knob inside at each side. The whole box takes the press.
+- Rail: a pill, 4 tall at `xs` and `sm` and 6 from `md` up. Up to the value it takes the primary fill, past it the neutral soft paint's pressed fill (`--penna-control`); `.track(colors)` paints a gradient instead, as on the hue slider.
+- Knob: a circle (Sizes; 28 under a coarse pointer) centered on the value, whichever of `bg` and `fg` is lighter (`--penna-knob`), with `shadow-lifted`.
+- Under a coarse pointer, unless `.inline()`: a field at the slider's rung showing the value and a 72 wide preview rail (4 tall, 10 knob); a tap opens a bottom sheet titled by the label, with the value in `title` over a full slider.
 
-Anatomy, stepped (all text `small`, the three parts `space-8` apart):
+Anatomy, stepped (all text `small`, `caption` at `xs` and `sm`; the three parts `space-8` apart):
 
 - Label: before the pills, in the muted ink.
-- Pills: one per step, `space-4` apart, sharing the width, each at most 24 wide. Each is a 6 tall bar in a `control-md` tall hit box. Steps up to the picked one take the primary fill, the rest `--penna-control`.
+- Pills: one per step, `space-4` apart, sharing the width, each at most 24 wide. Each is a bar as thick as the continuous rail (4 at `xs` and `sm`, 6 from `md` up) in a hit box the rung's `control_px` tall. Steps up to the picked one take the primary fill, the rest `--penna-control`.
 - Value: the picked step's name in the ink, in a 52 wide column after the pills.
 
-Sizes: one, `control-md`. There is no size API.
+Sizes: every rung through `.with_size()` (`Sizable`) on both kinds, `md` by default (follows density):
+
+| Size | Box | Rail | Knob |
+|---|---|---|---|
+| `xsmall` | 20 | 4 | 12 |
+| `small` | 24 | 4 | 14 |
+| `medium` (default) | 28 | 6 | 16 |
+| `large` | 32 | 6 | 18 |
+| `xlarge` | 40 | 6 | 22 |
+| `touch` | 44 | 6 | 28 |
+
+Every control in a row has the same size (Rules 6).
 
 States:
 
@@ -1012,6 +1071,7 @@ States:
 | hover | a stepped pill's fill takes its hover step | the continuous slider has none |
 | pressed | the knob follows the pointer | continuous |
 | focused | the focus ring outside the knob or the picked pill's bar, one ring width off when that fill is the ring's color, in the neutral focus ink | from the keyboard only: Tab, or a key that moves it after a press. A press focuses it with no ring |
+| disabled | rail, pills and knob take their paint's disabled step (half strength); the knob keeps its shadow, as the switch's thumb does; a stepped slider's label and value in `fg-faint`; under a coarse pointer the field takes its disabled paint | presses, keys and hover are ignored, and it leaves the focus order |
 
 Both kinds are tab stops. Behavior, continuous: a press anywhere on the box moves the knob there and focuses it, and a drag follows. `on_change` fires on every move, or once on release with `.commit_on_release()`. Left and Down step down, Right and Up step up (a hundredth of the range without `.step()`), Shift moves ten steps, Home and End go to the ends.
 
@@ -1021,9 +1081,9 @@ Content: the label names the setting in sentence case ("Scrollback", "Opacity").
 
 Placement: in a settings row, between its title and its value; a stepped slider fills the row it sits in.
 
-HTML: the stepped slider is `.penna-steps` with `data-label`, `data-steps` (a comma list), `data-value` (the picked index) and `data-focused` to draw focus. `slider.js` builds `.penna-steps-label`, `.penna-steps-pills` of `.penna-step` (`role="button"`, `data-filled`, `data-picked`) and `.penna-steps-value`, sets `role="slider"`, answers the same keys and fires `change` with `{ index, value }`. The ring shows on `:focus-visible` or `data-focused`, which the script sets when a key moves the slider and clears on a press or blur. The continuous slider is `.penna-slider` in `penna.css`: `--penna-value` as a percentage, a `.penna-rail` holding `.penna-fill` and `.penna-knob`, and the same ring on `:focus-visible` or `data-focused`.
+HTML: the stepped slider is `.penna-steps` with `data-label`, `data-steps` (a comma list), `data-value` (the picked index), `data-size` (`xsmall` to `touch`), `aria-disabled="true"`, and `data-focused` to draw focus. `slider.js` builds `.penna-steps-label`, `.penna-steps-pills` of `.penna-step` (`role="button"`, `data-filled`, `data-picked`) and `.penna-steps-value`, sets `role="slider"`, answers the same keys and fires `change` with `{ index, value }`. The continuous slider is `.penna-slider` with `data-min`, `data-max` (0 and 100 when left out), `data-step`, `data-value`, `data-size`, `aria-disabled="true"` and `aria-label` for its name, holding a `.penna-rail` with `.penna-fill` and `.penna-knob`; `slider.js` sets `role="slider"` and `--penna-value` (a percentage), moves the knob on a press and a drag, answers the same keys and fires `change` with `{ value }`. Both draw the ring on `:focus-visible` or `data-focused`, which the script sets when a key moves the slider and clears on a press or blur. A disabled one has no `tabindex` and ignores presses and keys. `slider.css` draws both. The gradient rail of `.track(colors)` has no HTML attribute; the Appearance block's hue slider draws its own.
 
-Status: two gaps. Neither kind has a disabled state or a size API; both draw at `control-md`. The continuous slider's HTML twin is a picture: `.penna-slider` has no script, while the working one lives in the Appearance block as `.appearance-slider`.
+Status: matches.
 
 ### Spinner
 

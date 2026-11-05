@@ -4,7 +4,7 @@ use ala::{
     prelude::FluentBuilder as _,
 };
 
-use crate::{Ground, Sizable, Size};
+use crate::{Ground, Sizable, Size, Tone};
 
 use super::{
     CONTEXT,
@@ -52,6 +52,12 @@ impl<D: SelectDelegate> Select<D> {
     #[must_use]
     pub fn on(mut self, ground: Ground) -> Self {
         self.options.on = Some(ground);
+        self
+    }
+
+    #[must_use]
+    pub fn tone(mut self, tone: Tone) -> Self {
+        self.options.tone = tone;
         self
     }
 

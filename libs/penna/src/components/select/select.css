@@ -85,7 +85,7 @@
 }
 
 .penna-select-trigger > .penna-select-title[data-placeholder] {
-  color: rgb(from var(--penna-muted) r g b / calc(alpha * 0.6));
+  color: color-mix(in oklab, var(--penna-ink) 45%, var(--select-ground, var(--penna-bg)));
 }
 
 .penna-select-trigger > [data-icon] {

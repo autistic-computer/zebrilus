@@ -208,7 +208,7 @@ fn is_content(kind: Kind) -> bool {
 }
 
 fn has_tones(kind: Kind) -> bool {
-    matches!(kind, Kind::Button | Kind::Label)
+    matches!(kind, Kind::Button | Kind::Field | Kind::Label)
 }
 
 fn selector(role: SurfaceRole) -> String {
@@ -426,6 +426,7 @@ fn write_root(css: &mut String, theme: &Theme) {
             length(f32::from(theme.font_size)),
         ),
     ];
+    root.extend(paint_vars(theme));
     root.extend(scale_vars());
     root.extend(syntax_vars(theme));
     if let Some(glass) = theme.glass {
@@ -436,6 +437,21 @@ fn write_root(css: &mut String, theme: &Theme) {
         let _ = writeln!(css, "  {name}: {value};");
     }
     let _ = writeln!(css, "}}");
+}
+
+fn paint_vars(theme: &Theme) -> Vec<(String, String)> {
+    let outline = theme.paint(Tone::Neutral, Emphasis::Outline);
+    let mut vars = vec![
+        ("--penna-outline-hover".to_owned(), color(outline.hover)),
+        ("--penna-outline-pressed".to_owned(), color(outline.active)),
+    ];
+    for (tone, name) in TONES {
+        let solid = theme.paint(tone, Emphasis::Solid);
+        vars.push((format!("--penna-{name}-hover"), color(solid.hover)));
+        vars.push((format!("--penna-{name}-pressed"), color(solid.active)));
+        vars.push((format!("--penna-on-{name}"), color(solid.text)));
+    }
+    vars
 }
 
 fn scale_vars() -> Vec<(String, String)> {

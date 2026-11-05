@@ -4,13 +4,15 @@ use ala::{
     StatefulInteractiveElement as _, Styled as _, Window, div, px,
 };
 use penna::{
-    ActiveTheme as _, Colorize as _, Disableable as _, Icon, IconName, Label, PaintState,
-    Sizable as _, Size, Space, TextStyle,
+    ActiveTheme as _, Colorize as _, Disableable as _, Icon, IconName, IndexPath, Label,
+    PaintState, Sizable as _, Size, Space, TextStyle, Tone,
+    components::field::Field,
     components::input::{
         FieldLook, Input, InputContentType, InputState, NumberInput, TextAlign, field_chrome,
         field_underlay,
     },
     components::kbd::Kbd,
+    components::select::{Select, SelectState},
 };
 
 use super::support::after_first_frame;
@@ -21,7 +23,7 @@ pub const STORY: Story = Story {
     id: "inputs",
     name: "Inputs",
     group: "Kit",
-    summary: "Text fields bound to an InputState: single line, auto-growing multi-line and the stepped number field. Input::tone(Tone::Danger) marks an invalid value; validation itself only rejects edits.",
+    summary: "Text fields bound to an InputState: single line, auto-growing multi-line and the stepped number field, and the Field that frames a control in a form. Input::tone(Tone::Danger) marks an invalid value; validation itself only rejects edits.",
     sections: &[
         Section {
             id: "field-states",
@@ -52,6 +54,12 @@ pub const STORY: Story = Story {
             name: "Field looks",
             summary: "field_chrome(element, look, ground, state, cx) frames a field the app lays out itself: the chat composer and the browser's address bar, resting, hovered and focused. field_underlay(look, inset, cx) is the opaque plate behind a composer whose look draws no glass.",
             build: |_, cx| stateless(field_looks, cx),
+        },
+        Section {
+            id: "fields",
+            name: "Fields",
+            summary: "Field puts a label above a control and help under it, gap-tight apart. An error replaces the help, after a circle-x, while the caller paints the control with tone(Tone::Danger): its edge turns to the danger tone.",
+            build: |window, cx| cx.new(|cx| Fields::new(window, cx)).into(),
         },
         Section {
             id: "number",
@@ -362,6 +370,73 @@ impl Render for MultiLine {
                 Input::new(&self.disabled)
                     .id("multi-line-disabled")
                     .disabled(true),
+            )
+    }
+}
+
+const LANGUAGES: [&str; 5] = ["Rust", "Go", "Zig", "Swift", "OCaml"];
+
+type Languages = Entity<SelectState<Vec<&'static str>>>;
+
+fn languages(picked: Option<usize>, window: &mut Window, cx: &mut App) -> Languages {
+    cx.new(|cx| SelectState::new(LANGUAGES.to_vec(), picked.map(IndexPath::new), window, cx))
+}
+
+struct Fields {
+    host: Entity<InputState>,
+    host_error: Entity<InputState>,
+    language: Languages,
+    language_error: Languages,
+}
+
+impl Fields {
+    fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+        Self {
+            host: field(window, cx, |s| s.default_value("studio")),
+            host_error: field(window, cx, |s| s.default_value("studio mac")),
+            language: languages(Some(0), window, cx),
+            language_error: languages(None, window, cx),
+        }
+    }
+}
+
+impl Render for Fields {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        let host = || {
+            Field::new()
+                .label("Host name")
+                .help("Other computers see this name.")
+        };
+        let language = || {
+            Field::new()
+                .label("Language")
+                .help("Code blocks use its highlighting.")
+        };
+        states()
+            .columns(2)
+            .state(
+                "label and help",
+                host().child(Input::new(&self.host).id("form-host")),
+            )
+            .state(
+                "error",
+                host().error("Use letters, numbers and dashes.").child(
+                    Input::new(&self.host_error)
+                        .id("form-host-error")
+                        .tone(Tone::Danger),
+                ),
+            )
+            .state(
+                "select, help",
+                language().child(Select::new(&self.language)),
+            )
+            .state(
+                "select, error",
+                language().error("Pick a language for code blocks.").child(
+                    Select::new(&self.language_error)
+                        .placeholder("Language")
+                        .tone(Tone::Danger),
+                ),
             )
     }
 }

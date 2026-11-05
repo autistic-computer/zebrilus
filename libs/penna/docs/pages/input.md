@@ -2,10 +2,6 @@
 
 Takes typed text. To pick from a list use a select, for on or off a switch.
 
-```figure uses=notice
-<div class="docs-full penna-notice" data-penna="notice" data-tone="warning"><div class="penna-notice-tone" data-penna="chip" data-tone="warning"><span class="penna-notice-lead"><i data-icon="triangle-alert"></i></span><div class="penna-notice-body"><span class="penna-text penna-notice-title" data-penna-text>Being reworked</span><span class="penna-text penna-notice-detail" data-penna-text>An error only tints the field, with no message, and has no HTML look yet. There is no helper text.</span></div></div></div>
-```
-
 ## Kinds
 
 ```figure uses=input
@@ -67,21 +63,24 @@ Medium is the default and follows density. Same size as the controls beside it.
   <div class="docs-cell" style="width: 192px"><label class="penna-input" data-penna="field"><input value="deploy --target staging" data-selection="9,23" /></label><span class="docs-note">Selection</span></div>
   <div class="docs-cell" style="width: 192px"><label class="penna-input" data-penna="field" aria-disabled="true" data-disabled><input value="~/.config/git/config" disabled /></label><span class="docs-note">Off</span></div>
   <div class="docs-cell" style="width: 192px"><label class="penna-input" data-penna="field"><input value="Resolving host" /><span class="penna-input-suffix"><span class="penna-spinner"><i data-icon="loader"></i></span></span></label><span class="docs-note">Busy</span></div>
+  <div class="docs-cell" style="width: 192px"><label class="penna-input" data-penna="field" data-tone="danger"><input value="studio mac" /></label><span class="docs-note">Error</span></div>
+  <div class="docs-cell" style="width: 192px"><label class="penna-input" data-penna="field" data-tone="danger" data-state="focused"><input value="studio mac" /></label><span class="docs-note">Error, focused</span></div>
 </div>
 ```
 
 - Focused: the edge turns to the ink, the fill stays.
 - Off: faint text, no editing.
 - Busy: a spinner at the end; the text stays editable.
+- Error: the edge turns to danger, at rest and focused. The fill and text stay. Its [Field](field.html) says what is wrong.
 
 ## Labels
 
-A label above names the field. The placeholder only hints, and goes with the first key.
+In a form, a [Field](field.html) puts the label above it. The placeholder only hints, and goes with the first key.
 
-```figure uses=label,input
+```figure uses=field,input
 <div class="docs-dodont">
-  <figure data-verdict="do"><div class="docs-dodont-panel"><i class="docs-mark" data-icon="circle-check"></i><div class="docs-form" data-spacing="grouped" style="width: 200px"><div class="docs-field"><span class="penna-type" data-type="small" data-strong data-penna-text>Host</span><label class="penna-input" data-penna="field"><input placeholder="studio.local" /></label></div></div></div><figcaption>Label above, hint inside</figcaption></figure>
-  <figure data-verdict="dont"><div class="docs-dodont-panel"><i class="docs-mark" data-icon="circle-x"></i><div class="docs-form" data-spacing="grouped" style="width: 200px"><div class="docs-field"><label class="penna-input" data-penna="field"><input placeholder="Host" /></label></div></div></div><figcaption>Don't use the placeholder as the label</figcaption></figure>
+  <figure data-verdict="do"><div class="docs-dodont-panel"><i class="docs-mark" data-icon="circle-check"></i><div class="penna-field" style="width: 200px"><span class="penna-field-label" data-penna-text>Host</span><label class="penna-input" data-penna="field"><input placeholder="studio.local" /></label></div></div><figcaption>Label above, hint inside</figcaption></figure>
+  <figure data-verdict="dont"><div class="docs-dodont-panel"><i class="docs-mark" data-icon="circle-x"></i><div class="penna-field" style="width: 200px"><label class="penna-input" data-penna="field"><input placeholder="Host" /></label></div></div><figcaption>Don't use the placeholder as the label</figcaption></figure>
 </div>
 ```
 
@@ -100,6 +99,7 @@ A label above names the field. The placeholder only hints, and goes with the fir
 | `.set_loading(true, ..)` on the state | `.penna-spinner` in the suffix | Busy |
 | `.content_type(Password)` | `type="password"` | Masked text |
 | `.disabled(true)` | `data-disabled`, `disabled` | Off |
+| `.tone(Tone::Danger)` | `data-tone="danger"` | Error edge |
 | `.appearance(false)` | `data-bare` | No chrome |
 | `.bordered(false)` | `data-borderless` | No edge |
 | `InputEvent::PressEnter` | `keydown` | Enter pressed |

@@ -8,12 +8,13 @@ use ala::{
 };
 
 use crate::{
-    ActiveTheme as _, Emphasis, Ground, Kind, PaintState, Size, Space, StyledExt as _, Surface,
-    SurfaceRole, Tone, components::input::field_layer, foundation::focus::with_focus_ring, h_flex,
-    rems_from_px,
+    ActiveTheme as _, Disableable, Emphasis, Ground, Kind, Layer, PaintState, Sizable, Size, Space,
+    StyledExt as _, Surface, SurfaceRole, Tone, components::input::field_layer,
+    foundation::focus::with_focus_ring, h_flex, rems_from_px,
 };
 
 const SLIDE: Duration = Duration::from_millis(220);
+const DIM: f32 = 0.5;
 
 type SelectHandler = Rc<dyn Fn(usize, &mut Window, &mut App)>;
 
@@ -23,6 +24,8 @@ pub struct SegmentedControl {
     segments: Vec<SharedString>,
     selected: usize,
     on: Option<Ground>,
+    size: Size,
+    disabled: bool,
     on_select: Option<SelectHandler>,
 }
 
@@ -45,6 +48,8 @@ impl SegmentedControl {
             segments: segments.into_iter().map(Into::into).collect(),
             selected: 0,
             on: None,
+            size: Size::Medium,
+            disabled: false,
             on_select: None,
         }
     }
@@ -68,8 +73,30 @@ impl SegmentedControl {
     }
 }
 
+impl Sizable for SegmentedControl {
+    fn with_size(mut self, size: impl Into<Size>) -> Self {
+        self.size = size.into();
+        self
+    }
+}
+
+impl Disableable for SegmentedControl {
+    fn disabled(mut self, disabled: bool) -> Self {
+        self.disabled = disabled;
+        self
+    }
+}
+
 fn lerp(from: Pixels, to: Pixels, delta: f32) -> Pixels {
     from + (to - from) * delta
+}
+
+fn dimmed(mut layer: Layer) -> Layer {
+    layer.fill = layer.fill.opacity(DIM);
+    layer.border = layer.border.opacity(DIM);
+    layer.text = layer.text.opacity(DIM);
+    layer.shadow.clear();
+    layer
 }
 
 impl RenderOnce for SegmentedControl {
@@ -78,16 +105,25 @@ impl RenderOnce for SegmentedControl {
         let layer = cx.theme().layer(track, PaintState::Rest);
         let ground = layer.ground;
         let border = layer.border_width.max(px(1.0));
-        let height = rems_from_px(Size::Medium.control_px()).to_pixels(window.rem_size());
+        let size = self.size;
+        let disabled = self.disabled;
+        let height = rems_from_px(size.control_px()).to_pixels(window.rem_size());
         let inset = Space::S2.rems().to_pixels(window.rem_size());
         let inner = height - inset * 2.0 - border * 2.0;
         let radius = (layer.radius.min(height / 2.0) - border - inset).max(px(0.0));
         let pill = Surface::new(SurfaceRole::QUIET_BUTTON).on(ground);
         let picked = cx.theme().layer(pill, PaintState::Current);
-        let rest = cx.theme().layer(pill, PaintState::Rest).text;
+        let (picked, rest) = if disabled {
+            (
+                dimmed(picked),
+                cx.theme().layer(pill, PaintState::Disabled).text,
+            )
+        } else {
+            (picked, cx.theme().layer(pill, PaintState::Rest).text)
+        };
         let hover = cx.theme().layer(pill, PaintState::Hover).text;
         let coarse = crate::blocks::touch::CoarsePointer::get(cx);
-        let slop = crate::blocks::touch::control_slop(Size::Medium);
+        let slop = crate::blocks::touch::control_slop(size);
         let ring = cx.theme().paint_on(
             self.on.unwrap_or_else(|| cx.theme().ground()),
             Tone::Neutral,
@@ -97,7 +133,8 @@ impl RenderOnce for SegmentedControl {
             .use_keyed_state(self.id.clone(), cx, |_, cx| cx.focus_handle())
             .read(cx)
             .clone();
-        let focused = self.on_select.is_some() && focus.is_focused(window);
+        let on_select = self.on_select.filter(|_| !disabled);
+        let focused = on_select.is_some() && focus.is_focused(window);
 
         let last = self.segments.len().saturating_sub(1);
         let selected = self.selected.min(last);
@@ -139,7 +176,6 @@ impl RenderOnce for SegmentedControl {
         });
 
         let skip = usize::from(pill.is_some());
-        let on_select = self.on_select;
         let measured = state.clone();
         let segments = self
             .segments
@@ -164,12 +200,16 @@ impl RenderOnce for SegmentedControl {
                     .items_center()
                     .justify_center()
                     .h(inner)
-                    .px(Space::S10)
-                    .type_style(Size::Medium.control_text(), cx)
+                    .px(rems_from_px(
+                        size.field_inset().design_px() + Space::S2.design_px(),
+                    ))
+                    .type_style(size.control_text(), cx)
                     .whitespace_nowrap()
                     .map(|segment| {
                         if index == selected {
                             segment.text_color(picked_text)
+                        } else if disabled {
+                            segment.text_color(rest)
                         } else {
                             segment
                                 .text_color(rest)
@@ -195,7 +235,9 @@ impl RenderOnce for SegmentedControl {
         let chrome = field_layer(
             cx.theme(),
             track,
-            if focused {
+            if disabled {
+                PaintState::Disabled
+            } else if focused {
                 PaintState::Focused
             } else {
                 PaintState::Rest
@@ -209,8 +251,11 @@ impl RenderOnce for SegmentedControl {
             .flex_none()
             .p(Space::S2)
             .layer(&chrome)
-            .hover(move |style| crate::foundation::restyle(style, &hover))
+            .when(!disabled, |this| {
+                this.hover(move |style| crate::foundation::restyle(style, &hover))
+            })
             .role(Role::RadioGroup)
+            .aria_disabled(disabled)
             .when_some(on_select, |this, on_select| {
                 this.track_focus(&focus.tab_stop(true))
                     .on_mouse_down(MouseButton::Left, |_, window, _| window.prevent_default())
@@ -266,7 +311,7 @@ mod tests {
 
     use super::*;
 
-    struct Modes(Rc<RefCell<Vec<usize>>>);
+    struct Modes(Rc<RefCell<Vec<usize>>>, bool);
 
     impl Render for Modes {
         fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
@@ -275,6 +320,7 @@ mod tests {
             div().size_full().child(
                 SegmentedControl::new("mode", ["System", "Light", "Dark"])
                     .selected(selected)
+                    .disabled(self.1)
                     .on_select(move |index, _, _| picks.borrow_mut().push(index)),
             )
         }
@@ -286,7 +332,7 @@ mod tests {
         let picks = Rc::new(RefCell::new(Vec::new()));
         let (_, cx) = cx.add_window_view({
             let picks = Rc::clone(&picks);
-            move |_, _| Modes(picks)
+            move |_, _| Modes(picks, false)
         });
         let cx: &mut VisualTestContext = cx;
         let draw = |cx: &mut VisualTestContext| {
@@ -313,5 +359,23 @@ mod tests {
             draw(cx);
         }
         assert_eq!(*picks.borrow(), [0, 1, 2, 0, 1]);
+    }
+
+    #[ala::test]
+    fn a_disabled_control_ignores_clicks_and_keys_and_takes_no_focus(cx: &mut TestAppContext) {
+        cx.update(crate::init);
+        let picks = Rc::new(RefCell::new(Vec::new()));
+        let (_, cx) = cx.add_window_view({
+            let picks = Rc::clone(&picks);
+            move |_, _| Modes(picks, true)
+        });
+        let cx: &mut VisualTestContext = cx;
+        cx.run_until_parked();
+        cx.update(|window, cx| window.draw(cx).clear(cx));
+        cx.simulate_click(point(px(12.), px(14.)), Modifiers::default());
+        cx.update(Window::focus_next);
+        cx.simulate_keystrokes("right end home");
+        assert!(cx.update(|window, cx| window.focused(cx).is_none()));
+        assert_eq!(*picks.borrow(), [0; 0]);
     }
 }

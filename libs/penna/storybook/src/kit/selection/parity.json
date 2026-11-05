@@ -23,6 +23,17 @@
     { "name": "click-pill", "section": "slider", "click": "button:10k" },
     { "name": "key-right", "section": "slider", "key": "ArrowRight" },
     { "name": "key-home", "section": "slider", "key": "Home" },
-    { "name": "hover-focused-pill", "section": "slider-focused", "hover": "button:100k" }
+    { "name": "hover-focused-pill", "section": "slider-focused", "hover": "button:100k" },
+    { "name": "click-xsmall-dark", "section": "segmented-sizes", "click": "button:Dark" },
+    { "name": "click-touch-dark", "section": "segmented-sizes", "click": { "id": "button:Dark", "nth": 6 } },
+    { "name": "click-disabled", "section": "segmented-disabled", "click": "button:Dark", "still": true },
+    { "name": "click-rail", "section": "slider-continuous", "click": { "selector": ".penna-rail" } },
+    { "name": "key-right", "section": "slider-continuous", "key": "ArrowRight" },
+    { "name": "key-end", "section": "slider-continuous", "key": "End" },
+    { "name": "press-rail", "section": "slider-continuous", "press": { "selector": ".penna-rail", "nth": 2 } },
+    { "name": "click-xsmall-pill", "section": "slider-sizes", "click": "button:50k" },
+    { "name": "click-touch-rail", "section": "slider-sizes", "click": { "selector": ".penna-rail", "nth": 6 } },
+    { "name": "click-disabled-rail", "section": "slider-disabled", "click": { "selector": ".penna-rail" }, "still": true },
+    { "name": "click-disabled-pill", "section": "slider-disabled", "click": "button:50k", "still": true }
   ]
 }

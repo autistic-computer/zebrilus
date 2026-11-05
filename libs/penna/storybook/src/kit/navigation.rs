@@ -171,7 +171,10 @@ fn tree_guides(_: &mut Window, cx: &mut App) -> AnyElement {
             "active and focused row: theme.rs",
             tree("tree-theme", Some(4), Some(4), cx),
         )
-        .state("active row: build.log", tree("tree-log", Some(10), None, cx))
+        .state(
+            "active row: build.log",
+            tree("tree-log", Some(10), None, cx),
+        )
         .state("no active row", tree("tree-none", None, None, cx))
         .into_any_element()
 }

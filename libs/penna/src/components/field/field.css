@@ -1,0 +1,50 @@
+.penna-field {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--penna-gap-tight);
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+}
+
+.penna-field-label {
+  position: relative;
+  max-width: 100%;
+  font-size: var(--penna-text-body-size);
+  font-weight: 500;
+  line-height: var(--penna-text-body-line);
+}
+
+.penna-field-help,
+.penna-field-error {
+  position: relative;
+  max-width: 100%;
+  font-size: var(--penna-text-small-size);
+  font-weight: var(--penna-text-small-weight);
+  line-height: var(--penna-text-small-line);
+}
+
+.penna-field-help {
+  top: 0.5px;
+  color: var(--penna-fg-muted);
+}
+
+.penna-field-error {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--penna-space-4);
+  color: var(--penna-danger);
+  --penna-icon-size: 12px;
+}
+
+.penna-field-error > [data-icon] {
+  flex: none;
+  margin-block: calc((var(--penna-text-small-line) - var(--penna-icon-size)) / 2);
+}
+
+.penna-field-error > [data-penna-text] {
+  position: relative;
+  top: 0.5px;
+  min-width: 0;
+}

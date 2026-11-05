@@ -4,6 +4,7 @@ pub mod button;
 pub mod card;
 pub mod check;
 pub mod chip;
+pub mod field;
 pub mod icon;
 pub mod input;
 pub mod kbd;

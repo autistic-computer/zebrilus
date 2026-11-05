@@ -9,7 +9,7 @@ use ala::{
 
 use crate::{
     ActiveTheme as _, Colorize as _, Ground, Icon, IconName, IndexPath, Kind, PaintState,
-    Sizable as _, Size, StyledExt as _, Surface,
+    Sizable as _, Size, StyledExt as _, Surface, Tone,
     blocks::sheet::{
         bottom_sheet, close_sheet, floating_sheet, sheet_close, sheet_inset, sheet_option,
     },
@@ -38,6 +38,7 @@ pub(super) struct SelectOptions {
     pub(super) title: Option<SharedString>,
     pub(super) menu_max_h: Option<Length>,
     pub(super) disabled: bool,
+    pub(super) tone: Tone,
     pub(super) on: Option<Ground>,
 }
 
@@ -293,7 +294,9 @@ impl<D: SelectDelegate> SelectState<D> {
         let open = self.menu.is_some() || self.sheet;
         let disabled = self.options.disabled;
         let size = self.options.size;
-        let surface = Surface::new(Kind::Field.role()).on_maybe(self.options.on);
+        let surface = Surface::new(Kind::Field.role())
+            .tone(self.options.tone)
+            .on_maybe(self.options.on);
         let paint = field_paint_on(surface, cx);
         let state = match (disabled, open || focused) {
             (true, _) => PaintState::Disabled,

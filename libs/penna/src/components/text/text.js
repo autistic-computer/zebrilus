@@ -173,9 +173,11 @@
   function shapeChecks(root = document) {
     const style = getComputedStyle(document.documentElement);
     const fraction = parseFloat(style.getPropertyValue("--penna-corner-fraction")) || 0.45;
-    const radius = (parseFloat(style.getPropertyValue("--penna-radius")) || 0) / 2;
+    const quarter = (parseFloat(style.getPropertyValue("--penna-radius")) || 0) / 4;
     root.querySelectorAll(".penna-md .md-check").forEach((check) => {
-      const cap = Math.min(check.offsetWidth, check.offsetHeight) * fraction;
+      const side = Math.min(check.offsetWidth, check.offsetHeight);
+      const cap = side * fraction;
+      const radius = Math.min(quarter, side / 4);
       if (!cap || radius <= 0) return check.style.removeProperty("--md-check-r");
       check.style.setProperty("--md-check-r", `${(cap * Math.tanh(radius / cap)).toFixed(2)}px`);
     });

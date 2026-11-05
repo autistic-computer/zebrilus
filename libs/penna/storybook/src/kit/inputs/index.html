@@ -9,11 +9,14 @@
     <link rel="stylesheet" href="../../../../src/components/button/button.css" />
     <link rel="stylesheet" href="../../../../src/components/kbd/kbd.css" />
     <link rel="stylesheet" href="../../../../src/components/input/input.css" />
+    <link rel="stylesheet" href="../../../../src/components/select/select.css" />
+    <link rel="stylesheet" href="../../../../src/components/field/field.css" />
     <link rel="stylesheet" href="page.css" />
     <script src="../../../../web/kit.js" data-tokens="../../../../web/tokens/"></script>
     <script src="../../../../src/components/button/button.js" defer></script>
     <script src="../../../../src/components/kbd/kbd.js" defer></script>
     <script src="../../../../src/components/input/input.js" defer></script>
+    <script src="../../../../src/components/select/select.js" defer></script>
     <script src="../../../../web/story.js" defer></script>
   </head>
   <body>
@@ -158,6 +161,43 @@ The status bar shows the session name.</textarea></label>
         <div class="story-state">
           <div class="story-label">address</div>
           <div class="story-row"><div class="input-frame"><span class="input-underlay" data-penna="field.address"></span><div class="input-chrome" data-penna="field.address" data-id="field-address-rest"><span class="penna-text" data-penna-text>Rest</span></div></div><div class="input-frame"><span class="input-underlay" data-penna="field.address"></span><div class="input-chrome" data-penna="field.address" data-id="field-address-hover" data-state="hover"><span class="penna-text" data-penna-text>Hover</span></div></div><div class="input-frame"><span class="input-underlay" data-penna="field.address"></span><div class="input-chrome" data-penna="field.address" data-id="field-address-focused" data-state="focused"><span class="penna-text" data-penna-text>Focused</span></div></div></div>
+        </div>
+      </div>
+    </section>
+
+    <section data-section="fields">
+      <div class="story-states" data-columns style="--columns: 2">
+        <div class="story-state">
+          <div class="story-label">label and help</div>
+          <div class="penna-field">
+            <span class="penna-field-label" data-penna-text>Host name</span>
+            <label class="penna-input" data-penna="field" data-id="form-host"><input value="studio" /></label>
+            <span class="penna-field-help" data-penna-text>Other computers see this name.</span>
+          </div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">error</div>
+          <div class="penna-field">
+            <span class="penna-field-label" data-penna-text>Host name</span>
+            <label class="penna-input" data-penna="field" data-id="form-host-error" data-tone="danger"><input value="studio mac" /></label>
+            <div class="penna-field-error"><i data-icon="circle-x"></i><span data-penna-text>Use letters, numbers and dashes.</span></div>
+          </div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">select, help</div>
+          <div class="penna-field">
+            <span class="penna-field-label" data-penna-text>Language</span>
+            <div class="penna-select" data-options="Rust, Go, Zig, Swift, OCaml" data-value="0"></div>
+            <span class="penna-field-help" data-penna-text>Code blocks use its highlighting.</span>
+          </div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">select, error</div>
+          <div class="penna-field">
+            <span class="penna-field-label" data-penna-text>Language</span>
+            <div class="penna-select" data-options="Rust, Go, Zig, Swift, OCaml" data-placeholder="Language" data-tone="danger"></div>
+            <div class="penna-field-error"><i data-icon="circle-x"></i><span data-penna-text>Pick a language for code blocks.</span></div>
+          </div>
         </div>
       </div>
     </section>

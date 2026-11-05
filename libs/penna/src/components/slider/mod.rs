@@ -9,8 +9,8 @@ use ala::{
 };
 
 use crate::{
-    ActiveTheme as _, AuthoredElement as _, Colorize as _, Emphasis, Kind, Paint, PaintState, Size,
-    Smoothing, StyledExt as _, Surface, TextStyle, Tone,
+    ActiveTheme as _, AuthoredElement as _, Colorize as _, Disableable, Emphasis, Kind, Paint,
+    PaintState, Sizable, Size, Smoothing, StyledExt as _, Surface, TextStyle, Tone,
     blocks::sheet::{bottom_sheet, close_sheet, floating_sheet, sheet_close, sheet_inset},
     blocks::touch::CoarsePointer,
     components::input::{field_chrome_on, field_text},
@@ -24,13 +24,32 @@ type ValueHandler = Rc<dyn Fn(f32, &mut Window, &mut App)>;
 type ReleaseHandler = Rc<dyn Fn(&mut Window, &mut App)>;
 type Display = Rc<dyn Fn(f32) -> SharedString>;
 
-pub(crate) const THUMB: f32 = 16.0;
-const TOUCH_THUMB: f32 = 28.0;
-const TRACK: f32 = 6.0;
-const TOUCH_HEIGHT: f32 = 44.0;
 const PREVIEW_WIDTH: f32 = 72.0;
 const PREVIEW_TRACK: f32 = 4.0;
 const PREVIEW_THUMB: f32 = 10.0;
+const DIM: f32 = 0.5;
+
+#[derive(Clone, Copy)]
+struct Metrics {
+    size: Size,
+    rail: f32,
+    knob: f32,
+}
+
+impl Metrics {
+    fn new(size: Size, coarse: bool) -> Self {
+        let size = if coarse { Size::Touch } else { size };
+        let (rail, knob) = match size.rung() {
+            Size::XSmall => (4., 12.),
+            Size::Small => (4., 14.),
+            Size::Large => (6., 18.),
+            Size::XLarge => (6., 22.),
+            Size::Touch => (6., 28.),
+            _ => (6., 16.),
+        };
+        Self { size, rail, knob }
+    }
+}
 
 fn focus_ring<T: ParentElement + Styled>(this: T, ringed: bool, window: &Window, cx: &App) -> T {
     let paint = cx.theme().paint(Tone::Neutral, Emphasis::Ghost);
@@ -45,11 +64,11 @@ fn focus_ring<T: ParentElement + Styled>(this: T, ringed: bool, window: &Window,
 }
 
 pub(crate) fn thumb(cx: &App) -> f32 {
-    if CoarsePointer::get(cx) {
-        TOUCH_THUMB
-    } else {
-        THUMB
-    }
+    Metrics::new(Size::Medium, CoarsePointer::get(cx)).knob
+}
+
+fn dim(color: Hsla, disabled: bool) -> Hsla {
+    if disabled { color.opacity(DIM) } else { color }
 }
 
 #[derive(IntoElement)]
@@ -58,6 +77,8 @@ pub struct DiscreteSlider {
     labels: Vec<SharedString>,
     selected: usize,
     label: SharedString,
+    size: Size,
+    disabled: bool,
     on_change: ChangeHandler,
 }
 
@@ -74,8 +95,24 @@ impl DiscreteSlider {
             labels,
             selected,
             label: label.into(),
+            size: Size::Medium,
+            disabled: false,
             on_change: Rc::new(on_change),
         }
+    }
+}
+
+impl Sizable for DiscreteSlider {
+    fn with_size(mut self, size: impl Into<Size>) -> Self {
+        self.size = size.into();
+        self
+    }
+}
+
+impl Disableable for DiscreteSlider {
+    fn disabled(mut self, disabled: bool) -> Self {
+        self.disabled = disabled;
+        self
     }
 }
 
@@ -97,17 +134,28 @@ impl RenderOnce for DiscreteSlider {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let count = self.labels.len();
         let selected = self.selected.min(count.saturating_sub(1));
+        let disabled = self.disabled;
         let state = window.use_keyed_state(self.id.clone(), cx, |_, cx| StepFocus {
             focus: cx.focus_handle().tab_stop(true),
             pointer: false,
         });
         let focus = state.read(cx).focus.clone();
-        let focused = focus.is_focused(window);
+        let focused = !disabled && focus.is_focused(window);
         if !focused && state.read(cx).pointer {
             state.update(cx, |steps, _| steps.pointer = false);
         }
         let ringed = focused && !state.read(cx).pointer;
         let foreground = cx.theme().foreground;
+        let (label_color, value_color) = if disabled {
+            (foreground.faint(), foreground.faint())
+        } else {
+            (foreground.muted(), foreground)
+        };
+        let rail = Metrics::new(self.size, false).rail;
+        let text = match self.size.rung() {
+            Size::XSmall | Size::Small => TextStyle::Caption,
+            _ => TextStyle::Small,
+        };
         let filled = cx.theme().paint(Tone::Primary, Emphasis::Solid);
         let track = cx.theme().paint(Tone::Neutral, Emphasis::Soft);
         let value = self.labels.get(selected).cloned().unwrap_or_default();
@@ -138,65 +186,67 @@ impl RenderOnce for DiscreteSlider {
                     .aria_label(label.clone())
                     .flex_1()
                     .min_w_0()
-                    .h(Size::Medium.control_h())
-                    .cursor_pointer()
+                    .h(self.size.control_h())
                     .tooltip(move |window, cx| Tooltip::new(tooltip.clone()).build(window, cx))
                     .child(focus_ring(
                         div()
                             .w_full()
-                            .h(px(6.0))
+                            .h(px(rail))
                             .rounded_full()
-                            .bg(fill)
-                            .group_hover(group, move |this| this.bg(hover)),
+                            .bg(dim(fill, disabled))
+                            .when(!disabled, |bar| {
+                                bar.group_hover(group, move |this| this.bg(hover))
+                            }),
                         ringed && index == selected,
                         window,
                         cx,
                     ))
-                    .on_click(move |_, window, cx| {
-                        focus.focus(window, cx);
-                        change(index, window, cx);
+                    .when(!disabled, |pill| {
+                        pill.cursor_pointer().on_click(move |_, window, cx| {
+                            focus.focus(window, cx);
+                            change(index, window, cx);
+                        })
                     }),
             );
         }
         let pressed = state.clone();
+        let on_change = self.on_change;
         h_flex()
             .author_id(self.id)
             .role(Role::Slider)
             .aria_label(self.label.clone())
             .aria_value(value.clone())
-            .track_focus(&focus)
+            .aria_disabled(disabled)
             .w_full()
             .gap(Space::S8)
-            .type_style(TextStyle::Small, cx)
-            .on_any_mouse_down(move |_, _, cx| {
-                pressed.update(cx, |steps, cx| steps.set_pointer(true, cx));
+            .type_style(text, cx)
+            .when(!disabled, |this| {
+                this.track_focus(&focus)
+                    .on_any_mouse_down(move |_, _, cx| {
+                        pressed.update(cx, |steps, cx| steps.set_pointer(true, cx));
+                    })
+                    .on_key_down(move |event, window, cx| {
+                        let next = match event.keystroke.key.as_str() {
+                            "left" | "down" => selected.saturating_sub(1),
+                            "right" | "up" => (selected + 1).min(count.saturating_sub(1)),
+                            "home" => 0,
+                            "end" => count.saturating_sub(1),
+                            _ => return,
+                        };
+                        cx.stop_propagation();
+                        state.update(cx, |steps, cx| steps.set_pointer(false, cx));
+                        if count > 0 && next != selected {
+                            on_change(next, window, cx);
+                        }
+                    })
             })
-            .on_key_down(move |event, window, cx| {
-                let next = match event.keystroke.key.as_str() {
-                    "left" | "down" => selected.saturating_sub(1),
-                    "right" | "up" => (selected + 1).min(count.saturating_sub(1)),
-                    "home" => 0,
-                    "end" => count.saturating_sub(1),
-                    _ => return,
-                };
-                cx.stop_propagation();
-                state.update(cx, |steps, cx| steps.set_pointer(false, cx));
-                if count > 0 && next != selected {
-                    (self.on_change)(next, window, cx);
-                }
-            })
-            .child(
-                div()
-                    .flex_none()
-                    .text_color(foreground.muted())
-                    .child(self.label),
-            )
+            .child(div().flex_none().text_color(label_color).child(self.label))
             .child(pills)
             .child(
                 div()
                     .flex_none()
                     .w(px(52.0))
-                    .text_color(foreground)
+                    .text_color(value_color)
                     .child(value),
             )
     }
@@ -218,6 +268,8 @@ pub struct Slider {
     inline: bool,
     commit_on_release: bool,
     focus: Option<FocusHandle>,
+    size: Size,
+    disabled: bool,
     on_change: ValueHandler,
 }
 
@@ -243,6 +295,8 @@ impl Slider {
             inline: false,
             commit_on_release: false,
             focus: None,
+            size: Size::Medium,
+            disabled: false,
             on_change: Rc::new(on_change),
         }
     }
@@ -299,6 +353,20 @@ impl Slider {
             Some(display) => display(value),
             None => self.scale.read(value),
         }
+    }
+}
+
+impl Sizable for Slider {
+    fn with_size(mut self, size: impl Into<Size>) -> Self {
+        self.size = size.into();
+        self
+    }
+}
+
+impl Disableable for Slider {
+    fn disabled(mut self, disabled: bool) -> Self {
+        self.disabled = disabled;
+        self
     }
 }
 
@@ -413,15 +481,22 @@ impl Slider {
         cx: &App,
     ) -> Div {
         let theme = cx.theme();
-        let filled = theme.paint(Tone::Primary, Emphasis::Solid);
-        let rest = theme
-            .paint(Tone::Neutral, Emphasis::Soft)
-            .fill_at(PaintState::Active);
-        let knob = if oklab_lightness(theme.background) >= oklab_lightness(theme.foreground) {
-            theme.background
-        } else {
-            theme.foreground
-        };
+        let disabled = self.disabled;
+        let filled = dim(theme.paint(Tone::Primary, Emphasis::Solid).fill, disabled);
+        let rest = dim(
+            theme
+                .paint(Tone::Neutral, Emphasis::Soft)
+                .fill_at(PaintState::Active),
+            disabled,
+        );
+        let knob = dim(
+            if oklab_lightness(theme.background) >= oklab_lightness(theme.foreground) {
+                theme.background
+            } else {
+                theme.foreground
+            },
+            disabled,
+        );
         let bar = if self.track.len() > 1 {
             let last = self.track.len() - 2;
             div()
@@ -436,8 +511,8 @@ impl Slider {
                         .when(index == last, Styled::rounded_r_full)
                         .bg(linear_gradient(
                             90.0,
-                            linear_color_stop(pair[0], 0.0),
-                            linear_color_stop(pair[1], 1.0),
+                            linear_color_stop(dim(pair[0], disabled), 0.0),
+                            linear_color_stop(dim(pair[1], disabled), 1.0),
                         ))
                 }))
         } else {
@@ -446,7 +521,7 @@ impl Slider {
                     .h_full()
                     .w(relative(fraction))
                     .rounded_full()
-                    .bg(filled.fill),
+                    .bg(filled),
             )
         };
         let dot = focus_ring(
@@ -470,9 +545,11 @@ impl Slider {
         let value = self.scale.snap(drag.read(cx).live.unwrap_or(self.value));
         let fraction = self.scale.fraction(value);
         let shown = self.read(value);
-        let open = drag.read(cx).sheet;
-        let size = Size::Medium;
-        let state = if open {
+        let open = drag.read(cx).sheet && !self.disabled;
+        let size = self.size;
+        let state = if self.disabled {
+            PaintState::Disabled
+        } else if open {
             PaintState::Focused
         } else {
             PaintState::Rest
@@ -486,12 +563,13 @@ impl Slider {
                     .role(Role::Slider)
                     .aria_label(self.label.clone())
                     .aria_value(shown.clone())
+                    .aria_disabled(self.disabled)
                     .w_full()
                     .h(size.control_h())
                     .px(size.input_px())
                     .gap(Space::S10)
                     .justify_between()
-                    .cursor_pointer(),
+                    .when(!self.disabled, Styled::cursor_pointer),
                 size,
                 cx,
             ),
@@ -509,9 +587,11 @@ impl Slider {
                 .px(px(PREVIEW_THUMB / 2.0))
                 .child(self.rail(fraction, PREVIEW_TRACK, PREVIEW_THUMB, false, window, cx)),
         )
-        .on_click(move |_, window, cx| {
-            opener_focus.focus(window, cx);
-            opener.update(cx, |drag, cx| drag.set_sheet(true, cx));
+        .when(!self.disabled, |trigger| {
+            trigger.on_click(move |_, window, cx| {
+                opener_focus.focus(window, cx);
+                opener.update(cx, |drag, cx| drag.set_sheet(true, cx));
+            })
         });
         let sheet = open.then(|| self.sheet(drag, shown, window, cx));
         div().w_full().child(trigger).children(sheet)
@@ -555,12 +635,20 @@ impl Slider {
 
     fn slider(self, drag: Entity<Drag>, window: &Window, cx: &App) -> Stateful<Div> {
         let scale = self.scale;
-        let thumb = thumb(cx);
-        let coarse = CoarsePointer::get(cx);
+        let metrics = Metrics::new(self.size, CoarsePointer::get(cx));
+        let thumb = metrics.knob;
+        let disabled = self.disabled;
         let focus = self.focus(&drag, cx);
-        let ringed = focus.is_focused(window) && !drag.read(cx).pointer;
+        let ringed = !disabled && focus.is_focused(window) && !drag.read(cx).pointer;
         let value = scale.snap(drag.read(cx).live.unwrap_or(self.value));
-        let rail = self.rail(scale.fraction(value), TRACK, thumb, ringed, window, cx);
+        let rail = self.rail(
+            scale.fraction(value),
+            metrics.rail,
+            thumb,
+            ringed,
+            window,
+            cx,
+        );
         let on_change = self.on_change;
         let deferred = self.commit_on_release;
         let committed = scale.snap(self.value);
@@ -671,41 +759,43 @@ impl Slider {
             .role(Role::Slider)
             .aria_label(self.label)
             .aria_value(SharedString::from(format!("{value}")))
-            .track_focus(&focus)
+            .aria_disabled(disabled)
             .relative()
             .flex()
             .items_center()
             .w_full()
-            .h(Size::Medium.control_h())
-            .when(coarse, |this| this.h(px(TOUCH_HEIGHT)))
+            .h(metrics.size.control_h())
             .px(px(thumb / 2.0))
-            .cursor_pointer()
-            .on_key_down(move |event, window, cx| {
-                let steps = if event.keystroke.modifiers.shift {
-                    10.0
-                } else {
-                    1.0
-                };
-                let next = match event.keystroke.key.as_str() {
-                    "left" | "down" => scale.nudge(value, -steps),
-                    "right" | "up" => scale.nudge(value, steps),
-                    "home" => scale.snap(scale.min),
-                    "end" => scale.snap(scale.max),
-                    _ => return,
-                };
-                cx.stop_propagation();
-                key_drag.update(cx, |drag, cx| drag.set_pointer(false, cx));
-                key_emit(next, window, cx);
-                key_release(window, cx);
-            })
-            .on_mouse_down(MouseButton::Left, move |event, window, cx| {
-                focus.focus(window, cx);
-                drag.update(cx, |drag, cx| drag.set_pointer(true, cx));
-                let bounds = drag.read(cx).bounds;
-                emit(scale.at(event.position.x, bounds, thumb), window, cx);
-            })
             .child(rail)
-            .child(listeners)
+            .when(!disabled, |this| {
+                this.track_focus(&focus)
+                    .cursor_pointer()
+                    .on_key_down(move |event, window, cx| {
+                        let steps = if event.keystroke.modifiers.shift {
+                            10.0
+                        } else {
+                            1.0
+                        };
+                        let next = match event.keystroke.key.as_str() {
+                            "left" | "down" => scale.nudge(value, -steps),
+                            "right" | "up" => scale.nudge(value, steps),
+                            "home" => scale.snap(scale.min),
+                            "end" => scale.snap(scale.max),
+                            _ => return,
+                        };
+                        cx.stop_propagation();
+                        key_drag.update(cx, |drag, cx| drag.set_pointer(false, cx));
+                        key_emit(next, window, cx);
+                        key_release(window, cx);
+                    })
+                    .on_mouse_down(MouseButton::Left, move |event, window, cx| {
+                        focus.focus(window, cx);
+                        drag.update(cx, |drag, cx| drag.set_pointer(true, cx));
+                        let bounds = drag.read(cx).bounds;
+                        emit(scale.at(event.position.x, bounds, thumb), window, cx);
+                    })
+                    .child(listeners)
+            })
     }
 }
 
@@ -960,6 +1050,54 @@ mod tests {
         assert_eq!(rings(cx).len(), 1);
     }
 
+    struct DisabledSliders(Rc<RefCell<Vec<f32>>>);
+
+    impl Render for DisabledSliders {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            let (moved, stepped) = (Rc::clone(&self.0), Rc::clone(&self.0));
+            div()
+                .w(px(216.0))
+                .child(
+                    Slider::new("hue", "Hue", 0.0, 0.0..=360.0, move |next, _, _| {
+                        moved.borrow_mut().push(next);
+                    })
+                    .disabled(true),
+                )
+                .child(
+                    DiscreteSlider::new(
+                        "steps",
+                        "Size",
+                        vec!["S".into(), "M".into(), "L".into()],
+                        0,
+                        move |index, _, _| stepped.borrow_mut().push(index as f32),
+                    )
+                    .disabled(true),
+                )
+        }
+    }
+
+    #[ala::test]
+    fn disabled_sliders_ignore_presses_and_keys_and_take_no_focus(cx: &mut TestAppContext) {
+        cx.update(crate::init);
+        let changes = Rc::new(RefCell::new(Vec::new()));
+        let (_, cx) = cx.add_window_view({
+            let changes = Rc::clone(&changes);
+            move |_, _| DisabledSliders(changes)
+        });
+        let cx: &mut VisualTestContext = cx;
+        cx.run_until_parked();
+        cx.update(|window, cx| window.draw(cx).clear(cx));
+        let pill = cx
+            .debug_bounds("steps:pill-2")
+            .expect("the last pill is drawn");
+        cx.simulate_click(point(px(108.0), px(14.0)), Modifiers::default());
+        cx.simulate_click(pill.center(), Modifiers::default());
+        cx.update(Window::focus_next);
+        cx.simulate_keystrokes("right end");
+        assert!(cx.update(|window, cx| window.focused(cx).is_none()));
+        assert_eq!(*changes.borrow(), [0.0; 0]);
+    }
+
     #[test]
     fn values_snap_to_their_step_inside_the_range() {
         let scale = Scale {
@@ -975,8 +1113,17 @@ mod tests {
             ala::point(px(10.0), px(0.0)),
             ala::size(px(216.0), px(24.0)),
         );
-        assert_eq!(scale.at(px(18.0), bounds, THUMB), 0.0);
-        assert_eq!(scale.at(px(118.0), bounds, THUMB), 180.0);
-        assert_eq!(scale.at(px(400.0), bounds, THUMB), 360.0);
+        assert_eq!(
+            scale.at(px(18.0), bounds, Metrics::new(Size::Medium, false).knob),
+            0.0
+        );
+        assert_eq!(
+            scale.at(px(118.0), bounds, Metrics::new(Size::Medium, false).knob),
+            180.0
+        );
+        assert_eq!(
+            scale.at(px(400.0), bounds, Metrics::new(Size::Medium, false).knob),
+            360.0
+        );
     }
 }

@@ -34,7 +34,8 @@ too. Point and selector steps score the whole section.
 Each story loads fresh. A step that leaves its canvas section
 changed reloads both pages before the next step and the next theme and mode;
 "keep": true runs a step on that state instead (key steps keep by default,
-"keep": false starts one fresh).
+"keep": false starts one fresh). "still": true expects the step to change
+nothing on either page, such as a click on a disabled control.
 
 The DOM page loads with ?bare&flat&motion=0 and prefers-reduced-motion: reduce.
 
@@ -329,8 +330,9 @@ async function tab(cdp) {
         await send("Input.dispatchKeyEvent", { type: "keyUp", ...base });
     };
     const shot = async (clip) => {
-        await front();
-        const result = await send("Page.captureScreenshot", { format: "png", clip: { ...clip, scale: 1 }, captureBeyondViewport: true });
+        const [left, top, width, height] = await evaluate("[scrollX, scrollY, innerWidth, innerHeight]");
+        const inView = clip.x >= left && clip.y >= top && clip.x + clip.width <= left + width && clip.y + clip.height <= top + height;
+        const result = await send("Page.captureScreenshot", { format: "png", clip: { ...clip, scale: 1 }, captureBeyondViewport: !inView });
         return `data:image/png;base64,${result.data}`;
     };
     return { send, evaluate, call, media, navigate, mouse, key, shot };
@@ -707,13 +709,14 @@ async function compare(lab, canvas, dom, threshold, folder, name, step) {
     let change = null;
     if (step) {
         const union = pixels.canvasChanged + pixels.domChanged - pixels.bothChanged;
-        change = union ? pixels.bothChanged / union : 0;
+        change = step.still ? Number(!union) : union ? pixels.bothChanged / union : 0;
         parts = [...parts, change];
-        if (!pixels.canvasChanged) notes.push("canvas did not change: the step tests nothing");
+        if (step.still && union) notes.push("a still step changed the section");
+        if (!step.still && !pixels.canvasChanged) notes.push("canvas did not change: the step tests nothing");
         if (target && !canvasNode) notes.push(`canvas has no node ${describeTarget(target)}`);
     }
     if (dom.forbidden) notes.push(`forbidden: ${dom.forbidden.join(", ")}`);
-    const fails = dom.forbidden || (step && !pixels.canvasChanged);
+    const fails = dom.forbidden || (step && !step.still && !pixels.canvasChanged);
     const mean = parts.reduce((product, value) => product * value, 1) ** (1 / parts.length);
     const score = fails ? 0 : round(100 * mean * sizeFactor, 2);
     return {
@@ -760,7 +763,7 @@ async function runSteps(spec, pages, only, threshold, folder, canvasSet, reload)
         await act(pages.dom, domHit);
         await sleep(step.wait ?? 250);
         const domAfter = (await domSections(pages.dom, widths, section))[0];
-        const result = await compare(pages.lab, canvasAfter, domAfter, threshold, folder, name, { target, canvasBefore: canvasBefore.png, domBefore: domBefore?.png ?? null });
+        const result = await compare(pages.lab, canvasAfter, domAfter, threshold, folder, name, { target, still: step.still, canvasBefore: canvasBefore.png, domBefore: domBefore?.png ?? null });
         if (target && !domHit) result.note = `${result.note ? `${result.note}; ` : ""}dom has no ${target.selector ?? `[data-id=${describeTarget(target)}]`}`;
         results.push(result);
         for (const [page, point] of [[pages.canvas, canvasHit], [pages.dom, domHit]]) {

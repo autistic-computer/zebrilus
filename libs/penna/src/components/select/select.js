@@ -10,6 +10,26 @@ function picked(select) {
   return Number.isInteger(index) && index >= 0 && index < options(select).length ? index : -1;
 }
 
+const probe = document.createElement("i");
+probe.style.display = "none";
+
+function rgba(value) {
+  if (!probe.isConnected) document.body.append(probe);
+  probe.style.color = "";
+  probe.style.color = value.trim() || "transparent";
+  const parts = getComputedStyle(probe).color.match(/[\d.]+/g)?.map(Number) ?? [0, 0, 0, 0];
+  const [r, g, b, a = 1] = parts.length > 4 ? parts.slice(1) : parts;
+  return { r, g, b, a };
+}
+
+function ground(button) {
+  const style = getComputedStyle(button);
+  const base = rgba(style.getPropertyValue("--penna-bg"));
+  const fill = rgba(style.getPropertyValue("--penna-fill"));
+  const mix = (channel) => Math.round(base[channel] * (1 - fill.a) + fill[channel] * fill.a);
+  button.style.setProperty("--select-ground", `rgb(${mix("r")} ${mix("g")} ${mix("b")})`);
+}
+
 function trigger(select) {
   let button = select.querySelector(":scope > .penna-select-trigger");
   if (!button) {
@@ -34,9 +54,12 @@ function paintTrigger(select) {
   const names = options(select);
   title.textContent = index >= 0 ? names[index] : select.dataset.placeholder || "Select";
   title.toggleAttribute("data-placeholder", index < 0);
+  if (select.dataset.tone) button.dataset.tone = select.dataset.tone;
+  else delete button.dataset.tone;
   if (select.getAttribute("aria-disabled") === "true") button.dataset.state = "disabled";
   else if (select.hasAttribute("data-open") || select.matches(":focus-visible")) button.dataset.state = "focused";
   else button.removeAttribute("data-state");
+  ground(button);
   pennaKit.ceilText(button);
 }
 
@@ -197,4 +220,5 @@ document.addEventListener("mousedown", (event) => {
 });
 
 settleSelects();
+document.addEventListener("load", (event) => event.target.id === "penna-tokens" && requestAnimationFrame(() => settleSelects()), true);
 })();

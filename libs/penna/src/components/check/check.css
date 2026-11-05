@@ -1,0 +1,182 @@
+.penna-check {
+  --penna-check-side: 16px;
+  --penna-check-on: var(--penna-primary);
+  --penna-check-on-hover: var(--penna-primary-hover);
+  --penna-check-on-pressed: var(--penna-primary-pressed);
+  --penna-check-ink: var(--penna-on-accent);
+  --penna-check-edge: rgb(from var(--penna-fg) r g b / 0.3);
+  --penna-check-hover: var(--penna-outline-hover);
+  --penna-check-pressed: var(--penna-outline-pressed);
+  --penna-check-ring: var(--penna-focus-neutral);
+  --penna-check-k: superellipse(var(--penna-window-k, 1));
+  --penna-icon-size: 11px;
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  box-sizing: border-box;
+  width: var(--penna-check-side);
+  height: var(--penna-check-side);
+  border: 1px solid var(--penna-check-edge);
+  border-radius: var(--penna-check-r, min(var(--penna-radius) / 4, var(--penna-check-side) / 4));
+  corner-shape: var(--penna-check-k);
+  background: transparent;
+  color: var(--penna-check-ink);
+}
+
+.penna-check:is([data-size="xsmall"], [data-size="small"]) {
+  --penna-check-side: 14px;
+  --penna-icon-size: 10px;
+}
+
+.penna-check[data-tone] {
+  --penna-check-on: var(--penna-check-tone);
+  --penna-check-edge: rgb(from var(--penna-check-tone) r g b / 0.55);
+  --penna-check-hover: rgb(from var(--penna-check-tone) r g b / 0.12);
+  --penna-check-pressed: rgb(from var(--penna-check-tone) r g b / 0.18);
+  --penna-check-ring: rgb(from var(--penna-check-tone) r g b / 0.8);
+}
+
+.penna-check[data-tone="danger"] {
+  --penna-check-tone: var(--penna-danger);
+  --penna-check-on-hover: var(--penna-danger-hover);
+  --penna-check-on-pressed: var(--penna-danger-pressed);
+  --penna-check-ink: var(--penna-on-danger);
+}
+
+.penna-check[data-tone="warning"] {
+  --penna-check-tone: var(--penna-warning);
+  --penna-check-on-hover: var(--penna-warning-hover);
+  --penna-check-on-pressed: var(--penna-warning-pressed);
+  --penna-check-ink: var(--penna-on-warning);
+}
+
+.penna-check[data-tone="success"] {
+  --penna-check-tone: var(--penna-success);
+  --penna-check-on-hover: var(--penna-success-hover);
+  --penna-check-on-pressed: var(--penna-success-pressed);
+  --penna-check-ink: var(--penna-on-success);
+}
+
+.penna-check:is([data-on], [data-mixed]) {
+  --penna-check-hover: var(--penna-check-on-hover);
+  --penna-check-pressed: var(--penna-check-on-pressed);
+  border-color: transparent;
+  background: var(--penna-check-on);
+}
+
+.penna-check[data-kind="radio"] {
+  --penna-check-k: round;
+  border-radius: 9999px;
+}
+
+.penna-check[data-kind="radio"][data-on]::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.penna-check[data-kind="radio"]:is([data-size="xsmall"], [data-size="small"])[data-on]::before {
+  width: 5px;
+  height: 5px;
+}
+
+.penna-check[data-disabled] {
+  border-color: rgb(from var(--penna-check-edge) r g b / calc(alpha * 0.5));
+}
+
+.penna-check[data-disabled]:is([data-on], [data-mixed]) {
+  border-color: transparent;
+  background: rgb(from var(--penna-check-on) r g b / calc(alpha * 0.5));
+  color: rgb(from var(--penna-check-ink) r g b / calc(alpha * 0.5));
+}
+
+:is(.penna-checkbox, .penna-radio) {
+  position: relative;
+  display: flex;
+  flex: none;
+  align-items: flex-start;
+  gap: var(--penna-space-6);
+  min-width: 0;
+  font-size: var(--penna-text-body-size);
+  font-weight: var(--penna-text-body-weight);
+  line-height: var(--penna-text-body-line);
+  color: inherit;
+  outline: none;
+  cursor: default;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+:is(.penna-checkbox, .penna-radio) > .penna-check {
+  margin-top: calc((1lh - var(--penna-check-side)) / 2);
+}
+
+:is(.penna-checkbox, .penna-radio) > .penna-label {
+  min-width: 0;
+}
+
+.penna-checkbox[data-size="xsmall"],
+.penna-radio-group[data-size="xsmall"] > .penna-radio {
+  gap: var(--penna-space-4);
+  font-size: var(--penna-text-caption-size);
+  font-weight: var(--penna-text-caption-weight);
+  line-height: var(--penna-text-caption-line);
+}
+
+.penna-checkbox[data-size="small"],
+.penna-radio-group[data-size="small"] > .penna-radio {
+  gap: var(--penna-space-4);
+  font-size: var(--penna-text-small-size);
+  font-weight: var(--penna-text-small-weight);
+  line-height: var(--penna-text-small-line);
+}
+
+.penna-checkbox[aria-disabled="true"],
+.penna-radio-group[aria-disabled="true"] > .penna-radio {
+  color: var(--penna-fg-faint);
+}
+
+.penna-radio-group {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--penna-gap-related);
+  outline: none;
+}
+
+.penna-radio-group[data-orientation="horizontal"] {
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: var(--penna-gap-group);
+}
+
+@media not (pointer: coarse) {
+  :is(.penna-checkbox, .penna-radio):hover > .penna-check:not([data-disabled]) {
+    background: var(--penna-check-hover);
+  }
+
+  :is(.penna-checkbox, .penna-radio):active > .penna-check:not([data-disabled]) {
+    background: var(--penna-check-pressed);
+  }
+}
+
+@media (pointer: coarse) {
+  :is(.penna-checkbox, .penna-radio)::before {
+    content: "";
+    position: absolute;
+    inset: calc((1lh - 44px) / 2) -14px;
+  }
+}
+
+:is(.penna-checkbox:is(:focus-visible, [data-state~="focused"]), .penna-radio-group:is(:focus-visible, [data-state~="focused"]) > .penna-radio[data-ringed]) > .penna-check::after {
+  content: "";
+  position: absolute;
+  inset: var(--penna-ring-inset, -2.5px);
+  border: 1.5px solid var(--penna-check-ring);
+  border-radius: var(--penna-ring-r, 9999px);
+  corner-shape: var(--penna-check-k);
+  pointer-events: none;
+}

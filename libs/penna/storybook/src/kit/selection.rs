@@ -6,7 +6,7 @@ use penna::{
     Disableable as _, IndexPath, Sizable as _, Size,
     components::segmented::SegmentedControl,
     components::select::{Select, SelectState},
-    components::slider::DiscreteSlider,
+    components::slider::{DiscreteSlider, Slider},
     components::switch::Switch,
     h_flex,
 };
@@ -18,7 +18,7 @@ pub const STORY: Story = Story {
     id: "choices",
     name: "Choices",
     group: "Kit",
-    summary: "Controls that pick a value: the dropdown Select, the SegmentedControl, the Switch and the DiscreteSlider.",
+    summary: "Controls that pick a value: the dropdown Select, the SegmentedControl, the Switch, the Slider and the DiscreteSlider.",
     sections: &[
         Section {
             id: "select",
@@ -45,6 +45,18 @@ pub const STORY: Story = Story {
             build: |window, cx| FocusedSegmented::view(window, cx),
         },
         Section {
+            id: "segmented-sizes",
+            name: "Segmented control, sizes",
+            summary: "Every rung of the control ladder. The track takes the rung's height, the labels its text style and each segment its field inset plus space-2 at both sides.",
+            build: |window, cx| SegmentedSizes::view(window, cx),
+        },
+        Section {
+            id: "segmented-disabled",
+            name: "Segmented control, disabled",
+            summary: "The track takes the field's disabled paint, the pill and the labels their disabled step. A press or a key changes nothing, and it leaves the focus order.",
+            build: |window, cx| DisabledSegmented::view(window, cx),
+        },
+        Section {
             id: "switch",
             name: "Switch",
             summary: "Off, on, small and disabled, then every other size on the ladder. A press flips the enabled ones; the thumb slides between states and holds still with motion off.",
@@ -67,6 +79,24 @@ pub const STORY: Story = Story {
             name: "Discrete slider, focused",
             summary: "Tab focuses the slider: a ring outside the picked pill, and the arrow keys step it. A press focuses it too, with no ring until a key moves it.",
             build: |window, cx| FocusedSlider::view(window, cx),
+        },
+        Section {
+            id: "slider-continuous",
+            name: "Slider",
+            summary: "A value on a range. A press moves the knob there and focuses it with no ring, a drag follows, and the arrow keys step it with the ring showing.",
+            build: |window, cx| ContinuousSliders::view(window, cx),
+        },
+        Section {
+            id: "slider-sizes",
+            name: "Sliders, sizes",
+            summary: "Both kinds at every rung. The box and each pill's hit box take the rung's height, the rail is 4 at xs and sm and 6 from md up, the knob grows with the rung, and stepped text is caption at xs and sm.",
+            build: |window, cx| SliderSizes::view(window, cx),
+        },
+        Section {
+            id: "slider-disabled",
+            name: "Sliders, disabled",
+            summary: "Rail, pills and knob at half strength, the stepped label and value faint. A press or a key changes nothing, and neither is in the focus order.",
+            build: |window, cx| DisabledSliders::view(window, cx),
         },
     ],
 };
@@ -219,6 +249,87 @@ impl Render for FocusedSegmented {
                     .on_select(move |index, window, cx| pick(&index, window, cx)),
             ),
         )
+    }
+}
+
+const SIZES: [(&str, Size); 6] = [
+    ("xsmall", Size::XSmall),
+    ("small", Size::Small),
+    ("medium", Size::Medium),
+    ("large", Size::Large),
+    ("xlarge", Size::XLarge),
+    ("touch", Size::Touch),
+];
+
+struct SegmentedSizes {
+    picked: [usize; 6],
+}
+
+impl SegmentedSizes {
+    fn view(_: &mut Window, cx: &mut App) -> AnyView {
+        cx.new(|_| Self { picked: [1; 6] }).into()
+    }
+}
+
+impl Render for SegmentedSizes {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        SIZES
+            .into_iter()
+            .enumerate()
+            .fold(states().columns(3), |states, (at, (name, size))| {
+                let pick = cx.listener(move |this, index: &usize, _, cx| {
+                    this.picked[at] = *index;
+                    cx.notify();
+                });
+                states.state(
+                    name,
+                    row().child(
+                        SegmentedControl::new(
+                            SharedString::from(format!("segmented-{name}")),
+                            labels(&["System", "Light", "Dark"]),
+                        )
+                        .selected(self.picked[at])
+                        .with_size(size)
+                        .on_select(move |index, window, cx| pick(&index, window, cx)),
+                    ),
+                )
+            })
+    }
+}
+
+struct DisabledSegmented {
+    picked: [usize; 2],
+}
+
+impl DisabledSegmented {
+    fn view(_: &mut Window, cx: &mut App) -> AnyView {
+        cx.new(|_| Self { picked: [1, 0] }).into()
+    }
+}
+
+impl Render for DisabledSegmented {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let control = |id: &'static str, segments: &[&'static str], at: usize| {
+            let pick = cx.listener(move |this, index: &usize, _, cx| {
+                this.picked[at] = *index;
+                cx.notify();
+            });
+            row().child(
+                SegmentedControl::new(id, labels(segments))
+                    .selected(self.picked[at])
+                    .disabled(true)
+                    .on_select(move |index, window, cx| pick(&index, window, cx)),
+            )
+        };
+        states()
+            .state(
+                "disabled",
+                control("segmented-disabled", &["System", "Light", "Dark"], 0),
+            )
+            .state(
+                "disabled, first picked",
+                control("segmented-disabled-first", &["Tiled", "Floating"], 1),
+            )
     }
 }
 
@@ -413,5 +524,157 @@ impl Render for FocusedSlider {
                 move |index, window, cx| pick(&index, window, cx),
             )),
         )
+    }
+}
+
+struct ContinuousSliders {
+    values: [f32; 2],
+}
+
+impl ContinuousSliders {
+    fn view(_: &mut Window, cx: &mut App) -> AnyView {
+        cx.new(|_| Self {
+            values: [40.0, 0.0],
+        })
+        .into()
+    }
+}
+
+impl Render for ContinuousSliders {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let slider = |id: &'static str, label: &'static str, step: f32, at: usize| {
+            let set = cx.listener(move |this, value: &f32, _, cx| {
+                this.values[at] = *value;
+                cx.notify();
+            });
+            Slider::new(
+                id,
+                label,
+                self.values[at],
+                0.0..=100.0,
+                move |value, window, cx| set(&value, window, cx),
+            )
+            .step(step)
+        };
+        states()
+            .columns(2)
+            .state(
+                "press, drag or use the keys",
+                slider("slider-volume", "Volume", 1.0, 0),
+            )
+            .state(
+                "steps of 25",
+                slider("slider-quarters", "Quarters", 25.0, 1),
+            )
+    }
+}
+
+struct SliderSizes {
+    values: [f32; 6],
+    picked: [usize; 6],
+}
+
+impl SliderSizes {
+    fn view(_: &mut Window, cx: &mut App) -> AnyView {
+        cx.new(|_| Self {
+            values: [40.0; 6],
+            picked: [2; 6],
+        })
+        .into()
+    }
+}
+
+impl Render for SliderSizes {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        SIZES
+            .into_iter()
+            .enumerate()
+            .fold(states().columns(2), |states, (at, (name, size))| {
+                let set = cx.listener(move |this, value: &f32, _, cx| {
+                    this.values[at] = *value;
+                    cx.notify();
+                });
+                let pick = cx.listener(move |this, index: &usize, _, cx| {
+                    this.picked[at] = *index;
+                    cx.notify();
+                });
+                states
+                    .state(
+                        name,
+                        Slider::new(
+                            SharedString::from(format!("slider-{name}")),
+                            "Volume",
+                            self.values[at],
+                            0.0..=100.0,
+                            move |value, window, cx| set(&value, window, cx),
+                        )
+                        .step(1.0)
+                        .with_size(size),
+                    )
+                    .state(
+                        format!("{name}, stepped"),
+                        DiscreteSlider::new(
+                            SharedString::from(format!("steps-{name}")),
+                            "Scrollback",
+                            labels(&SCROLLBACK),
+                            self.picked[at],
+                            move |index, window, cx| pick(&index, window, cx),
+                        )
+                        .with_size(size),
+                    )
+            })
+    }
+}
+
+struct DisabledSliders {
+    value: f32,
+    picked: usize,
+}
+
+impl DisabledSliders {
+    fn view(_: &mut Window, cx: &mut App) -> AnyView {
+        cx.new(|_| Self {
+            value: 40.0,
+            picked: 2,
+        })
+        .into()
+    }
+}
+
+impl Render for DisabledSliders {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let set = cx.listener(|this, value: &f32, _, cx| {
+            this.value = *value;
+            cx.notify();
+        });
+        let pick = cx.listener(|this, index: &usize, _, cx| {
+            this.picked = *index;
+            cx.notify();
+        });
+        states()
+            .columns(2)
+            .state(
+                "continuous",
+                Slider::new(
+                    "slider-disabled",
+                    "Volume",
+                    self.value,
+                    0.0..=100.0,
+                    move |value, window, cx| set(&value, window, cx),
+                )
+                .step(1.0)
+                .disabled(true),
+            )
+            .state(
+                "stepped",
+                DiscreteSlider::new(
+                    "steps-disabled",
+                    "Scrollback",
+                    labels(&SCROLLBACK),
+                    self.picked,
+                    move |index, window, cx| pick(&index, window, cx),
+                )
+                .disabled(true),
+            )
     }
 }

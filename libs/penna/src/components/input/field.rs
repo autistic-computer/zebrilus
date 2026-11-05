@@ -117,7 +117,7 @@ pub(crate) fn field_paint_on(surface: impl Into<Surface>, cx: &App) -> Paint {
     let theme = cx.theme();
     theme.paint_on(
         surface.ground.unwrap_or_else(|| theme.ground()),
-        surface.tone,
+        Tone::Neutral,
         theme.field_emphasis(surface.role),
     )
 }
@@ -153,8 +153,21 @@ pub(crate) fn field_layer(
     state: PaintState,
     focus_bordered: bool,
 ) -> Layer {
+    let tone = surface.tone;
+    let surface = surface.tone(Tone::Neutral);
+    let ground = surface.ground.unwrap_or_else(|| theme.ground());
     let mut layer = theme.layer(surface, state);
     layer.border_width = layer.border_width.max(px(1.0));
+    if tone != Tone::Neutral {
+        let edge = match state {
+            PaintState::Focused if !focus_bordered => PaintState::Rest,
+            state => state,
+        };
+        layer.border = theme
+            .paint_on(ground, tone, Emphasis::Outline)
+            .border_at(edge);
+        return layer;
+    }
     let style = theme.style(surface.role);
     let outlined = theme.outlines_edges() || theme.outlined() && style.outline;
     if state == PaintState::Focused
@@ -163,13 +176,7 @@ pub(crate) fn field_layer(
         && outlined
         && layer.glass.is_none()
     {
-        layer.border = theme
-            .paint_on(
-                surface.ground.unwrap_or_else(|| theme.ground()),
-                surface.tone,
-                Emphasis::Ghost,
-            )
-            .focus;
+        layer.border = theme.paint_on(ground, Tone::Neutral, Emphasis::Ghost).focus;
     }
     layer
 }
@@ -550,6 +557,29 @@ mod tests {
         let focused = field_layer(&theme, bare, PaintState::Focused, true);
         assert_eq!(focused.border_width, rest.border_width);
         assert!(focused.border.a > 0.0);
+    }
+
+    #[test]
+    fn a_toned_field_paints_only_its_edge_even_where_fields_have_none() {
+        let mut theme = Theme::from(&*ThemeColor::light());
+        theme.picked_outlines = true;
+        theme
+            .styles
+            .insert("field".into(), StylePatch::EMPTY.outline(false));
+        let field = Surface::new(Kind::Field.role());
+        let danger = theme.paint(Tone::Danger, Emphasis::Outline);
+        for (state, edge) in [
+            (PaintState::Rest, danger.border),
+            (PaintState::Hover, danger.border),
+            (PaintState::Focused, danger.focus),
+        ] {
+            let plain = field_layer(&theme, field, state, true);
+            let toned = field_layer(&theme, field.tone(Tone::Danger), state, true);
+            assert_eq!(toned.fill, plain.fill);
+            assert_eq!(toned.text, plain.text);
+            assert_eq!(plain.border.a, 0.0);
+            assert_eq!(toned.border, edge);
+        }
     }
 
     #[test]

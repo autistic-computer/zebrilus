@@ -38,8 +38,21 @@ function shapeRing(control) {
   control.style.setProperty("--penna-ring-r", `${ring}px`);
 }
 
+function disabled(control) {
+  return control.getAttribute("aria-disabled") === "true";
+}
+
+function syncDisabled(control) {
+  const off = disabled(control);
+  const segments = control.querySelector(".penna-segments");
+  if (off) segments?.setAttribute("aria-disabled", "true");
+  else segments?.removeAttribute("aria-disabled");
+  if (off) control.removeAttribute("tabindex");
+  else if (!control.hasAttribute("tabindex")) control.tabIndex = 0;
+}
+
 function pick(control, index) {
-  if (index === picked(control)) return;
+  if (disabled(control) || index === picked(control)) return;
   control.dataset.value = String(index);
   placePill(control);
   control.dispatchEvent(new CustomEvent("change", { detail: { index } }));
@@ -49,12 +62,11 @@ function wireSegmented(control) {
   if (control.pennaSegmented) return;
   control.pennaSegmented = true;
   control.setAttribute("role", "radiogroup");
-  if (!control.hasAttribute("tabindex")) control.tabIndex = 0;
   control.addEventListener("mousedown", (event) => {
     if (event.button === 0) event.preventDefault();
   });
   control.addEventListener("keydown", (event) => {
-    if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+    if (disabled(control) || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
     const last = control.querySelectorAll(".penna-segment").length - 1;
     const at = picked(control);
     const next = event.key === "Home" ? 0 : event.key === "End" ? last : event.key in KEYS ? at + KEYS[event.key] : null;
@@ -71,6 +83,7 @@ function settleSegmented() {
   document.querySelectorAll(".penna-segmented").forEach((control) => {
     control.toggleAttribute("data-still", true);
     wireSegmented(control);
+    syncDisabled(control);
     pennaKit.ceilText(control);
     placePill(control);
     shapeRing(control);

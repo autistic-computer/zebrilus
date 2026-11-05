@@ -2,10 +2,6 @@
 
 Picks one value from a list that opens under it. For a few short options in view use a segmented control.
 
-```figure uses=notice
-<div class="docs-full penna-notice" data-penna="notice" data-tone="warning"><div class="penna-notice-tone" data-penna="chip" data-tone="warning"><span class="penna-notice-lead"><i data-icon="triangle-alert"></i></span><div class="penna-notice-body"><span class="penna-text penna-notice-title" data-penna-text>Being reworked</span><span class="penna-text penna-notice-detail" data-penna-text>There is no error state or helper text yet.</span></div></div></div>
-```
-
 ## Anatomy
 
 ```figure uses=select
@@ -46,12 +42,14 @@ Medium is the default and follows density. Same size as the controls beside it.
 <div class="docs-show" data-gap="wide">
   <div class="docs-cell"><div class="penna-select" data-options="Rust, Go, Zig, Swift, OCaml" data-value="0" style="width: 160px"></div><span class="docs-note">Rest</span></div>
   <div class="docs-cell"><div class="penna-select" data-options="Rust, Go, Zig, Swift, OCaml" data-value="2" aria-disabled="true" style="width: 160px"></div><span class="docs-note">Off</span></div>
+  <div class="docs-cell"><div class="penna-select" data-options="Rust, Go, Zig, Swift, OCaml" data-placeholder="Language" data-tone="danger" style="width: 160px"></div><span class="docs-note">Error</span></div>
 </div>
 ```
 
 - Hover: the fill steps up.
 - Open: the focus edge, with the menu under it.
 - Off: faint, leaves the keyboard path, never opens.
+- Error: the edge turns to danger, like a field. Its [Field](field.html) says what is wrong.
 
 ## Keys
 
@@ -76,6 +74,7 @@ Two options read better side by side. Keep the select for longer lists.
 | `.placeholder(text)` | `data-placeholder` | Shown with nothing picked |
 | `.xsmall()` … `.touch()` | `data-size` | Size; medium by default |
 | `.disabled(true)` | `aria-disabled="true"` | Off |
+| `.tone(Tone::Danger)` | `data-tone="danger"` | Error edge |
 | `.w(width)` | `style="width"` | Fixed width |
 | `.menu_max_h(height)` | | Menu height |
 | `.empty(builder)` | | Empty list |

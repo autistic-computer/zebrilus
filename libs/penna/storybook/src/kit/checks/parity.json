@@ -1,0 +1,24 @@
+{
+  "story": "checks",
+  "page": "index.html",
+  "steps": [
+    { "name": "hover-off", "section": "checkbox", "hover": "checkbox-off" },
+    { "name": "hover-on", "section": "checkbox", "hover": "checkbox-on" },
+    { "name": "hover-error", "section": "checkbox", "hover": "checkbox-error-off" },
+    { "name": "press-off", "section": "checkbox", "press": "checkbox-off" },
+    { "name": "press-on", "section": "checkbox", "press": "checkbox-on" },
+    { "name": "click-off", "section": "checkbox", "click": "checkbox-off" },
+    { "name": "click-mixed", "section": "checkbox", "click": "checkbox-mixed" },
+    { "name": "click-focused", "section": "checkbox-focused", "click": "checkbox-focused" },
+    { "name": "key-space", "section": "checkbox-focused", "key": " " },
+    { "name": "key-enter", "section": "checkbox-focused", "key": "Enter" },
+    { "name": "hover-radio", "section": "radio", "hover": "radio-start-1" },
+    { "name": "press-radio", "section": "radio", "press": "radio-start-2" },
+    { "name": "click-radio", "section": "radio", "click": "radio-none-1" },
+    { "name": "click-focused", "section": "radio-focused", "click": "radio-focused-1" },
+    { "name": "key-down", "section": "radio-focused", "key": "ArrowDown" },
+    { "name": "key-home", "section": "radio-focused", "key": "Home" },
+    { "name": "key-end", "section": "radio-focused", "key": "End" },
+    { "name": "key-up", "section": "radio-focused", "key": "ArrowUp" }
+  ]
+}

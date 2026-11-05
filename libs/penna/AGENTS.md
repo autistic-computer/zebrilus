@@ -29,7 +29,7 @@ and rule (space, type, sizes, color, layout) and the order of work bringing penn
 - `blocks/<name>/`: a piece of UI that owns the layout and state of several components.
   When a piece owns a layout of other penna components, put it here. Appearance is a block.
 
-Components: badge, bar, button, card, check, chip, icon, input, kbd, label, list, menu,
+Components: badge, bar, button, card, check, chip, field, icon, input, kbd, label, list, menu,
 panel, plate (crate-private), popover, row, scroll, segmented, select, separator, slider,
 spinner, switch, tab, text, tile, tooltip, tree, well.
 
@@ -112,7 +112,7 @@ How parity drives the pages:
 - The DOM page loads with `?theme=<t>&mode=<m>&bare&flat&motion=0` and `prefers-reduced-motion: reduce`
   emulated, so `kit.js` skips the glass lens (an `feImage`, still forbidden otherwise) and motion is off
   through the media query. Leave `--penna-glass` on; pages need no motion switch of their own.
-- A step in `parity.json` is `{ "name", "section", "hover" | "press" | "click" | "key", "wait", "keep" }`.
+- A step in `parity.json` is `{ "name", "section", "hover" | "press" | "click" | "key", "wait", "keep", "still" }`.
   `hover`, `press` and `click` take an id, `{ "id": "penna-number-decrement", "nth": 3 }` for the nth node
   sharing an id (from 1, in tree order on the canvas and document order in the DOM),
   `{ "at": [x, y] }` for a point in CSS px from the section's top-left corner on both sides, or
@@ -124,8 +124,10 @@ How parity drives the pages:
   leaves its canvas section changed (an open menu, a picked value, a focus ring), both pages reload
   before the next step and the next theme and mode, so no step has to undo itself or another.
   `"keep": true` runs a step on the previous step's state instead; key steps keep by default
-  (`"keep": false` starts one fresh). Steps that leave nothing behind keep the fast path: one load
-  per story, knobs switched in place. The line after each story counts story loads.
+  (`"keep": false` starts one fresh). `"still": true` expects a step to change nothing on either
+  page (a click on a disabled control) and scores it 0 if either does. Steps that leave nothing
+  behind keep the fast path: one load per story, knobs switched in place. The line after each
+  story counts story loads.
 - `--timeout` is per story (default 15 minutes); Ctrl-C and `kill` close Chrome and the servers.
 
 `storybook/src/kit/buttons/` and `src/components/button/` are the templates to copy. What it learned about matching ala in the DOM:

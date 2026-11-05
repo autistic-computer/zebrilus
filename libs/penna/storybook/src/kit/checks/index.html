@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Checks</title>
+    <link rel="stylesheet" href="../../../../web/penna.css" />
+    <link rel="stylesheet" href="../../../../web/story.css" />
+    <link rel="stylesheet" href="../../../../src/components/check/check.css" />
+    <link rel="stylesheet" href="page.css" />
+    <script src="../../../../web/kit.js" data-tokens="../../../../web/tokens/"></script>
+    <script src="../../../../web/story.js" defer></script>
+    <script src="../../../../src/components/check/check.js" defer></script>
+    <script src="page.js" defer></script>
+  </head>
+  <body>
+    <section data-section="checkbox">
+      <div class="story-states" data-columns="3">
+        <div class="story-state">
+          <div class="story-label">off</div>
+          <label class="penna-checkbox" data-id="checkbox-off" aria-checked="false"><span class="penna-check"></span><span class="penna-label" data-penna-text>Restore sessions</span></label>
+        </div>
+        <div class="story-state">
+          <div class="story-label">on</div>
+          <label class="penna-checkbox" data-id="checkbox-on" aria-checked="true"><span class="penna-check"></span><span class="penna-label" data-penna-text>Restore sessions</span></label>
+        </div>
+        <div class="story-state">
+          <div class="story-label">mixed</div>
+          <label class="penna-checkbox" data-id="checkbox-mixed" aria-checked="mixed"><span class="penna-check"></span><span class="penna-label" data-penna-text>All panes</span></label>
+        </div>
+        <div class="story-state">
+          <div class="story-label">disabled</div>
+          <div class="story-row"><label class="penna-checkbox" data-id="checkbox-disabled-off" aria-checked="false" aria-disabled="true"><span class="penna-check"></span><span class="penna-label" data-penna-text>Sync</span></label><label class="penna-checkbox" data-id="checkbox-disabled-on" aria-checked="true" aria-disabled="true"><span class="penna-check"></span><span class="penna-label" data-penna-text>Sync</span></label></div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">error</div>
+          <div class="story-row"><label class="penna-checkbox" data-id="checkbox-error-off" aria-checked="false" data-tone="danger"><span class="penna-check"></span><span class="penna-label" data-penna-text>Accept the terms</span></label><label class="penna-checkbox" data-id="checkbox-error-on" aria-checked="true" data-tone="danger"><span class="penna-check"></span><span class="penna-label" data-penna-text>Accept the terms</span></label></div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">long label wraps</div>
+          <div class="checks-narrow"><label class="penna-checkbox" data-id="checkbox-wrap" aria-checked="false"><span class="penna-check"></span><span class="penna-label" data-penna-text>Reopen every pane where it was when the window closed</span></label></div>
+        </div>
+      </div>
+    </section>
+    <section data-section="checkbox-sizes">
+      <div class="story-states" data-columns style="--columns: 4">
+        <div class="story-state">
+          <div class="story-label">xsmall</div>
+          <label class="penna-checkbox" data-id="checkbox-xsmall" aria-checked="true" data-size="xsmall"><span class="penna-check"></span><span class="penna-label" data-penna-text>Restore sessions</span></label>
+        </div>
+        <div class="story-state">
+          <div class="story-label">small</div>
+          <label class="penna-checkbox" data-id="checkbox-small" aria-checked="true" data-size="small"><span class="penna-check"></span><span class="penna-label" data-penna-text>Restore sessions</span></label>
+        </div>
+        <div class="story-state">
+          <div class="story-label">medium</div>
+          <label class="penna-checkbox" data-id="checkbox-medium" aria-checked="true"><span class="penna-check"></span><span class="penna-label" data-penna-text>Restore sessions</span></label>
+        </div>
+        <div class="story-state">
+          <div class="story-label">large draws like medium</div>
+          <label class="penna-checkbox" data-id="checkbox-large" aria-checked="true" data-size="large"><span class="penna-check"></span><span class="penna-label" data-penna-text>Restore sessions</span></label>
+        </div>
+      </div>
+    </section>
+    <section data-section="checkbox-focused">
+      <div class="story-states">
+        <div class="story-state">
+          <div class="story-label">focused, resting</div>
+          <div class="story-row"><label class="penna-checkbox" data-id="checkbox-focused" aria-checked="false" data-state="focused"><span class="penna-check"></span><span class="penna-label" data-penna-text>Restore sessions</span></label><label class="penna-checkbox" data-id="checkbox-resting" aria-checked="false"><span class="penna-check"></span><span class="penna-label" data-penna-text>Share clipboard</span></label></div>
+        </div>
+      </div>
+    </section>
+    <section data-section="radio">
+      <div class="story-states" data-columns="3">
+        <div class="story-state">
+          <div class="story-label">vertical</div>
+          <div class="penna-radio-group" data-id="radio-start" data-value="0">
+              <label class="penna-radio" data-id="radio-start-0"><span class="penna-check" data-kind="radio"></span><span class="penna-label" data-penna-text>Last session</span></label>
+              <label class="penna-radio" data-id="radio-start-1"><span class="penna-check" data-kind="radio"></span><span class="penna-label" data-penna-text>Home folder</span></label>
+              <label class="penna-radio" data-id="radio-start-2"><span class="penna-check" data-kind="radio"></span><span class="penna-label" data-penna-text>Empty window</span></label>
+            </div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">horizontal</div>
+          <div class="penna-radio-group" data-id="radio-layout" data-value="1" data-orientation="horizontal">
+              <label class="penna-radio" data-id="radio-layout-0"><span class="penna-check" data-kind="radio"></span><span class="penna-label" data-penna-text>Tiled</span></label>
+              <label class="penna-radio" data-id="radio-layout-1"><span class="penna-check" data-kind="radio"></span><span class="penna-label" data-penna-text>Floating</span></label>
+              <label class="penna-radio" data-id="radio-layout-2"><span class="penna-check" data-kind="radio"></span><span class="penna-label" data-penna-text>Stacked</span></label>
+            </div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">none picked</div>
+          <div class="penna-radio-group" data-id="radio-none">
+              <label class="penna-radio" data-id="radio-none-0"><span class="penna-check" data-kind="radio"></span><span class="penna-label" data-penna-text>Last session</span></label>
+              <label class="penna-radio" data-id="radio-none-1"><span class="penna-check" data-kind="radio"></span><span class="penna-label" data-penna-text>Home folder</span></label>
+              <label class="penna-radio" data-id="radio-none-2"><span class="penna-check" data-kind="radio"></span><span class="penna-label" data-penna-text>Empty window</span></label>
+            </div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">disabled</div>
+          <div class="penna-radio-group" data-id="radio-disabled" data-value="0" aria-disabled="true">
+              <label class="penna-radio" data-id="radio-disabled-0"><span class="penna-check" data-kind="radio"></span><span class="penna-label" data-penna-text>Last session</span></label>
+              <label class="penna-radio" data-id="radio-disabled-1"><span class="penna-check" data-kind="radio"></span><span class="penna-label" data-penna-text>Home folder</span></label>
+              <label class="penna-radio" data-id="radio-disabled-2"><span class="penna-check" data-kind="radio"></span><span class="penna-label" data-penna-text>Empty window</span></label>
+            </div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">error</div>
+          <div class="penna-radio-group" data-id="radio-error" data-value="1" data-tone="danger">
+              <label class="penna-radio" data-id="radio-error-0"><span class="penna-check" data-kind="radio"></span><span class="penna-label" data-penna-text>Last session</span></label>
+              <label class="penna-radio" data-id="radio-error-1"><span class="penna-check" data-kind="radio"></span><span class="penna-label" data-penna-text>Home folder</span></label>
+              <label class="penna-radio" data-id="radio-error-2"><span class="penna-check" data-kind="radio"></span><span class="penna-label" data-penna-text>Empty window</span></label>
+            </div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">small</div>
+          <div class="penna-radio-group" data-id="radio-small" data-value="0" data-size="small">
+              <label class="penna-radio" data-id="radio-small-0"><span class="penna-check" data-kind="radio"></span><span class="penna-label" data-penna-text>Last session</span></label>
+              <label class="penna-radio" data-id="radio-small-1"><span class="penna-check" data-kind="radio"></span><span class="penna-label" data-penna-text>Home folder</span></label>
+              <label class="penna-radio" data-id="radio-small-2"><span class="penna-check" data-kind="radio"></span><span class="penna-label" data-penna-text>Empty window</span></label>
+            </div>
+        </div>
+      </div>
+    </section>
+    <section data-section="radio-focused">
+      <div class="story-states">
+        <div class="story-state">
+          <div class="story-label">focused, none picked</div>
+          <div class="penna-radio-group" data-id="radio-focused" data-state="focused">
+              <label class="penna-radio" data-id="radio-focused-0"><span class="penna-check" data-kind="radio"></span><span class="penna-label" data-penna-text>Last session</span></label>
+              <label class="penna-radio" data-id="radio-focused-1"><span class="penna-check" data-kind="radio"></span><span class="penna-label" data-penna-text>Home folder</span></label>
+              <label class="penna-radio" data-id="radio-focused-2"><span class="penna-check" data-kind="radio"></span><span class="penna-label" data-penna-text>Empty window</span></label>
+            </div>
+        </div>
+      </div>
+    </section>
+    <section data-section="mark">
+      <div class="story-states" data-columns="3">
+        <div class="story-state">
+          <div class="story-label">checkbox: off, on, mixed</div>
+          <div class="story-row"><span class="penna-check"></span><span class="penna-check" data-on><i data-icon="check"></i></span><span class="penna-check" data-mixed><i data-icon="minus"></i></span></div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">radio: off, on</div>
+          <div class="story-row"><span class="penna-check" data-kind="radio"></span><span class="penna-check" data-kind="radio" data-on></span></div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">small</div>
+          <div class="story-row"><span class="penna-check" data-size="small" data-on><i data-icon="check"></i></span><span class="penna-check" data-kind="radio" data-size="small" data-on></span></div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">disabled</div>
+          <div class="story-row"><span class="penna-check" data-disabled></span><span class="penna-check" data-on data-disabled><i data-icon="check"></i></span><span class="penna-check" data-kind="radio" data-on data-disabled></span></div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">danger</div>
+          <div class="story-row"><span class="penna-check" data-tone="danger"></span><span class="penna-check" data-tone="danger" data-on><i data-icon="check"></i></span><span class="penna-check" data-kind="radio" data-tone="danger" data-on></span></div>
+        </div>
+      </div>
+    </section>
+  </body>
+</html>
