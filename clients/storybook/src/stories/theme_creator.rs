@@ -46,7 +46,7 @@ use zz_ui::{
     shell::{
         app_shell_surface, app_workspace_surface, empty_workspace, empty_workspace_action,
         empty_workspace_caption, empty_workspace_connect, empty_workspace_hint,
-        empty_workspace_keys,
+        empty_workspace_keys, shell_ground,
     },
     terminal::terminal_find_bar,
 };
@@ -316,7 +316,7 @@ impl Flat {
             .framed(cx)
             .child(app_shell_surface(
                 "showcase-flat-shell",
-                cx.theme().background,
+                shell_ground(cx.theme().background, gaps, cx),
                 self.flat.clone(),
                 None,
                 app_workspace_surface(

@@ -186,7 +186,7 @@ impl RenderOnce for PanesPreview {
             div().absolute(),
             cx,
         );
-        super::settings_preview(backdrop, cx)
+        super::settings_preview(crate::shell::shell_ground(backdrop, self.gaps, cx), cx)
             .id("settings-panes-preview")
             .w_full()
             .h(px(height))

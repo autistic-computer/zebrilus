@@ -12,6 +12,21 @@ use ala::{
     prelude::FluentBuilder as _, px,
 };
 
+#[must_use]
+pub fn shell_ground(window: ala::Hsla, gaps: bool, cx: &App) -> ala::Hsla {
+    if gaps {
+        crate::navigation::workspace_sidebar_fade(
+            Ground {
+                fill: window,
+                ..cx.theme().ground()
+            },
+            cx,
+        )
+    } else {
+        window
+    }
+}
+
 pub fn titlebar_over_panes(titlebar: impl IntoElement, gap: Pixels) -> ala::Div {
     div().flex_none().w_full().mb(-gap).child(titlebar)
 }

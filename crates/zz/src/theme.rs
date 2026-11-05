@@ -35,6 +35,14 @@ pub(crate) fn chrome_blur(cx: &App) -> bool {
         && crate::window::background::compositor_supports_blur(cx)
 }
 
+pub fn shell_background(cx: &App) -> Hsla {
+    zz_ui::shell::shell_ground(
+        chrome_background(cx),
+        config::pane_margin(cx) > ala::px(0.0),
+        cx,
+    )
+}
+
 pub fn chrome_background(cx: &App) -> Hsla {
     let opacity = config::resolved_config(cx).window_background_opacity.value;
     zz_ui::shell::chrome_background(

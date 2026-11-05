@@ -55,12 +55,7 @@ impl PaneLook {
     }
 
     pub fn frame(self, theme: &Theme, plane: Hsla, active: bool) -> GlassMaterial {
-        let tint = if plane.a < 1.0 {
-            plane.alpha(0.0)
-        } else {
-            plane
-        };
-        let tint = self.focus(theme, tint, active);
+        let tint = self.focus(theme, plane, active);
         let frame = theme
             .glass_effect()
             .unwrap_or_else(|| {
@@ -161,11 +156,14 @@ mod tests {
     }
 
     #[test]
-    fn a_pane_frame_over_a_translucent_plane_adds_nothing_to_it() {
+    fn a_pane_frame_paints_its_plane_over_the_gutter() {
         let theme = Theme::default();
         let plane = theme.background.alpha(0.93);
-        assert_eq!(UNLIT.frame(&theme, plane, false).tint.a, 0.0);
-        assert_eq!(UNLIT.frame(&theme, plane.opaque(), false).tint.a, 1.0);
+        assert_eq!(UNLIT.frame(&theme, plane, false).tint, plane);
+        assert_eq!(
+            UNLIT.frame(&theme, plane.opaque(), false).tint,
+            plane.opaque()
+        );
     }
 
     #[test]

@@ -2966,7 +2966,7 @@ impl Render for AppShell {
         let shell = if let Some(workspace) = workspace {
             app_shell_surface(
                 "web-client",
-                cx.theme().background,
+                zz_ui::shell::shell_ground(cx.theme().background, self.preferences.gaps, cx),
                 sidebar,
                 titlebar,
                 app_workspace_surface("web-workspace", workspace, terminal_overlays, cx),
