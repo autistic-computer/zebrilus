@@ -99,6 +99,7 @@ impl RenderOnce for ChooserModal {
             Bar::new(id, BarLook::Plain)
                 .on(ground)
                 .flex_none()
+                .h_auto()
                 .px(px(12.0))
                 .py(px(9.0))
                 .rule(RuleLook::Bar, Edge::Bottom, cx)

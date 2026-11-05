@@ -2,7 +2,7 @@
 type: Design Plan
 title: "Surface roles: shared materials composed per piece of UI"
 description: "A theme defines its materials once (radius, corner smoothing, outline width, contact and float shadows, glass, primary, row inset) and every distinct piece of UI is a role that picks from them with seven props (fill, outline, shadow, shape, smoothing, hover, selected), resolved from its kind's built-in style and each group's built-in patch, then the theme's patches from the kind inward, so a theme's patch for a kind beats every built-in in it. Built 2026-10-13; regrouped 2026-10-14 into 10 broad kinds (bars, panels, panes, cards, floating, buttons, items, fields, labels, dividers) with groups under them, 73 zz roles in zz_ui::roles, every call site painting through Theme::layer, plus the inventory of about 450 painted pieces it was drawn from. Since 2026-11-02 penna owns every recipe and the apps paint through its typed looks (penna's knowledge/designs/kit.md)."
-status: Built (2026-10-13); zz's roles moved into penna as kit recipes 2026-11-01, see penna's knowledge/designs/kit.md
+status: Superseded (2026-11-05) by penna's one look, adjusted by theme knobs; see interface-themes.md and the Look section of penna's knowledge/designs/foundations.md
 resource: libs/penna/src/foundation/surface.rs
 tags:
 - ui
@@ -13,6 +13,8 @@ timestamp: 2026-10-31T00:00:00Z
 ---
 
 # Surface roles: shared materials composed per piece of UI
+
+Superseded on 2026-11-05: penna now draws one look, and a theme is a handful of knobs over it ([interface themes](/designs/interface-themes.md)). The materials, role patches and per-theme recipes below are gone. This page is kept as the record of how the roles were drawn.
 
 ## Why
 

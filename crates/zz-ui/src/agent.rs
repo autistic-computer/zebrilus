@@ -1772,6 +1772,7 @@ fn attachment_tile(
     let preview = Arc::clone(&image);
     Card::new(id, CardLook::Image)
         .on(ground)
+        .p_0()
         .size(side)
         .flex_none()
         .overflow_hidden()
@@ -3308,6 +3309,7 @@ fn render_figure(node: &MarkdownNode, window: &mut Window, cx: &mut App) -> impl
 
     let card = cx.theme().ground_of(CardLook::Code);
     Card::new(("agent-figure", source_offset), CardLook::Code)
+        .p_0()
         .v_flex()
         .w_full()
         .overflow_hidden()
