@@ -3,6 +3,7 @@ use crate::story::Story;
 mod appearance;
 mod buttons;
 mod canvas;
+mod chat;
 mod checks;
 #[cfg(feature = "editor")]
 mod code_editor;
@@ -57,5 +58,6 @@ pub const STORIES: &[Story] = &[
     appearance::STORY,
     which_key::STORY,
     compact::STORY,
+    chat::STORY,
     docs::STORY,
 ];
