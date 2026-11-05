@@ -1088,7 +1088,12 @@ impl AppShell {
         if safe_bottom > overlap || overlap <= px(0.0) {
             self.compact.safe_bottom = safe_bottom;
         }
-        let placement = PillPlacement::new(screen_radius(window), self.compact.safe_bottom);
+        #[cfg_attr(not(target_os = "android"), allow(unused_mut))]
+        let mut placement = PillPlacement::new(screen_radius(window), self.compact.safe_bottom);
+        #[cfg(target_os = "android")]
+        {
+            placement.bottom = placement.bottom.max(self.compact.safe_bottom);
+        }
         let zone = placement.zone();
         self.compact.extra_height = if keyboard {
             let rest =
