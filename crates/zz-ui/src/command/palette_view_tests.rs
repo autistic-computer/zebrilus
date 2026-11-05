@@ -459,7 +459,7 @@ fn chooser_search_expands_descendants_and_restores_only_its_own_branches() {
 #[ala::test]
 fn daemon_tree_navigation_and_search_preserve_pane_activation(cx: &mut TestAppContext) {
     cx.update(|cx| {
-        crate::init(cx);
+        crate::init_without_theme(cx);
         cx.set_reduce_motion(false);
     });
     let session = ChooseTreeItem {

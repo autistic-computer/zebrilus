@@ -1,5 +1,7 @@
 use zz_app::preferences::Preferences;
-use zz_ui::interface_theme::{Appearance, ThemeModeSetting, ThemeOverrides};
+use zz_ui::interface_theme::{
+    Appearance, InterfaceTheme, ThemeModeSetting, ThemeOverrides, default_theme,
+};
 
 #[test]
 fn preferences_reject_invalid_themes_modes_and_numeric_values() {
@@ -109,6 +111,7 @@ fn a_preferences_file_written_before_appearance_moved_into_the_kit_loads_the_sam
                 tint_hue: Some(145.0),
             },
             contrast: 1.4,
+            reduce_transparency: false,
             ui_font_family: "Inter Variable".into(),
             zoom: 1.35,
             animations: false,
@@ -119,7 +122,11 @@ fn a_preferences_file_written_before_appearance_moved_into_the_kit_loads_the_sam
     assert_eq!(preferences.theme_mode(), ThemeModeSetting::Light);
     assert_eq!(preferences.themes.len(), 1);
     assert_eq!(preferences.theme_id(), "theme-1");
-    assert_eq!(preferences.interface_theme().name, "Neon");
+    let neon = InterfaceTheme {
+        name: "Neon".to_owned(),
+        ..default_theme().clone()
+    };
+    assert_eq!(*preferences.interface_theme(), neon);
     assert_eq!(preferences.shown_ui_font(), "Inter Variable");
     assert_eq!(preferences.widget_corner_radius(), 7.0);
 
@@ -127,5 +134,7 @@ fn a_preferences_file_written_before_appearance_moved_into_the_kit_loads_the_sam
     let parsed = |json: &str| serde_json::from_str::<serde_json::Value>(json).unwrap();
     let mut expected = parsed(source);
     expected["density"] = "regular".into();
+    expected["reduce_transparency"] = false.into();
+    expected["themes"][0][1] = parsed(&serde_json::to_string(&neon).unwrap());
     assert_eq!(parsed(&written), expected);
 }

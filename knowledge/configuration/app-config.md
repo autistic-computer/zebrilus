@@ -137,11 +137,11 @@ The client-local schema includes these scalar settings and chrome colors.
 | `pane-glow-strength` | `1` | `0..=2` | How far the active gapped pane stands apart: its fill lightens while the others' darken and their rims dim; Panes settings display it as Selected pane contrast, 0–200%. `0` draws it like the others |
 | `pane-inactive-opacity` | `0.7` | `0..=1` | Retained strength of inactive pane content and chrome; `1` disables dimming |
 | `pane-margin` | `6` | `0..=32` | Inset around each pane, on every platform; applies only with `pane-gaps`. The window's top strip grows with it, and the sidebar's buttons move in with it, so they stay on the pane headers' center lines |
-| `interface-theme` | `default` | `default`, `macos`, `yaru`, or a saved theme's name | The interface theme: its materials (corners, outlines, shadows, glass, row inset, what primary buttons are filled with), which piece of UI uses which (its roles), and its colors for light and for dark, picked together (see Interface themes). Any other name selects `themes/<name>.json` beside this file. Picking a theme in Settings removes `widget-corner-radius` (`ConfigKey::THEME_PICKS`) so it shows as designed; the accent and the tint stay |
-| `widget-corner-radius` | from the theme (`24` in Default and macOS, `16` in Yaru) | `0..=25` | The radius material in pixels: the corner of every surface whose role's shape is `round`, and the base of a gapped pane's corner. A role whose shape is `pill` stays a pill at any value, so which pieces are pills is up to the theme. Settings shows it as a slider with the value in pixels beside it |
-| `chrome-accent` | `theme` | `theme`, `blue`, `purple`, `pink`, `red`, `orange`, `yellow`, `green`, `graphite`, or `#rrggbb` | The accent: switches, selection, the active floating pane's edge. `theme` keeps the theme's own. Each name is a pair of colors tuned for light and for dark; a hex color is used in both modes |
-| `chrome-tint` | `0` | `0..=1` | How far the window's background leans toward `chrome-tint-hue`; everything drawn from the background leans with it, and the text leans about a third as far. Settings shows it as Tint strength, 0–100% |
-| `chrome-tint-hue` | `260` | `0..=360` | The hue the tint leans toward, in Oklch degrees; `260` is a cool blue. Settings shows it as Tint |
+| `interface-theme` | `default` | `default`, `macos`, `yaru`, or a saved theme's name | The interface theme: the knobs over penna's one look (tint, neutral, corners, smoothing, glass, face, mode), picked together (see Interface themes). Any other name selects `themes/<name>.json` beside this file. Picking a theme in Settings removes `widget-corner-radius` (`ConfigKey::THEME_PICKS`) so it shows as designed; the accent and the tint stay |
+| `widget-corner-radius` | from the theme (`12` in Default and macOS, `8` in Yaru) | `0..=25` | The theme's `radius` knob in pixels: the corner of containers, of controls unless the theme sets `control-radius`, and the base of a gapped pane's corner. Controls stay pills at any value when the theme's `control-radius` is `full`. Settings shows it as a slider with the value in pixels beside it |
+| `chrome-accent` | `theme` | `theme`, `blue`, `purple`, `pink`, `red`, `orange`, `yellow`, `green`, `graphite`, or `#rrggbb` | The accent, which replaces the theme's tint and becomes the highlight: primary fills, switches, selection. `theme` keeps the theme's own. Each name is a pair of colors tuned for light and for dark; a hex color is used in both modes |
+| `chrome-tint` | from the theme (`0.15`) | `0..=1` | The amount of the theme's `neutral`: how far the window's background leans toward `chrome-tint-hue`; everything drawn from the background leans with it, and the text leans about a third as far. Settings shows it as Tint strength, 0–100% |
+| `chrome-tint-hue` | from the theme (`60`) | `0..=360` | The hue of the theme's `neutral`, in Oklch degrees; `60` is the warm default. Settings shows it as Tint |
 | `editor-font-size` | `13` | `8..=32` | Buffer text size in editor panes, in pixels |
 | `which-key-delay` | `400` | `0..=2000` | Milliseconds after the prefix, or inside a `switch-client -T` table, before the which-key sheet lists the next keys; `0` turns the sheet off. Read when the timer starts |
 | `editor-line-numbers` | `true` | `true` or `false` | Whether editor panes draw the line-number rail |
@@ -156,6 +156,7 @@ The client-local schema includes these scalar settings and chrome colors.
 | `theme-mode` | `system` | `system`, `light`, `dark` | Follow the OS appearance, or pin one mode |
 | `app-icon` | `automatic` | `automatic`, `light`, `dark` | Which render of `assets/zz.icon` the macOS Dock tile wears; `automatic` defers to the bundle's compiled icon when packaged (so tinted/clear dock styles work) and follows the OS appearance in bare builds, independently of `theme-mode` |
 | `chrome-contrast` | `1.0` | `1.0`–`2.0` | Raises the chrome derivations; out-of-range or invalid values are reported and fall back to `1.0`. Settings shows it as a slider from 100% to 200% in steps of 5, written with two decimals. |
+| `reduce-transparency` | `false` | `true` or `false` | Draws glass as the solid `popover` fill. Settings shows it as Reduce transparency under Advanced; a theme change keeps it |
 | `chrome-density` | `regular` | `compact`, `regular`, `comfortable` | The default control and row height in the chrome: 24, 28 or 32px for buttons, fields, selects and list, menu and picker rows; text, gaps and the other control sizes stay. Invalid values are reported and fall back to `regular`. Settings shows it as Density under UI zoom. |
 
 `chrome-preset`, `chrome-preset-light`, `chrome-preset-dark`, `chrome-background`,
@@ -199,12 +200,12 @@ the next minute boundary, then requests one redraw per minute while the bar and 
 `time-date` renders `%H:%M · %b %d`.
 
 `interface-theme`, `widget-corner-radius`, `chrome-accent`, `chrome-tint`,
-`chrome-tint-hue`, `chrome-contrast`, `pip-background-opacity`, and `theme-mode`
+`chrome-tint-hue`, `chrome-contrast`, `reduce-transparency`, `pip-background-opacity`, and `theme-mode`
 land on the **zz-ui theme** rather than being read per-frame by a renderer:
 `zz::theme` activates `config::shown_theme`, the active theme with the keys the file sets composed
 over it (`config::theme_overrides` returns them as a `zz_ui::interface_theme::ThemeOverrides`; see
-Interface themes for the order), which puts its colors, materials and roles on the `Theme` global,
-and `apply_zz_overrides` then sets the contrast and the PiP opacity. Every surface already resolves
+Interface themes for the order), which puts its colors and knobs on the `Theme` global,
+and `apply_zz_overrides` then sets the contrast, drops the glass under `reduce-transparency`, and sets the PiP opacity. Every surface already resolves
 its role from there, so no component is plumbed individually. Because the theme and the overrides
 are reapplied on every theme rebuild, they survive a light/dark switch, the same treatment
 `mono_font_family` gets. A gapped pane's corner follows the same radius: `config::pane_content_radii` starts from
@@ -765,7 +766,7 @@ always-live inactive-opacity factor and the selected pane's edge strength, which
 
 | Page | Groups |
 | --- | --- |
-| Interface | **Theme** (`theme-mode` as Mode, a System, Light and Dark segmented control, `interface-theme` as Theme, a button listing the built-in and saved themes with their accents beside a more menu with Import from clipboard, `chrome-accent` as Accent swatches with a custom color picker, then `chrome-tint-hue` as Tint and `chrome-tint` as Tint strength, two sliders) · **Advanced**, collapsed until opened (`widget-corner-radius` as Corner radius and `chrome-contrast` as Contrast, two sliders, `UI font`, transient `UI zoom`, `chrome-density` as Density, macOS `app-icon` as three icon tiles, `animations`, `window-background-blur` as "Window blur" and `window-background-opacity` as "Window blur opacity", a slider dimmed while the blur is off, where the platform profile has it, Linux `window-corner-radius` and `use-system-titlebar`) |
+| Interface | **Theme** (`theme-mode` as Mode, a System, Light and Dark segmented control, `interface-theme` as Theme, a button listing the built-in and saved themes with their accents beside a more menu with Import from clipboard, `chrome-accent` as Accent swatches with a custom color picker, then `chrome-tint-hue` as Tint and `chrome-tint` as Tint strength, two sliders) · **Advanced**, collapsed until opened (`widget-corner-radius` as Corner radius and `chrome-contrast` as Contrast, two sliders, `reduce-transparency` as Reduce transparency, `UI font`, transient `UI zoom`, `chrome-density` as Density, macOS `app-icon` as three icon tiles, `animations`, `window-background-blur` as "Window blur" and `window-background-opacity` as "Window blur opacity", a slider dimmed while the blur is off, where the platform profile has it, Linux `window-corner-radius` and `use-system-titlebar`) |
 | Status bar | Title-bar items shown when the sidebar is retracted (`status-badges`, `status-host`, `status-update`; `status-show-session` and `status-agents` were removed and are reported if present) |
 | Browser | **Network** (`browser-egress`) · **Agents** (`browser-remote-debugging-port` as an on/off switch that writes `9222`) · **Search** (`browser-search-provider`) · **Shortcuts** (`browser-element-selector-hotkey`) |
 | Editor | **Typography** (`editor-font-size`) · **Display** (`editor-line-numbers`, `editor-relative-line-numbers`, `editor-soft-wrap`, `editor-vim-mode`) |

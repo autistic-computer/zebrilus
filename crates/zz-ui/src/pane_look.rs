@@ -55,16 +55,14 @@ impl PaneLook {
     }
 
     pub fn frame(self, theme: &Theme, plane: Hsla, active: bool) -> GlassMaterial {
-        let glass = theme.glass_effect();
-        let tint = match glass {
-            Some(material) if theme.bright_surfaces && !theme.mode.is_dark() => theme
-                .raise(plane.opaque(), 1)
-                .alpha(if plane.a < 1.0 { material.tint.a } else { 1.0 }),
-            _ if plane.a < 1.0 => plane.alpha(0.0),
-            _ => plane,
+        let tint = if plane.a < 1.0 {
+            plane.alpha(0.0)
+        } else {
+            plane
         };
         let tint = self.focus(theme, tint, active);
-        let frame = glass
+        let frame = theme
+            .glass_effect()
             .unwrap_or_else(|| {
                 let width = outline(theme);
                 let edge = GlassMaterial::edge(tint).glint_width(width);
@@ -106,7 +104,7 @@ fn outline(theme: &Theme) -> Pixels {
 
 #[cfg(test)]
 mod tests {
-    use penna::{ThemeColor, ThemeMode};
+    use penna::ThemeMode;
 
     use super::*;
 
@@ -116,17 +114,17 @@ mod tests {
     };
 
     #[test]
-    fn a_pane_frame_lights_an_opaque_edge_with_or_without_the_looks_glass() {
+    fn a_pane_frame_takes_the_glass_rim_and_draws_no_edge_without_glass() {
         let mut theme = Theme::default();
         let plane = theme.background;
         let tint = plane;
-        let edge = GlassMaterial::edge(tint).glint_width(theme.outline);
+        let bare = GlassMaterial::edge(tint).glint_width(px(0.0)).specular(0.0);
         let frosted = GlassMaterial::frosted();
         for (glass, rim) in [
-            (None, edge),
+            (None, bare),
             (
                 Some(GlassMaterial::regular().vanished().tint(plane.opaque())),
-                edge,
+                bare,
             ),
             (Some(frosted), frosted),
         ] {
@@ -155,18 +153,11 @@ mod tests {
             );
         }
 
-        theme.outline = px(0.0);
-        assert_eq!(UNLIT.frame(&theme, plane, false).specular, frosted.specular);
-        theme.glass = None;
-        assert_eq!(UNLIT.frame(&theme, plane, false).specular, 0.0);
-        assert_eq!(UNLIT.edge_width(&theme), px(0.0));
-        theme.outline = px(2.0);
-        assert_eq!(UNLIT.edge_width(&theme), px(0.0));
         let framed = PaneLook {
             frames: true,
             ..UNLIT
         };
-        assert_eq!(framed.edge_width(&theme), px(2.0));
+        assert_eq!(framed.edge_width(&theme), px(0.0));
     }
 
     #[test]
@@ -178,42 +169,9 @@ mod tests {
     }
 
     #[test]
-    fn bright_glass_panes_rise_in_light_mode_only() {
-        let mut light = *ThemeColor::light();
-        light.background = Hsla {
-            h: 0.0,
-            s: 0.0,
-            l: 0.97,
-            a: 1.0,
-        };
-        for (mode, colors) in [
-            (ThemeMode::Light, &light),
-            (ThemeMode::Dark, &*ThemeColor::dark()),
-        ] {
-            let mut theme = Theme::from(colors);
-            theme.mode = mode;
-            let glass = GlassMaterial::regular();
-            theme.glass = Some(glass);
-            for alpha in [0.7, 1.0] {
-                let plane = theme.background.alpha(alpha);
-                let plain = UNLIT.frame(&theme, plane, false);
-                theme.bright_surfaces = true;
-                let bright = UNLIT.frame(&theme, plane, false);
-                if theme.mode.is_dark() {
-                    assert_eq!(bright, plain);
-                } else {
-                    assert!(bright.tint.l > plane.l);
-                    assert_eq!(bright.tint.a, if alpha < 1.0 { glass.tint.a } else { 1.0 });
-                    assert_eq!(bright.fallback, Some(bright.tint));
-                }
-                theme.bright_surfaces = false;
-            }
-        }
-    }
-
-    #[test]
     fn the_active_pane_stands_apart_by_light_not_color() {
         let mut theme = Theme::default();
+        theme.glass = Some(GlassMaterial::frosted());
         let look = PaneLook::default();
         let plane = theme.background;
         for mode in [ThemeMode::Light, ThemeMode::Dark] {

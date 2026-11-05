@@ -107,6 +107,7 @@ mod tests {
             Item::Advanced { expanded: true },
             Item::CornerRadius,
             Item::ChromeContrast,
+            Item::ReduceTransparency,
             Item::UiFontFamily,
             Item::UiZoom,
             Item::Density,

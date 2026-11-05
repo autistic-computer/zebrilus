@@ -151,7 +151,7 @@ impl SettingsView {
         let observed = config::resolved_config(cx);
         let observed_browser = config::browser_config(cx);
         let observed_ui_font = config::ui_font_family(cx);
-        let observed_theme_font = config::themes(cx).active.materials.font.clone();
+        let observed_theme_font = config::themes(cx).active.face.clone();
         let ui_font_family = ui_font_select(
             Some(&shown_ui_font(
                 &observed_ui_font,
@@ -551,7 +551,7 @@ impl SettingsView {
 
     fn synchronize_ui_font(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let resolved = config::ui_font_family(cx);
-        let theme_font = config::themes(cx).active.materials.font.clone();
+        let theme_font = config::themes(cx).active.face.clone();
         if resolved == self.observed_ui_font && theme_font == self.observed_theme_font {
             return;
         }
@@ -1995,6 +1995,7 @@ fn appearance(cx: &App) -> Appearance {
         theme: Some(config::themes(cx).selected.to_string()),
         overrides: config::theme_overrides(cx),
         contrast: resolved.chrome_contrast.value,
+        reduce_transparency: resolved.reduce_transparency.value,
         ui_font_family: config::ui_font_family(cx).value.unwrap_or_default(),
         zoom: penna::UiZoom::get(cx),
         animations: resolved.animations.value,
@@ -2021,7 +2022,7 @@ fn appearance_changed(change: AppearanceChange, cx: &mut App) {
                         .find(|(saved, _)| *saved == id)
                         .map(|(_, theme)| theme)
                 })
-                .is_some_and(|theme| theme.materials.font.is_some());
+                .is_some_and(|theme| theme.face.is_some());
             (
                 ConfigKey::InterfaceTheme,
                 set_interface_theme(&id, sets_font),
@@ -2050,6 +2051,13 @@ fn appearance_changed(change: AppearanceChange, cx: &mut App) {
         AppearanceChange::Contrast(contrast) => {
             let key = ConfigKey::ChromeContrast;
             (key, set_config_key(key, &format!("{contrast:.2}")))
+        }
+        AppearanceChange::ReduceTransparency(reduce) => {
+            let key = ConfigKey::ReduceTransparency;
+            (
+                key,
+                set_config_key(key, if reduce { "true" } else { "false" }),
+            )
         }
         AppearanceChange::UiFont(family) => (
             ConfigKey::UiFontFamily,
@@ -2198,6 +2206,7 @@ fn refresh_settings_preview(key: ConfigKey, cx: &mut App) {
             key,
             ConfigKey::WidgetCornerRadius
                 | ConfigKey::ChromeContrast
+                | ConfigKey::ReduceTransparency
                 | ConfigKey::InterfaceTheme
                 | ConfigKey::ChromeAccent
                 | ConfigKey::ChromeTint
@@ -2336,6 +2345,7 @@ fn numeric_config_value(config: &AppConfig, key: ConfigKey) -> ConfigValue<f32> 
         | ConfigKey::BrowserRemoteDebuggingPort
         | ConfigKey::BrowserSearchProvider
         | ConfigKey::BrowserEgress
+        | ConfigKey::ReduceTransparency
         | ConfigKey::ThemeMode
         | ConfigKey::InterfaceTheme
         | ConfigKey::UiFontFamily
@@ -2415,7 +2425,7 @@ fn save_and_select_theme(mut theme: InterfaceTheme, cx: &mut App) {
         let name = config::themes::next_theme_name(&directory);
         theme.name_after(&name);
         let path = config::themes::save_theme(&directory, &name, &theme.to_json())?;
-        set_interface_theme(&name, theme.materials.font.is_some())?;
+        set_interface_theme(&name, theme.face.is_some())?;
         Ok(path)
     });
     match saved {

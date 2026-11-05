@@ -371,7 +371,10 @@ pub(crate) fn support_directory() -> std::path::PathBuf {
 #[cfg(test)]
 mod tests {
     use super::Preferences;
-    use zz_ui::interface_theme::{self, Appearance, ThemeModeSetting, ThemeOverrides};
+    use penna::foundation::interface_theme::{Glass, Neutral, Tint};
+    use zz_ui::interface_theme::{
+        self, Appearance, InterfaceTheme, ThemeModeSetting, ThemeOverrides,
+    };
 
     #[test]
     fn preferences_persist_and_missing_fields_keep_defaults() {
@@ -476,8 +479,8 @@ mod tests {
             changed.status_bar_settings()
         );
         assert!(!restored.appearance.animations);
-        let macos = &interface_theme::builtin_theme("macos").unwrap().materials;
-        assert_eq!(restored.shown_theme().materials.outline, macos.outline);
+        let macos = interface_theme::builtin_theme("macos").unwrap();
+        assert_eq!(restored.shown_theme(), *macos);
         assert_eq!(restored.widget_corner_radius(), macos.radius);
         assert_eq!(restored.sidebar_width, 320.0);
         let retired = Preferences::decode(
@@ -518,7 +521,7 @@ mod tests {
         assert_eq!(invalid.appearance.overrides, ThemeOverrides::default());
         assert_eq!(
             invalid.widget_corner_radius(),
-            interface_theme::default_theme().materials.radius
+            interface_theme::default_theme().radius
         );
         for (value, expected) in [
             ((-1.0, -0.1, -10.0), (0.0, 0.0, 0.0)),
@@ -609,13 +612,23 @@ mod tests {
                 ..ThemeOverrides::default()
             }
         );
-        assert_eq!(picked.widget_corner_radius(), builtin.materials.radius);
-        assert_eq!(picked.shown_theme().materials, builtin.materials);
+        assert_eq!(picked.widget_corner_radius(), builtin.radius);
+        assert_eq!(
+            picked.shown_theme(),
+            InterfaceTheme {
+                tint: Tint::named("green").unwrap(),
+                neutral: Neutral {
+                    amount: 0.4,
+                    ..builtin.neutral
+                },
+                ..builtin.clone()
+            }
+        );
         tuned.set_interface_theme("vaporwave");
         assert_eq!(tuned.theme_id(), "default");
     }
 
-    const NEON: &str = r##"{"name":"Neon","materials":{"radius":3,"float":{"strength":0.5},"font":"Lilex"},"dark":{"accent":"#ff00ff"}}"##;
+    const NEON: &str = r##"{"name":"Neon","radius":3,"tint":{"light":"#c000c0","dark":"#ff00ff"},"face":"Lilex"}"##;
 
     #[test]
     fn saved_themes_round_trip_and_older_preferences_have_none() {
@@ -631,7 +644,7 @@ mod tests {
         glass.save_theme(glass.shown_theme()).unwrap();
         let restored = Preferences::decode(&serde_json::to_string(&glass).unwrap()).unwrap();
         assert_eq!(restored.theme_id(), "theme-1");
-        assert!(restored.interface_theme().materials.glass.is_some());
+        assert_eq!(restored.interface_theme().glass, Some(Glass::Liquid));
 
         let older = Preferences::decode(
             r#"{"theme":"default","radius":12,"shadows":"none","selection":"wash","field":"outline","outline":1,"shadow-strength":0.3,"row-inset":2,"primary":"accent","glass":"frosted","pane_radius":9,"pane_border_width":2,"colors":[null,"ff0000"],"style":3}"#,
@@ -648,7 +661,7 @@ mod tests {
         );
 
         let unreadable = Preferences::decode(
-            r#"{"theme":"theme-2","themes":[["theme-1",{"name":"Kept"}],["theme-2",{"materials":{"glass":"stained"}}],["theme-3",{"materials":{"corner_smoothing":2}}]]}"#,
+            r#"{"theme":"theme-2","themes":[["theme-1",{"name":"Kept"}],["theme-2",{"glass":"stained"}],["theme-3",{"control-radius":"round"}]]}"#,
         )
         .unwrap();
         assert_eq!(unreadable.themes.len(), 1);

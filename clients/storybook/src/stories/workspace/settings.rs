@@ -5,8 +5,7 @@ use ala::{
     Styled as _, Window, div, prelude::*, px,
 };
 use penna::{
-    ActiveTheme as _, Emphasis, Highlight, Icon, IconName, IndexPath, StylePatch, SurfaceRole,
-    ThemeMode, Tone,
+    ActiveTheme as _, Emphasis, Icon, IconName, IndexPath, ThemeMode, Tone,
     blocks::appearance::{
         SWATCH, ThemePicks, accent_swatches, animation_speed_slider, contrast_slider,
         corner_radius_slider, interface_theme_preview, picker_tile, theme_mode_control,
@@ -24,7 +23,7 @@ use penna::{
 };
 use zz_client::StatusBarSettings;
 use zz_ui::{
-    interface_theme::{InterfaceTheme, Materials, ThemeOverrides, builtin_themes},
+    interface_theme::{InterfaceTheme, ThemeOverrides, builtin_themes},
     settings::{
         SettingEntry, SettingsFold, SettingsSection, SettingsSelectItem, SettingsStack,
         about::{ABOUT_LOGO_SIZE, ZZ_ABOUT},
@@ -316,23 +315,16 @@ fn entries(controls: &Controls, _: &mut Window, cx: &mut App) -> AnyElement {
 fn appearance(controls: &Controls, _: &mut Window, cx: &mut App) -> AnyElement {
     let knobs = crate::knobs();
     let active = knobs.interface_theme();
+    let neutral = knobs.neutral();
     let mode = cx.theme().mode;
     let saved = InterfaceTheme {
         name: "theme-1".to_owned(),
-        materials: Materials {
-            radius: 4.0,
-            ..active.materials.clone()
-        },
-        roles: [(
-            SurfaceRole::MENU_ITEM.id().to_owned(),
-            StylePatch::EMPTY.selected(Highlight::Tint),
-        )]
-        .into(),
+        radius: 4.0,
         ..active.clone()
     };
     let overrides = ThemeOverrides {
-        tint: Some(knobs.tint),
-        tint_hue: Some(knobs.tint_hue),
+        tint: knobs.tint,
+        tint_hue: knobs.tint_hue,
         ..ThemeOverrides::default()
     };
     let picks = ThemePicks {
@@ -371,12 +363,12 @@ fn appearance(controls: &Controls, _: &mut Window, cx: &mut App) -> AnyElement {
                     cx,
                 )))
                 .child(entry(AppearancePageItem::TintHue).control(tint_hue_slider(
-                    knobs.tint_hue,
+                    neutral.hue,
                     |_, _, _| {},
                     cx,
                 )))
                 .child(entry(AppearancePageItem::Tint).control(tint_slider(
-                    knobs.tint,
+                    neutral.amount,
                     |_, _, _| {},
                     cx,
                 )))
@@ -422,7 +414,7 @@ fn appearance(controls: &Controls, _: &mut Window, cx: &mut App) -> AnyElement {
             SettingsStack::new()
                 .child(
                     entry(AppearancePageItem::CornerRadius).control(corner_radius_slider(
-                        active.materials.radius,
+                        active.radius,
                         |_, _, _| {},
                         cx,
                     )),

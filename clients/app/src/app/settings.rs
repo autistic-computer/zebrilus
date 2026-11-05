@@ -1375,7 +1375,7 @@ mod tests {
 
     #[cfg(not(target_family = "wasm"))]
     #[ala::test]
-    fn apply_draws_a_saved_theme_in_its_colors_materials_and_roles(cx: &mut ala::TestAppContext) {
+    fn apply_draws_a_saved_theme_in_its_knobs(cx: &mut ala::TestAppContext) {
         use ala::{AppContext as _, px};
         use penna::{ActiveTheme as _, ThemeMode};
 
@@ -1384,7 +1384,7 @@ mod tests {
         preferences.appearance.mode = Some("dark".into());
         preferences
             .import_theme(
-                r##"{"name":"Neon","materials":{"radius":3,"outline":0.4,"float":{"strength":0.5}},"roles":{"button":{"shape":"pill"}},"dark":{"accent":"#ff00ff"}}"##,
+                r##"{"name":"Neon","radius":3,"control-radius":"full","tint":{"light":"#c000c0","dark":"#ff00ff"}}"##,
             )
             .unwrap();
         let expected = preferences.interface_theme().colors(ThemeMode::Dark).accent;
@@ -1396,14 +1396,8 @@ mod tests {
             assert_eq!(theme.mode, ThemeMode::Dark);
             assert_eq!(theme.accent, expected);
             assert_eq!(theme.radius, px(3.0));
-            assert_eq!(theme.float_shadow.strength, 0.5);
-            assert_eq!(theme.outline, px(0.4));
-            #[allow(
-                clippy::disallowed_methods,
-                reason = "the radius preference reaches the base button role, which no look names"
-            )]
-            let button = theme.style(penna::Kind::Button.role());
-            assert_eq!(button.shape, penna::Shape::Pill);
+            assert_eq!(theme.control_radius, Some(px(25.0)));
+            assert!(theme.tinted());
         });
         preferences.appearance.overrides.radius = Some(5.0);
         preferences.appearance.overrides.accent = Some("green".into());
@@ -1415,7 +1409,7 @@ mod tests {
                 zz_ui::interface_theme::accent_color("green", ThemeMode::Dark)
             );
             assert_eq!(theme.radius, px(5.0));
-            assert_eq!(theme.outline, px(0.4));
+            assert_eq!(theme.control_radius, Some(px(25.0)));
         });
     }
 }

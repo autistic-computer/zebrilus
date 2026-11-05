@@ -109,12 +109,13 @@ fn apply_zz_overrides(active: &InterfaceTheme, cx: &mut App) {
         .map(SharedString::from)
         .or_else(|| {
             (ui_font.provenance == config::ConfigProvenance::Default)
-                .then(|| active.materials.font.clone())
+                .then(|| active.face.clone())
                 .flatten()
         })
         .filter(|family| cx.text_system().has_font(family))
         .unwrap_or_else(|| ala::Font::default().family);
     let chrome_contrast = config::chrome_contrast(cx);
+    let reduce_transparency = config::resolved_config(cx).reduce_transparency.value;
     let pip_opacity = config::pip_background_opacity(cx);
     let pane_look = PaneLook {
         frames: config::pane_gaps(cx),
@@ -131,6 +132,9 @@ fn apply_zz_overrides(active: &InterfaceTheme, cx: &mut App) {
     }
 
     theme.set_contrast(chrome_contrast);
+    if reduce_transparency {
+        theme.glass = None;
+    }
     theme.pane_margin = pane_margin;
 }
 
@@ -182,17 +186,18 @@ mod tests {
                 saved: Vec::new(),
                 error: None,
             });
-            for (setting, mode) in [
-                (ThemeModeSetting::Light, ThemeMode::Light),
-                (ThemeModeSetting::Dark, ThemeMode::Dark),
+            for (setting, mode, reduce) in [
+                (ThemeModeSetting::Light, ThemeMode::Light, false),
+                (ThemeModeSetting::Dark, ThemeMode::Dark, true),
             ] {
                 let mut config = config::AppConfig::default();
                 config.theme_mode.value = setting;
+                config.reduce_transparency.value = reduce;
                 cx.set_global(config);
                 refresh_current_theme(cx);
                 let theme = Theme::global(cx);
                 assert_eq!(theme.colors, default.colors(mode));
-                assert!(theme.glass.is_none());
+                assert_eq!(theme.glass.is_none(), reduce, "{mode:?}");
             }
         });
     }
