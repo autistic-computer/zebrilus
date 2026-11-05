@@ -1,7 +1,4 @@
 (() => {
-  const MIN_THUMB = 48;
-  const INSET = 2;
-  const BAR = 16;
   const FADE_DELAY = 2000;
   const FADE_END = 3000;
 
@@ -32,7 +29,7 @@
     const bars = Object.fromEntries(
       axes.map((axis) => {
         const element = scroll.querySelector(`:scope > .penna-scrollbar[data-axis="${axis}"]`) ?? scroll.appendChild(bar(axis, scroll.dataset.bar));
-        return [axis, { axis, element, thumb: element.querySelector(".penna-scroll-thumb"), start: 0, length: 0, full: 0, margin: 0, content: 0, container: 0 }];
+        return [axis, { axis, element, thumb: element.querySelector(".penna-scroll-thumb"), start: 0, length: 0, full: 0, margin: 0, content: 0, container: 0, inset: 0 }];
       }),
     );
     const state = { last: null, shown: 0, drag: null, frame: 0 };
@@ -44,6 +41,10 @@
     };
 
     function layout() {
+      const style = getComputedStyle(scroll);
+      const track = parseFloat(style.getPropertyValue("--penna-space-16"));
+      const inset = parseFloat(style.getPropertyValue("--penna-space-2"));
+      if (!(track > 0)) return;
       let both = mode === "both";
       const box = scroll.getBoundingClientRect();
       for (const axis of axes) {
@@ -51,17 +52,17 @@
         const vertical = axis === "vertical";
         const content = vertical ? viewport.scrollHeight : viewport.scrollWidth;
         const container = vertical ? box.height - scroll.clientTop * 2 : box.width - scroll.clientLeft * 2;
-        const margin = both && !vertical ? BAR : 0;
+        const margin = both && !vertical ? track : 0;
         if (content <= container) {
           both = false;
           info.element.hidden = true;
           continue;
         }
         info.element.hidden = false;
-        const length = Math.max((container / content) * container, MIN_THUMB);
+        const length = Math.max((container / content) * container, track * 3);
         const start = (offset(axis) / (content - container)) * (container - margin - length);
         const end = Math.min(start + length, container - margin);
-        Object.assign(info, { start, length: end - start - INSET * 2, full: length, margin, content, container });
+        Object.assign(info, { start, length: end - start - inset * 2, full: length, margin, content, container, inset });
         info.thumb.style.setProperty("--penna-thumb-start", `${start}px`);
         info.thumb.style.setProperty("--penna-thumb-length", `${info.length}px`);
       }
@@ -119,7 +120,7 @@
         event.preventDefault();
         event.stopPropagation();
         const [position, origin, size] = along(info, event);
-        const thumbStart = origin + INSET + info.start;
+        const thumbStart = origin + info.inset + info.start;
         const range = info.content - info.container;
         if (position >= thumbStart && position <= thumbStart + info.length) {
           state.drag = { info, grab: position - thumbStart };
@@ -134,7 +135,7 @@
       });
       info.element.addEventListener("pointermove", (event) => {
         const [position, origin, size] = along(info, event);
-        const thumbStart = origin + INSET + info.start;
+        const thumbStart = origin + info.inset + info.start;
         const over = position >= thumbStart && position <= thumbStart + info.length;
         if (over) info.thumb.dataset.state = "hover";
         else delete info.thumb.dataset.state;
@@ -193,5 +194,6 @@
 
   settleAll();
   document.fonts.ready.then(() => settleAll());
+  document.addEventListener("load", (event) => event.target.id === "penna-tokens" && settleAll(), true);
   window.pennaScroll = { mount, settle: settleAll };
 })();

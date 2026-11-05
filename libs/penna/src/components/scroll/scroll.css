@@ -30,8 +30,8 @@
 .penna-scrollbar {
   position: absolute;
   z-index: 1;
-  --penna-thumb-width: 8px;
-  --penna-thumb-inset: 2px;
+  --penna-thumb-width: var(--penna-space-8);
+  --penna-thumb-inset: var(--penna-space-2);
   --penna-thumb-fill: var(--penna-thumb);
 }
 
@@ -43,14 +43,14 @@
   top: 0;
   right: 0;
   bottom: 0;
-  width: 16px;
+  width: var(--penna-space-16);
 }
 
 .penna-scrollbar[data-axis="horizontal"] {
   left: 0;
   right: 0;
   bottom: 0;
-  height: 16px;
+  height: var(--penna-space-16);
 }
 
 .penna-scroll-thumb {
@@ -59,14 +59,14 @@
 
 .penna-scrollbar[data-axis="vertical"] > .penna-scroll-thumb {
   right: var(--penna-thumb-inset);
-  width: 16px;
+  width: var(--penna-space-16);
   top: calc(var(--penna-thumb-inset) + var(--penna-thumb-start, 0px));
   height: var(--penna-thumb-length, 0px);
 }
 
 .penna-scrollbar[data-axis="horizontal"] > .penna-scroll-thumb {
   bottom: var(--penna-thumb-inset);
-  height: 16px;
+  height: var(--penna-space-16);
   left: calc(var(--penna-thumb-inset) + var(--penna-thumb-start, 0px));
   width: var(--penna-thumb-length, 0px);
 }
@@ -92,26 +92,26 @@
   height: var(--penna-thumb-width);
 }
 
-.penna-scroll[data-show="scrolling"] > .penna-scrollbar {
-  --penna-thumb-width: 6px;
+.penna-scroll:not([data-show="hover"], [data-show="always"]) > .penna-scrollbar {
+  --penna-thumb-width: var(--penna-space-6);
 }
 
-.penna-scroll:is([data-show="hover"], [data-show="scrolling"]) > .penna-scrollbar:not([data-visible], [data-state~="hover"], :hover) {
+.penna-scroll:not([data-show="always"]) > .penna-scrollbar:not([data-visible], [data-state~="hover"], :hover) {
   --penna-thumb-opacity: 0;
 }
 
-.penna-scroll[data-show="scrolling"] > .penna-scrollbar:not([data-visible]) {
+.penna-scroll:not([data-show="hover"], [data-show="always"]) > .penna-scrollbar:not([data-visible]) {
   pointer-events: none;
 }
 
-.penna-scroll:is([data-show="hover"], [data-show="scrolling"]) > .penna-scrollbar:is([data-state~="hover"], :hover) {
-  --penna-thumb-width: 8px;
+.penna-scroll:not([data-show="always"]) > .penna-scrollbar:is([data-state~="hover"], :hover) {
+  --penna-thumb-width: var(--penna-space-8);
   --penna-thumb-opacity: 1;
 }
 
 .penna-scrollbar > .penna-scroll-thumb[data-state~="hover"],
 .penna-scrollbar[data-state~="active"] > .penna-scroll-thumb {
-  --penna-thumb-width: 8px;
+  --penna-thumb-width: var(--penna-space-8);
   --penna-thumb-fill: var(--penna-scroll-glow);
   --penna-thumb-opacity: 1;
 }

@@ -6,6 +6,9 @@
     <title>Display</title>
     <link rel="stylesheet" href="../../../../web/penna.css" />
     <link rel="stylesheet" href="../../../../web/story.css" />
+    <link rel="stylesheet" href="../../../../src/components/kbd/kbd.css" />
+    <link rel="stylesheet" href="../../../../src/components/badge/badge.css" />
+    <link rel="stylesheet" href="../../../../src/components/card/card.css" />
     <link rel="stylesheet" href="../../../../src/components/spinner/spinner.css" />
     <link rel="stylesheet" href="../../../../src/components/separator/separator.css" />
     <link rel="stylesheet" href="../../../../src/components/list/list.css" />
@@ -55,6 +58,31 @@
             <kbd class="penna-kbd" data-id="kbd-cmd-shift-p" data-penna="keycap" data-kbd="cmd-shift-p" data-kbd-lowercase></kbd>
             <kbd class="penna-kbd" data-id="kbd-ctrl-a" data-penna="keycap" data-kbd="ctrl-a" data-kbd-lowercase></kbd>
           </div>
+        </div>
+      </div>
+    </section>
+
+    <section data-section="badge">
+      <div class="story-states" data-columns style="--columns: 2">
+        <div class="story-state">
+          <div class="story-label">emphasis</div>
+          <div class="story-row"><span class="penna-badge" data-penna="badge" data-emphasis="solid" data-solid="primary"><span class="penna-solid-ink" data-penna="button" data-prominent><span class="badge-text" data-penna-text>solid</span></span></span><span class="penna-badge" data-penna="badge"><span class="badge-text" data-penna-text>soft</span></span><span class="penna-badge" data-penna="badge.outline"><span class="badge-text" data-penna-text>outline</span></span><span class="penna-badge" data-penna="badge" data-emphasis="ghost"><span class="badge-text" data-penna-text>ghost</span></span></div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">tones, solid</div>
+          <div class="story-row"><span class="penna-badge" data-penna="badge" data-emphasis="solid" data-solid="primary"><span class="penna-solid-ink" data-penna="button" data-prominent><span class="badge-text" data-penna-text>neutral</span></span></span><span class="penna-badge" data-penna="badge" data-tone="primary" data-emphasis="solid" data-solid="primary"><span class="penna-solid-ink" data-penna="button" data-prominent data-tone="primary"><span class="badge-text" data-penna-text>primary</span></span></span><span class="penna-badge" data-penna="badge" data-tone="danger" data-emphasis="solid" data-solid="danger"><span class="penna-solid-ink" data-penna="button" data-prominent data-tone="danger"><span class="badge-text" data-penna-text>danger</span></span></span><span class="penna-badge" data-penna="badge" data-tone="warning" data-emphasis="solid" data-solid="warning"><span class="penna-solid-ink" data-penna="button" data-prominent data-tone="warning"><span class="badge-text" data-penna-text>warning</span></span></span><span class="penna-badge" data-penna="badge" data-tone="success" data-emphasis="solid" data-solid="success"><span class="penna-solid-ink" data-penna="button" data-prominent data-tone="success"><span class="badge-text" data-penna-text>success</span></span></span><span class="penna-badge" data-penna="badge" data-emphasis="solid" data-solid="accent"><span class="penna-solid-ink" data-penna="step" data-state="selected"><span class="badge-text" data-penna-text>accent</span></span></span></div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">ghost, with icons</div>
+          <div class="story-row"><span class="penna-badge" data-penna="badge" data-tone="danger" data-emphasis="ghost"><i data-icon="circle-x"></i><span class="badge-text" data-penna-text>3 failing</span></span><span class="penna-badge" data-penna="badge" data-tone="warning" data-emphasis="ghost"><i data-icon="triangle-alert"></i><span class="badge-text" data-penna-text>Waiting</span></span><span class="penna-badge" data-penna="badge" data-tone="success" data-emphasis="ghost"><i data-icon="circle-check"></i><span class="badge-text" data-penna-text>Ready</span></span></div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">medium and small</div>
+          <div class="story-row"><span class="penna-badge" data-penna="badge" data-tone="danger"><i data-icon="circle-x"></i><span class="badge-text" data-penna-text>3 failing</span></span><span class="penna-badge" data-penna="badge" data-tone="danger" data-size="small"><i data-icon="circle-x"></i><span class="badge-text" data-penna-text>3 failing</span></span></div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">soft and opaque on a bubble</div>
+          <div class="penna-card display-bubble" data-penna="card.bubble" data-id="badge-bubble"><span class="penna-text" data-penna-text>Review</span><span class="penna-badge" data-penna="badge" data-tone="danger"><span class="badge-text" data-penna-text>2</span></span><span class="penna-badge" data-penna="badge" data-tone="danger" data-opaque data-on="card.bubble"><span class="badge-text" data-penna-text>2</span></span></div>
         </div>
       </div>
     </section>

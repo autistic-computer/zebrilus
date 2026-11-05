@@ -76,8 +76,10 @@ storybook/build.sh      # build penna's page into storybook/dist against ala fro
 storybook/serve.py      # serve storybook/dist on 127.0.0.1:8098 (PORT overrides)
 storybook/build.sh --manifest <app storybook>/Cargo.toml --out <dir>   # build an app's catalog
 storybook/serve.py <dir> <port>                                         # serve it
-node storybook/parity.mjs buttons --theme macos --mode dark   # score the buttons DOM page against its canvas story (--all, --section s, --update, --check)
+node storybook/parity.mjs buttons --theme macos --mode dark   # score the buttons DOM page against its canvas story (--all, --section s, --update, --check, --jobs n)
 ```
+
+`--all` runs six stories at a time (`--jobs`), each in its own headless Chrome, longest first by the last run's time.
 
 `#/<story>?solo=1` shows only the section canvases. Every DOM story page lives beside its Rust
 story module: `storybook/src/kit/<story>.rs` pairs with

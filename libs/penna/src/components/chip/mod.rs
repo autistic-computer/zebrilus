@@ -168,7 +168,7 @@ impl Chip {
         let lead = if self.dot.is_some() {
             rems_from_px(DOT).to_pixels(rem) + gap
         } else if self.icon.is_some() {
-            px(icon) + gap
+            rems_from_px(icon).to_pixels(rem) + gap
         } else {
             px(0.0)
         };
@@ -246,7 +246,7 @@ impl RenderOnce for Chip {
         let theme = cx.theme();
         let ground = theme.ground_at(surface, plate.state);
         let accent = theme.accent.opaque();
-        let (padding, gap, icon_px) = metrics(size);
+        let (padding, gap, _) = metrics(size);
         let text = size.control_text();
         plate.surface = surface;
         plate.role = plate.role.or(Some(if plate.interactive {
@@ -263,7 +263,7 @@ impl RenderOnce for Chip {
             .gap(gap);
         plate.children = [
             lead_dot.map(|tone| dot(tone, ground, cx).into_any_element()),
-            icon.map(|icon| icon.with_size(px(icon_px)).into_any_element()),
+            icon.map(|icon| icon.with_size(size.rung()).into_any_element()),
             label.map(|label| {
                 Label::new(text, label)
                     .strong()
@@ -341,5 +341,43 @@ fn dot_color(tone: Tone, ground: Ground, cx: &App) -> Hsla {
             .paint_on(ground, Tone::Neutral, Emphasis::Ghost)
             .muted_at(PaintState::Rest),
         tone => theme.tone(tone),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use ala::{Context, InteractiveElement as _, Render, TestAppContext, size};
+
+    use super::*;
+    use crate::{IconName, h_flex, v_flex};
+
+    fn host() -> Chip {
+        Chip::new("host", "")
+            .icon(IconName::Laptop)
+            .emphasis(Emphasis::Ghost)
+    }
+
+    struct Host;
+
+    impl Render for Host {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            v_flex()
+                .items_start()
+                .child(h_flex().debug_selector(|| "host".into()).child(host()))
+        }
+    }
+
+    #[ala::test]
+    fn a_chip_icon_and_its_measured_width_grow_with_the_root_rem(cx: &mut TestAppContext) {
+        cx.update(crate::init);
+        let (_, cx) = cx.add_window_view(|_, _| Host);
+        let measured = cx.update(|window, cx| {
+            window.set_rem_size(px(20.));
+            window.draw(cx).clear(cx);
+            host().width(window, cx)
+        });
+        let drawn = cx.debug_bounds("host").map(|bounds| bounds.size);
+        assert_eq!(drawn, Some(size(px(40.), px(30.))));
+        assert_eq!(measured, px(40.));
     }
 }

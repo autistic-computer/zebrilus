@@ -114,43 +114,6 @@
   background: var(--penna-primary);
 }
 
-.penna-chip[data-emphasis="ghost"] {
-  background: none;
-  --penna-bw: 0px;
-}
-
-.penna-chip[data-emphasis="solid"] {
-  background: var(--penna-solid);
-}
-
-.penna-chip[data-solid="primary"] {
-  --penna-solid: var(--penna-primary);
-}
-
-.penna-chip[data-solid="danger"] {
-  --penna-solid: var(--penna-danger);
-}
-
-.penna-chip[data-solid="warning"] {
-  --penna-solid: var(--penna-warning);
-}
-
-.penna-chip[data-solid="success"] {
-  --penna-solid: var(--penna-success);
-}
-
-.penna-chip[data-solid="accent"] {
-  --penna-solid: var(--penna-accent);
-  border-color: rgb(from var(--penna-accent) r g b / 0.184);
-}
-
-.penna-solid-ink {
-  display: contents;
-  font-size: inherit;
-  font-weight: inherit;
-  line-height: inherit;
-}
-
 .penna-chip[data-look="icon-disc"] {
   justify-content: center;
   width: 32px;

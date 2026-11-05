@@ -2,21 +2,31 @@
 
 Shows where a scroll area is and drags through it. It overlays the edge and takes no space.
 
-```figure uses=notice
-<div class="docs-full penna-notice" data-penna="notice" data-tone="warning"><div class="penna-notice-tone" data-penna="chip" data-tone="warning"><span class="penna-notice-lead"><i data-icon="triangle-alert"></i></span><div class="penna-notice-body"><span class="penna-text penna-notice-title" data-penna-text>Being reworked</span><span class="penna-text penna-notice-detail" data-penna-text>Its widths are fixed pixels that don't follow the interface size. On the web a bar with no show mode never hides.</span></div></div></div>
-```
-
 ## Modes
 
 - **Scrolling**: hidden until the area scrolls. The default.
 - **Hover**: shows under the pointer, and while scrolling.
 - **Always**: the thumb stays.
 
-The theme picks Scrolling or Hover from the system setting.
+The theme picks Scrolling or Hover from the system setting. On the web a bar with no `data-show` is Scrolling.
 
 ```rust
 v_flex().overflow_y_scrollbar().children(rows)
 ```
+
+## Sizes
+
+```figure
+<div class="docs-tokens">
+  <span class="docs-head">Part</span><span class="docs-head">Token</span><span class="docs-head">Length</span><span class="docs-head">Example</span>
+  <span>Track</span><span><code>space-16</code></span><span><code>16</code></span><span><span style="position: relative; display: block; width: calc(var(--penna-space-16) * 5); height: var(--penna-space-16); box-shadow: inset 0 0 0 1px var(--penna-divider)"></span></span>
+  <span>Thumb</span><span><code>space-8</code></span><span><code>8</code></span><span><span style="position: relative; display: block; width: calc(var(--penna-space-16) * 5); height: var(--penna-space-16); box-shadow: inset 0 0 0 1px var(--penna-divider)"><span style="position: absolute; bottom: var(--penna-space-2); left: var(--penna-space-2); height: var(--penna-space-8); width: calc(var(--penna-space-16) * 4); border-radius: min(var(--penna-radius), var(--penna-space-8) / 2); background: var(--penna-thumb)"></span></span></span>
+  <span>Thumb at rest, Scrolling</span><span><code>space-6</code></span><span><code>6</code></span><span><span style="position: relative; display: block; width: calc(var(--penna-space-16) * 5); height: var(--penna-space-16); box-shadow: inset 0 0 0 1px var(--penna-divider)"><span style="position: absolute; bottom: var(--penna-space-2); left: var(--penna-space-2); height: var(--penna-space-6); width: calc(var(--penna-space-16) * 4); border-radius: min(var(--penna-radius), var(--penna-space-6) / 2); background: var(--penna-thumb)"></span></span></span>
+  <span>Shortest thumb</span><span><code>3 × track</code></span><span><code>48</code></span><span><span style="position: relative; display: block; width: calc(var(--penna-space-16) * 5); height: var(--penna-space-16); box-shadow: inset 0 0 0 1px var(--penna-divider)"><span style="position: absolute; bottom: var(--penna-space-2); left: var(--penna-space-2); height: var(--penna-space-8); width: calc(var(--penna-space-16) * 3); border-radius: min(var(--penna-radius), var(--penna-space-8) / 2); background: var(--penna-thumb)"></span></span></span>
+</div>
+```
+
+The thumb sits `space-2` (2) in from the edge and the track's ends. Every length grows with the interface font.
 
 ## States
 

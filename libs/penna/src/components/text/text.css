@@ -9,6 +9,13 @@
   --md-title-weight: 600;
 }
 
+.penna-md[data-text="inherit"] {
+  max-width: none;
+  font-size: inherit;
+  font-weight: inherit;
+  line-height: inherit;
+}
+
 :root[data-penna-mode="light"] .penna-md {
   --md-title-weight: inherit;
 }
@@ -126,7 +133,7 @@
 }
 
 .penna-md blockquote {
-  border-left: 3px solid var(--penna-divider);
+  border-left: var(--penna-space-4) solid var(--penna-divider);
   padding: 0 var(--penna-space-16);
   color: var(--penna-fg-muted);
 }
@@ -215,7 +222,7 @@
 }
 
 .penna-md > :last-child,
-.penna-md > :last-child:is(ul, ol, p, hr, .md-quote, .md-code) {
+.penna-md > :last-child:is(ul, ol, p, hr, .md-quote, .md-code, .md-table) {
   padding-bottom: 0;
 }
 

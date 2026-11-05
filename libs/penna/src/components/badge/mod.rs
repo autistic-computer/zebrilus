@@ -1,7 +1,7 @@
 use crate::Space;
 use ala::{
     AnyElement, App, IntoElement, ParentElement, RenderOnce, SharedString, StyleRefinement, Styled,
-    Window, prelude::FluentBuilder as _, px,
+    Window, prelude::FluentBuilder as _,
 };
 
 use crate::{
@@ -116,22 +116,65 @@ impl Styled for Badge {
 
 impl RenderOnce for Badge {
     fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
-        let (height, text, padding) = match self.size.rung() {
-            Size::XSmall | Size::Small => (16.0, TextStyle::Micro, Space::S4),
-            _ => (18.0, TextStyle::Caption, Space::S6),
+        let (line, text, padding) = match self.size.rung() {
+            Size::XSmall | Size::Small => (TextStyle::Small, TextStyle::Micro, Space::S4),
+            _ => (TextStyle::Body, TextStyle::Caption, Space::S6),
         };
         let layer = self.surface_layer(cx.theme());
         h_flex()
             .flex_none()
-            .h(px(height))
+            .h(line.line_height())
             .gap(Space::S4)
             .px(padding)
             .layer(&layer)
             .type_style_strong(text, cx)
             .whitespace_nowrap()
             .refine_style(&self.style)
-            .children(self.icon.map(|icon| icon.size(px(text.design_px() + 1.0))))
+            .children(self.icon.map(|icon| icon.with_size(Size::XSmall)))
             .when(!self.label.is_empty(), |badge| badge.child(self.label))
             .children(self.children)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use ala::{Context, InteractiveElement as _, Render, TestAppContext, px, size};
+
+    use super::*;
+    use crate::{IconName, v_flex};
+
+    fn ghost() -> Badge {
+        Badge::empty()
+            .icon(IconName::Check)
+            .emphasis(Emphasis::Ghost)
+    }
+
+    struct Badges;
+
+    impl Render for Badges {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            v_flex()
+                .items_start()
+                .child(h_flex().debug_selector(|| "medium".into()).child(ghost()))
+                .child(
+                    h_flex()
+                        .debug_selector(|| "small".into())
+                        .child(ghost().small()),
+                )
+        }
+    }
+
+    #[ala::test]
+    fn a_badge_and_its_icon_grow_with_the_root_rem(cx: &mut TestAppContext) {
+        cx.update(crate::init);
+        let (_, cx) = cx.add_window_view(|_, _| Badges);
+        cx.update(|window, cx| {
+            window.set_rem_size(px(20.));
+            window.draw(cx).clear(cx);
+        });
+        let medium = cx.debug_bounds("medium").map(|bounds| bounds.size);
+        let small = cx.debug_bounds("small").map(|bounds| bounds.size);
+        assert_eq!(medium, Some(size(px(30.), px(22.5))));
+        assert_eq!(small, Some(size(px(25.), px(20.))));
     }
 }

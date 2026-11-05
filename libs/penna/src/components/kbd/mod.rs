@@ -2,7 +2,7 @@ use crate::Space;
 use ala::{
     Action, AnyElement, App, AsKeystroke as _, ElementId, FocusHandle, IntoElement, KeyContext,
     Keystroke, ParentElement as _, RenderOnce, Role, SharedString, StatefulInteractiveElement as _,
-    StyleRefinement, Styled, Window, px,
+    StyleRefinement, Styled, Window,
 };
 
 use crate::{
@@ -360,16 +360,16 @@ impl Styled for Keycap {
 
 impl RenderOnce for Keycap {
     fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
-        let (height, text) = match self.size.rung() {
-            Size::XSmall | Size::Small => (16.0, TextStyle::Micro),
-            _ => (18.0, TextStyle::Caption),
+        let (line, text) = match self.size.rung() {
+            Size::XSmall | Size::Small => (TextStyle::Small, TextStyle::Micro),
+            _ => (TextStyle::Body, TextStyle::Caption),
         };
         let layer = self.surface_layer(cx.theme());
         let cap = h_flex()
             .flex_none()
             .justify_center()
-            .h(px(height))
-            .min_w(px(height))
+            .h(line.line_height())
+            .min_w(line.line_height())
             .px(Space::S4)
             .layer(&layer)
             .text_color(layer.muted_text())
@@ -390,8 +390,44 @@ impl RenderOnce for Keycap {
 #[cfg(test)]
 mod tests {
     use super::{Kbd, KeyGlyphs, Keycap};
-    use crate::{Elevation, Theme, ThemeColor};
-    use ala::Keystroke;
+    use crate::{Elevation, Sizable as _, Theme, ThemeColor, h_flex, v_flex};
+    use ala::{
+        Context, InteractiveElement as _, IntoElement, Keystroke, ParentElement as _, Render,
+        Styled as _, TestAppContext, Window, px, size,
+    };
+
+    struct Caps;
+
+    impl Render for Caps {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            v_flex()
+                .items_start()
+                .child(
+                    h_flex()
+                        .debug_selector(|| "medium".into())
+                        .child(Keycap::new("1")),
+                )
+                .child(
+                    h_flex()
+                        .debug_selector(|| "small".into())
+                        .child(Keycap::new("1").small()),
+                )
+        }
+    }
+
+    #[ala::test]
+    fn a_keycap_grows_with_the_root_rem(cx: &mut TestAppContext) {
+        cx.update(crate::init);
+        let (_, cx) = cx.add_window_view(|_, _| Caps);
+        cx.update(|window, cx| {
+            window.set_rem_size(px(20.));
+            window.draw(cx).clear(cx);
+        });
+        let medium = cx.debug_bounds("medium").map(|bounds| bounds.size);
+        let small = cx.debug_bounds("small").map(|bounds| bounds.size);
+        assert_eq!(medium, Some(size(px(22.5), px(22.5))));
+        assert_eq!(small, Some(size(px(20.), px(20.))));
+    }
 
     #[test]
     fn kbd_and_keycap_draw_one_cap_on_the_same_ground() {

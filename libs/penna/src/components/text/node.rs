@@ -42,8 +42,6 @@ use super::{
 };
 use crate::Colorize as _;
 
-const BLOCKQUOTE_BAR_WIDTH: Pixels = px(3.0);
-
 thread_local! {
     static CODE_BLOCK_HIGHLIGHTERS: RefCell<HashMap<SharedString, SyntaxHighlighter>> =
         RefCell::new(HashMap::new());
@@ -1688,10 +1686,6 @@ impl BlockNode {
         window: &mut Window,
         cx: &mut App,
     ) -> AnyElement {
-        let col_w = col_w
-            .iter()
-            .map(|width| width.min(CELL_MAX_PX))
-            .collect::<Vec<_>>();
         let total_w: f32 = col_w.iter().sum();
 
         let style = &node_cx.style;
@@ -1720,7 +1714,7 @@ impl BlockNode {
             for (ix, cell) in row.children.iter().enumerate() {
                 let align = table.column_align(ix);
                 let is_last_col = ix == row.children.len() - 1;
-                let width = col_w.get(ix).copied().unwrap_or(CELL_MIN_PX);
+                let width = col_w.get(ix).copied().unwrap_or_default();
                 cells.push(
                     div()
                         .id(("cell", ix))
@@ -1754,7 +1748,6 @@ impl BlockNode {
         }
 
         div()
-            .pb(node_cx.style.paragraph_gap)
             .w_full()
             .child(horizontal_scroll_area(
                 ("table", options.ix),
@@ -1781,11 +1774,7 @@ impl BlockNode {
             for (ix, cell) in row.children.iter().enumerate() {
                 let align = table.column_align(ix);
                 let is_last_col = ix == row.children.len() - 1;
-                let width = col_w
-                    .get(ix)
-                    .copied()
-                    .unwrap_or(WRAP_CELL_MAX_PX)
-                    .min(WRAP_CELL_MAX_PX);
+                let width = col_w.get(ix).copied().unwrap_or_default();
 
                 cells.push(
                     div()
@@ -1793,7 +1782,7 @@ impl BlockNode {
                         .overflow_hidden()
                         .when(align == ColumnumnAlign::Center, |this| this.text_center())
                         .when(align == ColumnumnAlign::Right, |this| this.text_right())
-                        .min_w_16()
+                        .min_w(crate::rems_from_px(SHARED_CELL_MIN_PX))
                         .w(Length::Definite(relative(width)))
                         .px(Space::S8)
                         .py(Space::S4)
@@ -1819,7 +1808,6 @@ impl BlockNode {
         }
 
         div()
-            .pb(node_cx.style.paragraph_gap)
             .w_full()
             .child(
                 figure(div().id(("table", options.ix)).w_full(), cx)
@@ -1887,7 +1875,7 @@ impl BlockNode {
                         .id(("blockquote", ix))
                         .w_full()
                         .text_color(cx.theme().foreground.muted())
-                        .border_l(BLOCKQUOTE_BAR_WIDTH)
+                        .border_l(Space::S4)
                         .border_color(cx.theme().divider_color())
                         .px(Space::S16)
                         .children({
@@ -1947,9 +1935,11 @@ impl BlockNode {
                     })
                     .into_any_element()
             }
-            BlockNode::Table { .. } => {
-                Self::render_table(self, &options, node_cx, window, cx).into_any_element()
-            }
+            BlockNode::Table { .. } => div()
+                .w_full()
+                .pb(mb)
+                .child(Self::render_table(self, &options, node_cx, window, cx))
+                .into_any_element(),
             BlockNode::HorizontalRule { .. } => div()
                 .pb(mb)
                 .child(
@@ -1977,7 +1967,7 @@ fn cell_pad(window: &Window) -> f32 {
 }
 const CELL_MIN_PX: f32 = 48.0;
 const CELL_MAX_PX: f32 = 480.0;
-const WRAP_CELL_MAX_PX: f32 = 1200.0;
+const SHARED_CELL_MIN_PX: f32 = 64.0;
 
 fn measure_table_columns(
     table: &Table,
@@ -1989,7 +1979,10 @@ fn measure_table_columns(
     let font_size = text_style.font_size.to_pixels(window.rem_size());
     let mono = &cx.theme().mono_font_family;
     let pad = cell_pad(window);
-    let mut col_w = vec![CELL_MIN_PX; col_count];
+    let rem = window.rem_size();
+    let min = f32::from(crate::rems_from_px(CELL_MIN_PX).to_pixels(rem));
+    let max = f32::from(crate::rems_from_px(CELL_MAX_PX).to_pixels(rem));
+    let mut col_w = vec![min; col_count];
     for row in table.children.iter() {
         for (ix, cell) in row.children.iter().enumerate() {
             let Some(slot) = col_w.get_mut(ix) else {
@@ -2012,7 +2005,7 @@ fn measure_table_columns(
                     .width;
                 w = w.max(f32::from(line_w));
             }
-            *slot = slot.max(w + pad);
+            *slot = slot.max((w + pad).min(max));
         }
     }
     col_w
@@ -2140,6 +2133,47 @@ mod tests {
             (content[0] * 3.0 - content[1]).abs() < 0.5,
             "four CJK glyphs should take a third of twelve ASCII glyphs, got {widths:?}"
         );
+    }
+
+    #[ala::test]
+    fn quote_bars_and_table_column_limits_grow_with_the_rem(cx: &mut ala::TestAppContext) {
+        use super::super::TextView;
+        use ala::{Context, ParentElement as _, Render, Styled as _};
+
+        struct Host(MarkdownExtensions);
+
+        impl Render for Host {
+            fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+                div().w(px(400.)).child(
+                    TextView::markdown("quote", "> quoted").markdown_extensions(self.0.clone()),
+                )
+            }
+        }
+
+        let mut extensions = MarkdownExtensions::default();
+        extensions.push_block_parser(|node, _| {
+            matches!(node, mdast::Node::Paragraph(_)).then(|| MarkdownNode::new("probe", ()))
+        });
+        extensions.push_block_renderer("probe", |_, _, _| div().debug_selector(|| "quoted".into()));
+        cx.update(crate::init);
+        let document = super::super::markdown_parse::parse(
+            &format!("| a | {} |\n| --- | --- |\n", "wide ".repeat(200)),
+            &mut NodeContext::default(),
+        )
+        .unwrap();
+        let BlockNode::Table(table) = &document.blocks[0] else {
+            panic!("expected table");
+        };
+        let (_, cx) = cx.add_window_view(|_, _| Host(extensions));
+        cx.update(|window, _| window.set_rem_size(px(20.)));
+        cx.run_until_parked();
+        cx.update(|window, cx| {
+            _ = window.draw(cx);
+        });
+
+        assert_eq!(cx.debug_bounds("quoted").unwrap().left(), px(25.));
+        let widths = cx.update(|window, cx| measure_table_columns(table, 2, window, cx));
+        assert_eq!(widths, [60., 600.]);
     }
 
     #[test]

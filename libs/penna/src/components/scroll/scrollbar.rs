@@ -4,25 +4,25 @@ use ala::{
     A11ySubtreeBuilder, Anchor, App, Axis, Bounds, ContentMask, CursorStyle, Element, ElementId,
     GlobalElementId, Hitbox, HitboxBehavior, Hsla, InspectorElementId, IntoElement, LayoutId,
     ListState, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Orientation, Pixels, Point, Position,
-    Role, ScrollHandle, ScrollWheelEvent, Size, Style, UniformListScrollHandle, Window,
+    Rems, Role, ScrollHandle, ScrollWheelEvent, Size, Style, UniformListScrollHandle, Window,
     accesskit::{Node, Rect},
-    fill, point, px, relative, size, transparent_black,
+    fill, point, px, relative, rems, size, transparent_black,
 };
 use web_time::{Duration, Instant};
 
 use crate::ActiveTheme as _;
 use crate::Colorize as _;
+use crate::Space;
 
 pub use crate::ScrollbarShow;
 
-pub const WIDTH: Pixels = px(16.);
-pub const MIN_THUMB_SIZE: f32 = 48.;
+pub const WIDTH: Rems = Space::S16.rems();
+pub const MIN_THUMB_SIZE: Rems = rems(WIDTH.0 * 3.);
 
-pub const THUMB_WIDTH: Pixels = px(6.);
-pub const THUMB_INSET: Pixels = px(2.);
+pub const THUMB_WIDTH: Rems = Space::S6.rems();
+pub const THUMB_INSET: Rems = Space::S2.rems();
 
-const THUMB_ACTIVE_WIDTH: Pixels = px(8.);
-const THUMB_ACTIVE_INSET: Pixels = px(2.);
+const THUMB_ACTIVE_WIDTH: Rems = Space::S8.rems();
 
 #[must_use]
 pub fn thumb_radius(thumb_width: Pixels, cx: &App) -> Pixels {
@@ -316,9 +316,7 @@ impl ScrollbarAxis {
 struct BarStyle {
     thumb_bg: Hsla,
     bar_bg: Hsla,
-    thumb_width: Pixels,
-    inset: Pixels,
-    radius: Pixels,
+    thumb_width: Rems,
 }
 
 fn from_code_location(id: &ElementId) -> bool {
@@ -329,10 +327,10 @@ fn from_code_location(id: &ElementId) -> bool {
     }
 }
 
-fn resting_metrics(show: ScrollbarShow) -> (Pixels, Pixels) {
+fn resting_width(show: ScrollbarShow) -> Rems {
     match show {
-        ScrollbarShow::Scrolling => (THUMB_WIDTH, THUMB_INSET),
-        _ => (THUMB_ACTIVE_WIDTH, THUMB_ACTIVE_INSET),
+        ScrollbarShow::Scrolling => THUMB_WIDTH,
+        _ => THUMB_ACTIVE_WIDTH,
     }
 }
 
@@ -395,8 +393,6 @@ impl Scrollbar {
             thumb_bg: cx.theme().foreground.glow().into(),
             bar_bg: cx.theme().transparent,
             thumb_width: THUMB_ACTIVE_WIDTH,
-            inset: THUMB_ACTIVE_INSET,
-            radius: thumb_radius(THUMB_ACTIVE_WIDTH, cx),
         }
     }
 
@@ -405,30 +401,22 @@ impl Scrollbar {
             thumb_bg: thumb_color(cx).into(),
             bar_bg: cx.theme().transparent,
             thumb_width: THUMB_ACTIVE_WIDTH,
-            inset: THUMB_ACTIVE_INSET,
-            radius: thumb_radius(THUMB_ACTIVE_WIDTH, cx),
         }
     }
 
     fn style_for_normal(&self, cx: &App) -> BarStyle {
-        let (thumb_width, inset) = resting_metrics(self.show_mode(cx));
         BarStyle {
             thumb_bg: thumb_color(cx).into(),
             bar_bg: cx.theme().transparent,
-            thumb_width,
-            inset,
-            radius: thumb_radius(thumb_width, cx),
+            thumb_width: resting_width(self.show_mode(cx)),
         }
     }
 
     fn style_for_idle(&self, cx: &App) -> BarStyle {
-        let (thumb_width, inset) = resting_metrics(self.show_mode(cx));
         BarStyle {
             thumb_bg: transparent_black().into(),
             bar_bg: transparent_black(),
-            thumb_width,
-            inset,
-            radius: thumb_radius(thumb_width, cx),
+            thumb_width: resting_width(self.show_mode(cx)),
         }
     }
 }
@@ -515,6 +503,9 @@ impl Element for Scrollbar {
         let mut has_both = self.axis.is_both();
         let scroll_size = self.scroll_handle.content_size();
         let scrollbar_show = self.show_mode(cx);
+        let rem = window.rem_size();
+        let width = WIDTH.to_pixels(rem);
+        let inset = THUMB_INSET.to_pixels(rem);
 
         for &axis in self.axis.all() {
             let is_vertical = axis == Axis::Vertical;
@@ -533,7 +524,7 @@ impl Element for Scrollbar {
             };
 
             let margin_end = if has_both && !is_vertical {
-                WIDTH
+                width
             } else {
                 px(0.)
             };
@@ -543,25 +534,25 @@ impl Element for Scrollbar {
                 continue;
             }
 
-            let thumb_length =
-                (container_size / scroll_area_size * container_size).max(px(MIN_THUMB_SIZE));
+            let thumb_length = (container_size / scroll_area_size * container_size)
+                .max(MIN_THUMB_SIZE.to_pixels(rem));
             let thumb_start = -(scroll_position / (scroll_area_size - container_size)
                 * (container_size - margin_end - thumb_length));
             let thumb_end = (thumb_start + thumb_length).min(container_size - margin_end);
 
             let bounds = Bounds {
                 origin: if is_vertical {
-                    point(hitbox.origin.x + hitbox.size.width - WIDTH, hitbox.origin.y)
+                    point(hitbox.origin.x + hitbox.size.width - width, hitbox.origin.y)
                 } else {
                     point(
                         hitbox.origin.x,
-                        hitbox.origin.y + hitbox.size.height - WIDTH,
+                        hitbox.origin.y + hitbox.size.height - width,
                     )
                 },
                 size: if is_vertical {
-                    size(WIDTH, hitbox.size.height)
+                    size(width, hitbox.size.height)
                 } else {
-                    size(hitbox.size.width, WIDTH)
+                    size(hitbox.size.width, width)
                 },
             };
 
@@ -609,20 +600,19 @@ impl Element for Scrollbar {
                 idle
             };
 
-            let inset = style.inset;
-
+            let thumb_width = style.thumb_width.to_pixels(rem);
             let thumb_length = thumb_end - thumb_start - inset * 2;
             let thumb_bounds = if is_vertical {
                 Bounds::from_anchor_and_size(
                     Anchor::TopRight,
                     bounds.top_right() + point(-inset, inset + thumb_start),
-                    size(WIDTH, thumb_length),
+                    size(width, thumb_length),
                 )
             } else {
                 Bounds::from_anchor_and_size(
                     Anchor::BottomLeft,
                     bounds.bottom_left() + point(inset + thumb_start, -inset),
-                    size(thumb_length, WIDTH),
+                    size(thumb_length, width),
                 )
             };
 
@@ -630,13 +620,13 @@ impl Element for Scrollbar {
                 Bounds::from_anchor_and_size(
                     Anchor::TopRight,
                     bounds.top_right() + point(-inset, inset + thumb_start),
-                    size(style.thumb_width, thumb_length),
+                    size(thumb_width, thumb_length),
                 )
             } else {
                 Bounds::from_anchor_and_size(
                     Anchor::BottomLeft,
                     bounds.bottom_left() + point(inset + thumb_start, -inset),
-                    size(thumb_length, style.thumb_width),
+                    size(thumb_length, thumb_width),
                 )
             };
 
@@ -648,7 +638,7 @@ impl Element for Scrollbar {
                 axis,
                 bar_hitbox,
                 bounds,
-                radius: style.radius,
+                radius: thumb_radius(thumb_width, cx),
                 bg: style.bar_bg,
                 thumb_bounds,
                 thumb_fill_bounds,
@@ -1088,6 +1078,68 @@ mod tests {
 
         cx.simulate_mouse_move(point(px(95.), px(80.)), None, Modifiers::default());
         assert!(notified.get(), "the uncovered track should take the hover");
+    }
+
+    #[ala::test]
+    fn the_track_and_thumb_grow_with_the_rem(cx: &mut ala::TestAppContext) {
+        #[derive(Clone, Default)]
+        struct LongHandle(Rc<Cell<Point<Pixels>>>);
+
+        impl ScrollbarHandle for LongHandle {
+            fn offset(&self) -> Point<Pixels> {
+                self.0.get()
+            }
+
+            fn set_offset(&self, offset: Point<Pixels>) {
+                self.0.set(offset);
+            }
+
+            fn content_size(&self) -> Size<Pixels> {
+                size(px(100.), px(2000.))
+            }
+        }
+
+        struct LongRoot(LongHandle);
+
+        impl Render for LongRoot {
+            fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+                div().w(px(100.)).h(px(200.)).relative().child(
+                    Scrollbar::vertical(&self.0)
+                        .id("bar")
+                        .scrollbar_show(ScrollbarShow::Always),
+                )
+            }
+        }
+
+        cx.update(crate::init);
+        let (_, cx) = cx.add_window_view(|_, _| LongRoot(LongHandle::default()));
+        let bounds = cx.update(|window, cx| {
+            window.set_rem_size(px(20.));
+            window.set_a11y_forced(true);
+            window.draw(cx).clear(cx);
+            let scale = f64::from(window.scale_factor());
+            let tree = window.a11y_tree().expect("forced a11y builds a tree");
+            let mut bounds = tree
+                .nodes
+                .iter()
+                .filter_map(|(_, node)| {
+                    let rect = node.bounds()?;
+                    Some((
+                        node.author_id()?.to_owned(),
+                        [rect.x0, rect.y0, rect.x1, rect.y1].map(|edge| edge / scale),
+                    ))
+                })
+                .collect::<Vec<_>>();
+            bounds.sort_by(|a, b| a.0.cmp(&b.0));
+            bounds
+        });
+        assert_eq!(
+            bounds,
+            [
+                ("bar-vertical".to_owned(), [80., 0., 100., 200.]),
+                ("bar-vertical-thumb".to_owned(), [87.5, 2.5, 97.5, 57.5]),
+            ]
+        );
     }
 
     #[test]

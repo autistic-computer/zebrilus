@@ -2,10 +2,6 @@
 
 Markdown for reading: documents, help and chat. Larger and more open than interface text.
 
-```figure uses=notice
-<div class="docs-full penna-notice" data-penna="notice" data-tone="warning"><div class="penna-notice-tone" data-penna="chip" data-tone="warning"><span class="penna-notice-lead"><i data-icon="triangle-alert"></i></span><div class="penna-notice-body"><span class="penna-text penna-notice-title" data-penna-text>Being reworked</span><span class="penna-text penna-notice-detail" data-penna-text>The quote bar and table column limits are fixed pixels. Streaming text fades for up to 400ms, and not at all on the web. The web version can't take its container's text style.</span></div></div></div>
-```
-
 ## Reading ladder
 
 ```figure uses=label
@@ -45,6 +41,32 @@ Code takes the reading size in the code face. Blocks sit on a card.
 <div class="penna-md docs-full"><p>Run <code data-penna="card.code">cargo run</code> to start the server.</p><div class="md-code"><pre data-penna="card.code"><code><span class="tk-keyword">let</span> pane = session.<span class="tk-function">active_pane</span>();</code></pre></div></div>
 ```
 
+## Quotes and tables
+
+A quote has a 4 bar and 16 inside it. Table columns size to their content from 48 to 480 and share the width; a scrolling table keeps those widths and scrolls sideways.
+
+```figure
+<div class="penna-md" style="width: 320px"><div class="md-quote"><blockquote><p>The server outlives the app.</p></blockquote></div><div class="md-table"><div class="md-figure" data-penna="card.figure"><div class="md-row"><div class="md-cell" data-align="left">Command</div><div class="md-cell" data-align="center">Key</div></div><div class="md-row"><div class="md-cell" data-align="left">Split right</div><div class="md-cell" data-align="center"><code data-penna="card.code">Ctrl+D</code></div></div></div></div></div>
+```
+
+## Streaming
+
+New text fades in over 120 to 220ms, at the pace it arrives. With reduced motion it shows at once.
+
+```figure
+<div class="penna-md" data-streaming style="width: 320px"><p>Splitting the pane now.</p><template data-tail><p>The new pane keeps the working directory.</p></template></div>
+```
+
+## Inherited
+
+`text(None)` takes the text style of its container and drops the measure. Headings keep the reading ladder.
+
+```figure
+<div class="docs-show" data-gap="wide">
+  <div class="docs-cell"><div class="penna-md" data-text="inherit" style="width: 280px"><h4>Split the pane</h4><p>The new pane keeps the working directory, so the build stays warm.</p></div><span class="docs-note">In a body container, 13 on 18</span></div>
+</div>
+```
+
 ## API
 
 | Rust | HTML | Does |
@@ -52,8 +74,9 @@ Code takes the reading size in the code face. Blocks sit on a card.
 | `TextView::markdown(id, text)` | `.penna-md` | Text set once |
 | `TextView::new(&state)` | `.penna-md` | Text that changes |
 | `.selectable(true)` | `data-selectable` | Select and copy |
-| `.streaming(true)` | `data-streaming` | Text still arriving |
+| `.streaming(true)` | `data-streaming`, `template[data-tail]` | Text still arriving |
 | `.scrollable(true)` | none | Fills its container and scrolls |
 | `.code_block_actions(f)` | `data-actions`, `.md-actions` | Buttons on code blocks |
 | `.links(handler)` | `a` | Handles link clicks |
-| `.text(None)` on `TextViewStyle` | none | Takes its container's text style, no measure |
+| `.text(None)` on `TextViewStyle` | `data-text="inherit"` | Takes its container's text style, no measure |
+| `.table(style)` on `TextViewStyle` | `data-scroll`, `.md-scroll` | `overflow_x` scroll: tables scroll sideways |

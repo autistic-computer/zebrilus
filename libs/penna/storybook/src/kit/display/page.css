@@ -1,18 +1,8 @@
-.penna-kbd[data-penna] {
-  display: inline-flex;
-  flex: none;
+.display-bubble {
+  display: flex;
   align-items: center;
-  justify-content: center;
-  gap: var(--penna-space-2);
-  height: 18px;
-  min-width: 18px;
-  padding: 0 var(--penna-space-4);
-  font-family: inherit;
-  font-size: var(--penna-text-caption-size);
-  font-weight: var(--penna-text-caption-weight);
-  line-height: var(--penna-text-caption-line);
-  color: var(--penna-muted);
-  --penna-icon-size: 13px;
+  gap: var(--penna-space-8);
+  padding: var(--penna-space-8) var(--penna-space-12);
 }
 
 .display-stack {

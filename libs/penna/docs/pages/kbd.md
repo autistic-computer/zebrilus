@@ -2,10 +2,6 @@
 
 A keystroke drawn the way it is pressed. Menus and tooltips show shortcuts as plain text instead.
 
-```figure uses=notice
-<div class="docs-full penna-notice" data-penna="notice" data-tone="warning"><div class="penna-notice-tone" data-penna="chip" data-tone="warning"><span class="penna-notice-lead"><i data-icon="triangle-alert"></i></span><div class="penna-notice-body"><span class="penna-text penna-notice-title" data-penna-text>Being reworked</span><span class="penna-text penna-notice-detail" data-penna-text>Keycaps don't grow with the interface font size.</span></div></div></div>
-```
-
 ## Kinds
 
 ```figure uses=kbd

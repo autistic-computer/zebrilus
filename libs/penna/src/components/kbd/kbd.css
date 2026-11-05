@@ -5,8 +5,8 @@
   justify-content: center;
   gap: var(--penna-space-2);
   box-sizing: border-box;
-  height: 18px;
-  min-width: 18px;
+  height: var(--penna-text-body-line);
+  min-width: var(--penna-text-body-line);
   padding: 0 var(--penna-space-4);
   font-family: var(--penna-font);
   font-size: var(--penna-text-caption-size);
@@ -18,8 +18,8 @@
 }
 
 .penna-kbd:is([data-size="xsmall"], [data-size="small"]) {
-  height: 16px;
-  min-width: 16px;
+  height: var(--penna-text-small-line);
+  min-width: var(--penna-text-small-line);
   font-size: var(--penna-text-micro-size);
   line-height: var(--penna-text-micro-line);
   --penna-icon-size: 12px;

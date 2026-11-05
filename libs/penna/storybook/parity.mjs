@@ -31,7 +31,8 @@ A step targets a node by id ("hover": "ok"), the nth node sharing an id
 element ({"selector": ".thumb"}), whose section-relative point the canvas gets
 too. Point and selector steps score the whole section.
 
-Each story loads fresh. A step that leaves its canvas section
+Stories run --jobs at a time, each worker in its own browser, longest first by
+the last run's time. Each story loads fresh. A step that leaves its canvas section
 changed reloads both pages before the next step and the next theme and mode;
 "keep": true runs a step on that state instead (key steps keep by default,
 "keep": false starts one fresh). "still": true expects the step to change
@@ -49,11 +50,12 @@ options:
   --check            exit 1 when a score drops more than 0.5 below the baseline or has none
   --out <dir>        output folder (default target/parity)
   --timeout <ms>     give up on a story after this long (default 900000)
+  --jobs <n>         stories run at once, one browser each (default 6)
 
 environment: CHROME overrides the browser binary.`;
 
 function parseArgs(argv) {
-    const options = { components: [], all: false, theme: "", mode: "", section: "", threshold: 2, update: false, check: false, out: join(ROOT, "target/parity"), timeout: 900000 };
+    const options = { components: [], all: false, theme: "", mode: "", section: "", threshold: 2, update: false, check: false, out: join(ROOT, "target/parity"), timeout: 900000, jobs: 6 };
     for (let i = 0; i < argv.length; i++) {
         const arg = argv[i];
         if (arg === "-h" || arg === "--help") {
@@ -809,6 +811,7 @@ async function runComponent(name, options, pages, bases, combos) {
     const specPath = join(ROOT, "storybook/src/kit", name, "parity.json");
     if (!existsSync(specPath)) throw new Error(`${relative(ROOT, specPath)} is missing`);
     const spec = JSON.parse(readFileSync(specPath, "utf8"));
+    const started = Date.now();
     const report = { component: name, story: spec.story, page: spec.page ?? "index.html", threshold: options.threshold, combos: {}, loads: { count: 0, ms: 0 } };
     pages.canvasState = "stale";
     for (const [theme, mode] of combos) {
@@ -840,6 +843,7 @@ async function runComponent(name, options, pages, bases, combos) {
     const all = Object.values(report.combos).flatMap((combo) => combo.sections);
     report.score = mean(all.filter((section) => !section.step).map((section) => section.score)) ?? 0;
     report.steps = mean(all.filter((section) => section.step).map((section) => section.score));
+    report.seconds = round((Date.now() - started) / 1000);
     mkdirSync(join(options.out, name), { recursive: true });
     writeAtomic(join(options.out, name, "report.json"), JSON.stringify(report, null, 2));
     return report;
@@ -1017,34 +1021,47 @@ toggle.addEventListener("change", () => {
     writeAtomic(join(out, "report.html"), page);
 }
 
+function lastSeconds(out, name) {
+    try {
+        return JSON.parse(readFileSync(join(out, name, "report.json"), "utf8")).seconds ?? Infinity;
+    } catch {
+        return Infinity;
+    }
+}
+
 async function main() {
     const options = parseArgs(process.argv.slice(2));
-    let deadline;
-    const arm = (what) => {
-        clearTimeout(deadline);
-        deadline = setTimeout(() => {
-            console.error(`${what} timed out after ${options.timeout} ms`);
-            process.exit(1);
-        }, options.timeout);
-        deadline.unref();
-    };
     const themes = options.theme ? [options.theme] : THEMES;
     const modes = options.mode ? [options.mode] : MODES;
     const combos = themes.flatMap((theme) => modes.map((mode) => [theme, mode]));
     prepare();
-    arm("starting the browser");
     const bases = { story: await serve(join(ROOT, "storybook/dist"), () => true, "max-age=3600"), dom: await serve(ROOT, domFiles()) };
-    const cdp = connect(launch());
-    const pages = { canvas: await tab(cdp), dom: await tab(cdp), lab: await tab(cdp), canvasState: "stale", canvasLoads: 0, domLoads: 0 };
+    const queue = [...options.components].sort((a, b) => lastSeconds(options.out, b) - lastSeconds(options.out, a));
     const failures = [];
-    for (const name of options.components) {
-        arm(name);
-        const started = Date.now();
-        const report = await runComponent(name, options, pages, bases, combos);
-        console.log(table(report));
-        console.log(`  (${((Date.now() - started) / 1000).toFixed(1)}s, ${report.loads.count} story loads ${(report.loads.ms / 1000).toFixed(1)}s)\n`);
-        failures.push(...baseline(report, options));
-    }
+    const worker = async () => {
+        let deadline;
+        const arm = (what) => {
+            clearTimeout(deadline);
+            deadline = setTimeout(() => {
+                console.error(`${what} timed out after ${options.timeout} ms`);
+                process.exit(1);
+            }, options.timeout);
+            deadline.unref();
+        };
+        arm("starting the browser");
+        const cdp = connect(launch());
+        const pages = { canvas: await tab(cdp), dom: await tab(cdp), lab: await tab(cdp), canvasState: "stale", canvasLoads: 0, domLoads: 0 };
+        for (let name = queue.shift(); name; name = queue.shift()) {
+            arm(name);
+            const report = await runComponent(name, options, pages, bases, combos);
+            console.log(`${table(report)}\n  (${report.seconds}s, ${report.loads.count} story loads ${(report.loads.ms / 1000).toFixed(1)}s)\n`);
+            failures.push(...baseline(report, options));
+        }
+        clearTimeout(deadline);
+    };
+    const started = Date.now();
+    await Promise.all(Array.from({ length: Math.max(1, Math.min(options.jobs, queue.length)) }, worker));
+    console.log(`${options.components.length} stories in ${round((Date.now() - started) / 1000)}s`);
     html(options.out);
     console.log(`report: ${join(options.out, "report.html")}`);
     if (failures.length) {

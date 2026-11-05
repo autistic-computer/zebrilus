@@ -126,6 +126,15 @@ pub fn stylesheet(theme: &Theme, toned: &[SurfaceRole]) -> String {
         }
         let _ = writeln!(css, "}}");
     }
+    for container in roles::all().filter(|role| is_container(role.kind)) {
+        let ground = theme.ground_of(Surface::new(container));
+        let _ = writeln!(
+            css,
+            "[data-on=\"{}\"] {{ --penna-ground: {}; }}",
+            container.id,
+            color(ground.fill)
+        );
+    }
     for role in SurfaceRole::KIT
         .into_iter()
         .chain(toned.iter().copied())

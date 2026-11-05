@@ -4,7 +4,7 @@
   align-items: center;
   gap: var(--penna-space-4);
   box-sizing: border-box;
-  height: 18px;
+  height: var(--penna-text-body-line);
   padding: 0 var(--penna-space-6);
   font-size: var(--penna-text-caption-size);
   font-weight: 500;
@@ -14,11 +14,18 @@
 }
 
 .penna-badge[data-penna]:is([data-size="xsmall"], [data-size="small"]) {
-  height: 16px;
+  height: var(--penna-text-small-line);
   padding: 0 var(--penna-space-4);
   font-size: var(--penna-text-micro-size);
   line-height: var(--penna-text-micro-line);
-  --penna-icon-size: 11px;
+}
+
+.penna-badge[data-opaque]:not([data-emphasis="solid"]) {
+  background: linear-gradient(var(--penna-fill), var(--penna-fill)), var(--penna-ground, var(--penna-bg));
+}
+
+.penna-badge[data-opaque][data-emphasis="ghost"] {
+  background: var(--penna-ground, var(--penna-bg));
 }
 
 .penna-badge > .badge-text {

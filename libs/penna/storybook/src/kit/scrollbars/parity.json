@@ -6,6 +6,7 @@
     { "name": "press-always-thumb", "section": "show-modes", "press": "always-vertical-thumb" },
     { "name": "click-always-track", "section": "show-modes", "click": "always-vertical" },
     { "name": "hover-hover-track", "section": "show-modes", "hover": "hover-vertical" },
+    { "name": "hover-scrolling-track", "section": "show-modes", "hover": "scrolling-vertical", "still": true },
     { "name": "hover-vertical-thumb", "section": "axes", "hover": "axis-vertical-vertical-thumb" },
     { "name": "click-horizontal-track", "section": "axes", "click": "axis-horizontal-horizontal" },
     { "name": "hover-both-horizontal-thumb", "section": "axes", "hover": "axis-both-horizontal-thumb" },

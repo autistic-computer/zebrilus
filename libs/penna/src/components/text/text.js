@@ -1,8 +1,9 @@
 (() => {
-  const CELL_PAD = 16;
   const CELL_MIN = 48;
   const CELL_MAX = 480;
-  const WRAP_MAX = 1200;
+  const VEIL_MS = 220;
+  const VEIL_CURVE = `linear(${Array.from({ length: 21 }, (_, step) => (1 - (1 - step / 20) ** 1.6).toFixed(4)).join(", ")})`;
+  const calm = matchMedia("(prefers-reduced-motion: reduce)");
 
   let probe;
 
@@ -59,13 +60,14 @@
     const view = table.closest(".penna-md");
     const style = getComputedStyle(view);
     const count = Math.max(...rows.map((row) => row.children.length));
-    const widths = Array(count).fill(CELL_MIN);
+    const columns = Array(count).fill(CELL_MIN);
     rows.forEach((row) =>
       [...row.children].forEach((cell, index) => {
-        widths[index] = Math.max(widths[index], cellWidth(cell, style.fontSize, style.fontFamily) + CELL_PAD);
+        const box = getComputedStyle(cell);
+        const pad = parseFloat(box.paddingLeft) + parseFloat(box.paddingRight);
+        columns[index] = Math.max(columns[index], Math.min(cellWidth(cell, style.fontSize, style.fontFamily) + pad, CELL_MAX));
       }),
     );
-    const columns = widths.map((width) => Math.min(width, scroll ? CELL_MAX : WRAP_MAX));
     rows.forEach((row) =>
       [...row.children].forEach((cell, index) => cell.style.setProperty("--md-w", columns[index] ?? CELL_MIN)),
     );
@@ -88,9 +90,12 @@
     const tail = view.querySelector("template[data-tail]");
     if (!tail) return;
     requestAnimationFrame(() => {
-      view.append(tail.content.cloneNode(true));
+      const nodes = [...tail.content.cloneNode(true).children];
+      view.append(...nodes);
       tail.remove();
       settle();
+      if (calm.matches) return;
+      nodes.forEach((node) => node.animate({ opacity: [0, 1] }, { duration: VEIL_MS, easing: VEIL_CURVE }));
     });
   }
 

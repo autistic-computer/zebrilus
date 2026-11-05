@@ -151,9 +151,9 @@ Other heights: `control-chrome` 22 (controls in bars, today `PANE_HEADER_CONTROL
 
 Icons: 12 beside `small` and `caption` (menu rows included), 14 beside `body`, 16 beside `lead` and `heading`. List and tree rows are the exception: their icons stay 14 beside `lead`.
 
-Inside a line of text, keycaps and badges take the line height of the text they sit in (16 in `small`, 18 in `body`), and checkboxes are 14 at `xs` and `sm` and 16 from `md` up, never a control size.
+Inside a line of text, keycaps and badges are as tall as the line of the text they sit in (`TextStyle::line_height`: 16 in `small`, 18 in `body`), and checkboxes are 14 at `xs` and `sm` and 16 from `md` up, never a control size. Like every length here, these are design pixels and grow with the interface font.
 
-Width: reading text stops at a measure of 640 (about 75 characters of `read-body`), natively and in HTML alike. Sidebars are 200 to 256 wide, layout geometry rather than tokens.
+Width: reading text stops at a measure of 640 (about 75 characters of `read-body`), natively and in HTML alike. A table column in reading text sizes to its content from 48 to 480. Sidebars are 200 to 256 wide. These widths are layout geometry rather than tokens, in design pixels like everything else, so they grow with the interface font.
 
 Density (built): one setting picks the default control and row height: compact 24, regular 28, comfortable 32. Text and gaps stay, and so do the other rungs. It is `Appearance::density` (Advanced, under UI zoom), and `Size::Medium.control_px()` follows it, so buttons, fields, selects, segmented controls and list, tree, menu and picker rows move together. The HTML reads `--penna-control-md`, which `:root[data-density]` changes (`?density=` on a page). `Size::rung()` measures `Size(px)` against the regular ladder, so a fixed-height control keeps its rung at any density.
 
@@ -295,12 +295,12 @@ Kinds, by emphasis (`.emphasis()`), each in any tone (`.tone()`): neutral by def
 | Outline | `.emphasis(Emphasis::Outline)` | a quiet tag that says where something comes from (the settings provenance badge, a version) |
 | Ghost | `.emphasis(Emphasis::Ghost)` | ink only, no fill or edge |
 
-`.on(ground)` paints it for the ground it sits on. `.opaque()` fills it with that ground's own fill, so it reads over a picture or a message bubble.
+`.on(ground)` paints it for the ground it sits on. `.opaque()` flattens its fill onto that ground's fill, so it looks the same but hides what is under it: a picture, or the edge of a message bubble it overlaps.
 
 Anatomy, left to right:
 
-- Container: height 18 (the `body` line) from `md` up, 16 (the `small` line) at `xs` and `sm`; inset `space-6` (6) at both sides, `space-4` (4) at `xs` and `sm`; radius the theme radius capped at 45% of the height, so a pill.
-- Icon (optional, `.icon()`): before the label, one pixel larger than the text: 12, or 11 at `xs` and `sm`; `space-4` (4) from the label.
+- Container: height 18 (the `body` line, `TextStyle::Body.line_height()`) from `md` up, 16 (the `small` line) at `xs` and `sm`; inset `space-6` (6) at both sides, `space-4` (4) at `xs` and `sm`; radius the theme radius capped at 45% of the height, so a pill.
+- Icon (optional, `.icon()`): before the label, 12 at every size (the smallest icon, `Size::XSmall`); `space-4` (4) from the label.
 - Label: `caption` (11 on 16) at 500, `micro` (10 on 14) at `xs` and `sm`; it never wraps.
 - Children (optional): after the label; `Badge::empty()` has no label and takes only children.
 
@@ -318,9 +318,9 @@ Content: a count, or one to three words in sentence case ("3 failing", "Waiting"
 
 Placement: after the text it tags, `gap-related` (8) from it, or at the end of a row. Pick its size from the line it sits in.
 
-HTML: `.penna-badge` with `data-penna` (`badge`, or `badge.outline` for outline), `data-tone`, `data-size` (`xsmall`, `small`); the label is a `span.badge-text` marked `data-penna-text`, the icon `<i data-icon>`.
+HTML: `.penna-badge` with `data-penna` (`badge`, or `badge.outline` for outline), `data-tone`, `data-size` (`xsmall`, `small`), `data-emphasis` (`ghost`, or `solid` with `data-solid="<tone>"` and the label and icon wrapped in `.penna-solid-ink` as on a chip; `penna.css` holds these rules for both) and `data-opaque` with `data-on` naming the ground by its role (`data-on="card.bubble"`; the window without it): the tokens give each `data-on` that ground's fill as `--penna-ground`, and `badge.css` lays the badge's fill over it. The label is a `span.badge-text` marked `data-penna-text`, the icon `<i data-icon>`.
 
-Status: two gaps. Its height and icon are plain pixels (`px`), so they don't grow with the interface font size the way the label does. The HTML twin has no solid, ghost or opaque badge.
+Status: matches.
 
 ### Bar
 
@@ -480,7 +480,7 @@ Placement: chips in a row sit `gap-related` (8) apart.
 
 HTML: `.penna-chip` with `data-penna` (the look and emphasis: `chip`, `chip.outline`, `chip.bar`, `chip.floating`, `chip.marker`, `chip.drag`, or `badge.icon` with `data-look="icon-disc"`), `data-tone`, `data-size` (`xsmall` to `touch`; small when absent), `data-state` (`hover`, `active`, `focused`, `selected`, `current`, `disabled`), `data-emphasis` (`ghost`, or `solid` with `data-solid="<tone>"` and the label wrapped in `.penna-solid-ink` carrying the solid button's `data-penna="button" data-prominent`), `data-interactive` (with `role="button"` and `tabindex="0"` when it takes focus; `chip.js` runs it on Space and Enter and keeps a click from focusing it), `data-ring="<tone>"`, and `data-detail` when it holds a detail. Its parts: `i.penna-dot[data-tone]`, `<i data-icon>`, `.penna-chip-label` and `.penna-chip-detail` (which `chip.js` truncates), each text run marked `data-penna-text`.
 
-Status: one gap. Its icon is sized in plain pixels (`px`), so it doesn't grow with the interface font size the way the label does.
+Status: matches.
 
 ### Field
 
@@ -636,7 +636,7 @@ Placement: the caps of one sequence sit `gap-tight` (4) apart; a cap sits at the
 
 HTML: `<kbd class="penna-kbd" data-penna="keycap">` with `data-kbd`, the keystroke as the keymap spells it (`cmd-shift-p`), which `kbd.js` fills with glyphs and an `aria-label`; `data-kbd-lowercase`; `data-size` (`xsmall`, `small`). A fixed label holds its text in a `span` marked `data-penna-text`, as `kbd.js` writes it. `data-kbd-text` on any element fills it with the spelled-out keystroke.
 
-Status: one gap. Its height and minimum width are plain pixels (`px`), so the cap doesn't grow with the interface font size the way its text does.
+Status: matches.
 
 ### Label
 
@@ -896,8 +896,10 @@ Axes (`ScrollbarAxis`): vertical, horizontal, or both. With both, the horizontal
 
 Anatomy:
 
-- Track: 16 wide along the area's end edge (the right for vertical, the bottom for horizontal), no fill. It is the hit area.
-- Thumb: 6 wide at rest in Scrolling, 8 otherwise, set 2 in from the outer edge and the track's ends. Its length is the visible share of the track, at least 48. Fill `fg` at 28% (`fg.wash()`, `--penna-thumb`), 35% (`fg.glow()`) under the pointer or while dragged. Radius: the theme radius capped at half the thumb's width, so round in every shipped theme.
+- Track: `space-16` (16) wide along the area's end edge (the right for vertical, the bottom for horizontal), no fill. It is the hit area.
+- Thumb: `space-6` (6) wide at rest in Scrolling, `space-8` (8) otherwise, set `space-2` (2) in from the outer edge and the track's ends. Its length is the visible share of the track, at least three track widths (48). Fill `fg` at 28% (`fg.wash()`, `--penna-thumb`), 35% (`fg.glow()`) under the pointer or while dragged. Radius: the theme radius capped at half the thumb's width, so round in every shipped theme.
+
+The lengths are `Rems` (`GUTTER_WIDTH`, `THUMB_WIDTH`, `THUMB_INSET`, `MIN_THUMB_SIZE`), turned into pixels with the window's rem when the bar lays out, so paint, hit testing and drag all use the same scaled lengths. A caller that draws its own thumb (zz's terminal scrollback) converts them the same way. `scroll.js` reads `--penna-space-16` and `--penna-space-2` at layout and again when the tokens load.
 
 States:
 
@@ -916,9 +918,9 @@ Content: none.
 
 Placement: the last child of the scroll area's frame, absolutely filling it (`.vertical_scrollbar(&handle)`, `.overflow_y_scrollbar()`, or `Scrollbar::vertical(&handle)` in an `absolute().inset_0()` layer), so it overlays the content's end edge. The frame clips; the content keeps its own inset.
 
-HTML: `.penna-scroll[data-axis="vertical|horizontal|both"][data-show="scrolling|hover|always"]` around a `.penna-scroll-viewport`. `scroll.js` adds a `.penna-scrollbar[data-axis]` holding `.penna-scroll-thumb` > `.penna-scroll-fill` per axis (or uses ones in the markup), sets `--penna-thumb-start` and `--penna-thumb-length`, `data-visible` while the bar shows, `data-state="hover"` on the thumb under the pointer and `data-state="active"` on the bar while dragged, and `hidden` on a bar whose axis doesn't overflow. `data-bar` names the bars' `data-id`s (`<id>-vertical`, `<id>-vertical-thumb`), `data-scroll-x` and `data-scroll-y` set a starting offset, and `data-hovered` shows the thumb hovered until the pointer moves. `pennaScroll.mount(element)` wires an area added later.
+HTML: `.penna-scroll[data-axis="vertical|horizontal|both"][data-show="scrolling|hover|always"]` around a `.penna-scroll-viewport`. `scroll.js` adds a `.penna-scrollbar[data-axis]` holding `.penna-scroll-thumb` > `.penna-scroll-fill` per axis (or uses ones in the markup), sets `--penna-thumb-start` and `--penna-thumb-length`, `data-visible` while the bar shows, `data-state="hover"` on the thumb under the pointer and `data-state="active"` on the bar while dragged, and `hidden` on a bar whose axis doesn't overflow. `data-bar` names the bars' `data-id`s (`<id>-vertical`, `<id>-vertical-thumb`), `data-scroll-x` and `data-scroll-y` set a starting offset, and `data-hovered` shows the thumb hovered until the pointer moves. `pennaScroll.mount(element)` wires an area added later. With no `data-show` the bar is Scrolling, the kit's default, since a page can't read the system's choice.
 
-Status: two gaps. Track, thumb and inset are pixel literals (16, 6, 8, 2) with a 48 minimum thumb, natively and in HTML, so they don't scale with the rem (Rules 1). With no `data-show`, the HTML bar always draws and comes back after its fade, where the native default follows the theme's `scrollbar_show`.
+Status: matches.
 
 ### Segmented control
 
@@ -1223,9 +1225,9 @@ Anatomy, top to bottom:
 - Links: the text's ink with a 1px underline; a link's title shows in a tooltip.
 - Inline code: the code face at the size of the text around it, on the `card.code` fill, corners at most 6.
 - Lists: items touch, with no gap; markers `•`, `◦`, `▪` by depth, or `1.`; a nested list indents `space-16` (16). A task item's checkbox is as tall as the font, centered on the capitals in a box one line tall, `space-6` (6) before its text.
-- Quotes: a 3 bar in the divider color at the start, `space-16` (16) inside it, text in `fg-muted`.
+- Quotes: a `space-4` (4) bar in the divider color at the start, `space-16` (16) inside it, text in `fg-muted`.
 - Code blocks: a `card.code` card, `inset-card` (12) all round, the code face at the reading size with the theme's syntax colors. With `code_block_actions` the top inset grows to 2 × `space-8` + `control-md` (44), and the actions sit `space-8` (8) from the top and sides, at the end.
-- Tables: hairline rules between rows and between columns, cells `space-4` (4) by `space-8` (8), columns sized to their content from 48 up to 1200, or to 480 when the table scrolls sideways in its own area; text `read-body` (`read-small` is planned).
+- Tables: hairline rules between rows and between columns, cells `space-4` (4) by `space-8` (8), columns sized to their content from 48 to 480 (Size, Width). By default the columns share the container's width in that proportion, none narrower than 64, and their text wraps. With `overflow_x` scroll on `TextViewStyle::table` (`data-scroll`) they keep their widths, a narrower table grows in proportion to fill its container, and a wider one scrolls sideways in its own area. Text `read-body` (`read-small` is planned).
 - Rule: a hairline in the divider color.
 
 Rhythm: blocks sit `space-12` (12) apart (`TextViewStyle::paragraph_gap`). A heading has `space-24` (24) above it at h1 and h2, `space-16` (16) at h3 to h6, and `space-8` (8) below. The first block has nothing above it and the last nothing below.
@@ -1236,7 +1238,7 @@ States:
 |---|---|---|
 | rest | the text | |
 | selected | an `fg` wash (28%) behind the selected runs, across blocks | `.selectable(true)` |
-| streaming | new text fades in under a veil over 120 to 400ms, following the pace it arrives at | none with reduced motion |
+| streaming | new text fades in under a veil over 120 to 220ms (appear to turn), following the pace it arrives at | none with reduced motion |
 
 Behavior: with `.selectable(true)` a drag selects across blocks, a double click a word and a triple click a paragraph; while it has focus, ⌘C or Ctrl+C copies and ⌘A or Ctrl+A selects all. A drag past the top or bottom scrolls. `.scrollable(true)` fills its container and scrolls with a vertical scrollbar. Links open with the system unless `.links(..)` handles the click; a `TextLinks` can also restyle a link or give it a tooltip. `markdown_extensions` adds block kinds and `code_block_body` replaces a code block's body.
 
@@ -1244,9 +1246,9 @@ Content: markdown. Headings give structure, never emphasis; bold carries emphasi
 
 Placement: inside a pane or page that gives the inset, `inset-page` (32) around a document page.
 
-HTML: `.penna-md` (`data-selectable` to make it focusable and select all with ⌘A; `data-selected`; `data-streaming` with a `template[data-tail]`) holding plain `p`, `h1` to `h6`, `strong`, `em`, `s`, `a` and `code[data-penna="card.code"]`; quotes as `.md-quote > blockquote`; lists as `ul` or `ol` > `li` > `.md-item` > `.md-prefix` + `.md-body`, a task's box as `.md-box > .md-check[role="checkbox"][aria-checked]`; `hr`; code as `.md-code > pre[data-penna="card.code"] > code` with `.tk-*` runs, and `data-actions` and `.md-actions` for actions; tables as `.md-table` (`data-scroll`, with a `.md-scroll`) > `.md-figure[data-penna="card.figure"]` > `.md-row` > `.md-cell[data-align]`. `text.js` sizes table columns, rounds inline code and check corners, and places baselines as ala does.
+HTML: `.penna-md` (`data-selectable` to make it focusable and select all with ⌘A; `data-selected`; `data-streaming` with a `template[data-tail]`, whose blocks `text.js` appends under the same veil, one 220 fade on the native curve as for a first chunk; `data-text="inherit"` for the inherited kind, which takes its container's text style and drops the measure) holding plain `p`, `h1` to `h6`, `strong`, `em`, `s`, `a` and `code[data-penna="card.code"]`; quotes as `.md-quote > blockquote`; lists as `ul` or `ol` > `li` > `.md-item` > `.md-prefix` + `.md-body`, a task's box as `.md-box > .md-check[role="checkbox"][aria-checked]`; `hr`; code as `.md-code > pre[data-penna="card.code"] > code` with `.tk-*` runs, and `data-actions` and `.md-actions` for actions; tables as `.md-table` (`data-scroll`, with a `.md-scroll`) > `.md-figure[data-penna="card.figure"]` > `.md-row` > `.md-cell[data-align]`. `text.js` sizes table columns, rounds inline code and check corners, and places baselines as ala does.
 
-Status: three gaps. The quote bar (3) and the table's column limits (48, 480, 1200) are pixel literals (Rules 1). The streaming veil fades for up to 400ms, past the 220 Principles 5 allows, and the HTML twin has no veil. The HTML twin has no `text(None)`: `.penna-md` always sets `read-body` and the 640 measure.
+Status: matches.
 
 ### Tile
 

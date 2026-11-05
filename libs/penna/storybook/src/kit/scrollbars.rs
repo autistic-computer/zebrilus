@@ -17,7 +17,7 @@ pub const STORY: Story = Story {
     id: "scrollbars",
     name: "Scrollbars",
     group: "Kit",
-    summary: "Scrollbar overlays a scroll area driven by a ScrollHandle. The theme default on every platform is Scrolling: invisible at rest.",
+    summary: "Scrollbar overlays a scroll area driven by a ScrollHandle. The theme picks Scrolling where the system hides scrollbars and Hover where it keeps them; an HTML bar with no data-show is Scrolling.",
     sections: &[
         Section {
             id: "show-modes",
@@ -155,7 +155,7 @@ impl Render for Modes {
                             .top_0()
                             .right_0()
                             .w(GUTTER_WIDTH)
-                            .h(px(MIN_THUMB_SIZE))
+                            .h(MIN_THUMB_SIZE)
                             .child(self.hovered.measure()),
                     ),
             )

@@ -50,6 +50,12 @@ pub const STORY: Story = Story {
             build: |_, cx| stateless(tables, cx),
         },
         Section {
+            id: "inherited",
+            name: "Inherited",
+            summary: "TextViewStyle::text(None) takes the container's text style (body here) and drops the 640 measure. Headings keep the reading ladder.",
+            build: |_, cx| stateless(inherited, cx),
+        },
+        Section {
             id: "selection",
             name: "Selection",
             summary: "A selectable TextView with select_all applied. The selection paints across paragraphs, list items and code.",
@@ -131,6 +137,15 @@ fn code(_: &mut Window, cx: &mut App) -> AnyElement {
                     }),
                 ),
         )
+        .into_any_element()
+}
+
+const INHERITED: &str = "#### Split the pane\nThe new pane keeps the working directory, so the build cache stays warm and the next `cargo run` starts at once. Lines run to the container's edge instead of stopping at the measure.\n\n- Read the layout\n- Split along the long edge";
+
+fn inherited(_: &mut Window, cx: &mut App) -> AnyElement {
+    div()
+        .w(px(720.0))
+        .child(TextView::markdown("md-inherited", INHERITED).style(style(cx).text(None)))
         .into_any_element()
 }
 

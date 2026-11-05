@@ -3,9 +3,10 @@ use ala::{
     Render, SharedString, Styled as _, Subscription, Window, div, px,
 };
 use penna::{
-    ActiveTheme as _, Colorize as _, Disableable as _, Icon, IconName, Sizable as _, Space,
-    StyledExt as _, TextStyle, components::kbd::Kbd, components::list::ListItem,
-    components::separator::Separator, components::spinner::Spinner, h_flex, v_flex,
+    ActiveTheme as _, Card, CardLook, Colorize as _, Disableable as _, Emphasis, Icon, IconName,
+    Label, Sizable as _, Space, StyledExt as _, TextStyle, Tone, components::badge::Badge,
+    components::kbd::Kbd, components::list::ListItem, components::separator::Separator,
+    components::spinner::Spinner, h_flex, v_flex,
 };
 
 use super::support::{Probe, hover, when_visible};
@@ -15,13 +16,19 @@ pub const STORY: Story = Story {
     id: "display",
     name: "Display",
     group: "Kit",
-    summary: "Small read-only pieces: key caps, spinners, separators and list rows. Badges live in the Design system story.",
+    summary: "Small read-only pieces: key caps, badges, spinners, separators and list rows.",
     sections: &[
         Section {
             id: "kbd",
             name: "Kbd",
             summary: "One Keystroke as a pill. Mac platforms, including a web build in a Mac browser, draw glyphs; others spell modifiers out (Ctrl, Alt, Shift, Win).",
             build: |_, cx| stateless(kbds, cx),
+        },
+        Section {
+            id: "badge",
+            name: "Badge",
+            summary: "Badge::new(label) with .emphasis(..) and .tone(..). Its height is the line it sits in, its icon 12 at every size. .opaque() fills it with its ground's own fill, so it reads over a bubble or a picture.",
+            build: |_, cx| stateless(badges, cx),
         },
         Section {
             id: "spinner",
@@ -85,6 +92,68 @@ fn kbds(_: &mut Window, _: &mut App) -> AnyElement {
             row()
                 .child(key("cmd-shift-p").lowercase())
                 .child(key("ctrl-a").lowercase()),
+        )
+        .into_any_element()
+}
+
+fn badges(_: &mut Window, cx: &mut App) -> AnyElement {
+    let bubble = cx.theme().ground_of(CardLook::Bubble);
+    states()
+        .columns(2)
+        .state(
+            "emphasis",
+            row().children(
+                Emphasis::ALL.map(|emphasis| Badge::new(emphasis.name()).emphasis(emphasis)),
+            ),
+        )
+        .state(
+            "tones, solid",
+            row().children(
+                Tone::ALL.map(|tone| Badge::new(tone.name()).tone(tone).emphasis(Emphasis::Solid)),
+            ),
+        )
+        .state(
+            "ghost, with icons",
+            row().children(
+                [
+                    (Tone::Danger, IconName::CircleX, "3 failing"),
+                    (Tone::Warning, IconName::TriangleAlert, "Waiting"),
+                    (Tone::Success, IconName::CircleCheck, "Ready"),
+                ]
+                .map(|(tone, icon, label)| {
+                    Badge::new(label)
+                        .icon(icon)
+                        .tone(tone)
+                        .emphasis(Emphasis::Ghost)
+                }),
+            ),
+        )
+        .state(
+            "medium and small",
+            row()
+                .child(
+                    Badge::new("3 failing")
+                        .icon(IconName::CircleX)
+                        .tone(Tone::Danger),
+                )
+                .child(
+                    Badge::new("3 failing")
+                        .icon(IconName::CircleX)
+                        .tone(Tone::Danger)
+                        .small(),
+                ),
+        )
+        .state(
+            "soft and opaque on a bubble",
+            Card::new("badge-bubble", CardLook::Bubble)
+                .px(Space::S12)
+                .py(Space::S8)
+                .flex()
+                .items_center()
+                .gap(Space::S8)
+                .child(Label::new(TextStyle::Body, "Review"))
+                .child(Badge::new("2").tone(Tone::Danger).on(bubble))
+                .child(Badge::new("2").tone(Tone::Danger).opaque().on(bubble)),
         )
         .into_any_element()
 }

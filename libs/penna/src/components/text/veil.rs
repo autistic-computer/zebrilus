@@ -7,11 +7,11 @@ use std::{
 use ala::{App, EntityId, TextRun};
 use web_time::Instant;
 
-use crate::foundation::pulse::pulse_lease;
+use crate::foundation::{motion, pulse::pulse_lease};
 
 const EMA_SEED_MS: f32 = 160.0;
-const MIN_FADE_MS: f32 = 120.0;
-const MAX_FADE_MS: f32 = 400.0;
+const MIN_FADE_MS: f32 = motion::APPEAR.as_millis() as f32;
+const MAX_FADE_MS: f32 = motion::TURN.as_millis() as f32;
 const CURVE_POWER: f32 = 1.6;
 const MAX_GAP_MS: f32 = 1_000.0;
 
@@ -354,7 +354,8 @@ mod tests {
 
     #[test]
     fn cadence_curve_is_bounded() {
-        assert_eq!(fade_duration_ms(160.0), 400.0);
+        assert_eq!(fade_duration_ms(160.0), 220.0);
+        assert_eq!(fade_duration_ms(60.0), 180.0);
         assert_eq!(fade_duration_ms(30.0), 120.0);
         assert_eq!(chunk_boost(2), 1.0);
         assert!((chunk_boost(3) - 1.3).abs() < f32::EPSILON);
