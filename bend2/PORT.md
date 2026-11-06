@@ -27,7 +27,7 @@ python3 scripts/port/guard.py bend bend2/PROOF.bend
 python3 scripts/port/guard.py bend bend2/PROOF.bend --verdict
 ```
 
-Both gates pass. The second independently checks the translation with the Lean-verified BendTT kernel. The dependency closure contains no foreign effects, `@unsafe`, open laws or proof placeholders. There are 47 public laws in `LAWS.bend` and its imported law modules, and 116 supporting lemmas in the proof modules. The retained tree reducer, its rollback and ordering laws, and its complete metadata boundary are described in [TREE_PORT.md](TREE_PORT.md).
+Both gates pass. The second independently checks the translation with the Lean-verified BendTT kernel. The dependency closure contains no foreign effects, `@unsafe`, open laws or proof placeholders. There are 51 public laws in `LAWS.bend` and its imported law modules, and 182 supporting lemmas in the proof modules. The retained tree reducer, its rollback and ordering laws, and its complete metadata boundary are described in [TREE_PORT.md](TREE_PORT.md).
 
 The public laws prove, for every input of their stated types:
 
@@ -36,7 +36,8 @@ The public laws prove, for every input of their stated types:
 - Pending permissions demand attention and unchanged attention states produce no edge.
 - Every replay step preserves or advances the last sequence. Pending replay requests are suppressed, a gap stops all remaining items in the batch, and a duplicate sequence leaves the cursor and journal unchanged.
 - Rejected terminal structural plans preserve the complete retained structural state. Accepted plans take their exact output generations from the patch and require both full-width base generations to equal the retained ones. Every accepted span has a bounded row, start and length; every exposed scroll row has an actual matching span starting at zero whose length equals the row width or whose clear flag is true. Accepted dictionary additions fit the remaining style, grapheme and byte capacities. These are data-dependent certificates, including exact U32 and U64 equalities, derived from the executable validator's decisions.
-- Retained-cell reduction preserves every cell on structural rejection or an invalid input/payload count, and empty edits preserve the complete grid. The implementation's preserve primitive leaves the grid unchanged; its replacement and clear primitives preserve exact arbitrary prefixes and suffixes, copy the complete incoming cell bits, and fill only the selected clear tail with zero cells. These laws apply to arbitrary opaque 64-bit cell records and arbitrary surrounding cells. Full row-shift and multi-span sequencing is checked against executable source outcomes; no separate global source-index theorem is claimed.
+- Retained-cell reduction preserves every cell on structural rejection or an invalid input/payload count, and empty edits preserve the complete grid. The implementation's preserve primitive leaves the grid unchanged; its replacement and clear primitives preserve exact arbitrary prefixes and suffixes, copy the complete incoming cell bits, and fill only the selected clear tail with zero cells. These laws apply to arbitrary opaque 64-bit cell records and arbitrary surrounding cells.
+- Full row shifting in either direction and the complete ordered span sequence refine a source-index plan in `terminal_cells_origins.bend`. The plan depends on actual input lengths and patch/header values, without inspecting any cell bits. Every output entry is `Retained(index)`, `Incoming(index)`, or `Cleared`. Resolving the complete plan against arbitrary original and incoming cell lists gives exactly `Cells.mutate`; the complete `Cells.apply` also agrees with the plan's computed structural checks, payload-count checks, exact status and rollback. Every planned index has a structural certificate naming an existing cell in its stated source, and the executable numeric bounds checker universally returns true. These are full-list source-index refinement laws for the Bend mutation, not universal equivalence to every Rust execution.
 
 The supporting proofs establish structural equality reflection over both 32-bit ID words and unsigned 64-bit comparison/reflexivity/symmetry and maximum monotonicity. These are proofs over the implementation's actual word representations.
 
@@ -48,12 +49,12 @@ The proofs cover those equations. The terminal boundary receives raw generations
 
 ```bash
 mkdir -p target/port
-cargo run --quiet -p zz-client --example port_oracle > target/port/oracle.json
-bend bend2/core.bend -o target/port/core.mjs
-bend bend2/layout_edit.bend -o target/port/layout_edit.mjs
-bend bend2/replay.bend -o target/port/replay.mjs
-bend bend2/bridge.bend -o target/port/zz-bend
-node bend2/check.mjs
+python3 scripts/port/guard.py bash -c 'cargo run --quiet -p zz-client --example port_oracle > target/port/oracle.json'
+python3 scripts/port/guard.py bend bend2/core.bend -o target/port/core.mjs
+python3 scripts/port/guard.py bend bend2/layout_edit.bend -o target/port/layout_edit.mjs
+python3 scripts/port/guard.py bend bend2/replay.bend -o target/port/replay.mjs
+python3 scripts/port/guard.py bend bend2/bridge.bend -o target/port/zz-bend
+python3 scripts/port/guard.py node bend2/check.mjs
 ```
 
 The checker compares results from Bend's generated JavaScript with the Rust oracle and samples the same envelope vectors through the native executable. It checks exact layout metadata, pane order, swap involution, join results, replay requests, journal entries and byte counters. These finite comparisons complement the universal laws.
@@ -61,6 +62,13 @@ The checker compares results from Bend's generated JavaScript with the Rust orac
 `crates/zz-client/examples/terminal_plan_oracle.rs` calls the actual Rust `TerminalViewport::apply_patch` for 2,627 structural cases. Its vectors include full-width generation carries and mismatches, zero-sized grids, both scroll directions, missing/full/cleared exposed rows, duplicate and reversed spans, exact changed-cell budgets, dictionary append bases and style capacity edges. Two accepted cases contain the maximum 65,535 spans. `terminal_check.mjs` compares exact statuses and retained structural states through the generated JavaScript, then checks every vector through one persistent native worker. Span and exposed-edge validation use tail-recursive folds to keep the stack bounded on both backends.
 
 `crates/zz-client/examples/terminal_cells_oracle.rs` calls the actual Rust mutation for 1,705 cases, producing 1,001,582 expected cells. The cases cover shift-only unaffected interiors, partial rows, complete rows, clear tails, zero-sized grids, malformed structural edits, full-width generation words and complete packed cell records with distinctive glyph, style and flag values. `terminal_cells_check.mjs` compares every resulting cell through the generated JavaScript and also checks truncated retained and changed payload rejection. `scripts/port/terminal_cells_check.py` performs the native binary-file comparisons and tests that rejected or malformed inputs do not touch the output file. Its optional `--profile` measures isolated native workers on increasing viewport sizes.
+
+`terminal_cells_origins_check.mjs` runs the derived source-index plan against every one of those 1,705 source cases. It checks the exact status, every computed source-index bound, and all 1,001,582 resolved cell records, including row shifting, sequential replacement payload offsets and clear tails. The checker resolves large plans through constant-time host indexing into the source arrays; 1,660 small fixtures also run the proved Bend linked-list resolver directly. Another 274 truncated retained and incoming payload cases check the plan's exact rollback. The universal proof establishes the resolver relationship for arbitrary lists; these finite comparisons tie its executable plan to the source outcomes. The standalone independent provenance verdict peaked at 112 MiB, and its executable source differential peaked at 396 MiB under the shared guard.
+
+```bash
+python3 scripts/port/guard.py bend bend2/terminal_cells_origins.bend -o target/port/terminal_cells_origins.mjs
+python3 scripts/port/guard.py node bend2/terminal_cells_origins_check.mjs
+```
 
 # Native boundary
 
