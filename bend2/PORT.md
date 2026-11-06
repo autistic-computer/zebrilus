@@ -27,7 +27,7 @@ python3 scripts/port/guard.py bend bend2/PROOF.bend
 python3 scripts/port/guard.py bend bend2/PROOF.bend --verdict
 ```
 
-Both gates pass. The second independently checks the translation with the Lean-verified BendTT kernel. The dependency closure contains no foreign effects, `@unsafe`, open laws or proof placeholders. There are 27 public laws in `LAWS.bend` and its imported `terminal_laws.bend` and `terminal_cells_laws.bend`, and 50 supporting lemmas in the five `*_proof.bend` modules.
+Both gates pass. The second independently checks the translation with the Lean-verified BendTT kernel. The dependency closure contains no foreign effects, `@unsafe`, open laws or proof placeholders. There are 47 public laws in `LAWS.bend` and its imported law modules, and 116 supporting lemmas in the proof modules. The retained tree reducer, its rollback and ordering laws, and its complete metadata boundary are described in [TREE_PORT.md](TREE_PORT.md).
 
 The public laws prove, for every input of their stated types:
 

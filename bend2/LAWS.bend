@@ -3,6 +3,7 @@ import ./core.bend as Core
 import ./replay.bend as Replay
 import ./terminal_laws.bend as Terminal
 import ./terminal_cells_laws.bend as Cells
+import ./tree_laws.bend as Tree
 
 law swap_preserves_count:
   for +node: Core.Layout
