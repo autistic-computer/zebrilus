@@ -4485,7 +4485,19 @@ impl Render for AppView {
             }
         }
         let content = if let Some(settings) = settings_view {
-            settings.into_any_element()
+            if config::pane_margin(cx) > px(0.) {
+                layout_corners
+                    .round_div(
+                        div()
+                            .size_full()
+                            .bg(crate::theme::chrome_background(cx))
+                            .child(settings),
+                        frame_content_corner_radius(cx),
+                    )
+                    .into_any_element()
+            } else {
+                settings.into_any_element()
+            }
         } else if let Some(active_window) = active_window {
             if let Some(pane) = active_window.zoomed_pane {
                 self.render_layout(
