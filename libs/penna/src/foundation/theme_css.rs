@@ -209,9 +209,11 @@ fn rules(theme: &Theme, toned: &[SurfaceRole], full: bool) -> Vec<(String, Strin
     let pane = gapped.layer(Surface::new(Kind::Pane.role()), PaintState::Rest);
     let key = ".penna-gaps [data-penna=\"pane\"]".to_owned();
     let css = format!(
-        "{key} {{ --penna-rim: {}; }}\n",
+        "{key} {{ --penna-rim: {}; --penna-edge: {}; --penna-bw: {}; }}\n",
         pane.glass
-            .map_or_else(|| "0 0 #0000".to_owned(), |material| rim(&material))
+            .map_or_else(|| "0 0 #0000".to_owned(), |material| rim(&material)),
+        color(pane.border),
+        length(f32::from(pane.border_width))
     );
     rules.push((key, css));
     for role in SurfaceRole::KIT

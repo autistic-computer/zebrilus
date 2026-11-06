@@ -92,7 +92,7 @@ Glass is for what sits over something: what floats over the content (menus, popo
 </div>
 ```
 
-Text on any glass reads at 4.5:1 over the worst content, and Reduce transparency draws it as the popover fill. Where the renderer can't bend light, `liquid` draws as `frosted`. Glass is neutral: a floating chip with a tone draws its tone opaque.
+Text on any glass reads at 4.5:1 over the worst content, and Reduce transparency draws it as the popover fill. Where the renderer can't bend light, `liquid` draws as `frosted`. Glass is neutral: a floating chip with a tone draws its tone opaque. A selected sidebar row or tab reads as strong as the highlight it replaces, and a pane with gaps keeps a hairline edge wherever its glass draws no rim.
 
 ```figure uses=menu
 <div class="docs-dodont">

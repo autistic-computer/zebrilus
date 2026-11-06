@@ -1120,6 +1120,11 @@ impl Theme {
             PaintState::Active => paint.active,
             _ => paint.current,
         };
+        let lifted = base.blend(super::color::toward(
+            paint.fill,
+            washed(&paint),
+            HIGHLIGHT_STRENGTH,
+        ));
         let (mut fill_color, mut text) = match highlight {
             Highlight::Tint => (
                 super::color::toward(paint.fill, washed(&paint), HIGHLIGHT_STRENGTH),
@@ -1138,8 +1143,13 @@ impl Theme {
                 let solid = self.paint_on(ground, lit, Emphasis::Solid);
                 (solid.fill, solid.text)
             }
-            Highlight::Glass if kind.is_control() => (glass_fill, paint.text),
-            Highlight::Glass => (self.raise(base, step), paint.text),
+            Highlight::Glass => {
+                let opacity = glass.map_or(1.0, |material| material.tint.a).max(0.01);
+                (
+                    super::color::toward(base, lifted, 1.0 / opacity),
+                    paint.text,
+                )
+            }
             Highlight::None | Highlight::Ring | Highlight::Bar | Highlight::Edge => {
                 (paint.fill, paint.text)
             }
@@ -1155,16 +1165,19 @@ impl Theme {
             text = text.rest();
         }
 
+        let rimless = pane && self.pane_margin > px(0.0) && !glass.as_ref().is_some_and(draws_rim);
         let edge = if kind.is_control() {
             if soft.border_width > px(0.0) && tone != Tone::Neutral {
                 soft.border
             } else {
                 ground.ink.opacity(CONTROL_EDGE_ALPHA)
             }
+        } else if rimless {
+            self.divider_color()
         } else {
             self.border()
         };
-        let edged = kind.edged() && super::color::contrast() > 1.0;
+        let edged = (kind.edged() && super::color::contrast() > 1.0) || rimless;
         let border_width = if style.outline || edged {
             self.outline
         } else {
@@ -1258,7 +1271,14 @@ impl Theme {
             } else {
                 fill_color.opaque()
             };
-            material.tint(tint.alpha(material.tint.a)).fallback(tint)
+            let fallback = if highlight == Highlight::Glass {
+                lifted
+            } else {
+                tint
+            };
+            material
+                .tint(tint.alpha(material.tint.a))
+                .fallback(fallback)
         });
         let mark =
             (highlight == Highlight::Bar && surface.role.row && state != PaintState::Disabled)
@@ -1267,10 +1287,15 @@ impl Theme {
                     width: BAR_WIDTH,
                     length: BAR_LENGTH,
                 });
-        let under = if see_through {
-            ground.fill.blend(fill_color)
+        let shown = if highlight == Highlight::Glass {
+            lifted
         } else {
-            ground.fill.opaque().blend(fill_color)
+            fill_color
+        };
+        let under = if see_through {
+            ground.fill.blend(shown)
+        } else {
+            ground.fill.opaque().blend(shown)
         };
         let solid_fill =
             highlight == Highlight::Accent || (surface.prominent && fill != Fill::Glass);
@@ -1317,6 +1342,13 @@ impl Theme {
         let surface = surface.into();
         self.shape_radius(surface, self.style(surface.role).shape)
     }
+}
+
+pub fn draws_rim(material: &GlassMaterial) -> bool {
+    let lit = material.bezel > px(0.0) && (material.specular > 0.0 || material.fresnel > 0.0);
+    let edged =
+        material.edge_shadow > 0.0 && material.edge_width > px(0.0) && material.edge_color.a > 0.0;
+    lit || edged
 }
 
 fn shadow_of(material: ShadowMaterial, color: Hsla) -> BoxShadow {
@@ -1516,6 +1548,55 @@ mod tests {
             assert!(selected.ground.solid, "{}", role.id);
         }
         assert!(theme.layer(pane, PaintState::Rest).glass.is_none());
+    }
+
+    #[test]
+    fn a_chrome_selection_reads_as_its_highlight_and_a_rimless_pane_takes_a_hairline() {
+        use super::super::interface_theme::{frosted, liquid};
+        let mut theme = theme();
+        let row = Surface::new(super::super::roles::SIDEBAR_ROW);
+        theme.glass = Some(frosted());
+        let glass = theme
+            .layer(row, PaintState::Selected)
+            .glass
+            .expect("a selected sidebar row is glass");
+        theme.glass = None;
+        let base = theme.ground().fill.opaque();
+        let highlight = base.blend(theme.layer(row, PaintState::Selected).fill);
+        assert_eq!(glass.fallback, Some(highlight));
+        let shown = ala::Rgba::from(super::super::color::toward(
+            base,
+            glass.tint.opaque(),
+            glass.tint.a,
+        ));
+        let highlight = ala::Rgba::from(highlight);
+        for (shown, highlight) in [
+            (shown.r, highlight.r),
+            (shown.g, highlight.g),
+            (shown.b, highlight.b),
+        ] {
+            assert!((shown - highlight).abs() < 0.002, "{shown} {highlight}");
+        }
+
+        let pane = Surface::new(Kind::Pane.role());
+        theme.pane_margin = px(8.0);
+        for (glass, hairline) in [
+            (None, true),
+            (Some(frosted()), true),
+            (Some(liquid(theme.mode)), false),
+        ] {
+            theme.glass = glass;
+            let layer = theme.layer(pane, PaintState::Rest);
+            assert_eq!(
+                (layer.border, layer.border_width),
+                if hairline {
+                    (theme.divider_color(), theme.outline)
+                } else {
+                    (theme.transparent, px(0.0))
+                },
+                "{glass:?}"
+            );
+        }
     }
 
     #[test]
