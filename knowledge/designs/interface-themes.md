@@ -31,7 +31,7 @@ A theme file (`InterfaceTheme`) is the knobs penna's one look takes, and nothing
 - `tint`: `ink`, a named accent, one hex color, or `{ "light": ..., "dark": ... }`. A color sets the accent and makes primary fills and the highlight the tint;
 - `neutral`: `{ "hue", "amount" }`, how far `bg`, `fg` and the surfaces above them lean toward a hue; the default (hue 60, amount 0.15) draws the base colors exactly;
 - `radius` (containers) and `control-radius` (controls, or `full` for pills), both 0 to 25, and `smoothing` (2 to 5);
-- `glass`: `none`, `frosted`, `liquid` or a material of its own; left out, the platform's (`liquid` on macOS, `frosted` elsewhere). Every material's tint rises until text on it reads at 4.5:1;
+- `glass`: `none`, `liquid` or a material of its own; left out, `liquid`. Every material's tint rises until text on it reads at 4.5:1;
 - `face`: the interface font;
 - `mode`: `follow`, `light` or `dark`; anything but `follow` beats the person's mode.
 
@@ -57,7 +57,7 @@ Settings > Interface > Look sets the knobs over the platform's theme file, each 
 2. **Tint** (`chrome-tint`, `chrome-tint-hue`): the amount and hue of the `neutral`. Set alone, each keeps the other from the platform's.
 3. **Corner radius** (`widget-corner-radius`): the `radius` knob, clamped to 0 to 25.
 4. **Controls** (`control-shape`): `rounded` or `pill` (`control-radius` `full`).
-5. **Glass** (`interface-glass`): `none`, `frosted`, `liquid`, or a material as one line of JSON (what pasting a theme file with its own material writes).
+5. **Glass** (`interface-glass`): a switch; `liquid` when on, `none` when off, or a material as one line of JSON (what pasting a theme file with its own material writes).
 6. **UI font** (`ui-font-family`): unset follows the platform file's `face`, which no file sets, so the system font.
 
 The Theme file row's menu copies the shown look as a theme file, pastes one in (`AppearanceChange::Import`: `ThemeOverrides::from_theme` sets every knob and `face` the UI font) and resets every knob (`AppearanceChange::ResetLook`). On desktop, Paste writes each knob key and Reset removes them from the config file.

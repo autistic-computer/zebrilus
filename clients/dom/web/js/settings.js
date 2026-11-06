@@ -24,11 +24,6 @@ const CONTROL_SHAPES = [
   ["rounded", "Rounded"],
   ["pill", "Pill"],
 ];
-const GLASSES = [
-  ["none", "None"],
-  ["frosted", "Frosted"],
-  ["liquid", "Liquid"],
-];
 const PALETTE_LAYOUTS = [
   ["grouped", "Tree"],
   ["flat", "Flat"],
@@ -434,7 +429,6 @@ function appearancePage() {
     quiet("Paste", "Set every knob from the theme file on the clipboard", pasteTheme),
     quiet("Reset", "Return every knob to the platform's look", () => themeFile(preferences.themeAction("reset"))),
   );
-  const glasses = picks.glass === "custom" ? [...GLASSES, ["custom", "Custom"]] : GLASSES;
   const hue = h(
     "div",
     { class: "settings-slider-row" },
@@ -466,7 +460,7 @@ function appearancePage() {
       }),
       entry({
         title: "Glass",
-        control: choose({ value: picks.glass, items: glasses.map(([value, title]) => ({ value, title })), onpick: (value) => value !== "custom" && set({ glass: value }) }),
+        control: toggle(picks.glass !== "none", "Glass", (value) => set({ glass: value ? "liquid" : "none" })),
       }),
       entry({
         title: "UI font",

@@ -192,11 +192,12 @@ mod tests {
         use zz_client::appearance as config;
         assert_eq!(kit::ACCENTS, config::ACCENTS);
         assert_eq!(kit::MAX_CORNER_RADIUS, config::MAX_CORNER_RADIUS);
+        let glasses = [kit::Glass::None, kit::Glass::Liquid];
         assert_eq!(
-            penna::blocks::appearance::GLASSES.map(|(glass, _)| spelled_glass(&glass)),
+            glasses.clone().map(|glass| spelled_glass(&glass)),
             config::GLASSES
         );
-        for (glass, _) in penna::blocks::appearance::GLASSES {
+        for glass in glasses {
             assert_eq!(parse_glass(&spelled_glass(&glass)), Some(glass));
         }
         assert_eq!(

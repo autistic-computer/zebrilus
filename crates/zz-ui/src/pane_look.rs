@@ -119,14 +119,14 @@ mod tests {
         let plane = theme.background;
         let tint = plane;
         let bare = GlassMaterial::edge(tint).glint_width(px(0.0)).specular(0.0);
-        let frosted = GlassMaterial::frosted();
+        let liquid = penna::foundation::interface_theme::liquid(ThemeMode::Dark);
         for (glass, rim) in [
             (None, bare),
             (
                 Some(GlassMaterial::regular().vanished().tint(plane.opaque())),
                 bare,
             ),
-            (Some(frosted), frosted),
+            (Some(liquid), liquid),
         ] {
             theme.glass = glass;
             let frame = UNLIT.frame(&theme, plane, false);
@@ -174,7 +174,7 @@ mod tests {
     #[test]
     fn the_active_pane_stands_apart_by_light_not_color() {
         let mut theme = Theme::default();
-        theme.glass = Some(GlassMaterial::frosted());
+        theme.glass = Some(penna::foundation::interface_theme::liquid(ThemeMode::Dark));
         let look = PaneLook::default();
         let plane = theme.background;
         for mode in [ThemeMode::Light, ThemeMode::Dark] {

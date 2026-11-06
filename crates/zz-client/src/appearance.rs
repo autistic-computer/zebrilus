@@ -70,7 +70,7 @@ impl ControlShapeSetting {
     }
 }
 
-pub const GLASSES: [&str; 3] = ["none", "frosted", "liquid"];
+pub const GLASSES: [&str; 2] = ["none", "liquid"];
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum ThemeModeSetting {

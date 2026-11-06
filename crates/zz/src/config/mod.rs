@@ -255,7 +255,7 @@ fn install_config(path: Option<&Path>, parsed: Option<io::Result<ParsedConfig>>,
     {
         log::warn!(
             target: "zz::config",
-            "{}: `interface-glass` holds a material the kit cannot read; drawing the platform's glass",
+            "{}: `interface-glass` holds a material the kit cannot read; drawing liquid glass",
             path.display(),
         );
     }
@@ -2154,7 +2154,7 @@ mod tests {
 
         for (accent, tint, controls, glass) in [
             (Some("green"), Some("1"), Some("pill"), Some("none")),
-            (Some("#ff8800"), None, Some("rounded"), Some("frosted")),
+            (Some("#ff8800"), None, Some("rounded"), Some("liquid")),
             (Some("ink"), None, None, None),
             (None, None, None, None),
         ] {

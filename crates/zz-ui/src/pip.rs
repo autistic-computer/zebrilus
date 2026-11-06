@@ -400,7 +400,7 @@ pub fn pip_content_radius(cx: &App) -> Pixels {
 
 #[allow(
     clippy::disallowed_methods,
-    reason = "a PiP is frosted in its pane's own colour at the PiP opacity setting, over the floating.pip edge and shadow"
+    reason = "a PiP is blurred in its pane's own colour at the PiP opacity setting, over the floating.pip edge and shadow"
 )]
 fn pip_look(cx: &App) -> Layer {
     cx.theme().layer(ContentLook::Pip, PaintState::Rest)
@@ -408,7 +408,7 @@ fn pip_look(cx: &App) -> Layer {
 
 #[allow(
     clippy::disallowed_methods,
-    reason = "a PiP is frosted in its pane's own colour at the PiP opacity setting, over the floating.pip edge and shadow"
+    reason = "a PiP is blurred in its pane's own colour at the PiP opacity setting, over the floating.pip edge and shadow"
 )]
 fn paint_pip(surface: Stateful<Div>, look: &Layer) -> Stateful<Div> {
     surface.layer(look)

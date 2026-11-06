@@ -535,7 +535,7 @@ mod tests {
     }
 
     #[test]
-    fn picked_and_saved_themes_from_older_preferences_are_ignored() {
+    fn picked_themes_saved_themes_and_frosted_glass_from_older_preferences_are_ignored() {
         let older = Preferences::decode(
             r#"{"theme":"theme-1","themes":[["theme-1",{"name":"Kept","radius":3}]],"radius":12,"shadows":"none","selection":"wash","field":"outline","outline":1,"shadow-strength":0.3,"row-inset":2,"primary":"accent","glass":"frosted","pane_radius":9,"pane_border_width":2,"colors":[null,"ff0000"],"style":3}"#,
         )
@@ -544,7 +544,6 @@ mod tests {
             older.appearance.overrides,
             ThemeOverrides {
                 radius: Some(12.0),
-                glass: Some(Glass::Frosted),
                 ..ThemeOverrides::default()
             }
         );

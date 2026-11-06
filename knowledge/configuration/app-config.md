@@ -139,7 +139,7 @@ The client-local schema includes these scalar settings and chrome colors.
 | `pane-margin` | `6` | `0..=32` | Inset around each pane, on every platform; applies only with `pane-gaps`. The window's top strip grows with it, and the sidebar's buttons move in with it, so they stay on the pane headers' center lines |
 | `widget-corner-radius` | the platform's (`12`) | `0..=25` | The look's `radius` knob in pixels: the corner of containers, of controls unless they are pills, and the base of a gapped pane's corner. Settings shows it as Corner radius, a slider with the value in pixels beside it |
 | `control-shape` | the platform's (`pill` on macOS, `rounded` elsewhere) | `rounded`, `pill` | Whether controls follow the corner radius or are pills (`control-radius` `full`). Settings shows it as Controls |
-| `interface-glass` | the platform's (`liquid` on macOS, `frosted` elsewhere) | `none`, `frosted`, `liquid`, or a glass material as one line of JSON | The glass popovers, menus and glass roles draw. Pasting a theme file with its own material writes the material here; Settings shows it as Glass, with Custom while a material is set |
+| `interface-glass` | `liquid` | `none`, `liquid`, or a glass material as one line of JSON | The glass popovers, menus and glass roles draw. Pasting a theme file with its own material writes the material here; Settings shows it as the Glass switch, on for `liquid` or a material and off for `none` |
 | `chrome-accent` | `theme` | `theme`, `ink`, `blue`, `purple`, `pink`, `red`, `orange`, `yellow`, `green`, `graphite`, or `#rrggbb` | The accent, which becomes the highlight: primary fills, switches, selection. `theme` (or no line) keeps the platform's (blue on macOS, ink elsewhere); `ink` draws primary fills in the text color. Each name is a pair of colors tuned for light and for dark; a hex color is used in both modes |
 | `chrome-tint` | the platform's (`0.15`) | `0..=1` | The amount of the look's `neutral`: how far the window's background leans toward `chrome-tint-hue`; everything drawn from the background leans with it, and the text leans about a third as far. Settings shows it as Tint strength, 0–100% |
 | `chrome-tint-hue` | the platform's (`60`) | `0..=360` | The hue of the look's `neutral`, in Oklch degrees; `60` is the warm default. Settings shows it as Tint |
@@ -292,7 +292,7 @@ In the native reference, Cmd+Shift+A deactivates the app and Cmd+Shift+R activat
 Click a circular toolbar button in the zz-ui preview to activate that window.
 
 A glass material (`interface-glass` as JSON, or a theme file's `glass`) names the
-`GlassMaterial` fields it changes from frosted glass, for both modes or under `light` and `dark`.
+`GlassMaterial` fields it changes from liquid glass in that mode, for both modes or under `light` and `dark`.
 `light_directionality`, `inactive_flattening` and `edge_spread` run from 0 to 1. `edge_spread`
 evens the contour out around the edge: 0 keeps it darkest along the light axis, 1 makes it a
 hairline as dark all the way around, which is what a light glass needs to stand off a light
@@ -831,9 +831,9 @@ pane-inactive-opacity = 0.7
 # Optional explicit chrome overrides
 pane-margin = 6
 
-# Pill controls and frosted glass, with a green accent and a slight teal tint.
+# Pill controls and no glass, with a green accent and a slight teal tint.
 control-shape = pill
-interface-glass = frosted
+interface-glass = none
 chrome-accent = green
 chrome-tint = 0.4
 chrome-tint-hue = 190

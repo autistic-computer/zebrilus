@@ -62,9 +62,9 @@ pane-margin = 6
 # toward chrome-tint-hue (0..=1), and that hue in Oklch degrees (0..=360).
 # chrome-tint = 0.15
 # chrome-tint-hue = 60
-# Popovers and menus: none, frosted, liquid, or a glass material as one line
-# of JSON (what a pasted theme file's glass leaves here).
-# interface-glass = frosted
+# Popovers and menus: liquid (the default), none, or a glass material as one
+# line of JSON (what a pasted theme file's glass leaves here).
+# interface-glass = none
 # The interface font; unset uses the system's.
 # ui-font-family = "Inter"
 
