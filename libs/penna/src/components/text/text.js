@@ -171,7 +171,10 @@
       const rect = code.getClientRects()[0];
       if (!rect) return;
       const cap = Math.min(rect.width, rect.height) * fraction;
-      code.style.setProperty("--md-r", `${(cap * Math.tanh(INLINE_CODE_RADIUS / cap)).toFixed(2)}px`);
+      const radius = cap * Math.tanh(INLINE_CODE_RADIUS / cap);
+      const [box, k] = window.pennaKit?.drawnCorner(radius, rect.width, rect.height) ?? [radius, 1];
+      code.style.setProperty("--md-r", `${box.toFixed(2)}px`);
+      code.style.setProperty("--md-k", k.toFixed(3));
     });
   }
 

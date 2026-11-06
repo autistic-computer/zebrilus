@@ -115,6 +115,7 @@
 .penna-md :not(pre) > code,
 .penna-md :not(pre) > :is(strong, em, a) > code {
   border-radius: var(--md-r, 6px) !important;
+  corner-shape: superellipse(var(--md-k, 1));
   padding: 1px;
   margin: 0 -1px;
   box-decoration-break: clone;
