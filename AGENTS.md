@@ -32,7 +32,7 @@ Rust edition 2024, MSRV 1.99. Release builds on mac/windows require Zig 0.16.0 (
 - `clients/app` - `zz-app`: the thin-client app web, iOS and Android share (shell, sidebar, status bar, settings, palette, overlays, panes, connection reducer, image cache, the native transport and the iOS and Android browser panes)
 - `clients/web` - `zz-web-client`: the WASM entry point around zz-app, with its own Cargo workspace
 - `clients/dom` - `zz-dom`: an HTML thin client, `zz-client` in wasm drawn with penna's HTML kit and `design/zz.css`, served by `just design client`
-- `clients/storybook` - `zz-storybook`: zz's storybook web page, penna's storybook harness (which brings the theme creator) plus zz's catalog (the creator's zz plates in `CATALOG.plates`, agent, workspace and console stories, pane knobs); `just storybook run`, see `knowledge/playbooks/storybook.md`
+- `clients/storybook` - `zz-storybook`: zz's storybook web page, penna's storybook harness plus zz's catalog (agent, workspace and console stories and pane knobs; the theme creator is on penna's page only); `just storybook run`, see `knowledge/playbooks/storybook.md`
 - `clients/ios` - `zz-ios`: the iOS entry point around zz-app and ala-platform's iOS backend, the bundle files, and a terminal example (`ZZ_ALA_DEMO=terminal`); `just ios`
 - `clients/android` - `zz-android`: the Android entry point around zz-app and ala-platform's Android backend, the Java glue (activity, surface view, input connection, web view), the manifest and resources; `just android`
 - `crates/zz-xtask` — build tooling: CEF bundling, packaging (`cargo xtask`)

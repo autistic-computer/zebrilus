@@ -41,7 +41,7 @@ then to a built-in value.
 | Window chrome roles (`CHROME`), the recipes the looks pick (`RECIPES`), the retired ids (`is_retired`) and the lookups (`all()`, `find()`, `members()`) | `libs/penna/src/foundation/roles.rs` |
 | The look zz's content code reads (`ContentLook`: pane, floating pane, PiP, tile stack, window) | `libs/penna/src/foundation/content.rs` |
 | Theme files: `Materials`, the `roles` map and its id check; `ThemeOverrides`, what Settings sets over a theme | `libs/penna/src/foundation/interface_theme.rs`; the built-ins in `libs/penna/themes/*.json`, which also hold every recipe's per-theme tweaks |
-| The theme creator | `penna_storybook::creator` in `libs/penna/storybook/src/creator/`, `libs/penna/storybook/src/knobs.rs`; zz's plates in `clients/storybook/src/stories/theme_creator.rs` |
+| The theme creator | `penna_storybook::creator` in `libs/penna/storybook/src/creator/`, `libs/penna/storybook/src/knobs.rs`; on penna's storybook page only, since zz's catalog lists no plates |
 
 ## The model
 
@@ -491,9 +491,9 @@ they fill with `theme.scrim`.
 
 ## Theme creator
 
-The theme creator (`penna_storybook::creator`, on penna's storybook page and on every app's page
-built on its harness) is four steps over the same live preview, then an App tab for the app's
-knobs (zz's pane settings) and the preview around the showcase, which are not theme:
+The theme creator (`penna_storybook::creator`, on penna's storybook page and on any app's page
+whose catalog lists plates; zz's lists none) is four steps over the same live preview, then an App
+tab for the catalog's knobs and the preview around the showcase, which are not theme:
 
 1. **Colors**: the mode with contrast and the tint, light and dark palettes, accent, font.
 2. **Materials**: presets, shape (radius, smoothing, global or picked smoothing, outline,
@@ -514,7 +514,7 @@ a role is not built.
 
 The preview is the catalog's plates: regions that paint real UI. penna's page shows penna's five
 (an app window with the sidebar and the appearance rows, controls, floating surfaces, content and
-the phone chrome); zz lists its eleven instead. Apps define no roles (penna's
+the phone chrome); zz's page lists none, so it has no creator. Apps define no roles (penna's
 `knowledge/designs/kit.md`); a catalog adds a plate that draws the app's pieces to its `plates`,
 next to penna's if it wants the kit's surfaces in view. The roles it draws show in the Roles step under their parents from
 `penna::foundation::roles::all()`, picking one shows the plates that drew it (each section host records the

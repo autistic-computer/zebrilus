@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use ala::{
     AnyElement, AnyView, App, AppContext as _, Context, IntoElement, ParentElement as _, Render,
     Styled as _, Window, div, prelude::*, px,
@@ -13,7 +11,6 @@ use penna::{
     },
     blocks::settings::large_title,
     blocks::touch::{KEY_ROW_HEIGHT, KeyRow, PageDot, page_dots},
-    blocks::which_key::WhichKeyRow,
     components::button::{Button, ButtonVariants as _},
     v_flex,
 };
@@ -731,17 +728,6 @@ impl Render for KeyRows {
                 phone(div().id("key-row-end").child(key_row(&self.end)), cx).w(px(NARROW_WIDTH)),
             )
     }
-}
-
-pub(crate) fn binding_rows() -> Arc<[WhichKeyRow]> {
-    penna_storybook::kit::which_key::prefix_rows()
-        .into_iter()
-        .filter(|row| {
-            row.group
-                .as_ref()
-                .is_some_and(|group| matches!(group.as_ref(), "Windows" | "Panes" | "Yours"))
-        })
-        .collect()
 }
 
 struct Screen {

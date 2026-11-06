@@ -11,7 +11,7 @@ pub static CATALOG: Catalog = Catalog {
     storage: "zz-storybook",
     init: zz_ui::init,
     logo: zz_ui::ZZ_LOGO,
-    plates: stories::theme_creator::PLATES,
+    plates: &[],
     stories: &[
         stories::agent::STORIES,
         stories::workspace::STORIES,
@@ -150,13 +150,6 @@ mod tests {
     fn the_catalog_has_no_problems() {
         penna_storybook::install(&CATALOG);
         assert_eq!(CATALOG.problems(), Vec::<String>::new());
-    }
-
-    #[test]
-    fn the_theme_creator_comes_first() {
-        penna_storybook::install(&CATALOG);
-        let first = CATALOG.stories().next().map(|story| story.id);
-        assert_eq!(first, Some(penna_storybook::creator::ID));
     }
 
     #[test]

@@ -46,9 +46,9 @@ spells out every field. `penna_storybook::install` fixes the catalog for the
 process, and `catalog()` read before that gives `PENNA` without fixing it.
 [penna](/references/penna.md) has the whole setup of an app on the kit, its storybook included.
 
-zz's catalog is `zz_storybook::CATALOG` in `clients/storybook/src/lib.rs`: the creator's plates
-(`PLATES` in `clients/storybook/src/stories/theme_creator.rs`) and zz's agent, workspace and
-console stories, without penna's Foundation and Kit, which stay on penna's page; the pane knobs
+zz's catalog is `zz_storybook::CATALOG` in `clients/storybook/src/lib.rs`: no plates, so zz's page
+has no theme creator and opens on its first story; zz's agent, workspace and console stories,
+without penna's Foundation and Kit, which stay on penna's page with the creator; the pane knobs
 (`pane-gaps`, `pane-margin`, `pip-opacity`, `pane-inactive-opacity`, `pane-glow`, read through
 `crate::pane()`) and `program-colors`; zz's floating sections alone (`&[FLOATING]`, since
 `KIT_FLOATING` names Kit stories); `zz_ui::Assets` and `zz_ui::ZZ_LOGO`.
@@ -109,8 +109,8 @@ which set the neutral as `chrome-tint-hue` and `chrome-tint` do in the app,
 `reduce-transparency`), `zoom`, zz's pane knobs
 (`pane-gaps`, `pane-margin`, `pip-opacity`,
 `pane-inactive-opacity`, `pane-glow`, mirroring Settings → Panes, where pane corners follow the
-theme's radius and the pane edge its glass, or its outline in a theme without glass; `pane-gaps` drives the Theme
-creator and makes the glass pane frame own the pane fill, as in the app, while other stories show
+theme's radius and the pane edge its glass, or its outline in a theme without glass; `pane-gaps`
+makes the glass pane frame own the pane fill, as in the app, while stories show
 gaps on and off side by side, so look at gapped frames with `pane-gaps=1`), `motion` (`motion=0` turns
 animations off and freezes spinners). Two more keys only steer the page: `step` (`colors`,
 `materials`, `roles`, `export`, `app`) opens a step of the knob panel, and `inspect=<role id>` picks a role
@@ -121,27 +121,15 @@ swatches and the tint sliders (which follow the tint knobs), then the Advanced r
 story keeps only the rows zz adds (`#/settings/appearance`): Program colors and window blur
 opacity.
 
-The Theme creator lives in `penna-storybook` (`penna_storybook::creator`), so every page built on
-the harness has it: the knob panel, the role tree, export and import come from there, and the
-catalog's `plates` are its regions, each its own window, so a hover or a spinner redraws only its
-region. penna's own page has five plates built from penna alone (`creator::WINDOW`, `CONTROLS`,
+The Theme creator lives in `penna-storybook` (`penna_storybook::creator`) and opens penna's own
+page; a page whose catalog lists no plates, like zz's, has none. The knob panel, the role tree,
+export and import come from there, and the catalog's `plates` are its regions, each its own window,
+so a hover or a spinner redraws only its region. penna's own page has five plates built from penna alone (`creator::WINDOW`, `CONTROLS`,
 `FLOATING`, `CONTENT`, `PHONE`): an app window with the sidebar, title bar and the appearance
 rows, a form with switches, buttons and the settings card, menus with a picker, toasts, a dialog
 and which-key, markdown and an inline alert, and the phone chrome from `penna::blocks::compact` and
-`penna::blocks::touch`. zz's creator is every surface of zz in eleven plates (Workspace, Flat sidebar,
-Lens, Panes, PiP, Start, Controls, Floating, Content, Phone, Drawers); its Controls, Floating and
-Phone plates reuse the creator's parts (`tiles`, `card`, `heading`, `labeled`, `over_backdrop`,
-`phone_frame`) and keep zz's own preferences card, buttons, toasts and dialog in
-`clients/storybook/src/stories/theme_creator/showcase.rs`. The Lens region has
-the plan-approval card with Show terminal and the welcome before a first prompt. The bar links (on
-windows wider than 1240px) jump between regions, and `theme-creator/<region>` in the address opens
-at one.
-zz's Phone region is phone-width pages from penna's `compact` builders (the floating pill, the HUD,
-the bento grid and `bento_add_tile`, which the Hosts page titles Add host) and zz-ui's `compact`
-tiles (`host_tile`, `window_tile`, `overview_session_heading`, which the thin client draws with
-too): a terminal page with the
-HUD, the key row with the prefix menu open (`PopoverKey::open`) and the arrow pad's bubble
-(`arrow_pad_bubble`), the bindings list, the sessions sheet, a host's windows and the Hosts page.
+`penna::blocks::touch`. The bar links (on windows wider than 1240px) jump between regions, and
+`theme-creator/<region>` in the address opens at one.
 The creator's knob panel is four steps and an App tab:
 Colors (the mode with Contrast, Tint hue and Tint, palettes, font), Materials
 (shape, glass, both shadows),
@@ -191,8 +179,7 @@ test platform, reports the three roles.
 
 penna's stories live in `libs/penna/storybook/src/foundation/` and `src/kit/` and use penna only;
 zz's live in `clients/storybook/src/stories/<area>/` (agent, workspace, console), each area
-exporting `STORIES`, listed in `CATALOG`, and zz's creator plates in
-`clients/storybook/src/stories/theme_creator.rs`. `clients/storybook/README.md` has the
+exporting `STORIES`, listed in `CATALOG`. `clients/storybook/README.md` has the
 authoring rules; the short version:
 
 - One section per component piece, its states laid out with `states()`.
@@ -233,8 +220,8 @@ itself with, or on `story::Framed::framed`, the edge of a frame that stands in f
   saves a PNG clipped to the section, kept inside the page where a section touches its edge (the
   theme creator has no nav column). Pass `--url http://127.0.0.1:8098/` for penna's page. Its JSON output lists wasm panics and console errors under
   `problems`. The knob panel keeps its own scroll, which the capture does not, so pass a taller
-  `--height` to see a step's lower half, as in `theme-creator?step=roles&inspect=button`, which
-  shows only the regions that draw buttons. Only a click on a role or a step tab flashes the ring;
+  `--height` to see a step's lower half, as in `theme-creator?step=roles&inspect=button` with
+  penna's `--url`, which shows only the regions that draw buttons. Only a click on a role or a step tab flashes the ring;
   page loads and the `storybook.*` calls do not, so shots never show it.
 - In a browser tab: `storybook.show(id, section)`, `storybook.setKnobs({ theme: "dark" })`,
   `storybook.theme()` (the theme file the knobs describe), `storybook.importTheme(json)`,

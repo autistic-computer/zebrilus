@@ -4,13 +4,8 @@ use ala::{
     AnyElement, AnyView, App, IntoElement, ParentElement as _, SharedString, Styled as _, Window,
     div, px, uniform_list,
 };
-use penna::{
-    Disableable as _,
-    blocks::chat::{
-        COMPOSER_MAX_WIDTH, permission_card, permission_option, suggestion_list,
-        suggestion_list_height, suggestion_row,
-    },
-    components::button::Button,
+use penna::blocks::chat::{
+    COMPOSER_MAX_WIDTH, suggestion_list, suggestion_list_height, suggestion_row,
 };
 use zz_client::agent_completion::{
     AgentCommand, CommandCompletion, command_label, completion_query,
@@ -22,49 +17,6 @@ use crate::story::{stateless, states};
 fn prefix_width(element: impl IntoElement) -> impl IntoElement {
     div().w_full().max_w(px(COMPOSER_MAX_WIDTH)).child(element)
 }
-
-pub(crate) fn permission(
-    id: &str,
-    title: &str,
-    counter: Option<&str>,
-    options: &[(&str, Option<bool>)],
-    highlighted: usize,
-    enabled: bool,
-    cx: &App,
-) -> AnyElement {
-    let options = options
-        .iter()
-        .enumerate()
-        .map(|(index, (name, allow))| {
-            permission_option(
-                (SharedString::from(format!("{id}-option")), index),
-                index,
-                *name,
-                *allow == Some(false),
-                index == highlighted,
-                enabled,
-                cx,
-            )
-            .into_any_element()
-        })
-        .collect();
-    permission_card(
-        title.to_owned(),
-        counter.map(|counter| counter.to_owned().into()),
-        options,
-        Button::new(SharedString::from(format!("{id}-cancel")))
-            .disabled(!enabled)
-            .tooltip("Cancel request"),
-        cx,
-    )
-    .into_any_element()
-}
-
-pub(crate) const COMMAND: [(&str, Option<bool>); 3] = [
-    ("Allow", Some(true)),
-    ("Always allow this session", Some(true)),
-    ("Reject", Some(false)),
-];
 
 pub fn slash_commands(query: &str) -> Vec<CommandCompletion> {
     let command = |name: &str, description: &str, hint: Option<&str>| AgentCommand {

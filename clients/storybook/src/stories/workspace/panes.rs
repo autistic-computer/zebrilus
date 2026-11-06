@@ -1087,15 +1087,6 @@ pub(crate) fn chat_folders() -> Vec<FolderChoice> {
         .collect()
 }
 
-pub(crate) fn chat_picker_surface(
-    id: &'static str,
-    picker: &ChatPicker,
-    enabled: bool,
-    cx: &App,
-) -> ala::Stateful<ala::Div> {
-    folder_picker_surface(id, picker, &chat_folders(), enabled, cx)
-}
-
 fn folder_picker_surface(
     id: &'static str,
     picker: &ChatPicker,

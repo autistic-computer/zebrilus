@@ -23,7 +23,7 @@ use zz_ui::{
 use super::{
     chat::{Frame, Thread, Views, empty_column},
     composer::{Draft, claude_settings, codex_settings, composer, composer_input},
-    fixtures::{PLAN, PLAN_STEPS, Script, approval_of, completed, plan_approval, tasks},
+    fixtures::{PLAN, PLAN_STEPS, Script, approval_of, completed, tasks},
 };
 use crate::stories::workspace::fixtures::{CLAUDE, CODEX, Tone, terminal_body};
 use crate::story::{Framed as _, states};
@@ -55,18 +55,6 @@ const CLAUDE_ASKS: &[(Tone, &str)] = &[
     (Tone::Muted, "    3. No, and tell Claude what to do (esc)"),
 ];
 
-const CLAUDE_PLANS: &[(Tone, &str)] = &[
-    (Tone::Muted, "~/dev/zz fix/pinned-tab-width"),
-    (
-        Tone::Plain,
-        "> Plan how pinned tabs keep their width, then wait for me.",
-    ),
-    (Tone::Plain, "  Ready to code?"),
-    (Tone::Success, "  › 1. Yes, and auto-accept edits"),
-    (Tone::Muted, "    2. Yes, and manually approve edits"),
-    (Tone::Muted, "    3. No, keep planning"),
-];
-
 const CODEX_FIRST: &[(Tone, &str)] = &[(Tone::Muted, "~/dev/zz main"), (Tone::Plain, "› ")];
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -74,14 +62,13 @@ enum Scene {
     Claude,
     Codex,
     ClaudeAsks,
-    ClaudePlans,
     CodexFirst,
 }
 
 impl Scene {
     const fn provider(self) -> AgentProvider {
         match self {
-            Self::Claude | Self::ClaudeAsks | Self::ClaudePlans => AgentProvider::ClaudeCode,
+            Self::Claude | Self::ClaudeAsks => AgentProvider::ClaudeCode,
             Self::Codex | Self::CodexFirst => AgentProvider::Codex,
         }
     }
@@ -91,7 +78,6 @@ impl Scene {
             Self::Claude => 14,
             Self::Codex => 15,
             Self::ClaudeAsks => 16,
-            Self::ClaudePlans => 18,
             Self::CodexFirst => 19,
         }
     }
@@ -100,7 +86,6 @@ impl Scene {
         match (self, side) {
             (Self::Claude, _) => "Pinned tabs keep their icon width",
             (Self::ClaudeAsks, _) => "Open the pinned tabs pull request",
-            (Self::ClaudePlans, _) => "Plan the pinned tabs fix",
             (Self::Codex, _) => "Fix the tab drop preview",
             (Self::CodexFirst, Side::Chat) => "agent",
             (Self::CodexFirst, Side::Cli) => "codex",
@@ -112,7 +97,6 @@ impl Scene {
             Self::Claude => CLAUDE,
             Self::Codex => CODEX,
             Self::ClaudeAsks => CLAUDE_ASKS,
-            Self::ClaudePlans => CLAUDE_PLANS,
             Self::CodexFirst => CODEX_FIRST,
         }
     }
@@ -124,7 +108,7 @@ impl Scene {
     const fn busy(self) -> Option<&'static str> {
         match self {
             Self::Claude => Some("a turn and 1 background task"),
-            Self::ClaudeAsks | Self::ClaudePlans => Some("a turn"),
+            Self::ClaudeAsks => Some("a turn"),
             Self::Codex | Self::CodexFirst => None,
         }
     }
@@ -224,22 +208,6 @@ impl Scene {
                         approval_of("git push -u origin fix/pinned-tab-width"),
                     );
             }
-            Self::ClaudePlans => {
-                script
-                    .turn("Plan how pinned tabs keep their width, then wait for me.")
-                    .ran(
-                        "s1",
-                        ItemKind::Search,
-                        "rg -n \"pinned\" crates/zz-ui/src/browser",
-                    )
-                    .ran(
-                        "r1",
-                        ItemKind::Read,
-                        "crates/zz-ui/src/browser/tab_strip.rs",
-                    )
-                    .ran("r2", ItemKind::Read, "crates/zz-ui/src/browser/drag.rs")
-                    .ask(1, None, plan_approval());
-            }
             Self::CodexFirst => {}
         }
         script
@@ -249,7 +217,6 @@ impl Scene {
 #[derive(Clone, Copy, PartialEq)]
 enum Look {
     Page(f32),
-    Tiled,
     Floating,
     Phone,
 }
@@ -348,18 +315,6 @@ fn build_with(
         story
     })
     .into()
-}
-
-pub(crate) fn tiled(window: &mut Window, cx: &mut App) -> AnyView {
-    build(Scene::Claude, Look::Tiled, Side::Chat, window, cx)
-}
-
-pub(crate) fn tiled_plans(window: &mut Window, cx: &mut App) -> AnyView {
-    build(Scene::ClaudePlans, Look::Tiled, Side::Chat, window, cx)
-}
-
-pub(crate) fn tiled_first(window: &mut Window, cx: &mut App) -> AnyView {
-    build(Scene::CodexFirst, Look::Tiled, Side::Chat, window, cx)
 }
 
 pub(crate) fn floating_claude(window: &mut Window, cx: &mut App) -> AnyView {
@@ -592,35 +547,24 @@ impl Render for AgentPaneStory {
             .children(overlay)
             .into_any_element();
         let id = ("agent-pane", self.scene.pane());
-        if self.look == Look::Phone {
-            return div()
+        match self.look {
+            Look::Phone => div()
                 .id(id)
                 .size_full()
                 .flex()
                 .flex_col()
                 .child(body)
-                .into_any_element();
-        }
-        let header = self.header(cx);
-        match self.look {
+                .into_any_element(),
             Look::Page(height) => pane_frame(cx)
                 .id(id)
                 .h(px(height))
                 .flex()
                 .flex_col()
-                .child(header)
-                .child(body)
-                .into_any_element(),
-            Look::Tiled | Look::Phone => div()
-                .id(id)
-                .size_full()
-                .flex()
-                .flex_col()
-                .child(header)
+                .child(self.header(cx))
                 .child(body)
                 .into_any_element(),
             Look::Floating => PipSurface::new(id, div().size_full().flex().flex_col().child(body))
-                .header(header)
+                .header(self.header(cx))
                 .content_inset(px(8.0), px(16.0))
                 .into_any_element(),
         }
