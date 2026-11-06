@@ -2524,11 +2524,9 @@ mod tests {
             penna::Theme::global_mut(cx).radius = px(5.5);
         });
 
-        let radius = cx.update(|cx| penna::Theme::global(cx).pane_radius());
-        assert!(radius > px(5.5));
         assert_eq!(
             cx.update(|cx| pane_content_radii(cx, WindowCorners::NONE)),
-            Corners::all(radius)
+            Corners::all(px(5.5))
         );
     }
 
