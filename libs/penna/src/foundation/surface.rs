@@ -1161,7 +1161,9 @@ impl Theme {
             text = text.rest();
         }
 
-        let rimless = pane && self.pane_margin > px(0.0) && !glass.as_ref().is_some_and(draws_rim);
+        let pip = surface.role.id == super::roles::FLOATING_PIP.id;
+        let rimless = (pane && self.pane_margin > px(0.0) || pip)
+            && !glass.as_ref().is_some_and(draws_rim);
         let edge = if kind.is_control() {
             if soft.border_width > px(0.0) && tone != Tone::Neutral {
                 soft.border
@@ -1551,7 +1553,7 @@ mod tests {
     }
 
     #[test]
-    fn a_chrome_selection_reads_as_its_highlight_and_a_rimless_pane_takes_a_hairline() {
+    fn a_chrome_selection_reads_as_its_highlight_and_a_rimless_pane_or_pip_takes_a_hairline() {
         let mut theme = theme();
         let row = Surface::new(super::super::roles::SIDEBAR_ROW);
         theme.glass = Some(liquid());
@@ -1578,23 +1580,27 @@ mod tests {
         }
 
         let pane = Surface::new(Kind::Pane.role());
-        theme.pane_margin = px(8.0);
-        for (glass, hairline) in [
-            (None, true),
-            (Some(liquid().bezel(px(0.0)).edge_shadow(0.0)), true),
-            (Some(liquid()), false),
-        ] {
-            theme.glass = glass;
-            let layer = theme.layer(pane, PaintState::Rest);
-            assert_eq!(
-                (layer.border, layer.border_width),
-                if hairline {
-                    (theme.divider_color(), theme.outline)
-                } else {
-                    (theme.transparent, px(0.0))
-                },
-                "{glass:?}"
-            );
+        let pip = Surface::new(super::super::roles::FLOATING_PIP);
+        for (surface, margin) in [(pane, 8.0), (pip, 0.0)] {
+            theme.pane_margin = px(margin);
+            for (glass, hairline) in [
+                (None, true),
+                (Some(liquid().bezel(px(0.0)).edge_shadow(0.0)), true),
+                (Some(liquid()), false),
+            ] {
+                theme.glass = glass;
+                let layer = theme.layer(surface, PaintState::Rest);
+                assert_eq!(
+                    (layer.border, layer.border_width),
+                    if hairline {
+                        (theme.divider_color(), theme.outline)
+                    } else {
+                        (theme.transparent, px(0.0))
+                    },
+                    "{} {glass:?}",
+                    surface.role.id
+                );
+            }
         }
     }
 

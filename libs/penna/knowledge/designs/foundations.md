@@ -201,6 +201,7 @@ How each kind draws, at rest and under the pointer:
 |---|---|---|---|
 | Bar, panel | no fill; a panel takes `panel` | | |
 | Pane | the ground, no edge, no shadow; when panes have gaps, glass, or a hairline in `divider` where the glass draws no rim | | ring |
+| PiP (a pane floating over the others) | glass in the pane's own color, or the pane's ground opaque when glass is off; a hairline in `divider` where the glass draws no rim, gaps or not; `shadow-float` | | ring |
 | Card | one step of fill above its ground, no edge, no shadow | | ring |
 | Floating (menus, popovers, tooltips, dialogs, toasts, palettes, buttons over the content) | glass, or the `popover` fill when glass is off; `shadow-float`; no edge | | |
 | Button | a wash of the ink, no edge, no shadow; primary is a solid `primary` fill | a deeper wash | a deeper wash |
@@ -256,7 +257,7 @@ What follows the platform with no knob: the system face and code face, when scro
 
 Everything else is the look and has no knob: each kind's fill, edge, shadow and shape, every state look, outline width, highlight strength, status colors, spacing, sizes, type and motion.
 
-Corners: `radius` rounds containers and `control-radius` rounds controls. A control's corner stops at 45% of its height (`corner-fraction`), so a 12 corner on a 28 control reads as a pill only when `control-radius` is `full`. A corner inside another is concentric: inner radius = outer radius minus the inset between them. `smoothing` is the corners' superellipse exponent; rows draw at most 2.5.
+Corners: `radius` rounds containers and `control-radius` rounds controls. A control's corner stops at 45% of its height (`corner-fraction`), so a 12 corner on a 28 control reads as a pill only when `control-radius` is `full`. A corner inside another is concentric: inner radius = outer radius minus the inset between them. A pane rounds concentric with its header's controls (their corner plus `inset-chrome`) unless the app sets its own pane corner (`Theme::pane_corner_radius`, 0 to 25, zz's Panes > Corner radius on the same percent curve as Corner radius); a PiP takes the same corner. `smoothing` is the corners' superellipse exponent; rows draw at most 2.5.
 
 Glass is for what sits over something, since it reads only with something behind it:
 
@@ -264,7 +265,7 @@ Glass is for what sits over something, since it reads only with something behind
 - Panes over the window's frame, when panes have gaps (`Theme::pane_margin` above 0): the pane's ground is the tint, at the ground's own opacity, under the material's rim and light, with no blur or refraction, since the frame under a pane is one flat fill. A pane that sits flush has nothing under it and takes its ground.
 - The selection in chrome, over its bar or sidebar (chrome items, above).
 
-Never cards, fields, bars, panels, or the rows and controls inside content: they sit in their ground, not over it. Where glass is off each falls back: floating surfaces to the `popover` fill, panes to their ground with a hairline in `divider` when they have gaps, chrome selections to the highlight. A gapped pane takes the same hairline under a material of its own that draws no rim (no bezel and no edge shadow), so its edge always shows.
+Never cards, fields, bars, panels, or the rows and controls inside content: they sit in their ground, not over it. Where glass is off each falls back: floating surfaces to the `popover` fill, panes to their ground with a hairline in `divider` when they have gaps, a PiP to its pane's ground, opaque, under that hairline, chrome selections to the highlight. A gapped pane takes the same hairline under a material of its own that draws no rim (no bezel and no edge shadow), so its edge always shows.
 
 A material is a full glass definition (blur, tint, saturation, bezel, refraction, specular, rim) for light and for dark:
 
@@ -294,7 +295,7 @@ How the knobs are spelled and decided:
 - Muted, faint and tone ink are worked out for the ground under the text, natively and in HTML, where each ground scope (`data-ground`, `data-on`) carries the inks that differ from the window's: `--penna-muted`, `--penna-faint` and `--penna-<tone>-ink`, as values. Natively they mix the ink toward the ground's fill in OKLab rather than fade it, so the tokens write the mixed color. Cards, panels and floating grounds differ in muted and faint only; tone inks follow the ground's ink, which only a solid selection changes.
 - Row inset (6), outline width (1) and highlight strength (0.8 of the wash) are fixed.
 
-Status: built (steps 10, 12, 13, 14, 16, 17 and 18). Theme files are knobs only, the kinds and the built-in role patches draw the table above, and a person sets the knobs themselves over the platform's. The storybook's theme creator edits these knobs and exports a theme file, the docs Look page shows their range live, and the parity baselines hold the one look. Step 12 closed the last differences between native and HTML but one: a soft or prominent button set straight on a solid selection keeps its window paint in HTML, and rows hold none that way. What else remains is raster: text, and glass blur at its edges.
+Status: built (steps 10, 12, 13, 14, 16, 17, 18 and 19). Theme files are knobs only, the kinds and the built-in role patches draw the table above, and a person sets the knobs themselves over the platform's. The storybook's theme creator edits these knobs and exports a theme file, the docs Look page shows their range live, and the parity baselines hold the one look. Step 12 closed the last differences between native and HTML but one: a soft or prominent button set straight on a solid selection keeps its window paint in HTML, and rows hold none that way. What else remains is raster: text, and glass blur at its edges.
 
 ## Focus and keys
 
@@ -1557,5 +1558,6 @@ Status: matches.
 | 16 | One glass: `frosted` is gone and Glass is a switch; on, it draws `liquid` on every platform, and a theme file's own material fills in over `liquid` | the Glass row turns to a switch; Linux, Windows and the web draw `liquid` where they drew `frosted` | built |
 | 17 | Plain knobs: Corner radius in percent on a square curve with no pill at its top, Increase contrast a slider that adds no edges, Motion in three steps, no Theme file row, and the Advanced fold opened into Size and Accessibility | the radius slider reads 69% by default; controls lose their hairline under contrast; Reduce motion and Animation speed become one Motion row | built |
 | 18 | A see-through window reads like an opaque one: the theme carries the window's opacity, so cards and bars on it take their step as a wash and stay a step above it, and `divider` drops to 8% | settings cards under window blur read a step above the page instead of darker than it; every rule is lighter | built |
+| 19 | PiPs follow Glass and panes take a corner of their own: a PiP is glass when glass is on and its pane's ground, opaque, under the `divider` hairline when it is off, and `Theme::pane_corner_radius` sets the pane corner over the concentric one | PiPs lose their frosted blur with glass off and gain the pane's hairline | built |
 
 Each step lands in penna with its stories, scores parity, rebaselines only what the step meant to move, and is pulled into zz and nidus.

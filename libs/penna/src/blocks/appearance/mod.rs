@@ -348,10 +348,20 @@ pub fn corner_radius_slider(
     on_change: impl Fn(f32, &mut Window, &mut App) + 'static,
     cx: &App,
 ) -> ala::Div {
+    corner_slider("settings-corner-radius", "Corner radius", radius, on_change, cx)
+}
+
+pub fn corner_slider(
+    id: &'static str,
+    label: &'static str,
+    radius: f32,
+    on_change: impl Fn(f32, &mut Window, &mut App) + 'static,
+    cx: &App,
+) -> ala::Div {
     value_slider(
         Slider::new(
-            "settings-corner-radius",
-            "Corner radius",
+            id,
+            label,
             corner_share(radius),
             0.0..=1.0,
             move |share, window, cx| on_change(corner_radius_at(share), window, cx),
