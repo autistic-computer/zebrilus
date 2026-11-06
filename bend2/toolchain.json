@@ -1,0 +1,48 @@
+{
+  "bend": {
+    "version": "2.0.40",
+    "repository": "https://github.com/bendlang/bend",
+    "release": "https://github.com/bendlang/bend/releases/tag/v2.0.40",
+    "archives": {
+      "darwin-arm64": [
+        "bend-2.0.40-darwin-arm64.tar.gz",
+        "b2be003b041eb6cfc65326be18f79eb2e0bae2189be79a18c507e661b4b6900b"
+      ],
+      "darwin-x64": [
+        "bend-2.0.40-darwin-x64.tar.gz",
+        "9229c8bdd0a93f63fa45cc5af5e9e56389ebb620d655920915daf966c6ca561c"
+      ],
+      "linux-arm64": [
+        "bend-2.0.40-linux-arm64.tar.gz",
+        "2f42a6fa34ecdaa71ae105e5fa734f9a07e129d333e45448ab6d2ff03a837570"
+      ],
+      "linux-x64": [
+        "bend-2.0.40-linux-x64.tar.gz",
+        "c9ff8d67bd903fb6ad9a26b43d8a62c01021de82a44d55ce4a3dcd4732113d6b"
+      ]
+    }
+  },
+  "lean": {
+    "version": "4.34.0",
+    "repository": "https://github.com/leanprover/lean4",
+    "release": "https://github.com/leanprover/lean4/releases/tag/v4.34.0",
+    "archives": {
+      "darwin-arm64": [
+        "lean-4.34.0-darwin_aarch64.tar.zst",
+        "69f263fa6e21bbc2466bbfb1affcd92479ee2714c883a07de548e099a5922932"
+      ],
+      "darwin-x64": [
+        "lean-4.34.0-darwin.tar.zst",
+        "e90afe84c0a2aa3583f3ecd08e51fb7eeebb84d36f99b7cac5d3c067fa8640b0"
+      ],
+      "linux-arm64": [
+        "lean-4.34.0-linux_aarch64.tar.zst",
+        "40b04fdb7fb849d3c80e10c3bbeebc7b7354b6d3f07450b9168c2149b40d2a82"
+      ],
+      "linux-x64": [
+        "lean-4.34.0-linux.tar.zst",
+        "caaa98356098c85dc0fcbbd28e1ec66f39eb6551829972b752ff20e1286b646b"
+      ]
+    }
+  }
+}
