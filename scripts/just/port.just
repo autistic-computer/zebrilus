@@ -14,7 +14,7 @@ build:
 
 [doc("Run the native mjui workspace against a daemon socket.")]
 run socket:
-    ZZ_BEND="$PWD/target/port/zz-bend" pixi run --manifest-path mojo/pixi.toml run --socket {{ quote(socket) }}
+    ZZ_APP_STARTUP_DIRECTORY={{ quote(invocation_directory()) }} ZZ_BEND="$PWD/target/port/zz-bend" pixi run --manifest-path mojo/pixi.toml run --socket {{ quote(socket) }}
 
 [doc("Read the current migration boundaries and verification commands.")]
 status:

@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+launch_dir=${ZZ_APP_STARTUP_DIRECTORY:-$PWD}
 port_dir=$(cd "$(dirname "$0")/.." && pwd)
 zz_dir=$(dirname "$port_dir")
 if [ -z "${MJ_CC:-}" ] && [ -x /usr/bin/clang ]; then export MJ_CC=/usr/bin/clang; fi
@@ -17,14 +18,17 @@ case "$action" in
   build-app)
     MJ_A11Y=0 MJUI_EXAMPLE_BUILD_ONLY=1 MJUI_EXAMPLE_OUT="$zz_dir/target/port/zz-mojo-app.next" bash scripts/run_example.sh "$port_dir/window.mojo"
     mv "$zz_dir/target/port/zz-mojo-app.next" "$zz_dir/target/port/zz-mojo-app"
+    python3 "$port_dir/scripts/resources.py" "$zz_dir/target/port/zz-mojo-app"
     ;;
   run)
     python3 "$zz_dir/scripts/port/guard.py" bash "$port_dir/scripts/ui.sh" build-app
+    cd "$launch_dir"
     exec env -u ZZ_PORT_GUARDED -u ZZ_PORT_BUILD_LOCK_FD "$zz_dir/target/port/zz-mojo-app" "$@"
     ;;
   build-shot|shot)
     pixi run bash -c 'mojo build --fp-mode=contract=off -I src -I "$1" $MJ_LINK -o "$2.next" "$1/screenshot.mojo"' _ "$port_dir" "$zz_dir/target/port/zz-mojo-shot"
     mv "$zz_dir/target/port/zz-mojo-shot.next" "$zz_dir/target/port/zz-mojo-shot"
+    python3 "$port_dir/scripts/resources.py" "$zz_dir/target/port/zz-mojo-shot"
     if [ "$action" = build-shot ]; then
       exit 0
     fi
