@@ -693,7 +693,8 @@ pub fn pane_surface(
     let glass =
         theme.style_of(ContentLook::Pane).fill == Fill::Glass && theme.glass_effect().is_some();
     let rest = pane_material(cx);
-    let outlined = rest.border_width > Pixels::ZERO;
+    let hairline = rest.border_width;
+    let outlined = hairline > Pixels::ZERO;
     let shadow = if chrome.shadow {
         rest.shadow.clone()
     } else {
@@ -737,13 +738,20 @@ pub fn pane_surface(
         .when_some(
             chrome
                 .frame
-                .filter(|frame| frame.glint_width > Pixels::ZERO && (glass || outlined)),
-            |surface, frame| {
+                .map(|frame| {
+                    if outlined {
+                        hairline
+                    } else {
+                        frame.glint_width
+                    }
+                })
+                .filter(|width| *width > Pixels::ZERO && (glass || outlined)),
+            |surface, width| {
                 surface.child(pane_frame_hairline(
                     chrome.radii,
-                    frame.glint_width,
+                    width,
                     PaneLook::global(cx).edge_color(theme, chrome.active),
-                    !glass,
+                    outlined,
                 ))
             },
         )

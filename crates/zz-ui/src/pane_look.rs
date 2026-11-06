@@ -114,7 +114,7 @@ mod tests {
     };
 
     #[test]
-    fn a_pane_frame_takes_the_glass_rim_and_draws_no_edge_without_glass() {
+    fn a_pane_frame_takes_the_glass_rim_and_no_rim_without_glass() {
         let mut theme = Theme::default();
         let plane = theme.background;
         let tint = plane;
