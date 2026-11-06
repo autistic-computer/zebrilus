@@ -6,9 +6,7 @@ use ala::{
 };
 use penna::{
     ActiveTheme as _, IconName, Label, TextStyle, Theme,
-    blocks::appearance::{
-        ADVANCED_DISCLOSURE, AppearanceControls, appearance_page, kit_row, percent_slider,
-    },
+    blocks::appearance::{AppearanceControls, appearance_page, kit_row, percent_slider},
     blocks::settings::about::{
         about_build_stack, about_copy_button, about_hero, about_project_stack,
     },
@@ -24,8 +22,8 @@ use zz_ui::{
         SettingsStack, StackPosition,
         about::{ABOUT_LOGO_SIZE, ZZ_ABOUT},
         appearance::{AppearancePageItem, ZzRow, appearance_page_items},
-        settings_card_ground, settings_list_disclosure_header, settings_page_heading,
-        settings_preview, settings_scroll_column, settings_title_bar,
+        settings_card_ground, settings_page_heading, settings_preview, settings_scroll_column,
+        settings_title_bar,
     },
 };
 
@@ -142,7 +140,9 @@ impl Preferences {
         shown.set_theme_mode(mode);
         shown.contrast = contrast;
         shown.zoom = interface_zoom(self, text_scale, phone());
-        shown.animations &= !cx.global::<PlatformReduceMotion>().0;
+        if cx.global::<PlatformReduceMotion>().0 {
+            shown.motion = penna::foundation::motion::Motion::Off;
+        }
         shown.apply(Some(window), cx);
         cx.set_global(zz_ui::pip::PipOpacity(self.pip_background_opacity));
         cx.set_global(PaneLook {
@@ -208,7 +208,6 @@ pub(super) struct Controls {
     panes: [Entity<InputState>; 4],
     terminal_font: Entity<SelectState<Vec<SettingsSelectItem>>>,
     palette_layout: Entity<SelectState<Vec<SettingsSelectItem>>>,
-    advanced: bool,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -357,7 +356,6 @@ impl Controls {
             panes,
             terminal_font,
             palette_layout,
-            advanced: false,
             _subscriptions: subscriptions,
         }
     }
@@ -554,13 +552,22 @@ impl AppShell {
         let phone = phone();
         match section {
             SettingsSection::Appearance => {
-                let items = appearance_page_items(false, false, self.settings_controls.advanced)
+                let mut items = appearance_page_items(false, false)
                     .into_iter()
                     .filter(|item| {
                         !matches!(item, AppearancePageItem::App(row) if *row != ZzRow::ProgramColors)
                     })
                     .filter(|item| !narrow || !matches!(item, AppearancePageItem::Title))
                     .collect::<Vec<_>>();
+                let empty = |at: usize, items: &[AppearancePageItem]| {
+                    matches!(items[at], AppearancePageItem::Group { .. })
+                        && items
+                            .get(at + 1)
+                            .is_none_or(|next| matches!(next, AppearancePageItem::Group { .. }))
+                };
+                while let Some(at) = (0..items.len()).find(|&at| empty(at, &items)) {
+                    items.remove(at);
+                }
                 let zoom = self.settings_controls.appearance.zoom_focus();
                 let row_focus = items
                     .iter()
@@ -571,21 +578,8 @@ impl AppShell {
                     section.title(),
                     items,
                     move |item, position, window, cx| {
-                        view.update(cx, |this, cx| match item {
-                            AppearancePageItem::Advanced { expanded } => {
-                                settings_list_disclosure_header(
-                                    ADVANCED_DISCLOSURE,
-                                    "Advanced",
-                                    expanded,
-                                )
-                                .on_click(cx.listener(|this, _, _, cx| {
-                                    this.settings_controls.advanced =
-                                        !this.settings_controls.advanced;
-                                    cx.notify();
-                                }))
-                                .into_any_element()
-                            }
-                            item => this.appearance_item(item, position, narrow, window, cx),
+                        view.update(cx, |this, cx| {
+                            this.appearance_item(item, position, narrow, window, cx)
                         })
                     },
                 )
@@ -1337,7 +1331,7 @@ mod tests {
             assert_eq!(theme.mode, ThemeMode::Dark);
             assert_eq!(theme.accent, expected);
             assert_eq!(theme.radius, px(3.0));
-            assert_eq!(theme.control_radius, Some(px(25.0)));
+            assert!(theme.pill_controls());
             assert!(theme.tinted());
         });
         preferences.appearance.overrides.radius = Some(5.0);
@@ -1350,7 +1344,7 @@ mod tests {
                 zz_ui::interface_theme::accent_color("green", ThemeMode::Dark)
             );
             assert_eq!(theme.radius, px(5.0));
-            assert_eq!(theme.control_radius, Some(px(25.0)));
+            assert!(theme.pill_controls());
         });
     }
 }

@@ -449,7 +449,7 @@ function updateDropTarget(x, y) {
   const same = (paneDrag.target && target && paneDrag.target.pane === target.pane && paneDrag.target.zone === target.zone) || (!paneDrag.target && !target);
   if (same) return;
   paneDrag.target = target;
-  const animate = preferences.animations && !matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const animate = preferences.motion !== "off" && !matchMedia("(prefers-reduced-motion: reduce)").matches;
   preview.style.transitionDuration = animate && paneDrag.rendered ? (target ? "180ms" : "140ms") : "0ms";
   if (!target) {
     preview.style.opacity = "0";
@@ -780,12 +780,12 @@ function applyMetrics() {
   root.setProperty("--pane-rim", Math.max(0, 1 - 0.3 * glow));
   app.classList.toggle("penna-gaps", gaps);
   app.toggleAttribute("data-gaps", gaps);
-  app.toggleAttribute("data-animations", preferences.animations);
+  app.toggleAttribute("data-animations", preferences.motion !== "off");
 }
 
 function arrivals(window) {
   const ids = new Set(window.panes.map((pane) => pane.id));
-  if (arrived.window === window.id && preferences.animations) {
+  if (arrived.window === window.id && preferences.motion !== "off") {
     for (const id of ids) {
       if (!arrived.known.has(id)) panes.get(id)?.element.classList.add("arriving");
     }

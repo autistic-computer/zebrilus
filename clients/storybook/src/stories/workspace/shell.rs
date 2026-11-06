@@ -7,7 +7,7 @@ use zz_protocol::AgentProvider;
 use zz_ui::{
     pane::{PaneSplitAxis, PaneSplitHighlight, PaneSplitSide, pane_split_surface},
     shell::{
-        app_connection_state, app_shell_surface, app_workspace_surface, shell_ground,
+        app_connection_state, app_shell_surface, app_workspace_surface, shell_frame,
         titlebar_over_panes,
     },
 };
@@ -146,7 +146,8 @@ pub(crate) fn with_sidebar(
     });
     app_shell_surface(
         "shell",
-        shell_ground(cx.theme().background, gaps, cx),
+        cx.theme().background,
+        shell_frame(cx.theme().background, gaps, cx),
         sidebar,
         None,
         app_workspace_surface(
@@ -169,7 +170,8 @@ fn with_status_bar(
 ) -> AnyElement {
     app_shell_surface(
         "shell",
-        shell_ground(cx.theme().background, gaps, cx),
+        cx.theme().background,
+        shell_frame(cx.theme().background, gaps, cx),
         div(),
         Some(
             titlebar_over_panes(titlebar(&Bar { gaps, ..Bar::FULL }, cx), gap(gaps))

@@ -71,13 +71,10 @@ pane-margin = 6
 # Draw glass as a solid fill.
 # reduce-transparency = false
 
-# Animate interface transitions, loading indicators, scrollbars, and image
-# frames. Turning this off settles each interface state immediately.
-animations = true
-
-# How fast those animations run, from 0.25 (four times slower) to 2 (twice
-# as fast).
-animation-speed = 1
+# Interface transitions, loading indicators, scrollbars, and image frames:
+# off settles each interface state immediately, fast runs them at twice
+# their designed speed.
+motion = default
 
 # Follow the desktop's light/dark setting, or pin one: system, light, or dark.
 theme-mode = system

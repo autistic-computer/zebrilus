@@ -13,18 +13,21 @@ use ala::{
 };
 
 #[must_use]
-pub fn shell_ground(window: ala::Hsla, gaps: bool, cx: &App) -> ala::Hsla {
-    if gaps && window.a >= 1.0 {
-        crate::navigation::workspace_sidebar_fade(
+pub fn shell_frame(window: ala::Hsla, gaps: bool, cx: &App) -> Option<ala::Hsla> {
+    gaps.then(|| {
+        penna::blocks::sidebar::sidebar_fill(
             Ground {
                 fill: window,
                 ..cx.theme().ground()
             },
             cx,
         )
-    } else {
-        window
-    }
+    })
+}
+
+#[must_use]
+pub fn shell_ground(window: ala::Hsla, gaps: bool, cx: &App) -> ala::Hsla {
+    shell_frame(window, gaps, cx).map_or(window, |frame| window.blend(frame))
 }
 
 pub fn titlebar_over_panes(titlebar: impl IntoElement, gap: Pixels) -> ala::Div {

@@ -54,6 +54,7 @@ impl Render for ShellFixture {
         app_shell_surface(
             "test-shell",
             cx.theme().background,
+            None,
             div().flex_none().w(self.sidebar_width).h_full(),
             Some(div().flex_none().h(self.titlebar_height).into_any_element()),
             app_workspace_surface("test-workspace", workspace, [], cx),

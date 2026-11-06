@@ -5,7 +5,7 @@ use wasm_bindgen::prelude::*;
 use zz_app::preferences::Preferences;
 use zz_protocol::{ProviderStatus, ProviderTask, ProvidersReport};
 use zz_ui::{
-    interface_theme::{self, ACCENTS, AppearanceChange, Glass},
+    interface_theme::{self, ACCENTS, Glass},
     settings::{SettingsSection, about, providers::PROVIDERS},
 };
 
@@ -59,27 +59,6 @@ pub fn save(json: &str) -> Result<String, JsError> {
     let preferences = decode(json)?;
     preferences.save();
     Ok(encode(&preferences).to_string())
-}
-
-#[wasm_bindgen]
-pub fn theme_action(json: &str, action: &str, argument: &str) -> Result<String, JsError> {
-    let mut preferences = decode(json)?;
-    let change = match action {
-        "import" => match interface_theme::parse_theme(argument) {
-            Ok(theme) => AppearanceChange::Import(Box::new(theme)),
-            Err(error) => {
-                let error = format!("The clipboard holds no theme file: {error}.");
-                return Ok(
-                    json!({ "preferences": encode(&preferences), "error": error }).to_string(),
-                );
-            }
-        },
-        "reset" => AppearanceChange::ResetLook,
-        _ => return Err(JsError::new(&format!("no theme action {action}"))),
-    };
-    preferences.change_appearance(change);
-    preferences.save();
-    Ok(json!({ "preferences": encode(&preferences) }).to_string())
 }
 
 #[wasm_bindgen]
@@ -139,8 +118,6 @@ pub fn picks(json: &str, dark: bool) -> Result<String, JsError> {
         Glass::Material(_) => "custom".to_owned(),
         glass => interface_theme::spelled_glass(&glass),
     };
-    let mut file = shown.clone();
-    "Custom".clone_into(&mut file.name);
     Ok(json!({
         "modes": {
             "light": palette(&shown.colors(ThemeMode::Light)),
@@ -163,14 +140,12 @@ pub fn picks(json: &str, dark: bool) -> Result<String, JsError> {
             "stops": (0..=HUE_STOPS).map(|stop| color(oklch(0.72, 0.13, f32::from(stop) * 360.0 / f32::from(HUE_STOPS)))).collect::<Vec<_>>(),
             "strength": neutral.amount,
         },
-        "radius": preferences.widget_corner_radius(),
+        "radius": interface_theme::corner_share(preferences.widget_corner_radius()),
         "controls": interface_theme::control_shape_setting(appearance.controls()).as_str(),
         "glass": glass,
         "font": preferences.shown_ui_font(),
-        "file": file.to_json(),
         "limits": {
             "radius": interface_theme::MAX_CORNER_RADIUS,
-            "animation": [interface_theme::MIN_ANIMATION_SPEED, interface_theme::MAX_ANIMATION_SPEED],
         },
     })
     .to_string())

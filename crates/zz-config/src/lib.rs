@@ -8,9 +8,8 @@ use std::{
 };
 use zz_client::StatusBarSettings;
 use zz_client::appearance::{
-    ACCENTS, AccentSetting, AppIconSetting, ControlShapeSetting, DEFAULT_ANIMATION_SPEED,
-    DEFAULT_TINT_HUE, DensitySetting, GLASSES, MAX_ANIMATION_SPEED, MAX_CORNER_RADIUS,
-    MIN_ANIMATION_SPEED, ThemeModeSetting,
+    ACCENTS, AccentSetting, AppIconSetting, ControlShapeSetting, DEFAULT_TINT_HUE, DensitySetting,
+    GLASSES, MAX_CORNER_RADIUS, MotionSetting, ThemeModeSetting,
 };
 use zz_client::url_input::SearchProvider;
 pub use zz_daemon_client::{
@@ -50,8 +49,6 @@ pub const DEFAULT_REDUCE_TRANSPARENCY: bool = false;
 pub const DEFAULT_CHROME_TINT: f32 = 0.15;
 pub const DEFAULT_USE_SYSTEM_TITLEBAR: bool = false;
 pub const DEFAULT_WINDOW_BACKGROUND_BLUR: bool = false;
-pub const DEFAULT_WINDOW_BACKGROUND_OPACITY: f32 = 0.0;
-pub const DEFAULT_ANIMATIONS: bool = true;
 pub const DEFAULT_TRAY: bool = true;
 pub const DEFAULT_NOTIFICATIONS: bool = true;
 pub const DEFAULT_QUIT_DAEMON_ON_EXIT: bool = false;
@@ -86,9 +83,7 @@ pub enum ConfigKey {
     UseSystemTitlebar,
     WindowCornerRadius,
     WindowBackgroundBlur,
-    WindowBackgroundOpacity,
-    Animations,
-    AnimationSpeed,
+    Motion,
     Tray,
     Notifications,
     QuitDaemonOnExit,
@@ -139,9 +134,7 @@ impl ConfigKey {
             Self::UseSystemTitlebar => "use-system-titlebar",
             Self::WindowCornerRadius => "window-corner-radius",
             Self::WindowBackgroundBlur => "window-background-blur",
-            Self::WindowBackgroundOpacity => "window-background-opacity",
-            Self::Animations => "animations",
-            Self::AnimationSpeed => "animation-speed",
+            Self::Motion => "motion",
             Self::Tray => "tray",
             Self::Notifications => "notifications",
             Self::QuitDaemonOnExit => "quit-daemon-on-exit",
@@ -192,9 +185,7 @@ impl ConfigKey {
             "use-system-titlebar" => Some(Self::UseSystemTitlebar),
             "window-corner-radius" => Some(Self::WindowCornerRadius),
             "window-background-blur" => Some(Self::WindowBackgroundBlur),
-            "window-background-opacity" => Some(Self::WindowBackgroundOpacity),
-            "animations" => Some(Self::Animations),
-            "animation-speed" => Some(Self::AnimationSpeed),
+            "motion" => Some(Self::Motion),
             "tray" => Some(Self::Tray),
             "notifications" => Some(Self::Notifications),
             "quit-daemon-on-exit" => Some(Self::QuitDaemonOnExit),
@@ -238,9 +229,7 @@ impl ConfigKey {
 
     pub const fn numeric_range(self) -> Option<(f32, f32)> {
         match self {
-            Self::PipBackgroundOpacity | Self::WindowBackgroundOpacity | Self::ChromeTint => {
-                Some((0.0, 1.0))
-            }
+            Self::PipBackgroundOpacity | Self::ChromeTint => Some((0.0, 1.0)),
             Self::PaneGlowStrength => Some((0.0, 2.0)),
             Self::PaneInactiveOpacity => {
                 Some((MIN_PANE_INACTIVE_OPACITY, MAX_PANE_INACTIVE_OPACITY))
@@ -248,7 +237,6 @@ impl ConfigKey {
             Self::PaneMargin => Some((0.0, MAX_PANE_MARGIN)),
             Self::WidgetCornerRadius => Some((0.0, MAX_CORNER_RADIUS)),
             Self::ChromeContrast => Some((1.0, 2.0)),
-            Self::AnimationSpeed => Some((MIN_ANIMATION_SPEED, MAX_ANIMATION_SPEED)),
             Self::ChromeTintHue => Some((0.0, 360.0)),
             Self::WindowCornerRadius => Some((0.0, MAX_WINDOW_CORNER_RADIUS)),
             Self::EditorFontSize => Some((MIN_EDITOR_FONT_SIZE, MAX_EDITOR_FONT_SIZE)),
@@ -259,7 +247,7 @@ impl ConfigKey {
             | Self::PaletteVimMode
             | Self::PickerFocusSidebar
             | Self::WindowBackgroundBlur
-            | Self::Animations
+            | Self::Motion
             | Self::Tray
             | Self::Notifications
             | Self::QuitDaemonOnExit
@@ -390,9 +378,7 @@ pub struct AppConfig {
     pub use_system_titlebar: ConfigValue<bool>,
     pub window_corner_radius: ConfigValue<f32>,
     pub window_background_blur: ConfigValue<bool>,
-    pub window_background_opacity: ConfigValue<f32>,
-    pub animations: ConfigValue<bool>,
-    pub animation_speed: ConfigValue<f32>,
+    pub motion: ConfigValue<MotionSetting>,
     pub tray: ConfigValue<bool>,
     pub notifications: ConfigValue<bool>,
     pub quit_daemon_on_exit: ConfigValue<bool>,
@@ -439,9 +425,7 @@ impl Default for AppConfig {
             use_system_titlebar: ConfigValue::from_default(DEFAULT_USE_SYSTEM_TITLEBAR),
             window_corner_radius: ConfigValue::from_default(DEFAULT_WINDOW_CORNER_RADIUS),
             window_background_blur: ConfigValue::from_default(DEFAULT_WINDOW_BACKGROUND_BLUR),
-            window_background_opacity: ConfigValue::from_default(DEFAULT_WINDOW_BACKGROUND_OPACITY),
-            animations: ConfigValue::from_default(DEFAULT_ANIMATIONS),
-            animation_speed: ConfigValue::from_default(DEFAULT_ANIMATION_SPEED),
+            motion: ConfigValue::from_default(MotionSetting::Default),
             tray: ConfigValue::from_default(DEFAULT_TRAY),
             notifications: ConfigValue::from_default(DEFAULT_NOTIFICATIONS),
             quit_daemon_on_exit: ConfigValue::from_default(DEFAULT_QUIT_DAEMON_ON_EXIT),
@@ -488,7 +472,6 @@ impl AppConfig {
             ConfigKey::PickerFocusSidebar => Some(&mut self.picker_focus_sidebar),
             ConfigKey::UseSystemTitlebar => Some(&mut self.use_system_titlebar),
             ConfigKey::WindowBackgroundBlur => Some(&mut self.window_background_blur),
-            ConfigKey::Animations => Some(&mut self.animations),
             ConfigKey::Tray => Some(&mut self.tray),
             ConfigKey::Notifications => Some(&mut self.notifications),
             ConfigKey::QuitDaemonOnExit => Some(&mut self.quit_daemon_on_exit),
@@ -511,13 +494,12 @@ impl AppConfig {
             | ConfigKey::WhichKeyDelay
             | ConfigKey::PaletteWindowLayout
             | ConfigKey::PipBackgroundOpacity
-            | ConfigKey::WindowBackgroundOpacity
             | ConfigKey::PaneGlowStrength
             | ConfigKey::PaneInactiveOpacity
             | ConfigKey::PaneMargin
             | ConfigKey::WidgetCornerRadius
             | ConfigKey::ChromeContrast
-            | ConfigKey::AnimationSpeed
+            | ConfigKey::Motion
             | ConfigKey::ChromeAccent
             | ConfigKey::ChromeTint
             | ConfigKey::ChromeTintHue
@@ -854,6 +836,19 @@ pub fn parse_config(source: &str, system_font_family: &str) -> ParsedConfig {
             continue;
         }
 
+        if RETIRED_MOTION_KEYS.contains(&key) {
+            let instead = if key == "window-background-opacity" {
+                "a blurred window is see-through and an unblurred one opaque; set `window-background-blur`"
+            } else {
+                "set `motion` to off, default or fast"
+            };
+            parsed.diagnostics.push(ConfigDiagnostic {
+                line: line_number,
+                message: format!("`{key}` was removed: {instead}"),
+            });
+            continue;
+        }
+
         if RETIRED_THEME_KEYS.contains(&key) {
             parsed.diagnostics.push(ConfigDiagnostic {
                 line: line_number,
@@ -1083,6 +1078,7 @@ pub fn parse_config(source: &str, system_font_family: &str) -> ParsedConfig {
                 | ConfigKey::ControlShape
                 | ConfigKey::AppIcon
                 | ConfigKey::ChromeDensity
+                | ConfigKey::Motion
         ) {
             continue;
         }
@@ -1090,13 +1086,11 @@ pub fn parse_config(source: &str, system_font_family: &str) -> ParsedConfig {
         let target = match key {
             ConfigKey::WindowCornerRadius => &mut parsed.config.window_corner_radius,
             ConfigKey::PipBackgroundOpacity => &mut parsed.config.pip_background_opacity,
-            ConfigKey::WindowBackgroundOpacity => &mut parsed.config.window_background_opacity,
             ConfigKey::PaneGlowStrength => &mut parsed.config.pane_glow_strength,
             ConfigKey::PaneInactiveOpacity => &mut parsed.config.pane_inactive_opacity,
             ConfigKey::PaneMargin => &mut parsed.config.pane_margin,
             ConfigKey::WidgetCornerRadius => &mut parsed.config.widget_corner_radius,
             ConfigKey::ChromeContrast => &mut parsed.config.chrome_contrast,
-            ConfigKey::AnimationSpeed => &mut parsed.config.animation_speed,
             ConfigKey::ChromeTint => &mut parsed.config.chrome_tint,
             ConfigKey::ChromeTintHue => &mut parsed.config.chrome_tint_hue,
             ConfigKey::EditorFontSize => &mut parsed.config.editor_font_size,
@@ -1107,7 +1101,7 @@ pub fn parse_config(source: &str, system_font_family: &str) -> ParsedConfig {
             | ConfigKey::PaletteVimMode
             | ConfigKey::PickerFocusSidebar
             | ConfigKey::WindowBackgroundBlur
-            | ConfigKey::Animations
+            | ConfigKey::Motion
             | ConfigKey::Tray
             | ConfigKey::Notifications
             | ConfigKey::QuitDaemonOnExit
@@ -1221,6 +1215,16 @@ pub fn apply_theme_key(
                 None => "expected compact, regular or comfortable".to_owned(),
             }
         }
+        ConfigKey::Motion => {
+            config.motion.provenance = ConfigProvenance::Override;
+            match MotionSetting::parse(value) {
+                Some(motion) => {
+                    config.motion.value = motion;
+                    return None;
+                }
+                None => "expected off, default or fast".to_owned(),
+            }
+        }
         ConfigKey::ControlShape => {
             config.control_shape.provenance = ConfigProvenance::Override;
             match ControlShapeSetting::parse(value) {
@@ -1300,10 +1304,8 @@ pub fn parse_numeric_value(
         key,
         ConfigKey::PaneInactiveOpacity
             | ConfigKey::PipBackgroundOpacity
-            | ConfigKey::WindowBackgroundOpacity
             | ConfigKey::PaneGlowStrength
             | ConfigKey::ChromeContrast
-            | ConfigKey::AnimationSpeed
             | ConfigKey::ChromeTint
     ) {
         ""
@@ -1467,10 +1469,14 @@ pub const RETIRED_STATUS_KEYS: [&str; 2] = ["status-show-session", "status-agent
 
 pub const RETIRED_THEME_KEYS: [&str; 1] = ["interface-theme"];
 
+pub const RETIRED_MOTION_KEYS: [&str; 3] =
+    ["animations", "animation-speed", "window-background-opacity"];
+
 pub fn is_app_config_key(key: &str) -> bool {
     ConfigKey::parse(key).is_some()
         || RETIRED_APPEARANCE_KEYS.contains(&key)
         || RETIRED_PANE_KEYS.contains(&key)
+        || RETIRED_MOTION_KEYS.contains(&key)
         || RETIRED_STATUS_KEYS.contains(&key)
         || RETIRED_LOOK_KEYS.contains(&key)
         || RETIRED_MATERIAL_KEYS.contains(&key)
@@ -2215,14 +2221,28 @@ mod tests {
     }
 
     #[test]
-    fn animation_speed_takes_a_share_of_the_designed_speed_within_its_range() {
-        let parsed = parse_config("animation-speed = 0.5\n", "monospace");
+    fn motion_takes_three_steps_and_the_old_motion_keys_say_what_replaced_them() {
+        let parsed = parse_config("motion = fast\n", "monospace");
         assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
-        assert_eq!(parsed.config.animation_speed.value, 0.5);
+        assert_eq!(parsed.config.motion.value, MotionSetting::Fast);
 
-        let parsed = parse_config("animation-speed = 5\n", "monospace");
-        assert_eq!(parsed.diagnostics.len(), 1, "{:?}", parsed.diagnostics);
-        assert_eq!(parsed.config.animation_speed.value, DEFAULT_ANIMATION_SPEED);
+        let parsed = parse_config(
+            "motion = slow\nanimations = false\nwindow-background-opacity = 0.5\n",
+            "monospace",
+        );
+        assert_eq!(parsed.config.motion.value, MotionSetting::Default);
+        assert_eq!(
+            parsed
+                .diagnostics
+                .iter()
+                .map(|diagnostic| diagnostic.message.as_str())
+                .collect::<Vec<_>>(),
+            [
+                "invalid `motion`: expected off, default or fast",
+                "`animations` was removed: set `motion` to off, default or fast",
+                "`window-background-opacity` was removed: a blurred window is see-through and an unblurred one opaque; set `window-background-blur`",
+            ]
+        );
     }
 
     #[test]

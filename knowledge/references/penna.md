@@ -185,8 +185,8 @@ meant. The file format is in [interface themes](/designs/interface-themes.md).
 
 `penna::foundation::interface_theme::Appearance` is the model: `mode` (`system`, `light` or `dark`),
 the `ThemeOverrides` flattened in (`radius`, `accent`, `tint`, `tint-hue`, `controls`, `glass`),
-`contrast`, `reduce_transparency`, `ui_font_family`, `zoom`, `animations`, `animation_speed` and
-`density`. It is serde with defaults, so an app keeps it in its own preferences with
+`contrast`, `reduce_transparency`, `ui_font_family`, `zoom`, `motion` (`off`, `default` or
+`fast`) and `density`. It is serde with defaults, so an app keeps it in its own preferences with
 `#[serde(flatten)]` (`clients/app/src/preferences.rs`), and those key names are what users' files
 hold. There is no theme to pick: the look starts from `platform_theme()` (the `macos` file on macOS
 and iOS, `default` elsewhere) and each override is a knob over it.
@@ -195,25 +195,23 @@ and iOS, `default` elsewhere) and each override is a knob over it.
   from a theme file (`ThemeOverrides::from_theme` and its `face`), `ResetLook` clears them.
 - `Appearance::shown_theme()`, `corner_radius()`, `neutral()`, `controls()`, `glass()`, `accent()`
   and `ui_font()` read the look with the platform's value wherever a knob is unset.
-- `Appearance::apply(window, cx)` puts it on screen: reduce motion and animation speed, the
+- `Appearance::apply(window, cx)` puts it on screen: reduce motion and animation speed from `motion`, the
   platform's file with its overrides (`shown_theme`) activated in the mode, the UI font (when
   installed, else ala's system UI font), contrast and zoom.
-- `penna::blocks::appearance::appearance_page(title, appearance_page_items::<T>(advanced),
-  render)` lays the rows out in a virtual column, and `render` draws each item with
+- `penna::blocks::appearance::appearance_page(title, appearance_page_items::<T>(), render)` lays
+  the rows out in a virtual column, in the groups `LOOK`, `SIZE` and `ACCESSIBILITY`, and `render`
+  draws each item with
   `kit_row(item, &appearance, &controls, stacked, window, cx)`, which gives a titled
   `SettingEntry` for every kit row. It returns `None` for `AppearancePageItem::App(T)`, the app's
-  own rows, which the app inserts into the item list and draws, and for `Advanced`, the disclosure
-  header the app draws with `settings_list_disclosure_header(ADVANCED_DISCLOSURE, "Advanced",
-  expanded)` and toggles. `stacked` puts swatches and sliders under their titles for narrow pages.
+  own rows, which the app inserts into the item list (in groups of its own) and draws. `stacked` puts swatches and sliders under their titles for narrow pages.
   `render` gets `(item, position, window, cx)`: set `.position(position)` on the entry `kit_row`
   returns and on the app's own rows, or every row draws as a middle row, without the rounded ends
   and outer borders of its card.
 - `AppearanceControls::new(&appearance, on_change, window, cx)` holds the accent picker, the font
   select and the zoom field's focus, and reports edits as `on_change(AppearanceChange, window,
-  cx)`. Call `sync` when the appearance changed elsewhere. The Theme file row's menu copies the
-  look as a theme file, pastes one (`AppearanceChange::Import`) and resets it
-  (`AppearanceChange::ResetLook`); `theme_menu` appends an app's own items after a separator (zz
-  adds none).
+  cx)`. Call `sync` when the appearance changed elsewhere. The page has no theme file row; an app that
+  reads theme files sets every knob from one with `AppearanceChange::Import` and clears them with
+  `AppearanceChange::ResetLook`.
 
 The Kit story's Appearance page (`libs/penna/storybook/src/kit/appearance.rs`) is the smallest
 complete page. zz's two pages wrap the same rows with its own `ZzRow` items
@@ -221,7 +219,10 @@ complete page. zz's two pages wrap the same rows with its own `ZzRow` items
 
 # Kit pieces apps reuse
 
-- Window shell: `penna::blocks::shell::app_shell_surface` (sidebar, title bar, content, overlays),
+- Window shell: `penna::blocks::shell::app_shell_surface` (window fill, the frame fill under the
+  title bar and content, sidebar, title bar, content, overlays; zz passes `zz_ui::shell::shell_frame`,
+  the sidebar's own fill, so gapped panes sit on the sidebar's color whether or not the window is
+  blurred),
   `app_titlebar_strip`, `window_drag_handle`, and the sidebar parts in `penna::blocks::sidebar`.
 - Settings: `SettingsStack`, `SettingEntry` and the page columns in `penna::blocks::settings`;
   `settings_navigation(id, sections, selected)` with `NavSection` and `on_pick`/`on_back` for the

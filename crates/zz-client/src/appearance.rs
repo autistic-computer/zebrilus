@@ -1,7 +1,3 @@
-pub const DEFAULT_ANIMATION_SPEED: f32 = 1.0;
-pub const MIN_ANIMATION_SPEED: f32 = 0.25;
-pub const MAX_ANIMATION_SPEED: f32 = 2.0;
-
 pub const MAX_CORNER_RADIUS: f32 = 25.0;
 
 pub const ACCENTS: [&str; 8] = [
@@ -67,6 +63,32 @@ impl ControlShapeSetting {
         Self::ALL
             .into_iter()
             .find(|shape| shape.as_str() == value.trim())
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum MotionSetting {
+    Off,
+    #[default]
+    Default,
+    Fast,
+}
+
+impl MotionSetting {
+    pub const ALL: [Self; 3] = [Self::Off, Self::Default, Self::Fast];
+
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Off => "off",
+            Self::Default => "default",
+            Self::Fast => "fast",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        Self::ALL
+            .into_iter()
+            .find(|motion| motion.as_str() == value.trim())
     }
 }
 

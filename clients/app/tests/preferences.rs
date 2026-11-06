@@ -111,8 +111,7 @@ fn a_preferences_file_written_before_appearance_moved_into_the_kit_loads_the_sam
             reduce_transparency: false,
             ui_font_family: "Inter Variable".into(),
             zoom: 1.35,
-            animations: false,
-            animation_speed: 1.5,
+            motion: penna::foundation::motion::Motion::Default,
             density: penna::Density::Regular,
         }
     );
@@ -128,8 +127,10 @@ fn a_preferences_file_written_before_appearance_moved_into_the_kit_loads_the_sam
     let mut expected = parsed(source);
     expected["density"] = "regular".into();
     expected["reduce_transparency"] = false.into();
+    expected["motion"] = "default".into();
     let fields = expected.as_object_mut().unwrap();
-    fields.remove("theme");
-    fields.remove("themes");
+    for retired in ["theme", "themes", "animations", "animation_speed"] {
+        fields.remove(retired);
+    }
     assert_eq!(parsed(&written), expected);
 }

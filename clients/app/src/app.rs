@@ -1708,7 +1708,7 @@ impl AppShell {
             PaneLook::global(cx).edge_width(theme).max(px(1.0)),
             cx,
         );
-        if !self.preferences.appearance.animations || cx.reduce_motion() {
+        if self.preferences.appearance.motion.reduced() || cx.reduce_motion() {
             rendered.set(preview.to);
             return Some(
                 surface
@@ -2967,7 +2967,8 @@ impl Render for AppShell {
         let shell = if let Some(workspace) = workspace {
             app_shell_surface(
                 "web-client",
-                zz_ui::shell::shell_ground(cx.theme().background, self.preferences.gaps, cx),
+                cx.theme().background,
+                zz_ui::shell::shell_frame(cx.theme().background, self.preferences.gaps, cx),
                 sidebar,
                 titlebar,
                 app_workspace_surface("web-workspace", workspace, terminal_overlays, cx),

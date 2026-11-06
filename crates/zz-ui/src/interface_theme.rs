@@ -2,13 +2,11 @@ use crate::ThemeMode;
 
 pub use penna::foundation::interface_theme::{
     ACCENTS, Appearance, AppearanceChange, Controls, Glass, InterfaceTheme, MAX_CORNER_RADIUS,
-    ThemeOverrides, accent_color, platform_theme,
+    ThemeOverrides, accent_color, corner_share, platform_theme,
 };
-pub use penna::foundation::motion::{
-    DEFAULT_ANIMATION_SPEED, MAX_ANIMATION_SPEED, MIN_ANIMATION_SPEED,
-};
+pub use penna::foundation::motion::Motion;
 pub use zz_client::appearance::{
-    AccentSetting, ControlShapeSetting, DensitySetting, ThemeModeSetting,
+    AccentSetting, ControlShapeSetting, DensitySetting, MotionSetting, ThemeModeSetting,
 };
 
 pub fn parse_theme(source: &str) -> Result<InterfaceTheme, String> {
@@ -62,6 +60,22 @@ pub const fn control_shape_setting(controls: Controls) -> ControlShapeSetting {
     match controls {
         Controls::Rounded => ControlShapeSetting::Rounded,
         Controls::Pill => ControlShapeSetting::Pill,
+    }
+}
+
+pub const fn kit_motion(setting: MotionSetting) -> Motion {
+    match setting {
+        MotionSetting::Off => Motion::Off,
+        MotionSetting::Default => Motion::Default,
+        MotionSetting::Fast => Motion::Fast,
+    }
+}
+
+pub const fn motion_setting(motion: Motion) -> MotionSetting {
+    match motion {
+        Motion::Off => MotionSetting::Off,
+        Motion::Default => MotionSetting::Default,
+        Motion::Fast => MotionSetting::Fast,
     }
 }
 
@@ -188,7 +202,7 @@ mod tests {
 
     #[test]
     fn zz_names_the_accents_and_limits_the_kit_draws() {
-        use penna::{foundation::interface_theme as kit, foundation::motion};
+        use penna::foundation::interface_theme as kit;
         use zz_client::appearance as config;
         assert_eq!(kit::ACCENTS, config::ACCENTS);
         assert_eq!(kit::MAX_CORNER_RADIUS, config::MAX_CORNER_RADIUS);
@@ -206,17 +220,10 @@ mod tests {
             ControlShapeSetting::ALL.map(ControlShapeSetting::as_str)
         );
         assert_eq!(
-            (
-                motion::DEFAULT_ANIMATION_SPEED,
-                motion::MIN_ANIMATION_SPEED,
-                motion::MAX_ANIMATION_SPEED
-            ),
-            (
-                config::DEFAULT_ANIMATION_SPEED,
-                config::MIN_ANIMATION_SPEED,
-                config::MAX_ANIMATION_SPEED
-            )
+            Motion::ALL.map(|motion| motion_setting(motion).as_str()),
+            MotionSetting::ALL.map(MotionSetting::as_str)
         );
+        assert_eq!(MotionSetting::ALL.map(kit_motion), Motion::ALL);
         assert_eq!(
             ThemeModeSetting::ALL.map(|setting| (pinned_theme_mode(setting), setting.title())),
             penna::blocks::appearance::THEME_MODES

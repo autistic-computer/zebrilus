@@ -385,8 +385,9 @@ impl Render for AppShell {
             {
                 ala::transparent_black()
             } else {
-                crate::theme::shell_background(cx)
+                crate::theme::chrome_background(cx)
             },
+            crate::theme::shell_frame(cx),
             sidebar,
             titlebar,
             self.workspace.clone(),

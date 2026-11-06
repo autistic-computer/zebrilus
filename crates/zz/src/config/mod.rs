@@ -214,7 +214,7 @@ fn install_config(path: Option<&Path>, parsed: Option<io::Result<ParsedConfig>>,
 
     log::info!(
         target: "zz::config",
-        "application configuration path={} pane_gaps={} pane_inactive_opacity={} pane_margin={} widget_corner_radius={} chrome_contrast={} window_corner_radius={} editor_font_size={} editor_line_numbers={} editor_relative_line_numbers={} editor_soft_wrap={} editor_vim_mode={} browser_element_selector_hotkey={} browser_search_provider={} browser_egress={} use_system_titlebar={} window_background_blur={} animations={} tray={} quit_daemon_on_exit={} auto_restart_stale_daemon={} check_for_updates={} daemon_override_entries={}",
+        "application configuration path={} pane_gaps={} pane_inactive_opacity={} pane_margin={} widget_corner_radius={} chrome_contrast={} window_corner_radius={} editor_font_size={} editor_line_numbers={} editor_relative_line_numbers={} editor_soft_wrap={} editor_vim_mode={} browser_element_selector_hotkey={} browser_search_provider={} browser_egress={} use_system_titlebar={} window_background_blur={} motion={} tray={} quit_daemon_on_exit={} auto_restart_stale_daemon={} check_for_updates={} daemon_override_entries={}",
         path.display(),
         parsed.config.pane_gaps.value,
         parsed.config.pane_inactive_opacity.value,
@@ -232,7 +232,7 @@ fn install_config(path: Option<&Path>, parsed: Option<io::Result<ParsedConfig>>,
         parsed.config.browser_egress.value,
         parsed.config.use_system_titlebar.value,
         parsed.config.window_background_blur.value,
-        parsed.config.animations.value,
+        parsed.config.motion.value.as_str(),
         parsed.config.tray.value,
         parsed.config.quit_daemon_on_exit.value,
         parsed.config.auto_restart_stale_daemon.value,
@@ -379,8 +379,7 @@ pub(crate) fn appearance(cx: &App) -> Appearance {
         reduce_transparency: resolved.reduce_transparency.value,
         ui_font_family: ui_font_family(cx).value.unwrap_or_default(),
         zoom: penna::UiZoom::get(cx),
-        animations: resolved.animations.value,
-        animation_speed: resolved.animation_speed.value,
+        motion: interface_theme::kit_motion(resolved.motion.value),
         density: interface_theme::kit_density(resolved.chrome_density.value),
     }
 }
@@ -493,9 +492,9 @@ fn apply_animations(cx: &mut App) {
         .try_global::<PlatformReduceMotion>()
         .is_some_and(|preference| preference.0);
     let config = resolved_config(cx);
-    let (animations, speed) = (config.animations.value, config.animation_speed.value);
-    cx.set_reduce_motion(platform_reduce_motion || !animations);
-    cx.set_animation_speed(speed);
+    let motion = interface_theme::kit_motion(config.motion.value);
+    cx.set_reduce_motion(platform_reduce_motion || motion.reduced());
+    cx.set_animation_speed(motion.speed());
 }
 
 pub(crate) fn titlebar_options(cx: &App) -> ala::TitlebarOptions {
@@ -1094,7 +1093,7 @@ mod tests {
              window-corner-radius = 10\n\
              use-system-titlebar = true\n\
              window-background-blur = true\n\
-             animations = false\n\
+             motion = off\n\
              notifications = false\n\
              quit-daemon-on-exit = true\n\
              auto-restart-stale-daemon = true\n\
@@ -1164,11 +1163,11 @@ mod tests {
             parsed.config.window_background_blur.provenance,
             ConfigProvenance::Override
         );
-        assert!(!parsed.config.animations.value);
         assert_eq!(
-            parsed.config.animations.provenance,
-            ConfigProvenance::Override
+            parsed.config.motion.value,
+            zz_ui::interface_theme::MotionSetting::Off
         );
+        assert_eq!(parsed.config.motion.provenance, ConfigProvenance::Override);
         assert!(!parsed.config.notifications.value);
         assert!(AppConfig::default().notifications.value);
         assert!(parsed.config.quit_daemon_on_exit.value);
@@ -2550,8 +2549,8 @@ mod tests {
     }
 
     #[ala::test]
-    fn install_config_applies_and_resets_the_animation_setting(cx: &mut ala::TestAppContext) {
-        let parsed = parse_config("animations = false\n");
+    fn install_config_applies_and_resets_the_motion_setting(cx: &mut ala::TestAppContext) {
+        let parsed = parse_config("motion = off\n");
 
         cx.update(|cx| {
             install_config(Some(Path::new("/tmp/zz/config")), Some(Ok(parsed)), cx);
@@ -2560,17 +2559,24 @@ mod tests {
 
         cx.update(|cx| install_config(None, None, cx));
         assert!(!cx.update(|cx| cx.reduce_motion()));
+
+        let parsed = parse_config("motion = fast\n");
+        cx.update(|cx| {
+            install_config(Some(Path::new("/tmp/zz/config")), Some(Ok(parsed)), cx);
+        });
+        assert!(!cx.update(|cx| cx.reduce_motion()));
+        assert_eq!(cx.update(|cx| cx.animation_speed()), 2.0);
     }
 
     #[ala::test]
-    fn animation_setting_preserves_platform_reduced_motion(cx: &mut ala::TestAppContext) {
+    fn motion_setting_preserves_platform_reduced_motion(cx: &mut ala::TestAppContext) {
         cx.update(|cx| {
             cx.set_global(PlatformReduceMotion(true));
             install_config(None, None, cx);
         });
         assert!(cx.update(|cx| cx.reduce_motion()));
 
-        let parsed = parse_config("animations = true\n");
+        let parsed = parse_config("motion = fast\n");
         cx.update(|cx| {
             install_config(Some(Path::new("/tmp/zz/config")), Some(Ok(parsed)), cx);
         });
@@ -2952,7 +2958,7 @@ mod tests {
             "use-system-titlebar",
             "window-corner-radius",
             "window-background-blur",
-            "animations",
+            "motion",
             "tray",
             "notifications",
             "quit-daemon-on-exit",

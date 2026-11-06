@@ -91,12 +91,6 @@ impl Preferences {
         let appearance = &mut self.appearance;
         appearance.zoom = bounded(appearance.zoom, 0.5, 3.0, 1.0);
         appearance.contrast = bounded(appearance.contrast, 1.0, 2.0, 1.0);
-        appearance.animation_speed = bounded(
-            appearance.animation_speed,
-            interface_theme::MIN_ANIMATION_SPEED,
-            interface_theme::MAX_ANIMATION_SPEED,
-            interface_theme::DEFAULT_ANIMATION_SPEED,
-        );
         appearance.ui_font_family = appearance.ui_font_family.trim().into();
         self.terminal_font_scale = bounded(self.terminal_font_scale, 0.5, 3.0, 1.0);
         for (value, min, max, fallback) in [
@@ -302,7 +296,7 @@ mod tests {
             pane_margin: 7.5,
             appearance: Appearance {
                 mode: Some("light".into()),
-                animations: false,
+                motion: penna::foundation::motion::Motion::Off,
                 ui_font_family: "Inter Variable".into(),
                 overrides: ThemeOverrides {
                     accent: Some("green".into()),
@@ -358,7 +352,10 @@ mod tests {
     fn older_preferences_gain_status_and_appearance_defaults() {
         let defaults = serde_json::from_str::<Preferences>(r#"{"sidebar":false}"#).unwrap();
         assert!(!defaults.sidebar);
-        assert!(defaults.appearance.animations);
+        assert_eq!(
+            defaults.appearance.motion,
+            penna::foundation::motion::Motion::Default
+        );
         assert_eq!(defaults.appearance.overrides, ThemeOverrides::default());
         assert_eq!(
             defaults.sidebar_width,
@@ -372,7 +369,7 @@ mod tests {
             sidebar_width: 320.0,
             ..defaults
         };
-        changed.appearance.animations = false;
+        changed.appearance.motion = penna::foundation::motion::Motion::Fast;
         let saved = serde_json::to_string(&changed).unwrap();
         let restored = serde_json::from_str::<Preferences>(&saved)
             .unwrap()
@@ -381,7 +378,10 @@ mod tests {
             restored.status_bar_settings(),
             changed.status_bar_settings()
         );
-        assert!(!restored.appearance.animations);
+        assert_eq!(
+            restored.appearance.motion,
+            penna::foundation::motion::Motion::Fast
+        );
         let platform = interface_theme::platform_theme();
         assert_eq!(restored.shown_theme(), *platform);
         assert_eq!(restored.widget_corner_radius(), platform.radius);

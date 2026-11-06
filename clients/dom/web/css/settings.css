@@ -388,37 +388,6 @@
   border-radius: 50%;
 }
 
-.settings-disclosure {
-  display: flex;
-  align-items: flex-start;
-  gap: 2px;
-  margin: 4px -6px -6px;
-  padding: 6px;
-}
-
-.settings-disclosure > .chevron {
-  display: flex;
-  flex: none;
-  align-items: center;
-  justify-content: center;
-  width: 14px;
-  height: 20px;
-  color: var(--penna-muted);
-  --penna-icon-size: 13px;
-}
-
-.settings-disclosure > .chevron > i {
-  transition: transform calc(150ms / var(--zz-animation-speed, 1));
-}
-
-.settings-disclosure[aria-expanded="true"] > .chevron > i {
-  transform: rotate(90deg);
-}
-
-[data-zz-still] .settings-disclosure > .chevron > i {
-  transition: none;
-}
-
 .settings-select {
   width: 200px;
   max-width: 100%;

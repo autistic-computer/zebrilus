@@ -4485,7 +4485,9 @@ impl Render for AppView {
             }
         }
         let content = if let Some(settings) = settings_view {
-            if crate::theme::shell_background(cx) == crate::theme::chrome_background(cx) {
+            if crate::theme::shell_frame(cx).is_none()
+                || crate::theme::chrome_background(cx).a < 1.0
+            {
                 settings.into_any_element()
             } else {
                 layout_corners

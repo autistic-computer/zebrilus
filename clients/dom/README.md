@@ -53,7 +53,7 @@ on("preferences", ({ preferences, previous }) => {}); // the same, on the core b
 Fields other lanes read: `sidebar`, `flat_sidebar`, `sidebar_width`, `status_badges`,
 `program_colors`, `gaps`, `pane_margin`, `pane_inactive_opacity`, `pane_glow_strength`,
 `pip_background_opacity`, `terminal_font_family`, `terminal_font_scale`, `palette_grouped`,
-`palette_show_keys`, `animations`, `animation_speed`. `dark()` is the resolved mode.
+`palette_show_keys`, `motion`. `dark()` is the resolved mode.
 
 preferences.js applies the look itself: it writes the theme tokens and icons as `<style>` elements
 in place of kit.js's token files, sets `data-penna-mode` and `data-penna-theme`, `data-density`

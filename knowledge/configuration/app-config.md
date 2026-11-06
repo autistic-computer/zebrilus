@@ -117,10 +117,8 @@ The client-local schema includes these scalar settings and chrome colors.
 | --- | ---: | --- | --- |
 | `use-system-titlebar` | `false` | `true` or `false` | On Linux, request a desktop-owned titlebar and window border instead of client-side window decorations |
 | `window-corner-radius` | `13.5` | `0..=32` | The app-drawn window frame's corner, visible only under Linux client-side decorations |
-| `window-background-blur` | `false` | `true` or `false` | Whether the desktop shows through the window chrome, blurred |
-| `window-background-opacity` | `0` | `0..=1` | How opaque the window chrome stays over the blur: 0 fills it at 93%, 1 makes it opaque; only while `window-background-blur` is on. Interface settings display 0–100% |
-| `animations` | `true` | `true` or `false` | Whether interface transitions, loading indicators, scrollbar fades, and animated UI images move |
-| `animation-speed` | `1` | `0.25..=2` | How fast interface motion runs, as a share of its designed speed: `0.5` takes twice as long, `2` half as long. It scales ala `with_animation` timings, every spring step, and the hand-timed fades (chevrons, pane arrivals, the sidebar slide, press highlights, streaming text, the agent pulse) through the process-wide `ala::animation_speed`. Scroll physics, cursor blink and timers stay as they are. Settings > Interface > Advanced shows it as a slider in percent |
+| `window-background-blur` | `false` | `true` or `false` | Whether the desktop shows through the window chrome, blurred: on fills the chrome at 93% over the blur, off makes it opaque |
+| `motion` | `default` | `off`, `default` or `fast` | Interface motion. `off` stops transitions, loading indicators, scrollbar fades, and animated UI images; `fast` runs them at twice their designed speed, through the process-wide `ala::animation_speed` that scales ala `with_animation` timings, every spring step, and the hand-timed fades (chevrons, pane arrivals, the sidebar slide, press highlights, streaming text, the agent pulse). Scroll physics, cursor blink and timers stay as they are. Settings > Interface shows it as Motion |
 | `tray` | `true` | `true` or `false` | Shows a native tray icon while the GUI runs. Closing the window or quitting hides zz when the icon is available, `quit-daemon-on-exit` is false, and the local daemon has sessions; otherwise the usual close or quit behavior applies. Applies live from Settings → System or file edits. Quit and Stop Sessions in the tray menu stops the daemon |
 | `notifications` | `true` | `true` or `false` | Whether the desktop app posts a system notification when a pane needs input, fails or finishes while no zz window is active. Clicking it raises the window and selects the pane. macOS asks for permission on the first one. Chimes are separate (`ZZ_AGENT_SOUND=0`) |
 | `quit-daemon-on-exit` | `false` | `true` or `false` | Whether quitting the app stops the daemon even while sessions are live |
@@ -137,7 +135,7 @@ The client-local schema includes these scalar settings and chrome colors.
 | `pane-glow-strength` | `1` | `0..=2` | How far the active gapped pane stands apart: its fill lightens while the others' darken and their rims dim; Panes settings display it as Selected pane contrast, 0–200%. `0` draws it like the others |
 | `pane-inactive-opacity` | `0.7` | `0..=1` | Retained strength of inactive pane content and chrome; `1` disables dimming |
 | `pane-margin` | `6` | `0..=32` | Inset around each pane, on every platform; applies only with `pane-gaps`. The window's top strip grows with it, and the sidebar's buttons move in with it, so they stay on the pane headers' center lines |
-| `widget-corner-radius` | the platform's (`12`) | `0..=25` | The look's `radius` knob in pixels: the corner of containers, of controls unless they are pills, and the base of a gapped pane's corner. Settings shows it as Corner radius, a slider with the value in pixels beside it |
+| `widget-corner-radius` | the platform's (`12`) | `0..=25` | The look's `radius` knob in pixels: the corner of containers, of controls unless they are pills, and the base of a gapped pane's corner. 25 is a round corner, never a pill. Settings shows it as Corner radius, a slider from 0 to 100% where the pixels are 25 × share² (12 is 69%), written with two decimals |
 | `control-shape` | the platform's (`pill` on macOS, `rounded` elsewhere) | `rounded`, `pill` | Whether controls follow the corner radius or are pills (`control-radius` `full`). Settings shows it as Controls |
 | `interface-glass` | `liquid` | `none`, `liquid`, or a glass material as one line of JSON | The glass popovers, menus and glass roles draw. Pasting a theme file with its own material writes the material here; Settings shows it as the Glass switch, on for `liquid` or a material and off for `none` |
 | `chrome-accent` | `theme` | `theme`, `ink`, `blue`, `purple`, `pink`, `red`, `orange`, `yellow`, `green`, `graphite`, or `#rrggbb` | The accent, which becomes the highlight: primary fills, switches, selection. `theme` (or no line) keeps the platform's (blue on macOS, ink elsewhere); `ink` draws primary fills in the text color. Each name is a pair of colors tuned for light and for dark; a hex color is used in both modes |
@@ -156,7 +154,7 @@ The client-local schema includes these scalar settings and chrome colors.
 | `ui-font-family` | the platform's (the system font) | Installed font family, or `.SystemUIFont` | Interface text across desktop windows; applies live and stays separate from terminal and editor fonts. Pasting a theme file with a `face` writes it here |
 | `theme-mode` | `system` | `system`, `light`, `dark` | Follow the OS appearance, or pin one mode |
 | `app-icon` | `automatic` | `automatic`, `light`, `dark` | Which render of `assets/zz.icon` the macOS Dock tile wears; `automatic` defers to the bundle's compiled icon when packaged (so tinted/clear dock styles work) and follows the OS appearance in bare builds, independently of `theme-mode` |
-| `chrome-contrast` | `1.0` | `1.0`–`2.0` | Raises the chrome derivations; out-of-range or invalid values are reported and fall back to `1.0`. Settings shows it as a slider from 100% to 200% in steps of 5, written with two decimals. |
+| `chrome-contrast` | `1.0` | `1.0`–`2.0` | Raises the chrome derivations (surface steps, fills, dividers and muted text) and adds no edges; out-of-range or invalid values are reported and fall back to `1.0`. Settings shows it as Increase contrast, a slider from 0% (1.0) to 100% (2.0), written with two decimals. |
 | `reduce-transparency` | `false` | `true` or `false` | Draws glass as the solid `popover` fill. Settings shows it as Reduce transparency under Advanced; Paste and Reset keep it. The thin clients keep it in their preferences as `reduce_transparency`, and the HTML client shows the same row |
 | `chrome-density` | `regular` | `compact`, `regular`, `comfortable` | The default control and row height in the chrome: 24, 28 or 32px for buttons, fields, selects and list, menu and picker rows; text, gaps and the other control sizes stay. Invalid values are reported and fall back to `regular`. Settings shows it as Density under UI zoom. |
 
@@ -196,6 +194,10 @@ reported with `` `status-show-session` was removed: the status bar no longer has
 switch sessions from the sidebar ``. `status-agents` went with the agent activity item on
 2026-10-24 and is reported with `` `status-agents` was removed: the status bar no longer shows
 agent activity; the sidebar shows each agent's state ``. Both are otherwise ignored.
+`animations`, `animation-speed` and `window-background-opacity` went on 2026-11-06
+(`zz_config::RETIRED_MOTION_KEYS`): the first two are reported with `` `<key>` was removed: set
+`motion` to off, default or fast `` and the third with `` `window-background-opacity` was removed: a
+blurred window is see-through and an unblurred one opaque; set `window-background-blur` ``.
 
 The status settings project directly into `zz_client::StatusBarSettings` and apply through the
 normal watched-config refresh. The clock never shows seconds. `AppShell` aligns its first wake to
@@ -254,10 +256,10 @@ browser operation initializes the runtime. An invalid file value produces a conf
 keeps the preceding/default value; an invalid environment override prevents CEF startup. See
 [Agent access through CDP](/browser/agent-cdp.md) for attach commands and local access risks.
 
-`animations = false` sets ala's reduced-motion state. ala transitions, spinners, switches,
+`motion = off` sets ala's reduced-motion state. ala transitions, spinners, switches,
 dialogs, notifications, and animated UI images settle on a static frame; the custom scrollbar holds
 at full opacity and then disappears without a fade. iOS also honors UIKit Reduce Motion, even when
-the file enables animations. Cursor blinking and Chromium page animation are content behavior and
+the file sets another motion. Cursor blinking and Chromium page animation are content behavior and
 keep their own controls. Desktop ala does not currently publish the operating system's motion
 preference, so macOS, Linux, and Windows follow this key directly.
 
@@ -314,7 +316,7 @@ Chrome colors come from the theme and the keys above, never from the terminal's 
 is no key that makes application chrome follow terminal colors.
 
 `chrome-contrast` adjusts derived surfaces, muted text, fills, and edges without storing colors.
-The default is 1.0; desktop and browser Settings show it as 100%. Reset removes the override.
+The default is 1.0; desktop and browser Settings show it as 0%. Reset removes the override.
 The native macOS client keeps the default derivation strengths and does not show this control.
 
 zz has no frame-rate overlay. The `show-fps` key was removed together with ala's `profiler`
@@ -683,7 +685,7 @@ always-live inactive-opacity factor and the selected pane's edge strength, which
 
 | Page | Groups |
 | --- | --- |
-| Interface | **Look** (`theme-mode` as Mode, a System, Light and Dark segmented control, `chrome-accent` as Accent swatches with a custom color picker, `chrome-tint-hue` as Tint and `chrome-tint` as Tint strength, `widget-corner-radius` as Corner radius, three sliders, `control-shape` as Controls and `interface-glass` as Glass, segmented controls, `UI font`, and Theme file, a menu that copies the look, pastes a theme file or resets the look) · **Sidebar** (`program-colors`) · **Advanced**, collapsed until opened (transient `UI zoom` as Text size, `chrome-density` as Density, macOS `app-icon` as three icon tiles, `chrome-contrast` as Increase contrast, `reduce-transparency` as Reduce transparency, `animations` as Reduce motion, `animation-speed`, `window-background-blur` as "Window blur" and `window-background-opacity` as "Window blur opacity", a slider dimmed while the blur is off, where the platform profile has it, Linux `window-corner-radius` and `use-system-titlebar`) |
+| Interface | **Look** (`theme-mode` as Mode, a System, Light and Dark segmented control, `chrome-accent` as Accent swatches with a custom color picker, `chrome-tint-hue` as Tint and `chrome-tint` as Tint strength, `widget-corner-radius` as Corner radius in percent, three sliders, `control-shape` as Controls, a segmented control, `interface-glass` as Glass, a switch, and `UI font`) · **Sidebar** (`program-colors`) · **Size** (transient `UI zoom` as Text size, `chrome-density` as Density) · **Accessibility** (`chrome-contrast` as Increase contrast, a slider, `reduce-transparency` as Reduce transparency, `motion` as Motion, an Off, Default and Fast segmented control) · **Window**, where it has rows (macOS `app-icon` as three icon tiles, `window-background-blur` as "Window blur" where the platform profile has it, Linux `window-corner-radius` and `use-system-titlebar`) |
 | Status bar | Title-bar items shown when the sidebar is retracted (`status-badges`, `status-host`, `status-update`; `status-show-session` and `status-agents` were removed and are reported if present) |
 | Browser | **Network** (`browser-egress`) · **Agents** (`browser-remote-debugging-port` as an on/off switch that writes `9222`) · **Search** (`browser-search-provider`) · **Shortcuts** (`browser-element-selector-hotkey`) |
 | Editor | **Typography** (`editor-font-size`) · **Display** (`editor-line-numbers`, `editor-relative-line-numbers`, `editor-soft-wrap`, `editor-vim-mode`) |
@@ -818,7 +820,7 @@ background-opacity = 0.85
 window-background-blur = true
 
 # Set every interface transition to its static state.
-animations = false
+motion = off
 
 # The toggle uses an 8px margin, corners concentric with the pane header's controls
 # (about 14px under the default look), and a glass frame lit like the look's glass, or with a line as

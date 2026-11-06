@@ -8,7 +8,7 @@ const page = h("section", { id: "settings" });
 $("#tree").before(nav);
 app.append(page);
 
-const view = { section: null, advanced: false, dragging: false, pending: false, pane: 0, menu: null };
+const view = { section: null, dragging: false, pending: false, pane: 0, menu: null };
 const ACCENT_TITLES = (id) => id[0].toUpperCase() + id.slice(1);
 const MODES = [
   ["system", "System"],
@@ -23,6 +23,11 @@ const DENSITIES = [
 const CONTROL_SHAPES = [
   ["rounded", "Rounded"],
   ["pill", "Pill"],
+];
+const MOTIONS = [
+  ["off", "Off"],
+  ["default", "Default"],
+  ["fast", "Fast"],
 ];
 const PALETTE_LAYOUTS = [
   ["grouped", "Tree"],
@@ -94,10 +99,6 @@ function stack(title, entries) {
 
 function button(label, props = {}, ...children) {
   return h("button", { "data-penna": "button", "aria-label": label, ...props }, ...children);
-}
-
-function quiet(label, tooltip, onclick) {
-  return h("button", { "data-penna": "button.quiet", "data-size": "small", "aria-label": label, title: tooltip, onclick }, text(label));
 }
 
 function toggle(checked, label, onchange) {
@@ -355,28 +356,6 @@ function toast(message, tone) {
   setTimeout(() => element.remove(), 4000);
 }
 
-function themeFile(outcome) {
-  if (outcome.error) toast(outcome.error, "danger");
-}
-
-async function pasteTheme() {
-  let clipboard;
-  try {
-    clipboard = await navigator.clipboard.readText();
-  } catch (error) {
-    themeFile({ error: `Could not read the clipboard: ${error.message || error}.` });
-    return;
-  }
-  themeFile(preferences.themeAction("import", clipboard));
-}
-
-function copyTheme(file) {
-  navigator.clipboard
-    .writeText(file)
-    .then(() => toast("Copied the theme file", "success"))
-    .catch((error) => toast(String(error.message || error), "danger"));
-}
-
 function adaptive(radius, size) {
   const cap = size * 0.45;
   return radius > 0 ? cap * Math.tanh(radius / cap) : 0;
@@ -422,13 +401,6 @@ function appearancePage() {
       tile({ label: title, preview: modePreview(mode, picks.modes), selected: p.mode === mode, onclick: () => set({ mode }) }),
     ),
   );
-  const actions = h(
-    "div",
-    { class: "setting-actions" },
-    quiet("Copy", "Copy this look as a theme file", () => copyTheme(picks.file)),
-    quiet("Paste", "Set every knob from the theme file on the clipboard", pasteTheme),
-    quiet("Reset", "Return every knob to the platform's look", () => themeFile(preferences.themeAction("reset"))),
-  );
   const hue = h(
     "div",
     { class: "settings-slider-row" },
@@ -452,7 +424,7 @@ function appearancePage() {
       }),
       entry({
         title: "Corner radius",
-        control: valueSlider({ label: "Corner radius", value: picks.radius, min: 0, max: picks.limits.radius, step: 1, display: (value) => `${Math.round(value)}px`, onchange: (value) => set({ radius: value }) }),
+        control: valueSlider({ label: "Corner radius", value: picks.radius, min: 0, max: 1, step: 0.01, display: percent, onchange: (value) => set({ radius: picks.limits.radius * value * value }) }),
       }),
       entry({
         title: "Controls",
@@ -471,7 +443,6 @@ function appearancePage() {
           onpick: (value) => set({ ui_font_family: value }),
         }),
       }),
-      entry({ title: "Theme file", description: "Copy this look as a theme file, or paste one in", actions }),
     ]),
     group("Sidebar"),
     card([
@@ -481,70 +452,46 @@ function appearancePage() {
         control: toggle(p.program_colors, "Program colors", (value) => set({ program_colors: value })),
       }),
     ]),
-    disclosure(),
+    group("Size"),
+    card([
+      entry({
+        title: "Text size",
+        control: valueSlider({ label: "Text size", value: p.zoom, min: 0.5, max: 3, step: 0.05, display: percent, commitOnRelease: true, onchange: (value) => set({ zoom: value }) }),
+      }),
+      entry({
+        title: "Density",
+        control: choose({
+          value: p.density || "regular",
+          items: DENSITIES.map(([value, title]) => ({ value, title })),
+          onpick: (value) => set({ density: value }),
+        }),
+      }),
+    ]),
+    group("Accessibility"),
+    card([
+      entry({
+        title: "Increase contrast",
+        control: valueSlider({ label: "Increase contrast", value: p.contrast - 1, min: 0, max: 1, step: 0.01, display: percent, onchange: (value) => set({ contrast: 1 + value }) }),
+      }),
+      entry({
+        title: "Reduce transparency",
+        control: toggle(p.reduce_transparency, "Reduce transparency", (value) => set({ reduce_transparency: value })),
+      }),
+      entry({
+        title: "Motion",
+        control: choose({
+          value: p.motion || "default",
+          items: MOTIONS.map(([value, title]) => ({ value, title })),
+          onpick: (value) => set({ motion: value }),
+        }),
+      }),
+    ]),
   ];
-  if (view.advanced) {
-    rows.push(
-      card([
-        entry({
-          title: "Contrast",
-          control: valueSlider({ label: "Contrast", value: p.contrast, min: 1, max: 2, step: 0.05, display: percent, onchange: (value) => set({ contrast: value }) }),
-        }),
-        entry({
-          title: "Reduce transparency",
-          control: toggle(p.reduce_transparency, "Reduce transparency", (value) => set({ reduce_transparency: value })),
-        }),
-        entry({
-          title: "UI zoom",
-          control: valueSlider({ label: "UI zoom", value: p.zoom, min: 0.5, max: 3, step: 0.05, display: percent, commitOnRelease: true, onchange: (value) => set({ zoom: value }) }),
-        }),
-        entry({
-          title: "Density",
-          control: choose({
-            value: p.density || "regular",
-            items: DENSITIES.map(([value, title]) => ({ value, title })),
-            onpick: (value) => set({ density: value }),
-          }),
-        }),
-        entry({ title: "Animations", control: toggle(p.animations, "Animations", (value) => set({ animations: value })) }),
-        entry({
-          title: "Animation speed",
-          control: valueSlider({
-            label: "Animation speed",
-            value: p.animation_speed,
-            min: picks.limits.animation[0],
-            max: picks.limits.animation[1],
-            step: 0.05,
-            display: percent,
-            onchange: (value) => set({ animation_speed: value }),
-          }),
-        }),
-      ]),
-    );
-  }
   return rows.map((row) => h("div", { class: "ends" }, row));
 }
 
 function group(title) {
   return h("div", { class: "settings-group" }, header(title));
-}
-
-function disclosure() {
-  return h(
-    "div",
-    {
-      class: "settings-disclosure",
-      role: "button",
-      tabindex: 0,
-      "aria-expanded": String(view.advanced),
-      onclick: () => {
-        view.advanced = !view.advanced;
-        render();
-      },
-    },
-    h("div", { class: "chevron" }, icon("chevron-right")),
-    h("div", { class: "settings-header" }, block("Advanced")),
-  );
 }
 
 function statusBarPage() {

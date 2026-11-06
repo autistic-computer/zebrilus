@@ -10,7 +10,7 @@ use penna::{
 use zz_client::StatusBarSettings;
 use zz_ui::settings::{
     SettingEntry, SettingsFold, SettingsSection, SettingsStack,
-    appearance::{ZzRow, window_opacity_slider},
+    appearance::ZzRow,
     panes_page,
     panes_preview::PanesPreview,
     providers::{ProvidersHost, providers_stack},
@@ -170,13 +170,6 @@ fn appearance(_: &mut Window, cx: &mut App) -> AnyElement {
                 SettingEntry::new(ZzRow::ProgramColors.title())
                     .description("Fill sidebar tiles with the running program's colors")
                     .control(Switch::new("program-colors").checked(knobs.flag("program-colors"))),
-            ),
-        )
-        .state(
-            "advanced: window blur opacity",
-            SettingsStack::new().child(
-                SettingEntry::new(ZzRow::WindowBackgroundOpacity.title())
-                    .control(window_opacity_slider(0.0, |_, _, _| {}, cx)),
             ),
         )
         .into_any_element()

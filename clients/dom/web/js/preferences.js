@@ -81,15 +81,6 @@ export function set(changes) {
 
 export const setPreferences = set;
 
-export function themeAction(action, argument = "") {
-  if (!ready) return { error: "The theme engine did not load." };
-  const previous = { ...preferences };
-  const outcome = JSON.parse(engine.theme_action(JSON.stringify(preferences), action, argument));
-  replace(outcome.preferences);
-  if (!outcome.error) changed(previous);
-  return outcome;
-}
-
 export function picks() {
   return ready ? JSON.parse(engine.picks(JSON.stringify(preferences), dark())) : null;
 }
@@ -146,8 +137,8 @@ function apply() {
   const density = preferences.density || "regular";
   if (root.dataset.density !== density) root.dataset.density = density;
   root.style.zoom = preferences.zoom === 1 ? "" : String(preferences.zoom);
-  root.toggleAttribute("data-zz-still", !preferences.animations);
-  root.style.setProperty("--zz-animation-speed", String(preferences.animation_speed));
+  root.toggleAttribute("data-zz-still", preferences.motion === "off");
+  root.style.setProperty("--zz-animation-speed", preferences.motion === "fast" ? "2" : "1");
   timing.render = Math.round((performance.now() - begun) * 10) / 10;
   requestAnimationFrame(() => globalThis.pennaKit?.roundAll());
 }
@@ -161,4 +152,4 @@ media.addEventListener("change", () => {
 });
 
 apply();
-globalThis.zzPreferences = { preferences, get, set, setPreferences, subscribe, dark, themeAction, timing };
+globalThis.zzPreferences = { preferences, get, set, setPreferences, subscribe, dark, timing };

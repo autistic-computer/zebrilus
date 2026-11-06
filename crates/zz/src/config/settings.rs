@@ -49,8 +49,8 @@ use zz_ui::dialogs::import_configuration_file_alert;
 use zz_ui::interface_theme::{self, Appearance, AppearanceChange};
 use zz_ui::settings::{
     SettingEntry, SettingsScrollColumn, SettingsSection, SettingsSelectItem, SettingsStack,
-    settings_card_ground, settings_list_disclosure_header, settings_list_group_header,
-    settings_page_content, settings_page_title, settings_preview, settings_scroll_column,
+    settings_card_ground, settings_list_group_header, settings_page_content, settings_page_title,
+    settings_preview, settings_scroll_column,
 };
 
 ala::actions!(zz, [OpenSettings]);
@@ -98,14 +98,10 @@ struct HostsSectionState {
     error: Option<SharedString>,
 }
 
-use zz_ui::settings::appearance::{AppearancePageItem, ZzRow, window_opacity_slider};
+use zz_ui::settings::appearance::{AppearancePageItem, ZzRow};
 
-fn appearance_page_items(has_window_blur: bool, advanced: bool) -> Vec<AppearancePageItem> {
-    zz_ui::settings::appearance::appearance_page_items(
-        cfg!(target_os = "macos"),
-        has_window_blur,
-        advanced,
-    )
+fn appearance_page_items(has_window_blur: bool) -> Vec<AppearancePageItem> {
+    zz_ui::settings::appearance::appearance_page_items(cfg!(target_os = "macos"), has_window_blur)
 }
 
 pub(crate) struct SettingsView {
@@ -135,7 +131,6 @@ pub(crate) struct SettingsView {
     terminal_config_editor: Option<ConfigFileEditor>,
     terminal_preview: Option<Entity<terminal_preview::TerminalPreview>>,
     hosts_state: Option<HostsSectionState>,
-    appearance_advanced: bool,
     section: SettingsSection,
     focus_handle: FocusHandle,
     _subscriptions: Vec<Subscription>,
@@ -272,7 +267,6 @@ impl SettingsView {
             terminal_config_editor: None,
             terminal_preview: None,
             hosts_state: None,
-            appearance_advanced: false,
             section: SettingsSection::Appearance,
             focus_handle: cx.focus_handle(),
             _subscriptions: subscriptions,
@@ -733,10 +727,7 @@ impl SettingsView {
     }
 
     fn appearance_section(&self, resolved: &AppConfig, cx: &Context<Self>) -> AnyElement {
-        let items = appearance_page_items(
-            crate::profile::profile(cx).has_window_blur,
-            self.appearance_advanced,
-        );
+        let items = appearance_page_items(crate::profile::profile(cx).has_window_blur);
         let view = cx.entity();
         let resolved = *resolved;
         let appearance = config::appearance(cx);
@@ -744,24 +735,12 @@ impl SettingsView {
             SettingsSection::Appearance.title(),
             items,
             move |item, position, window, cx| {
-                view.update(cx, |this, cx| match item {
-                    AppearancePageItem::Advanced { expanded } => settings_list_disclosure_header(
-                        penna::blocks::appearance::ADVANCED_DISCLOSURE,
-                        "Advanced",
-                        expanded,
+                view.update(cx, |this, cx| {
+                    let entry = this.appearance_item(item, &resolved, &appearance, window, cx);
+                    entry.map_or_else(
+                        || div().into_any_element(),
+                        |entry| entry.position(position).into_any_element(),
                     )
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        this.appearance_advanced = !this.appearance_advanced;
-                        cx.notify();
-                    }))
-                    .into_any_element(),
-                    item => {
-                        let entry = this.appearance_item(item, &resolved, &appearance, window, cx);
-                        entry.map_or_else(
-                            || div().into_any_element(),
-                            |entry| entry.position(position).into_any_element(),
-                        )
-                    }
                 })
             },
         )
@@ -791,18 +770,6 @@ impl SettingsView {
                 row.title(),
                 resolved.window_background_blur,
             ),
-            AppearancePageItem::App(row @ ZzRow::WindowBackgroundOpacity) => {
-                SettingEntry::new(row.title())
-                    .control(window_opacity_slider(
-                        resolved.window_background_opacity.value,
-                        |opacity, _, cx| {
-                            let key = ConfigKey::WindowBackgroundOpacity;
-                            written(key, set_config_key(key, &format!("{opacity:.2}")), cx);
-                        },
-                        cx,
-                    ))
-                    .disabled(!resolved.window_background_blur.value)
-            }
             AppearancePageItem::App(row @ ZzRow::WindowCornerRadius) => {
                 Self::numeric_setting(row.title(), &self.window_corner_radius, cx)
                     .description("No effect with the system titlebar")
@@ -1998,7 +1965,7 @@ fn appearance_changed(change: AppearanceChange, cx: &mut App) {
         }
         AppearanceChange::Radius(radius) => {
             let key = ConfigKey::WidgetCornerRadius;
-            (key, set_config_key(key, &format!("{radius:.0}")))
+            (key, set_config_key(key, &format!("{radius:.2}")))
         }
         AppearanceChange::Contrast(contrast) => {
             let key = ConfigKey::ChromeContrast;
@@ -2019,16 +1986,12 @@ fn appearance_changed(change: AppearanceChange, cx: &mut App) {
             crate::ui_scale::set_percent(zoom * 100.0, cx);
             return;
         }
-        AppearanceChange::Animations(animations) => {
-            let key = ConfigKey::Animations;
+        AppearanceChange::Motion(motion) => {
+            let key = ConfigKey::Motion;
             (
                 key,
-                set_config_key(key, if animations { "true" } else { "false" }),
+                set_config_key(key, interface_theme::motion_setting(motion).as_str()),
             )
-        }
-        AppearanceChange::AnimationSpeed(speed) => {
-            let key = ConfigKey::AnimationSpeed;
-            (key, set_config_key(key, &format!("{speed:.2}")))
         }
         AppearanceChange::Density(density) => {
             let key = ConfigKey::ChromeDensity;
@@ -2159,7 +2122,6 @@ fn refresh_settings_preview(key: ConfigKey, cx: &mut App) {
                 | ConfigKey::ChromeTint
                 | ConfigKey::ChromeTintHue
                 | ConfigKey::ChromeDensity
-                | ConfigKey::WindowBackgroundOpacity
                 | ConfigKey::PaletteWindowLayout
                 | ConfigKey::PaletteShowKeys
                 | ConfigKey::PaletteVimMode
@@ -2253,13 +2215,11 @@ fn numeric_input_matches_value(key: ConfigKey, text: &str, value: f32) -> bool {
 fn numeric_config_value(config: &AppConfig, key: ConfigKey) -> ConfigValue<f32> {
     match key {
         ConfigKey::PipBackgroundOpacity => config.pip_background_opacity,
-        ConfigKey::WindowBackgroundOpacity => config.window_background_opacity,
         ConfigKey::PaneGlowStrength => config.pane_glow_strength,
         ConfigKey::PaneInactiveOpacity => config.pane_inactive_opacity,
         ConfigKey::PaneMargin => config.pane_margin,
         ConfigKey::WidgetCornerRadius => config.widget_corner_radius,
         ConfigKey::ChromeContrast => config.chrome_contrast,
-        ConfigKey::AnimationSpeed => config.animation_speed,
         ConfigKey::ChromeTint => config.chrome_tint,
         ConfigKey::ChromeTintHue => config.chrome_tint_hue,
         ConfigKey::WindowCornerRadius => config.window_corner_radius,
@@ -2271,7 +2231,7 @@ fn numeric_config_value(config: &AppConfig, key: ConfigKey) -> ConfigValue<f32> 
         | ConfigKey::PaletteVimMode
         | ConfigKey::PickerFocusSidebar
         | ConfigKey::WindowBackgroundBlur
-        | ConfigKey::Animations
+        | ConfigKey::Motion
         | ConfigKey::Tray
         | ConfigKey::Notifications
         | ConfigKey::QuitDaemonOnExit
@@ -2400,36 +2360,6 @@ mod tests {
         );
     }
     use zz_daemon_client::{DaemonError, Endpoint};
-
-    #[test]
-    fn advanced_lists_the_other_knobs_only_while_expanded() {
-        let collapsed = appearance_page_items(true, false);
-        assert!(matches!(
-            collapsed.last(),
-            Some(AppearancePageItem::Advanced { expanded: false })
-        ));
-        assert!(
-            !collapsed
-                .iter()
-                .any(|item| matches!(item, AppearancePageItem::TextSize))
-        );
-
-        let expanded = appearance_page_items(true, true);
-        let advanced = expanded
-            .iter()
-            .position(|item| matches!(item, AppearancePageItem::Advanced { expanded: true }))
-            .expect("Advanced heading");
-        assert!(
-            expanded[..advanced]
-                .iter()
-                .any(|item| matches!(item, AppearancePageItem::Glass))
-        );
-        assert!(
-            expanded[advanced..]
-                .iter()
-                .any(|item| matches!(item, AppearancePageItem::TextSize))
-        );
-    }
 
     #[ala::test]
     fn heavy_section_state_is_initialized_on_first_visit(cx: &mut ala::TestAppContext) {

@@ -35,8 +35,8 @@ pub(crate) fn chrome_blur(cx: &App) -> bool {
         && crate::window::background::compositor_supports_blur(cx)
 }
 
-pub fn shell_background(cx: &App) -> Hsla {
-    zz_ui::shell::shell_ground(
+pub fn shell_frame(cx: &App) -> Option<Hsla> {
+    zz_ui::shell::shell_frame(
         chrome_background(cx),
         config::pane_margin(cx) > ala::px(0.0),
         cx,
@@ -44,11 +44,7 @@ pub fn shell_background(cx: &App) -> Hsla {
 }
 
 pub fn chrome_background(cx: &App) -> Hsla {
-    let opacity = config::resolved_config(cx).window_background_opacity.value;
-    zz_ui::shell::chrome_background(
-        Theme::global(cx).background,
-        chrome_blur(cx).then_some(opacity),
-    )
+    zz_ui::shell::chrome_background(Theme::global(cx).background, chrome_blur(cx))
 }
 
 pub(crate) fn report_terminal_color_scheme(mux: &Entity<MuxClient>, cx: &mut App) {
@@ -264,22 +260,25 @@ mod tests {
         cx.update(|cx| {
             let mut config = config::AppConfig::default();
             config.window_background_blur.value = true;
-            config.window_background_opacity.value = 0.5;
             cx.set_global(config);
-            assert_alpha(chrome_background(cx), 0.965);
+            assert_eq!(shell_frame(cx), None);
 
             config.pane_gaps.value = true;
             config.pane_margin.value = 8.0;
-            cx.set_global(config);
-            assert_alpha(shell_background(cx), 0.965);
-
-            config.window_background_opacity.value = 1.0;
-            cx.set_global(config);
-            assert_alpha(chrome_background(cx), 1.0);
-
-            config.window_background_blur.value = false;
-            cx.set_global(config);
-            assert_alpha(chrome_background(cx), 1.0);
+            for blur in [true, false] {
+                config.window_background_blur.value = blur;
+                cx.set_global(config);
+                let theme = Theme::global(cx);
+                let sidebar = theme.layer(
+                    penna::Surface::new(penna::foundation::roles::SIDEBAR).on(penna::Ground {
+                        fill: chrome_background(cx),
+                        ..theme.ground()
+                    }),
+                    penna::PaintState::Rest,
+                );
+                assert_eq!(shell_frame(cx), Some(sidebar.fill), "blur {blur}");
+                assert_eq!(sidebar.fill.a < 1.0, blur, "blur {blur}");
+            }
         });
     }
 
