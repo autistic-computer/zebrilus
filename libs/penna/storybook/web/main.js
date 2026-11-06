@@ -569,7 +569,7 @@ function shuffle() {
     setKnobValue("control-corners", any(["same", "own", "full"]));
     const tint = any(["ink", ...accents.map((accent) => accent.name)]);
     setTint(tintOf({ "tint-color": tint }));
-    setKnobValue("glass", any(["platform", "none", "frosted", "liquid"]));
+    setKnobValue("glass", any(["none", "liquid"]));
     resetGlassSliders();
 }
 

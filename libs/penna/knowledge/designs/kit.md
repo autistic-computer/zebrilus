@@ -137,7 +137,7 @@ Theme tweaks: D default, M macos, Y yaru. A dash means none.
 | agent.jump | icon-button | solid, outline, contact shadow, hover tint | M solid | `ButtonLook::Floating` | `icon-button.floating`, drawn by `Button`, `ButtonLook::Floating` |
 | agent.send | button | solid, outline, contact shadow, hover/selected tint | D tint, no outline, no shadow, pill, hover lift; M round, smoothing 2; Y pill | `ButtonLook::Send` | `button.send`, drawn by `Button`, `ButtonLook::Send` |
 | pane.float | floating | selected ring | - | content: tmux panes paint their own material | `floating.pane`, content: `FloatingSurface` paints `ContentLook::FloatingPane` in tmux's popup colours |
-| pane.pip | pane.float | float shadow | - | content: a PiP is frosted in its pane's colour | `floating.pip`, content: `PipSurface` paints `ContentLook::Pip` in its pane's colour |
+| pane.pip | pane.float | float shadow | - | content: a PiP is blurred in its pane's colour | `floating.pip`, content: `PipSurface` paints `ContentLook::Pip` in its pane's colour |
 | pane.find-bar | popover | - | - | `PanelLook::Popover` | `popover`, drawn by `Panel`, `PanelLook::Popover` |
 | palette | popover | - | - | `PanelLook::Popover` | `popover`, drawn by `Panel`, `PanelLook::Popover` |
 | pane.picker | menu-item | - | M solid, selected tint | `RowLook::MenuCard` | `menu-item.card`, drawn by `Row`, `RowLook::MenuCard` |

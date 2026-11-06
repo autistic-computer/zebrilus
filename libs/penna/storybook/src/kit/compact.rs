@@ -79,7 +79,7 @@ pub const STORY: Story = Story {
         Section {
             id: "folding-title",
             name: "Folding title",
-            summary: "folding_title_bar: once the page scrolls the large title away, a frosted bar takes it small and centered.",
+            summary: "folding_title_bar: once the page scrolls the large title away, a blurred bar takes it small and centered.",
             build: |_, cx| stateless(folding, cx),
         },
     ],

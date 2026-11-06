@@ -82,17 +82,16 @@ Drawn at `radius` 24, where the curve shows.
 
 ## Glass
 
-Glass is for what sits over something: what floats over the content (menus, popovers, tooltips, toasts, a button over a transcript), panes when they have gaps, and the selected row or tab in a sidebar or title bar. `none` draws the popover fill, `frosted` blurs what is under it, and `liquid` also bends it at the rim.
+Glass is for what sits over something: what floats over the content (menus, popovers, tooltips, toasts, a button over a transcript), panes when they have gaps, and the selected row or tab in a sidebar or title bar. It is a switch: on, `liquid` blurs what is under it and bends it at the rim; off, `none` draws the popover fill.
 
 ```figure uses=menu
 <div class="docs-show" data-gap="wide">
   <div class="docs-cell" data-look="glass-none"><div class="docs-glass"><span class="docs-glass-text"><b>fn</b> split(pane: Pane) {<br />&nbsp;&nbsp;<i>let</i> width = pane.width / 2;<br />&nbsp;&nbsp;tabs.push(<em>"logs"</em>);<br />}</span><span class="docs-glass-bars"><i></i><i></i><i></i></span><div class="penna-popup" data-penna="popover"><div class="penna-popup-items" role="menu"><div class="penna-popup-row" data-penna="menu-item" data-kind="item" role="menuitem"><span class="penna-popup-main"><span class="penna-label" data-penna-text>Split right</span></span></div><div class="penna-popup-row" data-penna="menu-item" data-kind="item" role="menuitem"><span class="penna-popup-main"><span class="penna-label" data-penna-text>Close pane</span></span></div></div></div></div><span class="docs-note"><code>none</code></span></div>
-  <div class="docs-cell" data-look="default"><div class="docs-glass"><span class="docs-glass-text"><b>fn</b> split(pane: Pane) {<br />&nbsp;&nbsp;<i>let</i> width = pane.width / 2;<br />&nbsp;&nbsp;tabs.push(<em>"logs"</em>);<br />}</span><span class="docs-glass-bars"><i></i><i></i><i></i></span><div class="penna-popup" data-penna="popover"><div class="penna-popup-items" role="menu"><div class="penna-popup-row" data-penna="menu-item" data-kind="item" role="menuitem"><span class="penna-popup-main"><span class="penna-label" data-penna-text>Split right</span></span></div><div class="penna-popup-row" data-penna="menu-item" data-kind="item" role="menuitem"><span class="penna-popup-main"><span class="penna-label" data-penna-text>Close pane</span></span></div></div></div></div><span class="docs-note"><code>frosted</code></span></div>
   <div class="docs-cell" data-look="glass-liquid"><div class="docs-glass"><span class="docs-glass-text"><b>fn</b> split(pane: Pane) {<br />&nbsp;&nbsp;<i>let</i> width = pane.width / 2;<br />&nbsp;&nbsp;tabs.push(<em>"logs"</em>);<br />}</span><span class="docs-glass-bars"><i></i><i></i><i></i></span><div class="penna-popup" data-penna="popover"><div class="penna-popup-items" role="menu"><div class="penna-popup-row" data-penna="menu-item" data-kind="item" role="menuitem"><span class="penna-popup-main"><span class="penna-label" data-penna-text>Split right</span></span></div><div class="penna-popup-row" data-penna="menu-item" data-kind="item" role="menuitem"><span class="penna-popup-main"><span class="penna-label" data-penna-text>Close pane</span></span></div></div></div></div><span class="docs-note"><code>liquid</code></span></div>
 </div>
 ```
 
-Text on any glass reads at 4.5:1 over the worst content, and Reduce transparency draws it as the popover fill. Where the renderer can't bend light, `liquid` draws as `frosted`. Glass is neutral: a floating chip with a tone draws its tone opaque. A selected sidebar row or tab reads as strong as the highlight it replaces, and a pane with gaps keeps a hairline edge wherever its glass draws no rim.
+Text on any glass reads at 4.5:1 over the worst content, and Reduce transparency draws it as the popover fill. Where the renderer can't bend light, `liquid` keeps its blur, tint and rim and drops the lens. Glass is neutral: a floating chip with a tone draws its tone opaque. A selected sidebar row or tab reads as strong as the highlight it replaces, and a pane with gaps keeps a hairline edge wherever its glass draws no rim.
 
 ```figure uses=menu
 <div class="docs-dodont">
@@ -112,7 +111,7 @@ The same in every app, in Appearance. There are no presets to pick: every knob i
 | Tint, Tint strength | The neutral's hue and amount |
 | Corner radius | The radius |
 | Controls | Rounded follows the radius; Pill makes controls pills |
-| Glass | None, frosted or liquid |
+| Glass | A switch: on draws liquid glass, off draws none |
 | UI font | The face |
 | Theme file | Copy the look as a theme file, paste one in, or reset to the platform's |
 | Text size | The root size; everything scales with it |
@@ -144,7 +143,7 @@ A theme file holds only knobs. Keys it leaves out keep their defaults; keys it d
   "radius": 8,
   "control-radius": "full",
   "smoothing": 4,
-  "glass": "frosted"
+  "glass": "none"
 }
 ```
 
@@ -163,7 +162,7 @@ studio.activate(None, Some(window), cx);
 | `radius` | `.radius` | Container corners, 0 to 25 |
 | `control-radius` | `.control_radius` | Control corners, 0 to 25 or full; the radius when left out |
 | `smoothing` | `.smoothing` | Corner shape, 2 to 5 |
-| `glass` | `.glass` | None, frosted, liquid or a material; the platform's when left out |
+| `glass` | `.glass` | None, liquid or a material; liquid when left out |
 | `face` | `.face` | Interface face; the platform's when left out |
 | `mode` | `.mode` | Follow, light or dark; beats the person's Mode |
 | | `parse_theme(json)` | Reads a theme file |

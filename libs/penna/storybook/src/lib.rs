@@ -109,11 +109,9 @@ pub fn stories_json() -> String {
 }
 
 pub fn glass_presets_json() -> String {
-    use penna::foundation::interface_theme::{self, Glass};
+    use penna::foundation::interface_theme;
     let dark = penna::ThemeMode::Dark;
     json!({
-        "platform": Glass::platform().material(dark).map(|material| knobs::glass_knobs(&material)),
-        "frosted": knobs::glass_knobs(&interface_theme::frosted()),
         "liquid": knobs::glass_knobs(&interface_theme::liquid(dark)),
     })
     .to_string()

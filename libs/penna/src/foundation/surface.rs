@@ -1422,6 +1422,10 @@ mod tests {
         Theme::from(&*ThemeColor::dark())
     }
 
+    fn liquid() -> GlassMaterial {
+        super::super::interface_theme::liquid(crate::ThemeMode::Dark)
+    }
+
     #[test]
     fn a_control_radius_rounds_controls_and_leaves_the_rest_on_the_radius() {
         let mut theme = theme();
@@ -1498,12 +1502,12 @@ mod tests {
         assert!(plain.glass.is_none());
         assert_eq!(plain.fill.a, 1.0);
 
-        theme.glass = Some(GlassMaterial::frosted());
-        let frosted = theme.layer(Surface::new(popover), PaintState::Rest);
-        assert!(frosted.glass.is_some());
-        assert!(frosted.ground.glass);
+        theme.glass = Some(liquid());
+        let glassy = theme.layer(Surface::new(popover), PaintState::Rest);
+        assert!(glassy.glass.is_some());
+        assert!(glassy.ground.glass);
 
-        let nested = theme.layer(Surface::new(popover).on(frosted.ground), PaintState::Rest);
+        let nested = theme.layer(Surface::new(popover).on(glassy.ground), PaintState::Rest);
         assert!(nested.glass.is_none());
         assert!(nested.fill.a < 1.0);
     }
@@ -1512,7 +1516,7 @@ mod tests {
     fn chrome_items_select_as_glass_and_gapped_panes_take_the_rim() {
         let mut theme = theme();
         theme.primary = PrimaryStyle::Accent;
-        theme.glass = Some(GlassMaterial::frosted());
+        theme.glass = Some(liquid());
         let chrome = [
             super::super::roles::SIDEBAR_ROW,
             super::super::roles::ROW_NAV,
@@ -1552,10 +1556,9 @@ mod tests {
 
     #[test]
     fn a_chrome_selection_reads_as_its_highlight_and_a_rimless_pane_takes_a_hairline() {
-        use super::super::interface_theme::{frosted, liquid};
         let mut theme = theme();
         let row = Surface::new(super::super::roles::SIDEBAR_ROW);
-        theme.glass = Some(frosted());
+        theme.glass = Some(liquid());
         let glass = theme
             .layer(row, PaintState::Selected)
             .glass
@@ -1582,8 +1585,8 @@ mod tests {
         theme.pane_margin = px(8.0);
         for (glass, hairline) in [
             (None, true),
-            (Some(frosted()), true),
-            (Some(liquid(theme.mode)), false),
+            (Some(liquid().bezel(px(0.0)).edge_shadow(0.0)), true),
+            (Some(liquid()), false),
         ] {
             theme.glass = glass;
             let layer = theme.layer(pane, PaintState::Rest);
@@ -1602,7 +1605,7 @@ mod tests {
     #[test]
     fn a_see_through_window_stays_see_through_under_panels_and_gapped_panes() {
         let mut theme = theme();
-        theme.glass = Some(GlassMaterial::frosted());
+        theme.glass = Some(liquid());
         theme.pane_margin = px(8.0);
         let window = Ground {
             fill: theme.background.alpha(0.93),
@@ -1621,7 +1624,7 @@ mod tests {
     #[test]
     fn a_glass_highlight_turns_a_solid_surface_to_glass_while_it_lasts() {
         let mut theme = theme();
-        theme.glass = Some(GlassMaterial::frosted());
+        theme.glass = Some(liquid());
         let tab = SurfaceRole::new("test.tab", Kind::Item, "Test", "").with(
             StylePatch::EMPTY
                 .fill(Fill::Solid)
@@ -1660,7 +1663,7 @@ mod tests {
     #[test]
     fn a_prominent_glass_surface_takes_the_ink_of_its_tone() {
         let mut theme = theme();
-        theme.glass = Some(GlassMaterial::frosted());
+        theme.glass = Some(liquid());
         let role = SurfaceRole::new("test.send", Kind::Button, "Test", "")
             .with(StylePatch::EMPTY.fill(Fill::Glass));
         let layer = theme.layer(Surface::new(role).prominent(true), PaintState::Rest);
@@ -1671,7 +1674,7 @@ mod tests {
     #[test]
     fn a_toned_floating_chip_draws_its_tone_opaque_and_only_the_neutral_one_is_glass() {
         let mut theme = theme();
-        theme.glass = Some(GlassMaterial::frosted());
+        theme.glass = Some(liquid());
         let chip = Surface::new(crate::foundation::roles::CHIP_FLOATING);
         let ground = theme.ground();
         assert!(theme.layer(chip, PaintState::Rest).glass.is_some());
@@ -1702,7 +1705,7 @@ mod tests {
     #[test]
     fn restyling_a_glass_layer_carries_its_glass() {
         let mut theme = theme();
-        theme.glass = Some(GlassMaterial::frosted());
+        theme.glass = Some(liquid());
         let hover = theme.layer(Surface::new(SurfaceRole::POPOVER), PaintState::Hover);
         assert!(hover.glass.is_some());
         let restyled = restyle(ala::StyleRefinement::default().bg(hover.fill), &hover);

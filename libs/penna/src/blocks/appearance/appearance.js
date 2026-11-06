@@ -1,8 +1,8 @@
 (() => {
 const LOOKS = {
-  default: { accent: "ink", controls: "0", glass: "1" },
-  macos: { accent: "blue", controls: "1", glass: "2" },
-  yaru: { accent: "orange", controls: "0", glass: "0" },
+  default: { accent: "ink", controls: "0", glass: "true" },
+  macos: { accent: "blue", controls: "1", glass: "true" },
+  yaru: { accent: "orange", controls: "0", glass: "false" },
 };
 const HUE_STOPS = 12;
 const RING = 3.5;
@@ -232,12 +232,12 @@ function followLook(frame) {
     }
   });
   [
-    [".appearance-look-controls", picked.controls],
-    [".appearance-look-glass", picked.glass],
-  ].forEach(([selector, value]) => {
+    [".appearance-look-controls", "data-value", picked.controls],
+    [".appearance-look-glass", "aria-checked", picked.glass],
+  ].forEach(([selector, attribute, value]) => {
     frame.querySelectorAll(selector).forEach((control) => {
       if (control.dataset.touched !== undefined) return;
-      control.dataset.value = value;
+      control.setAttribute(attribute, value);
       if (!control.appearanceFollow) {
         control.appearanceFollow = true;
         control.addEventListener("change", () => (control.dataset.touched = ""));

@@ -54,9 +54,9 @@
       "click": "button:Pill"
     },
     {
-      "name": "pick-no-glass",
+      "name": "toggle-glass",
       "section": "page",
-      "click": "button:None"
+      "click": "settings-glass"
     },
     {
       "name": "toggle-contrast",

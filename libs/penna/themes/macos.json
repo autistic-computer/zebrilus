@@ -5,6 +5,5 @@
     "dark": "#76abfd"
   },
   "control-radius": "full",
-  "smoothing": 4.0,
-  "glass": "liquid"
+  "smoothing": 4.0
 }

@@ -174,14 +174,10 @@ impl Knobs {
         if let Some((_, value)) = pairs.iter().find(|(key, _)| *key == "glass") {
             knobs.look.glass = match *value {
                 "" | "theme" => knobs.look.glass,
-                "platform" => None,
                 "none" | "off" => Some(Glass::None),
-                "frosted" => Some(Glass::Frosted),
-                "liquid" => Some(Glass::Liquid),
+                "liquid" => None,
                 name => {
-                    return Err(format!(
-                        "glass is theme, platform, none, frosted or liquid, not {name}"
-                    ));
+                    return Err(format!("glass is theme, none or liquid, not {name}"));
                 }
             };
         }
@@ -295,7 +291,7 @@ impl Knobs {
                 let mut material = knobs
                     .look
                     .glass(mode)
-                    .unwrap_or_else(interface_theme::frosted);
+                    .unwrap_or_else(|| interface_theme::liquid(mode));
                 for (set, value) in &glass {
                     set(&mut material, *value);
                 }
@@ -409,10 +405,8 @@ pub fn theme_knobs(theme: &InterfaceTheme) -> serde_json::Map<String, serde_json
     set(
         "glass",
         serde_json::json!(match &theme.glass {
-            None => "platform",
             Some(Glass::None) => "none",
-            Some(Glass::Frosted) => "frosted",
-            Some(Glass::Liquid | Glass::Material(_)) => "liquid",
+            None | Some(Glass::Liquid | Glass::Material(_)) => "liquid",
         }),
     );
     if let Some(Glass::Material(pair)) = &theme.glass {
@@ -548,19 +542,22 @@ mod tests {
 
     #[test]
     fn glass_sliders_turn_the_glass_into_a_material_of_its_own() {
-        let knobs = Knobs::parse("glass=frosted&glass-blur=30&glass-tint=0.8").unwrap();
+        let knobs = Knobs::parse("glass=liquid&glass-blur=30&glass-tint=0.8").unwrap();
         let Some(Glass::Material(pair)) = knobs.look.glass else {
             panic!("a slider makes a material");
         };
         assert_eq!(pair.dark.blur, px(30.0));
         assert_eq!(pair.light.tint.a, 0.8);
-        assert_eq!(pair.dark.bezel, interface_theme::frosted().bezel);
+        assert_eq!(
+            pair.dark.bezel,
+            interface_theme::liquid(ThemeMode::Dark).bezel
+        );
         assert_eq!(
             Knobs::parse("glass=none").unwrap().look.glass,
             Some(Glass::None)
         );
         assert_eq!(
-            Knobs::parse("interface-theme=macos&glass=platform")
+            Knobs::parse("interface-theme=yaru&glass=liquid")
                 .unwrap()
                 .look
                 .glass,

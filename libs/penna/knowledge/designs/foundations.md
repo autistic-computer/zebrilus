@@ -228,7 +228,7 @@ The knobs, as a theme file spells them:
 | `radius` | 0 to 25 | 12 |
 | `control-radius` | 0 to 25, or `full` for pills | `radius` |
 | `smoothing` | 2 (round arcs) to 5 (squircle) | 3 |
-| `glass` | `none`, `frosted`, `liquid`, or a material of its own | the platform's |
+| `glass` | `none`, `liquid`, or a material of its own | `liquid` |
 | `face` | the interface face; the code face stays the platform's | the platform's |
 | `mode` | `follow`, `light` or `dark` | `follow` |
 
@@ -241,7 +241,7 @@ There are no presets to pick. The look starts from the platform's knobs (the `ma
 | Tint, Tint strength | `neutral`'s hue and amount |
 | Corner radius | `radius` |
 | Controls | `control-radius`: Rounded follows `radius`, Pill is `full` |
-| Glass | `glass`: none, frosted or liquid (or Custom, after a theme file with a material of its own) |
+| Glass | `glass`, a switch: on draws `liquid`, or a theme file's own material once one is pasted in; off draws none |
 | UI font | `face` |
 | Theme file | copies the look as a theme file, pastes one in (which sets every knob above), or resets them all to the platform's |
 | Text size | the root rem; everything scales with it |
@@ -253,7 +253,7 @@ There are no presets to pick. The look starts from the platform's knobs (the `ma
 
 Appearance shows them in that order: Mode down to Theme file under Look, and the rest under Advanced, which opens on request. An app's own rows (zz's program colors, app icon and window blur) follow the kit's. `smoothing` and `mode` have no row: smoothing follows the platform's theme file and a pasted theme's smoothing is not kept.
 
-What follows the platform with no knob: the system face and code face, when scrollbars show, the window controls, how keys are spelled, and the default glass (`liquid` on macOS, `frosted` elsewhere).
+What follows the platform with no knob: the system face and code face, when scrollbars show, the window controls, and how keys are spelled. Glass is the same everywhere: `liquid` unless a person turns it off.
 
 Everything else is the look and has no knob: each kind's fill, edge, shadow and shape, every state look, outline width, highlight strength, status colors, spacing, sizes, type and motion.
 
@@ -265,26 +265,25 @@ Glass is for what sits over something, since it reads only with something behind
 - Panes over the window's frame, when panes have gaps (`Theme::pane_margin` above 0): the pane's ground is the tint, at the ground's own opacity, under the material's rim and light, with no blur or refraction, since the frame under a pane is one flat fill. A pane that sits flush has nothing under it and takes its ground.
 - The selection in chrome, over its bar or sidebar (chrome items, above).
 
-Never cards, fields, bars, panels, or the rows and controls inside content: they sit in their ground, not over it. Where glass is off each falls back: floating surfaces to the `popover` fill, panes to their ground with a hairline in `divider` when they have gaps, chrome selections to the highlight. A gapped pane takes the same hairline under a material that draws no rim (`frosted`), so its edge always shows.
+Never cards, fields, bars, panels, or the rows and controls inside content: they sit in their ground, not over it. Where glass is off each falls back: floating surfaces to the `popover` fill, panes to their ground with a hairline in `divider` when they have gaps, chrome selections to the highlight. A gapped pane takes the same hairline under a material of its own that draws no rim (no bezel and no edge shadow), so its edge always shows.
 
 A material is a full glass definition (blur, tint, saturation, bezel, refraction, specular, rim) for light and for dark:
 
-- `frosted`: blur 20 and the `popover` fill at 70% over it, no bezel, refraction, saturation or edge shadow. Its specular (0.2, lit from above) lights only a bezel, so it draws no rim: specular and fresnel light nothing on a material with no bezel. It draws the same natively and on the web.
-- `liquid`: blur 20, bezel 3, refraction 4, a specular rim lit from above, one set of values for light and one for dark (`interface_theme::liquid`). Where the renderer can't bend light, it draws as `frosted`: the web draws it with its lens only where `kit.js` refracts, and natively a window that can't sample its backdrop draws the fallback.
+- `liquid`: blur 20, bezel 3, refraction 4, a specular rim lit from above, one set of values for light and one for dark (`interface_theme::liquid`). Where the renderer can't bend light it keeps its blur, tint and rim and drops the lens: the web draws the lens only where `kit.js` refracts, and natively a window that can't sample its backdrop draws the fallback.
 - A material of an app's own takes the same fields. The kit holds every material to two rules: text on it reaches 4.5:1, so its tint never drops below the opacity that gives that over the worst content, and it has a solid fallback, the `popover` fill.
 
 Natively the blur reads the backdrop up to 2.5 blur radii past a glass surface's edge; the web's backdrop filter reads only what is under the surface. Where the backdrop changes just outside a glass edge, as under a dialog stacked over another, the two blend it a little differently. That is a raster difference, like text, not a choice.
 
-The kit's theme files: `default` (the table's defaults), `macos` (tint blue, #0a64dd and #76abfd, since ala exposes no system accent; `control-radius` `full`; `smoothing` 4; `glass` `liquid`), the look on Apple platforms, and `yaru` (tint orange; `radius` 8; `smoothing` 2; `glass` `none`), which the storybook, the HTML tokens and the parity runs draw as a third look. None of them is a choice a person makes.
+The kit's theme files: `default` (the table's defaults), `macos` (tint blue, #0a64dd and #76abfd, since ala exposes no system accent; `control-radius` `full`; `smoothing` 4), the look on Apple platforms, and `yaru` (tint orange; `radius` 8; `smoothing` 2; `glass` `none`), which the storybook, the HTML tokens and the parity runs draw as a third look. None of them is a choice a person makes.
 
-HTML: a theme file's knobs generate its tokens (`cargo run --example theme_css`), so the HTML twin follows the same look. A theme that leaves `glass` out gets `frosted` in its tokens. `--penna-control-radius` carries the control corner (9999px for `full`). Under `prefers-reduced-transparency: reduce` the tokens give every glass role the `popover` fill and no backdrop. A card inside a container marked `data-ground` rises one step from that container's fill.
+HTML: a theme file's knobs generate its tokens (`cargo run --example theme_css`), so the HTML twin follows the same look. A theme that leaves `glass` out gets `liquid` in its tokens. `--penna-control-radius` carries the control corner (9999px for `full`). Under `prefers-reduced-transparency: reduce` the tokens give every glass role the `popover` fill and no backdrop. A card inside a container marked `data-ground` rises one step from that container's fill.
 
 How the knobs are spelled and decided:
 
 - `tint` is `ink`, a named accent (`blue`, `orange`, ...), one hex color for both modes, or `{ "light": ..., "dark": ... }`. Any color sets `accent` and makes `primary` the tint; `ink` leaves `accent` at its default for links. A person's Accent replaces it.
 - `neutral` is `{ "hue": 60, "amount": 0.15 }` by default, hue in OKLCH degrees. Amount 1 is 0.02 of OKLCH chroma on `bg` and 0.35 of that on `fg`. The base colors in code are the Color table; a neutral moves them by the difference between its tint and the default's, so the default reproduces the table exactly and other values tint like a person's tint did. A person's Tint and Tint strength override the hue and the amount.
 - `radius` and `control-radius` clamp to 0 to 25 and `smoothing` to 2 to 5, both where a file is parsed and where a person's override applies. `full` is stored as 25: above 24 a capsule control draws as a pill and any other control keeps the 45% stop.
-- `glass` as an object is a material: `light` and `dark` each name the fields that differ from `frosted`; an object with neither applies to both modes. Every material's tint rises to the lowest opacity that keeps `fg` at 4.5:1 over a black backdrop under dark text and a white one under light text, blended in sRGB and ignoring blur: 0.596 in light and 0.705 in dark with the default colors, so in light `frosted` keeps 0.70 and `liquid` 0.60, and in dark both draw 0.705.
+- `glass` as an object is a material: `light` and `dark` each name the fields that differ from `liquid` in that mode; an object with neither applies to both modes. Every material's tint rises to the lowest opacity that keeps `fg` at 4.5:1 over a black backdrop under dark text and a white one under light text, blended in sRGB and ignoring blur: 0.596 in light and 0.705 in dark with the default colors, so `liquid` keeps 0.60 in light and draws 0.705 in dark.
 - `mode` other than `follow` beats the person's Mode.
 - Unknown keys are ignored, so a file from before step 10 loads as the default look under its own name.
 - Increase contrast (contrast above 1) adds the hairline to every kind but bars, panels and rules, which keep their rules; a glass surface draws it over its rim.
@@ -296,7 +295,7 @@ How the knobs are spelled and decided:
 - Muted, faint and tone ink are worked out for the ground under the text, natively and in HTML, where each ground scope (`data-ground`, `data-on`) carries the inks that differ from the window's: `--penna-muted`, `--penna-faint` and `--penna-<tone>-ink`, as values. Natively they mix the ink toward the ground's fill in OKLab rather than fade it, so the tokens write the mixed color. Cards, panels and floating grounds differ in muted and faint only; tone inks follow the ground's ink, which only a solid selection changes.
 - Row inset (6), outline width (1) and highlight strength (0.8 of the wash) are fixed.
 
-Status: built (steps 10, 12, 13 and 14). Theme files are knobs only, the kinds and the built-in role patches draw the table above, and a person sets the knobs themselves over the platform's. The storybook's theme creator edits these knobs and exports a theme file, the docs Look page shows their range live, and the parity baselines hold the one look. Step 12 closed the last differences between native and HTML but one: a soft or prominent button set straight on a solid selection keeps its window paint in HTML, and rows hold none that way. What else remains is raster: text, and glass blur at its edges.
+Status: built (steps 10, 12, 13, 14 and 16). Theme files are knobs only, the kinds and the built-in role patches draw the table above, and a person sets the knobs themselves over the platform's. The storybook's theme creator edits these knobs and exports a theme file, the docs Look page shows their range live, and the parity baselines hold the one look. Step 12 closed the last differences between native and HTML but one: a soft or prominent button set straight on a solid selection keeps its window paint in HTML, and rows hold none that way. What else remains is raster: text, and glass blur at its edges.
 
 ## Focus and keys
 
@@ -1556,5 +1555,6 @@ Status: matches.
 | 13 | Glass past floating surfaces: chrome items select as glass, panes with gaps take the material's rim and light, and buttons over the content are glass; where glass is off each keeps the look it had | selected sidebar rows, sidebar entries and window and page tabs turn to glass pills; gapped panes gain a lit rim; jump to latest turns to glass | built |
 | 14 | Knobs, no presets: Appearance drops the theme picker and saved themes, gains Controls, Glass and a theme file menu, and the look starts from the platform's knobs | the Theme row goes; Look holds every knob; a pasted theme file sets them | built |
 | 15 | Glass that reads on a flat ground: a chrome selection's tint matches the highlight it replaces, a material with no bezel draws no glint natively, and a gapped pane with no rim takes the `divider` hairline | `frosted` selections read like the highlight with no stray rim; gapped panes keep their edge with glass `none` or `frosted` | built |
+| 16 | One glass: `frosted` is gone and Glass is a switch; on, it draws `liquid` on every platform, and a theme file's own material fills in over `liquid` | the Glass row turns to a switch; Linux, Windows and the web draw `liquid` where they drew `frosted` | built |
 
 Each step lands in penna with its stories, scores parity, rebaselines only what the step meant to move, and is pulled into zz and nidus.

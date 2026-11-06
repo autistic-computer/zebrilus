@@ -1,7 +1,8 @@
 use penna::blocks::appearance::{
-    SWATCH, THEME_MODES, accent_swatches, controls_control, corner_radius_slider, glass_control,
-    picker_tile, theme_mode_control, theme_preview, tint_hue_slider, tint_slider,
+    SWATCH, THEME_MODES, accent_swatches, controls_control, corner_radius_slider, picker_tile,
+    theme_mode_control, theme_preview, tint_hue_slider, tint_slider,
 };
+use penna::foundation::interface_theme::Glass;
 use std::cell::Cell;
 use std::sync::Arc;
 
@@ -234,11 +235,12 @@ impl AppWindow {
                                 |_, _, _| {},
                                 cx,
                             )))
-                            .child(SettingEntry::new("Glass").control(glass_control(
-                                &appearance.glass(),
-                                |_, _, _| {},
-                                cx,
-                            ))),
+                            .child(
+                                SettingEntry::new("Glass").control(
+                                    Switch::new("creator-glass")
+                                        .checked(appearance.glass() != Glass::None),
+                                ),
+                            ),
                     )
                     .child(SettingsStack::titled("Advanced").child(
                         SettingEntry::new("Increase contrast").control(

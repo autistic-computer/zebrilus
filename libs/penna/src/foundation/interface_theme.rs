@@ -174,7 +174,6 @@ impl<'de> Deserialize<'de> for ControlRadius {
 #[derive(Clone, Debug, PartialEq)]
 pub enum Glass {
     None,
-    Frosted,
     Liquid,
     Material(Box<GlassPair>),
 }
@@ -186,18 +185,9 @@ pub struct GlassPair {
 }
 
 impl Glass {
-    pub fn platform() -> Self {
-        if cfg!(target_os = "macos") {
-            Self::Liquid
-        } else {
-            Self::Frosted
-        }
-    }
-
     pub fn material(&self, mode: ThemeMode) -> Option<GlassMaterial> {
         match self {
             Self::None => None,
-            Self::Frosted => Some(frosted()),
             Self::Liquid => Some(liquid(mode)),
             Self::Material(pair) => Some(if mode.is_dark() {
                 pair.dark
@@ -212,7 +202,6 @@ impl Serialize for Glass {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         match self {
             Self::None => serializer.serialize_str("none"),
-            Self::Frosted => serializer.serialize_str("frosted"),
             Self::Liquid => serializer.serialize_str("liquid"),
             Self::Material(pair) => pair.serialize(serializer),
         }
@@ -223,8 +212,8 @@ impl<'de> Deserialize<'de> for Glass {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         use serde::de::Error as _;
         use serde_json::Value;
-        let over = |fields: Value| -> Result<GlassMaterial, D::Error> {
-            let mut merged = serde_json::to_value(frosted()).map_err(D::Error::custom)?;
+        let over = |fields: Value, mode: ThemeMode| -> Result<GlassMaterial, D::Error> {
+            let mut merged = serde_json::to_value(liquid(mode)).map_err(D::Error::custom)?;
             if let (Value::Object(base), Value::Object(fields)) = (&mut merged, fields) {
                 base.extend(fields);
             }
@@ -233,44 +222,21 @@ impl<'de> Deserialize<'de> for Glass {
         match Value::deserialize(deserializer)? {
             Value::String(name) => match name.as_str() {
                 "none" => Ok(Self::None),
-                "frosted" => Ok(Self::Frosted),
                 "liquid" => Ok(Self::Liquid),
                 _ => Err(D::Error::custom(format!(
-                    "glass is none, frosted, liquid or a material, not {name}"
+                    "glass is none, liquid or a material, not {name}"
                 ))),
             },
             Value::Object(mut fields) => {
                 let light = fields.remove("light");
                 let dark = fields.remove("dark");
                 let both = Value::Object(fields);
-                let light = light.map_or_else(|| over(both.clone()), over)?;
-                let dark = dark.map_or_else(|| over(both), over)?;
+                let light = over(light.unwrap_or_else(|| both.clone()), ThemeMode::Light)?;
+                let dark = over(dark.unwrap_or(both), ThemeMode::Dark)?;
                 Ok(Self::Material(Box::new(GlassPair { light, dark })))
             }
-            _ => Err(D::Error::custom(
-                "glass is none, frosted, liquid or a material",
-            )),
+            _ => Err(D::Error::custom("glass is none, liquid or a material")),
         }
-    }
-}
-
-pub fn frosted() -> GlassMaterial {
-    GlassMaterial {
-        blur: px(20.0),
-        bezel: px(0.0),
-        refraction: px(0.0),
-        dispersion: 0.0,
-        tint: crate::parse_hex("#ffffffb3").unwrap_or_default(),
-        saturation: 1.0,
-        brightness: 0.0,
-        contrast: 1.0,
-        specular: 0.2,
-        glint_width: px(1.0),
-        light_angle: -std::f32::consts::FRAC_PI_2,
-        light_directionality: 0.85,
-        fresnel: 0.0,
-        edge_shadow: 0.0,
-        ..GlassMaterial::regular()
     }
 }
 
@@ -441,7 +407,7 @@ impl InterfaceTheme {
 
     pub fn glass(&self, mode: ThemeMode) -> Option<GlassMaterial> {
         self.glass.as_ref().map_or_else(
-            || Glass::platform().material(mode),
+            || Glass::Liquid.material(mode),
             |glass| glass.material(mode),
         )
     }
@@ -644,7 +610,7 @@ impl ThemeOverrides {
                 Some(ControlRadius::Full) => Controls::Pill,
                 _ => Controls::Rounded,
             }),
-            glass: Some(theme.glass.clone().unwrap_or_else(Glass::platform)),
+            glass: Some(theme.glass.clone().unwrap_or(Glass::Liquid)),
         }
     }
 }
@@ -742,7 +708,7 @@ impl Appearance {
     }
 
     pub fn glass(&self) -> Glass {
-        self.shown_theme().glass.unwrap_or_else(Glass::platform)
+        self.shown_theme().glass.unwrap_or(Glass::Liquid)
     }
 
     pub fn accent(&self) -> String {
@@ -953,8 +919,6 @@ mod tests {
     #[test]
     fn glass_holds_text_at_four_and_a_half_over_any_backdrop() {
         for (glass, mode, floor, alpha) in [
-            (Glass::Frosted, ThemeMode::Light, 0.596, 0.702),
-            (Glass::Frosted, ThemeMode::Dark, 0.705, 0.705),
             (Glass::Liquid, ThemeMode::Light, 0.596, 0.6),
             (Glass::Liquid, ThemeMode::Dark, 0.705, 0.705),
         ] {
@@ -1039,7 +1003,7 @@ mod tests {
         );
         assert_eq!(
             (macos.control_radius, macos.smoothing, macos.glass.clone()),
-            (Some(ControlRadius::Full), 4.0, Some(Glass::Liquid))
+            (Some(ControlRadius::Full), 4.0, None)
         );
         let yaru = builtin_theme("yaru").unwrap();
         assert_eq!(yaru.tint, Tint::named("orange").unwrap());
@@ -1058,7 +1022,7 @@ mod tests {
             serde_json::from_str::<Appearance>("{}").unwrap(),
             Appearance::default()
         );
-        let source = r#"{"mode":"dark","theme":"macos","radius":12,"accent":"green","tint":0.25,"tint-hue":145,"controls":"pill","glass":"frosted","contrast":1.5,"reduce_transparency":true,"ui_font_family":"Inter","zoom":1.25,"animations":false,"animation_speed":0.5,"density":"comfortable","sidebar":true}"#;
+        let source = r#"{"mode":"dark","theme":"macos","radius":12,"accent":"green","tint":0.25,"tint-hue":145,"controls":"pill","glass":"none","contrast":1.5,"reduce_transparency":true,"ui_font_family":"Inter","zoom":1.25,"animations":false,"animation_speed":0.5,"density":"comfortable","sidebar":true}"#;
         let appearance = serde_json::from_str::<Appearance>(source).unwrap();
         assert_eq!(
             appearance,
@@ -1070,7 +1034,7 @@ mod tests {
                     tint: Some(0.25),
                     tint_hue: Some(145.0),
                     controls: Some(Controls::Pill),
-                    glass: Some(Glass::Frosted),
+                    glass: Some(Glass::None),
                 },
                 contrast: 1.5,
                 reduce_transparency: true,
@@ -1113,7 +1077,7 @@ mod tests {
         assert_eq!(appearance.ui_font(), "Inter");
 
         let file = parse_theme(
-            r#"{"name":"Mono","tint":"orange","face":"Lilex","radius":2,"glass":"frosted"}"#,
+            r#"{"name":"Mono","tint":"orange","face":"Lilex","radius":2,"glass":"liquid"}"#,
         )
         .unwrap();
         appearance.change(AppearanceChange::Import(Box::new(file)));
@@ -1124,7 +1088,7 @@ mod tests {
                 2.0,
                 Tint::named("orange").unwrap(),
                 None,
-                Some(Glass::Frosted)
+                Some(Glass::Liquid)
             )
         );
         assert_eq!(appearance.accent(), "orange");

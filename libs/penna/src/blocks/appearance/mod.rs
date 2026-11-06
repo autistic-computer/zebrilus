@@ -195,39 +195,6 @@ pub fn controls_control(
         .on_select(move |index, window, cx| on_pick(CONTROL_SHAPES[index].0, window, cx))
 }
 
-pub const GLASSES: [(Glass, &str); 3] = [
-    (Glass::None, "None"),
-    (Glass::Frosted, "Frosted"),
-    (Glass::Liquid, "Liquid"),
-];
-
-pub fn glass_control(
-    selected: &Glass,
-    on_pick: impl Fn(Glass, &mut Window, &mut App) + 'static,
-    cx: &App,
-) -> SegmentedControl {
-    let custom = matches!(selected, Glass::Material(_));
-    let titles = GLASSES
-        .iter()
-        .map(|(_, title)| *title)
-        .chain(custom.then_some("Custom"))
-        .collect::<Vec<_>>();
-    let picked = GLASSES
-        .iter()
-        .position(|(glass, _)| glass == selected)
-        .unwrap_or(GLASSES.len());
-    let kept = selected.clone();
-    SegmentedControl::new("settings-glass", titles)
-        .selected(picked)
-        .on(crate::blocks::settings::settings_card_ground(cx))
-        .on_select(move |index, window, cx| {
-            let glass = GLASSES
-                .get(index)
-                .map_or_else(|| kept.clone(), |(glass, _)| glass.clone());
-            on_pick(glass, window, cx);
-        })
-}
-
 type ThemeMenu = Rc<dyn Fn(PopupMenu, &mut Window, &mut Context<PopupMenu>) -> PopupMenu>;
 
 fn theme_file_menu(
@@ -740,11 +707,14 @@ pub fn kit_row<T: Copy>(
             move |shape, window, cx| on_change(AppearanceChange::Controls(shape), window, cx),
             cx,
         )),
-        AppearancePageItem::Glass => entry.control(glass_control(
-            &appearance.glass(),
-            move |glass, window, cx| on_change(AppearanceChange::Glass(glass), window, cx),
-            cx,
-        )),
+        AppearancePageItem::Glass => entry.control(
+            Switch::new("settings-glass")
+                .checked(appearance.glass() != Glass::None)
+                .on_click(move |on, window, cx| {
+                    let glass = if *on { Glass::Liquid } else { Glass::None };
+                    on_change(AppearanceChange::Glass(glass), window, cx);
+                }),
+        ),
         AppearancePageItem::ThemeFile => entry
             .description("Copy this look as a theme file, or paste one in")
             .control(theme_file_menu(

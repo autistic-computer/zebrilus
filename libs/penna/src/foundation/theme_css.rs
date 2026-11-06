@@ -89,7 +89,7 @@ pub const SYNTAX: [(&str, &str); 15] = [
 
 pub fn kit_theme(theme: &InterfaceTheme, mode: ThemeMode) -> Theme {
     let theme = InterfaceTheme {
-        glass: Some(theme.glass.clone().unwrap_or(Glass::Frosted)),
+        glass: Some(theme.glass.clone().unwrap_or(Glass::Liquid)),
         ..theme.clone()
     };
     let mut kit = Theme::from(&theme.colors(mode));
