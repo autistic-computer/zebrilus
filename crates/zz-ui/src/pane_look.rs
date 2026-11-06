@@ -43,7 +43,8 @@ impl PaneLook {
             (ala::black(), VEIL)
         };
         let weight = weights[usize::from(theme.mode.is_dark())] * self.glow_strength;
-        tint.blend(pole.alpha(weight.min(1.0)))
+        let wash = pole.alpha(weight.min(1.0));
+        if tint.a > 0.0 { tint.blend(wash) } else { wash }
     }
 
     fn rim(self, theme: &Theme, active: bool) -> f32 {
@@ -161,14 +162,31 @@ mod tests {
     }
 
     #[test]
-    fn a_pane_frame_paints_an_opaque_plane_and_leaves_a_see_through_one_clear() {
-        let theme = Theme::default();
+    fn a_see_through_pane_frame_stays_clear_but_for_the_active_panes_wash() {
+        let mut theme = Theme::default();
         let plane = theme.background.alpha(0.93);
         assert_eq!(UNLIT.frame(&theme, plane, false).tint, plane.alpha(0.0));
         assert_eq!(
             UNLIT.frame(&theme, plane.opaque(), false).tint,
             plane.opaque()
         );
+        let look = PaneLook::default();
+        for (mode, active, inactive) in [
+            (
+                ThemeMode::Light,
+                ala::white().alpha(0.3),
+                ala::black().alpha(0.05),
+            ),
+            (
+                ThemeMode::Dark,
+                ala::white().alpha(0.05),
+                ala::black().alpha(0.18),
+            ),
+        ] {
+            theme.mode = mode;
+            assert_eq!(look.frame(&theme, plane, true).tint, active, "{mode:?}");
+            assert_eq!(look.frame(&theme, plane, false).tint, inactive, "{mode:?}");
+        }
     }
 
     #[test]

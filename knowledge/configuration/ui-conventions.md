@@ -153,7 +153,8 @@ defines roles: zz has none of its own, and no widget takes a role from outside p
 
    The active gapped pane shows focus through its fill and rim:
    `PaneLook::frame` washes its fill toward white (5% in dark, 30% in light) and veils the other
-   panes' fills toward black (18% in dark, 5% in light), and the others' rims, the glass glint or
+   panes' fills toward black (18% in dark, 5% in light); on a see-through window, where a gapped
+   pane's fill is clear, the wash and the veil are the fill on their own. The others' rims, the glass glint or
    the hairline without glass (`PaneLook::edge_color`), show at 70%. Their content dims by
    `pane-inactive-opacity` as before. Settings > Panes > Selected pane contrast scales all of it
    from 0–200%; 0 draws the active pane like the others. `pane-glow-strength` stores the factor
