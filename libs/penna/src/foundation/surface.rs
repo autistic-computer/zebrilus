@@ -1527,7 +1527,10 @@ mod tests {
             fill: theme.background.alpha(0.93),
             ..theme.ground()
         };
-        let panel = theme.layer(Surface::new(Kind::Panel.role()).on(window), PaintState::Rest);
+        let panel = theme.layer(
+            Surface::new(Kind::Panel.role()).on(window),
+            PaintState::Rest,
+        );
         assert_eq!(panel.fill, theme.background.opaque().washed(1));
         assert!(panel.ground.fill.a < 1.0);
         let pane = theme.layer(Surface::new(Kind::Pane.role()).on(window), PaintState::Rest);
