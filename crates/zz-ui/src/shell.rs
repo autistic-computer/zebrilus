@@ -14,7 +14,7 @@ use ala::{
 
 #[must_use]
 pub fn shell_ground(window: ala::Hsla, gaps: bool, cx: &App) -> ala::Hsla {
-    if gaps {
+    if gaps && window.a >= 1.0 {
         crate::navigation::workspace_sidebar_fade(
             Ground {
                 fill: window,

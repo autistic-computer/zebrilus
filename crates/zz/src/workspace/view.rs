@@ -4485,7 +4485,9 @@ impl Render for AppView {
             }
         }
         let content = if let Some(settings) = settings_view {
-            if config::pane_margin(cx) > px(0.) {
+            if crate::theme::shell_background(cx) == crate::theme::chrome_background(cx) {
+                settings.into_any_element()
+            } else {
                 layout_corners
                     .round_div(
                         div()
@@ -4495,8 +4497,6 @@ impl Render for AppView {
                         frame_content_corner_radius(cx),
                     )
                     .into_any_element()
-            } else {
-                settings.into_any_element()
             }
         } else if let Some(active_window) = active_window {
             if let Some(pane) = active_window.zoomed_pane {

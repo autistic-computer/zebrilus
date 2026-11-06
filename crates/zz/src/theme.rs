@@ -283,6 +283,11 @@ mod tests {
             cx.set_global(config);
             assert_alpha(chrome_background(cx), 0.965);
 
+            config.pane_gaps.value = true;
+            config.pane_margin.value = 8.0;
+            cx.set_global(config);
+            assert_alpha(shell_background(cx), 0.965);
+
             config.window_background_opacity.value = 1.0;
             cx.set_global(config);
             assert_alpha(chrome_background(cx), 1.0);
