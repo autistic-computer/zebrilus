@@ -802,7 +802,7 @@ impl SettingsView {
     ) -> Option<SettingEntry> {
         Some(match item {
             AppearancePageItem::UiFontFamily => self.ui_font_setting(cx),
-            AppearancePageItem::UiZoom => self.ui_zoom_setting(cx),
+            AppearancePageItem::TextSize => self.ui_zoom_setting(cx),
             AppearancePageItem::App(ZzRow::AppIcon) => Self::app_icon_setting(resolved, cx),
             AppearancePageItem::App(row @ ZzRow::ProgramColors) => Self::boolean_setting(
                 ConfigKey::ProgramColors,
@@ -851,7 +851,7 @@ impl SettingsView {
     }
 
     fn ui_zoom_setting(&self, cx: &Context<Self>) -> SettingEntry {
-        SettingEntry::new("UI zoom").control(
+        SettingEntry::new("Text size").control(
             div()
                 .w(px(CONTROL_WIDTH))
                 .flex_none()

@@ -623,7 +623,7 @@ impl AppShell {
                 let zoom = self.settings_controls.appearance.zoom_focus();
                 let row_focus = items
                     .iter()
-                    .map(|item| matches!(item, AppearancePageItem::UiZoom).then(|| zoom.clone()))
+                    .map(|item| matches!(item, AppearancePageItem::TextSize).then(|| zoom.clone()))
                     .collect::<Vec<_>>();
                 let view = cx.entity();
                 return appearance_page(

@@ -4764,17 +4764,17 @@ mod tests {
                 &theme.accent,
             ],
             [
-                "#ededed", "#1d1d1f", "#58585a", "#58585a", "#e4e4e4", "#e4e4e4", "#d5d5d5",
-                "#0065dd"
+                "#e9e9e6", "#1c1c1a", "#575756", "#575756", "#e0e0dd", "#e0e0dd", "#d4d4d1",
+                "#0a64dd"
             ]
         );
-        assert_eq!(theme.node.as_deref(), Some("#d1ddeb"));
-        assert_eq!(theme.node_border.as_deref(), Some("#6ba2e4"));
+        assert_eq!(theme.node.as_deref(), Some("#ced9e5"));
+        assert_eq!(theme.node_border.as_deref(), Some("#6ea0e1"));
         assert_eq!(
             theme.series,
             [
-                "#0065dd", "#12832c", "#a85001", "#cb091e", "#9f35af", "#0e7b82", "#7d6d08",
-                "#714cd5"
+                "#0a64dd", "#118144", "#a55200", "#c51e32", "#9d36b1", "#0e7b85", "#786e0c",
+                "#ba2179"
             ]
         );
     }
