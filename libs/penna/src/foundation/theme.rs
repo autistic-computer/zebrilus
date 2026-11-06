@@ -179,7 +179,8 @@ impl Theme {
         if self.radius <= px(0.0) {
             return px(0.0);
         }
-        self.control_corner(PANE_HEADER_CONTROL_HEIGHT) + px(CHROME_GAP)
+        self.radius
+            .min(self.control_corner(PANE_HEADER_CONTROL_HEIGHT) + px(CHROME_GAP))
     }
 
     pub fn pane_header_height(&self) -> Pixels {
@@ -364,7 +365,8 @@ mod tests {
     }
 
     #[test]
-    fn every_control_rounds_to_one_share_of_its_height_and_a_pane_to_its_buttons_plus_the_gap() {
+    fn every_control_rounds_to_one_share_of_its_height_and_a_pane_to_the_radius_up_to_its_buttons_plus_the_gap()
+     {
         let theme = Theme::default();
         assert!((theme.control_roundness() - 0.31177).abs() < 1e-4);
         assert!((f32::from(theme.control_corner(px(28.0))) - 8.7295).abs() < 1e-3);
@@ -374,19 +376,27 @@ mod tests {
             ..Theme::default()
         };
         assert!((f32::from(widest.control_corner(px(28.0))) - 12.6).abs() < 1e-4);
-        for radius in [4.0, 10.0, 24.0, 25.0] {
+        for (radius, pane) in [
+            (4.0, 4.0),
+            (8.41, 8.41),
+            (12.0, 12.0),
+            (16.0, 13.92),
+            (25.0, 15.9),
+        ] {
             let theme = Theme {
                 radius: px(radius),
                 ..Theme::default()
             };
-            let gap = theme.pane_radius() - theme.control_corner(PANE_HEADER_CONTROL_HEIGHT);
-            assert!((gap - px(CHROME_GAP)).abs() < px(0.001));
+            assert!(
+                (f32::from(theme.pane_radius()) - pane).abs() < 1e-3,
+                "{radius}"
+            );
         }
         let capsules = Theme {
             control_radius: Some(ala::FULL_CORNER_RADIUS),
             ..Theme::default()
         };
-        assert_eq!(capsules.pane_radius(), PANE_HEADER_HEIGHT / 2.0);
+        assert_eq!(capsules.pane_radius(), px(12.0));
         let square = Theme {
             radius: px(0.0),
             ..Theme::default()

@@ -804,6 +804,7 @@ impl Default for ShadowMaterial {
 }
 
 const CONTACT_ALPHA: f32 = 0.2;
+const TIGHT_SHADOW: f32 = 0.4;
 const RING_WIDTH: Pixels = px(2.0);
 const BAR_WIDTH: Pixels = px(3.0);
 const BAR_LENGTH: Pixels = px(16.0);
@@ -985,6 +986,23 @@ impl Theme {
         )]
     }
 
+    pub fn tight_float_shadows(&self) -> Vec<BoxShadow> {
+        let material = self.float_shadow;
+        if material.strength <= 0.0 {
+            return Vec::new();
+        }
+        let ink = self.shadow_color;
+        vec![shadow_of(
+            ShadowMaterial {
+                y: material.y * TIGHT_SHADOW,
+                blur: material.blur * TIGHT_SHADOW,
+                spread: material.spread * TIGHT_SHADOW,
+                ..material
+            },
+            ink.alpha((ink.a * material.strength).min(1.0)),
+        )]
+    }
+
     pub fn shadows_of(&self, shadow: Shadow) -> Vec<BoxShadow> {
         match shadow {
             Shadow::None => Vec::new(),
@@ -1161,9 +1179,9 @@ impl Theme {
             text = text.rest();
         }
 
-        let pip = surface.role.id == super::roles::FLOATING_PIP.id;
-        let rimless =
-            (pane && self.pane_margin > px(0.0) || pip) && !glass.as_ref().is_some_and(draws_rim);
+        let floating = kind.floats() && style.fill == Fill::Glass && !opaque && !ground.glass;
+        let rimless = (pane && self.pane_margin > px(0.0) || floating)
+            && !glass.as_ref().is_some_and(draws_rim);
         let edge = if kind.is_control() {
             if soft.border_width > px(0.0) && tone != Tone::Neutral {
                 soft.border
@@ -1205,10 +1223,12 @@ impl Theme {
             (border, border_width)
         };
         let casts = !kind.is_control() || ground.elevation == Elevation::Window;
-        let mut shadow = if casts && state != PaintState::Disabled {
-            self.shadows_of(style.shadow)
-        } else {
+        let mut shadow = if !casts || state == PaintState::Disabled {
             Vec::new()
+        } else if floating && glass.is_none() && style.shadow == Shadow::Float {
+            self.tight_float_shadows()
+        } else {
+            self.shadows_of(style.shadow)
         };
         let lit = self.tone(Tone::Primary).opaque();
         match highlight {
@@ -1575,7 +1595,7 @@ mod tests {
     }
 
     #[test]
-    fn a_chrome_selection_reads_as_its_highlight_and_a_rimless_pane_or_pip_takes_a_hairline() {
+    fn a_chrome_selection_reads_as_its_highlight_and_a_rimless_pane_or_float_takes_a_hairline() {
         let mut theme = theme();
         let row = Surface::new(super::super::roles::SIDEBAR_ROW);
         theme.glass = Some(liquid());
@@ -1603,7 +1623,9 @@ mod tests {
 
         let pane = Surface::new(Kind::Pane.role());
         let pip = Surface::new(super::super::roles::FLOATING_PIP);
-        for (surface, margin) in [(pane, 8.0), (pip, 0.0)] {
+        let tooltip = Surface::new(SurfaceRole::TOOLTIP);
+        let menu = Surface::new(SurfaceRole::POPOVER);
+        for (surface, margin) in [(pane, 8.0), (pip, 0.0), (tooltip, 0.0), (menu, 0.0)] {
             theme.pane_margin = px(margin);
             for (glass, hairline) in [
                 (None, true),
@@ -1624,6 +1646,13 @@ mod tests {
                 );
             }
         }
+
+        theme.glass = None;
+        let shadow = &theme.layer(tooltip, PaintState::Rest).shadow[0];
+        assert_eq!(
+            (shadow.offset.y, shadow.blur_radius, shadow.spread_radius),
+            (px(4.0), px(12.0), px(-2.4))
+        );
     }
 
     #[test]
