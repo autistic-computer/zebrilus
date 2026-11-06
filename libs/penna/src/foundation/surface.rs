@@ -1044,6 +1044,7 @@ impl Theme {
         } else {
             ground.fill.opaque()
         };
+        let see_through = !kind.floats() && ground.fill.a < 1.0;
         let step = match kind.elevation() {
             Elevation::Popover => 2,
             _ => 1,
@@ -1068,11 +1069,13 @@ impl Theme {
                 Fill::None => self.transparent,
                 Fill::Tint if toned => soft.fill,
                 Fill::Tint => base.washed(step),
+                Fill::Solid | Fill::Glass if see_through => base.washed(step),
                 Fill::Solid | Fill::Glass => self.raise(base, step),
             };
             let over = |level: u8| match fill {
                 Fill::None => base.washed(level),
                 Fill::Tint => base.washed(step + level),
+                Fill::Solid | Fill::Glass if see_through => base.washed(step + level),
                 Fill::Solid | Fill::Glass => rest.blend(base.washed(level)),
             };
             super::Paint {
@@ -1214,7 +1217,11 @@ impl Theme {
             }),
             _ => {}
         }
-        if shadow.iter().any(|shadow| !shadow.inset) && glass.is_none() && !ground.glass {
+        if shadow.iter().any(|shadow| !shadow.inset)
+            && glass.is_none()
+            && !ground.glass
+            && !see_through
+        {
             fill_color = ground.fill.opaque().blend(fill_color);
         }
 
@@ -1234,12 +1241,17 @@ impl Theme {
         }
         let glass = glass.map(|material| {
             if pane {
+                let tint = if see_through {
+                    self.transparent
+                } else {
+                    ground.fill
+                };
                 return material
                     .blur(px(0.0))
                     .refraction(px(0.0))
                     .dispersion(0.0)
-                    .tint(ground.fill)
-                    .fallback(ground.fill);
+                    .tint(tint)
+                    .fallback(tint);
             }
             let tint = if surface.prominent {
                 self.tone(tone).opaque()
@@ -1255,7 +1267,11 @@ impl Theme {
                     width: BAR_WIDTH,
                     length: BAR_LENGTH,
                 });
-        let under = ground.fill.opaque().blend(fill_color);
+        let under = if see_through {
+            ground.fill.blend(fill_color)
+        } else {
+            ground.fill.opaque().blend(fill_color)
+        };
         let solid_fill =
             highlight == Highlight::Accent || (surface.prominent && fill != Fill::Glass);
         let radius = self.shape_radius(surface, style.shape);
@@ -1500,6 +1516,22 @@ mod tests {
             assert!(selected.ground.solid, "{}", role.id);
         }
         assert!(theme.layer(pane, PaintState::Rest).glass.is_none());
+    }
+
+    #[test]
+    fn a_see_through_window_stays_see_through_under_panels_and_gapped_panes() {
+        let mut theme = theme();
+        theme.glass = Some(GlassMaterial::frosted());
+        theme.pane_margin = px(8.0);
+        let window = Ground {
+            fill: theme.background.alpha(0.93),
+            ..theme.ground()
+        };
+        let panel = theme.layer(Surface::new(Kind::Panel.role()).on(window), PaintState::Rest);
+        assert_eq!(panel.fill, theme.background.opaque().washed(1));
+        assert!(panel.ground.fill.a < 1.0);
+        let pane = theme.layer(Surface::new(Kind::Pane.role()).on(window), PaintState::Rest);
+        assert_eq!(pane.glass.expect("a gapped pane is glass").tint.a, 0.0);
     }
 
     #[test]
