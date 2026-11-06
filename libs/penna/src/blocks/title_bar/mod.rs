@@ -21,8 +21,12 @@ pub const MACOS_TRAFFIC_LIGHT_SPAN: f32 = 60.;
 
 #[must_use]
 pub fn macos_traffic_light_clearance(cx: &App) -> Pixels {
-    let margin =
-        (cx.theme().title_bar_height() - UiZoom::unzoomed(px(MACOS_TRAFFIC_LIGHT_GLYPH), cx)) / 2.;
+    macos_traffic_light_clearance_in(cx.theme().title_bar_height(), cx)
+}
+
+#[must_use]
+pub fn macos_traffic_light_clearance_in(height: Pixels, cx: &App) -> Pixels {
+    let margin = (height - UiZoom::unzoomed(px(MACOS_TRAFFIC_LIGHT_GLYPH), cx)) / 2.;
     margin * 2. + UiZoom::unzoomed(px(MACOS_TRAFFIC_LIGHT_SPAN), cx)
 }
 

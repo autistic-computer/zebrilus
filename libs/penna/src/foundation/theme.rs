@@ -75,7 +75,6 @@ pub struct Theme {
     pub mono_font_size: Pixels,
     pub radius: Pixels,
     pub control_radius: Option<Pixels>,
-    pub pane_corner_radius: Option<Pixels>,
     contrast: f32,
     pub outline: Pixels,
     pub smoothing: Smoothing,
@@ -172,9 +171,6 @@ impl Theme {
     }
 
     pub fn pane_radius(&self) -> Pixels {
-        if let Some(radius) = self.pane_corner_radius {
-            return radius.clamp(px(0.0), px(super::interface_theme::MAX_CORNER_RADIUS));
-        }
         if self.radius <= px(0.0) {
             return px(0.0);
         }
@@ -195,6 +191,10 @@ impl Theme {
 
     pub fn title_bar_height(&self) -> Pixels {
         self.pane_header_height() + self.pane_margin * 2.0
+    }
+
+    pub fn title_bar_over_panes_height(&self) -> Pixels {
+        self.pane_header_height() + self.pane_margin
     }
 
     pub fn divider_color(&self) -> Hsla {
@@ -293,7 +293,6 @@ impl From<&ThemeColor> for Theme {
             mono_font_size: px(13.),
             radius: px(DEFAULT_RADIUS),
             control_radius: None,
-            pane_corner_radius: None,
             contrast: 1.0,
             outline: px(1.0),
             smoothing: Smoothing::THEME,
@@ -393,12 +392,6 @@ mod tests {
             ..Theme::default()
         };
         assert_eq!(square.pane_radius(), px(0.0));
-        let set = Theme {
-            radius: px(0.0),
-            pane_corner_radius: Some(px(20.0)),
-            ..Theme::default()
-        };
-        assert_eq!(set.pane_radius(), px(20.0));
     }
 
     #[test]
@@ -410,5 +403,21 @@ mod tests {
             theme.title_bar_height() / 2.0,
             theme.pane_margin + PANE_HEADER_HEIGHT / 2.0
         );
+    }
+
+    #[test]
+    fn a_title_bar_over_the_panes_leaves_one_margin_and_matches_the_flush_bar_at_six() {
+        let mut theme = Theme::default();
+        assert_eq!(
+            theme.title_bar_over_panes_height(),
+            FLUSH_PANE_HEADER_HEIGHT
+        );
+        theme.pane_margin = px(6.0);
+        assert_eq!(
+            theme.title_bar_over_panes_height(),
+            FLUSH_PANE_HEADER_HEIGHT
+        );
+        theme.pane_margin = px(10.0);
+        assert_eq!(theme.title_bar_over_panes_height(), px(44.0));
     }
 }

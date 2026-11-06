@@ -1162,8 +1162,8 @@ impl Theme {
         }
 
         let pip = surface.role.id == super::roles::FLOATING_PIP.id;
-        let rimless = (pane && self.pane_margin > px(0.0) || pip)
-            && !glass.as_ref().is_some_and(draws_rim);
+        let rimless =
+            (pane && self.pane_margin > px(0.0) || pip) && !glass.as_ref().is_some_and(draws_rim);
         let edge = if kind.is_control() {
             if soft.border_width > px(0.0) && tone != Tone::Neutral {
                 soft.border

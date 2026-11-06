@@ -66,8 +66,13 @@ pub fn status_dot(color: Hsla) -> ala::Div {
 
 #[must_use]
 pub fn controls_leading_inset(cx: &App) -> Pixels {
+    controls_leading_inset_in(cx.theme().title_bar_height(), cx)
+}
+
+#[must_use]
+pub fn controls_leading_inset_in(height: Pixels, cx: &App) -> Pixels {
     if cfg!(target_os = "macos") {
-        crate::macos_traffic_light_clearance(cx)
+        crate::blocks::title_bar::macos_traffic_light_clearance_in(height, cx)
     } else {
         px(SIDEBAR_CONTENT_INSET)
     }
