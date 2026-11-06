@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+set -euo pipefail
+port_dir=$(cd "$(dirname "$0")/.." && pwd)
+zz_dir=$(dirname "$port_dir")
+if [ -z "${MJ_CC:-}" ] && [ -x /usr/bin/clang ]; then export MJ_CC=/usr/bin/clang; fi
+if [ -z "${MJ_CXX:-}" ] && [ -x /usr/bin/clang++ ]; then export MJ_CXX=/usr/bin/clang++; fi
+action=${1:-run}
+shift || true
+if [ "$action" != run ] && [ "${ZZ_PORT_GUARDED:-0}" != 1 ]; then
+    exec python3 "$zz_dir/scripts/port/guard.py" bash "$0" "$action" "$@"
+fi
+mjui_dir=$(dirname "$zz_dir")/mjui
+mkdir -p "$zz_dir/target/port"
+export ZZ_BEND=${ZZ_BEND:-$zz_dir/target/port/zz-bend}
+cd "$mjui_dir"
+case "$action" in
+  build-app)
+    MJ_A11Y=0 MJUI_EXAMPLE_BUILD_ONLY=1 MJUI_EXAMPLE_OUT="$zz_dir/target/port/zz-mojo-app.next" bash scripts/run_example.sh "$port_dir/window.mojo"
+    mv "$zz_dir/target/port/zz-mojo-app.next" "$zz_dir/target/port/zz-mojo-app"
+    ;;
+  run)
+    python3 "$zz_dir/scripts/port/guard.py" bash "$port_dir/scripts/ui.sh" build-app
+    exec env -u ZZ_PORT_GUARDED -u ZZ_PORT_BUILD_LOCK_FD "$zz_dir/target/port/zz-mojo-app" "$@"
+    ;;
+  build-shot|shot)
+    pixi run bash -c 'mojo build --fp-mode=contract=off -I src -I "$1" $MJ_LINK -o "$2.next" "$1/screenshot.mojo"' _ "$port_dir" "$zz_dir/target/port/zz-mojo-shot"
+    mv "$zz_dir/target/port/zz-mojo-shot.next" "$zz_dir/target/port/zz-mojo-shot"
+    if [ "$action" = build-shot ]; then
+      exit 0
+    fi
+    if [ "$#" -lt 2 ]; then
+      echo "usage: ui.sh shot SOCKET OUTPUT.png" >&2
+      exit 2
+    fi
+    exec "$zz_dir/target/port/zz-mojo-shot" "$@"
+    ;;
+  test-painter|test-readiness)
+    probe=terminal_painter
+    if [ "$action" = test-readiness ]; then probe=readiness; fi
+    pixi run bash -c 'mojo build --fp-mode=contract=off -I src -I "$1" $MJ_LINK -o "$2" "$1/tests/test_$3.mojo"' _ "$port_dir" "$zz_dir/target/port/$probe-probe" "$probe"
+    exec "$zz_dir/target/port/$probe-probe"
+    ;;
+  *) exit 2 ;;
+esac

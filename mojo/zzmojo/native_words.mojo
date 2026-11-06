@@ -1,0 +1,109 @@
+from std.ffi import external_call
+from std.sys.info import CompilationTarget
+from .tree_codec import MAX_TREE_BYTES
+
+
+struct WordBuffer(Movable):
+    var fd: Int32
+    var path: String
+    var temporary: Bool
+    var chunk: List[UInt8]
+
+    def __init__(out self) raises:
+        self.fd = -1
+        self.path = String()
+        self.temporary = False
+        self.chunk = List[UInt8](length=65536, fill=0)
+        comptime if CompilationTarget.is_linux():
+            var name = String("zz-tree")
+            self.fd = external_call["memfd_create", Int32](name.unsafe_ptr(), UInt32(1))
+            _ = name
+            if self.fd < 0:
+                raise Error("cannot allocate anonymous tree storage")
+            self.path = String("/proc/", external_call["getpid", Int32](), "/fd/", self.fd)
+        else:
+            var name = String("/tmp/zz-tree-XXXXXX")
+            var bytes = List[UInt8]()
+            bytes.extend(name.as_bytes())
+            bytes.append(0)
+            self.fd = external_call["mkstemp", Int32](bytes.unsafe_ptr())
+            if self.fd < 0:
+                raise Error("cannot allocate private tree storage")
+            self.path = String(from_utf8=Span(bytes)[: len(bytes) - 1])
+            self.temporary = True
+            if external_call["fcntl", Int32](self.fd, Int32(2), Int32(1)) != 0:
+                _ = external_call["close", Int32](self.fd)
+                _ = external_call["unlink", Int32](self.path.unsafe_ptr())
+                self.fd = -1
+                self.temporary = False
+                raise Error("cannot protect tree storage inheritance")
+
+    def __deinit__(deinit self):
+        if self.fd >= 0:
+            _ = external_call["close", Int32](self.fd)
+        if self.temporary:
+            _ = external_call["unlink", Int32](self.path.unsafe_ptr())
+
+    def rewind(self) raises:
+        if external_call["lseek", Int](Int(self.fd), Int(0), Int(0)) != 0:
+            raise Error("cannot rewind tree storage")
+
+    def clear(self) raises:
+        if external_call["ftruncate", Int32](Int(self.fd), Int(0)) != 0:
+            raise Error("cannot clear tree storage")
+        self.rewind()
+
+    def store(mut self, words: List[UInt32]) raises:
+        if len(words) > MAX_TREE_BYTES // 4:
+            raise Error("normalized tree storage exceeds its byte limit")
+        if external_call["ftruncate", Int32](Int(self.fd), len(words) * 4) != 0:
+            raise Error("cannot size tree storage")
+        self.rewind()
+        var base = 0
+        while base < len(words):
+            var size = min(len(words) - base, 16384)
+            for index in range(size):
+                var word = words[base + index]
+                for byte in range(4):
+                    self.chunk[index * 4 + byte] = UInt8((word >> UInt32(byte * 8)) & 255)
+            var offset = 0
+            while offset < size * 4:
+                var count = external_call["write", Int](Int(self.fd), self.chunk.unsafe_ptr().unsafe_offset(offset), size * 4 - offset)
+                if count <= 0:
+                    raise Error("cannot write normalized tree storage")
+                offset += count
+            base += size
+
+    def load(mut self) raises -> List[UInt32]:
+        var length = external_call["lseek", Int](Int(self.fd), Int(0), Int(2))
+        if length < 0 or length > MAX_TREE_BYTES or length % 4 != 0:
+            raise Error("Bend returned an invalid normalized tree byte count")
+        self.rewind()
+        var words = List[UInt32](length=length // 4, fill=0)
+        var base = 0
+        while base < length:
+            var size = min(length - base, 65536)
+            var offset = 0
+            while offset < size:
+                var count = external_call["read", Int](Int(self.fd), self.chunk.unsafe_ptr().unsafe_offset(offset), size - offset)
+                if count <= 0:
+                    raise Error("cannot read normalized tree storage")
+                offset += count
+            for index in range(size // 4):
+                var word: UInt32 = 0
+                for byte in range(4):
+                    word |= UInt32(self.chunk[index * 4 + byte]) << UInt32(byte * 8)
+                words[base // 4 + index] = word
+            base += size
+        return words^
+
+
+struct WordBuffers(Movable):
+    var current: WordBuffer
+    var update: WordBuffer
+    var result: WordBuffer
+
+    def __init__(out self) raises:
+        self.current = WordBuffer()
+        self.update = WordBuffer()
+        self.result = WordBuffer()

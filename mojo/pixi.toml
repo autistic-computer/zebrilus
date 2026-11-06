@@ -1,0 +1,41 @@
+[workspace]
+authors = ["Fabricio Dematte <demfabris@gmail.com>"]
+channels = ["https://conda.modular.com/max", "conda-forge"]
+name = "zz-mojo"
+platforms = ["linux-64", "osx-arm64"]
+version = "0.1.0"
+
+[tasks]
+build = "python3 ../scripts/port/guard.py python3 scripts/build.py"
+test-protocol = "python3 ../scripts/port/guard.py mojo --fp-mode=contract=off -I . tests/test_protocol.mojo"
+test-terminal = "python3 ../scripts/port/guard.py mojo --fp-mode=contract=off -I . tests/test_terminal_view.mojo"
+test-bend-gate = "python3 ../scripts/port/guard.py mojo --fp-mode=contract=off -I . tests/test_bend_gate.mojo"
+test-painter = "bash scripts/ui.sh test-painter"
+test-readiness = "bash scripts/ui.sh test-readiness"
+differential-colors = "python3 scripts/terminal_color_vectors.py"
+differential-protocol = "python3 ../scripts/port/guard.py python3 scripts/protocol_vectors.py"
+differential-control = "python3 scripts/control_vectors.py"
+differential-tree = "python3 scripts/tree_vectors.py"
+test-tree-codec = "python3 ../scripts/port/guard.py mojo --fp-mode=contract=off -I . tests/test_tree_codec.mojo"
+differential-terminal = "python3 ../scripts/port/guard.py python3 scripts/terminal_codec_vectors.py"
+differential-layout = "python3 scripts/layout_vectors.py"
+differential-input = "python3 scripts/input_vectors.py"
+differential-client-events = "python3 scripts/client_event_vectors.py"
+differential-terminal-projection = "python3 scripts/terminal_projection_vectors.py"
+test = "python3 ../scripts/port/guard.py python3 scripts/test.py"
+smoke = { cmd = "python3 scripts/smoke.py", depends-on = ["build"] }
+stream-smoke = "python3 ../scripts/port/guard.py python3 scripts/native_stream.py"
+state-smoke = "python3 scripts/state_smoke.py"
+test-keyboard = "python3 ../scripts/port/guard.py mojo --fp-mode=contract=off -I . -I ../../mjui/src tests/test_keyboard_controller.mojo"
+keyboard-smoke = "python3 scripts/keyboard_smoke.py"
+test-pointer = "python3 ../scripts/port/guard.py mojo --fp-mode=contract=off -I . -I ../../mjui/src tests/test_pointer_controller.mojo"
+pointer-smoke = "python3 scripts/pointer_smoke.py"
+build-app = "bash scripts/ui.sh build-app"
+native-smoke = "python3 scripts/native_app.py"
+build-shot = "bash scripts/ui.sh build-shot"
+ui-smoke = { cmd = "python3 scripts/smoke.py --ui", depends-on = ["build", "build-shot"] }
+run = "bash scripts/ui.sh run"
+shot = "bash scripts/ui.sh shot"
+
+[dependencies]
+mojo = ">=1.1,<1.2"

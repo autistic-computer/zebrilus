@@ -72,6 +72,18 @@ The proofs concern the represented retained graph and exact arena references. Th
 
 The source-derived oracle has 662 cases: every operation individually, all 361 ordered operation pairs, 256 deterministic longer batches, and focused cases for base mismatch, rollback after earlier successful edits, duplicate IDs and unsorted window indices, pane map-key/payload-ID mismatch, dangling references, empty batches, and client focus. Both generated JavaScript and the native binary compare the complete result graph and exact error IDs. JavaScript additionally compares the fully resolved source snapshot bytes. Native malformed-packet cases assert that the existing output remains unchanged.
 
+## Mojo adapter
+
+`mojo/zzmojo/tree_codec.mojo` normalizes complete typed snapshots, all nineteen operations, ordinary deltas, overlays, and client views. `eligible_delta`, `eligible_overlay`, and `eligible_view` count the required words before allocating normalized words or arena entries. The combined live threshold is exactly 2 MiB. Callers can use their existing typed reducer above this threshold.
+
+The Mojo arena stores compact twenty-four-byte locators into the borrowed original snapshot or operation payloads. Each locator identifies its semantic group, source kind, operation index, session/window indices, and actual pane map key. An upsert points into its existing complete payload. A direct field edit points into that operation's fields. No whole pane map, window, layout, string, or terminal plane is copied into an arena entry. Reconstruction copies each selected metadata group into the final typed result after checking its reference index and semantic group.
+
+`TreeGate` owns three distinct reusable anonymous `WordBuffer` objects from `native_words.mojo`, with private temporary files on other supported targets. Words are explicitly encoded and decoded in little-endian order using fixed 64 KiB scratch buffers. The output is cleared before each request and is consumed only after the worker response. Result byte counts are checked against the explicit 64 MiB ceiling before allocation. Partial words, hostile collection counts, trailing data, invalid optional IDs, wrong semantic groups, invalid statuses, and invalid pane-map ordering reject the result.
+
+The public `TreeGate.delta`, `TreeGate.overlay`, and `TreeGate.view` methods take a mutable `BendGate` and immutable typed inputs. They call `BendGate.tree(mode, currentPath, updatePath, resultPath, timeout)` with an eight-second deadline. They return `TreeResult`, containing `status`, `expected`, `received`, `target`, and the complete reconstructed `snapshot`. `expected` and `received` carry the exact base-mismatch IDs; `target` carries an exact missing-target ID. Semantic rejection retains the original full snapshot. The response status must equal the status in the binary result packet.
+
+The source oracle emits the actual postcard update bytes as well as snapshots. `mojo/scripts/tree_vectors.py` decodes these into Mojo types and runs all 662 cases through both arena roundtrips and a persistent native worker. The roundtrip compares 1,140,431 complete original snapshot bytes; the native result compares 1,039,848 resulting snapshot bytes and all exact error IDs. Both phases pass. The standalone native batch took 1.884 seconds, and the complete guarded compilation and differential peaked at 461 MiB. Boundary tests verify exact 2 MiB eligibility and rejection of the next node, cross-group references, hostile counts, partial words, and results beyond the explicit 64 MiB ceiling; all three tests pass at a 254 MiB guarded peak.
+
 ## Resource measurements
 
 The native profile uses valid graphs with empty names and viewers, no windows, reverse session IDs, and a nonempty successful operation that forces the final sort. Its two distinct arena entries contain valid encodings of an empty name and empty viewers. The maximum graph's complete source snapshot remains below the protocol frame limit. Every resulting normalized output word was compared against its exact expected value.
@@ -103,4 +115,6 @@ python3 scripts/port/guard.py node bend2/tree_check.mjs
 python3 scripts/port/guard.py node bend2/tree_stress.mjs
 python3 scripts/port/guard.py python3 scripts/port/tree_check.py
 python3 scripts/port/guard.py python3 scripts/port/tree_check.py --profile --maximum-sessions 2396741
+python3 scripts/port/guard.py python3 mojo/scripts/tree_vectors.py --skip-reference
+python3 scripts/port/guard.py pixi run --manifest-path mojo/pixi.toml mojo --fp-mode=contract=off -I mojo mojo/tests/test_tree_codec.mojo
 ```

@@ -1,0 +1,454 @@
+from std.ffi import external_call
+from .transport import Connection, open_connection
+from .protocol import (
+    Response,
+    Decoder,
+    command_request,
+    decode_response,
+    validate_envelope,
+)
+from .stream_protocol import (
+    WELCOME,
+    BATCH,
+    EVENT,
+    SNAPSHOT,
+    TREE_DELTA,
+    CLIENT_VIEW,
+    PING,
+    interactive_hello,
+    decode_stream_frame,
+    request_full,
+    tree_sync,
+    pong,
+)
+from .tree_model import MuxSnapshot, ClientView
+from .tree_gate import TreeGate
+from .tree_codec import eligible_delta, eligible_view
+from .terminal_model import TerminalViewport, TerminalHistory
+from .terminal_wire import decode_terminal_frame
+from .input_protocol import InputRoutingState, decode_routing_event
+from .native_cells import MAX_BEND_CELLS
+from .client_events import (
+    ClientEventState,
+    ClientNotice,
+    ClientMessage,
+    decode_client_event,
+)
+
+comptime TERMINAL_CACHE_BYTES = 128 * 1024 * 1024
+comptime UNHANDLED_BYTES = 4 * 1024 * 1024
+
+
+@fieldwise_init
+struct _PollFd(TrivialRegisterPassable):
+    var fd: Int32
+    var events: Int16
+    var returned: Int16
+
+
+def readable(fd: Int32) raises -> Bool:
+    var descriptor = _PollFd(fd, 1, 0)
+    var count = external_call["poll", Int32](
+        Pointer(to=descriptor), UInt64(1), Int32(0)
+    )
+    if count < 0:
+        raise Error("interactive socket polling failed")
+    if count == 0:
+        return False
+    if descriptor.returned & 1 != 0:
+        return True
+    raise Error("interactive daemon disconnected")
+
+
+def viewport_bytes(viewport: TerminalViewport) -> Int:
+    return (
+        len(viewport.cells) * 8
+        + len(viewport.styles) * 16
+        + len(viewport.grapheme_offsets) * 4
+        + len(viewport.grapheme_bytes)
+        + len(viewport.metadata.overlays) * 8
+        + len(viewport.metadata.kitty) * 72
+    )
+
+
+struct StreamModel(Copyable, Movable):
+    var tree: MuxSnapshot
+    var view: ClientView
+    var snapshot: MuxSnapshot
+    var terminals: Dict[UInt64, TerminalViewport]
+    var histories: Dict[UInt64, TerminalHistory]
+    var events: ClientEventState
+    var notice: Optional[ClientNotice]
+    var notice_revision: UInt64
+    var message: Optional[ClientMessage]
+    var bend_cell_updates: UInt64
+    var bend_tree_updates: UInt64
+    var unhandled: List[List[UInt8]]
+    var unhandled_bytes: Int
+    var revision: UInt64
+    var routing: InputRoutingState
+
+    def __init__(out self):
+        self.tree = MuxSnapshot()
+        self.view = ClientView()
+        self.snapshot = MuxSnapshot()
+        self.terminals = Dict[UInt64, TerminalViewport]()
+        self.histories = Dict[UInt64, TerminalHistory]()
+        self.events = ClientEventState()
+        self.notice = None
+        self.notice_revision = 0
+        self.message = None
+        self.bend_cell_updates = 0
+        self.bend_tree_updates = 0
+        self.unhandled = List[List[UInt8]]()
+        self.unhandled_bytes = 0
+        self.revision = 0
+        self.routing = InputRoutingState()
+
+    def take_events(mut self) -> List[List[UInt8]]:
+        var events = self.unhandled^
+        self.unhandled = List[List[UInt8]]()
+        self.unhandled_bytes = 0
+        return events^
+
+
+struct InteractiveConnection(Movable):
+    var transport: Connection
+    var model: StreamModel
+    var full_pending: Dict[UInt64, Bool]
+    var tree_pending: Bool
+    var tree_dirty: Bool
+    var tree_received: Bool
+    var response: Optional[Response]
+    var waiting: Optional[UInt64]
+    var server_id: UInt64
+    var client_id: UInt64
+    var instance: UInt64
+    var capabilities: UInt64
+    var clock: UInt64
+    var tree_gate: Optional[TreeGate]
+
+    def __init__(out self, var transport: Connection):
+        self.transport = transport^
+        self.model = StreamModel()
+        self.full_pending = Dict[UInt64, Bool]()
+        self.tree_pending = False
+        self.tree_dirty = False
+        self.tree_received = False
+        self.response = None
+        self.waiting = None
+        self.server_id = 0
+        self.client_id = 0
+        self.instance = 0
+        self.capabilities = 0
+        self.clock = 0
+        self.tree_gate = None
+
+    def request_tree(mut self) raises:
+        if not self.tree_pending:
+            var frame = tree_sync()
+            self.transport.write(Span(frame))
+            self.tree_pending = True
+
+    def request_viewport(mut self, pane: UInt64) raises:
+        if pane not in self.full_pending:
+            var frame = request_full(pane)
+            self.transport.write(Span(frame))
+            self.full_pending[pane] = True
+
+    def materialize(mut self) raises:
+        if not self.tree_dirty:
+            return
+        var snapshot = MuxSnapshot()
+        if eligible_view(self.model.tree, self.model.view):
+            if not self.tree_gate:
+                self.tree_gate = TreeGate()
+            var result = self.tree_gate.value().view(
+                self.transport.gate, self.model.tree, self.model.view
+            )
+            if result.status != 0:
+                self.request_tree()
+                return
+            swap(snapshot, result.snapshot)
+            self.model.bend_tree_updates += 1
+        else:
+            snapshot = self.model.tree.copy()
+            try:
+                self.model.view.apply(snapshot)
+            except:
+                self.request_tree()
+                return
+        self.model.snapshot = snapshot^
+        var live = Dict[UInt64, Bool]()
+        for session in self.model.snapshot.sessions:
+            for window in session.windows:
+                for pane in window.panes:
+                    live[pane] = True
+        var retired = List[UInt64]()
+        for pane in self.model.terminals:
+            if pane not in live:
+                retired.append(pane)
+        for pane in retired:
+            _ = self.model.terminals.pop(pane)
+        retired.clear()
+        for pane in self.full_pending:
+            if pane not in live:
+                retired.append(pane)
+        for pane in retired:
+            _ = self.full_pending.pop(pane)
+        retired.clear()
+        for pane in self.model.histories:
+            if pane not in live:
+                retired.append(pane)
+        for pane in retired:
+            _ = self.model.histories.pop(pane)
+        if (
+            self.model.events.output.pane
+            and self.model.events.output.pane.value() not in live
+        ):
+            self.model.events.output.clear()
+        self.tree_dirty = False
+
+    def _retain(mut self, var frame: List[UInt8]) raises:
+        if len(frame) > UNHANDLED_BYTES - self.model.unhandled_bytes:
+            raise Error(
+                "unhandled interactive events exceed their memory limit"
+            )
+        self.model.unhandled_bytes += len(frame)
+        self.model.unhandled.append(frame^)
+
+    def _check_terminal_budget(self) raises:
+        var size = 0
+        for entry in self.model.terminals.items():
+            size += viewport_bytes(entry.value)
+        if self.model.events.output.viewport:
+            size += viewport_bytes(self.model.events.output.viewport.value())
+        for entry in self.model.histories.items():
+            size += (
+                len(entry.value.cells) * 8
+                + len(entry.value.styles) * 16
+                + len(entry.value.grapheme_offsets) * 4
+                + len(entry.value.grapheme_bytes)
+            )
+        if size > TERMINAL_CACHE_BYTES:
+            raise Error("retained terminal data exceeds its memory limit")
+
+    @inline(.never)
+    def consume(mut self, var frame: List[UInt8], nested: Bool = False) raises:
+        if self.transport.gate.validate(Span(frame)) != 0:
+            raise Error("Bend rejected an interactive frame")
+        if validate_envelope(Span(frame)) == 1:
+            var update = decode_terminal_frame(frame^)
+            if update.kind == 0:
+                if not update.viewport:
+                    raise Error("full terminal frame contains no viewport")
+                self.model.terminals[
+                    update.pane
+                ] = update.viewport.value().copy()
+                if update.pane in self.full_pending:
+                    _ = self.full_pending.pop(update.pane)
+            elif update.kind == 1:
+                if update.pane not in self.model.terminals or not update.patch:
+                    self.request_viewport(update.pane)
+                else:
+                    ref retained = self.model.terminals[update.pane]
+                    ref patch = update.patch.value()
+                    var valid = True
+                    try:
+                        _ = retained.validate_patch(patch)
+                    except:
+                        valid = False
+                    if valid:
+                        if (len(patch.spans) > 0 or patch.scroll != 0) and len(
+                            retained.cells
+                        ) <= MAX_BEND_CELLS:
+                            var cells = self.transport.gate.cells(
+                                retained, patch
+                            )
+                            retained.apply_verified_cells(patch, cells^)
+                            self.model.bend_cell_updates += 1
+                        else:
+                            if (
+                                self.transport.gate.terminal(retained, patch)
+                                != 0
+                            ):
+                                raise Error(
+                                    "Bend rejected a validated terminal patch"
+                                )
+                            retained.apply(patch)
+                    else:
+                        _ = self.model.terminals.pop(update.pane)
+                        self.request_viewport(update.pane)
+            elif update.kind == 2:
+                self.model.events.output.apply_terminal(update)
+            elif update.kind == 3:
+                if not update.history:
+                    raise Error("history frame contains no history")
+                self.model.histories[
+                    update.pane
+                ] = update.history.value().copy()
+            self._check_terminal_budget()
+            self.model.revision += 1
+            return
+        var reader = Decoder(frame.copy())
+        if reader.uint() == 3:
+            var response = decode_response(frame^)
+            if (
+                not self.waiting
+                or response.request != self.waiting.value()
+                or self.response
+            ):
+                raise Error("unexpected interactive command response")
+            self.response = response^
+            return
+        var event = decode_stream_frame(frame^)
+        if event.kind == BATCH:
+            if nested:
+                raise Error("nested protocol batches are forbidden")
+            for item in event.batch:
+                self.consume(item.copy(), True)
+            self.materialize()
+            return
+        if event.kind == WELCOME:
+            self.server_id = event.server_id
+            self.client_id = event.client_id
+            self.instance = event.instance
+            self.capabilities = event.capabilities
+            self.clock = event.clock
+        elif event.kind == PING:
+            var reply = pong(event.ping_token)
+            self.transport.write(Span(reply))
+        elif event.snapshot:
+            self.model.tree = event.snapshot.value().copy()
+            self.tree_received = True
+            if self.model.view.attachment_generation == 0:
+                self.model.view.focused_window = self.model.tree.focused_window
+            self.tree_pending = False
+            self.tree_dirty = True
+            self.full_pending.clear()
+        elif event.delta:
+            if self.tree_pending:
+                self.request_tree()
+            else:
+                if eligible_delta(self.model.tree, event.delta.value()):
+                    if not self.tree_gate:
+                        self.tree_gate = TreeGate()
+                    var result = self.tree_gate.value().delta(
+                        self.transport.gate,
+                        self.model.tree,
+                        event.delta.value(),
+                    )
+                    if result.status == 0:
+                        swap(self.model.tree, result.snapshot)
+                        self.model.bend_tree_updates += 1
+                        self.tree_dirty = True
+                    else:
+                        self.request_tree()
+                else:
+                    try:
+                        self.model.tree.apply(event.delta.value())
+                        self.tree_dirty = True
+                    except:
+                        self.request_tree()
+        elif event.view:
+            var view = event.view.value().copy()
+            if (
+                view.session != self.model.view.session
+                or view.attachment_generation
+                != self.model.view.attachment_generation
+            ):
+                self.model.terminals.clear()
+                self.model.histories.clear()
+                self.model.events.output.clear()
+                self.full_pending.clear()
+            self.model.view = view^
+            self.tree_dirty = True
+        else:
+            var routing = decode_routing_event(event.raw.copy())
+            if routing:
+                self.model.routing.apply(routing.value())
+            else:
+                var client_event = decode_client_event(event.raw.copy())
+                if client_event:
+                    var notice = self.model.events.apply(client_event.value())
+                    if notice:
+                        if notice.value().message:
+                            self.model.message = notice.value().message.copy()
+                        elif (
+                            notice.value().cleared
+                            and self.model.message
+                            and self.model.message.value().message_id
+                            == notice.value().cleared
+                        ):
+                            self.model.message = None
+                        self.model.notice = notice^
+                        self.model.notice_revision += 1
+                    self._check_terminal_budget()
+                else:
+                    var retained = event.raw^
+                    event.raw = List[UInt8]()
+                    self._retain(retained^)
+        if not nested:
+            self.materialize()
+        self.model.revision += 1
+
+    def drain(mut self, limit: Int = 256) raises:
+        for _ in range(limit):
+            if not readable(self.transport.fd):
+                break
+            self.consume(self.transport.read_frame())
+
+    def command(
+        mut self, name: String, args: Span[String, _]
+    ) raises -> Response:
+        if self.waiting:
+            raise Error("interactive command is already in flight")
+        var request = self.transport.next_request
+        if request == UInt64.MAX:
+            raise Error("request identifiers exhausted")
+        self.transport.next_request += 1
+        self.waiting = request
+        var frame = command_request(request, name, args)
+        self.transport.write(Span(frame))
+        for _ in range(4096):
+            self.consume(self.transport.read_frame())
+            if self.response:
+                var response = self.response.value().copy()
+                self.response = None
+                self.waiting = None
+                return response^
+        raise Error("interactive command received too many unrelated frames")
+
+
+def connect_interactive(
+    path: String,
+    session: String,
+    columns: UInt16 = 80,
+    rows: UInt16 = 24,
+    cell_width_px: UInt32 = 8,
+    cell_height_px: UInt32 = 16,
+) raises -> InteractiveConnection:
+    var stream = InteractiveConnection(open_connection(path))
+    var process = external_call["getpid", UInt32]()
+    var instance = UInt64(process)
+    var hello = interactive_hello(
+        instance,
+        process,
+        session,
+        columns,
+        rows,
+        cell_width_px,
+        cell_height_px,
+        options=(UInt64(1) << 21) - 1,
+        viewport=False,
+    )
+    stream.transport.write(Span(hello))
+    stream.consume(stream.transport.read_frame())
+    if stream.instance != instance:
+        raise Error("interactive welcome identity mismatch")
+    for _ in range(4096):
+        if stream.tree_received:
+            return stream^
+        var initial = stream.transport.read_frame()
+        stream.consume(initial^)
+    raise Error("interactive initialization did not supply its tree")
