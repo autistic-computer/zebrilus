@@ -86,7 +86,6 @@ impl TryFrom<f32> for Smoothing {
 pub enum Highlight {
     None,
     Tint,
-    Lift,
     Accent,
     Ring,
     Bar,
@@ -347,7 +346,7 @@ impl Kind {
                 shape: Shape::Square,
                 ..style(Fill::None, true, Shadow::None, H::None, H::None)
             },
-            Self::Pane => style(Fill::None, false, Shadow::None, H::None, H::Ring),
+            Self::Pane => style(Fill::Glass, false, Shadow::None, H::None, H::Ring),
             Self::Card => style(Fill::Solid, false, Shadow::None, H::None, H::Ring),
             Self::Floating => style(Fill::Glass, false, Shadow::Float, H::None, H::None),
             Self::Button => style(Fill::Tint, false, Shadow::None, H::Tint, H::Tint),
@@ -1024,11 +1023,14 @@ impl Theme {
             && super::roles::FLOATING_CHIPS
                 .iter()
                 .any(|chip| chip.id == surface.role.id);
+        let pane = kind == Kind::Pane;
         let mut glass = match style.fill {
+            Fill::Glass if pane && self.pane_margin <= px(0.0) => None,
             Fill::Glass if !ground.glass && !opaque => self.drawn_glass(),
             _ => None,
         };
         let fill = match style.fill {
+            Fill::Glass if pane => Fill::None,
             Fill::Glass if opaque => Fill::Solid,
             Fill::Glass if ground.glass => Fill::Tint,
             Fill::Glass if glass.is_none() => Fill::Solid,
@@ -1098,33 +1100,25 @@ impl Theme {
             _ => Highlight::None,
         };
         let highlight = match highlight {
-            Highlight::Glass if glass.is_some() || ground.glass => Highlight::Tint,
-            Highlight::Glass if self.drawn_glass().is_none() => Highlight::Lift,
-            Highlight::Accent if tone == Tone::Neutral && !self.tinted() => Highlight::Tint,
+            Highlight::Glass if glass.is_some() || ground.glass || self.drawn_glass().is_none() => {
+                Highlight::Accent
+            }
             highlight => highlight,
         };
-        let flattened = highlight == Highlight::Lift;
-        let highlight = if flattened {
-            Highlight::Tint
-        } else {
-            highlight
+        let highlight = match highlight {
+            Highlight::Accent if tone == Tone::Neutral && !self.tinted() => Highlight::Tint,
+            highlight => highlight,
         };
         if highlight == Highlight::Glass {
             glass = self.drawn_glass();
         }
-        let washed = |paint: &super::Paint| {
-            let step = (paint.current.a - paint.hover.a).max(0.0);
-            let deeper = |wash: Hsla| wash.alpha((wash.a + step).min(1.0));
-            match (state, flattened) {
-                (PaintState::Hover, false) => paint.hover,
-                (PaintState::Active, false) | (PaintState::Hover, true) => paint.active,
-                (PaintState::Active, true) => deeper(paint.active),
-                (_, false) => paint.current,
-                (_, true) => deeper(paint.current),
-            }
+        let washed = |paint: &super::Paint| match state {
+            PaintState::Hover => paint.hover,
+            PaintState::Active => paint.active,
+            _ => paint.current,
         };
         let (mut fill_color, mut text) = match highlight {
-            Highlight::Tint | Highlight::Lift => (
+            Highlight::Tint => (
                 super::color::toward(paint.fill, washed(&paint), HIGHLIGHT_STRENGTH),
                 paint.text,
             ),
@@ -1239,6 +1233,14 @@ impl Theme {
             });
         }
         let glass = glass.map(|material| {
+            if pane {
+                return material
+                    .blur(px(0.0))
+                    .refraction(px(0.0))
+                    .dispersion(0.0)
+                    .tint(ground.fill)
+                    .fallback(ground.fill);
+            }
             let tint = if surface.prominent {
                 self.tone(tone).opaque()
             } else {
@@ -1280,7 +1282,7 @@ impl Theme {
                 } else {
                     ground.elevation.max(kind.elevation())
                 },
-                glass: ground.glass || glass.is_some(),
+                glass: ground.glass || (glass.is_some() && !pane),
                 solid: ground.solid || solid_fill,
             },
             glass,
@@ -1456,6 +1458,48 @@ mod tests {
         let nested = theme.layer(Surface::new(popover).on(frosted.ground), PaintState::Rest);
         assert!(nested.glass.is_none());
         assert!(nested.fill.a < 1.0);
+    }
+
+    #[test]
+    fn chrome_items_select_as_glass_and_gapped_panes_take_the_rim() {
+        let mut theme = theme();
+        theme.primary = PrimaryStyle::Accent;
+        theme.glass = Some(GlassMaterial::frosted());
+        let chrome = [
+            super::super::roles::SIDEBAR_ROW,
+            super::super::roles::ROW_NAV,
+            super::super::roles::TAB_WINDOW,
+            super::super::roles::TAB_PAGE,
+        ];
+        for role in chrome {
+            let selected = theme.layer(Surface::new(role), PaintState::Selected);
+            assert!(selected.glass.is_some(), "{}", role.id);
+            assert!(
+                selected.ground.glass && !selected.ground.solid,
+                "{}",
+                role.id
+            );
+        }
+        let pane = Surface::new(Kind::Pane.role());
+        assert!(theme.layer(pane, PaintState::Rest).glass.is_none());
+        theme.pane_margin = px(8.0);
+        let gapped = theme.layer(pane, PaintState::Rest);
+        let rim = gapped.glass.expect("a pane with gaps is glass");
+        assert_eq!(
+            (rim.blur, rim.refraction, rim.tint),
+            (px(0.0), px(0.0), theme.ground().fill)
+        );
+        assert!(!gapped.ground.glass);
+
+        theme.glass = None;
+        let lit = theme.paint_on(theme.ground(), Tone::Primary, Emphasis::Solid);
+        for role in chrome {
+            let selected = theme.layer(Surface::new(role), PaintState::Selected);
+            assert!(selected.glass.is_none(), "{}", role.id);
+            assert_eq!(selected.fill, lit.fill, "{}", role.id);
+            assert!(selected.ground.solid, "{}", role.id);
+        }
+        assert!(theme.layer(pane, PaintState::Rest).glass.is_none());
     }
 
     #[test]

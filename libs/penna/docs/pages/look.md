@@ -82,7 +82,7 @@ Drawn at `radius` 24, where the curve shows.
 
 ## Glass
 
-Glass is for what floats over content: menus, popovers, tooltips, toasts. `none` draws the popover fill, `frosted` blurs what is under it, and `liquid` also bends it at the rim.
+Glass is for what sits over something: what floats over the content (menus, popovers, tooltips, toasts, a button over a transcript), panes when they have gaps, and the selected row or tab in a sidebar or title bar. `none` draws the popover fill, `frosted` blurs what is under it, and `liquid` also bends it at the rim.
 
 ```figure uses=menu
 <div class="docs-show" data-gap="wide">
@@ -97,7 +97,7 @@ Text on any glass reads at 4.5:1 over the worst content, and Reduce transparency
 ```figure uses=menu
 <div class="docs-dodont">
   <figure data-verdict="do"><div class="docs-dodont-panel"><i class="docs-mark" data-icon="circle-check"></i><div class="penna-popup" data-penna="popover"><div class="penna-popup-items" role="menu"><div class="penna-popup-row" data-penna="menu-item" data-kind="item" role="menuitem"><span class="penna-popup-main"><span class="penna-label" data-penna-text>Split right</span></span></div><div class="penna-popup-row" data-penna="menu-item" data-kind="item" role="menuitem"><span class="penna-popup-main"><span class="penna-label" data-penna-text>Close pane</span></span></div></div></div></div><figcaption>Glass on what floats</figcaption></figure>
-  <figure data-verdict="dont"><div class="docs-dodont-panel"><i class="docs-mark" data-icon="circle-x"></i><div class="penna-card" data-penna="card" style="padding: var(--penna-inset-card); background: color-mix(in srgb, var(--penna-popover) 70%, transparent); backdrop-filter: var(--penna-glass-backdrop)"><span class="penna-type" data-type="small" data-penna-text>build · cargo test</span></div></div><figcaption>Don't make a card, pane or control glass</figcaption></figure>
+  <figure data-verdict="dont"><div class="docs-dodont-panel"><i class="docs-mark" data-icon="circle-x"></i><div class="penna-card" data-penna="card" style="padding: var(--penna-inset-card); background: color-mix(in srgb, var(--penna-popover) 70%, transparent); backdrop-filter: var(--penna-glass-backdrop)"><span class="penna-type" data-type="small" data-penna-text>build · cargo test</span></div></div><figcaption>Don't make a card, or a control in content, glass</figcaption></figure>
 </div>
 ```
 
@@ -108,12 +108,17 @@ The same in every app, in Appearance.
 | Knob | Does |
 | --- | --- |
 | Mode | System, light or dark, unless the app locks it |
+| Theme | The app's theme, a preset, or one you saved |
 | Accent | Replaces the app's tint |
+| Tint, Tint strength | Replace the neutral's hue and amount |
 | Text size | The root size; everything scales with it |
 | Density | Compact, regular or comfortable rows and controls |
+| Corner radius | Replaces the radius |
+| UI font | Replaces the face |
 | Increase contrast | A hairline on every surface and control; muted text closer to the ink |
 | Reduce transparency | Glass draws as the popover fill |
 | Reduce motion | Turns animation off |
+| Animation speed | Scales every animation, 0.25 to 2 |
 
 ## Presets
 

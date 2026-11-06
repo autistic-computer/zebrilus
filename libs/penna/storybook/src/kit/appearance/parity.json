@@ -49,14 +49,9 @@
       "key": "Home"
     },
     {
-      "name": "click-contrast",
+      "name": "toggle-contrast",
       "section": "narrow",
-      "click": "settings-contrast"
-    },
-    {
-      "name": "home-contrast",
-      "section": "narrow",
-      "key": "Home"
+      "click": "settings-increase-contrast"
     },
     {
       "name": "hover-theme",
@@ -123,9 +118,9 @@
       "keep": true
     },
     {
-      "name": "toggle-animations",
+      "name": "toggle-motion",
       "section": "page",
-      "click": "settings-animations"
+      "click": "settings-reduce-motion"
     }
   ]
 }

@@ -390,6 +390,17 @@ function wireDisclosure(frame) {
   });
 }
 
+function wireMotion(frame) {
+  frame.querySelectorAll('[data-id="settings-reduce-motion"]').forEach((toggle) => {
+    if (toggle.appearanceMotion) return;
+    toggle.appearanceMotion = true;
+    toggle.addEventListener("change", (event) => {
+      const speed = toggle.closest(".appearance-run")?.querySelector('[data-id="settings-animation-speed"]');
+      speed?.closest(".appearance-entry")?.setAttribute("aria-disabled", String(event.detail.checked));
+    });
+  });
+}
+
 function settleAppearance() {
   document.querySelectorAll(".appearance-frame").forEach((frame) => {
     pickMode(frame);
@@ -398,6 +409,7 @@ function settleAppearance() {
     wireCustom(frame);
     wireTheme(frame);
     wireDisclosure(frame);
+    wireMotion(frame);
     pennaKit.ceilText(frame);
     settleSliders(frame);
     shapeSwatches(frame);

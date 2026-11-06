@@ -45,7 +45,7 @@ pub const SIDEBAR_ROW: SurfaceRole = SurfaceRole::under(
     "Sidebar rows",
     "Rows in the sidebar, and the Settings sections",
 )
-.with(P.ink(Ink::Rest));
+.with(P.ink(Ink::Rest).selected(Highlight::Glass));
 pub const SETTINGS_CARD: SurfaceRole = SurfaceRole::new(
     "settings.card",
     Kind::Card,
@@ -167,13 +167,14 @@ pub const TAB_WINDOW: SurfaceRole = SurfaceRole::under(
     "Window tabs",
     "One pill per window in the title bar",
 )
-.with(P.ink(Ink::Rest));
+.with(P.ink(Ink::Rest).selected(Highlight::Glass));
 pub const TAB_PAGE: SurfaceRole = SurfaceRole::under(
     &SurfaceRole::TAB,
     "tab.page",
     "Browser tabs",
     "Tabs in a browser pane",
-);
+)
+.with(P.selected(Highlight::Glass));
 pub const TAB_TRAY: SurfaceRole = SurfaceRole::under(
     &SurfaceRole::TAB,
     "tab.tray",
@@ -223,7 +224,7 @@ pub const ROW_NAV: SurfaceRole = SurfaceRole::under(
     "Sidebar entries",
     "Two-line window rows in the flat sidebar",
 )
-.with(P.ink(Ink::Rest));
+.with(P.ink(Ink::Rest).selected(Highlight::Glass));
 pub const ROW_CURSOR: SurfaceRole = SurfaceRole::under(
     &SurfaceRole::ROW,
     "row.cursor",
@@ -264,7 +265,7 @@ pub const ICON_BUTTON_FLOATING: SurfaceRole = SurfaceRole::under(
     "Jump to latest",
     "The button over the transcript that scrolls to the end",
 )
-.with(P.fill(Fill::Solid));
+.with(P.fill(Fill::Glass).shadow(Shadow::Float));
 pub const BUTTON_SEND: SurfaceRole = SurfaceRole::new(
     "button.send",
     Kind::Button,

@@ -604,6 +604,8 @@ impl ThemeOverrides {
     }
 }
 
+pub const INCREASED_CONTRAST: f32 = 1.5;
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Appearance {

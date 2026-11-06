@@ -1,6 +1,6 @@
 use penna::blocks::appearance::{
-    SWATCH, THEME_MODES, ThemePicks, accent_swatches, contrast_slider, corner_radius_slider,
-    picker_tile, theme_mode_control, theme_picker, theme_preview, tint_hue_slider, tint_slider,
+    SWATCH, THEME_MODES, ThemePicks, accent_swatches, corner_radius_slider, picker_tile,
+    theme_mode_control, theme_picker, theme_preview, tint_hue_slider, tint_slider,
 };
 use std::cell::Cell;
 use std::sync::Arc;
@@ -256,11 +256,12 @@ impl AppWindow {
                                     cx,
                                 )),
                             )
-                            .child(SettingEntry::new("Contrast").control(contrast_slider(
-                                knobs.contrast,
-                                |_, _, _| {},
-                                cx,
-                            ))),
+                            .child(
+                                SettingEntry::new("Increase contrast").control(
+                                    Switch::new("creator-increase-contrast")
+                                        .checked(knobs.contrast > 1.0),
+                                ),
+                            ),
                     ),
             )
             .into_any_element()

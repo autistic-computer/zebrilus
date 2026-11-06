@@ -110,6 +110,11 @@
   padding: var(--penna-inset-card);
 }
 
+.appearance-entry[aria-disabled="true"] > * {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
 .appearance-row {
   display: flex;
   align-items: center;

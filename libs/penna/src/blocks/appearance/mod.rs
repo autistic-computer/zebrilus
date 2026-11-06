@@ -7,8 +7,8 @@ use crate::components::select::{Select, SelectEvent, SelectItem as _, SelectStat
 use crate::components::slider::Slider;
 use crate::components::switch::Switch;
 use crate::foundation::interface_theme::{
-    ACCENTS, Appearance, AppearanceChange, InterfaceTheme, MAX_CORNER_RADIUS, SavedThemes,
-    ThemeOverrides,
+    ACCENTS, Appearance, AppearanceChange, INCREASED_CONTRAST, InterfaceTheme, MAX_CORNER_RADIUS,
+    SavedThemes, ThemeOverrides,
 };
 use crate::{
     ActiveTheme as _, AuthoredElement as _, Colorize as _, Density, IconName, Space,
@@ -60,13 +60,13 @@ pub enum AppearancePageItem<T = Infallible> {
     Tint,
     Themes,
     Advanced { expanded: bool },
-    CornerRadius,
-    ChromeContrast,
-    ReduceTransparency,
-    UiFontFamily,
-    UiZoom,
+    TextSize,
     Density,
-    Animations,
+    CornerRadius,
+    UiFontFamily,
+    IncreaseContrast,
+    ReduceTransparency,
+    ReduceMotion,
     AnimationSpeed,
     App(T),
 }
@@ -87,13 +87,13 @@ impl<T: Copy> AppearancePageItem<T> {
             Self::Tint => "Tint strength",
             Self::Themes => "Theme",
             Self::CornerRadius => "Corner radius",
-            Self::ChromeContrast => "Contrast",
+            Self::IncreaseContrast => "Increase contrast",
             Self::ReduceTransparency => "Reduce transparency",
             Self::AnimationSpeed => "Animation speed",
             Self::UiFontFamily => "UI font",
-            Self::UiZoom => "UI zoom",
+            Self::TextSize => "Text size",
             Self::Density => "Density",
-            Self::Animations => "Animations",
+            Self::ReduceMotion => "Reduce motion",
             Self::Title | Self::Group { .. } | Self::Advanced { .. } | Self::App(_) => return None,
         })
     }
@@ -114,13 +114,13 @@ pub fn appearance_page_items<T>(advanced: bool) -> Vec<AppearancePageItem<T>> {
         return items;
     }
     items.extend([
-        AppearancePageItem::CornerRadius,
-        AppearancePageItem::ChromeContrast,
-        AppearancePageItem::ReduceTransparency,
-        AppearancePageItem::UiFontFamily,
-        AppearancePageItem::UiZoom,
+        AppearancePageItem::TextSize,
         AppearancePageItem::Density,
-        AppearancePageItem::Animations,
+        AppearancePageItem::CornerRadius,
+        AppearancePageItem::UiFontFamily,
+        AppearancePageItem::IncreaseContrast,
+        AppearancePageItem::ReduceTransparency,
+        AppearancePageItem::ReduceMotion,
         AppearancePageItem::AnimationSpeed,
     ]);
     items
@@ -484,25 +484,6 @@ pub fn corner_radius_slider(
     )
 }
 
-pub fn contrast_slider(
-    contrast: f32,
-    on_change: impl Fn(f32, &mut Window, &mut App) + 'static,
-    cx: &App,
-) -> ala::Div {
-    value_slider(
-        Slider::new(
-            "settings-contrast",
-            "Contrast",
-            contrast,
-            1.0..=2.0,
-            on_change,
-        )
-        .step(0.05)
-        .display(|contrast| format!("{:.0}%", contrast * 100.0).into()),
-        cx,
-    )
-}
-
 pub fn animation_speed_slider(
     speed: f32,
     on_change: impl Fn(f32, &mut Window, &mut App) + 'static,
@@ -540,7 +521,7 @@ pub fn zoom_slider(
     cx: &App,
 ) -> ala::Div {
     value_slider(
-        percent("settings-zoom", "UI zoom", value, on_change)
+        percent("settings-zoom", "Text size", value, on_change)
             .commit_on_release()
             .track_focus(focus),
         cx,
@@ -890,14 +871,14 @@ pub fn kit_row<T: Copy>(
             );
             placed(entry, slider, stacked)
         }
-        AppearancePageItem::ChromeContrast => {
-            let slider = contrast_slider(
-                appearance.contrast,
-                controls.change(AppearanceChange::Contrast),
-                cx,
-            );
-            placed(entry, slider, stacked)
-        }
+        AppearancePageItem::IncreaseContrast => entry.control(
+            Switch::new("settings-increase-contrast")
+                .checked(appearance.contrast > 1.0)
+                .on_click(move |increase, window, cx| {
+                    let contrast = if *increase { INCREASED_CONTRAST } else { 1.0 };
+                    on_change(AppearanceChange::Contrast(contrast), window, cx);
+                }),
+        ),
         AppearancePageItem::ReduceTransparency => entry.control(
             Switch::new("settings-reduce-transparency")
                 .checked(appearance.reduce_transparency)
@@ -916,7 +897,7 @@ pub fn kit_row<T: Copy>(
                 ),
             )
         }
-        AppearancePageItem::UiZoom => {
+        AppearancePageItem::TextSize => {
             let slider = zoom_slider(
                 appearance.zoom,
                 &controls.zoom,
@@ -939,11 +920,11 @@ pub fn kit_row<T: Copy>(
                 entry.control(control)
             }
         }
-        AppearancePageItem::Animations => entry.control(
-            Switch::new("settings-animations")
-                .checked(appearance.animations)
-                .on_click(move |animations, window, cx| {
-                    on_change(AppearanceChange::Animations(*animations), window, cx);
+        AppearancePageItem::ReduceMotion => entry.control(
+            Switch::new("settings-reduce-motion")
+                .checked(!appearance.animations)
+                .on_click(move |reduce, window, cx| {
+                    on_change(AppearanceChange::Animations(!*reduce), window, cx);
                 }),
         ),
         AppearancePageItem::AnimationSpeed => {
@@ -952,7 +933,7 @@ pub fn kit_row<T: Copy>(
                 controls.change(AppearanceChange::AnimationSpeed),
                 cx,
             );
-            placed(entry, slider, stacked)
+            placed(entry.disabled(!appearance.animations), slider, stacked)
         }
         AppearancePageItem::Title
         | AppearancePageItem::Group { .. }

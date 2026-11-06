@@ -192,27 +192,29 @@ Contrast (WCAG 2, built in step 8): in light and dark, for every tint, accent an
 
 ## Look
 
-penna has one look, and every app and person adjusts it through a few knobs. The look is calm and flat: steps of fill carry the structure, so a dense screen holds few lines, and the only thing that floats is what sits over the content. Apps differ by their tint, their corners, their glass and their content (Tiles, Cards, display text), the way apps on one platform share their controls and differ in color and content. The values below are the look with the default knobs; `themes/default.json` and `web/tokens/default-*.css` carry them.
+penna has one look, and every app and person adjusts it through a few knobs. The look is calm and flat: steps of fill carry the structure, so a dense screen holds few lines, the only thing that floats is what sits over the content, and glass marks what sits over something (Glass, below). Apps differ by their tint, their corners, their glass and their content (Tiles, Cards, display text), the way apps on one platform share their controls and differ in color and content. The values below are the look with the default knobs; `themes/default.json` and `web/tokens/default-*.css` carry them.
 
 How each kind draws, at rest and under the pointer:
 
 | Kind | Rest | Hover, pressed | Selected, current |
 |---|---|---|---|
 | Bar, panel | no fill; a panel takes `panel` | | |
-| Pane | the ground, no edge, no shadow | | ring |
+| Pane | the ground, no edge, no shadow; glass when panes have gaps | | ring |
 | Card | one step of fill above its ground, no edge, no shadow | | ring |
-| Floating (menus, popovers, tooltips, dialogs, toasts, palettes) | glass, or the `popover` fill when glass is off; `shadow-float`; no edge | | |
+| Floating (menus, popovers, tooltips, dialogs, toasts, palettes, buttons over the content) | glass, or the `popover` fill when glass is off; `shadow-float`; no edge | | |
 | Button | a wash of the ink, no edge, no shadow; primary is a solid `primary` fill | a deeper wash | a deeper wash |
 | Quiet button, icon button, menu row | no fill | a wash | the highlight |
-| Item (rows, tabs, sidebar rows) | no fill | a wash | the highlight |
+| Item (list, menu and tree rows, tabs in content) | no fill | a wash | the highlight |
+| Chrome item (sidebar rows and entries, window and page tabs) | no fill | a wash | glass |
 | Field | a wash of the ink, no edge | a deeper wash | while typing, an edge in the ink |
 | Label (badge, keycap) | a soft wash in its tone, no edge | | |
 | Rule | a hairline in `divider` | | |
 
 - The highlight on a selected row is a wash of the ink while the tint is the ink, and the tint's solid fill once a tint is set. A toned row's highlight is its tone's solid fill in every look.
 - On that solid fill everything in the row takes the selected ink: label, muted text, icons, and a toned chip or badge, which draws as a wash of the selected ink in place of its tone. The word still says the status (Content). Natively the row hands its fill to its children as their ground (`.on(ground)`, with `cx.theme().ground_at(look, state)`); in HTML a row with `data-state~="selected"` or `"current"` and a solid highlight sets the ground inside it.
+- A chrome item draws its selection as glass, a pill of the material over its bar or sidebar: the item's soft wash is the tint, at the material's opacity, under the material's rim and light. The chrome items are sidebar rows (`sidebar.row`, the Settings sections too), the flat sidebar's entries (`row.nav`), window tabs in the title bar (`tab.window`) and a browser's page tabs (`tab.page`). Glass is neutral, so the item keeps the window's ink and hands its children a glass ground, not a solid one. Where glass can't draw (glass `none`, Reduce transparency, or a glass ground under the item) it takes the highlight like any row.
 - The rule is one for every solid ground, whatever its color, so a graphite tint or a primary row in the ink counts as much as blue: the tint's or a tone's solid fill under a selected or current row, and a prominent surface (a solid button, chip or badge). Natively the ground says so (`Ground::solid`: a layer's when it sits on a solid ground, its highlight is the solid fill, or it is prominent and not glass; a paint's when its ground is solid or its fill in that state is more than half opaque). There every tone but a solid one reads as neutral, and muted ink is the ink itself; faint keeps its mix toward the fill. A solid chip or badge keeps its tone, since its own fill carries its label. A status dot turns to the muted ink with the rest, and a dot on a solid chip takes the chip's ink.
-- In HTML the tokens write one scope per solid ground, listing every role whose selected or current highlight is that fill (rows, list items, menu, sidebar and tree rows, tabs, toggled buttons). A role with toned rules lists its untoned rows (`:not([data-tone])`) in the neutral highlight's scope and each `[data-tone]` in its tone's. A scope carries the inks that differ and `--penna-dot` for dots. The looks painted on a solid fill are written once for every scope they fit: the labels (badges, chips, keycaps) and the buttons rows hold (quiet, icon, flat icon and row icon buttons, not prominent ones and none inside a field set in the row), each button with every value it sets and every other value at its initial, so a toned one loses its tone as it does natively. Soft and prominent buttons keep their window paint there, and rows hold neither. A button inside a field set in the row (a menu stepper's quiet buttons) paints on that field's ground natively, so the scopes leave it alone. The solid scopes come last in the tokens, after the reduced-transparency block, so they beat a ground scope around the row at equal specificity. A dot reads `--penna-dot` before its own color, and `data-solid` sets it to the tone's on-ink. Tree rows, like list items, switch their icons to the row's muted ink on selection.
+- In HTML the tokens write one scope per solid ground, listing every role whose selected or current highlight is that fill in the theme (rows, list items, menu and tree rows, tabs, toggled buttons, and the chrome items where glass is off). A role with toned rules lists its untoned rows (`:not([data-tone])`) in the neutral highlight's scope and each `[data-tone]` in its tone's. A scope carries the inks that differ and `--penna-dot` for dots. The looks painted on a solid fill are written once for every scope they fit: the labels (badges, chips, keycaps) and the buttons rows hold (quiet, icon, flat icon and row icon buttons, not prominent ones and none inside a field set in the row), each button with every value it sets and every other value at its initial, so a toned one loses its tone as it does natively. Soft and prominent buttons keep their window paint there, and rows hold neither. A button inside a field set in the row (a menu stepper's quiet buttons) paints on that field's ground natively, so the scopes leave it alone. The solid scopes come last in the tokens, after the reduced-transparency block, so they beat a ground scope around the row at equal specificity. A dot reads `--penna-dot` before its own color, and `data-solid` sets it to the tone's on-ink. Tree rows, like list items, switch their icons to the row's muted ink on selection.
 - Hairlines appear only where they mean something: rules, the outline variants (`button.outline`, `field.outline`, `badge.outline`, `chip.outline`), a field being typed in, and every surface and control under Increase contrast. Outlines are 1 wide.
 - The knob of a switch or a slider keeps `shadow-contact`, the one control shadow in the look, so a light knob reads on a light ground.
 - Variants (quiet, outline, solid, ghost) are drawn by the kit from their kind's style, so no knob can change one without the others.
@@ -235,12 +237,19 @@ Knobs a person sets, in Appearance, the same in every app:
 | Knob | Does |
 |---|---|
 | Mode | system, light or dark, unless the app locks it |
+| Theme | the app's theme file, a preset, or a theme the person saved |
 | Accent | replaces the app's tint |
+| Tint, Tint strength | replace the `neutral` knob's hue and amount |
 | Text size | the root rem; everything scales with it |
 | Density | compact, regular or comfortable (Size) |
-| Increase contrast | hairline edges on every surface and control, and muted text closer to the ink |
+| Corner radius | replaces `radius` |
+| UI font | replaces `face` |
+| Increase contrast | hairline edges on every surface and control, and muted text closer to the ink (contrast 1.5) |
 | Reduce transparency | glass draws as the `popover` fill |
 | Reduce motion | Motion |
+| Animation speed | scales Motion's durations, 0.25 to 2; it rests while motion is reduced |
+
+Appearance shows them in that order: Mode, Theme, Accent, Tint and Tint strength under Theme, and the rest under Advanced, which opens on request. An app's own rows (zz's program colors, app icon and window blur) follow the kit's.
 
 What follows the platform with no knob: the system face and code face, when scrollbars show, the window controls, how keys are spelled, and the default glass (`liquid` on macOS, `frosted` elsewhere).
 
@@ -248,7 +257,15 @@ Everything else is the look and has no knob: each kind's fill, edge, shadow and 
 
 Corners: `radius` rounds containers and `control-radius` rounds controls. A control's corner stops at 45% of its height (`corner-fraction`), so a 12 corner on a 28 control reads as a pill only when `control-radius` is `full`. A corner inside another is concentric: inner radius = outer radius minus the inset between them. `smoothing` is the corners' superellipse exponent; rows draw at most 2.5.
 
-Glass is only for floating surfaces, since it reads only with content behind it; never for controls, panes or cards. A material is a full glass definition (blur, tint, saturation, bezel, refraction, specular, rim) for light and for dark:
+Glass is for what sits over something, since it reads only with something behind it:
+
+- Floating surfaces, and buttons that float over the content (`ButtonLook::Floating`), over whatever is under them.
+- Panes over the window's frame, when panes have gaps (`Theme::pane_margin` above 0): the pane's ground is the tint, at the ground's own opacity, under the material's rim and light, with no blur or refraction, since the frame under a pane is one flat fill. A pane that sits flush has nothing under it and takes its ground.
+- The selection in chrome, over its bar or sidebar (chrome items, above).
+
+Never cards, fields, bars, panels, or the rows and controls inside content: they sit in their ground, not over it. Where glass is off each falls back: floating surfaces to the `popover` fill, panes to their ground, chrome selections to the highlight.
+
+A material is a full glass definition (blur, tint, saturation, bezel, refraction, specular, rim) for light and for dark:
 
 - `frosted`: blur 20 and the `popover` fill at 70% over it, no bezel, refraction, saturation or edge shadow. Its specular (0.2, lit from above) lights only a bezel, so it draws no rim. It draws the same natively and on the web.
 - `liquid`: blur 20, bezel 3, refraction 4, a specular rim lit from above, one set of values for light and one for dark (`interface_theme::liquid`). Where the renderer can't bend light, it draws as `frosted`: the web draws it with its lens only where `kit.js` refracts, and natively a window that can't sample its backdrop draws the fallback.
@@ -277,7 +294,7 @@ How the knobs are spelled and decided:
 - Muted, faint and tone ink are worked out for the ground under the text, natively and in HTML, where each ground scope (`data-ground`, `data-on`) carries the inks that differ from the window's: `--penna-muted`, `--penna-faint` and `--penna-<tone>-ink`, as values. Natively they mix the ink toward the ground's fill in OKLab rather than fade it, so the tokens write the mixed color. Cards, panels and floating grounds differ in muted and faint only; tone inks follow the ground's ink, which only a solid selection changes.
 - Row inset (6), outline width (1) and highlight strength (0.8 of the wash) are fixed.
 
-Status: built (steps 10 and 12). Theme files are knobs only, the kinds and the built-in role patches draw the table above, and `default`, `macos` and `yaru` are presets. The storybook's theme creator edits these knobs and exports a theme file, the docs Look page shows their range live, and the parity baselines hold the one look. Step 12 closed the last differences between native and HTML but one: a soft or prominent button set straight on a solid selection keeps its window paint in HTML, and rows hold none that way. What else remains is raster: text, and glass blur at its edges.
+Status: built (steps 10, 12 and 13). Theme files are knobs only, the kinds and the built-in role patches draw the table above, and `default`, `macos` and `yaru` are presets. The storybook's theme creator edits these knobs and exports a theme file, the docs Look page shows their range live, and the parity baselines hold the one look. Step 12 closed the last differences between native and HTML but one: a soft or prominent button set straight on a solid selection keeps its window paint in HTML, and rows hold none that way. What else remains is raster: text, and glass blur at its edges.
 
 ## Focus and keys
 
@@ -333,7 +350,7 @@ Kinds, by tone and emphasis (`ButtonVariants`):
 
 There are no warning or success buttons: status colors mean status (Principles 3). A notice's or callout's action is a primary placed on its ground (`.primary().on(Notice::ground(tone, cx))`), which paints it in that tone.
 
-Apps' chrome uses the kit looks in `ButtonLook` (`Bar`, `Chrome`, `RowIcon`, `Floating`, `Send`, and the rest in kit.md); they follow this section like any button.
+Apps' chrome uses the kit looks in `ButtonLook` (`Bar`, `Chrome`, `RowIcon`, `Floating`, `Send`, and the rest in kit.md); they follow this section like any button. `Floating`, a button over the content such as jump to latest, is glass (Look).
 
 Anatomy, left to right, all from the button's rung of the control ladder (Size):
 
@@ -924,8 +941,8 @@ Looks (`RowLook`):
 | Menu | `menu-item` | menu, picker and option rows; the default |
 | MenuCard | `menu-item.card` | the pane picker's rows |
 | MenuTint | `menu-item.tint` | suggestions under a field: a tint even at rest |
-| Sidebar | `sidebar.row` | sidebar rows |
-| Nav | `row.nav` | navigation entries in a sidebar |
+| Sidebar | `sidebar.row` | sidebar rows; selected as glass (Look) |
+| Nav | `row.nav` | navigation entries in a sidebar; selected as glass |
 | Cursor | `row.cursor` | the sidebar's keyboard cursor: an outline at rest, the accent when selected |
 
 `.tone(Tone::Danger)` paints a row that destroys something in the danger tone.
@@ -1252,8 +1269,8 @@ Looks (`TabLook`):
 
 | Look | Recipe | Use |
 |---|---|---|
-| Window | `tab.window` | window pills in the title bar |
-| Page | `tab.page` | a browser's page tabs |
+| Window | `tab.window` | window pills in the title bar; selected as glass (Look) |
+| Page | `tab.page` | a browser's page tabs; selected as glass |
 | Tray | `tab.tray` | chips in the tray over a composer |
 | Title | `button.title` | a pane's title in its header, quiet, with a muted path |
 
@@ -1534,5 +1551,6 @@ Status: matches.
 | 10 | One look: the default theme becomes the look above, theme files shrink to knobs, `macos` and `yaru` become presets, role overrides go, and the kit draws variants from their kind | every screen: fewer edges and shadows, a warm ground, 12 corners | built |
 | 11 | Every component matches its section: bars and cards set their own size and inset, the HTML twins take their roles, hover and pressed on switches and segmented controls, a lifted tile while dragged, no free separator color, 14 icons when no size is given | bars move to the pane header height, unsized icons grow 1px beside `body` | built |
 | 12 | The Look's last native and HTML differences: toned floating chips opaque, presses replacing hovers, glass over stacked dialogs, label inks per ground in HTML, selected-row content in the selected ink, a dragged tile one fill step up | toned pane chips turn opaque, dragged tiles read in dark, chips on picked rows turn to the row's ink | built |
+| 13 | Glass past floating surfaces: chrome items select as glass, panes with gaps take the material's rim and light, and buttons over the content are glass; where glass is off each keeps the look it had | selected sidebar rows, sidebar entries and window and page tabs turn to glass pills; gapped panes gain a lit rim; jump to latest turns to glass | built |
 
 Each step lands in penna with its stories, scores parity, rebaselines only what the step meant to move, and is pulled into zz and nidus.

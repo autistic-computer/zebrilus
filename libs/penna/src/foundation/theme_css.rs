@@ -4,7 +4,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use ala::{BoxShadow, GlassMaterial, Hsla};
+use ala::{BoxShadow, GlassMaterial, Hsla, px};
 
 use crate::{
     ADAPTIVE_CORNER_FRACTION, CORNER_SMOOTHING, Colorize as _, Elevation, Emphasis, Ground, Kind,
@@ -115,9 +115,9 @@ pub fn stylesheet(theme: &Theme, toned: &[SurfaceRole]) -> String {
     for (_, rule) in rules(theme, toned, false) {
         css.push_str(&rule);
     }
+    let mut solid = theme.clone();
+    solid.glass = None;
     if theme.glass.is_some() {
-        let mut solid = theme.clone();
-        solid.glass = None;
         let glassy = rules(theme, toned, true);
         let _ = writeln!(css, "@media (prefers-reduced-transparency: reduce) {{");
         for (key, rule) in rules(&solid, toned, true) {
@@ -127,7 +127,20 @@ pub fn stylesheet(theme: &Theme, toned: &[SurfaceRole]) -> String {
         }
         let _ = writeln!(css, "}}");
     }
-    css.push_str(&solid_rules(theme, toned));
+    let selections = solid_rules(theme, toned);
+    css.push_str(&selections.concat());
+    if theme.glass.is_some() {
+        let reduced = solid_rules(&solid, toned)
+            .into_iter()
+            .filter(|rule| !selections.contains(rule))
+            .collect::<String>();
+        if !reduced.is_empty() {
+            let _ = writeln!(
+                css,
+                "@media (prefers-reduced-transparency: reduce) {{\n{reduced}}}"
+            );
+        }
+    }
     css
 }
 
@@ -191,6 +204,16 @@ fn rules(theme: &Theme, toned: &[SurfaceRole], full: bool) -> Vec<(String, Strin
         );
         rules.push((key, css));
     }
+    let mut gapped = theme.clone();
+    gapped.pane_margin = gapped.pane_margin.max(px(1.0));
+    let pane = gapped.layer(Surface::new(Kind::Pane.role()), PaintState::Rest);
+    let key = ".penna-gaps [data-penna=\"pane\"]".to_owned();
+    let css = format!(
+        "{key} {{ --penna-rim: {}; }}\n",
+        pane.glass
+            .map_or_else(|| "0 0 #0000".to_owned(), |material| rim(&material))
+    );
+    rules.push((key, css));
     for role in SurfaceRole::KIT
         .into_iter()
         .chain(toned.iter().copied())
@@ -221,7 +244,7 @@ fn variants(role: SurfaceRole) -> Vec<(String, Surface)> {
     variants
 }
 
-fn solid_rules(theme: &Theme, toned: &[SurfaceRole]) -> String {
+fn solid_rules(theme: &Theme, toned: &[SurfaceRole]) -> Vec<String> {
     let mut bodies: Vec<(String, Vec<String>)> = Vec::new();
     for (ground, scope) in solid_rows(theme, toned) {
         let mut inks = String::new();
@@ -1028,7 +1051,12 @@ mod tests {
             &solid[start..end]
         };
         let tint = scope("\n:is(:is([data-penna=\"button.quiet\"]:not([data-tone])");
-        assert!(tint.contains("[data-penna=\"sidebar.row\"]"));
+        assert!(!tint.contains("[data-penna=\"sidebar.row\"]"));
+        let reduced = &css[css
+            .rfind("@media (prefers-reduced-transparency: reduce)")
+            .expect("glass has a reduced transparency block")..];
+        assert!(reduced.contains("[data-penna=\"sidebar.row\"]"));
+        assert!(reduced.contains("  --penna-dot: #ebebeb;"));
         assert!(tint.contains("[data-penna=\"menu-item\"][data-tone=\"primary\"]"));
         assert!(tint.contains("  --penna-muted: #ebebeb; --penna-faint: #79a4e8;"));
         assert!(tint.contains("--penna-success-ink: #ebebeb;"));
