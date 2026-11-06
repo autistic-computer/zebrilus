@@ -569,6 +569,21 @@ pub fn default_theme() -> &'static InterfaceTheme {
     builtin_theme(DEFAULT_THEME).expect("the default theme is built in")
 }
 
+pub fn platform_theme() -> &'static InterfaceTheme {
+    if cfg!(any(target_os = "macos", target_os = "ios")) {
+        builtin_theme("macos").expect("the macOS theme is built in")
+    } else {
+        default_theme()
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Controls {
+    Rounded,
+    Pill,
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default, rename_all = "kebab-case")]
 pub struct ThemeOverrides {
@@ -580,6 +595,10 @@ pub struct ThemeOverrides {
     pub tint: Option<f32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tint_hue: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub controls: Option<Controls>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub glass: Option<Glass>,
 }
 
 impl ThemeOverrides {
@@ -597,10 +616,36 @@ impl ThemeOverrides {
             theme.neutral.hue = hue;
         }
         theme.neutral = theme.neutral.clamped();
+        match self.controls {
+            Some(Controls::Rounded) => theme.control_radius = None,
+            Some(Controls::Pill) => theme.control_radius = Some(ControlRadius::Full),
+            None => {}
+        }
+        if let Some(glass) = &self.glass {
+            theme.glass = Some(glass.clone());
+        }
     }
 
-    pub fn pick_theme(&mut self) {
-        self.radius = None;
+    pub fn from_theme(theme: &InterfaceTheme) -> Self {
+        let accent = match theme.tint {
+            Tint::Ink => "ink".to_owned(),
+            Tint::Color { light, .. } => ACCENTS
+                .iter()
+                .find(|name| Tint::named(name) == Some(theme.tint))
+                .map_or_else(|| crate::to_hex(light), |name| (*name).to_owned()),
+        };
+        let neutral = theme.neutral.clamped();
+        Self {
+            radius: Some(clamp_radius(theme.radius)),
+            accent: Some(accent),
+            tint: Some(neutral.amount),
+            tint_hue: Some(neutral.hue),
+            controls: Some(match theme.control_radius {
+                Some(ControlRadius::Full) => Controls::Pill,
+                _ => Controls::Rounded,
+            }),
+            glass: Some(theme.glass.clone().unwrap_or_else(Glass::platform)),
+        }
     }
 }
 
@@ -610,7 +655,6 @@ pub const INCREASED_CONTRAST: f32 = 1.5;
 #[serde(default)]
 pub struct Appearance {
     pub mode: Option<String>,
-    pub theme: Option<String>,
     #[serde(flatten)]
     pub overrides: ThemeOverrides,
     pub contrast: f32,
@@ -626,7 +670,6 @@ impl Default for Appearance {
     fn default() -> Self {
         Self {
             mode: None,
-            theme: None,
             overrides: ThemeOverrides::default(),
             contrast: 1.0,
             reduce_transparency: false,
@@ -642,11 +685,14 @@ impl Default for Appearance {
 #[derive(Clone, Debug, PartialEq)]
 pub enum AppearanceChange {
     Mode(Option<ThemeMode>),
-    Theme(SharedString),
     Accent(Option<String>),
     TintHue(f32),
     Tint(f32),
     Radius(f32),
+    Controls(Controls),
+    Glass(Glass),
+    Import(Box<InterfaceTheme>),
+    ResetLook,
     Contrast(f32),
     ReduceTransparency(bool),
     UiFont(String),
@@ -655,8 +701,6 @@ pub enum AppearanceChange {
     AnimationSpeed(f32),
     Density(crate::Density),
 }
-
-pub type SavedThemes = [(SharedString, InterfaceTheme)];
 
 impl Appearance {
     pub fn theme_mode(&self) -> Option<ThemeMode> {
@@ -676,60 +720,70 @@ impl Appearance {
         self.mode = Some(mode.to_owned());
     }
 
-    pub fn theme_id(&self, saved: &SavedThemes) -> &str {
-        self.theme
-            .as_deref()
-            .filter(|id| knows_theme(id, saved))
-            .unwrap_or(DEFAULT_THEME)
-    }
-
-    pub fn interface_theme<'a>(&self, saved: &'a SavedThemes) -> &'a InterfaceTheme {
-        self.theme
-            .as_deref()
-            .and_then(|id| saved_theme(id, saved).or_else(|| builtin_theme(id)))
-            .unwrap_or_else(|| default_theme())
-    }
-
-    pub fn shown_theme(&self, saved: &SavedThemes) -> InterfaceTheme {
-        let mut theme = self.interface_theme(saved).clone();
+    pub fn shown_theme(&self) -> InterfaceTheme {
+        let mut theme = platform_theme().clone();
         self.overrides.apply_to(&mut theme);
         theme
     }
 
-    pub fn corner_radius(&self, saved: &SavedThemes) -> f32 {
-        self.shown_theme(saved).radius
+    pub fn corner_radius(&self) -> f32 {
+        self.shown_theme().radius
     }
 
-    pub fn neutral(&self, saved: &SavedThemes) -> Neutral {
-        self.shown_theme(saved).neutral
+    pub fn neutral(&self) -> Neutral {
+        self.shown_theme().neutral
     }
 
-    pub fn ui_font<'a>(&'a self, saved: &'a SavedThemes) -> &'a str {
+    pub fn controls(&self) -> Controls {
+        match self.shown_theme().control_radius {
+            Some(ControlRadius::Full) => Controls::Pill,
+            _ => Controls::Rounded,
+        }
+    }
+
+    pub fn glass(&self) -> Glass {
+        self.shown_theme().glass.unwrap_or_else(Glass::platform)
+    }
+
+    pub fn accent(&self) -> String {
+        self.overrides.accent.clone().unwrap_or_else(|| {
+            ThemeOverrides::from_theme(platform_theme())
+                .accent
+                .unwrap_or_default()
+        })
+    }
+
+    pub fn ui_font(&self) -> &str {
         if self.ui_font_family.is_empty() {
-            self.interface_theme(saved).face.as_deref().unwrap_or("")
+            platform_theme().face.as_deref().unwrap_or("")
         } else {
             &self.ui_font_family
         }
     }
 
-    pub fn pick_theme(&mut self, id: &str, saved: &SavedThemes) {
-        self.theme = knows_theme(id, saved).then(|| id.to_owned());
-        self.overrides.pick_theme();
-        if self.interface_theme(saved).face.is_some() {
-            self.ui_font_family.clear();
-        }
+    pub fn import(&mut self, theme: &InterfaceTheme) {
+        self.overrides = ThemeOverrides::from_theme(theme);
+        self.ui_font_family = theme.face.as_deref().unwrap_or("").to_owned();
     }
 
-    pub fn change(&mut self, change: AppearanceChange, saved: &SavedThemes) {
+    pub fn reset_look(&mut self) {
+        self.overrides = ThemeOverrides::default();
+        self.ui_font_family.clear();
+    }
+
+    pub fn change(&mut self, change: AppearanceChange) {
         match change {
             AppearanceChange::Mode(mode) => self.set_theme_mode(mode),
-            AppearanceChange::Theme(id) => self.pick_theme(&id, saved),
             AppearanceChange::Accent(accent) => self.overrides.accent = accent,
             AppearanceChange::TintHue(hue) => self.overrides.tint_hue = Some(hue),
             AppearanceChange::Tint(tint) => self.overrides.tint = Some(tint),
             AppearanceChange::Radius(radius) => {
                 self.overrides.radius = Some(clamp_radius(radius));
             }
+            AppearanceChange::Controls(controls) => self.overrides.controls = Some(controls),
+            AppearanceChange::Glass(glass) => self.overrides.glass = Some(glass),
+            AppearanceChange::Import(theme) => self.import(&theme),
+            AppearanceChange::ResetLook => self.reset_look(),
             AppearanceChange::Contrast(contrast) => self.contrast = contrast,
             AppearanceChange::ReduceTransparency(reduce) => self.reduce_transparency = reduce,
             AppearanceChange::UiFont(family) => self.ui_font_family = family,
@@ -740,12 +794,12 @@ impl Appearance {
         }
     }
 
-    pub fn apply(&self, saved: &SavedThemes, mut window: Option<&mut Window>, cx: &mut App) {
+    pub fn apply(&self, mut window: Option<&mut Window>, cx: &mut App) {
         cx.set_reduce_motion(!self.animations);
         cx.set_animation_speed(self.animation_speed);
-        self.shown_theme(saved)
+        self.shown_theme()
             .activate(self.theme_mode(), window.as_deref_mut(), cx);
-        let font = self.ui_font(saved);
+        let font = self.ui_font();
         let family = if !font.is_empty() && cx.text_system().has_font(font) {
             SharedString::from(font.to_owned())
         } else {
@@ -771,17 +825,6 @@ impl Appearance {
         }
         cx.refresh_windows();
     }
-}
-
-fn saved_theme<'a>(id: &str, saved: &'a SavedThemes) -> Option<&'a InterfaceTheme> {
-    saved
-        .iter()
-        .find(|(saved, _)| saved.as_str() == id)
-        .map(|(_, theme)| theme)
-}
-
-fn knows_theme(id: &str, saved: &SavedThemes) -> bool {
-    is_builtin_theme(id) || saved_theme(id, saved).is_some()
 }
 
 #[cfg(test)]
@@ -979,8 +1022,8 @@ mod tests {
             }
         );
         let mut appearance = Appearance::default();
-        appearance.change(AppearanceChange::Radius(-4.0), &[]);
-        assert_eq!(appearance.corner_radius(&[]), 0.0);
+        appearance.change(AppearanceChange::Radius(-4.0));
+        assert_eq!(appearance.corner_radius(), 0.0);
     }
 
     #[test]
@@ -1015,18 +1058,19 @@ mod tests {
             serde_json::from_str::<Appearance>("{}").unwrap(),
             Appearance::default()
         );
-        let source = r#"{"mode":"dark","theme":"macos","radius":12,"accent":"green","tint":0.25,"tint-hue":145,"contrast":1.5,"reduce_transparency":true,"ui_font_family":"Inter","zoom":1.25,"animations":false,"animation_speed":0.5,"density":"comfortable","sidebar":true}"#;
+        let source = r#"{"mode":"dark","theme":"macos","radius":12,"accent":"green","tint":0.25,"tint-hue":145,"controls":"pill","glass":"frosted","contrast":1.5,"reduce_transparency":true,"ui_font_family":"Inter","zoom":1.25,"animations":false,"animation_speed":0.5,"density":"comfortable","sidebar":true}"#;
         let appearance = serde_json::from_str::<Appearance>(source).unwrap();
         assert_eq!(
             appearance,
             Appearance {
                 mode: Some("dark".into()),
-                theme: Some("macos".into()),
                 overrides: ThemeOverrides {
                     radius: Some(12.0),
                     accent: Some("green".into()),
                     tint: Some(0.25),
                     tint_hue: Some(145.0),
+                    controls: Some(Controls::Pill),
+                    glass: Some(Glass::Frosted),
                 },
                 contrast: 1.5,
                 reduce_transparency: true,
@@ -1045,35 +1089,51 @@ mod tests {
     }
 
     #[test]
-    fn appearance_changes_follow_the_theme_rules() {
-        let face = parse_theme(r#"{"name":"Mono","face":"Lilex","radius":2}"#);
-        let saved = [(SharedString::from("theme-1"), face.unwrap())];
+    fn a_persons_knobs_sit_over_the_platform_look_and_a_theme_file_sets_them_all() {
         let mut appearance = Appearance {
             ui_font_family: "Inter".into(),
             ..Appearance::default()
         };
-        assert_eq!(appearance.theme_id(&saved), DEFAULT_THEME);
-        appearance.change(AppearanceChange::Radius(7.0), &saved);
-        appearance.change(AppearanceChange::Accent(Some("pink".into())), &saved);
-        assert_eq!(appearance.corner_radius(&saved), 7.0);
-        assert_eq!(appearance.ui_font(&saved), "Inter");
-
-        appearance.change(AppearanceChange::Theme("macos".into()), &saved);
-        assert_eq!(appearance.theme_id(&saved), "macos");
-        assert_eq!(appearance.overrides.radius, None);
+        assert_eq!(appearance.shown_theme(), *platform_theme());
+        appearance.change(AppearanceChange::Radius(7.0));
+        appearance.change(AppearanceChange::Accent(Some("pink".into())));
+        appearance.change(AppearanceChange::Controls(Controls::Pill));
+        appearance.change(AppearanceChange::Glass(Glass::None));
+        let shown = appearance.shown_theme();
         assert_eq!(
-            appearance.shown_theme(&saved).tint,
-            Tint::named("pink").unwrap()
+            (shown.radius, shown.tint, shown.control_radius, shown.glass),
+            (
+                7.0,
+                Tint::named("pink").unwrap(),
+                Some(ControlRadius::Full),
+                Some(Glass::None)
+            )
         );
+        assert_eq!(appearance.accent(), "pink");
+        assert_eq!(appearance.ui_font(), "Inter");
 
-        appearance.change(AppearanceChange::Theme("theme-1".into()), &saved);
-        assert_eq!(appearance.interface_theme(&saved).name, "Mono");
-        assert_eq!(appearance.ui_font(&saved), "Lilex");
-        assert_eq!(appearance.corner_radius(&saved), 2.0);
+        let file = parse_theme(
+            r#"{"name":"Mono","tint":"orange","face":"Lilex","radius":2,"glass":"frosted"}"#,
+        )
+        .unwrap();
+        appearance.change(AppearanceChange::Import(Box::new(file)));
+        let shown = appearance.shown_theme();
+        assert_eq!(
+            (shown.radius, shown.tint, shown.control_radius, shown.glass),
+            (
+                2.0,
+                Tint::named("orange").unwrap(),
+                None,
+                Some(Glass::Frosted)
+            )
+        );
+        assert_eq!(appearance.accent(), "orange");
+        assert_eq!(appearance.controls(), Controls::Rounded);
+        assert_eq!(appearance.ui_font(), "Lilex");
 
-        appearance.change(AppearanceChange::Theme("vaporwave".into()), &saved);
-        assert_eq!(appearance.theme, None);
-        assert_eq!(appearance.theme_id(&saved), DEFAULT_THEME);
+        appearance.change(AppearanceChange::ResetLook);
+        assert_eq!(appearance.overrides, ThemeOverrides::default());
+        assert_eq!(appearance.shown_theme(), *platform_theme());
     }
 
     #[ala::test]
@@ -1097,7 +1157,7 @@ mod tests {
         cx.update(|cx| {
             crate::init(cx);
             assert!(Theme::global(cx).glass.is_some());
-            appearance.apply(&[], None, cx);
+            appearance.apply(None, cx);
             let theme = Theme::global(cx);
             assert_eq!(theme.mode, ThemeMode::Dark);
             assert_eq!(theme.radius, px(5.0));
@@ -1127,7 +1187,7 @@ mod tests {
             ..Appearance::default()
         };
         window.update(|window, cx| {
-            appearance.apply(&[], None, cx);
+            appearance.apply(None, cx);
             assert_eq!(window.zoom(), 1.0);
         });
         window.run_until_parked();

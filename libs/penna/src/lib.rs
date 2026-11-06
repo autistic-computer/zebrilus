@@ -49,7 +49,7 @@ pub fn init(cx: &mut ala::App) {
     components::popover::init(cx);
     components::select::init(cx);
     components::text::init(cx);
-    foundation::interface_theme::default_theme().activate(None, None, cx);
+    foundation::interface_theme::platform_theme().activate(None, None, cx);
 }
 
 #[cfg(test)]

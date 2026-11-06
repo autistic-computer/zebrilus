@@ -126,6 +126,7 @@
 .appearance-copy {
   display: flex;
   flex-direction: column;
+  gap: var(--penna-gap-tight);
   width: 100%;
   max-width: 70%;
   min-width: 0;
@@ -146,53 +147,6 @@
   border-radius: 0;
   background: var(--penna-divider);
   box-shadow: none;
-}
-
-.appearance-picker {
-  display: flex;
-  flex: none;
-  align-items: center;
-  gap: var(--penna-space-4);
-  position: relative;
-}
-
-.appearance-accent-label {
-  display: flex;
-  align-items: center;
-  gap: var(--penna-space-8);
-}
-
-.appearance-dot {
-  flex: none;
-  width: 10px;
-  height: 10px;
-  border-radius: var(--appearance-dot-r, 5px);
-  corner-shape: superellipse(var(--penna-window-k));
-  background: var(--penna-accent);
-}
-
-.appearance-theme-menu {
-  position: absolute;
-  z-index: 10;
-  min-width: calc(128px + 2 * var(--penna-bw, 0px));
-  display: flex;
-  flex-direction: column;
-}
-
-.appearance-theme-menu:focus-visible {
-  outline: none;
-}
-
-.appearance-theme-menu > [data-penna="menu-item"] {
-  gap: var(--penna-space-8);
-  cursor: default;
-}
-
-.appearance-theme-menu > [data-penna="menu-item"] > .appearance-check {
-  flex: none;
-  width: 12px;
-  height: 12px;
-  --penna-icon-size: 12px;
 }
 
 .appearance-swatches {
@@ -354,4 +308,11 @@
 .appearance-ring .penna-color-picker > .penna-button[data-swatch] {
   --penna-k: var(--appearance-swatch-k, var(--penna-style-k));
   border-radius: var(--appearance-swatch-r) !important;
+}
+
+.appearance-description {
+  color: var(--penna-fg-muted);
+  font-size: var(--penna-text-small-size);
+  line-height: var(--penna-text-small-line);
+  font-weight: var(--penna-text-small-weight);
 }

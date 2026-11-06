@@ -1,6 +1,6 @@
 use penna::blocks::appearance::{
-    SWATCH, THEME_MODES, ThemePicks, accent_swatches, corner_radius_slider, picker_tile,
-    theme_mode_control, theme_picker, theme_preview, tint_hue_slider, tint_slider,
+    SWATCH, THEME_MODES, accent_swatches, controls_control, corner_radius_slider, glass_control,
+    picker_tile, theme_mode_control, theme_preview, tint_hue_slider, tint_slider,
 };
 use std::cell::Cell;
 use std::sync::Arc;
@@ -49,7 +49,6 @@ use penna::{
     components::switch::Switch,
     components::text::{TextView, TextViewStyle},
     components::tooltip::Tooltip,
-    foundation::interface_theme::builtin_themes,
     foundation::roles,
     h_flex, v_flex,
 };
@@ -189,21 +188,8 @@ impl AppWindow {
 
     fn page(&self, cx: &App) -> AnyElement {
         let knobs = crate::knobs();
-        let active = knobs.interface_theme();
-        let overrides = knobs.overrides();
+        let appearance = knobs.appearance();
         let neutral = knobs.neutral();
-        let themes = builtin_themes();
-        let picks = ThemePicks {
-            themes: themes
-                .iter()
-                .map(|(id, theme)| ((*id).into(), theme))
-                .collect(),
-            selected: themes
-                .iter()
-                .position(|(id, _)| *id == knobs.interface)
-                .unwrap_or(0),
-            overrides: &overrides,
-        };
         let custom = ColorPicker::new(&self.accent, ala::transparent_black())
             .id("settings-accent-custom")
             .label("Accent")
@@ -217,20 +203,14 @@ impl AppWindow {
                 settings_page_content()
                     .gap(px(GAP))
                     .child(
-                        SettingsStack::titled("Theme")
+                        SettingsStack::titled("Look")
                             .child(SettingEntry::new("Mode").control(theme_mode_control(
                                 knobs.theme,
                                 |_, _, _| {},
                                 cx,
                             )))
-                            .child(SettingEntry::new("Theme").control(theme_picker(
-                                &picks,
-                                |_, _, _| {},
-                                |menu, _, _| menu.item(PopupMenuItem::new("Import from clipboard")),
-                                cx,
-                            )))
                             .child(SettingEntry::new("Accent").control(accent_swatches(
-                                &picks,
+                                &appearance.accent(),
                                 cx.theme().mode,
                                 custom,
                                 |_, _, _| {},
@@ -245,24 +225,26 @@ impl AppWindow {
                                 neutral.amount,
                                 |_, _, _| {},
                                 cx,
+                            )))
+                            .child(SettingEntry::new("Corner radius").control(
+                                corner_radius_slider(appearance.corner_radius(), |_, _, _| {}, cx),
+                            ))
+                            .child(SettingEntry::new("Controls").control(controls_control(
+                                appearance.controls(),
+                                |_, _, _| {},
+                                cx,
+                            )))
+                            .child(SettingEntry::new("Glass").control(glass_control(
+                                &appearance.glass(),
+                                |_, _, _| {},
+                                cx,
                             ))),
                     )
-                    .child(
-                        SettingsStack::titled("Advanced")
-                            .child(
-                                SettingEntry::new("Corner radius").control(corner_radius_slider(
-                                    active.radius,
-                                    |_, _, _| {},
-                                    cx,
-                                )),
-                            )
-                            .child(
-                                SettingEntry::new("Increase contrast").control(
-                                    Switch::new("creator-increase-contrast")
-                                        .checked(knobs.contrast > 1.0),
-                                ),
-                            ),
-                    ),
+                    .child(SettingsStack::titled("Advanced").child(
+                        SettingEntry::new("Increase contrast").control(
+                            Switch::new("creator-increase-contrast").checked(knobs.contrast > 1.0),
+                        ),
+                    )),
             )
             .into_any_element()
     }

@@ -124,7 +124,7 @@ Reading rhythm (built): blocks (paragraphs, lists, quotes, code, tables) sit `sp
 
 Touch, for the compact, touch and sheet blocks (`TextStyle::TouchSmall`, `TouchBody`, `TouchTitle`, built): `touch-small` 15 on 20, `touch-body` 17 on 22, `touch-title` 34 on 40, weights 400, 400, 600; strong is 500 for the first two.
 
-Component text (step 3, built): list and tree rows `lead`, centered in the row height (which follows density and the rem), their details `small`; sidebar headings strong `small`, under the `body` rows they head; menu rows `small` with 12 icons, and `body` with 14 icons on a 44 row under a coarse pointer; their shortcuts `small`; menu section labels `caption`. Controls take the text of their size from `Size::control_text()`, the Text column of the control ladder: buttons, fields, selects and segmented controls set it once on the control and their label, icon and children inherit it, so a caller's weight (a selected sidebar row's 500) still wins. A field's caret, selection and rows follow its line (18 at `body`). Badges are strong `caption` (`micro` at the `xs` and `sm` rungs), keycaps `caption` (`micro`), the stepped slider `small` (`caption` at `xs` and `sm`), and the touch slider's readout `title`. Surfaces (dialogs, alerts, notifications, callouts, notices, popovers) set `body` on the surface, before the caller's own style, so content with no style of its own is 13 on 18; their titles are `body` at the heading weight, 600, and their descriptions and messages `small`; a stacked notice's title is `lead` at 600. An empty state sets `small` on itself, since its message is its bare content, and its title is `body` at 600. A marker beside a first line (a notification, callout or notice icon) sits in a box as tall as that line: 18 beside a `body` title, 20 beside a stacked notice's `lead` title, 16 beside a message alone. Tooltips are `small`. Chrome: the title bar's content area and the tray panel set `body`; a window title in the title bar is `body` at 600, with a path beside it regular and muted. The docs header's brand is `lead` at 600. Which-key sets `small` on itself, its table name strong `small`, and `caption` for block titles, the repeat mark and its key caps in the code face. Settings: the page heading is `title`, group headers `body` at 600 (so a disclosure's chevron box is 18 tall), row titles `body`, descriptions `small`; the about page's name is `title`, its tagline `small`, its values `caption` in the code face. The picker's rows are `small`, its empty label `caption`, its footer `micro`. The color picker's label is `caption`, the touch trigger's hex `mono`. Appearance: slider values `small`, tile labels `caption`, and the theme picker's label takes the style of the button or menu row around it. Compact and touch: large titles `touch-title`; the HUD strong `touch-body`; the folding title `touch-body` at 600; pill titles and menu chips strong `touch-small`, pill meta `small`, the mini pill strong `body`; key rows `touch-small`; the touch which-key list `touch-body`, its caps `touch-small` in the code face, its group headers strong `body`; popover keys `touch-body`. Sheets: titles `display`, row labels `touch-body`, details `touch-small`. The code editor sets `mono` on itself (13 on 18) and draws line numbers at the `caption` size on the code line. The HTML versions read the `--penna-text-*` variables instead of copying sizes.
+Component text (step 3, built): list and tree rows `lead`, centered in the row height (which follows density and the rem), their details `small`; sidebar headings strong `small`, under the `body` rows they head; menu rows `small` with 12 icons, and `body` with 14 icons on a 44 row under a coarse pointer; their shortcuts `small`; menu section labels `caption`. Controls take the text of their size from `Size::control_text()`, the Text column of the control ladder: buttons, fields, selects and segmented controls set it once on the control and their label, icon and children inherit it, so a caller's weight (a selected sidebar row's 500) still wins. A field's caret, selection and rows follow its line (18 at `body`). Badges are strong `caption` (`micro` at the `xs` and `sm` rungs), keycaps `caption` (`micro`), the stepped slider `small` (`caption` at `xs` and `sm`), and the touch slider's readout `title`. Surfaces (dialogs, alerts, notifications, callouts, notices, popovers) set `body` on the surface, before the caller's own style, so content with no style of its own is 13 on 18; their titles are `body` at the heading weight, 600, and their descriptions and messages `small`; a stacked notice's title is `lead` at 600. An empty state sets `small` on itself, since its message is its bare content, and its title is `body` at 600. A marker beside a first line (a notification, callout or notice icon) sits in a box as tall as that line: 18 beside a `body` title, 20 beside a stacked notice's `lead` title, 16 beside a message alone. Tooltips are `small`. Chrome: the title bar's content area and the tray panel set `body`; a window title in the title bar is `body` at 600, with a path beside it regular and muted. The docs header's brand is `lead` at 600. Which-key sets `small` on itself, its table name strong `small`, and `caption` for block titles, the repeat mark and its key caps in the code face. Settings: the page heading is `title`, group headers `body` at 600 (so a disclosure's chevron box is 18 tall), row titles `body`, descriptions `small`; the about page's name is `title`, its tagline `small`, its values `caption` in the code face. The picker's rows are `small`, its empty label `caption`, its footer `micro`. The color picker's label is `caption`, the touch trigger's hex `mono`. Appearance: slider values `small`, tile labels `caption`, and the theme file description `small`. Compact and touch: large titles `touch-title`; the HUD strong `touch-body`; the folding title `touch-body` at 600; pill titles and menu chips strong `touch-small`, pill meta `small`, the mini pill strong `body`; key rows `touch-small`; the touch which-key list `touch-body`, its caps `touch-small` in the code face, its group headers strong `body`; popover keys `touch-body`. Sheets: titles `display`, row labels `touch-body`, details `touch-small`. The code editor sets `mono` on itself (13 on 18) and draws line numbers at the `caption` size on the code line. The HTML versions read the `--penna-text-*` variables instead of copying sizes.
 
 Code takes the size and line of the text around it, in the code face: `mono` in the interface, `read-body` size in reading text. ala can't size one run differently inside a line.
 
@@ -219,7 +219,7 @@ How each kind draws, at rest and under the pointer:
 - The knob of a switch or a slider keeps `shadow-contact`, the one control shadow in the look, so a light knob reads on a light ground.
 - Variants (quiet, outline, solid, ghost) are drawn by the kit from their kind's style, so no knob can change one without the others.
 
-Knobs an app sets, in its theme file:
+The knobs, as a theme file spells them:
 
 | Knob | Values | Default |
 |---|---|---|
@@ -232,24 +232,26 @@ Knobs an app sets, in its theme file:
 | `face` | the interface face; the code face stays the platform's | the platform's |
 | `mode` | `follow`, `light` or `dark` | `follow` |
 
-Knobs a person sets, in Appearance, the same in every app:
+There are no presets to pick. The look starts from the platform's knobs (the `macos` theme file on Apple platforms, `default` elsewhere), and a person sets every knob directly in Appearance, the same in every app:
 
 | Knob | Does |
 |---|---|
-| Mode | system, light or dark, unless the app locks it |
-| Theme | the app's theme file, a preset, or a theme the person saved |
-| Accent | replaces the app's tint |
-| Tint, Tint strength | replace the `neutral` knob's hue and amount |
+| Mode | system, light or dark, unless a theme locks it |
+| Accent | `tint`: ink, one of the named accents, or a color |
+| Tint, Tint strength | `neutral`'s hue and amount |
+| Corner radius | `radius` |
+| Controls | `control-radius`: Rounded follows `radius`, Pill is `full` |
+| Glass | `glass`: none, frosted or liquid (or Custom, after a theme file with a material of its own) |
+| UI font | `face` |
+| Theme file | copies the look as a theme file, pastes one in (which sets every knob above), or resets them all to the platform's |
 | Text size | the root rem; everything scales with it |
 | Density | compact, regular or comfortable (Size) |
-| Corner radius | replaces `radius` |
-| UI font | replaces `face` |
 | Increase contrast | hairline edges on every surface and control, and muted text closer to the ink (contrast 1.5) |
 | Reduce transparency | glass draws as the `popover` fill |
 | Reduce motion | Motion |
 | Animation speed | scales Motion's durations, 0.25 to 2; it rests while motion is reduced |
 
-Appearance shows them in that order: Mode, Theme, Accent, Tint and Tint strength under Theme, and the rest under Advanced, which opens on request. An app's own rows (zz's program colors, app icon and window blur) follow the kit's.
+Appearance shows them in that order: Mode down to Theme file under Look, and the rest under Advanced, which opens on request. An app's own rows (zz's program colors, app icon and window blur) follow the kit's. `smoothing` and `mode` have no row: smoothing follows the platform's theme file and a pasted theme's smoothing is not kept.
 
 What follows the platform with no knob: the system face and code face, when scrollbars show, the window controls, how keys are spelled, and the default glass (`liquid` on macOS, `frosted` elsewhere).
 
@@ -273,7 +275,7 @@ A material is a full glass definition (blur, tint, saturation, bezel, refraction
 
 Natively the blur reads the backdrop up to 2.5 blur radii past a glass surface's edge; the web's backdrop filter reads only what is under the surface. Where the backdrop changes just outside a glass edge, as under a dialog stacked over another, the two blend it a little differently. That is a raster difference, like text, not a choice.
 
-Presets: `macos` (tint blue, #0a64dd and #76abfd, since ala exposes no system accent; `control-radius` `full`; `smoothing` 4; `glass` `liquid`) and `yaru` (tint orange; `radius` 8; `smoothing` 2; `glass` `none`) are knob values with names, nothing more.
+The kit's theme files: `default` (the table's defaults), `macos` (tint blue, #0a64dd and #76abfd, since ala exposes no system accent; `control-radius` `full`; `smoothing` 4; `glass` `liquid`), the look on Apple platforms, and `yaru` (tint orange; `radius` 8; `smoothing` 2; `glass` `none`), which the storybook, the HTML tokens and the parity runs draw as a third look. None of them is a choice a person makes.
 
 HTML: a theme file's knobs generate its tokens (`cargo run --example theme_css`), so the HTML twin follows the same look. A theme that leaves `glass` out gets `frosted` in its tokens. `--penna-control-radius` carries the control corner (9999px for `full`). Under `prefers-reduced-transparency: reduce` the tokens give every glass role the `popover` fill and no backdrop. A card inside a container marked `data-ground` rises one step from that container's fill.
 
@@ -294,7 +296,7 @@ How the knobs are spelled and decided:
 - Muted, faint and tone ink are worked out for the ground under the text, natively and in HTML, where each ground scope (`data-ground`, `data-on`) carries the inks that differ from the window's: `--penna-muted`, `--penna-faint` and `--penna-<tone>-ink`, as values. Natively they mix the ink toward the ground's fill in OKLab rather than fade it, so the tokens write the mixed color. Cards, panels and floating grounds differ in muted and faint only; tone inks follow the ground's ink, which only a solid selection changes.
 - Row inset (6), outline width (1) and highlight strength (0.8 of the wash) are fixed.
 
-Status: built (steps 10, 12 and 13). Theme files are knobs only, the kinds and the built-in role patches draw the table above, and `default`, `macos` and `yaru` are presets. The storybook's theme creator edits these knobs and exports a theme file, the docs Look page shows their range live, and the parity baselines hold the one look. Step 12 closed the last differences between native and HTML but one: a soft or prominent button set straight on a solid selection keeps its window paint in HTML, and rows hold none that way. What else remains is raster: text, and glass blur at its edges.
+Status: built (steps 10, 12, 13 and 14). Theme files are knobs only, the kinds and the built-in role patches draw the table above, and a person sets the knobs themselves over the platform's. The storybook's theme creator edits these knobs and exports a theme file, the docs Look page shows their range live, and the parity baselines hold the one look. Step 12 closed the last differences between native and HTML but one: a soft or prominent button set straight on a solid selection keeps its window paint in HTML, and rows hold none that way. What else remains is raster: text, and glass blur at its edges.
 
 ## Focus and keys
 
@@ -1552,5 +1554,6 @@ Status: matches.
 | 11 | Every component matches its section: bars and cards set their own size and inset, the HTML twins take their roles, hover and pressed on switches and segmented controls, a lifted tile while dragged, no free separator color, 14 icons when no size is given | bars move to the pane header height, unsized icons grow 1px beside `body` | built |
 | 12 | The Look's last native and HTML differences: toned floating chips opaque, presses replacing hovers, glass over stacked dialogs, label inks per ground in HTML, selected-row content in the selected ink, a dragged tile one fill step up | toned pane chips turn opaque, dragged tiles read in dark, chips on picked rows turn to the row's ink | built |
 | 13 | Glass past floating surfaces: chrome items select as glass, panes with gaps take the material's rim and light, and buttons over the content are glass; where glass is off each keeps the look it had | selected sidebar rows, sidebar entries and window and page tabs turn to glass pills; gapped panes gain a lit rim; jump to latest turns to glass | built |
+| 14 | Knobs, no presets: Appearance drops the theme picker and saved themes, gains Controls, Glass and a theme file menu, and the look starts from the platform's knobs | the Theme row goes; Look holds every knob; a pasted theme file sets them | built |
 
 Each step lands in penna with its stories, scores parity, rebaselines only what the step meant to move, and is pulled into zz and nidus.

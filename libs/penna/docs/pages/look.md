@@ -1,6 +1,6 @@
 # Look
 
-penna draws one look. An app sets a few knobs in its theme file, a person sets a few more in Appearance, and everything else stays the kit's.
+penna draws one look. It starts from the platform's knobs, a person sets every knob in Appearance, and everything else stays the kit's.
 
 ## Kinds
 
@@ -103,28 +103,30 @@ Text on any glass reads at 4.5:1 over the worst content, and Reduce transparency
 
 ## What a person sets
 
-The same in every app, in Appearance.
+The same in every app, in Appearance. There are no presets to pick: every knob is a row, starting at the platform's value.
 
 | Knob | Does |
 | --- | --- |
-| Mode | System, light or dark, unless the app locks it |
-| Theme | The app's theme, a preset, or one you saved |
-| Accent | Replaces the app's tint |
-| Tint, Tint strength | Replace the neutral's hue and amount |
+| Mode | System, light or dark, unless a theme locks it |
+| Accent | The tint: ink, a named accent or a color |
+| Tint, Tint strength | The neutral's hue and amount |
+| Corner radius | The radius |
+| Controls | Rounded follows the radius; Pill makes controls pills |
+| Glass | None, frosted or liquid |
+| UI font | The face |
+| Theme file | Copy the look as a theme file, paste one in, or reset to the platform's |
 | Text size | The root size; everything scales with it |
 | Density | Compact, regular or comfortable rows and controls |
-| Corner radius | Replaces the radius |
-| UI font | Replaces the face |
 | Increase contrast | A hairline on every surface and control; muted text closer to the ink |
 | Reduce transparency | Glass draws as the popover fill |
 | Reduce motion | Turns animation off |
 | Animation speed | Scales every animation, 0.25 to 2 |
 
-## Presets
+## The kit's theme files
 
-Knob values with names, nothing more.
+The look starts from `macos` on Apple platforms and `default` elsewhere. `yaru` is a third look the storybook and the tests draw. None is a choice a person makes.
 
-| Preset | Tint | Radius | Control radius | Smoothing | Glass |
+| Theme file | Tint | Radius | Control radius | Smoothing | Glass |
 | --- | --- | --- | --- | --- | --- |
 | `default` | ink | 12 | 12 | 3 | the platform's |
 | `macos` | blue | 12 | full | 4 | liquid |
@@ -132,7 +134,7 @@ Knob values with names, nothing more.
 
 ## Theme file
 
-A theme file holds only knobs. Keys it leaves out keep their defaults; keys it doesn't know are ignored.
+A theme file holds only knobs. Keys it leaves out keep their defaults; keys it doesn't know are ignored. Pasting one in Appearance sets every knob a person has from it.
 
 ```json example
 {
@@ -155,7 +157,7 @@ studio.activate(None, Some(window), cx);
 
 | Theme file | Rust | Does |
 | --- | --- | --- |
-| `name` | `.name` | Shown in Appearance |
+| `name` | `.name` | A label for the file |
 | `tint` | `.tint` | Ink, an accent, a hex color, or a light and dark pair |
 | `neutral` | `.neutral` | Hue 0 to 360, amount 0 to 1 |
 | `radius` | `.radius` | Container corners, 0 to 25 |

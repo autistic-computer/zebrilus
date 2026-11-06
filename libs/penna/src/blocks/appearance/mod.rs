@@ -7,8 +7,8 @@ use crate::components::select::{Select, SelectEvent, SelectItem as _, SelectStat
 use crate::components::slider::Slider;
 use crate::components::switch::Switch;
 use crate::foundation::interface_theme::{
-    ACCENTS, Appearance, AppearanceChange, INCREASED_CONTRAST, InterfaceTheme, MAX_CORNER_RADIUS,
-    SavedThemes, ThemeOverrides,
+    ACCENTS, Appearance, AppearanceChange, Controls, Glass, INCREASED_CONTRAST, MAX_CORNER_RADIUS,
+    parse_theme,
 };
 use crate::{
     ActiveTheme as _, AuthoredElement as _, Colorize as _, Density, IconName, Space,
@@ -58,12 +58,14 @@ pub enum AppearancePageItem<T = Infallible> {
     Accent,
     TintHue,
     Tint,
-    Themes,
+    CornerRadius,
+    Controls,
+    Glass,
+    UiFontFamily,
+    ThemeFile,
     Advanced { expanded: bool },
     TextSize,
     Density,
-    CornerRadius,
-    UiFontFamily,
     IncreaseContrast,
     ReduceTransparency,
     ReduceMotion,
@@ -85,7 +87,9 @@ impl<T: Copy> AppearancePageItem<T> {
             Self::Accent => "Accent",
             Self::TintHue => "Tint",
             Self::Tint => "Tint strength",
-            Self::Themes => "Theme",
+            Self::Controls => "Controls",
+            Self::Glass => "Glass",
+            Self::ThemeFile => "Theme file",
             Self::CornerRadius => "Corner radius",
             Self::IncreaseContrast => "Increase contrast",
             Self::ReduceTransparency => "Reduce transparency",
@@ -102,12 +106,16 @@ impl<T: Copy> AppearancePageItem<T> {
 pub fn appearance_page_items<T>(advanced: bool) -> Vec<AppearancePageItem<T>> {
     let mut items = vec![
         AppearancePageItem::Title,
-        AppearancePageItem::Group { title: "Theme" },
+        AppearancePageItem::Group { title: "Look" },
         AppearancePageItem::ThemeMode,
-        AppearancePageItem::Themes,
         AppearancePageItem::Accent,
         AppearancePageItem::TintHue,
         AppearancePageItem::Tint,
+        AppearancePageItem::CornerRadius,
+        AppearancePageItem::Controls,
+        AppearancePageItem::Glass,
+        AppearancePageItem::UiFontFamily,
+        AppearancePageItem::ThemeFile,
         AppearancePageItem::Advanced { expanded: advanced },
     ];
     if !advanced {
@@ -116,37 +124,12 @@ pub fn appearance_page_items<T>(advanced: bool) -> Vec<AppearancePageItem<T>> {
     items.extend([
         AppearancePageItem::TextSize,
         AppearancePageItem::Density,
-        AppearancePageItem::CornerRadius,
-        AppearancePageItem::UiFontFamily,
         AppearancePageItem::IncreaseContrast,
         AppearancePageItem::ReduceTransparency,
         AppearancePageItem::ReduceMotion,
         AppearancePageItem::AnimationSpeed,
     ]);
     items
-}
-
-pub struct ThemePicks<'a> {
-    pub themes: Vec<(SharedString, &'a InterfaceTheme)>,
-    pub selected: usize,
-    pub overrides: &'a ThemeOverrides,
-}
-
-impl ThemePicks<'_> {
-    fn base(&self) -> &InterfaceTheme {
-        self.themes.get(self.selected).map_or_else(
-            || crate::foundation::interface_theme::default_theme(),
-            |(_, theme)| *theme,
-        )
-    }
-
-    pub fn composed(&self, change: impl FnOnce(&mut ThemeOverrides)) -> InterfaceTheme {
-        let mut overrides = self.overrides.clone();
-        change(&mut overrides);
-        let mut theme = self.base().clone();
-        overrides.apply_to(&mut theme);
-        theme
-    }
 }
 
 pub const THEME_MODES: [(Option<ThemeMode>, &str); 3] = [
@@ -193,125 +176,106 @@ pub fn density_control(
         .on_select(move |index, window, cx| on_pick(DENSITIES[index].0, window, cx))
 }
 
-pub fn theme_labels(picks: &ThemePicks) -> Vec<SharedString> {
-    let names = picks
-        .themes
-        .iter()
-        .map(|(id, theme)| {
-            if theme.name.is_empty() {
-                id.to_string()
-            } else {
-                theme.name.clone()
-            }
-        })
-        .collect::<Vec<_>>();
-    names
-        .iter()
-        .zip(&picks.themes)
-        .enumerate()
-        .map(|(index, (name, (id, _)))| {
-            if names[..index].contains(name) {
-                format!("{name} ({id})").into()
-            } else {
-                name.clone().into()
-            }
-        })
-        .collect()
+pub const CONTROL_SHAPES: [(Controls, &str); 2] =
+    [(Controls::Rounded, "Rounded"), (Controls::Pill, "Pill")];
+
+pub fn controls_control(
+    selected: Controls,
+    on_pick: impl Fn(Controls, &mut Window, &mut App) + 'static,
+    cx: &App,
+) -> SegmentedControl {
+    SegmentedControl::new("settings-controls", CONTROL_SHAPES.map(|(_, title)| title))
+        .selected(
+            CONTROL_SHAPES
+                .iter()
+                .position(|(controls, _)| *controls == selected)
+                .unwrap_or(0),
+        )
+        .on(crate::blocks::settings::settings_card_ground(cx))
+        .on_select(move |index, window, cx| on_pick(CONTROL_SHAPES[index].0, window, cx))
 }
 
-const ACCENT_DOT: f32 = 10.0;
+pub const GLASSES: [(Glass, &str); 3] = [
+    (Glass::None, "None"),
+    (Glass::Frosted, "Frosted"),
+    (Glass::Liquid, "Liquid"),
+];
 
-fn accent_label(accent: ala::Hsla, label: SharedString, cx: &App) -> ala::Div {
-    div()
-        .flex()
-        .items_center()
-        .gap(Space::S8)
-        .child(
-            div()
-                .flex_none()
-                .size(px(ACCENT_DOT))
-                .rounded(cx.theme().swatch_radius().min(px(ACCENT_DOT / 2.0)))
-                .bg(accent),
-        )
-        .child(div().flex_none().child(label))
+pub fn glass_control(
+    selected: &Glass,
+    on_pick: impl Fn(Glass, &mut Window, &mut App) + 'static,
+    cx: &App,
+) -> SegmentedControl {
+    let custom = matches!(selected, Glass::Material(_));
+    let titles = GLASSES
+        .iter()
+        .map(|(_, title)| *title)
+        .chain(custom.then_some("Custom"))
+        .collect::<Vec<_>>();
+    let picked = GLASSES
+        .iter()
+        .position(|(glass, _)| glass == selected)
+        .unwrap_or(GLASSES.len());
+    let kept = selected.clone();
+    SegmentedControl::new("settings-glass", titles)
+        .selected(picked)
+        .on(crate::blocks::settings::settings_card_ground(cx))
+        .on_select(move |index, window, cx| {
+            let glass = GLASSES
+                .get(index)
+                .map_or_else(|| kept.clone(), |(glass, _)| glass.clone());
+            on_pick(glass, window, cx);
+        })
 }
 
 type ThemeMenu = Rc<dyn Fn(PopupMenu, &mut Window, &mut Context<PopupMenu>) -> PopupMenu>;
 
-pub fn theme_picker(
-    picks: &ThemePicks,
-    on_pick: impl Fn(usize, &mut Window, &mut App) + 'static,
-    more: impl Fn(PopupMenu, &mut Window, &mut Context<PopupMenu>) -> PopupMenu + 'static,
-    cx: &App,
-) -> ala::Div {
-    picker(picks, on_pick, Some(Rc::new(more)), cx)
-}
-
-fn picker(
-    picks: &ThemePicks,
-    on_pick: impl Fn(usize, &mut Window, &mut App) + 'static,
+fn theme_file_menu(
+    appearance: &Appearance,
+    on_change: OnChange,
     more: Option<ThemeMenu>,
     cx: &App,
-) -> ala::Div {
-    let theme_mode = cx.theme().mode;
-    let live = cx.theme().accent;
-    let selected = picks.selected;
-    let themes = theme_labels(picks)
-        .into_iter()
-        .zip(&picks.themes)
-        .enumerate()
-        .map(|(index, (label, (_, theme)))| {
-            let accent = if index == selected {
-                live
-            } else {
-                theme.colors(theme_mode).accent
-            };
-            (label, accent)
+) -> impl IntoElement {
+    let mut shown = appearance.shown_theme();
+    "Custom".clone_into(&mut shown.name);
+    let json = shown.to_json();
+    Button::new("settings-theme-file")
+        .ghost()
+        .icon(IconName::Ellipsis)
+        .tooltip("Theme file")
+        .on(crate::blocks::settings::settings_card_ground(cx))
+        .dropdown_menu_with_anchor(Anchor::TopRight, move |menu, window, cx| {
+            let json = json.clone();
+            let pasted = Rc::clone(&on_change);
+            let reset = Rc::clone(&on_change);
+            let menu = menu
+                .item(
+                    PopupMenuItem::new("Copy theme file").on_click(move |_, _, cx| {
+                        cx.write_to_clipboard(ala::ClipboardItem::new_string(json.clone()));
+                    }),
+                )
+                .item(
+                    PopupMenuItem::new("Paste theme file").on_click(move |_, window, cx| {
+                        let theme = cx
+                            .read_from_clipboard()
+                            .and_then(|item| item.text())
+                            .and_then(|text| parse_theme(&text).ok());
+                        if let Some(theme) = theme {
+                            pasted(AppearanceChange::Import(Box::new(theme)), window, cx);
+                        }
+                    }),
+                )
+                .separator()
+                .item(
+                    PopupMenuItem::new("Reset to defaults").on_click(move |_, window, cx| {
+                        reset(AppearanceChange::ResetLook, window, cx);
+                    }),
+                );
+            match &more {
+                Some(more) => more(menu.separator(), window, cx),
+                None => menu,
+            }
         })
-        .collect::<Vec<_>>();
-    let current = themes
-        .get(selected)
-        .map(|(label, _)| label.clone())
-        .unwrap_or_default();
-    let on_pick = Rc::new(on_pick);
-    let ground = crate::blocks::settings::settings_card_ground(cx);
-    div()
-        .flex()
-        .flex_none()
-        .items_center()
-        .gap(Space::S4)
-        .child(
-            Button::new("settings-theme")
-                .child(accent_label(live, current, cx))
-                .dropdown_caret(true)
-                .on(ground)
-                .dropdown_menu_with_anchor(Anchor::TopRight, move |menu, _, _| {
-                    themes
-                        .iter()
-                        .enumerate()
-                        .fold(menu, |menu, (index, (label, accent))| {
-                            let on_pick = Rc::clone(&on_pick);
-                            let (label, accent) = (label.clone(), *accent);
-                            menu.item(
-                                PopupMenuItem::element(move |_, _, cx| {
-                                    accent_label(accent, label.clone(), cx)
-                                })
-                                .checked(index == selected)
-                                .on_click(move |_, window, cx| on_pick(index, window, cx)),
-                            )
-                        })
-                }),
-        )
-        .children(more.map(|more| {
-            Button::new("settings-theme-more")
-                .ghost()
-                .icon(IconName::Ellipsis)
-                .tooltip("More")
-                .on(ground)
-                .dropdown_menu_with_anchor(Anchor::TopRight, move |menu, window, cx| {
-                    more(menu, window, cx)
-                })
-        }))
 }
 
 pub const SWATCH: f32 = 18.0;
@@ -324,17 +288,13 @@ const SWATCH_RING: f32 = 1.5;
     reason = "a swatch shows the accent it picks, not the live one"
 )]
 pub fn accent_swatches(
-    picks: &ThemePicks,
+    selected: &str,
     mode: ThemeMode,
     custom: crate::blocks::color_picker::ColorPicker,
     on_pick: impl Fn(Option<&'static str>, &mut Window, &mut App) + 'static,
     cx: &App,
 ) -> ala::Div {
-    let selected = picks.overrides.accent.as_deref().unwrap_or("theme");
-    let own = picks
-        .composed(|overrides| overrides.accent = None)
-        .colors(mode)
-        .accent;
+    let ink = ThemeColor::for_mode(mode).foreground;
     let on_pick = Rc::new(on_pick);
     let ring = cx.theme().foreground;
     let radius = cx.theme().swatch_radius();
@@ -357,9 +317,7 @@ pub fn accent_swatches(
                 .tooltip(move |window, cx| {
                     crate::components::tooltip::Tooltip::new(name.clone()).build(window, cx)
                 })
-                .on_click(move |_, window, cx| {
-                    on_pick((id != "theme").then_some(id), window, cx);
-                }),
+                .on_click(move |_, window, cx| on_pick(Some(id), window, cx)),
         )
     };
     let named = ACCENTS.iter().filter_map(|name| {
@@ -373,18 +331,18 @@ pub fn accent_swatches(
         .items_center()
         .when(coarse, |row| row.w_full().justify_between())
         .gap(Space::S4)
-        .child(swatch("theme", "Theme".into(), own))
+        .child(swatch("ink", "Ink".into(), ink))
         .children(named);
     if coarse {
         let chosen = match selected {
-            "theme" => "Theme".into(),
+            "ink" => "Ink".into(),
             name if ACCENTS.contains(&name) => accent_title(name),
             hex => hex.to_uppercase().into(),
         };
-        let color = crate::foundation::interface_theme::accent_color(selected, mode).unwrap_or(own);
+        let color = crate::foundation::interface_theme::accent_color(selected, mode).unwrap_or(ink);
         return div().w_full().child(custom.presets(chosen, color, row));
     }
-    let custom_selected = selected != "theme" && !ACCENTS.contains(&selected);
+    let custom_selected = selected != "ink" && !ACCENTS.contains(&selected);
     row.child(ringed(custom_selected, ring, radius, custom))
 }
 
@@ -696,18 +654,12 @@ impl AppearanceControls {
         &self.zoom
     }
 
-    pub fn sync(
-        &self,
-        appearance: &Appearance,
-        saved: &SavedThemes,
-        window: &mut Window,
-        cx: &mut App,
-    ) {
+    pub fn sync(&self, appearance: &Appearance, window: &mut Window, cx: &mut App) {
         let accent = custom_accent(appearance);
         self.accent
             .update(cx, |picker, cx| picker.set_color(accent, window, cx));
         if let Some((select, _)) = &*self.ui_font.borrow() {
-            let font = appearance.ui_font(saved).to_owned();
+            let font = appearance.ui_font().to_owned();
             select.update(cx, |select, cx| {
                 select.set_selected_value(&font, window, cx);
             });
@@ -717,14 +669,13 @@ impl AppearanceControls {
     fn ui_font_select(
         &self,
         appearance: &Appearance,
-        saved: &SavedThemes,
         window: &mut Window,
         cx: &mut App,
     ) -> Entity<SelectState<Vec<SettingsSelectItem>>> {
         if let Some((select, _)) = &*self.ui_font.borrow() {
             return select.clone();
         }
-        let select = ui_font_select(Some(appearance.ui_font(saved)), window, cx);
+        let select = ui_font_select(Some(appearance.ui_font()), window, cx);
         let changed = Rc::clone(&self.on_change);
         let subscription = window.subscribe(
             &select,
@@ -759,24 +710,6 @@ fn custom_accent(appearance: &Appearance) -> Option<ala::Hsla> {
         })
 }
 
-pub fn theme_picks<'a>(appearance: &'a Appearance, saved: &'a SavedThemes) -> ThemePicks<'a> {
-    let themes = crate::foundation::interface_theme::builtin_themes()
-        .iter()
-        .map(|(id, theme)| (SharedString::from(*id), theme))
-        .chain(saved.iter().map(|(id, theme)| (id.clone(), theme)))
-        .collect::<Vec<_>>();
-    let active = appearance.theme_id(saved);
-    let selected = themes
-        .iter()
-        .position(|(id, _)| id.as_str() == active)
-        .unwrap_or(0);
-    ThemePicks {
-        themes,
-        selected,
-        overrides: &appearance.overrides,
-    }
-}
-
 fn placed(entry: SettingEntry, control: impl IntoElement, stacked: bool) -> SettingEntry {
     if stacked {
         entry.child(control)
@@ -788,7 +721,6 @@ fn placed(entry: SettingEntry, control: impl IntoElement, stacked: bool) -> Sett
 pub fn kit_row<T: Copy>(
     item: AppearancePageItem<T>,
     appearance: &Appearance,
-    saved: &SavedThemes,
     controls: &AppearanceControls,
     stacked: bool,
     window: &mut Window,
@@ -803,42 +735,33 @@ pub fn kit_row<T: Copy>(
             move |mode, window, cx| on_change(AppearanceChange::Mode(mode), window, cx),
             cx,
         )),
-        AppearancePageItem::Themes => {
-            let picks = theme_picks(appearance, saved);
-            let picked = picks
-                .themes
-                .iter()
-                .map(|(id, _)| {
-                    let mut next = appearance.clone();
-                    next.pick_theme(id, saved);
-                    (id.clone(), next.ui_font(saved).to_owned())
-                })
-                .collect::<Vec<_>>();
-            let fonts = controls
-                .ui_font
-                .borrow()
-                .as_ref()
-                .map(|(select, _)| select.clone());
-            let on_pick = move |index: usize, window: &mut Window, cx: &mut App| {
-                let (id, font) = &picked[index];
-                if let Some(select) = &fonts {
-                    select.update(cx, |select, cx| {
-                        select.set_selected_value(font, window, cx);
-                    });
-                }
-                on_change(AppearanceChange::Theme(id.clone()), window, cx);
-            };
-            entry.control(picker(&picks, on_pick, controls.theme_menu.clone(), cx))
-        }
+        AppearancePageItem::Controls => entry.control(controls_control(
+            appearance.controls(),
+            move |shape, window, cx| on_change(AppearanceChange::Controls(shape), window, cx),
+            cx,
+        )),
+        AppearancePageItem::Glass => entry.control(glass_control(
+            &appearance.glass(),
+            move |glass, window, cx| on_change(AppearanceChange::Glass(glass), window, cx),
+            cx,
+        )),
+        AppearancePageItem::ThemeFile => entry
+            .description("Copy this look as a theme file, or paste one in")
+            .control(theme_file_menu(
+                appearance,
+                on_change,
+                controls.theme_menu.clone(),
+                cx,
+            )),
         AppearancePageItem::Accent => {
-            let picks = theme_picks(appearance, saved);
+            let selected = appearance.accent();
             let custom = ColorPicker::new(&controls.accent, ala::transparent_black())
                 .id("settings-accent-custom")
                 .label(title)
                 .swatch(px(SWATCH));
             let picker = controls.accent.clone();
             let swatches = accent_swatches(
-                &picks,
+                &selected,
                 cx.theme().mode,
                 custom,
                 move |name, window, cx| {
@@ -854,18 +777,18 @@ pub fn kit_row<T: Copy>(
             placed(entry, swatches, stacked)
         }
         AppearancePageItem::TintHue => {
-            let hue = appearance.neutral(saved).hue;
+            let hue = appearance.neutral().hue;
             let slider = tint_hue_slider(hue, controls.change(AppearanceChange::TintHue), cx);
             placed(entry, slider, stacked)
         }
         AppearancePageItem::Tint => {
-            let tint = appearance.neutral(saved).amount;
+            let tint = appearance.neutral().amount;
             let slider = tint_slider(tint, controls.change(AppearanceChange::Tint), cx);
             placed(entry, slider, stacked)
         }
         AppearancePageItem::CornerRadius => {
             let slider = corner_radius_slider(
-                appearance.corner_radius(saved),
+                appearance.corner_radius(),
                 controls.change(AppearanceChange::Radius),
                 cx,
             );
@@ -887,7 +810,7 @@ pub fn kit_row<T: Copy>(
                 }),
         ),
         AppearancePageItem::UiFontFamily => {
-            let select = controls.ui_font_select(appearance, saved, window, cx);
+            let select = controls.ui_font_select(appearance, window, cx);
             entry.control(
                 div().w(px(200.0)).max_w_full().flex_none().child(
                     Select::new(&select)
@@ -1155,31 +1078,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn theme_labels_tell_apart_themes_that_share_a_name() {
-        let named = |name: &str| InterfaceTheme {
-            name: name.to_owned(),
-            ..crate::foundation::interface_theme::default_theme().clone()
-        };
-        let (yaru, copy, macos, unnamed) =
-            (named("Yaru"), named("Yaru"), named("macOS"), named(""));
-        let overrides = ThemeOverrides::default();
-        let picks = ThemePicks {
-            themes: vec![
-                ("yaru".into(), &yaru),
-                ("theme-2".into(), &copy),
-                ("theme-1".into(), &macos),
-                ("theme-3".into(), &unnamed),
-            ],
-            selected: 0,
-            overrides: &overrides,
-        };
-        assert_eq!(
-            theme_labels(&picks),
-            ["Yaru", "Yaru (theme-2)", "macOS", "theme-3"]
-        );
-    }
-
-    #[test]
     fn advanced_lists_the_other_knobs_only_while_expanded() {
         type Item = AppearancePageItem;
         let collapsed = appearance_page_items::<Infallible>(false);
@@ -1187,15 +1085,15 @@ mod tests {
             collapsed.last(),
             Some(Item::Advanced { expanded: false })
         ));
-        assert!(!collapsed.contains(&Item::CornerRadius));
+        assert!(!collapsed.contains(&Item::TextSize));
 
         let expanded = appearance_page_items::<Infallible>(true);
         let advanced = expanded
             .iter()
             .position(|item| *item == Item::Advanced { expanded: true })
             .expect("Advanced heading");
-        assert!(expanded[..advanced].contains(&Item::Themes));
-        assert!(expanded[advanced..].contains(&Item::CornerRadius));
+        assert!(expanded[..advanced].contains(&Item::Glass));
+        assert!(expanded[advanced..].contains(&Item::TextSize));
         assert_eq!(expanded.last(), Some(&Item::AnimationSpeed));
     }
 
@@ -1234,7 +1132,7 @@ mod tests {
             let mut items = appearance_page_items::<u8>(true);
             items.push(Item::App(1));
             for item in items {
-                let row = kit_row(item, &appearance, &[], &controls, false, window, cx);
+                let row = kit_row(item, &appearance, &controls, false, window, cx);
                 let kit_entry = item.is_entry() && !matches!(item, Item::App(_));
                 assert_eq!(row.is_some(), kit_entry, "{item:?}");
                 assert_eq!(item.title().is_some(), kit_entry, "{item:?}");

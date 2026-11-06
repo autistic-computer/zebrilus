@@ -23,14 +23,14 @@
       "click": "button:Light"
     },
     {
-      "name": "pick-blue",
+      "name": "pick-green",
       "section": "page",
-      "click": "settings-accent-blue"
+      "click": "settings-accent-green"
     },
     {
-      "name": "pick-theme-accent",
+      "name": "pick-ink",
       "section": "page",
-      "click": "settings-accent-theme",
+      "click": "settings-accent-ink",
       "keep": true
     },
     {
@@ -49,39 +49,19 @@
       "key": "Home"
     },
     {
+      "name": "pick-pill",
+      "section": "page",
+      "click": "button:Pill"
+    },
+    {
+      "name": "pick-no-glass",
+      "section": "page",
+      "click": "button:None"
+    },
+    {
       "name": "toggle-contrast",
       "section": "narrow",
       "click": "settings-increase-contrast"
-    },
-    {
-      "name": "hover-theme",
-      "section": "page",
-      "hover": "settings-theme"
-    },
-    {
-      "name": "open-theme",
-      "section": "page",
-      "click": "settings-theme"
-    },
-    {
-      "name": "theme-down",
-      "section": "page",
-      "key": "ArrowDown"
-    },
-    {
-      "name": "theme-down-again",
-      "section": "page",
-      "key": "ArrowDown"
-    },
-    {
-      "name": "theme-up",
-      "section": "page",
-      "key": "ArrowUp"
-    },
-    {
-      "name": "theme-enter",
-      "section": "page",
-      "key": "Enter"
     },
     {
       "name": "collapse-advanced",

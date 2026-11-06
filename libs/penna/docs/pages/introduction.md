@@ -18,4 +18,4 @@ Each folder holds the Rust next to its CSS and JS, under the same name.
 
 ## One look
 
-penna draws one look in light and dark. An app adjusts it with a few knobs (tint, corners, glass, face); `default`, `macos` and `yaru` are presets of those knobs. Switch them with the picker in the corner of this page, and see [Look](look.md) for the knobs.
+penna draws one look in light and dark. A person adjusts it with a few knobs (tint, corners, controls, glass, face) in Appearance, starting from the platform's. The picker in the corner of this page switches between the kit's three theme files, `default`, `macos` and `yaru`; see [Look](look.md) for the knobs.

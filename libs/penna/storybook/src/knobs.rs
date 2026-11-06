@@ -334,8 +334,6 @@ impl Knobs {
 
     pub fn appearance(&self) -> Appearance {
         let mut appearance = Appearance {
-            theme: Some(self.interface.to_owned()),
-            overrides: self.overrides(),
             contrast: self.contrast,
             reduce_transparency: self.reduce_transparency,
             zoom: self.zoom,
@@ -343,6 +341,7 @@ impl Knobs {
             animation_speed: self.speed,
             ..Appearance::default()
         };
+        appearance.import(&self.shown_theme());
         appearance.set_theme_mode(self.theme);
         appearance
     }
@@ -523,16 +522,19 @@ mod tests {
         .unwrap();
         let appearance = knobs.appearance();
         assert_eq!(appearance.theme_mode(), Some(ThemeMode::Light));
-        assert_eq!(appearance.theme.as_deref(), Some("macos"));
+        assert_eq!(appearance.accent(), "pink");
         assert_eq!(
-            appearance.overrides,
-            ThemeOverrides {
-                accent: Some("pink".to_owned()),
-                tint: Some(0.3),
-                tint_hue: Some(145.0),
-                ..ThemeOverrides::default()
+            appearance.neutral(),
+            Neutral {
+                hue: 145.0,
+                amount: 0.3
             }
         );
+        assert_eq!(
+            appearance.controls(),
+            penna::foundation::interface_theme::Controls::Pill
+        );
+        assert_eq!(appearance.glass(), Glass::Liquid);
         assert!(appearance.reduce_transparency);
         assert_eq!(
             knobs.neutral(),

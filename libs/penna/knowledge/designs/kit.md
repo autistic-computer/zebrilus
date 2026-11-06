@@ -57,7 +57,7 @@ Code-font text keeps its place on the scale. `Label::mono()` and `.type_style_mo
 
 ## Themes and platforms
 
-`default`, `macos` and `yaru` are presets, knob values with names, not operating systems: any of them runs anywhere. A theme file in `themes/*.json` holds only knobs (`foundations.md`, Look); how a piece of UI draws comes from its kind's defaults and its built-in recipe patch, the same under every preset, so both apps get the same look. Real operating system differences (fonts, key glyphs, window border, the default glass) stay in penna behind `cfg!(target_os)`.
+`default`, `macos` and `yaru` are the kit's theme files, knob values with names, not operating systems: any of them runs anywhere. The look starts from `macos` on Apple platforms and `default` elsewhere, and a person sets each knob over it in Appearance; nobody picks a preset. A theme file in `themes/*.json` holds only knobs (`foundations.md`, Look); how a piece of UI draws comes from its kind's defaults and its built-in recipe patch, the same under every theme file, so both apps get the same look. Real operating system differences (fonts, key glyphs, window border, the default glass) stay in penna behind `cfg!(target_os)`.
 
 ## Looks
 

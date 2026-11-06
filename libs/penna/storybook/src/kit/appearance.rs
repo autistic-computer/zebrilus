@@ -22,7 +22,7 @@ pub const STORY: Story = Story {
         Section {
             id: "page",
             name: "Page",
-            summary: "Mode, Theme, Accent and Tint, then the Advanced rows: text size, density, corner radius, UI font, increase contrast, reduce transparency, reduce motion and animation speed, which rests while motion is reduced. Without a theme menu the Theme row has no more button.",
+            summary: "The Look rows (mode, accent, tint, corner radius, controls, glass, UI font and the theme file menu), then the Advanced rows: text size, density, increase contrast, reduce transparency, reduce motion and animation speed, which rests while motion is reduced.",
             build: |window, cx| page(false, window, cx),
         },
         Section {
@@ -84,7 +84,7 @@ impl Render for AppearanceStory {
             })
             .flex()
             .w(px(if self.stacked { 360.0 } else { 640.0 }))
-            .h(px(if self.stacked { 1060.0 } else { 820.0 }))
+            .h(px(if self.stacked { 1150.0 } else { 940.0 }))
             .rounded(cx.theme().radius)
             .framed(cx)
             .overflow_hidden()
@@ -103,7 +103,7 @@ impl AppearanceStory {
             appearance,
             move |change, _, cx| {
                 let _ = story.update(cx, |story, cx| {
-                    story.appearance.change(change, &[]);
+                    story.appearance.change(change);
                     cx.notify();
                 });
             },
@@ -131,7 +131,6 @@ impl AppearanceStory {
         kit_row(
             item,
             &self.appearance,
-            &[],
             &self.controls,
             self.stacked,
             window,

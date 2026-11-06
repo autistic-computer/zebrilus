@@ -1,25 +1,9 @@
 (() => {
-const THEMES = [
-  ["default", "Default"],
-  ["macos", "macOS"],
-  ["yaru", "Yaru"],
-];
-const TOKENS = (document.querySelector("script[data-tokens]")?.dataset.tokens ?? "../../../../web/tokens/").replace(/\/?$/, "/");
-const themeAccents = new Map();
-const themeAccent = (id, look) => {
-  const key = `${id}-${look}`;
-  if (!themeAccents.has(key)) {
-    themeAccents.set(
-      key,
-      fetch(new URL(`${key}.css`, new URL(TOKENS, document.baseURI)))
-        .then((response) => response.text())
-        .then((text) => /--penna-accent:\s*([^;]+);/.exec(text)?.[1].trim() ?? "")
-        .catch(() => ""),
-    );
-  }
-  return themeAccents.get(key);
+const LOOKS = {
+  default: { accent: "ink", controls: "0", glass: "1" },
+  macos: { accent: "blue", controls: "1", glass: "2" },
+  yaru: { accent: "orange", controls: "0", glass: "0" },
 };
-THEMES.forEach(([id]) => ["light", "dark"].forEach((look) => themeAccent(id, look)));
 const HUE_STOPS = 12;
 const RING = 3.5;
 
@@ -46,6 +30,7 @@ function hueColor(hue) {
 const rootStyle = () => getComputedStyle(document.documentElement);
 const mode = () => document.documentElement.dataset.pennaMode || "dark";
 const themeId = () => document.documentElement.dataset.pennaTheme || "default";
+const look = () => LOOKS[themeId()] ?? LOOKS.default;
 const px = (value) => parseFloat(value) || 0;
 
 function adaptive(radius, width, height) {
@@ -75,10 +60,8 @@ function shapeSwatches(root) {
   const radius = controlRadius();
   const swatch = radius >= 9999 ? 9 : adaptive(radius, 18, 18);
   const ring = radius > 0 ? (radius >= 9999 ? 9999 : adaptive(radius + RING, 25, 25)) : 0;
-  const dot = adaptive(Math.min(radius, 5), 10, 10);
   root.style.setProperty("--appearance-swatch-r", `${swatch}px`);
   root.style.setProperty("--appearance-ring-r", `${ring}px`);
-  root.style.setProperty("--appearance-dot-r", `${dot}px`);
   if (radius >= 9999) root.style.setProperty("--appearance-swatch-k", "1");
   else root.style.removeProperty("--appearance-swatch-k");
   root.querySelectorAll(".appearance-swatch[data-light]").forEach((element) => {
@@ -208,8 +191,8 @@ function wireCustom(frame) {
       picker.toggleAttribute("data-custom", custom);
       row.querySelectorAll(".appearance-ring").forEach((ring) => {
         const own = ring.contains(picker);
-        const theme = Boolean(ring.querySelector('[data-accent="theme"]'));
-        ring.toggleAttribute("data-selected", custom ? own : theme);
+        const ink = Boolean(ring.querySelector('[data-accent="ink"]'));
+        ring.toggleAttribute("data-selected", custom ? own : ink);
       });
     });
   });
@@ -236,135 +219,30 @@ function wireSwatches(frame) {
   });
 }
 
-function closeMenus(except) {
-  document.querySelectorAll(".appearance-theme-menu").forEach((menu) => {
-    if (menu === except) return;
-    const focused = menu.contains(document.activeElement);
-    menu.remove();
-    if (focused) menu.appearanceTrigger.focus({ preventScroll: true, focusVisible: false });
-  });
-  document.querySelectorAll(".appearance-theme[aria-expanded]").forEach((button) => {
-    if (except?.appearanceTrigger === button) return;
-    button.removeAttribute("aria-expanded");
-    button.removeAttribute("data-state");
-  });
-}
-
-function highlight(menu, item) {
-  menu.querySelectorAll('[data-penna="menu-item"]').forEach((each) => {
-    if (each === item) each.dataset.state = "selected";
-    else each.removeAttribute("data-state");
-  });
-}
-
-function move(menu, delta) {
-  const items = [...menu.querySelectorAll('[data-penna="menu-item"]')];
-  const at = items.findIndex((item) => item.dataset.state === "selected");
-  const next = delta > 0 ? (at < 0 ? 0 : (at + 1) % items.length) : at <= 0 ? items.length - 1 : at - 1;
-  highlight(menu, items[next]);
-}
-
-function wireTheme(frame) {
-  frame.querySelectorAll(".appearance-theme").forEach((button) => {
-    if (button.appearanceTheme) return;
-    button.appearanceTheme = true;
-    const name = button.querySelector(".appearance-theme-name");
-    button.dataset.picked ??= themeId();
-    const open = () => {
-      const menu = document.createElement("div");
-      menu.className = "penna-menu appearance-theme-menu";
-      menu.dataset.penna = "popover";
-      menu.setAttribute("role", "menu");
-      THEMES.forEach(([id, label], index) => {
-        const item = document.createElement("div");
-        item.dataset.penna = "menu-item";
-        item.dataset.id = String(index);
-        item.setAttribute("role", "menuitemradio");
-        item.setAttribute("aria-checked", String(id === button.dataset.picked));
-        const check = document.createElement("i");
-        check.className = "appearance-check";
-        if (id === button.dataset.picked) check.dataset.icon = "check";
-        const label_ = document.createElement("span");
-        label_.className = "appearance-accent-label";
-        const dot = document.createElement("span");
-        dot.className = "appearance-dot";
-        if (id !== button.dataset.picked) {
-          const accent = themeAccent(id, mode() === "dark" ? "dark" : "light");
-          accent.then((color) => color && (dot.style.background = color));
-        }
-        const text = document.createElement("span");
-        text.className = "penna-label";
-        text.dataset.pennaText = "";
-        text.textContent = label;
-        label_.append(dot, text);
-        item.append(check, label_);
-        item.addEventListener("mouseenter", () => highlight(menu, item));
-        item.addEventListener("mouseleave", () => highlight(menu, null));
-        item.addEventListener("click", () => {
-          button.dataset.picked = id;
-          name.textContent = label;
-          pennaKit.ceilText(name);
-          closeMenus();
-          if (typeof snap === "function") snap(button.parentElement);
-        });
-        menu.append(item);
-      });
-      menu.addEventListener("mousedown", (event) => event.preventDefault());
-      menu.addEventListener("keydown", (event) => {
-        const keys = {
-          ArrowDown: () => move(menu, 1),
-          ArrowUp: () => move(menu, -1),
-          Enter: () => menu.querySelector('[data-state="selected"]')?.click(),
-          " ": () => menu.querySelector('[data-state="selected"]')?.click(),
-          Escape: () => closeMenus(),
-        };
-        if (!(event.key in keys)) return;
-        event.preventDefault();
-        keys[event.key]();
-      });
-      menu.appearanceTrigger = button;
-      menu.tabIndex = -1;
-      const box = frame.getBoundingClientRect();
-      const anchor = button.getBoundingClientRect();
-      menu.style.top = `${anchor.bottom + 4 - box.top - frame.clientTop}px`;
-      menu.style.right = `${box.right - frame.clientLeft - anchor.right}px`;
-      frame.append(menu);
-      pennaKit.ceilText(menu);
-      button.setAttribute("aria-expanded", "true");
-      button.dataset.state = "current";
-      closeMenus(menu);
-      menu.focus({ preventScroll: true });
-      return menu;
-    };
-    button.addEventListener("mousedown", (event) => {
-      if (event.button !== 0) return;
-      event.stopPropagation();
-      event.preventDefault();
-      if (button.hasAttribute("aria-expanded")) closeMenus();
-      else open();
+function followLook(frame) {
+  const picked = look();
+  frame.querySelectorAll(".appearance-swatches").forEach((row) => {
+    if (row.dataset.touched !== undefined) return;
+    row.querySelectorAll(".appearance-ring").forEach((ring) => {
+      ring.toggleAttribute("data-selected", Boolean(ring.querySelector(`[data-accent="${picked.accent}"]`)));
     });
-    button.addEventListener("click", (event) => {
-      event.stopPropagation();
-      if (event.detail === 0) {
-        if (button.hasAttribute("aria-expanded")) closeMenus();
-        else open();
+    if (!row.appearanceFollow) {
+      row.appearanceFollow = true;
+      row.addEventListener("change", () => (row.dataset.touched = ""));
+    }
+  });
+  [
+    [".appearance-look-controls", picked.controls],
+    [".appearance-look-glass", picked.glass],
+  ].forEach(([selector, value]) => {
+    frame.querySelectorAll(selector).forEach((control) => {
+      if (control.dataset.touched !== undefined) return;
+      control.dataset.value = value;
+      if (!control.appearanceFollow) {
+        control.appearanceFollow = true;
+        control.addEventListener("change", () => (control.dataset.touched = ""));
       }
     });
-    button.addEventListener("keydown", (event) => {
-      if (event.key !== "ArrowDown" || button.hasAttribute("aria-expanded")) return;
-      event.preventDefault();
-      move(open(), 1);
-    });
-  });
-}
-
-function nameTheme(frame) {
-  frame.querySelectorAll(".appearance-theme").forEach((button) => {
-    if (button.dataset.picked && button.dataset.picked !== button.dataset.followed) return;
-    const id = themeId();
-    button.dataset.picked = id;
-    button.dataset.followed = id;
-    button.querySelector(".appearance-theme-name").textContent = (THEMES.find(([each]) => each === id) ?? THEMES[0])[1];
   });
 }
 
@@ -404,10 +282,9 @@ function wireMotion(frame) {
 function settleAppearance() {
   document.querySelectorAll(".appearance-frame").forEach((frame) => {
     pickMode(frame);
-    nameTheme(frame);
+    followLook(frame);
     wireSwatches(frame);
     wireCustom(frame);
-    wireTheme(frame);
     wireDisclosure(frame);
     wireMotion(frame);
     pennaKit.ceilText(frame);
@@ -418,9 +295,6 @@ function settleAppearance() {
   document.querySelectorAll(".appearance-frame").forEach(shapeRuns);
 }
 
-document.addEventListener("mousedown", (event) => {
-  if (!event.target.closest?.(".appearance-theme-menu")) closeMenus();
-});
 settleAppearance();
 document.fonts.ready.then(settleAppearance);
 document.addEventListener("load", (event) => event.target.id === "penna-tokens" && requestAnimationFrame(settleAppearance), true);
