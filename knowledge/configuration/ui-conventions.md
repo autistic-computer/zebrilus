@@ -85,10 +85,11 @@ defines roles: zz has none of its own, and no widget takes a role from outside p
 5. **Menu, picker, and list highlights use the same control treatment.** A selected row is its
    row role's `selected` highlight: the `row` kind fills with the accent and the theme's text on
    it, a theme can make it a tint instead (Glass does), and it casts no shadow. Secondary text
-   takes the row's muted ink (`muted_on(ground, cx)`). Rows round from their look's shape: `round` is
-   the theme radius minus 4px while rows are inset, and square at a 0 row inset. `Row::row_height`
-   and `ListItem::row_height` hold that radius to 40% of the row's height with fixed smoothing 2.5,
-   and leave a `pill` row a pill; `ListItem`, popup menu, select and model picker rows and the
+   takes the row's muted ink (`muted_on(ground, cx)`). Rows round from their look's shape: a `round`
+   row is a control, so its corner is the theme's control roundness times its height
+   (`Theme::control_roundness()`, 31% at the default Corner radius), square at a 0 row inset, and a
+   `pill` row a pill; menu rows take the popover's corner less the row inset when that is smaller.
+   Every row takes the theme's smoothing; `ListItem`, popup menu, select and model picker rows and the
    directory, session, file and history picker rows all draw that way. `Row` draws a row in a
    `RowLook` with its hover and press, and `list_row` builds a menu row of a given height.
    Directory and session rows share

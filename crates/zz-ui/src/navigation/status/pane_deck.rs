@@ -5,10 +5,7 @@ use zz_protocol::PaneKindSnapshot;
 
 use crate::{
     Ground, IconName,
-    navigation::{
-        WORKSPACE_STATUS_PILL_HEIGHT,
-        pane_stack::{PaneStack, StackSize, StackTile, stack_radius},
-    },
+    navigation::pane_stack::{PaneStack, StackSize, StackTile, stack_radius},
 };
 
 use super::StatusAction;
@@ -95,7 +92,7 @@ pub fn status_pane_deck(
                 .collect(),
             size,
             ground,
-            stack_radius(px(size.tile()), WORKSPACE_STATUS_PILL_HEIGHT, cx),
+            stack_radius(px(size.tile()), cx),
         )
     })
 }

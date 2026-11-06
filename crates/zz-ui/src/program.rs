@@ -225,18 +225,12 @@ pub fn program_glyph_path(program: &Program) -> SharedString {
     .into()
 }
 
-pub fn program_tile(
-    program: &'static Program,
-    size: Pixels,
-    around: Pixels,
-    dimmed: f32,
-    cx: &App,
-) -> ala::Div {
+pub fn program_tile(program: &'static Program, size: Pixels, dimmed: f32, cx: &App) -> ala::Div {
     let theme = cx.theme();
     Face {
         program,
         size,
-        radius: stack_radius(size, around, cx),
+        radius: stack_radius(size, cx),
         smoothing: stack_look(None, PaintState::Rest, cx).smoothing,
         dark: theme.is_dark(),
         ground: theme.ground().fill,

@@ -72,6 +72,7 @@ pub(crate) fn refresh_current_theme(cx: &mut App) {
         window
             .update(cx, |_, window, cx| {
                 window.set_adaptive_corner_fraction(Some(penna::ADAPTIVE_CORNER_FRACTION));
+                window.set_apparent_corners(true);
                 crate::ui_scale::place_traffic_lights(window, cx);
             })
             .ok();
@@ -87,6 +88,7 @@ pub fn sync_system_appearance(mut window: Option<&mut Window>, cx: &mut App) {
     cx.set_global(SystemThemeMode(system_mode));
     if let Some(window) = window.as_deref_mut() {
         window.set_adaptive_corner_fraction(Some(penna::ADAPTIVE_CORNER_FRACTION));
+        window.set_apparent_corners(true);
     }
     config::shown_theme(cx).activate(
         zz_ui::interface_theme::pinned_theme_mode(config::theme_mode(cx)),

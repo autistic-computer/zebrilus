@@ -35,9 +35,10 @@ the desktop draws every fleet host from `MuxClient::fleet_hosts` and remembers t
 `flat-sidebar` in `zz/config` (`crates/zz/src/workspace/sidebar/flat.rs`); the web and iPad clients
 draw their one host and keep it in their saved preferences. Row actions open a rename and close menu
 (`FlatMenu`) from a right click or a long press. A window row draws its highlight with
-`navigation::workspace_row_fill`, the same fill as the tree rows (outline, inset and press), but
-gives a round shape a 24px corner whatever the theme's radius (square and pill stay), and round tiles stay concentric with
-it, so the two-line rows never turn into pills.
+`navigation::workspace_row_fill`, the same fill as the tree rows (outline, inset and press), and
+rounds like every row: the theme's control roundness times its height (14.3px on the 46px fill at
+the default Corner radius, 20.7px at 100%), so it reads as round as the controls around it and never
+turns into a pill unless Controls is Pill. Its program tiles are controls of their own height.
 
 # What every client receives
 

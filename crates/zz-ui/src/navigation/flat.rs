@@ -35,7 +35,6 @@ use crate::{
 };
 
 const ROW_HEIGHT: f32 = 48.0;
-const ROW_RADIUS: f32 = 24.0;
 const ROW_PADDING: f32 = 10.0;
 const TILE_GAP: f32 = 10.0;
 const TITLE_LINE: f32 = 17.0;
@@ -303,7 +302,7 @@ fn tile_radius(size: StackSize, cx: &App) -> Pixels {
     match cx.theme().style_of(ContentLook::TileStack).shape {
         Shape::Square => Pixels::ZERO,
         Shape::Pill => FULL_CORNER_RADIUS,
-        Shape::Round => px(ROW_RADIUS) - (row_height() - px(size.tile())) / 2.0,
+        Shape::Round => cx.theme().control_corner(px(size.tile())),
     }
 }
 
@@ -449,8 +448,7 @@ pub fn flat_window_row(
     let row_id = ElementId::NamedInteger(format!("flat-window-{}", host.0).into(), id.0);
     let (look, paint_state) = state.look();
     let ground = state.ground.unwrap_or_else(|| theme.ground());
-    let fill =
-        workspace_row_fill(&row_id, look, paint_state, None, ground, cx).radius(px(ROW_RADIUS));
+    let fill = workspace_row_fill(&row_id, look, paint_state, None, ground, cx);
     let hover = handler.clone();
     let click = handler.clone();
     div()

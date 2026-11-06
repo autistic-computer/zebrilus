@@ -383,7 +383,6 @@ nav:not([data-divider]) > .sidebar-resize:hover {
   z-index: -1;
   height: auto;
   margin: 0;
-  --penna-r: 24px;
 }
 
 .flat-window > :not(.flat-fill) {
@@ -413,7 +412,6 @@ nav:not([data-divider]) > .sidebar-resize:hover {
   place-items: center;
   width: 28px;
   height: 28px;
-  --penna-r: 8px;
   --penna-icon-size: 16px;
 }
 
