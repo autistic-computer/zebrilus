@@ -42,6 +42,7 @@
 }
 
 .penna-popup-row[data-penna] {
+  --penna-nest-inset: var(--penna-row-inset);
   position: relative;
   display: flex;
   flex: none;

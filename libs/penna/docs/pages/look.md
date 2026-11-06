@@ -55,7 +55,7 @@ On a tint's solid selection everything in the row takes its ink, and a toned chi
 
 ## Corners
 
-`radius` rounds containers and `control-radius` rounds controls. A control's corner stops at 45% of its height, so only `full` makes pills.
+Every corner follows Corner radius. A control (a button, field, tab, chip, badge or row) rounds to a share of its own height, so a small badge and a tall sidebar entry read equally round: 31% of the height at the default, 45% at 100%. Containers (cards, panels, popovers, dialogs) keep `radius` in pixels. A corner inside another is concentric, like the segmented control's pill in its track or a menu's rows in the menu, and only `full` makes pills.
 
 ```figure uses=input
 <div class="docs-show" data-gap="wide">
@@ -68,7 +68,7 @@ On a tint's solid selection everything in the row takes its ink, and a toned chi
 
 ## Smoothing
 
-`smoothing` shapes every corner, from round arcs at 2 to a squircle at 5. Rows draw at most 2.5.
+`smoothing` shapes every corner, from round arcs at 2 to a squircle at 5, without changing how round it looks: a smoother corner is drawn in a larger box, so its middle sits where a round arc of the same radius would.
 
 ```figure
 <div class="docs-show" data-gap="wide">

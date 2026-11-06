@@ -3,7 +3,12 @@
     surface.style.removeProperty("--penna-r");
     const inset = parseFloat(surface.dataset.inset ?? "0") || 0;
     const radius = parseFloat(getComputedStyle(surface).getPropertyValue("--penna-r")) || 0;
-    if (radius > 0 && radius < 9999 && inset > 0) surface.style.setProperty("--penna-r", `${radius + inset}px`);
+    if (radius > 0 && radius < 9999 && inset > 0) {
+      const root = getComputedStyle(document.documentElement);
+      const rows = parseFloat(root.getPropertyValue("--penna-control-md")) || 28;
+      const roundness = parseFloat(root.getPropertyValue("--penna-control-share")) || 0;
+      surface.style.setProperty("--penna-r", `${roundness * rows + inset}px`);
+    }
   }
 
   function settlePalettes() {

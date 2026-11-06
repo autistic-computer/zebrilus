@@ -177,6 +177,6 @@
   inset: var(--penna-ring-inset, -2.5px);
   border: 1.5px solid var(--penna-check-ring);
   border-radius: var(--penna-ring-r, 9999px);
-  corner-shape: var(--penna-check-k);
+  corner-shape: superellipse(var(--penna-ring-k, 1));
   pointer-events: none;
 }

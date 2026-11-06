@@ -4,8 +4,8 @@ use std::{
 };
 
 use ala::{
-    Anchor, App, Corners, Edges, GlassMaterial, Global, Hsla, Pixels, SharedString, Window,
-    WindowAppearance, px, size,
+    Anchor, App, Edges, GlassMaterial, Global, Hsla, Pixels, SharedString, Window,
+    WindowAppearance, px,
 };
 
 use crate::{BASE_UI_FONT_SIZE, TITLE_BAR_HEIGHT, foundation::highlighter::HighlightTheme};
@@ -138,15 +138,20 @@ impl Theme {
         self.accent.opaque()
     }
 
-    pub fn menu_radius(&self) -> Pixels {
-        (self.radius - px(4.0)).max(px(0.0))
+    pub fn control_roundness(&self) -> f32 {
+        let radius = if self.pill_controls() {
+            self.radius
+        } else {
+            self.control_radius()
+        };
+        ADAPTIVE_CORNER_FRACTION * super::interface_theme::corner_share(f32::from(radius))
     }
 
-    pub fn row_radius(&self, row_height: Pixels) -> Pixels {
-        if self.inset_rows() {
-            self.menu_radius().min(row_height * 0.40)
+    pub fn control_corner(&self, height: Pixels) -> Pixels {
+        if self.pill_controls() {
+            height / 2.0
         } else {
-            px(0.0)
+            height * self.control_roundness()
         }
     }
 
@@ -174,11 +179,7 @@ impl Theme {
         if self.radius <= px(0.0) {
             return px(0.0);
         }
-        let control = size(PANE_HEADER_CONTROL_HEIGHT, PANE_HEADER_CONTROL_HEIGHT);
-        Corners::all(self.control_radius())
-            .resolve_radii_for_quad_size(control, ADAPTIVE_CORNER_FRACTION)
-            .top_left
-            + px(CHROME_GAP)
+        self.control_corner(PANE_HEADER_CONTROL_HEIGHT) + px(CHROME_GAP)
     }
 
     pub fn pane_header_height(&self) -> Pixels {
@@ -199,10 +200,6 @@ impl Theme {
 
     pub fn divider_color(&self) -> Hsla {
         self.foreground.opacity(color::divider_weight())
-    }
-
-    pub fn inner_radius(&self, inset: Pixels) -> Pixels {
-        (self.radius - inset).max(px(0.0))
     }
 
     pub fn contrast(&self) -> f32 {
@@ -359,10 +356,7 @@ mod tests {
                 control_radius,
                 ..Theme::default()
             };
-            let size = ala::size(px(120.0), px(30.0));
-            let control = ala::Corners::all(theme.control_radius())
-                .resolve_radii_for_quad_size(size, ADAPTIVE_CORNER_FRACTION)
-                .top_left;
+            let control = theme.control_corner(px(30.0));
             let pill = control_radius == Some(ala::FULL_CORNER_RADIUS);
             assert_eq!(theme.pill_controls(), pill, "{radius} {control_radius:?}");
             assert_eq!(control == px(15.0), pill, "{radius} {control_radius:?}");
@@ -370,16 +364,22 @@ mod tests {
     }
 
     #[test]
-    fn a_pane_rounds_concentric_with_its_header_controls() {
-        let control = size(px(96.0), PANE_HEADER_CONTROL_HEIGHT);
+    fn every_control_rounds_to_one_share_of_its_height_and_a_pane_to_its_buttons_plus_the_gap() {
+        let theme = Theme::default();
+        assert!((theme.control_roundness() - 0.31177).abs() < 1e-4);
+        assert!((f32::from(theme.control_corner(px(28.0))) - 8.7295).abs() < 1e-3);
+        assert!((f32::from(theme.control_corner(px(46.0))) - 14.3414).abs() < 1e-3);
+        let widest = Theme {
+            radius: px(25.0),
+            ..Theme::default()
+        };
+        assert!((f32::from(widest.control_corner(px(28.0))) - 12.6).abs() < 1e-4);
         for radius in [4.0, 10.0, 24.0, 25.0] {
             let theme = Theme {
                 radius: px(radius),
                 ..Theme::default()
             };
-            let rounded = Corners::all(theme.control_radius())
-                .resolve_radii_for_quad_size(control, ADAPTIVE_CORNER_FRACTION);
-            let gap = theme.pane_radius() - rounded.top_left;
+            let gap = theme.pane_radius() - theme.control_corner(PANE_HEADER_CONTROL_HEIGHT);
             assert!((gap - px(CHROME_GAP)).abs() < px(0.001));
         }
         let capsules = Theme {

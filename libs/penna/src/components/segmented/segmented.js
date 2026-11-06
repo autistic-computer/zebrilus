@@ -21,10 +21,20 @@ function placePill(control) {
   pill.style.setProperty("--pill-x", `${target.offsetLeft}px`);
   pill.style.setProperty("--pill-w", `${target.offsetWidth}px`);
   const track = getComputedStyle(control);
-  const outer = parseFloat(track.borderTopLeftRadius) || 0;
   const border = parseFloat(track.borderTopWidth) || 0;
-  const radius = Math.max(Math.min(outer, control.offsetHeight / 2) - border - 2, 0);
-  control.style.setProperty("--penna-pill-r", `${radius}px`);
+  const inner = control.offsetHeight - 2 * border - 4;
+  if ((parseFloat(track.getPropertyValue("--penna-r")) || 0) >= 9999) {
+    control.style.setProperty("--penna-pill-r", "9999px");
+    control.style.setProperty("--penna-pill-k", "1");
+    return;
+  }
+  const outer = (parseFloat(track.getPropertyValue("--penna-share")) || 0) * control.offsetHeight;
+  const roundness = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--penna-control-share")) || 0;
+  const radius = Math.max(Math.min(outer - border - 2, roundness * inner), 0);
+  const k = parseFloat(track.getPropertyValue("--penna-k")) || 1;
+  const [box, shape] = window.pennaKit?.apparentCorner(radius, inner / 2, k) ?? [radius, k];
+  control.style.setProperty("--penna-pill-r", `${box}px`);
+  control.style.setProperty("--penna-pill-k", `${shape}`);
 }
 
 function shapeRing(control) {
@@ -32,10 +42,16 @@ function shapeRing(control) {
   const radius = parseFloat(style.getPropertyValue("--penna-r")) || 0;
   const reach = RING + (parseFloat(style.borderTopWidth) || 0);
   const box = control.getBoundingClientRect();
-  const cap = (Math.min(box.width, box.height) + 2 * RING) * CORNER;
-  const ring = radius >= FULL ? FULL : cap > 0 ? cap * Math.tanh((radius + RING) / cap) : 0;
+  const shorter = Math.min(box.width, box.height) + 2 * reach;
+  const share = parseFloat(style.getPropertyValue("--penna-share")) || 0;
+  const cap = shorter * CORNER;
+  const ring =
+    radius >= FULL ? FULL : share > 0 ? Math.min(share, 0.5) * shorter : cap > 0 ? cap * Math.tanh((radius + RING) / cap) : 0;
+  const k = parseFloat(style.getPropertyValue("--penna-k")) || 1;
+  const [drawn, shape] = ring >= FULL ? [FULL, 1] : window.pennaKit?.apparentCorner(ring, shorter / 2, k) ?? [ring, k];
   control.style.setProperty("--penna-ring-inset", `${-reach}px`);
-  control.style.setProperty("--penna-ring-r", `${ring}px`);
+  control.style.setProperty("--penna-ring-r", `${drawn}px`);
+  control.style.setProperty("--penna-ring-k", `${shape}`);
 }
 
 function disabled(control) {

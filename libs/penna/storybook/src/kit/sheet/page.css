@@ -3,7 +3,7 @@
   width: 390px;
   height: 600px;
   border: 1px solid var(--penna-border);
-  border-radius: 55px;
+  border-radius: calc(55px * var(--penna-corner-grow, 1));
   corner-shape: superellipse(var(--penna-window-k));
   background: var(--penna-panel);
   overflow: hidden;

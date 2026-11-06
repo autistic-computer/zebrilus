@@ -47,10 +47,6 @@
   --penna-row: 0;
 }
 
-.penna-row-fill[data-round] {
-  --penna-r: 24px;
-}
-
 .penna-item.penna-list-item[data-penna] {
   margin: 0;
   outline: none;
@@ -76,6 +72,6 @@
   inset: var(--penna-ring-inset, -1.5px);
   border: 1.5px solid var(--penna-ring);
   border-radius: var(--penna-ring-r, 12px);
-  corner-shape: inherit;
+  corner-shape: superellipse(var(--penna-ring-k, 1));
   pointer-events: none;
 }

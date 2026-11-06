@@ -218,6 +218,7 @@ fn text_layer(variant: ButtonVariant, state: PaintState, ground: Ground, cx: &Ap
             _ => foreground,
         },
         radius: px(0.0),
+        share: None,
         smoothing: crate::CORNER_SMOOTHING,
         ground,
     }
@@ -632,6 +633,11 @@ impl RenderOnce for Button {
             .when(row, |this| {
                 this.corner_radius_mode(ala::CornerRadiusMode::Fixed)
             })
+            .when_some(
+                rest.share
+                    .filter(|_| !row && matches!(self.rounded, ButtonRounded::Medium)),
+                Styled::corner_share,
+            )
             .corner_smoothing(smoothing)
             .border(rest.border_width)
             .border_color(rest.border)

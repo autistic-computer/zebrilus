@@ -67,8 +67,6 @@ const ROW_BUTTONS: [SurfaceRole; 4] = [
     roles::ICON_BUTTON_ROW,
 ];
 
-const ROW_RADIUS_SHARE: f32 = 0.4;
-
 pub const SYNTAX: [(&str, &str); 15] = [
     ("keyword", "keyword"),
     ("type", "type"),
@@ -574,6 +572,7 @@ fn vars(theme: &Theme, surface: Surface, layer: &Layer) -> Vec<(&'static str, St
         ("bw", length(f32::from(layer.border_width))),
         ("shadow", shadows(&layer.shadow)),
         ("r", length(f32::from(layer.radius))),
+        ("share", number(layer.share.unwrap_or(0.0))),
         ("k", number(layer.smoothing.log2())),
         (
             "style-k",
@@ -674,6 +673,10 @@ fn write_root(css: &mut String, theme: &Theme) {
             number(theme.smoothing.exponent().log2()),
         ),
         (
+            "--penna-corner-grow".to_owned(),
+            number(corner_grow(theme.smoothing.exponent())),
+        ),
+        (
             "--penna-focus-neutral".to_owned(),
             color(theme.paint(Tone::Neutral, Emphasis::Ghost).focus),
         ),
@@ -700,7 +703,14 @@ fn write_root(css: &mut String, theme: &Theme) {
             "--penna-row-inset".to_owned(),
             length(f32::from(theme.row_inset)),
         ),
-        ("--penna-row-share".to_owned(), number(ROW_RADIUS_SHARE)),
+        (
+            "--penna-control-share".to_owned(),
+            number(if theme.pill_controls() {
+                0.5
+            } else {
+                theme.control_roundness()
+            }),
+        ),
         (
             "--penna-corner-fraction".to_owned(),
             number(ADAPTIVE_CORNER_FRACTION),
@@ -819,6 +829,15 @@ fn syntax_vars(theme: &Theme) -> Vec<(String, String)> {
             Some((format!("--penna-syntax-{name}"), color(ink)))
         })
         .collect()
+}
+
+fn corner_grow(exponent: f32) -> f32 {
+    let reach = |exponent: f32| 1.0 - 2f32.powf(-1.0 / exponent);
+    if exponent <= 2.0 {
+        1.0
+    } else {
+        reach(2.0) / reach(exponent)
+    }
 }
 
 fn glass_vars(material: &GlassMaterial) -> Vec<(String, String)> {
@@ -1072,7 +1091,7 @@ mod tests {
             )
         );
         assert!(solid.contains(
-            "  [data-penna=\"icon-button.row\"]:not([data-prominent], [data-penna^=\"field\"] *) { --penna-fill: transparent; --penna-ink: #ebebeb; --penna-muted: #ebebeb; --penna-edge: transparent; --penna-bw: 0px; --penna-shadow: 0 0 #0000; --penna-r: 9999px; --penna-k: 1; --penna-style-k: 2; --penna-row: 0; --penna-mark: transparent; --penna-focus: #0a64ddcc; --penna-ring-gap: 0px;"
+            "  [data-penna=\"icon-button.row\"]:not([data-prominent], [data-penna^=\"field\"] *) { --penna-fill: transparent; --penna-ink: #ebebeb; --penna-muted: #ebebeb; --penna-edge: transparent; --penna-bw: 0px; --penna-shadow: 0 0 #0000; --penna-r: 9999px; --penna-share: 0; --penna-k: 1; --penna-style-k: 2; --penna-row: 0; --penna-mark: transparent; --penna-focus: #0a64ddcc; --penna-ring-gap: 0px;"
         ));
         let ink = stylesheet(&kit_theme(&builtin_themes()[0].1, ThemeMode::Light), &[]);
         assert!(!ink.contains("[data-penna=\"menu-item\"]:not([data-tone])"));

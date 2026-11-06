@@ -113,7 +113,11 @@ impl RenderOnce for SegmentedControl {
         let radius = if layer.radius >= FULL_CORNER_RADIUS {
             FULL_CORNER_RADIUS
         } else {
-            (layer.radius.min(height / 2.0) - border - inset).max(px(0.0))
+            crate::foundation::nested_radius(
+                crate::foundation::row_radius(&layer, height),
+                border + inset,
+                cx.theme().control_corner(inner),
+            )
         };
         let pill = Surface::new(SurfaceRole::QUIET_BUTTON).on(ground);
         let picked = cx.theme().layer(pill, PaintState::Current);
@@ -163,7 +167,7 @@ impl RenderOnce for SegmentedControl {
                 .top_0()
                 .h(inner)
                 .layer(&picked)
-                .rounded(radius);
+                .map(|pill| crate::foundation::shared_corners(pill, radius, inner, smoothing));
             match from {
                 Some(from) if from != to => pill
                     .with_animation(
@@ -218,12 +222,14 @@ impl RenderOnce for SegmentedControl {
                         } else if disabled {
                             segment.text_color(rest)
                         } else {
-                            segment
-                                .text_color(rest)
-                                .rounded(radius)
-                                .corner_smoothing(smoothing)
-                                .hover(move |style| style.bg(hover_fill).text_color(hover))
-                                .active(move |style| style.bg(pressed_fill))
+                            crate::foundation::shared_corners(
+                                segment.text_color(rest),
+                                radius,
+                                inner,
+                                smoothing,
+                            )
+                            .hover(move |style| style.bg(hover_fill).text_color(hover))
+                            .active(move |style| style.bg(pressed_fill))
                         }
                     })
                     .child(label)

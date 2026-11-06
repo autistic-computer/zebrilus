@@ -46,6 +46,7 @@ impl Root {
     #[must_use]
     pub fn new(view: impl Into<AnyView>, window: &mut Window, cx: &mut Context<Self>) -> Self {
         window.set_adaptive_corner_fraction(Some(ADAPTIVE_CORNER_FRACTION));
+        window.set_apparent_corners(true);
         Self {
             style: StyleRefinement::default(),
             view: view.into(),
@@ -524,6 +525,7 @@ mod tests {
                 window.adaptive_corner_fraction(),
                 Some(ADAPTIVE_CORNER_FRACTION)
             );
+            assert!(window.apparent_corners());
         });
     }
 

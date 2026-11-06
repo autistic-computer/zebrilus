@@ -133,6 +133,7 @@ pub fn press_feedback(
 pub enum PressCorners {
     Adaptive(Pixels),
     Row(Pixels, f32),
+    Share(f32, f32),
     Each(Corners<Pixels>),
 }
 
@@ -185,17 +186,28 @@ fn highlight(
         },
         move |bounds, (hitbox, state, amount, color), window, _| {
             if amount > 0.0 {
-                let quad = fill(bounds, color.opacity(amount));
-                window.paint_quad(match corners {
-                    PressCorners::Adaptive(radius) => quad.corner_radii(
+                let (radii, smoothing) = match corners {
+                    PressCorners::Adaptive(radius) => (
                         window.resolve_corner_radii(Corners::all(radius), bounds.size),
+                        None,
                     ),
                     PressCorners::Each(corners) => {
-                        quad.corner_radii(window.resolve_corner_radii(corners, bounds.size))
+                        (window.resolve_corner_radii(corners, bounds.size), None)
                     }
-                    PressCorners::Row(radius, smoothing) => quad
-                        .corner_radii(Corners::all(radius).clamp_radii_for_quad_size(bounds.size))
-                        .corner_smoothing(smoothing),
+                    PressCorners::Row(radius, smoothing) => (
+                        Corners::all(radius).clamp_radii_for_quad_size(bounds.size),
+                        Some(smoothing),
+                    ),
+                    PressCorners::Share(share, smoothing) => (
+                        Corners::all(ala::px(1.0)).share_of_quad_size(bounds.size, share),
+                        Some(smoothing),
+                    ),
+                };
+                let (radii, smoothing) = window.drawn_corners(radii, bounds.size, smoothing);
+                let quad = fill(bounds, color.opacity(amount)).corner_radii(radii);
+                window.paint_quad(match smoothing {
+                    Some(smoothing) => quad.corner_smoothing(smoothing),
+                    None => quad,
                 });
             }
             listen(&state, hitbox, delay, window);

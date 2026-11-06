@@ -800,7 +800,10 @@ mod tests {
                 );
                 assert!(surface.bounds.contains(&selection.bounds.origin));
                 assert!(surface.bounds.contains(&selection.bounds.bottom_right()));
-                assert!(selection.corner_radii.top_left.0 < selection.bounds.size.height.0 / 2.0);
+                assert!(
+                    selection.corner_radii.top_left.0 < selection.bounds.size.height.0 / 2.0
+                        || selection.corner_smoothing > 2.0
+                );
                 assert!(
                     quads.iter().any(|quad| {
                         quad.border_color

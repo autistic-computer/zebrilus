@@ -51,7 +51,7 @@
   inset: var(--penna-ring-inset, -2.5px);
   border: 1.5px solid var(--penna-focus-neutral);
   border-radius: var(--penna-ring-r, 14px);
-  corner-shape: inherit;
+  corner-shape: superellipse(var(--penna-ring-k, 1));
   pointer-events: none;
 }
 

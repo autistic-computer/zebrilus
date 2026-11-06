@@ -245,6 +245,8 @@
 }
 
 .penna-chat-field[data-penna] {
+  --penna-around: 6px;
+  --penna-around-rows: 28px;
   display: flex;
   align-items: flex-end;
   gap: 6px;

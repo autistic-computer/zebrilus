@@ -880,6 +880,7 @@ pub struct Layer {
     pub mark: Option<EdgeMark>,
     pub text: Hsla,
     pub radius: Pixels,
+    pub share: Option<f32>,
     pub smoothing: f32,
     pub ground: Ground,
 }
@@ -929,8 +930,7 @@ impl Theme {
             Shape::Pill => FULL_CORNER_RADIUS,
             Shape::Round if role.row && !self.inset_rows() => px(0.0),
             Shape::Round if role.capsules() && self.pill_controls() => FULL_CORNER_RADIUS,
-            Shape::Round if role.row => self.menu_radius(),
-            Shape::Round if role.kind.is_control() => self
+            Shape::Round if role.row || role.kind.is_control() => self
                 .control_radius()
                 .min(px(super::interface_theme::MAX_CORNER_RADIUS)),
             Shape::Round => self.radius,
@@ -1298,6 +1298,29 @@ impl Theme {
         let solid_fill =
             highlight == Highlight::Accent || (surface.prominent && fill != Fill::Glass);
         let radius = self.shape_radius(surface, style.shape);
+        let tall = surface
+            .role
+            .lineage()
+            .any(|node| node.id == SurfaceRole::TEXT_AREA.id);
+        let radius = if tall && radius > px(0.0) && radius < FULL_CORNER_RADIUS {
+            self.control_corner(px(crate::Size::Medium.control_px()))
+        } else {
+            radius
+        };
+        let descends = |id: &str| surface.role.lineage().any(|node| node.id == id);
+        let icon_tile =
+            descends(super::roles::TILE_STACK.id) || descends(super::roles::TILE_MINI.id);
+        let thumbnail = descends(SurfaceRole::TILE.id);
+        let controlled = !tall
+            && (icon_tile
+                || !thumbnail
+                    && (kind.is_control()
+                        || surface.role.row
+                        || super::roles::FLOATING_CHIPS
+                            .iter()
+                            .any(|chip| chip.id == surface.role.id)));
+        let share = (controlled && radius > px(0.0) && radius < FULL_CORNER_RADIUS)
+            .then(|| self.control_roundness());
         Layer {
             fill: fill_color,
             mark,
@@ -1306,10 +1329,9 @@ impl Theme {
             shadow,
             text,
             radius,
+            share,
             smoothing: if radius >= FULL_CORNER_RADIUS {
                 Smoothing::CIRCLE.exponent()
-            } else if surface.role.row {
-                style.smoothing.exponent().min(super::ROW_CORNER_SMOOTHING)
             } else {
                 style.smoothing.exponent()
             },
@@ -1602,6 +1624,38 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn controls_and_rows_round_by_height_while_text_areas_and_thumbnails_keep_pixels() {
+        let mut theme = theme();
+        theme.smoothing = Smoothing::clamped(4.0);
+        let roundness = Some(theme.control_roundness());
+        for role in [
+            Kind::Button.role(),
+            SurfaceRole::MENU_ITEM,
+            super::super::roles::SIDEBAR_ROW,
+            super::super::roles::TILE_STACK,
+        ] {
+            let layer = theme.layer(Surface::new(role), PaintState::Rest);
+            assert_eq!(layer.share, roundness, "{}", role.id);
+            assert_eq!(layer.smoothing, 4.0, "{}", role.id);
+        }
+        let area = theme.layer(Surface::new(SurfaceRole::TEXT_AREA), PaintState::Rest);
+        assert_eq!(
+            (area.share, area.radius),
+            (
+                None,
+                theme.control_corner(px(crate::Size::Medium.control_px()))
+            )
+        );
+        let tile = theme.layer(
+            Surface::new(super::super::roles::SETTINGS_TILE),
+            PaintState::Rest,
+        );
+        assert_eq!((tile.share, tile.radius), (None, theme.radius));
+        let card = theme.layer(Surface::new(Kind::Card.role()), PaintState::Rest);
+        assert_eq!((card.share, card.radius), (None, theme.radius));
     }
 
     #[test]

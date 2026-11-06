@@ -35,9 +35,11 @@ pub fn composer_ground(cx: &App) -> Ground {
 }
 
 fn composer_radius(cx: &App) -> Pixels {
-    cx.theme()
-        .radius_of(FieldLook::Composer)
-        .min(px(COMPOSER_RADIUS))
+    let radius = cx.theme().radius_of(FieldLook::Composer);
+    if radius <= px(0.0) || radius >= ala::FULL_CORNER_RADIUS {
+        return radius.min(px(COMPOSER_RADIUS));
+    }
+    (cx.theme().control_corner(px(COMPOSER_BUTTON)) + px(COMPOSER_INSET)).min(px(COMPOSER_RADIUS))
 }
 
 #[derive(IntoElement)]
@@ -75,6 +77,7 @@ impl RenderOnce for Composer {
             cx,
         )
         .rounded(radius)
+        .corner_radius_mode(ala::CornerRadiusMode::Fixed)
         .children(self.leading)
         .child(
             v_flex()
@@ -118,8 +121,11 @@ impl RenderOnce for ChatComposer {
     fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
         let has_prefix = !self.prefix.is_empty();
         let inset = px(COMPOSER_BACKING_INSET);
-        let backing = field_underlay(FieldLook::Composer, inset, cx)
-            .map(|underlay| underlay.rounded(composer_radius(cx) - inset));
+        let backing = field_underlay(FieldLook::Composer, inset, cx).map(|underlay| {
+            underlay
+                .rounded(composer_radius(cx) - inset)
+                .corner_radius_mode(ala::CornerRadiusMode::Fixed)
+        });
         v_flex()
             .flex_none()
             .w_full()

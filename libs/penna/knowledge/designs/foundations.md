@@ -186,7 +186,7 @@ Contrast (WCAG 2, built in step 8): in light and dark, for every tint, accent an
 
 ## Corners, depth, focus, motion
 
-- Corners: the `radius`, `control-radius` and `smoothing` knobs (Look); 12, 12 and 3 by default. A control's corner stops at 45% of its height. A corner inside another is concentric.
+- Corners: the `radius`, `control-radius` and `smoothing` knobs (Look); 12, 12 and 3 by default. A control rounds to a share of its height, a container to `radius` in pixels, a corner inside another concentrically, and smoothing never changes how round a corner looks (Corners, under Look).
 - Depth: steps of fill separate surfaces; controls, panes and cards draw no shadow. `shadow-float` (y 10, blur 30, spread -6) for menus, popovers, dialogs and the window, `shadow-lifted` for cards that move, and `shadow-contact` (0 1 4 #00000033) only for the knob of a switch or slider. Never let a shadow alone separate two surfaces.
 - Focus: a 1.5px ring (`FOCUS_RING_WIDTH`) drawn outside the border box with its own adaptive radius (`foundation::focus::with_focus_ring`), from the keyboard only; see Focus and keys. Only fields change their fill or edge on focus.
 - Motion: appear 120ms, enter 200ms, turn 220ms, at half those under Fast motion. Respect reduced motion.
@@ -257,7 +257,12 @@ What follows the platform with no knob: the system face and code face, when scro
 
 Everything else is the look and has no knob: each kind's fill, edge, shadow and shape, every state look, outline width, highlight strength, status colors, spacing, sizes, type and motion.
 
-Corners: `radius` rounds containers and `control-radius` rounds controls. A control's corner stops at 45% of its height (`corner-fraction`), so a 12 corner on a 28 control reads as a pill only when `control-radius` is `full`. A corner inside another is concentric: inner radius = outer radius minus the inset between them. A pane rounds concentric with its header's controls (their corner plus `inset-chrome`), so it follows Corner radius; a PiP takes the same corner. `smoothing` is the corners' superellipse exponent; rows draw at most 2.5.
+Corners follow the Corner radius knob, a share from 0 to 100% (`radius` = 25 × share², Knobs below), by four rules, so at any setting every rounded thing reads equally round whatever its size:
+
+1. A control takes its corner from its height: `roundness` × its height, where `roundness` is 45% × the share of `control-radius` (`Theme::control_roundness()`; 31% at the default 12, 45% at 25). Buttons, fields, selects, tabs, chips, badges, keycaps, the segmented control's track and every row (sidebar rows and entries, menu, list and tree rows) are controls. Pill (`control-radius` `full`) makes the capsule controls half their height instead; the controls that are never capsules (menu rows, keycaps, text areas) keep `roundness` from `radius`. A 28 control at the default is 8.7, a 22 one 6.9, a 46 sidebar entry 14.3; at 100% they are 12.6, 9.9 and 20.7.
+2. A container keeps `radius` in pixels: cards, settings cards, panels, popovers, dialogs, toasts, tooltips, the window. One shorter than its corner rounds no further than 45% of its shorter side, on a `tanh` curve (`corner-fraction`).
+3. A corner inside another is concentric, measured on the drawn corners: inner = outer minus the inset between them, and never rounder than a control of the inner one's height. The segmented control's pill is its track's corner less the border and inset; a menu's rows are the popover's corner less the row inset; a picker's panel is its rows' corner plus its inset; a pane is its header controls' corner plus `inset-chrome`, and a PiP takes the pane's corner.
+4. Smoothing changes how gradually a corner turns, never how round it looks. `smoothing` is a superellipse exponent, and a superellipse in the box of a circular arc reaches less far into the corner (at 4 it looks like an arc of 0.54 times the radius), so every corner is drawn in a box grown until its midpoint sits where the arc's would: 1.21 times the radius at 2.5, 1.42 at 3, 1.84 at 4. Where that box would pass half the side, it stops just short of it (the renderer draws a corner that reaches half the side as a plain round) and the exponent eases toward a circle until the midpoint matches. A capsule is a circle. Every role takes the theme's `smoothing`; nothing caps it.
 
 Glass is for what sits over something, since it reads only with something behind it:
 
@@ -295,7 +300,7 @@ How the knobs are spelled and decided:
 - Muted, faint and tone ink are worked out for the ground under the text, natively and in HTML, where each ground scope (`data-ground`, `data-on`) carries the inks that differ from the window's: `--penna-muted`, `--penna-faint` and `--penna-<tone>-ink`, as values. Natively they mix the ink toward the ground's fill in OKLab rather than fade it, so the tokens write the mixed color. Cards, panels and floating grounds differ in muted and faint only; tone inks follow the ground's ink, which only a solid selection changes.
 - Row inset (6), outline width (1) and highlight strength (0.8 of the wash) are fixed.
 
-Status: built (steps 10, 12, 13, 14, 16, 17, 18 and 19). Theme files are knobs only, the kinds and the built-in role patches draw the table above, and a person sets the knobs themselves over the platform's. The storybook's theme creator edits these knobs and exports a theme file, the docs Look page shows their range live, and the parity baselines hold the one look. Step 12 closed the last differences between native and HTML but one: a soft or prominent button set straight on a solid selection keeps its window paint in HTML, and rows hold none that way. What else remains is raster: text, and glass blur at its edges.
+Status: built (steps 10, 12, 13, 14, 16, 17, 18, 19 and 20). Theme files are knobs only, the kinds and the built-in role patches draw the table above, and a person sets the knobs themselves over the platform's. The storybook's theme creator edits these knobs and exports a theme file, the docs Look page shows their range live, and the parity baselines hold the one look. Step 12 closed the last differences between native and HTML but one: a soft or prominent button set straight on a solid selection keeps its window paint in HTML, and rows hold none that way. What else remains is raster: text, and glass blur at its edges.
 
 ## Focus and keys
 
@@ -786,7 +791,7 @@ Looks: a `ListItem` takes any row look (`.look(RowLook)`, see Row). The menu loo
 
 Anatomy:
 
-- Row: at least `row_height` tall, `control-md` by default (28, follows density); inset `space-12` at both sides; its children `space-4` apart, spread to both ends. Corners: the look's radius capped at 40% of the row height, smoothing at most 2.5. The look paints its fill, outline and highlight.
+- Row: at least `row_height` tall, `control-md` by default (28, follows density); inset `space-12` at both sides; its children `space-4` apart, spread to both ends. Corners: a control's, `roundness` × the row height (Corners, under Look). The look paints its fill, outline and highlight.
 - Icon (optional): 14, in muted ink (`fg-muted`), `space-8` before the label.
 - Label: `lead` (14 on 20), centered in the row height; it takes the width left.
 - Detail (optional): `small`, muted, at the end.
@@ -833,7 +838,7 @@ Row kinds (`PopupMenuItem`): an action (`new`, with `.icon()` and `.action()`), 
 Anatomy:
 
 - Surface: the `popover` look (popover fill, `shadow-float`), the theme radius capped at 45% of its height. Its rows sit the row inset (`theme.row_inset`, 6) from every edge, `space-2` apart. At least 128 wide (8 rem), at most 500 (`max_w`); a scrollable menu stops at half the window's height, 450 at most (`max_h`).
-- Row: `row` height, `control-md` (28, follows density), 44 under a coarse pointer; inset `space-8` at both sides; text `small`, `body` under a coarse pointer. Corners: the theme radius less 4, capped at 40% of the row height (11.2 at 28), smoothing 2.5.
+- Row: `row` height, `control-md` (28, follows density), 44 under a coarse pointer; inset `space-8` at both sides; text `small`, `body` under a coarse pointer. Corners: concentric with the popover, its corner less the row inset, and never rounder than a 28 control (6 at the default, 12.6 at 100%).
 - Icon slot: 12 (14 under a coarse pointer), `space-8` before the label, at 0.8 opacity. Every row keeps the slot when any row has an icon or a check, so labels line up; a checked row draws a check in it.
 - Label: `small`, one line.
 - Shortcut (optional): `small`, at the end, `space-12` after the label, in the row's ink at 0.8 opacity. It comes from the keymap binding of the row's action, never from the label.
@@ -950,7 +955,7 @@ Looks (`RowLook`):
 
 Anatomy:
 
-- Fill: the look's fill, outline, shadow and highlight. Corners: the look's radius, capped at 40% of `row_height` when it is given, smoothing at most 2.5; `.radius(px)` sets a round look's radius on the fill and its press highlight.
+- Fill: the look's fill, outline, shadow and highlight. Corners: a control's, `roundness` × the row's height; `.radius(px)` sets a round look's radius on the fill and its press highlight.
 - Content, the caller's: the stories use a 32 row, `space-12` inset, `space-8` gaps, a 12 icon, a `small` label and an optional `caption` aside in muted ink.
 - Fill row: with `.hover_group(group)` a Row is a fill set inside a taller row (2 from its top and bottom and `space-4` from its sides in the story) that lights when the whole row is pointed at.
 
@@ -1559,5 +1564,6 @@ Status: matches.
 | 17 | Plain knobs: Corner radius in percent on a square curve with no pill at its top, Increase contrast a slider that adds no edges, Motion in three steps, no Theme file row, and the Advanced fold opened into Size and Accessibility | the radius slider reads 69% by default; controls lose their hairline under contrast; Reduce motion and Animation speed become one Motion row | built |
 | 18 | A see-through window reads like an opaque one: the theme carries the window's opacity, so cards and bars on it take their step as a wash and stay a step above it, and `divider` drops to 8% | settings cards under window blur read a step above the page instead of darker than it; every rule is lighter | built |
 | 19 | PiPs follow Glass: a PiP is glass when glass is on and its pane's ground, opaque, under the `divider` hairline when it is off | PiPs lose their frosted blur with glass off and gain the pane's hairline | built |
+| 20 | One corner rule: controls round to a share of their height, containers keep `radius`, nested corners are concentric on drawn corners, and smoothing no longer changes how round a corner looks | controls on macOS (`smoothing` 4) read as round as their radius says instead of about half; rows, sidebar entries, tabs and the segmented pill match at every Corner radius; zz's flat sidebar entries follow the knob instead of a fixed 24 | built |
 
 Each step lands in penna with its stories, scores parity, rebaselines only what the step meant to move, and is pulled into zz and nidus.

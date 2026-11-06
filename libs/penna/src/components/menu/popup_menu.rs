@@ -9,7 +9,7 @@ use crate::{
 };
 use crate::{
     Edge, ElementExt, Kind, PaintState, RuleLook, Side, Surface, SurfaceRole,
-    foundation::{row_corners, row_radius},
+    foundation::{nested_radius, row_radius, shared_corners},
 };
 use ala::{
     Action, Anchor, AnyElement, App, AppContext, Bounds, Context, DismissEvent, Edges, Entity,
@@ -902,16 +902,18 @@ impl PopupMenu {
             },
         );
         let pressed = press_wash(cx.theme(), selected);
+        let corner = nested_radius(
+            cx.theme().radius,
+            cx.theme().row_inset,
+            row_radius(&row, item_height),
+        );
         let this = MenuItemElement::new(ix, &group_name)
             .relative()
             .when(coarse && item.is_clickable(), |this| {
                 this.child(crate::blocks::touch::press_highlight(
                     ala::ElementId::NamedInteger(group_name.clone().into(), 0),
                     pressed,
-                    crate::blocks::touch::PressCorners::Row(
-                        row_radius(&row, item_height),
-                        row.smoothing,
-                    ),
+                    crate::blocks::touch::PressCorners::Row(corner, row.smoothing),
                 ))
             })
             .type_style(
@@ -924,7 +926,7 @@ impl PopupMenu {
             )
             .py_0()
             .px(Space::S8)
-            .map(|this| row_corners(this, &row, item_height))
+            .map(|this| shared_corners(this, corner, item_height, row.smoothing))
             .items_center()
             .selected(selected)
             .on_hover(cx.listener(move |this, hovered, window, cx| {
@@ -1329,7 +1331,7 @@ mod tests {
                 v_flex().size_full().items_start().child(self.0.clone())
             }
         }
-        for (configured, expected) in [(12.0, Some(8.0)), (14.0, Some(10.0)), (25.0, None)] {
+        for (configured, expected) in [(12.0, Some(6.0)), (14.0, Some(8.0)), (25.0, Some(12.6))] {
             cx.update(|cx| {
                 crate::init_tinted(cx);
                 cx.set_reduce_motion(true);
@@ -1363,7 +1365,7 @@ mod tests {
                         quad.background == ala::solid_background(cx.theme().selection_background())
                     })
                     .expect("selected menu entry");
-                assert_eq!(highlight.corner_smoothing, 2.5);
+                assert_eq!(highlight.corner_smoothing, 3.0);
                 assert_eq!(surface.corner_smoothing, 3.0);
                 let pill = highlight.bounds.size.height.0 / 2.0;
                 let radius = highlight.corner_radii.top_left.0;
