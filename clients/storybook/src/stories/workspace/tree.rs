@@ -1,6 +1,4 @@
-use penna::blocks::sidebar::{
-    SIDEBAR_CONTENT_INSET, SIDEBAR_DEFAULT_WIDTH, sidebar_footer, sidebar_titlebar,
-};
+use penna::blocks::sidebar::{SIDEBAR_CONTENT_INSET, SIDEBAR_DEFAULT_WIDTH, sidebar_titlebar};
 use std::rc::Rc;
 
 use ala::{
@@ -15,16 +13,17 @@ use penna::{
 use zz_client::program::Program;
 use zz_ui::{
     navigation::{
-        WORKSPACE_SIDEBAR_FADE_HEIGHT, WORKSPACE_TREE_INDENT_WIDTH,
+        SidebarAction, WORKSPACE_SIDEBAR_FADE_HEIGHT, WORKSPACE_TREE_INDENT_WIDTH,
         WORKSPACE_TREE_MARKER_SLOT_WIDTH, WORKSPACE_TREE_NODE_ICON_SIZE, WorkspaceTreeInk,
         sidebar::{
             TreeRowMenuItem, tree_action_strip, tree_host_indicator, tree_host_marker,
             tree_node_marker, tree_row_menu,
         },
-        workspace_add_host_button, workspace_layout_button, workspace_settings_button,
-        workspace_sidebar_fade, workspace_sidebar_footer_controls, workspace_sidebar_surface,
-        workspace_sidebar_view_button, workspace_tree_action_button, workspace_tree_disclosure,
-        workspace_tree_row, workspace_tree_shortcut,
+        workspace_layout_button, workspace_sidebar_action, workspace_sidebar_actions,
+        workspace_sidebar_fade, workspace_sidebar_footer, workspace_sidebar_surface,
+        workspace_sidebar_titlebar_controls, workspace_sidebar_view_button,
+        workspace_tree_action_button, workspace_tree_disclosure, workspace_tree_row,
+        workspace_tree_shortcut,
     },
     program::program_mark,
 };
@@ -424,24 +423,42 @@ fn sidebar_in_view(
     flat: bool,
     cx: &App,
 ) -> Stateful<ala::Div> {
+    let ground = cx.theme().ground();
+    let controls = if settings_selected {
+        div().child(chrome_controls())
+    } else {
+        workspace_sidebar_titlebar_controls(
+            workspace_sidebar_view_button("sidebar-view", flat),
+            chrome_controls(),
+        )
+    };
+    let navigation = if settings_selected {
+        navigation.into_any_element()
+    } else {
+        div()
+            .flex()
+            .flex_col()
+            .size_full()
+            .min_h_0()
+            .child(workspace_sidebar_actions(
+                SidebarAction::above(flat)
+                    .iter()
+                    .map(|action| workspace_sidebar_action(*action, flat, ground, cx)),
+            ))
+            .child(div().flex_1().min_h_0().child(navigation))
+            .into_any_element()
+    };
     workspace_sidebar_surface(
         "sidebar",
         SIDEBAR_DEFAULT_WIDTH,
-        sidebar_titlebar("sidebar-titlebar", chrome_controls(), cx),
+        sidebar_titlebar("sidebar-titlebar", controls, cx),
         navigation,
         cx,
     )
     .when(!settings_selected, |surface| {
-        surface.child(sidebar_footer(
+        surface.child(workspace_sidebar_footer(
             "sidebar-footer",
-            workspace_settings_button("settings"),
-            Some(
-                workspace_sidebar_footer_controls(
-                    workspace_add_host_button("add-host"),
-                    workspace_sidebar_view_button("sidebar-view", flat),
-                )
-                .into_any_element(),
-            ),
+            workspace_sidebar_action(SidebarAction::Settings, flat, ground, cx),
             cx,
         ))
     })

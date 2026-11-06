@@ -1613,8 +1613,18 @@ pub fn pane_picker_label(text: impl Into<SharedString>, cx: &App) -> Label {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ChatPickerTarget {
+    MachineLine,
+    Machine(usize),
     FolderLine,
     Agent(usize, zz_client::new_chat::AgentChoice),
+}
+
+const fn machine_icon(remote: bool) -> crate::IconName {
+    if remote {
+        crate::IconName::Server
+    } else {
+        crate::IconName::Laptop
+    }
 }
 
 pub enum ChatPickerRow {
@@ -1626,11 +1636,56 @@ pub fn chat_picker_rows(
     pane: u64,
     picker: &zz_client::new_chat::ChatPicker,
     recents: &[zz_client::new_chat::FolderChoice],
+    machines: &[zz_client::new_chat::MachineChoice],
     enabled: bool,
     cx: &App,
 ) -> Vec<ChatPickerRow> {
-    use zz_client::new_chat::AGENT_CHOICES;
-    let mut rows = vec![
+    use zz_client::new_chat::{AGENT_CHOICES, ChatStage, MachineChoice};
+    let machine_label = || ChatPickerRow::Label(Box::new(pane_picker_label("Machine", cx)));
+    if picker.stage == ChatStage::Machines {
+        let mut rows = vec![machine_label()];
+        rows.extend(machines.iter().enumerate().map(|(index, machine)| {
+            let note = if machine.current {
+                Some("here".into())
+            } else if machine.live {
+                None
+            } else {
+                Some("offline".into())
+            };
+            ChatPickerRow::Item(
+                ChatPickerTarget::Machine(index),
+                Box::new(picker_item(
+                    ElementId::NamedInteger(format!("chat-picker-machine-{index}").into(), pane),
+                    machine.name.clone().into(),
+                    machine_icon(machine.remote),
+                    note,
+                    None,
+                    picker.selected == index,
+                    enabled && machine.live,
+                    cx,
+                )),
+            )
+        }));
+        return rows;
+    }
+    let mut rows = Vec::new();
+    if let Some(machine) = MachineChoice::current(machines) {
+        rows.push(machine_label());
+        rows.push(ChatPickerRow::Item(
+            ChatPickerTarget::MachineLine,
+            Box::new(picker_item(
+                ElementId::NamedInteger("chat-picker-machine".into(), pane),
+                machine.name.clone().into(),
+                machine_icon(machine.remote),
+                None,
+                (machines.len() > 1).then_some("m"),
+                false,
+                enabled,
+                cx,
+            )),
+        ));
+    }
+    rows.extend([
         ChatPickerRow::Label(Box::new(pane_picker_label("Folder", cx))),
         ChatPickerRow::Item(
             ChatPickerTarget::FolderLine,
@@ -1644,7 +1699,7 @@ pub fn chat_picker_rows(
             )),
         ),
         ChatPickerRow::Label(Box::new(pane_picker_label("Agent", cx))),
-    ];
+    ]);
     rows.extend(AGENT_CHOICES.iter().enumerate().map(|(index, agent)| {
         ChatPickerRow::Item(
             ChatPickerTarget::Agent(index, *agent),

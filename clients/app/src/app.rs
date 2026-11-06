@@ -17,9 +17,7 @@ mod settings;
 mod sidebar;
 mod status_bar;
 
-use penna::blocks::sidebar::{
-    sidebar_footer, sidebar_panel, sidebar_resize_handle, sidebar_titlebar,
-};
+use penna::blocks::sidebar::{sidebar_panel, sidebar_resize_handle, sidebar_titlebar};
 use std::{
     cell::{Cell, RefCell},
     collections::{BTreeSet, HashMap},
@@ -54,8 +52,10 @@ use zz_ui::{
         buffer_chooser_row, chooser_has_key_gutter, chooser_subtitle, tree_chooser_row,
     },
     navigation::{
-        workspace_layout_button, workspace_settings_button, workspace_sidebar_fade,
-        workspace_sidebar_ground, workspace_sidebar_slideover, workspace_sidebar_view_button,
+        SidebarAction, workspace_layout_button, workspace_sidebar_action,
+        workspace_sidebar_actions, workspace_sidebar_fade, workspace_sidebar_footer,
+        workspace_sidebar_ground, workspace_sidebar_slideover, workspace_sidebar_titlebar_controls,
+        workspace_sidebar_view_button,
     },
     pane::{
         DropPreview, DropPreviewFrame, PaneArrivals, PaneChrome, PaneDrag, PaneDragOverlayState,
@@ -1043,9 +1043,9 @@ impl AppShell {
             .into_any_element()
         } else if self.preferences.flat_sidebar {
             let fade = workspace_sidebar_fade(ground, cx);
-            sidebar::flat_tree(self, fade, ground, cx)
+            self.with_sidebar_actions(sidebar::flat_tree(self, fade, ground, cx), ground, cx)
         } else {
-            sidebar::session_tree(
+            let tree = sidebar::session_tree(
                 sidebar::Runtime {
                     connection: self.connection.clone(),
                     focus: self.sidebar_focus.clone(),
@@ -1061,39 +1061,36 @@ impl AppShell {
                 &self.sidebar_scroll,
                 workspace_sidebar_fade(ground, cx),
                 cx,
-            )
+            );
+            self.with_sidebar_actions(tree, ground, cx)
         };
         let footer = self.settings.is_none().then(|| {
-            sidebar_footer(
+            workspace_sidebar_footer(
                 "web-sidebar-footer",
-                workspace_settings_button("web-settings")
-                    .on(ground)
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        this.settings = Some(SettingsSection::Appearance);
-                        this.focused_pane = None;
-                        cx.notify();
-                    })),
-                Some(
-                    workspace_sidebar_view_button(
-                        "web-sidebar-view",
-                        self.preferences.flat_sidebar,
-                    )
+                self.sidebar_action(SidebarAction::Settings, ground, cx),
+                cx,
+            )
+        });
+        let controls = if self.settings.is_none() {
+            workspace_sidebar_titlebar_controls(
+                workspace_sidebar_view_button("web-sidebar-view", self.preferences.flat_sidebar)
                     .on(ground)
                     .on_click(cx.listener(|this, _, _, cx| {
                         this.preferences.flat_sidebar = !this.preferences.flat_sidebar;
                         this.preferences.save();
                         cx.notify();
-                    }))
-                    .into_any_element(),
-                ),
-                cx,
+                    })),
+                self.controls(ground, cx),
             )
-        });
+            .into_any_element()
+        } else {
+            self.controls(ground, cx)
+        };
         let divider = !(self.preferences.gaps && self.inline_sidebar(window));
         sidebar_panel(
             "web-sidebar-surface",
             self.sidebar_width(window),
-            sidebar_titlebar("web-sidebar-titlebar", self.controls(ground, cx), cx),
+            sidebar_titlebar("web-sidebar-titlebar", controls, cx),
             navigation,
             ground,
             divider,
@@ -1128,6 +1125,47 @@ impl AppShell {
                 }),
         )
         .into_any_element()
+    }
+
+    fn sidebar_action(
+        &self,
+        action: SidebarAction,
+        ground: Ground,
+        cx: &Context<Self>,
+    ) -> ala::Stateful<ala::Div> {
+        workspace_sidebar_action(action, self.preferences.flat_sidebar, ground, cx).on_click(
+            cx.listener(move |this, _, _, cx| {
+                match action {
+                    SidebarAction::NewChat => sidebar::new_chat(this, cx),
+                    SidebarAction::AddHost => this.settings = Some(SettingsSection::Hosts),
+                    SidebarAction::Settings => this.settings = Some(SettingsSection::Appearance),
+                }
+                if action != SidebarAction::NewChat {
+                    this.focused_pane = None;
+                }
+                cx.notify();
+            }),
+        )
+    }
+
+    fn with_sidebar_actions(
+        &self,
+        navigation: AnyElement,
+        ground: Ground,
+        cx: &Context<Self>,
+    ) -> AnyElement {
+        div()
+            .flex()
+            .flex_col()
+            .size_full()
+            .min_h_0()
+            .child(workspace_sidebar_actions(
+                SidebarAction::above(self.preferences.flat_sidebar)
+                    .iter()
+                    .map(|action| self.sidebar_action(*action, ground, cx)),
+            ))
+            .child(div().flex_1().min_h_0().child(navigation))
+            .into_any_element()
     }
 
     fn status_bar(&self, window: &Window, cx: &mut Context<Self>) -> AnyElement {

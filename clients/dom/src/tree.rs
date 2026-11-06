@@ -4,8 +4,7 @@ use serde_json::{Value, json};
 use wasm_bindgen::prelude::*;
 use zz_client::{
     ChromeKeymap, ChromeProfile, DropZone, MAX_VISIBLE_WINDOWS, PaneRect, SIDEBAR_TABLE,
-    StatusBarModel, UI_TABLE, coerced_drop_zone, drop_preview_bounds,
-    drop_zone_at,
+    StatusBarModel, UI_TABLE, coerced_drop_zone, drop_preview_bounds, drop_zone_at,
     floating::{
         FloatCells, PipGeometry, float_pane_commands, float_placement, float_title,
         tile_pane_command, zoom_pane_command,
@@ -353,7 +352,8 @@ impl Client {
     }
 
     pub fn status_bar(&self) -> String {
-        let model = StatusBarModel::from_snapshot(self.core.snapshot(), self.core.attached_session());
+        let model =
+            StatusBarModel::from_snapshot(self.core.snapshot(), self.core.attached_session());
         let active = model
             .windows
             .iter()
@@ -665,7 +665,7 @@ impl Client {
         let picker = self.sidebar.chat_pickers.entry(pane).or_default();
         json!({
             "stage": match picker.stage {
-                ChatStage::Agents => "agents",
+                ChatStage::Agents | ChatStage::Machines => "agents",
                 ChatStage::Folders => "folders",
             },
             "selected": picker.selected,
@@ -767,7 +767,7 @@ impl Client {
                 true
             }
             ChatKey::Changed => true,
-            ChatKey::Start(_) | ChatKey::Ignored => false,
+            ChatKey::Start(_) | ChatKey::ChooseMachine(_) | ChatKey::Ignored => false,
         }
     }
 }

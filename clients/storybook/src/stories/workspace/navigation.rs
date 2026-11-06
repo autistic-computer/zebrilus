@@ -32,7 +32,7 @@ pub const STORY: Story = Story {
         Section {
             id: "sidebar",
             name: "Sidebar",
-            summary: "workspace_sidebar_surface around the tree the thin client builds from a mux snapshot. Unfocused, the active pane is bold; with keyboard focus it fills and the cursor gets its own fill; disconnected, the host warns and every row goes muted. Holding the window shortcuts' modifier puts each window's key at the right of its row (workspace_tree_shortcut), outside the actions that show on hover, collapsed windows included.",
+            summary: "workspace_sidebar_surface around the tree the thin client builds from a mux snapshot. Unfocused, the active pane is bold; with keyboard focus it fills and the cursor gets its own fill; disconnected, the host warns and every row goes muted. Holding the window shortcuts' modifier puts each window's key at the right of its row (workspace_tree_shortcut), outside the actions that show on hover, collapsed windows included. Add host heads the tree and Settings spans the foot.",
             build: |window, cx| stateful(window, cx, |_, _| sidebar_scrolls(), sidebars),
         },
         Section {

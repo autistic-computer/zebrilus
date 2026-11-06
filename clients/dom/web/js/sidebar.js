@@ -6,6 +6,7 @@ const nav = $("nav[data-penna='sidebar']");
 const list = $("#tree");
 const toggleButton = $("#toggle-sidebar");
 const viewButton = $("#flat-list");
+const actions = $("#sidebar-actions");
 const scrim = document.createElement("div");
 scrim.className = "sidebar-scrim";
 scrim.hidden = true;
@@ -44,7 +45,31 @@ function applyLayout() {
   nav.toggleAttribute("data-divider", !(preferences.gaps && inline));
   scrim.hidden = inline || !slideover;
   viewButton.title = preferences.flat_sidebar ? "Show the session tree" : "Show chats";
-  viewButton.querySelector("[data-icon]").dataset.icon = preferences.flat_sidebar ? "list" : "list-tree";
+  if (preferences.flat_sidebar) viewButton.dataset.state = "selected";
+  else delete viewButton.dataset.state;
+}
+
+function hoverFill(row) {
+  const fill = row.querySelector(".flat-fill");
+  row.addEventListener("mouseenter", () => fill.setAttribute("data-state", "hover"));
+  row.addEventListener("mouseleave", () => fill.removeAttribute("data-state"));
+}
+
+function actionRow(icon, label, onClick) {
+  const row = document.createElement("div");
+  row.className = "sidebar-action";
+  row.setAttribute("role", "button");
+  row.setAttribute("aria-label", label);
+  row.innerHTML = `<span class="flat-fill" data-penna="row.nav"></span><i data-icon="${icon}" class="flat-glyph"></i><span data-text></span>`;
+  row.querySelector("[data-text]").textContent = label;
+  hoverFill(row);
+  row.addEventListener("click", onClick);
+  return row;
+}
+
+function renderActions() {
+  const rows = preferences.flat_sidebar && state.connected ? [actionRow("chat-plus", "New chat", () => state.client.new_chat())] : [];
+  actions.replaceChildren(...rows);
 }
 
 export { paneIcon };
@@ -359,6 +384,7 @@ function fade() {
 function render() {
   applyLayout();
   if (!state.client) return;
+  renderActions();
   if (preferences.flat_sidebar) renderFlat();
   else renderTree();
   fade();
@@ -369,6 +395,7 @@ list.addEventListener("scroll", fade, { passive: true });
 phase("tree", render);
 
 toggleButton.addEventListener("click", toggleSidebar);
+hoverFill($("#open-settings"));
 viewButton.addEventListener("click", () => setPreferences({ flat_sidebar: !preferences.flat_sidebar }));
 scrim.addEventListener("pointerdown", (event) => {
   event.preventDefault();

@@ -234,11 +234,52 @@ nav:not([data-divider]) > .sidebar-resize:hover {
 .footer {
   display: flex;
   flex: none;
-  align-items: center;
-  justify-content: space-between;
-  gap: 4px;
-  padding: 4px 16px calc(var(--pane-margin, 0px) + (var(--zz-pane-header-height, 40px) - 32px) / 2) calc(var(--pane-margin, 0px) + (var(--zz-pane-header-height, 40px) - 32px) / 2);
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px 8px var(--penna-row-inset) 0;
   font-size: 12px;
+}
+
+.footer #status {
+  padding: 0 calc(var(--penna-row-inset) + 10px);
+}
+
+.footer #status:empty {
+  display: none;
+}
+
+.sidebar-actions {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  padding: 0 8px 8px 0;
+}
+
+.sidebar-actions:empty {
+  display: none;
+}
+
+.sidebar-action {
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 calc(var(--penna-row-inset) + 10px);
+  font-size: 13px;
+  line-height: 16px;
+  color: color-mix(in oklab, var(--penna-fg) 85%, transparent);
+  cursor: pointer;
+}
+
+.sidebar-action:hover {
+  color: var(--penna-fg);
+}
+
+.sidebar-action > .flat-glyph {
+  color: inherit;
 }
 
 #tree.flat {

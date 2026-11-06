@@ -52,7 +52,7 @@ pub const STORY: Story = Story {
         Section {
             id: "sidebar",
             name: "Sidebar",
-            summary: "Two hosts built from mux snapshots and run through summarize_chats: only windows running Claude Code or Codex make rows, and a window holding only a picker is a chat being started. Click a row to make it current, click a host header to fold it; hover is real state; a right click opens the row's menu. Pointing at a host shows New agent; nas is connected with no agents. The footer adds a host and switches between the session tree and the chats.",
+            summary: "Two hosts built from mux snapshots and run through summarize_chats: only windows running Claude Code or Codex make rows, and a window holding only a picker is a chat being started. Click a row to make it current, click a host header to fold it; hover is real state; a right click opens the row's menu. Pointing at a host shows New agent; nas is connected with no agents. New chat and Add host head the list, the chat button beside the sidebar toggle switches between the chats and the session tree, and Settings spans the foot.",
             build: |_, cx| cx.new(|_| Live::new(Some(SIDEBAR_HEIGHT))).into(),
         },
         Section {

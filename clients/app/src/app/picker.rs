@@ -131,7 +131,7 @@ impl PanePicker {
         writable: bool,
         cx: &mut Context<Self>,
     ) -> Vec<AnyElement> {
-        chat_picker_rows(self.pane.0, &self.chat, folders, writable, cx)
+        chat_picker_rows(self.pane.0, &self.chat, folders, &[], writable, cx)
             .into_iter()
             .map(|row| match row {
                 ChatPickerRow::Label(label) => label.into_any_element(),
@@ -156,6 +156,7 @@ impl PanePicker {
                                 ChatPickerTarget::Agent(_, agent) => {
                                     this.start(agent, &folders, cx);
                                 }
+                                ChatPickerTarget::MachineLine | ChatPickerTarget::Machine(_) => {}
                             }
                             cx.notify();
                             cx.stop_propagation();
@@ -308,7 +309,7 @@ impl PanePicker {
                 ChatKey::ChooseFolder => self.choose_folder(&folders, cx),
                 ChatKey::Close => self.close(cx),
                 ChatKey::Changed => cx.notify(),
-                ChatKey::Ignored => return,
+                ChatKey::ChooseMachine(_) | ChatKey::Ignored => return,
             }
             cx.stop_propagation();
             return;

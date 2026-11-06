@@ -4,14 +4,14 @@ pub mod sidebar;
 pub mod status;
 
 use crate::{
-    ActiveTheme as _, Colorize as _, Disableable as _, Emphasis, Ground, IconName, PaintState,
-    Sizable as _, StyledExt as _, Surface, Tone,
+    ActiveTheme as _, Colorize as _, Disableable as _, Emphasis, Ground, Icon, IconName,
+    PaintState, Selectable as _, Sizable as _, StyledExt as _, Surface, Tone,
     button::{Button, ButtonLook, ButtonVariants as _, COMPACT_ICON_BUTTON_SIZE},
     kbd::Kbd,
     rems_from_px,
     sidebar::{
-        CHROME_BUTTON_SIZE, SIDEBAR_CONTENT_INSET, SIDEBAR_ROW_ACTION_CENTER, chrome_button,
-        sidebar_panel,
+        CHROME_BUTTON_SIZE, SIDEBAR_CONTENT_INSET, SIDEBAR_ROW_ACTION_CENTER,
+        SIDEBAR_SCROLLBAR_GUTTER, chrome_button, sidebar_panel,
     },
     tooltip::Tooltip,
     touch::{CoarsePointer, TOUCH_TARGET},
@@ -22,7 +22,7 @@ use ala::{
     prelude::*, px,
 };
 pub use penna::blocks::sidebar::sidebar_fade as workspace_sidebar_fade;
-use penna::{Panel, PanelLook, Row, RowLook, Tab, TabLook, TextStyle};
+use penna::{Panel, PanelLook, Row, RowLook, Space, Tab, TabLook, TextStyle};
 
 pub const WORKSPACE_TREE_ROW_HEIGHT: f32 = 32.0;
 pub const WORKSPACE_TREE_INDENT_WIDTH: f32 = 20.0;
@@ -33,6 +33,7 @@ const TREE_TOUCH_SLOP: f32 = (TOUCH_TARGET - COMPACT_ICON_BUTTON_SIZE) / 2.0;
 const WORKSPACE_TREE_FILL_VERTICAL_INSET: f32 = 1.0;
 const WORKSPACE_CHROME_CONTROL_GAP: f32 = 4.0;
 const WORKSPACE_ROW_ACTION_GAP: f32 = 10.0;
+const WORKSPACE_SIDEBAR_ACTIONS_GAP: f32 = 8.0;
 pub const WORKSPACE_SIDEBAR_FADE_HEIGHT: Pixels = px(40.0);
 pub const WORKSPACE_STATUS_PILL_HEIGHT: Pixels = px(32.0);
 const WORKSPACE_STATUS_LINE_HEIGHT: Pixels = px(18.0);
@@ -72,30 +73,137 @@ pub fn workspace_settings_button(id: impl Into<ElementId>) -> Button {
 }
 
 #[must_use]
-pub fn workspace_add_host_button(id: impl Into<ElementId>) -> Button {
-    chrome_button(id, IconName::ServerPlus, "Add host")
-}
-
-#[must_use]
 pub fn workspace_sidebar_view_button(id: impl Into<ElementId>, flat: bool) -> Button {
-    if flat {
-        chrome_button(id, IconName::List, "Show the session tree")
-    } else {
-        chrome_button(id, IconName::ListTree, "Show chats")
-    }
+    chrome_button(
+        id,
+        IconName::Chat,
+        if flat {
+            "Show the session tree"
+        } else {
+            "Show chats"
+        },
+    )
+    .selected(flat)
 }
 
 #[must_use]
-pub fn workspace_sidebar_footer_controls(
-    add_host: impl IntoElement,
+pub fn workspace_sidebar_titlebar_controls(
     view: impl IntoElement,
+    layout: impl IntoElement,
 ) -> ala::Div {
     div()
         .flex()
         .items_center()
         .gap(rems_from_px(WORKSPACE_CHROME_CONTROL_GAP))
-        .child(add_host)
         .child(view)
+        .child(layout)
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SidebarAction {
+    NewChat,
+    AddHost,
+    Settings,
+}
+
+impl SidebarAction {
+    #[must_use]
+    pub const fn icon(self) -> IconName {
+        match self {
+            Self::NewChat => IconName::ChatPlus,
+            Self::AddHost => IconName::ServerPlus,
+            Self::Settings => IconName::Settings,
+        }
+    }
+
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::NewChat => "New chat",
+            Self::AddHost => "Add host",
+            Self::Settings => "Settings",
+        }
+    }
+
+    #[must_use]
+    pub const fn id(self) -> &'static str {
+        match self {
+            Self::NewChat => "sidebar-new-chat",
+            Self::AddHost => "sidebar-add-host",
+            Self::Settings => "sidebar-settings",
+        }
+    }
+
+    #[must_use]
+    pub const fn above(flat: bool) -> &'static [Self] {
+        if flat {
+            &[Self::NewChat, Self::AddHost]
+        } else {
+            &[Self::AddHost]
+        }
+    }
+}
+
+#[must_use]
+pub fn workspace_sidebar_action(
+    action: SidebarAction,
+    flat: bool,
+    ground: Ground,
+    cx: &App,
+) -> Stateful<ala::Div> {
+    if flat {
+        return flat::flat_action_row(action.id(), action.icon(), action.label(), ground, cx);
+    }
+    workspace_tree_row(
+        action.id(),
+        0,
+        false,
+        false,
+        false,
+        true,
+        true,
+        false,
+        SharedString::from(action.id()),
+        workspace_tree_marker(
+            Icon::new(action.icon()).size(rems_from_px(WORKSPACE_TREE_NODE_ICON_SIZE)),
+        ),
+        action.label(),
+        div(),
+        ground,
+        cx,
+    )
+    .role(ala::Role::Button)
+    .aria_label(action.label())
+}
+
+#[must_use]
+pub fn workspace_sidebar_actions(rows: impl IntoIterator<Item = Stateful<ala::Div>>) -> ala::Div {
+    div()
+        .flex()
+        .flex_col()
+        .flex_none()
+        .w_full()
+        .pr(SIDEBAR_SCROLLBAR_GUTTER)
+        .pb(px(WORKSPACE_SIDEBAR_ACTIONS_GAP))
+        .children(rows)
+}
+
+#[must_use]
+pub fn workspace_sidebar_footer(
+    id: impl Into<ElementId>,
+    row: impl IntoElement,
+    cx: &App,
+) -> Stateful<ala::Div> {
+    div()
+        .id(id)
+        .flex()
+        .flex_col()
+        .flex_none()
+        .w_full()
+        .pt(Space::S4)
+        .pr(SIDEBAR_SCROLLBAR_GUTTER)
+        .pb(cx.theme().row_inset)
+        .child(row)
 }
 
 #[must_use]

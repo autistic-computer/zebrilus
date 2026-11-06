@@ -1,8 +1,8 @@
 mod flat;
 
 use penna::blocks::sidebar::{
-    SIDEBAR_CONTENT_INSET as TREE_CONTENT_INSET, SIDEBAR_DEFAULT_WIDTH, sidebar_footer,
-    sidebar_panel, sidebar_resize_handle, sidebar_titlebar,
+    SIDEBAR_CONTENT_INSET as TREE_CONTENT_INSET, SIDEBAR_DEFAULT_WIDTH, sidebar_panel,
+    sidebar_resize_handle, sidebar_titlebar,
 };
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -26,7 +26,7 @@ use penna::{
 use zz_client::{ChromeAction, SIDEBAR_TABLE, UI_TABLE, program::Program};
 use zz_protocol::{CommandInvocation, MuxSnapshot, PaneId, PaneStatusState, SessionId, WindowId};
 use zz_ui::navigation::{
-    WORKSPACE_SIDEBAR_FADE_HEIGHT, WORKSPACE_TREE_INDENT_WIDTH as TREE_INDENT_WIDTH,
+    SidebarAction, WORKSPACE_SIDEBAR_FADE_HEIGHT, WORKSPACE_TREE_INDENT_WIDTH as TREE_INDENT_WIDTH,
     WORKSPACE_TREE_MARKER_SLOT_WIDTH as TREE_MARKER_SLOT_WIDTH,
     WORKSPACE_TREE_NODE_ICON_SIZE as TREE_NODE_ICON_SIZE, WorkspaceTreeInk,
     sidebar::{
@@ -34,10 +34,11 @@ use zz_ui::navigation::{
         tree_action_strip, tree_host_indicator, tree_host_marker, tree_navigation,
         tree_node_marker, tree_row_menu,
     },
-    workspace_add_host_button, workspace_layout_button, workspace_settings_button,
-    workspace_sidebar_fade, workspace_sidebar_footer_controls, workspace_sidebar_ground,
-    workspace_sidebar_view_button, workspace_tree_action_button, workspace_tree_disclosure,
-    workspace_tree_opened, workspace_tree_row, workspace_tree_shortcut,
+    workspace_layout_button, workspace_sidebar_action, workspace_sidebar_actions,
+    workspace_sidebar_fade, workspace_sidebar_footer, workspace_sidebar_ground,
+    workspace_sidebar_titlebar_controls, workspace_sidebar_view_button,
+    workspace_tree_action_button, workspace_tree_disclosure, workspace_tree_opened,
+    workspace_tree_row, workspace_tree_shortcut,
 };
 use zz_ui::{program::program_mark, settings::settings_section_navigation};
 
@@ -820,28 +821,52 @@ impl WorkspaceSidebar {
         })
     }
 
-    fn render_footer(&self, sidebar: &Entity<Self>, cx: &App) -> AnyElement {
-        let settings = sidebar.clone();
+    fn render_view_button(&self, sidebar: &Entity<Self>, cx: &App) -> AnyElement {
         let view = sidebar.clone();
-        let ground = self.content_ground(cx);
-        sidebar_footer(
-            "workspace-sidebar-footer",
-            workspace_settings_button("workspace-settings")
-                .on(ground)
-                .on_click(move |_, window, cx| {
-                    settings.update(cx, |sidebar, cx| sidebar.open_settings(window, cx));
+        workspace_sidebar_view_button("workspace-sidebar-view", self.flat)
+            .on(self.content_ground(cx))
+            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+            .on_click(move |_, _, cx| {
+                cx.stop_propagation();
+                view.update(cx, Self::toggle_flat);
+            })
+            .into_any_element()
+    }
+
+    fn render_action(
+        &self,
+        sidebar: &Entity<Self>,
+        action: SidebarAction,
+        cx: &App,
+    ) -> ala::Stateful<ala::Div> {
+        let sidebar = sidebar.clone();
+        workspace_sidebar_action(action, self.flat, self.content_ground(cx), cx).on_click(
+            move |_, window, cx| match action {
+                SidebarAction::NewChat => sidebar.update(cx, |sidebar, cx| {
+                    let host = sidebar.mux.read(cx).attached_host();
+                    sidebar.new_chat(host, cx);
                 }),
-            Some(
-                workspace_sidebar_footer_controls(
-                    workspace_add_host_button("workspace-add-host")
-                        .on(ground)
-                        .on_click(|_, window, cx| crate::workspace::add_host::open(window, cx)),
-                    workspace_sidebar_view_button("workspace-sidebar-view", self.flat)
-                        .on(ground)
-                        .on_click(move |_, _, cx| view.update(cx, Self::toggle_flat)),
-                )
-                .into_any_element(),
-            ),
+                SidebarAction::AddHost => crate::workspace::add_host::open(window, cx),
+                SidebarAction::Settings => {
+                    sidebar.update(cx, |sidebar, cx| sidebar.open_settings(window, cx));
+                }
+            },
+        )
+    }
+
+    fn render_actions(&self, sidebar: &Entity<Self>, cx: &App) -> AnyElement {
+        workspace_sidebar_actions(
+            SidebarAction::above(self.flat)
+                .iter()
+                .map(|action| self.render_action(sidebar, *action, cx)),
+        )
+        .into_any_element()
+    }
+
+    fn render_footer(&self, sidebar: &Entity<Self>, cx: &App) -> AnyElement {
+        workspace_sidebar_footer(
+            "workspace-sidebar-footer",
+            self.render_action(sidebar, SidebarAction::Settings, cx),
             cx,
         )
         .into_any_element()
@@ -946,15 +971,31 @@ impl Render for WorkspaceSidebar {
         let settings_route = self.route == WorkspaceRoute::Settings;
         let navigation = if settings_route {
             self.render_settings_navigation(&sidebar, cx)
-        } else if self.flat {
-            self.render_flat_navigation(&sidebar, cx)
         } else {
-            self.render_navigation(&sidebar, attached_host, attached, window, cx)
+            let list = if self.flat {
+                self.render_flat_navigation(&sidebar, cx)
+            } else {
+                self.render_navigation(&sidebar, attached_host, attached, window, cx)
+            };
+            div()
+                .flex()
+                .flex_col()
+                .size_full()
+                .min_h_0()
+                .child(self.render_actions(&sidebar, cx))
+                .child(div().flex_1().min_h_0().child(list))
+                .into_any_element()
         };
         let controls = if settings_route {
             None
         } else {
-            Self::render_controls(&sidebar, self.content_ground(cx), cx)
+            Some(
+                workspace_sidebar_titlebar_controls(
+                    self.render_view_button(&sidebar, cx),
+                    div().children(Self::render_controls(&sidebar, self.content_ground(cx), cx)),
+                )
+                .into_any_element(),
+            )
         };
         let footer = (!settings_route).then(|| self.render_footer(&sidebar, cx));
         let titlebar = sidebar_titlebar("workspace-sidebar-titlebar", div().children(controls), cx)

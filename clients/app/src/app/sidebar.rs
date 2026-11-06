@@ -421,6 +421,21 @@ pub(super) fn flat_tree(
         .into_any_element()
 }
 
+pub(super) fn new_chat(view: &mut AppShell, cx: &mut Context<AppShell>) {
+    let connection = view.connection.clone();
+    if writable(connection.read(cx)) {
+        connection.update(cx, |connection, cx| {
+            let commands = open_picker_commands(
+                connection.core.snapshot(),
+                connection.core.attached_session(),
+            );
+            for command in commands {
+                connection.invoke(command, cx);
+            }
+        });
+    }
+}
+
 fn flat_event(
     view: &mut AppShell,
     event: FlatEvent,
@@ -437,17 +452,7 @@ fn flat_event(
             return;
         }
         FlatEvent::NewChat(_) => {
-            if writable(connection.read(cx)) {
-                connection.update(cx, |connection, cx| {
-                    let commands = open_picker_commands(
-                        connection.core.snapshot(),
-                        connection.core.attached_session(),
-                    );
-                    for command in commands {
-                        connection.invoke(command, cx);
-                    }
-                });
-            }
+            new_chat(view, cx);
             return;
         }
         FlatEvent::Connect(_) | FlatEvent::Upgrade(_) => {

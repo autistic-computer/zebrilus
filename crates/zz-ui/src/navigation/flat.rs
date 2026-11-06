@@ -45,6 +45,7 @@ const DETAIL_AGE_GAP: f32 = 8.0;
 const SPINNER_SIZE: f32 = 12.0;
 const DIMMED: f32 = 0.45;
 const HOST_HEIGHT: f32 = 30.0;
+const ACTION_HEIGHT: f32 = 32.0;
 const HOST_GAP: f32 = 18.0;
 const HOST_GLYPH: f32 = 16.0;
 const HOST_LINE: f32 = 16.0;
@@ -785,6 +786,61 @@ pub fn flat_host_header(
         .children(new_chat)
 }
 
+pub fn flat_action_row(
+    id: &'static str,
+    icon: IconName,
+    label: &'static str,
+    ground: Ground,
+    cx: &App,
+) -> Stateful<Div> {
+    let theme = cx.theme();
+    let element = ElementId::from(id);
+    let fill = workspace_row_fill(
+        &element,
+        RowLook::Sidebar,
+        PaintState::Rest,
+        Some(SharedString::from(id)),
+        ground,
+        cx,
+    );
+    let foreground = theme.foreground;
+    h_flex()
+        .id(element)
+        .role(Role::Button)
+        .aria_label(label)
+        .group(id)
+        .relative()
+        .flex_none()
+        .h(px(ACTION_HEIGHT))
+        .px(header_inset(cx))
+        .gap(px(HOST_SPACING))
+        .text_color(theme.foreground.rest())
+        .hover(move |row| row.text_color(foreground))
+        .type_style(HOST_NAME, cx)
+        .line_height(px(HOST_LINE))
+        .cursor_pointer()
+        .child(fill)
+        .child(
+            div()
+                .flex_none()
+                .relative()
+                .top(cap_center_drop(
+                    px(HOST_NAME.design_px()),
+                    px(HOST_GLYPH),
+                    cx,
+                ))
+                .child(Icon::new(icon).size(px(HOST_GLYPH))),
+        )
+        .child(
+            Label::new(HOST_NAME, label)
+                .line_height(px(HOST_LINE))
+                .min_w_0()
+                .overflow_hidden()
+                .whitespace_nowrap()
+                .text_fade(crate::LABEL_FADE),
+        )
+}
+
 fn add_button(
     id: ElementId,
     icon: IconName,
@@ -882,8 +938,7 @@ pub fn flat_sidebar(
 mod tests {
     use super::*;
     use crate::sidebar::{
-        CHROME_BUTTON_SIZE, SIDEBAR_DEFAULT_WIDTH, SIDEBAR_SCROLLBAR_GUTTER, sidebar_footer,
-        sidebar_titlebar,
+        CHROME_BUTTON_SIZE, SIDEBAR_DEFAULT_WIDTH, SIDEBAR_SCROLLBAR_GUTTER, sidebar_titlebar,
     };
 
     struct Sidebar;
@@ -913,7 +968,14 @@ mod tests {
             let menu: FlatMenu = Rc::new(|_, _, menu, _, _| menu);
             v_flex()
                 .w(px(SIDEBAR_DEFAULT_WIDTH))
-                .child(sidebar_titlebar("titlebar", chrome("toggle"), cx))
+                .child(sidebar_titlebar(
+                    "titlebar",
+                    super::super::workspace_sidebar_titlebar_controls(
+                        chrome("view"),
+                        chrome("toggle"),
+                    ),
+                    cx,
+                ))
                 .child(
                     div()
                         .debug_selector(|| "rows".to_owned())
@@ -926,17 +988,22 @@ mod tests {
                             cx,
                         )),
                 )
-                .child(sidebar_footer(
+                .child(super::super::workspace_sidebar_footer(
                     "footer",
-                    div(),
-                    Some(chrome("eye").into_any_element()),
+                    super::super::workspace_sidebar_action(
+                        super::super::SidebarAction::Settings,
+                        true,
+                        cx.theme().ground(),
+                        cx,
+                    )
+                    .debug_selector(|| "settings".to_owned()),
                     cx,
                 ))
         }
     }
 
     #[ala::test]
-    fn trailing_buttons_share_the_row_actions_column_beside_the_scrollbar(
+    fn the_sidebar_toggle_shares_the_row_actions_column_and_settings_spans_the_rows(
         cx: &mut ala::TestAppContext,
     ) {
         cx.update(crate::init);
@@ -946,10 +1013,11 @@ mod tests {
         });
         let new_chat = cx.debug_bounds("flat-new-chat").unwrap();
         let toggle = cx.debug_bounds("toggle").unwrap();
-        let eye = cx.debug_bounds("eye").unwrap();
         assert_eq!(toggle.center().x, new_chat.center().x);
-        assert_eq!(eye.center().x, new_chat.center().x);
         let rows = cx.debug_bounds("rows").unwrap();
+        let settings = cx.debug_bounds("settings").unwrap();
+        assert_eq!(settings.right(), rows.right() - SIDEBAR_SCROLLBAR_GUTTER);
+        assert_eq!(settings.left(), rows.left());
         let inset = cx.update(|_, cx| header_inset(cx));
         assert_eq!(
             new_chat.right(),

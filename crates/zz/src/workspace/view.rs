@@ -95,7 +95,7 @@ use crate::{
     },
     pane::display::DisplayPanesView,
     pane::layout::{SeparatorSide, pane_separator},
-    pane::picker::{AgentChosen, ChooseFolder, PanePickerView},
+    pane::picker::{AgentChosen, ChooseFolder, ChooseMachine, PanePickerView},
     terminal::view::TerminalView,
     window::corners::WindowCorners,
 };
@@ -1119,6 +1119,12 @@ impl AppView {
             |this, picker, choose: &ChooseFolder, window, cx| {
                 this.open_folder_palette(picker, &choose.start, window, cx);
             },
+        )
+        .detach();
+        cx.subscribe_in(
+            &empty_picker,
+            window,
+            |this, _, choose: &ChooseMachine, _, cx| this.on_choose_machine(choose, cx),
         )
         .detach();
         Self {
@@ -2593,7 +2599,23 @@ impl AppView {
             },
         )
         .detach();
+        cx.subscribe_in(&view, window, |this, _, choose: &ChooseMachine, _, cx| {
+            this.on_choose_machine(choose, cx);
+        })
+        .detach();
         self.pickers.insert(pane, view);
+    }
+
+    fn on_choose_machine(&mut self, choose: &ChooseMachine, cx: &mut Context<Self>) {
+        self.sidebar
+            .update(cx, |sidebar, cx| sidebar.new_chat(choose.host, cx));
+        let mux = self.mux.read(cx);
+        if let Some(command) = choose
+            .pane
+            .and_then(|pane| zz_client::new_chat::close_picker_command(&mux.snapshot(), pane))
+        {
+            mux.execute(command);
+        }
     }
 
     fn empty_focus(&self, cx: &App) -> FocusHandle {

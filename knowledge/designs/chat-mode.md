@@ -2,7 +2,7 @@
 type: Design Plan
 title: "Chat mode: the sidebar lists agents, not windows"
 description: "The flat sidebar became chat mode: each machine lists one row per window running Claude Code or Codex, the agent's tile leads the pane stack with the panes it split behind it, sessions and agentless windows stay in the session tree, and a host's New agent opens a picker window that starts the agent in a chosen folder inside that folder's session. The sidebar view decides what a new pane offers: agents in chat view, pane kinds in the session tree. Desktop, web, iPad and the HTML client share the zz-client model."
-status: Built (2026-10-28; picker by sidebar view 2026-11-01; the HTML client has no file picker yet)
+status: Built (2026-10-28; picker by sidebar view 2026-11-01; New chat row and machine choice 2026-11-06; the HTML client has no file picker yet)
 resource: crates/zz-client/src/new_chat.rs
 tags:
 - sidebar
@@ -15,7 +15,8 @@ timestamp: 2026-10-28T00:00:00-03:00
 
 # Overview
 
-The sidebar has two views, switched from the footer: the session tree (raw mode) and chat mode,
+The sidebar has two views, switched by the chat button beside the sidebar toggle at the top: the
+session tree (raw mode) and chat mode,
 which replaced the flat window list. Chat mode keeps the [flat sidebar](flat-sidebar-data.md)'s
 two-line rows, pane stack, attention and ages, and changes what a row is:
 
@@ -33,7 +34,8 @@ agent's window and so belongs to the chat. Raw mode shows the same window as a t
 
 # Starting a chat
 
-A connected host's header shows New agent on hover (`FlatEvent::NewChat`). It opens a picker
+New chat at the top of the chat view starts one on the attached host, and a connected host's
+header shows New agent on hover (`FlatEvent::NewChat`) for that host. Either opens a picker
 window, `new-window -t <session>: --kind picker`, in the session of the folder the host's agents
 used last (`recent_folders`, `session_for_folder`); a host with no session gets one named after
 that folder. The desktop follows the new window once it appears.
@@ -45,7 +47,10 @@ with its own view: the desktop's `flat-sidebar` setting, zz-app's `flat_sidebar`
 iPad and iPhone, and the HTML client's preference passed in with `set_chat_view`):
 
 - **Chat view.** Every picker pane offers the agents (`ChatPicker`, drawn by
-  `zz_ui::pane::chat_picker_rows`): the folder line on top, and Claude Code (`c`) or Codex (`x`).
+  `zz_ui::pane::chat_picker_rows`): the machine line (desktop only), the folder line, and Claude
+  Code (`c`) or Codex (`x`). `m` or a click on the machine lists every host (`ChatStage::Machines`,
+  `MachineChoice`); picking another closes this picker and opens one on that host the way New agent
+  does, so the folders and the chat are that machine's. An offline host is listed dimmed.
   So does a window whose only pane is a terminal with nothing running (its foreground is the shell,
   or it is dead: a fresh shell, a CLI that exited); the picker draws over that terminal, Escape
   leaves it alone (`close_picker_command` closes only picker panes), and picking turns that pane

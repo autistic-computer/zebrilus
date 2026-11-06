@@ -236,7 +236,7 @@ impl WorkspaceSidebar {
         }
     }
 
-    fn new_chat(&mut self, host: HostId, cx: &mut Context<Self>) {
+    pub(crate) fn new_chat(&mut self, host: HostId, cx: &mut Context<Self>) {
         let mux = self.mux.read(cx);
         let Some(snapshot) = mux.host_snapshot(host) else {
             return;
