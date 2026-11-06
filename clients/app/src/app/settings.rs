@@ -13,7 +13,6 @@ use penna::{
         about_build_stack, about_copy_button, about_hero, about_project_stack,
     },
     components::input::{InputEvent, InputState, NumberInput},
-    components::menu::PopupMenuItem,
     components::select::{Select, SelectEvent, SelectState},
     components::switch::Switch,
 };
@@ -144,7 +143,7 @@ impl Preferences {
         shown.contrast = contrast;
         shown.zoom = interface_zoom(self, text_scale, phone());
         shown.animations &= !cx.global::<PlatformReduceMotion>().0;
-        shown.apply(self.saved(), Some(window), cx);
+        shown.apply(Some(window), cx);
         cx.set_global(zz_ui::pip::PipOpacity(self.pip_background_opacity));
         cx.set_global(PaneLook {
             frames: self.gaps,
@@ -221,7 +220,6 @@ impl Controls {
     ) -> Self {
         let mut subscriptions = Vec::new();
         let changed = cx.entity().downgrade();
-        let menu = cx.entity().downgrade();
         let appearance = AppearanceControls::new(
             &preferences.appearance,
             move |change, window, cx| {
@@ -229,34 +227,7 @@ impl Controls {
             },
             window,
             cx,
-        )
-        .theme_menu(move |popup, _, cx| {
-            let saved = menu.upgrade().is_some_and(|view| {
-                let preferences = &view.read(cx).preferences;
-                preferences.saved_theme(preferences.theme_id()).is_some()
-            });
-            let import = menu.clone();
-            let delete = menu.clone();
-            popup
-                .item(
-                    PopupMenuItem::new("Import from clipboard").on_click(move |_, window, cx| {
-                        let _ = import.update(cx, |this, cx| this.import_theme(window, cx));
-                    }),
-                )
-                .when(saved, |popup| {
-                    popup
-                        .separator()
-                        .item(
-                            PopupMenuItem::new("Delete theme").on_click(move |_, window, cx| {
-                                let _ = delete.update(cx, |this, cx| {
-                                    let id = this.preferences.theme_id().to_owned();
-                                    this.preferences.delete_theme(&id);
-                                    this.theme_changed(window, cx);
-                                });
-                            }),
-                        )
-                })
-        });
+        );
         let pane_values = [
             preferences.pip_background_opacity,
             preferences.pane_inactive_opacity,
@@ -394,13 +365,9 @@ impl Controls {
 
 impl AppShell {
     pub(super) fn theme_changed(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let preferences = &self.preferences;
-        self.settings_controls.appearance.sync(
-            &preferences.appearance,
-            preferences.saved(),
-            window,
-            cx,
-        );
+        self.settings_controls
+            .appearance
+            .sync(&self.preferences.appearance, window, cx);
         self.preferences.save();
         self.preferences.apply(&self.connection, window, cx);
     }
@@ -411,43 +378,17 @@ impl AppShell {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        let whole_look = matches!(
+            change,
+            AppearanceChange::Import(_) | AppearanceChange::ResetLook
+        );
         self.preferences.change_appearance(change);
+        if whole_look {
+            self.theme_changed(window, cx);
+            return;
+        }
         self.preferences.save();
         self.preferences.apply(&self.connection, window, cx);
-    }
-
-    fn theme_saved(
-        &mut self,
-        saved: Result<String, String>,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        use penna::{WindowExt as _, blocks::notification::Notification};
-        let notification = match saved {
-            Ok(id) => {
-                self.theme_changed(window, cx);
-                Notification::success(format!("Saved the theme as {id}"))
-            }
-            Err(error) => Notification::error(error),
-        };
-        window.push_notification(notification, cx);
-    }
-
-    fn import_theme(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let clipboard = cx.read_from_clipboard_async();
-        cx.spawn_in(window, async move |this, cx| {
-            let clipboard = clipboard.await;
-            this.update_in(cx, |this, window, cx| {
-                let saved = match clipboard {
-                    Ok(item) => this
-                        .preferences
-                        .import_theme(&item.and_then(|item| item.text()).unwrap_or_default()),
-                    Err(error) => Err(format!("Could not read the clipboard: {error}.")),
-                };
-                this.theme_saved(saved, window, cx);
-            })
-        })
-        .detach();
     }
 
     pub(super) fn render_settings(
@@ -819,7 +760,6 @@ impl AppShell {
             item => kit_row(
                 item,
                 &self.preferences.appearance,
-                self.preferences.saved(),
                 &self.settings_controls.appearance,
                 narrow,
                 window,
@@ -1292,8 +1232,8 @@ impl PaneControl {
 #[cfg(test)]
 mod tests {
     use super::{
-        Preferences, SECTIONS, Setting, interface_zoom, number_text, sample_terminal_viewport,
-        shown,
+        AppearanceChange, Preferences, SECTIONS, Setting, interface_theme, interface_zoom,
+        number_text, sample_terminal_viewport, shown,
     };
     use zz_terminal::{ATTR_BOLD, ATTR_ITALIC, CursorStyle, TerminalAppearance};
     use zz_ui::settings::SettingsSection;
@@ -1375,19 +1315,20 @@ mod tests {
 
     #[cfg(not(target_family = "wasm"))]
     #[ala::test]
-    fn apply_draws_a_saved_theme_in_its_knobs(cx: &mut ala::TestAppContext) {
+    fn apply_draws_an_imported_theme_in_its_knobs(cx: &mut ala::TestAppContext) {
         use ala::{AppContext as _, px};
         use penna::{ActiveTheme as _, ThemeMode};
 
         cx.update(zz_ui::init);
         let mut preferences = Preferences::default();
         preferences.appearance.mode = Some("dark".into());
-        preferences
-            .import_theme(
+        preferences.change_appearance(AppearanceChange::Import(Box::new(
+            interface_theme::parse_theme(
                 r##"{"name":"Neon","radius":3,"control-radius":"full","tint":{"light":"#c000c0","dark":"#ff00ff"}}"##,
             )
-            .unwrap();
-        let expected = preferences.interface_theme().colors(ThemeMode::Dark).accent;
+            .unwrap(),
+        )));
+        let expected = preferences.shown_theme().colors(ThemeMode::Dark).accent;
         let window = cx.add_empty_window();
         let connection = window.update(|_, cx| cx.new(crate::connection::Connection::new));
         window.update(|window, cx| {

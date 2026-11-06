@@ -1,6 +1,6 @@
 use ala::{Context, Window};
-use zz_client::gui_actions::{GuiOffer, PANE_GAPS, SIDEBAR_LAYOUT, THEME, TITLEBAR_MODE};
-use zz_ui::command::{GuiEvent, theme_offer};
+use zz_client::gui_actions::{ACCENT, GuiOffer, PANE_GAPS, SIDEBAR_LAYOUT, TITLEBAR_MODE};
+use zz_ui::{command::GuiEvent, interface_theme::AppearanceChange};
 
 use super::AppShell;
 
@@ -17,10 +17,7 @@ impl AppShell {
                 })
                 .flatten(),
             GuiOffer::toggle(PANE_GAPS, preferences.gaps),
-            theme_offer(&penna::blocks::appearance::theme_picks(
-                &preferences.appearance,
-                preferences.saved(),
-            )),
+            GuiOffer::fixed(ACCENT, &preferences.appearance.accent()),
             GuiOffer::toggle(SIDEBAR_LAYOUT, preferences.flat_sidebar),
         ]
         .into_iter()
@@ -35,10 +32,10 @@ impl AppShell {
         cx: &mut Context<Self>,
     ) {
         match event {
-            GuiEvent::Preview { action, value } if action.id == THEME => {
+            GuiEvent::Preview { action, value } if action.id == ACCENT => {
                 self.gui_previewing = true;
                 let mut preview = self.preferences.clone();
-                preview.set_interface_theme(value);
+                preview.change_appearance(AppearanceChange::Accent(Some(value.clone())));
                 preview.apply(&self.connection, window, cx);
             }
             GuiEvent::Preview { .. } => {}
@@ -57,8 +54,9 @@ impl AppShell {
                         self.preferences.save();
                         self.preferences.apply(&self.connection, window, cx);
                     }
-                    THEME => {
-                        self.preferences.set_interface_theme(value);
+                    ACCENT => {
+                        self.preferences
+                            .change_appearance(AppearanceChange::Accent(Some(value.clone())));
                         self.theme_changed(window, cx);
                     }
                     SIDEBAR_LAYOUT => {

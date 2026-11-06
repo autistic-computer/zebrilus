@@ -1,7 +1,3 @@
-pub const BUILTIN_THEMES: [&str; 3] = ["default", "macos", "yaru"];
-
-pub const DEFAULT_THEME: &str = "default";
-
 pub const DEFAULT_ANIMATION_SPEED: f32 = 1.0;
 pub const MIN_ANIMATION_SPEED: f32 = 0.25;
 pub const MAX_ANIMATION_SPEED: f32 = 2.0;
@@ -18,6 +14,7 @@ pub const DEFAULT_TINT_HUE: f32 = 60.0;
 pub enum AccentSetting {
     #[default]
     Theme,
+    Ink,
     Named(&'static str),
     Color([f32; 4]),
 }
@@ -25,8 +22,10 @@ pub enum AccentSetting {
 impl AccentSetting {
     pub fn parse(value: &str) -> Option<Self> {
         let value = value.trim();
-        if value == "theme" {
-            return Some(Self::Theme);
+        match value {
+            "theme" => return Some(Self::Theme),
+            "ink" => return Some(Self::Ink),
+            _ => {}
         }
         match ACCENTS.iter().find(|name| **name == value) {
             Some(name) => Some(Self::Named(name)),
@@ -37,6 +36,7 @@ impl AccentSetting {
     pub fn spelled(self) -> String {
         match self {
             Self::Theme => "theme".to_owned(),
+            Self::Ink => "ink".to_owned(),
             Self::Named(name) => name.to_owned(),
             Self::Color([r, g, b, _]) => {
                 let byte = |channel: f32| (channel.clamp(0.0, 1.0) * 255.0).round() as u8;
@@ -46,9 +46,31 @@ impl AccentSetting {
     }
 }
 
-pub fn is_builtin_theme(id: &str) -> bool {
-    BUILTIN_THEMES.contains(&id.trim())
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum ControlShapeSetting {
+    #[default]
+    Rounded,
+    Pill,
 }
+
+impl ControlShapeSetting {
+    pub const ALL: [Self; 2] = [Self::Rounded, Self::Pill];
+
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Rounded => "rounded",
+            Self::Pill => "pill",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        Self::ALL
+            .into_iter()
+            .find(|shape| shape.as_str() == value.trim())
+    }
+}
+
+pub const GLASSES: [&str; 3] = ["none", "frosted", "liquid"];
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum ThemeModeSetting {
@@ -183,6 +205,8 @@ mod tests {
     #[test]
     fn accents_parse_names_and_colors_and_spell_them_back() {
         assert_eq!(AccentSetting::parse(" theme "), Some(AccentSetting::Theme));
+        assert_eq!(AccentSetting::parse("ink"), Some(AccentSetting::Ink));
+        assert_eq!(AccentSetting::Ink.spelled(), "ink");
         assert_eq!(
             AccentSetting::parse("green"),
             Some(AccentSetting::Named("green"))

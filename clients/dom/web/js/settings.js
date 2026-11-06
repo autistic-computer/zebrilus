@@ -9,7 +9,7 @@ $("#tree").before(nav);
 app.append(page);
 
 const view = { section: null, advanced: false, dragging: false, pending: false, pane: 0, menu: null };
-const ACCENT_TITLES = (id) => (id === "theme" ? "Theme" : id[0].toUpperCase() + id.slice(1));
+const ACCENT_TITLES = (id) => id[0].toUpperCase() + id.slice(1);
 const MODES = [
   ["system", "System"],
   ["light", "Light"],
@@ -19,6 +19,15 @@ const DENSITIES = [
   ["compact", "Compact"],
   ["regular", "Regular"],
   ["comfortable", "Comfortable"],
+];
+const CONTROL_SHAPES = [
+  ["rounded", "Rounded"],
+  ["pill", "Pill"],
+];
+const GLASSES = [
+  ["none", "None"],
+  ["frosted", "Frosted"],
+  ["liquid", "Liquid"],
 ];
 const PALETTE_LAYOUTS = [
   ["grouped", "Tree"],
@@ -345,112 +354,32 @@ function modePreview(mode, modes) {
   );
 }
 
-function themePreview(preview) {
-  const menu = preview.menu;
-  const row = (width, selected) =>
-    h(
-      "div",
-      { style: { "border-radius": `${adaptive(menu.rowRadius, 10)}px`, background: selected ? menu.selection : null } },
-      h("div", { class: "bar", style: { width: `${width}px`, background: selected ? menu.selectedText : preview.text } }),
-    );
-  return h(
-    "div",
-    { class: "settings-preview-tile theme", style: { "border-radius": `${adaptive(preview.radius, 56)}px`, background: split(preview.sidebar, preview.background, 20 / 84) } },
-    h("div", { class: "side", style: { "border-color": preview.border } }),
-    h(
-      "div",
-      { class: "main" },
-      h(
-        "div",
-        { class: "top" },
-        h("div", { class: "lights" }, preview.lights.map((light) => h("i", { style: { background: light } }))),
-        h(
-          "div",
-          { class: "button", style: { "border-radius": `${adaptive(Math.max(menu.rowRadius, 2), 8)}px`, background: preview.button } },
-          h("i", { style: { background: preview.buttonText } }),
-        ),
-      ),
-      h(
-        "div",
-        {
-          class: "menu",
-          style: {
-            "padding-left": `${menu.inset}px`,
-            "padding-right": `${menu.inset}px`,
-            gap: menu.inset > 0 ? "1px" : "0",
-            "border-radius": `${adaptive(menu.radius, 36)}px`,
-            background: menu.fill,
-            border: menu.outline ? `0.5px solid ${menu.outline}` : null,
-            "box-shadow": menu.shadow ? `0 3px 16px -1px ${menu.shadow}` : null,
-          },
-        },
-        row(24, false),
-        row(18, true),
-        row(21, false),
-      ),
-    ),
-  );
-}
-
-function strip(picks) {
-  const tiles = h(
-    "div",
-    { class: "tiles", tabindex: 0 },
-    h("div", { class: "edge" }),
-    picks.themes.map((theme) =>
-      tile({
-        label: theme.name,
-        preview: themePreview(theme.preview),
-        selected: theme.id === picks.selected,
-        onclick: () => pickTheme(theme.id),
-      }),
-    ),
-    h("div", { class: "edge" }),
-  );
-  const thumb = h("div", { class: "thumb" });
-  const gutter = h("div", { class: "gutter" }, thumb);
-  const place = () => {
-    const ratio = tiles.clientWidth / Math.max(tiles.scrollWidth, 1);
-    thumb.style.width = `calc(${ratio} * (100% - 28px))`;
-    thumb.style.left = `calc(2px + ${tiles.scrollLeft / Math.max(tiles.scrollWidth, 1)} * (100% - 28px))`;
-  };
-  tiles.addEventListener("scroll", place);
-  requestAnimationFrame(place);
-  tiles.addEventListener("keydown", (event) => {
-    const index = picks.themes.findIndex((theme) => theme.id === picks.selected);
-    const next = { ArrowLeft: index - 1, ArrowRight: index + 1 }[event.key];
-    if (next === undefined) return;
-    event.preventDefault();
-    event.stopPropagation();
-    if (next >= 0 && next < picks.themes.length) pickTheme(picks.themes[next].id);
-  });
-  return h("div", { class: "picker-strip" }, tiles, gutter);
-}
-
-function pickTheme(id) {
-  preferences.themeAction("pick", id);
-}
-
-function themeSaved(outcome) {
-  if (outcome.error) toast(outcome.error, "danger");
-  else if (outcome.saved) toast(`Saved the theme as ${outcome.saved}`, "success");
-}
-
 function toast(message, tone) {
   const element = h("div", { "data-penna": "toast", class: "settings-toast", role: "status", "data-tone": tone }, h("span", { class: "settings-toast-message", text: message }));
   page.append(element);
   setTimeout(() => element.remove(), 4000);
 }
 
-async function importTheme() {
+function themeFile(outcome) {
+  if (outcome.error) toast(outcome.error, "danger");
+}
+
+async function pasteTheme() {
   let clipboard;
   try {
     clipboard = await navigator.clipboard.readText();
   } catch (error) {
-    themeSaved({ error: `Could not read the clipboard: ${error.message || error}.` });
+    themeFile({ error: `Could not read the clipboard: ${error.message || error}.` });
     return;
   }
-  themeSaved(preferences.themeAction("import", clipboard));
+  themeFile(preferences.themeAction("import", clipboard));
+}
+
+function copyTheme(file) {
+  navigator.clipboard
+    .writeText(file)
+    .then(() => toast("Copied the theme file", "success"))
+    .catch((error) => toast(String(error.message || error), "danger"));
 }
 
 function adaptive(radius, size) {
@@ -466,7 +395,7 @@ function swatches(picks) {
   const { accent } = picks;
   const radius = `${adaptive(accent.radius, 18)}px`;
   const pick = (id) => {
-    set({ accent: id === "theme" ? null : id });
+    set({ accent: id });
   };
   const swatch = (id, color) =>
     ringed(
@@ -477,11 +406,11 @@ function swatches(picks) {
   const custom = accent.custom;
   const input = h("input", { type: "color", value: custom || "#000000", tabindex: -1 });
   input.addEventListener("change", () => set({ accent: preferences.accentHex(input.value) || input.value }));
-  const customSelected = accent.selected !== "theme" && !accent.named.some((named) => named.id === accent.selected);
+  const customSelected = accent.selected !== "ink" && !accent.named.some((named) => named.id === accent.selected);
   return h(
     "div",
     { class: "settings-swatches" },
-    swatch("theme", accent.own),
+    swatch("ink", accent.ink),
     accent.named.map((named) => swatch(named.id, named.color)),
     ringed(customSelected, accent.radius, h("label", { class: "settings-swatch custom", style: { background: custom || "transparent", "border-radius": radius, position: "relative" } }, input)),
   );
@@ -498,13 +427,14 @@ function appearancePage() {
       tile({ label: title, preview: modePreview(mode, picks.modes), selected: p.mode === mode, onclick: () => set({ mode }) }),
     ),
   );
-  const selectedSaved = picks.saved;
   const actions = h(
     "div",
     { class: "setting-actions" },
-    quiet("Import", "Save the theme on the clipboard and use it", importTheme),
-    selectedSaved && quiet("Delete", "Delete this saved theme and use the default one", () => preferences.themeAction("delete", picks.selected)),
+    quiet("Copy", "Copy this look as a theme file", () => copyTheme(picks.file)),
+    quiet("Paste", "Set every knob from the theme file on the clipboard", pasteTheme),
+    quiet("Reset", "Return every knob to the platform's look", () => themeFile(preferences.themeAction("reset"))),
   );
+  const glasses = picks.glass === "custom" ? [...GLASSES, ["custom", "Custom"]] : GLASSES;
   const hue = h(
     "div",
     { class: "settings-slider-row" },
@@ -517,16 +447,37 @@ function appearancePage() {
   );
   const rows = [
     heading("Interface"),
-    group("Theme"),
+    group("Look"),
     card([
       entry({ title: "Mode", control: modes }),
-      entry({ title: "Themes", actions, children: [strip(picks)] }),
       entry({ title: "Accent", control: swatches(picks) }),
       entry({ title: "Tint", control: hue }),
       entry({
         title: "Tint strength",
         control: valueSlider({ label: "Tint strength", value: picks.tint.strength, min: 0, max: 1, step: 0.01, display: percent, onchange: (value) => set({ tint: value }) }),
       }),
+      entry({
+        title: "Corner radius",
+        control: valueSlider({ label: "Corner radius", value: picks.radius, min: 0, max: picks.limits.radius, step: 1, display: (value) => `${Math.round(value)}px`, onchange: (value) => set({ radius: value }) }),
+      }),
+      entry({
+        title: "Controls",
+        control: choose({ value: picks.controls, items: CONTROL_SHAPES.map(([value, title]) => ({ value, title })), onpick: (value) => set({ controls: value }) }),
+      }),
+      entry({
+        title: "Glass",
+        control: choose({ value: picks.glass, items: glasses.map(([value, title]) => ({ value, title })), onpick: (value) => value !== "custom" && set({ glass: value }) }),
+      }),
+      entry({
+        title: "UI font",
+        control: choose({
+          value: picks.font,
+          placeholder: "System default",
+          items: [{ title: "System default", value: "" }, ...availableFonts(UI_FONTS).map((font) => ({ title: font, value: font, font }))],
+          onpick: (value) => set({ ui_font_family: value }),
+        }),
+      }),
+      entry({ title: "Theme file", description: "Copy this look as a theme file, or paste one in", actions }),
     ]),
     group("Sidebar"),
     card([
@@ -542,25 +493,12 @@ function appearancePage() {
     rows.push(
       card([
         entry({
-          title: "Corner radius",
-          control: valueSlider({ label: "Corner radius", value: picks.radius, min: 0, max: picks.limits.radius, step: 1, display: (value) => `${Math.round(value)}px`, onchange: (value) => set({ radius: value }) }),
-        }),
-        entry({
           title: "Contrast",
           control: valueSlider({ label: "Contrast", value: p.contrast, min: 1, max: 2, step: 0.05, display: percent, onchange: (value) => set({ contrast: value }) }),
         }),
         entry({
           title: "Reduce transparency",
           control: toggle(p.reduce_transparency, "Reduce transparency", (value) => set({ reduce_transparency: value })),
-        }),
-        entry({
-          title: "UI font",
-          control: choose({
-            value: picks.font,
-            placeholder: "System default",
-            items: [{ title: "System default", value: "" }, ...availableFonts(UI_FONTS).map((font) => ({ title: font, value: font, font }))],
-            onpick: (value) => set({ ui_font_family: value }),
-          }),
         }),
         entry({
           title: "UI zoom",
@@ -1085,15 +1023,12 @@ function render() {
   closeMenu();
   const scroller = page.querySelector(".settings-scroll");
   const offset = scroller?.dataset.section === view.section ? scroller.scrollTop : 0;
-  const strip = page.querySelector(".picker-strip > .tiles")?.scrollLeft || 0;
   renderNav();
   const list = view.section === "appearance";
   const content = h("div", { class: `settings-content${list ? " list" : ""}` }, PAGES[view.section]());
   const next = h("div", { class: "settings-scroll", "data-section": view.section }, content);
   page.replaceChildren(next);
   next.scrollTop = offset;
-  const tiles = page.querySelector(".picker-strip > .tiles");
-  if (tiles) tiles.scrollLeft = strip;
 }
 
 export function open(section = "appearance") {

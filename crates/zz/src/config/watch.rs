@@ -48,7 +48,7 @@ mod linux {
 
     use notify::{EventKindMask, RecursiveMode, Watcher as _};
 
-    use super::super::{discover_config_path, themes};
+    use super::super::discover_config_path;
 
     pub(super) const CONFIG_SETTLE_DELAY: Duration = Duration::from_millis(50);
 
@@ -115,15 +115,8 @@ mod linux {
                 .map(Path::to_path_buf)
         });
         let discovered = discover_config_path(candidates)
-            .into_iter()
-            .flat_map(|path| {
-                let resolved = path
-                    .canonicalize()
-                    .ok()
-                    .and_then(|resolved| resolved.parent().map(Path::to_path_buf));
-                [Some(themes::themes_directory_for(&path)), resolved]
-            })
-            .flatten()
+            .and_then(|path| path.canonicalize().ok())
+            .and_then(|resolved| resolved.parent().map(Path::to_path_buf))
             .filter(|directory| directory.is_dir());
         configs.chain(discovered).collect()
     }
@@ -149,7 +142,7 @@ mod linux {
         }
 
         #[test]
-        fn config_and_theme_writes_wake_the_watch() {
+        fn config_writes_wake_the_watch() {
             let root = tempfile::tempdir().expect("temporary directory");
             let config = root.path().join("zz").join("config");
             let candidates = vec![config.clone()];
@@ -165,14 +158,6 @@ mod linux {
             fs::rename(&staged, &config).unwrap();
             assert!(changed_within(&watch, Duration::from_secs(5)));
             assert!(watch.sync(&candidates));
-
-            let themes = themes::themes_directory_for(&config);
-            fs::create_dir(&themes).unwrap();
-            assert!(changed_within(&watch, Duration::from_secs(5)));
-            assert!(watch.sync(&candidates));
-
-            fs::write(themes.join("neon.json"), "{}").unwrap();
-            assert!(changed_within(&watch, Duration::from_secs(5)));
 
             watch.drain();
             fs::write(root.path().join("unrelated"), "x").unwrap();

@@ -11,6 +11,7 @@ let ready = false;
 let frame = 0;
 let icons = "";
 let iconsKey = "";
+let platform = "default";
 
 function stored(key) {
   try {
@@ -36,6 +37,7 @@ try {
   const legacy = stored(MIRROR);
   if (stored(engine.storage_key()) === null && legacy) engine.save(legacy);
   replace(JSON.parse(engine.load()));
+  platform = engine.platform_theme();
   mirror();
   ready = true;
 } catch (error) {
@@ -130,13 +132,13 @@ function apply() {
   const json = JSON.stringify(preferences);
   const isDark = dark();
   write("zz-live-tokens", "penna-tokens", engine.stylesheet(json, isDark));
-  const key = JSON.stringify([preferences.theme, preferences.themes, preferences.radius]);
+  const key = JSON.stringify(preferences.radius ?? null);
   if (key !== iconsKey) {
     iconsKey = key;
     icons = engine.icons(json);
   }
   write("zz-live-icons", "penna-icons", icons);
-  const theme = preferences.theme || "default";
+  const theme = platform;
   const mode = isDark ? "dark" : "light";
   if (globalThis.pennaKit) Object.assign(globalThis.pennaKit.choice, { theme, mode });
   if (root.dataset.pennaTheme !== theme) root.dataset.pennaTheme = theme;

@@ -4,16 +4,13 @@ use std::{
     sync::{Arc, Weak},
 };
 
-use ala::{
-    App, Corners, Global, Pixels, SharedString, WindowBackgroundAppearance, WindowDecorations, px,
-};
-use penna::blocks::notification::Notification;
+use ala::{App, Corners, Global, Pixels, WindowBackgroundAppearance, WindowDecorations, px};
 use zz_client::StatusBarSettings;
 use zz_client::url_input::SearchProvider;
 use zz_daemon_client::{Endpoint, InteractiveClient};
 pub(crate) use zz_daemon_client::{HostEntry, validate_fleet_host};
 use zz_protocol::{CommandInvocation, ConfigOverrideEntry, PROTOCOL_VERSION};
-use zz_ui::interface_theme::{self, InterfaceTheme};
+use zz_ui::interface_theme::{self, Appearance, InterfaceTheme};
 
 use crate::{
     app_icon::AppIconSetting,
@@ -42,24 +39,10 @@ const UNBLURRED_WINDOW_BACKGROUND: WindowBackgroundAppearance = WindowBackground
 pub struct AppConfig(pub zz_config::AppConfig);
 impl Global for AppConfig {}
 
-#[derive(Clone, Debug)]
-pub(crate) struct Themes {
-    pub(crate) active: InterfaceTheme,
-    pub(crate) selected: SharedString,
-    pub(crate) saved: Vec<(SharedString, InterfaceTheme)>,
-    pub(crate) error: Option<SharedString>,
-}
-impl Default for Themes {
-    fn default() -> Self {
-        Self {
-            active: interface_theme::default_theme().clone(),
-            selected: interface_theme::DEFAULT_THEME.into(),
-            saved: Vec::new(),
-            error: None,
-        }
-    }
-}
-impl Global for Themes {}
+#[derive(Clone, Debug, Default, PartialEq)]
+pub(crate) struct GlassConfig(pub ConfigValue<Option<String>>);
+impl Global for GlassConfig {}
+
 impl From<zz_config::AppConfig> for AppConfig {
     fn from(value: zz_config::AppConfig) -> Self {
         Self(value)
@@ -194,7 +177,7 @@ fn install_config(path: Option<&Path>, parsed: Option<io::Result<ParsedConfig>>,
         cx.set_global(AppConfig::default());
         cx.set_global(BrowserConfig::default());
         cx.set_global(UiFontConfig::default());
-        cx.set_global(Themes::default());
+        cx.set_global(GlassConfig::default());
         apply_animations(cx);
         apply_density(cx);
         apply_program_colors(cx);
@@ -207,7 +190,7 @@ fn install_config(path: Option<&Path>, parsed: Option<io::Result<ParsedConfig>>,
         send_current_config_overrides(cx);
         return;
     };
-    let mut parsed = match parsed.expect("a discovered configuration has a load result") {
+    let parsed = match parsed.expect("a discovered configuration has a load result") {
         Ok(parsed) => parsed,
         Err(error) => {
             log::warn!(
@@ -229,8 +212,6 @@ fn install_config(path: Option<&Path>, parsed: Option<io::Result<ParsedConfig>>,
         );
     }
 
-    let loaded = load_themes(path, &mut parsed, themes(cx));
-    let announce = loaded.error.is_some() && loaded.error != themes(cx).error;
     log::info!(
         target: "zz::config",
         "application configuration path={} pane_gaps={} pane_inactive_opacity={} pane_margin={} widget_corner_radius={} chrome_contrast={} window_corner_radius={} editor_font_size={} editor_line_numbers={} editor_relative_line_numbers={} editor_soft_wrap={} editor_vim_mode={} browser_element_selector_hotkey={} browser_search_provider={} browser_egress={} use_system_titlebar={} window_background_blur={} animations={} tray={} quit_daemon_on_exit={} auto_restart_stale_daemon={} check_for_updates={} daemon_override_entries={}",
@@ -269,8 +250,17 @@ fn install_config(path: Option<&Path>, parsed: Option<io::Result<ParsedConfig>>,
     );
     cx.set_global(AppConfig(parsed.config));
     cx.set_global(BrowserConfig(parsed.browser));
+    if let Some(glass) = parsed.glass.value.as_deref()
+        && interface_theme::parse_glass(glass).is_none()
+    {
+        log::warn!(
+            target: "zz::config",
+            "{}: `interface-glass` holds a material the kit cannot read; drawing the platform's glass",
+            path.display(),
+        );
+    }
     cx.set_global(UiFontConfig(parsed.ui_font));
-    cx.set_global(loaded);
+    cx.set_global(GlassConfig(parsed.glass));
     apply_animations(cx);
     apply_density(cx);
     apply_program_colors(cx);
@@ -281,9 +271,6 @@ fn install_config(path: Option<&Path>, parsed: Option<io::Result<ParsedConfig>>,
         entries: parsed.daemon_entries,
     });
     send_current_config_overrides(cx);
-    if announce {
-        show_theme_error(cx);
-    }
 }
 
 pub(crate) fn reload(cx: &mut App) {
@@ -294,125 +281,17 @@ pub(crate) fn reload(cx: &mut App) {
     cx.refresh_windows();
 }
 
-pub(crate) fn preview_interface_theme(name: &str, theme_sets_font: bool, cx: &mut App) {
-    let path = match ConfigFileStamp::detect(&config_candidates()).path {
-        Some(path) => path,
-        None => match config_path_for_write() {
-            Ok(path) => path,
-            Err(_) => return,
-        },
+pub(crate) fn preview_accent(value: &str, cx: &mut App) {
+    let Some(accent) = interface_theme::AccentSetting::parse(value) else {
+        return;
     };
-    let source = match read_config_source(&path) {
-        Ok(source) => source,
-        Err(error) if error.kind() == ErrorKind::NotFound => String::new(),
-        Err(_) => return,
+    let mut config = resolved_config(cx);
+    config.chrome_accent = ConfigValue {
+        value: accent,
+        provenance: ConfigProvenance::Override,
     };
-    let mut parsed = zz_config::parse_config(
-        &interface_theme_source(&source, name, theme_sets_font),
-        ala::Font::default().family.as_ref(),
-    );
-    let loaded = load_themes(&path, &mut parsed, themes(cx));
-    cx.set_global(AppConfig(parsed.config));
-    cx.set_global(UiFontConfig(parsed.ui_font));
-    cx.set_global(loaded);
+    cx.set_global(config);
     crate::theme::refresh_current_theme(cx);
-}
-
-pub(crate) fn show_theme_error(cx: &mut App) {
-    if let Some(error) = themes(cx).error.clone() {
-        crate::window::toast::push(Notification::error(error), cx);
-    }
-}
-
-fn load_themes(config_path: &Path, parsed: &mut ParsedConfig, previous: &Themes) -> Themes {
-    let directory = themes::themes_directory_for(config_path);
-    let mut broken = Vec::new();
-    let saved = themes::saved_theme_names(&directory)
-        .into_iter()
-        .filter_map(|name| match read_theme(&directory, &name) {
-            Ok(theme) => Some((SharedString::from(name), theme)),
-            Err(error) => {
-                log::warn!(
-                    target: "zz::config",
-                    "could not load theme path={} error={error}",
-                    themes::theme_path(&directory, &name).display(),
-                );
-                let kept = previous
-                    .saved
-                    .iter()
-                    .find(|(saved, _)| *saved == name)
-                    .cloned();
-                broken.push((name, error));
-                kept
-            }
-        })
-        .collect::<Vec<_>>();
-    let selected = SharedString::from(
-        parsed
-            .theme
-            .clone()
-            .unwrap_or_else(|| parsed.config.interface_theme.value.to_owned()),
-    );
-    let reason = parsed.theme.as_ref().and_then(|name| {
-        broken
-            .iter()
-            .find(|(broken, _)| broken == name)
-            .map(|(_, reason)| reason)
-    });
-    let (active, selected) = match &parsed.theme {
-        None => (
-            interface_theme::builtin_theme(parsed.config.interface_theme.value)
-                .unwrap_or_else(|| interface_theme::default_theme())
-                .clone(),
-            selected,
-        ),
-        Some(name) => match saved.iter().find(|(saved, _)| saved == name) {
-            Some((_, theme)) => (theme.clone(), selected),
-            None if reason.is_some() => (previous.active.clone(), previous.selected.clone()),
-            None => {
-                log::warn!(
-                    target: "zz::config",
-                    "interface-theme names the theme `{name}`, which {} does not hold; using the default theme",
-                    directory.display(),
-                );
-                (interface_theme::default_theme().clone(), selected)
-            }
-        },
-    };
-    let error = parsed.theme.as_ref().zip(reason).map(|(name, reason)| {
-        SharedString::from(format!(
-            "The theme file {} does not load: {reason}. Showing {} until it does.",
-            themes::theme_path(&directory, name).display(),
-            if active.name.is_empty() {
-                selected.as_ref()
-            } else {
-                active.name.as_str()
-            },
-        ))
-    });
-    let mut shown = active.clone();
-    interface_theme::ThemeOverrides {
-        radius: None,
-        ..theme_overrides_from(&parsed.config)
-    }
-    .apply_to(&mut shown);
-    parsed.config.follow_theme_radius(shown.radius);
-    Themes {
-        active,
-        selected,
-        saved,
-        error,
-    }
-}
-
-fn read_theme(directory: &Path, name: &str) -> Result<InterfaceTheme, String> {
-    let source = themes::read_theme_source(directory, name).map_err(|error| error.to_string())?;
-    interface_theme::parse_theme(&source)
-}
-
-pub(crate) fn themes(cx: &App) -> &Themes {
-    static DEFAULT: std::sync::LazyLock<Themes> = std::sync::LazyLock::new(Themes::default);
-    cx.try_global::<Themes>().unwrap_or(&DEFAULT)
 }
 
 pub(crate) fn window_corner_radius(cx: &App) -> Pixels {
@@ -488,26 +367,45 @@ pub(crate) fn pane_margin(cx: &App) -> Pixels {
 }
 
 pub(crate) fn shown_theme(cx: &App) -> InterfaceTheme {
-    let mut theme = themes(cx).active.clone();
-    theme_overrides(cx).apply_to(&mut theme);
-    theme
+    appearance(cx).shown_theme()
 }
 
-pub(crate) fn theme_overrides(cx: &App) -> interface_theme::ThemeOverrides {
-    theme_overrides_from(&resolved_config(cx))
+pub(crate) fn appearance(cx: &App) -> Appearance {
+    let resolved = resolved_config(cx);
+    Appearance {
+        mode: Some(resolved.theme_mode.value.as_str().to_owned()),
+        overrides: theme_overrides_from(&resolved, &interface_glass(cx)),
+        contrast: resolved.chrome_contrast.value,
+        reduce_transparency: resolved.reduce_transparency.value,
+        ui_font_family: ui_font_family(cx).value.unwrap_or_default(),
+        zoom: penna::UiZoom::get(cx),
+        animations: resolved.animations.value,
+        animation_speed: resolved.animation_speed.value,
+        density: interface_theme::kit_density(resolved.chrome_density.value),
+    }
 }
 
-fn theme_overrides_from(config: &zz_config::AppConfig) -> interface_theme::ThemeOverrides {
+fn theme_overrides_from(
+    config: &zz_config::AppConfig,
+    glass: &ConfigValue<Option<String>>,
+) -> interface_theme::ThemeOverrides {
     fn set<T: Copy>(value: ConfigValue<T>) -> Option<T> {
         (value.provenance == ConfigProvenance::Override).then_some(value.value)
     }
+    let accent = set(config.chrome_accent).and_then(|accent| match accent {
+        interface_theme::AccentSetting::Theme => None,
+        accent => Some(accent.spelled()),
+    });
     interface_theme::ThemeOverrides {
         radius: set(config.widget_corner_radius),
-        accent: set(config.chrome_accent)
-            .filter(|accent| *accent != zz_client::appearance::AccentSetting::Theme)
-            .map(zz_client::appearance::AccentSetting::spelled),
+        accent,
         tint: set(config.chrome_tint),
         tint_hue: set(config.chrome_tint_hue),
+        controls: set(config.control_shape).map(interface_theme::kit_controls),
+        glass: glass
+            .value
+            .as_deref()
+            .and_then(interface_theme::parse_glass),
     }
 }
 
@@ -672,6 +570,46 @@ pub(crate) fn status_bar_settings(cx: &App) -> StatusBarSettings {
         show_host: config.status_host.value,
         show_update: config.status_update.value,
     }
+}
+
+pub(crate) fn look_edits(
+    overrides: &interface_theme::ThemeOverrides,
+    face: Option<&str>,
+) -> Vec<(ConfigKey, Option<String>)> {
+    vec![
+        (ConfigKey::ChromeAccent, overrides.accent.clone()),
+        (
+            ConfigKey::ChromeTint,
+            overrides.tint.map(|tint| tint.to_string()),
+        ),
+        (
+            ConfigKey::ChromeTintHue,
+            overrides.tint_hue.map(|hue| hue.to_string()),
+        ),
+        (
+            ConfigKey::WidgetCornerRadius,
+            overrides.radius.map(|radius| radius.to_string()),
+        ),
+        (
+            ConfigKey::ControlShape,
+            overrides.controls.map(|controls| {
+                interface_theme::control_shape_setting(controls)
+                    .as_str()
+                    .to_owned()
+            }),
+        ),
+        (
+            ConfigKey::InterfaceGlass,
+            overrides.glass.as_ref().map(interface_theme::spelled_glass),
+        ),
+        (ConfigKey::UiFontFamily, face.map(quoted_config_string)),
+    ]
+}
+
+pub(crate) fn interface_glass(cx: &App) -> ConfigValue<Option<String>> {
+    cx.try_global::<GlassConfig>()
+        .map(|glass| glass.0.clone())
+        .unwrap_or_default()
 }
 
 pub(crate) fn ui_font_family(cx: &App) -> ConfigValue<Option<String>> {
@@ -935,152 +873,6 @@ mod tests {
             .filter(|(key, _)| AppearanceConfigKey::from_config_key(key).is_some())
             .cloned()
             .collect()
-    }
-
-    #[test]
-    fn interface_theme_selects_a_saved_theme_and_falls_back_without_it() {
-        let directory = tempfile::tempdir().expect("temporary directory");
-        let path = directory.path().join(CONFIG_FILE_NAME);
-        let themes_directory = themes::themes_directory_for(&path);
-        themes::save_theme(
-            &themes_directory,
-            "square",
-            r##"{"name": "Square", "radius": 3, "tint": {"light": "#cc0000", "dark": "#ff0000"}}"##,
-        )
-        .expect("save theme");
-        themes::save_theme(&themes_directory, "broken", "[1, 2]").expect("save theme");
-
-        let mut parsed = parse_config("interface-theme = square\n");
-        let loaded = load_themes(&path, &mut parsed, &Themes::default());
-        assert_eq!(loaded.selected.as_ref(), "square");
-        assert_eq!(
-            loaded
-                .saved
-                .iter()
-                .map(|(name, _)| name.as_ref())
-                .collect::<Vec<_>>(),
-            ["square"]
-        );
-        assert_eq!(loaded.active.name, "Square");
-        assert_f32_eq(loaded.active.radius, 3.0);
-        assert_f32_eq(parsed.config.widget_corner_radius.value, 3.0);
-
-        let mut parsed = parse_config("interface-theme = square\nwidget-corner-radius = 9\n");
-        load_themes(&path, &mut parsed, &Themes::default());
-        assert_f32_eq(parsed.config.widget_corner_radius.value, 9.0);
-
-        let mut parsed = parse_config("interface-theme = macos\n");
-        let loaded = load_themes(&path, &mut parsed, &Themes::default());
-        assert_eq!(loaded.active.name, "macOS");
-        assert_f32_eq(parsed.config.widget_corner_radius.value, 12.0);
-
-        let mut parsed = parse_config("interface-theme = missing\n");
-        let loaded = load_themes(&path, &mut parsed, &Themes::default());
-        assert_eq!(&loaded.active, interface_theme::default_theme());
-
-        let mut parsed = parse_config("interface-theme = default\n");
-        let loaded = load_themes(&path, &mut parsed, &Themes::default());
-        assert_eq!(loaded.selected.as_ref(), "default");
-        assert_eq!(
-            Some(&loaded.active),
-            interface_theme::builtin_theme("default")
-        );
-        assert_f32_eq(
-            parsed.config.widget_corner_radius.value,
-            loaded.active.radius,
-        );
-    }
-
-    #[test]
-    fn a_theme_file_from_before_knobs_loads_as_the_default_look_under_its_name() {
-        let directory = tempfile::tempdir().expect("temporary directory");
-        let path = directory.path().join(CONFIG_FILE_NAME);
-        themes::save_theme(
-            &themes::themes_directory_for(&path),
-            "older",
-            r##"{"name": "Older", "materials": {"radius": 3, "outline": 0.4}, "roles": {"button": {"shape": "pill"}}, "dark": {"accent": "#ff0000"}}"##,
-        )
-        .expect("save theme");
-        let mut parsed = parse_config("interface-theme = older\n");
-        let loaded = load_themes(&path, &mut parsed, &Themes::default());
-        assert_eq!(loaded.error, None);
-        assert_eq!(
-            loaded.active,
-            InterfaceTheme {
-                name: "Older".to_owned(),
-                ..interface_theme::default_theme().clone()
-            }
-        );
-    }
-
-    #[test]
-    fn a_theme_file_that_stops_parsing_keeps_the_theme_on_screen() {
-        let directory = tempfile::tempdir().expect("temporary directory");
-        let path = directory.path().join(CONFIG_FILE_NAME);
-        let themes_directory = themes::themes_directory_for(&path);
-        themes::save_theme(
-            &themes_directory,
-            "neon",
-            r#"{"name": "Neon", "radius": 3}"#,
-        )
-        .expect("save theme");
-        let mut parsed = parse_config("interface-theme = neon\n");
-        let loaded = load_themes(&path, &mut parsed, &Themes::default());
-        assert_eq!(loaded.active.name, "Neon");
-        assert_eq!(loaded.error, None);
-
-        themes::save_theme(
-            &themes_directory,
-            "neon",
-            r#"{"name": "Neon", "control-radius": "round"}"#,
-        )
-        .expect("break theme");
-        let mut parsed = parse_config("interface-theme = neon\n");
-        let kept = load_themes(&path, &mut parsed, &loaded);
-        assert_eq!(kept.active, loaded.active);
-        assert_eq!(kept.selected.as_ref(), "neon");
-        assert_eq!(kept.saved, loaded.saved);
-        assert_f32_eq(parsed.config.widget_corner_radius.value, 3.0);
-        let error = kept.error.expect("the broken file is reported");
-        assert!(error.contains("neon.json does not load"), "{error}");
-        assert!(error.contains("control-radius"), "{error}");
-        assert!(error.ends_with("Showing Neon until it does."), "{error}");
-
-        let mut parsed = parse_config("interface-theme = default\n");
-        let shown = load_themes(&path, &mut parsed, &Themes::default());
-        assert_eq!(shown.error, None);
-        let mut parsed = parse_config("interface-theme = neon\n");
-        let switched = load_themes(&path, &mut parsed, &shown);
-        assert_eq!(switched.active, shown.active);
-        assert_eq!(switched.selected.as_ref(), "default");
-        assert!(switched.saved.is_empty());
-        assert!(switched.error.is_some());
-
-        let mut parsed = parse_config("interface-theme = neon\n");
-        let launched = load_themes(&path, &mut parsed, &Themes::default());
-        assert_eq!(&launched.active, interface_theme::default_theme());
-        assert_eq!(launched.selected.as_ref(), interface_theme::DEFAULT_THEME);
-        let error = launched.error.expect("the broken file is reported");
-        assert!(error.ends_with("Showing Default until it does."), "{error}");
-    }
-
-    #[test]
-    fn an_invalid_radius_keeps_the_active_themes_radius() {
-        let directory = tempfile::tempdir().expect("temporary directory");
-        let path = directory.path().join(CONFIG_FILE_NAME);
-        let mut parsed = parse_config(
-            "interface-theme = default\nwidget-corner-radius = wide\nwidget-shadow-strength = 9\n",
-        );
-        let loaded = load_themes(&path, &mut parsed, &Themes::default());
-        assert_eq!(parsed.diagnostics.len(), 2, "{:?}", parsed.diagnostics);
-        assert_f32_eq(
-            loaded.active.radius,
-            zz_config::DEFAULT_WIDGET_CORNER_RADIUS,
-        );
-        assert_eq!(
-            parsed.config.widget_corner_radius,
-            ConfigValue::from_default(loaded.active.radius)
-        );
     }
 
     #[test]
@@ -1429,7 +1221,7 @@ mod tests {
         let parsed = parse_config(
             "theme-mode = dark\n\
              app-icon = light\n\
-             interface-theme = default # trailing comments still work\n",
+             control-shape = pill # trailing comments still work\n",
         );
 
         assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
@@ -1443,23 +1235,24 @@ mod tests {
             parsed.config.app_icon.provenance,
             ConfigProvenance::Override
         );
-        assert_eq!(parsed.config.interface_theme.value, "default");
         assert_eq!(
-            parsed.config.interface_theme.provenance,
-            ConfigProvenance::Override
+            parsed.config.control_shape,
+            ConfigValue {
+                value: interface_theme::ControlShapeSetting::Pill,
+                provenance: ConfigProvenance::Override,
+            }
         );
     }
 
     #[test]
-    fn unset_theme_keys_take_the_default_theme_and_follow_the_system() {
+    fn unset_theme_keys_take_the_platform_look_and_follow_the_system() {
         let parsed = parse_config("pane-gaps = true\n");
         assert_eq!(parsed.config.theme_mode.value, ThemeModeSetting::System);
         assert_eq!(parsed.config.app_icon.value, AppIconSetting::Automatic);
         assert_eq!(
-            parsed.config.interface_theme,
-            ConfigValue::from_default(interface_theme::DEFAULT_THEME)
+            theme_overrides_from(&parsed.config, &parsed.glass),
+            interface_theme::ThemeOverrides::default()
         );
-        assert_eq!(parsed.theme, None);
     }
 
     #[test]
@@ -1467,15 +1260,15 @@ mod tests {
         let parsed = parse_config(
             "theme-mode = midnight\n\
              app-icon = rainbow\n\
-             interface-theme = ../escape\n",
+             control-shape = square\n",
         );
 
         assert_eq!(parsed.diagnostics.len(), 3);
         assert_eq!(parsed.config.theme_mode.value, ThemeModeSetting::System);
         assert_eq!(parsed.config.app_icon.value, AppIconSetting::Automatic);
         assert_eq!(
-            parsed.config.interface_theme.value,
-            interface_theme::DEFAULT_THEME
+            parsed.config.control_shape.value,
+            interface_theme::ControlShapeSetting::Rounded
         );
     }
 
@@ -2227,37 +2020,6 @@ mod tests {
     }
 
     #[test]
-    fn picking_a_theme_round_trips_through_the_config_writer() {
-        let directory = tempfile::tempdir().expect("temporary directory");
-        let path = directory.path().join(CONFIG_FILE_NAME);
-        write_config_edit_at(
-            &path,
-            ConfigKey::ThemeMode.as_str(),
-            Some(ThemeModeSetting::System.as_str()),
-        )
-        .expect("write theme mode");
-        fs::write(
-            &path,
-            format!(
-                "{}chrome-background = #123456\nchrome-preset-dark = nord\n",
-                fs::read_to_string(&path).expect("read theme mode")
-            ),
-        )
-        .expect("write retired keys");
-        write_interface_theme_at(&path, "default", false).expect("write theme");
-
-        let source = fs::read_to_string(&path).expect("read theme settings");
-        let parsed = parse_config(&source);
-        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
-        assert_eq!(parsed.config.theme_mode.value, ThemeModeSetting::System);
-        assert_eq!(parsed.config.interface_theme.value, "default");
-        assert!(source.contains("theme-mode = system"));
-        assert!(source.contains("interface-theme = default"));
-        assert!(!source.contains("chrome-background"));
-        assert!(!source.contains("chrome-preset-dark"));
-    }
-
-    #[test]
     fn the_app_icon_setting_round_trips_through_the_config_writer() {
         let directory = tempfile::tempdir().expect("temporary directory");
         let path = directory.path().join(CONFIG_FILE_NAME);
@@ -2273,23 +2035,7 @@ mod tests {
     }
 
     #[test]
-    fn resetting_the_theme_returns_to_the_default() {
-        let directory = tempfile::tempdir().expect("temporary directory");
-        let path = directory.path().join(CONFIG_FILE_NAME);
-        let key = ConfigKey::InterfaceTheme;
-        write_config_edit_at(&path, key.as_str(), Some("default")).expect("write");
-        write_config_edit_at(&path, key.as_str(), None).expect("reset");
-
-        let source = fs::read_to_string(path).expect("read");
-        let parsed = parse_config(&source);
-        assert_eq!(
-            parsed.config.interface_theme,
-            ConfigValue::from_default(interface_theme::DEFAULT_THEME)
-        );
-    }
-
-    #[test]
-    fn widget_corner_radius_defaults_to_the_theme_radius_and_takes_an_override() {
+    fn widget_corner_radius_follows_the_platform_until_overridden() {
         let parsed = parse_config("");
         assert_f32_eq(
             parsed.config.widget_corner_radius.value,
@@ -2356,7 +2102,7 @@ mod tests {
     }
 
     #[ala::test]
-    fn ui_font_family_reloads_with_the_theme_and_resets(cx: &mut ala::TestAppContext) {
+    fn ui_font_family_reloads_with_the_look_and_resets(cx: &mut ala::TestAppContext) {
         let directory = tempfile::tempdir().expect("temporary directory");
         let path = directory.path().join(CONFIG_FILE_NAME);
         cx.update(zz_ui::init);
@@ -2401,45 +2147,86 @@ mod tests {
     }
 
     #[ala::test]
-    fn appearance_keys_redraw_the_theme_and_reset_to_it(cx: &mut ala::TestAppContext) {
+    fn appearance_keys_redraw_the_look_and_reset_to_the_platform(cx: &mut ala::TestAppContext) {
         let directory = tempfile::tempdir().expect("temporary directory");
         let path = directory.path().join(CONFIG_FILE_NAME);
         cx.update(zz_ui::init);
 
-        for (theme, accent, tint) in [
-            (Some("macos"), Some("green"), Some("1")),
-            (None, Some("#ff8800"), None),
-            (None, None, None),
+        for (accent, tint, controls, glass) in [
+            (Some("green"), Some("1"), Some("pill"), Some("none")),
+            (Some("#ff8800"), None, Some("rounded"), Some("frosted")),
+            (Some("ink"), None, None, None),
+            (None, None, None, None),
         ] {
             for (key, value) in [
-                (ConfigKey::InterfaceTheme, theme),
                 (ConfigKey::ChromeAccent, accent),
                 (ConfigKey::ChromeTint, tint),
+                (ConfigKey::ControlShape, controls),
+                (ConfigKey::InterfaceGlass, glass),
             ] {
                 write_config_edit_at(&path, key.as_str(), value).expect("write appearance key");
             }
             cx.update(|cx| {
                 install_config(Some(&path), Some(load_config(&path)), cx);
                 crate::theme::refresh_current_theme(cx);
-                let mut expected =
-                    interface_theme::builtin_theme(theme.unwrap_or(interface_theme::DEFAULT_THEME))
-                        .expect("a built-in theme")
-                        .clone();
+                let mut expected = interface_theme::platform_theme().clone();
                 interface_theme::ThemeOverrides {
                     accent: accent.map(str::to_owned),
                     tint: tint.map(|tint| tint.parse().expect("a number")),
+                    controls: controls.map(|controls| {
+                        serde_json::from_value(serde_json::Value::String(controls.to_owned()))
+                            .expect("a control shape")
+                    }),
+                    glass: glass.and_then(interface_theme::parse_glass),
                     ..interface_theme::ThemeOverrides::default()
                 }
                 .apply_to(&mut expected);
+                assert_eq!(shown_theme(cx), expected);
                 let theme = penna::Theme::global(cx);
                 assert_eq!(theme.colors, expected.colors(theme.mode));
                 assert_eq!(theme.radius, px(expected.radius));
-                assert_f32_eq(
-                    resolved_config(cx).widget_corner_radius.value,
-                    expected.radius,
+                assert_eq!(
+                    theme.control_radius,
+                    expected
+                        .control_radius
+                        .map(penna::foundation::interface_theme::ControlRadius::pixels)
                 );
+                assert_eq!(theme.glass.is_some(), glass != Some("none"));
             });
         }
+    }
+
+    #[ala::test]
+    fn importing_a_theme_file_sets_every_look_key_and_resetting_clears_them(
+        cx: &mut ala::TestAppContext,
+    ) {
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let path = directory.path().join(CONFIG_FILE_NAME);
+        fs::write(&path, "pane-gaps = true\nchrome-accent = pink\n").expect("write config");
+        let file = interface_theme::parse_theme(
+            r##"{"name":"Mono","tint":{"light":"#336699","dark":"#336699"},"face":"Lilex","radius":2.5,"control-radius":"full","neutral":{"hue":200,"amount":0.4},"glass":{"blur":8}}"##,
+        )
+        .expect("a theme file");
+        let mut imported = Appearance::default();
+        imported.import(&file);
+        cx.update(zz_ui::init);
+
+        let edits = look_edits(&imported.overrides, file.face.as_deref());
+        write_config_keys_at(&path, &edits).expect("import");
+        cx.update(|cx| {
+            install_config(Some(&path), Some(load_config(&path)), cx);
+            let appearance = appearance(cx);
+            assert_eq!(appearance.overrides, imported.overrides);
+            assert_eq!(appearance.ui_font(), "Lilex");
+            assert_eq!(appearance.shown_theme(), imported.shown_theme());
+        });
+
+        let reset = look_edits(&interface_theme::ThemeOverrides::default(), None);
+        write_config_keys_at(&path, &reset).expect("reset");
+        assert_eq!(
+            fs::read_to_string(&path).expect("read config"),
+            "pane-gaps = true\n"
+        );
     }
 
     #[ala::test]
@@ -2934,7 +2721,9 @@ mod tests {
         let config = parse_config("pane-gaps = true\npane-margin = 0\n").config;
         cx.update(|cx| {
             cx.set_global(AppConfig::from(config));
-            penna::Theme::global_mut(cx).radius = px(5.5);
+            let theme = penna::Theme::global_mut(cx);
+            theme.radius = px(5.5);
+            theme.control_radius = None;
         });
 
         assert_eq!(
@@ -3194,7 +2983,8 @@ mod tests {
             "browser-search-provider",
             "browser-egress",
             "theme-mode",
-            "interface-theme",
+            "control-shape",
+            "interface-glass",
             "ui-font-family",
             "app-icon",
         ];
@@ -3208,6 +2998,7 @@ mod tests {
             .chain(zz_config::RETIRED_LOOK_KEYS)
             .chain(zz_config::RETIRED_MATERIAL_KEYS)
             .chain(zz_config::RETIRED_AGENT_KEYS)
+            .chain(zz_config::RETIRED_THEME_KEYS)
         {
             assert_eq!(ConfigKey::parse(key), None, "{key}");
         }

@@ -4,19 +4,13 @@ pub struct GuiChoice {
     pub title: &'static str,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum GuiValues {
-    Fixed(&'static [GuiChoice]),
-    Listed,
-}
-
 #[derive(Debug, PartialEq, Eq)]
 pub struct GuiAction {
     pub id: &'static str,
     pub title: &'static str,
     pub verb: &'static str,
     pub aliases: &'static [&'static str],
-    pub values: GuiValues,
+    pub values: &'static [GuiChoice],
     pub config_key: Option<&'static str>,
     pub preview: bool,
 }
@@ -35,7 +29,7 @@ const ON_OFF: &[GuiChoice] = &[
 pub const TITLEBAR_MODE: &str = "titlebar-mode";
 pub const PANE_GAPS: &str = "pane-gaps";
 pub const WINDOW_BLUR: &str = "window-background-blur";
-pub const THEME: &str = "interface-theme";
+pub const ACCENT: &str = "chrome-accent";
 pub const SIDEBAR_LAYOUT: &str = "flat-sidebar";
 
 pub const GUI_ACTIONS: [GuiAction; 5] = [
@@ -44,7 +38,7 @@ pub const GUI_ACTIONS: [GuiAction; 5] = [
         title: "Titlebar mode",
         verb: "titlebar mode",
         aliases: &["toggle sidebar", "hide sidebar", "show sidebar"],
-        values: GuiValues::Fixed(&[
+        values: &[
             GuiChoice {
                 value: "sidebar",
                 title: "Sidebar",
@@ -53,7 +47,7 @@ pub const GUI_ACTIONS: [GuiAction; 5] = [
                 value: "titlebar",
                 title: "Title bar",
             },
-        ]),
+        ],
         config_key: None,
         preview: false,
     },
@@ -62,7 +56,7 @@ pub const GUI_ACTIONS: [GuiAction; 5] = [
         title: "Pane gaps",
         verb: "pane gaps",
         aliases: &["gaps", "frames"],
-        values: GuiValues::Fixed(ON_OFF),
+        values: ON_OFF,
         config_key: Some(PANE_GAPS),
         preview: false,
     },
@@ -71,17 +65,54 @@ pub const GUI_ACTIONS: [GuiAction; 5] = [
         title: "Window blur",
         verb: "window blur",
         aliases: &["blur", "translucent"],
-        values: GuiValues::Fixed(ON_OFF),
+        values: ON_OFF,
         config_key: Some(WINDOW_BLUR),
         preview: false,
     },
     GuiAction {
-        id: THEME,
-        title: "Theme",
-        verb: "select theme",
-        aliases: &["color theme", "look"],
-        values: GuiValues::Listed,
-        config_key: Some(THEME),
+        id: ACCENT,
+        title: "Accent",
+        verb: "select accent",
+        aliases: &["accent color", "color"],
+        values: &[
+            GuiChoice {
+                value: "ink",
+                title: "Ink",
+            },
+            GuiChoice {
+                value: "blue",
+                title: "Blue",
+            },
+            GuiChoice {
+                value: "purple",
+                title: "Purple",
+            },
+            GuiChoice {
+                value: "pink",
+                title: "Pink",
+            },
+            GuiChoice {
+                value: "red",
+                title: "Red",
+            },
+            GuiChoice {
+                value: "orange",
+                title: "Orange",
+            },
+            GuiChoice {
+                value: "yellow",
+                title: "Yellow",
+            },
+            GuiChoice {
+                value: "green",
+                title: "Green",
+            },
+            GuiChoice {
+                value: "graphite",
+                title: "Graphite",
+            },
+        ],
+        config_key: Some(ACCENT),
         preview: true,
     },
     GuiAction {
@@ -89,7 +120,7 @@ pub const GUI_ACTIONS: [GuiAction; 5] = [
         title: "Sidebar layout",
         verb: "sidebar layout",
         aliases: &["list", "tree", "flat"],
-        values: GuiValues::Fixed(&[
+        values: &[
             GuiChoice {
                 value: "true",
                 title: "List",
@@ -98,7 +129,7 @@ pub const GUI_ACTIONS: [GuiAction; 5] = [
                 value: "false",
                 title: "Tree",
             },
-        ]),
+        ],
         config_key: Some(SIDEBAR_LAYOUT),
         preview: false,
     },
@@ -124,13 +155,11 @@ impl GuiOffer {
     #[must_use]
     pub fn fixed(id: &str, current: &str) -> Option<Self> {
         let action = gui_action(id)?;
-        let GuiValues::Fixed(choices) = action.values else {
-            return None;
-        };
         Some(Self {
             action,
             current: current.to_owned(),
-            options: choices
+            options: action
+                .values
                 .iter()
                 .map(|choice| GuiOption {
                     value: choice.value.to_owned(),
@@ -142,15 +171,6 @@ impl GuiOffer {
     #[must_use]
     pub fn toggle(id: &str, on: bool) -> Option<Self> {
         Self::fixed(id, if on { "true" } else { "false" })
-    }
-    #[must_use]
-    pub fn listed(id: &str, current: &str, options: Vec<GuiOption>) -> Option<Self> {
-        let action = gui_action(id).filter(|action| action.values == GuiValues::Listed)?;
-        Some(Self {
-            action,
-            current: current.to_owned(),
-            options,
-        })
     }
 
     #[must_use]
@@ -201,18 +221,16 @@ mod tests {
     }
 
     #[test]
-    fn fixed_actions_take_two_values_or_more() {
+    fn actions_take_two_values_or_more() {
         for action in &GUI_ACTIONS {
-            if let GuiValues::Fixed(choices) = action.values {
-                assert!(choices.len() >= 2, "{}", action.id);
-                let values: BTreeSet<_> = choices.iter().map(|choice| choice.value).collect();
-                assert_eq!(values.len(), choices.len(), "{}", action.id);
-            }
+            assert!(action.values.len() >= 2, "{}", action.id);
+            let values: BTreeSet<_> = action.values.iter().map(|choice| choice.value).collect();
+            assert_eq!(values.len(), action.values.len(), "{}", action.id);
         }
     }
 
     #[test]
-    fn a_two_valued_action_flips_and_a_listed_one_does_not() {
+    fn a_two_valued_action_flips_and_a_longer_one_does_not() {
         let gaps = GuiOffer::toggle(PANE_GAPS, true).unwrap();
         assert_eq!(gaps.current_title(), "On");
         assert_eq!(gaps.flipped(), Some("false"));
@@ -222,15 +240,8 @@ mod tests {
                 .flipped(),
             Some("sidebar")
         );
-        let options = ["default", "macos", "yaru"]
-            .map(|id| GuiOption {
-                value: id.to_owned(),
-                title: id.to_owned(),
-            })
-            .to_vec();
-        let theme = GuiOffer::listed(THEME, "macos", options).unwrap();
-        assert_eq!(theme.flipped(), None);
-        assert!(GuiOffer::listed(PANE_GAPS, "true", Vec::new()).is_none());
-        assert!(GuiOffer::fixed(THEME, "default").is_none());
+        let accent = GuiOffer::fixed(ACCENT, "ink").unwrap();
+        assert_eq!(accent.current_title(), "Ink");
+        assert_eq!(accent.flipped(), None);
     }
 }

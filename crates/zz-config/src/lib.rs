@@ -8,9 +8,9 @@ use std::{
 };
 use zz_client::StatusBarSettings;
 use zz_client::appearance::{
-    ACCENTS, AccentSetting, AppIconSetting, BUILTIN_THEMES, DEFAULT_ANIMATION_SPEED, DEFAULT_THEME,
-    DEFAULT_TINT_HUE, DensitySetting, MAX_ANIMATION_SPEED, MAX_CORNER_RADIUS, MIN_ANIMATION_SPEED,
-    ThemeModeSetting, is_builtin_theme,
+    ACCENTS, AccentSetting, AppIconSetting, ControlShapeSetting, DEFAULT_ANIMATION_SPEED,
+    DEFAULT_TINT_HUE, DensitySetting, GLASSES, MAX_ANIMATION_SPEED, MAX_CORNER_RADIUS,
+    MIN_ANIMATION_SPEED, ThemeModeSetting,
 };
 use zz_client::url_input::SearchProvider;
 pub use zz_daemon_client::{
@@ -25,7 +25,6 @@ pub mod file_options;
 pub mod import;
 pub mod keymap;
 pub mod mux_bindings;
-pub mod themes;
 #[cfg(feature = "update")]
 pub mod update;
 
@@ -123,7 +122,8 @@ pub enum ConfigKey {
     BrowserSearchProvider,
     BrowserEgress,
     ThemeMode,
-    InterfaceTheme,
+    ControlShape,
+    InterfaceGlass,
     UiFontFamily,
     AppIcon,
 }
@@ -175,7 +175,8 @@ impl ConfigKey {
             Self::BrowserSearchProvider => "browser-search-provider",
             Self::BrowserEgress => "browser-egress",
             Self::ThemeMode => "theme-mode",
-            Self::InterfaceTheme => "interface-theme",
+            Self::ControlShape => "control-shape",
+            Self::InterfaceGlass => "interface-glass",
             Self::UiFontFamily => "ui-font-family",
             Self::AppIcon => "app-icon",
         }
@@ -227,7 +228,8 @@ impl ConfigKey {
             "browser-search-provider" => Some(Self::BrowserSearchProvider),
             "browser-egress" => Some(Self::BrowserEgress),
             "theme-mode" => Some(Self::ThemeMode),
-            "interface-theme" => Some(Self::InterfaceTheme),
+            "control-shape" => Some(Self::ControlShape),
+            "interface-glass" => Some(Self::InterfaceGlass),
             "ui-font-family" => Some(Self::UiFontFamily),
             "app-icon" => Some(Self::AppIcon),
             _ => None,
@@ -280,7 +282,8 @@ impl ConfigKey {
             | Self::BrowserEgress
             | Self::ReduceTransparency
             | Self::ThemeMode
-            | Self::InterfaceTheme
+            | Self::ControlShape
+            | Self::InterfaceGlass
             | Self::ChromeAccent
             | Self::ChromeDensity
             | Self::UiFontFamily
@@ -288,7 +291,15 @@ impl ConfigKey {
         }
     }
 
-    pub const THEME_PICKS: [Self; 1] = [Self::WidgetCornerRadius];
+    pub const LOOK: [Self; 7] = [
+        Self::ChromeAccent,
+        Self::ChromeTint,
+        Self::ChromeTintHue,
+        Self::WidgetCornerRadius,
+        Self::ControlShape,
+        Self::InterfaceGlass,
+        Self::UiFontFamily,
+    ];
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -298,7 +309,7 @@ pub enum ConfigProvenance {
     Override,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct ConfigValue<T> {
     pub value: T,
     pub provenance: ConfigProvenance,
@@ -412,7 +423,7 @@ pub struct AppConfig {
     pub editor_vim_mode: ConfigValue<bool>,
     pub browser_egress: ConfigValue<bool>,
     pub theme_mode: ConfigValue<ThemeModeSetting>,
-    pub interface_theme: ConfigValue<&'static str>,
+    pub control_shape: ConfigValue<ControlShapeSetting>,
     pub app_icon: ConfigValue<AppIconSetting>,
 }
 
@@ -463,19 +474,13 @@ impl Default for AppConfig {
             editor_vim_mode: ConfigValue::from_default(DEFAULT_EDITOR_VIM_MODE),
             browser_egress: ConfigValue::from_default(DEFAULT_BROWSER_EGRESS),
             theme_mode: ConfigValue::from_default(ThemeModeSetting::System),
-            interface_theme: ConfigValue::from_default(DEFAULT_THEME),
+            control_shape: ConfigValue::from_default(ControlShapeSetting::Rounded),
             app_icon: ConfigValue::from_default(AppIconSetting::Automatic),
         }
     }
 }
 
 impl AppConfig {
-    pub fn follow_theme_radius(&mut self, radius: f32) {
-        if self.widget_corner_radius.provenance == ConfigProvenance::Default {
-            self.widget_corner_radius.value = radius;
-        }
-    }
-
     fn boolean_value_mut(&mut self, key: ConfigKey) -> Option<&mut ConfigValue<bool>> {
         match key {
             ConfigKey::PaletteShowKeys => Some(&mut self.palette_show_keys),
@@ -522,7 +527,8 @@ impl AppConfig {
             | ConfigKey::BrowserRemoteDebuggingPort
             | ConfigKey::BrowserSearchProvider
             | ConfigKey::ThemeMode
-            | ConfigKey::InterfaceTheme
+            | ConfigKey::ControlShape
+            | ConfigKey::InterfaceGlass
             | ConfigKey::UiFontFamily
             | ConfigKey::AppIcon => None,
         }
@@ -540,7 +546,7 @@ pub struct ParsedConfig {
     pub config: AppConfig,
     pub browser: BrowserConfig,
     pub ui_font: UiFontConfig,
-    pub theme: Option<String>,
+    pub glass: ConfigValue<Option<String>>,
     pub hosts: Vec<HostEntry>,
     pub rejected_hosts: Vec<RejectedHost>,
     pub daemon_entries: Vec<ConfigOverrideEntry>,
@@ -575,7 +581,6 @@ pub struct ConfigFileStamp {
     pub path: Option<PathBuf>,
     pub modified: Option<SystemTime>,
     pub len: Option<u64>,
-    pub themes: themes::ThemesStamp,
 }
 
 impl ConfigFileStamp {
@@ -589,7 +594,6 @@ impl ConfigFileStamp {
                 .as_ref()
                 .and_then(|metadata| metadata.modified().ok()),
             len: metadata.as_ref().map(fs::Metadata::len),
-            themes: themes::themes_stamp(&themes::themes_directory_for(&path)),
             path: Some(path),
         }
     }
@@ -845,8 +849,16 @@ pub fn parse_config(source: &str, system_font_family: &str) -> ParsedConfig {
         if RETIRED_APPEARANCE_KEYS.contains(&key) {
             parsed.diagnostics.push(ConfigDiagnostic {
                 line: line_number,
+                message: format!("`{key}` was removed: set the look in Settings > Interface"),
+            });
+            continue;
+        }
+
+        if RETIRED_THEME_KEYS.contains(&key) {
+            parsed.diagnostics.push(ConfigDiagnostic {
+                line: line_number,
                 message: format!(
-                    "`{key}` was removed: a theme now bundles the look with its colors; pick one in Settings > Interface or set `interface-theme`"
+                    "`{key}` was removed: there are no theme presets now; set the look in Settings > Interface"
                 ),
             });
             continue;
@@ -854,9 +866,9 @@ pub fn parse_config(source: &str, system_font_family: &str) -> ParsedConfig {
 
         if RETIRED_LOOK_KEYS.contains(&key) {
             let instead = if key == "shadow-strength" {
-                "pick a theme with `interface-theme`"
+                "set the look in Settings > Interface"
             } else {
-                "themes set this per role now"
+                "the kit sets this per role now"
             };
             parsed.diagnostics.push(ConfigDiagnostic {
                 line: line_number,
@@ -879,11 +891,14 @@ pub fn parse_config(source: &str, system_font_family: &str) -> ParsedConfig {
         }
 
         if RETIRED_MATERIAL_KEYS.contains(&key) {
+            let instead = if key == "widget-glass" {
+                "set `interface-glass`, or Glass in Settings > Interface"
+            } else {
+                "set the look in Settings > Interface"
+            };
             parsed.diagnostics.push(ConfigDiagnostic {
                 line: line_number,
-                message: format!(
-                    "`{key}` was removed: pick a theme with `interface-theme`, or make one in the theme creator"
-                ),
+                message: format!("`{key}` was removed: {instead}"),
             });
             continue;
         }
@@ -1028,23 +1043,15 @@ pub fn parse_config(source: &str, system_font_family: &str) -> ParsedConfig {
             continue;
         }
 
-        if key == ConfigKey::InterfaceTheme {
-            parsed.config.interface_theme.provenance = ConfigProvenance::Override;
-            let name = value.trim();
-            match BUILTIN_THEMES.iter().find(|builtin| **builtin == name) {
-                Some(builtin) => {
-                    parsed.config.interface_theme.value = builtin;
-                    parsed.theme = None;
-                }
-                None if themes::is_theme_name(name) => {
-                    parsed.config.interface_theme.value = DEFAULT_THEME;
-                    parsed.theme = Some(name.to_owned());
-                }
+        if key == ConfigKey::InterfaceGlass {
+            parsed.glass.provenance = ConfigProvenance::Override;
+            match parse_glass(value) {
+                Some(glass) => parsed.glass.value = Some(glass),
                 None => parsed.diagnostics.push(ConfigDiagnostic {
                     line: line_number,
                     message: format!(
-                        "invalid `interface-theme`: expected {} or the name of a saved theme",
-                        BUILTIN_THEMES.join(", ")
+                        "invalid `interface-glass`: expected {} or a JSON glass material",
+                        GLASSES.join(", ")
                     ),
                 }),
             }
@@ -1058,7 +1065,7 @@ pub fn parse_config(source: &str, system_font_family: &str) -> ParsedConfig {
                 None => parsed.diagnostics.push(ConfigDiagnostic {
                     line: line_number,
                     message: format!(
-                        "invalid `chrome-accent`: expected theme, {} or a #rrggbb color",
+                        "invalid `chrome-accent`: expected theme, ink, {} or a #rrggbb color",
                         ACCENTS.join(", ")
                     ),
                 }),
@@ -1073,7 +1080,7 @@ pub fn parse_config(source: &str, system_font_family: &str) -> ParsedConfig {
         if matches!(
             key,
             ConfigKey::ThemeMode
-                | ConfigKey::InterfaceTheme
+                | ConfigKey::ControlShape
                 | ConfigKey::AppIcon
                 | ConfigKey::ChromeDensity
         ) {
@@ -1123,7 +1130,8 @@ pub fn parse_config(source: &str, system_font_family: &str) -> ParsedConfig {
             | ConfigKey::FlatSidebar
             | ConfigKey::ProgramColors
             | ConfigKey::ThemeMode
-            | ConfigKey::InterfaceTheme
+            | ConfigKey::ControlShape
+            | ConfigKey::InterfaceGlass
             | ConfigKey::ChromeAccent
             | ConfigKey::ChromeDensity
             | ConfigKey::UiFontFamily
@@ -1131,9 +1139,7 @@ pub fn parse_config(source: &str, system_font_family: &str) -> ParsedConfig {
                 unreachable!("handled above")
             }
         };
-        if key != ConfigKey::WidgetCornerRadius {
-            target.provenance = ConfigProvenance::Override;
-        }
+        target.provenance = ConfigProvenance::Override;
 
         let range = key
             .numeric_range()
@@ -1215,12 +1221,33 @@ pub fn apply_theme_key(
                 None => "expected compact, regular or comfortable".to_owned(),
             }
         }
+        ConfigKey::ControlShape => {
+            config.control_shape.provenance = ConfigProvenance::Override;
+            match ControlShapeSetting::parse(value) {
+                Some(shape) => {
+                    config.control_shape.value = shape;
+                    return None;
+                }
+                None => "expected rounded or pill".to_owned(),
+            }
+        }
         _ => return None,
     };
     Some(ConfigDiagnostic {
         line: line_number,
         message: format!("invalid `{}`: {message}", key.as_str()),
     })
+}
+
+pub fn parse_glass(value: &str) -> Option<String> {
+    let value = value.trim();
+    if value.starts_with('{') {
+        return serde_json::from_str::<serde_json::Map<String, serde_json::Value>>(value)
+            .ok()
+            .map(|_| value.to_owned());
+    }
+    let name = parse_config_string(value).ok()?;
+    GLASSES.contains(&name.as_str()).then_some(name)
 }
 
 pub fn config_value_without_comment(value: &str) -> &str {
@@ -1438,6 +1465,8 @@ pub const RETIRED_AGENT_KEYS: [&str; 6] = [
 
 pub const RETIRED_STATUS_KEYS: [&str; 2] = ["status-show-session", "status-agents"];
 
+pub const RETIRED_THEME_KEYS: [&str; 1] = ["interface-theme"];
+
 pub fn is_app_config_key(key: &str) -> bool {
     ConfigKey::parse(key).is_some()
         || RETIRED_APPEARANCE_KEYS.contains(&key)
@@ -1446,6 +1475,7 @@ pub fn is_app_config_key(key: &str) -> bool {
         || RETIRED_LOOK_KEYS.contains(&key)
         || RETIRED_MATERIAL_KEYS.contains(&key)
         || RETIRED_AGENT_KEYS.contains(&key)
+        || RETIRED_THEME_KEYS.contains(&key)
         || MuxOptionKey::from_config_key(key).is_some()
         || key.starts_with("host-")
 }
@@ -1688,70 +1718,20 @@ pub fn write_ui_font_family_at(
     let family = family.unwrap_or(system_font_family);
     validate_ui_font_family(family)
         .map_err(|message| io::Error::new(ErrorKind::InvalidInput, message))?;
-    let escaped = family.replace('\\', "\\\\").replace('"', "\\\"");
     write_config_edit_at(
         path,
         ConfigKey::UiFontFamily.as_str(),
-        Some(&format!("\"{escaped}\"")),
+        Some(&quoted_config_string(family)),
     )
+}
+
+pub fn quoted_config_string(value: &str) -> String {
+    let escaped = value.replace('\\', "\\\\").replace('"', "\\\"");
+    format!("\"{escaped}\"")
 }
 
 pub fn set_config_key(key: ConfigKey, value: &str) -> io::Result<()> {
     set_config_key_name(key.as_str(), value)
-}
-
-pub fn set_interface_theme(name: &str, theme_sets_font: bool) -> io::Result<()> {
-    if !is_builtin_theme(name) && !themes::is_theme_name(name) {
-        return Err(io::Error::new(
-            ErrorKind::InvalidInput,
-            format!("`{name}` is not a theme name"),
-        ));
-    }
-    let path = config_path_for_write()?;
-    write_interface_theme_at(&path, name, theme_sets_font)
-}
-
-pub fn write_interface_theme_at(path: &Path, name: &str, theme_sets_font: bool) -> io::Result<()> {
-    let source = match read_config_source(path) {
-        Ok(source) => source,
-        Err(error) if error.kind() == ErrorKind::NotFound => String::new(),
-        Err(error) => return Err(error),
-    };
-    let edited = interface_theme_source(&source, name, theme_sets_font);
-    if edited.len() > MAX_CONFIG_BYTES {
-        return Err(io::Error::new(
-            ErrorKind::InvalidData,
-            format!("configuration edit exceeds the {MAX_CONFIG_BYTES}-byte limit"),
-        ));
-    }
-    atomic_write(path, edited.as_bytes())
-}
-
-#[must_use]
-pub fn interface_theme_source(source: &str, name: &str, theme_sets_font: bool) -> String {
-    let decided = |key: &str| {
-        ConfigKey::THEME_PICKS
-            .iter()
-            .any(|picked| picked.as_str() == key)
-            || (theme_sets_font && key == ConfigKey::UiFontFamily.as_str())
-    };
-    let mut without_decided = String::with_capacity(source.len());
-    for line in source.split_inclusive('\n') {
-        let dropped = config_key_for_line(line).is_some_and(|key| {
-            decided(key)
-                || RETIRED_APPEARANCE_KEYS.contains(&key)
-                || RETIRED_LOOK_KEYS.contains(&key)
-                || RETIRED_MATERIAL_KEYS.contains(&key)
-        });
-        if !dropped {
-            without_decided.push_str(line);
-        }
-    }
-    edit_config_source(
-        &without_decided,
-        ConfigKey::InterfaceTheme.as_str(),
-        Some(name),
-    )
 }
 
 pub fn set_config_key_name(key: &str, value: &str) -> io::Result<()> {
@@ -1772,6 +1752,45 @@ pub fn remove_config_key(key: ConfigKey) -> io::Result<()> {
 pub fn remove_config_key_name(key: &str) -> io::Result<()> {
     let path = config_path_for_write()?;
     write_config_edit_at(&path, key, None).map(drop)
+}
+
+pub fn set_config_keys(edits: &[(ConfigKey, Option<String>)]) -> io::Result<()> {
+    let path = config_path_for_write()?;
+    write_config_keys_at(&path, edits)
+}
+
+pub fn write_config_keys_at(path: &Path, edits: &[(ConfigKey, Option<String>)]) -> io::Result<()> {
+    if edits
+        .iter()
+        .filter_map(|(_, value)| value.as_deref())
+        .any(|value| value.bytes().any(|byte| matches!(byte, b'\r' | b'\n')))
+    {
+        return Err(io::Error::new(
+            ErrorKind::InvalidInput,
+            "configuration values must fit on one line",
+        ));
+    }
+    let source = match read_config_source(path) {
+        Ok(source) => source,
+        Err(error) if error.kind() == ErrorKind::NotFound => String::new(),
+        Err(error) => return Err(error),
+    };
+    let edited = edits
+        .iter()
+        .fold(source.clone(), |edited, (key, value)| match value {
+            Some(value) => edit_config_source(&edited, key.as_str(), Some(value)),
+            None => replace_config_key_group(&edited, key.as_str(), &[]),
+        });
+    if edited == source {
+        return Ok(());
+    }
+    if edited.len() > MAX_CONFIG_BYTES {
+        return Err(io::Error::new(
+            ErrorKind::InvalidData,
+            format!("configuration edit exceeds the {MAX_CONFIG_BYTES}-byte limit"),
+        ));
+    }
+    atomic_write(path, edited.as_bytes())
 }
 
 pub fn write_config_edit_at(path: &Path, key: &str, value: Option<&str>) -> io::Result<bool> {
@@ -1909,17 +1928,13 @@ mod tests {
 
     #[test]
     fn every_palette_gui_value_is_one_the_config_reads() {
-        use zz_client::gui_actions::{GUI_ACTIONS, GuiValues};
+        use zz_client::gui_actions::GUI_ACTIONS;
         for action in &GUI_ACTIONS {
             let Some(key) = action.config_key else {
                 continue;
             };
             assert!(ConfigKey::parse(key).is_some(), "{key}");
-            let values: Vec<&str> = match action.values {
-                GuiValues::Fixed(choices) => choices.iter().map(|choice| choice.value).collect(),
-                GuiValues::Listed => BUILTIN_THEMES.to_vec(),
-            };
-            for value in values {
+            for value in action.values.iter().map(|choice| choice.value) {
                 let parsed = parse_config(&format!("{key} = {value}\n"), "monospace");
                 assert!(
                     parsed.diagnostics.is_empty(),
@@ -2122,10 +2137,7 @@ mod tests {
             );
         }
         assert_eq!(appearance_editor_view(&source), "");
-        assert_eq!(
-            parsed.config.interface_theme,
-            ConfigValue::from_default(DEFAULT_THEME)
-        );
+        assert_eq!(parsed.config, AppConfig::default());
     }
 
     #[test]
@@ -2214,63 +2226,64 @@ mod tests {
     }
 
     #[test]
-    fn interface_theme_writer_drops_what_the_theme_decides_and_retired_keys() {
+    fn look_keys_round_trip_and_reset_while_a_theme_line_is_retired() {
         let directory = tempfile::tempdir().expect("temporary directory");
         let path = directory.path().join(CONFIG_FILE_NAME);
         fs::write(
             &path,
-            "widget-corner-radius = 25\nchrome-contrast = 1.2\nshadow-strength = 0.4\n\
-             widget-shadows = none\nwidget-selection = wash\nwidget-field = outline\n\
-             widget-shadow-strength = 0.5\nwidget-outline-width = 0\nwidget-glass = off\n\
-             interface-style = flat\nchrome-preset-dark = nord\n\
-             chrome-accent = green\nchrome-tint = 0.4\nui-font-family = \"Fira Sans\"\n",
+            "interface-theme = macos\ncontrol-shape = rounded\ninterface-glass = liquid\n\
+             chrome-accent = green\ntray = false\n",
         )
         .expect("write config");
-
-        write_interface_theme_at(&path, "default", false).expect("write theme");
-        let source = fs::read_to_string(&path).expect("read theme");
-        let parsed = parse_config(&source, "monospace");
-        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
-        assert_eq!(parsed.config.interface_theme.value, "default");
-        assert_eq!(parsed.theme, None);
+        let material = r##"{"light":{"blur":12,"tint":"#ffffffb3"},"dark":{"blur":20}}"##;
+        write_config_keys_at(
+            &path,
+            &[
+                (ConfigKey::ControlShape, Some("pill".to_owned())),
+                (ConfigKey::InterfaceGlass, Some(material.to_owned())),
+                (ConfigKey::ChromeAccent, Some("ink".to_owned())),
+            ],
+        )
+        .expect("write look keys");
+        let source = fs::read_to_string(&path).expect("read config");
         assert_eq!(
-            parsed.config.widget_corner_radius,
-            ConfigValue::from_default(DEFAULT_WIDGET_CORNER_RADIUS)
+            source,
+            format!(
+                "interface-theme = macos\ncontrol-shape = pill\ninterface-glass = {material}\n\
+                 chrome-accent = ink\ntray = false\n"
+            )
         );
-        assert_eq!(parsed.config.chrome_contrast.value, 1.2);
-        assert_eq!(
-            parsed.config.chrome_accent.value,
-            AccentSetting::Named("green")
-        );
-        assert_eq!(parsed.config.chrome_tint.value, 0.4);
-        assert_eq!(parsed.ui_font.family.value.as_deref(), Some("Fira Sans"));
-
-        write_interface_theme_at(&path, "round", true).expect("write theme");
-        let source = fs::read_to_string(&path).expect("read theme");
         let parsed = parse_config(&source, "monospace");
-        assert_eq!(parsed.theme.as_deref(), Some("round"));
-        assert_eq!(parsed.ui_font.family, ConfigValue::from_default(None));
-
-        let parsed = parse_config("interface-theme = round", "monospace");
-        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
-        assert_eq!(parsed.theme.as_deref(), Some("round"));
-        assert_eq!(parsed.config.interface_theme.value, DEFAULT_THEME);
         assert_eq!(
-            parsed.config.interface_theme.provenance,
-            ConfigProvenance::Override
+            parsed.diagnostics,
+            [ConfigDiagnostic {
+                line: 1,
+                message: "`interface-theme` was removed: there are no theme presets now; set the look in Settings > Interface".to_owned(),
+            }]
+        );
+        fn set<T>(value: T) -> ConfigValue<T> {
+            ConfigValue {
+                value,
+                provenance: ConfigProvenance::Override,
+            }
+        }
+        assert_eq!(parsed.config.control_shape, set(ControlShapeSetting::Pill));
+        assert_eq!(parsed.glass, set(Some(material.to_owned())));
+        assert_eq!(parsed.config.chrome_accent, set(AccentSetting::Ink));
+        assert_eq!(appearance_editor_view(&source), "");
+
+        write_config_keys_at(&path, &ConfigKey::LOOK.map(|key| (key, None))).expect("reset");
+        assert_eq!(
+            fs::read_to_string(&path).expect("read config"),
+            "interface-theme = macos\ntray = false\n"
         );
 
         let parsed = parse_config(
-            "interface-theme = round\ninterface-theme = default",
+            "control-shape = square\ninterface-glass = foggy\ninterface-glass = {\"blur\":\n",
             "monospace",
         );
-        assert_eq!(parsed.theme, None);
-        assert_eq!(parsed.config.interface_theme.value, "default");
-
-        let parsed = parse_config("interface-theme = ../round", "monospace");
-        assert_eq!(parsed.diagnostics.len(), 1);
-        assert_eq!(parsed.theme, None);
-        assert!(set_interface_theme("../round", false).is_err());
+        assert_eq!(parsed.diagnostics.len(), 3, "{:?}", parsed.diagnostics);
+        assert_eq!(parsed.glass.value, None);
     }
 
     #[test]
@@ -2294,13 +2307,13 @@ mod tests {
         assert_eq!(messages.len(), 6, "{messages:?}");
         assert_eq!(
             messages[0],
-            "`interface-style` was removed: pick a theme with `interface-theme`, or make one in the theme creator"
+            "`interface-style` was removed: set the look in Settings > Interface"
         );
-        assert!(messages[1].contains("expected theme, blue"));
+        assert!(messages[1].contains("expected theme, ink, blue"));
         assert!(messages[2].contains("between 0 and 360"));
         assert_eq!(
             messages[3],
-            "`widget-glass` was removed: pick a theme with `interface-theme`, or make one in the theme creator"
+            "`widget-glass` was removed: set `interface-glass`, or Glass in Settings > Interface"
         );
         assert_eq!(
             messages[4],
@@ -2308,7 +2321,7 @@ mod tests {
         );
         assert_eq!(
             messages[5],
-            "`widget-shadows` was removed: themes set this per role now"
+            "`widget-shadows` was removed: the kit sets this per role now"
         );
         for key in RETIRED_MATERIAL_KEYS
             .into_iter()
@@ -2317,13 +2330,6 @@ mod tests {
             assert!(is_app_config_key(key));
             assert_eq!(ConfigKey::parse(key), None);
         }
-
-        let mut config = parse_config("", "monospace").config;
-        config.follow_theme_radius(18.0);
-        assert_eq!(config.widget_corner_radius.value, 18.0);
-        let mut config = parse_config("widget-corner-radius = 4\n", "monospace").config;
-        config.follow_theme_radius(18.0);
-        assert_eq!(config.widget_corner_radius.value, 4.0);
     }
 
     #[test]

@@ -2,7 +2,7 @@ use zz_protocol::{CommandInvocation, PaneId, SessionId, WindowId};
 
 use super::*;
 use crate::{
-    gui_actions::{PANE_GAPS, THEME},
+    gui_actions::{ACCENT, PANE_GAPS},
     place::{FleetHost, FleetPane, FleetSession, FleetWindow},
 };
 
@@ -52,7 +52,7 @@ fn pane_place() -> Place {
 fn all() -> Vec<Verb> {
     verbs(
         PaneKindAvailability::default(),
-        &[PANE_GAPS, THEME],
+        &[PANE_GAPS, ACCENT],
         true,
         "",
     )
@@ -99,10 +99,10 @@ fn zz_names_come_first_and_tmux_commands_read_with_spaces() {
 #[test]
 fn gui_actions_and_inserting_a_path_are_verbs_too() {
     let verbs = all();
-    let theme = named(&verbs, "select theme");
-    assert_eq!(theme.kind, VerbKind::Gui);
-    assert_eq!(theme.slots, vec![Slot::Value(THEME)]);
-    assert_eq!(theme.spelled(), "gui");
+    let accent = named(&verbs, "select accent");
+    assert_eq!(accent.kind, VerbKind::Gui);
+    assert_eq!(accent.slots, vec![Slot::Value(ACCENT)]);
+    assert_eq!(accent.spelled(), "gui");
     assert_eq!(named(&verbs, "insert path").slots, vec![Slot::Path]);
     let without = super::verbs(PaneKindAvailability::default(), &[], false, "");
     assert!(without.iter().all(|verb| verb.kind == VerbKind::Tmux));
@@ -248,7 +248,7 @@ fn a_filled_verb_compiles_with_ids_and_reads_with_names() {
         .map(|compiled| compiled.line),
         Some("new-window -t '$3'".to_owned())
     );
-    assert_eq!(compile(named(&verbs, "select theme"), &[], &fleet), None);
+    assert_eq!(compile(named(&verbs, "select accent"), &[], &fleet), None);
 }
 
 #[test]

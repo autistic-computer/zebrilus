@@ -19,8 +19,9 @@ Logic the ala client decided outside of drawing moved into `zz-client` and both 
   those types carry ala types. Move them into `zz-client` with plain types and delete the copies.
 - The DOM palette has no GUI settings verbs, no `insert path` file level and no vim mode; recent
   places live only for the page's lifetime.
-- Settings' Theme group on ala is now a Mode segmented control and a theme picker with Import and
-  Delete in a more menu; the DOM page still draws mode tiles and a theme strip (Save is gone).
+- Settings' Look group on ala draws Mode, Controls and Glass as segmented controls and the theme
+  file's Copy, Paste and Reset in a menu; the DOM page draws mode tiles, Controls and Glass as
+  selects, and the theme file actions as buttons.
 - A split pane reports about 2 fewer terminal columns than ala for the same width, so long lines
   wrap earlier. Check the column math in `terminal.js` against `clients/app/src/terminal.rs`
   (padding, scrollbar gutter, rounding).

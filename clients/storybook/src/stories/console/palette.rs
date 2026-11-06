@@ -196,13 +196,13 @@ pub const STORY: Story = Story {
             id: "gui-mode",
             name: "Settings as verbs",
             summary: "The GUI settings are verbs tagged gui, each with its value now on the right. Enter on an on-off one flips it.",
-            build: |window, cx| gui(window, cx, &["t", "h", "e", "m"]),
+            build: |window, cx| gui(window, cx, &["a", "c", "c"]),
         },
         Section {
             id: "gui-values",
-            name: "Theme values",
-            summary: "Enter on select theme lists the themes, starting on the one in use. A highlighted theme shows at once and goes back however the palette closes; Enter keeps it.",
-            build: |window, cx| gui(window, cx, &["t", "h", "e", "m", "e", "enter"]),
+            name: "Accent values",
+            summary: "Enter on select accent lists the accents, starting on the one in use. A highlighted accent shows at once and goes back however the palette closes; Enter keeps it.",
+            build: |window, cx| gui(window, cx, &["a", "c", "c", "e", "n", "t", "enter"]),
         },
         Section {
             id: "vim-insert",
@@ -1126,19 +1126,13 @@ fn target(window: &mut Window, cx: &mut App, body: &str) -> AnyView {
 
 fn gui(window: &mut Window, cx: &mut App, keys: &'static [&'static str]) -> AnyView {
     use zz_client::gui_actions::{
-        GuiOffer, GuiOption, PANE_GAPS, SIDEBAR_LAYOUT, THEME, TITLEBAR_MODE, WINDOW_BLUR,
+        ACCENT, GuiOffer, PANE_GAPS, SIDEBAR_LAYOUT, TITLEBAR_MODE, WINDOW_BLUR,
     };
-    let themes = [("default", "Default"), ("macos", "macOS"), ("yaru", "Yaru")]
-        .map(|(value, title)| GuiOption {
-            value: value.to_owned(),
-            title: title.to_owned(),
-        })
-        .to_vec();
     let gui = [
         GuiOffer::fixed(TITLEBAR_MODE, "sidebar"),
         GuiOffer::toggle(PANE_GAPS, true),
         GuiOffer::toggle(WINDOW_BLUR, false),
-        GuiOffer::listed(THEME, "macos", themes),
+        GuiOffer::fixed(ACCENT, "blue"),
         GuiOffer::toggle(SIDEBAR_LAYOUT, false),
     ]
     .into_iter()

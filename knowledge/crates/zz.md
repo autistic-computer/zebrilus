@@ -207,7 +207,7 @@ Browser, Terminal, Hosts, Providers, System, About:
 
 | Section | Contents |
 |---------|----------|
-| Interface | Theme (a Mode segmented control for `theme-mode`, a Theme picker for `interface-theme`, each theme with its accent, with Import from clipboard in its more menu, the Accent swatches for `chrome-accent`, and the Tint and Tint strength sliders for `chrome-tint-hue` and `chrome-tint`), Advanced (`widget-corner-radius` as Corner radius and `chrome-contrast` as Contrast, both sliders, `reduce-transparency` as Reduce transparency, system UI font picker, transient UI zoom, `chrome-density` as Density, macOS app-icon pickers, `animations`, window blur, Linux `window-corner-radius` and `use-system-titlebar`) |
+| Interface | Look (a Mode segmented control for `theme-mode`, the Accent swatches for `chrome-accent`, the Tint, Tint strength and Corner radius sliders for `chrome-tint-hue`, `chrome-tint` and `widget-corner-radius`, Controls and Glass segmented controls for `control-shape` and `interface-glass`, the system UI font picker, and the Theme file menu that copies the look, pastes a theme file or resets the look), Sidebar (`program-colors`), Advanced (transient UI zoom, `chrome-density` as Density, macOS app-icon pickers, `chrome-contrast` as Increase contrast, `reduce-transparency` as Reduce transparency, `animations` and `animation-speed`, window blur, Linux `window-corner-radius` and `use-system-titlebar`) |
 | Status bar | Session chip, window badges and alignment, Agent count, remote host, update, and clock; visible in the title bar when the sidebar is retracted |
 | Editor | Editor-pane typography and display controls, when compiled in |
 | Panes | Layout (`pane-gaps`), PiP (`pip-background-opacity`), Focus (`pane-inactive-opacity`, `pane-glow-strength`), Frame (`pane-margin`); gapped panes draw their frame in glass, with corners from the theme's radius and the rim from the theme's glass (a hairline the outline's width without glass) |
@@ -270,11 +270,11 @@ verbatim from tmux after confirming that a dirty buffer may be discarded.
 
 # Application chrome (`theme.rs`)
 
-**App chrome does not derive from terminal colors.** Colors come from the interface theme
-(`interface-theme`: a built-in from `libs/penna/themes/` or a saved `themes/<name>.json`), whose
-light or dark color set applies by the OS appearance unless `theme-mode` pins System, Light, or
-Dark. A Ghostty palette cannot repaint the window. `config::Themes` holds the active theme, the
-selected id and the saved themes; `install_config` loads them with the configuration.
+**App chrome does not derive from terminal colors.** Colors come from the look: the platform's
+theme file from `libs/penna/themes/` (`platform_theme`: macos on macOS, default elsewhere) with the
+look keys `zz/config` sets over it, drawn light or dark by the OS appearance unless `theme-mode`
+pins System, Light, or Dark. A Ghostty palette cannot repaint the window. There are no presets to
+pick and no saved themes; `config::appearance` builds penna's `Appearance` from the configuration.
 
 `theme.rs` keeps the latest immutable `TerminalAppearance` and `AppearanceProvenance` as ala
 globals for chrome crossovers and Terminal Settings badges, and owns the two entry points that
@@ -284,9 +284,9 @@ install a theme: `refresh_current_theme` (the terminal appearance or `zz/config`
 that would otherwise reset the palette. A pinned `theme-mode` wins over the installed mode in both
 paths, which is how flipping the pin takes effect without a restart.
 
-The theme on screen is `config::shown_theme`: the active theme with the style, radius, accent and
-tint keys `zz/config` sets composed over it (`config::theme_overrides` returns them as a
-`ThemeOverrides`, and `ThemeOverrides::apply_to` composes them). `activate` switches the kit
+The theme on screen is `config::shown_theme`, `Appearance::shown_theme()` over that `Appearance`:
+the platform's file with the radius, control shape, glass, accent and tint keys `zz/config` sets
+applied by `ThemeOverrides::apply_to`. `activate` switches the kit
 `Theme` to the mode, writes that theme's colors for it (`InterfaceTheme::colors`: the base colors
 moved by its neutral, the accent from its tint) and its knobs (`InterfaceTheme::apply`) in one step,
 so a light/dark switch never keeps the last theme's knobs over the new colors. Only the roots are
@@ -296,7 +296,7 @@ per-component plumbing.
 
 `apply_zz_overrides` then writes what zz adds over the theme:
 
-- `font_family` from `ui-font-family`, else the theme's font, else the system UI font;
+- `font_family` from `Appearance::ui_font()`: `ui-font-family`, else the platform file's face, else the system UI font;
 - `mono_font_family` from the terminal's resolved primary family, so Agent Markdown, tool previews,
   and code blocks match the terminal typeface;
 - `contrast` from `chrome-contrast`, which scales derived colors and survives mode changes;

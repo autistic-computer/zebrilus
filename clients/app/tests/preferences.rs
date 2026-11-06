@@ -1,14 +1,11 @@
 use zz_app::preferences::Preferences;
-use zz_ui::interface_theme::{
-    Appearance, InterfaceTheme, ThemeModeSetting, ThemeOverrides, default_theme,
-};
+use zz_ui::interface_theme::{Appearance, ThemeModeSetting, ThemeOverrides, platform_theme};
 
 #[test]
 fn preferences_reject_invalid_themes_modes_and_numeric_values() {
     let preferences = Preferences {
         appearance: Appearance {
             mode: Some("unknown".into()),
-            theme: Some("unknown".into()),
             zoom: f32::NAN,
             contrast: f32::INFINITY,
             overrides: ThemeOverrides {
@@ -16,6 +13,7 @@ fn preferences_reject_invalid_themes_modes_and_numeric_values() {
                 accent: Some("unknown".into()),
                 tint: Some(4.0),
                 tint_hue: Some(f32::NAN),
+                ..ThemeOverrides::default()
             },
             ..Appearance::default()
         },
@@ -25,7 +23,6 @@ fn preferences_reject_invalid_themes_modes_and_numeric_values() {
     }
     .sanitized();
     assert_eq!(preferences.theme_mode(), ThemeModeSetting::System);
-    assert_eq!(preferences.appearance.theme, None);
     assert_eq!(
         (
             preferences.appearance.zoom,
@@ -103,12 +100,12 @@ fn a_preferences_file_written_before_appearance_moved_into_the_kit_loads_the_sam
         preferences.appearance,
         Appearance {
             mode: Some("light".into()),
-            theme: Some("theme-1".into()),
             overrides: ThemeOverrides {
                 radius: Some(7.0),
                 accent: Some("#ff8800".into()),
                 tint: Some(0.25),
                 tint_hue: Some(145.0),
+                ..ThemeOverrides::default()
             },
             contrast: 1.4,
             reduce_transparency: false,
@@ -120,13 +117,9 @@ fn a_preferences_file_written_before_appearance_moved_into_the_kit_loads_the_sam
         }
     );
     assert_eq!(preferences.theme_mode(), ThemeModeSetting::Light);
-    assert_eq!(preferences.themes.len(), 1);
-    assert_eq!(preferences.theme_id(), "theme-1");
-    let neon = InterfaceTheme {
-        name: "Neon".to_owned(),
-        ..default_theme().clone()
-    };
-    assert_eq!(*preferences.interface_theme(), neon);
+    let mut shown = platform_theme().clone();
+    preferences.appearance.overrides.apply_to(&mut shown);
+    assert_eq!(preferences.shown_theme(), shown);
     assert_eq!(preferences.shown_ui_font(), "Inter Variable");
     assert_eq!(preferences.widget_corner_radius(), 7.0);
 
@@ -135,6 +128,8 @@ fn a_preferences_file_written_before_appearance_moved_into_the_kit_loads_the_sam
     let mut expected = parsed(source);
     expected["density"] = "regular".into();
     expected["reduce_transparency"] = false.into();
-    expected["themes"][0][1] = parsed(&serde_json::to_string(&neon).unwrap());
+    let fields = expected.as_object_mut().unwrap();
+    fields.remove("theme");
+    fields.remove("themes");
     assert_eq!(parsed(&written), expected);
 }

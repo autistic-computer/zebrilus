@@ -1,13 +1,15 @@
 use crate::ThemeMode;
 
 pub use penna::foundation::interface_theme::{
-    ACCENTS, Appearance, AppearanceChange, BUILTIN_THEMES, DEFAULT_THEME, InterfaceTheme,
-    MAX_CORNER_RADIUS, SavedThemes, ThemeOverrides, accent_color,
+    ACCENTS, Appearance, AppearanceChange, Controls, Glass, InterfaceTheme, MAX_CORNER_RADIUS,
+    ThemeOverrides, accent_color, platform_theme,
 };
 pub use penna::foundation::motion::{
     DEFAULT_ANIMATION_SPEED, MAX_ANIMATION_SPEED, MIN_ANIMATION_SPEED,
 };
-pub use zz_client::appearance::{AccentSetting, DensitySetting, ThemeModeSetting};
+pub use zz_client::appearance::{
+    AccentSetting, ControlShapeSetting, DensitySetting, ThemeModeSetting,
+};
 
 pub fn parse_theme(source: &str) -> Result<InterfaceTheme, String> {
     penna::foundation::interface_theme::parse_theme(source)
@@ -23,10 +25,6 @@ pub fn builtin_theme(id: &str) -> Option<&'static InterfaceTheme> {
 
 pub fn default_theme() -> &'static InterfaceTheme {
     penna::foundation::interface_theme::default_theme()
-}
-
-pub fn is_builtin_theme(id: &str) -> bool {
-    builtin_theme(id).is_some()
 }
 
 pub const fn pinned_theme_mode(setting: ThemeModeSetting) -> Option<ThemeMode> {
@@ -50,6 +48,34 @@ pub const fn kit_density(setting: DensitySetting) -> penna::Density {
         DensitySetting::Compact => penna::Density::Compact,
         DensitySetting::Regular => penna::Density::Regular,
         DensitySetting::Comfortable => penna::Density::Comfortable,
+    }
+}
+
+pub const fn kit_controls(setting: ControlShapeSetting) -> Controls {
+    match setting {
+        ControlShapeSetting::Rounded => Controls::Rounded,
+        ControlShapeSetting::Pill => Controls::Pill,
+    }
+}
+
+pub const fn control_shape_setting(controls: Controls) -> ControlShapeSetting {
+    match controls {
+        Controls::Rounded => ControlShapeSetting::Rounded,
+        Controls::Pill => ControlShapeSetting::Pill,
+    }
+}
+
+pub fn parse_glass(value: &str) -> Option<Glass> {
+    serde_json::from_str(value)
+        .or_else(|_| serde_json::from_value(serde_json::Value::String(value.to_owned())))
+        .ok()
+}
+
+pub fn spelled_glass(glass: &Glass) -> String {
+    match serde_json::to_value(glass) {
+        Ok(serde_json::Value::String(name)) => name,
+        Ok(material) => material.to_string(),
+        Err(_) => String::new(),
     }
 }
 
@@ -165,14 +191,19 @@ mod tests {
         use penna::{foundation::interface_theme as kit, foundation::motion};
         use zz_client::appearance as config;
         assert_eq!(kit::ACCENTS, config::ACCENTS);
-        assert_eq!(kit::DEFAULT_THEME, config::DEFAULT_THEME);
         assert_eq!(kit::MAX_CORNER_RADIUS, config::MAX_CORNER_RADIUS);
-        assert_eq!(kit::BUILTIN_THEMES, config::BUILTIN_THEMES);
-        let ids = builtin_themes()
-            .iter()
-            .map(|(id, _)| *id)
-            .collect::<Vec<_>>();
-        assert_eq!(ids, config::BUILTIN_THEMES);
+        assert_eq!(
+            penna::blocks::appearance::GLASSES.map(|(glass, _)| spelled_glass(&glass)),
+            config::GLASSES
+        );
+        for (glass, _) in penna::blocks::appearance::GLASSES {
+            assert_eq!(parse_glass(&spelled_glass(&glass)), Some(glass));
+        }
+        assert_eq!(
+            penna::blocks::appearance::CONTROL_SHAPES
+                .map(|(controls, _)| control_shape_setting(controls).as_str()),
+            ControlShapeSetting::ALL.map(ControlShapeSetting::as_str)
+        );
         assert_eq!(
             (
                 motion::DEFAULT_ANIMATION_SPEED,

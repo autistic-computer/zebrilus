@@ -1,14 +1,11 @@
 use ala::Hsla;
-use penna::{
-    Colorize as _, Elevation, Emphasis, Fill, PaintState, PanelLook, RowLook, Surface, Theme,
-    ThemeColor, ThemeMode, Tone, foundation::theme_css, oklch, to_hex,
-};
+use penna::{Colorize as _, Theme, ThemeColor, ThemeMode, foundation::theme_css, oklch, to_hex};
 use serde_json::{Value, json};
 use wasm_bindgen::prelude::*;
 use zz_app::preferences::Preferences;
 use zz_protocol::{ProviderStatus, ProviderTask, ProvidersReport};
 use zz_ui::{
-    interface_theme::{self, ACCENTS, InterfaceTheme},
+    interface_theme::{self, ACCENTS, AppearanceChange, Glass},
     settings::{SettingsSection, about, providers::PROVIDERS},
 };
 
@@ -67,26 +64,31 @@ pub fn save(json: &str) -> Result<String, JsError> {
 #[wasm_bindgen]
 pub fn theme_action(json: &str, action: &str, argument: &str) -> Result<String, JsError> {
     let mut preferences = decode(json)?;
-    let outcome = match action {
-        "pick" => {
-            preferences.set_interface_theme(argument);
-            Ok(None)
-        }
-        "import" => preferences.import_theme(argument).map(Some),
-        "delete" => {
-            preferences.delete_theme(argument);
-            Ok(None)
-        }
+    let change = match action {
+        "import" => match interface_theme::parse_theme(argument) {
+            Ok(theme) => AppearanceChange::Import(Box::new(theme)),
+            Err(error) => {
+                let error = format!("The clipboard holds no theme file: {error}.");
+                return Ok(
+                    json!({ "preferences": encode(&preferences), "error": error }).to_string(),
+                );
+            }
+        },
+        "reset" => AppearanceChange::ResetLook,
         _ => return Err(JsError::new(&format!("no theme action {action}"))),
     };
-    if outcome.is_ok() {
-        preferences.save();
-    }
-    Ok(match outcome {
-        Ok(saved) => json!({ "preferences": encode(&preferences), "saved": saved }),
-        Err(error) => json!({ "preferences": encode(&preferences), "error": error }),
-    }
-    .to_string())
+    preferences.change_appearance(change);
+    preferences.save();
+    Ok(json!({ "preferences": encode(&preferences) }).to_string())
+}
+
+#[wasm_bindgen]
+pub fn platform_theme() -> String {
+    interface_theme::builtin_themes()
+        .iter()
+        .find(|(_, theme)| std::ptr::eq(theme, interface_theme::platform_theme()))
+        .map_or("default", |(id, _)| id)
+        .to_owned()
 }
 
 #[wasm_bindgen]
@@ -120,98 +122,34 @@ fn palette(colors: &ThemeColor) -> Value {
     })
 }
 
-#[allow(
-    clippy::disallowed_methods,
-    reason = "previews draw another theme's colors, as zz-ui's settings previews do"
-)]
-fn theme_preview(theme: &InterfaceTheme, mode: ThemeMode) -> Value {
-    let colors = theme.colors(mode);
-    let mut kit = Theme::from(&colors);
-    kit.mode = mode;
-    theme.apply(&mut kit);
-    let popover = kit.style_of(PanelLook::Popover);
-    let surface_radius = (f32::from(kit.radius) / 3.0).min(10.0);
-    let frosted =
-        popover.fill == Fill::Glass && kit.glass.is_some_and(|glass| f32::from(glass.blur) > 0.0);
-    let menu_ground = kit.surface(Elevation::Popover);
-    let picked = kit.layer(
-        Surface::from(RowLook::Menu).on(menu_ground),
-        PaintState::Selected,
-    );
-    let surface = menu_ground.fill.opaque();
-    let primary = kit.paint(Tone::Primary, Emphasis::Solid);
-    let shadow = kit.casts_shadow(PanelLook::Popover);
-    json!({
-        "sidebar": color(kit.surface(Elevation::Panel).fill),
-        "background": color(colors.background),
-        "border": color(colors.border()),
-        "lights": [color(colors.danger), color(colors.warning), color(colors.success)],
-        "text": color(colors.foreground.muted()),
-        "radius": surface_radius.max(4.0),
-        "menu": {
-            "fill": color(if frosted { surface.opacity(0.7) } else { surface }),
-            "radius": surface_radius,
-            "rowRadius": surface_radius / 2.0,
-            "inset": f32::from(kit.row_inset).min(3.0),
-            "outline": popover.outline.then(|| color(colors.foreground.opacity(0.15))),
-            "shadow": shadow.then(|| color(colors.shadow_color)),
-            "selection": color(picked.fill),
-            "selectedText": color(picked.text),
-        },
-        "button": color(primary.fill),
-        "buttonText": color(primary.text),
-    })
-}
-
 #[wasm_bindgen]
 pub fn picks(json: &str, dark: bool) -> Result<String, JsError> {
     let preferences = decode(json)?;
     let mode = mode(dark);
     let kit = kit(&preferences, mode);
     let shown = preferences.shown_theme();
-    let themes = interface_theme::builtin_themes()
-        .iter()
-        .map(|(id, theme)| ((*id).to_owned(), theme, false))
-        .chain(
-            preferences
-                .themes
-                .iter()
-                .map(|(id, theme)| (id.to_string(), theme, true)),
-        )
-        .map(|(id, theme, saved)| {
-            let name = if theme.name.is_empty() {
-                id.clone()
-            } else {
-                theme.name.clone()
-            };
-            json!({ "id": id, "name": name, "saved": saved, "preview": theme_preview(theme, mode) })
-        })
-        .collect::<Vec<_>>();
-    let selected = preferences.theme_id();
-    let overrides = &preferences.appearance.overrides;
-    let mut own = overrides.clone();
-    own.accent = None;
-    let mut base = preferences.interface_theme().clone();
-    own.apply_to(&mut base);
-    let accent = overrides.accent.clone();
-    let custom = accent
-        .as_deref()
-        .filter(|accent| !ACCENTS.contains(accent))
+    let appearance = &preferences.appearance;
+    let accent = appearance.accent();
+    let custom = Some(accent.as_str())
+        .filter(|accent| *accent != "ink" && !ACCENTS.contains(accent))
         .and_then(|accent| interface_theme::accent_color(accent, ThemeMode::Dark));
-    let neutral = preferences.appearance.neutral(preferences.saved());
+    let neutral = appearance.neutral();
     let hue = neutral.hue;
+    let glass = match appearance.glass() {
+        Glass::Material(_) => "custom".to_owned(),
+        glass => interface_theme::spelled_glass(&glass),
+    };
+    let mut file = shown.clone();
+    "Custom".clone_into(&mut file.name);
     Ok(json!({
-        "themes": themes,
-        "selected": selected,
-        "saved": preferences.saved_theme(selected).is_some(),
         "modes": {
             "light": palette(&shown.colors(ThemeMode::Light)),
             "dark": palette(&shown.colors(ThemeMode::Dark)),
             "radius": f32::from(kit.radius),
         },
         "accent": {
-            "selected": accent.unwrap_or_else(|| "theme".to_owned()),
-            "own": color(base.colors(mode).accent),
+            "selected": accent,
+            "ink": color(ThemeColor::for_mode(mode).foreground),
             "named": ACCENTS.iter().filter_map(|name| {
                 interface_theme::accent_color(name, mode).map(|value| json!({ "id": name, "color": color(value) }))
             }).collect::<Vec<_>>(),
@@ -226,7 +164,10 @@ pub fn picks(json: &str, dark: bool) -> Result<String, JsError> {
             "strength": neutral.amount,
         },
         "radius": preferences.widget_corner_radius(),
+        "controls": interface_theme::control_shape_setting(appearance.controls()).as_str(),
+        "glass": glass,
         "font": preferences.shown_ui_font(),
+        "file": file.to_json(),
         "limits": {
             "radius": interface_theme::MAX_CORNER_RADIUS,
             "animation": [interface_theme::MIN_ANIMATION_SPEED, interface_theme::MAX_ANIMATION_SPEED],

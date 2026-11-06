@@ -21,8 +21,8 @@
 # Import Ghostty… and Settings → Multiplexer → Import tmux…; importing again
 # re-syncs, and the original files are never modified.
 #
-# Application chrome is colored by the interface theme's light and dark colors
-# and follows the system appearance. It is independent of the terminal
+# Application chrome is colored by the look's light and dark colors and
+# follows the system appearance. It is independent of the terminal
 # palette: Ghostty colors reach terminal panes only. (The terminal's
 # font-family is still shared with the chrome: a font, not chroma.)
 
@@ -36,37 +36,37 @@ pane-inactive-opacity = 0.7
 # Pane geometry renders app-side on every platform, in logical pixels, and
 # applies only while pane-gaps is on: pane-margin (0..=32) is the single gap
 # between neighbors and at the window edge. Gapped panes draw their frame in
-# glass: the interface theme's glass edge, or a plain lit edge when the theme
-# has none; the active pane is the lighter one, the others darker. Their corners
-# stay concentric with the controls in the pane header (about 14 under
-# default). The bright line along the edge is the theme glass's own glint, or as
-# wide as the theme's outlines when it has no glass. The window's top strip
+# glass: the look's glass edge, or a plain lit edge when it has none; the
+# active pane is the lighter one, the others darker. Their corners stay
+# concentric with the controls in the pane header (about 14 under the default
+# look). The bright line along the edge is the glass's own glint, or as wide
+# as the look's outlines when it has no glass. The window's top strip
 # grows with the margin, so its buttons sit on the pane headers' center line.
 pane-margin = 6
 
-# The interface theme: a few knobs over one look (tint, neutral, corners,
-# smoothing, glass, face, mode). Three are built in: default, macos and yaru.
-# Any other name selects themes/<name>.json next to this file; Import from
-# clipboard in Settings -> Interface -> Theme saves one there.
-interface-theme = default
-# interface-theme = macos
-
-# What Settings -> Interface sets over the theme. Each follows the theme until
-# set. Picking a theme in Settings removes widget-corner-radius; the accent
-# and the tint stay.
+# The look starts from the platform's (macOS on a Mac, the default elsewhere)
+# and every key below sets one knob over it. Each follows the platform until
+# set; Settings -> Interface sets them too, and its Theme file menu copies the
+# look as a theme file, pastes one in (which sets every knob) or resets them.
 #
-# The corner every rounded piece turns, in logical pixels (0..=25), over the
-# theme's. 0 squares the chrome off. Controls stay pills at any radius when
-# the theme's control-radius is full.
+# The corner every rounded piece turns, in logical pixels (0..=25). 0 squares
+# the chrome off.
 # widget-corner-radius = 6
-# The accent: theme (the theme's own), blue, purple, pink, red, orange,
-# yellow, green, graphite (each tuned for light and dark), or a #rrggbb color.
+# Controls as rounded rectangles or pills: rounded or pill.
+# control-shape = pill
+# The accent: theme (the platform's), ink (the text color), blue, purple,
+# pink, red, orange, yellow, green, graphite (each tuned for light and dark),
+# or a #rrggbb color.
 # chrome-accent = theme
 # How far the window's background, and everything drawn from it, leans
 # toward chrome-tint-hue (0..=1), and that hue in Oklch degrees (0..=360).
-# Both follow the theme's neutral until set.
 # chrome-tint = 0.15
 # chrome-tint-hue = 60
+# Popovers and menus: none, frosted, liquid, or a glass material as one line
+# of JSON (what a pasted theme file's glass leaves here).
+# interface-glass = frosted
+# The interface font; unset uses the system's.
+# ui-font-family = "Inter"
 
 # Draw glass as a solid fill.
 # reduce-transparency = false

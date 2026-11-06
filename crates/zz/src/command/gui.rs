@@ -1,8 +1,7 @@
 use ala::{App, Entity};
 use zz_client::gui_actions::{
-    GuiAction, GuiOffer, PANE_GAPS, SIDEBAR_LAYOUT, THEME, TITLEBAR_MODE, WINDOW_BLUR,
+    ACCENT, GuiAction, GuiOffer, PANE_GAPS, SIDEBAR_LAYOUT, TITLEBAR_MODE, WINDOW_BLUR,
 };
-use zz_ui::interface_theme;
 
 use crate::{
     config::{self, ConfigKey},
@@ -27,7 +26,7 @@ pub(crate) fn offers(sidebar: &Entity<WorkspaceSidebar>, cx: &App) -> Vec<GuiOff
                 )
             })
             .flatten(),
-        config::settings::with_theme_picks(cx, zz_ui::command::theme_offer),
+        GuiOffer::fixed(ACCENT, &config::appearance(cx).accent()),
         GuiOffer::toggle(SIDEBAR_LAYOUT, sidebar.is_flat()),
     ]
     .into_iter()
@@ -35,21 +34,9 @@ pub(crate) fn offers(sidebar: &Entity<WorkspaceSidebar>, cx: &App) -> Vec<GuiOff
     .collect()
 }
 
-fn theme_sets_font(id: &str, cx: &App) -> bool {
-    interface_theme::builtin_theme(id)
-        .or_else(|| {
-            config::themes(cx)
-                .saved
-                .iter()
-                .find(|(saved, _)| saved.as_ref() == id)
-                .map(|(_, theme)| theme)
-        })
-        .is_some_and(|theme| theme.face.is_some())
-}
-
 pub(crate) fn preview(action: &GuiAction, value: &str, cx: &mut App) {
-    if action.id == THEME {
-        config::preview_interface_theme(value, theme_sets_font(value, cx), cx);
+    if action.id == ACCENT {
+        config::preview_accent(value, cx);
     }
 }
 
@@ -71,11 +58,6 @@ pub(crate) fn apply(
             }
         }),
         SIDEBAR_LAYOUT => sidebar.update(cx, |sidebar, cx| sidebar.set_flat(value == "true", cx)),
-        THEME => config::settings::written(
-            ConfigKey::InterfaceTheme,
-            config::set_interface_theme(value, theme_sets_font(value, cx)),
-            cx,
-        ),
         _ => {
             if let Some(key) = action.config_key.and_then(ConfigKey::parse) {
                 config::settings::written(key, config::set_config_key(key, value), cx);

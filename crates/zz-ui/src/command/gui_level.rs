@@ -6,7 +6,7 @@ use ala::{
 };
 use zz_client::{
     fuzzy::fuzzy_match,
-    gui_actions::{GuiAction, GuiOffer, GuiOption, THEME},
+    gui_actions::{GuiAction, GuiOffer, GuiOption},
     recents::RecentKey,
 };
 
@@ -15,25 +15,10 @@ use super::{
     PaletteActionLevel, record_recent,
 };
 use crate::IconName;
-use penna::blocks::appearance::{ThemePicks, theme_labels};
 use penna::blocks::palette::{
     PaletteHint, PaletteRow, palette_empty, palette_list_height, palette_row, palette_row_height,
     palette_section,
 };
-
-#[must_use]
-pub fn theme_offer(picks: &ThemePicks) -> Option<GuiOffer> {
-    let options = theme_labels(picks)
-        .into_iter()
-        .zip(&picks.themes)
-        .map(|(label, (id, _))| GuiOption {
-            value: id.to_string(),
-            title: label.to_string(),
-        })
-        .collect();
-    let current = picks.themes.get(picks.selected)?.0.to_string();
-    GuiOffer::listed(THEME, &current, options)
-}
 
 #[derive(Clone)]
 enum Pick {

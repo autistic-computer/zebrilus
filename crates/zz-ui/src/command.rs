@@ -5,7 +5,7 @@ mod palette_model;
 mod palette_places;
 mod palette_view;
 
-pub use gui_level::{GuiLevel, theme_offer};
+pub use gui_level::GuiLevel;
 pub use level::{
     ActionContext, ActionKey, CopyAddress, LevelEffect, PaletteActionLevel, install_recents,
     palette_recents, record_recent,

@@ -211,38 +211,37 @@ between matches, and returns UTF-8 byte ranges for text highlights.
 
 The client's settings are verbs tagged `gui`, each with its value now on the right. The list is
 data in `zz_client::gui_actions` (`GUI_ACTIONS`): an id, a title, the verb's name, aliases, its
-values (fixed, or listed by the client, like the themes) and whether a highlighted value previews.
+values and whether a highlighted value previews.
 Starting one makes the palette's value slot a `GuiLevel` (`crates/zz-ui/src/command/gui_level.rs`)
 focused on that setting, built with the settings that client has and their values when the palette
 opens (`palette_backend_with` on desktop and in `clients/app`). The level emits `GuiEvent`s through
 `CommandPaletteEvent::Gui`, and each client writes what its own Settings writes: config keys on
 desktop (`crates/zz/src/command/gui.rs`), `Preferences` on iPad and web
-(`clients/app/src/app/gui.rs`). Themes are named by `theme_offer`, which uses the Theme picker's
-`theme_labels`. A test in `zz-config` checks that every value an action writes is one the config
-reads.
+(`clients/app/src/app/gui.rs`). A test in `zz-config` checks that every value an action writes is
+one the config reads.
 
 | Verb | Values | Desktop writes | iPad and web |
 | --- | --- | --- | --- |
 | titlebar mode | Sidebar, Title bar | the sidebar's mode, as Toggle Sidebar flips it | `sidebar`, wide windows only |
 | pane gaps | On, Off | `pane-gaps` | `gaps` |
 | window blur | On, Off | `window-background-blur`, where the platform has blur | not offered |
-| select theme | the built-in and saved themes | `interface-theme`, as Settings picks one | `theme` |
+| select accent | Ink, Blue, Purple, Pink, Red, Orange, Yellow, Green, Graphite | `chrome-accent` | `accent` |
 | sidebar layout | List, Tree | `flat-sidebar` | `flat_sidebar` |
 
 Enter on a setting with two values flips it at once; the others list their values with the one in
 use highlighted, and Enter applies one and closes (`LevelEffect::Finish`). Backspace on the empty
 field leaves the values and the verb (`LevelEffect::Leave`). Each apply is recorded as
-`RecentKey::Gui("id=value")`, labelled like `Theme › Yaru`; Enter on it in the empty palette
-applies that value again (`open_recent`).
+`RecentKey::Gui("id=value")`, like `chrome-accent=pink` labelled `Accent › Pink`; Enter on it in
+the empty palette applies that value again (`open_recent`).
 
-Theme previews: the highlighted theme shows at once (`GuiEvent::Preview`). It goes back when the
-highlight returns to the theme in use or Backspace leaves the themes (`GuiEvent::Revert`), and
+Accent previews: the highlighted accent shows at once (`GuiEvent::Preview`). The list opens on the
+accent in use, the platform's while `chrome-accent` is unset. A preview goes back when the
+highlight returns to the accent in use or Backspace leaves the accents (`GuiEvent::Revert`), and
 whenever the palette closes without Enter, by Esc, a click outside or being replaced: each client
 reverts when the palette entity is released (`observe_release_in`), since a level that is closing
 cannot emit. On
-desktop a preview reads the config file, applies the theme edit in memory
-(`zz_config::interface_theme_source`), and installs only the parsed look and theme globals
-(`config::preview_interface_theme`); nothing is written until Enter, and a revert reloads the file.
+desktop a preview sets the accent on the config global in memory and redraws the theme
+(`config::preview_accent`); nothing is written until Enter, and a revert reloads the file.
 On iPad and web a preview applies a copy of `Preferences` without saving it.
 
 # Settings

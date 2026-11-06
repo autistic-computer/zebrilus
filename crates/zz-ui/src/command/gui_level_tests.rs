@@ -6,7 +6,7 @@ use ala::{
 };
 use zz_client::{
     completion::PaneKindAvailability,
-    gui_actions::{GuiOffer, GuiOption, PANE_GAPS, THEME, gui_action},
+    gui_actions::{ACCENT, GuiOffer, PANE_GAPS, gui_action},
     place::ActionKind,
     recents::RecentKey,
 };
@@ -113,7 +113,7 @@ impl PaletteBackend for Backend {
     fn verbs(&self, _: &App) -> Vec<zz_client::verbs::Verb> {
         zz_client::verbs::verbs(
             PaneKindAvailability::default(),
-            &[PANE_GAPS, THEME],
+            &[PANE_GAPS, ACCENT],
             false,
             "",
         )
@@ -128,15 +128,9 @@ impl PaletteBackend for Backend {
 }
 
 fn offers() -> Vec<GuiOffer> {
-    let themes = [("default", "Default"), ("macos", "macOS"), ("yaru", "Yaru")]
-        .map(|(value, title)| GuiOption {
-            value: value.to_owned(),
-            title: title.to_owned(),
-        })
-        .to_vec();
     vec![
         GuiOffer::toggle(PANE_GAPS, false).unwrap(),
-        GuiOffer::listed(THEME, "default", themes).unwrap(),
+        GuiOffer::fixed(ACCENT, "blue").unwrap(),
     ]
 }
 
@@ -186,21 +180,24 @@ fn finished(palette: &Entity<CommandPaletteView>, cx: &mut VisualTestContext) ->
 }
 
 #[ala::test]
-fn a_theme_previews_while_highlighted_and_applies_on_enter(cx: &mut TestAppContext) {
+fn an_accent_previews_while_highlighted_and_applies_on_enter(cx: &mut TestAppContext) {
     let (palette, heard, cx) = mount(cx);
-    let theme = gui_action(THEME).unwrap();
-    cx.simulate_input("theme");
+    let accent = gui_action(ACCENT).unwrap();
+    cx.simulate_input("accent");
     cx.run_until_parked();
     cx.simulate_keystrokes("enter");
     cx.run_until_parked();
-    assert!(gui(&heard).is_empty(), "the list opens on the theme in use");
+    assert!(
+        gui(&heard).is_empty(),
+        "the list opens on the accent in use"
+    );
     cx.simulate_keystrokes("down");
     cx.run_until_parked();
     let preview = |value: &str| GuiEvent::Preview {
-        action: theme,
+        action: accent,
         value: value.to_owned(),
     };
-    assert_eq!(gui(&heard), [preview("macos")]);
+    assert_eq!(gui(&heard), [preview("purple")]);
     cx.simulate_keystrokes("up");
     cx.run_until_parked();
     assert_eq!(gui(&heard).last(), Some(&GuiEvent::Revert));
@@ -209,11 +206,11 @@ fn a_theme_previews_while_highlighted_and_applies_on_enter(cx: &mut TestAppConte
     assert_eq!(
         gui(&heard)[2..],
         [
-            preview("macos"),
-            preview("yaru"),
+            preview("purple"),
+            preview("pink"),
             GuiEvent::Apply {
-                action: theme,
-                value: "yaru".to_owned()
+                action: accent,
+                value: "pink".to_owned()
             }
         ]
     );
@@ -228,8 +225,8 @@ fn a_theme_previews_while_highlighted_and_applies_on_enter(cx: &mut TestAppConte
             )
             .iter()
             .any(
-                |recent| recent.key == RecentKey::Gui("interface-theme=yaru".to_owned())
-                    && recent.label == "Theme › Yaru"
+                |recent| recent.key == RecentKey::Gui("chrome-accent=pink".to_owned())
+                    && recent.label == "Accent › Pink"
             )
     );
 }
@@ -252,9 +249,9 @@ fn enter_flips_an_on_off_action(cx: &mut TestAppContext) {
 }
 
 #[ala::test]
-fn backspace_leaves_the_values_and_puts_the_theme_back(cx: &mut TestAppContext) {
+fn backspace_leaves_the_values_and_puts_the_accent_back(cx: &mut TestAppContext) {
     let (palette, heard, cx) = mount(cx);
-    cx.simulate_input("theme");
+    cx.simulate_input("accent");
     cx.run_until_parked();
     cx.simulate_keystrokes("enter down");
     cx.run_until_parked();
@@ -304,30 +301,4 @@ fn a_recent_action_applies_its_value_again(cx: &mut TestAppContext) {
         }]
     );
     assert!(finished(&palette, cx));
-}
-
-#[test]
-fn the_theme_offer_names_themes_as_the_theme_picker_does() {
-    use crate::interface_theme::{ThemeOverrides, default_theme};
-    let copy = default_theme().clone();
-    let overrides = ThemeOverrides::default();
-    let picks = penna::blocks::appearance::ThemePicks {
-        themes: vec![("default".into(), default_theme()), ("mine".into(), &copy)],
-        selected: 1,
-        overrides: &overrides,
-    };
-    let offer = crate::command::theme_offer(&picks).unwrap();
-    assert_eq!(offer.current, "mine");
-    let titles: Vec<_> = offer
-        .options
-        .iter()
-        .map(|option| option.title.clone())
-        .collect();
-    assert_eq!(
-        titles,
-        [
-            default_theme().name.clone(),
-            format!("{} (mine)", default_theme().name)
-        ]
-    );
 }

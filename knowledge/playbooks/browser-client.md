@@ -114,13 +114,13 @@ the [flip button](/concepts/agent-panes.md), which switches the pane between the
 the busy choice and an armed flip show in the pane's corner, the armed one from the pane's
 `flip_armed` summary. Fork from a message opens a new window with an agent pane on the fork, and
 side chat a floating one. Composer actions share the desktop presentation. Appearance preferences for the
-browser live in local storage: system/light/dark mode, the interface theme (Default or one saved
-in the browser by Import), zoom, animations, contrast, reduce transparency, and what Interface
-sets over the theme: the corner radius, the accent and the tint. Picking a theme clears the radius;
-the accent and tint stay.
+browser live in local storage: system/light/dark mode, zoom, animations, contrast, reduce
+transparency, and the knobs Interface sets over the platform's look (the default theme file in the
+browser): the accent, the tint, the corner radius, the control shape, the glass and the UI font.
+The Theme file menu copies the look, pastes a theme file over every knob, or resets them.
 The animation switch respects the platform’s reduced-motion preference. Terminal color schemes
 follow the effective light/dark mode after attachment and when that mode changes. Numeric fields,
-color pickers, theme previews, and pane-picker rows use the desktop components. Panes settings use the shared Layout, Focus, and
+color pickers, mode previews, and pane-picker rows use the desktop components. Panes settings use the shared Layout, Focus, and
 Frame groups for gaps, inactive opacity, the selected pane's edge and margins; pane corners follow
 the theme's radius and the pane edge its glass, or its outline without glass. Sidebar rows share desktop labels, markers, layout and
 rename menus, add/split/close actions, and keyboard navigation. Drag the sidebar’s right edge to

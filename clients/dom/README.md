@@ -59,8 +59,9 @@ preferences.js applies the look itself: it writes the theme tokens and icons as 
 in place of kit.js's token files, sets `data-penna-mode` and `data-penna-theme`, `data-density`
 from `density`, UI zoom and `data-zz-still` when animations are off. Menus take their natural row
 height from `--penna-control-md`, so they follow the density. The CSS comes from `theme/` (`zz-dom-theme`), a release
-wasm build of zz-app's `Preferences` and penna's `theme_css`, so accent, tint, radius, contrast,
-font and saved or imported themes all come out of the same Rust as the ala client. With no UI font
+wasm build of zz-app's `Preferences` and penna's `theme_css`, so accent, tint, radius, control
+shape, glass, contrast, font and a pasted theme file all come out of the same Rust as the ala
+client. `data-penna-theme` names the platform's theme file, `default` in the browser. With no UI font
 picked the tokens name Inter Variable, as the ala web client does.
 
 ## Keeping in sync

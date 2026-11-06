@@ -399,23 +399,22 @@ chrome (borders, labels, hover states, and badges) still reads its colors from
 
 # Chrome chroma is independent of the terminal
 
-**Application colors come from the interface theme (`interface-theme` in `zz/config`): its
-materials, roles and colors for light and for dark, with the style, accent and tint `zz/config`
-sets over it, never from the terminal.** The mode follows the OS appearance
-unless `theme-mode` pins one, and only picks which of the theme's color sets applies. There is no
+**Application colors come from the look: the platform's theme file with the accent, tint, corner
+radius, control shape and glass `zz/config` sets over it, never from the terminal.** The mode
+follows the OS appearance unless `theme-mode` pins one. There is no
 knob that derives chrome from terminal colors, and a Ghostty palette cannot repaint the window.
 
-`libs/penna/src/foundation/interface_theme.rs` owns `InterfaceTheme`, `Materials` and `ThemeColors` and the
-theme file parser and the built-in themes (`libs/penna/themes/*.json`);
-the built-ins hold every recipe's per-theme tweaks, zz's pieces included, so the desktop, browser
-and iOS clients and the storybook all see the same set. `crates/zz-ui/src/interface_theme.rs`
+`libs/penna/src/foundation/interface_theme.rs` owns `InterfaceTheme`, the theme file parser and
+the kit's theme files (default, macos, yaru in `libs/penna/themes/*.json`), with the look starting
+from the platform's (`platform_theme`), so the desktop, browser and iOS clients and the storybook
+all see the same set. `crates/zz-ui/src/interface_theme.rs`
 re-exports them. A theme file that names a retired role id loads with that entry dropped
 (`penna::foundation::roles::is_retired`). `crates/zz/src/theme.rs` applies desktop
 configuration. It holds the latest immutable `TerminalAppearance` and `AppearanceProvenance` as
 ala globals (used by settings badges and the detach action, not to color anything).
-It applies the theme on screen (`config::shown_theme`: the active theme, a built-in or a saved
-file from the `themes` folder, with the `widget-corner-radius`, `chrome-accent` and tint keys
-`zz/config` sets composed over it by `ThemeOverrides::apply_to`) with `InterfaceTheme::activate`,
+It applies the look on screen (`config::shown_theme`: the platform's theme file with the
+`widget-corner-radius`, `control-shape`, `interface-glass`, `chrome-accent` and tint keys
+`zz/config` sets applied over it by `ThemeOverrides::apply_to`) with `InterfaceTheme::activate`,
 which switches to the effective mode and writes, in one step, its colors for that mode
 (`InterfaceTheme::colors`: the base colors moved by its neutral, the accent from its tint) and its
 knobs (`InterfaceTheme::apply`: radius, control radius, smoothing, primary, the interface face and
@@ -424,8 +423,8 @@ role that rounds, and gapped pane corners (`Theme::pane_radius()`), and survives
 Corner smoothing is not a material: every window draws `CORNER_SMOOTHING` (4), which
 `penna::Root::new` sets. `apply_zz_overrides` then layers zz's own values over it:
 
-- `font_family` from `ui-font-family` when present (a System default line keeps the system UI
-  font even under a theme with its own), else the theme's font, else the system UI font;
+- `font_family` from `ui-font-family` when present, else the platform file's face
+  (`Appearance::ui_font()`), else the system UI font;
 - `mono_font_family` from the terminal's resolved primary family, so Agent Markdown and code blocks
   match the terminal typeface;
 - the contrast (`Theme::set_contrast`) from `chrome-contrast`, preserved across the same refreshes;
@@ -433,12 +432,12 @@ Corner smoothing is not a material: every window draws `CORNER_SMOOTHING` (4), w
 - the pane glow and gaps (the `zz_ui::pane_look::PaneLook` global) from `pane-glow-strength` and
   `pane-gaps`, and the margin from `pane-margin`.
 
-The thin clients keep the selected theme id, their own saved themes and their overrides in their
-preferences as a `penna::foundation::interface_theme::Appearance`, and `Preferences::apply` adjusts its mode,
+The thin clients keep their knobs in their preferences as a
+`penna::foundation::interface_theme::Appearance`, and `Preferences::apply` adjusts its mode,
 contrast, zoom and animations for the platform and calls `Appearance::apply`, which activates the
-theme with the device's `ThemeOverrides` composed as on desktop and drops the glass under
-`reduce_transparency`; it then sets the UI font from the preference, else the theme's font, else
-the bundled Inter. The HTML client's theme engine (`clients/dom/theme`) builds its kit theme from
+platform's theme file with the device's `ThemeOverrides` applied as on desktop and drops the glass
+under `reduce_transparency`; it then sets the UI font from the preference, else the platform
+file's face, else the bundled Inter. The HTML client's theme engine (`clients/dom/theme`) builds its kit theme from
 the same preferences, sets the contrast and drops the glass under `reduce_transparency` before
 `theme_css::stylesheet` writes the tokens, so every glass role gets the `popover` fill and no
 backdrop, the tokens penna otherwise keeps for `prefers-reduced-transparency: reduce`.

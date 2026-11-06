@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use ala::{App, Entity, Global, Hsla, SharedString, Window};
-use penna::{Theme, ThemeMode, foundation::interface_theme::InterfaceTheme};
+use penna::{Theme, ThemeMode};
 use zz_terminal::TerminalAppearance;
 use zz_ui::pane_look::PaneLook;
 
@@ -70,9 +70,8 @@ pub(crate) fn refresh_current_theme(cx: &mut App) {
             cx.try_global::<SystemThemeMode>()
                 .map_or_else(|| Theme::global(cx).mode, |mode| mode.0)
         });
-    let active = config::shown_theme(cx);
-    active.activate(Some(mode), None, cx);
-    apply_zz_overrides(&active, cx);
+    config::shown_theme(cx).activate(Some(mode), None, cx);
+    apply_zz_overrides(cx);
     for window in cx.windows() {
         window
             .update(cx, |_, window, cx| {
@@ -93,17 +92,16 @@ pub fn sync_system_appearance(mut window: Option<&mut Window>, cx: &mut App) {
     if let Some(window) = window.as_deref_mut() {
         window.set_adaptive_corner_fraction(Some(penna::ADAPTIVE_CORNER_FRACTION));
     }
-    let active = config::shown_theme(cx);
-    active.activate(
+    config::shown_theme(cx).activate(
         zz_ui::interface_theme::pinned_theme_mode(config::theme_mode(cx)),
         window,
         cx,
     );
     crate::app_icon::apply(cx);
-    apply_zz_overrides(&active, cx);
+    apply_zz_overrides(cx);
 }
 
-fn apply_zz_overrides(active: &InterfaceTheme, cx: &mut App) {
+fn apply_zz_overrides(cx: &mut App) {
     let appearance = cx
         .try_global::<LatestTerminalAppearance>()
         .map(|appearance| Arc::clone(&appearance.0));
@@ -111,17 +109,10 @@ fn apply_zz_overrides(active: &InterfaceTheme, cx: &mut App) {
         .as_deref()
         .map(crate::terminal::view::terminal_font)
         .map(|font| font.family);
-    let ui_font = config::ui_font_family(cx);
-    let ui_font_family = ui_font
-        .value
-        .map(SharedString::from)
-        .or_else(|| {
-            (ui_font.provenance == config::ConfigProvenance::Default)
-                .then(|| active.face.clone())
-                .flatten()
-        })
-        .filter(|family| cx.text_system().has_font(family))
-        .unwrap_or_else(|| ala::Font::default().family);
+    let ui_font = config::appearance(cx).ui_font().to_owned();
+    let ui_font_family = Some(ui_font)
+        .filter(|family| !family.is_empty() && cx.text_system().has_font(family))
+        .map_or_else(|| ala::Font::default().family, SharedString::from);
     let chrome_contrast = config::chrome_contrast(cx);
     let reduce_transparency = config::resolved_config(cx).reduce_transparency.value;
     let pip_opacity = config::pip_background_opacity(cx);
@@ -184,16 +175,10 @@ mod tests {
     }
 
     #[ala::test]
-    fn the_selected_theme_paints_the_mode_it_is_in(cx: &mut ala::TestAppContext) {
+    fn the_platform_look_paints_the_mode_it_is_in(cx: &mut ala::TestAppContext) {
         cx.update(zz_ui::init);
         cx.update(|cx| {
-            let default = zz_ui::interface_theme::default_theme();
-            cx.set_global(config::Themes {
-                active: default.clone(),
-                selected: "default".into(),
-                saved: Vec::new(),
-                error: None,
-            });
+            let platform = zz_ui::interface_theme::platform_theme();
             for (setting, mode, reduce) in [
                 (ThemeModeSetting::Light, ThemeMode::Light, false),
                 (ThemeModeSetting::Dark, ThemeMode::Dark, true),
@@ -204,7 +189,7 @@ mod tests {
                 cx.set_global(config);
                 refresh_current_theme(cx);
                 let theme = Theme::global(cx);
-                assert_eq!(theme.colors, default.colors(mode));
+                assert_eq!(theme.colors, platform.colors(mode));
                 assert_eq!(theme.glass.is_none(), reduce, "{mode:?}");
             }
         });
@@ -299,25 +284,19 @@ mod tests {
     }
 
     #[ala::test]
-    fn gapped_panes_draw_frames_in_every_theme(cx: &mut ala::TestAppContext) {
+    fn gapped_panes_draw_frames_with_and_without_glass(cx: &mut ala::TestAppContext) {
         cx.update(zz_ui::init);
         cx.update(|cx| {
-            let default = zz_ui::interface_theme::default_theme().clone();
-            let macos = zz_ui::interface_theme::builtin_theme("macos")
-                .expect("the macOS theme")
-                .clone();
-            for (id, theme, gaps) in [
-                ("default", &default, true),
-                ("default", &default, false),
-                ("macos", &macos, true),
-                ("macos", &macos, false),
+            for (id, glass, gaps) in [
+                ("liquid", "liquid", true),
+                ("liquid", "liquid", false),
+                ("none", "none", true),
+                ("none", "none", false),
             ] {
-                cx.set_global(config::Themes {
-                    active: theme.clone(),
-                    selected: "default".into(),
-                    saved: Vec::new(),
-                    error: None,
-                });
+                cx.set_global(config::GlassConfig(config::ConfigValue {
+                    value: Some(glass.to_owned()),
+                    provenance: config::ConfigProvenance::Override,
+                }));
                 let mut config = config::AppConfig::default();
                 config.pane_gaps.value = gaps;
                 cx.set_global(config);

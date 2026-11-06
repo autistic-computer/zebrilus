@@ -31,7 +31,7 @@ use crate::{
     app_icon::AppIconSetting,
     config::{
         self, AppConfig, BrowserConfig, ConfigKey, ConfigProvenance, ConfigValue,
-        remove_config_key, set_config_key, set_interface_theme,
+        remove_config_key, set_config_key,
     },
     diagnostics,
     mux::{
@@ -41,14 +41,12 @@ use crate::{
     window::toast,
     workspace::add_host,
 };
-use penna::blocks::appearance::{
-    AppearanceControls, ThemePicks, kit_row, picker_tile, ui_font_select,
-};
+use penna::blocks::appearance::{AppearanceControls, kit_row, picker_tile, ui_font_select};
 use zz_client::url_input::SearchProvider;
 use zz_protocol::ConfigOverrideEntry;
 use zz_terminal::{TerminalColorScheme, discover_ghostty_config};
 use zz_ui::dialogs::import_configuration_file_alert;
-use zz_ui::interface_theme::{self, Appearance, AppearanceChange, InterfaceTheme, SavedThemes};
+use zz_ui::interface_theme::{self, Appearance, AppearanceChange};
 use zz_ui::settings::{
     SettingEntry, SettingsScrollColumn, SettingsSection, SettingsSelectItem, SettingsStack,
     settings_card_ground, settings_list_disclosure_header, settings_list_group_header,
@@ -115,7 +113,6 @@ pub(crate) struct SettingsView {
     observed: AppConfig,
     observed_browser: BrowserConfig,
     observed_ui_font: ConfigValue<Option<String>>,
-    observed_theme_font: Option<SharedString>,
     ui_font_family: Entity<SelectState<Vec<SettingsSelectItem>>>,
     browser_element_selector_hotkey: Entity<InputState>,
     browser_search_provider: Entity<SelectState<Vec<SettingsSelectItem>>>,
@@ -151,15 +148,7 @@ impl SettingsView {
         let observed = config::resolved_config(cx);
         let observed_browser = config::browser_config(cx);
         let observed_ui_font = config::ui_font_family(cx);
-        let observed_theme_font = config::themes(cx).active.face.clone();
-        let ui_font_family = ui_font_select(
-            Some(&shown_ui_font(
-                &observed_ui_font,
-                observed_theme_font.as_ref(),
-            )),
-            window,
-            cx,
-        );
+        let ui_font_family = ui_font_select(Some(&shown_ui_font(&observed_ui_font)), window, cx);
         let browser_element_selector_hotkey =
             text_value_input(&observed_browser.element_selector_hotkey.value, window, cx);
         let browser_search_provider =
@@ -208,17 +197,11 @@ impl SettingsView {
             cx,
         );
         let appearance_controls = AppearanceControls::new(
-            &appearance(cx),
+            &config::appearance(cx),
             |change, _, cx| appearance_changed(change, cx),
             window,
             cx,
-        )
-        .theme_menu(|menu, _, _| {
-            menu.item(
-                PopupMenuItem::new("Import from clipboard")
-                    .on_click(|_, _, cx| import_theme_from_clipboard(cx)),
-            )
-        });
+        );
         let window_corner_radius = numeric_value_input(
             ConfigKey::WindowCornerRadius,
             observed.window_corner_radius.value,
@@ -267,7 +250,6 @@ impl SettingsView {
             observed,
             observed_browser,
             observed_ui_font,
-            observed_theme_font,
             ui_font_family,
             browser_element_selector_hotkey,
             browser_search_provider,
@@ -484,9 +466,8 @@ impl SettingsView {
                 window,
                 cx,
             );
-            let saved = config::themes(cx).saved.clone();
             self.appearance_controls
-                .sync(&appearance(cx), &saved, window, cx);
+                .sync(&config::appearance(cx), window, cx);
             if !numeric_input_matches_value(
                 ConfigKey::PipBackgroundOpacity,
                 &self.pip_background_opacity.read(cx).value(),
@@ -551,16 +532,14 @@ impl SettingsView {
 
     fn synchronize_ui_font(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let resolved = config::ui_font_family(cx);
-        let theme_font = config::themes(cx).active.face.clone();
-        if resolved == self.observed_ui_font && theme_font == self.observed_theme_font {
+        if resolved == self.observed_ui_font {
             return;
         }
-        let shown = shown_ui_font(&resolved, theme_font.as_ref());
+        let shown = shown_ui_font(&resolved);
         self.ui_font_family.update(cx, |select, cx| {
             select.set_selected_value(&shown, window, cx);
         });
         self.observed_ui_font = resolved;
-        self.observed_theme_font = theme_font;
     }
 
     fn synchronize_ui_zoom_input(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -760,8 +739,7 @@ impl SettingsView {
         );
         let view = cx.entity();
         let resolved = *resolved;
-        let appearance = appearance(cx);
-        let saved = config::themes(cx).saved.clone();
+        let appearance = config::appearance(cx);
         penna::blocks::appearance::appearance_page(
             SettingsSection::Appearance.title(),
             items,
@@ -778,8 +756,7 @@ impl SettingsView {
                     }))
                     .into_any_element(),
                     item => {
-                        let entry =
-                            this.appearance_item(item, &resolved, &appearance, &saved, window, cx);
+                        let entry = this.appearance_item(item, &resolved, &appearance, window, cx);
                         entry.map_or_else(
                             || div().into_any_element(),
                             |entry| entry.position(position).into_any_element(),
@@ -796,7 +773,6 @@ impl SettingsView {
         item: AppearancePageItem,
         resolved: &AppConfig,
         appearance: &Appearance,
-        saved: &SavedThemes,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Option<SettingEntry> {
@@ -840,7 +816,6 @@ impl SettingsView {
                 return kit_row(
                     item,
                     appearance,
-                    saved,
                     &self.appearance_controls,
                     false,
                     window,
@@ -890,12 +865,9 @@ impl SettingsView {
             div().flex_none().child(
                 Select::new(&self.ui_font_family)
                     .placeholder(
-                        Some(shown_ui_font(
-                            &self.observed_ui_font,
-                            self.observed_theme_font.as_ref(),
-                        ))
-                        .filter(|family| !family.is_empty())
-                        .unwrap_or_else(|| "System default".to_owned()),
+                        Some(shown_ui_font(&self.observed_ui_font))
+                            .filter(|family| !family.is_empty())
+                            .unwrap_or_else(|| "System default".to_owned()),
                     )
                     .on(settings_card_ground(cx)),
             ),
@@ -1962,45 +1934,10 @@ fn search_provider_subscription(
     )
 }
 
-pub(crate) fn with_theme_picks<R>(cx: &App, show: impl FnOnce(&ThemePicks) -> R) -> R {
-    let themes = config::themes(cx);
-    let choices = interface_theme::builtin_themes()
-        .iter()
-        .map(|(id, theme)| (SharedString::from(*id), theme))
-        .chain(themes.saved.iter().map(|(id, theme)| (id.clone(), theme)))
-        .collect::<Vec<_>>();
-    let selected = choices
-        .iter()
-        .position(|(id, _)| *id == themes.selected)
-        .unwrap_or(0);
-    let overrides = config::theme_overrides(cx);
-    show(&ThemePicks {
-        themes: choices,
-        selected,
-        overrides: &overrides,
-    })
-}
-
 pub(crate) fn written(key: ConfigKey, result: std::io::Result<()>, cx: &mut App) {
     match result {
         Ok(()) => refresh_settings_preview(key, cx),
         Err(error) => report_write_error("set", key.as_str(), &error, cx),
-    }
-}
-
-fn appearance(cx: &App) -> Appearance {
-    let resolved = config::resolved_config(cx);
-    Appearance {
-        mode: Some(resolved.theme_mode.value.as_str().to_owned()),
-        theme: Some(config::themes(cx).selected.to_string()),
-        overrides: config::theme_overrides(cx),
-        contrast: resolved.chrome_contrast.value,
-        reduce_transparency: resolved.reduce_transparency.value,
-        ui_font_family: config::ui_font_family(cx).value.unwrap_or_default(),
-        zoom: penna::UiZoom::get(cx),
-        animations: resolved.animations.value,
-        animation_speed: resolved.animation_speed.value,
-        density: interface_theme::kit_density(resolved.chrome_density.value),
     }
 }
 
@@ -2013,21 +1950,36 @@ fn appearance_changed(change: AppearanceChange, cx: &mut App) {
                 set_config_key(ConfigKey::ThemeMode, mode.as_str()),
             )
         }
-        AppearanceChange::Theme(id) => {
-            let sets_font = interface_theme::builtin_theme(&id)
-                .or_else(|| {
-                    config::themes(cx)
-                        .saved
-                        .iter()
-                        .find(|(saved, _)| *saved == id)
-                        .map(|(_, theme)| theme)
-                })
-                .is_some_and(|theme| theme.face.is_some());
+        AppearanceChange::Controls(controls) => {
+            let key = ConfigKey::ControlShape;
+            let shape = interface_theme::control_shape_setting(controls);
+            (key, set_config_key(key, shape.as_str()))
+        }
+        AppearanceChange::Glass(glass) => {
+            let key = ConfigKey::InterfaceGlass;
             (
-                ConfigKey::InterfaceTheme,
-                set_interface_theme(&id, sets_font),
+                key,
+                set_config_key(key, &interface_theme::spelled_glass(&glass)),
             )
         }
+        AppearanceChange::Import(theme) => {
+            let mut imported = Appearance::default();
+            imported.import(&theme);
+            (
+                ConfigKey::ChromeAccent,
+                config::set_config_keys(&config::look_edits(
+                    &imported.overrides,
+                    theme.face.as_deref(),
+                )),
+            )
+        }
+        AppearanceChange::ResetLook => (
+            ConfigKey::ChromeAccent,
+            config::set_config_keys(&config::look_edits(
+                &interface_theme::ThemeOverrides::default(),
+                None,
+            )),
+        ),
         AppearanceChange::Accent(accent) => {
             let key = ConfigKey::ChromeAccent;
             let result = match accent {
@@ -2089,19 +2041,13 @@ fn appearance_changed(change: AppearanceChange, cx: &mut App) {
     written(key, result, cx);
 }
 
-fn shown_ui_font(
-    family: &ConfigValue<Option<String>>,
-    theme_font: Option<&SharedString>,
-) -> String {
-    family
-        .value
-        .clone()
-        .or_else(|| {
-            (family.provenance == ConfigProvenance::Default)
-                .then(|| theme_font.map(ToString::to_string))
-                .flatten()
-        })
-        .unwrap_or_default()
+fn shown_ui_font(family: &ConfigValue<Option<String>>) -> String {
+    Appearance {
+        ui_font_family: family.value.clone().unwrap_or_default(),
+        ..Appearance::default()
+    }
+    .ui_font()
+    .to_owned()
 }
 
 fn ui_font_subscription(
@@ -2207,7 +2153,8 @@ fn refresh_settings_preview(key: ConfigKey, cx: &mut App) {
             ConfigKey::WidgetCornerRadius
                 | ConfigKey::ChromeContrast
                 | ConfigKey::ReduceTransparency
-                | ConfigKey::InterfaceTheme
+                | ConfigKey::ControlShape
+                | ConfigKey::InterfaceGlass
                 | ConfigKey::ChromeAccent
                 | ConfigKey::ChromeTint
                 | ConfigKey::ChromeTintHue
@@ -2347,7 +2294,8 @@ fn numeric_config_value(config: &AppConfig, key: ConfigKey) -> ConfigValue<f32> 
         | ConfigKey::BrowserEgress
         | ConfigKey::ReduceTransparency
         | ConfigKey::ThemeMode
-        | ConfigKey::InterfaceTheme
+        | ConfigKey::ControlShape
+        | ConfigKey::InterfaceGlass
         | ConfigKey::UiFontFamily
         | ConfigKey::AppIcon
         | ConfigKey::ChromeAccent
@@ -2401,42 +2349,6 @@ pub(crate) fn run_import(cx: &mut App) {
                 cx,
             );
         }
-    }
-}
-
-fn import_theme_from_clipboard(cx: &mut App) {
-    let source = cx
-        .read_from_clipboard()
-        .and_then(|item| item.text())
-        .unwrap_or_default();
-    match interface_theme::parse_theme(&source) {
-        Ok(theme) => save_and_select_theme(theme, cx),
-        Err(error) => toast::push(
-            Notification::error(format!(
-                "The clipboard holds no theme: {error}. Copy one with Copy JSON in the storybook."
-            )),
-            cx,
-        ),
-    }
-}
-
-fn save_and_select_theme(mut theme: InterfaceTheme, cx: &mut App) {
-    let saved = config::themes::themes_directory().and_then(|directory| {
-        let name = config::themes::next_theme_name(&directory);
-        theme.name_after(&name);
-        let path = config::themes::save_theme(&directory, &name, &theme.to_json())?;
-        set_interface_theme(&name, theme.face.is_some())?;
-        Ok(path)
-    });
-    match saved {
-        Ok(path) => {
-            refresh_settings_preview(ConfigKey::InterfaceTheme, cx);
-            toast::push(
-                Notification::success(format!("Saved the theme as {}", path.display())),
-                cx,
-            );
-        }
-        Err(error) => report_write_error("save", "theme", &error, cx),
     }
 }
 
@@ -2499,7 +2411,7 @@ mod tests {
         assert!(
             !collapsed
                 .iter()
-                .any(|item| matches!(item, AppearancePageItem::CornerRadius))
+                .any(|item| matches!(item, AppearancePageItem::TextSize))
         );
 
         let expanded = appearance_page_items(true, true);
@@ -2510,12 +2422,12 @@ mod tests {
         assert!(
             expanded[..advanced]
                 .iter()
-                .any(|item| matches!(item, AppearancePageItem::Themes))
+                .any(|item| matches!(item, AppearancePageItem::Glass))
         );
         assert!(
             expanded[advanced..]
                 .iter()
-                .any(|item| matches!(item, AppearancePageItem::CornerRadius))
+                .any(|item| matches!(item, AppearancePageItem::TextSize))
         );
     }
 

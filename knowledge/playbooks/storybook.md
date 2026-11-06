@@ -101,7 +101,8 @@ zz's page, penna's page and `design/`.
 
 The URL holds the story, the section and the knobs: `#/agent/composer?theme=dark&radius=4`.
 Knobs: `theme` (the mode: `system`, `light`, `dark`), `interface-theme` (`default`, `macos` or
-`yaru`: the preset the knobs start from, picked under Start from), the theme's knobs (`name`,
+`yaru`: the kit's theme file the knobs start from, picked under Start from; the app itself has no
+presets and starts from the platform's), the theme's knobs (`name`,
 `tint-color` or `light-tint-color` and `dark-tint-color`, `neutral-hue`, `neutral-amount`,
 `radius`, `control-radius`, `smoothing`, `face`, `lock` for the mode lock, and `glass` with its
 sliders), the person's settings over it (`accent`, `contrast`, the tint as `tint-hue` and `tint`,
@@ -116,8 +117,9 @@ animations off and freezes spinners). Two more keys only steer the page: `step` 
 `materials`, `roles`, `export`, `app`) opens a step of the knob panel, and `inspect=<role id>` picks a role
 on the Roles step. The tint and pane knobs are app config, not theme, so Copy JSON leaves them out;
 they stay in the URL. penna's Appearance story (`#/appearance/page` on penna's page) draws the
-Interface page's kit rows with the builders the app uses: Mode, the Theme picker, the accent
-swatches and the tint sliders (which follow the tint knobs), then the Advanced rows. zz's Settings
+Interface page's kit rows with the builders the app uses: Mode, the accent swatches, the tint
+sliders (which follow the tint knobs), Corner radius, Controls, Glass, UI font and the Theme file
+menu, then the Advanced rows. zz's Settings
 story keeps only the rows zz adds (`#/settings/appearance`): Program colors and window blur
 opacity.
 
@@ -197,7 +199,7 @@ authoring rules; the short version:
 # Check a change
 
 Edit the component in `crates/zz-ui` or `libs/penna`, let `just storybook run` rebuild,
-reload, and walk the knobs: light and dark, both built-in themes, radius 0 and 25 (where every
+reload, and walk the knobs: light and dark, each of the kit's theme files, radius 0 and 25 (where every
 button turns pill), outline 0,
 both shadow strengths at 0, row inset 0, contrast extremes, a full tint, zoom. The sections re-render live as
 knobs move.
