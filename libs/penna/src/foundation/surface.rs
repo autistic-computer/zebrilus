@@ -1603,16 +1603,20 @@ mod tests {
         let mut theme = theme();
         theme.glass = Some(liquid());
         theme.pane_margin = px(8.0);
-        let window = Ground {
-            fill: theme.background.alpha(0.93),
-            ..theme.ground()
-        };
+        theme.window_opacity = 0.93;
+        let window = theme.ground();
+        assert_eq!(window.fill, theme.background.alpha(0.93));
         let panel = theme.layer(
             Surface::new(Kind::Panel.role()).on(window),
             PaintState::Rest,
         );
         assert_eq!(panel.fill, theme.background.opaque().washed(1));
         assert!(panel.ground.fill.a < 1.0);
+        let card = theme.layer(
+            Surface::new(super::super::roles::SETTINGS_CARD),
+            PaintState::Rest,
+        );
+        assert_eq!(card.fill, theme.background.opaque().washed(1));
         let pane = theme.layer(Surface::new(Kind::Pane.role()).on(window), PaintState::Rest);
         assert_eq!(pane.glass.expect("a gapped pane is glass").tint.a, 0.0);
     }

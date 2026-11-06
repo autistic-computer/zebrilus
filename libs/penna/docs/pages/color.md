@@ -12,8 +12,11 @@ Each layer steps away from the one under it: darker in light mode, lighter in da
   <span>Window</span><span><code>bg</code></span><span><i class="docs-swatch" style="background: var(--penna-bg)"></i></span><span>Window and page</span>
   <span>Panel</span><span><code>panel</code></span><span><i class="docs-swatch" style="background: var(--penna-panel)"></i></span><span>Sidebars and side panels</span>
   <span>Popover</span><span><code>popover</code></span><span><i class="docs-swatch" style="background: var(--penna-popover)"></i></span><span>Menus and popovers</span>
+  <span>Divider</span><span><code>divider</code></span><span><i class="docs-swatch" style="background: linear-gradient(var(--penna-divider), var(--penna-divider)) center / 100% 1px no-repeat"></i></span><span>Rules, the ink at 8%</span>
 </div>
 ```
+
+On a blurred window each surface takes its step as a wash over the window, so the layers stay a step apart and the window stays see-through.
 
 ## Ink
 

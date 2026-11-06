@@ -51,6 +51,7 @@ pub fn oklab_lightness(color: Hsla) -> f32 {
 
 const RAISE_STEP: f32 = 0.04;
 const EDGE_WEIGHT: f32 = 0.14;
+const DIVIDER_WEIGHT: f32 = 0.08;
 const HOVER: f32 = 0.06;
 const ACTIVE: f32 = 0.12;
 const REST: f32 = 0.15;
@@ -192,6 +193,10 @@ pub(super) fn contrast_ratio(left: Hsla, right: Hsla) -> f32 {
 
 pub(super) fn edge_weight() -> f32 {
     scaled(EDGE_WEIGHT)
+}
+
+pub(super) fn divider_weight() -> f32 {
+    scaled(DIVIDER_WEIGHT)
 }
 
 #[must_use]

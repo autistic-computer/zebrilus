@@ -86,6 +86,7 @@ pub struct Theme {
     pub inspect: Option<SharedString>,
     pub inspect_strength: f32,
     pub pane_margin: Pixels,
+    pub window_opacity: f32,
     pub transparent: Hsla,
     pub scrollbar_show: ScrollbarShow,
     pub notification: NotificationSettings,
@@ -193,7 +194,7 @@ impl Theme {
     }
 
     pub fn divider_color(&self) -> Hsla {
-        self.foreground.opacity(color::edge_weight())
+        self.foreground.opacity(color::divider_weight())
     }
 
     pub fn inner_radius(&self, inset: Pixels) -> Pixels {
@@ -299,6 +300,7 @@ impl From<&ThemeColor> for Theme {
             inspect: None,
             inspect_strength: 1.0,
             pane_margin: px(0.0),
+            window_opacity: 1.0,
             scrollbar_show: ScrollbarShow::default(),
             notification: NotificationSettings::default(),
             colors: *colors,

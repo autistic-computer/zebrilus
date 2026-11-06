@@ -246,7 +246,9 @@ impl Theme {
 
     pub fn ground(&self) -> Ground {
         Ground {
-            fill: self.background,
+            fill: self
+                .background
+                .alpha(self.background.a * self.window_opacity.clamp(0.0, 1.0)),
             ink: self.foreground,
             elevation: Elevation::Window,
             glass: false,

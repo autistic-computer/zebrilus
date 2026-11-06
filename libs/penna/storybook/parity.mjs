@@ -786,7 +786,7 @@ async function loadCanvas(pages, bases, story, theme, mode, loads) {
     if (pages.canvasState === "clean") {
         await pages.canvas.media(mode);
         await pages.canvas.call(async (story, theme, mode) => {
-            await Promise.race([storybook.setKnobs({ "interface-theme": theme, theme: mode, motion: "0" }), new Promise((r) => setTimeout(r, 200))]);
+            await Promise.race([storybook.setKnobs({ "interface-theme": theme, theme: mode, motion: "off" }), new Promise((r) => setTimeout(r, 200))]);
             if (storybook.current() !== story) await Promise.race([storybook.show(story), new Promise((r) => setTimeout(r, 200))]);
             scrollTo(0, 0);
         }, story, theme, mode);
@@ -794,7 +794,7 @@ async function loadCanvas(pages, bases, story, theme, mode, loads) {
         return;
     }
     const started = Date.now();
-    const knobs = new URLSearchParams({ solo: "1", theme: mode, "interface-theme": theme, motion: "0" });
+    const knobs = new URLSearchParams({ solo: "1", theme: mode, "interface-theme": theme, motion: "off" });
     await pages.canvas.navigate(`${bases.story}/?load=${++pages.canvasLoads}#/${story}?${knobs}`, mode);
     await canvasReady(pages.canvas, story);
     pages.canvasState = "clean";
