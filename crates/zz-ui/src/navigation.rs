@@ -4,14 +4,14 @@ pub mod sidebar;
 pub mod status;
 
 use crate::{
-    ActiveTheme as _, Colorize as _, Disableable as _, Emphasis, Ground, Icon, IconName,
-    PaintState, Sizable as _, StyledExt as _, Surface, Tone,
+    ActiveTheme as _, Colorize as _, Disableable as _, Emphasis, Ground, IconName, PaintState,
+    Sizable as _, StyledExt as _, Surface, Tone,
     button::{Button, ButtonLook, ButtonVariants as _, COMPACT_ICON_BUTTON_SIZE},
     kbd::Kbd,
     rems_from_px,
     sidebar::{
         CHROME_BUTTON_SIZE, SIDEBAR_CONTENT_INSET, SIDEBAR_ROW_ACTION_CENTER, chrome_button,
-        sidebar_panel, status_dot,
+        sidebar_panel,
     },
     tooltip::Tooltip,
     touch::{CoarsePointer, TOUCH_TARGET},
@@ -22,7 +22,7 @@ use ala::{
     prelude::*, px,
 };
 pub use penna::blocks::sidebar::sidebar_fade as workspace_sidebar_fade;
-use penna::{Chip, ChipLook, Panel, PanelLook, Row, RowLook, Tab, TabLook, TextStyle};
+use penna::{Panel, PanelLook, Row, RowLook, Tab, TabLook, TextStyle};
 
 pub const WORKSPACE_TREE_ROW_HEIGHT: f32 = 32.0;
 pub const WORKSPACE_TREE_INDENT_WIDTH: f32 = 20.0;
@@ -36,18 +36,13 @@ const WORKSPACE_ROW_ACTION_GAP: f32 = 10.0;
 pub const WORKSPACE_SIDEBAR_FADE_HEIGHT: Pixels = px(40.0);
 pub const WORKSPACE_STATUS_PILL_HEIGHT: Pixels = px(32.0);
 const WORKSPACE_STATUS_LINE_HEIGHT: Pixels = px(18.0);
-const WORKSPACE_STATUS_ITEM_MAX_WIDTH: Pixels = px(180.0);
 const WORKSPACE_STATUS_WINDOW_DEFAULT_WIDTH: Pixels = px(240.0);
 const WORKSPACE_STATUS_WINDOW_MIN_WIDTH: Pixels = px(36.0);
-const WORKSPACE_STATUS_ICON_SIZE: Pixels = px(14.0);
-const WORKSPACE_STATUS_CHIP_PADDING: Pixels = px(6.0);
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct WorkspaceStatusWindowState {
     pub connected: bool,
     pub active: bool,
-    pub bell: bool,
-    pub activity: bool,
 }
 
 impl WorkspaceStatusWindowState {
@@ -112,48 +107,6 @@ pub fn workspace_chrome_controls_width_for(count: usize, window: &Window) -> Pix
 }
 
 #[must_use]
-pub fn workspace_status_item(
-    id: impl Into<ElementId>,
-    icon: Option<IconName>,
-    text: SharedString,
-    cx: &App,
-) -> Chip {
-    Chip::empty(id)
-        .look(ChipLook::Bar)
-        .flex()
-        .flex_shrink_1()
-        .min_w_0()
-        .max_w(WORKSPACE_STATUS_ITEM_MAX_WIDTH)
-        .h(WORKSPACE_STATUS_PILL_HEIGHT)
-        .items_center()
-        .gap(px(5.0))
-        .px(WORKSPACE_STATUS_CHIP_PADDING)
-        .overflow_hidden()
-        .text_color(cx.theme().foreground.muted())
-        .type_style(TextStyle::Body, cx)
-        .line_height(WORKSPACE_STATUS_LINE_HEIGHT)
-        .children(icon.map(|icon| {
-            div()
-                .flex_none()
-                .relative()
-                .top(crate::icon::cap_center_drop(
-                    px(TextStyle::Body.design_px()),
-                    WORKSPACE_STATUS_ICON_SIZE,
-                    cx,
-                ))
-                .child(Icon::new(icon).size(WORKSPACE_STATUS_ICON_SIZE))
-        }))
-        .child(
-            div()
-                .min_w_0()
-                .overflow_hidden()
-                .whitespace_nowrap()
-                .text_ellipsis()
-                .child(text),
-        )
-}
-
-#[must_use]
 #[allow(clippy::too_many_arguments)]
 pub fn workspace_status_window(
     id: impl Into<ElementId>,
@@ -194,19 +147,6 @@ pub fn workspace_status_window(
             Some(deck) => item.child(deck.beside(name, px(5.0))),
             None => item.child(name),
         })
-        .child(
-            div()
-                .flex()
-                .flex_none()
-                .items_center()
-                .gap(px(3.0))
-                .child(status_dot(cx.theme().warning).opacity(if state.bell { 1.0 } else { 0.0 }))
-                .child(status_dot(cx.theme().success).opacity(if state.activity {
-                    1.0
-                } else {
-                    0.0
-                })),
-        )
 }
 
 fn workspace_tree_trailing_inset(cx: &App) -> Pixels {

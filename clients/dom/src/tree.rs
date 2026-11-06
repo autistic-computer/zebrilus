@@ -4,7 +4,7 @@ use serde_json::{Value, json};
 use wasm_bindgen::prelude::*;
 use zz_client::{
     ChromeKeymap, ChromeProfile, DropZone, MAX_VISIBLE_WINDOWS, PaneRect, SIDEBAR_TABLE,
-    StatusBarModel, StatusBarSettings, UI_TABLE, coerced_drop_zone, drop_preview_bounds,
+    StatusBarModel, UI_TABLE, coerced_drop_zone, drop_preview_bounds,
     drop_zone_at,
     floating::{
         FloatCells, PipGeometry, float_pane_commands, float_placement, float_title,
@@ -353,16 +353,7 @@ impl Client {
     }
 
     pub fn status_bar(&self) -> String {
-        let model = StatusBarModel::from_snapshot(
-            self.core.snapshot(),
-            self.core.attached_session(),
-            None,
-            StatusBarSettings {
-                badges: true,
-                show_host: false,
-                show_update: false,
-            },
-        );
+        let model = StatusBarModel::from_snapshot(self.core.snapshot(), self.core.attached_session());
         let active = model
             .windows
             .iter()
@@ -385,8 +376,6 @@ impl Client {
                 "index": window.index,
                 "label": window.label,
                 "active": window.active,
-                "bell": window.bell,
-                "activity": window.activity,
                 "rename": rename,
                 "panes": panes,
             })

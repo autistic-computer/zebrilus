@@ -7,7 +7,6 @@ use penna::{
     components::input::{InputState, NumberInput},
     components::switch::Switch,
 };
-use zz_client::StatusBarSettings;
 use zz_ui::settings::{
     SettingEntry, SettingsFold, SettingsSection, SettingsStack,
     appearance::ZzRow,
@@ -16,7 +15,6 @@ use zz_ui::settings::{
     providers::{ProvidersHost, providers_stack},
     settings_card_ground, settings_page_title, settings_scroll_column, settings_section_index,
     settings_section_navigation, settings_title_bar,
-    status_bar_preview::status_bar_page,
 };
 
 use super::{fixtures::stateful, tree::sidebar};
@@ -27,7 +25,7 @@ pub const STORY: Story = Story {
     id: "settings",
     name: "Settings",
     group: "Settings",
-    summary: "The settings route: its sidebar and narrow-screen index, the stacked entry rows every page is built from, zz's appearance rows, and the Panes, Status bar, Agents and About pages.",
+    summary: "The settings route: its sidebar and narrow-screen index, the stacked entry rows every page is built from, zz's appearance rows, and the Panes, Agents and About pages.",
     sections: &[
         Section {
             id: "navigation",
@@ -44,14 +42,8 @@ pub const STORY: Story = Story {
         Section {
             id: "panes-page",
             name: "Panes page",
-            summary: "panes_page with the live preview above its Layout, Appearance, Focus and Frame stacks. Frame settings dim while pane gaps are off.",
+            summary: "panes_page with the live preview above its Layout, Focus and Frame stacks. Frame settings, the pane margin and corner radius, dim while pane gaps are off.",
             build: |window, cx| stateful(window, cx, Controls::new, panes),
-        },
-        Section {
-            id: "status-bar-page",
-            name: "Status bar page",
-            summary: "status_bar_page: a preview of the titlebar that follows the switches below it.",
-            build: |_, cx| stateless(status_bar, cx),
         },
         Section {
             id: "agents",
@@ -63,12 +55,12 @@ pub const STORY: Story = Story {
 };
 
 struct Controls {
-    numbers: [Entity<InputState>; 8],
+    numbers: [Entity<InputState>; 3],
 }
 
 impl Controls {
     fn new(window: &mut Window, cx: &mut App) -> Self {
-        let values = ["50", "0.7", "100", "6", "13.5", "0.5", "100", "80"];
+        let values = ["0.7", "100", "6"];
         let numbers = std::array::from_fn(|index| {
             let value = values[index];
             cx.new(|cx| InputState::new(window, cx).default_value(value))
@@ -161,7 +153,7 @@ fn navigation(_: &mut Window, cx: &mut App) -> AnyElement {
         .into_any_element()
 }
 
-fn appearance(_: &mut Window, cx: &mut App) -> AnyElement {
+fn appearance(_: &mut Window, _: &mut App) -> AnyElement {
     let knobs = crate::knobs();
     states()
         .state(
@@ -185,20 +177,35 @@ fn panes(controls: &Controls, _: &mut Window, cx: &mut App) -> AnyElement {
                 inactive_opacity: pane.inactive,
             },
             [SettingEntry::new("Pane gaps").control(Switch::new("gaps").checked(gaps))],
-            [SettingEntry::new("Pane background opacity").control(controls.number(0, cx))],
             [
                 SettingEntry::new("Inactive pane opacity")
                     .description("1 turns dimming off")
-                    .control(controls.number(1, cx)),
+                    .control(controls.number(0, cx)),
                 SettingEntry::new("Selected pane contrast")
                     .when(!gaps, |entry| entry.description("Needs pane gaps"))
                     .disabled(!gaps)
-                    .control(controls.number(2, cx)),
+                    .control(controls.number(1, cx)),
             ],
-            [SettingEntry::new("Pane margin")
-                .when(!gaps, |entry| entry.description("Needs pane gaps"))
-                .disabled(!gaps)
-                .control(controls.number(3, cx))],
+            [
+                SettingEntry::new("Pane margin")
+                    .when(!gaps, |entry| entry.description("Needs pane gaps"))
+                    .disabled(!gaps)
+                    .control(controls.number(2, cx)),
+                SettingEntry::new("Corner radius")
+                    .description(if gaps {
+                        "Panes and PiPs"
+                    } else {
+                        "Needs pane gaps"
+                    })
+                    .disabled(!gaps)
+                    .control(penna::blocks::appearance::corner_slider(
+                        "settings-pane-corner-radius",
+                        "Pane corner radius",
+                        f32::from(cx.theme().pane_radius()),
+                        |_, _, _| {},
+                        cx,
+                    )),
+            ],
             cx,
         )
     };
@@ -210,45 +217,6 @@ fn panes(controls: &Controls, _: &mut Window, cx: &mut App) -> AnyElement {
                 .flex()
                 .h(px(1180.0))
                 .child(page(true, cx)),
-        )
-        .into_any_element()
-}
-
-fn status_rows(settings: StatusBarSettings) -> SettingsStack {
-    SettingsStack::new()
-        .child(SettingEntry::new("Sidebar").control(Switch::new("sidebar").checked(false)))
-        .child(
-            SettingEntry::new("Window badges")
-                .description("Bell and activity markers on window items")
-                .control(Switch::new("status-badges").checked(settings.badges)),
-        )
-}
-
-fn status_bar(_: &mut Window, cx: &mut App) -> AnyElement {
-    let page = |id: &'static str, settings: StatusBarSettings, gaps: bool, cx: &App| {
-        div().id(id).flex().h(px(470.0)).child(status_bar_page(
-            settings,
-            gaps,
-            status_rows(settings),
-            cx,
-        ))
-    };
-    states()
-        .state(
-            "everything on",
-            page("status-defaults", StatusBarSettings::default(), false, cx),
-        )
-        .state(
-            "badges off, pane gaps on",
-            page(
-                "status-minimal",
-                StatusBarSettings {
-                    badges: false,
-                    ..StatusBarSettings::default()
-                },
-                true,
-                cx,
-            ),
         )
         .into_any_element()
 }

@@ -494,41 +494,6 @@ function group(title) {
   return h("div", { class: "settings-group" }, header(title));
 }
 
-function statusBarPage() {
-  const p = prefs();
-  const tab = (name, glyph, active, badges, stacked) =>
-    h(
-      "div",
-      { "data-penna": "tab.window", "aria-selected": String(active) },
-      h("span", { class: `tile${stacked ? " stacked" : ""}`, "data-penna": "icon-tile" }, icon(glyph)),
-      h("span", { class: "name", "aria-label": name, text: name }),
-      h("span", { class: "badges" }, badges && [h("i", { style: { background: "var(--penna-warning)" } }), h("i", { style: { background: "var(--penna-success)" } })]),
-      h("button", { "data-penna": "icon-button.row", title: "Close window" }, icon("xmark")),
-    );
-  const preview = h(
-    "div",
-    { class: "settings-well", "data-penna": "settings.preview", style: { "--penna-fill": "var(--penna-bg)" } },
-    h(
-      "div",
-      { class: "settings-statusbar", "data-penna": "titlebar" },
-      tab("workspace", "globe", true, false, true),
-      tab("logs", "square-terminal", false, p.status_badges, false),
-      !p.gaps && h("div", { class: "rule", "data-penna": "rule.bar" }),
-    ),
-  );
-  return [
-    h("div", { class: "settings-section" }, heading("Status bar"), header("Preview"), preview),
-    stack(null, [
-      entry({ title: "Sidebar", control: toggle(p.sidebar, "Sidebar", (value) => set({ sidebar: value })) }),
-      entry({
-        title: "Window badges",
-        description: "Bell and activity markers on window items",
-        control: toggle(p.status_badges, "Window badges", (value) => set({ status_badges: value })),
-      }),
-    ]),
-  ];
-}
-
 const SHELL = [
   ["muted", "~/workspace"],
   ["plain", "$ cargo run"],
@@ -653,7 +618,6 @@ function panesPreview() {
 }
 
 const PANE_CONTROLS = [
-  { key: "pip_background_opacity", title: "PiP background opacity", min: 0, max: 1, step: 0.05, scale: 100 },
   { key: "pane_inactive_opacity", title: "Inactive pane opacity", min: 0, max: 1, step: 0.05, scale: 1 },
   { key: "pane_glow_strength", title: "Selected pane contrast", min: 0, max: 2, step: 0.05, scale: 100, gaps: true },
   { key: "pane_margin", title: "Pane margin", min: 0, max: 32, step: 0.5, scale: 1, gaps: true },
@@ -678,15 +642,33 @@ function paneSetting(control) {
   });
 }
 
+function paneCornerSetting() {
+  const p = prefs();
+  const picks = preferences.picks();
+  return entry({
+    title: "Corner radius",
+    description: p.gaps ? "Panes and PiPs" : "Needs pane gaps",
+    disabled: !p.gaps,
+    control: valueSlider({
+      label: "Pane corner radius",
+      value: picks?.pane_radius ?? 0,
+      min: 0,
+      max: 1,
+      step: 0.01,
+      display: percent,
+      onchange: (value) => set({ pane_corner_radius: picks.limits.radius * value * value }),
+    }),
+  });
+}
+
 function panesPage() {
   const p = prefs();
-  const [pip, inactive, glow, margin] = PANE_CONTROLS.map(paneSetting);
+  const [inactive, glow, margin] = PANE_CONTROLS.map(paneSetting);
   return [
     h("div", { class: "settings-section" }, heading("Panes"), header("Preview"), panesPreview()),
     stack("Layout", [entry({ title: "Pane gaps", control: toggle(p.gaps, "Pane gaps", (value) => set({ gaps: value })) })]),
-    stack("PiP", [pip]),
     stack("Focus", [inactive, glow]),
-    stack("Frame", [margin]),
+    stack("Frame", [margin, paneCornerSetting()]),
   ];
 }
 
@@ -932,7 +914,6 @@ function aboutPage() {
 
 const PAGES = {
   appearance: appearancePage,
-  statusbar: statusBarPage,
   panes: panesPage,
   terminal: terminalPage,
   hosts: hostsPage,

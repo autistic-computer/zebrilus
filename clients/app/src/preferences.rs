@@ -11,17 +11,16 @@ pub struct Preferences {
     pub flat_sidebar: bool,
     pub program_colors: bool,
     pub sidebar_width: f32,
-    pub status_badges: bool,
     pub gaps: bool,
     pub dark: bool,
     pub terminal_font_family: Option<String>,
     pub terminal_font_scale: f32,
     #[serde(flatten)]
     pub appearance: Appearance,
-    pub pip_background_opacity: f32,
     pub pane_inactive_opacity: f32,
     pub pane_glow_strength: f32,
     pub pane_margin: f32,
+    pub pane_corner_radius: Option<f32>,
     pub palette_grouped: bool,
     pub palette_show_keys: bool,
     pub palette_vim_mode: bool,
@@ -37,7 +36,6 @@ impl Default for Preferences {
             flat_sidebar: false,
             program_colors: true,
             sidebar_width: penna::blocks::sidebar::SIDEBAR_DEFAULT_WIDTH,
-            status_badges: true,
             gaps: false,
             dark: true,
             terminal_font_family: None,
@@ -46,10 +44,10 @@ impl Default for Preferences {
                 mode: Some("system".into()),
                 ..Appearance::default()
             },
-            pip_background_opacity: 0.8,
             pane_inactive_opacity: 0.7,
             pane_glow_strength: 1.0,
             pane_margin: 6.0,
+            pane_corner_radius: None,
             palette_grouped: true,
             palette_show_keys: true,
             palette_vim_mode: false,
@@ -94,28 +92,22 @@ impl Preferences {
         appearance.ui_font_family = appearance.ui_font_family.trim().into();
         self.terminal_font_scale = bounded(self.terminal_font_scale, 0.5, 3.0, 1.0);
         for (value, min, max, fallback) in [
-            (&mut self.pip_background_opacity, 0., 1., 0.8),
             (&mut self.pane_inactive_opacity, 0., 1., 0.7),
             (&mut self.pane_glow_strength, 0., 2., 1.),
             (&mut self.pane_margin, 0., 32., 6.),
         ] {
             *value = bounded(*value, min, max, fallback);
         }
+        self.pane_corner_radius = self
+            .pane_corner_radius
+            .filter(|radius| radius.is_finite())
+            .map(|radius| radius.clamp(0.0, interface_theme::MAX_CORNER_RADIUS));
         self.appearance.mode = Some(self.theme_mode().as_str().into());
         self.terminal_font_family = self
             .terminal_font_family
             .map(|family| family.trim().to_owned())
             .filter(|family| !family.is_empty());
         self
-    }
-
-    #[must_use]
-    pub fn status_bar_settings(&self) -> zz_client::StatusBarSettings {
-        zz_client::StatusBarSettings {
-            badges: self.status_badges,
-            show_host: false,
-            show_update: false,
-        }
     }
 
     #[must_use]
@@ -361,12 +353,9 @@ mod tests {
             defaults.sidebar_width,
             penna::blocks::sidebar::SIDEBAR_DEFAULT_WIDTH
         );
-        let status = defaults.status_bar_settings();
-        assert!(status.badges);
-        assert!(!status.show_host && !status.show_update);
         let mut changed = Preferences {
-            status_badges: false,
             sidebar_width: 320.0,
+            pane_corner_radius: Some(18.0),
             ..defaults
         };
         changed.appearance.motion = penna::foundation::motion::Motion::Fast;
@@ -374,10 +363,7 @@ mod tests {
         let restored = serde_json::from_str::<Preferences>(&saved)
             .unwrap()
             .sanitized();
-        assert_eq!(
-            restored.status_bar_settings(),
-            changed.status_bar_settings()
-        );
+        assert_eq!(restored.pane_corner_radius, Some(18.0));
         assert_eq!(
             restored.appearance.motion,
             penna::foundation::motion::Motion::Fast
@@ -561,7 +547,7 @@ mod tests {
         assert!(preferences.gaps);
         assert_eq!(preferences.appearance.overrides.radius, Some(8.0));
         assert_eq!(preferences.pane_margin, 6.0);
-        assert_eq!(preferences.pip_background_opacity, 0.8);
+        assert_eq!(preferences.pane_corner_radius, None);
         assert_eq!(preferences.pane_glow_strength, 1.0);
         assert_eq!(
             serde_json::from_str::<Preferences>(
@@ -576,23 +562,21 @@ mod tests {
         let preferences = Preferences {
             pane_margin: -1.0,
             pane_inactive_opacity: 2.0,
-            pip_background_opacity: -1.0,
             pane_glow_strength: 3.0,
             ..preferences
         }
         .sanitized();
         assert_eq!(preferences.pane_margin, 0.0);
         assert_eq!(preferences.pane_inactive_opacity, 1.0);
-        assert_eq!(preferences.pip_background_opacity, 0.0);
         assert_eq!(preferences.pane_glow_strength, 2.0);
-        for (value, expected) in [(2.0, 1.0), (f32::NAN, 0.8)] {
+        for (value, expected) in [(Some(40.0), Some(25.0)), (Some(f32::NAN), None)] {
             assert_eq!(
                 Preferences {
-                    pip_background_opacity: value,
+                    pane_corner_radius: value,
                     ..Preferences::default()
                 }
                 .sanitized()
-                .pip_background_opacity,
+                .pane_corner_radius,
                 expected,
             );
         }

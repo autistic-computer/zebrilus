@@ -26,12 +26,7 @@ pub(super) fn render(
     let core = &connection.core;
     let connected = connection.connected;
     let writable = connected && !core.attached_read_only();
-    let model = StatusBarModel::from_snapshot(
-        core.snapshot(),
-        core.attached_session(),
-        None,
-        view.preferences.status_bar_settings(),
-    );
+    let model = StatusBarModel::from_snapshot(core.snapshot(), core.attached_session());
     let active = model
         .windows
         .iter()
@@ -61,8 +56,6 @@ pub(super) fn render(
                 WorkspaceStatusWindowState {
                     connected,
                     active: window.active,
-                    bell: window.bell,
-                    activity: window.activity,
                 },
                 window
                     .panes
@@ -121,7 +114,6 @@ pub(super) fn render(
         px(8.0),
         WorkspaceStatusSlots {
             windows,
-            right: Vec::new(),
             titlebar_controls: Some((
                 view.controls(cx.theme().ground(), cx),
                 AppShell::controls_width(window),

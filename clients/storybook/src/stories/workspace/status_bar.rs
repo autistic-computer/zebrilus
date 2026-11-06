@@ -2,7 +2,7 @@ use ala::{
     AnyElement, App, IntoElement, ParentElement as _, SharedString, Styled as _, Window, div,
     prelude::*, px,
 };
-use penna::{ActiveTheme as _, Colorize as _, IconName, h_flex};
+use penna::{ActiveTheme as _, Colorize as _, h_flex};
 use zz_protocol::PaneKindSnapshot;
 use zz_ui::{
     navigation::{
@@ -11,7 +11,6 @@ use zz_ui::{
             StatusPaneEntry, StatusWindowActions, StatusWindowEntry, status_pane_deck,
             status_window, status_window_overflow,
         },
-        workspace_status_item,
     },
     shell::{WorkspaceStatusSlots, workspace_status_bar},
 };
@@ -27,7 +26,7 @@ pub const STORY: Story = Story {
     id: "status-bar",
     name: "Status bar",
     group: "Workspace",
-    summary: "The titlebar that replaces the sidebar when it is hidden: the sidebar toggle, window pills with their pane decks, and the host and update items. Settings lives at the bottom of the sidebar.",
+    summary: "The titlebar that replaces the sidebar when it is hidden: the sidebar toggle and window pills with their pane decks. Settings lives at the bottom of the sidebar.",
     sections: &[
         Section {
             id: "bar",
@@ -38,7 +37,7 @@ pub const STORY: Story = Story {
         Section {
             id: "windows",
             name: "Windows",
-            summary: "status_window: index, pane deck, name, then bell and activity dots. The close button appears on hover, and right-click offers rename and close.",
+            summary: "status_window: pane deck and name. The close button appears on hover, and right-click offers rename and close.",
             build: |_, cx| stateless(windows, cx),
         },
         Section {
@@ -56,12 +55,12 @@ pub const STORY: Story = Story {
     ],
 };
 
-const WINDOWS: [(&str, bool, bool, bool); 5] = [
-    ("editor", true, false, false),
-    ("agents", false, true, true),
-    ("logs", false, true, false),
-    ("server", false, false, true),
-    ("scratch", false, false, false),
+const WINDOWS: [(&str, bool); 5] = [
+    ("editor", true),
+    ("agents", false),
+    ("logs", false),
+    ("server", false),
+    ("scratch", false),
 ];
 
 fn window_panes(index: usize) -> Vec<StatusPaneEntry> {
@@ -126,25 +125,10 @@ fn window(
     )
 }
 
-fn update_item(cx: &App) -> AnyElement {
-    workspace_status_item("update", None, "v0.17.0".into(), cx)
-        .flex_none()
-        .px(px(6.0))
-        .child(
-            div()
-                .flex_none()
-                .size(px(5.0))
-                .rounded_full()
-                .bg(cx.theme().success),
-        )
-        .into_any_element()
-}
-
 #[derive(Clone, Copy)]
 pub struct Bar {
     pub gaps: bool,
     pub connected: bool,
-    pub host: bool,
     pub windows: usize,
 }
 
@@ -152,19 +136,16 @@ impl Bar {
     pub const FULL: Self = Self {
         gaps: false,
         connected: true,
-        host: true,
         windows: 3,
     };
 }
 
 pub fn titlebar(config: &Bar, cx: &App) -> ala::Stateful<ala::Div> {
     let state = |index: usize| {
-        let (_, active, bell, activity) = WINDOWS[index % WINDOWS.len()];
+        let (_, active) = WINDOWS[index % WINDOWS.len()];
         WorkspaceStatusWindowState {
             connected: config.connected,
             active,
-            bell,
-            activity,
         }
     };
     let mut windows = (0..config.windows.min(5))
@@ -192,20 +173,11 @@ pub fn titlebar(config: &Bar, cx: &App) -> ala::Stateful<ala::Div> {
             cx,
         ));
     }
-    let mut right = Vec::new();
-    if config.host {
-        right.push(
-            workspace_status_item("host", Some(IconName::Globe), "devbox".into(), cx)
-                .into_any_element(),
-        );
-        right.push(update_item(cx));
-    }
     workspace_status_bar(
         config.gaps,
         px(8.0),
         WorkspaceStatusSlots {
             windows,
-            right,
             titlebar_controls: Some((
                 chrome_controls().into_any_element(),
                 WORKSPACE_STATUS_PILL_HEIGHT,
@@ -235,15 +207,7 @@ fn bars(_: &mut Window, cx: &mut App) -> AnyElement {
         .state("gaps", bar("bar-gaps", &Bar { gaps: true, ..full }, cx))
         .state(
             "eight windows: five around the active one, the rest in the overflow menu",
-            bar(
-                "bar-overflow",
-                &Bar {
-                    windows: 8,
-                    host: false,
-                    ..full
-                },
-                cx,
-            ),
+            bar("bar-overflow", &Bar { windows: 8, ..full }, cx),
         )
         .state(
             "disconnected",
@@ -251,7 +215,6 @@ fn bars(_: &mut Window, cx: &mut App) -> AnyElement {
                 "bar-disconnected",
                 &Bar {
                     connected: false,
-                    host: false,
                     ..full
                 },
                 cx,
@@ -281,18 +244,8 @@ fn windows(_: &mut Window, cx: &mut App) -> AnyElement {
             ),
         )
         .state(
-            "bell and activity",
-            window(
-                1,
-                "agents",
-                WorkspaceStatusWindowState {
-                    bell: true,
-                    activity: true,
-                    ..connected
-                },
-                window_panes(1),
-                cx,
-            ),
+            "two panes",
+            window(1, "agents", connected, window_panes(1), cx),
         )
         .state(
             "one pane",

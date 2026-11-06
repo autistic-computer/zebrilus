@@ -16,23 +16,6 @@ pub fn visible_window_range(total: usize, active: usize, limit: usize) -> std::o
     start..start + limit
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct StatusBarSettings {
-    pub badges: bool,
-    pub show_host: bool,
-    pub show_update: bool,
-}
-
-impl Default for StatusBarSettings {
-    fn default() -> Self {
-        Self {
-            badges: true,
-            show_host: true,
-            show_update: true,
-        }
-    }
-}
-
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct StatusBarPane {
     pub id: PaneId,
@@ -58,18 +41,11 @@ pub struct StatusBarWindow {
 pub struct StatusBarModel {
     pub session_name: Option<String>,
     pub windows: Vec<StatusBarWindow>,
-    pub host_name: Option<String>,
-    pub show_update: bool,
 }
 
 impl StatusBarModel {
     #[must_use]
-    pub fn from_snapshot(
-        snapshot: &MuxSnapshot,
-        attached_session: Option<SessionId>,
-        host_name: Option<&str>,
-        settings: StatusBarSettings,
-    ) -> Self {
+    pub fn from_snapshot(snapshot: &MuxSnapshot, attached_session: Option<SessionId>) -> Self {
         let session = attached_session.and_then(|attached| {
             snapshot
                 .sessions
@@ -102,9 +78,9 @@ impl StatusBarModel {
                             })
                             .map_or_else(|| window.name.clone(), pane_label),
                         active: focused_window == Some(window.id),
-                        bell: settings.badges && bell,
-                        activity: settings.badges && window.activity,
-                        agent_provider: agent_provider.filter(|_| settings.badges),
+                        bell,
+                        activity: window.activity,
+                        agent_provider,
                         panes: panes
                             .into_iter()
                             .map(|pane| StatusBarPane {
@@ -131,8 +107,6 @@ impl StatusBarModel {
         Self {
             session_name: session.map(|session| session.name.clone()),
             windows,
-            host_name: host_name.filter(|_| settings.show_host).map(str::to_owned),
-            show_update: settings.show_update,
         }
     }
 }
@@ -257,7 +231,7 @@ mod tests {
     }
 
     #[test]
-    fn pane_deck_preserves_layout_order_and_current_browser_tab_without_badges() {
+    fn pane_deck_preserves_layout_order_and_current_browser_tab() {
         let mut snapshot = snapshot();
         let window = &mut snapshot.sessions[0].windows[0];
         let browser = zz_protocol::BrowserDescriptor {
@@ -280,15 +254,7 @@ mod tests {
             first: Box::new(LayoutNode::Pane(PaneId(102))),
             second: Box::new(LayoutNode::Pane(PaneId(100))),
         };
-        let model = StatusBarModel::from_snapshot(
-            &snapshot,
-            Some(SessionId(1)),
-            None,
-            StatusBarSettings {
-                badges: false,
-                ..Default::default()
-            },
-        );
+        let model = StatusBarModel::from_snapshot(&snapshot, Some(SessionId(1)));
         let panes = &model.windows[0].panes;
         assert_eq!(
             panes
@@ -306,29 +272,11 @@ mod tests {
     }
 
     #[test]
-    fn settings_defaults_enable_every_item() {
-        assert_eq!(
-            StatusBarSettings::default(),
-            StatusBarSettings {
-                badges: true,
-                show_host: true,
-                show_update: true,
-            }
-        );
-    }
-
-    #[test]
     fn attached_session_owns_the_window_list_and_recipient_focus() {
         let snapshot = snapshot();
-        let model = StatusBarModel::from_snapshot(
-            &snapshot,
-            Some(SessionId(1)),
-            Some("remote.example"),
-            StatusBarSettings::default(),
-        );
+        let model = StatusBarModel::from_snapshot(&snapshot, Some(SessionId(1)));
 
         assert_eq!(model.session_name.as_deref(), Some("main"));
-        assert_eq!(model.host_name.as_deref(), Some("remote.example"));
         assert_eq!(
             model
                 .windows
@@ -341,12 +289,7 @@ mod tests {
             ]
         );
 
-        let secondary = StatusBarModel::from_snapshot(
-            &snapshot,
-            Some(SessionId(2)),
-            None,
-            StatusBarSettings::default(),
-        );
+        let secondary = StatusBarModel::from_snapshot(&snapshot, Some(SessionId(2)));
         assert_eq!(secondary.windows.len(), 1);
         assert!(secondary.windows[0].active);
     }
@@ -354,12 +297,7 @@ mod tests {
     #[test]
     fn badges_use_window_and_pane_flags() {
         let snapshot = snapshot();
-        let model = StatusBarModel::from_snapshot(
-            &snapshot,
-            Some(SessionId(1)),
-            None,
-            StatusBarSettings::default(),
-        );
+        let model = StatusBarModel::from_snapshot(&snapshot, Some(SessionId(1)));
 
         assert!(model.windows[0].bell);
         assert!(model.windows[0].activity);
@@ -376,12 +314,7 @@ mod tests {
             snapshot.sessions[0].windows[1]
                 .panes
                 .insert(PaneId(110), agent(110, provider, false));
-            let model = StatusBarModel::from_snapshot(
-                &snapshot,
-                Some(SessionId(1)),
-                None,
-                StatusBarSettings::default(),
-            );
+            let model = StatusBarModel::from_snapshot(&snapshot, Some(SessionId(1)));
 
             assert_eq!(model.windows[1].name, "agent");
             assert_eq!(model.windows[1].label, "agent");
@@ -400,12 +333,7 @@ mod tests {
             (100, "shell", AgentProvider::Codex),
         ] {
             snapshot.sessions[0].windows[0].active_pane = PaneId(active_pane);
-            let model = StatusBarModel::from_snapshot(
-                &snapshot,
-                Some(SessionId(1)),
-                None,
-                StatusBarSettings::default(),
-            );
+            let model = StatusBarModel::from_snapshot(&snapshot, Some(SessionId(1)));
 
             assert_eq!(model.windows[0].name, "shell");
             assert_eq!(model.windows[0].label, label);
@@ -440,12 +368,7 @@ mod tests {
                 active_tab,
                 profile: "default".into(),
             });
-            let model = StatusBarModel::from_snapshot(
-                &snapshot,
-                Some(SessionId(1)),
-                None,
-                StatusBarSettings::default(),
-            );
+            let model = StatusBarModel::from_snapshot(&snapshot, Some(SessionId(1)));
             assert_eq!(model.windows[0].label, expected);
             assert!(model.windows[0].name.is_empty());
         }
@@ -453,12 +376,7 @@ mod tests {
         window.name = "Research".to_owned();
         window.automatic_rename = false;
         window.panes.get_mut(&window.active_pane).unwrap().title = "Page title".to_owned();
-        let model = StatusBarModel::from_snapshot(
-            &snapshot,
-            Some(SessionId(1)),
-            None,
-            StatusBarSettings::default(),
-        );
+        let model = StatusBarModel::from_snapshot(&snapshot, Some(SessionId(1)));
         assert_eq!(model.windows[0].label, "Research");
         assert_eq!(model.windows[0].name, "Research");
     }
@@ -469,12 +387,7 @@ mod tests {
         let window = &mut snapshot.sessions[0].windows[1];
         window.name = "Reviews".to_owned();
         window.automatic_rename = false;
-        let model = StatusBarModel::from_snapshot(
-            &snapshot,
-            Some(SessionId(1)),
-            None,
-            StatusBarSettings::default(),
-        );
+        let model = StatusBarModel::from_snapshot(&snapshot, Some(SessionId(1)));
 
         assert_eq!(model.windows[1].name, "Reviews");
         assert_eq!(model.windows[1].label, "Reviews");
@@ -482,44 +395,11 @@ mod tests {
     }
 
     #[test]
-    fn settings_hide_presentational_items_without_hiding_windows() {
-        let snapshot = snapshot();
-        let settings = StatusBarSettings {
-            badges: false,
-            show_host: false,
-            show_update: false,
-        };
-        let model = StatusBarModel::from_snapshot(
-            &snapshot,
-            Some(SessionId(1)),
-            Some("remote.example"),
-            settings,
-        );
-
-        assert_eq!(model.windows.len(), 2);
-        assert!(
-            model
-                .windows
-                .iter()
-                .all(|window| !window.bell && !window.activity && window.agent_provider.is_none())
-        );
-        assert_eq!(model.host_name, None);
-        assert!(!model.show_update);
-        assert_eq!(model.windows[1].label, "agent");
-    }
-
-    #[test]
     fn missing_attachments_are_empty() {
         for attached in [None, Some(SessionId(99))] {
-            let model = StatusBarModel::from_snapshot(
-                &snapshot(),
-                attached,
-                Some("remote.example"),
-                StatusBarSettings::default(),
-            );
+            let model = StatusBarModel::from_snapshot(&snapshot(), attached);
             assert_eq!(model.session_name, None);
             assert!(model.windows.is_empty());
-            assert_eq!(model.host_name.as_deref(), Some("remote.example"));
         }
     }
 
@@ -552,12 +432,7 @@ mod tests {
             }],
             focused_window: None,
         };
-        let model = StatusBarModel::from_snapshot(
-            &snapshot,
-            Some(SessionId(4)),
-            None,
-            StatusBarSettings::default(),
-        );
+        let model = StatusBarModel::from_snapshot(&snapshot, Some(SessionId(4)));
 
         assert_eq!(model.windows.len(), 7);
         assert_eq!(

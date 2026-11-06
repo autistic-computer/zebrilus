@@ -329,12 +329,10 @@ rightward flick completes it. On the list, the same swipe returns to the workspa
   corners, font family, and shadow strength. Fresh installs use System appearance;
   saved choices survive upgrades. System appearance follows live iOS changes;
   pinned modes also update the native status bar.
-- **Panes:** live preview, gaps, background opacity, inactive opacity, selected
-  glow, margin, corner radius, and border width.
-  Frame controls apply with gaps.
+- **Panes:** live preview, gaps, inactive opacity, selected glow, margin and
+  corner radius. Frame controls apply with gaps.
 - **Terminal:** a live preview, local font family, and text scale. Host colors,
   cursor, and padding remain visible as host-owned settings.
-- **Status bar:** the sidebar switch and window badges.
 - **Hosts:** the configured endpoint, connection status, and reconnect.
 - **Advanced:** command palette layout (tree or flat), host prefix, and command shortcuts;
   Display: drawing under the home indicator, matching the system text size, and keeping

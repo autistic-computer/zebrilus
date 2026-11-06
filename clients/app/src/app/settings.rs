@@ -45,9 +45,8 @@ fn palette_layout_value(preferences: &Preferences) -> &'static str {
     }
 }
 
-pub(super) const SECTIONS: [SettingsSection; 8] = [
+pub(super) const SECTIONS: [SettingsSection; 7] = [
     SettingsSection::Appearance,
-    SettingsSection::StatusBar,
     SettingsSection::Panes,
     SettingsSection::Terminal,
     SettingsSection::Hosts,
@@ -69,7 +68,7 @@ pub(super) fn shown(setting: Setting, phone: bool) -> bool {
     !phone
         || !matches!(
             setting,
-            Setting::Section(SettingsSection::StatusBar | SettingsSection::Panes)
+            Setting::Section(SettingsSection::Panes)
                 | Setting::SystemTextSize
                 | Setting::CommandPalette
         )
@@ -106,6 +105,12 @@ struct PlatformReduceMotion(bool);
 impl ala::Global for PlatformReduceMotion {}
 
 impl Preferences {
+    fn apply_pane_frame(&self, cx: &mut App) {
+        let theme = Theme::global_mut(cx);
+        theme.pane_margin = self.margin();
+        theme.pane_corner_radius = self.pane_corner_radius.map(ala::px);
+    }
+
     pub(super) fn apply(&self, connection: &Entity<Connection>, window: &mut Window, cx: &mut App) {
         #[cfg(any(target_os = "ios", target_os = "android"))]
         let system = ala_platform::mobile::accessibility();
@@ -144,12 +149,11 @@ impl Preferences {
             shown.motion = penna::foundation::motion::Motion::Off;
         }
         shown.apply(Some(window), cx);
-        cx.set_global(zz_ui::pip::PipOpacity(self.pip_background_opacity));
         cx.set_global(PaneLook {
             frames: self.gaps,
             glow_strength: self.pane_glow_strength,
         });
-        Theme::global_mut(cx).pane_margin = self.margin();
+        self.apply_pane_frame(cx);
         let available_fonts = cx.text_system().all_font_names();
         let wanted_font = self.shown_ui_font();
         let ui_font = if available_fonts
@@ -205,7 +209,7 @@ impl Preferences {
 
 pub(super) struct Controls {
     appearance: AppearanceControls,
-    panes: [Entity<InputState>; 4],
+    panes: [Entity<InputState>; 3],
     terminal_font: Entity<SelectState<Vec<SettingsSelectItem>>>,
     palette_layout: Entity<SelectState<Vec<SettingsSelectItem>>>,
     _subscriptions: Vec<Subscription>,
@@ -228,14 +232,13 @@ impl Controls {
             cx,
         );
         let pane_values = [
-            preferences.pip_background_opacity,
             preferences.pane_inactive_opacity,
             preferences.pane_glow_strength,
             preferences.pane_margin,
         ];
         let panes = PaneControl::ALL.map(|control| {
             let (min, max, step) = control.limits();
-            let scale = if matches!(control, PaneControl::PipOpacity | PaneControl::Glow) {
+            let scale = if control == PaneControl::Glow {
                 100.0
             } else {
                 1.0
@@ -279,14 +282,11 @@ impl Controls {
                         });
                     }
                     this.preferences.save();
-                    cx.set_global(zz_ui::pip::PipOpacity(
-                        this.preferences.pip_background_opacity,
-                    ));
                     cx.set_global(PaneLook {
                         frames: this.preferences.gaps,
                         glow_strength: this.preferences.pane_glow_strength,
                     });
-                    Theme::global_mut(cx).pane_margin = this.preferences.margin();
+                    this.preferences.apply_pane_frame(cx);
                     cx.refresh_windows();
                     cx.notify();
                 },
@@ -588,8 +588,9 @@ impl AppShell {
                 .into_any_element();
             }
             SettingsSection::Panes => {
-                let [background, inactive, glow, margin] =
+                let [inactive, glow, margin] =
                     PaneControl::ALL.map(|control| self.pane_setting(control, cx));
+                let corner = self.pane_corner_setting(cx);
                 let gaps = SettingEntry::new("Pane gaps").control(
                     Switch::new("settings-pane-gaps")
                         .checked(self.preferences.gaps)
@@ -607,42 +608,8 @@ impl AppShell {
                         inactive_opacity: self.preferences.pane_inactive_opacity,
                     },
                     [gaps],
-                    [background],
                     [inactive, glow],
-                    [margin],
-                    cx,
-                )
-                .into_any_element();
-            }
-            SettingsSection::StatusBar => {
-                let rows = [
-                    SettingEntry::new("Sidebar").control(
-                        Switch::new("settings-sidebar")
-                            .checked(self.sidebar)
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                this.sidebar = !this.sidebar;
-                                this.preferences.sidebar = this.sidebar;
-                                this.preferences.save();
-                                cx.notify();
-                            })),
-                    ),
-                    SettingEntry::new("Window badges")
-                        .description("Bell and activity markers on window items")
-                        .control(
-                            Switch::new("settings-status-badges")
-                                .checked(self.preferences.status_badges)
-                                .on_click(cx.listener(|this, _, _, cx| {
-                                    this.preferences.status_badges =
-                                        !this.preferences.status_badges;
-                                    this.preferences.save();
-                                    cx.notify();
-                                })),
-                        ),
-                ];
-                return zz_ui::settings::status_bar_preview::status_bar_page(
-                    self.preferences.status_bar_settings(),
-                    self.preferences.gaps,
-                    SettingsStack::new().children(rows),
+                    [margin, corner],
                     cx,
                 )
                 .into_any_element();
@@ -766,8 +733,37 @@ impl AppShell {
         )
     }
 
+    fn pane_corner_setting(&self, cx: &mut Context<Self>) -> SettingEntry {
+        let gaps = self.preferences.gaps;
+        SettingEntry::new("Corner radius")
+            .description(if gaps {
+                "Panes and PiPs"
+            } else {
+                "Needs pane gaps"
+            })
+            .control(penna::blocks::appearance::corner_slider(
+                "settings-pane-corner-radius",
+                "Pane corner radius",
+                f32::from(cx.theme().pane_radius()),
+                {
+                    let view = cx.entity().downgrade();
+                    move |radius, _, cx| {
+                        let _ = view.update(cx, |this, cx| {
+                            this.preferences.pane_corner_radius = Some(radius);
+                            this.preferences.save();
+                            this.preferences.apply_pane_frame(cx);
+                            cx.refresh_windows();
+                            cx.notify();
+                        });
+                    }
+                },
+                cx,
+            ))
+            .disabled(!gaps)
+    }
+
     fn pane_setting(&self, control: PaneControl, cx: &mut Context<Self>) -> SettingEntry {
-        let needs_gaps = !matches!(control, PaneControl::PipOpacity | PaneControl::Opacity);
+        let needs_gaps = control != PaneControl::Opacity;
         let off = needs_gaps && !self.preferences.gaps;
         let description = if off {
             Some("Needs pane gaps")
@@ -1187,18 +1183,16 @@ fn sample_terminal_viewport(
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum PaneControl {
-    PipOpacity,
     Opacity,
     Glow,
     Margin,
 }
 
 impl PaneControl {
-    const ALL: [Self; 4] = [Self::PipOpacity, Self::Opacity, Self::Glow, Self::Margin];
+    const ALL: [Self; 3] = [Self::Opacity, Self::Glow, Self::Margin];
 
     fn value(self, preferences: &mut Preferences) -> &mut f32 {
         match self {
-            Self::PipOpacity => &mut preferences.pip_background_opacity,
             Self::Opacity => &mut preferences.pane_inactive_opacity,
             Self::Glow => &mut preferences.pane_glow_strength,
             Self::Margin => &mut preferences.pane_margin,
@@ -1207,7 +1201,7 @@ impl PaneControl {
 
     fn limits(self) -> (f32, f32, f64) {
         match self {
-            Self::PipOpacity | Self::Opacity => (0.0, 1.0, 0.05),
+            Self::Opacity => (0.0, 1.0, 0.05),
             Self::Glow => (0.0, 2.0, 0.05),
             Self::Margin => (0.0, 32.0, 0.5),
         }
@@ -1215,7 +1209,6 @@ impl PaneControl {
 
     fn title(self) -> &'static str {
         match self {
-            Self::PipOpacity => "PiP background opacity",
             Self::Opacity => "Inactive pane opacity",
             Self::Glow => "Selected pane contrast",
             Self::Margin => "Pane margin",

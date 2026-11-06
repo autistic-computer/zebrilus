@@ -231,6 +231,7 @@ fn connecting_shell(
     app_shell_surface(
         "shell",
         cx.theme().background,
+        None,
         sidebar(tree, false, cx),
         None,
         app_workspace_surface(

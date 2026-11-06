@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 use ala::{
-    AnyElement, App, Bounds, ClickEvent, Div, ElementId, GlassMaterial, Global, Hsla, IntoElement,
+    AnyElement, App, Bounds, ClickEvent, Div, ElementId, GlassMaterial, Hsla, IntoElement,
     ParentElement as _, Pixels, Point, Size, Stateful, Styled as _, Window, div, point, prelude::*,
     px,
 };
@@ -16,17 +16,11 @@ use crate::{
 
 const GROUP: &str = "pip";
 const MARGIN: f32 = zz_client::floating::PIP_MARGIN;
-const FROST: f32 = 24.0;
 const STACK_DEPTH: usize = 3;
 const PEEK: f32 = 60.0;
 const VELOCITY_WINDOW: Duration = Duration::from_millis(100);
 const FRAME: Duration = Duration::from_millis(16);
 const DECELERATION: f32 = 0.998;
-const DEFAULT_OPACITY: f32 = 0.8;
-
-pub struct PipOpacity(pub f32);
-
-impl Global for PipOpacity {}
 
 #[derive(Clone, Debug, Default)]
 pub struct PipThrow {
@@ -400,7 +394,7 @@ pub fn pip_content_radius(cx: &App) -> Pixels {
 
 #[allow(
     clippy::disallowed_methods,
-    reason = "a PiP is blurred in its pane's own colour at the PiP opacity setting, over the floating.pip edge and shadow"
+    reason = "a PiP is glass in its pane's own colour, or that colour opaque, over the floating.pip edge and shadow"
 )]
 fn pip_look(cx: &App) -> Layer {
     cx.theme().layer(ContentLook::Pip, PaintState::Rest)
@@ -408,7 +402,7 @@ fn pip_look(cx: &App) -> Layer {
 
 #[allow(
     clippy::disallowed_methods,
-    reason = "a PiP is blurred in its pane's own colour at the PiP opacity setting, over the floating.pip edge and shadow"
+    reason = "a PiP is glass in its pane's own colour, or that colour opaque, over the floating.pip edge and shadow"
 )]
 fn paint_pip(surface: Stateful<Div>, look: &Layer) -> Stateful<Div> {
     surface.layer(look)
@@ -477,23 +471,11 @@ impl PipSurface {
 }
 
 #[must_use]
-pub fn pip_material(fill: Hsla, cx: &App) -> GlassMaterial {
+pub fn pip_material(fill: Hsla, cx: &App) -> Option<GlassMaterial> {
     let fill = fill.opaque();
-    let opacity = cx
-        .try_global::<PipOpacity>()
-        .map_or(DEFAULT_OPACITY, |opacity| opacity.0);
     pip_look(cx)
         .glass
-        .unwrap_or_else(|| {
-            GlassMaterial::edge(fill)
-                .blur(px(FROST))
-                .specular(0.0)
-                .fresnel(0.0)
-                .edge_shadow(0.0)
-                .glint_width(Pixels::ZERO)
-        })
-        .tint(fill.alpha(opacity))
-        .fallback(fill)
+        .map(|glass| glass.tint(fill.alpha(glass.tint.a)).fallback(fill))
 }
 
 impl RenderOnce for PipSurface {
@@ -553,8 +535,10 @@ impl RenderOnce for PipSurface {
             .occlude()
             .map(|surface| paint_pip(surface, &layer))
             .rounded(cx.theme().pane_radius())
-            .bg(cx.theme().transparent)
-            .glass(material)
+            .map(|surface| match material {
+                Some(material) => surface.bg(cx.theme().transparent).glass(material),
+                None => surface.bg(fill.opaque()),
+            })
             .on_mouse_down(ala::MouseButton::Left, |_, _, cx| cx.stop_propagation())
             .child(
                 div()
@@ -604,6 +588,21 @@ mod tests {
         let pip = theme.layer(ContentLook::Pip, PaintState::Rest);
         assert_eq!(pip.shadow, theme.float_shadows());
         assert!(!pip.shadow.is_empty());
+    }
+
+    #[ala::test]
+    fn a_pip_is_glass_in_its_panes_color_or_that_color_opaque(cx: &mut ala::TestAppContext) {
+        cx.update(crate::init);
+        let fill = cx.update(|cx| cx.theme().background.opaque());
+        cx.update(|cx| penna::Theme::global_mut(cx).glass = None);
+        assert_eq!(cx.update(|cx| pip_material(fill, cx)), None);
+        let liquid = penna::foundation::interface_theme::liquid(penna::ThemeMode::Dark);
+        cx.update(|cx| penna::Theme::global_mut(cx).glass = Some(liquid));
+        let glass = cx
+            .update(|cx| pip_material(fill, cx))
+            .expect("a PiP is glass while glass is on");
+        assert_eq!(glass.tint, fill.alpha(liquid.tint.a));
+        assert_eq!(glass.fallback, Some(fill));
     }
 
     #[test]

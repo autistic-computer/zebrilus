@@ -92,26 +92,11 @@
   --penna-icon-size: 14px;
 }
 
-.tab-dots {
-  display: flex;
-  flex: none;
-  align-items: center;
-  gap: 3px;
-}
-
 .dot {
   flex: none;
   width: 6px;
   height: 6px;
   border-radius: 50%;
-}
-
-.dot.bell {
-  background: var(--penna-warning);
-}
-
-.dot.activity {
-  background: var(--penna-success);
 }
 
 .tab-close {
@@ -556,8 +541,7 @@
 
 .float-surface[data-penna="floating.pip"] {
   --penna-r: var(--penna-pane-radius);
-  --penna-fill: color-mix(in srgb, var(--penna-bg) calc(var(--pip-opacity, 0.8) * 100%), transparent);
-  --penna-backdrop: blur(24px);
+  --penna-fill: var(--zz-pip-fill, var(--penna-bg));
 }
 
 .float-surface > [data-pane] {

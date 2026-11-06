@@ -111,14 +111,13 @@ fn apply_zz_overrides(cx: &mut App) {
         .map_or_else(|| ala::Font::default().family, SharedString::from);
     let chrome_contrast = config::chrome_contrast(cx);
     let reduce_transparency = config::resolved_config(cx).reduce_transparency.value;
-    let pip_opacity = config::pip_background_opacity(cx);
     let pane_look = PaneLook {
         frames: config::pane_gaps(cx),
         glow_strength: config::resolved_config(cx).pane_glow_strength.value,
     };
     let pane_margin = config::pane_margin(cx);
+    let pane_corner_radius = config::pane_corner_radius(cx).map(ala::px);
     let window_opacity = chrome_background(cx).a;
-    cx.set_global(zz_ui::pip::PipOpacity(pip_opacity));
     cx.set_global(pane_look);
     let theme = Theme::global_mut(cx);
 
@@ -132,6 +131,7 @@ fn apply_zz_overrides(cx: &mut App) {
         theme.glass = None;
     }
     theme.pane_margin = pane_margin;
+    theme.pane_corner_radius = pane_corner_radius;
     theme.window_opacity = window_opacity;
 }
 

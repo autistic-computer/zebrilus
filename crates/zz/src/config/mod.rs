@@ -5,7 +5,6 @@ use std::{
 };
 
 use ala::{App, Corners, Global, Pixels, WindowBackgroundAppearance, WindowDecorations, px};
-use zz_client::StatusBarSettings;
 use zz_client::url_input::SearchProvider;
 use zz_daemon_client::{Endpoint, InteractiveClient};
 pub(crate) use zz_daemon_client::{HostEntry, validate_fleet_host};
@@ -350,8 +349,8 @@ pub(crate) fn pane_gaps(cx: &App) -> bool {
     resolved_config(cx).pane_gaps.value
 }
 
-pub(crate) fn pip_background_opacity(cx: &App) -> f32 {
-    resolved_config(cx).pip_background_opacity.value
+pub(crate) fn pane_corner_radius(cx: &App) -> Option<f32> {
+    resolved_config(cx).pane_corner_radius.value
 }
 
 pub(crate) fn pane_inactive_opacity(cx: &App) -> f32 {
@@ -560,15 +559,6 @@ pub(crate) fn observe_window_background<T: 'static>(
 
 pub fn resolved_config(cx: &App) -> AppConfig {
     cx.try_global::<AppConfig>().copied().unwrap_or_default()
-}
-
-pub(crate) fn status_bar_settings(cx: &App) -> StatusBarSettings {
-    let config = resolved_config(cx);
-    StatusBarSettings {
-        badges: config.status_badges.value,
-        show_host: config.status_host.value,
-        show_update: config.status_update.value,
-    }
 }
 
 pub(crate) fn look_edits(
@@ -1187,32 +1177,6 @@ mod tests {
             ConfigProvenance::Override
         );
         assert!(AppConfig::default().check_for_updates.value);
-    }
-
-    #[test]
-    fn status_bar_settings_parse_with_typed_defaults() {
-        let defaults = AppConfig::default();
-        assert!(defaults.status_badges.value);
-        assert!(defaults.status_host.value);
-        assert!(defaults.status_update.value);
-
-        let parsed = parse_config(
-            "status-badges = false\n\
-             status-host = false\n\
-             status-update = false\n",
-        );
-
-        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
-        assert!(!parsed.config.status_badges.value);
-        assert!(!parsed.config.status_host.value);
-        assert!(!parsed.config.status_update.value);
-        for provenance in [
-            parsed.config.status_badges.provenance,
-            parsed.config.status_host.provenance,
-            parsed.config.status_update.provenance,
-        ] {
-            assert_eq!(provenance, ConfigProvenance::Override);
-        }
     }
 
     #[test]
@@ -2299,87 +2263,24 @@ mod tests {
     }
 
     #[ala::test]
-    fn pip_background_opacity_validates_reloads_and_resets_without_changing_shadows(
+    fn a_pane_corner_reloads_into_the_theme_and_resets_to_the_concentric_one(
         cx: &mut ala::TestAppContext,
     ) {
-        for value in ["-0.01", "1.01", "NaN", "inf", "invalid"] {
-            let parsed = parse_config(&format!("pip-background-opacity = {value}\n"));
-            assert_eq!(parsed.diagnostics.len(), 1, "{value}");
-            assert_f32_eq(parsed.config.pip_background_opacity.value, 0.8);
-        }
-        let retired = parse_config("pane-background-opacity = 0.5\n");
-        assert_eq!(retired.diagnostics.len(), 1);
-        assert!(
-            retired.diagnostics[0]
-                .message
-                .contains("pip-background-opacity")
-        );
         let directory = tempfile::tempdir().expect("temporary directory");
         let path = directory.path().join(CONFIG_FILE_NAME);
         cx.update(zz_ui::init);
-        let shadows = cx.update(|cx| {
+        let concentric = cx.update(|cx| {
             install_config(Some(&path), Some(load_config(&path)), cx);
             crate::theme::refresh_current_theme(cx);
-            penna::Theme::global(cx).contact_shadows()
+            penna::Theme::global(cx).pane_radius()
         });
-        for (value, expected, provenance) in [
-            (Some("0"), 0.0, ConfigProvenance::Override),
-            (Some("0.25"), 0.25, ConfigProvenance::Override),
-            (Some("1"), 1.0, ConfigProvenance::Override),
-            (None, 0.8, ConfigProvenance::Default),
-        ] {
-            write_config_edit_at(&path, ConfigKey::PipBackgroundOpacity.as_str(), value)
-                .expect("write PiP background opacity");
+        for (value, expected) in [(Some("20"), px(20.0)), (Some("0"), px(0.0)), (None, concentric)] {
+            write_config_edit_at(&path, ConfigKey::PaneCornerRadius.as_str(), value)
+                .expect("write the pane corner");
             cx.update(|cx| {
                 install_config(Some(&path), Some(load_config(&path)), cx);
                 crate::theme::refresh_current_theme(cx);
-                assert_f32_eq(pip_background_opacity(cx), expected);
-                assert_f32_eq(cx.global::<zz_ui::pip::PipOpacity>().0, expected);
-                assert_eq!(
-                    resolved_config(cx).pip_background_opacity.provenance,
-                    provenance
-                );
-                assert_eq!(penna::Theme::global(cx).contact_shadows(), shadows);
-            });
-        }
-    }
-
-    #[ala::test]
-    fn pane_glow_strength_validates_reloads_and_resets(cx: &mut ala::TestAppContext) {
-        for value in ["-0.01", "2.01", "NaN", "inf", "invalid"] {
-            let parsed = parse_config(&format!("pane-glow-strength = {value}\n"));
-            assert_eq!(parsed.diagnostics.len(), 1, "{value}");
-            assert_f32_eq(parsed.config.pane_glow_strength.value, 1.0);
-        }
-        let directory = tempfile::tempdir().expect("temporary directory");
-        let path = directory.path().join(CONFIG_FILE_NAME);
-        cx.update(zz_ui::init);
-        for (value, expected, provenance) in [
-            (Some("0"), 0.0, ConfigProvenance::Override),
-            (Some("0.5"), 0.5, ConfigProvenance::Override),
-            (Some("2"), 2.0, ConfigProvenance::Override),
-            (None, 1.0, ConfigProvenance::Default),
-        ] {
-            write_config_edit_at(&path, ConfigKey::PaneGlowStrength.as_str(), value)
-                .expect("write pane glow strength");
-            cx.update(|cx| {
-                install_config(Some(&path), Some(load_config(&path)), cx);
-                crate::theme::refresh_current_theme(cx);
-                assert_f32_eq(
-                    zz_ui::pane_look::PaneLook::global(cx).glow_strength,
-                    expected,
-                );
-                assert_eq!(
-                    resolved_config(cx).pane_glow_strength.provenance,
-                    provenance
-                );
-                for mode in [penna::ThemeMode::Dark, penna::ThemeMode::Light] {
-                    penna::Theme::change(mode, None, cx);
-                    assert_f32_eq(
-                        zz_ui::pane_look::PaneLook::global(cx).glow_strength,
-                        expected,
-                    );
-                }
+                assert_eq!(penna::Theme::global(cx).pane_radius(), expected, "{value:?}");
             });
         }
     }
@@ -2512,26 +2413,6 @@ mod tests {
         let resolved = cx.update(|cx| resolved_config(cx));
         assert!(resolved.pane_gaps.value);
         assert_f32_eq(resolved.pane_margin.value, 9.0);
-    }
-
-    #[ala::test]
-    fn status_bar_settings_project_from_the_live_app_config(cx: &mut ala::TestAppContext) {
-        let config = parse_config(
-            "status-badges = false\n\
-             status-host = false\n\
-             status-update = false\n",
-        )
-        .config;
-        cx.update(|cx| cx.set_global(AppConfig::from(config)));
-
-        assert_eq!(
-            cx.update(|cx| status_bar_settings(cx)),
-            StatusBarSettings {
-                badges: false,
-                show_host: false,
-                show_update: false,
-            }
-        );
     }
 
     #[ala::test]
@@ -2964,15 +2845,12 @@ mod tests {
             "quit-daemon-on-exit",
             "auto-restart-stale-daemon",
             "check-for-updates",
-            "status-badges",
-            "status-host",
-            "status-update",
             "experimental-editor-pane",
             "pane-gaps",
-            "pip-background-opacity",
             "pane-glow-strength",
             "pane-inactive-opacity",
             "pane-margin",
+            "pane-corner-radius",
             "widget-corner-radius",
             "chrome-contrast",
             "reduce-transparency",

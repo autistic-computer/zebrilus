@@ -861,7 +861,6 @@ impl AppShell {
         drawn_panes: &mut Vec<PaneId>,
         cx: &mut Context<Self>,
     ) -> Vec<AnyElement> {
-        let settings = self.preferences.status_bar_settings();
         let attached_session = attached_model.and(connection.read(cx).core.attached_session());
         let sessions: Vec<(SessionId, String, StatusBarModel, Vec<WindowShape>)> = {
             let core = &connection.read(cx).core;
@@ -871,12 +870,7 @@ impl AppShell {
                 .map(|session| {
                     let model = match attached_model {
                         Some(model) if attached_session == Some(session.id) => model.clone(),
-                        _ => StatusBarModel::from_snapshot(
-                            core.snapshot(),
-                            Some(session.id),
-                            None,
-                            settings,
-                        ),
+                        _ => StatusBarModel::from_snapshot(core.snapshot(), Some(session.id)),
                     };
                     let shapes = session
                         .windows

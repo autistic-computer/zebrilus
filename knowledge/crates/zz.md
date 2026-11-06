@@ -202,15 +202,14 @@ complete daemon-owned entry vector crosses the wire on connect and every poll ch
 empty vector that restores donor/default values.
 
 The settings view is a route in the main window opened with `Cmd+,` on macOS or `Ctrl+,`
-elsewhere. `SettingsSection::ALL` is eleven pages, titled Interface, Status bar, Editor, Panes, Multiplexer,
+elsewhere. `SettingsSection::ALL` is ten pages, titled Interface, Editor, Panes, Multiplexer,
 Browser, Terminal, Hosts, Providers, System, About:
 
 | Section | Contents |
 |---------|----------|
 | Interface | Look (a Mode segmented control for `theme-mode`, the Accent swatches for `chrome-accent`, the Tint, Tint strength and Corner radius sliders for `chrome-tint-hue`, `chrome-tint` and `widget-corner-radius`, the Controls segmented control and the Glass switch for `control-shape` and `interface-glass`, and the system UI font picker), Sidebar (`program-colors`), Size (transient UI zoom, `chrome-density` as Density), Accessibility (`chrome-contrast` as Increase contrast, `reduce-transparency` as Reduce transparency, `motion` as Motion), Window (macOS app-icon pickers, window blur, Linux `window-corner-radius` and `use-system-titlebar`) |
-| Status bar | Session chip, window badges and alignment, Agent count, remote host, update, and clock; visible in the title bar when the sidebar is retracted |
 | Editor | Editor-pane typography and display controls, when compiled in |
-| Panes | Layout (`pane-gaps`), PiP (`pip-background-opacity`), Focus (`pane-inactive-opacity`, `pane-glow-strength`), Frame (`pane-margin`); gapped panes draw their frame in glass, with corners from the theme's radius and the rim from the theme's glass (a hairline the outline's width without glass) |
+| Panes | Layout (`pane-gaps`), Focus (`pane-inactive-opacity`, `pane-glow-strength`), Frame (`pane-margin`, and `pane-corner-radius` as Corner radius, a percent slider); gapped panes draw their frame in glass, with corners concentric with their header's buttons unless Corner radius sets them, and the rim from the theme's glass (a hairline the outline's width without glass). PiPs take the same corner and follow Glass like a menu |
 | Multiplexer | Full-file `zz/mux.conf` editor without line numbers, 12px text, Save, and tmux import |
 | Browser | Browser-local shortcuts, beginning with the element-selector hotkey |
 | Terminal | Full-file Ghostty-compatible configuration editor with Save and Import Ghostty |

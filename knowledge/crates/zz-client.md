@@ -18,10 +18,10 @@ toolkit shells consume those rectangles through the C ABI, keeping split semanti
 while each surface multiplies them by its current local bounds.
 
 `StatusBarModel::from_snapshot` projects one attached session into renderer-free native status
-data. It carries the optional session and remote-host names, the complete window list, per-client
-focus, bell/activity/agent markers, the live terminals running Claude Code or Codex
-(`window_summary::pane_agent`, which reads `PaneSummary.process`), update visibility,
-alignment, and the clock mode. `StatusBarSettings` supplies typed defaults. Views own truncation,
+data. It carries the optional session name, the complete window list, per-client
+focus, bell/activity/agent markers (the compact view reads them for page attention; the title bar
+draws none), and the live terminals running Claude Code or Codex
+(`window_summary::pane_agent`, which reads `PaneSummary.process`). Views own truncation,
 overflow, actions, colors, and time formatting. This path does not read the daemon-expanded
 `StatusLine`.
 

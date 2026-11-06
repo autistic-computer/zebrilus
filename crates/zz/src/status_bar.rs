@@ -1,11 +1,7 @@
-use penna::blocks::sidebar::{controls_leading_inset, status_dot};
+use penna::blocks::sidebar::controls_leading_inset;
 use std::rc::Rc;
 
-use ala::{
-    AnyElement, App, Entity, IntoElement, MouseButton, Pixels, SharedString, Stateful, Window,
-    prelude::*,
-};
-use penna::{ActiveTheme as _, IconName, components::tooltip::Tooltip};
+use ala::{AnyElement, App, Entity, Pixels, Stateful, Window};
 use zz_client::{StatusBarModel, StatusBarWindow};
 use zz_ui::navigation::{
     WorkspaceStatusWindowState,
@@ -13,7 +9,6 @@ use zz_ui::navigation::{
         MAX_VISIBLE_WINDOWS, StatusPaneEntry, StatusWindowActions, StatusWindowEntry,
         status_window, status_window_overflow, visible_window_range,
     },
-    workspace_status_item,
 };
 
 use crate::mux::{
@@ -44,19 +39,7 @@ pub(crate) fn render_gui_status_bar(
         )
     };
     let tree_model = MuxTreeModel::from_mux(mux.read(cx));
-    let host_name = if attached_host == HostId::LOCAL {
-        None
-    } else {
-        tree_model
-            .host(attached_host)
-            .map(|host| host.name.as_str())
-    };
-    let model = StatusBarModel::from_snapshot(
-        &snapshot,
-        attached,
-        host_name,
-        crate::config::status_bar_settings(cx),
-    );
+    let model = StatusBarModel::from_snapshot(&snapshot, attached);
     let active_index = model
         .windows
         .iter()
@@ -70,65 +53,15 @@ pub(crate) fn render_gui_status_bar(
         .collect::<Vec<_>>();
     let overflow = (model.windows.len() > MAX_VISIBLE_WINDOWS)
         .then(|| render_window_overflow(&model.windows, connected, mux, cx));
-    let right = render_right_items(&model, cx);
     workspace_status_bar(
         crate::config::pane_gaps(cx),
         controls_leading_inset(cx),
         WorkspaceStatusSlots {
             windows: visible_windows.into_iter().chain(overflow).collect(),
-            right,
             titlebar_controls,
             window_controls,
         },
         cx,
-    )
-}
-
-fn render_right_items(model: &StatusBarModel, cx: &App) -> Vec<AnyElement> {
-    let mut items = Vec::new();
-    if let Some(host) = &model.host_name {
-        items.push(
-            workspace_status_item(
-                "gui-status-host",
-                Some(IconName::Globe),
-                host.clone().into(),
-                cx,
-            )
-            .into_any_element(),
-        );
-    }
-    if let Some(update) = render_update(model.show_update, cx) {
-        items.push(update);
-    }
-    items
-}
-
-fn render_update(show: bool, cx: &App) -> Option<AnyElement> {
-    if !show {
-        return None;
-    }
-    let status = crate::update::status(cx)?;
-    let crate::update::CheckState::Available(release) = status.check else {
-        return None;
-    };
-    let tooltip: SharedString = format!("Install zz {}", release.version).into();
-    Some(
-        workspace_status_item(
-            "gui-status-update",
-            None,
-            format!("v{}", release.version).into(),
-            cx,
-        )
-        .flex_none()
-        .cursor_pointer()
-        .tooltip(move |window, cx| Tooltip::new(tooltip.clone()).build(window, cx))
-        .child(status_dot(cx.theme().success))
-        .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-        .on_click(|_, window, cx| {
-            cx.stop_propagation();
-            crate::update::install(window, cx);
-        })
-        .into_any_element(),
     )
 }
 
@@ -164,8 +97,6 @@ fn render_status_window(
         WorkspaceStatusWindowState {
             connected,
             active: window.active,
-            bell: window.bell,
-            activity: window.activity,
         },
         window
             .panes

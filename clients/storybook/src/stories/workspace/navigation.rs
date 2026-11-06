@@ -8,8 +8,8 @@ use zz_ui::{
     navigation::{
         WORKSPACE_TREE_NODE_ICON_SIZE, WorkspaceStatusWindowState, WorkspaceTreeInk,
         sidebar::{tree_action_strip, tree_host_indicator, tree_host_marker, tree_node_marker},
-        workspace_status_item, workspace_status_window, workspace_tree_action_button,
-        workspace_tree_disclosure, workspace_tree_marker,
+        workspace_status_window, workspace_tree_action_button, workspace_tree_disclosure,
+        workspace_tree_marker,
     },
     program::program_mark,
 };
@@ -56,7 +56,7 @@ pub const STORY: Story = Story {
         Section {
             id: "window-pills",
             name: "Window pills",
-            summary: "workspace_status_window and workspace_status_item, the pieces the status bar is made of. Hovering a connected pill fills it.",
+            summary: "workspace_status_window, the window pill the title bar is made of. Hovering a connected pill fills it.",
             build: |_, cx| stateless(window_pills, cx),
         },
     ],
@@ -621,71 +621,17 @@ fn window_pills(_: &mut Window, cx: &mut App) -> AnyElement {
                 ))
                 .child(pill("pill-rest", "1", "agents", connected, cx))
                 .child(pill(
-                    "pill-bell",
-                    "2",
-                    "logs",
-                    WorkspaceStatusWindowState {
-                        bell: true,
-                        ..connected
-                    },
-                    cx,
-                ))
-                .child(pill(
-                    "pill-activity",
-                    "3",
-                    "server",
-                    WorkspaceStatusWindowState {
-                        activity: true,
-                        ..connected
-                    },
-                    cx,
-                ))
-                .child(pill(
-                    "pill-both",
-                    "4",
-                    "ci",
-                    WorkspaceStatusWindowState {
-                        bell: true,
-                        activity: true,
-                        ..connected
-                    },
-                    cx,
-                ))
-                .child(pill(
                     "pill-disconnected",
-                    "5",
+                    "2",
                     "offline",
                     WorkspaceStatusWindowState::default(),
                     cx,
                 ))
                 .child(pill(
                     "pill-long",
-                    "6",
+                    "3",
                     "a window whose name is far too long for the pill",
                     connected,
-                    cx,
-                )),
-        )
-        .state(
-            "status items",
-            h_flex()
-                .gap_4()
-                .child(workspace_status_item(
-                    "item-host",
-                    Some(IconName::Globe),
-                    "devbox".into(),
-                    cx,
-                ))
-                .child(workspace_status_item(
-                    "item-plain",
-                    None,
-                    "v0.16.0".into(),
-                    cx,
-                ))
-                .child(workspace_status_item(
-                    "item-long",
-                    Some(IconName::HardDrive),
-                    "fabrico@build-server-eu-west-3.internal".into(),
                     cx,
                 )),
         )

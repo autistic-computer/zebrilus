@@ -6,7 +6,6 @@ use std::{
     path::{Path, PathBuf},
     time::SystemTime,
 };
-use zz_client::StatusBarSettings;
 use zz_client::appearance::{
     ACCENTS, AccentSetting, AppIconSetting, ControlShapeSetting, DEFAULT_TINT_HUE, DensitySetting,
     GLASSES, MAX_CORNER_RADIUS, MotionSetting, ThemeModeSetting,
@@ -38,7 +37,6 @@ pub const DEFAULT_WINDOW_CORNER_RADIUS: f32 = 13.5;
 
 pub const DEFAULT_PANE_GAPS: bool = false;
 pub const DEFAULT_PANE_GLOW_STRENGTH: f32 = 1.0;
-pub const DEFAULT_PIP_BACKGROUND_OPACITY: f32 = 0.8;
 pub const DEFAULT_PANE_INACTIVE_OPACITY: f32 = 0.7;
 pub const MIN_PANE_INACTIVE_OPACITY: f32 = 0.0;
 pub const MAX_PANE_INACTIVE_OPACITY: f32 = 1.0;
@@ -89,17 +87,14 @@ pub enum ConfigKey {
     QuitDaemonOnExit,
     AutoRestartStaleDaemon,
     CheckForUpdates,
-    StatusBadges,
-    StatusHost,
-    StatusUpdate,
     FlatSidebar,
     ProgramColors,
     ExperimentalEditorPane,
     PaneGaps,
-    PipBackgroundOpacity,
     PaneGlowStrength,
     PaneInactiveOpacity,
     PaneMargin,
+    PaneCornerRadius,
     WidgetCornerRadius,
     ChromeContrast,
     ReduceTransparency,
@@ -140,17 +135,14 @@ impl ConfigKey {
             Self::QuitDaemonOnExit => "quit-daemon-on-exit",
             Self::AutoRestartStaleDaemon => "auto-restart-stale-daemon",
             Self::CheckForUpdates => "check-for-updates",
-            Self::StatusBadges => "status-badges",
-            Self::StatusHost => "status-host",
-            Self::StatusUpdate => "status-update",
             Self::FlatSidebar => "flat-sidebar",
             Self::ProgramColors => "program-colors",
             Self::ExperimentalEditorPane => "experimental-editor-pane",
             Self::PaneGaps => "pane-gaps",
-            Self::PipBackgroundOpacity => "pip-background-opacity",
             Self::PaneGlowStrength => "pane-glow-strength",
             Self::PaneInactiveOpacity => "pane-inactive-opacity",
             Self::PaneMargin => "pane-margin",
+            Self::PaneCornerRadius => "pane-corner-radius",
             Self::WidgetCornerRadius => "widget-corner-radius",
             Self::ChromeContrast => "chrome-contrast",
             Self::ReduceTransparency => "reduce-transparency",
@@ -191,17 +183,14 @@ impl ConfigKey {
             "quit-daemon-on-exit" => Some(Self::QuitDaemonOnExit),
             "auto-restart-stale-daemon" => Some(Self::AutoRestartStaleDaemon),
             "check-for-updates" => Some(Self::CheckForUpdates),
-            "status-badges" => Some(Self::StatusBadges),
-            "status-host" => Some(Self::StatusHost),
-            "status-update" => Some(Self::StatusUpdate),
             "flat-sidebar" => Some(Self::FlatSidebar),
             "program-colors" => Some(Self::ProgramColors),
             "experimental-editor-pane" => Some(Self::ExperimentalEditorPane),
             "pane-gaps" => Some(Self::PaneGaps),
-            "pip-background-opacity" => Some(Self::PipBackgroundOpacity),
             "pane-glow-strength" => Some(Self::PaneGlowStrength),
             "pane-inactive-opacity" => Some(Self::PaneInactiveOpacity),
             "pane-margin" => Some(Self::PaneMargin),
+            "pane-corner-radius" => Some(Self::PaneCornerRadius),
             "widget-corner-radius" => Some(Self::WidgetCornerRadius),
             "chrome-contrast" => Some(Self::ChromeContrast),
             "reduce-transparency" => Some(Self::ReduceTransparency),
@@ -229,13 +218,13 @@ impl ConfigKey {
 
     pub const fn numeric_range(self) -> Option<(f32, f32)> {
         match self {
-            Self::PipBackgroundOpacity | Self::ChromeTint => Some((0.0, 1.0)),
+            Self::ChromeTint => Some((0.0, 1.0)),
             Self::PaneGlowStrength => Some((0.0, 2.0)),
             Self::PaneInactiveOpacity => {
                 Some((MIN_PANE_INACTIVE_OPACITY, MAX_PANE_INACTIVE_OPACITY))
             }
             Self::PaneMargin => Some((0.0, MAX_PANE_MARGIN)),
-            Self::WidgetCornerRadius => Some((0.0, MAX_CORNER_RADIUS)),
+            Self::WidgetCornerRadius | Self::PaneCornerRadius => Some((0.0, MAX_CORNER_RADIUS)),
             Self::ChromeContrast => Some((1.0, 2.0)),
             Self::ChromeTintHue => Some((0.0, 360.0)),
             Self::WindowCornerRadius => Some((0.0, MAX_WINDOW_CORNER_RADIUS)),
@@ -253,9 +242,6 @@ impl ConfigKey {
             | Self::QuitDaemonOnExit
             | Self::AutoRestartStaleDaemon
             | Self::CheckForUpdates
-            | Self::StatusBadges
-            | Self::StatusHost
-            | Self::StatusUpdate
             | Self::FlatSidebar
             | Self::ProgramColors
             | Self::ExperimentalEditorPane
@@ -384,17 +370,14 @@ pub struct AppConfig {
     pub quit_daemon_on_exit: ConfigValue<bool>,
     pub auto_restart_stale_daemon: ConfigValue<bool>,
     pub check_for_updates: ConfigValue<bool>,
-    pub status_badges: ConfigValue<bool>,
-    pub status_host: ConfigValue<bool>,
-    pub status_update: ConfigValue<bool>,
     pub flat_sidebar: ConfigValue<bool>,
     pub program_colors: ConfigValue<bool>,
     pub experimental_editor_pane: ConfigValue<bool>,
     pub pane_gaps: ConfigValue<bool>,
-    pub pip_background_opacity: ConfigValue<f32>,
     pub pane_glow_strength: ConfigValue<f32>,
     pub pane_inactive_opacity: ConfigValue<f32>,
     pub pane_margin: ConfigValue<f32>,
+    pub pane_corner_radius: ConfigValue<Option<f32>>,
     pub widget_corner_radius: ConfigValue<f32>,
     pub chrome_contrast: ConfigValue<f32>,
     pub reduce_transparency: ConfigValue<bool>,
@@ -415,7 +398,6 @@ pub struct AppConfig {
 
 impl Default for AppConfig {
     fn default() -> Self {
-        let status_bar = StatusBarSettings::default();
         Self {
             palette_window_layout: ConfigValue::from_default(PaletteWindowLayout::Grouped),
             palette_show_keys: ConfigValue::from_default(true),
@@ -431,17 +413,14 @@ impl Default for AppConfig {
             quit_daemon_on_exit: ConfigValue::from_default(DEFAULT_QUIT_DAEMON_ON_EXIT),
             auto_restart_stale_daemon: ConfigValue::from_default(DEFAULT_AUTO_RESTART_STALE_DAEMON),
             check_for_updates: ConfigValue::from_default(DEFAULT_CHECK_FOR_UPDATES),
-            status_badges: ConfigValue::from_default(status_bar.badges),
-            status_host: ConfigValue::from_default(status_bar.show_host),
-            status_update: ConfigValue::from_default(status_bar.show_update),
             flat_sidebar: ConfigValue::from_default(false),
             program_colors: ConfigValue::from_default(true),
             experimental_editor_pane: ConfigValue::from_default(DEFAULT_EXPERIMENTAL_EDITOR_PANE),
             pane_gaps: ConfigValue::from_default(DEFAULT_PANE_GAPS),
-            pip_background_opacity: ConfigValue::from_default(DEFAULT_PIP_BACKGROUND_OPACITY),
             pane_glow_strength: ConfigValue::from_default(DEFAULT_PANE_GLOW_STRENGTH),
             pane_inactive_opacity: ConfigValue::from_default(DEFAULT_PANE_INACTIVE_OPACITY),
             pane_margin: ConfigValue::from_default(DEFAULT_PANE_MARGIN),
+            pane_corner_radius: ConfigValue::from_default(None),
             widget_corner_radius: ConfigValue::from_default(DEFAULT_WIDGET_CORNER_RADIUS),
             chrome_contrast: ConfigValue::from_default(DEFAULT_CHROME_CONTRAST),
             reduce_transparency: ConfigValue::from_default(DEFAULT_REDUCE_TRANSPARENCY),
@@ -477,9 +456,6 @@ impl AppConfig {
             ConfigKey::QuitDaemonOnExit => Some(&mut self.quit_daemon_on_exit),
             ConfigKey::AutoRestartStaleDaemon => Some(&mut self.auto_restart_stale_daemon),
             ConfigKey::CheckForUpdates => Some(&mut self.check_for_updates),
-            ConfigKey::StatusBadges => Some(&mut self.status_badges),
-            ConfigKey::StatusHost => Some(&mut self.status_host),
-            ConfigKey::StatusUpdate => Some(&mut self.status_update),
             ConfigKey::FlatSidebar => Some(&mut self.flat_sidebar),
             ConfigKey::ProgramColors => Some(&mut self.program_colors),
             ConfigKey::ExperimentalEditorPane => Some(&mut self.experimental_editor_pane),
@@ -493,10 +469,10 @@ impl AppConfig {
             ConfigKey::WindowCornerRadius
             | ConfigKey::WhichKeyDelay
             | ConfigKey::PaletteWindowLayout
-            | ConfigKey::PipBackgroundOpacity
             | ConfigKey::PaneGlowStrength
             | ConfigKey::PaneInactiveOpacity
             | ConfigKey::PaneMargin
+            | ConfigKey::PaneCornerRadius
             | ConfigKey::WidgetCornerRadius
             | ConfigKey::ChromeContrast
             | ConfigKey::Motion
@@ -873,10 +849,18 @@ pub fn parse_config(source: &str, system_font_family: &str) -> ParsedConfig {
         }
 
         if RETIRED_STATUS_KEYS.contains(&key) {
-            let instead = if key == "status-agents" {
-                "the status bar no longer shows agent activity; the sidebar shows each agent's state"
-            } else {
-                "the status bar no longer has a session menu; switch sessions from the sidebar"
+            let instead = match key {
+                "status-agents" => {
+                    "the status bar no longer shows agent activity; the sidebar shows each agent's state"
+                }
+                "status-show-session" => {
+                    "the status bar no longer has a session menu; switch sessions from the sidebar"
+                }
+                "status-badges" => {
+                    "window tabs no longer mark bells and activity; the sidebar marks bells"
+                }
+                "status-host" => "the title bar no longer names the host; the sidebar does",
+                _ => "the title bar no longer offers updates; Settings > About does",
             };
             parsed.diagnostics.push(ConfigDiagnostic {
                 line: line_number,
@@ -910,12 +894,12 @@ pub fn parse_config(source: &str, system_font_family: &str) -> ParsedConfig {
 
         if RETIRED_PANE_KEYS.contains(&key) {
             let instead = match key {
-                "pane-corner-radius" => "pane corners follow `widget-corner-radius`",
                 "pane-border-width" => {
                     "the pane edge follows the theme's glass, or its outline width without glass"
                 }
-                "pane-background-opacity" => {
-                    "panes always show the window behind them; `pip-background-opacity` sets how much of its color a PiP lays over what is under it"
+                "pane-background-opacity" => "panes always show the window behind them",
+                "pip-background-opacity" => {
+                    "a PiP is glass when `interface-glass` is on and its pane's color, opaque, when it is off"
                 }
                 _ => "gapped panes always draw a glass frame",
             };
@@ -1083,9 +1067,22 @@ pub fn parse_config(source: &str, system_font_family: &str) -> ParsedConfig {
             continue;
         }
 
+        if key == ConfigKey::PaneCornerRadius {
+            let target = &mut parsed.config.pane_corner_radius;
+            target.provenance = ConfigProvenance::Override;
+            let range = key.numeric_range().expect("a pane corner is a number");
+            match parse_numeric_value(key, value, range) {
+                Ok(radius) => target.value = Some(radius),
+                Err(message) => parsed.diagnostics.push(ConfigDiagnostic {
+                    line: line_number,
+                    message: format!("invalid `{}`: {message}", key.as_str()),
+                }),
+            }
+            continue;
+        }
+
         let target = match key {
             ConfigKey::WindowCornerRadius => &mut parsed.config.window_corner_radius,
-            ConfigKey::PipBackgroundOpacity => &mut parsed.config.pip_background_opacity,
             ConfigKey::PaneGlowStrength => &mut parsed.config.pane_glow_strength,
             ConfigKey::PaneInactiveOpacity => &mut parsed.config.pane_inactive_opacity,
             ConfigKey::PaneMargin => &mut parsed.config.pane_margin,
@@ -1095,7 +1092,8 @@ pub fn parse_config(source: &str, system_font_family: &str) -> ParsedConfig {
             ConfigKey::ChromeTintHue => &mut parsed.config.chrome_tint_hue,
             ConfigKey::EditorFontSize => &mut parsed.config.editor_font_size,
             ConfigKey::WhichKeyDelay => &mut parsed.config.which_key_delay,
-            ConfigKey::UseSystemTitlebar
+            ConfigKey::PaneCornerRadius
+            | ConfigKey::UseSystemTitlebar
             | ConfigKey::PaletteWindowLayout
             | ConfigKey::PaletteShowKeys
             | ConfigKey::PaletteVimMode
@@ -1107,7 +1105,6 @@ pub fn parse_config(source: &str, system_font_family: &str) -> ParsedConfig {
             | ConfigKey::QuitDaemonOnExit
             | ConfigKey::AutoRestartStaleDaemon
             | ConfigKey::CheckForUpdates
-            | ConfigKey::StatusBadges
             | ConfigKey::ExperimentalEditorPane
             | ConfigKey::PaneGaps
             | ConfigKey::EditorLineNumbers
@@ -1119,8 +1116,6 @@ pub fn parse_config(source: &str, system_font_family: &str) -> ParsedConfig {
             | ConfigKey::BrowserSearchProvider
             | ConfigKey::BrowserEgress
             | ConfigKey::ReduceTransparency
-            | ConfigKey::StatusHost
-            | ConfigKey::StatusUpdate
             | ConfigKey::FlatSidebar
             | ConfigKey::ProgramColors
             | ConfigKey::ThemeMode
@@ -1303,7 +1298,6 @@ pub fn parse_numeric_value(
     let unit = if matches!(
         key,
         ConfigKey::PaneInactiveOpacity
-            | ConfigKey::PipBackgroundOpacity
             | ConfigKey::PaneGlowStrength
             | ConfigKey::ChromeContrast
             | ConfigKey::ChromeTint
@@ -1451,9 +1445,9 @@ pub const RETIRED_LOOK_KEYS: [&str; 4] = [
 
 pub const RETIRED_PANE_KEYS: [&str; 4] = [
     "pane-glass",
-    "pane-corner-radius",
     "pane-border-width",
     "pane-background-opacity",
+    "pip-background-opacity",
 ];
 
 pub const RETIRED_AGENT_KEYS: [&str; 6] = [
@@ -1465,7 +1459,13 @@ pub const RETIRED_AGENT_KEYS: [&str; 6] = [
     "driver-hosts",
 ];
 
-pub const RETIRED_STATUS_KEYS: [&str; 2] = ["status-show-session", "status-agents"];
+pub const RETIRED_STATUS_KEYS: [&str; 5] = [
+    "status-show-session",
+    "status-agents",
+    "status-badges",
+    "status-host",
+    "status-update",
+];
 
 pub const RETIRED_THEME_KEYS: [&str; 1] = ["interface-theme"];
 
@@ -2148,25 +2148,65 @@ mod tests {
 
     #[test]
     fn retired_status_bar_lines_are_reported_and_otherwise_ignored() {
-        let source = "status-badges = false\nstatus-show-session = false\nstatus-agents = false\n";
-        let parsed = parse_config(source, "monospace");
-        assert_eq!(parsed.diagnostics.len(), 2);
-        assert_eq!(parsed.diagnostics[0].line, 2);
-        assert!(
-            parsed.diagnostics[0]
-                .message
-                .starts_with("`status-show-session` was removed"),
-            "{}",
-            parsed.diagnostics[0].message
-        );
-        assert_eq!(parsed.diagnostics[1].line, 3);
+        let source = RETIRED_STATUS_KEYS
+            .map(|key| format!("{key} = false\n"))
+            .concat();
+        let parsed = parse_config(&source, "monospace");
         assert_eq!(
-            parsed.diagnostics[1].message,
-            "`status-agents` was removed: the status bar no longer shows agent activity; the sidebar shows each agent's state"
+            parsed
+                .diagnostics
+                .iter()
+                .map(|diagnostic| (diagnostic.line, diagnostic.message.as_str()))
+                .collect::<Vec<_>>(),
+            [
+                (
+                    1,
+                    "`status-show-session` was removed: the status bar no longer has a session menu; switch sessions from the sidebar"
+                ),
+                (
+                    2,
+                    "`status-agents` was removed: the status bar no longer shows agent activity; the sidebar shows each agent's state"
+                ),
+                (
+                    3,
+                    "`status-badges` was removed: window tabs no longer mark bells and activity; the sidebar marks bells"
+                ),
+                (
+                    4,
+                    "`status-host` was removed: the title bar no longer names the host; the sidebar does"
+                ),
+                (
+                    5,
+                    "`status-update` was removed: the title bar no longer offers updates; Settings > About does"
+                ),
+            ]
         );
-        assert!(is_app_config_key("status-show-session"));
-        assert!(is_app_config_key("status-agents"));
-        assert!(!parsed.config.status_badges.value);
+        assert!(RETIRED_STATUS_KEYS.into_iter().all(is_app_config_key));
+        assert_eq!(parsed.config, AppConfig::default());
+    }
+
+    #[test]
+    fn a_pane_corner_follows_the_theme_until_set() {
+        assert_eq!(AppConfig::default().pane_corner_radius.value, None);
+        let parsed = parse_config("pane-corner-radius = 20\npip-background-opacity = 0.5\n", "monospace");
+        assert_eq!(
+            parsed.config.pane_corner_radius,
+            ConfigValue {
+                value: Some(20.0),
+                provenance: ConfigProvenance::Override,
+            }
+        );
+        assert_eq!(parsed.diagnostics.len(), 1);
+        assert_eq!(
+            parsed.diagnostics[0].message,
+            "`pip-background-opacity` was removed: a PiP is glass when `interface-glass` is on and its pane's color, opaque, when it is off"
+        );
+        let rejected = parse_config("pane-corner-radius = 40\n", "monospace");
+        assert_eq!(rejected.config.pane_corner_radius.value, None);
+        assert_eq!(
+            rejected.diagnostics[0].message,
+            "invalid `pane-corner-radius`: value must be between 0 and 25 logical pixels"
+        );
     }
 
     #[test]
@@ -2324,7 +2364,7 @@ mod tests {
             .iter()
             .map(|diagnostic| diagnostic.message.as_str())
             .collect::<Vec<_>>();
-        assert_eq!(messages.len(), 6, "{messages:?}");
+        assert_eq!(messages.len(), 5, "{messages:?}");
         assert_eq!(
             messages[0],
             "`interface-style` was removed: set the look in Settings > Interface"
@@ -2335,17 +2375,14 @@ mod tests {
             messages[3],
             "`widget-glass` was removed: set `interface-glass`, or Glass in Settings > Interface"
         );
+        assert_eq!(config.pane_corner_radius.value, Some(4.0));
         assert_eq!(
             messages[4],
-            "`pane-corner-radius` was removed: pane corners follow `widget-corner-radius`"
-        );
-        assert_eq!(
-            messages[5],
             "`widget-shadows` was removed: the kit sets this per role now"
         );
         for key in RETIRED_MATERIAL_KEYS
             .into_iter()
-            .chain(["pane-corner-radius", "pane-border-width"])
+            .chain(["pane-border-width", "pip-background-opacity"])
         {
             assert!(is_app_config_key(key));
             assert_eq!(ConfigKey::parse(key), None);

@@ -671,9 +671,6 @@ function windowTab(entry) {
   deck.style.width = `${20 + (Math.min(entry.panes.length, 3) - 1) * 5}px`;
   const name = el("span", { class: "tab-name", "aria-label": entry.label });
   name.textContent = entry.label;
-  const dots = el("span", { class: "tab-dots" }, `<i class="dot bell"></i><i class="dot activity"></i>`);
-  dots.querySelector(".bell").style.opacity = entry.bell ? 1 : 0;
-  dots.querySelector(".activity").style.opacity = entry.activity ? 1 : 0;
   const close = el("button", { "data-penna": "icon-button.row", class: "tab-close", title: "Close window" }, `<i data-icon="xmark"></i>`);
   close.disabled = !writable();
   close.addEventListener("click", (event) => {
@@ -681,7 +678,7 @@ function windowTab(entry) {
     state.client.window_command(entry.id, "close");
     flush();
   });
-  tab.append(entry.panes.length ? deck : "", name, dots, close);
+  tab.append(entry.panes.length ? deck : "", name, close);
   tab.addEventListener("click", () => {
     if (!state.connected) return;
     state.client.window_command(entry.id, "select");
@@ -776,7 +773,6 @@ function applyMetrics() {
   root.setProperty("--pane-margin", `${margin}px`);
   const glow = preferences.pane_glow_strength;
   root.setProperty("--pane-wash-scale", glow);
-  root.setProperty("--pip-opacity", preferences.pip_background_opacity);
   root.setProperty("--pane-rim", Math.max(0, 1 - 0.3 * glow));
   app.classList.toggle("penna-gaps", gaps);
   app.toggleAttribute("data-gaps", gaps);

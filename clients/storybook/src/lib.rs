@@ -41,17 +41,6 @@ const KNOBS: &[Knob] = &[
         },
     },
     Knob {
-        name: "pip-opacity",
-        label: "PiP opacity",
-        section: "Panes",
-        control: Control::Range {
-            min: 0.0,
-            max: 1.0,
-            step: 0.05,
-            value: 0.8,
-        },
-    },
-    Knob {
         name: "pane-inactive-opacity",
         label: "Inactive opacity",
         section: "Panes",
@@ -104,7 +93,6 @@ const FLOATING: &[&str] = &[
 pub struct PaneKnobs {
     pub gaps: bool,
     pub margin: f32,
-    pub pip: f32,
     pub inactive: f32,
     pub glow: f32,
 }
@@ -114,7 +102,6 @@ impl PaneKnobs {
         Self {
             gaps: knobs.flag("pane-gaps"),
             margin: knobs.value("pane-margin"),
-            pip: knobs.value("pip-opacity"),
             inactive: knobs.value("pane-inactive-opacity"),
             glow: knobs.value("pane-glow"),
         }
@@ -128,7 +115,6 @@ pub(crate) fn pane() -> PaneKnobs {
 fn apply(knobs: &Knobs, cx: &mut App) {
     let pane = PaneKnobs::of(knobs);
     cx.set_global(zz_ui::program::ProgramColors(knobs.flag("program-colors")));
-    cx.set_global(zz_ui::pip::PipOpacity(pane.pip));
     cx.set_global(zz_ui::pane_look::PaneLook {
         frames: pane.gaps,
         glow_strength: pane.glow,
@@ -161,7 +147,6 @@ mod tests {
             PaneKnobs {
                 gaps: false,
                 margin: 6.0,
-                pip: 0.8,
                 inactive: 0.7,
                 glow: 1.0,
             }

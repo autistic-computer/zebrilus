@@ -691,12 +691,7 @@ impl AppShell {
 
     fn status_model(&self, cx: &App) -> StatusBarModel {
         let core = &self.connection.read(cx).core;
-        StatusBarModel::from_snapshot(
-            core.snapshot(),
-            core.attached_session(),
-            None,
-            self.preferences.status_bar_settings(),
-        )
+        StatusBarModel::from_snapshot(core.snapshot(), core.attached_session())
     }
 
     #[allow(clippy::too_many_arguments)]

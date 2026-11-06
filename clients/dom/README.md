@@ -50,9 +50,9 @@ const stop = subscribe((now, before) => {}); // after every change, and when the
 on("preferences", ({ preferences, previous }) => {}); // the same, on the core bus
 ```
 
-Fields other lanes read: `sidebar`, `flat_sidebar`, `sidebar_width`, `status_badges`,
-`program_colors`, `gaps`, `pane_margin`, `pane_inactive_opacity`, `pane_glow_strength`,
-`pip_background_opacity`, `terminal_font_family`, `terminal_font_scale`, `palette_grouped`,
+Fields other lanes read: `sidebar`, `flat_sidebar`, `sidebar_width`,
+`program_colors`, `gaps`, `pane_margin`, `pane_corner_radius`, `pane_inactive_opacity`,
+`pane_glow_strength`, `terminal_font_family`, `terminal_font_scale`, `palette_grouped`,
 `palette_show_keys`, `motion`. `dark()` is the resolved mode.
 
 preferences.js applies the look itself: it writes the theme tokens and icons as `<style>` elements

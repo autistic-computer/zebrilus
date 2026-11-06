@@ -64,7 +64,6 @@ pub fn app_connection_state(message: impl IntoElement, cx: &App) -> ala::Div {
 #[derive(Default)]
 pub struct WorkspaceStatusSlots {
     pub windows: Vec<AnyElement>,
-    pub right: Vec<AnyElement>,
     pub titlebar_controls: Option<(AnyElement, Pixels)>,
     pub window_controls: Option<AnyElement>,
 }
@@ -95,8 +94,7 @@ pub fn workspace_status_bar(
         .gap(px(6.0))
         .px(px(6.0))
         .window_control_area(WindowControlArea::Drag)
-        .child(window_strip)
-        .children(slots.right);
+        .child(window_strip);
     let leading = div()
         .flex_none()
         .w(leading_inset)

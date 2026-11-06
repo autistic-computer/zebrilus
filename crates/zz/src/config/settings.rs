@@ -41,7 +41,9 @@ use crate::{
     window::toast,
     workspace::add_host,
 };
-use penna::blocks::appearance::{AppearanceControls, kit_row, picker_tile, ui_font_select};
+use penna::blocks::appearance::{
+    AppearanceControls, corner_slider, kit_row, picker_tile, ui_font_select,
+};
 use zz_client::url_input::SearchProvider;
 use zz_protocol::ConfigOverrideEntry;
 use zz_terminal::{TerminalColorScheme, discover_ghostty_config};
@@ -114,7 +116,6 @@ pub(crate) struct SettingsView {
     browser_search_provider: Entity<SelectState<Vec<SettingsSelectItem>>>,
     ui_zoom: Entity<InputState>,
     observed_ui_zoom: u32,
-    pip_background_opacity: Entity<InputState>,
     pane_glow_strength: Entity<InputState>,
     pane_inactive_opacity: Entity<InputState>,
     pane_margin: Entity<InputState>,
@@ -149,13 +150,6 @@ impl SettingsView {
         let browser_search_provider =
             search_provider_select(observed_browser.search_provider.value, window, cx);
         let ui_zoom = ui_zoom_input(window, cx);
-        let pip_background_opacity = numeric_value_input(
-            ConfigKey::PipBackgroundOpacity,
-            observed.pip_background_opacity.value,
-            5.0,
-            window,
-            cx,
-        );
         let pane_glow_strength = numeric_value_input(
             ConfigKey::PaneGlowStrength,
             observed.pane_glow_strength.value,
@@ -213,12 +207,6 @@ impl SettingsView {
             ui_font_subscription(&ui_font_family, window, cx),
             ui_zoom_subscription(&ui_zoom, window, cx),
             numeric_input_subscription(
-                &pip_background_opacity,
-                ConfigKey::PipBackgroundOpacity,
-                window,
-                cx,
-            ),
-            numeric_input_subscription(
                 &pane_glow_strength,
                 ConfigKey::PaneGlowStrength,
                 window,
@@ -250,7 +238,6 @@ impl SettingsView {
             browser_search_provider,
             ui_zoom,
             observed_ui_zoom: crate::ui_scale::percent(cx),
-            pip_background_opacity,
             pane_glow_strength,
             pane_inactive_opacity,
             pane_margin,
@@ -462,21 +449,6 @@ impl SettingsView {
             );
             self.appearance_controls
                 .sync(&config::appearance(cx), window, cx);
-            if !numeric_input_matches_value(
-                ConfigKey::PipBackgroundOpacity,
-                &self.pip_background_opacity.read(cx).value(),
-                resolved.pip_background_opacity.value,
-            ) {
-                synchronize_text_input(
-                    &self.pip_background_opacity,
-                    &numeric_input_text(
-                        ConfigKey::PipBackgroundOpacity,
-                        resolved.pip_background_opacity.value,
-                    ),
-                    window,
-                    cx,
-                );
-            }
             if !numeric_input_matches_value(
                 ConfigKey::PaneGlowStrength,
                 &self.pane_glow_strength.read(cx).value(),
@@ -839,36 +811,6 @@ impl SettingsView {
                     .on(settings_card_ground(cx)),
             ),
         )
-    }
-
-    fn status_bar_section(&self, resolved: &AppConfig, cx: &Context<Self>) -> AnyElement {
-        zz_ui::settings::status_bar_preview::status_bar_page(
-            config::status_bar_settings(cx),
-            resolved.pane_gaps.value,
-            SettingsStack::new()
-                .child(
-                    Self::boolean_setting(
-                        ConfigKey::StatusBadges,
-                        "Window badges",
-                        resolved.status_badges,
-                    )
-                    .description("Bell and activity markers on window items"),
-                )
-                .child(
-                    Self::boolean_setting(ConfigKey::StatusHost, "Host", resolved.status_host)
-                        .description("Shown when the attached host is remote"),
-                )
-                .child(
-                    Self::boolean_setting(
-                        ConfigKey::StatusUpdate,
-                        "Update",
-                        resolved.status_update,
-                    )
-                    .description("Shown when a newer zz is out"),
-                ),
-            cx,
-        )
-        .into_any_element()
     }
 
     fn browser_section(
@@ -1430,11 +1372,6 @@ impl SettingsView {
                 "Pane gaps",
                 resolved.pane_gaps,
             )],
-            [Self::numeric_setting(
-                "Background opacity",
-                &self.pip_background_opacity,
-                cx,
-            )],
             [
                 Self::numeric_setting("Inactive pane opacity", &self.pane_inactive_opacity, cx)
                     .description("1 turns dimming off"),
@@ -1442,9 +1379,28 @@ impl SettingsView {
                     .when(!gaps, |entry| entry.description(NEEDS_PANE_GAPS))
                     .disabled(!gaps),
             ],
-            [Self::numeric_setting("Pane margin", &self.pane_margin, cx)
-                .when(!gaps, |entry| entry.description(NEEDS_PANE_GAPS))
-                .disabled(!gaps)],
+            [
+                Self::numeric_setting("Pane margin", &self.pane_margin, cx)
+                    .when(!gaps, |entry| entry.description(NEEDS_PANE_GAPS))
+                    .disabled(!gaps),
+                SettingEntry::new("Corner radius")
+                    .description(if gaps {
+                        "Panes and PiPs"
+                    } else {
+                        NEEDS_PANE_GAPS
+                    })
+                    .control(corner_slider(
+                        "settings-pane-corner-radius",
+                        "Pane corner radius",
+                        f32::from(cx.theme().pane_radius()),
+                        |radius, _, cx| {
+                            let key = ConfigKey::PaneCornerRadius;
+                            written(key, set_config_key(key, &format!("{radius:.2}")), cx);
+                        },
+                        cx,
+                    ))
+                    .disabled(!gaps),
+            ],
             cx,
         )
         .into_any_element()
@@ -1639,7 +1595,6 @@ impl Render for SettingsView {
 
         let content = match self.section {
             SettingsSection::Appearance => self.appearance_section(&resolved, cx),
-            SettingsSection::StatusBar => self.status_bar_section(&resolved, cx),
             SettingsSection::Browser => self.browser_section(&browser, &resolved, cx),
             SettingsSection::Editor => self.editor_section(&resolved, cx),
             SettingsSection::Panes => self.panes_section(&resolved, cx),
@@ -2102,10 +2057,10 @@ fn is_pane_setting(key: ConfigKey) -> bool {
     matches!(
         key,
         ConfigKey::PaneGaps
-            | ConfigKey::PipBackgroundOpacity
             | ConfigKey::PaneGlowStrength
             | ConfigKey::PaneInactiveOpacity
             | ConfigKey::PaneMargin
+            | ConfigKey::PaneCornerRadius
     )
 }
 
@@ -2127,9 +2082,6 @@ fn refresh_settings_preview(key: ConfigKey, cx: &mut App) {
                 | ConfigKey::PaletteVimMode
                 | ConfigKey::PickerFocusSidebar
                 | ConfigKey::WhichKeyDelay
-                | ConfigKey::StatusBadges
-                | ConfigKey::StatusHost
-                | ConfigKey::StatusUpdate
                 | ConfigKey::ProgramColors
         )
     {
@@ -2175,7 +2127,7 @@ fn numeric_range(key: ConfigKey) -> (f32, f32) {
 fn numeric_input_scale(key: ConfigKey) -> f32 {
     if matches!(
         key,
-        ConfigKey::PaneGlowStrength | ConfigKey::PipBackgroundOpacity
+        ConfigKey::PaneGlowStrength
     ) {
         100.0
     } else {
@@ -2186,7 +2138,7 @@ fn numeric_input_scale(key: ConfigKey) -> f32 {
 fn numeric_input_text(key: ConfigKey, value: f32) -> String {
     if matches!(
         key,
-        ConfigKey::PaneGlowStrength | ConfigKey::PipBackgroundOpacity
+        ConfigKey::PaneGlowStrength
     ) {
         format!("{:.2}", value * numeric_input_scale(key))
             .trim_end_matches('0')
@@ -2214,7 +2166,6 @@ fn numeric_input_matches_value(key: ConfigKey, text: &str, value: f32) -> bool {
 
 fn numeric_config_value(config: &AppConfig, key: ConfigKey) -> ConfigValue<f32> {
     match key {
-        ConfigKey::PipBackgroundOpacity => config.pip_background_opacity,
         ConfigKey::PaneGlowStrength => config.pane_glow_strength,
         ConfigKey::PaneInactiveOpacity => config.pane_inactive_opacity,
         ConfigKey::PaneMargin => config.pane_margin,
@@ -2237,9 +2188,7 @@ fn numeric_config_value(config: &AppConfig, key: ConfigKey) -> ConfigValue<f32> 
         | ConfigKey::QuitDaemonOnExit
         | ConfigKey::AutoRestartStaleDaemon
         | ConfigKey::CheckForUpdates
-        | ConfigKey::StatusBadges
-        | ConfigKey::StatusHost
-        | ConfigKey::StatusUpdate
+        | ConfigKey::PaneCornerRadius
         | ConfigKey::FlatSidebar
         | ConfigKey::ProgramColors
         | ConfigKey::ExperimentalEditorPane
@@ -2329,10 +2278,7 @@ mod tests {
 
     #[test]
     fn percentage_inputs_convert_and_reject_invalid_edits() {
-        for (key, default, max) in [
-            (ConfigKey::PipBackgroundOpacity, "80", 100.0),
-            (ConfigKey::PaneGlowStrength, "100", 200.0),
-        ] {
+        for (key, default, max) in [(ConfigKey::PaneGlowStrength, "100", 200.0)] {
             assert_eq!(numeric_range(key), (0.0, max));
             assert_eq!(validate_numeric_value(key, &max.to_string()), Ok(max));
             assert!(validate_numeric_value(key, &(max + 1.0).to_string()).is_err());

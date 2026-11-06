@@ -129,12 +129,7 @@ impl AppShell {
         }
         let mux = self.mux.read(cx);
         let snapshot = mux.snapshot();
-        let model = zz_client::StatusBarModel::from_snapshot(
-            &snapshot,
-            mux.attached_session(),
-            None,
-            crate::config::status_bar_settings(cx),
-        );
+        let model = zz_client::StatusBarModel::from_snapshot(&snapshot, mux.attached_session());
         let active = model
             .windows
             .iter()

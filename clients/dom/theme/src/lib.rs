@@ -39,6 +39,7 @@ fn kit(preferences: &Preferences, mode: ThemeMode) -> Theme {
         kit.glass = None;
     }
     kit.pane_margin = preferences.margin();
+    kit.pane_corner_radius = preferences.pane_corner_radius.map(ala::px);
     let font = preferences.shown_ui_font();
     kit.font_family = if font.is_empty() { WEB_UI_FONT } else { font }
         .to_owned()
@@ -74,9 +75,14 @@ pub fn platform_theme() -> String {
 pub fn stylesheet(json: &str, dark: bool) -> Result<String, JsError> {
     let preferences = decode(json)?;
     let kit = kit(&preferences, mode(dark));
-    Ok(theme_css::stylesheet(
-        &kit,
-        &penna::foundation::roles::TONED,
+    let ground = kit.background.opaque();
+    let pip = kit
+        .glass_effect()
+        .map_or(ground, |glass| ground.alpha(glass.tint.a));
+    Ok(format!(
+        "{}:root {{ --zz-pip-fill: {}; }}\n",
+        theme_css::stylesheet(&kit, &penna::foundation::roles::TONED),
+        color(pip)
     ))
 }
 
@@ -141,6 +147,7 @@ pub fn picks(json: &str, dark: bool) -> Result<String, JsError> {
             "strength": neutral.amount,
         },
         "radius": interface_theme::corner_share(preferences.widget_corner_radius()),
+        "pane_radius": interface_theme::corner_share(f32::from(kit.pane_radius())),
         "controls": interface_theme::control_shape_setting(appearance.controls()).as_str(),
         "glass": glass,
         "font": preferences.shown_ui_font(),
@@ -169,9 +176,8 @@ pub fn about(platform: &str) -> String {
     .to_string()
 }
 
-const SECTIONS: [SettingsSection; 8] = [
+const SECTIONS: [SettingsSection; 7] = [
     SettingsSection::Appearance,
-    SettingsSection::StatusBar,
     SettingsSection::Panes,
     SettingsSection::Terminal,
     SettingsSection::Hosts,

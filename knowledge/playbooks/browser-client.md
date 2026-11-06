@@ -126,8 +126,7 @@ the theme's radius and the pane edge its glass, or its outline without glass. Si
 rename menus, add/split/close actions, and keyboard navigation. Drag the sidebar’s right edge to
 resize it; the browser saves the width and clamps it to 160–640 logical pixels and half the viewport,
 with a 160-pixel minimum. The window strip shares tabs, overflow, and rename/close menus.
-Status bar settings control window bell/activity badges, with the shared live preview.
-The browser omits host and update items. It bundles Inter for chrome and Lilex for terminals, code, and command output; daemon font stacks retain families available on the client and fall back to Lilex.
+The window strip draws no badges, host or update items, the same as the desktop. The browser bundles Inter for chrome and Lilex for terminals, code, and command output; daemon font stacks retain families available on the client and fall back to Lilex.
 Terminal settings can override the local family and text scale, with a shared renderer preview.
 UI font selection uses the client’s available fonts. It ships no
 CJK or emoji fallback, so unsupported glyphs render as missing glyphs.

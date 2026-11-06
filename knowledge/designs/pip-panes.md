@@ -34,17 +34,19 @@ timestamp: 2026-10-26T00:00:00-03:00
 8. (late evening) A stash slides the PiP past the side edge and leaves 60 px of it showing,
    content and all, with no tab or chevron; a perspective turn into the edge was tried and
    dropped. `pane-background-opacity` is gone: panes always show the window behind them. PiPs get
-   `pip-background-opacity` instead, and below 100% they blur what is under them. Every pane
+   `pip-background-opacity` instead, and below 100% they blur what is under them (retired on
+   2026-11-06: a PiP is glass with glass on and opaque with it off). Every pane
    movement animates in the GUI: splits, closes, zoom, moves, Float and Tile back.
 
 # Look
 
-`PipSurface` (`crates/zz-ui/src/pip.rs`) is the card: the pane's colour (`zz_ui::pane_look::pane_color`, a
-terminal's background over the window) laid at `pip-background-opacity` (the
-`zz_ui::pip::PipOpacity` global, 80% when unset) over a frost of what is under it
-(`pip_material`: the theme's glass in a glass theme, a 24 px blur otherwise; a renderer that
-cannot read the backdrop paints the colour solid), corners of
-`Theme::pane_radius`, and the `floating.pip`
+`PipSurface` (`crates/zz-ui/src/pip.rs`) is the card, and it follows Glass like a menu. The
+pane's colour (`zz_ui::pane_look::pane_color`, a terminal's background over the window) tints the
+theme's glass at the material's own opacity while glass is on (`pip_material`; a renderer that
+cannot read the backdrop paints the colour solid), and is the card's opaque fill while glass is
+off, under the `divider` hairline gapped panes take (penna's layer gives `floating.pip` that edge
+wherever its glass draws no rim, gaps or not). Corners are `Theme::pane_radius`, which
+`pane-corner-radius` sets (Settings > Panes > Frame > Corner radius), and the `floating.pip`
 recipe under `floating.pane`, which casts the theme's float shadow (Materials in the theme creator; Roles
 → PiPs can set none, contact or float). Focus does not change it. The dark palettes draw shadows in
 20% black, so on a dark pane the default reads faintly.
