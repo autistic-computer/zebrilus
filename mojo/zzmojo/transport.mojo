@@ -4,7 +4,17 @@ from std.os.path import dirname, realpath, exists
 from std.sys import argv
 from std.sys.info import CompilationTarget
 from .bend_gate import BendGate
-from .protocol import MAX_FRAME_BYTES, PROTOCOL_VERSION, Decoder, Response, client_hello, command_request, decode_response, validate_envelope
+from .client_context import ClientContext
+from .protocol import (
+    MAX_FRAME_BYTES,
+    PROTOCOL_VERSION,
+    Decoder,
+    Response,
+    client_hello,
+    command_request,
+    decode_response,
+    validate_envelope,
+)
 
 comptime ERRNO: StaticString = "__errno_location" if CompilationTarget.is_linux() else "__error"
 
@@ -28,7 +38,11 @@ def bend_executable() raises -> String:
                 break
     var sibling = String(dirname(realpath(executable)), "/zz-bend")
     if not exists(sibling):
-        raise Error("verified core executable missing: " + sibling + "; build the Bend core or set ZZ_BEND")
+        raise Error(
+            "verified core executable missing: "
+            + sibling
+            + "; build the Bend core or set ZZ_BEND"
+        )
     return sibling
 
 
@@ -47,9 +61,16 @@ struct Connection(Movable):
     def write(self, data: Span[UInt8, _]) raises:
         var offset = 0
         while offset < len(data):
-            var count = external_call["send", Int](Int(self.fd), data.unsafe_ptr().unsafe_offset(offset), len(data) - offset, Int(0x4000 if CompilationTarget.is_linux() else 0))
+            var count = external_call["send", Int](
+                Int(self.fd),
+                data.unsafe_ptr().unsafe_offset(offset),
+                len(data) - offset,
+                Int(0x4000 if CompilationTarget.is_linux() else 0),
+            )
             if count < 0:
-                var number = external_call[ERRNO, Pointer[Int32, MutUntrackedOrigin]]()[]
+                var number = external_call[
+                    ERRNO, Pointer[Int32, MutUntrackedOrigin]
+                ]()[]
                 if number == 4:
                     continue
                 raise io_error("send")
@@ -61,9 +82,15 @@ struct Connection(Movable):
         var data = List[UInt8](unsafe_uninit_length=size)
         var offset = 0
         while offset < size:
-            var count = external_call["read", Int](Int(self.fd), data.unsafe_ptr().unsafe_offset(offset), size - offset)
+            var count = external_call["read", Int](
+                Int(self.fd),
+                data.unsafe_ptr().unsafe_offset(offset),
+                size - offset,
+            )
             if count < 0:
-                var number = external_call[ERRNO, Pointer[Int32, MutUntrackedOrigin]]()[]
+                var number = external_call[
+                    ERRNO, Pointer[Int32, MutUntrackedOrigin]
+                ]()[]
                 if number == 4:
                     continue
                 raise io_error("read")
@@ -83,11 +110,15 @@ struct Connection(Movable):
         frame.extend(Span(following))
         var status = self.gate.validate(Span(frame))
         if status != 0:
-            raise Error("Bend rejected daemon envelope (status " + String(status) + ")")
+            raise Error(
+                "Bend rejected daemon envelope (status " + String(status) + ")"
+            )
         _ = validate_envelope(Span(frame))
         return frame^
 
-    def command(mut self, name: String, args: Span[String, _]) raises -> Response:
+    def command(
+        mut self, name: String, args: Span[String, _]
+    ) raises -> Response:
         var request = self.next_request
         if request == UInt64.MAX:
             raise Error("request identifiers exhausted")
@@ -134,24 +165,57 @@ def open_connection(path: String) raises -> Connection:
     var connection = Connection(fd, 1, 0, 0, gate^)
     comptime if not CompilationTarget.is_linux():
         var enabled: Int32 = 1
-        _ = external_call["setsockopt", Int32](fd, Int32(0xffff), Int32(0x1022), Pointer(to=enabled), UInt32(4))
+        _ = external_call["setsockopt", Int32](
+            fd, Int32(0xFFFF), Int32(0x1022), Pointer(to=enabled), UInt32(4)
+        )
     var timeout: List[Int] = [10, 0]
     comptime receive_option = 20 if CompilationTarget.is_linux() else 0x1006
     comptime send_option = 21 if CompilationTarget.is_linux() else 0x1005
-    comptime socket_level = 1 if CompilationTarget.is_linux() else 0xffff
-    if external_call["setsockopt", Int32](fd, Int32(socket_level), Int32(receive_option), timeout.unsafe_ptr(), UInt32(16)) != 0:
+    comptime socket_level = 1 if CompilationTarget.is_linux() else 0xFFFF
+    if (
+        external_call["setsockopt", Int32](
+            fd,
+            Int32(socket_level),
+            Int32(receive_option),
+            timeout.unsafe_ptr(),
+            UInt32(16),
+        )
+        != 0
+    ):
         raise io_error("receive timeout")
-    if external_call["setsockopt", Int32](fd, Int32(socket_level), Int32(send_option), timeout.unsafe_ptr(), UInt32(16)) != 0:
+    if (
+        external_call["setsockopt", Int32](
+            fd,
+            Int32(socket_level),
+            Int32(send_option),
+            timeout.unsafe_ptr(),
+            UInt32(16),
+        )
+        != 0
+    ):
         raise io_error("send timeout")
-    if external_call["connect", Int32](fd, address.unsafe_ptr(), UInt32(path.byte_length() + 3)) != 0:
+    if (
+        external_call["connect", Int32](
+            fd, address.unsafe_ptr(), UInt32(path.byte_length() + 3)
+        )
+        != 0
+    ):
         raise io_error("connect " + path)
     return connection^
 
 
-def connect(path: String, instance: UInt64 = 0, origin: Optional[UInt64] = None) raises -> Connection:
+def connect(
+    path: String, instance: UInt64 = 0, origin: Optional[UInt64] = None
+) raises -> Connection:
     var connection = open_connection(path)
     var process = external_call["getpid", UInt32]()
-    var hello = client_hello(instance if instance != 0 else UInt64(process), process, origin)
+    var context = ClientContext.capture()
+    var hello = client_hello(
+        instance if instance != 0 else UInt64(process),
+        process,
+        origin,
+        context^,
+    )
     connection.write(Span(hello))
     var response = connection.read_frame()
     var decoder = Decoder(response^)
@@ -162,6 +226,8 @@ def connect(path: String, instance: UInt64 = 0, origin: Optional[UInt64] = None)
     connection.server_id = decoder.uint()
     connection.client_id = decoder.uint()
     var acknowledged_instance = decoder.uint()
-    if acknowledged_instance != (instance if instance != 0 else UInt64(process)):
+    if acknowledged_instance != (
+        instance if instance != 0 else UInt64(process)
+    ):
         raise Error("server hello client instance mismatch")
     return connection^

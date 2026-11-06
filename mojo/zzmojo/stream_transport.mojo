@@ -24,6 +24,7 @@ from .stream_protocol import (
 from .tree_model import MuxSnapshot, ClientView
 from .tree_gate import TreeGate
 from .tree_codec import eligible_delta, eligible_view
+from .client_context import ClientContext
 from .terminal_model import TerminalViewport, TerminalHistory
 from .terminal_wire import decode_terminal_frame
 from .input_protocol import InputRoutingState, decode_routing_event
@@ -431,6 +432,7 @@ def connect_interactive(
     var stream = InteractiveConnection(open_connection(path))
     var process = external_call["getpid", UInt32]()
     var instance = UInt64(process)
+    var context = ClientContext.capture()
     var hello = interactive_hello(
         instance,
         process,
@@ -441,6 +443,7 @@ def connect_interactive(
         cell_height_px,
         options=(UInt64(1) << 21) - 1,
         viewport=False,
+        context=context^,
     )
     stream.transport.write(Span(hello))
     stream.consume(stream.transport.read_frame())

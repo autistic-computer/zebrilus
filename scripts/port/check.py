@@ -53,7 +53,7 @@ def main():
         environment["PATH"] = os.pathsep.join([str(Path(tools["bend"]).parent), str(Path(tools["lean"]).parent), environment["PATH"]])
         report["toolchain"] = tools
         stage("proof", [tools["bend"], "bend2/PROOF.bend", "--verdict"])
-        for name in ("core", "layout_edit", "replay", "terminal", "terminal_cells", "tree_reducer"):
+        for name in ("core", "layout_edit", "replay", "terminal", "terminal_cells", "terminal_cells_origins", "tree_reducer"):
             stage("bend-" + name, [tools["bend"], f"bend2/{name}.bend", "-o", str(TARGET / (name + ".mjs"))])
         stage("bend-native", [tools["bend"], "bend2/bridge.bend", "-o", str(TARGET / "zz-bend.next")])
         (TARGET / "zz-bend.next").replace(TARGET / "zz-bend")
@@ -65,6 +65,7 @@ def main():
         stage("terminal-plan-differential", ["node", "bend2/terminal_check.mjs"])
         stage("rust-terminal-cells", ["cargo", "run", "--locked", "-p", "zz-client", "--example", "terminal_cells_oracle"], output=TARGET / "terminal-cells-oracle.json")
         stage("terminal-cells-differential", ["node", "bend2/terminal_cells_check.mjs"])
+        stage("terminal-cells-origins", ["node", "bend2/terminal_cells_origins_check.mjs"])
         stage("terminal-cells-native", ["python3", "scripts/port/terminal_cells_check.py"])
         stage("rust-tree-seed", ["cargo", "run", "--locked", "-p", "zz-protocol", "--example", "control_port_vectors"], output=TARGET / "control-vectors.json")
         stage("rust-tree-oracle", ["cargo", "run", "--locked", "-p", "zz-protocol", "--example", "tree_reducer_oracle"], output=TARGET / "tree-reducer-oracle.json")
@@ -74,7 +75,7 @@ def main():
 
     if args.front in ("app", "all"):
         stage("rust-daemon", ["cargo", "build", "--locked", "-p", "zz-cli"])
-        for task in ("build", "test", "test-tree-codec", "differential-tree", "differential-protocol", "differential-control", "differential-terminal", "differential-colors", "differential-layout", "differential-input", "differential-client-events", "differential-terminal-projection", "test-keyboard", "keyboard-smoke", "test-pointer", "pointer-smoke", "test-painter", "test-readiness", "smoke", "stream-smoke", "state-smoke"):
+        for task in ("build", "test", "test-tree-codec", "differential-tree", "differential-protocol", "differential-client-context", "differential-control", "differential-terminal", "differential-colors", "differential-layout", "differential-input", "differential-client-events", "differential-terminal-projection", "test-keyboard", "keyboard-smoke", "test-pointer", "pointer-smoke", "test-painter", "test-readiness", "smoke", "stream-smoke", "state-smoke"):
             stage("mojo-" + task, ["pixi", "run", "--manifest-path", "mojo/pixi.toml", task])
         stage("terminal-differential", ["python3", "scripts/port/terminal_differential.py"])
         stage("mojo-ui", ["pixi", "run", "--manifest-path", "mojo/pixi.toml", "ui-smoke"])

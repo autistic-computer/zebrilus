@@ -13,13 +13,14 @@ rust = repo / "target/debug/zz_cli"
 mojo = repo / "target/port/zz-mojo"
 
 
-def invoke(binary, socket, *args, expected=0, environment=None):
+def invoke(binary, socket, *args, expected=0, environment=None, cwd=None):
     result = subprocess.run(
         [str(binary), "-S" if binary == rust else "--socket", str(socket), *args],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         timeout=20,
         env=environment,
+        cwd=cwd,
     )
     if result.returncode != expected:
         raise AssertionError((args, result.returncode, result.stdout, result.stderr))
@@ -79,6 +80,28 @@ def main():
             if panes.stdout != b"%0\n%1\n":
                 raise AssertionError(("split command", panes.stdout))
             checked += 1
+            if not options.ui:
+                actual_directory = Path(directory) / "actual-context"
+                logical_directory = Path(directory) / "logical-context"
+                actual_directory.mkdir()
+                logical_directory.symlink_to(actual_directory, target_is_directory=True)
+                environment = os.environ.copy()
+                environment["PWD"] = str(logical_directory)
+                environment["SSH_AUTH_SOCK"] = str(Path(directory) / "context-agent.sock")
+                for binary, name in ((rust, "rust-context"), (mojo, "mojo-context")):
+                    invoke(binary, socket, "new-session", "-d", "-s", name, "sleep 60", environment=environment, cwd=actual_directory)
+                reference = invoke(rust, socket, "display-message", "-p", "-t", "rust-context", "#{session_path}")
+                actual = invoke(mojo, socket, "display-message", "-p", "-t", "mojo-context", "#{session_path}")
+                if actual.stdout != reference.stdout or actual.stdout.rstrip(b"\n") != str(logical_directory).encode():
+                    raise AssertionError(("logical cwd publication", reference.stdout, actual.stdout))
+                reference = invoke(rust, socket, "show-environment", "-t", "rust-context", "SSH_AUTH_SOCK")
+                actual = invoke(mojo, socket, "show-environment", "-t", "mojo-context", "SSH_AUTH_SOCK")
+                expected_environment = ("SSH_AUTH_SOCK=" + environment["SSH_AUTH_SOCK"] + "\n").encode()
+                if actual.stdout != reference.stdout or actual.stdout != expected_environment:
+                    raise AssertionError(("environment publication", reference.stdout, actual.stdout))
+                for name in ("rust-context", "mojo-context"):
+                    invoke(rust, socket, "kill-session", "-t", name)
+                checked += 2
             if options.ui:
                 exercise = subprocess.run(
                     [str(repo / "target/port/zz-mojo-shot"), str(socket), str(repo / "target/port/smoke-workspace.png"), "--exercise"],

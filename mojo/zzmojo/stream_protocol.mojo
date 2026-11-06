@@ -6,7 +6,9 @@ from .protocol import (
     append_bytes,
     envelope,
     validate_envelope,
+    append_client_context,
 )
+from .client_context import ClientContext
 from .tree_model import MuxSnapshot, TreeDelta, ClientView
 from .tree_wire import (
     read_uint,
@@ -76,6 +78,7 @@ def interactive_hello(
     origin: Optional[UInt64] = None,
     options: UInt64 = 0,
     viewport: Bool = True,
+    context: Optional[ClientContext] = None,
 ) raises -> List[UInt8]:
     var payload = List[UInt8]()
     append_uint(payload, HELLO)
@@ -92,8 +95,7 @@ def interactive_hello(
     payload.append(UInt8(1 if origin else 0))
     if origin:
         append_uint(payload, origin.value())
-    payload.append(0)
-    append_uint(payload, 0)
+    append_client_context(payload, context, legacy=False)
     append_uint(payload, UInt64(process))
     payload.append(UInt8(viewport))
     if viewport:
@@ -112,7 +114,11 @@ def interactive_hello(
         append_text(payload, session)
     else:
         payload.append(0)
-    append_uint(payload, 0)
+    if context:
+        var blob = context.value().blob()
+        append_bytes(payload, Span(blob))
+    else:
+        append_uint(payload, 0)
     return envelope(Span(payload))
 
 

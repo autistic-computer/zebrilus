@@ -1,3 +1,5 @@
+from .client_context import ClientContext
+
 comptime PROTOCOL_VERSION: UInt16 = 118
 comptime MAX_FRAME_BYTES: Int = 64 * 1024 * 1024
 
@@ -106,7 +108,9 @@ struct Decoder(Movable):
         var count = self.uint()
         if count > UInt64(len(self.data) - self.offset):
             raise Error("truncated postcard byte string")
-        var output = List[UInt8](Span(self.data)[self.offset:self.offset + Int(count)])
+        var output = List[UInt8](
+            Span(self.data)[self.offset : self.offset + Int(count)]
+        )
         self.offset += Int(count)
         return output^
 
@@ -119,7 +123,32 @@ struct Decoder(Movable):
             raise Error("trailing postcard bytes")
 
 
-def client_hello(instance: UInt64, process: UInt32, origin: Optional[UInt64] = None) raises -> List[UInt8]:
+def append_client_context(
+    mut payload: List[UInt8],
+    context: Optional[ClientContext],
+    legacy: Bool = True,
+) raises:
+    if not context:
+        payload.append(0)
+        append_uint(payload, 0)
+        return
+    ref details = context.value()
+    details.validate()
+    payload.append(UInt8(Bool(details.cwd)))
+    if details.cwd:
+        append_bytes(payload, Span(details.cwd.value()))
+    append_uint(payload, UInt64(len(details.environment)) if legacy else 0)
+    if legacy:
+        for entry in details.environment:
+            append_bytes(payload, Span(entry))
+
+
+def client_hello(
+    instance: UInt64,
+    process: UInt32,
+    origin: Optional[UInt64] = None,
+    context: Optional[ClientContext] = None,
+) raises -> List[UInt8]:
     var payload: List[UInt8] = [0]
     append_uint(payload, UInt64(PROTOCOL_VERSION))
     append_uint(payload, instance)
@@ -134,13 +163,14 @@ def client_hello(instance: UInt64, process: UInt32, origin: Optional[UInt64] = N
         append_uint(payload, origin.value())
     else:
         payload.append(0)
-    payload.append(0)
-    append_uint(payload, 0)
+    append_client_context(payload, context)
     append_uint(payload, UInt64(process))
     return envelope(Span(payload))
 
 
-def command_request(request: UInt64, name: String, args: Span[String, _]) raises -> List[UInt8]:
+def command_request(
+    request: UInt64, name: String, args: Span[String, _]
+) raises -> List[UInt8]:
     if name.byte_length() == 0:
         raise Error("empty command")
     var payload: List[UInt8] = [2]
@@ -171,10 +201,17 @@ def decode_error(mut decoder: Decoder) raises -> String:
         if tag == 0:
             var client = decoder.uint()
             var server = decoder.uint()
-            return "server protocol mismatch: client " + String(client) + ", server " + String(server)
+            return (
+                "server protocol mismatch: client "
+                + String(client)
+                + ", server "
+                + String(server)
+            )
         if tag == 6 or tag == 7:
             var pane = decoder.uint()
-            return ("pane is not attached: %" if tag == 6 else "pane has exited: %") + String(pane)
+            return (
+                "pane is not attached: %" if tag == 6 else "pane has exited: %"
+            ) + String(pane)
         if tag == 1:
             prefix = "target not found: "
         elif tag == 2:
