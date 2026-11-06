@@ -130,7 +130,6 @@ The client-local schema includes these scalar settings and chrome colors.
 | `pane-gaps` | `false` | `true` or `false` | Whether panes use the gapped treatment: margin, radius, a glass frame, and no split dividers |
 | `pane-glow-strength` | `1` | `0..=2` | How far the active gapped pane stands apart: its fill lightens while the others' darken and their rims dim; Panes settings display it as Selected pane contrast, 0–200%. `0` draws it like the others |
 | `pane-inactive-opacity` | `0.7` | `0..=1` | Retained strength of inactive pane content and chrome; `1` disables dimming |
-| `pane-corner-radius` | unset | `0..=25` logical pixels | The corner of gapped panes and PiPs. Unset, a pane rounds concentric with its header's buttons (`Theme::pane_radius()`); set, it is `Theme::pane_corner_radius`. Settings > Panes > Frame shows it as Corner radius, 0 to 100% on the same square curve as Interface's Corner radius (`25 × share²`), disabled without gaps |
 | `pane-margin` | `6` | `0..=32` | Inset around each pane, on every platform; applies only with `pane-gaps`. The window's top strip grows with it, and the sidebar's buttons move in with it, so they stay on the pane headers' center lines |
 | `widget-corner-radius` | the platform's (`12`) | `0..=25` | The look's `radius` knob in pixels: the corner of containers, of controls unless they are pills, and the base of a gapped pane's corner. 25 is a round corner, never a pill. Settings shows it as Corner radius, a slider from 0 to 100% where the pixels are 25 × share² (12 is 69%), written with two decimals |
 | `control-shape` | the platform's (`pill` on macOS, `rounded` elsewhere) | `rounded`, `pill` | Whether controls follow the corner radius or are pills (`control-radius` `full`). Settings shows it as Controls |
@@ -168,9 +167,10 @@ above, so an old `chrome-accent = #rrggbb` sets the accent again.
 with one is reported with `` `<key>` was removed: set the look in Settings > Interface `` (`widget-glass`
 with `` set `interface-glass`, or Glass in Settings > Interface ``), ignored and hidden from the
 Terminal page's editor.
-`pane-glass`, `pane-border-width`, `pane-background-opacity` and `pip-background-opacity` are retired
-pane keys (`zz_config::RETIRED_PANE_KEYS`), each reported with what replaced it: gapped panes always
-draw a glass frame, the pane edge follows the theme's glass, or its outline width without glass,
+`pane-glass`, `pane-corner-radius`, `pane-border-width`, `pane-background-opacity` and
+`pip-background-opacity` are retired pane keys (`zz_config::RETIRED_PANE_KEYS`), each reported with
+what replaced it: gapped panes always draw a glass frame, pane corners follow `widget-corner-radius`,
+the pane edge follows the theme's glass, or its outline width without glass,
 panes always show the window behind them, and a PiP is glass while `interface-glass` is on and its
 pane's color, opaque, under the pane hairline while it is off. They are otherwise ignored.
 `shadow-strength`, `widget-shadows`, `widget-selection` and `widget-field` are retired too
@@ -205,7 +205,7 @@ the next minute boundary, then requests one redraw per minute while the bar and 
 `time-date` renders `%H:%M · %b %d`.
 
 `widget-corner-radius`, `control-shape`, `interface-glass`, `chrome-accent`, `chrome-tint`,
-`chrome-tint-hue`, `ui-font-family`, `chrome-contrast`, `reduce-transparency`, `pane-corner-radius`, and `theme-mode`
+`chrome-tint-hue`, `ui-font-family`, `chrome-contrast`, `reduce-transparency`, and `theme-mode`
 land on the **zz-ui theme** rather than being read per-frame by a renderer:
 `zz::theme` activates `config::shown_theme`, the platform's theme file with the keys the file sets
 applied over it (see Interface themes for the order), which puts its colors and knobs on the `Theme` global,
@@ -446,10 +446,13 @@ half of each adjacent separator with a washed foreground accent; nested T-juncti
 segment to the edge the pane touches. With `pane-gaps = true` the margin applies exactly as
 configured, defaults included, and the corners and edge come from the theme: a 6px margin and,
 under Default, a radius of about 13.6px, concentric with the controls in the pane header, so a maximized
-grid reads as one rounded surface. The strip along the window's top (the macOS traffic lights, the
-sidebar's buttons, the status bar) is a pane header tall (34px) plus the margin above and below it
-(`Theme::title_bar_height()`), so its buttons sit on the pane headers' center line; flush panes
-leave it one header tall. The sidebar's footer mirrors it: settings and the view switch are
+grid reads as one rounded surface. The strip along the window's top beside the panes (the macOS
+traffic lights and the sidebar's buttons) is a pane header tall (34px) plus the margin above and
+below it (`Theme::title_bar_height()`), so its buttons sit on the pane headers' center line; flush
+panes leave it one header tall. With the sidebar hidden the status bar lies across the top of the
+panes instead, and it is a pane header plus one margin (`Theme::title_bar_over_panes_height()`, 40px
+at the default 6px, as tall as with flush panes), since the panes' own top margin finishes the gap
+under it; the traffic lights glide to its center line as the sidebar slides away and back. The sidebar's footer mirrors it: settings and the view switch are
 centered the margin plus half a header in from the window's bottom and leading edges, like the
 traffic lights from its top. The toggle and the view switch center on the column the sidebar rows' actions
 (+, …, ×) center on, past the scrollbar's gutter (see [UI conventions](/configuration/ui-conventions.md)). There is
@@ -688,7 +691,7 @@ always-live inactive-opacity factor and the selected pane's edge strength, which
 | Interface | **Look** (`theme-mode` as Mode, a System, Light and Dark segmented control, `chrome-accent` as Accent swatches with a custom color picker, `chrome-tint-hue` as Tint and `chrome-tint` as Tint strength, `widget-corner-radius` as Corner radius in percent, three sliders, `control-shape` as Controls, a segmented control, `interface-glass` as Glass, a switch, and `UI font`) · **Sidebar** (`program-colors`) · **Size** (transient `UI zoom` as Text size, `chrome-density` as Density) · **Accessibility** (`chrome-contrast` as Increase contrast, a slider, `reduce-transparency` as Reduce transparency, `motion` as Motion, an Off, Default and Fast segmented control) · **Window**, where it has rows (macOS `app-icon` as three icon tiles, `window-background-blur` as "Window blur" where the platform profile has it, Linux `window-corner-radius` and `use-system-titlebar`) |
 | Browser | **Network** (`browser-egress`) · **Agents** (`browser-remote-debugging-port` as an on/off switch that writes `9222`) · **Search** (`browser-search-provider`) · **Shortcuts** (`browser-element-selector-hotkey`) |
 | Editor | **Typography** (`editor-font-size`) · **Display** (`editor-line-numbers`, `editor-relative-line-numbers`, `editor-soft-wrap`, `editor-vim-mode`) |
-| Panes | **Layout** (`pane-gaps`) · **Focus** (`pane-inactive-opacity`, `pane-glow-strength` as Selected pane edge) · **Frame** (`pane-margin` and `pane-corner-radius` as Corner radius, both disabled without gaps) |
+| Panes | **Layout** (`pane-gaps`) · **Focus** (`pane-inactive-opacity`, `pane-glow-strength` as Selected pane edge) · **Frame** (`pane-margin`, disabled without gaps) |
 | Hosts | **Machines** (configured hosts, live connection state, Remove) · **Add host** (an inline ssh destination field) |
 | Providers | One group per host (This Mac or the host's name): Claude Code and Codex with the path the host's daemon found, the installed version, the newest release, and Update or Install, which runs the vendor's updater on that host (`claude update`, `codex update`, `brew upgrade --cask` for Homebrew installs, the vendor install script when missing) with its latest output line and any error under the row; an install something else owns (a root-owned npm prefix, mise, Nix, Snap, winget, a system package) gets no Update button but says who owns it and offers its update command to copy; a disconnected host says so; **Check again** asks every connected host. Nothing is written to `zz/config`; the daemon answers the internal `providers` command ([wire protocol](/protocol/wire-protocol.md)) |
 | System | **Tray** (`tray`, only where the profile has one) · **Notifications** (`notifications`) · **Daemon** (`quit-daemon-on-exit`) · **Experimental** (`experimental-editor-pane`, present only with its cargo feature). `auto-restart-stale-daemon` is a file key with no Settings row |

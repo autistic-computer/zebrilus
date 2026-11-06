@@ -1,4 +1,6 @@
-use ala::{App, KeyBinding, Window};
+use std::collections::HashMap;
+
+use ala::{App, Global, KeyBinding, Pixels, Window, WindowId};
 use penna::{ROOT_KEY_CONTEXT, UiZoom};
 use zz_client::{ChromeAction, UI_TABLE};
 
@@ -59,11 +61,40 @@ fn apply(window: &mut Window, cx: &App) {
     place_traffic_lights(window, cx);
 }
 
+#[derive(Default)]
+struct TitleBarOverPanes(HashMap<WindowId, f32>);
+
+impl Global for TitleBarOverPanes {}
+
+pub(crate) fn show_title_bar_over_panes(shown: f32, window: &Window, cx: &mut App) {
+    let id = window.window_handle().window_id();
+    let shown = shown.clamp(0.0, 1.0);
+    let placed = cx
+        .try_global::<TitleBarOverPanes>()
+        .and_then(|over| over.0.get(&id).copied())
+        .unwrap_or(0.0);
+    if placed == shown {
+        return;
+    }
+    cx.default_global::<TitleBarOverPanes>().0.insert(id, shown);
+    place_traffic_lights(window, cx);
+}
+
+fn traffic_light_row(window: &Window, cx: &App) -> Pixels {
+    let theme = penna::Theme::global(cx);
+    let shown = cx
+        .try_global::<TitleBarOverPanes>()
+        .and_then(|over| over.0.get(&window.window_handle().window_id()).copied())
+        .unwrap_or(0.0);
+    theme.title_bar_height()
+        + (theme.title_bar_over_panes_height() - theme.title_bar_height()) * shown
+}
+
 #[cfg_attr(not(target_os = "macos"), allow(unused_variables))]
 pub(crate) fn place_traffic_lights(window: &Window, cx: &App) {
     #[cfg(target_os = "macos")]
     window.set_traffic_light_position(penna::TitleBar::traffic_light_position(
-        penna::Theme::global(cx).title_bar_height(),
+        traffic_light_row(window, cx),
         UiZoom::get(cx),
     ));
 }

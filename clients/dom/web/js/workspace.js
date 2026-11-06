@@ -22,7 +22,7 @@ export function paneIcon(kind) {
 export function metrics() {
   const margin = preferences.gaps ? preferences.pane_margin : 0;
   const header = margin > 0 ? 34 : 40;
-  return { margin, header, titlebar: header + margin * 2, gaps: preferences.gaps };
+  return { margin, header, titlebar: header + margin * 2, overPanes: header + margin, gaps: preferences.gaps };
 }
 
 const app = $(".app");
@@ -766,10 +766,11 @@ function renderTitlebar() {
 }
 
 function applyMetrics() {
-  const { margin, header, titlebar: height, gaps } = metrics();
+  const { margin, header, titlebar: height, overPanes, gaps } = metrics();
   const root = app.style;
   root.setProperty("--zz-pane-header-height", `${header}px`);
   root.setProperty("--penna-titlebar-height", `${height}px`);
+  root.setProperty("--zz-status-bar-height", `${overPanes}px`);
   root.setProperty("--pane-margin", `${margin}px`);
   const glow = preferences.pane_glow_strength;
   root.setProperty("--pane-wash-scale", glow);

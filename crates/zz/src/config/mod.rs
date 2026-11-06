@@ -349,10 +349,6 @@ pub(crate) fn pane_gaps(cx: &App) -> bool {
     resolved_config(cx).pane_gaps.value
 }
 
-pub(crate) fn pane_corner_radius(cx: &App) -> Option<f32> {
-    resolved_config(cx).pane_corner_radius.value
-}
-
 pub(crate) fn pane_inactive_opacity(cx: &App) -> f32 {
     resolved_config(cx).pane_inactive_opacity.value
 }
@@ -2262,29 +2258,6 @@ mod tests {
         }
     }
 
-    #[ala::test]
-    fn a_pane_corner_reloads_into_the_theme_and_resets_to_the_concentric_one(
-        cx: &mut ala::TestAppContext,
-    ) {
-        let directory = tempfile::tempdir().expect("temporary directory");
-        let path = directory.path().join(CONFIG_FILE_NAME);
-        cx.update(zz_ui::init);
-        let concentric = cx.update(|cx| {
-            install_config(Some(&path), Some(load_config(&path)), cx);
-            crate::theme::refresh_current_theme(cx);
-            penna::Theme::global(cx).pane_radius()
-        });
-        for (value, expected) in [(Some("20"), px(20.0)), (Some("0"), px(0.0)), (None, concentric)] {
-            write_config_edit_at(&path, ConfigKey::PaneCornerRadius.as_str(), value)
-                .expect("write the pane corner");
-            cx.update(|cx| {
-                install_config(Some(&path), Some(load_config(&path)), cx);
-                crate::theme::refresh_current_theme(cx);
-                assert_eq!(penna::Theme::global(cx).pane_radius(), expected, "{value:?}");
-            });
-        }
-    }
-
     #[test]
     fn writer_creates_a_fresh_file_and_parent_directories_atomically() {
         let directory = tempfile::tempdir().expect("temporary directory");
@@ -2850,7 +2823,6 @@ mod tests {
             "pane-glow-strength",
             "pane-inactive-opacity",
             "pane-margin",
-            "pane-corner-radius",
             "widget-corner-radius",
             "chrome-contrast",
             "reduce-transparency",

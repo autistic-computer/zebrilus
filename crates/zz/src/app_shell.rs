@@ -322,6 +322,13 @@ impl Render for AppShell {
             });
         }
         let strip_grows = sliding && !draws_window_controls(window);
+        let over_panes_shown = match (route, mode) {
+            (WorkspaceRoute::App, ChromeMode::Sidebar) if strip_grows => 1.0 - slide,
+            (WorkspaceRoute::App, ChromeMode::Titlebar) if strip_grows => slide,
+            (WorkspaceRoute::App, ChromeMode::Titlebar) => 1.0,
+            (WorkspaceRoute::Settings, _) | (WorkspaceRoute::App, ChromeMode::Sidebar) => 0.0,
+        };
+        crate::ui_scale::show_title_bar_over_panes(over_panes_shown, window, cx);
         let gap = crate::config::pane_margin(cx);
         let over_panes = |titlebar: AnyElement, shown: f32| {
             titlebar_over_panes(titlebar, gap * shown).into_any_element()
@@ -573,7 +580,7 @@ impl Render for AppShell {
 }
 
 fn growing_strip(strip: AnyElement, shown: f32, cx: &App) -> AnyElement {
-    let height = cx.theme().title_bar_height();
+    let height = cx.theme().title_bar_over_panes_height();
     div()
         .relative()
         .flex_none()

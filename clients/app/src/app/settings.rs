@@ -106,9 +106,7 @@ impl ala::Global for PlatformReduceMotion {}
 
 impl Preferences {
     fn apply_pane_frame(&self, cx: &mut App) {
-        let theme = Theme::global_mut(cx);
-        theme.pane_margin = self.margin();
-        theme.pane_corner_radius = self.pane_corner_radius.map(ala::px);
+        Theme::global_mut(cx).pane_margin = self.margin();
     }
 
     pub(super) fn apply(&self, connection: &Entity<Connection>, window: &mut Window, cx: &mut App) {
@@ -590,7 +588,6 @@ impl AppShell {
             SettingsSection::Panes => {
                 let [inactive, glow, margin] =
                     PaneControl::ALL.map(|control| self.pane_setting(control, cx));
-                let corner = self.pane_corner_setting(cx);
                 let gaps = SettingEntry::new("Pane gaps").control(
                     Switch::new("settings-pane-gaps")
                         .checked(self.preferences.gaps)
@@ -609,7 +606,7 @@ impl AppShell {
                     },
                     [gaps],
                     [inactive, glow],
-                    [margin, corner],
+                    [margin],
                     cx,
                 )
                 .into_any_element();
@@ -731,35 +728,6 @@ impl AppShell {
             || div().into_any_element(),
             |entry| entry.position(position).into_any_element(),
         )
-    }
-
-    fn pane_corner_setting(&self, cx: &mut Context<Self>) -> SettingEntry {
-        let gaps = self.preferences.gaps;
-        SettingEntry::new("Corner radius")
-            .description(if gaps {
-                "Panes and PiPs"
-            } else {
-                "Needs pane gaps"
-            })
-            .control(penna::blocks::appearance::corner_slider(
-                "settings-pane-corner-radius",
-                "Pane corner radius",
-                f32::from(cx.theme().pane_radius()),
-                {
-                    let view = cx.entity().downgrade();
-                    move |radius, _, cx| {
-                        let _ = view.update(cx, |this, cx| {
-                            this.preferences.pane_corner_radius = Some(radius);
-                            this.preferences.save();
-                            this.preferences.apply_pane_frame(cx);
-                            cx.refresh_windows();
-                            cx.notify();
-                        });
-                    }
-                },
-                cx,
-            ))
-            .disabled(!gaps)
     }
 
     fn pane_setting(&self, control: PaneControl, cx: &mut Context<Self>) -> SettingEntry {

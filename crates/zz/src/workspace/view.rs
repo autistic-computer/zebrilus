@@ -5506,7 +5506,7 @@ mod tests {
             assert_eq!(canvas.top() - root.top(), gap, "titlebar {titlebar}");
             assert_eq!(canvas.left() - root.left(), gap, "titlebar {titlebar}");
             if titlebar {
-                let bar = cx.update(|_, cx| cx.theme().title_bar_height());
+                let bar = cx.update(|_, cx| cx.theme().title_bar_over_panes_height());
                 assert_eq!(canvas.top(), bar, "the panes start where the titlebar ends");
             }
         }

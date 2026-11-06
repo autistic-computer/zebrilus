@@ -76,7 +76,7 @@ impl AppShell {
             .max(px(0.0)),
             (viewport.height
                 - if self.settings.is_none() && !self.inline_sidebar(window) {
-                    cx.theme().title_bar_height()
+                    cx.theme().title_bar_over_panes_height()
                 } else {
                     px(0.0)
                 })

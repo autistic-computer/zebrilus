@@ -642,25 +642,6 @@ function paneSetting(control) {
   });
 }
 
-function paneCornerSetting() {
-  const p = prefs();
-  const picks = preferences.picks();
-  return entry({
-    title: "Corner radius",
-    description: p.gaps ? "Panes and PiPs" : "Needs pane gaps",
-    disabled: !p.gaps,
-    control: valueSlider({
-      label: "Pane corner radius",
-      value: picks?.pane_radius ?? 0,
-      min: 0,
-      max: 1,
-      step: 0.01,
-      display: percent,
-      onchange: (value) => set({ pane_corner_radius: picks.limits.radius * value * value }),
-    }),
-  });
-}
-
 function panesPage() {
   const p = prefs();
   const [inactive, glow, margin] = PANE_CONTROLS.map(paneSetting);
@@ -668,7 +649,7 @@ function panesPage() {
     h("div", { class: "settings-section" }, heading("Panes"), header("Preview"), panesPreview()),
     stack("Layout", [entry({ title: "Pane gaps", control: toggle(p.gaps, "Pane gaps", (value) => set({ gaps: value })) })]),
     stack("Focus", [inactive, glow]),
-    stack("Frame", [margin, paneCornerSetting()]),
+    stack("Frame", [margin]),
   ];
 }
 

@@ -94,7 +94,6 @@ pub enum ConfigKey {
     PaneGlowStrength,
     PaneInactiveOpacity,
     PaneMargin,
-    PaneCornerRadius,
     WidgetCornerRadius,
     ChromeContrast,
     ReduceTransparency,
@@ -142,7 +141,6 @@ impl ConfigKey {
             Self::PaneGlowStrength => "pane-glow-strength",
             Self::PaneInactiveOpacity => "pane-inactive-opacity",
             Self::PaneMargin => "pane-margin",
-            Self::PaneCornerRadius => "pane-corner-radius",
             Self::WidgetCornerRadius => "widget-corner-radius",
             Self::ChromeContrast => "chrome-contrast",
             Self::ReduceTransparency => "reduce-transparency",
@@ -190,7 +188,6 @@ impl ConfigKey {
             "pane-glow-strength" => Some(Self::PaneGlowStrength),
             "pane-inactive-opacity" => Some(Self::PaneInactiveOpacity),
             "pane-margin" => Some(Self::PaneMargin),
-            "pane-corner-radius" => Some(Self::PaneCornerRadius),
             "widget-corner-radius" => Some(Self::WidgetCornerRadius),
             "chrome-contrast" => Some(Self::ChromeContrast),
             "reduce-transparency" => Some(Self::ReduceTransparency),
@@ -224,7 +221,7 @@ impl ConfigKey {
                 Some((MIN_PANE_INACTIVE_OPACITY, MAX_PANE_INACTIVE_OPACITY))
             }
             Self::PaneMargin => Some((0.0, MAX_PANE_MARGIN)),
-            Self::WidgetCornerRadius | Self::PaneCornerRadius => Some((0.0, MAX_CORNER_RADIUS)),
+            Self::WidgetCornerRadius => Some((0.0, MAX_CORNER_RADIUS)),
             Self::ChromeContrast => Some((1.0, 2.0)),
             Self::ChromeTintHue => Some((0.0, 360.0)),
             Self::WindowCornerRadius => Some((0.0, MAX_WINDOW_CORNER_RADIUS)),
@@ -377,7 +374,6 @@ pub struct AppConfig {
     pub pane_glow_strength: ConfigValue<f32>,
     pub pane_inactive_opacity: ConfigValue<f32>,
     pub pane_margin: ConfigValue<f32>,
-    pub pane_corner_radius: ConfigValue<Option<f32>>,
     pub widget_corner_radius: ConfigValue<f32>,
     pub chrome_contrast: ConfigValue<f32>,
     pub reduce_transparency: ConfigValue<bool>,
@@ -420,7 +416,6 @@ impl Default for AppConfig {
             pane_glow_strength: ConfigValue::from_default(DEFAULT_PANE_GLOW_STRENGTH),
             pane_inactive_opacity: ConfigValue::from_default(DEFAULT_PANE_INACTIVE_OPACITY),
             pane_margin: ConfigValue::from_default(DEFAULT_PANE_MARGIN),
-            pane_corner_radius: ConfigValue::from_default(None),
             widget_corner_radius: ConfigValue::from_default(DEFAULT_WIDGET_CORNER_RADIUS),
             chrome_contrast: ConfigValue::from_default(DEFAULT_CHROME_CONTRAST),
             reduce_transparency: ConfigValue::from_default(DEFAULT_REDUCE_TRANSPARENCY),
@@ -472,7 +467,6 @@ impl AppConfig {
             | ConfigKey::PaneGlowStrength
             | ConfigKey::PaneInactiveOpacity
             | ConfigKey::PaneMargin
-            | ConfigKey::PaneCornerRadius
             | ConfigKey::WidgetCornerRadius
             | ConfigKey::ChromeContrast
             | ConfigKey::Motion
@@ -894,6 +888,7 @@ pub fn parse_config(source: &str, system_font_family: &str) -> ParsedConfig {
 
         if RETIRED_PANE_KEYS.contains(&key) {
             let instead = match key {
+                "pane-corner-radius" => "pane corners follow `widget-corner-radius`",
                 "pane-border-width" => {
                     "the pane edge follows the theme's glass, or its outline width without glass"
                 }
@@ -1067,20 +1062,6 @@ pub fn parse_config(source: &str, system_font_family: &str) -> ParsedConfig {
             continue;
         }
 
-        if key == ConfigKey::PaneCornerRadius {
-            let target = &mut parsed.config.pane_corner_radius;
-            target.provenance = ConfigProvenance::Override;
-            let range = key.numeric_range().expect("a pane corner is a number");
-            match parse_numeric_value(key, value, range) {
-                Ok(radius) => target.value = Some(radius),
-                Err(message) => parsed.diagnostics.push(ConfigDiagnostic {
-                    line: line_number,
-                    message: format!("invalid `{}`: {message}", key.as_str()),
-                }),
-            }
-            continue;
-        }
-
         let target = match key {
             ConfigKey::WindowCornerRadius => &mut parsed.config.window_corner_radius,
             ConfigKey::PaneGlowStrength => &mut parsed.config.pane_glow_strength,
@@ -1092,8 +1073,7 @@ pub fn parse_config(source: &str, system_font_family: &str) -> ParsedConfig {
             ConfigKey::ChromeTintHue => &mut parsed.config.chrome_tint_hue,
             ConfigKey::EditorFontSize => &mut parsed.config.editor_font_size,
             ConfigKey::WhichKeyDelay => &mut parsed.config.which_key_delay,
-            ConfigKey::PaneCornerRadius
-            | ConfigKey::UseSystemTitlebar
+            ConfigKey::UseSystemTitlebar
             | ConfigKey::PaletteWindowLayout
             | ConfigKey::PaletteShowKeys
             | ConfigKey::PaletteVimMode
@@ -1443,8 +1423,9 @@ pub const RETIRED_LOOK_KEYS: [&str; 4] = [
     "widget-field",
 ];
 
-pub const RETIRED_PANE_KEYS: [&str; 4] = [
+pub const RETIRED_PANE_KEYS: [&str; 5] = [
     "pane-glass",
+    "pane-corner-radius",
     "pane-border-width",
     "pane-background-opacity",
     "pip-background-opacity",
@@ -2186,27 +2167,19 @@ mod tests {
     }
 
     #[test]
-    fn a_pane_corner_follows_the_theme_until_set() {
-        assert_eq!(AppConfig::default().pane_corner_radius.value, None);
-        let parsed = parse_config("pane-corner-radius = 20\npip-background-opacity = 0.5\n", "monospace");
+    fn a_pip_opacity_line_is_reported_and_otherwise_ignored() {
+        let parsed = parse_config("pip-background-opacity = 0.5\n", "monospace");
         assert_eq!(
-            parsed.config.pane_corner_radius,
-            ConfigValue {
-                value: Some(20.0),
-                provenance: ConfigProvenance::Override,
-            }
+            parsed
+                .diagnostics
+                .iter()
+                .map(|diagnostic| diagnostic.message.as_str())
+                .collect::<Vec<_>>(),
+            [
+                "`pip-background-opacity` was removed: a PiP is glass when `interface-glass` is on and its pane's color, opaque, when it is off"
+            ]
         );
-        assert_eq!(parsed.diagnostics.len(), 1);
-        assert_eq!(
-            parsed.diagnostics[0].message,
-            "`pip-background-opacity` was removed: a PiP is glass when `interface-glass` is on and its pane's color, opaque, when it is off"
-        );
-        let rejected = parse_config("pane-corner-radius = 40\n", "monospace");
-        assert_eq!(rejected.config.pane_corner_radius.value, None);
-        assert_eq!(
-            rejected.diagnostics[0].message,
-            "invalid `pane-corner-radius`: value must be between 0 and 25 logical pixels"
-        );
+        assert_eq!(parsed.config, AppConfig::default());
     }
 
     #[test]
@@ -2364,7 +2337,7 @@ mod tests {
             .iter()
             .map(|diagnostic| diagnostic.message.as_str())
             .collect::<Vec<_>>();
-        assert_eq!(messages.len(), 5, "{messages:?}");
+        assert_eq!(messages.len(), 6, "{messages:?}");
         assert_eq!(
             messages[0],
             "`interface-style` was removed: set the look in Settings > Interface"
@@ -2375,15 +2348,19 @@ mod tests {
             messages[3],
             "`widget-glass` was removed: set `interface-glass`, or Glass in Settings > Interface"
         );
-        assert_eq!(config.pane_corner_radius.value, Some(4.0));
         assert_eq!(
             messages[4],
+            "`pane-corner-radius` was removed: pane corners follow `widget-corner-radius`"
+        );
+        assert_eq!(
+            messages[5],
             "`widget-shadows` was removed: the kit sets this per role now"
         );
-        for key in RETIRED_MATERIAL_KEYS
-            .into_iter()
-            .chain(["pane-border-width", "pip-background-opacity"])
-        {
+        for key in RETIRED_MATERIAL_KEYS.into_iter().chain([
+            "pane-corner-radius",
+            "pane-border-width",
+            "pip-background-opacity",
+        ]) {
             assert!(is_app_config_key(key));
             assert_eq!(ConfigKey::parse(key), None);
         }

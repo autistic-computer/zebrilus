@@ -45,8 +45,8 @@ pane's colour (`zz_ui::pane_look::pane_color`, a terminal's background over the 
 theme's glass at the material's own opacity while glass is on (`pip_material`; a renderer that
 cannot read the backdrop paints the colour solid), and is the card's opaque fill while glass is
 off, under the `divider` hairline gapped panes take (penna's layer gives `floating.pip` that edge
-wherever its glass draws no rim, gaps or not). Corners are `Theme::pane_radius`, which
-`pane-corner-radius` sets (Settings > Panes > Frame > Corner radius), and the `floating.pip`
+wherever its glass draws no rim, gaps or not). Corners are `Theme::pane_radius`, which follows
+Interface's Corner radius, and the `floating.pip`
 recipe under `floating.pane`, which casts the theme's float shadow (Materials in the theme creator; Roles
 → PiPs can set none, contact or float). Focus does not change it. The dark palettes draw shadows in
 20% black, so on a dark pane the default reads faintly.

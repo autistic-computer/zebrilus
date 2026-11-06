@@ -209,7 +209,7 @@ Browser, Terminal, Hosts, Providers, System, About:
 |---------|----------|
 | Interface | Look (a Mode segmented control for `theme-mode`, the Accent swatches for `chrome-accent`, the Tint, Tint strength and Corner radius sliders for `chrome-tint-hue`, `chrome-tint` and `widget-corner-radius`, the Controls segmented control and the Glass switch for `control-shape` and `interface-glass`, and the system UI font picker), Sidebar (`program-colors`), Size (transient UI zoom, `chrome-density` as Density), Accessibility (`chrome-contrast` as Increase contrast, `reduce-transparency` as Reduce transparency, `motion` as Motion), Window (macOS app-icon pickers, window blur, Linux `window-corner-radius` and `use-system-titlebar`) |
 | Editor | Editor-pane typography and display controls, when compiled in |
-| Panes | Layout (`pane-gaps`), Focus (`pane-inactive-opacity`, `pane-glow-strength`), Frame (`pane-margin`, and `pane-corner-radius` as Corner radius, a percent slider); gapped panes draw their frame in glass, with corners concentric with their header's buttons unless Corner radius sets them, and the rim from the theme's glass (a hairline the outline's width without glass). PiPs take the same corner and follow Glass like a menu |
+| Panes | Layout (`pane-gaps`), Focus (`pane-inactive-opacity`, `pane-glow-strength`), Frame (`pane-margin`); gapped panes draw their frame in glass, with corners concentric with their header's buttons so they follow Interface's Corner radius, and the rim from the theme's glass (a hairline the outline's width without glass). PiPs take the same corner and follow Glass like a menu |
 | Multiplexer | Full-file `zz/mux.conf` editor without line numbers, 12px text, Save, and tmux import |
 | Browser | Browser-local shortcuts, beginning with the element-selector hotkey |
 | Terminal | Full-file Ghostty-compatible configuration editor with Save and Import Ghostty |
@@ -689,10 +689,14 @@ then paints whichever frame the view handed it: the Linux/Windows GPU texture th
   cluster. The glyph numbers are measured, not guessed: on macOS 27 each window button is a 14x14
   frame with origins 23 apart, so three of them span 60. The lights' y is that arithmetic because
   the platform layer centres them in a container of `glyph + 2y`; `ui_scale::place_traffic_lights`
-  moves them whenever the theme rebuilds or the zoom changes, so they keep the strip's centre line.
-  The strip is `Theme::title_bar_height()`: a pane header (36px) with the pane margin above and
-  below it, 52px with gaps at the default 8px margin and 36px with flush panes, so the lights, the
-  sidebar's buttons and the status bar share the pane headers' centre line. Settings and the
+  moves them whenever the theme rebuilds, the zoom changes or the status bar shows, so they keep
+  the strip's centre line. Beside the panes the strip is `Theme::title_bar_height()`: a pane header
+  (34px) with the pane margin above and below it, 46px with gaps at the default 6px margin and 40px
+  with flush panes, so the lights and the sidebar's buttons share the pane headers' centre line.
+  The status bar lies across the top of the panes instead and is
+  `Theme::title_bar_over_panes_height()`, a pane header plus one margin (40px at 6px); the app
+  shell tells `ui_scale::show_title_bar_over_panes` how much of it shows, and the lights move
+  between the two centre lines with the sidebar's slide. Settings and the
   sidebar toggle are `Button::compact_icon` buttons, like sidebar row actions and the terminal and
   browser pane headers, with the 0.5px optical drop, sized up to 32px buttons with 17px glyphs (from 28
   and 15; `WORKSPACE_CHROME_BUTTON_SIZE` in `zz_ui::navigation`). The toggle changes chrome mode

@@ -116,7 +116,6 @@ fn apply_zz_overrides(cx: &mut App) {
         glow_strength: config::resolved_config(cx).pane_glow_strength.value,
     };
     let pane_margin = config::pane_margin(cx);
-    let pane_corner_radius = config::pane_corner_radius(cx).map(ala::px);
     let window_opacity = chrome_background(cx).a;
     cx.set_global(pane_look);
     let theme = Theme::global_mut(cx);
@@ -131,7 +130,6 @@ fn apply_zz_overrides(cx: &mut App) {
         theme.glass = None;
     }
     theme.pane_margin = pane_margin;
-    theme.pane_corner_radius = pane_corner_radius;
     theme.window_opacity = window_opacity;
 }
 

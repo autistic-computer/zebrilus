@@ -42,7 +42,7 @@ pub const STORY: Story = Story {
         Section {
             id: "panes-page",
             name: "Panes page",
-            summary: "panes_page with the live preview above its Layout, Focus and Frame stacks. Frame settings, the pane margin and corner radius, dim while pane gaps are off.",
+            summary: "panes_page with the live preview above its Layout, Focus and Frame stacks. Frame settings dim while pane gaps are off.",
             build: |window, cx| stateful(window, cx, Controls::new, panes),
         },
         Section {
@@ -186,26 +186,10 @@ fn panes(controls: &Controls, _: &mut Window, cx: &mut App) -> AnyElement {
                     .disabled(!gaps)
                     .control(controls.number(1, cx)),
             ],
-            [
-                SettingEntry::new("Pane margin")
-                    .when(!gaps, |entry| entry.description("Needs pane gaps"))
-                    .disabled(!gaps)
-                    .control(controls.number(2, cx)),
-                SettingEntry::new("Corner radius")
-                    .description(if gaps {
-                        "Panes and PiPs"
-                    } else {
-                        "Needs pane gaps"
-                    })
-                    .disabled(!gaps)
-                    .control(penna::blocks::appearance::corner_slider(
-                        "settings-pane-corner-radius",
-                        "Pane corner radius",
-                        f32::from(cx.theme().pane_radius()),
-                        |_, _, _| {},
-                        cx,
-                    )),
-            ],
+            [SettingEntry::new("Pane margin")
+                .when(!gaps, |entry| entry.description("Needs pane gaps"))
+                .disabled(!gaps)
+                .control(controls.number(2, cx))],
             cx,
         )
     };

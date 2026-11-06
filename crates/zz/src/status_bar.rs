@@ -1,4 +1,4 @@
-use penna::blocks::sidebar::controls_leading_inset;
+use penna::{ActiveTheme as _, blocks::sidebar::controls_leading_inset_in};
 use std::rc::Rc;
 
 use ala::{AnyElement, App, Entity, Pixels, Stateful, Window};
@@ -55,7 +55,7 @@ pub(crate) fn render_gui_status_bar(
         .then(|| render_window_overflow(&model.windows, connected, mux, cx));
     workspace_status_bar(
         crate::config::pane_gaps(cx),
-        controls_leading_inset(cx),
+        controls_leading_inset_in(cx.theme().title_bar_over_panes_height(), cx),
         WorkspaceStatusSlots {
             windows: visible_windows.into_iter().chain(overflow).collect(),
             titlebar_controls,

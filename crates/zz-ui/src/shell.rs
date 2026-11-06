@@ -74,7 +74,7 @@ pub fn workspace_status_bar(
     slots: WorkspaceStatusSlots,
     cx: &App,
 ) -> Stateful<ala::Div> {
-    let height = cx.theme().title_bar_height();
+    let height = cx.theme().title_bar_over_panes_height();
     let window_strip = div()
         .flex()
         .flex_1()

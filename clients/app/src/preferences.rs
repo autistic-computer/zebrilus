@@ -20,7 +20,6 @@ pub struct Preferences {
     pub pane_inactive_opacity: f32,
     pub pane_glow_strength: f32,
     pub pane_margin: f32,
-    pub pane_corner_radius: Option<f32>,
     pub palette_grouped: bool,
     pub palette_show_keys: bool,
     pub palette_vim_mode: bool,
@@ -47,7 +46,6 @@ impl Default for Preferences {
             pane_inactive_opacity: 0.7,
             pane_glow_strength: 1.0,
             pane_margin: 6.0,
-            pane_corner_radius: None,
             palette_grouped: true,
             palette_show_keys: true,
             palette_vim_mode: false,
@@ -98,10 +96,6 @@ impl Preferences {
         ] {
             *value = bounded(*value, min, max, fallback);
         }
-        self.pane_corner_radius = self
-            .pane_corner_radius
-            .filter(|radius| radius.is_finite())
-            .map(|radius| radius.clamp(0.0, interface_theme::MAX_CORNER_RADIUS));
         self.appearance.mode = Some(self.theme_mode().as_str().into());
         self.terminal_font_family = self
             .terminal_font_family
@@ -355,7 +349,6 @@ mod tests {
         );
         let mut changed = Preferences {
             sidebar_width: 320.0,
-            pane_corner_radius: Some(18.0),
             ..defaults
         };
         changed.appearance.motion = penna::foundation::motion::Motion::Fast;
@@ -363,7 +356,7 @@ mod tests {
         let restored = serde_json::from_str::<Preferences>(&saved)
             .unwrap()
             .sanitized();
-        assert_eq!(restored.pane_corner_radius, Some(18.0));
+        assert_eq!(restored.sidebar_width, 320.0);
         assert_eq!(
             restored.appearance.motion,
             penna::foundation::motion::Motion::Fast
@@ -547,7 +540,6 @@ mod tests {
         assert!(preferences.gaps);
         assert_eq!(preferences.appearance.overrides.radius, Some(8.0));
         assert_eq!(preferences.pane_margin, 6.0);
-        assert_eq!(preferences.pane_corner_radius, None);
         assert_eq!(preferences.pane_glow_strength, 1.0);
         assert_eq!(
             serde_json::from_str::<Preferences>(
@@ -569,16 +561,5 @@ mod tests {
         assert_eq!(preferences.pane_margin, 0.0);
         assert_eq!(preferences.pane_inactive_opacity, 1.0);
         assert_eq!(preferences.pane_glow_strength, 2.0);
-        for (value, expected) in [(Some(40.0), Some(25.0)), (Some(f32::NAN), None)] {
-            assert_eq!(
-                Preferences {
-                    pane_corner_radius: value,
-                    ..Preferences::default()
-                }
-                .sanitized()
-                .pane_corner_radius,
-                expected,
-            );
-        }
     }
 }

@@ -13,7 +13,7 @@
   z-index: 2;
   flex: none;
   gap: 0;
-  height: var(--penna-titlebar-height, 40px);
+  height: var(--zz-status-bar-height, 40px);
   margin-bottom: calc(-1 * var(--pane-margin, 0px));
   padding: 0;
   overflow: hidden;

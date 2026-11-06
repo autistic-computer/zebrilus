@@ -166,7 +166,7 @@ pub fn panes_page(
     preview: panes_preview::PanesPreview,
     layout: impl IntoIterator<Item = SettingEntry>,
     focus: [SettingEntry; 2],
-    frame: [SettingEntry; 2],
+    frame: [SettingEntry; 1],
     cx: &App,
 ) -> ala::Div {
     div()
@@ -255,7 +255,7 @@ mod tests {
 
     impl Render for PanesPageTest {
         fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-            let [gaps, opacity, glow, margin, corner] = std::array::from_fn::<_, 5, _>(|index| {
+            let [gaps, opacity, glow, margin] = std::array::from_fn::<_, 4, _>(|index| {
                 SettingEntry::new(format!("Setting {index}")).control(
                     div()
                         .w(px(100.0))
@@ -271,7 +271,7 @@ mod tests {
                 },
                 [gaps],
                 [opacity, glow],
-                [margin, corner],
+                [margin],
                 cx,
             ))
         }

@@ -54,7 +54,7 @@ sidebar or titlebar is visible, so with the titlebar showing a number can open a
 window of another session. They ignore missing positions. The `ui` chrome actions `select-window-1` through `select-window-9`
 support rebinding and take priority over pane shortcuts.
 
-Window pills are 26px high and vertically centered inside the titlebar, a pane header tall (36px) plus the pane margin above and below it, leaving at least 5px at both edges. They
+Window pills are 32px high and vertically centered inside the titlebar, a pane header tall (34px) plus one pane margin (`Theme::title_bar_over_panes_height()`), 40px at the default margin, leaving 4px above them and 4px down to the panes, since the panes' own top margin finishes the gap. They
 start at 240px wide regardless of the title and shrink together only when the window strip runs
 out of room; titles truncate within the remaining space. Their pane deck is the shared
 `navigation::pane_stack` at its 20px size: the focused pane's tile with its glyph in front and at most two blank tiles fanned out behind it, each tile outlined on its own (dark in both modes and lit like a program icon, with no theme hairline: a gray line outside and a white rim inside in light mode, a dark line and a faint rim in dark mode), 5px apart, so it is never

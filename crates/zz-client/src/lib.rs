@@ -68,8 +68,7 @@ pub use menu::{
 };
 pub use status::{ComposedStatusRow, StatusHitRange, compose_status_row, compose_status_row_over};
 pub use status_bar::{
-    MAX_VISIBLE_WINDOWS, StatusBarModel, StatusBarPane, StatusBarWindow,
-    visible_window_range,
+    MAX_VISIBLE_WINDOWS, StatusBarModel, StatusBarPane, StatusBarWindow, visible_window_range,
 };
 
 pub mod appearance;

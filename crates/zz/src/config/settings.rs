@@ -41,9 +41,7 @@ use crate::{
     window::toast,
     workspace::add_host,
 };
-use penna::blocks::appearance::{
-    AppearanceControls, corner_slider, kit_row, picker_tile, ui_font_select,
-};
+use penna::blocks::appearance::{AppearanceControls, kit_row, picker_tile, ui_font_select};
 use zz_client::url_input::SearchProvider;
 use zz_protocol::ConfigOverrideEntry;
 use zz_terminal::{TerminalColorScheme, discover_ghostty_config};
@@ -1379,28 +1377,9 @@ impl SettingsView {
                     .when(!gaps, |entry| entry.description(NEEDS_PANE_GAPS))
                     .disabled(!gaps),
             ],
-            [
-                Self::numeric_setting("Pane margin", &self.pane_margin, cx)
-                    .when(!gaps, |entry| entry.description(NEEDS_PANE_GAPS))
-                    .disabled(!gaps),
-                SettingEntry::new("Corner radius")
-                    .description(if gaps {
-                        "Panes and PiPs"
-                    } else {
-                        NEEDS_PANE_GAPS
-                    })
-                    .control(corner_slider(
-                        "settings-pane-corner-radius",
-                        "Pane corner radius",
-                        f32::from(cx.theme().pane_radius()),
-                        |radius, _, cx| {
-                            let key = ConfigKey::PaneCornerRadius;
-                            written(key, set_config_key(key, &format!("{radius:.2}")), cx);
-                        },
-                        cx,
-                    ))
-                    .disabled(!gaps),
-            ],
+            [Self::numeric_setting("Pane margin", &self.pane_margin, cx)
+                .when(!gaps, |entry| entry.description(NEEDS_PANE_GAPS))
+                .disabled(!gaps)],
             cx,
         )
         .into_any_element()
@@ -2060,7 +2039,6 @@ fn is_pane_setting(key: ConfigKey) -> bool {
             | ConfigKey::PaneGlowStrength
             | ConfigKey::PaneInactiveOpacity
             | ConfigKey::PaneMargin
-            | ConfigKey::PaneCornerRadius
     )
 }
 
@@ -2125,10 +2103,7 @@ fn numeric_range(key: ConfigKey) -> (f32, f32) {
 }
 
 fn numeric_input_scale(key: ConfigKey) -> f32 {
-    if matches!(
-        key,
-        ConfigKey::PaneGlowStrength
-    ) {
+    if matches!(key, ConfigKey::PaneGlowStrength) {
         100.0
     } else {
         1.0
@@ -2136,10 +2111,7 @@ fn numeric_input_scale(key: ConfigKey) -> f32 {
 }
 
 fn numeric_input_text(key: ConfigKey, value: f32) -> String {
-    if matches!(
-        key,
-        ConfigKey::PaneGlowStrength
-    ) {
+    if matches!(key, ConfigKey::PaneGlowStrength) {
         format!("{:.2}", value * numeric_input_scale(key))
             .trim_end_matches('0')
             .trim_end_matches('.')
@@ -2188,7 +2160,6 @@ fn numeric_config_value(config: &AppConfig, key: ConfigKey) -> ConfigValue<f32> 
         | ConfigKey::QuitDaemonOnExit
         | ConfigKey::AutoRestartStaleDaemon
         | ConfigKey::CheckForUpdates
-        | ConfigKey::PaneCornerRadius
         | ConfigKey::FlatSidebar
         | ConfigKey::ProgramColors
         | ConfigKey::ExperimentalEditorPane

@@ -39,7 +39,6 @@ fn kit(preferences: &Preferences, mode: ThemeMode) -> Theme {
         kit.glass = None;
     }
     kit.pane_margin = preferences.margin();
-    kit.pane_corner_radius = preferences.pane_corner_radius.map(ala::px);
     let font = preferences.shown_ui_font();
     kit.font_family = if font.is_empty() { WEB_UI_FONT } else { font }
         .to_owned()
@@ -147,7 +146,6 @@ pub fn picks(json: &str, dark: bool) -> Result<String, JsError> {
             "strength": neutral.amount,
         },
         "radius": interface_theme::corner_share(preferences.widget_corner_radius()),
-        "pane_radius": interface_theme::corner_share(f32::from(kit.pane_radius())),
         "controls": interface_theme::control_shape_setting(appearance.controls()).as_str(),
         "glass": glass,
         "font": preferences.shown_ui_font(),
