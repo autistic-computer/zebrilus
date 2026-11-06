@@ -11,18 +11,18 @@ const BLURRED_CHROME_OPACITY: f32 = 0.93;
     clippy::disallowed_methods,
     reason = "blurred chrome lets the window material show through"
 )]
-pub fn chrome_background(background: Hsla, blur_opacity: Option<f32>) -> Hsla {
-    match blur_opacity {
-        Some(opacity) => background.opacity(
-            BLURRED_CHROME_OPACITY + (1.0 - BLURRED_CHROME_OPACITY) * opacity.clamp(0.0, 1.0),
-        ),
-        None => background,
+pub fn chrome_background(background: Hsla, blurred: bool) -> Hsla {
+    if blurred {
+        background.opacity(BLURRED_CHROME_OPACITY)
+    } else {
+        background
     }
 }
 
 pub fn app_shell_surface(
     id: impl Into<ElementId>,
     background: Hsla,
+    frame: Option<Hsla>,
     sidebar: impl IntoElement,
     titlebar: Option<AnyElement>,
     content: impl IntoElement,
@@ -52,6 +52,7 @@ pub fn app_shell_surface(
                         .flex_1()
                         .min_w_0()
                         .min_h_0()
+                        .when_some(frame, ala::Styled::bg)
                         .children(titlebar)
                         .child(div().flex().flex_1().min_w_0().min_h_0().child(content)),
                 ),

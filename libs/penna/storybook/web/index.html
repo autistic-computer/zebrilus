@@ -189,13 +189,13 @@
                     </section>
                     <section>
                         <h3>Motion</h3>
-                        <label class="row check">
-                            <span>Animations</span>
-                            <input type="checkbox" name="motion" checked />
-                        </label>
-                        <label class="row slider">
-                            <span>Animation speed</span><output name="speed-value"></output>
-                            <input type="range" name="speed" min="0.25" max="2" step="0.05" value="1" />
+                        <label class="row">
+                            <span>Motion</span>
+                            <select name="motion">
+                                <option value="off">Off</option>
+                                <option value="default" selected>Default</option>
+                                <option value="fast">Fast</option>
+                            </select>
                         </label>
                     </section>
                 </div>

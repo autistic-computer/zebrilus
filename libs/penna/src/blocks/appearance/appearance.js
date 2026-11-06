@@ -6,6 +6,7 @@ const LOOKS = {
 };
 const HUE_STOPS = 12;
 const RING = 3.5;
+const MAX_CORNER_RADIUS = 25;
 
 function hueColor(hue) {
   const angle = (hue * Math.PI) / 180;
@@ -39,8 +40,7 @@ function adaptive(radius, width, height) {
 }
 
 function controlRadius() {
-  const radius = px(rootStyle().getPropertyValue("--penna-control-radius"));
-  return radius > 24 ? 9999 : radius;
+  return px(rootStyle().getPropertyValue("--penna-control-radius"));
 }
 
 function shapeRuns(root) {
@@ -174,7 +174,8 @@ function settleSliders(root) {
   root.querySelectorAll(".appearance-slider").forEach((slider) => {
     if (slider.dataset.value === "theme-radius" || slider.dataset.themeRadius !== undefined) {
       slider.dataset.themeRadius = "";
-      slider.dataset.value = String(snapValue(slider, px(rootStyle().getPropertyValue("--penna-radius"))));
+      const radius = Math.min(Math.max(px(rootStyle().getPropertyValue("--penna-radius")), 0), MAX_CORNER_RADIUS);
+      slider.dataset.value = String(snapValue(slider, Math.sqrt(radius / MAX_CORNER_RADIUS)));
     }
     wireSlider(slider);
     paintSlider(slider);
@@ -257,36 +258,12 @@ function pickMode(frame) {
   });
 }
 
-function wireDisclosure(frame) {
-  frame.querySelectorAll(".appearance-disclosure").forEach((button) => {
-    if (button.appearanceDisclosure) return;
-    button.appearanceDisclosure = true;
-    button.addEventListener("click", () => {
-      button.setAttribute("aria-expanded", String(button.getAttribute("aria-expanded") !== "true"));
-      requestAnimationFrame(() => shapeRuns(frame));
-    });
-  });
-}
-
-function wireMotion(frame) {
-  frame.querySelectorAll('[data-id="settings-reduce-motion"]').forEach((toggle) => {
-    if (toggle.appearanceMotion) return;
-    toggle.appearanceMotion = true;
-    toggle.addEventListener("change", (event) => {
-      const speed = toggle.closest(".appearance-run")?.querySelector('[data-id="settings-animation-speed"]');
-      speed?.closest(".appearance-entry")?.setAttribute("aria-disabled", String(event.detail.checked));
-    });
-  });
-}
-
 function settleAppearance() {
   document.querySelectorAll(".appearance-frame").forEach((frame) => {
     pickMode(frame);
     followLook(frame);
     wireSwatches(frame);
     wireCustom(frame);
-    wireDisclosure(frame);
-    wireMotion(frame);
     pennaKit.ceilText(frame);
     settleSliders(frame);
     shapeSwatches(frame);

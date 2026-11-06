@@ -5,6 +5,7 @@ use penna::foundation::interface_theme::{
     self, Appearance, ControlRadius, Glass, GlassPair, InterfaceTheme, ModeLock, Neutral,
     ThemeOverrides, Tint,
 };
+use penna::foundation::motion::Motion;
 use penna::{Smoothing, Theme, ThemeMode, UiZoom};
 
 use crate::catalog::{Control, catalog};
@@ -22,8 +23,7 @@ pub struct Knobs {
     pub tint: Option<f32>,
     pub reduce_transparency: bool,
     pub zoom: f32,
-    pub motion: bool,
-    pub speed: f32,
+    pub motion: Motion,
     pub backdrop: Backdrop,
     pub app: BTreeMap<&'static str, f32>,
 }
@@ -120,8 +120,7 @@ impl Knobs {
             tint: None,
             reduce_transparency: false,
             zoom: 1.0,
-            motion: true,
-            speed: 1.0,
+            motion: Motion::Default,
             backdrop: Backdrop::Plain,
             app: catalog()
                 .knobs
@@ -253,8 +252,13 @@ impl Knobs {
                 "tint" => knobs.tint = Some(number(key, value)?),
                 "reduce-transparency" => knobs.reduce_transparency = flag(value),
                 "zoom" => knobs.zoom = number(key, value)?,
-                "motion" => knobs.motion = flag(value),
-                "speed" => knobs.speed = number(key, value)?,
+                "motion" => {
+                    knobs.motion = match value {
+                        "fast" => Motion::Fast,
+                        "off" | "0" | "false" => Motion::Off,
+                        _ => Motion::Default,
+                    }
+                }
                 "backdrop" => {
                     knobs.backdrop = match value {
                         "plain" => Backdrop::Plain,
@@ -333,8 +337,7 @@ impl Knobs {
             contrast: self.contrast,
             reduce_transparency: self.reduce_transparency,
             zoom: self.zoom,
-            animations: self.motion,
-            animation_speed: self.speed,
+            motion: self.motion,
             ..Appearance::default()
         };
         appearance.import(&self.shown_theme());
@@ -344,8 +347,8 @@ impl Knobs {
 
     pub fn apply(&self, cx: &mut App) {
         self.shown_theme().activate(self.theme, None, cx);
-        cx.set_reduce_motion(!self.motion);
-        cx.set_animation_speed(self.speed);
+        cx.set_reduce_motion(self.motion.reduced());
+        cx.set_animation_speed(self.motion.speed());
         let face_loads =
             (self.look.face.as_ref()).is_some_and(|family| cx.text_system().has_font(family));
         let theme = Theme::global_mut(cx);
@@ -493,7 +496,7 @@ mod tests {
         assert_eq!(knobs.look.radius, 12.0);
         assert_eq!(knobs.zoom, 1.25);
         assert_eq!(knobs.interface, "default");
-        assert!(!knobs.motion);
+        assert_eq!(knobs.motion, Motion::Off);
         assert_eq!(Knobs::parse("app-knob=1").unwrap(), Knobs::default());
         assert!(Knobs::parse("radius=wide").is_err());
         assert!(Knobs::parse("interface-theme=sepia").is_err());
@@ -511,7 +514,7 @@ mod tests {
     #[test]
     fn the_person_knobs_make_an_appearance() {
         let knobs = Knobs::parse(
-            "theme=light&interface-theme=macos&contrast=1.5&tint=0.3&tint-hue=145&accent=pink&reduce-transparency=1&zoom=1.25&motion=0&speed=0.5",
+            "theme=light&interface-theme=macos&contrast=1.5&tint=0.3&tint-hue=145&accent=pink&reduce-transparency=1&zoom=1.25&motion=fast",
         )
         .unwrap();
         let appearance = knobs.appearance();
@@ -530,6 +533,7 @@ mod tests {
         );
         assert_eq!(appearance.glass(), Glass::Liquid);
         assert!(appearance.reduce_transparency);
+        assert_eq!(appearance.motion, Motion::Fast);
         assert_eq!(
             knobs.neutral(),
             Neutral {

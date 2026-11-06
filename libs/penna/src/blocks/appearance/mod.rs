@@ -1,22 +1,20 @@
 use crate::blocks::color_picker::{ColorPicker, ColorPickerEvent, ColorPickerState};
 use crate::blocks::settings::{SettingEntry, SettingsSelectItem, StackPosition};
-use crate::components::button::{Button, ButtonVariants as _};
-use crate::components::menu::{DropdownMenu as _, PopupMenu, PopupMenuItem};
 use crate::components::segmented::SegmentedControl;
 use crate::components::select::{Select, SelectEvent, SelectItem as _, SelectState};
 use crate::components::slider::Slider;
 use crate::components::switch::Switch;
 use crate::foundation::interface_theme::{
-    ACCENTS, Appearance, AppearanceChange, Controls, Glass, INCREASED_CONTRAST, MAX_CORNER_RADIUS,
-    parse_theme,
+    ACCENTS, Appearance, AppearanceChange, Controls, Glass, corner_radius_at, corner_share,
 };
+use crate::foundation::motion::Motion;
 use crate::{
-    ActiveTheme as _, AuthoredElement as _, Colorize as _, Density, IconName, Space,
-    StyledExt as _, ThemeColor, ThemeMode,
+    ActiveTheme as _, AuthoredElement as _, Colorize as _, Density, Space, StyledExt as _,
+    ThemeColor, ThemeMode,
 };
 use ala::{
-    Anchor, AnyElement, App, Context, Entity, FocusHandle, IntoElement, SharedString, Subscription,
-    Window, div, prelude::*, px,
+    AnyElement, App, Entity, FocusHandle, IntoElement, SharedString, Subscription, Window, div,
+    prelude::*, px,
 };
 use std::{cell::RefCell, convert::Infallible, rc::Rc, sync::Arc};
 
@@ -48,8 +46,6 @@ pub fn page_row(element: AnyElement, ends_run: bool) -> AnyElement {
         .into_any_element()
 }
 
-pub const ADVANCED_DISCLOSURE: &str = "settings-appearance-advanced";
-
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum AppearancePageItem<T = Infallible> {
     Title,
@@ -62,23 +58,17 @@ pub enum AppearancePageItem<T = Infallible> {
     Controls,
     Glass,
     UiFontFamily,
-    ThemeFile,
-    Advanced { expanded: bool },
     TextSize,
     Density,
     IncreaseContrast,
     ReduceTransparency,
-    ReduceMotion,
-    AnimationSpeed,
+    Motion,
     App(T),
 }
 
 impl<T: Copy> AppearancePageItem<T> {
     pub const fn is_entry(self) -> bool {
-        !matches!(
-            self,
-            Self::Title | Self::Group { .. } | Self::Advanced { .. }
-        )
+        !matches!(self, Self::Title | Self::Group { .. })
     }
 
     pub const fn title(self) -> Option<&'static str> {
@@ -89,24 +79,26 @@ impl<T: Copy> AppearancePageItem<T> {
             Self::Tint => "Tint strength",
             Self::Controls => "Controls",
             Self::Glass => "Glass",
-            Self::ThemeFile => "Theme file",
             Self::CornerRadius => "Corner radius",
             Self::IncreaseContrast => "Increase contrast",
             Self::ReduceTransparency => "Reduce transparency",
-            Self::AnimationSpeed => "Animation speed",
             Self::UiFontFamily => "UI font",
             Self::TextSize => "Text size",
             Self::Density => "Density",
-            Self::ReduceMotion => "Reduce motion",
-            Self::Title | Self::Group { .. } | Self::Advanced { .. } | Self::App(_) => return None,
+            Self::Motion => "Motion",
+            Self::Title | Self::Group { .. } | Self::App(_) => return None,
         })
     }
 }
 
-pub fn appearance_page_items<T>(advanced: bool) -> Vec<AppearancePageItem<T>> {
-    let mut items = vec![
+pub const LOOK: &str = "Look";
+pub const SIZE: &str = "Size";
+pub const ACCESSIBILITY: &str = "Accessibility";
+
+pub fn appearance_page_items<T>() -> Vec<AppearancePageItem<T>> {
+    vec![
         AppearancePageItem::Title,
-        AppearancePageItem::Group { title: "Look" },
+        AppearancePageItem::Group { title: LOOK },
         AppearancePageItem::ThemeMode,
         AppearancePageItem::Accent,
         AppearancePageItem::TintHue,
@@ -115,21 +107,16 @@ pub fn appearance_page_items<T>(advanced: bool) -> Vec<AppearancePageItem<T>> {
         AppearancePageItem::Controls,
         AppearancePageItem::Glass,
         AppearancePageItem::UiFontFamily,
-        AppearancePageItem::ThemeFile,
-        AppearancePageItem::Advanced { expanded: advanced },
-    ];
-    if !advanced {
-        return items;
-    }
-    items.extend([
+        AppearancePageItem::Group { title: SIZE },
         AppearancePageItem::TextSize,
         AppearancePageItem::Density,
+        AppearancePageItem::Group {
+            title: ACCESSIBILITY,
+        },
         AppearancePageItem::IncreaseContrast,
         AppearancePageItem::ReduceTransparency,
-        AppearancePageItem::ReduceMotion,
-        AppearancePageItem::AnimationSpeed,
-    ]);
-    items
+        AppearancePageItem::Motion,
+    ]
 }
 
 pub const THEME_MODES: [(Option<ThemeMode>, &str); 3] = [
@@ -195,54 +182,20 @@ pub fn controls_control(
         .on_select(move |index, window, cx| on_pick(CONTROL_SHAPES[index].0, window, cx))
 }
 
-type ThemeMenu = Rc<dyn Fn(PopupMenu, &mut Window, &mut Context<PopupMenu>) -> PopupMenu>;
-
-fn theme_file_menu(
-    appearance: &Appearance,
-    on_change: OnChange,
-    more: Option<ThemeMenu>,
+pub fn motion_control(
+    selected: Motion,
+    on_pick: impl Fn(Motion, &mut Window, &mut App) + 'static,
     cx: &App,
-) -> impl IntoElement {
-    let mut shown = appearance.shown_theme();
-    "Custom".clone_into(&mut shown.name);
-    let json = shown.to_json();
-    Button::new("settings-theme-file")
-        .ghost()
-        .icon(IconName::Ellipsis)
-        .tooltip("Theme file")
+) -> SegmentedControl {
+    SegmentedControl::new("settings-motion", Motion::ALL.map(Motion::title))
+        .selected(
+            Motion::ALL
+                .iter()
+                .position(|motion| *motion == selected)
+                .unwrap_or(1),
+        )
         .on(crate::blocks::settings::settings_card_ground(cx))
-        .dropdown_menu_with_anchor(Anchor::TopRight, move |menu, window, cx| {
-            let json = json.clone();
-            let pasted = Rc::clone(&on_change);
-            let reset = Rc::clone(&on_change);
-            let menu = menu
-                .item(
-                    PopupMenuItem::new("Copy theme file").on_click(move |_, _, cx| {
-                        cx.write_to_clipboard(ala::ClipboardItem::new_string(json.clone()));
-                    }),
-                )
-                .item(
-                    PopupMenuItem::new("Paste theme file").on_click(move |_, window, cx| {
-                        let theme = cx
-                            .read_from_clipboard()
-                            .and_then(|item| item.text())
-                            .and_then(|text| parse_theme(&text).ok());
-                        if let Some(theme) = theme {
-                            pasted(AppearanceChange::Import(Box::new(theme)), window, cx);
-                        }
-                    }),
-                )
-                .separator()
-                .item(
-                    PopupMenuItem::new("Reset to defaults").on_click(move |_, window, cx| {
-                        reset(AppearanceChange::ResetLook, window, cx);
-                    }),
-                );
-            match &more {
-                Some(more) => more(menu.separator(), window, cx),
-                None => menu,
-            }
-        })
+        .on_select(move |index, window, cx| on_pick(Motion::ALL[index], window, cx))
 }
 
 pub const SWATCH: f32 = 18.0;
@@ -399,32 +352,31 @@ pub fn corner_radius_slider(
         Slider::new(
             "settings-corner-radius",
             "Corner radius",
-            radius,
-            0.0..=MAX_CORNER_RADIUS,
-            on_change,
+            corner_share(radius),
+            0.0..=1.0,
+            move |share, window, cx| on_change(corner_radius_at(share), window, cx),
         )
-        .step(1.0)
-        .display(|radius| format!("{radius:.0}px").into()),
+        .step(0.01)
+        .display(|share| format!("{:.0}%", share * 100.0).into()),
         cx,
     )
 }
 
-pub fn animation_speed_slider(
-    speed: f32,
+pub fn contrast_slider(
+    contrast: f32,
     on_change: impl Fn(f32, &mut Window, &mut App) + 'static,
     cx: &App,
 ) -> ala::Div {
     value_slider(
         Slider::new(
-            "settings-animation-speed",
-            "Animation speed",
-            speed,
-            crate::foundation::motion::MIN_ANIMATION_SPEED
-                ..=crate::foundation::motion::MAX_ANIMATION_SPEED,
-            on_change,
+            "settings-increase-contrast",
+            "Increase contrast",
+            (contrast - 1.0).clamp(0.0, 1.0),
+            0.0..=1.0,
+            move |more, window, cx| on_change(1.0 + more, window, cx),
         )
-        .step(0.05)
-        .display(|speed| format!("{:.0}%", speed * 100.0).into()),
+        .step(0.01)
+        .display(|more| format!("{:.0}%", more * 100.0).into()),
         cx,
     )
 }
@@ -499,10 +451,6 @@ pub fn appearance_page<T: Copy + 'static>(
     + 'static,
 ) -> crate::blocks::settings::SettingsVirtualColumn {
     let title = title.into();
-    let advanced = items.iter().enumerate().find_map(|(at, item)| match item {
-        AppearancePageItem::Advanced { expanded } => Some((at, *expanded)),
-        _ => None,
-    });
     crate::blocks::settings::settings_virtual_column(
         "settings-appearance",
         items.len(),
@@ -522,20 +470,7 @@ pub fn appearance_page<T: Copy + 'static>(
                 }
                 _ => render(item, position, window, cx),
             };
-            let row = page_row(row, !item.is_entry() || position.ends_run());
-            match advanced {
-                Some((at, expanded)) if index > at => {
-                    crate::blocks::settings::settings_disclosure_reveal(
-                        ADVANCED_DISCLOSURE,
-                        expanded,
-                        index - at - 1,
-                        row,
-                        window,
-                        cx,
-                    )
-                }
-                _ => row,
-            }
+            page_row(row, !item.is_entry() || position.ends_run())
         },
     )
 }
@@ -575,7 +510,6 @@ pub struct AppearanceControls {
     ui_font: RefCell<Option<(Entity<SelectState<Vec<SettingsSelectItem>>>, Subscription)>>,
     zoom: FocusHandle,
     on_change: OnChange,
-    theme_menu: Option<ThemeMenu>,
     _accent: Subscription,
 }
 
@@ -603,18 +537,8 @@ impl AppearanceControls {
             ui_font: RefCell::default(),
             zoom: cx.focus_handle(),
             on_change,
-            theme_menu: None,
             _accent: subscription,
         }
-    }
-
-    #[must_use]
-    pub fn theme_menu(
-        mut self,
-        menu: impl Fn(PopupMenu, &mut Window, &mut Context<PopupMenu>) -> PopupMenu + 'static,
-    ) -> Self {
-        self.theme_menu = Some(Rc::new(menu));
-        self
     }
 
     pub fn zoom_focus(&self) -> &FocusHandle {
@@ -715,14 +639,6 @@ pub fn kit_row<T: Copy>(
                     on_change(AppearanceChange::Glass(glass), window, cx);
                 }),
         ),
-        AppearancePageItem::ThemeFile => entry
-            .description("Copy this look as a theme file, or paste one in")
-            .control(theme_file_menu(
-                appearance,
-                on_change,
-                controls.theme_menu.clone(),
-                cx,
-            )),
         AppearancePageItem::Accent => {
             let selected = appearance.accent();
             let custom = ColorPicker::new(&controls.accent, ala::transparent_black())
@@ -764,14 +680,14 @@ pub fn kit_row<T: Copy>(
             );
             placed(entry, slider, stacked)
         }
-        AppearancePageItem::IncreaseContrast => entry.control(
-            Switch::new("settings-increase-contrast")
-                .checked(appearance.contrast > 1.0)
-                .on_click(move |increase, window, cx| {
-                    let contrast = if *increase { INCREASED_CONTRAST } else { 1.0 };
-                    on_change(AppearanceChange::Contrast(contrast), window, cx);
-                }),
-        ),
+        AppearancePageItem::IncreaseContrast => {
+            let slider = contrast_slider(
+                appearance.contrast,
+                controls.change(AppearanceChange::Contrast),
+                cx,
+            );
+            placed(entry, slider, stacked)
+        }
         AppearancePageItem::ReduceTransparency => entry.control(
             Switch::new("settings-reduce-transparency")
                 .checked(appearance.reduce_transparency)
@@ -813,25 +729,16 @@ pub fn kit_row<T: Copy>(
                 entry.control(control)
             }
         }
-        AppearancePageItem::ReduceMotion => entry.control(
-            Switch::new("settings-reduce-motion")
-                .checked(!appearance.animations)
-                .on_click(move |reduce, window, cx| {
-                    on_change(AppearanceChange::Animations(!*reduce), window, cx);
-                }),
-        ),
-        AppearancePageItem::AnimationSpeed => {
-            let slider = animation_speed_slider(
-                appearance.animation_speed,
-                controls.change(AppearanceChange::AnimationSpeed),
-                cx,
-            );
-            placed(entry.disabled(!appearance.animations), slider, stacked)
-        }
+        AppearancePageItem::Motion => entry.control(motion_control(
+            appearance.motion,
+            move |motion, window, cx| on_change(AppearanceChange::Motion(motion), window, cx),
+            cx,
+        )),
         AppearancePageItem::Title
         | AppearancePageItem::Group { .. }
-        | AppearancePageItem::Advanced { .. }
-        | AppearancePageItem::App(_) => return None,
+        | AppearancePageItem::App(_) => {
+            return None;
+        }
     })
 }
 
@@ -1048,33 +955,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn advanced_lists_the_other_knobs_only_while_expanded() {
-        type Item = AppearancePageItem;
-        let collapsed = appearance_page_items::<Infallible>(false);
-        assert!(matches!(
-            collapsed.last(),
-            Some(Item::Advanced { expanded: false })
-        ));
-        assert!(!collapsed.contains(&Item::TextSize));
-
-        let expanded = appearance_page_items::<Infallible>(true);
-        let advanced = expanded
-            .iter()
-            .position(|item| *item == Item::Advanced { expanded: true })
-            .expect("Advanced heading");
-        assert!(expanded[..advanced].contains(&Item::Glass));
-        assert!(expanded[advanced..].contains(&Item::TextSize));
-        assert_eq!(expanded.last(), Some(&Item::AnimationSpeed));
-    }
-
-    #[test]
     fn an_apps_own_rows_are_entries_without_a_kit_title() {
         type Item = AppearancePageItem<u8>;
         let items = [
             Item::Group { title: "Group" },
             Item::App(1),
             Item::App(2),
-            Item::Advanced { expanded: false },
+            Item::Group { title: "Other" },
         ];
         assert!(Item::App(1).is_entry());
         assert_eq!(Item::App(1).title(), None);
@@ -1099,7 +986,7 @@ mod tests {
                 window,
                 cx,
             );
-            let mut items = appearance_page_items::<u8>(true);
+            let mut items = appearance_page_items::<u8>();
             items.push(Item::App(1));
             for item in items {
                 let row = kit_row(item, &appearance, &controls, false, window, cx);

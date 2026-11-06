@@ -59,14 +59,9 @@
       "click": "settings-glass"
     },
     {
-      "name": "toggle-contrast",
+      "name": "click-contrast",
       "section": "narrow",
       "click": "settings-increase-contrast"
-    },
-    {
-      "name": "collapse-advanced",
-      "section": "narrow",
-      "click": "settings-appearance-advanced"
     },
     {
       "name": "hover-custom",
@@ -98,9 +93,9 @@
       "keep": true
     },
     {
-      "name": "toggle-motion",
+      "name": "pick-fast",
       "section": "page",
-      "click": "settings-reduce-motion"
+      "click": "button:Fast"
     }
   ]
 }

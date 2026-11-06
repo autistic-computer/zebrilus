@@ -155,7 +155,7 @@ Inside a line of text, keycaps and badges are as tall as the line of the text th
 
 Width: reading text stops at a measure of 640 (about 75 characters of `read-body`), natively and in HTML alike. A table column in reading text sizes to its content from 48 to 480. Sidebars are 200 to 256 wide. These widths are layout geometry rather than tokens, in design pixels like everything else, so they grow with the interface font.
 
-Density (built): one setting picks the default control and row height: compact 24, regular 28, comfortable 32. Text and gaps stay, and so do the other rungs. It is `Appearance::density` (Advanced, under UI zoom), and `Size::Medium.control_px()` follows it, so buttons, fields, selects, segmented controls and list, tree, menu and picker rows move together. The HTML reads `--penna-control-md`, which `:root[data-density]` changes (`?density=` on a page). `Size::rung()` measures `Size(px)` against the regular ladder, so a fixed-height control keeps its rung at any density.
+Density (built): one setting picks the default control and row height: compact 24, regular 28, comfortable 32. Text and gaps stay, and so do the other rungs. It is `Appearance::density` (Size, under Text size), and `Size::Medium.control_px()` follows it, so buttons, fields, selects, segmented controls and list, tree, menu and picker rows move together. The HTML reads `--penna-control-md`, which `:root[data-density]` changes (`?density=` on a page). `Size::rung()` measures `Size(px)` against the regular ladder, so a fixed-height control keeps its rung at any density.
 
 ## Color
 
@@ -188,7 +188,7 @@ Contrast (WCAG 2, built in step 8): in light and dark, for every tint, accent an
 - Corners: the `radius`, `control-radius` and `smoothing` knobs (Look); 12, 12 and 3 by default. A control's corner stops at 45% of its height. A corner inside another is concentric.
 - Depth: steps of fill separate surfaces; controls, panes and cards draw no shadow. `shadow-float` (y 10, blur 30, spread -6) for menus, popovers, dialogs and the window, `shadow-lifted` for cards that move, and `shadow-contact` (0 1 4 #00000033) only for the knob of a switch or slider. Never let a shadow alone separate two surfaces.
 - Focus: a 1.5px ring (`FOCUS_RING_WIDTH`) drawn outside the border box with its own adaptive radius (`foundation::focus::with_focus_ring`), from the keyboard only; see Focus and keys. Only fields change their fill or edge on focus.
-- Motion: appear 120ms, enter 200ms, turn 220ms, scaled by the animation speed setting (0.25 to 2). Respect reduced motion.
+- Motion: appear 120ms, enter 200ms, turn 220ms, at half those under Fast motion. Respect reduced motion.
 
 ## Look
 
@@ -215,7 +215,7 @@ How each kind draws, at rest and under the pointer:
 - A chrome item draws its selection as glass, a pill of the material over its bar or sidebar, under the material's rim and light. Its tint is the highlight it replaces, pushed away from the ground by the material's opacity, so over a flat bar or sidebar the pill reads exactly as strong as the highlight does where glass is off, and the blur adds only what lies behind; the highlight is its fallback. The chrome items are sidebar rows (`sidebar.row`, the Settings sections too), the flat sidebar's entries (`row.nav`), window tabs in the title bar (`tab.window`) and a browser's page tabs (`tab.page`). Glass is neutral, so the item keeps the window's ink and hands its children a glass ground, not a solid one. Where glass can't draw (glass `none`, Reduce transparency, or a glass ground under the item) it takes the highlight like any row.
 - The rule is one for every solid ground, whatever its color, so a graphite tint or a primary row in the ink counts as much as blue: the tint's or a tone's solid fill under a selected or current row, and a prominent surface (a solid button, chip or badge). Natively the ground says so (`Ground::solid`: a layer's when it sits on a solid ground, its highlight is the solid fill, or it is prominent and not glass; a paint's when its ground is solid or its fill in that state is more than half opaque). There every tone but a solid one reads as neutral, and muted ink is the ink itself; faint keeps its mix toward the fill. A solid chip or badge keeps its tone, since its own fill carries its label. A status dot turns to the muted ink with the rest, and a dot on a solid chip takes the chip's ink.
 - In HTML the tokens write one scope per solid ground, listing every role whose selected or current highlight is that fill in the theme (rows, list items, menu and tree rows, tabs, toggled buttons, and the chrome items where glass is off). A role with toned rules lists its untoned rows (`:not([data-tone])`) in the neutral highlight's scope and each `[data-tone]` in its tone's. A scope carries the inks that differ and `--penna-dot` for dots. The looks painted on a solid fill are written once for every scope they fit: the labels (badges, chips, keycaps) and the buttons rows hold (quiet, icon, flat icon and row icon buttons, not prominent ones and none inside a field set in the row), each button with every value it sets and every other value at its initial, so a toned one loses its tone as it does natively. Soft and prominent buttons keep their window paint there, and rows hold neither. A button inside a field set in the row (a menu stepper's quiet buttons) paints on that field's ground natively, so the scopes leave it alone. The solid scopes come last in the tokens, after the reduced-transparency block, so they beat a ground scope around the row at equal specificity. A dot reads `--penna-dot` before its own color, and `data-solid` sets it to the tone's on-ink. Tree rows, like list items, switch their icons to the row's muted ink on selection.
-- Hairlines appear only where they mean something: rules, the outline variants (`button.outline`, `field.outline`, `badge.outline`, `chip.outline`), a field being typed in, and every surface and control under Increase contrast. Outlines are 1 wide.
+- Hairlines appear only where they mean something: rules, the outline variants (`button.outline`, `field.outline`, `badge.outline`, `chip.outline`), and a field being typed in. Increase contrast adds none. Outlines are 1 wide.
 - The knob of a switch or a slider keeps `shadow-contact`, the one control shadow in the look, so a light knob reads on a light ground.
 - Variants (quiet, outline, solid, ghost) are drawn by the kit from their kind's style, so no knob can change one without the others.
 
@@ -239,19 +239,17 @@ There are no presets to pick. The look starts from the platform's knobs (the `ma
 | Mode | system, light or dark, unless a theme locks it |
 | Accent | `tint`: ink, one of the named accents, or a color |
 | Tint, Tint strength | `neutral`'s hue and amount |
-| Corner radius | `radius` |
+| Corner radius | `radius`, a slider from 0 to 100% along a square curve, `radius` = 25 × share², so the default 12 sits at 69% and the steps near square corners stay small. 100% is a round corner, never a pill: Controls makes pills |
 | Controls | `control-radius`: Rounded follows `radius`, Pill is `full` |
 | Glass | `glass`, a switch: on draws `liquid`, or a theme file's own material once one is pasted in; off draws none |
 | UI font | `face` |
-| Theme file | copies the look as a theme file, pastes one in (which sets every knob above), or resets them all to the platform's |
 | Text size | the root rem; everything scales with it |
 | Density | compact, regular or comfortable (Size) |
-| Increase contrast | hairline edges on every surface and control, and muted text closer to the ink (contrast 1.5) |
+| Increase contrast | a slider from 0 to 100%, contrast 1 to 2: surface steps, fills and the divider further from their ground, muted and faint text closer to `fg`; no edges |
 | Reduce transparency | glass draws as the `popover` fill |
-| Reduce motion | Motion |
-| Animation speed | scales Motion's durations, 0.25 to 2; it rests while motion is reduced |
+| Motion | Off (reduced motion), Default, or Fast (Motion's durations halved) |
 
-Appearance shows them in that order: Mode down to Theme file under Look, and the rest under Advanced, which opens on request. An app's own rows (zz's program colors, app icon and window blur) follow the kit's. `smoothing` and `mode` have no row: smoothing follows the platform's theme file and a pasted theme's smoothing is not kept.
+Appearance shows them in that order in three groups, none folded away: Look (Mode to UI font), Size (Text size and Density) and Accessibility (Increase contrast, Reduce transparency and Motion). An app's own rows go in groups of their own (zz's Sidebar after Look, and Window, with the app icon and window blur, last). `smoothing` and `mode` have no row: smoothing follows the platform's theme file. A theme file has no row either: an app that reads or writes theme files (the storybook's theme creator) does it itself, and `AppearanceChange::Import` sets every knob from one.
 
 What follows the platform with no knob: the system face and code face, when scrollbars show, the window controls, and how keys are spelled. Glass is the same everywhere: `liquid` unless a person turns it off.
 
@@ -282,11 +280,11 @@ How the knobs are spelled and decided:
 
 - `tint` is `ink`, a named accent (`blue`, `orange`, ...), one hex color for both modes, or `{ "light": ..., "dark": ... }`. Any color sets `accent` and makes `primary` the tint; `ink` leaves `accent` at its default for links. A person's Accent replaces it.
 - `neutral` is `{ "hue": 60, "amount": 0.15 }` by default, hue in OKLCH degrees. Amount 1 is 0.02 of OKLCH chroma on `bg` and 0.35 of that on `fg`. The base colors in code are the Color table; a neutral moves them by the difference between its tint and the default's, so the default reproduces the table exactly and other values tint like a person's tint did. A person's Tint and Tint strength override the hue and the amount.
-- `radius` and `control-radius` clamp to 0 to 25 and `smoothing` to 2 to 5, both where a file is parsed and where a person's override applies. `full` is stored as 25: above 24 a capsule control draws as a pill and any other control keeps the 45% stop.
+- `radius` and `control-radius` clamp to 0 to 25 and `smoothing` to 2 to 5, both where a file is parsed and where a person's override applies. `full` draws capsule controls (buttons, chips, tabs, badges, swatches) as pills and any other control at 25 with its 45% stop. A `radius` or `control-radius` of 25 is a round corner, never a pill.
 - `glass` as an object is a material: `light` and `dark` each name the fields that differ from `liquid` in that mode; an object with neither applies to both modes. Every material's tint rises to the lowest opacity that keeps `fg` at 4.5:1 over a black backdrop under dark text and a white one under light text, blended in sRGB and ignoring blur: 0.596 in light and 0.705 in dark with the default colors, so `liquid` keeps 0.60 in light and draws 0.705 in dark.
 - `mode` other than `follow` beats the person's Mode.
 - Unknown keys are ignored, so a file from before step 10 loads as the default look under its own name.
-- Increase contrast (contrast above 1) adds the hairline to every kind but bars, panels and rules, which keep their rules; a glass surface draws it over its rim.
+- Increase contrast (contrast 1 to 2) scales the surface steps, fills, washes and `divider` up by the contrast and the muted and faint mixes down by it, so surfaces stand further apart and secondary text reads closer to `fg`. It adds no edge to any kind.
 - Keyboard focus changes no fill but a field's; everything else shows the ring.
 - Rings on a selected pane, card or tile, and a row's bar mark, take the highlight color, not `accent`.
 - Panels (the sidebar and the inspector) take the `panel` fill; panes take their ground. On a see-through window (an app's window color under full opacity, as with window blur) a bar, panel or card takes its step as a wash of the pole over the window instead of a solid color, so the window stays as see-through as the person set it; a pane with gaps takes no tint there, since the window under it is its ground, and its glass rim, or its hairline, marks it. Tooltips and pane chips cast `shadow-float` like every floating surface; drop zones cast none.
@@ -295,7 +293,7 @@ How the knobs are spelled and decided:
 - Muted, faint and tone ink are worked out for the ground under the text, natively and in HTML, where each ground scope (`data-ground`, `data-on`) carries the inks that differ from the window's: `--penna-muted`, `--penna-faint` and `--penna-<tone>-ink`, as values. Natively they mix the ink toward the ground's fill in OKLab rather than fade it, so the tokens write the mixed color. Cards, panels and floating grounds differ in muted and faint only; tone inks follow the ground's ink, which only a solid selection changes.
 - Row inset (6), outline width (1) and highlight strength (0.8 of the wash) are fixed.
 
-Status: built (steps 10, 12, 13, 14 and 16). Theme files are knobs only, the kinds and the built-in role patches draw the table above, and a person sets the knobs themselves over the platform's. The storybook's theme creator edits these knobs and exports a theme file, the docs Look page shows their range live, and the parity baselines hold the one look. Step 12 closed the last differences between native and HTML but one: a soft or prominent button set straight on a solid selection keeps its window paint in HTML, and rows hold none that way. What else remains is raster: text, and glass blur at its edges.
+Status: built (steps 10, 12, 13, 14, 16 and 17). Theme files are knobs only, the kinds and the built-in role patches draw the table above, and a person sets the knobs themselves over the platform's. The storybook's theme creator edits these knobs and exports a theme file, the docs Look page shows their range live, and the parity baselines hold the one look. Step 12 closed the last differences between native and HTML but one: a soft or prominent button set straight on a solid selection keeps its window paint in HTML, and rows hold none that way. What else remains is raster: text, and glass blur at its edges.
 
 ## Focus and keys
 
@@ -475,7 +473,7 @@ Looks (`CardLook`, `Card::new(id, look)`):
 
 Anatomy:
 
-- Container: the look's paint, the `radius` knob (12 by default, 8 in Yaru). No outline, except under Increase contrast.
+- Container: the look's paint, the `radius` knob (12 by default, 8 in Yaru). No outline.
 - Inset: `inset-card` 12 all round, set by the card; a caller's padding replaces it.
 - Content: the caller's, with its own text style (`body` for a message, `mono` for code).
 - Ground: `.on(ground)` paints the card on a ground other than the window's, such as a panel. What sits on the card passes `cx.theme().ground_of(look)` to `.on()`, so a badge or muted label inside follows the card's fill.
@@ -889,7 +887,7 @@ The four floating looks paint the same; each is its own recipe.
 
 Anatomy:
 
-- Container: the look's fill, one step above its ground, with no outline or shadow (a hairline under Increase contrast). Radius the `radius` knob (12 by default, 8 in Yaru); square for Plain.
+- Container: the look's fill, one step above its ground, with no outline or shadow. Radius the `radius` knob (12 by default, 8 in Yaru); square for Plain.
 - Inset: none of its own. The caller pads it: `inset-card` 12 around controls or text, the row inset around rows.
 - Corner growth (`.inset(px)`): a rounded corner becomes the look's radius plus that inset, so a child drawn at the theme radius that far in sits concentric. Square and pill corners stay.
 - Text: none set; content brings its own style.
@@ -1362,13 +1360,13 @@ Variants (`TileVariant`, `.variant()`):
 |---|---|---|---|
 | Card (default) | `tile.card` | solid, one step above its ground, no outline, no shadow | a card for something you can place, in a dock under a well |
 | Screen | `tile.screen` | as Card | a screen drawn to scale on a well |
-| Drop | `tile.drop` | a floating tint, no outline (under Increase contrast a hairline, whose width `.edge(width)` sets), no shadow; deeper on hover and selected | where a dragged thing will land |
+| Drop | `tile.drop` | a floating tint, no outline, no shadow; deeper on hover and selected | where a dragged thing will land |
 | Veil | `tile.drop` at hover, no edge, on a glass ground | the hover tint | laid over panes while something is dragged |
 | Mini | `tile.mini` | no fill of its own (the caller's `.bg` and `.rounded` show), no glass | a pane inside a window's tile in the phone overview |
 
 Anatomy:
 
-- Container: the variant's paint, the `radius` knob (12 by default, 8 in Yaru). Drop and Mini take the caller's corners. No outline, except under Increase contrast.
+- Container: the variant's paint, the `radius` knob (12 by default, 8 in Yaru). Drop and Mini take the caller's corners. No outline.
 - Size and inset: the caller's. A screen's size follows the real screen's shape; the canvas story draws them 150 by 90 with `space-6` inside, and dock cards 132 by 64 with `space-8` by `space-10`.
 - Label: the caller's: a `caption` name on a screen, a strong `body` name over a `caption` detail on a card.
 - Tone (`.tone()`): `Primary` or `Danger` tints the label ink, for a screen the pointer is on or one it can't move to.
@@ -1556,5 +1554,6 @@ Status: matches.
 | 14 | Knobs, no presets: Appearance drops the theme picker and saved themes, gains Controls, Glass and a theme file menu, and the look starts from the platform's knobs | the Theme row goes; Look holds every knob; a pasted theme file sets them | built |
 | 15 | Glass that reads on a flat ground: a chrome selection's tint matches the highlight it replaces, a material with no bezel draws no glint natively, and a gapped pane with no rim takes the `divider` hairline | `frosted` selections read like the highlight with no stray rim; gapped panes keep their edge with glass `none` or `frosted` | built |
 | 16 | One glass: `frosted` is gone and Glass is a switch; on, it draws `liquid` on every platform, and a theme file's own material fills in over `liquid` | the Glass row turns to a switch; Linux, Windows and the web draw `liquid` where they drew `frosted` | built |
+| 17 | Plain knobs: Corner radius in percent on a square curve with no pill at its top, Increase contrast a slider that adds no edges, Motion in three steps, no Theme file row, and the Advanced fold opened into Size and Accessibility | the radius slider reads 69% by default; controls lose their hairline under contrast; Reduce motion and Animation speed become one Motion row | built |
 
 Each step lands in penna with its stories, scores parity, rebaselines only what the step meant to move, and is pulled into zz and nidus.

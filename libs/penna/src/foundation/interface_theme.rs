@@ -142,7 +142,7 @@ impl ControlRadius {
     pub fn pixels(self) -> ala::Pixels {
         match self {
             Self::Radius(radius) => px(radius),
-            Self::Full => px(MAX_CORNER_RADIUS),
+            Self::Full => ala::FULL_CORNER_RADIUS,
         }
     }
 }
@@ -318,6 +318,19 @@ fn holding_text(material: GlassMaterial, fill: Hsla, text: Hsla) -> GlassMateria
         tint: material.tint.alpha(material.tint.a.max(floor)),
         ..material
     }
+}
+
+pub fn corner_share(radius: f32) -> f32 {
+    (clamp_radius(radius) / MAX_CORNER_RADIUS).sqrt()
+}
+
+pub fn corner_radius_at(share: f32) -> f32 {
+    let share = if share.is_finite() {
+        share.clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
+    MAX_CORNER_RADIUS * share * share
 }
 
 fn clamp_radius(radius: f32) -> f32 {
@@ -615,8 +628,6 @@ impl ThemeOverrides {
     }
 }
 
-pub const INCREASED_CONTRAST: f32 = 1.5;
-
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Appearance {
@@ -627,8 +638,7 @@ pub struct Appearance {
     pub reduce_transparency: bool,
     pub ui_font_family: String,
     pub zoom: f32,
-    pub animations: bool,
-    pub animation_speed: f32,
+    pub motion: crate::foundation::motion::Motion,
     pub density: crate::Density,
 }
 
@@ -641,8 +651,7 @@ impl Default for Appearance {
             reduce_transparency: false,
             ui_font_family: String::new(),
             zoom: 1.0,
-            animations: true,
-            animation_speed: crate::foundation::motion::DEFAULT_ANIMATION_SPEED,
+            motion: crate::foundation::motion::Motion::Default,
             density: crate::Density::Regular,
         }
     }
@@ -663,8 +672,7 @@ pub enum AppearanceChange {
     ReduceTransparency(bool),
     UiFont(String),
     Zoom(f32),
-    Animations(bool),
-    AnimationSpeed(f32),
+    Motion(crate::foundation::motion::Motion),
     Density(crate::Density),
 }
 
@@ -754,15 +762,14 @@ impl Appearance {
             AppearanceChange::ReduceTransparency(reduce) => self.reduce_transparency = reduce,
             AppearanceChange::UiFont(family) => self.ui_font_family = family,
             AppearanceChange::Zoom(zoom) => self.zoom = zoom,
-            AppearanceChange::Animations(animations) => self.animations = animations,
-            AppearanceChange::AnimationSpeed(speed) => self.animation_speed = speed,
+            AppearanceChange::Motion(motion) => self.motion = motion,
             AppearanceChange::Density(density) => self.density = density,
         }
     }
 
     pub fn apply(&self, mut window: Option<&mut Window>, cx: &mut App) {
-        cx.set_reduce_motion(!self.animations);
-        cx.set_animation_speed(self.animation_speed);
+        cx.set_reduce_motion(self.motion.reduced());
+        cx.set_animation_speed(self.motion.speed());
         self.shown_theme()
             .activate(self.theme_mode(), window.as_deref_mut(), cx);
         let font = self.ui_font();
@@ -991,6 +998,16 @@ mod tests {
     }
 
     #[test]
+    fn corner_radius_runs_a_square_curve_from_square_to_25() {
+        assert_eq!(
+            [0.0, 0.25, 0.5, 1.0, 1.5].map(corner_radius_at),
+            [0.0, 1.5625, 6.25, 25.0, 25.0]
+        );
+        assert_eq!((corner_share(12.0) * 100.0).round(), 69.0);
+        assert_eq!(corner_share(40.0), 1.0);
+    }
+
+    #[test]
     fn presets_are_knobs_with_names() {
         let macos = builtin_theme("macos").unwrap();
         assert_eq!(
@@ -1022,7 +1039,7 @@ mod tests {
             serde_json::from_str::<Appearance>("{}").unwrap(),
             Appearance::default()
         );
-        let source = r#"{"mode":"dark","theme":"macos","radius":12,"accent":"green","tint":0.25,"tint-hue":145,"controls":"pill","glass":"none","contrast":1.5,"reduce_transparency":true,"ui_font_family":"Inter","zoom":1.25,"animations":false,"animation_speed":0.5,"density":"comfortable","sidebar":true}"#;
+        let source = r#"{"mode":"dark","theme":"macos","radius":12,"accent":"green","tint":0.25,"tint-hue":145,"controls":"pill","glass":"none","contrast":1.5,"reduce_transparency":true,"ui_font_family":"Inter","zoom":1.25,"motion":"fast","density":"comfortable","sidebar":true}"#;
         let appearance = serde_json::from_str::<Appearance>(source).unwrap();
         assert_eq!(
             appearance,
@@ -1040,8 +1057,7 @@ mod tests {
                 reduce_transparency: true,
                 ui_font_family: "Inter".into(),
                 zoom: 1.25,
-                animations: false,
-                animation_speed: 0.5,
+                motion: crate::foundation::motion::Motion::Fast,
                 density: crate::Density::Comfortable,
             }
         );
@@ -1114,7 +1130,7 @@ mod tests {
             contrast: 1.5,
             reduce_transparency: true,
             zoom: 1.25,
-            animations: false,
+            motion: crate::foundation::motion::Motion::Off,
             density: crate::Density::Compact,
             ..Appearance::default()
         };

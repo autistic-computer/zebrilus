@@ -19,7 +19,7 @@ Steps of fill carry the structure, so a dense screen holds few lines. Only what 
 </div>
 ```
 
-Hairlines mean something: a rule, an outline variant, a field being typed in. Increase contrast adds one to every surface.
+Hairlines mean something: a rule, an outline variant, a field being typed in. Increase contrast adds none.
 
 ```figure uses=input
 <div class="docs-dodont">
@@ -102,24 +102,22 @@ Text on any glass reads at 4.5:1 over the worst content, and Reduce transparency
 
 ## What a person sets
 
-The same in every app, in Appearance. There are no presets to pick: every knob is a row, starting at the platform's value.
+The same in every app, in Appearance, in three groups: Look, Size and Accessibility. There are no presets to pick: every knob is a row, starting at the platform's value.
 
 | Knob | Does |
 | --- | --- |
 | Mode | System, light or dark, unless a theme locks it |
 | Accent | The tint: ink, a named accent or a color |
 | Tint, Tint strength | The neutral's hue and amount |
-| Corner radius | The radius |
+| Corner radius | The radius, 0 to 100% on a square curve: 69% is the default 12, 100% is 25 and never a pill |
 | Controls | Rounded follows the radius; Pill makes controls pills |
 | Glass | A switch: on draws liquid glass, off draws none |
 | UI font | The face |
-| Theme file | Copy the look as a theme file, paste one in, or reset to the platform's |
 | Text size | The root size; everything scales with it |
 | Density | Compact, regular or comfortable rows and controls |
-| Increase contrast | A hairline on every surface and control; muted text closer to the ink |
+| Increase contrast | 0 to 100%: surfaces and fills further apart, muted text closer to the ink; no edges |
 | Reduce transparency | Glass draws as the popover fill |
-| Reduce motion | Turns animation off |
-| Animation speed | Scales every animation, 0.25 to 2 |
+| Motion | Off, default, or fast (every animation at half its time) |
 
 ## The kit's theme files
 
@@ -127,13 +125,13 @@ The look starts from `macos` on Apple platforms and `default` elsewhere. `yaru` 
 
 | Theme file | Tint | Radius | Control radius | Smoothing | Glass |
 | --- | --- | --- | --- | --- | --- |
-| `default` | ink | 12 | 12 | 3 | the platform's |
+| `default` | ink | 12 | 12 | 3 | liquid |
 | `macos` | blue | 12 | full | 4 | liquid |
 | `yaru` | orange | 8 | 8 | 2 | none |
 
 ## Theme file
 
-A theme file holds only knobs. Keys it leaves out keep their defaults; keys it doesn't know are ignored. Pasting one in Appearance sets every knob a person has from it.
+A theme file holds only knobs. Keys it leaves out keep their defaults; keys it doesn't know are ignored. An app that takes one (`AppearanceChange::Import`) sets every knob a person has from it.
 
 ```json example
 {
@@ -159,7 +157,7 @@ studio.activate(None, Some(window), cx);
 | `name` | `.name` | A label for the file |
 | `tint` | `.tint` | Ink, an accent, a hex color, or a light and dark pair |
 | `neutral` | `.neutral` | Hue 0 to 360, amount 0 to 1 |
-| `radius` | `.radius` | Container corners, 0 to 25 |
+| `radius` | `.radius` | Container corners, 0 to 25; 25 is round, not a pill |
 | `control-radius` | `.control_radius` | Control corners, 0 to 25 or full; the radius when left out |
 | `smoothing` | `.smoothing` | Corner shape, 2 to 5 |
 | `glass` | `.glass` | None, liquid or a material; liquid when left out |

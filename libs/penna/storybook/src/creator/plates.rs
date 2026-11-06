@@ -281,6 +281,7 @@ impl Render for AppWindow {
             .child(app_shell_surface(
                 "creator-window-shell",
                 theme.background,
+                None,
                 Self::sidebar(cx),
                 Some(titlebar),
                 self.page(cx),

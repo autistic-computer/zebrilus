@@ -11,9 +11,39 @@ use ala::{
 
 use crate::{Icon, IconName};
 
-pub const DEFAULT_ANIMATION_SPEED: f32 = 1.0;
-pub const MIN_ANIMATION_SPEED: f32 = 0.25;
-pub const MAX_ANIMATION_SPEED: f32 = 2.0;
+pub const FAST_ANIMATION_SPEED: f32 = 2.0;
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Motion {
+    Off,
+    #[default]
+    Default,
+    Fast,
+}
+
+impl Motion {
+    pub const ALL: [Self; 3] = [Self::Off, Self::Default, Self::Fast];
+
+    pub const fn title(self) -> &'static str {
+        match self {
+            Self::Off => "Off",
+            Self::Default => "Default",
+            Self::Fast => "Fast",
+        }
+    }
+
+    pub const fn reduced(self) -> bool {
+        matches!(self, Self::Off)
+    }
+
+    pub const fn speed(self) -> f32 {
+        match self {
+            Self::Fast => FAST_ANIMATION_SPEED,
+            Self::Off | Self::Default => 1.0,
+        }
+    }
+}
 
 pub(crate) const TURN: Duration = Duration::from_millis(220);
 const ENTER: Duration = Duration::from_millis(200);

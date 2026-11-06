@@ -122,12 +122,11 @@ impl Global for Theme {}
 
 impl Theme {
     pub fn control_radius(&self) -> Pixels {
-        let radius = self.control_radius.unwrap_or(self.radius);
-        if radius > px(24.0) {
-            ala::FULL_CORNER_RADIUS
-        } else {
-            radius
-        }
+        self.control_radius.unwrap_or(self.radius)
+    }
+
+    pub fn pill_controls(&self) -> bool {
+        self.control_radius() >= ala::FULL_CORNER_RADIUS
     }
 
     pub fn swatch_radius(&self) -> Pixels {
@@ -343,26 +342,24 @@ mod tests {
     use super::*;
 
     #[test]
-    fn full_radius_rounds_controls_after_24_without_changing_surfaces() {
-        for radius in [0.0, 6.0, 24.0, 24.5, 25.0] {
+    fn only_a_full_control_radius_draws_pills() {
+        for (radius, control_radius) in [
+            (25.0, None),
+            (24.5, Some(px(25.0))),
+            (6.0, Some(ala::FULL_CORNER_RADIUS)),
+        ] {
             let theme = Theme {
                 radius: px(radius),
+                control_radius,
                 ..Theme::default()
             };
-            for (width, height) in [(24.0, 24.0), (120.0, 30.0), (360.0, 40.0)] {
-                let size = ala::size(px(width), px(height));
-                let control = ala::Corners::all(theme.control_radius())
-                    .resolve_radii_for_quad_size(size, ADAPTIVE_CORNER_FRACTION);
-                let surface = ala::Corners::all(theme.radius)
-                    .resolve_radii_for_quad_size(size, ADAPTIVE_CORNER_FRACTION);
-                if radius > 24.0 {
-                    assert_eq!(control, ala::Corners::all(px(height / 2.0)));
-                    assert!(surface.top_left < control.top_left);
-                } else {
-                    assert_eq!(control, surface);
-                }
-                assert_eq!(theme.radius, px(radius));
-            }
+            let size = ala::size(px(120.0), px(30.0));
+            let control = ala::Corners::all(theme.control_radius())
+                .resolve_radii_for_quad_size(size, ADAPTIVE_CORNER_FRACTION)
+                .top_left;
+            let pill = control_radius == Some(ala::FULL_CORNER_RADIUS);
+            assert_eq!(theme.pill_controls(), pill, "{radius} {control_radius:?}");
+            assert_eq!(control == px(15.0), pill, "{radius} {control_radius:?}");
         }
     }
 
@@ -380,7 +377,7 @@ mod tests {
             assert!((gap - px(CHROME_GAP)).abs() < px(0.001));
         }
         let capsules = Theme {
-            radius: px(25.0),
+            control_radius: Some(ala::FULL_CORNER_RADIUS),
             ..Theme::default()
         };
         assert_eq!(capsules.pane_radius(), PANE_HEADER_HEIGHT / 2.0);

@@ -364,10 +364,6 @@ impl Kind {
         matches!(self, Self::Floating)
     }
 
-    pub const fn edged(self) -> bool {
-        !matches!(self, Self::Bar | Self::Panel | Self::Rule)
-    }
-
     pub const fn elevation(self) -> Elevation {
         if self.floats() {
             Elevation::Popover
@@ -932,11 +928,11 @@ impl Theme {
             Shape::Square => px(0.0),
             Shape::Pill => FULL_CORNER_RADIUS,
             Shape::Round if role.row && !self.inset_rows() => px(0.0),
-            Shape::Round if role.capsules() && self.control_radius() == FULL_CORNER_RADIUS => {
-                FULL_CORNER_RADIUS
-            }
+            Shape::Round if role.capsules() && self.pill_controls() => FULL_CORNER_RADIUS,
             Shape::Round if role.row => self.menu_radius(),
-            Shape::Round if role.kind.is_control() => self.control_radius.unwrap_or(self.radius),
+            Shape::Round if role.kind.is_control() => self
+                .control_radius()
+                .min(px(super::interface_theme::MAX_CORNER_RADIUS)),
             Shape::Round => self.radius,
         }
     }
@@ -1177,7 +1173,7 @@ impl Theme {
         } else {
             self.border()
         };
-        let edged = (kind.edged() && super::color::contrast() > 1.0) || rimless;
+        let edged = rimless;
         let border_width = if style.outline || edged {
             self.outline
         } else {

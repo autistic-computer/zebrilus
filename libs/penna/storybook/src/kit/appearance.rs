@@ -6,9 +6,7 @@ use penna::blocks::appearance::{
     AppearanceControls, appearance_page, appearance_page_items, kit_row,
 };
 use penna::{
-    ActiveTheme as _,
-    blocks::settings::{StackPosition, settings_list_disclosure_header},
-    foundation::interface_theme::Appearance,
+    ActiveTheme as _, blocks::settings::StackPosition, foundation::interface_theme::Appearance,
 };
 
 use crate::story::{Framed as _, Section, Story};
@@ -22,7 +20,7 @@ pub const STORY: Story = Story {
         Section {
             id: "page",
             name: "Page",
-            summary: "The Look rows (mode, accent, tint, corner radius, controls, glass, UI font and the theme file menu), then the Advanced rows: text size, density, increase contrast, reduce transparency, reduce motion and animation speed, which rests while motion is reduced.",
+            summary: "Three groups, none folded away: Look (mode, accent, tint, corner radius in percent, controls, glass and UI font), Size (text size and density) and Accessibility (increase contrast, reduce transparency and motion in three steps).",
             build: |window, cx| page(false, window, cx),
         },
         Section {
@@ -38,7 +36,6 @@ struct AppearanceStory {
     knobs: Appearance,
     appearance: Appearance,
     controls: AppearanceControls,
-    advanced: bool,
     stacked: bool,
     _knobs: Subscription,
 }
@@ -51,7 +48,6 @@ fn page(stacked: bool, window: &mut Window, cx: &mut ala::App) -> AnyView {
             appearance: knobs.clone(),
             knobs,
             controls,
-            advanced: true,
             stacked,
             _knobs: cx.observe_global::<penna::Theme>(|story, cx| {
                 if crate::knobs().appearance() != story.knobs {
@@ -72,7 +68,7 @@ impl Render for AppearanceStory {
             self.knobs = knobs;
         }
         let view = cx.entity();
-        let items = appearance_page_items::<()>(self.advanced);
+        let items = appearance_page_items::<()>();
         let page = appearance_page("Appearance", items, move |item, position, window, cx| {
             view.update(cx, |story, cx| story.row(item, position, window, cx))
         });
@@ -119,15 +115,6 @@ impl AppearanceStory {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> ala::AnyElement {
-        use penna::blocks::appearance::{ADVANCED_DISCLOSURE, AppearancePageItem};
-        if let AppearancePageItem::Advanced { expanded } = item {
-            return settings_list_disclosure_header(ADVANCED_DISCLOSURE, "Advanced", expanded)
-                .on_click(cx.listener(|story, _, _, cx| {
-                    story.advanced = !story.advanced;
-                    cx.notify();
-                }))
-                .into_any_element();
-        }
         kit_row(
             item,
             &self.appearance,

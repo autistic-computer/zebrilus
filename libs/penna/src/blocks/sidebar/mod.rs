@@ -133,11 +133,15 @@ pub fn sidebar_footer(
 }
 
 #[must_use]
+pub fn sidebar_fill(ground: Ground, cx: &App) -> Hsla {
+    cx.theme()
+        .layer(Surface::new(roles::SIDEBAR).on(ground), PaintState::Rest)
+        .fill
+}
+
+#[must_use]
 pub fn sidebar_fade(ground: Ground, cx: &App) -> Hsla {
-    let sidebar = cx
-        .theme()
-        .layer(Surface::new(roles::SIDEBAR).on(ground), PaintState::Rest);
-    ground.fill.blend(sidebar.fill)
+    ground.fill.blend(sidebar_fill(ground, cx))
 }
 
 #[must_use]
