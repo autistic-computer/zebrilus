@@ -117,6 +117,7 @@ fn apply_zz_overrides(cx: &mut App) {
         glow_strength: config::resolved_config(cx).pane_glow_strength.value,
     };
     let pane_margin = config::pane_margin(cx);
+    let window_opacity = chrome_background(cx).a;
     cx.set_global(zz_ui::pip::PipOpacity(pip_opacity));
     cx.set_global(pane_look);
     let theme = Theme::global_mut(cx);
@@ -131,6 +132,7 @@ fn apply_zz_overrides(cx: &mut App) {
         theme.glass = None;
     }
     theme.pane_margin = pane_margin;
+    theme.window_opacity = window_opacity;
 }
 
 #[cfg(test)]
@@ -242,6 +244,7 @@ mod tests {
             assert!(!chrome_blur(cx));
             assert_alpha(Theme::global(cx).background, 1.0);
             assert_alpha(chrome_background(cx), 1.0);
+            assert_alpha(Theme::global(cx).ground().fill, 1.0);
         });
 
         cx.update(|cx| {
@@ -255,6 +258,7 @@ mod tests {
             assert!(chrome_blur(cx));
             assert_alpha(Theme::global(cx).background, 1.0);
             assert_alpha(chrome_background(cx), 0.93);
+            assert_alpha(Theme::global(cx).ground().fill, 0.93);
         });
 
         cx.update(|cx| {

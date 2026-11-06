@@ -387,7 +387,9 @@ impl Render for AppShell {
             } else {
                 crate::theme::chrome_background(cx)
             },
-            crate::theme::shell_frame(cx),
+            crate::theme::shell_frame(cx).filter(|_| {
+                route != WorkspaceRoute::Settings || crate::theme::chrome_background(cx).a >= 1.0
+            }),
             sidebar,
             titlebar,
             self.workspace.clone(),
