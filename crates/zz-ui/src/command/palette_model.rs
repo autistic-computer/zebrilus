@@ -266,7 +266,7 @@ pub(crate) struct UnifiedPalette {
     pub draft: Option<Draft>,
     pub tree: PaletteTree,
     pub rows: Vec<PaletteEntry>,
-    chooser_current_window: Option<u32>,
+    pub(super) chooser_current_window: Option<u32>,
     pub grouped: bool,
     pub show_keys: bool,
 }

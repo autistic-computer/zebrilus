@@ -1,6 +1,8 @@
 mod input;
+mod window_search;
 
 pub use input::{ChooserInput, ChooserSync};
+pub use window_search::WindowChooserSearch;
 
 pub fn next_chooser_revision(revision: u64) -> u64 {
     revision.wrapping_add(1).max(1)

@@ -9,7 +9,7 @@ use zz_client::{
 };
 
 use super::{
-    PaletteTree,
+    PaletteMode, PaletteTree,
     palette_model::{PaletteAction, UnifiedPalette},
     palette_places::{Chip, Draft, chip_for, palette_fleet},
 };
@@ -42,6 +42,53 @@ pub struct PalettePlacesResult {
     pub placeholder: String,
     pub initial: Option<usize>,
     pub usage: Vec<Option<String>>,
+}
+
+pub struct PaletteWindowResult {
+    pub rows: Vec<(PaletteRow, u32, usize)>,
+    pub current_window: Option<u32>,
+    pub initial: Option<usize>,
+    pub parents: Vec<Option<usize>>,
+    pub children: Vec<Option<usize>>,
+}
+
+#[must_use]
+pub fn palette_window_fixture(
+    source: &zz_protocol::ChooseTreeState,
+    query: &str,
+    grouped: bool,
+) -> PaletteWindowResult {
+    let mut state = UnifiedPalette::new(Some(PaletteMode::Target));
+    state.grouped = grouped;
+    state.rebuild_window_chooser(source, query);
+    let current_window = state.chooser_current_window;
+    let initial = state.initial_selection();
+    let indices = (0..(state.rows.len() + 2).min(32)).chain(
+        (state.rows.len() + 2 > 32)
+            .then(|| state.rows.len().saturating_sub(1)..state.rows.len() + 2)
+            .into_iter()
+            .flatten(),
+    );
+    let parents = indices
+        .clone()
+        .map(|index| state.parent_index(index))
+        .collect();
+    let children = indices.map(|index| state.child_index(index)).collect();
+    let rows = state
+        .rows
+        .into_iter()
+        .filter_map(|entry| match entry.action {
+            Some(PaletteAction::ChooseWindow(index)) => Some((entry.row, index, entry.score)),
+            _ => None,
+        })
+        .collect();
+    PaletteWindowResult {
+        rows,
+        current_window,
+        initial,
+        parents,
+        children,
+    }
 }
 
 fn preview_usage(state: &UnifiedPalette, query: &str, selected: Option<usize>) -> Option<String> {
