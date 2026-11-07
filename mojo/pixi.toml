@@ -90,6 +90,7 @@ test-tree-codec = "python3 ../scripts/port/guard.py mojo --fp-mode=contract=off 
 differential-terminal = "python3 ../scripts/port/guard.py python3 scripts/terminal_codec_vectors.py"
 differential-layout = "python3 scripts/layout_vectors.py"
 differential-input = "python3 scripts/input_vectors.py"
+differential-key-spelling = "python3 scripts/key_spelling_vectors.py --shared"
 differential-client-events = "python3 scripts/client_event_vectors.py"
 differential-client-attachment = "python3 scripts/client_attachment_vectors.py"
 differential-terminal-projection = "python3 scripts/terminal_projection_vectors.py"
