@@ -16,6 +16,7 @@ from .terminal_model import TerminalViewport
 from .terminal_history import HistorySnapshot, HistoryRow
 from .terminal_projection import local_row_source, projection_plan, _add_u32
 from .terminal_painter import render_viewport_opts, selection_flags
+from .terminal_composition import composition_cursor
 
 
 def _row_tables(row: HistoryRow, viewport: TerminalViewport) -> GridTables:
@@ -116,6 +117,12 @@ def render_retained_viewport_opts(
     var top = target.or_else(viewport.metadata.scrollbar.offset)
     var visible_columns = min(columns, Int(viewport.columns))
     metrics = ui.grid_begin(key, columns, rows, live, options)
+    if opts.native_appearance:
+        var cursor = composition_cursor(viewport, plan.live, visible_columns, peek)
+        ui.grid_cursor(cursor.or_else(GridCursor(0, 0, 0, 0, 0, 0, 0)))
+        if cursor and marked:
+            var text = marked.value().as_bytes()
+            ui.grid_ime(text.unsafe_ptr(), len(text))
     for offset in range(Int(plan.rows.count) + peek):
         if offset == 0 and peek != 0 and top == 0:
             continue
@@ -187,19 +194,20 @@ def render_retained_viewport_opts(
         len(overlays),
     )
     _ = overlays
-    var cursor = GridCursor(0, 0, 0, 0, 0, 0, 0)
-    if viewport.metadata.cursor:
-        var source = viewport.metadata.cursor.value()
-        var row = plan.live.display_row(source.row)
-        if row and Int(source.column) < visible_columns:
-            source.row = UInt16(row.value() + peek)
-            cursor = Pointer(to=source).unsafe_bitcast[GridCursor]()[
-                unsafe_offset=0
-            ]
-    ui.grid_cursor(cursor)
-    if marked and viewport.metadata.cursor:
-        var text = marked.value().as_bytes()
-        ui.grid_ime(text.unsafe_ptr(), len(text))
+    if not opts.native_appearance:
+        var cursor = GridCursor(0, 0, 0, 0, 0, 0, 0)
+        if viewport.metadata.cursor:
+            var source = viewport.metadata.cursor.value()
+            var row = plan.live.display_row(source.row)
+            if row and Int(source.column) < visible_columns:
+                source.row = UInt16(row.value() + peek)
+                cursor = Pointer(to=source).unsafe_bitcast[GridCursor]()[
+                    unsafe_offset=0
+                ]
+        ui.grid_cursor(cursor)
+        if marked and viewport.metadata.cursor:
+            var text = marked.value().as_bytes()
+            ui.grid_ime(text.unsafe_ptr(), len(text))
     ui.grid_end()
     if opts.native_appearance:
         for overlay in viewport.metadata.overlays:

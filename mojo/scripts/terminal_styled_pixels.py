@@ -13,6 +13,7 @@ ROOT = Path(__file__).resolve().parents[2]
 MJUI = ROOT.parent / "mjui"
 DIRECTORY = ROOT / "target/port/terminal-styled-reference"
 CASES = ("regular-only", "full-faces", "mixed-faces", "no-synthetic", "decorations", "contrast", "glyphs", "composition")
+EXTRA_CASES = ("composition-tail", "composition-clipped", "composition-no-cursor", "composition-hidden-cursor", "composition-decorated", "composition-boundary", "composition-retained", "composition-retained-fractional")
 
 
 def fixture(directory):
@@ -32,6 +33,8 @@ def fixture(directory):
     for value in (source["width"], source["height"], geometry["columns"], geometry["rows"]):
         number(value)
     output.extend(struct.pack("<ff", source["font_size"], source["scale"]))
+    number(int(source["retained"]))
+    output.extend(struct.pack("<f", source["sub_row"]))
     for value in (source["columns"], source["rows"], packed(appearance["foreground"]), packed(appearance["background"]), packed(appearance["selection_background"], True), packed(appearance["selection_foreground"]), packed(appearance["search_match_color"], True), packed(appearance["search_current_color"], True), packed(appearance["link_color"], True), packed(appearance["copy_cursor_color"], True), int(appearance["rounded_selection"])):
         number(value)
     output.extend(struct.pack("<f", appearance["minimum_contrast"]))
@@ -81,7 +84,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--record", action="store_true")
     parser.add_argument("--native-only", action="store_true")
-    parser.add_argument("--case", choices=CASES, action="append")
+    parser.add_argument("--case", choices=CASES + EXTRA_CASES, action="append")
     parser.add_argument("--scale", type=float, action="append")
     args = parser.parse_args()
     cases = args.case or CASES

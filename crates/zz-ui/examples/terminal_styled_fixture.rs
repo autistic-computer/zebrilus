@@ -27,6 +27,8 @@ struct Fixture {
     geometry: Rc<RefCell<Value>>,
     font_size: f32,
     marked: Option<String>,
+    retained: bool,
+    sub_row: f32,
 }
 
 impl Render for Fixture {
@@ -44,6 +46,8 @@ impl Render for Fixture {
         let paint = self.cache.clone();
         let geometry = self.geometry.clone();
         let marked = self.marked.clone();
+        let retained = self.retained;
+        let sub_row = self.sub_row;
         div().size_full().font(base_font).text_size(px(font_size)).bg(ala::rgb(0x0011_2233)).child(
             canvas(
                 move |bounds, window, cx| {
@@ -54,11 +58,11 @@ impl Render for Fixture {
                         revision_epoch: 1,
                         history: None,
                         images: None,
-                        local_scroll_target: None,
-                        scroll_pixel_offset: px(0.),
+                        local_scroll_target: retained.then_some(0),
+                        scroll_pixel_offset: px(sub_row),
                         overscroll: px(0.),
                         extra_height: px(0.),
-                        command_output: true,
+                        command_output: !retained,
                         appearance: &appearance,
                         appearance_hash: 1,
                         text_opacity: 1.,
@@ -108,6 +112,8 @@ impl Render for Fixture {
                         "baseline": f32::from((g.line_height - probe.ascent - probe.descent) / 2. + probe.ascent),
                         "cell_width": f32::from(g.cell_width), "line_height": f32::from(g.line_height),
                         "columns": g.grid.columns, "rows": g.grid.rows, "faces": faces, "glyph_probes": glyph_probes,
+                        "grid_bounds": [f32::from(g.grid_bounds.origin.x), f32::from(g.grid_bounds.origin.y), f32::from(g.grid_bounds.size.width), f32::from(g.grid_bounds.size.height)],
+                        "content_offset": f32::from(g.content_offset),
                     });
                     state
                 },
@@ -244,6 +250,12 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut offsets = vec![0];
     let mut fallback_paths = Vec::new();
     let mut marked = None;
+    let retained = case.starts_with("composition-retained");
+    let sub_row = if case == "composition-retained-fractional" {
+        0.5
+    } else {
+        0.0
+    };
     match case {
         "regular-only" | "full-faces" | "mixed-faces" | "no-synthetic" => {
             for row in 0..4 {
@@ -344,7 +356,15 @@ fn main() -> Result<(), Box<dyn Error>> {
                 PackedCell::new(0, 0, CellWidth::SpacerHead);
             put(&mut viewport, 7, 1, "after spacer head", 0);
         }
-        "composition" => {
+        "composition"
+        | "composition-tail"
+        | "composition-clipped"
+        | "composition-no-cursor"
+        | "composition-hidden-cursor"
+        | "composition-decorated"
+        | "composition-boundary"
+        | "composition-retained"
+        | "composition-retained-fractional" => {
             for row in 0..8 {
                 put(&mut viewport, row, 0, "retained cells and composition", 0);
             }
@@ -359,6 +379,81 @@ fn main() -> Result<(), Box<dyn Error>> {
                 CursorStyle::Block,
                 Color::rgb(37, 171, 213),
             ));
+            match case {
+                "composition-tail" => {
+                    Arc::make_mut(&mut viewport.cells)[4 * COLUMNS + 5] =
+                        PackedCell::new(u32::from('W'), 0, CellWidth::Wide);
+                    Arc::make_mut(&mut viewport.cells)[4 * COLUMNS + 6] =
+                        PackedCell::new(0, 0, CellWidth::SpacerTail);
+                    viewport.cursor = Some(Cursor::new(
+                        6,
+                        4,
+                        true,
+                        false,
+                        false,
+                        CursorStyle::Block,
+                        Color::rgb(37, 171, 213),
+                    ));
+                }
+                "composition-clipped" => {
+                    viewport.cursor = Some(Cursor::new(
+                        47,
+                        4,
+                        true,
+                        false,
+                        false,
+                        CursorStyle::Block,
+                        Color::rgb(37, 171, 213),
+                    ));
+                }
+                "composition-no-cursor" => viewport.cursor = None,
+                "composition-hidden-cursor" => {
+                    viewport.cursor = Some(Cursor::new(
+                        5,
+                        12,
+                        true,
+                        false,
+                        false,
+                        CursorStyle::Block,
+                        Color::rgb(37, 171, 213),
+                    ));
+                }
+                "composition-decorated" => {
+                    styles.push(PackedStyle::new(
+                        appearance.foreground,
+                        appearance.background,
+                        Some(Color::rgb(231, 81, 113)),
+                        ATTR_STRIKETHROUGH | ATTR_OVERLINE,
+                        UnderlineStyle::Curly,
+                    ));
+                    put(
+                        &mut viewport,
+                        4,
+                        0,
+                        "retained ffi != => cells and input",
+                        (styles.len() - 1) as u16,
+                    );
+                }
+                "composition-boundary" => {
+                    put(
+                        &mut viewport,
+                        4,
+                        0,
+                        "=>===->!= <= ffi and retained cells",
+                        9,
+                    );
+                    viewport.cursor = Some(Cursor::new(
+                        2,
+                        4,
+                        true,
+                        false,
+                        false,
+                        CursorStyle::Block,
+                        Color::rgb(37, 171, 213),
+                    ));
+                }
+                _ => {}
+            }
         }
         _ => return Err("unknown styled fixture case".into()),
     }
@@ -400,7 +495,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         "overlays": viewport.overlays.iter().map(|span| [span.row, span.start, span.end, span.kind_and_flags()]).collect::<Vec<_>>(),
         "cursor": viewport.cursor.map(|cursor| json!([cursor.color().packed(), cursor.column(), cursor.row(), match cursor.style() { CursorStyle::Bar => 0, CursorStyle::Block => 1, CursorStyle::Underline => 2, CursorStyle::BlockHollow => 3 }, u8::from(cursor.visible()), u8::from(cursor.blinking()), u8::from(cursor.at_wide_tail())])),
         "font_files": files, "style_paths": style_paths, "fallback_paths": fallback_paths, "marked": marked,
-        "font_size": font_size, "scale": scale, "width": physical_width, "height": physical_height, "sub_row": 0, "retained": false,
+        "font_size": font_size, "scale": scale, "width": physical_width, "height": physical_height, "sub_row": sub_row, "retained": retained,
     });
     let geometry = Rc::new(RefCell::new(Value::Null));
     let output = geometry.clone();
@@ -413,6 +508,8 @@ fn main() -> Result<(), Box<dyn Error>> {
             geometry,
             font_size,
             marked,
+            retained,
+            sub_row,
         })
     })?;
     cx.update_window(window.into(), |_, window, cx| window.draw(cx).clear(cx))?;

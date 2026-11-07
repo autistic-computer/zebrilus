@@ -1,11 +1,13 @@
 from std.sys import argv
-from mjui.ui import Ui
+from mjui.ui import Ui, Style
 from mjui.term.grid import TermOpts
 from mjui.png import write_png
 from mjui.render.sdlgpu import SdlGpuRenderer
 from zzmojo.terminal_appearance import terminal_metrics
 from zzmojo.terminal_model import TerminalViewport, TerminalCell, TerminalStyle, TerminalOverlay, TerminalCursor
 from zzmojo.terminal_painter import render_viewport_opts
+from zzmojo.terminal_history import TerminalHistoryState
+from zzmojo.terminal_history_painter import render_retained_viewport_opts
 
 
 def number(data: List[UInt8], mut offset: Int) raises -> UInt32:
@@ -55,6 +57,8 @@ def main() raises:
     var display_rows = count(data, offset, 256)
     var size = real(data, offset)
     var device_scale = real(data, offset)
+    var retained = number(data, offset) != 0
+    var sub_row = real(data, offset)
     var viewport = TerminalViewport()
     viewport.columns = UInt16(count(data, offset, 256))
     viewport.rows = UInt16(count(data, offset, 256))
@@ -147,7 +151,17 @@ def main() raises:
     opts.baseline = metrics.baseline
     ui.set_time(1)
     ui.begin_frame(Float32(width) / device_scale, Float32(height) / device_scale)
-    _ = render_viewport_opts(ui, 91, viewport, opts, display_columns, display_rows, True, marked)
+    if retained:
+        var pane = Style.col().width(Float32(width) / device_scale).height(Float32(height) / device_scale)
+        pane.pad_t = max(Float32(height) / device_scale - Float32(display_rows) * metrics.height, Float32(0))
+        ui.open(pane)
+        var counter: UInt64 = 1
+        var history = TerminalHistoryState(viewport, counter)
+        var snapshot = history.snapshot(viewport)
+        _ = render_retained_viewport_opts(ui, 91, viewport, snapshot, UInt32(0), sub_row, opts, display_columns, display_rows, marked)
+        ui.close()
+    else:
+        _ = render_viewport_opts(ui, 91, viewport, opts, display_columns, display_rows, True, marked)
     ui.end_frame()
     var renderer = SdlGpuRenderer()
     var pixels = renderer.render_offscreen(ui.dl, ui.atlas, width, height, (viewport.metadata.background << 8) | 255)

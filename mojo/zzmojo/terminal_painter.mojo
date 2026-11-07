@@ -20,6 +20,7 @@ from .terminal_model import (
     TerminalViewport,
 )
 from .terminal_projection import projection_plan
+from .terminal_composition import composition_cursor
 from mjui.term.overlays import SelectionCoverage
 
 
@@ -116,6 +117,12 @@ def render_viewport_opts(
     var metrics = ui.grid_begin(
         key, display_columns, display_rows, tables, opts
     )
+    if opts.native_appearance:
+        var cursor = composition_cursor(viewport, plan.live, visible_columns)
+        ui.grid_cursor(cursor.or_else(GridCursor(0, 0, 0, 0, 0, 0, 0)))
+        if cursor and marked:
+            var text = marked.value().as_bytes()
+            ui.grid_ime(text.unsafe_ptr(), len(text))
     for offset in range(Int(plan.rows.count)):
         var source = Int(plan.rows.source_start) + offset
         var destination = Int(plan.rows.destination_start) + offset
@@ -148,21 +155,22 @@ def render_viewport_opts(
         len(overlays),
     )
     _ = overlays
-    if viewport.metadata.cursor:
-        var cursor = viewport.metadata.cursor.value()
-        var row = plan.live.display_row(cursor.row)
-        if row and Int(cursor.column) < visible_columns:
-            cursor.row = UInt16(row.value())
-            ui.grid_cursor(
-                Pointer(to=cursor).unsafe_bitcast[GridCursor]()[unsafe_offset=0]
-            )
+    if not opts.native_appearance:
+        if viewport.metadata.cursor:
+            var cursor = viewport.metadata.cursor.value()
+            var row = plan.live.display_row(cursor.row)
+            if row and Int(cursor.column) < visible_columns:
+                cursor.row = UInt16(row.value())
+                ui.grid_cursor(
+                    Pointer(to=cursor).unsafe_bitcast[GridCursor]()[unsafe_offset=0]
+                )
+            else:
+                ui.grid_cursor(GridCursor(0, 0, 0, 0, 0, 0, 0))
         else:
             ui.grid_cursor(GridCursor(0, 0, 0, 0, 0, 0, 0))
-    else:
-        ui.grid_cursor(GridCursor(0, 0, 0, 0, 0, 0, 0))
-    if marked and viewport.metadata.cursor:
-        var text = marked.value().as_bytes()
-        ui.grid_ime(text.unsafe_ptr(), len(text))
+        if marked and viewport.metadata.cursor:
+            var text = marked.value().as_bytes()
+            ui.grid_ime(text.unsafe_ptr(), len(text))
     ui.grid_end()
     if opts.native_appearance:
         for overlay in viewport.metadata.overlays:
