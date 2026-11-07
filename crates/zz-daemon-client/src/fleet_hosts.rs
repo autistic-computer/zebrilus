@@ -101,6 +101,9 @@ pub fn resolve_fleet_host(hosts: &[HostEntry], name: &str) -> Result<Endpoint, S
         }
         _ => {}
     }
+    if name.starts_with("tailnet://") {
+        return Endpoint::parse(name).map_err(|error| error.to_string());
+    }
     let destination = name.strip_prefix("ssh://").unwrap_or(name);
     if destination.starts_with('-') {
         return Err("ssh destination must not start with `-`".to_owned());

@@ -137,7 +137,7 @@ fn fleet_hosts() -> io::Result<Vec<FleetHost>> {
                 name: host.name,
                 endpoint,
             }),
-            Endpoint::Local(_) => None,
+            Endpoint::Local(_) | Endpoint::Tailnet(_) => None,
         })
         .collect::<Vec<_>>();
     if hosts.is_empty() {

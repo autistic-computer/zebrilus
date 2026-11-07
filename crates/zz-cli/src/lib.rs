@@ -18,6 +18,7 @@ mod events;
 mod fleet;
 mod fork_chat;
 mod list_hosts;
+mod tailnet;
 
 #[cfg(test)]
 use std::borrow::Cow;
@@ -69,10 +70,11 @@ const SOURCE_HOST_VERBS: [&str; 5] = [
     "move-window",
     "swap-window",
 ];
-const SINGLE_HOST_VERBS: [(&str, &str); 4] = [
+const SINGLE_HOST_VERBS: [(&str, &str); 5] = [
     ("events", "streams"),
     ("wait-pane", "waits on one pane"),
     ("fleet", "works on one machine's own files"),
+    ("tailnet", "reports on one machine's own Tailscale"),
     ("tools", "works on one machine's own files"),
 ];
 const FOREIGN_TMUX_ERROR: &str = "zz: TMUX is set but ZZ_SOCKET is not; refusing to treat a tmux server as zz\nUse `zz app` to open the GUI, or pass `-S` / set `ZZ_SOCKET` to target a zz daemon.";
@@ -923,6 +925,21 @@ fn run_command_mode(
                 exit_code_for(CliFailure::Runtime)
             }
         });
+    }
+
+    if command == "tailnet" {
+        return Some(
+            match tailnet::run(invocation.args.iter().map(ToString::to_string)) {
+                Ok(output) => {
+                    println!("{output}");
+                    ExitCode::SUCCESS
+                }
+                Err(error) => {
+                    eprintln!("zz: {error}");
+                    exit_code_for(CliFailure::Usage)
+                }
+            },
+        );
     }
 
     if command == "fleet" {
@@ -2630,6 +2647,12 @@ fn run_host_cli(host: &str, arguments: &[RawText]) -> ExitCode {
             eprintln!(
                 "zz: {host} is the local socket {}; run the command without --host",
                 path.display()
+            );
+            return exit_code_for(CliFailure::Usage);
+        }
+        Ok(Endpoint::Tailnet(endpoint)) => {
+            eprintln!(
+                "zz: this command runs on the host over ssh, and {host} is the tailnet host {endpoint}"
             );
             return exit_code_for(CliFailure::Usage);
         }

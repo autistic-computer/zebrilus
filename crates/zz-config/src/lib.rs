@@ -789,6 +789,16 @@ pub fn parse_config(source: &str, system_font_family: &str) -> ParsedConfig {
             continue;
         }
 
+        if zz_daemon_client::tailnet::Settings::is_key(key) {
+            if let Err(message) = zz_daemon_client::tailnet::Settings::default().apply(key, value) {
+                parsed.diagnostics.push(ConfigDiagnostic {
+                    line: line_number,
+                    message: format!("invalid `{key}`: {message}"),
+                });
+            }
+            continue;
+        }
+
         if matches!(key, CHROME_KEYBIND_KEY | CHROME_UNBIND_KEY) {
             let entry = if key == CHROME_KEYBIND_KEY {
                 keymap::parse_bind(value)
@@ -1473,6 +1483,7 @@ pub fn is_app_config_key(key: &str) -> bool {
         || RETIRED_THEME_KEYS.contains(&key)
         || MuxOptionKey::from_config_key(key).is_some()
         || key.starts_with("host-")
+        || zz_daemon_client::tailnet::Settings::is_key(key)
 }
 
 pub fn appearance_editor_view(source: &str) -> String {

@@ -51,6 +51,8 @@ mod russh_socks;
 mod solo_tests;
 #[cfg_attr(any(target_os = "ios", target_os = "android"), allow(dead_code))]
 mod ssh_key;
+#[cfg(all(any(unix, windows), not(any(target_os = "ios", target_os = "android"))))]
+pub mod tailnet;
 #[cfg_attr(any(target_os = "ios", target_os = "android"), allow(dead_code))]
 mod terminal_features;
 pub mod transport;
@@ -72,7 +74,7 @@ pub use client::{
 };
 pub use endpoint::{
     Endpoint, EndpointError, RemoteInstall, RemoteInstalled, RemoteRestart, SshEndpoint,
-    run_socket_proxy, shell_quote,
+    TailnetEndpoint, run_socket_proxy, shell_quote,
 };
 #[cfg(any(unix, windows))]
 pub use endpoint::{install_remote, install_remote_batch, run_remote_cli};

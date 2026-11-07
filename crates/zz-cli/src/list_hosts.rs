@@ -99,8 +99,26 @@ fn probe_endpoint(endpoint: &Endpoint) -> HostProbe {
             HostStatus::Unreachable,
             format!("no daemon socket at {}", path.display()),
         ),
+        Endpoint::Tailnet(endpoint) => {
+            match zz_daemon_client::tailnet::resolve(endpoint)
+                .map_err(|error| error.to_string())
+                .and_then(|address| {
+                    std::net::TcpStream::connect_timeout(&address, TAILNET_PROBE_TIMEOUT)
+                        .map_err(|error| error.to_string())
+                }) {
+                Ok(_) => HostProbe {
+                    status: HostStatus::Ready,
+                    version: String::new(),
+                    protocol: String::new(),
+                    error: String::new(),
+                },
+                Err(error) => HostProbe::failed(HostStatus::Unreachable, error),
+            }
+        }
     }
 }
+
+const TAILNET_PROBE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(2);
 
 fn needs_probe(listing: Listing<'_>) -> bool {
     match listing {

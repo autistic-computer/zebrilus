@@ -1825,6 +1825,16 @@ impl Daemon {
                 return Err(DaemonError::Thread(error.to_string()));
             }
         };
+        if self.load_user_config {
+            let tailnet_shared = Arc::clone(&shared);
+            if let Err(error) = crate::tailnet::spawn(
+                self.socket_path.clone(),
+                self.socket_path == zz_daemon_client::transport::platform_socket_path(),
+                move || tailnet_shared.stopping.load(Ordering::Acquire),
+            ) {
+                log::warn!("could not start the tailnet listener: {error}");
+            }
+        }
         let complete_startup = || {
             shared.log_diagnostic_snapshot("startup");
             log::info!("zz daemon listening at {endpoint}");
@@ -4595,6 +4605,7 @@ const DAEMON_COMMAND_DISPATCHES: &[(&str, DaemonCommandDispatch)] = &[
     ("tools", DaemonCommandDispatch::Tools),
     ("fleet", DaemonCommandDispatch::LocalCli),
     ("list-hosts", DaemonCommandDispatch::LocalCli),
+    ("tailnet", DaemonCommandDispatch::LocalCli),
     ("set-buffer", DaemonCommandDispatch::Buffer),
     ("setb", DaemonCommandDispatch::Buffer),
     ("show-buffer", DaemonCommandDispatch::Buffer),

@@ -204,6 +204,8 @@ pub struct CommandClient {
     server_id: Option<u64>,
     #[cfg(all(any(unix, windows), not(any(target_os = "ios", target_os = "android"))))]
     _ssh_forward: Option<SshForward>,
+    #[cfg(all(any(unix, windows), not(any(target_os = "ios", target_os = "android"))))]
+    _tailnet_forward: Option<crate::tailnet::TailnetForward>,
     #[cfg(all(unix, not(any(target_os = "ios", target_os = "android"))))]
     unverified: Option<crate::endpoint::SshEndpoint>,
     #[cfg(all(unix, not(any(target_os = "ios", target_os = "android"))))]
@@ -533,6 +535,8 @@ impl CommandClient {
             server_id,
             #[cfg(all(any(unix, windows), not(any(target_os = "ios", target_os = "android"))))]
             _ssh_forward: None,
+            #[cfg(all(any(unix, windows), not(any(target_os = "ios", target_os = "android"))))]
+            _tailnet_forward: None,
             #[cfg(all(unix, not(any(target_os = "ios", target_os = "android"))))]
             unverified: None,
             #[cfg(all(unix, not(any(target_os = "ios", target_os = "android"))))]
@@ -550,6 +554,30 @@ impl CommandClient {
                 facts: EndpointFactsScope::LocalHostWorkingDirectoryAndTerminal,
                 send_origin: false,
             }),
+            Endpoint::Tailnet(endpoint) => {
+                #[cfg(all(any(unix, windows), not(any(target_os = "ios", target_os = "android"))))]
+                {
+                    let forward = crate::tailnet::TailnetForward::start(endpoint)
+                        .map_err(|error| tailnet_failure(endpoint, &error))?;
+                    let mut client = Self::connect_route(CommandRoute {
+                        socket: forward.socket().to_path_buf(),
+                        display: endpoint.to_string(),
+                        facts: EndpointFactsScope::PortableTerminalSize,
+                        send_origin: false,
+                    })
+                    .map_err(|error| tailnet_closed(endpoint, error))?;
+                    client._tailnet_forward = Some(forward);
+                    Ok(client)
+                }
+                #[cfg(not(all(
+                    any(unix, windows),
+                    not(any(target_os = "ios", target_os = "android"))
+                )))]
+                {
+                    let _ = endpoint;
+                    Err(crate::EndpointError::UnsupportedPlatform.into())
+                }
+            }
             Endpoint::Ssh(endpoint) => {
                 #[cfg(any(target_os = "ios", target_os = "android"))]
                 {
@@ -1199,6 +1227,8 @@ pub struct InteractiveClient {
     hello: ServerHello,
     #[cfg(all(any(unix, windows), not(any(target_os = "ios", target_os = "android"))))]
     ssh_forward: Option<SshForward>,
+    #[cfg(all(any(unix, windows), not(any(target_os = "ios", target_os = "android"))))]
+    tailnet_forward: Option<crate::tailnet::TailnetForward>,
     #[cfg(any(target_os = "ios", target_os = "android"))]
     russh_forward: Option<RusshForward>,
 }
@@ -1252,6 +1282,41 @@ impl InteractiveClient {
                     attach,
                 )?;
                 Ok(Self::from_connected(connected))
+            }
+            Endpoint::Tailnet(endpoint) => {
+                #[cfg(all(any(unix, windows), not(any(target_os = "ios", target_os = "android"))))]
+                {
+                    let (forward, stream) = start_tailnet_forward(endpoint)
+                        .map_err(|error| tailnet_closed(endpoint, error))?;
+                    let connected = connect_stream_hello(
+                        ClientStream::Local(stream),
+                        endpoint,
+                        ClientKind::Interactive,
+                        short_device_name(),
+                        color_scheme,
+                        client_has_terminal,
+                        false,
+                        false,
+                        capabilities,
+                        if terminal_surface {
+                            EndpointFactsScope::PortableTerminalSize
+                        } else {
+                            EndpointFactsScope::None
+                        },
+                        attach,
+                    )?;
+                    let mut client = Self::from_connected(connected);
+                    client.tailnet_forward = Some(forward);
+                    Ok(client)
+                }
+                #[cfg(not(all(
+                    any(unix, windows),
+                    not(any(target_os = "ios", target_os = "android"))
+                )))]
+                {
+                    let _ = endpoint;
+                    Err(crate::EndpointError::UnsupportedPlatform.into())
+                }
             }
             Endpoint::Ssh(endpoint) => {
                 #[cfg(any(target_os = "ios", target_os = "android"))]
@@ -1438,6 +1503,36 @@ impl InteractiveClient {
     pub fn connect_control_endpoint(endpoint: &Endpoint) -> Result<Self, DaemonError> {
         match endpoint {
             Endpoint::Local(path) => Self::connect_control(path),
+            Endpoint::Tailnet(endpoint) => {
+                #[cfg(all(any(unix, windows), not(any(target_os = "ios", target_os = "android"))))]
+                {
+                    let (forward, stream) = start_tailnet_forward(endpoint)
+                        .map_err(|error| tailnet_closed(endpoint, error))?;
+                    let connected = connect_stream_with_startup_owner(
+                        ClientStream::Local(stream),
+                        endpoint,
+                        ClientKind::Control,
+                        None,
+                        None,
+                        false,
+                        false,
+                        false,
+                        &[],
+                        EndpointFactsScope::None,
+                    )?;
+                    let mut client = Self::from_connected(connected);
+                    client.tailnet_forward = Some(forward);
+                    Ok(client)
+                }
+                #[cfg(not(all(
+                    any(unix, windows),
+                    not(any(target_os = "ios", target_os = "android"))
+                )))]
+                {
+                    let _ = endpoint;
+                    Err(crate::EndpointError::UnsupportedPlatform.into())
+                }
+            }
             Endpoint::Ssh(endpoint) => {
                 #[cfg(all(any(unix, windows), not(any(target_os = "ios", target_os = "android"))))]
                 {
@@ -1709,6 +1804,40 @@ impl InteractiveClient {
                 )?;
                 Ok(Self::from_connected(connected))
             }
+            Endpoint::Tailnet(endpoint) => {
+                #[cfg(all(any(unix, windows), not(any(target_os = "ios", target_os = "android"))))]
+                {
+                    let (forward, stream) = start_tailnet_forward(endpoint)
+                        .map_err(|error| tailnet_closed(endpoint, error))?;
+                    let connected = connect_stream_with_startup_owner(
+                        ClientStream::Local(stream),
+                        endpoint,
+                        ClientKind::Interactive,
+                        device_name.clone(),
+                        color_scheme,
+                        client_has_terminal,
+                        false,
+                        false,
+                        extra_capabilities,
+                        if terminal_surface {
+                            EndpointFactsScope::PortableTerminalSize
+                        } else {
+                            EndpointFactsScope::None
+                        },
+                    )?;
+                    let mut client = Self::from_connected(connected);
+                    client.tailnet_forward = Some(forward);
+                    Ok(client)
+                }
+                #[cfg(not(all(
+                    any(unix, windows),
+                    not(any(target_os = "ios", target_os = "android"))
+                )))]
+                {
+                    let _ = endpoint;
+                    Err(crate::EndpointError::UnsupportedPlatform.into())
+                }
+            }
             Endpoint::Ssh(endpoint) => {
                 #[cfg(any(target_os = "ios", target_os = "android"))]
                 {
@@ -1781,6 +1910,8 @@ impl InteractiveClient {
             hello,
             #[cfg(all(any(unix, windows), not(any(target_os = "ios", target_os = "android"))))]
             ssh_forward: None,
+            #[cfg(all(any(unix, windows), not(any(target_os = "ios", target_os = "android"))))]
+            tailnet_forward: None,
             #[cfg(any(target_os = "ios", target_os = "android"))]
             russh_forward: None,
         }
@@ -3404,6 +3535,50 @@ fn write_client_file(path: &Path, data: &[u8], append: bool) -> Result<(), Strin
     file.write_all(data)
         .and_then(|()| file.flush())
         .map_err(|error| crate::strerror_text(&error))
+}
+
+#[cfg(all(any(unix, windows), not(any(target_os = "ios", target_os = "android"))))]
+fn tailnet_failure(
+    endpoint: &crate::endpoint::TailnetEndpoint,
+    error: &crate::tailnet::TailnetError,
+) -> DaemonError {
+    crate::EndpointError::Tailnet {
+        target: endpoint.to_string(),
+        reason: error.to_string(),
+    }
+    .into()
+}
+
+#[cfg(all(any(unix, windows), not(any(target_os = "ios", target_os = "android"))))]
+fn tailnet_closed(endpoint: &crate::endpoint::TailnetEndpoint, error: DaemonError) -> DaemonError {
+    let closed = matches!(
+        &error,
+        DaemonError::Protocol(zz_protocol::ProtocolError::Io(io)) | DaemonError::Io(io)
+            if matches!(
+                io.kind(),
+                std::io::ErrorKind::UnexpectedEof
+                    | std::io::ErrorKind::ConnectionReset
+                    | std::io::ErrorKind::BrokenPipe
+            )
+    );
+    if !closed {
+        return error;
+    }
+    crate::EndpointError::Tailnet {
+        target: endpoint.to_string(),
+        reason: "it closed the connection before zz answered; run `zz tailnet status` there to see whether it lets this machine in".to_owned(),
+    }
+    .into()
+}
+
+#[cfg(all(any(unix, windows), not(any(target_os = "ios", target_os = "android"))))]
+fn start_tailnet_forward(
+    endpoint: &crate::endpoint::TailnetEndpoint,
+) -> Result<(crate::tailnet::TailnetForward, LocalStream), DaemonError> {
+    let forward = crate::tailnet::TailnetForward::start(endpoint)
+        .map_err(|error| tailnet_failure(endpoint, &error))?;
+    let stream = LocalTransport::connect(forward.socket())?;
+    Ok((forward, stream))
 }
 
 #[cfg(test)]

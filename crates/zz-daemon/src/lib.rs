@@ -38,6 +38,8 @@ mod bounded_command;
 mod daemon;
 mod keys;
 mod status;
+#[cfg(all(any(unix, windows), not(any(target_os = "ios", target_os = "android"))))]
+mod tailnet;
 mod wake;
 
 #[cfg(feature = "agent")]

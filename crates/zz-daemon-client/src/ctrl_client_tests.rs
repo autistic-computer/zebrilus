@@ -294,6 +294,7 @@ fn legacy_command_attach_reconnects_with_the_original_route() {
         },
         server_id: Some(37),
         _ssh_forward: None,
+        _tailnet_forward: None,
         unverified: None,
         read_only: false,
     };

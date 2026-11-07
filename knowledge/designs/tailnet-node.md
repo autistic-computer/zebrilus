@@ -1,8 +1,8 @@
 ---
 type: Design Plan
 title: Tailnet hosts . zz uses the Tailscale you already run
-description: Proposed plan for zz machines to find and attach to each other over Tailscale. When the machine already runs Tailscale and is signed in, zz uses it - no sign-in in zz, trust is "a machine signed in by the same Tailscale user" checked with whois, discovery comes from the peer list. A daemon-owned node built on the tailscale crate (tailscale-rs 0.7, unpatched) exists only for machines you explicitly switch to it. Connections are bridged into the daemon's own local socket, so the daemon loop and wire protocol do not change. Covers macOS, Linux, Windows and WSL2 hosts and which thin clients can use it in which phase.
-status: Proposed
+description: Plan, phase 1 built, for zz machines to find and attach to each other over Tailscale. When the machine already runs Tailscale and is signed in, zz uses it - no sign-in in zz, trust is "a machine of this tailnet's owner" checked with whois, discovery comes from the peer list. A daemon-owned node built on the tailscale crate (tailscale-rs 0.7, unpatched) exists only for machines you explicitly switch to it. Connections are bridged into the daemon's own local socket, so the daemon loop and wire protocol do not change. Covers macOS, Linux, Windows and WSL2 hosts and which thin clients can use it in which phase.
+status: In progress
 tags:
 - remote
 - multi-host
@@ -14,10 +14,13 @@ timestamp: 2026-11-07T00:00:00-03:00
 
 # Overview
 
-> **Status: proposed 2026-11-07, revised after review the same day.** Nothing here is built.
-> Checked against Tailscale 1.104 and the `tailscale` crate 0.7.1
-> (github.com/tailscale/tailscale-rs at a2a56c4). The crate is used as published; zz carries no
-> patches to it.
+> **Status: phase 1 built 2026-11-07.** The daemon listens through the running Tailscale, admits
+> callers by whois, and `tailnet://` endpoints, `--host tailnet://...` and `zz tailnet status` work.
+> Verified between a macOS and a CachyOS machine on a personal tailnet in both directions: commands,
+> an interactive attach, `tailnet = off` dropping a live attach within one 30 s check, and the
+> own-address refusal. Discovery, phones and zz's own node are not built. Checked against
+> Tailscale 1.104 and the `tailscale` crate 0.7.1 (github.com/tailscale/tailscale-rs at a2a56c4),
+> which zz uses as published, with no patches.
 
 Today a remote host is an `ssh://` line ([fleet attach](/designs/fleet-attach.md)): every machine
 needs sshd, a key, a host line and `zz` on the remote PATH, and nothing finds machines for you. The
@@ -31,12 +34,14 @@ discovery becomes "your machines that answer on the zz port".
 
 | `tailnet` | zz does |
 | --- | --- |
-| `auto` (default) | uses the machine's Tailscale when it is running, signed in and has a network interface; otherwise no tailnet, and `zz tailnet status` says why |
-| `own` | runs the daemon's own node with the `tailscale` crate, for boxes without Tailscale; you sign it in once |
-| `off` | no tailnet |
+| `auto` (default) | the daemon on the platform's default socket uses the machine's Tailscale when it is running, signed in and has a network interface; otherwise no tailnet, and `zz tailnet status` says why. Daemons on other sockets (tests, scratch daemons, a second daemon) stay off the tailnet |
+| `on` | as `auto`, from whichever socket this daemon serves |
+| `own` (phase 4) | runs the daemon's own node with the `tailscale` crate, for boxes without Tailscale; you sign it in once |
+| `off` | no tailnet; a daemon that was listening stops and drops its tailnet clients at its next 30 s check |
 
 `auto` never falls back to `own` by itself: a stopped or signed-out Tailscale is a choice zz does
-not override. ssh hosts keep working unchanged.
+not override. ssh hosts keep working unchanged. The port is 9922, and 9923 for zz Dev, so both can
+run on one machine.
 
 # What the user sees
 
@@ -65,21 +70,23 @@ OS users apart on the calling machine.
 
 # Using the running Tailscale
 
-This mode adds no dependency. zz talks to the Tailscale on the machine through its CLI, trying in
-order and keeping the first that answers `status --json`:
+This mode adds no dependency (`crates/zz-daemon-client/src/tailnet.rs`). zz talks to the Tailscale
+on the machine through its CLI, trying each candidate in order with a 5 s limit:
 
 | Platform | Candidates |
 | --- | --- |
-| macOS | `tailscale` on PATH (Homebrew or the app's installed CLI), then `/Applications/Tailscale.app/Contents/MacOS/Tailscale` run with `TAILSCALE_BE_CLI=1` so it acts as the CLI instead of opening the app |
-| Linux | `tailscale` on PATH; normal users get read access to tailscaled's socket, which is all `status` and `whois` need |
+| macOS | `tailscale` on PATH, then `/opt/homebrew/bin/tailscale` and `/usr/local/bin/tailscale` (a daemon the app spawns has a short PATH), then `/Applications/Tailscale.app/Contents/MacOS/Tailscale` run with `TAILSCALE_BE_CLI=1` so it acts as the CLI instead of opening the app |
+| Linux | `tailscale` on PATH, then `/usr/bin`, `/usr/local/bin` and `/snap/bin`; normal users get read access to tailscaled's socket, which is all `status` and `whois` need |
 | Windows | `tailscale` on PATH, then `%ProgramFiles%\Tailscale\tailscale.exe` |
 
-Stderr is ignored (the CLI warns there when its version differs from the daemon's). Each failed
-candidate is kept as a line for `zz tailnet status`.
+Stderr is ignored (the CLI warns there when its version differs from the daemon's). When no
+candidate answers, the error lists each one and why.
 
 ## Is it usable
 
-The daemon runs `status --json` at start and every 30 seconds. It uses Tailscale only when all hold:
+The daemon (`crates/zz-daemon/src/tailnet.rs`) reads `tailnet` and `tailnet-allow` from `zz/config`
+and runs `status --json` at start and every 30 seconds, logging only when the outcome changes. It
+uses Tailscale only when all hold:
 
 - `BackendState` is `Running`;
 - `TUN` is true (in userspace-networking mode there is no tailnet interface to listen on or dial
@@ -90,43 +97,60 @@ The same output gives the tailnet addresses (`TailscaleIPs`), our user and login
 
 ## Accepting
 
-The daemon listens on TCP 9922 on each tailnet address, never on `0.0.0.0`, so the LAN cannot reach
-it, and rebinds when the addresses change. Tailscale's access rules drop traffic they do not allow
+The daemon listens on TCP 9922 (9923 for zz Dev) on each tailnet address, never on `0.0.0.0`, so the
+LAN cannot reach it, and rebinds when the addresses change. Tailscale's access rules drop traffic they do not allow
 before it reaches the socket. For each connection:
 
 1. Refuse it if it comes from one of this machine's own tailnet addresses (local clients use the
    owner-only socket; without this rule another OS user here would pass as this machine's node).
-2. Ask who it is: `whois --json <addr>`, with IPv6 written `[addr]:port`.
+2. Ask who it is: `whois --json <addr>` (an IPv4-mapped IPv6 caller is checked as its IPv4 address).
 3. Run the [admission check](#who-may-attach). On a refusal or a whois error, close and log the
    peer's name and why.
 4. Connect to the daemon's own local endpoint through `LocalTransport` (the Unix socket, or the named
    pipe on Windows) and copy bytes both ways.
 
 Step 4 is what `zz proxy` does at the far end of ssh, in-process. The daemon sees an ordinary local
-client, so the event loop, wire protocol and version check work as they do over ssh.
+client, so the event loop, wire protocol and version check work as they do over ssh. Each admitted
+connection is logged with the caller's machine and login. When listening stops (`tailnet = off`,
+Tailscale stopped, an address gone), the daemon also shuts down the tailnet connections it bridged,
+so turning it off ends live attaches too.
 
 ## Dialing
 
-The client connects straight to the peer's tailnet address on 9922 with the OS network stack;
-Tailscale routes it. `Endpoint` gains `Tailnet { peer, port }` parsed from `tailnet://`, and
-`ClientStream` a `Tcp` arm. The name resolves through the peer list, so MagicDNS being off does not
-matter on desktop. A `tailnet://` endpoint counts as remote (`EndpointFactsScope`), so the client
-sends `CLIENT_REMOTE_CAPABILITY` and asks for the
-[adaptive in-flight window](/designs/remote-flow-window.md) as over ssh. The `--host` resolver
-(`fleet_hosts::resolve_fleet_host`, ssh-only today) accepts `tailnet://` too.
+`Endpoint` has a `Tailnet { peer, port }` arm parsed from `tailnet://NAME[:port]` (a name, a full
+MagicDNS name, or an address, IPv6 in brackets). The name resolves through the peer list, so
+MagicDNS being off does not matter on desktop. Connecting dials the peer's address with the OS
+network stack (Tailscale routes it) and fails at once with a plain reason when nothing answers.
+
+On desktop the client then works the way it does over ssh: `TailnetForward` serves a private local
+socket and pipes each connection made to it over TCP to the peer, reusing the first dial. Everything
+after that is the existing local-socket path, so command clients reconnecting per command and the
+raw-terminal client polling its descriptor need nothing new. A `tailnet://` endpoint uses the
+remote facts scope (`PortableTerminalSize`), so the client sends `CLIENT_REMOTE_CAPABILITY` and asks
+for the [adaptive in-flight window](/designs/remote-flow-window.md) as over ssh. A peer that closes
+the connection before the hello is reported as refusing this machine, with a pointer to
+`zz tailnet status` there. The `--host` resolver accepts `tailnet://`; the verbs that run on a host
+over ssh (`fleet`, `list-hosts`, `tools`) refuse a tailnet host.
 
 # Who may attach
 
 | `tailnet-allow` | Running Tailscale | zz's own node |
 | --- | --- | --- |
-| `owner` (default) | whois returns a user ID that is set, not zero and equal to `Self.UserID`, and the caller has no tags | callers whose stable node ID is on the allow list |
-| `members` | every caller whois identifies with a set user or tags | every caller the access rules let through |
+| `owner` (default), personal tailnet | the caller is tagged (a tagged device of this tailnet), or its login is the tailnet's owner | callers whose stable node ID is on the allow list |
+| `owner`, organization tailnet | this machine is untagged, and the caller is untagged with the same user ID | as above |
+| `members` | every caller whois identifies with a user or tags | every caller the access rules let through |
 
-Refused under `owner`: tagged nodes (Tailscale may still report a creator user for them, so the tag
-check comes first), nodes shared in from another tailnet (their user is the sharer), whois failures,
-and missing or zero IDs. `owner` is the default because an attached client can run any command as
-you; on a work tailnet `members` lets coworkers attach if the access rules let them reach this
-machine.
+A personal tailnet is one named after a login (`CurrentTailnet.Name` holds an `@`, such as
+`you@gmail.com`); everything in it is the owner's, and it is common to tag every server and desktop
+(this design was first checked on a tailnet where every desktop is `tag:box` and only the phones
+belong to the login). An organization tailnet is named after a domain, and there a tag says nothing
+about who owns the device, so `owner` admits only untagged devices of the same user, and a tagged
+machine admits nobody until `tailnet-allow = members`.
+
+Refused under `owner`: other users invited into a personal tailnet, nodes shared in from another
+tailnet (sharing strips tags and their login is the sharer's), whois failures, missing or zero IDs,
+and anything from this machine's own addresses. `owner` is the default because an attached client
+can run any command as you.
 
 The check is a pure function of the caller's identity and ours, so its tests are a table of exact
 cases.
@@ -153,8 +177,8 @@ an `ssh://` host for the same machine are two rows; removing the discovered one 
 
 | Client | How | From phase |
 | --- | --- | --- |
-| `zz attach` (raw terminal) | `tailnet://` endpoint; `ClientStream::Tcp` hands its socket descriptor to the TUI's poll loop (`receive_fd`), like the local stream does | 1 |
-| iOS, Android | the Tailscale app is the VPN; `clients/app` already connects through `Endpoint::parse`, so `tailnet://` with `ClientStream::Tcp` works there | 2 |
+| `zz attach` (raw terminal) and command clients | `tailnet://` endpoint through the local forward socket | 1, built |
+| iOS, Android | the Tailscale app is the VPN; `clients/app` already connects through `Endpoint::parse`, so `tailnet://` needs a `ClientStream::Tcp` arm there (the forward socket is desktop-only today, and mobile reports `tailnet://` as unsupported) | 2 |
 | phone bootstrap | QR code and the host list carry each machine's tailnet addresses and stable ID, not only its name, so MagicDNS being off on the phone does not matter | 3 |
 | web (WASM) and the HTML client | a browser cannot open raw TCP, and the page needs HTTPS for WebGPU and the cross-origin isolation headers zz-web sends. This needs an HTTPS gateway (`tailscale serve` in front of zz-web on loopback, checking the identity header Serve adds) and its own design | later |
 
@@ -196,11 +220,12 @@ landing it, and record both here.
 
 # Settings
 
-Daemon-owned keys in `zz/config`, edited by Settings > Hosts:
+Keys in `zz/config`, which the daemon reads itself (Settings > Hosts will edit them; for now edit the
+file). An invalid value is a config diagnostic and leaves the default:
 
 | Key | Default | Meaning |
 | --- | --- | --- |
-| `tailnet` | `auto` | `auto`, `own` or `off`, see [Overview](#overview) |
+| `tailnet` | `auto` | `auto`, `on`, `off`, or `own` once phase 4 lands; see [Overview](#overview) |
 | `tailnet-allow` | `owner` | see [Who may attach](#who-may-attach) |
 | `tailnet-hostname` | `zz-<machine>` | `own` only |
 | `tailnet-control-url` | Tailscale's | `own` only, such as Headscale |
@@ -210,14 +235,17 @@ the first registration, and is not stored.
 
 # Phases
 
-1. **Accept and dial with the running Tailscale.** CLI detection, the usability rules, the listener
-   with the self-address rule and whois admission, the bridge, `Endpoint::Tailnet`,
-   `ClientStream::Tcp` with its descriptor, the remote facts scope, `--host tailnet://`,
-   `zz tailnet status`.
-   *Done when* `zz --host tailnet://<machine> attach` from another of your machines attaches with the
-   flow window on, and a machine signed in as another user, a tagged machine and a local OS user
-   dialing the machine's own tailnet address are each refused with a logged reason. Run on macOS,
-   Linux and Windows hosts.
+1. **Accept and dial with the running Tailscale. Built 2026-11-07.** CLI detection, the usability
+   rules, the listener with the self-address rule and whois admission, the bridge, dropping bridged
+   connections when listening stops, `Endpoint::Tailnet` through a local forward socket, the remote
+   facts scope, `--host tailnet://`, `zz tailnet status`.
+   *Checked:* macOS and CachyOS, each way, on a personal tailnet with both machines tagged:
+   `list-sessions`, `send-keys` and `capture-pane` over `--host tailnet://...`, an interactive
+   `attach` typing into the remote shell, the own-address connection closed, `tailnet = off`
+   dropping a live attach after 19 s and `on` serving again after 23 s, and plain errors for an
+   unknown peer and a closed port. *Not yet checked:* a Windows host, a caller from another user
+   (only the admission table covers it), and seeing the flow window negotiated (the tailnet arm
+   sends the same remote facts as ssh).
 2. **Discover, and phones.** Peer list probing, sidebar rows, hiding, the Settings group;
    `tailnet://` in the iOS and Android app.
    *Done when* starting zz on a third machine makes it appear on the other two within a minute with
@@ -236,11 +264,13 @@ The web and HTML clients over the tailnet need their own design after phase 2.
 
 Few and exact:
 
-- the admission table: same user, other user, tagged caller with a creator user, shared-in node,
-  zero user, whois error, our own address, IPv6 caller, a stable ID on and off the allow list, under
-  both policies, each with its expected verdict;
-- mode choice from fixed `status --json` outputs: `Running` with and without `TUN`, `NeedsLogin`,
-  `Stopped`, zero user, no working CLI candidate;
+- the admission table (built): tagged box and the owner's phone on a personal tailnet, an invited
+  user, our own address, no identity, same user, coworker, tagged caller and tagged self on an
+  organization tailnet, and `members`, each with its exact verdict; the allow-list cases join it
+  in phase 4;
+- status and whois parsing from fixed JSON, and the usability reasons for `NeedsLogin`, no `TUN` and
+  no account (built);
+- settings from config text, and `tailnet://` parsing and printing (built);
 - discovery filtering from a fixed peer list: other user, tagged, offline, probe timeout and protocol
   mismatch each drop the peer, and a rename keeps the stable ID;
 - allow-list enrollment: an ambiguous short name is refused, a full name stores the right stable ID.
