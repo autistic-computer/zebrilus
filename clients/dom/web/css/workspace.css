@@ -59,7 +59,7 @@
 .window-tab {
   position: relative;
   flex-shrink: 1;
-  padding: 0 10px 0 9px;
+  padding: 0 4px 0 9px;
   overflow: hidden;
 }
 
@@ -373,7 +373,7 @@
 }
 
 .pane-title > .title-close {
-  margin-right: -8px;
+  color: var(--penna-faint);
 }
 
 .pane-title:not(:hover) > .title-close {

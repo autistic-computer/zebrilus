@@ -72,6 +72,14 @@ nav:not([data-divider]) > .sidebar-resize:hover {
   cursor: pointer;
 }
 
+#tree.tree > [data-penna="sidebar.row"] {
+  height: 30px;
+  margin: 1px var(--penna-row-inset);
+  padding-right: 4px;
+  padding-left: calc(9px + 20px * var(--depth, 0));
+  --penna-inside-rows: 30px;
+}
+
 [data-penna="sidebar.row"]:not([data-path]):not([data-host]) {
   --zz-label-ink: var(--penna-muted);
 }

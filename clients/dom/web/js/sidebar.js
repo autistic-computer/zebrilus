@@ -128,6 +128,7 @@ function marker(icon, row) {
 function action(icon, title, run) {
   const button = document.createElement("button");
   button.dataset.penna = "icon-button.row";
+  button.dataset.inside = "";
   button.className = "tree-action";
   button.title = title;
   button.disabled = !writable();
@@ -237,7 +238,7 @@ function drawGuides(rows) {
     ...runs.map((run) => {
       const line = document.createElement("i");
       line.className = run.active ? "guide active" : "guide";
-      line.style.left = `${run.level * 20 + 17}px`;
+      line.style.left = `${run.level * 20 + 24}px`;
       line.style.top = `${run.start * 32 + 4}px`;
       line.style.height = `${run.count * 32 - 8}px`;
       return line;

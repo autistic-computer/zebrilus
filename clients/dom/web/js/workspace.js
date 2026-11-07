@@ -109,8 +109,9 @@ function header(pane) {
   const slot = el("div", { class: "title-slot" });
   const title = el("div", { "data-penna": "button.title", class: "pane-title" });
   title.innerHTML = `<span class="title-icon"><i data-icon="square-terminal" class="kind"></i><i data-icon="arrows-move" class="move"></i></span><span class="title" data-text></span>`;
-  const close = iconButton("icon-button.bar", "close", "xmark", "Close pane");
+  const close = iconButton("button.quiet", "close", "xmark", "Close pane");
   close.classList.add("title-close");
+  close.dataset.inside = "";
   title.append(close);
   slot.append(title);
   const extras = el("div", { class: "header-extras" });
@@ -671,7 +672,7 @@ function windowTab(entry) {
   deck.style.width = `${20 + (Math.min(entry.panes.length, 3) - 1) * 5}px`;
   const name = el("span", { class: "tab-name", "aria-label": entry.label });
   name.textContent = entry.label;
-  const close = el("button", { "data-penna": "icon-button.row", class: "tab-close", title: "Close window" }, `<i data-icon="xmark"></i>`);
+  const close = el("button", { "data-penna": "icon-button.row", "data-inside": "", class: "tab-close", title: "Close window" }, `<i data-icon="xmark"></i>`);
   close.disabled = !writable();
   close.addEventListener("click", (event) => {
     event.stopPropagation();

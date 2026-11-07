@@ -523,7 +523,7 @@ function lines(sample) {
 }
 
 function headerTitle(glyph, title) {
-  return h("div", { "data-penna": "button.title" }, icon(glyph), text(title), h("button", { "data-penna": "icon-button.bar", "data-action": "close", title: "Close pane" }, icon("xmark")));
+  return h("div", { "data-penna": "button.title" }, icon(glyph), text(title), h("button", { "data-penna": "button.quiet", "data-inside": true, "data-action": "close", title: "Close pane" }, icon("xmark")));
 }
 
 function previewPane(index, body) {
