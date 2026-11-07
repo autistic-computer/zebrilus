@@ -1054,7 +1054,7 @@ impl FilesAction {
     }
 }
 
-fn files_place(context: &ActionContext) -> FilesPlace {
+pub fn files_place(context: &ActionContext) -> FilesPlace {
     let Place {
         host,
         session,

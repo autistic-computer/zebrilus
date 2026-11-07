@@ -27,6 +27,9 @@ from .clipboard_protocol import (
     MAX_CLIPBOARD_REPLY_BYTES,
 )
 from .search_ui_commands import SearchUiCommands
+from .path_protocol import decode_path_message
+from .path_service import PathSource, PathCommand
+from .path_mailbox import PathInbox
 
 comptime KEY = 1
 comptime TEXT = 2
@@ -42,6 +45,7 @@ comptime HISTORY_PREFETCH = 11
 comptime PASTE = 12
 comptime OUTPUT_TEXT = 13
 comptime OUTPUT_PASTE = 14
+comptime PATH_CONTROL = 15
 
 
 struct Job(Movable):
@@ -54,6 +58,7 @@ struct Job(Movable):
     var done: Atomic[Int64]
     var semaphore: DispatchRef
     var clipboard_reply: Optional[ClipboardResponse]
+    var path_epoch: UInt64
 
     def __init__(
         out self, path: String, var startup: Optional[ResumeStartup] = None
@@ -67,6 +72,7 @@ struct Job(Movable):
         self.done = Atomic[Int64](1)
         self.semaphore = dispatch_semaphore()
         self.clipboard_reply = None
+        self.path_epoch = 0
 
 
 def run_job(context: MutOpaquePointer[MutUntrackedOrigin]) abi("C"):
@@ -74,6 +80,7 @@ def run_job(context: MutOpaquePointer[MutUntrackedOrigin]) abi("C"):
     ref job = pointer[]
     try:
         if not job.connection:
+            job.path_epoch += 1
             var session = (
                 "$"
                 + String(
@@ -82,9 +89,9 @@ def run_job(context: MutOpaquePointer[MutUntrackedOrigin]) abi("C"):
             )
             if job.startup:
                 var startup = job.startup.take()
-                job.connection = startup^.connect()
+                job.connection = startup^.connect(native_paths=True, path_epoch=job.path_epoch)
             else:
-                job.connection = connect_interactive(job.path, session, native_search=True)
+                job.connection = connect_interactive(job.path, session, native_search=True, native_paths=True, path_epoch=job.path_epoch)
         if job.clipboard_reply:
             ref reply = job.clipboard_reply.value()
             if (
@@ -108,6 +115,17 @@ def run_job(context: MutOpaquePointer[MutUntrackedOrigin]) abi("C"):
                 ):
                     continue
             if action.output_owner and job.connection.value().model.events.output.id != action.output_owner:
+                continue
+            if action.kind == PATH_CONTROL:
+                if not action.source:
+                    continue
+                var source = action.source.value()
+                var captured = PathSource(source[0], source[1], action.selection_epoch)
+                var message = decode_path_message(action.frame.copy())
+                if not message:
+                    raise Error("path action has no decoded request")
+                if job.connection.value().model.paths.send(captured, message.value()):
+                    job.connection.value().transport.write(Span(action.frame))
                 continue
             if action.kind == HISTORY_PREFETCH:
                 if action.pane:
@@ -150,13 +168,14 @@ def run_job(context: MutOpaquePointer[MutUntrackedOrigin]) abi("C"):
                     job.connection.value().transport.write(Span(frame))
                 continue
             if action.kind == RECONNECT:
+                job.path_epoch += 1
                 var session = (
                     "$"
                     + String(
                         job.model.session.value()
                     ) if job.model.session else String()
                 )
-                job.connection = connect_interactive(job.path, session, native_search=True)
+                job.connection = connect_interactive(job.path, session, native_search=True, native_paths=True, path_epoch=job.path_epoch)
             elif action.kind == CREATE_SESSION:
                 job.model.create_session(job.connection.value())
             elif action.kind == SPLIT_RIGHT or action.kind == SPLIT_DOWN:
@@ -211,6 +230,8 @@ struct AsyncBackend(Movable):
     var clipboard_reply: Optional[ClipboardResponse]
     var source: Optional[Tuple[UInt64, UInt64]]
     var search_commands: SearchUiCommands
+    var paths: PathInbox
+    var path_source: Optional[PathSource]
 
     def __init__(
         out self, path: String, var startup: Optional[ResumeStartup] = None
@@ -222,6 +243,8 @@ struct AsyncBackend(Movable):
         self.clipboard_reply = None
         self.source = None
         self.search_commands = SearchUiCommands()
+        self.paths = PathInbox()
+        self.path_source = None
 
     def __deinit__(deinit self):
         if self.busy:
@@ -244,6 +267,12 @@ struct AsyncBackend(Movable):
 
     def pending(self) -> Bool:
         return len(self.queue) > 0 or Bool(self.clipboard_reply)
+
+    def path(mut self, command: PathCommand) raises -> Bool:
+        if not self.path_source or not self.path_source.value().matches(command.source):
+            return False
+        self.queue.append(PATH_CONTROL, "", None, command.source.epoch, frame=command.frame, source=(command.source.server, command.source.client))
+        return True
 
     def reply_clipboard(
         mut self, var reply: Optional[ClipboardResponse]
@@ -368,13 +397,30 @@ struct AsyncBackend(Movable):
                 model.error = String(error)
         if self.job[].connection:
             try:
+                var source = self.job[].connection.value().model.paths.registry.source
+                if self.path_source and not self.path_source.value().matches(source):
+                    self.paths.reset(self.path_source.value())
                 self.clipboard.merge(
                     self.job[].connection.value().model.clipboard.take()
                 )
                 self.search_commands.merge(
                     self.job[].connection.value().model.search_commands.take()
                 )
+                self.paths.merge(self.job[].connection.value().model.paths.inbox.take())
+                self.path_source = source
             except error:
                 model.error = String(error)
                 self.job[].connection = None
+                try:
+                    if self.path_source:
+                        self.paths.reset(self.path_source.value())
+                except:
+                    pass
+                self.path_source = None
+        elif self.path_source:
+            try:
+                self.paths.reset(self.path_source.value())
+            except error:
+                model.error = String(error)
+            self.path_source = None
         return True

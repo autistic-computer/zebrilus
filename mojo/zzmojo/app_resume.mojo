@@ -138,7 +138,7 @@ struct ResumeStartup(Movable):
         _ = stored^
         self.resume = resume^
 
-    def connect(var self) raises -> InteractiveConnection:
+    def connect(var self, native_paths: Bool = False, path_epoch: UInt64 = 0) raises -> InteractiveConnection:
         try:
             var gate = BendGate(bend_executable())
             var transport = Connection(
@@ -149,6 +149,8 @@ struct ResumeStartup(Movable):
                 "",
                 native_search=True,
                 prepared=self.resume.commands.copy(),
+                native_paths=native_paths,
+                path_epoch=path_epoch,
             )
             if stream.server_id != self.resume.server:
                 raise Error("application resume server identity mismatch")

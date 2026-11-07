@@ -46,6 +46,9 @@ from .input_protocol import InputRoutingState, decode_routing_event
 from .prompt_protocol import decode_prompt_event
 from .chooser_protocol import decode_choose_event
 from .palette_dialog_state import PaletteDialogs
+from .path_protocol import decode_path_message, PATH_PICKER_EVENT
+from .path_service import PathSource
+from .path_mailbox import PathMailbox
 from .native_cells import MAX_BEND_CELLS
 from .client_events import (
     ClientEventState,
@@ -127,6 +130,7 @@ struct StreamModel(Copyable, Movable):
     var clipboard: ClipboardState
     var search_commands: SearchUiCommands
     var dialogs: PaletteDialogs
+    var paths: PathMailbox
 
     def __init__(out self):
         self.tree = MuxSnapshot()
@@ -141,6 +145,7 @@ struct StreamModel(Copyable, Movable):
         self.clipboard = ClipboardState()
         self.search_commands = SearchUiCommands()
         self.dialogs = PaletteDialogs()
+        self.paths = PathMailbox()
         self.notice = None
         self.notice_revision = 0
         self.message = None
@@ -185,9 +190,10 @@ struct InteractiveConnection(Movable):
     var history_trickle: UInt64
     var history_deadlines: Dict[UInt64, UInt64]
 
-    def __init__(out self, var transport: Connection):
+    def __init__(out self, var transport: Connection, path_epoch: UInt64 = 0):
         self.transport = transport^
         self.model = StreamModel()
+        self.model.paths = PathMailbox(PathSource(0, 0, path_epoch))
         self.full_pending = Dict[UInt64, Bool]()
         self.tree_pending = False
         self.tree_dirty = False
@@ -484,7 +490,8 @@ struct InteractiveConnection(Movable):
             self.model.revision += 1
             return
         var reader = Decoder(frame.copy())
-        if reader.uint() == 3:
+        var tag = reader.uint()
+        if tag == 3:
             var rejected = reader.uint() == 1
             var request = reader.uint()
             var initial = request in self.initial_pending
@@ -507,6 +514,13 @@ struct InteractiveConnection(Movable):
                 raise Error("unexpected interactive command response")
             self.response = response^
             return
+        if tag >= 44 and tag <= 46:
+            var update = decode_path_message(frame^)
+            if not update:
+                raise Error("path listing reply has no decoded payload")
+            if self.model.paths.route(update.take()):
+                self.model.revision += 1
+            return
         var event = decode_stream_frame(frame^)
         if event.kind == BATCH:
             if nested:
@@ -521,6 +535,7 @@ struct InteractiveConnection(Movable):
             self.instance = event.instance
             self.capabilities = event.capabilities
             self.clock = event.clock
+            self.model.paths.connected(self.server_id, self.client_id)
         elif event.kind == PING:
             var reply = pong(event.ping_token)
             self.transport.write(Span(reply))
@@ -563,6 +578,7 @@ struct InteractiveConnection(Movable):
                 or view.attachment_generation
                 != self.model.view.attachment_generation
             ):
+                self.model.paths.close_picker()
                 self.model.terminals.clear()
                 self.model.histories.clear()
                 self.model.retained_histories.clear()
@@ -591,6 +607,13 @@ struct InteractiveConnection(Movable):
             if not chooser:
                 raise Error("choose-tree event has no decoded payload")
             self.model.dialogs.apply_chooser(chooser.take())
+        elif event.event_kind == Optional[UInt64](UInt64(PATH_PICKER_EVENT)):
+            var raw = List[UInt8]()
+            swap(raw, event.raw)
+            var picker = decode_path_message(raw^)
+            if not picker:
+                raise Error("path picker event has no decoded payload")
+            _ = self.model.paths.route(picker.take())
         elif event.event_kind == Optional[UInt64](TERMINAL_UI_COMMAND):
             var raw = List[UInt8]()
             swap(raw, event.raw)
@@ -693,6 +716,8 @@ def connect_interactive(
     cell_width_px: UInt32 = 8,
     cell_height_px: UInt32 = 16,
     native_search: Bool = False,
+    native_paths: Bool = False,
+    path_epoch: UInt64 = 0,
 ) raises -> InteractiveConnection:
     return connect_interactive_transport(
         open_connection(path),
@@ -702,6 +727,8 @@ def connect_interactive(
         cell_width_px,
         cell_height_px,
         native_search,
+        native_paths=native_paths,
+        path_epoch=path_epoch,
     )
 
 
@@ -714,8 +741,10 @@ def connect_interactive_transport(
     cell_height_px: UInt32 = 16,
     native_search: Bool = False,
     prepared: Optional[List[PreparedInvocation]] = None,
+    native_paths: Bool = False,
+    path_epoch: UInt64 = 0,
 ) raises -> InteractiveConnection:
-    var stream = InteractiveConnection(transport^)
+    var stream = InteractiveConnection(transport^, path_epoch)
     if prepared:
         if len(prepared.value()) > 4096:
             raise Error("application resume exceeds command count limit")
@@ -738,6 +767,7 @@ def connect_interactive_transport(
         context=context^,
         native_search=native_search,
         prepared=prepared,
+        native_paths=native_paths,
     )
     stream.transport.write(Span(hello))
     stream.consume(stream.transport.read_frame())
