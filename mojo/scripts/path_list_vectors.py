@@ -84,7 +84,7 @@ def root_bytes(output, root):
 
 def listing_vectors():
     source = (ROOT / "crates/zz-ui/src/files.rs").read_text()
-    begin = source.index("#[derive(Clone, Debug, Default)]\npub(crate) struct GitMarks")
+    begin = source.index("#[derive(Clone, Debug, Default)]\npub struct GitMarks")
     end = source.index("#[derive(Clone, Debug, PartialEq, Eq)]\npub struct FileRow", begin)
     extracted = source[begin:end]
     if (PORT / "scripts/path_listing_reference.rs").read_text() != extracted:

@@ -1,11 +1,11 @@
 #[derive(Clone, Debug, Default)]
-pub(crate) struct GitMarks {
+pub struct GitMarks {
     exact: HashMap<String, GitMark>,
     dirs: Vec<(String, GitMark)>,
 }
 
 impl GitMarks {
-    pub(crate) fn extend(&mut self, marks: Vec<(String, GitMark)>) {
+    pub fn extend(&mut self, marks: Vec<(String, GitMark)>) {
         for (rel, mark) in marks {
             if rel.ends_with('/') {
                 self.dirs.push((rel, mark));

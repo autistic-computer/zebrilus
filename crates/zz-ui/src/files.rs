@@ -35,13 +35,13 @@ use crate::{
 const MAX_ROWS: usize = 200;
 
 #[derive(Clone, Debug, Default)]
-pub(crate) struct GitMarks {
+pub struct GitMarks {
     exact: HashMap<String, GitMark>,
     dirs: Vec<(String, GitMark)>,
 }
 
 impl GitMarks {
-    pub(crate) fn extend(&mut self, marks: Vec<(String, GitMark)>) {
+    pub fn extend(&mut self, marks: Vec<(String, GitMark)>) {
         for (rel, mark) in marks {
             if rel.ends_with('/') {
                 self.dirs.push((rel, mark));
@@ -143,7 +143,7 @@ pub struct FileRow {
     pub mark: Option<GitMark>,
 }
 
-pub(crate) fn file_rows(
+pub fn file_rows(
     chunks: &[Arc<[PathEntry]>],
     marks: &GitMarks,
     base: &str,
