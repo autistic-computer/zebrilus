@@ -627,7 +627,7 @@ fn active_token(tokens: &[Token], input: &str, cursor: usize) -> (usize, Range<u
     (tokens.len(), cursor..cursor, String::new())
 }
 
-pub(crate) fn command_words(input: &str) -> Vec<String> {
+pub fn command_words(input: &str) -> Vec<String> {
     tokenize(input)
         .into_iter()
         .map(|token| token.value)

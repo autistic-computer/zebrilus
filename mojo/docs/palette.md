@@ -1,0 +1,30 @@
+# Palette model
+
+The local palette opens in the source places/actions mode. The initial attached-host chip is automatic. A leading colon selects raw commands without dropping the place chips. Enter activates places or fills a verb slot; Tab enters a place. Empty-field Backspace discards a filled slot and clears the field; an automatically filled target discards the draft. Shift-Tab can return a popped chip for highlighting in its parent list.
+
+`PaletteFleet` retains the host/session/window/pane hierarchy independently of terminal cell planes. `palette_candidates`, `palette_children`, and `search_places` preserve native scope, numeric query, offline-host, fuzzy-score, recency-boost and stable-tie rules. Written places use the actual `@host:%pane`, `@host:@window`, `@host:$session` and path/line suffix grammar.
+
+`palette_verbs` retains curated actions, the command catalog, GUI offers and aliases in source order. Its alias tokenizer is the native completion tokenizer, including its partial quote behavior. Open alias slots are inferred by the actual option parser contract. `compile_palette_verb` preserves structured arguments when the source can do so, and returns command text otherwise. Raw execution uses `if-shell -F 1 <line>` so the daemon parses commands in its own context.
+
+`PaletteController` owns query/cursor, chips, draft values and labels, selected row, navigation engagement, finishing state and the twenty-command transient history. Its effects request execution, activation, connection, notification or an external GUI/file level. Activation closes only after the host adapter reports success. `PaletteModel` builds local rows from the fleet and explicit `PaletteDecorations`; those decorations keep presentation metadata distinct from retained terminal content.
+
+`PaletteRow` exposes label, detail, right text, UTF-8 match ranges, muted byte prefix, status, running state, icon name, indentation, expansion and shortcut text. Action tags are 0 header, 1 place, 2 verb, 3 command, 4 history, 5 target-slot fill and 6 text-slot submission. Pill kinds match the native Mode, Status, Code, Crumb and Action variants. Status values are Online 0, Running 1, Waiting 2 and Offline 3.
+
+The model foundation does not yet activate application chrome. Agent chat summaries, decayed/persisted recents, argument completion and GUI/file levels require host services; local snapshot projection and the window/backend adapter are subsequent integration work. Typed daemon prompt and chooser state is already available separately through `AppModel.dialogs`.
+
+## Checks
+
+All commands enter the shared 4 GiB build guard and run one job at a time:
+
+```
+python3 scripts/port/guard.py pixi run --manifest-path mojo/pixi.toml python3 mojo/scripts/palette_places_vectors.py
+python3 scripts/port/guard.py pixi run --manifest-path mojo/pixi.toml python3 mojo/scripts/palette_verbs_vectors.py
+python3 scripts/port/guard.py pixi run --manifest-path mojo/pixi.toml python3 mojo/scripts/palette_controller.py
+python3 scripts/port/guard.py pixi run --manifest-path mojo/pixi.toml python3 mojo/scripts/palette_model_vectors.py
+```
+
+The place differential compares 9,067 cases and 91,463 bytes against actual `zz-client` helpers. The verb differential compares 12,331 cases and 4,410,156 bytes against actual `zz-client` verbs and completion. The controller probe checks source-derived transitions and exact limits. The presentation differential compares 2,890 cases and 1,524,161 exact bytes. The presentation oracle calls the real `UnifiedPalette.rebuild_places`, retaining actual row, pill, placeholder, action and initial-selection outputs rather than a second implementation of its rules.
+
+Interactive input follows the native 64 KiB limit. Pure search/tokenizer helpers accept at most 1 MiB of query or alias text. Fleets accept 65,536 hierarchy nodes and 16 MiB of text; the exact next-node/next-byte rejection is tested. Alias tokenization accepts 4,096 words, and presentation rows are capped at 65,536 with 16 MiB of aggregate text. A repeated 1 MiB ancestor-label regression verifies rejection while building the needs-you rows. GUI offers also have a 16 MiB aggregate text limit. These extra adapter refusals are explicit resource limits.
+
+Target and GUI metadata are generated from source by the corresponding vector script with `--generate`; ordinary checks reject stale generated metadata. Reference artifacts and exact output reports are written under `target/port`.

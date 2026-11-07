@@ -1,6 +1,7 @@
 pub mod floating;
 mod gui_level;
 mod level;
+pub mod palette_diagnostics;
 mod palette_model;
 mod palette_places;
 mod palette_view;
