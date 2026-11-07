@@ -272,7 +272,53 @@ def test_native_overlay_projection() raises:
         assert_equal((selected.r0, selected.r1, selected.r2, selected.r3), (Float32(0), Float32(0), Float32(0), Float32(0)))
     print("Native terminal overlays: clipped neighbor corners, alpha, link, copy cursor and device geometry passed")
 
+
+def test_selected_foreground_and_row_cache() raises:
+    var ui = Ui(1)
+    _ = ui.add_font("bench/assets/fonts/JetBrainsMono-Regular.ttf")
+    var viewport = TerminalViewport()
+    viewport.columns = 4
+    viewport.rows = 1
+    viewport.metadata.foreground = 0xDDEEFF
+    viewport.metadata.background = 0x112233
+    viewport.styles.append(TerminalStyle(0xDDEEFF, 0x112233, 0xFFFFFFFF, 0, 0, 0))
+    for scalar in range(65, 69):
+        viewport.cells.append(TerminalCell(UInt32(scalar), 0, 0))
+    viewport.metadata.overlays.append(TerminalOverlay(0, 1, 3, 0))
+    var opts = TermOpts(0, 13, native_colors=True, native_appearance=True, selection_foreground=0x010203)
+    for frame in range(2):
+        ui.set_time(Float64(frame + 1))
+        ui.begin_frame(32, 18)
+        _ = render_viewport_opts(ui, 74, viewport, opts)
+        ui.end_frame()
+        ref view = ui.term.views[ui.term.find(74)]
+        assert_equal(len(view.glyphs), 6)
+        assert_equal(len(view.selected), 1)
+        assert_equal((view.selected[0].first, view.selected[0].last), (Int32(4), Int32(6)))
+        assert_equal(view.built, 1 if frame == 0 else 0)
+        for glyph in range(4, 6):
+            assert_equal(view.glyphs[glyph].color, UInt32(0x010203FF))
+    viewport.metadata.overlays[0] = TerminalOverlay(0, 0, 1, 0)
+    ui.set_time(3)
+    ui.begin_frame(32, 18)
+    _ = render_viewport_opts(ui, 74, viewport, opts)
+    ui.end_frame()
+    var vi = ui.term.find(74)
+    assert_equal(len(ui.term.views[vi].glyphs), 5)
+    assert_equal(ui.term.views[vi].built, 0)
+    viewport.metadata.overlays.clear()
+    ui.set_time(4)
+    ui.begin_frame(32, 18)
+    _ = render_viewport_opts(ui, 74, viewport, opts)
+    ui.end_frame()
+    assert_equal(len(ui.term.views[vi].glyphs), 4)
+    assert_equal(len(ui.term.views[vi].selected), 0)
+    assert_equal(ui.term.views[vi].selection_start, -1)
+    assert_equal(ui.term.views[vi].built, 0)
+    print("Selected terminal foreground: reshaped slices and bounded transient row-cache lifetime passed")
+
 def main() raises:
     test_packed_records_and_dirty_rows()
     test_native_color_policy()
     test_native_overlay_projection()
+    test_selected_foreground_and_row_cache()

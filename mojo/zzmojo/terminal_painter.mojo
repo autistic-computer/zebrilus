@@ -10,6 +10,7 @@ from mjui.term.grid import (
     TermOpts,
 )
 from mjui.term.rows import row_hash
+from mjui.term.paint import grid_selection
 from mjui.text.shaper import hash_bytes
 from .terminal_model import (
     TerminalCell,
@@ -158,4 +159,12 @@ def render_viewport_opts(
         var text = marked.value().as_bytes()
         ui.grid_ime(text.unsafe_ptr(), len(text))
     ui.grid_end()
+    if opts.native_appearance:
+        for overlay in viewport.metadata.overlays:
+            var row = plan.live.display_row(overlay.row)
+            var start = min(Int(overlay.start), visible_columns)
+            var end = min(Int(overlay.end), visible_columns)
+            if overlay.kind & 255 == 0 and row and start < end:
+                var selected = cells.unsafe_offset(Int(overlay.row) * Int(viewport.columns) + start)
+                _ = grid_selection(ui, key, row.value(), start, tables, selected, end - start)
     return metrics
