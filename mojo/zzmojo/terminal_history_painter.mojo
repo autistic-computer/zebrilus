@@ -1,4 +1,6 @@
 from std.memory import ArcPointer
+from std.math import floor
+from mjui.term.paint import grid_selection
 from mjui.ui import Ui
 from mjui.term.grid import (
     GridCell,
@@ -8,12 +10,12 @@ from mjui.term.grid import (
     GridOverlay,
     TermOpts,
     CellMetrics,
-    cell_metrics,
+    cell_metrics_options,
 )
 from .terminal_model import TerminalViewport
 from .terminal_history import HistorySnapshot, HistoryRow
 from .terminal_projection import local_row_source, projection_plan, _add_u32
-from .terminal_painter import render_viewport
+from .terminal_painter import render_viewport_opts, selection_flags
 
 
 def _row_tables(row: HistoryRow, viewport: TerminalViewport) -> GridTables:
@@ -54,6 +56,21 @@ def render_retained_viewport(
     rows: Int,
     marked: Optional[String] = None,
 ) -> CellMetrics:
+    return render_retained_viewport_opts(ui, key, viewport, snapshot, target, sub_row, TermOpts(font, size, focused=focused, native_colors=True), columns, rows, marked)
+
+
+def render_retained_viewport_opts(
+    mut ui: Ui,
+    key: UInt64,
+    viewport: TerminalViewport,
+    snapshot: ArcPointer[HistorySnapshot],
+    target: Optional[UInt32],
+    sub_row: Float32,
+    opts: TermOpts,
+    columns: Int,
+    rows: Int,
+    marked: Optional[String] = None,
+) -> CellMetrics:
     ref history = snapshot[]
     if (
         history.generation != viewport.generation
@@ -62,14 +79,19 @@ def render_retained_viewport(
         or history.rows != viewport.rows
         or (not target and sub_row <= 0)
     ):
-        return render_viewport(
-            ui, key, viewport, font, size, focused, columns, rows, marked=marked
-        )
-    var metrics = cell_metrics(ui.shaper.fonts[Int(font)], size, ui.scale)
+        return render_viewport_opts(ui, key, viewport, opts, columns, rows, marked=marked)
+    var metrics = cell_metrics_options(ui.shaper.fonts[Int(opts.font)], opts, ui.scale)
     var peek = Int(sub_row > 0)
     var pixel_offset = Float32(
         metrics.h
     ) - sub_row * ui.scale if peek != 0 else Float32(0)
+    if opts.native_appearance and peek != 0:
+        var device = min(max(sub_row * ui.scale, Float32(0)), Float32(metrics.h))
+        var lower = floor(device)
+        var shift = Int(lower) + (1 if device - lower >= Float32(0.5) else 0)
+        pixel_offset = Float32(metrics.h - shift)
+    var options = opts
+    options.pixel_offset = pixel_offset
     var styles = (
         viewport.styles.unsafe_ptr()
         .unsafe_bitcast[CellStyle]()
@@ -93,19 +115,7 @@ def render_retained_viewport(
     var plan = projection_plan(viewport, UInt16(rows), False, True, target)
     var top = target.or_else(viewport.metadata.scrollbar.offset)
     var visible_columns = min(columns, Int(viewport.columns))
-    metrics = ui.grid_begin(
-        key,
-        columns,
-        rows,
-        live,
-        TermOpts(
-            font,
-            size,
-            focused=focused,
-            pixel_offset=pixel_offset,
-            native_colors=True,
-        ),
-    )
+    metrics = ui.grid_begin(key, columns, rows, live, options)
     for offset in range(Int(plan.rows.count) + peek):
         if offset == 0 and peek != 0 and top == 0:
             continue
@@ -155,7 +165,9 @@ def render_retained_viewport(
             )
     ui.term.views[ui.term.cur].tables = live
     var overlays = List[GridOverlay]()
-    for overlay in viewport.metadata.overlays:
+    var flags = selection_flags(viewport, opts)
+    for index in range(len(viewport.metadata.overlays)):
+        var overlay = viewport.metadata.overlays[index]
         var row = plan.live.display_row(overlay.row)
         var end = min(Int(overlay.end), visible_columns)
         if row and Int(overlay.start) < end:
@@ -164,7 +176,7 @@ def render_retained_viewport(
                     UInt16(row.value() + peek),
                     overlay.start,
                     UInt16(end),
-                    overlay.kind,
+                    flags[index] if len(flags) > 0 else overlay.kind,
                 )
             )
     ui.grid_overlays(
@@ -189,4 +201,12 @@ def render_retained_viewport(
         var text = marked.value().as_bytes()
         ui.grid_ime(text.unsafe_ptr(), len(text))
     ui.grid_end()
+    if opts.native_appearance:
+        for overlay in viewport.metadata.overlays:
+            var row = plan.live.display_row(overlay.row)
+            var start = min(Int(overlay.start), visible_columns)
+            var end = min(Int(overlay.end), visible_columns)
+            if overlay.kind & 255 == 0 and row and start < end:
+                var cells = viewport.cells.unsafe_ptr().unsafe_offset(Int(overlay.row) * Int(viewport.columns) + start).unsafe_bitcast[GridCell]().unsafe_mut_cast[False]().unsafe_origin_cast[ImmUntrackedOrigin]()
+                _ = grid_selection(ui, key, row.value() + peek, start, live, cells, end - start)
     return metrics

@@ -6,6 +6,8 @@ from mjui.render.sdlgpu import SdlGpuRenderer
 from zzmojo.terminal_appearance import terminal_metrics
 from zzmojo.terminal_model import TerminalViewport, TerminalCell, TerminalStyle, TerminalOverlay, TerminalCursor
 from zzmojo.terminal_painter import render_viewport_opts
+from zzmojo.terminal_history_painter import render_retained_viewport_opts
+from zzmojo.terminal_history import TerminalHistoryState
 
 
 def number(data: List[UInt8], mut offset: Int) raises -> UInt32:
@@ -37,6 +39,8 @@ def main() raises:
     var display_rows = Int(number(data, offset))
     var size = real(data, offset)
     var device_scale = real(data, offset)
+    var sub_row = real(data, offset)
+    var retained = number(data, offset) != 0
     var viewport = TerminalViewport()
     viewport.columns = UInt16(number(data, offset))
     viewport.rows = UInt16(number(data, offset))
@@ -83,7 +87,13 @@ def main() raises:
     opts.baseline = metrics.baseline
     ui.set_time(1)
     ui.begin_frame(Float32(width) / device_scale, Float32(height) / device_scale)
-    _ = render_viewport_opts(ui, 91, viewport, opts, display_columns, display_rows, True)
+    if retained:
+        var counter: UInt64 = 1
+        var history = TerminalHistoryState(viewport, counter)
+        var snapshot = history.snapshot(viewport)
+        _ = render_retained_viewport_opts(ui, 91, viewport, snapshot, UInt32(0), sub_row, opts, display_columns, display_rows)
+    else:
+        _ = render_viewport_opts(ui, 91, viewport, opts, display_columns, display_rows, True)
     ui.end_frame()
     var renderer = SdlGpuRenderer()
     var pixels = renderer.render_offscreen(ui.dl, ui.atlas, width, height, (viewport.metadata.background << 8) | 255)

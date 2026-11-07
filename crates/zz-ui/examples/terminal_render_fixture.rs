@@ -20,6 +20,8 @@ struct Fixture {
     cache: Rc<RefCell<RowRenderCache>>,
     geometry: Rc<RefCell<Value>>,
     font_size: f32,
+    sub_row: f32,
+    retained: bool,
 }
 
 impl Render for Fixture {
@@ -29,6 +31,8 @@ impl Render for Fixture {
     )]
     fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
         let font_size = self.font_size;
+        let sub_row = self.sub_row;
+        let retained = self.retained;
         let viewport = self.viewport.clone();
         let appearance = self.appearance.clone();
         let prepare = self.cache.clone();
@@ -50,11 +54,11 @@ impl Render for Fixture {
                                 revision_epoch: 1,
                                 history: None,
                                 images: None,
-                                local_scroll_target: None,
-                                scroll_pixel_offset: px(0.),
+                                local_scroll_target: retained.then_some(0),
+                                scroll_pixel_offset: px(sub_row),
                                 overscroll: px(0.),
                                 extra_height: px(0.),
-                                command_output: true,
+                                command_output: !retained,
                                 appearance: &appearance,
                                 appearance_hash: 1,
                                 text_opacity: 1.,
@@ -106,6 +110,17 @@ fn main() -> Result<(), Box<dyn Error>> {
     let directory = PathBuf::from(std::env::args().nth(1).ok_or("output directory required")?);
     let font_size: f32 = std::env::args().nth(2).as_deref().unwrap_or("13").parse()?;
     let scale: f32 = std::env::args().nth(3).as_deref().unwrap_or("1").parse()?;
+    let sub_row_arg = std::env::args().nth(4);
+    let retained = sub_row_arg.is_some();
+    let sub_row: f32 = sub_row_arg.as_deref().unwrap_or("0").parse()?;
+    let height: f32 = std::env::args().nth(5).as_deref().unwrap_or("96").parse()?;
+    if !sub_row.is_finite()
+        || !(0.0..=128.0).contains(&sub_row)
+        || !height.is_finite()
+        || !(1.0..=512.0).contains(&height)
+    {
+        return Err("terminal fixture scroll or height exceeds its limits".into());
+    }
     if !font_size.is_finite()
         || !(7.0..=48.0).contains(&font_size)
         || !scale.is_finite()
@@ -114,7 +129,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         return Err("terminal fixture size or scale exceeds its limits".into());
     }
     let physical_width = (256.0 * scale).round() as i32;
-    let physical_height = (96.0 * scale).round() as i32;
+    let physical_height = (height * scale).round() as i32;
     fs::create_dir_all(&directory)?;
     let appearance = TerminalAppearance {
         font_families: vec!["JetBrains Mono".into()],
@@ -190,12 +205,14 @@ fn main() -> Result<(), Box<dyn Error>> {
         "cursor": viewport.cursor.map(|cursor| json!([cursor.color().packed(), cursor.column(), cursor.row(), match cursor.style() { CursorStyle::Bar => 0, CursorStyle::Block => 1, CursorStyle::Underline => 2, CursorStyle::BlockHollow => 3 }, u8::from(cursor.visible()), u8::from(cursor.blinking()), u8::from(cursor.at_wide_tail())])),
         "font_size": font_size,
         "scale": scale,
+        "sub_row": sub_row,
+        "retained": retained,
         "width": physical_width,
         "height": physical_height,
     });
     let geometry = Rc::new(RefCell::new(Value::Null));
     let output = geometry.clone();
-    let window = cx.open_window(size(px(256.), px(96.)), |window, cx| {
+    let window = cx.open_window(size(px(256.), px(height)), |window, cx| {
         window.set_scale_factor(scale);
         cx.new(|_| Fixture {
             viewport,
@@ -203,6 +220,8 @@ fn main() -> Result<(), Box<dyn Error>> {
             cache: Rc::new(RefCell::new(RowRenderCache::default())),
             geometry,
             font_size,
+            sub_row,
+            retained,
         })
     })?;
     cx.update_window(window.into(), |_, window, cx| window.draw(cx).clear(cx))?;

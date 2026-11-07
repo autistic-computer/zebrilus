@@ -30,7 +30,7 @@ def fixture(directory):
 
     for value in (source["width"], source["height"], geometry["columns"], geometry["rows"]):
         number(value)
-    output.extend(struct.pack("<ff", source["font_size"], source["scale"]))
+    output.extend(struct.pack("<fffI", source["font_size"], source["scale"], source["sub_row"], int(source["retained"])))
     for value in (source["columns"], source["rows"], packed(appearance["foreground"]), packed(appearance["background"]), packed(appearance["selection_background"], True), packed(appearance["selection_foreground"]), packed(appearance["search_match_color"], True), packed(appearance["search_current_color"], True), packed(appearance["link_color"], True), packed(appearance["copy_cursor_color"], True), int(appearance["rounded_selection"])):
         number(value)
     for cell in source["cells"]:
@@ -72,6 +72,8 @@ def compare(directory):
         "exact": differing == 0 and not metric_mismatches,
         "font_size": source["font_size"],
         "scale": source["scale"],
+        "sub_row": source["sub_row"],
+        "retained": source["retained"],
     }
     (directory / "case.json").write_text(json.dumps(report, indent=2) + "\n")
     return report
@@ -93,15 +95,21 @@ def main():
     subprocess.run(["pixi", "run", "bash", "-c", compile_command, "_", str(ROOT / "mojo"), str(probe)], cwd=MJUI, check=True, timeout=300)
     results = []
     native = ROOT / "target/penna-native/debug/examples/terminal_render_fixture"
-    for size, scale in ((13, 1), (13.5, 1), (14, 1), (16, 1), (13, 1.25), (13, 2)):
-        directory = DIRECTORY if (size, scale) == (13, 1) else DIRECTORY / f"size-{size}-scale-{scale}"
-        subprocess.run([str(native), str(directory), str(size), str(scale)], cwd=ROOT, check=True, timeout=60)
+    cases = ((13, 1, None), (13.5, 1, None), (14, 1, None), (16, 1, None), (13, 1.25, None), (13, 2, None), (13, 1, 0.1), (13, 1, 0.5), (13, 1, 1.5), (13, 1, 5.5), (13, 1.25, 0.4), (13, 2, 0.25))
+    for size, scale, sub_row in cases:
+        base = DIRECTORY if (size, scale) == (13, 1) else DIRECTORY / f"size-{size}-scale-{scale}"
+        directory = base if sub_row is None else base / f"scroll-{sub_row}"
+        arguments = [str(native), str(directory), str(size), str(scale)]
+        if sub_row is not None:
+            geometry = json.loads((base / "geometry.json").read_text())
+            arguments.extend([str(sub_row), str(geometry["line_height"] * 4)])
+        subprocess.run(arguments, cwd=ROOT, check=True, timeout=60)
         input_path = fixture(directory)
         subprocess.run([str(probe), str(input_path), str(directory / "mojo.png"), str(directory / "mojo.json")], cwd=MJUI, check=True, timeout=60)
         result = compare(directory)
         results.append(result)
         print(json.dumps(result), flush=True)
-    report = {"exact": all(case["exact"] for case in results), "cases": results, "scope": "actual native terminal GPU versus Mojo GPU; four font sizes, three device scales, ligatures, selected foreground/background, link hover, copy cursor and underline cursor"}
+    report = {"exact": all(case["exact"] for case in results), "cases": results, "scope": "actual native terminal GPU versus Mojo GPU; four font sizes, three device scales, ligatures, selected foreground/background, link hover, copy cursor, underline cursor and fractional retained scrolling"}
     (DIRECTORY / "report.json").write_text(json.dumps(report, indent=2) + "\n")
     if not args.record and not report["exact"]:
         raise SystemExit("native terminal pixel identity is incomplete; see " + str(DIRECTORY / "report.json"))
