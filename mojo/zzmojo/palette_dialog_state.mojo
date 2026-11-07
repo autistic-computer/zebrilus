@@ -152,6 +152,19 @@ struct PaletteDialogs(Copyable, Movable):
         self.chooser_closed_revision = self.chooser_revision
         self.buffer_revision = next_chooser_revision(self.buffer_revision)
 
+    def reset_session(mut self):
+        if self.prompt:
+            self.prompt_revision = next_chooser_revision(self.prompt_revision)
+        if self.chooser:
+            self.chooser_revision = next_chooser_revision(self.chooser_revision)
+            self.chooser_closed_revision = self.chooser_revision
+        if self.buffer:
+            self.buffer_revision = next_chooser_revision(self.buffer_revision)
+        self.prompt = None
+        self.chooser = None
+        self.buffer = None
+        self.chooser_plane = None
+
     def finish_group(mut self, revision: UInt64, closed: UInt64):
         if self.chooser_revision != revision:
             self.chooser_closed_revision = (

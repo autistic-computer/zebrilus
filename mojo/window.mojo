@@ -7,7 +7,14 @@ from mjui.app import App, Runner, run_app, default_event
 from mjui.windowing import AppOptions, WindowOptions
 from mjui.host import Window
 from mjui.ui import Ui
-from mjui.input import KeyEvent, AppEvent, APP_ACTIVE, APP_INACTIVE, TEXT_COMMAND, CMD_CANCEL
+from mjui.input import (
+    KeyEvent,
+    AppEvent,
+    APP_ACTIVE,
+    APP_INACTIVE,
+    TEXT_COMMAND,
+    CMD_CANCEL,
+)
 from mjui.resources import resource_path
 from zzmojo.view import WorkspaceView, TERMINAL_KEY
 from zzmojo.readiness import Readiness, stream_ready
@@ -28,9 +35,12 @@ struct Workspace(App, Movable):
     var scene_complete: Bool
 
     def __init__(
-        out self, path: String, var startup: Optional[ResumeStartup] = None
+        out self,
+        path: String,
+        var startup: Optional[ResumeStartup] = None,
+        native_chooser: Bool = False,
     ) raises:
-        self.view = WorkspaceView(path, startup^)
+        self.view = WorkspaceView(path, startup^, native_chooser)
         self.source = OwnedPointer(Readiness())
         self.view.event_driven = CompilationTarget.is_linux()
         self.keyboard = KeyboardController()
@@ -70,11 +80,28 @@ struct Workspace(App, Movable):
             self.clipboard.tick(self.view, ui)
             var search = self.view.search.target_for_field(ui.focus)
             var search_input = Bool(search) and ui.text_input
-            var palette_input = self.view.palette.owns_input(ui) and ui.text_input
-            var text_key = ui.focus if search_input or palette_input else self.view.input_key()
-            win.set_primary_composition_policy(ui.focus == TERMINAL_KEY and self.view.active and Bool(self.view.input_pane()))
+            var palette_input = (
+                self.view.palette.owns_input(ui) and ui.text_input
+            )
+            var chooser_input = self.view.chooser.input_scope(ui)
+            var text_key = (
+                ui.focus if search_input
+                or palette_input
+                or chooser_input else self.view.input_key()
+            )
+            win.set_primary_composition_policy(
+                (
+                    ui.focus == TERMINAL_KEY
+                    and self.view.active
+                    and Bool(self.view.input_pane())
+                )
+                or chooser_input
+            )
             win.set_text_input(
-                search_input or palette_input or (ui.focus == TERMINAL_KEY and Bool(self.view.input_pane())),
+                search_input
+                or palette_input
+                or chooser_input
+                or (ui.focus == TERMINAL_KEY and Bool(self.view.input_pane())),
                 text_key,
             )
             comptime if CompilationTarget.is_linux():
@@ -112,9 +139,15 @@ struct Workspace(App, Movable):
     def tick(mut self, mut ui: Ui, mut win: Window):
         if ui.native_scene and ui.gen > 0:
             self.scene_frames += 1
-            self.scene_complete = self.scene_complete and ui.native_scene_complete
+            self.scene_complete = (
+                self.scene_complete and ui.native_scene_complete
+            )
         try:
-            if not win.text.pointer_overflow and len(win.text.primaries) == 0 and len(win.text.pointers) == 0:
+            if (
+                not win.text.pointer_overflow
+                and len(win.text.primaries) == 0
+                and len(win.text.pointers) == 0
+            ):
                 for event in win.mouse:
                     self.view.mouse(ui, event)
             for event in win.scrolls:
@@ -129,11 +162,22 @@ struct Workspace(App, Movable):
         try:
             if win.text.pointer_overflow:
                 return True
-            if len(win.text.primaries) > 0 or len(win.text.pointers) > 0:
+            if (
+                self.view.chooser.opened()
+                or len(win.text.primaries) > 0
+                or len(win.text.pointers) > 0
+            ):
                 self.timeline.raw_key(self.view, key, win.text)
                 ui.request_wake(ui.time)
                 return True
-            var route = route_workspace_key(self.view, ui, self.keyboard, self.clipboard, raw_workspace_key(key, win.text), win.text)
+            var route = route_workspace_key(
+                self.view,
+                ui,
+                self.keyboard,
+                self.clipboard,
+                raw_workspace_key(key, win.text),
+                win.text,
+            )
             self.timeline.capture_route(self.view, route, key)
             if route.unmark:
                 win.text.unmark()
@@ -153,11 +197,22 @@ def main() raises:
         if args[offset] == "--socket" and offset + 1 < len(args):
             path = args[offset + 1]
             offset += 2
-        elif args[offset] == "--resume-fds" and offset + 3 < len(args) and not descriptors:
+        elif (
+            args[offset] == "--resume-fds"
+            and offset + 3 < len(args)
+            and not descriptors
+        ):
             var socket = Int(args[offset + 1])
             var payload = Int(args[offset + 2])
             var reply = Int(args[offset + 3])
-            if socket < 3 or socket > Int(Int32.MAX) or payload < 3 or payload > Int(Int32.MAX) or reply < 3 or reply > Int(Int32.MAX):
+            if (
+                socket < 3
+                or socket > Int(Int32.MAX)
+                or payload < 3
+                or payload > Int(Int32.MAX)
+                or reply < 3
+                or reply > Int(Int32.MAX)
+            ):
                 raise Error("invalid application resume descriptors")
             descriptors = (Int32(socket), Int32(payload), Int32(reply))
             offset += 4

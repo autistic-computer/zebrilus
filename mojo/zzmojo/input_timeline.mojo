@@ -19,7 +19,12 @@ from .actions import MAX_PENDING_ACTIONS, MAX_PENDING_INPUT_BYTES
 from .terminal_search_controller import SearchPlan
 from .palette_runtime import PalettePlan
 from .editor_pointer import validate_pointer_input
-from .workspace_keys import RawWorkspaceKey, WorkspaceKeyRoute, raw_workspace_key, route_workspace_key
+from .workspace_keys import (
+    RawWorkspaceKey,
+    WorkspaceKeyRoute,
+    raw_workspace_key,
+    route_workspace_key,
+)
 
 comptime TEXT_ROUTED: UInt8 = 255
 
@@ -101,23 +106,84 @@ struct InputTimeline(Movable):
             0,
         )
 
-    def search(mut self, plan: SearchPlan, event: KeyEvent, before_focus: UInt64, after_focus: UInt64) raises:
-        self.append(_Pending(event.text_event, event.text_lo, None, None, plan.server, plan.client, plan.target.command_output, plan.copy(), None, None), plan.input.text.value().byte_length() if plan.input.text else 0)
+    def search(
+        mut self,
+        plan: SearchPlan,
+        event: KeyEvent,
+        before_focus: UInt64,
+        after_focus: UInt64,
+    ) raises:
+        self.append(
+            _Pending(
+                event.text_event,
+                event.text_lo,
+                None,
+                None,
+                plan.server,
+                plan.client,
+                plan.target.command_output,
+                plan.copy(),
+                None,
+                None,
+            ),
+            plan.input.text.value().byte_length() if plan.input.text else 0,
+        )
         if not self.initial_focus:
             self.initial_focus = before_focus
         self.final_focus = after_focus
 
-    def palette(mut self, plan: PalettePlan, event: KeyEvent, before_focus: UInt64, after_focus: UInt64) raises:
-        self.append(_Pending(event.text_event, event.text_lo, None, None, plan.server, plan.client, False, None, plan.copy(), None), 0)
+    def palette(
+        mut self,
+        plan: PalettePlan,
+        event: KeyEvent,
+        before_focus: UInt64,
+        after_focus: UInt64,
+    ) raises:
+        self.append(
+            _Pending(
+                event.text_event,
+                event.text_lo,
+                None,
+                None,
+                plan.server,
+                plan.client,
+                False,
+                None,
+                plan.copy(),
+                None,
+            ),
+            0,
+        )
         if not self.initial_focus:
             self.initial_focus = before_focus
         self.final_focus = after_focus
 
-    def raw_key(mut self, view: WorkspaceView, key: KeyEvent, input: TextInput) raises:
+    def raw_key(
+        mut self, view: WorkspaceView, key: KeyEvent, input: TextInput
+    ) raises:
         var bytes = max(Int(key.text_hi - key.text_lo), 0)
-        self.append(_Pending(key.text_event, key.text_lo, None, None, view.model.source_server, view.model.source_client, False, None, None, raw_workspace_key(key, input)), bytes)
+        var scope = Optional[UInt64](
+            view.chooser.session.scope
+        ) if view.chooser.opened() else Optional[UInt64](None)
+        self.append(
+            _Pending(
+                key.text_event,
+                key.text_lo,
+                None,
+                None,
+                view.model.source_server,
+                view.model.source_client,
+                False,
+                None,
+                None,
+                raw_workspace_key(key, input, scope),
+            ),
+            bytes,
+        )
 
-    def capture_route(mut self, view: WorkspaceView, route: WorkspaceKeyRoute, key: KeyEvent) raises:
+    def capture_route(
+        mut self, view: WorkspaceView, route: WorkspaceKeyRoute, key: KeyEvent
+    ) raises:
         if route.palette:
             self.palette(route.palette.value(), key, route.before, route.after)
         elif route.search:
@@ -127,8 +193,21 @@ struct InputTimeline(Movable):
         elif route.key:
             self.key(view, route.key.value(), key)
 
-    def dispatch_raw[Host: Clipboard](mut self, mut view: WorkspaceView, mut ui: Ui, mut host: Host, mut keyboard: KeyboardController, mut clipboard: ClipboardController, mut input: TextInput, raw: RawWorkspaceKey) raises -> Bool:
-        var route = route_workspace_key(view, ui, keyboard, clipboard, raw, input)
+    def dispatch_raw[
+        Host: Clipboard
+    ](
+        mut self,
+        mut view: WorkspaceView,
+        mut ui: Ui,
+        mut host: Host,
+        mut keyboard: KeyboardController,
+        mut clipboard: ClipboardController,
+        mut input: TextInput,
+        raw: RawWorkspaceKey,
+    ) raises -> Bool:
+        var route = route_workspace_key(
+            view, ui, keyboard, clipboard, raw, input
+        )
         var unmark = route.unmark
         if unmark:
             input.unmark()
@@ -139,12 +218,21 @@ struct InputTimeline(Movable):
             view.dispatch_search(ui, input, route.search.value())
         elif route.clipboard:
             var plan = route.clipboard.value().copy()
-            var result = clipboard.act(view, ui, host, plan.action, plan.composed, plan.copy())
+            var result = clipboard.act(
+                view, ui, host, plan.action, plan.composed, plan.copy()
+            )
             unmark = unmark or result.unmark
         elif route.key:
             ref key = route.key.value()
             var output = view.output_input and view.output.owns(key.pane)
-            view.forward_key(key.pane, key.input, key.epoch, key.release, output, (view.model.source_server, view.model.source_client))
+            view.forward_key(
+                key.pane,
+                key.input,
+                key.epoch,
+                key.release,
+                output,
+                (view.model.source_server, view.model.source_client),
+            )
         return unmark
 
     def position(
@@ -220,6 +308,7 @@ struct InputTimeline(Movable):
         self.final_focus = None
         view.prepare_palette_input(ui, input, host)
         view.prepare_search_input(ui, input, host)
+        view.prepare_chooser_input(ui, input)
         self.merge(input, consumed_prefix)
         var deferred = False
         for captured in self.pending:
@@ -230,7 +319,7 @@ struct InputTimeline(Movable):
         swap(pending, self.pending)
         self.pending_bytes = 0
         var remaining = List[TextEvent]()
-        var unmark = view.palette_closed_frame
+        var unmark = view.palette_closed_frame or view.chooser_unmark
         var composed = len(input.marked) > 0
         var ordered = List[TextEvent]()
         swap(ordered, input.events)
@@ -245,7 +334,9 @@ struct InputTimeline(Movable):
                     or captured.client != view.model.source_client
                 ):
                     if captured.raw:
-                        keyboard.claim_text(captured.raw.value().key, Span(input.bytes))
+                        keyboard.claim_text(
+                            captured.raw.value().key, Span(input.bytes)
+                        )
                         keyboard.claim_text_command(captured.raw.value().key)
                     if captured.palette:
                         view.palette.pending_open = False
@@ -254,7 +345,15 @@ struct InputTimeline(Movable):
                             ui.focus = TERMINAL_KEY
                     continue
                 if captured.raw:
-                    if self.dispatch_raw(view, ui, host, keyboard, clipboard, input, captured.raw.value()):
+                    if self.dispatch_raw(
+                        view,
+                        ui,
+                        host,
+                        keyboard,
+                        clipboard,
+                        input,
+                        captured.raw.value(),
+                    ):
                         unmark = True
                         composed = False
                         input.unmark()
@@ -296,6 +395,8 @@ struct InputTimeline(Movable):
             else:
                 filtered.append(event)
             for piece in filtered:
+                if view.chooser_event(ui, input, piece):
+                    continue
                 if view.palette_event(ui, input, piece, host):
                     if view.palette_closed_frame:
                         unmark = True
@@ -303,7 +404,11 @@ struct InputTimeline(Movable):
                     continue
                 if view.search_event(ui, input, piece, host):
                     continue
-                if ui.focus == TERMINAL_KEY and view.active and view.input_pane():
+                if (
+                    ui.focus == TERMINAL_KEY
+                    and view.active
+                    and view.input_pane()
+                ):
                     if piece.kind == TEXT_INSERT:
                         view.commit_text_event(input, piece)
                         continue

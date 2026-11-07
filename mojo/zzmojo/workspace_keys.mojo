@@ -5,12 +5,23 @@ from .keyboard_controller import KeyboardController, RoutedKey
 from .clipboard_controller import ClipboardController, ClipboardPlan
 from .terminal_search_controller import SearchPlan
 from .palette_runtime import PalettePlan
+from .input_protocol import mjui_key_input
 
 
-@fieldwise_init
-struct RawWorkspaceKey(TrivialRegisterPassable):
+struct RawWorkspaceKey(Copyable, Movable):
     var key: KeyEvent
     var cancel: Bool
+    var chooser_scope: Optional[UInt64]
+
+    def __init__(
+        out self,
+        key: KeyEvent,
+        cancel: Bool,
+        chooser_scope: Optional[UInt64] = None,
+    ):
+        self.key = key
+        self.cancel = cancel
+        self.chooser_scope = chooser_scope
 
 
 struct WorkspaceKeyRoute(Movable):
@@ -34,14 +45,16 @@ struct WorkspaceKeyRoute(Movable):
         self.after = focus
 
 
-def raw_workspace_key(key: KeyEvent, input: TextInput) -> RawWorkspaceKey:
+def raw_workspace_key(
+    key: KeyEvent, input: TextInput, chooser_scope: Optional[UInt64] = None
+) -> RawWorkspaceKey:
     var cancel = (
         key.text_event >= 0
         and Int(key.text_event) < len(input.events)
         and input.events[Int(key.text_event)].kind == TEXT_COMMAND
         and input.events[Int(key.text_event)].cmd == CMD_CANCEL
     )
-    return RawWorkspaceKey(key, cancel)
+    return RawWorkspaceKey(key, cancel, chooser_scope)
 
 
 def route_workspace_key(
@@ -54,6 +67,46 @@ def route_workspace_key(
 ) raises -> WorkspaceKeyRoute:
     var key = raw.key
     var result = WorkspaceKeyRoute(ui.focus)
+    if (
+        not key.release
+        and raw.chooser_scope
+        and (
+            not view.chooser.opened()
+            or raw.chooser_scope.value() != view.chooser.session.scope
+        )
+    ):
+        keyboard.claim_text(key, Span(input.bytes))
+        keyboard.claim_text_command(key)
+        result.claimed = True
+        return result^
+    if view.chooser.opened() and not view.palette.opened():
+        result.claimed = True
+        if key.release:
+            result.key = keyboard.route(
+                view.model,
+                False,
+                key,
+                Span(input.bytes),
+                view.focus_epoch,
+                view.input_pane(),
+            )
+            return result^
+        if not raw.chooser_scope or view.chooser_unmark:
+            keyboard.claim_text(key, Span(input.bytes))
+            keyboard.claim_text_command(key)
+            return result^
+        if not view.active or key.consumed or not view.chooser.input_scope(ui):
+            return result^
+        var normalized = mjui_key_input(
+            key.key, key.ch, key.unshifted, key.mods, key.action()
+        )
+        var choice = view.chooser.session.key(normalized, Bool(normalized.text))
+        if choice:
+            keyboard.claim_text(key, Span(input.bytes))
+            keyboard.claim_text_command(key)
+            view.dispatch_chooser(ui, choice.value())
+        result.after = ui.focus
+        return result^
     var palette = view.plan_palette(
         ui, keyboard, key, Span(input.bytes), raw.cancel
     )

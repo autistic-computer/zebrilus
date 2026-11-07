@@ -5,12 +5,24 @@ use zz_client::{ClientCore, CoreEvent, chooser::next_chooser_revision};
 use zz_protocol::{
     Batch, ChooseBufferItem, ChooseBufferSearchState, ChooseBufferState, ChooseTreeItem,
     ChooseTreeKind, ChooseTreeSearchState, ChooseTreeState, ChooseTreeTarget, ChooserPresentation,
-    ChooserPreview, ChooserPreviewSize, ChooserRow, Event, EventPayload, PaneId, PromptCursor,
-    ProtocolMessage, TmuxColour, decode_protocol_frame, encode_protocol_message,
+    ChooserPreview, ChooserPreviewSize, ChooserRow, ClientView, Event, EventPayload, PaneId,
+    PromptCursor, ProtocolMessage, SessionId, TmuxColour, decode_protocol_frame,
+    encode_protocol_message,
 };
 
 fn operation(kind: u8) -> ProtocolMessage {
     let payload = match kind {
+        12..=16 => EventPayload::ClientView(ClientView {
+            session: if kind == 16 {
+                None
+            } else {
+                Some(SessionId(if kind == 15 { 2 } else { 1 }))
+            },
+            attachment_generation: if kind == 14 { 2 } else { u64::from(kind != 16) },
+            layout_generation: u64::from(kind),
+            ..ClientView::default()
+        }),
+        17 => EventPayload::ServerStopping,
         0 => EventPayload::ChooseTree { state: None },
         1 | 2 => EventPayload::ChooseTree {
             state: Some(ChooseTreeState {
@@ -251,6 +263,12 @@ fn main() -> Result<(), Box<dyn Error>> {
                     CoreEvent::ChooseBufferChanged => {
                         buffer_revision = next_chooser_revision(buffer_revision);
                     }
+                    CoreEvent::ServerStopping => {
+                        core.reset_session();
+                        revision = next_chooser_revision(revision);
+                        closed = revision;
+                        buffer_revision = next_chooser_revision(buffer_revision);
+                    }
                     _ => {}
                 }
             }
@@ -282,6 +300,27 @@ fn main() -> Result<(), Box<dyn Error>> {
                 128,
                 sequence.into_iter().map(operation),
             )?))?;
+        }
+        for sequence in [
+            vec![1, 6, 9, 12],
+            vec![1, 6, 9, 13],
+            vec![1, 6, 9, 14],
+            vec![1, 6, 9, 15],
+            vec![1, 6, 9, 16],
+            vec![9, 12],
+            vec![1, 9, 14, 1, 9],
+            vec![6, 9, 14, 6, 9],
+            vec![1, 0, 14, 1, 9],
+        ] {
+            push(ProtocolMessage::Batch(Batch::from_messages(
+                0,
+                sequence.into_iter().map(operation),
+            )?))?;
+        }
+        for kind in [
+            1, 6, 9, 12, 1, 6, 9, 13, 1, 6, 9, 14, 1, 6, 9, 15, 1, 6, 9, 16, 1, 6, 9, 17,
+        ] {
+            push(operation(kind))?;
         }
         traces.push(json!({"initial":initial.to_string(),"cases":cases}));
     }

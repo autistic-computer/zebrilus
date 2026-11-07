@@ -21,6 +21,7 @@ from zzmojo.chooser_plane_protocol import (
     ChooserPlaneRow,
 )
 from zzmojo.palette_dialog_state import PaletteDialogs
+from zzmojo.tree_model import ClientView
 from zzmojo.stream_protocol import decode_stream_frame, BATCH
 from zzmojo.stream_transport import InteractiveConnection, StreamModel
 from zzmojo.state import AppModel
@@ -81,14 +82,28 @@ def buffer_event_summary(event: ChooseBufferEvent) -> List[UInt8]:
     return output^
 
 
-def apply(mut dialogs: PaletteDialogs, var frame: List[UInt8]) raises:
+def apply(
+    mut dialogs: PaletteDialogs,
+    mut context_view: ClientView,
+    var frame: List[UInt8],
+) raises:
     var event = decode_stream_frame(frame.copy())
     if event.kind == BATCH:
         var revision = dialogs.chooser_revision
         var closed = dialogs.chooser_closed_revision
         for item in event.batch:
-            apply(dialogs, item.copy())
+            apply(dialogs, context_view, item.copy())
         dialogs.finish_group(revision, closed)
+    elif event.view:
+        ref view = event.view.value()
+        if (
+            view.session != context_view.session
+            or view.attachment_generation != context_view.attachment_generation
+        ):
+            dialogs.reset_session()
+        context_view = view.copy()
+    elif event.event_kind == Optional[UInt64](18):
+        dialogs.reset()
     elif event.event_kind == Optional[UInt64](
         11
     ) or event.event_kind == Optional[UInt64](12):
@@ -268,6 +283,7 @@ def main() raises:
     for _ in range(traces):
         var initial = reader.uint()
         var dialogs = PaletteDialogs()
+        var context_view = ClientView()
         dialogs.chooser_revision = initial
         dialogs.chooser_closed_revision = initial
         dialogs.buffer_revision = initial
@@ -280,7 +296,7 @@ def main() raises:
         var count = Int(reader.uint())
         for _ in range(count):
             var frame = reader.bytes()
-            apply(dialogs, frame.copy())
+            apply(dialogs, context_view, frame.copy())
             connection.consume(frame^)
             model.refresh(connection)
             summary(output, dialogs)

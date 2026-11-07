@@ -629,6 +629,7 @@ struct InteractiveConnection(Movable):
                 or view.attachment_generation
                 != self.model.view.attachment_generation
             ):
+                self.model.dialogs.reset_session()
                 self.clear_attachment_planes()
             self.model.view = view^
             self.tree_dirty = True
@@ -671,6 +672,7 @@ struct InteractiveConnection(Movable):
             self.model.view.session = None
             self.model.view.focused_window = None
             self.clear_attachment_planes()
+            self.model.dialogs.reset()
             self.model.routing.armed = False
             self.model.routing.table = None
             self.tree_dirty = True

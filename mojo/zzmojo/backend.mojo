@@ -1,4 +1,6 @@
 from .app_resume import ResumeStartup
+from .chooser_protocol import choose_request
+from .chooser_session import ChooserPlan
 from std.atomic import Atomic
 from std.memory import OwnedPointer
 from mjui.sys.dispatch import (
@@ -69,9 +71,13 @@ struct Job(Movable):
     var semaphore: DispatchRef
     var clipboard_reply: Optional[ClipboardResponse]
     var path_epoch: UInt64
+    var native_chooser: Bool
 
     def __init__(
-        out self, path: String, var startup: Optional[ResumeStartup] = None
+        out self,
+        path: String,
+        var startup: Optional[ResumeStartup] = None,
+        native_chooser: Bool = False,
     ):
         self.path = path
         self.startup = startup^
@@ -83,6 +89,7 @@ struct Job(Movable):
         self.semaphore = dispatch_semaphore()
         self.clipboard_reply = None
         self.path_epoch = 0
+        self.native_chooser = native_chooser
 
 
 def run_job(context: MutOpaquePointer[MutUntrackedOrigin]) abi("C"):
@@ -100,7 +107,10 @@ def run_job(context: MutOpaquePointer[MutUntrackedOrigin]) abi("C"):
             if job.startup:
                 var startup = job.startup.take()
                 job.connection = startup^.connect(
-                    native_paths=True, path_epoch=job.path_epoch, native_keys=True
+                    native_paths=True,
+                    path_epoch=job.path_epoch,
+                    native_chooser=job.native_chooser,
+                    native_keys=True,
                 )
             else:
                 job.connection = connect_interactive(
@@ -109,6 +119,7 @@ def run_job(context: MutOpaquePointer[MutUntrackedOrigin]) abi("C"):
                     native_search=True,
                     native_paths=True,
                     path_epoch=job.path_epoch,
+                    native_chooser=job.native_chooser,
                     native_keys=True,
                 )
         if job.clipboard_reply:
@@ -241,6 +252,7 @@ def run_job(context: MutOpaquePointer[MutUntrackedOrigin]) abi("C"):
                     native_search=True,
                     native_paths=True,
                     path_epoch=job.path_epoch,
+                    native_chooser=job.native_chooser,
                     native_keys=True,
                 )
             elif action.kind == CREATE_SESSION:
@@ -304,9 +316,12 @@ struct AsyncBackend(Movable):
     var path_source: Optional[PathSource]
 
     def __init__(
-        out self, path: String, var startup: Optional[ResumeStartup] = None
+        out self,
+        path: String,
+        var startup: Optional[ResumeStartup] = None,
+        native_chooser: Bool = False,
     ):
-        self.job = OwnedPointer(Job(path, startup^))
+        self.job = OwnedPointer(Job(path, startup^, native_chooser))
         self.queue = ActionQueue()
         self.busy = False
         self.online = False
@@ -425,7 +440,34 @@ struct AsyncBackend(Movable):
             output_owner=output_owner,
         )
 
-    def paste(mut self, pane: UInt64, text: String, epoch: UInt64, source: Tuple[UInt64, UInt64]) raises:
+    def chooser(mut self, plan: ChooserPlan, epoch: UInt64) raises -> Bool:
+        if not self.job[].native_chooser or not self.path_source:
+            return False
+        var source = self.path_source.value()
+        if (
+            source.server != plan.source.server
+            or source.client != plan.source.client
+            or source.epoch != plan.source.epoch
+        ):
+            return False
+        var frame = choose_request(plan.action)
+        self.queue.append(
+            NATIVE_PASSIVE,
+            "",
+            None,
+            epoch,
+            frame=frame,
+            source=(source.server, source.client),
+        )
+        return True
+
+    def paste(
+        mut self,
+        pane: UInt64,
+        text: String,
+        epoch: UInt64,
+        source: Tuple[UInt64, UInt64],
+    ) raises:
         if text.byte_length() > MAX_PENDING_INPUT_BYTES:
             raise Error("pending terminal paste exceeds queue limit")
         if text.byte_length() > 0:
@@ -484,7 +526,10 @@ struct AsyncBackend(Movable):
             return False
         dispatch_wait(self.job[].semaphore)
         self.busy = False
-        self.online = Bool(self.job[].connection) and not self.job[].connection.value().model.server_stopped
+        self.online = (
+            Bool(self.job[].connection)
+            and not self.job[].connection.value().model.server_stopped
+        )
         var session = model.session
         var window = model.window
         var pane = model.pane
