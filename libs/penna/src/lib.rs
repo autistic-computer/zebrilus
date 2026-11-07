@@ -21,7 +21,7 @@ pub use components::icon::{Assets, Icon, IconName};
 pub use components::label::Label;
 pub use components::panel::{Panel, PanelLook};
 pub use components::row::{Row, RowLook};
-pub use components::tab::{Tab, TabLook};
+pub use components::tab::{Tab, TabLook, TabStrip};
 pub use components::tile::{Tile, TileVariant};
 pub use components::well::Well;
 pub use foundation::content::ContentLook;
