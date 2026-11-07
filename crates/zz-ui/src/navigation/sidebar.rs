@@ -169,9 +169,7 @@ pub fn tree_action_strip(
         .items_center()
         .justify_center()
         .when(CoarsePointer::get(cx), |this| {
-            this.gap(crate::rems_from_px(
-                TOUCH_TARGET - crate::button::COMPACT_ICON_BUTTON_SIZE,
-            ))
+            this.gap(px(TOUCH_TARGET) - super::workspace_tree_action_side(cx))
         })
         .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
         .on_click(|_, _, cx| cx.stop_propagation())
@@ -258,8 +256,9 @@ mod tests {
             let trailing = cx.update(|_, cx| super::super::workspace_tree_trailing_inset(cx));
             assert_eq!(close.right(), row.right() - trailing);
             assert_eq!(add.center().y, row.center().y);
-            let pitch = if coarse { 44.0 } else { 24.0 };
+            let pitch = if coarse { 44.0 } else { 22.0 };
             assert_eq!(close.left() - add.left(), px(pitch));
+            assert_eq!(close.size.height, px(if coarse { 34.0 } else { 22.0 }));
         }
     }
 

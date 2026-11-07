@@ -113,6 +113,7 @@ impl RenderOnce for PaneTitle {
                         .child(Icon::new(IconName::ArrowsMove).size(icon_size)),
                 )
             });
+        let ground = cx.theme().ground_of(BarLook::Pane);
         let close = self.on_close.map(|on_close| {
             div()
                 .flex_none()
@@ -123,9 +124,11 @@ impl RenderOnce for PaneTitle {
                         .group_hover(PANE_TITLE_GROUP, ala::Styled::visible)
                 })
                 .child(
-                    Button::compact_icon("pane-title-close", IconName::Xmark)
-                        .size(crate::PANE_HEADER_CONTROL_HEIGHT)
-                        .text()
+                    Button::new("pane-title-close")
+                        .ghost()
+                        .icon(IconName::Xmark)
+                        .inside(TabLook::Title, crate::PANE_HEADER_CONTROL_HEIGHT)
+                        .on(ground)
                         .text_color(cx.theme().foreground.faint())
                         .tooltip("Close pane")
                         .on_click(move |_, window, cx| {
@@ -134,9 +137,13 @@ impl RenderOnce for PaneTitle {
                         }),
                 )
         });
-        let end = if close.is_some() { px(0.0) } else { px(8.0) };
+        let end = if close.is_some() {
+            crate::button::INSIDE_GAP
+        } else {
+            px(8.0)
+        };
         let title = Tab::new(self.id, TabLook::Title)
-            .on(cx.theme().ground_of(BarLook::Pane))
+            .on(ground)
             .group(PANE_TITLE_GROUP)
             .debug_selector(|| "pane-title".into())
             .flex()
@@ -1912,7 +1919,11 @@ mod tests {
         cx.simulate_mouse_move(title.center(), None, Modifiers::default());
         draw(cx);
         let close = cx.debug_bounds("pane-title-close").unwrap();
-        assert!(close.right() <= title.right() && title.right() - close.right() < px(1.0));
+        let gap = crate::button::INSIDE_GAP;
+        assert_eq!(
+            (title.right() - close.right(), close.top() - title.top()),
+            (gap, gap)
+        );
         cx.simulate_click(close.center(), Modifiers::default());
         draw(cx);
         assert_eq!(view.read_with(cx, |view, _| view.closed), 1);

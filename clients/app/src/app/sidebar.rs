@@ -5,7 +5,6 @@ use ala::{
     ScrollHandle, ScrollStrategy, UniformListScrollHandle, Window, div, prelude::*, px,
     uniform_list,
 };
-use penna::blocks::sidebar::SIDEBAR_CONTENT_INSET;
 use penna::{
     ActiveTheme as _, Colorize as _, Ground, Icon, IconName,
     components::menu::PopupMenuItem,
@@ -29,8 +28,8 @@ use zz_protocol::{CommandInvocation, MuxSnapshot, PaneId};
 use zz_ui::{
     command::PaletteHostId,
     navigation::{
-        WORKSPACE_SIDEBAR_FADE_HEIGHT, WORKSPACE_TREE_INDENT_WIDTH,
-        WORKSPACE_TREE_MARKER_SLOT_WIDTH, WORKSPACE_TREE_NODE_ICON_SIZE, WorkspaceTreeInk,
+        WORKSPACE_SIDEBAR_FADE_HEIGHT, WORKSPACE_TREE_INDENT_WIDTH, WORKSPACE_TREE_NODE_ICON_SIZE,
+        WorkspaceTreeInk,
         flat::{
             FlatEvent, FlatHandler, FlatHost, FlatMenu, FlatState, HostConnection, flat_sidebar,
         },
@@ -278,7 +277,7 @@ pub(super) fn session_tree(
         depths,
         active_row,
         px(WORKSPACE_TREE_INDENT_WIDTH),
-        px(SIDEBAR_CONTENT_INSET + WORKSPACE_TREE_MARKER_SLOT_WIDTH / 2.0),
+        zz_ui::navigation::workspace_tree_guide_origin(cx),
         px(4.0),
         IndentGuideColors::tree(cx),
     );

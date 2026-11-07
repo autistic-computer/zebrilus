@@ -536,7 +536,8 @@ fn browser_tab_pill(
     } else {
         PaintState::Rest
     };
-    let muted = crate::muted_on(cx.theme().ground_at(TabLook::Page, state), cx);
+    let ground = cx.theme().ground_at(TabLook::Page, state);
+    let muted = crate::muted_on(ground, cx);
     let favicon = div()
         .flex_none()
         .relative()
@@ -570,7 +571,10 @@ fn browser_tab_pill(
                                 div()
                                     .absolute()
                                     .inset_0()
-                                    .child(browser_tab_close_button(id, on_close, muted)),
+                                    .flex()
+                                    .items_center()
+                                    .justify_center()
+                                    .child(browser_tab_close_button(id, on_close, muted, ground)),
                             )
                         }),
                 )
@@ -599,10 +603,10 @@ fn browser_tab_pill(
                                 .absolute()
                                 .top_0()
                                 .bottom_0()
-                                .right_0()
+                                .right(crate::button::INSIDE_GAP)
                                 .flex()
                                 .items_center()
-                                .child(browser_tab_close_button(id, on_close, muted)),
+                                .child(browser_tab_close_button(id, on_close, muted, ground)),
                         )
                     })
             }
@@ -622,16 +626,23 @@ fn browser_tab_group(id: u64) -> SharedString {
     format!("browser-tab-{id}").into()
 }
 
-fn browser_tab_close_button(id: u64, on_close: &BrowserTabAction, color: Hsla) -> impl IntoElement {
+fn browser_tab_close_button(
+    id: u64,
+    on_close: &BrowserTabAction,
+    color: Hsla,
+    ground: crate::Ground,
+) -> impl IntoElement {
     let close = Rc::clone(on_close);
     div()
         .flex_none()
         .invisible()
         .group_hover(browser_tab_group(id), ala::Styled::visible)
         .child(
-            Button::compact_icon(("browser-tab-close", id), IconName::Xmark)
-                .size(crate::rems_from_px(BROWSER_CONTROL_HEIGHT))
-                .text()
+            Button::new(("browser-tab-close", id))
+                .ghost()
+                .icon(IconName::Xmark)
+                .inside(TabLook::Page, px(BROWSER_CONTROL_HEIGHT))
+                .on(ground)
                 .text_color(color)
                 .debug_selector(move || format!("browser-tab-close-{id}"))
                 .on_click(move |_, window, cx| {

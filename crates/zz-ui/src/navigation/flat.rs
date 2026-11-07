@@ -293,6 +293,10 @@ fn header_inset(cx: &App) -> Pixels {
     cx.theme().row_inset + px(ROW_PADDING)
 }
 
+pub(crate) fn action_glyph_center(cx: &App) -> Pixels {
+    header_inset(cx) + px(HOST_GLYPH / 2.0)
+}
+
 fn row_height() -> Pixels {
     px(ROW_HEIGHT)
 }

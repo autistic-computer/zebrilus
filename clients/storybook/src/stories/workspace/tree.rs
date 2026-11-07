@@ -1,4 +1,4 @@
-use penna::blocks::sidebar::{SIDEBAR_CONTENT_INSET, SIDEBAR_DEFAULT_WIDTH, sidebar_titlebar};
+use penna::blocks::sidebar::{SIDEBAR_DEFAULT_WIDTH, sidebar_titlebar};
 use std::rc::Rc;
 
 use ala::{
@@ -14,7 +14,7 @@ use zz_client::program::Program;
 use zz_ui::{
     navigation::{
         SidebarAction, WORKSPACE_SIDEBAR_FADE_HEIGHT, WORKSPACE_TREE_INDENT_WIDTH,
-        WORKSPACE_TREE_MARKER_SLOT_WIDTH, WORKSPACE_TREE_NODE_ICON_SIZE, WorkspaceTreeInk,
+        WORKSPACE_TREE_NODE_ICON_SIZE, WorkspaceTreeInk,
         sidebar::{
             TreeRowMenuItem, tree_action_strip, tree_host_indicator, tree_host_marker,
             tree_node_marker, tree_row_menu,
@@ -365,7 +365,7 @@ pub fn guides(depths: Rc<[usize]>, active_row: Option<usize>, cx: &App) -> Inden
         depths,
         active_row,
         px(WORKSPACE_TREE_INDENT_WIDTH),
-        px(SIDEBAR_CONTENT_INSET + WORKSPACE_TREE_MARKER_SLOT_WIDTH / 2.0),
+        zz_ui::navigation::workspace_tree_guide_origin(cx),
         px(4.0),
         IndentGuideColors::tree(cx),
     )

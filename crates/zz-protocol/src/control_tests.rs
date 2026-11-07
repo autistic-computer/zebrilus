@@ -404,13 +404,19 @@ fn os_release_maps_a_distro_to_the_family_whose_packages_it_uses() {
     use crate::LinuxDistro;
     let cases = [
         ("ID=ubuntu\nID_LIKE=debian\n", LinuxDistro::Ubuntu),
-        ("ID=linuxmint\nID_LIKE=\"ubuntu debian\"\n", LinuxDistro::Ubuntu),
+        (
+            "ID=linuxmint\nID_LIKE=\"ubuntu debian\"\n",
+            LinuxDistro::Ubuntu,
+        ),
         ("ID=debian\n", LinuxDistro::Debian),
         ("ID=raspbian\nID_LIKE=debian\n", LinuxDistro::Debian),
         ("ID=arch\n", LinuxDistro::Arch),
         ("ID=endeavouros\nID_LIKE=arch\n", LinuxDistro::Arch),
         ("ID=fedora\n", LinuxDistro::Fedora),
-        ("ID=\"rocky\"\nID_LIKE=\"rhel centos fedora\"\n", LinuxDistro::Fedora),
+        (
+            "ID=\"rocky\"\nID_LIKE=\"rhel centos fedora\"\n",
+            LinuxDistro::Fedora,
+        ),
         ("ID='nixos'\n", LinuxDistro::Other),
         ("", LinuxDistro::Other),
     ];

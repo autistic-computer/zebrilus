@@ -1,8 +1,7 @@
 mod flat;
 
 use penna::blocks::sidebar::{
-    SIDEBAR_CONTENT_INSET as TREE_CONTENT_INSET, SIDEBAR_DEFAULT_WIDTH, sidebar_panel,
-    sidebar_resize_handle, sidebar_titlebar,
+    SIDEBAR_DEFAULT_WIDTH, sidebar_panel, sidebar_resize_handle, sidebar_titlebar,
 };
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -27,7 +26,6 @@ use zz_client::{ChromeAction, SIDEBAR_TABLE, UI_TABLE, program::Program};
 use zz_protocol::{CommandInvocation, MuxSnapshot, PaneId, PaneStatusState, SessionId, WindowId};
 use zz_ui::navigation::{
     SidebarAction, WORKSPACE_SIDEBAR_FADE_HEIGHT, WORKSPACE_TREE_INDENT_WIDTH as TREE_INDENT_WIDTH,
-    WORKSPACE_TREE_MARKER_SLOT_WIDTH as TREE_MARKER_SLOT_WIDTH,
     WORKSPACE_TREE_NODE_ICON_SIZE as TREE_NODE_ICON_SIZE, WorkspaceTreeInk,
     sidebar::{
         TreeNavigation, TreeNavigationResult, TreeNavigationRow, TreeRowMenuItem,
@@ -73,7 +71,6 @@ use crate::mux::nav::{
 const SIDEBAR_MIN_WIDTH: f32 = 160.0;
 const SIDEBAR_MAX_WIDTH: f32 = 640.0;
 const SIDEBAR_SLIDE: Duration = Duration::from_millis(240);
-const TREE_INDENT_GUIDE_OFFSET: f32 = TREE_MARKER_SLOT_WIDTH / 2.0;
 const TREE_INDENT_GUIDE_PADDING: f32 = 4.0;
 const TREE_KEY_CONTEXT: &str = "WorkspaceTree";
 
@@ -1317,7 +1314,7 @@ fn render_expanded_navigation(
         depths,
         active_row,
         px(TREE_INDENT_WIDTH),
-        px(TREE_CONTENT_INSET + TREE_INDENT_GUIDE_OFFSET),
+        zz_ui::navigation::workspace_tree_guide_origin(cx),
         px(TREE_INDENT_GUIDE_PADDING),
         IndentGuideColors::tree(cx),
     );

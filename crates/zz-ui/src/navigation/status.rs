@@ -14,12 +14,13 @@ use crate::{
 };
 use penna::TabLook;
 
-use super::{
-    TREE_TOUCH_SLOP, WorkspaceStatusWindowState, workspace_row_action, workspace_row_action_gap,
-    workspace_status_window,
-};
+use super::{WorkspaceStatusWindowState, workspace_row_action, workspace_status_window};
 
 pub use zz_client::{MAX_VISIBLE_WINDOWS, visible_window_range};
+
+const CLOSE_SIDE: f32 =
+    super::WORKSPACE_STATUS_TAB_HEIGHT.as_f32() - 2.0 * crate::button::INSIDE_GAP.as_f32();
+const CLOSE_SLOP: f32 = (crate::touch::TOUCH_TARGET - CLOSE_SIDE) / 2.0;
 pub type StatusAction = Rc<dyn Fn(&mut Window, &mut App)>;
 
 pub struct StatusWindowActions {
@@ -60,7 +61,7 @@ pub fn status_window(
     );
     let item = workspace_status_window(id.clone(), name, tooltip, state, deck, cx)
         .group(group.clone())
-        .pr(workspace_row_action_gap())
+        .pr(crate::button::INSIDE_GAP)
         .child(
             div()
                 .flex_none()
@@ -68,11 +69,12 @@ pub fn status_window(
                 .group_hover(group, ala::Styled::visible)
                 .child(
                     workspace_row_action(
-                        Button::compact_icon(
-                            ElementId::Name(format!("status-window-close-{id:?}").into()),
-                            IconName::Xmark,
-                        )
-                        .hit_slop(TREE_TOUCH_SLOP, TREE_TOUCH_SLOP)
+                        Button::new(ElementId::Name(
+                            format!("status-window-close-{id:?}").into(),
+                        ))
+                        .icon(IconName::Xmark)
+                        .inside(tab, super::WORKSPACE_STATUS_TAB_HEIGHT)
+                        .hit_slop(CLOSE_SLOP, CLOSE_SLOP)
                         .tooltip("Close window"),
                         if hovers { hovered } else { ground },
                         !state.connected || close_button.is_none(),

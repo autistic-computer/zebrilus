@@ -468,10 +468,12 @@ toggle, Settings, the view switch (eye) and the iOS palette button are 28px butt
 glyphs, a step under the 32px titlebar pills (`WORKSPACE_CHROME_BUTTON_SIZE` in `navigation.rs`).
 The sidebar's rows stop 8px short of its trailing edge past the row inset
 (`WORKSPACE_SIDEBAR_SCROLLBAR_GUTTER`, on the flat list and the tree's `uniform_list`), so the
-scrollbar thumb runs in a lane of its own beside them. Every row action (the flat rows'
-… and +, the tree's 24px buttons) centers 19px in from the row fill's trailing edge
-(`WORKSPACE_ROW_ACTION_CENTER`), and the toggle and the view switch center on the same line. A
-titlebar window pill's hover close sits 10px from the pill's edge (`workspace_row_action_gap`).
+scrollbar thumb runs in a lane of its own beside them. The flat rows' … and + center 19px in
+from the row fill's trailing edge (`SIDEBAR_ROW_ACTION_CENTER`), and the toggle and the view
+switch center on the same line. A tree row's actions and every tab's close sit inside what holds
+them instead (penna's `Button::inside`): 4px from its top, bottom and end, with its corner less 4,
+so a tree row's are 22px and a titlebar window pill's close 20px. Tree rows start so their marker
+centers under the Add host and Settings glyphs (`workspace_tree_guide_origin`).
 Sidebar titles, descriptions and session and host labels fade out over their last 28px
 (`LABEL_FADE`) instead of ending in an ellipsis.
 

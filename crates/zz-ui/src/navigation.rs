@@ -6,12 +6,12 @@ pub mod status;
 use crate::{
     ActiveTheme as _, Colorize as _, Disableable as _, Emphasis, Ground, IconName, PaintState,
     Selectable as _, Sizable as _, StyledExt as _, Surface, Tone,
-    button::{Button, ButtonLook, ButtonVariants as _, COMPACT_ICON_BUTTON_SIZE},
+    button::{Button, ButtonLook, ButtonVariants as _, INSIDE_GAP},
     kbd::Kbd,
     rems_from_px,
     sidebar::{
-        CHROME_BUTTON_SIZE, SIDEBAR_CONTENT_INSET, SIDEBAR_ROW_ACTION_CENTER,
-        SIDEBAR_SCROLLBAR_GUTTER, chrome_button, sidebar_panel,
+        CHROME_BUTTON_SIZE, SIDEBAR_CONTENT_INSET, SIDEBAR_SCROLLBAR_GUTTER, chrome_button,
+        sidebar_panel,
     },
     tooltip::Tooltip,
     touch::{CoarsePointer, TOUCH_TARGET},
@@ -29,10 +29,8 @@ pub const WORKSPACE_TREE_INDENT_WIDTH: f32 = 20.0;
 pub const WORKSPACE_TREE_MARKER_SLOT_WIDTH: f32 = 18.0;
 pub const WORKSPACE_TREE_NODE_ICON_SIZE: f32 = 14.0;
 pub const WORKSPACE_TREE_MARKER_LABEL_GAP: f32 = 6.0;
-const TREE_TOUCH_SLOP: f32 = (TOUCH_TARGET - COMPACT_ICON_BUTTON_SIZE) / 2.0;
 const WORKSPACE_TREE_FILL_VERTICAL_INSET: f32 = 1.0;
 const WORKSPACE_CHROME_CONTROL_GAP: f32 = 4.0;
-const WORKSPACE_ROW_ACTION_GAP: f32 = 10.0;
 const WORKSPACE_SIDEBAR_ACTIONS_GAP: f32 = 8.0;
 pub const WORKSPACE_SIDEBAR_FADE_HEIGHT: Pixels = px(40.0);
 pub const WORKSPACE_STATUS_PILL_HEIGHT: Pixels = px(32.0);
@@ -251,12 +249,27 @@ pub fn workspace_status_window(
         })
 }
 
-fn workspace_tree_trailing_inset(cx: &App) -> Pixels {
-    cx.theme().row_inset + SIDEBAR_ROW_ACTION_CENTER - px(COMPACT_ICON_BUTTON_SIZE / 2.0)
+#[must_use]
+pub fn workspace_tree_guide_origin(cx: &App) -> Pixels {
+    flat::action_glyph_center(cx)
 }
 
-fn workspace_row_action_gap() -> Pixels {
-    px(WORKSPACE_ROW_ACTION_GAP)
+fn workspace_tree_trailing_inset(cx: &App) -> Pixels {
+    cx.theme().row_inset + INSIDE_GAP
+}
+
+fn workspace_tree_fill_height(cx: &App) -> Pixels {
+    let inset = if cx.theme().inset_rows() {
+        px(WORKSPACE_TREE_FILL_VERTICAL_INSET)
+    } else {
+        px(0.)
+    };
+    px(workspace_tree_row_height(cx)) - inset * 2.0
+}
+
+#[must_use]
+pub fn workspace_tree_action_side(cx: &App) -> Pixels {
+    workspace_tree_fill_height(cx) - INSIDE_GAP * 2.0
 }
 
 #[must_use]
@@ -487,9 +500,14 @@ pub fn workspace_tree_action_button(
     ground: Ground,
     cx: &App,
 ) -> Button {
+    let slop = ((px(TOUCH_TARGET) - workspace_tree_action_side(cx)) / 2.0)
+        .max(px(0.))
+        .as_f32();
     workspace_row_action(
-        Button::compact_icon(id, icon)
-            .hit_slop(TREE_TOUCH_SLOP, TREE_TOUCH_SLOP)
+        Button::new(id)
+            .icon(icon)
+            .inside(RowLook::Sidebar, workspace_tree_fill_height(cx))
+            .hit_slop(slop, slop)
             .tooltip(tooltip),
         ground,
         disabled,
@@ -530,9 +548,10 @@ fn workspace_tree_row_frame(id: impl Into<ElementId>, depth: u8, cx: &App) -> St
         .relative()
         .flex()
         .items_center()
-        .pl(px(
-            SIDEBAR_CONTENT_INSET + f32::from(depth) * WORKSPACE_TREE_INDENT_WIDTH
-        ))
+        .pl(
+            workspace_tree_guide_origin(cx) - px(WORKSPACE_TREE_MARKER_SLOT_WIDTH / 2.0)
+                + px(f32::from(depth) * WORKSPACE_TREE_INDENT_WIDTH),
+        )
         .pr(px(SIDEBAR_CONTENT_INSET))
 }
 
