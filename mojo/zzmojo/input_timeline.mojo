@@ -15,6 +15,7 @@ from .keyboard_controller import KeyboardController, RoutedKey
 from .clipboard_controller import ClipboardController, ClipboardPlan
 from .actions import MAX_PENDING_ACTIONS, MAX_PENDING_INPUT_BYTES
 from .terminal_search_controller import SearchPlan
+from .palette_runtime import PalettePlan
 
 comptime TEXT_ROUTED: UInt8 = 255
 
@@ -29,6 +30,7 @@ struct _Pending(Copyable, Movable):
     var client: UInt64
     var output: Bool
     var search: Optional[SearchPlan]
+    var palette: Optional[PalettePlan]
 
 
 struct InputTimeline(Movable):
@@ -71,6 +73,7 @@ struct InputTimeline(Movable):
                 view.model.source_client,
                 output,
                 None,
+                None,
             ),
             size,
         )
@@ -86,12 +89,19 @@ struct InputTimeline(Movable):
                 plan.client,
                 plan.output,
                 None,
+                None,
             ),
             0,
         )
 
     def search(mut self, plan: SearchPlan, event: KeyEvent, before_focus: UInt64, after_focus: UInt64) raises:
-        self.append(_Pending(event.text_event, event.text_lo, None, None, plan.server, plan.client, plan.target.command_output, plan.copy()), plan.input.text.value().byte_length() if plan.input.text else 0)
+        self.append(_Pending(event.text_event, event.text_lo, None, None, plan.server, plan.client, plan.target.command_output, plan.copy(), None), plan.input.text.value().byte_length() if plan.input.text else 0)
+        if not self.initial_focus:
+            self.initial_focus = before_focus
+        self.final_focus = after_focus
+
+    def palette(mut self, plan: PalettePlan, event: KeyEvent, before_focus: UInt64, after_focus: UInt64) raises:
+        self.append(_Pending(event.text_event, event.text_lo, None, None, plan.server, plan.client, False, None, plan.copy()), 0)
         if not self.initial_focus:
             self.initial_focus = before_focus
         self.final_focus = after_focus
@@ -152,6 +162,7 @@ struct InputTimeline(Movable):
             ui.focus = self.initial_focus.value()
         self.initial_focus = None
         self.final_focus = None
+        view.prepare_palette_input(ui, input, host)
         view.prepare_search_input(ui, input, host)
         self.merge(input, consumed_prefix)
         keyboard.filter_text(input, stamped_commands=True)
@@ -159,7 +170,7 @@ struct InputTimeline(Movable):
         swap(pending, self.pending)
         self.pending_bytes = 0
         var remaining = List[TextEvent]()
-        var unmark = False
+        var unmark = view.palette_closed_frame
         var composed = len(input.marked) > 0
         for event in input.events:
             if event.kind == TEXT_ROUTED:
@@ -171,6 +182,11 @@ struct InputTimeline(Movable):
                     captured.server != view.model.source_server
                     or captured.client != view.model.source_client
                 ):
+                    if captured.palette:
+                        view.palette.pending_open = False
+                        view.palette.pending_close = False
+                        if ui.focus == view.palette.component.field_key:
+                            ui.focus = TERMINAL_KEY
                     continue
                 if captured.key:
                     ref key = captured.key.value()
@@ -192,6 +208,16 @@ struct InputTimeline(Movable):
                         composed = False
                 elif captured.search:
                     view.dispatch_search(ui, input, captured.search.value())
+                elif captured.palette:
+                    view.dispatch_palette(ui, input, captured.palette.value())
+                    if view.palette_closed_frame:
+                        unmark = True
+                        composed = False
+                continue
+            if view.palette_event(ui, input, event, host):
+                if view.palette_closed_frame:
+                    unmark = True
+                    composed = False
                 continue
             if view.search_event(ui, input, event, host):
                 continue

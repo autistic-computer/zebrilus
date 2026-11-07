@@ -1,4 +1,10 @@
-from .exec_protocol import PreparedInvocation
+from .exec_protocol import PreparedInvocation, Invocation
+from .palette_protocol import palette_command_request
+from .client_attachment import (
+    ClientDetached,
+    decode_detached,
+    decode_server_stopping,
+)
 from std.ffi import external_call
 from std.memory import ArcPointer
 from std.time import perf_counter_ns
@@ -131,6 +137,9 @@ struct StreamModel(Copyable, Movable):
     var search_commands: SearchUiCommands
     var dialogs: PaletteDialogs
     var paths: PathMailbox
+    var attachment_blocked: Bool
+    var detached: Optional[ClientDetached]
+    var server_stopped: Bool
 
     def __init__(out self):
         self.tree = MuxSnapshot()
@@ -146,6 +155,9 @@ struct StreamModel(Copyable, Movable):
         self.search_commands = SearchUiCommands()
         self.dialogs = PaletteDialogs()
         self.paths = PathMailbox()
+        self.attachment_blocked = False
+        self.detached = None
+        self.server_stopped = False
         self.notice = None
         self.notice_revision = 0
         self.message = None
@@ -389,6 +401,21 @@ struct InteractiveConnection(Movable):
             raise Error("retained terminal data exceeds its memory limit")
 
     @inline(.never)
+    def clear_attachment_planes(mut self) raises:
+        self.model.paths.close_picker()
+        self.model.terminals.clear()
+        self.model.histories.clear()
+        self.model.retained_histories.clear()
+        self.model.history_invalidations.clear()
+        var panes = List[UInt64]()
+        for pane in self.history_cache.last_used:
+            panes.append(pane)
+        for pane in panes:
+            self.history_cache.invalidate(pane)
+        self.history_deadlines.clear()
+        self.model.events.output.clear()
+        self.full_pending.clear()
+
     def consume(mut self, var frame: List[UInt8], nested: Bool = False) raises:
         if self.transport.gate.validate(Span(frame)) != 0:
             raise Error("Bend rejected an interactive frame")
@@ -573,25 +600,62 @@ struct InteractiveConnection(Movable):
                         self.request_tree()
         elif event.view:
             var view = event.view.value().copy()
+            if self.model.view.session and not view.session:
+                self.model.attachment_blocked = True
+            elif view.session:
+                self.model.attachment_blocked = False
             if (
                 view.session != self.model.view.session
                 or view.attachment_generation
                 != self.model.view.attachment_generation
             ):
-                self.model.paths.close_picker()
-                self.model.terminals.clear()
-                self.model.histories.clear()
-                self.model.retained_histories.clear()
-                self.model.history_invalidations.clear()
-                var panes = List[UInt64]()
-                for pane in self.history_cache.last_used:
-                    panes.append(pane)
-                for pane in panes:
-                    self.history_cache.invalidate(pane)
-                self.history_deadlines.clear()
-                self.model.events.output.clear()
-                self.full_pending.clear()
+                self.clear_attachment_planes()
             self.model.view = view^
+            self.tree_dirty = True
+        elif event.event_kind == Optional[UInt64](22):
+            var detached = decode_detached(event.raw.copy())
+            if not detached:
+                raise Error("detach event has no decoded payload")
+            var matches = self.model.view.session == Optional[UInt64](
+                detached.value().session
+            )
+            self.model.detached = detached.copy()
+            if matches:
+                self.model.attachment_blocked = True
+                self.model.view.session = None
+                self.model.view.focused_window = None
+                self.clear_attachment_planes()
+                self.model.dialogs.prompt = None
+                self.model.dialogs.chooser = None
+                self.model.dialogs.prompt_revision += 1
+                self.model.dialogs.chooser_revision += 1
+                self.model.routing.armed = False
+                self.model.routing.table = None
+                var message = (
+                    "detach-client -E needs a terminal client: "
+                    + detached.value()
+                    .action.command if detached.value()
+                    .action.kind
+                    == 2 else "detached by "
+                    + detached.value()
+                    .by.value() if detached.value()
+                    .by else String("session ended")
+                )
+                self.model.message = ClientMessage(
+                    None, 1, message^, None, None
+                )
+                self.tree_dirty = True
+        elif event.event_kind == Optional[UInt64](18):
+            var stopped = decode_server_stopping(event.raw.copy())
+            if not stopped:
+                raise Error("server stopping event has no decoded payload")
+            self.model.server_stopped = True
+            self.model.attachment_blocked = True
+            self.model.view.session = None
+            self.model.view.focused_window = None
+            self.clear_attachment_planes()
+            self.model.routing.armed = False
+            self.model.routing.table = None
             self.tree_dirty = True
         elif event.event_kind == Optional[UInt64](9):
             var raw = List[UInt8]()
@@ -600,7 +664,9 @@ struct InteractiveConnection(Movable):
             if not prompt:
                 raise Error("command prompt event has no decoded payload")
             self.model.dialogs.apply_prompt(prompt.take())
-        elif event.event_kind == Optional[UInt64](11) or event.event_kind == Optional[UInt64](12):
+        elif event.event_kind == Optional[UInt64](
+            11
+        ) or event.event_kind == Optional[UInt64](12):
             var raw = List[UInt8]()
             swap(raw, event.raw)
             var chooser = decode_choose_event(raw^)
@@ -680,11 +746,15 @@ struct InteractiveConnection(Movable):
         self.model.revision += 1
 
     def drain(mut self, limit: Int = 256) raises:
+        if self.model.server_stopped:
+            return
         self._history_due()
         for _ in range(limit):
             if not readable(self.transport.fd):
                 break
             self.consume(self.transport.read_frame())
+            if self.model.server_stopped:
+                break
 
     def command(
         mut self, name: String, args: Span[String, _]
@@ -697,6 +767,25 @@ struct InteractiveConnection(Movable):
         self.transport.next_request += 1
         self.waiting = request
         var frame = command_request(request, name, args)
+        self.transport.write(Span(frame))
+        for _ in range(4096):
+            self.consume(self.transport.read_frame())
+            if self.response:
+                var response = self.response.value().copy()
+                self.response = None
+                self.waiting = None
+                return response^
+        raise Error("interactive command received too many unrelated frames")
+
+    def command_invocation(mut self, command: Invocation) raises -> Response:
+        if self.waiting:
+            raise Error("interactive command is already in flight")
+        var request = self.transport.next_request
+        if request == UInt64.MAX:
+            raise Error("request identifiers exhausted")
+        var frame = palette_command_request(request, command)
+        self.transport.next_request += 1
+        self.waiting = request
         self.transport.write(Span(frame))
         for _ in range(4096):
             self.consume(self.transport.read_frame())

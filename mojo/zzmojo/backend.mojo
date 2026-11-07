@@ -30,6 +30,14 @@ from .search_ui_commands import SearchUiCommands
 from .path_protocol import decode_path_message
 from .path_service import PathSource, PathCommand
 from .path_mailbox import PathInbox
+from .exec_protocol import Invocation
+from .palette_protocol import (
+    palette_command_request,
+    read_palette_command,
+    palette_cancel_prefix,
+)
+from .prompt_protocol import PromptAction, prompt_request
+from .chooser_protocol import ChooseAction, choose_request
 
 comptime KEY = 1
 comptime TEXT = 2
@@ -46,6 +54,8 @@ comptime PASTE = 12
 comptime OUTPUT_TEXT = 13
 comptime OUTPUT_PASTE = 14
 comptime PATH_CONTROL = 15
+comptime PALETTE_COMMAND = 16
+comptime PALETTE_OPEN = 17
 
 
 struct Job(Movable):
@@ -89,9 +99,17 @@ def run_job(context: MutOpaquePointer[MutUntrackedOrigin]) abi("C"):
             )
             if job.startup:
                 var startup = job.startup.take()
-                job.connection = startup^.connect(native_paths=True, path_epoch=job.path_epoch)
+                job.connection = startup^.connect(
+                    native_paths=True, path_epoch=job.path_epoch
+                )
             else:
-                job.connection = connect_interactive(job.path, session, native_search=True, native_paths=True, path_epoch=job.path_epoch)
+                job.connection = connect_interactive(
+                    job.path,
+                    session,
+                    native_search=True,
+                    native_paths=True,
+                    path_epoch=job.path_epoch,
+                )
         if job.clipboard_reply:
             ref reply = job.clipboard_reply.value()
             if (
@@ -106,6 +124,7 @@ def run_job(context: MutOpaquePointer[MutUntrackedOrigin]) abi("C"):
         var desired_window = job.model.window
         var desired_pane = job.model.pane
         var restore_selection = False
+        var command_error: Optional[String] = None
         for action in job.actions:
             if action.source:
                 var source = action.source.value()
@@ -114,17 +133,57 @@ def run_job(context: MutOpaquePointer[MutUntrackedOrigin]) abi("C"):
                     or source[1] != job.connection.value().client_id
                 ):
                     continue
-            if action.output_owner and job.connection.value().model.events.output.id != action.output_owner:
+            if (
+                action.output_owner
+                and job.connection.value().model.events.output.id
+                != action.output_owner
+            ):
+                continue
+            if action.kind == PALETTE_OPEN:
+                if not action.source:
+                    continue
+                var request = job.connection.value().transport.next_request
+                if request == UInt64.MAX:
+                    raise Error("request identifiers exhausted")
+                job.connection.value().transport.next_request += 1
+                var frame = palette_cancel_prefix(request)
+                job.connection.value().transport.write(Span(frame))
+                if job.connection.value().model.dialogs.prompt:
+                    frame = prompt_request(PromptAction(2))
+                    job.connection.value().transport.write(Span(frame))
+                if job.connection.value().model.dialogs.chooser:
+                    frame = choose_request(ChooseAction(17))
+                    job.connection.value().transport.write(Span(frame))
+                continue
+            if action.kind == PALETTE_COMMAND:
+                if not action.source:
+                    continue
+                var command = read_palette_command(action.frame.copy())
+                var response = job.connection.value().command_invocation(
+                    command.command
+                )
+                if response.exit_code != 0:
+                    command_error = (
+                        response.error if response.error.byte_length()
+                        > 0 else String("command failed")
+                    )
+                restore_selection = (
+                    restore_selection or action.selection_epoch != job.epoch
+                )
                 continue
             if action.kind == PATH_CONTROL:
                 if not action.source:
                     continue
                 var source = action.source.value()
-                var captured = PathSource(source[0], source[1], action.selection_epoch)
+                var captured = PathSource(
+                    source[0], source[1], action.selection_epoch
+                )
                 var message = decode_path_message(action.frame.copy())
                 if not message:
                     raise Error("path action has no decoded request")
-                if job.connection.value().model.paths.send(captured, message.value()):
+                if job.connection.value().model.paths.send(
+                    captured, message.value()
+                ):
                     job.connection.value().transport.write(Span(action.frame))
                 continue
             if action.kind == HISTORY_PREFETCH:
@@ -175,7 +234,13 @@ def run_job(context: MutOpaquePointer[MutUntrackedOrigin]) abi("C"):
                         job.model.session.value()
                     ) if job.model.session else String()
                 )
-                job.connection = connect_interactive(job.path, session, native_search=True, native_paths=True, path_epoch=job.path_epoch)
+                job.connection = connect_interactive(
+                    job.path,
+                    session,
+                    native_search=True,
+                    native_paths=True,
+                    path_epoch=job.path_epoch,
+                )
             elif action.kind == CREATE_SESSION:
                 job.model.create_session(job.connection.value())
             elif action.kind == SPLIT_RIGHT or action.kind == SPLIT_DOWN:
@@ -213,6 +278,8 @@ def run_job(context: MutOpaquePointer[MutUntrackedOrigin]) abi("C"):
             job.model.focus_dirty = True
         job.model.sync_focus(job.connection.value())
         job.model.refresh(job.connection.value())
+        if command_error:
+            job.model.error = command_error.value()
     except error:
         job.model.error = String(error)
         job.connection = None
@@ -226,6 +293,7 @@ struct AsyncBackend(Movable):
     var job: OwnedPointer[Job]
     var queue: ActionQueue
     var busy: Bool
+    var online: Bool
     var clipboard: ClipboardState
     var clipboard_reply: Optional[ClipboardResponse]
     var source: Optional[Tuple[UInt64, UInt64]]
@@ -239,6 +307,7 @@ struct AsyncBackend(Movable):
         self.job = OwnedPointer(Job(path, startup^))
         self.queue = ActionQueue()
         self.busy = False
+        self.online = False
         self.clipboard = ClipboardState()
         self.clipboard_reply = None
         self.source = None
@@ -263,16 +332,47 @@ struct AsyncBackend(Movable):
     def ready_fd(self) -> Int32:
         if self.busy or not self.job[].connection:
             return -1
+        if self.job[].connection.value().model.server_stopped:
+            return -1
         return self.job[].connection.value().transport.fd
 
     def pending(self) -> Bool:
         return len(self.queue) > 0 or Bool(self.clipboard_reply)
 
     def path(mut self, command: PathCommand) raises -> Bool:
-        if not self.path_source or not self.path_source.value().matches(command.source):
+        if not self.path_source or not self.path_source.value().matches(
+            command.source
+        ):
             return False
-        self.queue.append(PATH_CONTROL, "", None, command.source.epoch, frame=command.frame, source=(command.source.server, command.source.client))
+        self.queue.append(
+            PATH_CONTROL,
+            "",
+            None,
+            command.source.epoch,
+            frame=command.frame,
+            source=(command.source.server, command.source.client),
+        )
         return True
+
+    def palette_open(
+        mut self, epoch: UInt64, source: Tuple[UInt64, UInt64]
+    ) raises:
+        self.queue.append(PALETTE_OPEN, "", None, epoch, source=source)
+
+    def palette_command(
+        mut self,
+        command: Invocation,
+        epoch: UInt64,
+        source: Tuple[UInt64, UInt64],
+    ) raises:
+        self.queue.append(
+            PALETTE_COMMAND,
+            "",
+            None,
+            epoch,
+            frame=palette_command_request(0, command),
+            source=source,
+        )
 
     def reply_clipboard(
         mut self, var reply: Optional[ClipboardResponse]
@@ -376,6 +476,7 @@ struct AsyncBackend(Movable):
             return False
         dispatch_wait(self.job[].semaphore)
         self.busy = False
+        self.online = Bool(self.job[].connection) and not self.job[].connection.value().model.server_stopped
         var session = model.session
         var window = model.window
         var pane = model.pane
@@ -397,8 +498,12 @@ struct AsyncBackend(Movable):
                 model.error = String(error)
         if self.job[].connection:
             try:
-                var source = self.job[].connection.value().model.paths.registry.source
-                if self.path_source and not self.path_source.value().matches(source):
+                var source = (
+                    self.job[].connection.value().model.paths.registry.source
+                )
+                if self.path_source and not self.path_source.value().matches(
+                    source
+                ):
                     self.paths.reset(self.path_source.value())
                 self.clipboard.merge(
                     self.job[].connection.value().model.clipboard.take()
@@ -406,11 +511,14 @@ struct AsyncBackend(Movable):
                 self.search_commands.merge(
                     self.job[].connection.value().model.search_commands.take()
                 )
-                self.paths.merge(self.job[].connection.value().model.paths.inbox.take())
+                self.paths.merge(
+                    self.job[].connection.value().model.paths.inbox.take()
+                )
                 self.path_source = source
             except error:
                 model.error = String(error)
                 self.job[].connection = None
+                self.online = False
                 try:
                     if self.path_source:
                         self.paths.reset(self.path_source.value())

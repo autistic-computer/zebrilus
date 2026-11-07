@@ -9,6 +9,7 @@ from .input_protocol import InputRoutingState
 from .client_events import StatusLine, CommandOutputState, ClientMessage
 from .appearance_protocol import TerminalAppearance
 from .palette_dialog_state import PaletteDialogs
+from .client_attachment import ClientDetached
 
 
 def format_rows(
@@ -213,6 +214,9 @@ struct AppModel(Copyable, Movable):
     var appearance_provenance: Dict[UInt8, UInt8]
     var appearance_revision: UInt64
     var dialogs: PaletteDialogs
+    var attachment_blocked: Bool
+    var detached: Optional[ClientDetached]
+    var server_stopped: Bool
 
     def __init__(out self):
         self.sessions = List[Session]()
@@ -243,8 +247,18 @@ struct AppModel(Copyable, Movable):
             self.appearance_provenance[UInt8(key)] = 0
         self.appearance_revision = 0
         self.dialogs = PaletteDialogs()
+        self.attachment_blocked = False
+        self.detached = None
+        self.server_stopped = False
 
     def reconcile(mut self):
+        if self.attachment_blocked and not self.focus_dirty:
+            self.session = None
+            self.window = None
+            self.pane = None
+            self.terminal = String()
+            self.text_pane = None
+            return
         var session, window, pane = _reconciled(
             self.sessions,
             self.windows,
@@ -320,6 +334,13 @@ struct AppModel(Copyable, Movable):
         var session = self.session
         var window = self.window
         var pane = self.pane
+        var blocked = (
+            connection.model.attachment_blocked and not self.focus_dirty
+        )
+        if blocked:
+            session = None
+            window = None
+            pane = None
         if not self.focus_dirty and connection.model.view.session:
             session = connection.model.view.session
         for record in snapshot.sessions:
@@ -366,6 +387,10 @@ struct AppModel(Copyable, Movable):
         var reconciled_session, reconciled_window, reconciled_pane = (
             _reconciled(sessions, windows, panes, session, window, pane)
         )
+        if blocked:
+            reconciled_session = None
+            reconciled_window = None
+            reconciled_pane = None
         var text = _selected_text(terminals, reconciled_pane)
         self.snapshot = snapshot^
         self.terminals = terminals^
@@ -395,7 +420,10 @@ struct AppModel(Copyable, Movable):
         )
         self.appearance_revision = connection.model.appearance_revision
         self.dialogs = connection.model.dialogs.copy()
-        self.error = String()
+        self.attachment_blocked = connection.model.attachment_blocked
+        self.detached = connection.model.detached.copy()
+        self.server_stopped = connection.model.server_stopped
+        self.error = "zz daemon stopped" if self.server_stopped else String()
 
     def capture(mut self) raises:
         self.terminal = _selected_text(self.terminals, self.pane)
@@ -423,7 +451,11 @@ struct AppModel(Copyable, Movable):
             self.session = requested_session
             self.window = requested_window
             self.pane = requested_pane
-        elif connection.model.view.session or connection.tree_pending:
+        elif (
+            connection.model.view.session
+            or connection.tree_pending
+            or connection.model.attachment_blocked
+        ):
             return
         if not self.session:
             return

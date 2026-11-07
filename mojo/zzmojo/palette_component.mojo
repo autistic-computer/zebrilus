@@ -119,6 +119,7 @@ struct PaletteComponent(Movable):
     var bounds: PaletteBounds
     var panel_height: Float32
     var previous_hot: UInt64
+    var clicked_handled: Bool
     var asset_openai: Int32
     var asset_claude: Int32
 
@@ -135,6 +136,7 @@ struct PaletteComponent(Movable):
         self.bounds = PaletteBounds(0, 0, 0, 0)
         self.panel_height = 0
         self.previous_hot = 0
+        self.clicked_handled = False
         self.asset_openai = -1
         self.asset_claude = -1
 
@@ -203,6 +205,8 @@ struct PaletteComponent(Movable):
         self.scroll_top = True
         self.scroll_selected = False
         self.previous_hot = 0
+        self.clicked_handled = False
+        self.panel_height = 0
 
     def close(mut self, mut ui: Ui):
         self.model.controller.close()
@@ -248,10 +252,12 @@ struct PaletteComponent(Movable):
         mut clip: SearchClipboard,
         fleet: PaletteFleet,
         decorations: PaletteDecorations,
+        allow_primary: Bool = True,
     ) raises -> PaletteComponentResult:
         var result = PaletteComponentResult()
         if not self.opened():
             return result^
+        self.clicked_handled = False
         self.clear_flags()
         var pointer = TextInput()
         var selection = self.field.selection()
@@ -270,13 +276,15 @@ struct PaletteComponent(Movable):
             pointer.marked_sel_a = self.field.marked_a
             pointer.marked_sel_b = self.field.marked_b
             result.limited = True
-        if input.primary:
+        if input.primary and allow_primary:
             if clip.primary_text.byte_length() <= PALETTE_INPUT_BYTES - len(
                 self.field.buf
             ):
                 pointer.primary = input.primary
             else:
                 result.limited = True
+        elif input.primary:
+            result.limited = True
         if ui.retained_input_begin(self.key + 3, self.field_key):
             self.field.update(ui, pointer, clip)
             ui.retained_input_end()
@@ -284,6 +292,20 @@ struct PaletteComponent(Movable):
             self.field.focused = False
             return result^
         self.changed(fleet, decorations)
+        var row_key = ui.active if ui.active >= self.row_key else ui.press_hot
+        if row_key >= self.row_key and row_key - self.row_key < UInt64(len(self.model.rows)):
+            var index = Int(row_key - self.row_key)
+            if self.model.rows[index].action != 0 and ui.retained_input_begin(self.key + 3, row_key):
+                var response = ui.interact(row_key, focusable=True, focus_on_press=False)
+                ui.retained_input_end()
+                if response.clicked:
+                    self.model.controller.selected = index
+                    self.model.controller.navigation_engaged = True
+                    result.effect = self.model.activate(False, fleet)
+                    self.model.rebuild(fleet, decorations)
+                    self.sync_field()
+                    self.scroll_top = True
+                    self.clicked_handled = True
         if ui.pressed and self.panel_height > 0:
             var x = ui.press_x
             var y = ui.press_y
@@ -346,7 +368,7 @@ struct PaletteComponent(Movable):
             result.limited = not self.insert(Span(input.bytes)[start:end])
         else:
             var command = event.cmd & ~(CMD_EXTEND | CMD_LOGICAL)
-            if (command == CMD_UP or command == CMD_DOWN) and event.mods & (
+            if event.cmd & CMD_EXTEND == 0 and (command == CMD_UP or command == CMD_DOWN) and event.mods & (
                 MOD_ALT | MOD_CMD
             ) == 0:
                 self.model.navigate(-1 if command == CMD_UP else 1)
@@ -485,7 +507,7 @@ struct PaletteComponent(Movable):
                         kit_row,
                         self.model.controller.selected == Optional[Int](index),
                         rows_width,
-                    ):
+                    ) and not self.clicked_handled:
                         clicked = index
                 ui.close()
             self.previous_hot = ui.hot

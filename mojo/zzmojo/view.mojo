@@ -13,6 +13,8 @@ from mjui.input import (
     Clipboard,
     KeyEvent,
     CMD_PASTE,
+    MOD_ALT,
+    MOD_CMD,
 )
 from mjui.scroll import ScrollEvent
 from mjui.keys import Key
@@ -61,6 +63,11 @@ from .terminal_search_editor import SearchInputResult, SEARCH_TEXT_BYTES
 from .terminal_search_chrome import SearchKeys, build_search_chrome, build_mode_indicator
 from .search_clipboard import SearchClipboard
 from .keyboard_controller import KeyboardController
+from .palette_runtime import PaletteRuntime, PalettePlan
+from .palette_keymap import palette_open_shortcut
+from .palette_controller import PaletteEffect, PALETTE_EXECUTE, PALETTE_ACTIVATE, PALETTE_CONNECT, PALETTE_NOTIFY, PALETTE_LEVEL
+from .palette_places_model import PalettePlace
+from std.sys.info import CompilationTarget
 
 comptime TERMINAL_KEY: UInt64 = 0x7000000000000000
 
@@ -98,6 +105,9 @@ struct WorkspaceView(Movable):
     var search_frame: SearchInputResult
     var search_prepared: Bool
     var search_fields: Dict[String, Bool]
+    var palette: PaletteRuntime
+    var palette_prepared: Bool
+    var palette_closed_frame: Bool
 
     def __init__(
         out self, path: String, var startup: Optional[ResumeStartup] = None
@@ -134,6 +144,9 @@ struct WorkspaceView(Movable):
         self.search_frame = SearchInputResult()
         self.search_prepared = False
         self.search_fields = Dict[String, Bool]()
+        self.palette = PaletteRuntime()
+        self.palette_prepared = False
+        self.palette_closed_frame = False
         self.backend.submit(self.model, self.focus_epoch)
 
     def widget_key(mut self, kind: Int, id: UInt64) raises -> UInt64:
@@ -144,6 +157,161 @@ struct WorkspaceView(Movable):
             self.keys[name] = self.next_key
             self.next_key += 1
         return self.keys[name]
+
+    def plan_palette(mut self, mut ui: Ui, mut keyboard: KeyboardController, key: KeyEvent, bytes: Span[UInt8, _], cancel: Bool = False) raises -> Optional[PalettePlan]:
+        if key.release and key.key in self.palette.held:
+            _ = self.palette.held.pop(key.key)
+            keyboard.claim_text(key, bytes)
+            return PalettePlan(1, self.model.source_server, self.model.source_client, self.focus_epoch)
+        if not key.release and key.key in self.palette.held:
+            _ = self.palette.held.pop(key.key)
+        if key.consumed or not self.active:
+            return None
+        if self.palette.opened():
+            if not key.release and key.key not in keyboard.forwarded and (key.key == Key.ENTER or key.key == Key.KP_ENTER or key.key == Key.ESCAPE or key.key == Key.UP or key.key == Key.DOWN):
+                self.palette.held[key.key] = True
+            if not key.release and key.key == Key.ESCAPE and (cancel or not key.text):
+                self.palette.pending_close = True
+                keyboard.claim_text(key, bytes)
+                keyboard.claim_text_command(key)
+                ui.focus = TERMINAL_KEY
+                return PalettePlan(4, self.model.source_server, self.model.source_client, self.focus_epoch)
+            if not key.release and (key.key == Key.UP or key.key == Key.DOWN) and key.mods & (MOD_ALT | MOD_CMD) == 0:
+                keyboard.claim_text(key, bytes)
+                keyboard.claim_text_command(key)
+                return PalettePlan(UInt8(2 if key.key == Key.UP else 3), self.model.source_server, self.model.source_client, self.focus_epoch)
+            return None
+        var input = mjui_key_input(key.key, key.ch, key.unshifted, key.mods, key.action())
+        if key.text_lo >= 0 and key.text_hi > key.text_lo and Int(key.text_hi) <= len(bytes):
+            input.text = String(from_utf8=bytes[Int(key.text_lo):Int(key.text_hi)])
+        var capture = False
+        for session in self.model.snapshot.sessions:
+            if self.model.session == Optional[UInt64](session.id):
+                for window in session.windows:
+                    if self.model.window == Optional[UInt64](window.id):
+                        capture = Bool(window.modal)
+        var overlay = ui.layers.modal != 0 and not (self.palette.pending_close and ui.layers.modal == self.palette.component.key + 3)
+        if not palette_open_shortcut(input, CompilationTarget.is_macos(), overlay, capture):
+            return None
+        self.palette.restore_output = (self.model.source_server, self.model.source_client, self.output.id.value()) if self.output_input and self.output.id else Optional[Tuple[UInt64, UInt64, UInt64]](None)
+        self.palette.pending_open = True
+        self.palette.held[key.key] = True
+        if key.key in keyboard.forwarded:
+            _ = keyboard.forwarded.pop(key.key)
+        keyboard.claim_text(key, bytes)
+        keyboard.claim_text_command(key)
+        ui.focus = self.palette.component.field_key
+        ui.request_wake(ui.time)
+        return PalettePlan(0, self.model.source_server, self.model.source_client, self.focus_epoch)
+
+    def dispatch_palette(mut self, mut ui: Ui, input: TextInput, plan: PalettePlan) raises:
+        if plan.server != self.model.source_server or plan.client != self.model.source_client:
+            self.palette.pending_open = False
+            self.palette.pending_close = False
+            self.palette.restore_output = None
+            return
+        if plan.kind == 4:
+            self.close_palette(ui)
+            return
+        if plan.kind == 2 or plan.kind == 3:
+            if self.palette.component.opened():
+                self.palette.component.model.navigate(-1 if plan.kind == 2 else 1)
+                self.palette.component.scroll_selected = True
+            return
+        if plan.kind != 0:
+            return
+        self.backend.palette_open(plan.epoch, (plan.server, plan.client))
+        self.blur_pointer(True)
+        self.marked = None
+        self.palette.open(ui, self.model, self.backend.online)
+        if self.palette.component.opened():
+            var clip = SearchClipboard()
+            _ = self.palette.component.prepare(ui, input, clip, self.palette.projection.fleet, self.palette.projection.decorations, False)
+        else:
+            self.close_palette(ui)
+
+    def close_palette(mut self, mut ui: Ui) raises:
+        var restore = self.palette.restore_output
+        self.palette.close(ui)
+        ui.focus = TERMINAL_KEY
+        self.observe_output(ui)
+        if restore and restore.value()[0] == self.model.source_server and restore.value()[1] == self.model.source_client and self.output.id == Optional[UInt64](restore.value()[2]) and self.output.id == self.model.command_output.id and self.model.command_output.viewport:
+            self.focus_output(ui)
+        else:
+            self.output_input = False
+        self.marked = None
+        self.palette_closed_frame = True
+
+    def palette_effect(mut self, mut ui: Ui, effect: PaletteEffect) raises:
+        if effect.kind == PALETTE_EXECUTE:
+            if not effect.command:
+                raise Error("palette execution has no invocation")
+            self.backend.palette_command(effect.command.value(), self.focus_epoch, (self.model.source_server, self.model.source_client))
+            self.close_palette(ui)
+            self.palette.notify(ui, effect.message)
+        elif effect.kind == PALETTE_ACTIVATE:
+            var target = effect.place.copy()
+            var landing = self.palette.projection.fleet.landing(target)
+            var success = False
+            if landing:
+                var host, session, window, pane = landing.value()
+                ref source_host = self.palette.projection.fleet.hosts[host]
+                if source_host.id == self.palette.projection.fleet.here and source_host.online:
+                    ref source_session = source_host.sessions[session]
+                    ref source_window = source_session.windows[window]
+                    var session_id = source_session.id
+                    var window_id = source_window.id
+                    var pane_id = source_window.panes[pane].id
+                    self.palette.restore_output = None
+                    self.blur_pointer()
+                    self.model.select_session(session_id)
+                    if target.window or not target.session:
+                        self.model.select_window(window_id)
+                    if target.pane:
+                        self.model.select_pane(pane_id)
+                    self.focus_epoch += 1
+                    self.next_poll = 0
+                    success = True
+            var result = self.palette.component.model.controller.activated(target, success, self.palette.projection.fleet)
+            if success:
+                self.close_palette(ui)
+            else:
+                self.palette.component.model.rebuild(self.palette.projection.fleet, self.palette.projection.decorations)
+                self.palette.component.sync_field()
+            if result.kind == PALETTE_NOTIFY:
+                self.palette.notify(ui, result.message)
+        elif effect.kind == PALETTE_CONNECT:
+            if effect.host == Optional[UInt32](self.palette.projection.fleet.here):
+                self.backend.enqueue(RECONNECT, selection_epoch=self.focus_epoch)
+                self.next_poll = 0
+        elif effect.kind == PALETTE_NOTIFY:
+            self.palette.notify(ui, effect.message)
+        elif effect.kind == PALETTE_LEVEL:
+            self.palette.notify(ui, "This palette level is not available yet")
+
+    def prepare_palette_input[Host: Clipboard](mut self, mut ui: Ui, input: TextInput, mut host: Host) raises:
+        self.palette_closed_frame = False
+        self.palette_prepared = True
+        if not self.palette.component.opened():
+            return
+        self.palette.refresh(self.model, self.backend.online)
+        var result = self.palette.prepare(ui, input, host)
+        if result.closed:
+            self.close_palette(ui)
+        self.palette_effect(ui, result.effect)
+        if result.limited:
+            self.palette.notify(ui, "Palette input exceeds 64 KiB")
+
+    def palette_event[Host: Clipboard](mut self, mut ui: Ui, input: TextInput, event: TextEvent, mut host: Host) raises -> Bool:
+        var result = self.palette.event(ui, input, event, host)
+        if not result.consumed:
+            return False
+        if result.closed:
+            self.close_palette(ui)
+        self.palette_effect(ui, result.effect)
+        if result.limited:
+            self.palette.notify(ui, "Palette input exceeds 64 KiB")
+        return True
 
     def search_target(self) -> Optional[SearchTarget]:
         var pane = self.input_pane()
@@ -567,10 +735,13 @@ struct WorkspaceView(Movable):
         if focused:
             self.marked = None
         if transition.kind == 2 and focused:
-            ui.focus = TERMINAL_KEY
+            if not self.palette.opened():
+                ui.focus = TERMINAL_KEY
             self.focus_epoch += 1
 
     def focus_output(mut self, mut ui: Ui) raises:
+        if self.palette.opened():
+            return
         if not self.output.id or not self.output.pane:
             return
         if not self.output_input:
@@ -686,6 +857,8 @@ struct WorkspaceView(Movable):
         ui.request_wake(ui.time)
 
     def mouse(mut self, mut ui: Ui, event: MouseEvent) raises:
+        if self.palette.opened():
+            return
         if self.terminal_chrome_hit(ui, event.x, event.y):
             return
         if self.output.id and (
@@ -726,6 +899,8 @@ struct WorkspaceView(Movable):
     def scroll(
         mut self, mut ui: Ui, event: ScrollEvent, x: Float32, y: Float32
     ) raises:
+        if self.palette.opened():
+            return
         if self.terminal_chrome_hit(ui, x, y):
             return
         var surfaces = self.pointer_surfaces(ui)
@@ -786,6 +961,8 @@ struct WorkspaceView(Movable):
             self.forward_pointer(ui, routed.value())
 
     def modifiers(mut self, mut ui: Ui) raises:
+        if self.palette.opened():
+            return
         if not ui.pointer_in:
             return
         if self.terminal_chrome_hit(ui, ui.mx, ui.my):
@@ -1035,16 +1212,26 @@ struct WorkspaceView(Movable):
 
     def build(mut self, mut ui: Ui, input: TextInput) raises:
         var search_skip = 0
+        if not self.palette_prepared:
+            var host = SearchClipboard()
+            self.prepare_palette_input(ui, input, host)
+            for event in input.events:
+                if not self.palette_event(ui, input, event, host):
+                    break
+                search_skip += 1
+        self.palette_prepared = False
         if not self.search_prepared:
             var host = SearchClipboard()
             self.prepare_search_input(ui, input, host)
-            for event in input.events:
-                if not self.search_event(ui, input, event, host):
+            for index in range(search_skip, len(input.events)):
+                if not self.search_event(ui, input, input.events[index], host):
                     break
                 search_skip += 1
             self.finish_search(ui)
         self.search_prepared = False
         self.poll(ui.time)
+        if self.palette.component.opened():
+            self.palette.refresh(self.model, self.backend.online)
         if (
             self.local_scroll.server != self.model.source_server
             or self.local_scroll.client != self.model.source_client
@@ -1063,7 +1250,7 @@ struct WorkspaceView(Movable):
         if ui.focus != TERMINAL_KEY or (
             self.active and self.pointer_focus_pane != self.input_pane()
         ):
-            self.blur_pointer(self.search_preserves_output(ui))
+            self.blur_pointer(self.search_preserves_output(ui) or self.palette.opened())
         if self.pointer.selection_lines != 0:
             if ui.time >= self.next_autoscroll:
                 var routed = self.pointer.autoscroll(self.model)
@@ -1211,6 +1398,11 @@ struct WorkspaceView(Movable):
         )
         if self.model.error.byte_length() > 0:
             label(ui, self.theme, self.model.error, flat.danger)
+        elif self.palette.notice.byte_length() > 0 and ui.time < self.palette.notice_until:
+            label(ui, self.theme, self.palette.notice, flat.dim)
+            ui.request_wake(self.palette.notice_until)
+        elif self.model.message:
+            label(ui, self.theme, self.model.message.value().text, flat.danger if self.model.message.value().kind == 2 else flat.dim)
         else:
             var status = String(
                 len(self.model.sessions),
@@ -1226,7 +1418,7 @@ struct WorkspaceView(Movable):
         if ui.focus != TERMINAL_KEY or (
             self.active and self.pointer_focus_pane != self.input_pane()
         ):
-            self.blur_pointer(self.search_preserves_output(ui))
+            self.blur_pointer(self.search_preserves_output(ui) or self.palette.opened())
         self.pointer_focus_pane = (
             self.input_pane() if ui.focus == TERMINAL_KEY
             and self.active else Optional[UInt64](None)
@@ -1236,3 +1428,7 @@ struct WorkspaceView(Movable):
         )
         if ui.focus != TERMINAL_KEY and not self.search.target_for_chrome(ui.focus):
             self.search.reset_keys()
+        if self.palette.component.opened():
+            ui.focus = self.palette.component.field_key
+            var result = self.palette.component.build(ui, self.theme, self.palette.projection.fleet, self.palette.projection.decorations, ui.width, ui.height)
+            self.palette_effect(ui, result.effect)

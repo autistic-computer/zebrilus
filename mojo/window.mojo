@@ -7,7 +7,7 @@ from mjui.app import App, Runner, run_app, default_event
 from mjui.windowing import AppOptions, WindowOptions
 from mjui.host import Window
 from mjui.ui import Ui
-from mjui.input import KeyEvent, AppEvent, APP_ACTIVE, APP_INACTIVE
+from mjui.input import KeyEvent, AppEvent, APP_ACTIVE, APP_INACTIVE, TEXT_COMMAND, CMD_CANCEL
 from mjui.resources import resource_path
 from zzmojo.view import WorkspaceView, TERMINAL_KEY
 from zzmojo.readiness import Readiness, stream_ready
@@ -63,9 +63,10 @@ struct Workspace(App, Movable):
             self.clipboard.tick(self.view, ui)
             var search = self.view.search.target_for_field(ui.focus)
             var search_input = Bool(search) and ui.text_input
-            var text_key = ui.focus if search_input else self.view.input_key()
+            var palette_input = self.view.palette.owns_input(ui) and ui.text_input
+            var text_key = ui.focus if search_input or palette_input else self.view.input_key()
             win.set_text_input(
-                search_input or (ui.focus == TERMINAL_KEY and Bool(self.view.input_pane())),
+                search_input or palette_input or (ui.focus == TERMINAL_KEY and Bool(self.view.input_pane())),
                 text_key,
             )
             comptime if CompilationTarget.is_linux():
@@ -86,6 +87,7 @@ struct Workspace(App, Movable):
             self.keyboard.reset()
             try:
                 self.view.search.reset_keys()
+                self.view.palette.reset_keys()
                 self.view.set_active(False)
             except error:
                 self.view.model.error = String(error)
@@ -114,6 +116,21 @@ struct Workspace(App, Movable):
     def on_key(mut self, mut ui: Ui, mut win: Window, key: KeyEvent) -> Bool:
         try:
             var before_focus = ui.focus
+            var cancel = key.text_event >= 0 and Int(key.text_event) < len(win.text.events) and win.text.events[Int(key.text_event)].kind == TEXT_COMMAND and win.text.events[Int(key.text_event)].cmd == CMD_CANCEL
+            var palette = self.view.plan_palette(ui, self.keyboard, key, Span(win.text.bytes), cancel)
+            if palette:
+                if palette.value().kind != 1:
+                    self.timeline.palette(palette.value(), key, before_focus, ui.focus)
+                if palette.value().kind == 0:
+                    win.text.unmark()
+                return True
+            if self.view.palette.opened():
+                if key.release:
+                    var released = self.keyboard.route(self.view.model, False, key, Span(win.text.bytes), self.view.focus_epoch, self.view.input_pane())
+                    if released:
+                        self.timeline.key(self.view, released.value(), key)
+                        return True
+                return ui.key(key)
             var search = self.view.plan_search(ui, self.keyboard, key, Span(win.text.bytes))
             if search:
                 if search.value().kind != 2:
