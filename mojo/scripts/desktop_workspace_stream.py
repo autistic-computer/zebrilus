@@ -26,7 +26,7 @@ def main():
             subprocess.run([str(probe), socket, str(TARGET / 'zz-bend'), str(focus)], env=environment, cwd=ROOT, timeout=60, check=True)
         finally:
             subprocess.run([str(cli), '-S', socket, 'kill-server'], env=environment, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=10)
-    (TARGET / 'desktop-workspace-stream.json').write_text(json.dumps({'passed': True, 'source': 'actual private daemon and shared verified worker', 'scope': ['real prefix press and subscription', 'actual binding intercepted by source policy', 'atomic cancel/sidebar command order', 'server cancellation acknowledgement', 'actual FocusSidebar event', 'suppressed picker release', 'healthy native execution with no fallback'], 'live_app_hook': False}, indent=2) + '\n')
+    (TARGET / 'desktop-workspace-stream.json').write_text(json.dumps({'passed': True, 'source': 'actual private daemon and shared verified worker', 'scope': ['real prefix press and subscription', 'actual binding intercepted by source policy', 'atomic cancel/sidebar command order', 'server cancellation acknowledgement', 'actual FocusSidebar event', 'suppressed picker release', 'healthy native execution with no fallback', 'authoritative target independent of optimistic selection'], 'live_app_hook': False}, indent=2) + '\n')
 
 
 if __name__ == '__main__':

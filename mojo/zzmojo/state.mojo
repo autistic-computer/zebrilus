@@ -199,6 +199,7 @@ struct AppModel(Copyable, Movable):
     var error: String
     var generation: UInt64
     var snapshot: MuxSnapshot
+    var attached_session: Optional[UInt64]
     var terminals: Dict[UInt64, TerminalViewport]
     var histories: Dict[UInt64, ArcPointer[HistorySnapshot]]
     var history_invalidations: Dict[UInt64, UInt64]
@@ -231,6 +232,7 @@ struct AppModel(Copyable, Movable):
         self.error = String()
         self.generation = 0
         self.snapshot = MuxSnapshot()
+        self.attached_session = None
         self.terminals = Dict[UInt64, TerminalViewport]()
         self.histories = Dict[UInt64, ArcPointer[HistorySnapshot]]()
         self.history_invalidations = Dict[UInt64, UInt64]()
@@ -412,6 +414,7 @@ struct AppModel(Copyable, Movable):
         self.source_server = connection.server_id
         self.source_client = connection.client_id
         self.layout_generation = connection.model.view.layout_generation
+        self.attached_session = connection.model.view.session
         self.routing = connection.model.routing.copy()
         self.key_tables = connection.model.key_tables.copy()
         self.status = connection.model.events.status.copy()

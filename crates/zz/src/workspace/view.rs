@@ -25,7 +25,7 @@ use penna::{
 use zz_client::pane_swap_command;
 use zz_client::{
     ChromeAction, Disposition, DropZone, Effect, InputEvent, InputRouter, MenuPointerKind,
-    NormalizedPaneRect, PaneRect, PrefixView, SurfaceKind, coerced_drop_zone,
+    NormalizedPaneRect, PaneRect, PrefixView, coerced_drop_zone,
     desktop_input::{
         DesktopChromeDispatch, DesktopDrag, DesktopGuard, DesktopGuardContext, DesktopKeyContext,
         desktop_chrome_dispatch, desktop_guard, desktop_intercepts, desktop_key_projection,
@@ -1283,25 +1283,11 @@ impl AppView {
         );
         let (prefix, active) = {
             let mux = self.mux.read(cx);
-            let active = mux.active_pane().and_then(|id| {
-                let snapshot = mux.snapshot();
-                snapshot
-                    .sessions
-                    .iter()
-                    .filter(|session| Some(session.id) == mux.attached_session())
-                    .flat_map(|session| &session.windows)
-                    .find_map(|window| window.panes.get(&id))
-                    .map(|pane| {
-                        (
-                            id,
-                            match pane.kind {
-                                PaneKindSnapshot::Terminal => SurfaceKind::Terminal,
-                                PaneKindSnapshot::Browser(_) => SurfaceKind::Browser,
-                                _ => SurfaceKind::Other,
-                            },
-                        )
-                    })
-            });
+            let active = zz_client::desktop_input::desktop_snapshot_target(
+                &mux.snapshot(),
+                mux.attached_session(),
+            )
+            .active;
             (
                 PrefixView {
                     armed: mux.prefix_armed(),

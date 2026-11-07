@@ -2835,18 +2835,7 @@ impl MuxClient {
 
     #[must_use]
     pub(crate) fn active_pane(&self) -> Option<PaneId> {
-        let attached = self.attached_session()?;
-        let snapshot = self.snapshot();
-        let session = snapshot
-            .sessions
-            .iter()
-            .find(|session| session.id == attached)?;
-        let focused_window = snapshot.focused_window_for(session);
-        session
-            .windows
-            .iter()
-            .find(|window| window.id == focused_window)
-            .map(|window| window.active_pane)
+        zz_client::desktop_input::desktop_active_pane(&self.snapshot(), self.attached_session())
     }
 
     #[must_use]

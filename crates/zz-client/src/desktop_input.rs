@@ -1,4 +1,4 @@
-use zz_protocol::PaneId;
+use zz_protocol::{MuxSnapshot, PaneId, PaneKindSnapshot, SessionId};
 use zz_terminal::Modifiers;
 
 use crate::{ChromeAction, ChromeKeymap, InputEvent, InputRouter, PrefixView, SurfaceKind};
@@ -173,5 +173,75 @@ pub fn desktop_prefix_reset(previous: Option<u64>, next_request: u64) -> Option<
         previous
     } else {
         desktop_prefix_acknowledged(previous, next_request)
+    }
+}
+
+#[must_use]
+pub fn desktop_active_pane(snapshot: &MuxSnapshot, attached: Option<SessionId>) -> Option<PaneId> {
+    let attached = attached?;
+    let session = snapshot
+        .sessions
+        .iter()
+        .find(|session| session.id == attached)?;
+    let focused = snapshot.focused_window_for(session);
+    session
+        .windows
+        .iter()
+        .find(|window| window.id == focused)
+        .map(|window| window.active_pane)
+}
+
+#[must_use]
+pub fn desktop_modal_capture(
+    snapshot: &MuxSnapshot,
+    attached: Option<SessionId>,
+) -> Option<PaneId> {
+    let attached = attached?;
+    let session = snapshot
+        .sessions
+        .iter()
+        .find(|session| session.id == attached)?;
+    let focused = snapshot.focused_window_for(session);
+    session
+        .windows
+        .iter()
+        .find(|window| window.id == focused)?
+        .modal
+        .filter(|modal| modal.capture_keys)
+        .map(|modal| modal.pane)
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct DesktopSnapshotTarget {
+    pub active: Option<(PaneId, SurfaceKind)>,
+    pub capture: Option<PaneId>,
+}
+
+#[must_use]
+pub fn desktop_snapshot_target(
+    snapshot: &MuxSnapshot,
+    attached: Option<SessionId>,
+) -> DesktopSnapshotTarget {
+    let active = desktop_active_pane(snapshot, attached).and_then(|id| {
+        snapshot
+            .sessions
+            .iter()
+            .filter(|session| Some(session.id) == attached)
+            .flat_map(|session| &session.windows)
+            .find_map(|window| window.panes.get(&id))
+            .map(|pane| {
+                (
+                    id,
+                    match pane.kind {
+                        PaneKindSnapshot::Terminal => SurfaceKind::Terminal,
+                        PaneKindSnapshot::Browser(_) => SurfaceKind::Browser,
+                        _ => SurfaceKind::Other,
+                    },
+                )
+            })
+    });
+    DesktopSnapshotTarget {
+        active,
+        capture: desktop_modal_capture(snapshot, attached),
     }
 }

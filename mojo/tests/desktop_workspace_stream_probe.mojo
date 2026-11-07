@@ -13,7 +13,9 @@ from zzmojo.palette_protocol import (
     palette_command_request,
     read_palette_command,
 )
-from zzmojo.protocol import Decoder
+from zzmojo.protocol import Decoder, parse_id
+from zzmojo.state import AppModel
+from zzmojo.desktop_snapshot_target import desktop_snapshot_target
 
 
 def raw(codepoint: UInt32, modifiers: UInt8 = 0, action: UInt8 = 0) -> KeyInput:
@@ -109,6 +111,19 @@ def main() raises:
     )
     assert_equal(response.exit_code, UInt8(0))
     wait(connection, False)
+    var model = AppModel()
+    model.refresh(connection)
+    var actual_attachment = connection.model.view.session
+    assert_equal(model.attached_session, actual_attachment)
+    var other = connection.command("new-session", [String("-d"), String("-P"), String("-F"), String("#{session_id}"), String("-s"), String("optimistic"), String("cat")])
+    assert_equal(other.exit_code, UInt8(0))
+    var optimistic = parse_id(String(from_utf8=Span(other.output)).strip(), 36)
+    model.refresh(connection)
+    model.select_session(optimistic)
+    model.refresh(connection)
+    assert_equal(model.session, Optional[UInt64](optimistic))
+    assert_equal(model.attached_session, actual_attachment)
+    var projected = desktop_snapshot_target(model.snapshot, model.attached_session)
     var pane: Optional[UInt64] = None
     for session in connection.model.snapshot.sessions:
         if connection.model.view.session == Optional[UInt64](session.id):
@@ -117,6 +132,9 @@ def main() raises:
                 if window.id == focused:
                     pane = window.active_pane
     assert_true(Bool(pane))
+    assert_true(Bool(projected.active))
+    assert_equal(projected.active.value().pane, pane.value())
+    assert_equal(projected.active.value().surface, UInt8(0))
     var workspace = DesktopWorkspace(1, String(arguments[2]))
     workspace.bind_source(connection.server_id, connection.client_id)
     var target = DesktopKeyTarget(

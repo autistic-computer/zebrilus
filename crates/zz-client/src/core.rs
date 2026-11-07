@@ -531,20 +531,7 @@ impl ClientCore {
 
     #[must_use]
     pub fn modal_capture(&self) -> Option<PaneId> {
-        let session = self.attached_session?;
-        let session = self
-            .snapshot
-            .sessions
-            .iter()
-            .find(|candidate| candidate.id == session)?;
-        let window = self.snapshot.focused_window_for(session);
-        session
-            .windows
-            .iter()
-            .find(|candidate| candidate.id == window)?
-            .modal
-            .filter(|modal| modal.capture_keys)
-            .map(|modal| modal.pane)
+        crate::desktop_input::desktop_modal_capture(self.snapshot(), self.attached_session)
     }
 
     #[must_use]
