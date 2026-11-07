@@ -146,6 +146,7 @@ pub fn titlebar(config: &Bar, cx: &App) -> ala::Stateful<ala::Div> {
         WorkspaceStatusWindowState {
             connected: config.connected,
             active,
+            alone: config.windows == 1,
         }
     };
     let mut windows = (0..config.windows.min(5))
@@ -206,6 +207,10 @@ fn bars(_: &mut Window, cx: &mut App) -> AnyElement {
         .state("no gaps: a rule under the bar", bar("bar-flush", &full, cx))
         .state("gaps", bar("bar-gaps", &Bar { gaps: true, ..full }, cx))
         .state(
+            "one window: no strip, just the pill",
+            bar("bar-single", &Bar { windows: 1, ..full }, cx),
+        )
+        .state(
             "eight windows: five around the active one, the rest in the overflow menu",
             bar("bar-overflow", &Bar { windows: 8, ..full }, cx),
         )
@@ -226,6 +231,7 @@ fn bars(_: &mut Window, cx: &mut App) -> AnyElement {
 fn windows(_: &mut Window, cx: &mut App) -> AnyElement {
     let connected = WorkspaceStatusWindowState {
         connected: true,
+        alone: true,
         ..Default::default()
     };
     states()

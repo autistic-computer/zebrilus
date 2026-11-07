@@ -46,7 +46,8 @@ pub fn status_window(
     let group: SharedString = format!("status-window-{id:?}").into();
     let close_button = actions.close.clone();
     let tooltip = name.clone();
-    let tab = penna::Surface::from(TabLook::Window).on(super::workspace_status_tab_ground(cx));
+    let tab = penna::Surface::from(TabLook::Window)
+        .on(super::workspace_status_tab_ground(state.alone, cx));
     let ground = cx.theme().ground_at(tab, state.paint_state());
     let hovered = cx.theme().ground_at(tab, PaintState::Hover);
     let hovers = state.connected && !state.active;

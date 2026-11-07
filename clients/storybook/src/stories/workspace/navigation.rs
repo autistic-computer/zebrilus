@@ -601,6 +601,7 @@ fn pill(
 fn window_pills(_: &mut Window, cx: &mut App) -> AnyElement {
     let connected = WorkspaceStatusWindowState {
         connected: true,
+        alone: true,
         ..Default::default()
     };
     states()

@@ -45,6 +45,7 @@ const WORKSPACE_STATUS_WINDOW_MIN_WIDTH: Pixels = px(36.0);
 pub struct WorkspaceStatusWindowState {
     pub connected: bool,
     pub active: bool,
+    pub alone: bool,
 }
 
 impl WorkspaceStatusWindowState {
@@ -198,8 +199,12 @@ pub fn workspace_status_bar_ground(cx: &App) -> Ground {
 }
 
 #[must_use]
-pub fn workspace_status_tab_ground(cx: &App) -> Ground {
-    TabStrip::ground(workspace_status_bar_ground(cx), cx)
+pub fn workspace_status_tab_ground(alone: bool, cx: &App) -> Ground {
+    TabStrip::ground(
+        workspace_status_bar_ground(cx),
+        if alone { 1 } else { 2 },
+        cx,
+    )
 }
 
 #[must_use]
@@ -221,7 +226,7 @@ pub fn workspace_status_window(
         .text_fade(crate::LABEL_FADE)
         .child(name);
     Tab::new(id, TabLook::Window)
-        .on(workspace_status_tab_ground(cx))
+        .on(workspace_status_tab_ground(state.alone, cx))
         .state(state.paint_state())
         .interactive(state.connected)
         .when(state.connected, ala::Styled::cursor_pointer)

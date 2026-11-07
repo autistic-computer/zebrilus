@@ -47,9 +47,20 @@ pub(crate) fn render_gui_status_bar(
         .unwrap_or(0);
     let visible_range =
         visible_window_range(model.windows.len(), active_index, MAX_VISIBLE_WINDOWS);
+    let alone = model.windows.len() == 1;
     let visible_windows = model.windows[visible_range]
         .iter()
-        .map(|window| render_status_window(window, connected, attached_host, &tree_model, mux, cx))
+        .map(|window| {
+            render_status_window(
+                window,
+                connected,
+                alone,
+                attached_host,
+                &tree_model,
+                mux,
+                cx,
+            )
+        })
         .collect::<Vec<_>>();
     let overflow = (model.windows.len() > MAX_VISIBLE_WINDOWS)
         .then(|| render_window_overflow(&model.windows, connected, mux, cx));
@@ -69,6 +80,7 @@ pub(crate) fn render_gui_status_bar(
 fn render_status_window(
     window: &StatusBarWindow,
     connected: bool,
+    alone: bool,
     attached_host: HostId,
     model: &MuxTreeModel,
     mux: &Entity<MuxClient>,
@@ -97,6 +109,7 @@ fn render_status_window(
         WorkspaceStatusWindowState {
             connected,
             active: window.active,
+            alone,
         },
         window
             .panes

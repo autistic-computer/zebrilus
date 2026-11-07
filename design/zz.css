@@ -58,6 +58,10 @@
   --penna-around-rows: 28px;
 }
 
+[data-penna="tab.strip"]:has(> :only-child) {
+  background: none;
+}
+
 [data-penna="tab.window"]:not([aria-selected="true"], [data-state~="selected"], [data-state~="current"]) {
   color: var(--penna-muted);
 }
