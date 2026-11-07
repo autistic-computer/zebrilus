@@ -271,7 +271,7 @@ def _row(mut ui: Ui, th: PennaTheme, medium: Int32, key: UInt64, row: ChooserRow
 
 
 @inline(.never)
-def render_chooser(mut ui: Ui, th: PennaTheme, key: UInt64, model: ChooserPresentation, scroll: Float32 = 0, medium_font: Int32 = -1, marked: String = "") raises -> ChooserResult:
+def render_chooser(mut ui: Ui, th: PennaTheme, key: UInt64, model: ChooserPresentation, scroll: Float32 = 0, medium_font: Int32 = -1, marked: String = "", overlay: Bool = True) raises -> ChooserResult:
     if not isfinite(scroll):
         raise Error("chooser scroll offset is not finite")
     var medium = th.flat.font if medium_font < 0 else medium_font
@@ -299,7 +299,11 @@ def render_chooser(mut ui: Ui, th: PennaTheme, key: UInt64, model: ChooserPresen
     var backdrop_key = sub(key, 1)
     var backdrop = ui.interact(backdrop_key)
     result.close = backdrop.pressed
-    ui.overlay_begin(0, 0, Style.col().width(ui.width).height(ui.height).id(backdrop_key))
+    var backdrop_style = Style.col().width(ui.width).height(ui.height).id(backdrop_key)
+    if overlay:
+        ui.overlay_begin(0, 0, backdrop_style)
+    else:
+        ui.open(backdrop_style.at(0, 0))
     var scrim = chooser_color(th.theme, 0)
     ui.open(Style.col().width(ui.width).height(ui.height).fill(_packed(scrim)).native_paint().at(0, 0))
     ui.native_surface(NativeSurface(scrim, NativeColor(), NativeColor(), 0, 0, 2, 0, False))
@@ -335,5 +339,8 @@ def render_chooser(mut ui: Ui, th: PennaTheme, key: UInt64, model: ChooserPresen
     ui.close()
     _footer(ui, th, search, width)
     ui.close()
-    ui.overlay_end()
+    if overlay:
+        ui.overlay_end()
+    else:
+        ui.close()
     return result^

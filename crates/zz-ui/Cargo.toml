@@ -41,6 +41,7 @@ rust-embed = { version = "8.12", features = ["include-exclude", "debug-embed"] }
 url.workspace = true
 
 [dev-dependencies]
+zz-config.workspace = true
 ala = { workspace = true, features = ["test-support"] }
 ala-platform = { workspace = true, features = ["test-support"] }
 

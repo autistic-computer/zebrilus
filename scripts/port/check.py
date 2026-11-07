@@ -54,11 +54,11 @@ def main():
         report["toolchain"] = tools
         stage("proof", [tools["bend"], "bend2/PROOF.bend", "--verdict"])
         stage("input-router", ["python3", "scripts/port/input_router.py", "--skip-proof"])
-        stage("input-router-boundary", ["python3", "scripts/port/input_router_boundary.py", "--skip-proof", "--skip-reference"])
         for name in ("core", "layout_edit", "replay", "terminal", "terminal_cells", "terminal_cells_origins", "tree_reducer"):
             stage("bend-" + name, [tools["bend"], f"bend2/{name}.bend", "-o", str(TARGET / (name + ".mjs"))])
         stage("bend-native", [tools["bend"], "bend2/bridge.bend", "-o", str(TARGET / "zz-bend.next")])
         (TARGET / "zz-bend.next").replace(TARGET / "zz-bend")
+        stage("input-router-boundary", ["python3", "scripts/port/input_router_boundary.py", "--worker", str(TARGET / "zz-bend"), "--skip-proof", "--skip-reference"])
         stage("bend-tree-native", [tools["bend"], "bend2/tree_bridge.bend", "-o", str(TARGET / "zz-bend-tree.next")])
         (TARGET / "zz-bend-tree.next").replace(TARGET / "zz-bend-tree")
         stage("rust-oracle", ["cargo", "run", "--locked", "-p", "zz-client", "--example", "port_oracle"], output=TARGET / "oracle.json")
@@ -81,7 +81,15 @@ def main():
         stage("mojo-chrome-keymap", ["pixi", "run", "--manifest-path", "mojo/pixi.toml", "differential-chrome-keymap"])
         stage("desktop-input", ["python3", "mojo/scripts/desktop_input_vectors.py"])
         stage("desktop-delivery", ["python3", "mojo/scripts/desktop_delivery.py"])
+        stage("desktop-workspace", ["python3", "mojo/scripts/desktop_workspace.py"])
+        stage("desktop-key-config", ["python3", "mojo/scripts/desktop_key_config_vectors.py"])
+        stage("desktop-chrome-dispatch", ["python3", "mojo/scripts/desktop_chrome_dispatch.py"])
+        stage("desktop-prefix-cancel", ["python3", "mojo/scripts/desktop_prefix_cancel.py"])
         stage("which-key", ["python3", "mojo/scripts/which_key_vectors.py"])
+        stage("which-key-caps", ["python3", "mojo/scripts/which_key_caps_vectors.py"])
+        stage("key-tables", ["python3", "mojo/scripts/key_table_vectors.py"])
+        stage("key-tables-stream", ["python3", "mojo/scripts/key_table_stream.py"])
+        stage("chooser-handshake", ["python3", "mojo/scripts/chooser_handshake_vectors.py"])
         for task in ("differential-chooser-runtime", "differential-chooser-scroll", "differential-chooser-plane", "differential-chooser-retention"):
             stage("mojo-" + task, ["pixi", "run", "--manifest-path", "mojo/pixi.toml", task])
         for task in ("build", "test", "test-tree-codec", "differential-tree", "differential-protocol", "differential-client-context", "differential-terminal-appearance", "differential-terminal-render", "differential-terminal-overlays", "test-terminal-render-state", "terminal-pixels", "test-appearance-runtime", "appearance-workspace-smoke", "test-terminal-settings", "differential-terminal-settings", "differential-client-files", "test-client-files", "client-files-smoke", "differential-exec", "test-exec-context", "exec-smoke", "differential-cli-globals", "differential-cli-command-help", "differential-cli-preflight", "differential-palette-fuzzy", "differential-palette-commands", "differential-palette-navigation", "differential-palette-dialogs", "differential-palette-dialog-state", "differential-chooser-presentation", "differential-path-list", "differential-path-text", "test-path-service", "test-path-mailbox", "path-list-daemon-smoke", "differential-path-rank", "differential-path-rows", "test-path-rank-budget", "differential-path-rank-lifecycle", "test-path-rank-job", "differential-palette-files", "test-palette-files-worker", "differential-palette-ui-keys", "palette-files-daemon-smoke", "palette-files-workspace-smoke", "differential-palette-places", "differential-palette-verbs", "test-palette-controller", "differential-palette-model", "differential-palette-shortcuts", "differential-palette-projection", "palette-live-smoke", "differential-palette-component-model", "test-palette-component", "differential-palette-actions", "differential-palette-keys", "palette-backend-smoke", "palette-workspace-smoke", "differential-palette-assets", "test-cli-parse", "cli-globals-smoke", "cli-backend-smoke", "cli-bootstrap-smoke", "differential-cli-default", "test-cli-default-home", "differential-cli-attach", "differential-app-resume", "app-resume-smoke", "differential-control", "differential-terminal", "differential-colors", "differential-layout", "differential-input", "differential-client-events", "differential-client-attachment", "differential-terminal-projection", "test-terminal-history", "test-local-scroll", "test-history-painter", "differential-history", "history-smoke", "history-workspace-smoke", "test-keyboard", "keyboard-smoke", "test-clipboard", "differential-clipboard", "clipboard-host-smoke", "clipboard-workspace-smoke", "test-terminal-search", "test-search-controller", "test-search-chrome", "differential-search", "search-smoke", "search-workspace-smoke", "differential-primary-paste", "test-pointer", "pointer-smoke", "test-command-output", "differential-command-output", "command-output-smoke", "test-painter", "test-readiness", "smoke", "stream-smoke", "state-smoke"):

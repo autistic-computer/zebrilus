@@ -252,3 +252,5 @@ not be used in advertising or otherwise to promote the sale, use or other
 dealings in these Data Files or Software without prior written
 authorization of the copyright holder.
 ```
+
+The Unicode character properties and case-context masks in `mojo/zzmojo/which_key_caps_data.mojo` are generated through the native Rust Unicode API. The Unicode License V3 notice above also applies to these data.
