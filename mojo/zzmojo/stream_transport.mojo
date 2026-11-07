@@ -43,6 +43,9 @@ from .terminal_history_cache import TerminalHistoryCache
 from .history_pacer import HISTORY_BACKFILL_QUIET_NS, bounded_history_range
 from .terminal_history_protocol import history_request, decode_history_budget
 from .input_protocol import InputRoutingState, decode_routing_event
+from .prompt_protocol import decode_prompt_event
+from .chooser_protocol import decode_choose_event
+from .palette_dialog_state import PaletteDialogs
 from .native_cells import MAX_BEND_CELLS
 from .client_events import (
     ClientEventState,
@@ -123,6 +126,7 @@ struct StreamModel(Copyable, Movable):
     var appearance_revision: UInt64
     var clipboard: ClipboardState
     var search_commands: SearchUiCommands
+    var dialogs: PaletteDialogs
 
     def __init__(out self):
         self.tree = MuxSnapshot()
@@ -136,6 +140,7 @@ struct StreamModel(Copyable, Movable):
         self.events = ClientEventState()
         self.clipboard = ClipboardState()
         self.search_commands = SearchUiCommands()
+        self.dialogs = PaletteDialogs()
         self.notice = None
         self.notice_revision = 0
         self.message = None
@@ -572,6 +577,20 @@ struct InteractiveConnection(Movable):
                 self.full_pending.clear()
             self.model.view = view^
             self.tree_dirty = True
+        elif event.event_kind == Optional[UInt64](9):
+            var raw = List[UInt8]()
+            swap(raw, event.raw)
+            var prompt = decode_prompt_event(raw^)
+            if not prompt:
+                raise Error("command prompt event has no decoded payload")
+            self.model.dialogs.apply_prompt(prompt.take())
+        elif event.event_kind == Optional[UInt64](11) or event.event_kind == Optional[UInt64](12):
+            var raw = List[UInt8]()
+            swap(raw, event.raw)
+            var chooser = decode_choose_event(raw^)
+            if not chooser:
+                raise Error("choose-tree event has no decoded payload")
+            self.model.dialogs.apply_chooser(chooser.take())
         elif event.event_kind == Optional[UInt64](TERMINAL_UI_COMMAND):
             var raw = List[UInt8]()
             swap(raw, event.raw)

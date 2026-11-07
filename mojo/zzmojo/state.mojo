@@ -8,6 +8,7 @@ from .stream_protocol import input_text
 from .input_protocol import InputRoutingState
 from .client_events import StatusLine, CommandOutputState, ClientMessage
 from .appearance_protocol import TerminalAppearance
+from .palette_dialog_state import PaletteDialogs
 
 
 def format_rows(
@@ -211,6 +212,7 @@ struct AppModel(Copyable, Movable):
     var appearance: Optional[TerminalAppearance]
     var appearance_provenance: Dict[UInt8, UInt8]
     var appearance_revision: UInt64
+    var dialogs: PaletteDialogs
 
     def __init__(out self):
         self.sessions = List[Session]()
@@ -240,6 +242,7 @@ struct AppModel(Copyable, Movable):
         for key in range(30):
             self.appearance_provenance[UInt8(key)] = 0
         self.appearance_revision = 0
+        self.dialogs = PaletteDialogs()
 
     def reconcile(mut self):
         var session, window, pane = _reconciled(
@@ -391,6 +394,7 @@ struct AppModel(Copyable, Movable):
             connection.model.appearance_provenance.copy()
         )
         self.appearance_revision = connection.model.appearance_revision
+        self.dialogs = connection.model.dialogs.copy()
         self.error = String()
 
     def capture(mut self) raises:
