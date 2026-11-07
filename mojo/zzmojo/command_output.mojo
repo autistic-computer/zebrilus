@@ -1,9 +1,9 @@
 from mjui.input import TextInput, TextEvent, TEXT_INSERT, INSERT_COMPOSED
 from mjui.ui import Ui
-from mjui.term.grid import CellMetrics
+from mjui.term.grid import CellMetrics, TermOpts
 from .client_events import CommandOutputState
 from .geometry import GridSize
-from .terminal_painter import render_viewport
+from .terminal_painter import render_viewport, render_viewport_opts
 from .input_protocol import (
     resize_command_output,
     input_focus,
@@ -132,6 +132,7 @@ struct CommandOutputPresentation(Movable):
         columns: Int,
         rows: Int,
         marked: Optional[String] = None,
+        options: Optional[TermOpts] = None,
     ) raises -> CellMetrics:
         if (
             not self.id
@@ -140,6 +141,8 @@ struct CommandOutputPresentation(Movable):
             or not output.viewport
         ):
             raise Error("command-output presentation has no current viewport")
+        if options:
+            return render_viewport_opts(ui, key, output.viewport.value(), options.value(), columns, rows, True, marked)
         return render_viewport(
             ui,
             key,

@@ -31,6 +31,7 @@ def frame(mut ui: Ui, mut view: WorkspaceView, mut keyboard: KeyboardController,
     clipboard.deliver(view, ui, host)
     clipboard.tick(view, ui)
     ui.end_frame()
+    ui.atlas.gpu_done(ui.atlas.frame)
     if not defer:
         view.flush()
 
@@ -94,8 +95,9 @@ def main() raises:
     view.wait()
     for _ in range(200):
         settle(ui, view, keyboard, clipboard, timeline, host)
-        if UInt64(0) in view.model.terminals and contains(view.model.terminals[0], "UI-SEARCH-READY"):
+        if view.appearance.fonts_ready and UInt64(0) in view.model.terminals and contains(view.model.terminals[0], "UI-SEARCH-READY"):
             break
+    assert_true(view.appearance.fonts_ready)
     assert_true(UInt64(0) in view.model.terminals)
     assert_true(contains(view.model.terminals[0], "UI-SEARCH-READY"))
     view.wait()

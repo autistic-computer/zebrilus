@@ -35,11 +35,16 @@ def pause():
     _ = external_call["usleep", Int32](UInt32(10000))
 
 
+def frame(mut driver: Driver[OutputScene]) raises:
+    driver.frame()
+    driver.ui.atlas.gpu_done(driver.ui.atlas.frame)
+
+
 def settle(mut driver: Driver[OutputScene], time: Float64) raises:
     driver.scene.view.flush()
     driver.scene.view.poll(time)
     driver.scene.view.wait()
-    driver.frame()
+    frame(driver)
     driver.scene.view.flush()
 
 
@@ -136,7 +141,7 @@ def click_pane(mut driver: Driver[OutputScene], pane: UInt64) raises:
                 driver.ui, MouseEvent(MOUSE_UP, x, y, 1, driver.ui.time, 0)
             )
             driver.scene.view.flush()
-            driver.frame()
+            frame(driver)
             return
     raise Error("private output fixture pane has no rendered surface")
 
@@ -152,8 +157,12 @@ def main() raises:
     scene.view.wait()
     var driver = Driver(ui^, scene^, 1120, 720)
     driver.ui.focus = TERMINAL_KEY
-    driver.frame()
-    driver.frame()
+    for _ in range(300):
+        settle(driver, 0)
+        if driver.scene.view.appearance.fonts_ready:
+            break
+        pause()
+    assert_true(driver.scene.view.appearance.fonts_ready)
     driver.scene.view.flush()
     assert_equal(len(driver.scene.view.model.panes), 2)
     var live_panes = len(driver.scene.view.model.panes)
@@ -230,7 +239,7 @@ def main() raises:
     click_pane(driver, other)
     assert_true(not driver.scene.view.output_input)
     driver.text("q")
-    driver.frame()
+    frame(driver)
     settle(driver, 800)
     assert_equal(driver.scene.view.output.id.value(), first_id)
     assert_equal(driver.scene.view.model.pane.value(), other)
@@ -238,11 +247,11 @@ def main() raises:
     assert_true(driver.scene.view.output_input)
     assert_equal(driver.scene.view.model.pane.value(), other)
     driver.text("qq")
-    driver.frame()
+    frame(driver)
     settle(driver, 900)
     assert_equal(driver.scene.view.output.id.value(), first_id)
     driver.input.insert("qq", composed=True)
-    driver.frame()
+    frame(driver)
     output_closed(driver, 1000)
     assert_equal(driver.scene.view.input_pane().value(), other)
     assert_equal(driver.scene.view.model.pane.value(), other)

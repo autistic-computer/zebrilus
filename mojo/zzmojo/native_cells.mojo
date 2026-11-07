@@ -53,7 +53,7 @@ struct CellBuffer(Movable):
             _ = path
 
     def rewind(self) raises:
-        if external_call["lseek", Int](Int(self.fd), Int(0), Int(0)) != 0:
+        if external_call["lseek", Int64](self.fd, Int64(0), Int32(0)) != 0:
             raise Error("cannot rewind terminal storage")
 
     def store(self, cells: List[TerminalCell]) raises:
@@ -80,8 +80,8 @@ struct CellBuffer(Movable):
         if count < 0 or count > MAX_BEND_CELLS:
             raise Error("terminal storage exceeds its cell limit")
         if (
-            external_call["lseek", Int](Int(self.fd), Int(0), Int(2))
-            != count * 8
+            external_call["lseek", Int64](self.fd, Int64(0), Int32(2))
+            != Int64(count * 8)
         ):
             raise Error("Bend returned an invalid terminal cell count")
         self.rewind()

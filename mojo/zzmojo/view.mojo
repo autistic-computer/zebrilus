@@ -33,8 +33,8 @@ from .backend import (
     RECONNECT,
 )
 from .state import AppModel
-from .terminal_painter import render_viewport
-from .terminal_history_painter import render_retained_viewport
+from .terminal_painter import render_viewport_opts
+from .terminal_history_painter import render_retained_viewport_opts
 from .local_scroll_controller import (
     TerminalScrollController,
     PaneScrollEffect,
@@ -44,7 +44,8 @@ from .input_protocol import input_view
 from .terminal_view import accumulate_scroll
 from .workspace_layout import window_rects, PaneRect
 from .geometry import GridSize, grid_dimension
-from mjui.term.grid import cell_metrics
+from mjui.term.grid import cell_metrics_options
+from .appearance_runtime import AppearanceRuntime
 from mjui.term.rows import TermView
 from .input_protocol import KeyInput, input_key, mjui_key_input
 from .terminal_projection import grid_placement
@@ -69,6 +70,8 @@ struct WorkspaceView(Movable):
     var focus_epoch: UInt64
     var model: AppModel
     var theme: PennaTheme
+    var appearance: AppearanceRuntime
+    var cursor_epoch: UInt64
     var next_poll: Float64
     var event_driven: Bool
     var active: Bool
@@ -101,6 +104,8 @@ struct WorkspaceView(Movable):
         self.focus_epoch = 0
         self.model = AppModel()
         self.theme = PennaTheme(DEFAULT_DARK, 0, 1, 2, 3)
+        self.appearance = AppearanceRuntime(self.theme.flat.mono)
+        self.cursor_epoch = 0
         self.next_poll = 0
         self.event_driven = False
         self.active = True
@@ -247,6 +252,9 @@ struct WorkspaceView(Movable):
 
     def prepare_search_input[Host: Clipboard](mut self, mut ui: Ui, input: TextInput, mut host: Host) raises:
         self.poll(ui.time)
+        _ = self.appearance.update(ui, self.model.appearance, self.model.appearance_provenance, self.model.appearance_revision, self.model.source_server, self.model.source_client)
+        if self.appearance.error.byte_length() > 0:
+            self.model.error = self.appearance.error
         self.observe_output(ui)
         self.observe_search(ui)
         self.search_frame = SearchInputResult()
@@ -447,6 +455,8 @@ struct WorkspaceView(Movable):
         )
         if not release and not output:
             _ = self.cancel_local_scroll(pane)
+        if self.input_pane() == Optional[UInt64](pane) and output == self.output_input and (not epoch or epoch.value() == self.focus_epoch) and (not source or (source.value()[0] == self.model.source_server and source.value()[1] == self.model.source_client)):
+            self.cursor_epoch += 1
         self.backend.input(
             pane,
             input_key(pane, key),
@@ -462,6 +472,7 @@ struct WorkspaceView(Movable):
         var text = String(
             from_utf8=Span(input.bytes)[Int(event.start) : Int(event.end)]
         )
+        self.cursor_epoch += 1
         if self.output_input:
             if self.output.focused and self.output.pane:
                 self.backend.commit(
@@ -698,6 +709,11 @@ struct WorkspaceView(Movable):
                         if self.output_input:
                             self.blur_pointer()
                     break
+        if event.kind == MOUSE_DOWN or event.kind == MOUSE_RIGHT_DOWN or event.kind == MOUSE_UP or event.kind == MOUSE_RIGHT_UP:
+            for surface in surfaces:
+                if surface.grid.contains(event.x, event.y):
+                    self.cursor_epoch += 1
+                    break
         var routed = self.pointer.route(
             self.model, Span(surfaces), event, self.focus_epoch
         )
@@ -835,9 +851,8 @@ struct WorkspaceView(Movable):
         var flat = self.theme.flat
         var width = max(ui.width - 220, Float32(0))
         var height = max(ui.height - 146, Float32(0))
-        var metrics = cell_metrics(
-            ui.shaper.fonts[Int(flat.mono)], 13, ui.scale
-        )
+        var options = self.appearance.options(ui, False, blink_epoch=self.cursor_epoch)
+        var metrics = cell_metrics_options(ui.shaper.fonts[Int(options.font)], options, ui.scale)
         var rects = List[PaneRect]()
         for session in self.model.snapshot.sessions:
             for window in session.windows:
@@ -895,35 +910,36 @@ struct WorkspaceView(Movable):
                     )
                     << 8
                 ) | 255
-            var pad_x = max(item.inset_x, Float32(8))
-            var pad_y = max(item.inset_y, Float32(8))
+            var pad_l = max(item.inset_x, self.appearance.active.padding_left)
+            var pad_r = max(item.inset_x, self.appearance.active.padding_right)
+            var pad_t = max(item.inset_y, self.appearance.active.padding_top)
+            var pad_b = max(item.inset_y, self.appearance.active.padding_bottom)
+            var inner_width = bounds.width - pad_l - pad_r
+            var inner_height = bounds.height - pad_t - pad_b
+            options.focused = selected and ui.focus == TERMINAL_KEY and self.active
             var pane_style = (
                 Style.col()
                 .at(bounds.x, bounds.y)
                 .width(bounds.width)
                 .height(bounds.height)
-                .pad(pad_x, pad_y)
+                .pad(pad_l, pad_t)
                 .fill(background)
                 .clipped()
                 .id(self.widget_key(5, item.pane))
             )
-            var columns = grid_dimension(
-                bounds.width - pad_x * 2, metrics.width(), ui.scale
-            )
-            var rows = grid_dimension(
-                bounds.height - pad_y * 2, metrics.height(), ui.scale
-            )
+            pane_style.pad_r = pad_r
+            pane_style.pad_b = pad_b
+            var columns = grid_dimension(inner_width, metrics.width(), ui.scale)
+            var rows = grid_dimension(inner_height, metrics.height(), ui.scale)
             if (
                 not output
                 and item.pane in self.model.terminals
                 and grid_placement(
-                    self.model.terminals[item.pane]
+                    self.model.terminals[item.pane], scrolled_locally=Bool(self.local_scroll.target(item.pane)) or self.local_scroll.sub_row(item.pane) > 0
                 ).bottom_anchored
             ):
                 pane_style.pad_t += max(
-                    bounds.height
-                    - pad_y * 2
-                    - Float32(rows) * metrics.height(),
+                    inner_height - Float32(rows) * metrics.height(),
                     Float32(0),
                 )
             ui.open(pane_style)
@@ -935,20 +951,20 @@ struct WorkspaceView(Movable):
                     if search_focus and search_focus.value().command_output and search_focus.value().owner == self.output.id.value():
                         ui.focus = self.search.keys[search_focus.value().name()].field
                         self.blur_pointer(True)
+                options.focused = self.output.focused and ui.focus == TERMINAL_KEY and self.active
                 _ = self.output.render(
                     ui,
                     key,
                     self.model.command_output,
-                    flat.mono,
-                    13,
-                    self.output.focused
-                    and ui.focus == TERMINAL_KEY
-                    and self.active,
+                    options.font,
+                    options.size,
+                    options.focused,
                     Int(columns),
                     Int(rows),
                     self.marked if self.output_input else Optional[String](
                         None
                     ),
+                    options,
                 )
                 self.visible_panes.append(item.pane)
                 var resized = self.output.resize(
@@ -956,8 +972,7 @@ struct WorkspaceView(Movable):
                         columns, rows, UInt32(metrics.w), UInt32(metrics.h), 0
                     ),
                     Bool(self.model.session),
-                    bounds.width - pad_x * 2 >= metrics.width()
-                    and bounds.height - pad_y * 2 >= metrics.height(),
+                    inner_width >= metrics.width() and inner_height >= metrics.height(),
                 )
                 if resized:
                     self.backend.input(
@@ -966,32 +981,28 @@ struct WorkspaceView(Movable):
                 var mode = self.model.command_output.viewport.value().metadata.mode
                 var status = self.model.command_output.viewport.value().metadata.search
                 var unseen = self.model.command_output.viewport.value().metadata.unseen_output
-                self.paint_search_chrome(ui, SearchTarget(item.pane, True, self.output.id.value()), mode, status, unseen, bounds.width - pad_x * 2)
+                self.paint_search_chrome(ui, SearchTarget(item.pane, True, self.output.id.value()), mode, status, unseen, max(inner_width, Float32(0)))
             elif item.pane in self.model.terminals:
                 ref viewport = self.model.terminals[item.pane]
                 if item.pane in self.model.histories:
-                    _ = render_retained_viewport(
+                    _ = render_retained_viewport_opts(
                         ui,
                         key,
                         viewport,
                         self.model.histories[item.pane],
                         self.local_scroll.target(item.pane),
                         self.local_scroll.sub_row(item.pane),
-                        flat.mono,
-                        13,
-                        selected and ui.focus == TERMINAL_KEY and self.active,
+                        options,
                         Int(columns),
                         Int(rows),
                         self.marked if selected else Optional[String](None),
                     )
                 else:
-                    _ = render_viewport(
+                    _ = render_viewport_opts(
                         ui,
                         key,
                         viewport,
-                        flat.mono,
-                        13,
-                        selected and ui.focus == TERMINAL_KEY and self.active,
+                        options,
                         Int(columns),
                         Int(rows),
                         marked=self.marked if selected else Optional[String](
@@ -1013,7 +1024,7 @@ struct WorkspaceView(Movable):
                 var mode = self.model.terminals[item.pane].metadata.mode
                 var status = self.model.terminals[item.pane].metadata.search
                 var unseen = self.model.terminals[item.pane].metadata.unseen_output
-                self.paint_search_chrome(ui, SearchTarget(item.pane, False, item.pane), mode, status, unseen, bounds.width - pad_x * 2)
+                self.paint_search_chrome(ui, SearchTarget(item.pane, False, item.pane), mode, status, unseen, max(inner_width, Float32(0)))
             else:
                 label(ui, self.theme, "Connecting to terminal…", flat.dim)
             ui.close()

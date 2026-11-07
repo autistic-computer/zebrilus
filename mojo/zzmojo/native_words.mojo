@@ -48,7 +48,7 @@ struct WordBuffer(Movable):
             _ = path
 
     def rewind(self) raises:
-        if external_call["lseek", Int](Int(self.fd), Int(0), Int(0)) != 0:
+        if external_call["lseek", Int64](self.fd, Int64(0), Int32(0)) != 0:
             raise Error("cannot rewind tree storage")
 
     def clear(self) raises:
@@ -78,7 +78,7 @@ struct WordBuffer(Movable):
             base += size
 
     def load(mut self) raises -> List[UInt32]:
-        var length = external_call["lseek", Int](Int(self.fd), Int(0), Int(2))
+        var length = Int(external_call["lseek", Int64](self.fd, Int64(0), Int32(2)))
         if length < 0 or length > MAX_TREE_BYTES or length % 4 != 0:
             raise Error("Bend returned an invalid normalized tree byte count")
         self.rewind()

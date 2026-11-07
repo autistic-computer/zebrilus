@@ -25,6 +25,7 @@ def frame(
     ui.begin_frame(1120, 720)
     view.build(ui, input)
     ui.end_frame()
+    ui.atlas.gpu_done(ui.atlas.frame)
 
 
 def main() raises:
@@ -47,12 +48,14 @@ def main() raises:
         frame(ui, view, 0.01)
         view.flush()
         if (
-            UInt64(0) in view.model.histories
+            view.appearance.fonts_ready
+            and UInt64(0) in view.model.histories
             and Int(scroll_context(view.model, 0).history_rows) >= 64
         ):
             break
         _ = external_call["usleep", Int32](UInt32(10_000))
     assert_equal(view.model.error, String())
+    assert_true(view.appearance.fonts_ready)
     assert_true(UInt64(0) in view.model.histories)
     var surfaces = view.pointer_surfaces(ui)
     assert_equal(len(surfaces), 1)
@@ -61,10 +64,11 @@ def main() raises:
     var y = surface.grid.top + surface.grid.line_height * 3
     var server = view.model.terminals[0].metadata.scrollbar.offset
     var oldest = server - UInt32(scroll_context(view.model, 0).history_rows)
+    var delta = surface.grid.line_height * Float32(2.25)
     var expected = pixel_scroll_position(
-        server, 0, 45, surface.grid.line_height, oldest, server
+        server, 0, delta, surface.grid.line_height, oldest, server
     )
-    var scroll_event = ScrollEvent(0, 45, True, 0, 0, ui.time)
+    var scroll_event = ScrollEvent(0, delta, True, 0, 0, ui.time)
     view.scroll(ui, scroll_event, x, y)
     assert_equal(view.local_scroll.target(0).value(), expected.target)
     assert_equal(view.local_scroll.sub_row(0), expected.sub_row)
@@ -97,7 +101,7 @@ def main() raises:
     )
     assert_false(Bool(view.local_scroll.target(0)))
     assert_equal(view.local_scroll.sub_row(0), expected.sub_row)
-    scroll_event = ScrollEvent(0, 45, True, 0, 0, ui.time)
+    scroll_event = ScrollEvent(0, delta, True, 0, 0, ui.time)
     view.scroll(ui, scroll_event, x, y)
     assert_true(Bool(view.local_scroll.target(0)))
     view.flush_local_scroll(0)
@@ -110,7 +114,7 @@ def main() raises:
         view.wait()
         frame(ui, view, 0.01)
         view.flush()
-    scroll_event = ScrollEvent(0, 45, True, 0, 0, ui.time)
+    scroll_event = ScrollEvent(0, delta, True, 0, 0, ui.time)
     view.scroll(ui, scroll_event, x, y)
     assert_true(Bool(view.local_scroll.target(0)))
     var input = TextInput()
