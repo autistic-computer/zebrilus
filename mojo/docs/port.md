@@ -38,6 +38,9 @@ pixi run --manifest-path mojo/pixi.toml differential-client-context
 pixi run --manifest-path mojo/pixi.toml differential-terminal-appearance
 pixi run --manifest-path mojo/pixi.toml test-terminal-settings
 pixi run --manifest-path mojo/pixi.toml differential-terminal-settings
+pixi run --manifest-path mojo/pixi.toml differential-client-files
+pixi run --manifest-path mojo/pixi.toml test-client-files
+pixi run --manifest-path mojo/pixi.toml client-files-smoke
 pixi run --manifest-path mojo/pixi.toml differential-control
 pixi run --manifest-path mojo/pixi.toml differential-terminal
 pixi run --manifest-path mojo/pixi.toml differential-colors
@@ -68,3 +71,5 @@ Protocol differential checks regenerate vectors with the actual Rust encoder and
 The command-output smoke opens real output on its private interactive client, checks owner-pane substitution and output resize, parks and restores its input focus through rendered pointer surfaces, exercises native paste/IME and copy-mode dismissal, and verifies exact underlying PTY input bytes. It saves `target/port/command-output-workspace.png`. The SDL provenance test uses native text-editing/text-input events with the dummy video driver; the matching AppKit assertions live in mjui’s `test_textinput` suite and require macOS.
 
 The typed appearance codec retains every font, color, palette, cursor, padding, contrast and provenance field. Its source differential checks complete roundtrips, exact float bits and validation boundaries. Font localization and style requests match the native selection rules, including provenance filtering, ordered fallbacks and features, and weight/zoom bounds. Applying all appearance options and bounded font replacement to the workspace remains in progress.
+
+Command clients answer native file read/write/append and whole/chunked stdin requests. The 128 source codec cases include every error variant's terminal message and exit status, malformed fields, and exact 32 MiB wire boundaries. Fifteen direct I/O groups check byte bounds, raw files, spent stdin, closed descriptors and signal restoration; 21 private-daemon groups compare the Rust CLI, including over 2 MiB of streamed input into an empty pane. Whole stdin is limited to 1 MiB; files above 32 MiB produce a bounded error locally. The command entry point still uses the legacy request path: modern execution chains and their direct split-window stdin/resume behavior remain in progress. These runtime checks were run on Linux.
