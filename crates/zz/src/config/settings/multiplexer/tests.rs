@@ -124,8 +124,6 @@ fn split_controls_follow_wire_bindings_preserve_drafts_and_keep_renamed_keys(
             file.path = Some(path.clone());
             file.saved = source.to_owned();
             file.error = None;
-            file.editor
-                .update(cx, |editor, cx| editor.set_value(source, window, cx));
             settings.synchronize_mux_splits(window, cx);
             assert_eq!(settings.mux_split_disabled_reason(cx), None);
             let rows = &settings.mux_split_controls.as_ref().unwrap().rows;
@@ -138,36 +136,8 @@ fn split_controls_follow_wire_bindings_preserve_drafts_and_keep_renamed_keys(
         });
     });
 
-    let draft = format!("{source}# unsaved edit\n");
     cx.update(|window, cx| {
         settings.update(cx, |settings, cx| {
-            let editor = settings
-                .config_file_editor(ConfigFileKind::Mux)
-                .editor
-                .clone();
-            editor.update(cx, |editor, cx| editor.set_value(&draft, window, cx));
-            assert!(
-                settings
-                    .mux_split_disabled_reason(cx)
-                    .unwrap()
-                    .contains("Save")
-            );
-            settings.commit_mux_split(0, SplitPaneKind::Picker, window, cx);
-            assert_eq!(editor.read(cx).value().as_ref(), draft);
-            assert_eq!(
-                settings.config_file_editor(ConfigFileKind::Mux).saved,
-                source
-            );
-        });
-    });
-    assert_eq!(std::fs::read_to_string(&path).unwrap(), source);
-
-    cx.update(|window, cx| {
-        settings.update(cx, |settings, cx| {
-            settings
-                .config_file_editor(ConfigFileKind::Mux)
-                .editor
-                .update(cx, |editor, cx| editor.set_value(source, window, cx));
             let key = settings.mux_split_controls.as_ref().unwrap().rows[0]
                 .key
                 .clone();
@@ -279,13 +249,7 @@ fn split_controls_follow_wire_bindings_preserve_drafts_and_keep_renamed_keys(
                     .timed_out
             );
             assert_eq!(settings.mux_split_disabled_reason(cx), None);
-            settings
-                .config_file_editor(ConfigFileKind::Mux)
-                .editor
-                .update(cx, |editor, cx| {
-                    editor.set_value(&saved, window, cx);
-                });
-            settings.save_config_editor(ConfigFileKind::Mux, cx);
+            settings.reload_mux_configuration(cx);
             assert!(
                 settings
                     .mux_split_controls
@@ -297,5 +261,11 @@ fn split_controls_follow_wire_bindings_preserve_drafts_and_keep_renamed_keys(
             assert_eq!(settings.mux_split_disabled_reason(cx), None);
         });
     });
-    assert_eq!(std::fs::read_to_string(&path).unwrap(), saved);
+    assert_eq!(
+        std::fs::read_to_string(&path).unwrap(),
+        saved.replace(
+            "split-window -v -c \"#{pane_current_path}\"",
+            "split-window -v --kind picker"
+        )
+    );
 }

@@ -16,8 +16,6 @@ use ala::{
 };
 use penna::{
     ActiveTheme as _, Colorize as _, Disableable as _, Icon, IconName, IndexPath, Label, TextStyle,
-    WindowExt as _,
-    blocks::code_editor::{CodeEditor, CodeEditorEvent, CodeEditorState},
     blocks::notification::Notification,
     components::button::{Button, ButtonVariants as _},
     components::input::{Input, InputEvent, InputState, NumberInput},
@@ -44,13 +42,12 @@ use crate::{
 use penna::blocks::appearance::{AppearanceControls, kit_row, picker_tile, ui_font_select};
 use zz_client::url_input::SearchProvider;
 use zz_protocol::ConfigOverrideEntry;
-use zz_terminal::{TerminalColorScheme, discover_ghostty_config};
-use zz_ui::dialogs::import_configuration_file_alert;
+use zz_terminal::TerminalColorScheme;
 use zz_ui::interface_theme::{self, Appearance, AppearanceChange};
 use zz_ui::settings::{
     SettingEntry, SettingsScrollColumn, SettingsSection, SettingsSelectItem, SettingsStack,
     settings_card_ground, settings_list_group_header, settings_page_content, settings_page_title,
-    settings_preview, settings_scroll_column,
+    settings_scroll_column,
 };
 
 ala::actions!(zz, [OpenSettings]);
@@ -66,19 +63,7 @@ pub(crate) const KEYBIND: &str = "cmd-,";
 pub(crate) const KEYBIND: &str = "ctrl-,";
 const CONTROL_WIDTH: f32 = 120.0;
 const KEY_INPUT_WIDTH: f32 = 65.0;
-const CONFIG_EDITOR_FONT_SIZE: f32 = 12.0;
-const CONFIG_EDITOR_PADDING: f32 = 2.0;
 const APP_ICON_PREVIEW_SIZE: f32 = 48.0;
-
-#[allow(
-    clippy::disallowed_methods,
-    reason = "the config file is file content, shown in the code font at the editor's own size"
-)]
-fn config_file_text(editor: ala::Div, cx: &App) -> ala::Div {
-    editor
-        .font_family(cx.theme().mono_font_family.clone())
-        .text_size(px(CONFIG_EDITOR_FONT_SIZE))
-}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 enum ConfigFileKind {
@@ -88,7 +73,6 @@ enum ConfigFileKind {
 
 struct ConfigFileEditor {
     path: Option<PathBuf>,
-    editor: Entity<CodeEditorState>,
     saved: String,
     error: Option<String>,
 }
@@ -305,14 +289,10 @@ impl SettingsView {
             _ => return false,
         };
         let started = diagnostics::timer(DIAGNOSTIC_TARGET);
-        let file = config_file_editor(kind, window, cx);
-        let editor = file.editor.clone();
-        *slot = Some(file);
-        self._subscriptions
-            .push(config_editor_subscription(&editor, window, cx));
+        *slot = Some(config_file_editor(kind));
         log::trace!(
             target: DIAGNOSTIC_TARGET,
-            "initialize_section section={section:?} subscriptions=1 elapsed_us={}",
+            "initialize_section section={section:?} subscriptions=0 elapsed_us={}",
             diagnostics::elapsed_us(started),
         );
         true
@@ -379,7 +359,13 @@ impl SettingsView {
     ) {
         let initialized = self.ensure_section_state(section, window, cx);
         if !initialized {
-            self.reload_config_editor_if_clean(section, window, cx);
+            match section {
+                SettingsSection::Multiplexer => self.reload_config_editor(ConfigFileKind::Mux, cx),
+                SettingsSection::Terminal => {
+                    self.reload_config_editor(ConfigFileKind::Terminal, cx);
+                }
+                _ => {}
+            }
         }
         self.section = section;
         if section != SettingsSection::Terminal {
@@ -550,14 +536,14 @@ impl SettingsView {
         }
     }
 
-    fn synchronize_terminal_editor(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    fn synchronize_terminal_editor(&mut self, cx: &mut Context<Self>) {
         let overrides = config::daemon_config_overrides(cx);
         if overrides == self.observed_appearance_overrides {
             return;
         }
         self.observed_appearance_overrides = overrides;
         if self.terminal_config_editor.is_some() {
-            self.reload_config_editor_if_clean(SettingsSection::Terminal, window, cx);
+            self.reload_config_editor(ConfigFileKind::Terminal, cx);
         }
     }
 
@@ -1313,12 +1299,10 @@ impl SettingsView {
 
     fn config_file_section(&self, kind: ConfigFileKind, cx: &mut Context<Self>) -> AnyElement {
         let file = self.config_file_editor(kind);
-        let editor = file.editor.clone();
         let path = file.path.as_ref().map_or_else(
             || kind.file_name().to_owned(),
             |path| path.display().to_string(),
         );
-        let dirty = file.editor.read(cx).value().as_ref() != file.saved;
         let error = file.error.clone();
         let local = {
             let mux = self.mux.read(cx);
@@ -1375,12 +1359,8 @@ impl SettingsView {
                                 row.child(
                                     Button::new("settings-reload-mux-config")
                                         .label("Reload")
-                                        .disabled(
-                                            dirty || !local || self.pending_file_command.is_some(),
-                                        )
-                                        .tooltip(if dirty {
-                                            "Save your edits first"
-                                        } else if local {
+                                        .disabled(!local || self.pending_file_command.is_some())
+                                        .tooltip(if local {
                                             "Reload zz/mux.conf"
                                         } else {
                                             "Connect to a local session to reload"
@@ -1389,15 +1369,7 @@ impl SettingsView {
                                             this.reload_mux_configuration(cx);
                                         })),
                                 )
-                            })
-                            .child(
-                                Button::new(kind.save_button_id())
-                                    .label("Save")
-                                    .disabled(!dirty || self.pending_file_command.is_some())
-                                    .on_click(cx.listener(move |this, _, _, cx| {
-                                        this.save_config_editor(kind, cx);
-                                    })),
-                            ),
+                            }),
                     )
                     .when_some(error, |page, error| {
                         page.child(
@@ -1405,15 +1377,7 @@ impl SettingsView {
                                 .flex_none()
                                 .text_color(cx.theme().warning),
                         )
-                    })
-                    .child(
-                        config_file_text(settings_preview(cx.theme().editor_background(), cx), cx)
-                            .flex()
-                            .flex_none()
-                            .h(px(320.0))
-                            .p(px(CONFIG_EDITOR_PADDING))
-                            .child(CodeEditor::new(&editor)),
-                    ),
+                    }),
             )
             .into_any_element()
     }
@@ -1498,29 +1462,7 @@ impl SettingsView {
         editor.expect("the editor is initialized before rendering or updating its section")
     }
 
-    fn reload_config_editor_if_clean(
-        &mut self,
-        section: SettingsSection,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        let kind = match section {
-            SettingsSection::Multiplexer => ConfigFileKind::Mux,
-            SettingsSection::Terminal => ConfigFileKind::Terminal,
-            _ => return,
-        };
-        let file = self.config_file_editor(kind);
-        if file.editor.read(cx).value().as_ref() == file.saved {
-            self.reload_config_editor(kind, window, cx);
-        }
-    }
-
-    fn reload_config_editor(
-        &mut self,
-        kind: ConfigFileKind,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
+    fn reload_config_editor(&mut self, kind: ConfigFileKind, cx: &mut Context<Self>) {
         let path = self
             .config_file_editor(kind)
             .path
@@ -1537,12 +1479,9 @@ impl SettingsView {
         };
         match config::read_config_editor_source(&path, kind.max_bytes()) {
             Ok(source) => {
-                let source = kind.editor_view(source);
-                let editor = self.config_file_editor(kind).editor.clone();
-                editor.update(cx, |editor, cx| editor.set_value(&source, window, cx));
                 let file = self.config_file_editor_mut(kind);
                 file.path = Some(path);
-                file.saved = source;
+                file.saved = kind.editor_view(source);
                 file.error = None;
             }
             Err(error) => {
@@ -1551,65 +1490,6 @@ impl SettingsView {
                 file.error = Some(format!("Could not read {}: {error}", kind.file_name()));
             }
         }
-        cx.notify();
-    }
-
-    fn save_config_editor(&mut self, kind: ConfigFileKind, cx: &mut Context<Self>) {
-        let source = self
-            .config_file_editor(kind)
-            .editor
-            .read(cx)
-            .value()
-            .to_string();
-        let path = self
-            .config_file_editor(kind)
-            .path
-            .clone()
-            .map_or_else(|| config_file_path(kind), Ok);
-        let path = match path {
-            Ok(path) => path,
-            Err(error) => {
-                self.config_file_editor_mut(kind).error =
-                    Some(format!("Could not locate {}: {error}", kind.file_name()));
-                toast::push(
-                    Notification::error(format!("Could not save {}: {error}", kind.file_name())),
-                    cx,
-                );
-                cx.notify();
-                return;
-            }
-        };
-        let written = match kind {
-            ConfigFileKind::Mux => {
-                config::write_config_editor_source(&path, &source, kind.max_bytes())
-            }
-            ConfigFileKind::Terminal => config::save_appearance_editor(&path, &source),
-        };
-        if let Err(error) = written {
-            let file = self.config_file_editor_mut(kind);
-            file.path = Some(path);
-            file.error = Some(format!("Could not save {}: {error}", kind.file_name()));
-            toast::push(
-                Notification::error(format!("Could not save {}: {error}", kind.file_name())),
-                cx,
-            );
-            cx.notify();
-            return;
-        }
-
-        let file = self.config_file_editor_mut(kind);
-        file.path = Some(path.clone());
-        file.saved = source;
-        file.error = None;
-        if kind == ConfigFileKind::Mux {
-            self.reload_mux_configuration(cx);
-        } else {
-            config::request_daemon_reload(cx);
-        }
-        toast::push(
-            Notification::success(format!("Saved {}", path.display())),
-            cx,
-        );
         cx.notify();
     }
 }
@@ -1628,7 +1508,7 @@ impl Render for SettingsView {
         let browser = self.synchronize_browser_input(window, cx);
         self.synchronize_ui_zoom_input(window, cx);
         self.synchronize_ui_font(window, cx);
-        self.synchronize_terminal_editor(window, cx);
+        self.synchronize_terminal_editor(cx);
         self.synchronize_mux_splits(window, cx);
         self.synchronize_file_options(window, cx);
         self.synchronize_terminal_preview(cx);
@@ -1740,27 +1620,6 @@ impl ConfigFileKind {
         }
     }
 
-    const fn save_button_id(self) -> &'static str {
-        match self {
-            Self::Mux => "settings-save-mux-config",
-            Self::Terminal => "settings-save-terminal-config",
-        }
-    }
-
-    const fn placeholder(self) -> &'static str {
-        match self {
-            Self::Mux => "# zz multiplexer configuration",
-            Self::Terminal => "# terminal appearance, in Ghostty's key = value dialect",
-        }
-    }
-
-    const fn language(self) -> &'static str {
-        match self {
-            Self::Mux => "tmux",
-            Self::Terminal => "text",
-        }
-    }
-
     const fn max_bytes(self) -> usize {
         match self {
             Self::Mux => 1024 * 1024,
@@ -1776,11 +1635,7 @@ impl ConfigFileKind {
     }
 }
 
-fn config_file_editor(
-    kind: ConfigFileKind,
-    window: &mut Window,
-    cx: &mut Context<SettingsView>,
-) -> ConfigFileEditor {
+fn config_file_editor(kind: ConfigFileKind) -> ConfigFileEditor {
     let (path, saved, error) = match config_file_path(kind) {
         Ok(path) => match config::read_config_editor_source(&path, kind.max_bytes()) {
             Ok(source) => (Some(path), kind.editor_view(source), None),
@@ -1796,37 +1651,7 @@ fn config_file_editor(
             Some(format!("Could not locate {}: {error}", kind.file_name())),
         ),
     };
-    let editor = cx.new(|cx| {
-        let mut editor = CodeEditorState::new(window, cx)
-            .language(kind.language())
-            .soft_wrap(false)
-            .placeholder(kind.placeholder())
-            .default_value(&saved);
-        editor.set_line_numbers(false, cx);
-        editor
-    });
-    ConfigFileEditor {
-        path,
-        editor,
-        saved,
-        error,
-    }
-}
-
-fn config_editor_subscription(
-    editor: &Entity<CodeEditorState>,
-    window: &mut Window,
-    cx: &mut Context<SettingsView>,
-) -> Subscription {
-    cx.subscribe_in(
-        editor,
-        window,
-        move |_, _, event: &CodeEditorEvent, _, cx| {
-            if matches!(event, CodeEditorEvent::Change) {
-                cx.notify();
-            }
-        },
-    )
+    ConfigFileEditor { path, saved, error }
 }
 
 fn config_file_path(kind: ConfigFileKind) -> io::Result<PathBuf> {

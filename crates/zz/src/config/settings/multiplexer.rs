@@ -141,12 +141,8 @@ impl SettingsView {
         {
             return Some("Applying split shortcut…");
         }
-        let file = self.config_file_editor(ConfigFileKind::Mux);
-        if file.error.is_some() {
+        if self.config_file_editor(ConfigFileKind::Mux).error.is_some() {
             return Some("Resolve the configuration error below to edit split shortcuts.");
-        }
-        if file.editor.read(cx).value().as_ref() != file.saved {
-            return Some("Save your configuration edits below to edit split shortcuts.");
         }
         None
     }
@@ -316,11 +312,12 @@ impl SettingsView {
             .map_or_else(|| config_file_path(ConfigFileKind::Mux), Ok);
         let current = path.and_then(|path| {
             config::read_config_editor_source(&path, ConfigFileKind::Mux.max_bytes())
+                .map(|current| (path, current))
         });
-        match current {
-            Ok(current) if current == file.saved => {}
+        let path = match current {
+            Ok((path, current)) if current == file.saved => path,
             Ok(_) => {
-                self.reload_config_editor(ConfigFileKind::Mux, window, cx);
+                self.reload_config_editor(ConfigFileKind::Mux, cx);
                 toast::push(
                     Notification::info("Configuration changed on disk. Review it and try again."),
                     cx,
@@ -336,23 +333,29 @@ impl SettingsView {
                 );
                 return;
             }
+        };
+        if let Err(error) =
+            config::write_config_editor_source(&path, &source, ConfigFileKind::Mux.max_bytes())
+        {
+            report_write_error("save", ConfigFileKind::Mux.file_name(), &error, cx);
+            return;
         }
-        let editor = file.editor.clone();
-        editor.update(cx, |editor, cx| editor.set_value(&source, window, cx));
-        self.save_config_editor(ConfigFileKind::Mux, cx);
-        if self.config_file_editor(ConfigFileKind::Mux).saved == source {
-            let key = zz_mux::parse_tmux_key(key.trim()).unwrap();
-            let controls = self.mux_split_controls.as_mut().unwrap();
-            controls.rows[index].preferred_key = Some(key.clone());
-            controls.pending = Some(PendingSplit {
-                removed_key: previous_key.filter(|previous| previous != &key),
-                key,
-                kind,
-                direction: DIRECTIONS[index],
-                timed_out: false,
-            });
-            self.wait_for_mux_split(cx);
-        }
+        let file = self.config_file_editor_mut(ConfigFileKind::Mux);
+        file.path = Some(path);
+        file.saved = source;
+        file.error = None;
+        self.reload_mux_configuration(cx);
+        let key = zz_mux::parse_tmux_key(key.trim()).unwrap();
+        let controls = self.mux_split_controls.as_mut().unwrap();
+        controls.rows[index].preferred_key = Some(key.clone());
+        controls.pending = Some(PendingSplit {
+            removed_key: previous_key.filter(|previous| previous != &key),
+            key,
+            kind,
+            direction: DIRECTIONS[index],
+            timed_out: false,
+        });
+        self.wait_for_mux_split(cx);
     }
 
     fn wait_for_mux_split(&mut self, cx: &mut Context<Self>) {

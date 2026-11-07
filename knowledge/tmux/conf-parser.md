@@ -17,7 +17,7 @@ selects explicit `-f` files in order, or the first existing zz-owned `zz/mux.con
 `reload-config` repeats that selection. `replay_mux_config_files` records it in `#{config_files}`;
 later `source-file` calls do not append to the fact. tmux donors enter through
 `import-tmux-config [path]`, which copies a block into `zz/mux.conf`. Settings rows edit
-that same file above its editor. See [Application configuration](/configuration/app-config.md).
+that same file, and its Import button runs that command on a picked file. See [Application configuration](/configuration/app-config.md).
 
 The lexer is a single character-by-character state machine (modeled on tmux's `cmd-parse.y` /
 `arguments.c`) that splits input into words, groups words into commands, and records a

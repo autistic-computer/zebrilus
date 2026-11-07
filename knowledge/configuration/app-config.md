@@ -71,7 +71,7 @@ after `reload-config` and color-scheme changes (the effective light/dark mode, p
 The daemon loads only `zz/mux.conf`, or explicit `-f` files that replace it in argument order.
 Reload repeats that selection. It never reads tmux donors implicitly. The first-run offer imports
 Ghostty appearance into `zz/config` and tmux commands into a marked `zz/mux.conf` block.
-Settings accepts any donor path and keeps structured rows above the editor for the same file.
+Settings imports from any file the system picker returns and edits the same files through structured rows.
 
 # Discovery and loading
 
@@ -169,16 +169,14 @@ The client-local schema includes these scalar settings and chrome colors.
 `chrome-preset`, `chrome-preset-light`, `chrome-preset-dark`, `chrome-background`,
 `chrome-foreground`, `chrome-success`, `chrome-warning` and `chrome-danger` are
 retired (`zz_config::RETIRED_APPEARANCE_KEYS`): a line with one of them is reported with
-`` `<key>` was removed: set the look in Settings > Interface ``, skipped and hidden from the
-Terminal page's editor. Chrome colors come from the look, the accent and the tint, never from
+`` `<key>` was removed: set the look in Settings > Interface `` and skipped. Chrome colors come from the look, the accent and the tint, never from
 per-color keys.
 `chrome-accent` was on that list from 2026-10-11 to 2026-10-15 and is live again as the accent
 above, so an old `chrome-accent = #rrggbb` sets the accent again.
 `interface-style`, `widget-outline-width`, `widget-shadow-strength`, `widget-row-inset`,
 `widget-primary` and `widget-glass` are retired too (`zz_config::RETIRED_MATERIAL_KEYS`): a line
 with one is reported with `` `<key>` was removed: set the look in Settings > Interface `` (`widget-glass`
-with `` set `interface-glass`, or Glass in Settings > Interface ``), ignored and hidden from the
-Terminal page's editor.
+with `` set `interface-glass`, or Glass in Settings > Interface ``) and ignored.
 `pane-glass`, `pane-corner-radius`, `pane-border-width`, `pane-background-opacity` and
 `pip-background-opacity` are retired pane keys (`zz_config::RETIRED_PANE_KEYS`), each reported with
 what replaced it: gapped panes always draw a glass frame, pane corners follow `widget-corner-radius`,
@@ -296,7 +294,7 @@ every look key from `ThemeOverrides::from_theme` and the file's `face` in one ed
 (`AppearanceChange::ResetLook`: every look key removed from the file, duplicates included).
 `interface-theme` is retired (`zz_config::RETIRED_THEME_KEYS`): a line with it is reported with
 `` `interface-theme` was removed: there are no theme presets now; set the look in Settings >
-Interface ``, ignored and hidden from the Terminal page's editor. zz no longer reads, stamps or
+Interface `` and ignored. zz no longer reads, stamps or
 watches a `themes/` folder beside the config; files left there are ignored.
 
 Run `just storybook macos` on macOS 27 with its SDK to compare the macOS theme file against native
@@ -707,8 +705,8 @@ always-live inactive-opacity factor and the selected pane's edge strength, which
 | Hosts | **Machines** (configured hosts, live connection state, Remove) · **Add host** (an inline ssh destination field) |
 | Providers | One group per host (This Mac or the host's name): Claude Code and Codex with the path the host's daemon found, the installed version, the newest release, and Update or Install, which runs the vendor's updater on that host (`claude update`, `codex update`, `brew upgrade --cask` for Homebrew installs, the vendor install script when missing) with its latest output line and any error under the row; an install something else owns (a root-owned npm prefix, mise, Nix, Snap, winget, a system package) gets no Update button but says who owns it and offers its update command to copy; a disconnected host says so; **Check again** asks every connected host. Nothing is written to `zz/config`; the daemon answers the internal `providers` command ([wire protocol](/protocol/wire-protocol.md)) |
 | System | **Tray** (`tray`, only where the profile has one) · **Notifications** (`notifications`) · **Daemon** (`quit-daemon-on-exit`) · **Experimental** (`experimental-editor-pane`, present only with its cargo feature). `auto-restart-stale-daemon` is a file key with no Settings row |
-| Multiplexer | **Navigation** (`picker-focus-sidebar`, `which-key-delay`), **Split panes**, **Options** (Prefix, Mode keys, Mouse, History limit, Clipboard, Escape time), **Import** (path, Choose, Import), and `zz/mux.conf` editor with Reload and Save |
-| Terminal | **Appearance** (Font family, Font size, macOS Font smoothing and Smoothing strength, Theme, Cursor style, Cursor blink, Background opacity, Padding X/Y), **Import** (path, Choose, Import), and the `zz/config` appearance editor |
+| Multiplexer | **Navigation** (`picker-focus-sidebar`, `which-key-delay`), **Split panes**, **Options** (Prefix, Mode keys, Mouse, History limit, Clipboard, Escape time), **Import** (Import from tmux), and the `zz/mux.conf` path with Reload |
+| Terminal | **Appearance** (Font family, Font size, macOS Font smoothing and Smoothing strength, Theme, Cursor style, Cursor blink, Background opacity, Padding X/Y), **Import** (Import from Ghostty), and the `zz/config` path |
 | About | Centered mark (the Dock render at 88pt), name, tagline and version badge · **Updates** (`check-for-updates`, plus a Latest release row whose description is the update state, such as "zz 0.23.0 is out, you have 0.22.0" or "The check failed: …", with Check now, or Update / What's new once a newer release is known; desktop only) · **Build** (`CARGO_PKG_VERSION`, OS · arch, the short `ZZ_ALA_SOURCE` revision, with a copy button on Version that puts all three on one line) · **Project** (repository, releases, new issue, license) |
 
 A row is its title and its control, with no provenance badge and no Reset button. A short
@@ -753,36 +751,33 @@ it follows Zed's per-run UI font-size adjustment and leaves browser page zoom an
 under their existing pane-local controls.
 
 Terminal reads saved appearance entries into its controls and writes edits back through the
-bounded, comment-preserving `zz/config` writer. Multiplexer mounts the native rope-backed
-`CodeEditor` for `zz/mux.conf` with line numbers disabled, 12px monospace text, tmux-grammar
-highlighting (`tree-sitter-tmux`, upstream's own `highlights.scm`, registered by `zz_ui::init`),
-and a deliberately square 2px-inset frame . a file surface, not a control. Save uses the
-1 MiB bounded atomic writer; a clean editor reloads when entered, while unsaved text is retained. A
-successful mux save asks the daemon to `reload-config`.
+bounded, comment-preserving `zz/config` writer. Neither page shows the raw file: each reads it
+again when entered and lists its path under the controls, with Reload on Multiplexer. Anything
+the rows do not cover is edited in the file itself.
 
 The **Split panes** rows in `crates/zz/src/config/settings/multiplexer.rs` read
 `MuxClient::prefix_bindings`, the daemon's effective table after its selected mux files, zz overrides, and runtime
 commands. Each direction selects one shortcut, preferring `-` / `|`, then `"` / `%`, then another
 binding that splits in that direction. A renamed shortcut stays selected while Settings remains open.
-Additional shortcuts stay in the text editor. Choosing a pane type or pressing Enter in the shortcut
+Additional shortcuts stay in the file. Choosing a pane type or pressing Enter in the shortcut
 field saves an ordinary `bind-key` override through the same atomic writer and reload request.
 Renaming also unbinds the previous key; an occupied destination key is rejected.
 
 `crates/zz/src/config/mux_bindings.rs` preserves unrelated source text and replaces matching overrides
 in the trailing generated split-binding group when users change selections again. Simple direction
 flags and `-c "#{pane_current_path}"` map to the dropdown only for the matching direction; opposite-direction bindings, other arguments, or command chains show
-**Custom** and remain editable in the text editor. Shortcut changes retain command arguments,
+**Custom** and stay editable in the file. Shortcut changes retain command arguments,
 repeat settings, and notes. Pane-type changes use `split-window --kind terminal|picker|browser`; terminal and picker
 commands inherit the source terminal directory.
-The controls require a connected local session and a clean editor. They check for external file edits
+The controls require a connected local session. They check for external file edits
 before saving and wait for the daemon to publish the changed binding before accepting another edit.
 If the daemon does not confirm within five seconds, Settings refreshes the rows from the effective
-bindings, permits another edit, and offers a reload retry. Saving a manual editor change or requesting
-a reload cancels the earlier pending shortcut expectation.
+bindings, permits another edit, and offers a reload retry. Requesting a reload cancels the earlier
+pending shortcut expectation.
 
 Multiplexer's Options rows read the last saved global `set-option` line for each option, or
 show its built-in default. Writes replace that line or append one; Reset removes it. The daemon
-owns value grammar. Controls require a clean editor and local connection, and wait for daemon
+owns value grammar. Controls require a local connection, and wait for daemon
 confirmation with a five-second retry fallback. The Reload button uses the daemon's retained
 file selection, including explicit `-f` files.
 
@@ -790,9 +785,10 @@ Terminal's Appearance rows read the saved parsed `zz/config` entries. Scalars re
 line; Font family replaces its whole stack with one line. The existing watcher applies these
 edits. macOS exposes `font-thicken` as Font smoothing and `font-thicken-strength` as Smoothing
 strength (0–255); the strength control is disabled while smoothing is off. Changes update the
-terminal preview and live panes through the existing reload path. Both pages offer a donor path
-prefilled from discovery, Choose, and a confirmed Import.
-Import requires a clean editor; tmux import also requires a local connection.
+terminal preview and live panes through the existing reload path. Both pages offer one
+**Import…** button that opens the system file picker and imports the picked file right away, with
+no confirmation: tmux through `import-tmux-config`, Ghostty through
+`config::import::import_ghostty_config_from`. tmux import requires a local connection.
 
 The first-run prompt (`crates/zz/src/config/import_prompt.rs`) uses marker
 `<data-dir>/zz/import-prompted-v2`. It names every discovered donor and explains that zz does not

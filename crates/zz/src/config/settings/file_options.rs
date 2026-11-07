@@ -1,4 +1,5 @@
 use super::*;
+use std::path::Path;
 use zz_protocol::{CommandInvocation, MuxOptionKey, MuxOptions};
 use zz_terminal::{AppearanceConfigKey, TerminalAppearance};
 
@@ -55,7 +56,6 @@ struct OptionRow {
 pub(super) struct FileOptions {
     rows: Vec<OptionRow>,
     source: String,
-    donor: Entity<InputState>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -146,18 +146,7 @@ impl SettingsView {
                     ),
                 );
             }
-            let donor_path = match kind {
-                ConfigFileKind::Mux => zz_daemon_client::discover_tmux_config(),
-                ConfigFileKind::Terminal => discover_ghostty_config(),
-            };
-            let donor = text_value_input(
-                &donor_path
-                    .map(|path| path.display().to_string())
-                    .unwrap_or_default(),
-                window,
-                cx,
-            );
-            let mut subscriptions = vec![cx.observe(&donor, |_, _, cx| cx.notify())];
+            let mut subscriptions = Vec::new();
             let mut rows = Vec::new();
             for (index, (key, title, numeric)) in definitions.into_iter().enumerate() {
                 let value = key.value(&source);
@@ -251,7 +240,6 @@ impl SettingsView {
             vacant.insert(FileOptions {
                 rows,
                 source: source.clone(),
-                donor,
                 _subscriptions: subscriptions,
             });
         }
@@ -276,7 +264,6 @@ impl SettingsView {
     fn file_controls_disabled(&self, kind: ConfigFileKind, cx: &App) -> bool {
         let file = self.config_file_editor(kind);
         file.error.is_some()
-            || file.editor.read(cx).value().as_ref() != file.saved
             || self.pending_file_command.is_some()
             || (kind == ConfigFileKind::Mux
                 && (!self.mux.read(cx).is_connected()
@@ -284,11 +271,10 @@ impl SettingsView {
     }
 
     pub(super) fn terminal_preview_source(&self, cx: &App) -> String {
-        let file = self.config_file_editor(ConfigFileKind::Terminal);
-        let mut source = file.editor.read(cx).value().to_string();
-        if source != file.saved {
-            return source;
-        }
+        let mut source = self
+            .config_file_editor(ConfigFileKind::Terminal)
+            .saved
+            .clone();
         let Some(controls) = self.file_options.get(&ConfigFileKind::Terminal) else {
             return source;
         };
@@ -345,8 +331,8 @@ impl SettingsView {
         } else {
             "Appearance"
         })
-        .when(disabled, |stack| {
-            stack.note("Save your editor changes and connect locally to edit these")
+        .when(disabled && kind == ConfigFileKind::Mux, |stack| {
+            stack.note("Connect to a local session to edit these")
         });
         for (index, row) in controls.rows.iter().enumerate() {
             let description = match row.key.name() {
@@ -413,61 +399,23 @@ impl SettingsView {
         if !crate::profile::profile(cx).has_config_import {
             return div().into_any_element();
         }
-        let Some(controls) = self.file_options.get(&kind) else {
-            return div().into_any_element();
+        let (title, description) = match kind {
+            ConfigFileKind::Mux => ("Import from tmux", "Copies a tmux config into zz/mux.conf"),
+            ConfigFileKind::Terminal => (
+                "Import from Ghostty",
+                "Copies a Ghostty config into zz/config",
+            ),
         };
-        let disabled = self.file_controls_disabled(kind, cx);
         SettingsStack::titled("Import")
             .child(
-                SettingEntry::new("Source file").control(
-                    h_flex()
-                        .gap_2()
-                        .child(
-                            div()
-                                .w(px(230.0))
-                                .child(Input::new(&controls.donor).on(settings_card_ground(cx))),
-                        )
-                        .child(
-                            Button::new("choose-config-donor")
-                                .label("Choose…")
-                                .on(settings_card_ground(cx))
-                                .on_click(cx.listener(move |this, _, window, cx| {
-                                    let selected = cx.prompt_for_paths(ala::PathPromptOptions {
-                                        files: true,
-                                        directories: false,
-                                        multiple: false,
-                                        prompt: Some("Choose configuration".into()),
-                                    });
-                                    let input = this.file_options[&kind].donor.clone();
-                                    cx.spawn_in(window, async move |_, window| {
-                                        let path =
-                                            selected.await.ok()?.ok()??.into_iter().next()?;
-                                        window
-                                            .update(|window, cx| {
-                                                input.update(cx, |input, cx| {
-                                                    input.set_value(
-                                                        path.display().to_string(),
-                                                        window,
-                                                        cx,
-                                                    );
-                                                });
-                                            })
-                                            .ok()
-                                    })
-                                    .detach();
-                                })),
-                        )
-                        .child(
-                            Button::new("import-config-donor")
-                                .label("Import")
-                                .on(settings_card_ground(cx))
-                                .disabled(
-                                    disabled || controls.donor.read(cx).value().trim().is_empty(),
-                                )
-                                .on_click(cx.listener(move |this, _, window, cx| {
-                                    this.confirm_file_import(kind, window, cx);
-                                })),
-                        ),
+                SettingEntry::new(title).description(description).control(
+                    Button::new("import-config-file")
+                        .label("Import…")
+                        .on(settings_card_ground(cx))
+                        .disabled(self.file_controls_disabled(kind, cx))
+                        .on_click(cx.listener(move |this, _, window, cx| {
+                            this.choose_file_import(kind, window, cx);
+                        })),
                 ),
             )
             .into_any_element()
@@ -522,7 +470,7 @@ impl SettingsView {
             report_write_error("set", key.name(), &error, cx);
             return;
         }
-        self.reload_config_editor(kind, window, cx);
+        self.reload_config_editor(kind, cx);
         if let FileKey::Mux(option) = key {
             let expected = key
                 .value(&self.config_file_editor(kind).saved)
@@ -539,7 +487,7 @@ impl SettingsView {
         }
     }
 
-    fn confirm_file_import(
+    fn choose_file_import(
         &mut self,
         kind: ConfigFileKind,
         window: &mut Window,
@@ -548,69 +496,54 @@ impl SettingsView {
         if self.file_controls_disabled(kind, cx) {
             return;
         }
-        let source = self.file_options[&kind].donor.read(cx).value().to_string();
-        if source.trim().is_empty() {
+        let selected = cx.prompt_for_paths(ala::PathPromptOptions {
+            files: true,
+            directories: false,
+            multiple: false,
+            prompt: Some("Import".into()),
+        });
+        cx.spawn_in(window, async move |this, window| {
+            let path = selected.await.ok()?.ok()??.into_iter().next()?;
+            window
+                .update(|window, cx| {
+                    this.update(cx, |this, cx| this.import_file(kind, &path, window, cx))
+                })
+                .ok()?
+                .ok()
+        })
+        .detach();
+    }
+
+    fn import_file(
+        &mut self,
+        kind: ConfigFileKind,
+        path: &Path,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.file_controls_disabled(kind, cx) {
             return;
         }
-        let target = match config_file_path(kind) {
-            Ok(path) => path,
-            Err(error) => {
-                report_write_error("import", kind.file_name(), &error, cx);
-                return;
+        if kind == ConfigFileKind::Mux {
+            self.run_file_command(
+                kind,
+                CommandInvocation::new(
+                    "import-tmux-config",
+                    ["--".to_owned(), path.display().to_string()],
+                ),
+                None,
+                window,
+                cx,
+            );
+        } else {
+            match config::import::import_ghostty_config_from(path, import_color_scheme(cx)) {
+                Ok(_) => {
+                    self.reload_config_editor(kind, cx);
+                    config::request_daemon_reload(cx);
+                }
+                Err(error) => report_write_error("import", kind.file_name(), &error, cx),
             }
-        };
-        let description = format!(
-            "Import {} into {}? You can choose other paths in Settings.",
-            source,
-            target.display()
-        );
-        let settings = cx.entity();
-        window.open_alert_dialog(cx, move |alert, _, _| {
-            let settings = settings.clone();
-            let source = source.clone();
-            import_configuration_file_alert(
-                alert,
-                if kind == ConfigFileKind::Mux {
-                    "Import from tmux?"
-                } else {
-                    "Import from Ghostty?"
-                },
-                description.clone(),
-            )
-            .on_ok(move |_, window, cx| {
-                settings.update(cx, |this, cx| {
-                    if this.file_controls_disabled(kind, cx) {
-                        return;
-                    }
-                    if kind == ConfigFileKind::Mux {
-                        this.run_file_command(
-                            kind,
-                            CommandInvocation::new(
-                                "import-tmux-config",
-                                ["--".to_owned(), source.clone()],
-                            ),
-                            None,
-                            window,
-                            cx,
-                        );
-                    } else {
-                        match config::import::import_ghostty_config_from(
-                            &PathBuf::from(&source),
-                            import_color_scheme(cx),
-                        ) {
-                            Ok(_) => {
-                                this.reload_config_editor(kind, window, cx);
-                                config::request_daemon_reload(cx);
-                            }
-                            Err(error) => {
-                                report_write_error("import", kind.file_name(), &error, cx);
-                            }
-                        }
-                    }
-                });
-                true
-            })
-        });
+        }
     }
 
     fn run_file_command(
@@ -631,13 +564,13 @@ impl SettingsView {
             .spawn(async move { execute_file_command(command, expected, server_id) });
         cx.spawn_in(window, async move |this, window| {
             let result = job.await;
-            let _ = window.update(|window, cx| {
+            let _ = window.update(|_, cx| {
                 let _ = this.update(cx, |this, cx| {
                     if this.pending_file_command != Some((sequence, kind)) {
                         return;
                     }
                     this.pending_file_command = None;
-                    this.reload_config_editor_if_clean(kind.section(), window, cx);
+                    this.reload_config_editor(kind, cx);
                     match result {
                         Ok(output) if !output.trim().is_empty() => {
                             toast::push(Notification::success(output), cx);
@@ -652,10 +585,10 @@ impl SettingsView {
         .detach();
         cx.spawn_in(window, async move |this, window| {
             window.background_executor().timer(std::time::Duration::from_secs(5)).await;
-            let _ = window.update(|window, cx| { let _ = this.update(cx, |this, cx| {
+            let _ = window.update(|_, cx| { let _ = this.update(cx, |this, cx| {
                 if this.pending_file_command == Some((sequence, kind)) {
                     this.pending_file_command = None;
-                    this.reload_config_editor_if_clean(kind.section(), window, cx);
+                    this.reload_config_editor(kind, cx);
                     toast::push(Notification::info("The daemon has not confirmed the configuration. Review the file and retry Reload."), cx);
                     cx.notify();
                 }
@@ -812,8 +745,6 @@ mod tests {
                 file.path = Some(path.clone());
                 file.saved = source.to_owned();
                 file.error = None;
-                file.editor
-                    .update(cx, |editor, cx| editor.set_value(source, window, cx));
                 settings.synchronize_file_options(window, cx);
                 for (key, value) in [
                     (AppearanceConfigKey::FontThicken, Some("true")),
@@ -869,8 +800,6 @@ mod tests {
                 let saved = "font-size = 12\nbackground-opacity = 1\n";
                 let file = settings.config_file_editor_mut(ConfigFileKind::Terminal);
                 file.saved = saved.to_owned();
-                file.editor
-                    .update(cx, |editor, cx| editor.set_value(saved, window, cx));
                 settings.synchronize_file_options(window, cx);
                 let rows = &settings.file_options[&ConfigFileKind::Terminal].rows;
                 for (key, draft) in [
@@ -914,12 +843,6 @@ mod tests {
                     settings.config_file_editor(ConfigFileKind::Terminal).saved,
                     saved
                 );
-                let editor_draft = "font-size = 22\n";
-                settings
-                    .config_file_editor(ConfigFileKind::Terminal)
-                    .editor
-                    .update(cx, |editor, cx| editor.set_value(editor_draft, window, cx));
-                assert_eq!(settings.terminal_preview_source(cx), editor_draft);
                 settings.synchronize_terminal_preview(cx);
                 let preview = settings.terminal_preview.as_ref().unwrap().downgrade();
                 settings.set_section(SettingsSection::Appearance, window, cx);
