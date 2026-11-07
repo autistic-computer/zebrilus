@@ -13,6 +13,7 @@ from zzmojo.palette_presentation import (
 )
 from zzmojo.palette_verbs import PaletteFilled
 from zzmojo.palette_navigation import PaletteNavRow, initial_selection
+from zzmojo.palette_component_model import palette_component_usage
 from palette_fleet_fixture import (
     read_fleet,
     read_place,
@@ -95,6 +96,7 @@ def main() raises:
         ref value = display.hosts[host]
         value.status = status
     var bytes = List[UInt8]()
+    var chrome = List[UInt8]()
     var cases = Int(read_uint(reader, 65536))
     for _ in range(cases):
         var fleet_index = Int(read_uint(reader, UInt64(len(fleets) - 1)))
@@ -135,6 +137,16 @@ def main() raises:
         for _ in range(history_count):
             model.controller.history.append(read_text(reader, 64 * 1024))
         model.rebuild(fleet, displays[fleet_index])
+        if len(args) > 3:
+            append_uint(chrome, UInt64(len(model.rows) + 1))
+            for selected in range(-1, len(model.rows)):
+                model.controller.selected = (
+                    selected if selected >= 0 else Optional[Int](None)
+                )
+                var usage = palette_component_usage(model, fleet)
+                append_uint(chrome, UInt64(Bool(usage)))
+                if usage:
+                    append_text(chrome, usage.value())
         append_uint(bytes, UInt64(len(model.rows)))
         var nav = List[PaletteNavRow]()
         for row in model.rows:
@@ -165,3 +177,6 @@ def main() raises:
     reader.finish()
     with open(args[2], "w") as target:
         target.write_all(Span(bytes))
+    if len(args) > 3:
+        with open(args[3], "w") as target:
+            target.write_all(Span(chrome))

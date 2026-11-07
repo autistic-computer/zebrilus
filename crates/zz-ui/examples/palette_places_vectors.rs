@@ -186,6 +186,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
     let mut bytes = Vec::new();
     let mut ends = Vec::new();
+    let mut chrome = Vec::new();
+    let mut chrome_ends = Vec::new();
     for case in input.cases {
         let tree = trees.get(case.fleet).ok_or("missing fixture tree")?.clone();
         let draft = case.draft.map(|(index, filled)| {
@@ -223,6 +225,14 @@ fn main() -> Result<(), Box<dyn Error>> {
             },
             insert_path: case.insert,
         });
+        uint(&mut chrome, result.usage.len() as u64);
+        for usage in result.usage {
+            uint(&mut chrome, u64::from(usage.is_some()));
+            if let Some(usage) = usage {
+                text(&mut chrome, &usage);
+            }
+        }
+        chrome_ends.push(chrome.len());
         uint(&mut bytes, result.rows.len() as u64);
         for (row, action) in result.rows {
             text(&mut bytes, &row.label);
@@ -285,7 +295,9 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
     println!(
         "{}",
-        serde_json::to_string(&json!({"bytes":bytes,"ends":ends}))?
+        serde_json::to_string(
+            &json!({"bytes":bytes,"ends":ends,"chrome":chrome,"chrome_ends":chrome_ends})
+        )?
     );
     Ok(())
 }

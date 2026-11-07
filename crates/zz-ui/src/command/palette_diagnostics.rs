@@ -3,9 +3,9 @@ use std::rc::Rc;
 use penna::blocks::palette::{PalettePill, PaletteRow};
 use zz_client::{
     completion::PaneKindAvailability,
-    place::Place,
+    place::{Level, Place, parse},
     recents::Recents,
-    verbs::{self, Filled},
+    verbs::{self, Filled, Slot, VerbKind},
 };
 
 use super::{
@@ -41,6 +41,73 @@ pub struct PalettePlacesResult {
     pub pills: Vec<PalettePill>,
     pub placeholder: String,
     pub initial: Option<usize>,
+    pub usage: Vec<Option<String>>,
+}
+
+fn preview_usage(state: &UnifiedPalette, query: &str, selected: Option<usize>) -> Option<String> {
+    let action = selected.and_then(|index| state.rows.get(index)?.action.as_ref());
+    if state.draft.is_none()
+        && let Some(command) = parse(query).command
+    {
+        return match action {
+            Some(PaletteAction::Command(spec)) => Some(spec.usage.to_owned()),
+            _ => command
+                .split_whitespace()
+                .next()
+                .and_then(zz_protocol::catalog_command_spec)
+                .map(|spec| spec.usage.to_owned()),
+        };
+    }
+    if let Some(draft) = &state.draft {
+        match draft.verb.kind {
+            VerbKind::Gui => return Some("gui · no tmux command".to_owned()),
+            VerbKind::Zz => return Some(format!("zz · {}", draft.verb.description)),
+            VerbKind::Tmux | VerbKind::Alias => {}
+        }
+        let mut values = draft.values();
+        match (draft.next(), action) {
+            (Some(Slot::Target(_)), Some(PaletteAction::Fill(place))) => {
+                values.push(Filled::Place(*place));
+            }
+            (Some(Slot::Text(_)), _) if !query.trim().is_empty() => {
+                values.push(Filled::Text(query.trim().to_owned()));
+            }
+            _ => {}
+        }
+        return Some(format!(
+            "runs  {}",
+            verbs::compile(&draft.verb, &values, &state.fleet)
+                .map_or_else(|| draft.verb.spelled(), |compiled| compiled.display)
+        ));
+    }
+    match action? {
+        PaletteAction::Verb(index) => {
+            let verb = state.verbs.get(*index)?;
+            Some(match verb.kind {
+                VerbKind::Gui => "gui · no tmux command".to_owned(),
+                VerbKind::Zz => format!("zz · {}", verb.description),
+                VerbKind::Tmux | VerbKind::Alias => {
+                    let scope = state.scope();
+                    let values = if matches!(verb.slots.first(), Some(Slot::Target(_)))
+                        && scope.level().is_some_and(|level| level > Level::Host)
+                    {
+                        vec![Filled::Place(scope)]
+                    } else {
+                        Vec::new()
+                    };
+                    format!(
+                        "runs  {}",
+                        verbs::compile(verb, &values, &state.fleet)
+                            .map_or_else(|| verb.spelled(), |compiled| compiled.display)
+                    )
+                }
+            })
+        }
+        PaletteAction::Place(place) => {
+            verbs::go_to_line(&state.fleet, place).map(|line| format!("runs  {line}"))
+        }
+        _ => None,
+    }
 }
 
 #[must_use]
@@ -75,6 +142,10 @@ pub fn palette_places_fixture(input: PalettePlacesFixture) -> PalettePlacesResul
         &|_| None,
     );
     let initial = state.initial_selection();
+    let usage = std::iter::once(None)
+        .chain((0..state.rows.len()).map(Some))
+        .map(|selected| preview_usage(&state, &input.query, selected))
+        .collect();
     let pills = state.place_pills();
     let placeholder = state.place_placeholder();
     let rows = state
@@ -101,5 +172,6 @@ pub fn palette_places_fixture(input: PalettePlacesFixture) -> PalettePlacesResul
         pills,
         placeholder,
         initial,
+        usage,
     }
 }
