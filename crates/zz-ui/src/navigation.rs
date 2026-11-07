@@ -4,8 +4,8 @@ pub mod sidebar;
 pub mod status;
 
 use crate::{
-    ActiveTheme as _, Colorize as _, Disableable as _, Emphasis, Ground, Icon, IconName,
-    PaintState, Selectable as _, Sizable as _, StyledExt as _, Surface, Tone,
+    ActiveTheme as _, Colorize as _, Disableable as _, Emphasis, Ground, IconName, PaintState,
+    Selectable as _, Sizable as _, StyledExt as _, Surface, Tone,
     button::{Button, ButtonLook, ButtonVariants as _, COMPACT_ICON_BUTTON_SIZE},
     kbd::Kbd,
     rems_from_px,
@@ -147,33 +147,10 @@ impl SidebarAction {
 #[must_use]
 pub fn workspace_sidebar_action(
     action: SidebarAction,
-    flat: bool,
     ground: Ground,
     cx: &App,
 ) -> Stateful<ala::Div> {
-    if flat {
-        return flat::flat_action_row(action.id(), action.icon(), action.label(), ground, cx);
-    }
-    workspace_tree_row(
-        action.id(),
-        0,
-        false,
-        false,
-        false,
-        true,
-        true,
-        false,
-        SharedString::from(action.id()),
-        workspace_tree_marker(
-            Icon::new(action.icon()).size(rems_from_px(WORKSPACE_TREE_NODE_ICON_SIZE)),
-        ),
-        action.label(),
-        div(),
-        ground,
-        cx,
-    )
-    .role(ala::Role::Button)
-    .aria_label(action.label())
+    flat::flat_action_row(action.id(), action.icon(), action.label(), ground, cx)
 }
 
 #[must_use]

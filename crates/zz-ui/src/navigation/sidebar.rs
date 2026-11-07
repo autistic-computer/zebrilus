@@ -92,7 +92,7 @@ pub fn tree_node_marker(
             .child(icon)
             .when(bell, |this| {
                 this.child(
-                    crate::sidebar::status_dot(dot(cx.theme().warning))
+                    crate::sidebar::status_dot(dot(cx.theme().attention()))
                         .absolute()
                         .top(px(-1.0))
                         .right(px(-1.0)),

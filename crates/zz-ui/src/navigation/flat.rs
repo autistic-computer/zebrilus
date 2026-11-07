@@ -562,7 +562,10 @@ pub fn flat_rollup(rollup: &AttentionRollup, live: bool, cx: &App) -> Div {
     let muted = theme.foreground.muted();
     let count = |value: u32| div().child(SharedString::from(value.to_string()));
     let dots = [
-        (rollup.needs_you.saturating_add(rollup.bell), theme.warning),
+        (
+            rollup.needs_you.saturating_add(rollup.bell),
+            theme.attention(),
+        ),
         (rollup.failed, theme.danger),
         (rollup.done, theme.success),
     ];
@@ -992,7 +995,6 @@ mod tests {
                     "footer",
                     super::super::workspace_sidebar_action(
                         super::super::SidebarAction::Settings,
-                        true,
                         cx.theme().ground(),
                         cx,
                     )

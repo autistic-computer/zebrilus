@@ -39,7 +39,7 @@ pub enum Badge {
 impl Badge {
     pub fn color(self, cx: &App) -> Hsla {
         match self {
-            Self::NeedsInput => cx.theme().warning,
+            Self::NeedsInput => cx.theme().attention(),
             Self::Failed => cx.theme().danger,
             Self::Working => cx.theme().foreground.muted(),
             Self::Finished => cx.theme().success,
@@ -443,7 +443,7 @@ fn sidebar_in_view(
             .child(workspace_sidebar_actions(
                 SidebarAction::above(flat)
                     .iter()
-                    .map(|action| workspace_sidebar_action(*action, flat, ground, cx)),
+                    .map(|action| workspace_sidebar_action(*action, ground, cx)),
             ))
             .child(div().flex_1().min_h_0().child(navigation))
             .into_any_element()
@@ -458,7 +458,7 @@ fn sidebar_in_view(
     .when(!settings_selected, |surface| {
         surface.child(workspace_sidebar_footer(
             "sidebar-footer",
-            workspace_sidebar_action(SidebarAction::Settings, flat, ground, cx),
+            workspace_sidebar_action(SidebarAction::Settings, ground, cx),
             cx,
         ))
     })

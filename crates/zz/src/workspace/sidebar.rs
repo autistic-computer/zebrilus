@@ -840,7 +840,7 @@ impl WorkspaceSidebar {
         cx: &App,
     ) -> ala::Stateful<ala::Div> {
         let sidebar = sidebar.clone();
-        workspace_sidebar_action(action, self.flat, self.content_ground(cx), cx).on_click(
+        workspace_sidebar_action(action, self.content_ground(cx), cx).on_click(
             move |_, window, cx| match action {
                 SidebarAction::NewChat => sidebar.update(cx, |sidebar, cx| {
                     let host = sidebar.mux.read(cx).attached_host();
@@ -931,7 +931,7 @@ fn windows_agent_badge<'a>(
 
 fn agent_badge_color(badge: AgentBadge, cx: &App) -> Hsla {
     match badge {
-        AgentBadge::NeedsInput => cx.theme().warning,
+        AgentBadge::NeedsInput => cx.theme().attention(),
         AgentBadge::Failed => cx.theme().danger,
         AgentBadge::Working => cx.theme().foreground.muted(),
         AgentBadge::Finished => cx.theme().success,
