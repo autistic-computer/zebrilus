@@ -24,6 +24,7 @@ def main():
     parser.add_argument('--skip-build', action='store_true')
     parser.add_argument('--skip-reference', action='store_true')
     parser.add_argument('--skip-proof', action='store_true')
+    parser.add_argument('--worker', type=Path)
     options = parser.parse_args()
     TARGET.mkdir(parents=True, exist_ok=True)
     tools = runpy.run_path(str(ROOT / 'bend2/toolchain.py'))['ensure']()
@@ -42,10 +43,11 @@ def main():
         raise RuntimeError('source router corpus exceeds trace limits')
     operations = sum(len(trace['steps']) for trace in oracle['traces'])
     probe = TARGET / 'input-router-conformance'
-    worker = TARGET / 'zz-bend-input'
+    worker = options.worker.resolve() if options.worker else TARGET / 'zz-bend-input'
     fault_probe = TARGET / 'input-router-fault'
     if not options.skip_build:
-        subprocess.run([tools['bend'], 'bend2/input_router_bridge.bend', '-o', str(worker)], cwd=ROOT, env=environment, check=True)
+        if not options.worker:
+            subprocess.run([tools['bend'], 'bend2/input_router_bridge.bend', '-o', str(worker)], cwd=ROOT, env=environment, check=True)
         subprocess.run(['pixi', 'run', '--manifest-path', str(ROOT / 'mojo/pixi.toml'), 'mojo', 'build', '-I', str(ROOT / 'mojo'), str(ROOT / 'mojo/tests/input_router_conformance_probe.mojo'), '-o', str(probe)], cwd=ROOT, env=environment, check=True)
         subprocess.run(['pixi', 'run', '--manifest-path', str(ROOT / 'mojo/pixi.toml'), 'mojo', 'build', '-I', str(ROOT / 'mojo'), str(ROOT / 'mojo/tests/input_router_fault_probe.mojo'), '-o', str(fault_probe)], cwd=ROOT, env=environment, check=True)
     reports = []
@@ -131,7 +133,7 @@ def main():
             result = subprocess.run([str(worker), 'input', str(current), str(output)], cwd=ROOT, env=environment, capture_output=True, timeout=10)
             assert result.returncode == 65, result.stderr.decode()[-1000:]
             assert output.read_bytes() == sentinel
-    report = {'passed': True, 'traces': len(oracle['traces']), 'phases': reports, 'native_atomic_refusals': len(invalid), 'focused_runtime_profiles': profiles}
+    report = {'passed': True, 'worker': str(worker), 'traces': len(oracle['traces']), 'phases': reports, 'native_atomic_refusals': len(invalid), 'focused_runtime_profiles': profiles}
     (TARGET / 'input-router-boundary.json').write_text(json.dumps(report, indent=2) + '\n')
     print(json.dumps(report), flush=True)
 

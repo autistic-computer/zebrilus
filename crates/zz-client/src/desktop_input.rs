@@ -101,3 +101,63 @@ pub fn desktop_router(keymap: ChromeKeymap) -> InputRouter {
     }
     router
 }
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DesktopChromeDispatch {
+    None,
+    NewSession,
+    NewWindow,
+    SelectWindow(u8),
+    SplitRight,
+    SplitDown,
+    Detach,
+    ToggleSidebar,
+    OpenSettings,
+    OpenCommandPalette,
+}
+
+#[must_use]
+pub const fn desktop_chrome_dispatch(action: ChromeAction) -> DesktopChromeDispatch {
+    match action {
+        ChromeAction::NewSession => DesktopChromeDispatch::NewSession,
+        ChromeAction::NewWindow => DesktopChromeDispatch::NewWindow,
+        ChromeAction::SelectWindow(index) => DesktopChromeDispatch::SelectWindow(index),
+        ChromeAction::SplitRight => DesktopChromeDispatch::SplitRight,
+        ChromeAction::SplitDown => DesktopChromeDispatch::SplitDown,
+        ChromeAction::Detach => DesktopChromeDispatch::Detach,
+        ChromeAction::ToggleSidebar => DesktopChromeDispatch::ToggleSidebar,
+        ChromeAction::OpenSettings => DesktopChromeDispatch::OpenSettings,
+        ChromeAction::OpenCommandPalette => DesktopChromeDispatch::OpenCommandPalette,
+        _ => DesktopChromeDispatch::None,
+    }
+}
+
+#[must_use]
+pub fn next_prefix_cancel_request(previous: u64) -> u64 {
+    previous.saturating_add(1).max(1)
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct DesktopDialogPrefix {
+    pub sent: bool,
+    pub pending: Option<u64>,
+}
+
+#[must_use]
+pub fn desktop_dialog_prefix(
+    mut state: DesktopDialogPrefix,
+    active: bool,
+    acknowledged: Option<u64>,
+) -> (DesktopDialogPrefix, bool) {
+    if state
+        .pending
+        .is_some_and(|pending| acknowledged.is_some_and(|acknowledged| acknowledged >= pending))
+    {
+        state.pending = None;
+    }
+    if !active {
+        state.sent = false;
+    }
+    let request = active && !state.sent;
+    (state, request)
+}

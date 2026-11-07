@@ -3053,7 +3053,8 @@ impl MuxClient {
     }
 
     pub(crate) fn send_prefix_cancel(&mut self) -> Option<u64> {
-        let request_id = self.next_prefix_cancel_request.saturating_add(1).max(1);
+        let request_id =
+            zz_client::desktop_input::next_prefix_cancel_request(self.next_prefix_cancel_request);
         if self.send_input(InputMessage::CancelPrefix { request_id }) {
             self.next_prefix_cancel_request = request_id;
             Some(request_id)

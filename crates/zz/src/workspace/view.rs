@@ -27,8 +27,8 @@ use zz_client::{
     ChromeAction, Disposition, DropZone, Effect, InputEvent, InputRouter, MenuPointerKind,
     NormalizedPaneRect, PaneRect, PrefixView, SurfaceKind, coerced_drop_zone,
     desktop_input::{
-        DesktopDrag, DesktopGuard, DesktopGuardContext, DesktopKeyContext, desktop_guard,
-        desktop_intercepts, desktop_key_projection,
+        DesktopChromeDispatch, DesktopDrag, DesktopGuard, DesktopGuardContext, DesktopKeyContext,
+        desktop_chrome_dispatch, desktop_guard, desktop_intercepts, desktop_key_projection,
     },
     drop_preview_bounds, drop_zone_at,
     floating::{
@@ -1431,12 +1431,12 @@ impl AppView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let action: Box<dyn ala::Action> = match action {
-            ChromeAction::OpenCommandPalette => {
+        let action: Box<dyn ala::Action> = match desktop_chrome_dispatch(action) {
+            DesktopChromeDispatch::OpenCommandPalette => {
                 self.open_command_palette(None, window, cx);
                 return;
             }
-            ChromeAction::SelectWindow(position) => {
+            DesktopChromeDispatch::SelectWindow(position) => {
                 if self
                     .sidebar
                     .update(cx, |sidebar, cx| sidebar.open_window_shortcut(position, cx))
@@ -1445,14 +1445,14 @@ impl AppView {
                 }
                 return;
             }
-            ChromeAction::NewSession => Box::new(crate::menus::NewSession),
-            ChromeAction::NewWindow => Box::new(crate::menus::NewWindow),
-            ChromeAction::SplitRight => Box::new(crate::menus::SplitRight),
-            ChromeAction::SplitDown => Box::new(crate::menus::SplitDown),
-            ChromeAction::Detach => Box::new(crate::menus::Detach),
-            ChromeAction::ToggleSidebar => Box::new(crate::menus::ToggleSidebar),
-            ChromeAction::OpenSettings => Box::new(config::settings::OpenSettings),
-            _ => return,
+            DesktopChromeDispatch::NewSession => Box::new(crate::menus::NewSession),
+            DesktopChromeDispatch::NewWindow => Box::new(crate::menus::NewWindow),
+            DesktopChromeDispatch::SplitRight => Box::new(crate::menus::SplitRight),
+            DesktopChromeDispatch::SplitDown => Box::new(crate::menus::SplitDown),
+            DesktopChromeDispatch::Detach => Box::new(crate::menus::Detach),
+            DesktopChromeDispatch::ToggleSidebar => Box::new(crate::menus::ToggleSidebar),
+            DesktopChromeDispatch::OpenSettings => Box::new(config::settings::OpenSettings),
+            DesktopChromeDispatch::None => return,
         };
         window.dispatch_action(action, cx);
     }
@@ -1531,16 +1531,17 @@ impl AppView {
             .flatten()
             .is_some_and(|root| root.read(cx).has_active_dialog());
         let acknowledged = self.mux.read(cx).prefix_cancelled_request();
-        if self
-            .dialog_prefix_cancel_pending
-            .is_some_and(|pending| acknowledged.is_some_and(|acknowledged| acknowledged >= pending))
-        {
-            self.dialog_prefix_cancel_pending = None;
-        }
-        if !active {
-            self.dialog_prefix_cancel_sent = false;
-        } else if !self.dialog_prefix_cancel_sent
-            && let Some(request_id) = self.mux.update(cx, |mux, _| mux.send_prefix_cancel())
+        let (state, request) = zz_client::desktop_input::desktop_dialog_prefix(
+            zz_client::desktop_input::DesktopDialogPrefix {
+                sent: self.dialog_prefix_cancel_sent,
+                pending: self.dialog_prefix_cancel_pending,
+            },
+            active,
+            acknowledged,
+        );
+        self.dialog_prefix_cancel_sent = state.sent;
+        self.dialog_prefix_cancel_pending = state.pending;
+        if request && let Some(request_id) = self.mux.update(cx, |mux, _| mux.send_prefix_cancel())
         {
             self.dialog_prefix_cancel_pending = Some(request_id);
             self.dialog_prefix_cancel_sent = true;

@@ -3,6 +3,7 @@ import ./core.bend as Core
 import ./terminal_bridge.bend as Terminal
 import ./terminal_cells_bridge.bend as Cells
 import ./tree_bridge.bend as Tree
+import ./input_router_bridge.bend as Input
 
 def validate_args(args: List<&2, String>) -> Maybe<&2, U32>:
   match args:
@@ -26,6 +27,8 @@ def reply(result: Maybe<&2, U32>) -> IO(Unit):
 
 def reply_command(args: List<&2, String>) -> IO(Unit):
   match args:
+    case _ <> "input" <> current <> output <> Nil{}:
+      Input.reply_args("zz-bend" <> "input" <> current <> output <> Nil{})
     case _ <> "tree" <> mode <> current <> update <> output <> Nil{}:
       Tree.reply_args("zz-bend" <> "tree" <> mode <> current <> update <> output <> Nil{})
     case _ <> "cells" <> current <> changed <> output <> rest:
