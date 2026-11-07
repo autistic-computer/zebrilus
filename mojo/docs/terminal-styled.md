@@ -4,12 +4,12 @@ Run `/usr/bin/python3 scripts/terminal_styled_pixels.py --record --scale 1 --sca
 
 At 13 logical pixels and device scales 1, 1.25 and 2, all twelve font cases match every pixel and base metric: 1,612,800 exact pixels covering regular-only fonts, all real style faces, regular plus bold with missing italic, and synthesis disabled. Each contains ordinary and selected regular, bold, italic and bold-italic text with ligatures. Fonts are JetBrains Mono Regular and the four installed DejaVu Sans Mono faces.
 
-The other corrected-reference cases currently have these exact failure counts:
+The corrected-reference cases currently have these exact failure counts:
 
 | Case | Scale 1 | Scale 1.25 | Scale 2 |
 |---|---:|---:|---:|
-| Decorations | 1,961 | 1,582 | 4,624 |
-| Contrast | 1,961 | 1,582 | 4,624 |
+| Decorations | 0 | 0 | 0 |
+| Contrast | 0 | 0 | 0 |
 | Multilingual glyphs | 344 | 426 | 545 |
 | IME composition | 1,480 | 2,232 | 5,560 |
 
@@ -17,6 +17,8 @@ All 168 base metric bit patterns agree across the 24 cases. The remaining counts
 
 Native appearance now isolates dictionary graphemes, retains their natural internal advances, aligns scalar clusters to their source cells, and uses the source sprite set. Heavy boxes and shades use actual font glyphs. Native scalar batches include spaces and wide-cell placeholders and share a baseline for their font group. On Linux that baseline uses the maximum ascent and descent of the actual glyph fonts, and placement follows the source conversion that omits layout glyph offsets. Source and candidate glyph IDs and fallback font metrics are recorded directly to distinguish shaping, placement and raster failures. These changes have been checked against the separate twelve-case baseline, which retains all 401,152 exact pixels and seven metrics.
 
-Native curly waves use the analytic underline primitive. Its independent source comparison covers 64 solid/wavy cases and 122,880 exact pixels, plus a 4 MiB retained-record stress check. Source decoration placement and IME masking remain separate open corrections. The Metal constructor, upload and encode paths compile to LLVM in Linux semantic probes; actual Metal GPU execution remains untested here.
+Native single, curly, strike and hyperlink lines now use source font metrics and the analytic underline primitive. Double, dotted and dashed lines retain the source per-cell rhythm at one device pixel, and overlines use the row top. Explicit row decorations replay after text, matching the source descender overlap. Selected font decorations use transient retained tails, which are retired before reuse and remain aligned through cache compaction. The two decoration/contrast cases are exact at all three scales, adding 806,400 exact pixels to the font cases; these measured cases do not establish all ligature/style-boundary or RTL decoration transitions.
 
-The native font-option diagnostics request synthesis when a styled request resolves to the same native face as its same-family request with that style removed. The Linux native rasterizer ignores synthetic bold/italic and font-smoothing hints; macOS consumes them. The font-case equality above therefore does not establish synthetic-style parity on macOS. The corrected 24-case run with nearest-quarter placement peaked at 706 MiB; its twelve-case baseline regression peaked at 709 MiB. All builds and captures remain serialized under the guard.
+Native curly waves use the analytic underline primitive. Its independent source comparison covers 64 solid/wavy cases and 122,880 exact pixels, plus a 4 MiB retained-record stress check. IME masking and remaining box/block graphics remain open corrections. The Metal constructor, upload and encode paths compile to LLVM in Linux semantic probes; actual Metal GPU execution remains untested here.
+
+The native font-option diagnostics request synthesis when a styled request resolves to the same native face as its same-family request with that style removed. The Linux native rasterizer ignores synthetic bold/italic and font-smoothing hints; macOS consumes them. The font-case equality above therefore does not establish synthetic-style parity on macOS. The corrected 24-case run with native decoration placement/order peaked at 750 MiB. The focused 40-frame selected-decoration cache/retirement/compaction regression compiled at 601 MiB and passed. The separate twelve-case baseline retains all 401,152 exact pixels and seven metrics. All builds and captures remain serialized under the guard.

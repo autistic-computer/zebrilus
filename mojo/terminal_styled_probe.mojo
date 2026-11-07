@@ -159,6 +159,12 @@ def main() raises:
         if index != 0:
             result += ","
         result += String('{"bounds":[') + String(glyph.x) + "," + String(glyph.y) + "," + String(slot.w) + "," + String(slot.h) + '],"color":' + String(glyph.color) + "}"
+    result += '],"underlines":['
+    for index in range(len(ui.dl.native_underlines)):
+        if index != 0:
+            result += ","
+        var line = ui.dl.native_underlines[index]
+        result += String('{"bounds":[') + String(line.x) + "," + String(line.y) + "," + String(line.w) + "," + String(line.h) + '],"thickness":' + String(line.thickness) + ',"wavy":' + String(line.wavy) + "}"
     result += '],"faces":['
     for index in range(4):
         var face = ui.term.views[0].faces[index]
