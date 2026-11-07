@@ -902,11 +902,7 @@ impl PopupMenu {
             },
         );
         let pressed = press_wash(cx.theme(), selected);
-        let corner = nested_radius(
-            cx.theme().radius,
-            cx.theme().row_inset,
-            row_radius(&row, item_height),
-        );
+        let corner = nested_radius(cx.theme().radius, px(0.), row_radius(&row, item_height));
         let this = MenuItemElement::new(ix, &group_name)
             .relative()
             .when(coarse && item.is_clickable(), |this| {
@@ -1331,7 +1327,12 @@ mod tests {
                 v_flex().size_full().items_start().child(self.0.clone())
             }
         }
-        for (configured, expected) in [(12.0, Some(6.0)), (14.0, Some(8.0)), (25.0, Some(12.6))] {
+        for (configured, expected) in [
+            (4.0, Some(4.0)),
+            (7.29, Some(6.804)),
+            (12.0, Some(8.7295)),
+            (25.0, Some(12.6)),
+        ] {
             cx.update(|cx| {
                 crate::init_tinted(cx);
                 cx.set_reduce_motion(true);

@@ -46,7 +46,7 @@ Hairlines mean something: a rule, an outline variant, a field being typed in. In
 
 ## Corners
 
-Every corner follows Corner radius. A control (a button, field, tab, chip, badge or row) rounds to a share of its own height, so a small badge and a tall sidebar entry read equally round: 31% of the height at the default, 45% at 100%. Containers (cards, panels, popovers, dialogs, panes) keep `radius` in pixels, a pane no rounder than 16. A corner inside another is concentric, like the segmented control's pill in its track or a menu's rows in the menu, and only `full` makes pills.
+Every corner follows Corner radius. A control (a button, field, tab, chip, badge or row) rounds to a share of its own height, so a small badge and a tall sidebar entry read equally round: 31% of the height at the default, 45% at 100%. Containers (cards, panels, popovers, dialogs, panes) keep `radius` in pixels, a pane no rounder than 16. A corner inside another is concentric, like the segmented control's pill in its track; a menu's rows keep their control corner, never rounder than the menu, and only `full` makes pills.
 
 ```figure uses=input
 <div class="docs-show" data-gap="wide">

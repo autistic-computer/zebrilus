@@ -364,9 +364,8 @@ pub const FIELD_COMPOSER: SurfaceRole = SurfaceRole::under(
     &SurfaceRole::TEXT_AREA,
     "field.composer",
     "Composer",
-    "The pill you write to an agent in",
-)
-.with(P.shape(Shape::Pill));
+    "The field you write to an agent in",
+);
 pub const FIELD_ADDRESS: SurfaceRole = SurfaceRole::new(
     "field.address",
     Kind::Field,
