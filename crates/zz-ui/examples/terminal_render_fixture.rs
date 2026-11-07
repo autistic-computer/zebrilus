@@ -19,6 +19,7 @@ struct Fixture {
     appearance: TerminalAppearance,
     cache: Rc<RefCell<RowRenderCache>>,
     geometry: Rc<RefCell<Value>>,
+    font_size: f32,
 }
 
 impl Render for Fixture {
@@ -27,6 +28,7 @@ impl Render for Fixture {
         reason = "the terminal fixture fixes its independent font size and appearance colors"
     )]
     fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        let font_size = self.font_size;
         let viewport = self.viewport.clone();
         let appearance = self.appearance.clone();
         let prepare = self.cache.clone();
@@ -35,7 +37,7 @@ impl Render for Fixture {
         div()
             .size_full()
             .font_family("JetBrains Mono")
-            .text_size(px(13.))
+            .text_size(px(font_size))
             .bg(ala::rgb(0x0011_2233))
             .child(
                 canvas(
@@ -69,11 +71,11 @@ impl Render for Fixture {
                         let g = state.geometry;
                         let probe = window.text_system().shape_line(
                             "m".into(),
-                            px(13.),
+                            px(font_size),
                             &[ala::TextRun { len: 1, font: ala::font("JetBrains Mono"), color: ala::Hsla::default(), background_color: None, underline: None, strikethrough: None }],
                             None,
                         );
-                        let gap = window.text_system().line_gap(probe.runs[0].font_id, px(13.));
+                        let gap = window.text_system().line_gap(probe.runs[0].font_id, px(font_size));
                         *geometry.borrow_mut() = json!({
                             "advance": f32::from(probe.width),
                             "ascent": f32::from(probe.ascent),
@@ -102,6 +104,17 @@ impl Render for Fixture {
 
 fn main() -> Result<(), Box<dyn Error>> {
     let directory = PathBuf::from(std::env::args().nth(1).ok_or("output directory required")?);
+    let font_size: f32 = std::env::args().nth(2).as_deref().unwrap_or("13").parse()?;
+    let scale: f32 = std::env::args().nth(3).as_deref().unwrap_or("1").parse()?;
+    if !font_size.is_finite()
+        || !(7.0..=48.0).contains(&font_size)
+        || !scale.is_finite()
+        || !(0.5..=3.0).contains(&scale)
+    {
+        return Err("terminal fixture size or scale exceeds its limits".into());
+    }
+    let physical_width = (256.0 * scale).round() as i32;
+    let physical_height = (96.0 * scale).round() as i32;
     fs::create_dir_all(&directory)?;
     let appearance = TerminalAppearance {
         font_families: vec!["JetBrains Mono".into()],
@@ -154,7 +167,10 @@ fn main() -> Result<(), Box<dyn Error>> {
             Ok(Some(Box::new(terminal_capture::Capture {
                 native,
                 scene: captured.clone(),
-                size: size(ala::DevicePixels(256), ala::DevicePixels(96)),
+                size: size(
+                    ala::DevicePixels(physical_width),
+                    ala::DevicePixels(physical_height),
+                ),
             })))
         });
     let font = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -172,19 +188,21 @@ fn main() -> Result<(), Box<dyn Error>> {
         "cells": viewport.cells.iter().map(|cell| [cell.glyph(), u32::from(cell.style_id()), u32::from(cell.flags())]).collect::<Vec<_>>(),
         "overlays": viewport.overlays.iter().map(|span| [span.row, span.start, span.end, span.kind_and_flags()]).collect::<Vec<_>>(),
         "cursor": viewport.cursor.map(|cursor| json!([cursor.color().packed(), cursor.column(), cursor.row(), match cursor.style() { CursorStyle::Bar => 0, CursorStyle::Block => 1, CursorStyle::Underline => 2, CursorStyle::BlockHollow => 3 }, u8::from(cursor.visible()), u8::from(cursor.blinking()), u8::from(cursor.at_wide_tail())])),
-        "font_size": 13,
-        "width": 256,
-        "height": 96,
+        "font_size": font_size,
+        "scale": scale,
+        "width": physical_width,
+        "height": physical_height,
     });
     let geometry = Rc::new(RefCell::new(Value::Null));
     let output = geometry.clone();
     let window = cx.open_window(size(px(256.), px(96.)), |window, cx| {
-        window.set_scale_factor(1.);
+        window.set_scale_factor(scale);
         cx.new(|_| Fixture {
             viewport,
             appearance,
             cache: Rc::new(RefCell::new(RowRenderCache::default())),
             geometry,
+            font_size,
         })
     })?;
     cx.update_window(window.into(), |_, window, cx| window.draw(cx).clear(cx))?;

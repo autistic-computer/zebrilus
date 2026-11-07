@@ -44,11 +44,7 @@ fn geometry(scene: &Scene) -> Value {
 }
 
 impl PlatformHeadlessRenderer for Capture {
-    fn render_scene_to_image(
-        &mut self,
-        scene: &Scene,
-        _: Size<DevicePixels>,
-    ) -> Result<RgbaImage> {
+    fn render_scene_to_image(&mut self, scene: &Scene, _: Size<DevicePixels>) -> Result<RgbaImage> {
         *self.scene.borrow_mut() = geometry(scene);
         self.native.render_scene_to_image(scene, self.size)
     }
