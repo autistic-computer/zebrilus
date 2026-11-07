@@ -83,6 +83,8 @@ def interactive_hello(
     native_search: Bool = False,
     prepared: Optional[List[PreparedInvocation]] = None,
     native_paths: Bool = False,
+    native_chooser: Bool = False,
+    native_keys: Bool = False,
 ) raises -> List[UInt8]:
     var payload = List[UInt8]()
     append_uint(payload, HELLO)
@@ -91,7 +93,7 @@ def interactive_hello(
     append_uint(payload, 0)
     payload.append(1)
     append_text(payload, "zz Mojo")
-    append_uint(payload, UInt64(3 + Int(native_search) + Int(native_paths)))
+    append_uint(payload, UInt64(3 + Int(native_search) + Int(native_paths) + Int(native_chooser)))
     append_text(payload, "client-terminal-v1")
     append_text(payload, "client-utf8-v1")
     append_text(payload, "control-plane-v2")
@@ -99,6 +101,8 @@ def interactive_hello(
         append_text(payload, "client-native-terminal-search-v1")
     if native_paths:
         append_text(payload, "client-path-picker-v1")
+    if native_chooser:
+        append_text(payload, "client-native-chooser-v1")
     payload.append(0)
     payload.append(UInt8(1 if origin else 0))
     if origin:
@@ -114,7 +118,7 @@ def interactive_hello(
     append_uint(payload, 2)
     payload.append(1)
     append_uint(payload, options)
-    append_uint(payload, 0)
+    append_uint(payload, UInt64(2 if native_keys else 0))
     payload.append(1)
     if prepared:
         payload.append(1)

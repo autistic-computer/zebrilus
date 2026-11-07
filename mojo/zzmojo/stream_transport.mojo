@@ -49,6 +49,7 @@ from .terminal_history_cache import TerminalHistoryCache
 from .history_pacer import HISTORY_BACKFILL_QUIET_NS, bounded_history_range
 from .terminal_history_protocol import history_request, decode_history_budget
 from .input_protocol import InputRoutingState, decode_routing_event
+from .desktop_key_tables import RetainedKeyTables, get_key_tables
 from .prompt_protocol import decode_prompt_event
 from .chooser_protocol import decode_choose_event
 from .chooser_buffer_protocol import decode_choose_buffer
@@ -132,6 +133,7 @@ struct StreamModel(Copyable, Movable):
     var unhandled_bytes: Int
     var revision: UInt64
     var routing: InputRoutingState
+    var key_tables: RetainedKeyTables
     var appearance: Optional[TerminalAppearance]
     var appearance_provenance: Dict[UInt8, UInt8]
     var appearance_revision: UInt64
@@ -169,6 +171,7 @@ struct StreamModel(Copyable, Movable):
         self.unhandled_bytes = 0
         self.revision = 0
         self.routing = InputRoutingState()
+        self.key_tables = RetainedKeyTables()
         self.appearance = None
         self.appearance_provenance = Dict[UInt8, UInt8]()
         for key in range(30):
@@ -314,6 +317,12 @@ struct InteractiveConnection(Movable):
             self.transport.write(Span(frame))
             self.tree_pending = True
 
+    def request_key_tables(mut self) raises:
+        if self.model.key_tables.needs_full():
+            var frame = get_key_tables()
+            self.transport.write(Span(frame))
+            self.model.key_tables.requested()
+
     def request_viewport(mut self, pane: UInt64) raises:
         if pane not in self.full_pending:
             var frame = request_full(pane)
@@ -404,6 +413,10 @@ struct InteractiveConnection(Movable):
 
     @inline(.never)
     def clear_attachment_planes(mut self) raises:
+        self.model.routing.armed = False
+        self.model.routing.table = None
+        self.model.routing.repeat = False
+        self.model.key_tables.reset_active()
         self.model.paths.close_picker()
         self.model.terminals.clear()
         self.model.histories.clear()
@@ -568,6 +581,8 @@ struct InteractiveConnection(Movable):
             self.capabilities = event.capabilities
             self.clock = event.clock
             self.model.paths.connected(self.server_id, self.client_id)
+            _ = self.model.key_tables.consume(event.raw.copy())
+            self.request_key_tables()
         elif event.kind == PING:
             var reply = pong(event.ping_token)
             self.transport.write(Span(reply))
@@ -659,6 +674,15 @@ struct InteractiveConnection(Movable):
             self.model.routing.armed = False
             self.model.routing.table = None
             self.tree_dirty = True
+        elif event.event_kind and (event.event_kind.value() == 25 or event.event_kind.value() == 56 or event.event_kind.value() == 59 or event.event_kind.value() == 54):
+            var raw = List[UInt8]()
+            swap(raw, event.raw)
+            _ = self.model.key_tables.consume(raw^)
+            if event.event_kind.value() == 54 and self.model.key_tables.active_known and self.model.key_tables.snapshot:
+                ref prefix = self.model.key_tables.snapshot.value()[].prefix
+                self.model.routing.table = prefix.active_table.copy()
+                self.model.routing.repeat = prefix.repeat
+            self.request_key_tables()
         elif event.event_kind == Optional[UInt64](9):
             var raw = List[UInt8]()
             swap(raw, event.raw)
@@ -825,6 +849,8 @@ def connect_interactive(
     native_search: Bool = False,
     native_paths: Bool = False,
     path_epoch: UInt64 = 0,
+    native_chooser: Bool = False,
+    native_keys: Bool = False,
 ) raises -> InteractiveConnection:
     return connect_interactive_transport(
         open_connection(path),
@@ -836,6 +862,8 @@ def connect_interactive(
         native_search,
         native_paths=native_paths,
         path_epoch=path_epoch,
+        native_chooser=native_chooser,
+        native_keys=native_keys,
     )
 
 
@@ -850,8 +878,11 @@ def connect_interactive_transport(
     prepared: Optional[List[PreparedInvocation]] = None,
     native_paths: Bool = False,
     path_epoch: UInt64 = 0,
+    native_chooser: Bool = False,
+    native_keys: Bool = False,
 ) raises -> InteractiveConnection:
     var stream = InteractiveConnection(transport^, path_epoch)
+    stream.model.key_tables.subscribed = native_keys
     if prepared:
         if len(prepared.value()) > 4096:
             raise Error("application resume exceeds command count limit")
@@ -875,6 +906,8 @@ def connect_interactive_transport(
         native_search=native_search,
         prepared=prepared,
         native_paths=native_paths,
+        native_chooser=native_chooser,
+        native_keys=native_keys,
     )
     stream.transport.write(Span(hello))
     stream.consume(stream.transport.read_frame())

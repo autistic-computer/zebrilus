@@ -183,7 +183,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-The pivot sampling, cyclic partition and heap fallback in `mojo/zzmojo/path_rank.mojo` are adapted from the Rust standard library's slice sorting implementation, copyright The Rust Project Contributors, available under the MIT License reproduced below.
+The pivot sampling, cyclic partition and heap fallback in `mojo/zzmojo/path_rank.mojo`, the zero-key SipHash-1-3 implementation in `mojo/zzmojo/key_table_hash.mojo`, and the slice partition-point compatibility routine in `mojo/zzmojo/desktop_key_tables.mojo` are adapted from the Rust standard library, copyright The Rust Project Contributors, available under the MIT License reproduced below.
 
 ```
 MIT License

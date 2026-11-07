@@ -6,6 +6,7 @@ from .tree_model import MuxSnapshot, WindowSnapshot, _Order, _ordered
 from .terminal_model import TerminalViewport, GRAPHEME
 from .stream_protocol import input_text
 from .input_protocol import InputRoutingState
+from .desktop_key_tables import RetainedKeyTables
 from .client_events import StatusLine, CommandOutputState, ClientMessage
 from .appearance_protocol import TerminalAppearance
 from .palette_dialog_state import PaletteDialogs
@@ -206,6 +207,7 @@ struct AppModel(Copyable, Movable):
     var source_client: UInt64
     var layout_generation: UInt64
     var routing: InputRoutingState
+    var key_tables: RetainedKeyTables
     var status: StatusLine
     var command_output: CommandOutputState
     var message: Optional[ClientMessage]
@@ -237,6 +239,7 @@ struct AppModel(Copyable, Movable):
         self.source_client = 0
         self.layout_generation = 0
         self.routing = InputRoutingState()
+        self.key_tables = RetainedKeyTables()
         self.status = StatusLine()
         self.command_output = CommandOutputState()
         self.message = None
@@ -410,6 +413,7 @@ struct AppModel(Copyable, Movable):
         self.source_client = connection.client_id
         self.layout_generation = connection.model.view.layout_generation
         self.routing = connection.model.routing.copy()
+        self.key_tables = connection.model.key_tables.copy()
         self.status = connection.model.events.status.copy()
         self.command_output = connection.model.events.output.copy()
         self.message = connection.model.message.copy()

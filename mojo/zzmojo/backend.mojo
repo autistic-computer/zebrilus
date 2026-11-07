@@ -100,7 +100,7 @@ def run_job(context: MutOpaquePointer[MutUntrackedOrigin]) abi("C"):
             if job.startup:
                 var startup = job.startup.take()
                 job.connection = startup^.connect(
-                    native_paths=True, path_epoch=job.path_epoch
+                    native_paths=True, path_epoch=job.path_epoch, native_keys=True
                 )
             else:
                 job.connection = connect_interactive(
@@ -109,6 +109,7 @@ def run_job(context: MutOpaquePointer[MutUntrackedOrigin]) abi("C"):
                     native_search=True,
                     native_paths=True,
                     path_epoch=job.path_epoch,
+                    native_keys=True,
                 )
         if job.clipboard_reply:
             ref reply = job.clipboard_reply.value()
@@ -240,6 +241,7 @@ def run_job(context: MutOpaquePointer[MutUntrackedOrigin]) abi("C"):
                     native_search=True,
                     native_paths=True,
                     path_epoch=job.path_epoch,
+                    native_keys=True,
                 )
             elif action.kind == CREATE_SESSION:
                 job.model.create_session(job.connection.value())
