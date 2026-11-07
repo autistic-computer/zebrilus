@@ -186,6 +186,22 @@ pub enum HostPlatform {
     Linux(LinuxDistro),
 }
 
+impl HostPlatform {
+    #[must_use]
+    pub const fn slug(self) -> Option<&'static str> {
+        Some(match self {
+            Self::Unknown => return None,
+            Self::Macos => "macos",
+            Self::Windows => "windows",
+            Self::Linux(LinuxDistro::Ubuntu) => "ubuntu",
+            Self::Linux(LinuxDistro::Debian) => "debian",
+            Self::Linux(LinuxDistro::Arch) => "arch",
+            Self::Linux(LinuxDistro::Fedora) => "fedora",
+            Self::Linux(LinuxDistro::Other) => "linux",
+        })
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum LinuxDistro {
     #[default]

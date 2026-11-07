@@ -157,6 +157,34 @@ nav:not([data-divider]) > .sidebar-resize:hover {
   background: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAADD0lEQVR4AeybQW7TQBRAxz5DVFCAFYdAZUN7BhALDgGCHiDJAQqCQ7BAcIbChopDsAIiWuUMdf+bxm4yteOxPLE9M67869gZe+a9/2diRUqqLP8m9x8eTe49ONNxMM0mQwzGdzCdy9jmlliqVkAOrK6uzlSWHemwvXvX7RifUjPpdiYSSFKtiEoBcgNMZoMGFtKarVZEqQCyLjfGpOyC2BAxLyO5I0DD35RSWXufz800m0GwJYCy97zkDTzjUBJrSigEaPibBcS4KrBDJMgnRU5VCJATIc15wdm5FaxawDr7O68I7c18KmgBAlcYkddxbDIVAE1jzD7gBE+3eQVwHF9k2SxVSfIsPvJb4jToz/1bzvJXsg6k5e/EczY6AWZqRwGmkdiOxwqILeMm71gByz+/lc/x7ctnM6mNjr2ugNMPn9Tzl68aAZuNvRUA/On7jyZP42MvBbiCx5Z3Al5IybvIPPCENwLOz38p4H/KnoG7inT66LHqMyjnOhjgWexcw9NvrxVw8u6NOnn7mnFUBoKAr2zQ8o3eBNjCu5zvZa56EcDDi03m9w2PkE4FPD18ooA/lD2dVwWLnSv4qj7y850JAP6rPLbugmexA34fi10ObO47EcB8B97sfPMYeBa7LuHpf+8CgLeZ78AzoK5jrwJs4bua72Vy9yaAxc4m833CI8S5ABY74HctdnRMIKjv7yKcCgCexc4GHgFDCGcCmO/ADwGqyRicCACecm7S8VDathbgMzxJaCWAxc7XzANPtBLAw0uf3yW46LuVAAz6HqMA3zPYdvzBVUBTIaOApsZCaz9WgEqS76Fl1ZpH2OOugCz7kUoFLKyNBdgwXf3/G+0UWF0u56lOqswFvY/rn658LWB18e84LnalyD7MWgAvJLQR2cewFayFAG0kjqmw0KzrNBcCONZTIWQJwrYJD/OWAE5oCUoVJcK5IAL4krXujgBg15ZCkrBYJxa8rSgVQAskSCTy2l8RZP1ymQhH6c9mha3+1+NcLJGLWCi5KRcOJbbGwdiIND1mzFVZ37zmGgAA//9YSZYzAAAABklEQVQDANX/FbDlpEOwAAAAAElFTkSuQmCC") center / contain no-repeat;
 }
 
+[data-icon="host-macos"] {
+  --penna-icon: url("../img/icons/macos.svg");
+}
+
+[data-icon="host-windows"] {
+  --penna-icon: url("../img/icons/windows.svg");
+}
+
+[data-icon="host-linux"] {
+  --penna-icon: url("../img/icons/linux.svg");
+}
+
+[data-icon="host-ubuntu"] {
+  --penna-icon: url("../img/icons/ubuntu.svg");
+}
+
+[data-icon="host-debian"] {
+  --penna-icon: url("../img/icons/debian.svg");
+}
+
+[data-icon="host-arch"] {
+  --penna-icon: url("../img/icons/arch.svg");
+}
+
+[data-icon="host-fedora"] {
+  --penna-icon: url("../img/icons/fedora.svg");
+}
+
 .marker-dot {
   position: absolute;
   right: 1px;

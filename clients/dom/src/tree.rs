@@ -494,6 +494,9 @@ impl Client {
                     "key": target_key(row.target),
                     "depth": row.depth,
                     "node": node_name(row.node),
+                    "platform": matches!(row.node, SidebarNode::Host)
+                        .then(|| self.core.host_platform().slug())
+                        .flatten(),
                     "label": row.label,
                     "index": row.index,
                     "onActivePath": row.on_active_path,
@@ -639,6 +642,7 @@ impl Client {
             .collect::<Vec<_>>();
         json!({
             "name": "zz daemon",
+            "platform": self.core.host_platform().slug(),
             "rollup": rollup_json(&rollup),
             "chats": chats,
         })

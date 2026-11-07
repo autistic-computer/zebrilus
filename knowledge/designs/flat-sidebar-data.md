@@ -201,7 +201,9 @@ first of `ID` and `ID_LIKE` in `/etc/os-release` that names a family, so Mint an
 and Rocky shows Fedora. The client keeps it on the host's connection across reconnects
 (`MuxClient::host_platform`). The session tree draws the mark in the row's ink where the zz logo
 was, and chat view in place of the laptop or server glyph; a host that has not connected yet keeps
-those.
+those. The HTML client draws the same files: `build-dom.sh` copies them to `img/icons/`, the page
+gets the host's `HostPlatform::slug()` in its sidebar JSON, and `[data-icon="host-<slug>"]` masks
+the file.
 
 # What the source changed in the first draft
 

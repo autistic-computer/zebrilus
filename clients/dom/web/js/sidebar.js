@@ -23,6 +23,10 @@ let flatFolds = { host: false };
 
 const NODE_ICONS = { host: "hard-drive", session: "layers", window: "app-window" };
 
+function hostMark(platform) {
+  return platform ? `<i data-icon="host-${platform}"></i>` : `<i class="host-logo"></i>`;
+}
+
 function writable() {
   return state.connected && !state.tree?.readOnly;
 }
@@ -115,7 +119,7 @@ function release() {
 function marker(icon, row) {
   const element = document.createElement("span");
   element.className = "tree-marker";
-  element.innerHTML = row.node === "host" ? `<i class="host-logo"></i>` : `<i data-icon="${icon}"></i>`;
+  element.innerHTML = row.node === "host" ? hostMark(row.platform) : `<i data-icon="${icon}"></i>`;
   if (row.bell) element.insertAdjacentHTML("beforeend", `<i class="marker-dot bell"></i>`);
   if (row.badge) element.insertAdjacentHTML("beforeend", `<i class="marker-dot badge" data-badge="${row.badge}"></i>`);
   return element;
@@ -305,7 +309,7 @@ function renderFlat() {
   header.setAttribute("role", "button");
   header.setAttribute("aria-label", host.name);
   header.setAttribute("aria-expanded", String(!flatFolds.host));
-  header.innerHTML = `<i data-icon="laptop" class="flat-glyph"></i><span class="flat-name" data-text></span><i data-icon="chevron-right" class="chevron"${flatFolds.host ? "" : " data-open"}></i><span class="grow"></span>`;
+  header.innerHTML = `<i data-icon="${host.platform ? `host-${host.platform}` : "laptop"}" class="flat-glyph"></i><span class="flat-name" data-text></span><i data-icon="chevron-right" class="chevron"${flatFolds.host ? "" : " data-open"}></i><span class="grow"></span>`;
   header.querySelector(".flat-name").textContent = host.name;
   if (flatFolds.host) header.append(rollup(host.rollup, live));
   if (!live) header.insertAdjacentHTML("beforeend", `<i data-icon="circle-x" class="flat-status"></i>`);
