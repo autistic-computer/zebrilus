@@ -729,6 +729,12 @@ impl SettingsView {
             AppearancePageItem::UiFontFamily => self.ui_font_setting(cx),
             AppearancePageItem::TextSize => self.ui_zoom_setting(cx),
             AppearancePageItem::App(ZzRow::AppIcon) => Self::app_icon_setting(resolved, cx),
+            AppearancePageItem::App(row @ ZzRow::TerminalColors) => Self::boolean_setting(
+                ConfigKey::ChromeTerminalColors,
+                row.title(),
+                resolved.chrome_terminal_colors,
+            )
+            .description("Draw the window in the terminal theme's colors"),
             AppearancePageItem::App(row @ ZzRow::ProgramColors) => Self::boolean_setting(
                 ConfigKey::ProgramColors,
                 row.title(),
@@ -2061,6 +2067,7 @@ fn refresh_settings_preview(key: ConfigKey, cx: &mut App) {
                 | ConfigKey::PickerFocusSidebar
                 | ConfigKey::WhichKeyDelay
                 | ConfigKey::ProgramColors
+                | ConfigKey::ChromeTerminalColors
         )
     {
         return;
@@ -2162,6 +2169,7 @@ fn numeric_config_value(config: &AppConfig, key: ConfigKey) -> ConfigValue<f32> 
         | ConfigKey::CheckForUpdates
         | ConfigKey::FlatSidebar
         | ConfigKey::ProgramColors
+        | ConfigKey::ChromeTerminalColors
         | ConfigKey::ExperimentalEditorPane
         | ConfigKey::PaneGaps
         | ConfigKey::EditorLineNumbers

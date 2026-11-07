@@ -1,5 +1,6 @@
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ZzRow {
+    TerminalColors,
     ProgramColors,
     AppIcon,
     WindowBackgroundBlur,
@@ -10,6 +11,7 @@ pub enum ZzRow {
 impl ZzRow {
     pub const fn title(self) -> &'static str {
         match self {
+            Self::TerminalColors => "Terminal colors",
             Self::ProgramColors => "Program colors",
             Self::AppIcon => "App Icon",
             Self::WindowBackgroundBlur => "Window blur",
@@ -35,6 +37,8 @@ pub fn appearance_page_items(macos: bool, has_window_blur: bool) -> Vec<Appearan
     items.splice(
         size..size,
         [
+            AppearancePageItem::Group { title: "Terminal" },
+            AppearancePageItem::App(ZzRow::TerminalColors),
             AppearancePageItem::Group { title: "Sidebar" },
             AppearancePageItem::App(ZzRow::ProgramColors),
         ],
@@ -70,6 +74,8 @@ mod tests {
             Item::Controls,
             Item::Glass,
             Item::UiFontFamily,
+            Item::Group { title: "Terminal" },
+            Item::App(ZzRow::TerminalColors),
             Item::Group { title: "Sidebar" },
             Item::App(ZzRow::ProgramColors),
             Item::Group { title: "Size" },

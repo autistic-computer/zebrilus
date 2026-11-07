@@ -21,8 +21,10 @@ use zz_client::local_scroll::{
     local_live_projection, local_row_source, peek_row_source,
 };
 #[cfg(test)]
-use zz_client::terminal_color::{contrast_ratio, is_decorative_character, oklab};
-use zz_client::terminal_color::{decorative_glyph, ensure_minimum_contrast, faint_foreground};
+use zz_client::terminal_color::is_decorative_character;
+use zz_client::terminal_color::{
+    contrast_ratio, decorative_glyph, ensure_minimum_contrast, faint_foreground, oklab,
+};
 pub use zz_client::terminal_view::cursor_should_blink;
 use zz_terminal::{
     AppearanceColor, CellWidth, Color, Cursor, CursorStyle, GRAPHEME_TABLE_BIT, Glyph, KittyLayer,
@@ -30,6 +32,8 @@ use zz_terminal::{
     TerminalAppearance, TerminalDictionary, TerminalViewport,
     UnderlineStyle as TerminalUnderlineStyle,
 };
+
+use penna::{ThemeMode, foundation::interface_theme::BaseColors};
 
 const DIAGNOSTIC_TARGET: &str = "zz::diagnostics::terminal_render";
 
@@ -1455,6 +1459,82 @@ pub fn theme_terminal_colors(cx: &App) -> [Color; 18] {
         colors[11 + at] = terminal_color(oklch((lightness + step).clamp(0.0, 1.0), chroma, hue));
     }
     colors
+}
+
+const RED_HUE: f32 = 29.0;
+const GREEN_HUE: f32 = 142.0;
+const ACCENT_SLOTS: [usize; 6] = [4, 12, 5, 13, 6, 14];
+const ACCENT_CHROMA: f32 = 0.04;
+const STATUS_CHROMA: f32 = 0.06;
+const STATUS_HUE_SPAN: f32 = 45.0;
+const DANGER_LOOKALIKE_SPAN: f32 = 20.0;
+const TEXT_CONTRAST: f32 = 4.5;
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct TerminalLook {
+    pub mode: ThemeMode,
+    pub colors: BaseColors,
+    pub accent: Option<Hsla>,
+}
+
+pub fn terminal_look(appearance: &TerminalAppearance) -> Option<TerminalLook> {
+    let stock = TerminalAppearance::default_for(appearance.color_scheme);
+    if (
+        appearance.background,
+        appearance.foreground,
+        appearance.palette,
+    ) == (stock.background, stock.foreground, stock.palette)
+    {
+        return None;
+    }
+    let background = appearance.background;
+    let foreground = appearance.foreground;
+    let slot = |index: usize| appearance.palette[index];
+    let danger_hue = oklch_of(slot(1)).2;
+    let accent = std::iter::once(appearance.cursor_color)
+        .filter(|cursor| *cursor != foreground && *cursor != stock.cursor_color)
+        .chain(ACCENT_SLOTS.map(slot))
+        .find(|candidate| {
+            let (_, chroma, hue) = oklch_of(*candidate);
+            chroma >= ACCENT_CHROMA && hue_distance(hue, danger_hue) >= DANGER_LOOKALIKE_SPAN
+        });
+    let status = |index: usize, hue: f32| {
+        let reads_as = |candidate: Color| {
+            let (_, chroma, its_hue) = oklch_of(candidate);
+            chroma >= STATUS_CHROMA && hue_distance(its_hue, hue) <= STATUS_HUE_SPAN
+        };
+        [slot(index), slot(index + 8)]
+            .into_iter()
+            .filter(|candidate| reads_as(*candidate))
+            .find(|candidate| contrast_ratio(*candidate, background) >= TEXT_CONTRAST)
+            .or_else(|| Some(slot(index)).filter(|candidate| reads_as(*candidate)))
+            .map(|candidate| color(candidate, 1.0))
+    };
+    let mode = if oklab(background).0 < oklab(foreground).0 {
+        ThemeMode::Dark
+    } else {
+        ThemeMode::Light
+    };
+    Some(TerminalLook {
+        mode,
+        colors: BaseColors {
+            bg: Some(color(background, 1.0)),
+            fg: Some(color(foreground, 1.0)),
+            success: status(2, GREEN_HUE),
+            warning: status(3, YELLOW_HUE),
+            danger: status(1, RED_HUE),
+        },
+        accent: accent.map(|accent| color(accent, 1.0)),
+    })
+}
+
+fn oklch_of(value: Color) -> (f32, f32, f32) {
+    let (lightness, a, b) = oklab(value);
+    (
+        lightness,
+        a.hypot(b),
+        b.atan2(a).to_degrees().rem_euclid(360.0),
+    )
 }
 
 fn hue_distance(from: f32, to: f32) -> f32 {
@@ -4698,6 +4778,53 @@ mod tests {
         assert_eq!(styled.fallbacks, base.fallbacks);
         assert_eq!(styled.weight, FontWeight(750.0));
         assert_eq!(styled.style, FontStyle::Italic);
+    }
+
+    #[test]
+    fn a_terminal_theme_hands_the_chrome_its_ground_its_signature_and_its_readable_status() {
+        let stock = TerminalAppearance::default_for(zz_terminal::TerminalColorScheme::Dark);
+        assert_eq!(terminal_look(&stock), None);
+        let hex = |value: &str| {
+            let digits = u32::from_str_radix(value, 16).expect("hex color");
+            let [_, r, g, b] = digits.to_be_bytes();
+            Color::rgb(r, g, b)
+        };
+        let mut classic = TerminalAppearance {
+            background: hex("131313"),
+            foreground: hex("dddddd"),
+            cursor_color: hex("dddddd"),
+            ..stock
+        };
+        for (index, value) in [
+            "303030", "c75828", "62ba46", "ded9b7", "c28b12", "c72855", "fdd888", "dddddd",
+            "57564f", "e7988a", "b0dca2", "f0edde", "f1c464", "efb0c2", "fef1d5", "dddddd",
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            classic.palette[index] = hex(value);
+        }
+        let look = terminal_look(&classic).expect("a themed terminal has a look");
+        let spelled = |color: Option<Hsla>| color.map(penna::to_hex);
+        assert_eq!(look.mode, ThemeMode::Dark);
+        assert_eq!(
+            [
+                spelled(look.colors.bg),
+                spelled(look.colors.fg),
+                spelled(look.accent),
+                spelled(look.colors.danger),
+                spelled(look.colors.success),
+                spelled(look.colors.warning),
+            ],
+            [
+                Some("#131313".to_owned()),
+                Some("#dddddd".to_owned()),
+                Some("#c28b12".to_owned()),
+                Some("#e7988a".to_owned()),
+                Some("#62ba46".to_owned()),
+                None,
+            ]
+        );
     }
 
     #[test]

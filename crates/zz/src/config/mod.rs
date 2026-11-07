@@ -362,7 +362,36 @@ pub(crate) fn pane_margin(cx: &App) -> Pixels {
 }
 
 pub(crate) fn shown_theme(cx: &App) -> InterfaceTheme {
-    appearance(cx).shown_theme()
+    let appearance = appearance(cx);
+    let mut theme = appearance.shown_theme();
+    if resolved_config(cx).chrome_terminal_colors.value
+        && let Some(look) = crate::theme::terminal_appearance(cx)
+            .as_deref()
+            .and_then(zz_ui::terminal::terminal_look)
+    {
+        wear_terminal_look(&mut theme, look, appearance.overrides.accent.is_some());
+    }
+    theme
+}
+
+fn wear_terminal_look(
+    theme: &mut InterfaceTheme,
+    look: zz_ui::terminal::TerminalLook,
+    accent_picked: bool,
+) {
+    use penna::foundation::interface_theme::{ModeLock, Tint};
+    theme.colors.set(look.mode, look.colors);
+    theme.mode = if look.mode.is_dark() {
+        ModeLock::Dark
+    } else {
+        ModeLock::Light
+    };
+    if !accent_picked && let Some(accent) = look.accent {
+        theme.tint = Tint {
+            light: accent,
+            dark: accent,
+        };
+    }
 }
 
 pub(crate) fn appearance(cx: &App) -> Appearance {

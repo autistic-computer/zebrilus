@@ -50,22 +50,25 @@ pub fn chrome_background(cx: &App) -> Hsla {
 pub(crate) fn report_terminal_color_scheme(mux: &Entity<MuxClient>, cx: &mut App) {
     let mux = mux.downgrade();
     cx.observe_global::<Theme>(move |cx| {
-        let color_scheme = crate::terminal_color_scheme(Theme::global(cx).mode);
+        let color_scheme = crate::terminal_color_scheme(asked_mode(cx));
         mux.update(cx, |mux, _| mux.set_color_scheme(color_scheme))
             .ok();
     })
     .detach();
 }
 
+pub(crate) fn asked_mode(cx: &App) -> ThemeMode {
+    zz_ui::interface_theme::pinned_theme_mode(config::theme_mode(cx)).unwrap_or_else(|| {
+        cx.try_global::<SystemThemeMode>()
+            .map_or_else(|| Theme::global(cx).mode, |mode| mode.0)
+    })
+}
+
 pub(crate) fn refresh_current_theme(cx: &mut App) {
     if !cx.has_global::<Theme>() {
         return;
     }
-    let mode =
-        zz_ui::interface_theme::pinned_theme_mode(config::theme_mode(cx)).unwrap_or_else(|| {
-            cx.try_global::<SystemThemeMode>()
-                .map_or_else(|| Theme::global(cx).mode, |mode| mode.0)
-        });
+    let mode = asked_mode(cx);
     config::shown_theme(cx).activate(Some(mode), None, cx);
     apply_zz_overrides(cx);
     for window in cx.windows() {

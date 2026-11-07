@@ -89,6 +89,7 @@ pub enum ConfigKey {
     CheckForUpdates,
     FlatSidebar,
     ProgramColors,
+    ChromeTerminalColors,
     ExperimentalEditorPane,
     PaneGaps,
     PaneGlowStrength,
@@ -136,6 +137,7 @@ impl ConfigKey {
             Self::CheckForUpdates => "check-for-updates",
             Self::FlatSidebar => "flat-sidebar",
             Self::ProgramColors => "program-colors",
+            Self::ChromeTerminalColors => "chrome-terminal-colors",
             Self::ExperimentalEditorPane => "experimental-editor-pane",
             Self::PaneGaps => "pane-gaps",
             Self::PaneGlowStrength => "pane-glow-strength",
@@ -183,6 +185,7 @@ impl ConfigKey {
             "check-for-updates" => Some(Self::CheckForUpdates),
             "flat-sidebar" => Some(Self::FlatSidebar),
             "program-colors" => Some(Self::ProgramColors),
+            "chrome-terminal-colors" => Some(Self::ChromeTerminalColors),
             "experimental-editor-pane" => Some(Self::ExperimentalEditorPane),
             "pane-gaps" => Some(Self::PaneGaps),
             "pane-glow-strength" => Some(Self::PaneGlowStrength),
@@ -241,6 +244,7 @@ impl ConfigKey {
             | Self::CheckForUpdates
             | Self::FlatSidebar
             | Self::ProgramColors
+            | Self::ChromeTerminalColors
             | Self::ExperimentalEditorPane
             | Self::PaneGaps
             | Self::EditorLineNumbers
@@ -369,6 +373,7 @@ pub struct AppConfig {
     pub check_for_updates: ConfigValue<bool>,
     pub flat_sidebar: ConfigValue<bool>,
     pub program_colors: ConfigValue<bool>,
+    pub chrome_terminal_colors: ConfigValue<bool>,
     pub experimental_editor_pane: ConfigValue<bool>,
     pub pane_gaps: ConfigValue<bool>,
     pub pane_glow_strength: ConfigValue<f32>,
@@ -411,6 +416,7 @@ impl Default for AppConfig {
             check_for_updates: ConfigValue::from_default(DEFAULT_CHECK_FOR_UPDATES),
             flat_sidebar: ConfigValue::from_default(false),
             program_colors: ConfigValue::from_default(true),
+            chrome_terminal_colors: ConfigValue::from_default(true),
             experimental_editor_pane: ConfigValue::from_default(DEFAULT_EXPERIMENTAL_EDITOR_PANE),
             pane_gaps: ConfigValue::from_default(DEFAULT_PANE_GAPS),
             pane_glow_strength: ConfigValue::from_default(DEFAULT_PANE_GLOW_STRENGTH),
@@ -453,6 +459,7 @@ impl AppConfig {
             ConfigKey::CheckForUpdates => Some(&mut self.check_for_updates),
             ConfigKey::FlatSidebar => Some(&mut self.flat_sidebar),
             ConfigKey::ProgramColors => Some(&mut self.program_colors),
+            ConfigKey::ChromeTerminalColors => Some(&mut self.chrome_terminal_colors),
             ConfigKey::ExperimentalEditorPane => Some(&mut self.experimental_editor_pane),
             ConfigKey::PaneGaps => Some(&mut self.pane_gaps),
             ConfigKey::EditorLineNumbers => Some(&mut self.editor_line_numbers),
@@ -1098,6 +1105,7 @@ pub fn parse_config(source: &str, system_font_family: &str) -> ParsedConfig {
             | ConfigKey::ReduceTransparency
             | ConfigKey::FlatSidebar
             | ConfigKey::ProgramColors
+            | ConfigKey::ChromeTerminalColors
             | ConfigKey::ThemeMode
             | ConfigKey::ControlShape
             | ConfigKey::InterfaceGlass

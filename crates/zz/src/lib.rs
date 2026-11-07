@@ -45,7 +45,7 @@ use std::{
 use ala::Styled as _;
 use ala::{AnyView, App, AppContext, Context, Entity, Window, WindowOptions, px, size};
 use ala_cef::{BrowserBootstrap, BrowserError, BrowserRuntime};
-use penna::{Root, Theme, ThemeMode};
+use penna::{Root, ThemeMode};
 pub(crate) use zz_cli::application_arguments;
 use zz_cli::{CommandLineOrigin, Startup, StartupOptions};
 use zz_daemon_client::{DaemonError, InteractiveClient, default_socket_path};
@@ -310,7 +310,7 @@ fn run_app(
                 move |window, cx| {
                     ui_scale::apply_to_new_window(window, cx);
                     theme::sync_system_appearance(Some(window), cx);
-                    let color_scheme = terminal_color_scheme(Theme::global(cx).mode);
+                    let color_scheme = terminal_color_scheme(theme::asked_mode(cx));
                     let mux = cx.new(|cx| {
                         mux::client::MuxClient::new_connecting(
                             socket_path.clone(),
