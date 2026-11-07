@@ -254,3 +254,13 @@ authorization of the copyright holder.
 ```
 
 The Unicode character properties and case-context masks in `mojo/zzmojo/which_key_caps_data.mojo` are generated through the native Rust Unicode API. The Unicode License V3 notice above also applies to these data.
+
+## Native browser URL boundary
+
+`mojo/native/browser-url` links the unmodified `url` 2.5.8 parser, copyright
+2013–2025 The rust-url developers, under Apache-2.0 (alternatively MIT).
+The Apache-2.0 text is retained in `LICENSE-APACHE`; the upstream sources and
+license are at https://github.com/servo/rust-url. This boundary reuses zz's
+existing URL/address policy and does not replace the parser with a new one.
+Its pinned Rust dependency graph is recorded in
+`mojo/native/browser-url/Cargo.lock`; the Rust dependency notice above applies.

@@ -7,6 +7,7 @@ pub mod agent_question;
 pub mod agent_settings;
 pub mod agent_timeline;
 pub mod agent_transcript;
+pub mod browser_state;
 pub mod chat_rows;
 #[cfg(test)]
 mod chat_rows_tests;

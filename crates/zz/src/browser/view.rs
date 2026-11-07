@@ -86,6 +86,7 @@ use crate::{
 };
 
 const DEFAULT_URL: &str = "about:blank";
+#[cfg(test)]
 const TAB_ID: TabId = TabId(0);
 const EMPTY_STATE_RECENT_LIMIT: usize = 8;
 const OMNIBOX_SUGGESTION_LIMIT: usize = 8;
@@ -313,48 +314,7 @@ impl OmniboxState {
     }
 }
 
-#[allow(
-    clippy::struct_excessive_bools,
-    reason = "independent loading, history-direction, and session-lifecycle states"
-)]
-struct BrowserTab {
-    id: TabId,
-    url: String,
-    title: String,
-    loading: bool,
-    can_go_back: bool,
-    can_go_forward: bool,
-    page_zoom_factor: f64,
-    page_zoom_percent: u16,
-    error: Option<Arc<str>>,
-    started: bool,
-    popup: bool,
-}
-
-impl BrowserTab {
-    fn new(id: TabId, url: String) -> Self {
-        Self {
-            id,
-            url,
-            title: String::new(),
-            loading: false,
-            can_go_back: false,
-            can_go_forward: false,
-            page_zoom_factor: 1.0,
-            page_zoom_percent: 100,
-            error: None,
-            started: true,
-            popup: false,
-        }
-    }
-
-    fn restored(id: TabId, url: String) -> Self {
-        Self {
-            started: false,
-            ..Self::new(id, url)
-        }
-    }
-}
+type BrowserTab = zz_client::browser_state::BrowserTab<TabId>;
 
 const DIAGNOSTIC_TARGET: &str = "zz::diagnostics::browser_render";
 
@@ -588,32 +548,15 @@ impl BrowserView {
     ) -> Self {
         let mux_tabs = descriptor.tabs.clone();
         let mux_active = descriptor.active_tab;
-        let initial_url = normalize_url(descriptor.url()).unwrap_or_else(|error| {
+        let restored = zz_client::browser_state::restore_tabs(descriptor, TabId);
+        if let Some(error) = &restored.initial_url_error {
             log::warn!("browser pane {pane} initial url rejected ({error}); opening blank");
-            DEFAULT_URL.to_owned()
-        });
-        let profile = normalize_browser_profile_name(&descriptor.profile)
-            .unwrap_or_else(|_| ala_cef::DEFAULT_BROWSER_PROFILE.to_owned());
-        let active_index = descriptor
-            .active_tab
-            .min(descriptor.tabs.len().saturating_sub(1));
-        let mut next_tab_id = TAB_ID.0;
-        let mut tabs = Vec::with_capacity(descriptor.tabs.len().max(1));
-        for (index, url) in descriptor.tabs.iter().enumerate() {
-            let id = TabId(next_tab_id);
-            next_tab_id += 1;
-            if index == active_index {
-                tabs.push(BrowserTab::new(id, initial_url.clone()));
-            } else {
-                let url = normalize_url(url).unwrap_or_else(|_| DEFAULT_URL.to_owned());
-                tabs.push(BrowserTab::restored(id, url));
-            }
         }
-        if tabs.is_empty() {
-            tabs.push(BrowserTab::new(TAB_ID, initial_url.clone()));
-            next_tab_id = TAB_ID.0 + 1;
-        }
-        let active_tab = tabs[active_index.min(tabs.len() - 1)].id;
+        let initial_url = restored.current_url;
+        let profile = restored.profile;
+        let tabs = restored.tabs;
+        let active_tab = restored.active_tab;
+        let next_tab_id = restored.next_tab_id;
         let focus_handle = cx.focus_handle();
         let address_value = if is_blank_url(&initial_url) {
             String::new()
@@ -1443,7 +1386,11 @@ impl BrowserView {
                 BrowserEvent::LoadFailed {
                     description, url, ..
                 } => {
-                    self.error = Some(Arc::from(format!("{}: {}", display_url(url), description)));
+                    self.error = Some(zz_client::browser_state::load_error(
+                        url,
+                        description,
+                        false,
+                    ));
                     self.recoverable = true;
                 }
                 BrowserEvent::CursorChanged { cursor, .. } => {
@@ -1591,11 +1538,7 @@ impl BrowserView {
             BrowserEvent::LoadFailed {
                 description, url, ..
             } => {
-                entry.error = Some(Arc::from(format!(
-                    "Could not load {}: {}",
-                    display_url(url),
-                    description
-                )));
+                entry.error = Some(zz_client::browser_state::load_error(url, description, true));
             }
             _ => return false,
         }
@@ -1879,49 +1822,46 @@ impl BrowserView {
     }
 
     fn active_tab_index(&self) -> usize {
-        self.tabs
-            .iter()
-            .position(|tab| tab.id == self.active_tab)
-            .unwrap_or(0)
-    }
-
-    fn save_active_tab_state(&mut self) {
-        let index = self.active_tab_index();
-        let Some(tab) = self.tabs.get_mut(index) else {
-            return;
-        };
-        tab.url.clone_from(&self.current_url);
-        tab.title.clone_from(&self.title);
-        tab.loading = self.loading;
-        tab.can_go_back = self.can_go_back;
-        tab.can_go_forward = self.can_go_forward;
-        tab.page_zoom_factor = self.page_zoom_factor;
-        tab.page_zoom_percent = self.page_zoom_percent;
-        tab.error.clone_from(&self.error);
+        zz_client::browser_state::active_tab_index(&self.tabs, &self.active_tab)
     }
 
     fn activate_tab(&mut self, tab: TabId, window: &mut Window, cx: &mut Context<Self>) {
         if tab == self.active_tab {
             return;
         }
-        let Some(index) = self.tabs.iter().position(|entry| entry.id == tab) else {
+        if !self.tabs.iter().any(|entry| entry.id == tab) {
             return;
-        };
+        }
         self.cancel_element_pick(cx);
         self.context_menu = None;
         self.omnibox.reset();
-        self.save_active_tab_state();
-        self.active_tab = tab;
+        let current = zz_client::browser_state::BrowserContent {
+            url: self.current_url.clone(),
+            title: self.title.clone(),
+            loading: self.loading,
+            can_go_back: self.can_go_back,
+            can_go_forward: self.can_go_forward,
+            page_zoom_factor: self.page_zoom_factor,
+            page_zoom_percent: self.page_zoom_percent,
+            error: self.error.clone(),
+        };
+        let Some(content) = zz_client::browser_state::switch_tab(
+            &mut self.tabs,
+            &mut self.active_tab,
+            &current,
+            tab,
+        ) else {
+            return;
+        };
         self.ime_bounds = Arc::default();
-        let entry = &self.tabs[index];
-        self.current_url = entry.url.clone();
-        self.title = entry.title.clone();
-        self.loading = entry.loading;
-        self.can_go_back = entry.can_go_back;
-        self.can_go_forward = entry.can_go_forward;
-        self.page_zoom_factor = entry.page_zoom_factor;
-        self.page_zoom_percent = entry.page_zoom_percent;
-        self.error = entry.error.clone();
+        self.current_url = content.url;
+        self.title = content.title;
+        self.loading = content.loading;
+        self.can_go_back = content.can_go_back;
+        self.can_go_forward = content.can_go_forward;
+        self.page_zoom_factor = content.page_zoom_factor;
+        self.page_zoom_percent = content.page_zoom_percent;
+        self.error = content.error;
         self.reset_frame_state();
         let display = if is_blank_url(&self.current_url) {
             String::new()
@@ -2037,15 +1977,11 @@ impl BrowserView {
         if self.tabs.len() <= 1 {
             return;
         }
-        let Some(index) = self.tabs.iter().position(|entry| entry.id == tab) else {
+        let Some(_) = self.tabs.iter().position(|entry| entry.id == tab) else {
             return;
         };
         if tab == self.active_tab {
-            let neighbor = self
-                .tabs
-                .get(index + 1)
-                .or_else(|| index.checked_sub(1).and_then(|index| self.tabs.get(index)))
-                .map(|entry| entry.id);
+            let neighbor = zz_client::browser_state::close_neighbor(&self.tabs, &tab);
             if let Some(neighbor) = neighbor {
                 self.activate_tab(neighbor, window, cx);
             }
@@ -2060,14 +1996,10 @@ impl BrowserView {
     }
 
     fn cycle_tab(&mut self, offset: i64, window: &mut Window, cx: &mut Context<Self>) {
-        if self.tabs.len() <= 1 {
-            return;
+        if let Some(tab) = zz_client::browser_state::cycle_tab(&self.tabs, &self.active_tab, offset)
+        {
+            self.activate_tab(tab, window, cx);
         }
-        let len = i64::try_from(self.tabs.len()).unwrap_or(i64::MAX);
-        let index = i64::try_from(self.active_tab_index()).unwrap_or_default();
-        let next = usize::try_from((index + offset).rem_euclid(len)).unwrap_or_default();
-        let tab = self.tabs[next].id;
-        self.activate_tab(tab, window, cx);
     }
 
     fn tab_strip_state(&self, cx: &App) -> (Vec<BrowserTabInfo>, usize) {

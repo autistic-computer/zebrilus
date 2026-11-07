@@ -2548,11 +2548,12 @@ impl BrowserController {
             target: "zz::diagnostics::browser",
             "handle_event begin event={event:#?}"
         );
-        let Some(key) = self
-            .sessions
-            .iter()
-            .find_map(|(key, session)| (event.session() == session.id()).then_some(*key))
-        else {
+        let Some(key) = zz_client::browser_state::session_owner(
+            self.sessions
+                .iter()
+                .map(|(key, session)| (*key, session.id().0)),
+            event.session().0,
+        ) else {
             return;
         };
         let (pane, tab) = key;
