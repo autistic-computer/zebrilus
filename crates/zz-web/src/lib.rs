@@ -1,4 +1,5 @@
 use std::{
+    fmt::Write as _,
     io,
     net::SocketAddr,
     path::{Component, Path, PathBuf},
@@ -31,6 +32,10 @@ use tokio::{
 use tokio_util::io::ReaderStream;
 use zz_protocol::{MAX_ENCODED_FRAME_BYTES, MAX_FRAME_BYTES};
 
+const TOKEN_BYTES: usize = 32;
+const COOKIE_MAX_AGE_SECONDS: u32 = 30 * 24 * 60 * 60;
+const LOCKED_MESSAGE: &str = "Open the link zz-web printed when it started.\n";
+
 pub struct GatewayConfig {
     pub bind: SocketAddr,
     pub assets: PathBuf,
@@ -40,6 +45,7 @@ pub struct GatewayConfig {
 pub struct Gateway {
     listener: TcpListener,
     address: SocketAddr,
+    token: String,
     router: Router,
 }
 
@@ -47,6 +53,8 @@ struct GatewayState {
     address: SocketAddr,
     assets: PathBuf,
     socket: PathBuf,
+    token: String,
+    cookie: String,
 }
 
 impl Gateway {
@@ -66,10 +74,13 @@ impl Gateway {
         }
         let listener = TcpListener::bind(config.bind).await?;
         let address = listener.local_addr()?;
+        let token = new_token()?;
         let state = Arc::new(GatewayState {
             address,
             assets,
             socket: config.socket,
+            token: token.clone(),
+            cookie: format!("zz-web-{}", address.port()),
         });
         let router = Router::new()
             .route("/ws", get(upgrade))
@@ -78,12 +89,17 @@ impl Gateway {
         Ok(Self {
             listener,
             address,
+            token,
             router,
         })
     }
 
     pub fn local_addr(&self) -> SocketAddr {
         self.address
+    }
+
+    pub fn open_url(&self) -> String {
+        format!("http://{}/?token={}", self.address, self.token)
     }
 
     pub async fn serve(self) -> io::Result<()> {
@@ -105,6 +121,82 @@ impl GatewayState {
                 .zip(single_header(headers, header::ORIGIN))
                 .is_some_and(|(host, origin)| origin == format!("http://{host}"))
     }
+
+    fn holds_token(&self, headers: &HeaderMap) -> bool {
+        headers
+            .get_all(header::COOKIE)
+            .iter()
+            .filter_map(|value| value.to_str().ok())
+            .flat_map(|value| value.split(';'))
+            .filter_map(|pair| pair.trim().split_once('='))
+            .any(|(name, value)| name == self.cookie && same_secret(value, &self.token))
+    }
+
+    fn open(&self, query: &str) -> Response {
+        let (tokens, rest): (Vec<&str>, Vec<&str>) = query
+            .split('&')
+            .partition(|pair| pair.starts_with("token="));
+        let opened = matches!(tokens.as_slice(), [pair] if pair
+            .strip_prefix("token=")
+            .is_some_and(|token| same_secret(token, &self.token)));
+        if !opened {
+            return locked();
+        }
+        let location = if rest.is_empty() {
+            "/".to_owned()
+        } else {
+            format!("/?{}", rest.join("&"))
+        };
+        let cookie = format!(
+            "{}={}; Path=/; Max-Age={COOKIE_MAX_AGE_SECONDS}; HttpOnly; SameSite=Strict",
+            self.cookie, self.token
+        );
+        let (Ok(location), Ok(cookie)) = (
+            HeaderValue::from_str(&location),
+            HeaderValue::from_str(&cookie),
+        ) else {
+            return StatusCode::BAD_REQUEST.into_response();
+        };
+        let mut response = StatusCode::SEE_OTHER.into_response();
+        let headers = response.headers_mut();
+        headers.insert(header::LOCATION, location);
+        headers.insert(header::SET_COOKIE, cookie);
+        headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+        headers.insert(
+            header::REFERRER_POLICY,
+            HeaderValue::from_static("no-referrer"),
+        );
+        response
+    }
+}
+
+fn new_token() -> io::Result<String> {
+    let mut bytes = [0; TOKEN_BYTES];
+    getrandom::fill(&mut bytes).map_err(io::Error::other)?;
+    Ok(bytes
+        .iter()
+        .fold(String::with_capacity(TOKEN_BYTES * 2), |mut text, byte| {
+            let _ = write!(text, "{byte:02x}");
+            text
+        }))
+}
+
+fn same_secret(given: &str, expected: &str) -> bool {
+    given.len() == expected.len()
+        && given
+            .bytes()
+            .zip(expected.bytes())
+            .fold(0, |difference, (left, right)| difference | (left ^ right))
+            == 0
+}
+
+fn locked() -> Response {
+    let mut response = (StatusCode::FORBIDDEN, LOCKED_MESSAGE).into_response();
+    response.headers_mut().insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static("text/plain; charset=utf-8"),
+    );
+    response
 }
 
 fn single_header(headers: &HeaderMap, name: header::HeaderName) -> Option<&str> {
@@ -118,7 +210,7 @@ async fn upgrade(
     headers: HeaderMap,
     websocket: WebSocketUpgrade,
 ) -> Response {
-    if !state.accepts_origin(&headers) {
+    if !state.accepts_origin(&headers) || !state.holds_token(&headers) {
         return StatusCode::FORBIDDEN.into_response();
     }
     let Ok(name) = state.socket.as_os_str().to_fs_name::<GenericFilePath>() else {
@@ -220,6 +312,15 @@ async fn asset(
     }
     if method != Method::GET && method != Method::HEAD {
         return StatusCode::METHOD_NOT_ALLOWED.into_response();
+    }
+    if let Some(query) = uri
+        .query()
+        .filter(|query| query.split('&').any(|pair| pair.starts_with("token=")))
+    {
+        return state.open(query);
+    }
+    if !state.holds_token(&headers) {
+        return locked();
     }
     let Some(relative) = asset_path(uri.path()) else {
         return StatusCode::NOT_FOUND.into_response();

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { spawn } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -12,8 +12,8 @@ headless Chrome, then matches every named node in the ala accessibility tree
 aria-label, text by [data-text]) and reports what is missing or moved.
 
 options:
-  --ala <url>        ala web client (default http://127.0.0.1:8093/)
-  --dom <url>         HTML client (default http://127.0.0.1:8092/)
+  --ala <url>        ala web client (default: the link \`just design compare\` printed)
+  --dom <url>         HTML client (default: the link \`just design compare\` printed)
   --mode <dark|light> color scheme for both (default dark)
   --theme <id>        interface theme for the HTML client (default default)
   --width <px>        viewport width (default 1400)
@@ -26,12 +26,22 @@ options:
   --report-only       exit 0 even when nodes differ
   --timeout <ms>      give up after this long (default 90000)
 
-environment: CHROME overrides the browser binary.`;
+environment: CHROME overrides the browser binary; DOM_HOME is where
+\`just design compare\` wrote the links (default $TMPDIR/zz-dom-home).`;
+
+function compareLink(name) {
+    const home = process.env.DOM_HOME || join(process.env.TMPDIR || "/tmp", "zz-dom-home");
+    try {
+        const link = readFileSync(join(home, `${name}.url`), "utf8").match(/browser client: (\S+)/);
+        if (link) return link[1];
+    } catch {}
+    throw new Error(`no ${name} link in ${home}; run \`just design compare\` or pass --${name}`);
+}
 
 function parseArgs(argv) {
     const options = {
-        ala: "http://127.0.0.1:8093/",
-        dom: "http://127.0.0.1:8092/",
+        ala: "",
+        dom: "",
         mode: "dark",
         theme: "default",
         width: 1400,
@@ -56,6 +66,8 @@ function parseArgs(argv) {
         if (typeof options[key] === "boolean") options[key] = true;
         else options[key] = typeof options[key] === "number" ? Number(argv[++i]) : argv[++i];
     }
+    options.ala ||= compareLink("ala");
+    options.dom ||= compareLink("dom");
     return options;
 }
 

@@ -3,9 +3,9 @@
 zz in the browser as plain HTML, kept in step with the ala web client.
 
 ```bash
-just design client                  # the zz Dev daemon, on http://127.0.0.1:8092
-just design compare                 # both clients on a scratch daemon: HTML 8092, ala 8093
-just design parity                  # diff the two
+just design client                  # the zz Dev daemon, on 127.0.0.1:8092 (open the link it prints)
+just design compare                 # both clients on a scratch daemon: HTML 8092, ala 8093, links printed
+just design parity                  # diff the two, using the links compare wrote
 ```
 
 ## How it is built
