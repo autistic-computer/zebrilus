@@ -50,3 +50,7 @@ workspace = true
 [[example]]
 name = "path_rank_lifecycle_vectors"
 required-features = ["path-rank-fixtures"]
+
+[[example]]
+name = "palette_files_vectors"
+required-features = ["path-rank-fixtures"]

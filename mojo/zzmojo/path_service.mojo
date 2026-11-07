@@ -131,6 +131,13 @@ struct PathService(Movable):
         self.start_dir = None
         return result^
 
+    def retire_pending(mut self) raises -> Optional[PathCommand]:
+        var result: Optional[PathCommand] = None
+        if self.pending:
+            result = _command(self.source, self.pending.value(), PATH_CANCEL)
+        self.pending = None
+        return result^
+
     def opened(mut self, source: PathSource, pane: UInt64, start: Optional[String] = None) raises -> Optional[PathCommand]:
         var cancel = self.close()
         self.source = source

@@ -60,6 +60,25 @@ impl PaletteBackend for Backend {
     fn cancel_path(&self, _: PaletteHostId, request: u64, _: &mut App) {
         self.calls.borrow_mut().push(json!([1, request]));
     }
+    fn insert_path(
+        &self,
+        pane: PaneId,
+        _: PaletteHostId,
+        root: &PathListRoot,
+        entry: &PathEntry,
+        _: &mut App,
+    ) {
+        self.calls.borrow_mut().push(json!([
+            2,
+            pane.0,
+            root.root,
+            root.display_root,
+            root.cwd,
+            entry.rel,
+            entry.kind == PathKind::Dir,
+            entry.symlink
+        ]));
+    }
 }
 
 fn level(backend: Rc<dyn PaletteBackend>, cx: &mut TestAppContext) -> Entity<FilesLevel> {
@@ -213,3 +232,6 @@ pub fn vectors() -> Value {
     }
     json!({"traces":traces,"scope":"actual FilesLevel async rank/refresh/land methods with deterministic TestDispatcher"})
 }
+
+#[path = "adapter_fixture.rs"]
+pub mod adapter_fixture;
