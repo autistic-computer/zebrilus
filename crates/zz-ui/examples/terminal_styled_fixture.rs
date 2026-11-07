@@ -256,6 +256,36 @@ fn main() -> Result<(), Box<dyn Error>> {
     } else {
         0.0
     };
+    if matches!(case, "glyphs" | "graphics") {
+        let fallback = [
+            ("DejaVu Sans Mono", dejavu.join("DejaVuSansMono.ttf")),
+            (
+                "Noto Sans Hebrew",
+                PathBuf::from("/usr/share/fonts/truetype/noto/NotoSansHebrew-Regular.ttf"),
+            ),
+            (
+                "Noto Sans Arabic",
+                PathBuf::from("/usr/share/fonts/truetype/noto/NotoSansArabic-Regular.ttf"),
+            ),
+            (
+                "Noto Sans Devanagari",
+                PathBuf::from("/usr/share/fonts/truetype/noto/NotoSansDevanagari-Regular.ttf"),
+            ),
+            (
+                "Noto Sans Thai",
+                PathBuf::from("/usr/share/fonts/truetype/noto/NotoSansThai-Regular.ttf"),
+            ),
+            (
+                "Noto Sans CJK JP",
+                PathBuf::from("/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"),
+            ),
+        ];
+        for (name, path) in fallback {
+            appearance.font_families.push(name.into());
+            files.push(path.clone());
+            fallback_paths.push(path);
+        }
+    }
     match case {
         "regular-only" | "full-faces" | "mixed-faces" | "no-synthetic" => {
             for row in 0..4 {
@@ -295,35 +325,33 @@ fn main() -> Result<(), Box<dyn Error>> {
                 OverlaySpan::new(2, 23, 30, OverlayKind::Selection),
             ]);
         }
-        "glyphs" => {
-            let fallback = [
-                ("DejaVu Sans Mono", dejavu.join("DejaVuSansMono.ttf")),
-                (
-                    "Noto Sans Hebrew",
-                    PathBuf::from("/usr/share/fonts/truetype/noto/NotoSansHebrew-Regular.ttf"),
-                ),
-                (
-                    "Noto Sans Arabic",
-                    PathBuf::from("/usr/share/fonts/truetype/noto/NotoSansArabic-Regular.ttf"),
-                ),
-                (
-                    "Noto Sans Devanagari",
-                    PathBuf::from("/usr/share/fonts/truetype/noto/NotoSansDevanagari-Regular.ttf"),
-                ),
-                (
-                    "Noto Sans Thai",
-                    PathBuf::from("/usr/share/fonts/truetype/noto/NotoSansThai-Regular.ttf"),
-                ),
-                (
-                    "Noto Sans CJK JP",
-                    PathBuf::from("/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"),
-                ),
-            ];
-            for (name, path) in fallback {
-                appearance.font_families.push(name.into());
-                files.push(path.clone());
-                fallback_paths.push(path);
+        "graphics" => {
+            let straight = "─│┌┐└┘├┤┬┴┼╴╵╶╷";
+            put(&mut viewport, 0, 0, straight, 0);
+            put(&mut viewport, 1, 0, "╭╮╰╯╱╲╳", 0);
+            let blocks = (0x2580..=0x259f)
+                .filter_map(char::from_u32)
+                .collect::<String>();
+            put(&mut viewport, 2, 0, &blocks, 0);
+            put(&mut viewport, 3, 0, straight, 4);
+            put(&mut viewport, 4, 0, straight, 9);
+            put(&mut viewport, 5, 0, &blocks, 6);
+            for (index, text) in ["─", "█", "┼", "▕"].into_iter().enumerate() {
+                let column = index * 4;
+                Arc::make_mut(&mut viewport.cells)[6 * COLUMNS + column] = PackedCell::new(
+                    GRAPHEME_TABLE_BIT | (offsets.len() - 1) as u32,
+                    0,
+                    CellWidth::Wide,
+                );
+                Arc::make_mut(&mut viewport.cells)[6 * COLUMNS + column + 1] =
+                    PackedCell::new(0, 0, CellWidth::SpacerTail);
+                graphemes.extend_from_slice(text.as_bytes());
+                offsets.push(graphemes.len() as u32);
             }
+            put(&mut viewport, 7, 0, &blocks, 0);
+            viewport.overlays = Arc::from([OverlaySpan::new(7, 4, 20, OverlayKind::Selection)]);
+        }
+        "glyphs" => {
             put(&mut viewport, 0, 0, "ASCII != ffi a b c", 0);
             put(&mut viewport, 1, 0, "─│┌┐└┘├┤┬┴┼╭╮╰╯━┃┏┓┗┛", 0);
             put(&mut viewport, 2, 0, "█▀▄▌▐░▒▓▁▂▃▄▅▆▇▕▏", 0);

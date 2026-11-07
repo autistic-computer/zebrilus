@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[2]
 MJUI = ROOT.parent / "mjui"
 DIRECTORY = ROOT / "target/port/terminal-styled-reference"
 CASES = ("regular-only", "full-faces", "mixed-faces", "no-synthetic", "decorations", "contrast", "glyphs", "composition")
-EXTRA_CASES = ("composition-tail", "composition-clipped", "composition-no-cursor", "composition-hidden-cursor", "composition-decorated", "composition-boundary", "composition-retained", "composition-retained-fractional")
+EXTRA_CASES = ("composition-tail", "composition-clipped", "composition-no-cursor", "composition-hidden-cursor", "composition-decorated", "composition-boundary", "composition-retained", "composition-retained-fractional", "graphics")
 
 
 def fixture(directory):
