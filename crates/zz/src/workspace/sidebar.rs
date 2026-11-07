@@ -97,22 +97,23 @@ pub(crate) fn init(cx: &mut App) {
 }
 
 fn workspace_tree_key_bindings(chords: &[ChromeChord]) -> Vec<KeyBinding> {
+    use zz_client::desktop_surface::{SidebarNativeBinding as Binding, sidebar_native_binding};
     let context = Some(TREE_KEY_CONTEXT);
     chords
         .iter()
         .filter_map(|chord| {
-            Some(match chord.action() {
-                ChromeAction::SidebarCancel => chord.binding(TreeCancel, context),
-                ChromeAction::SidebarConfirm => chord.binding(TreeConfirm, context),
-                ChromeAction::SidebarRename => chord.binding(TreeRename, context),
-                ChromeAction::SidebarCommandPalette => chord.binding(TreeCommandPalette, context),
-                ChromeAction::SidebarSelectUp => chord.binding(TreeSelectUp, context),
-                ChromeAction::SidebarSelectDown => chord.binding(TreeSelectDown, context),
-                ChromeAction::SidebarSelectLeft => chord.binding(TreeSelectLeft, context),
-                ChromeAction::SidebarSelectRight => chord.binding(TreeSelectRight, context),
-                ChromeAction::SidebarSelectFirst => chord.binding(TreeSelectFirst, context),
-                ChromeAction::SidebarSelectLast => chord.binding(TreeSelectLast, context),
-                _ => return None,
+            Some(match sidebar_native_binding(chord.action()) {
+                Binding::Cancel => chord.binding(TreeCancel, context),
+                Binding::Confirm => chord.binding(TreeConfirm, context),
+                Binding::Rename => chord.binding(TreeRename, context),
+                Binding::CommandPalette => chord.binding(TreeCommandPalette, context),
+                Binding::SelectUp => chord.binding(TreeSelectUp, context),
+                Binding::SelectDown => chord.binding(TreeSelectDown, context),
+                Binding::SelectLeft => chord.binding(TreeSelectLeft, context),
+                Binding::SelectRight => chord.binding(TreeSelectRight, context),
+                Binding::SelectFirst => chord.binding(TreeSelectFirst, context),
+                Binding::SelectLast => chord.binding(TreeSelectLast, context),
+                Binding::None => return None,
             })
         })
         .collect()

@@ -20,8 +20,10 @@ use penna::{
     ActiveTheme as _, IconName,
     components::input::{InputEvent, InputState},
 };
+#[cfg(test)]
+use zz_client::ChromeAction;
 use zz_client::{
-    ChromeAction, TERMINAL_TABLE,
+    TERMINAL_TABLE,
     local_scroll::{
         LOCAL_SCROLL_DEBOUNCE, LOCAL_SCROLL_TIMEOUT, LocalScrollEffect, LocalScrollState,
         LocalScrollStep, LocalScrollSync, local_scroll_available, scroll_fraction_offset,
@@ -141,24 +143,21 @@ fn raw_key_bindings() -> [KeyBinding; 2] {
 }
 
 fn terminal_key_bindings(chords: &[ChromeChord]) -> Vec<KeyBinding> {
+    use zz_client::desktop_surface::{TerminalNativeBinding as Binding, terminal_native_binding};
     let context = Some(TERMINAL_KEY_CONTEXT);
     let mut chords = chords.iter().collect::<Vec<_>>();
     chords.sort_by_key(|chord| !chord.key().starts_with("D-"));
     chords
         .into_iter()
         .filter_map(|chord| {
-            Some(match chord.action() {
-                ChromeAction::TerminalFontIncrease | ChromeAction::TerminalFontDecrease => {
-                    chord.binding(NoAction, context)
-                }
-                ChromeAction::TerminalCopy => chord.binding(crate::menus::Copy, context),
-                ChromeAction::TerminalPaste => chord.binding(crate::menus::Paste, context),
-                ChromeAction::TerminalSelectAll => chord.binding(crate::menus::SelectAll, context),
-                ChromeAction::TerminalSearch => chord.binding(crate::menus::Find, context),
-                ChromeAction::TerminalClearHistory => {
-                    chord.binding(crate::menus::ClearScrollback, context)
-                }
-                _ => return None,
+            Some(match terminal_native_binding(chord.action()) {
+                Binding::Suppress => chord.binding(NoAction, context),
+                Binding::Copy => chord.binding(crate::menus::Copy, context),
+                Binding::Paste => chord.binding(crate::menus::Paste, context),
+                Binding::SelectAll => chord.binding(crate::menus::SelectAll, context),
+                Binding::Search => chord.binding(crate::menus::Find, context),
+                Binding::ClearHistory => chord.binding(crate::menus::ClearScrollback, context),
+                Binding::None => return None,
             })
         })
         .collect()
@@ -2073,6 +2072,10 @@ impl TerminalView {
     }
 
     fn on_key_down(&mut self, event: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
+        use zz_client::desktop_surface::{
+            TerminalChromeKeyAction as Decision, TerminalChromeKeyContext,
+            terminal_chrome_key_action,
+        };
         if self.search_query.is_some() && !self.focus_handle.is_focused(window) {
             return;
         }
@@ -2086,56 +2089,39 @@ impl TerminalView {
         self.text_input_key =
             (text_key && self.retained.read().viewport.kitty_keyboard).then(|| event.clone());
         let chrome = crate::keymap::resolve(cx, TERMINAL_TABLE, &event.keystroke);
-        let font_adjustment = match chrome {
-            Some(ChromeAction::TerminalFontIncrease) => Some(TerminalFontSizeAdjustment::Increase),
-            Some(ChromeAction::TerminalFontDecrease) => Some(TerminalFontSizeAdjustment::Decrease),
-            _ => None,
-        };
-        if let Some(adjustment) = font_adjustment {
-            self.mux.update(cx, |mux, cx| {
-                mux.adjust_terminal_font_size(adjustment, cx);
-            });
-            cx.stop_propagation();
-            return;
-        }
-        if self.swallowed_overlay_key == Some(code) {
-            cx.stop_propagation();
-            return;
-        }
-        if chrome == Some(ChromeAction::TerminalSearch) {
-            self.begin_search(
-                SearchDirection::Forward,
-                SearchPromptBehavior::Navigate,
-                window,
-                cx,
-            );
-            cx.stop_propagation();
-            return;
-        }
-        if self.search_query.is_some() {
-            self.search_focus.focus(window, cx);
-            cx.stop_propagation();
-            return;
-        }
-        if chrome == Some(ChromeAction::TerminalCopy) {
-            self.copy_selection(cx, ClipboardTarget::Clipboard);
-            cx.stop_propagation();
-            return;
-        }
-        if chrome == Some(ChromeAction::TerminalSelectAll) {
-            self.send_view_action(cx, TerminalViewAction::SelectAll);
-            cx.stop_propagation();
-            return;
-        }
-        if chrome == Some(ChromeAction::TerminalClearHistory) {
-            if !self.command_output {
-                self.send_view_action(cx, TerminalViewAction::ClearHistory);
+        let decision = terminal_chrome_key_action(TerminalChromeKeyContext {
+            action: chrome,
+            swallowed: self.swallowed_overlay_key == Some(code),
+            search_open: self.search_query.is_some(),
+            command_output: self.command_output,
+        });
+        if decision != Decision::Native {
+            match decision {
+                Decision::FontIncrease | Decision::FontDecrease => {
+                    let adjustment = if decision == Decision::FontIncrease {
+                        TerminalFontSizeAdjustment::Increase
+                    } else {
+                        TerminalFontSizeAdjustment::Decrease
+                    };
+                    self.mux.update(cx, |mux, cx| {
+                        mux.adjust_terminal_font_size(adjustment, cx);
+                    });
+                }
+                Decision::Search => self.begin_search(
+                    SearchDirection::Forward,
+                    SearchPromptBehavior::Navigate,
+                    window,
+                    cx,
+                ),
+                Decision::FocusSearch => self.search_focus.focus(window, cx),
+                Decision::Copy => self.copy_selection(cx, ClipboardTarget::Clipboard),
+                Decision::SelectAll => self.send_view_action(cx, TerminalViewAction::SelectAll),
+                Decision::ClearHistory => {
+                    self.send_view_action(cx, TerminalViewAction::ClearHistory)
+                }
+                Decision::Paste => self.paste_clipboard(cx),
+                Decision::Native | Decision::Swallow | Decision::Consumed => {}
             }
-            cx.stop_propagation();
-            return;
-        }
-        if chrome == Some(ChromeAction::TerminalPaste) {
-            self.paste_clipboard(cx);
             cx.stop_propagation();
             return;
         }

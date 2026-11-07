@@ -184,47 +184,48 @@ fn raw_key_bindings() -> [KeyBinding; 5] {
 }
 
 fn browser_chrome_bindings(chords: &[ChromeChord]) -> Vec<KeyBinding> {
+    use zz_client::desktop_surface::{BrowserNativeBinding as Binding, browser_native_binding};
     let context = Some(BROWSER_KEY_CONTEXT);
     chords
         .iter()
         .filter_map(|chord| {
             let edit = |command| BrowserEdit { command };
-            Some(match chord.action() {
-                ChromeAction::BrowserZoomIn => chord.binding(ZoomIn, context),
-                ChromeAction::BrowserZoomOut => chord.binding(ZoomOut, context),
-                ChromeAction::BrowserZoomReset => chord.binding(ResetZoom, context),
-                ChromeAction::BrowserDevTools => chord.binding(ToggleDevTools, context),
-                ChromeAction::BrowserNewTab => chord.binding(NewTab, context),
-                ChromeAction::BrowserNextTab => chord.binding(NextTab, context),
-                ChromeAction::BrowserPreviousTab => chord.binding(PreviousTab, context),
-                ChromeAction::BrowserSelectTab(index) => chord.binding(
+            Some(match browser_native_binding(chord.action()) {
+                Binding::ZoomIn => chord.binding(ZoomIn, context),
+                Binding::ZoomOut => chord.binding(ZoomOut, context),
+                Binding::ZoomReset => chord.binding(ResetZoom, context),
+                Binding::DevTools => chord.binding(ToggleDevTools, context),
+                Binding::NewTab => chord.binding(NewTab, context),
+                Binding::NextTab => chord.binding(NextTab, context),
+                Binding::PreviousTab => chord.binding(PreviousTab, context),
+                Binding::SelectTab(index) => chord.binding(
                     SelectTab {
                         index: usize::from(index),
                     },
                     context,
                 ),
-                ChromeAction::BrowserSelectLastTab => chord.binding(SelectLastTab, context),
-                ChromeAction::BrowserBack => chord.binding(GoBack, context),
-                ChromeAction::BrowserForward => chord.binding(GoForward, context),
-                ChromeAction::BrowserReload => chord.binding(Reload, context),
-                ChromeAction::BrowserFocusAddress => chord.binding(FocusAddress, context),
-                ChromeAction::BrowserElementSelector => chord.binding(
+                Binding::SelectLastTab => chord.binding(SelectLastTab, context),
+                Binding::Back => chord.binding(GoBack, context),
+                Binding::Forward => chord.binding(GoForward, context),
+                Binding::Reload => chord.binding(Reload, context),
+                Binding::FocusAddress => chord.binding(FocusAddress, context),
+                Binding::ElementSelector => chord.binding(
                     ConfiguredElementSelector {
                         chord: chord.key().to_owned(),
                     },
                     context,
                 ),
-                ChromeAction::BrowserUndo => chord.binding(crate::menus::Undo, context),
-                ChromeAction::BrowserRedo => chord.binding(crate::menus::Redo, context),
-                ChromeAction::BrowserCut => chord.binding(crate::menus::Cut, context),
-                ChromeAction::BrowserCopy => chord.binding(crate::menus::Copy, context),
-                ChromeAction::BrowserPaste => chord.binding(crate::menus::Paste, context),
-                ChromeAction::BrowserPasteAndMatchStyle => {
+                Binding::Undo => chord.binding(crate::menus::Undo, context),
+                Binding::Redo => chord.binding(crate::menus::Redo, context),
+                Binding::Cut => chord.binding(crate::menus::Cut, context),
+                Binding::Copy => chord.binding(crate::menus::Copy, context),
+                Binding::Paste => chord.binding(crate::menus::Paste, context),
+                Binding::PasteAndMatchStyle => {
                     chord.binding(edit(EditCommand::PasteAndMatchStyle), context)
                 }
-                ChromeAction::BrowserSelectAll => chord.binding(crate::menus::SelectAll, context),
-                ChromeAction::ClosePane => chord.binding(ClosePane, context),
-                _ => return None,
+                Binding::SelectAll => chord.binding(crate::menus::SelectAll, context),
+                Binding::ClosePane => chord.binding(ClosePane, context),
+                Binding::None => return None,
             })
         })
         .collect()

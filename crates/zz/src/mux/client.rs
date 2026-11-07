@@ -14,6 +14,9 @@ use ala::{
 use ala_cef::{ArtifactFile, ArtifactReply, ArtifactRequest};
 use image::{Frame as ImageFrame, ImageBuffer, Rgba};
 use parking_lot::RwLock;
+pub(crate) use zz_client::desktop_surface::TerminalFontSizeAdjustment;
+#[cfg(test)]
+use zz_client::desktop_surface::{MAX_TERMINAL_FONT_SIZE_POINTS, MIN_TERMINAL_FONT_SIZE_POINTS};
 pub(crate) use zz_client::scrollback::{HistoryRing, RetainedTerminalViewport};
 use zz_client::url_input::{diagnostic_url, normalize_url};
 use zz_client::{
@@ -143,9 +146,6 @@ const MAX_DECODED_MESSAGES_PER_UPDATE: usize = 64;
 const MAX_DECODED_BATCH_TIME: Duration = Duration::from_millis(4);
 const MAX_PANE_IMAGE_SNAPSHOTS: usize = 8;
 const MAX_TRACKED_COMMANDS: usize = 32;
-const TERMINAL_FONT_SIZE_STEP_POINTS: f32 = 1.0;
-const MIN_TERMINAL_FONT_SIZE_POINTS: f32 = 1.0;
-const MAX_TERMINAL_FONT_SIZE_POINTS: f32 = 256.0;
 
 fn new_session_commands(
     host: HostId,
@@ -174,21 +174,6 @@ fn snapshot_contains_pane(snapshot: &MuxSnapshot, pane: PaneId) -> bool {
         .iter()
         .flat_map(|session| &session.windows)
         .any(|window| window.panes.contains_key(&pane))
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum TerminalFontSizeAdjustment {
-    Increase,
-    Decrease,
-}
-
-impl TerminalFontSizeAdjustment {
-    const fn delta_points(self) -> f32 {
-        match self {
-            Self::Increase => TERMINAL_FONT_SIZE_STEP_POINTS,
-            Self::Decrease => -TERMINAL_FONT_SIZE_STEP_POINTS,
-        }
-    }
 }
 
 const DIAGNOSTIC_TARGET: &str = "zz::diagnostics::mux";
@@ -2580,13 +2565,17 @@ impl MuxClient {
         cx: &mut Context<Self>,
     ) {
         let previous = self.appearance.font_size_points;
-        let next = adjusted_terminal_font_size(previous, adjustment);
-        let applied_delta = next - previous;
-        if applied_delta.abs() < f32::EPSILON {
+        let state = zz_client::desktop_surface::TerminalFontState {
+            size: previous,
+            offset: self.terminal_font_size_offset_points,
+        };
+        let Some(state) =
+            zz_client::desktop_surface::adjusted_terminal_font_state(state, adjustment)
+        else {
             return;
-        }
-
-        self.terminal_font_size_offset_points += applied_delta;
+        };
+        let next = state.size;
+        self.terminal_font_size_offset_points = state.offset;
         let mut appearance = self.appearance.as_ref().clone();
         appearance.font_size_points = next;
         self.appearance = Arc::new(appearance);
@@ -5014,17 +5003,17 @@ impl EventEmitter<PathPickerUpdate> for MuxClient {}
 
 impl EventEmitter<HostPathListUpdate> for MuxClient {}
 
+#[cfg(test)]
 fn adjusted_terminal_font_size(current: f32, adjustment: TerminalFontSizeAdjustment) -> f32 {
-    (current + adjustment.delta_points())
-        .clamp(MIN_TERMINAL_FONT_SIZE_POINTS, MAX_TERMINAL_FONT_SIZE_POINTS)
+    zz_client::desktop_surface::adjusted_terminal_font_size(current, adjustment)
 }
 
 fn apply_terminal_font_size_offset(appearance: &mut TerminalAppearance, offset_points: f32) -> f32 {
     let configured = appearance.font_size_points;
-    let effective = (configured + offset_points)
-        .clamp(MIN_TERMINAL_FONT_SIZE_POINTS, MAX_TERMINAL_FONT_SIZE_POINTS);
+    let (effective, offset) =
+        zz_client::desktop_surface::terminal_font_size_offset(configured, offset_points);
     appearance.font_size_points = effective;
-    effective - configured
+    offset
 }
 
 #[cfg(test)]
