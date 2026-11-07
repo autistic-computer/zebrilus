@@ -1,6 +1,7 @@
 # Update Log
 
 ## 2026-11-07
+* **Fix**: Menu and select rows round with Corner radius like every other row; they took the menu's corner less its 6px inset, which left them nearly square at middle settings. The agent chat composer follows Corner radius too (square at 0); it was always a pill.
 * **Update**: In chat view a picker that is a split pane offers a Browser under its agents (`b`), so a browser can open beside a chat without switching to the session tree ([chat mode](/designs/chat-mode.md)).
 * **Update**: The accent is a detail and always a color ([interface themes](/designs/interface-themes.md)). Selection and primary fills are the ink; the Accent (blue by default, Ink is gone) paints only a switch that is on (under a white knob), a slider's fill, a checked box, the dot that asks for attention (needs you, bell) and links. `chrome-accent = ink` is now a config error. The named accents' dark colors are vivid (blue `#3183ff`), each the most saturated of its hue that reads at 4.5:1 as text and holds a white mark at 3:1; they were pastel to carry black labels. In penna's tokens `--penna-on-accent` is now the mark on the accent, and `--penna-accent-hover`, `--penna-accent-pressed` and `--penna-accent-ring-gap` are new.
 * **Fix**: The sidebar's New chat, Add host and Settings rows draw with the same inset in the session tree as in the chats list; the tree built them as tree rows, which put the icon against the fill's edge.
