@@ -96,6 +96,7 @@ def main():
         stage("mjui-native-component-density", ["bash", "scripts/penna/component_density_check.sh"], cwd=mjui)
         stage("mjui-native-gallery", ["bash", "scripts/penna/native_gallery_check.sh"], cwd=mjui)
         stage("mjui-native-notifications", ["bash", "scripts/penna/notification_check.sh"], cwd=mjui)
+        stage("mjui-native-scrollbars", ["bash", "scripts/penna/scrollbar_check.sh"], cwd=mjui)
         stage("mjui-native-glass-lifecycle", ["bash", "scripts/penna/glass_lifecycle_check.sh"], cwd=mjui)
         stage("mjui-native-bounds", ["python3", "scripts/penna/bounds_vectors.py"], cwd=mjui)
         stage("mjui-native-scene", ["python3", "scripts/penna/scene_vectors.py"], cwd=mjui)
