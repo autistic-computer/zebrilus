@@ -62,6 +62,7 @@ from .palette_component_model import (
 )
 from .search_clipboard import SearchClipboard
 from .palette_text import palette_words
+from .palette_assets import palette_asset_documents
 
 comptime PALETTE_UNDO_BYTES: Int = 1024 * 1024
 
@@ -79,7 +80,7 @@ struct PaletteComponentResult(Movable):
         self.effect = PaletteEffect()
 
 
-def palette_kit_row(row: PaletteRow) -> KitRow:
+def palette_kit_row(row: PaletteRow, openai: Int32 = -1, claude: Int32 = -1) -> KitRow:
     var result = KitRow(row.label, row.detail, row.right)
     result.muted_prefix = row.muted_prefix
     result.status = row.status
@@ -88,6 +89,12 @@ def palette_kit_row(row: PaletteRow) -> KitRow:
     result.icon_name = "SquareTerminal" if row.icon.startswith(
         "Asset("
     ) else row.icon.copy()
+    if row.icon == 'Asset("icons/openai.svg")' and openai >= 0:
+        result.icon_doc = openai
+        result.icon_name = String()
+    elif row.icon == 'Asset("icons/claude.svg")' and claude >= 0:
+        result.icon_doc = claude
+        result.icon_name = String()
     result.expanded = row.expanded
     for hit in row.hits:
         result.matches.append(PaletteMatch(hit.start, hit.end))
@@ -112,6 +119,8 @@ struct PaletteComponent(Movable):
     var bounds: PaletteBounds
     var panel_height: Float32
     var previous_hot: UInt64
+    var asset_openai: Int32
+    var asset_claude: Int32
 
     def __init__(out self, key: UInt64, style: TextStyle) raises:
         self.model = PaletteModel(browser=False, editor=False, insert_path=True)
@@ -126,6 +135,8 @@ struct PaletteComponent(Movable):
         self.bounds = PaletteBounds(0, 0, 0, 0)
         self.panel_height = 0
         self.previous_hot = 0
+        self.asset_openai = -1
+        self.asset_claude = -1
 
     def opened(self) -> Bool:
         return self.model.controller.opened
@@ -388,6 +399,8 @@ struct PaletteComponent(Movable):
             return result^
         if not self.valid_display():
             raise Error("palette editor exceeds its input limit")
+        if self.asset_openai < 0:
+            self.asset_openai, self.asset_claude = palette_asset_documents(ui)
         if not ui.layer_begin(
             self.key + 3, Style.col().width(width).height(height)
         ):
@@ -464,7 +477,7 @@ struct PaletteComponent(Movable):
                     if ui.hot == key and ui.hot != self.previous_hot:
                         self.model.controller.selected = index
                         self.model.controller.navigation_engaged = True
-                    var kit_row = palette_kit_row(row)
+                    var kit_row = palette_kit_row(row, self.asset_openai, self.asset_claude)
                     if palette_row(
                         ui,
                         theme,

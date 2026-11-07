@@ -45,6 +45,7 @@ differential-palette-projection = "python3 scripts/palette_projection_vectors.py
 palette-live-smoke = "python3 scripts/palette_live_smoke.py"
 differential-palette-component-model = "python3 scripts/palette_component_model.py"
 test-palette-component = "python3 scripts/palette_component.py"
+differential-palette-assets = "python3 scripts/palette_assets.py"
 differential-path-list = "python3 scripts/path_list_vectors.py"
 differential-path-text = "python3 scripts/path_text_vectors.py"
 test-path-service = "python3 ../scripts/port/guard.py mojo --fp-mode=contract=off -I . tests/path_service_probe.mojo"
