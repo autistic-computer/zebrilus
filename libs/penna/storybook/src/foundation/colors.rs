@@ -93,8 +93,7 @@ fn derived(_: &mut Window, cx: &mut App) -> AnyElement {
                 .gap(Space::S12)
                 .child(swatch("fill()", accent.fill(), cx))
                 .child(swatch("outline()", accent.outline(), cx))
-                .child(swatch("on()", accent.on(), cx))
-                .child(swatch("detail", theme.detail_color(), cx)),
+                .child(swatch("on()", accent.on(), cx)),
         )
         .into_any_element()
 }

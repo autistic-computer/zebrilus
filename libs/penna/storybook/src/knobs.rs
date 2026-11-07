@@ -200,22 +200,17 @@ impl Knobs {
                 "tint-color" => {
                     let value = decode(value);
                     knobs.look.tint = Tint::named(&value).ok_or_else(|| {
-                        format!("tint-color is ink, an accent or a hex color, not {value}")
+                        format!("tint-color is an accent or a hex color, not {value}")
                     })?;
                 }
                 "light-tint-color" | "dark-tint-color" => {
                     let color = penna::parse_hex(&decode(value))
                         .map_err(|error| format!("{key} must be a hex color: {error}"))?;
-                    let (mut light, mut dark) = match knobs.look.tint {
-                        Tint::Color { light, dark } => (light, dark),
-                        Tint::Ink => (color, color),
-                    };
                     if key == "light-tint-color" {
-                        light = color;
+                        knobs.look.tint.light = color;
                     } else {
-                        dark = color;
+                        knobs.look.tint.dark = color;
                     }
-                    knobs.look.tint = Tint::Color { light, dark };
                 }
                 "neutral-hue" => knobs.look.neutral.hue = number(key, value)?,
                 "neutral-amount" => knobs.look.neutral.amount = number(key, value)?,
@@ -386,13 +381,14 @@ pub fn theme_knobs(theme: &InterfaceTheme) -> serde_json::Map<String, serde_json
         knobs.insert(name.to_owned(), value);
     };
     set("name", serde_json::json!(theme.name));
-    match theme.tint {
-        Tint::Ink => set("tint-color", serde_json::json!("ink")),
-        Tint::Color { light, dark } => {
-            set("light-tint-color", serde_json::json!(penna::to_hex(light)));
-            set("dark-tint-color", serde_json::json!(penna::to_hex(dark)));
-        }
-    }
+    set(
+        "light-tint-color",
+        serde_json::json!(penna::to_hex(theme.tint.light)),
+    );
+    set(
+        "dark-tint-color",
+        serde_json::json!(penna::to_hex(theme.tint.dark)),
+    );
     set("neutral-hue", serde_json::json!(theme.neutral.hue));
     set("neutral-amount", serde_json::json!(theme.neutral.amount));
     set("radius", serde_json::json!(theme.radius));
@@ -582,7 +578,7 @@ mod tests {
         let tinted = Knobs::parse("tint-color=orange&dark-tint-color=%23112233").unwrap();
         assert_eq!(
             tinted.look.tint,
-            Tint::Color {
+            Tint {
                 light: penna::parse_hex("#ad4f00").unwrap(),
                 dark: penna::parse_hex("#112233").unwrap(),
             }

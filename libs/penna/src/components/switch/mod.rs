@@ -206,7 +206,7 @@ impl RenderOnce for Switch {
 
         let theme = cx.theme();
         let paint = if checked {
-            theme.paint(theme.detail, Emphasis::Solid)
+            theme.paint(Tone::Accent, Emphasis::Solid)
         } else {
             theme.paint(Tone::Neutral, Emphasis::Soft)
         };

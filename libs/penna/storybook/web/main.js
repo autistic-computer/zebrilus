@@ -99,14 +99,14 @@ function tintOf(knobs) {
     let light = null;
     let dark = null;
     const named = knobs["tint-color"];
-    if (named && named !== "ink") {
+    if (named) {
         const accent = accentNamed(named);
         light = accent?.light ?? named;
         dark = accent?.dark ?? named;
     }
     light = knobs["light-tint-color"] ?? light ?? knobs["dark-tint-color"] ?? null;
     dark = knobs["dark-tint-color"] ?? dark ?? light;
-    if (light === null) return { choice: "ink", light, dark };
+    if (light === null) return { choice: accents[0]?.name ?? "custom", light: accents[0]?.light ?? null, dark: accents[0]?.dark ?? null };
     const lower = (color) => color.toLowerCase();
     const accent = accents.find((each) => lower(each.light) === lower(light) && lower(each.dark) === lower(dark));
     return { choice: accent?.name ?? "custom", light, dark };
@@ -114,7 +114,6 @@ function tintOf(knobs) {
 
 function shownTint() {
     const choice = knobValue("tint-color");
-    if (choice === "ink") return { choice, light: null, dark: null };
     return { choice, light: knobValue("light-tint-color"), dark: knobValue("dark-tint-color") };
 }
 
@@ -360,7 +359,6 @@ function paintSliders() {
 }
 
 function applyKnobs() {
-    form.querySelector("#tint-colors").hidden = knobValue("tint-color") === "ink";
     form.querySelector("#control-radius").hidden = knobValue("control-corners") !== "own";
     form.querySelector("#glass-material").hidden = glassDefaults() === null;
     for (const output of form.querySelectorAll("output[name$='-value']")) {
@@ -497,7 +495,7 @@ function renderKnobs() {
         custom.before(element("option", { value: accent.name, text: title(accent.name) }));
         document.getElementById("accent-choices").append(element("option", { value: accent.name, text: title(accent.name) }));
     }
-    setTint({ choice: "ink", light: accents[0]?.light, dark: accents[0]?.dark });
+    setTint({ choice: accents[0]?.name ?? "custom", light: accents[0]?.light, dark: accents[0]?.dark });
     document.getElementById("glass-knobs").append(
         ...GLASS_KNOBS.map(([name, label, min, max, step]) =>
             element(
@@ -566,7 +564,7 @@ function shuffle() {
     for (const name of ["neutral-hue", "radius", "control-radius", "smoothing"]) pick(name);
     setKnobValue("neutral-amount", String(Math.round(Math.random() * 40) / 100));
     setKnobValue("control-corners", any(["same", "own", "full"]));
-    const tint = any(["ink", ...accents.map((accent) => accent.name)]);
+    const tint = any(accents.map((accent) => accent.name));
     setTint(tintOf({ "tint-color": tint }));
     setKnobValue("glass", any(["none", "liquid"]));
     resetGlassSliders();

@@ -615,7 +615,7 @@ fn vars(theme: &Theme, surface: Surface, layer: &Layer) -> Vec<(&'static str, St
 
 fn write_root(css: &mut String, theme: &Theme) {
     let primary = theme.paint(Tone::Primary, Emphasis::Solid);
-    let detail = theme.paint(theme.detail, Emphasis::Solid);
+    let accent = theme.paint(Tone::Accent, Emphasis::Solid);
     let control = theme
         .paint(Tone::Neutral, Emphasis::Soft)
         .fill_at(PaintState::Active);
@@ -640,10 +640,8 @@ fn write_root(css: &mut String, theme: &Theme) {
             color(theme.foreground.faint()),
         ),
         ("--penna-accent".to_owned(), color(theme.accent)),
-        ("--penna-on-accent".to_owned(), color(primary.text)),
+        ("--penna-on-accent".to_owned(), color(accent.text)),
         ("--penna-primary".to_owned(), color(primary.fill)),
-        ("--penna-detail".to_owned(), color(detail.fill)),
-        ("--penna-attention".to_owned(), color(theme.attention())),
         ("--penna-control".to_owned(), color(control)),
         ("--penna-wash".to_owned(), color(theme.background.washed(1))),
         ("--penna-knob".to_owned(), color(knob)),
@@ -684,9 +682,9 @@ fn write_root(css: &mut String, theme: &Theme) {
             color(theme.paint(Tone::Neutral, Emphasis::Ghost).focus),
         ),
         (
-            "--penna-detail-ring-gap".to_owned(),
+            "--penna-accent-ring-gap".to_owned(),
             length(f32::from(super::focus::ring_gap(
-                detail.fill,
+                accent.fill,
                 theme.paint(Tone::Neutral, Emphasis::Ghost).focus,
             ))),
         ),
@@ -783,10 +781,9 @@ fn paint_vars(theme: &Theme) -> Vec<(String, String)> {
         vars.push((format!("--penna-{name}-pressed"), color(solid.active)));
         vars.push((format!("--penna-on-{name}"), color(solid.text)));
     }
-    let detail = theme.paint(theme.detail, Emphasis::Solid);
-    vars.push(("--penna-detail-hover".to_owned(), color(detail.hover)));
-    vars.push(("--penna-detail-pressed".to_owned(), color(detail.active)));
-    vars.push(("--penna-on-detail".to_owned(), color(detail.text)));
+    let accent = theme.paint(Tone::Accent, Emphasis::Solid);
+    vars.push(("--penna-accent-hover".to_owned(), color(accent.hover)));
+    vars.push(("--penna-accent-pressed".to_owned(), color(accent.active)));
     vars
 }
 

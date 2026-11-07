@@ -20,7 +20,7 @@ DiscreteSlider::new("scrollback", "Scrollback", steps, picked, pick)
 
 ## Anatomy
 
-1. **Rail**: filled with the accent up to the value (the ink while the tint is the ink).
+1. **Rail**: filled with the accent up to the value.
 2. **Knob**: sits on the value.
 3. **Label**: stepped only. Names the setting, muted.
 4. **Pills**: stepped only. One per step, filled up to the pick.

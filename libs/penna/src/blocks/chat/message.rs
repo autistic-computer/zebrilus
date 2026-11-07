@@ -4,7 +4,7 @@ use ala::{
 
 use crate::{
     ActiveTheme as _, CHROME_GAP, Card, CardLook, Colorize as _, Emphasis, Icon, IconName, Label,
-    PaintExt as _, PaintState, Panel, PanelLook, Sizable as _, StyledExt as _, TextStyle,
+    PaintExt as _, PaintState, Panel, PanelLook, Sizable as _, StyledExt as _, TextStyle, Tone,
     blocks::touch::CoarsePointer,
     components::button::{Button, ButtonLook},
     components::check::Check,
@@ -170,8 +170,8 @@ pub fn plan_list(items: &[(PlanState, SharedString)], cx: &App) -> Div {
     const LINE: f32 = 19.0;
     let drop = cap_center_drop(px(FONT), px(MARKER), cx);
     let muted = cx.theme().foreground.muted();
-    let ring = cx.theme().paint(cx.theme().detail, Emphasis::Outline);
-    let dot = cx.theme().paint(cx.theme().detail, Emphasis::Solid).fill;
+    let ring = cx.theme().paint(Tone::Accent, Emphasis::Outline);
+    let dot = cx.theme().paint(Tone::Accent, Emphasis::Solid).fill;
     v_flex()
         .w_full()
         .children(items.iter().map(|(state, text)| {

@@ -214,7 +214,6 @@ pub fn accent_swatches(
     on_pick: impl Fn(Option<&'static str>, &mut Window, &mut App) + 'static,
     cx: &App,
 ) -> ala::Div {
-    let ink = ThemeColor::for_mode(mode).foreground;
     let on_pick = Rc::new(on_pick);
     let ring = cx.theme().foreground;
     let radius = cx.theme().swatch_radius();
@@ -251,18 +250,18 @@ pub fn accent_swatches(
         .items_center()
         .when(coarse, |row| row.w_full().justify_between())
         .gap(Space::S4)
-        .child(swatch("ink", "Ink".into(), ink))
         .children(named);
     if coarse {
-        let chosen = match selected {
-            "ink" => "Ink".into(),
-            name if ACCENTS.contains(&name) => accent_title(name),
-            hex => hex.to_uppercase().into(),
+        let chosen = if ACCENTS.contains(&selected) {
+            accent_title(selected)
+        } else {
+            selected.to_uppercase().into()
         };
-        let color = crate::foundation::interface_theme::accent_color(selected, mode).unwrap_or(ink);
+        let color = crate::foundation::interface_theme::accent_color(selected, mode)
+            .unwrap_or_else(|| ThemeColor::for_mode(mode).accent);
         return div().w_full().child(custom.presets(chosen, color, row));
     }
-    let custom_selected = selected != "ink" && !ACCENTS.contains(&selected);
+    let custom_selected = !ACCENTS.contains(&selected);
     row.child(ringed(custom_selected, ring, radius, custom))
 }
 

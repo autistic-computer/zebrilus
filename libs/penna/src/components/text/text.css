@@ -99,7 +99,7 @@
 }
 
 .penna-md a {
-  color: var(--penna-detail);
+  color: var(--penna-accent);
   text-decoration: underline;
   text-decoration-thickness: 1px;
   text-underline-offset: 2.5px;
@@ -197,7 +197,7 @@
   corner-shape: superellipse(var(--penna-window-k));
   border: 1px solid rgb(from var(--penna-fg) r g b / 0.3);
   background: transparent;
-  color: var(--penna-on-detail);
+  color: var(--penna-on-accent);
   outline: none;
   cursor: default;
   --penna-icon-size: round(nearest, 0.7em, 1px);
@@ -205,7 +205,7 @@
 
 .penna-md .md-check[aria-checked="true"] {
   border-color: transparent;
-  background: var(--penna-detail);
+  background: var(--penna-accent);
 }
 
 .penna-md hr {

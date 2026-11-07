@@ -1,9 +1,9 @@
 .penna-check {
   --penna-check-side: 16px;
-  --penna-check-on: var(--penna-detail);
-  --penna-check-on-hover: var(--penna-detail-hover);
-  --penna-check-on-pressed: var(--penna-detail-pressed);
-  --penna-check-ink: var(--penna-on-detail);
+  --penna-check-on: var(--penna-accent);
+  --penna-check-on-hover: var(--penna-accent-hover);
+  --penna-check-on-pressed: var(--penna-accent-pressed);
+  --penna-check-ink: var(--penna-on-accent);
   --penna-check-edge: rgb(from var(--penna-fg) r g b / 0.3);
   --penna-check-hover: var(--penna-outline-hover);
   --penna-check-pressed: var(--penna-outline-pressed);

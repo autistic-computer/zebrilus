@@ -30,12 +30,12 @@ Hairlines mean something: a rule, an outline variant, a field being typed in. In
 
 ## Tint
 
-`tint` colors the details: a switch that is on, a checked box, a slider's fill, the dot that asks for attention, links. Selection and the main action stay in the ink with any tint. `ink` keeps the details in the text color too; a person's accent replaces it.
+`tint` colors the details: a switch that is on, a checked box, a slider's fill, the dot that asks for attention, links. Selection and the main action stay in the ink with any tint. It is `blue` unless an app sets another; a person's accent replaces it.
 
 ```figure uses=switch,check,list
 <div class="docs-show" data-gap="wide">
   <div class="docs-cell" data-look="default"><div class="docs-look"><button class="penna-button" data-penna="button" data-tone="primary" data-prominent><span class="penna-label" data-penna-text>Save</span></button><button class="penna-toggle" aria-checked="true" aria-label="Sync"></button><label class="penna-checkbox" aria-checked="true"><span class="penna-check"></span><span class="penna-label" data-penna-text>Restore</span></label><span class="penna-list" style="width: 132px"><span class="penna-list-item" data-penna="menu-item" role="option" data-state="selected" aria-selected="true"><span class="penna-list-content"><i class="penna-list-icon" data-icon="square-terminal"></i><span class="penna-list-label"><span class="penna-text" data-penna-text>work</span></span></span></span></span></div><span class="docs-note"><code>ink</code></span></div>
-  <div class="docs-cell" data-look="blue"><div class="docs-look"><button class="penna-button" data-penna="button" data-tone="primary" data-prominent><span class="penna-label" data-penna-text>Save</span></button><button class="penna-toggle" aria-checked="true" aria-label="Sync"></button><label class="penna-checkbox" aria-checked="true"><span class="penna-check"></span><span class="penna-label" data-penna-text>Restore</span></label><span class="penna-list" style="width: 132px"><span class="penna-list-item" data-penna="menu-item" role="option" data-state="selected" aria-selected="true"><span class="penna-list-content"><i class="penna-list-icon" data-icon="square-terminal"></i><span class="penna-list-label"><span class="penna-text" data-penna-text>work</span></span></span></span></span></div><span class="docs-note"><code>blue</code></span></div>
+  <div class="docs-cell" data-look="green"><div class="docs-look"><button class="penna-button" data-penna="button" data-tone="primary" data-prominent><span class="penna-label" data-penna-text>Save</span></button><button class="penna-toggle" aria-checked="true" aria-label="Sync"></button><label class="penna-checkbox" aria-checked="true"><span class="penna-check"></span><span class="penna-label" data-penna-text>Restore</span></label><span class="penna-list" style="width: 132px"><span class="penna-list-item" data-penna="menu-item" role="option" data-state="selected" aria-selected="true"><span class="penna-list-content"><i class="penna-list-icon" data-icon="square-terminal"></i><span class="penna-list-label"><span class="penna-text" data-penna-text>work</span></span></span></span></span></div><span class="docs-note"><code>blue</code></span></div>
   <div class="docs-cell" data-look="pink"><div class="docs-look"><button class="penna-button" data-penna="button" data-tone="primary" data-prominent><span class="penna-label" data-penna-text>Save</span></button><button class="penna-toggle" aria-checked="true" aria-label="Sync"></button><label class="penna-checkbox" aria-checked="true"><span class="penna-check"></span><span class="penna-label" data-penna-text>Restore</span></label><span class="penna-list" style="width: 132px"><span class="penna-list-item" data-penna="menu-item" role="option" data-state="selected" aria-selected="true"><span class="penna-list-content"><i class="penna-list-icon" data-icon="square-terminal"></i><span class="penna-list-label"><span class="penna-text" data-penna-text>work</span></span></span></span></span></div><span class="docs-note"><code>pink</code></span></div>
 </div>
 ```
@@ -98,7 +98,7 @@ The same in every app, in Appearance, in three groups: Look, Size and Accessibil
 | Knob | Does |
 | --- | --- |
 | Mode | System, light or dark, unless a theme locks it |
-| Accent | The tint: ink, a named accent or a color |
+| Accent | The tint: a named accent or a color |
 | Tint, Tint strength | The neutral's hue and amount |
 | Corner radius | The radius, 0 to 100% on a square curve: 69% is the default 12, 100% is 25 and never a pill |
 | Controls | Rounded follows the radius; Pill makes controls pills |
@@ -116,7 +116,7 @@ The look starts from `macos` on Apple platforms and `default` elsewhere. `yaru` 
 
 | Theme file | Tint | Radius | Control radius | Smoothing | Glass |
 | --- | --- | --- | --- | --- | --- |
-| `default` | ink | 12 | 12 | 3 | liquid |
+| `default` | blue | 12 | 12 | 3 | liquid |
 | `macos` | blue | 12 | full | 4 | liquid |
 | `yaru` | orange | 8 | 8 | 2 | none |
 
@@ -146,7 +146,7 @@ studio.activate(None, Some(window), cx);
 | Theme file | Rust | Does |
 | --- | --- | --- |
 | `name` | `.name` | A label for the file |
-| `tint` | `.tint` | Ink, an accent, a hex color, or a light and dark pair |
+| `tint` | `.tint` | An accent, a hex color, or a light and dark pair |
 | `neutral` | `.neutral` | Hue 0 to 360, amount 0 to 1 |
 | `radius` | `.radius` | Container corners, 0 to 25; 25 is round, not a pill |
 | `control-radius` | `.control_radius` | Control corners, 0 to 25 or full; the radius when left out |

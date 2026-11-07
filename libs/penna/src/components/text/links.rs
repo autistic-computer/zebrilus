@@ -31,7 +31,7 @@ pub(crate) type SharedLinks = Arc<dyn TextLinks>;
 
 pub(crate) fn link_highlight(links: Option<&SharedLinks>, url: &str, cx: &App) -> HighlightStyle {
     let plain = HighlightStyle {
-        color: Some(cx.theme().detail_color()),
+        color: Some(cx.theme().accent),
         underline: Some(UnderlineStyle {
             thickness: px(1.),
             ..UnderlineStyle::default()

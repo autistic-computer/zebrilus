@@ -223,7 +223,7 @@
   height: 12px;
   border-radius: calc(var(--penna-radius) / 2);
   corner-shape: superellipse(var(--penna-window-k));
-  border: 1px solid var(--penna-detail);
+  border: 1px solid var(--penna-accent);
 }
 
 .penna-chat-plan-current::after {
@@ -231,7 +231,7 @@
   width: 6px;
   height: 6px;
   border-radius: 1.5px;
-  background: var(--penna-detail);
+  background: var(--penna-accent);
 }
 
 .penna-chat-composer {

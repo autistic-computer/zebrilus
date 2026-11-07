@@ -183,7 +183,7 @@
   width: calc(var(--fraction, 0) * 100%);
   height: 100%;
   border-radius: 9999px;
-  background: var(--penna-detail);
+  background: var(--penna-accent);
 }
 
 .appearance-slider[data-hue] .appearance-bar {

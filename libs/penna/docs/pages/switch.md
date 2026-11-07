@@ -11,7 +11,7 @@ Turns a setting on or off, and the change applies at once. For one of a few mode
 </div>
 ```
 
-1. **Track**: neutral when off, the accent when on, under a white knob (the ink while the tint is the ink).
+1. **Track**: neutral when off, the accent when on, under a white knob.
 2. **Thumb**: slides to the end when on.
 
 The setting's name is the row title beside it.

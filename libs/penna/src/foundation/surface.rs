@@ -1977,7 +1977,6 @@ mod tests {
         };
         check(&theme);
         theme.accent = crate::parse_hex("#ad4f00").unwrap();
-        theme.detail = Tone::Accent;
         check(&theme);
     }
 }

@@ -39,47 +39,47 @@ pub fn accent_color(value: &str, mode: ThemeMode) -> Option<Hsla> {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
-pub enum Tint {
-    #[default]
-    Ink,
-    Color {
-        light: Hsla,
-        dark: Hsla,
-    },
+pub const DEFAULT_ACCENT: &str = "blue";
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Tint {
+    pub light: Hsla,
+    pub dark: Hsla,
+}
+
+impl Default for Tint {
+    fn default() -> Self {
+        Self {
+            light: accent_color(DEFAULT_ACCENT, ThemeMode::Light).unwrap_or_default(),
+            dark: accent_color(DEFAULT_ACCENT, ThemeMode::Dark).unwrap_or_default(),
+        }
+    }
 }
 
 impl Tint {
     pub fn named(value: &str) -> Option<Self> {
-        if value.trim() == "ink" {
-            return Some(Self::Ink);
-        }
-        Some(Self::Color {
+        Some(Self {
             light: accent_color(value, ThemeMode::Light)?,
             dark: accent_color(value, ThemeMode::Dark)?,
         })
     }
 
-    pub fn color(self, mode: ThemeMode) -> Option<Hsla> {
-        match self {
-            Self::Ink => None,
-            Self::Color { light, dark } => Some(if mode.is_dark() { dark } else { light }),
+    pub fn color(self, mode: ThemeMode) -> Hsla {
+        if mode.is_dark() {
+            self.dark
+        } else {
+            self.light
         }
     }
 }
 
 impl Serialize for Tint {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        match self {
-            Self::Ink => serializer.serialize_str("ink"),
-            Self::Color { light, dark } => {
-                let pair = [
-                    ("light", crate::to_hex(*light)),
-                    ("dark", crate::to_hex(*dark)),
-                ];
-                serializer.collect_map(pair)
-            }
-        }
+        let pair = [
+            ("light", crate::to_hex(self.light)),
+            ("dark", crate::to_hex(self.dark)),
+        ];
+        serializer.collect_map(pair)
     }
 }
 
@@ -95,7 +95,7 @@ impl<'de> Deserialize<'de> for Tint {
         let unknown = |value: &str| D::Error::custom(format!("`{value}` is no tint"));
         match Spelled::deserialize(deserializer)? {
             Spelled::One(value) => Self::named(&value).ok_or_else(|| unknown(&value)),
-            Spelled::Pair { light, dark } => Ok(Self::Color {
+            Spelled::Pair { light, dark } => Ok(Self {
                 light: accent_color(&light, ThemeMode::Light).ok_or_else(|| unknown(&light))?,
                 dark: accent_color(&dark, ThemeMode::Dark).ok_or_else(|| unknown(&dark))?,
             }),
@@ -395,7 +395,7 @@ impl Default for InterfaceTheme {
     fn default() -> Self {
         Self {
             name: String::new(),
-            tint: Tint::Ink,
+            tint: Tint::default(),
             neutral: Neutral::default(),
             radius: DEFAULT_RADIUS,
             control_radius: None,
@@ -411,9 +411,7 @@ impl InterfaceTheme {
     pub fn colors(&self, mode: ThemeMode) -> ThemeColor {
         let neutral = self.neutral.clamped();
         let mut colors = ThemeColor::for_mode(mode).neutral(neutral.hue, neutral.amount);
-        if let Some(tint) = self.tint.color(mode) {
-            colors.accent = tint;
-        }
+        colors.accent = self.tint.color(mode);
         colors
     }
 
@@ -427,10 +425,6 @@ impl InterfaceTheme {
     pub fn apply(&self, theme: &mut Theme) {
         let mode = theme.mode;
         theme.colors = self.colors(mode);
-        theme.detail = match self.tint {
-            Tint::Ink => crate::Tone::Primary,
-            Tint::Color { .. } => crate::Tone::Accent,
-        };
         theme.radius = px(clamp_radius(self.radius));
         theme.control_radius = self.control_radius.map(ControlRadius::pixels);
         theme.smoothing = Smoothing::clamped(self.smoothing);
@@ -605,13 +599,13 @@ impl ThemeOverrides {
     }
 
     pub fn from_theme(theme: &InterfaceTheme) -> Self {
-        let accent = match theme.tint {
-            Tint::Ink => "ink".to_owned(),
-            Tint::Color { light, .. } => ACCENTS
-                .iter()
-                .find(|name| Tint::named(name) == Some(theme.tint))
-                .map_or_else(|| crate::to_hex(light), |name| (*name).to_owned()),
-        };
+        let accent = ACCENTS
+            .iter()
+            .find(|name| Tint::named(name) == Some(theme.tint))
+            .map_or_else(
+                || crate::to_hex(theme.tint.light),
+                |name| (*name).to_owned(),
+            );
         let neutral = theme.neutral.clamped();
         Self {
             radius: Some(clamp_radius(theme.radius)),
@@ -818,14 +812,14 @@ mod tests {
                 ThemeMode::Light,
                 [
                     "#f6f6f3", "#e9e9e6", "#dcdcda", "#1c1c1a", "#575756", "#555553", "#90908e",
-                    "#2f62d8", "#ebebeb", "#1c1c1a", "#007b3e", "#a75400", "#cc2737",
+                    "#0a64dd", "#ebebeb", "#1c1c1a", "#007b3e", "#a75400", "#cc2737",
                 ],
             ),
             (
                 ThemeMode::Dark,
                 [
                     "#1a1a19", "#212120", "#292928", "#e9e7e3", "#908f8c", "#a4a3a0", "#4d4c4b",
-                    "#7f9fff", "#010101", "#e9e7e3", "#3fbf74", "#f0a14a", "#f2555f",
+                    "#3183ff", "#010101", "#e9e7e3", "#3fbf74", "#f0a14a", "#f2555f",
                 ],
             ),
         ] {
@@ -1135,7 +1129,6 @@ mod tests {
             assert_eq!(theme.mode, ThemeMode::Dark);
             assert_eq!(theme.radius, px(5.0));
             assert_eq!(Some(theme.accent), accent_color("green", ThemeMode::Dark));
-            assert!(theme.tinted());
             assert_eq!(theme.contrast(), 1.5);
             assert_eq!(theme.glass, None);
             assert_eq!(crate::UiZoom::get(cx), 1.25);

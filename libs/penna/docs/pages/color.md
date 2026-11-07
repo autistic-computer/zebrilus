@@ -40,7 +40,7 @@ Full ink for what people read, muted for what supports it, faint only for placeh
 
 ## Highlight
 
-Picked and focused are marked in the ink, and the main action is a solid fill of it, whatever the tint. The accent is a detail: a switch that is on, a checked box, a slider's fill, the dot that asks for attention, links. With the default tint the accent is the ink too.
+Picked and focused are marked in the ink, and the main action is a solid fill of it, whatever the tint. The accent is a detail: a switch that is on, a checked box, a slider's fill, the dot that asks for attention, links.
 
 ```figure uses=switch,input
 <div class="docs-show" data-gap="wide">

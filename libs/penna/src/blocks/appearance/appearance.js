@@ -1,6 +1,6 @@
 (() => {
 const LOOKS = {
-  default: { accent: "ink", controls: "0", glass: "true" },
+  default: { accent: "blue", controls: "0", glass: "true" },
   macos: { accent: "blue", controls: "1", glass: "true" },
   yaru: { accent: "orange", controls: "0", glass: "false" },
 };
@@ -198,8 +198,8 @@ function wireCustom(frame) {
       picker.toggleAttribute("data-custom", custom);
       row.querySelectorAll(".appearance-ring").forEach((ring) => {
         const own = ring.contains(picker);
-        const ink = Boolean(ring.querySelector('[data-accent="ink"]'));
-        ring.toggleAttribute("data-selected", custom ? own : ink);
+        const theme = Boolean(ring.querySelector(`[data-accent="${look().accent}"]`));
+        ring.toggleAttribute("data-selected", custom ? own : theme);
       });
     });
   });

@@ -156,7 +156,7 @@ impl RenderOnce for DiscreteSlider {
             Size::XSmall | Size::Small => TextStyle::Caption,
             _ => TextStyle::Small,
         };
-        let filled = cx.theme().paint(cx.theme().detail, Emphasis::Solid);
+        let filled = cx.theme().paint(Tone::Accent, Emphasis::Solid);
         let track = cx.theme().paint(Tone::Neutral, Emphasis::Soft);
         let value = self.labels.get(selected).cloned().unwrap_or_default();
         let mut pills = h_flex()
@@ -482,7 +482,7 @@ impl Slider {
     ) -> Div {
         let theme = cx.theme();
         let disabled = self.disabled;
-        let filled = dim(theme.paint(theme.detail, Emphasis::Solid).fill, disabled);
+        let filled = dim(theme.paint(Tone::Accent, Emphasis::Solid).fill, disabled);
         let rest = dim(
             theme
                 .paint(Tone::Neutral, Emphasis::Soft)
