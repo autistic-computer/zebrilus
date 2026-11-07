@@ -154,53 +154,15 @@ fn buffer_row(
 }
 
 fn buffer_row_text(item: &ChooseBufferItem) -> (String, String, String, String) {
-    if item.text.is_empty() {
-        (
-            item.name.clone(),
-            item.preview.clone(),
-            format_buffer_size(item.size_bytes),
-            format_buffer_age(item.created_unix_seconds),
-        )
+    let now = if item.text.is_empty() {
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs()
     } else {
-        (
-            item.text.clone(),
-            String::new(),
-            String::new(),
-            String::new(),
-        )
-    }
-}
-
-fn format_buffer_size(bytes: u64) -> String {
-    const KIB: u64 = 1_024;
-    const MIB: u64 = KIB * 1_024;
-    const GIB: u64 = MIB * 1_024;
-    if bytes < KIB {
-        return format!("{bytes} B");
-    }
-    let (unit, label) = if bytes < MIB {
-        (KIB, "KiB")
-    } else if bytes < GIB {
-        (MIB, "MiB")
-    } else {
-        (GIB, "GiB")
+        0
     };
-    let tenths = bytes.saturating_mul(10).saturating_add(unit / 2) / unit;
-    format!("{}.{:01} {label}", tenths / 10, tenths % 10)
-}
-
-fn format_buffer_age(created_unix_seconds: u64) -> String {
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
-    let age = now.saturating_sub(created_unix_seconds);
-    match age {
-        0..=59 => format!("{age}s"),
-        60..=3_599 => format!("{}m", age / 60),
-        3_600..=86_399 => format!("{}h", age / 3_600),
-        _ => format!("{}d", age / 86_400),
-    }
+    zz_client::chooser::buffer_row_text(item, now)
 }
 
 #[cfg(test)]
@@ -209,9 +171,20 @@ mod tests {
 
     #[test]
     fn sizes_and_ages_are_compact() {
-        assert_eq!(format_buffer_size(999), "999 B");
-        assert_eq!(format_buffer_size(1_536), "1.5 KiB");
-        assert_eq!(format_buffer_age(u64::MAX), "0s");
+        let mut item = ChooseBufferItem {
+            name: String::new(),
+            preview: String::new(),
+            size_bytes: 999,
+            created_unix_seconds: u64::MAX,
+            key: String::new(),
+            text: String::new(),
+            tagged: false,
+        };
+        let (_, _, size, age) = buffer_row_text(&item);
+        assert_eq!(size, "999 B");
+        assert_eq!(age, "0s");
+        item.size_bytes = 1_536;
+        assert_eq!(buffer_row_text(&item).2, "1.5 KiB");
     }
 
     #[test]

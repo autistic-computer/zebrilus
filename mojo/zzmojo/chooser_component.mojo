@@ -118,9 +118,11 @@ struct _Hint(Copyable, Movable):
     var label: String
 
 
-def _hints(searching: Bool) -> List[_Hint]:
+def _hints(searching: Bool, buffer: Bool = False) -> List[_Hint]:
     if searching:
         return [_Hint(["enter"], "accept"), _Hint(["escape"], "cancel")]
+    if buffer:
+        return [_Hint(["up", "down"], "navigate"), _Hint(["enter"], "paste"), _Hint(["d"], "delete"), _Hint(["/"], "search"), _Hint(["escape"], "close")]
     return [_Hint(["up", "down"], "navigate"), _Hint(["left", "right"], "expand"), _Hint(["enter"], "choose"), _Hint(["/"], "search"), _Hint(["escape"], "close")]
 
 
@@ -136,16 +138,16 @@ def _notice_height(mut ui: Ui, text: StringSpan, font: Int32, width: Float32, bo
     return Float32(max(len(ui.paras.paras[paragraph].lines), 1)) * 16 + 2 * length(ui, 9) + border
 
 
-def measure_chooser(mut ui: Ui, th: PennaTheme, model: ChooserPresentation) -> ChooserGeometry:
-    var width = min(length(ui, 600), max(ui.width - 2 * length(ui, 24), Float32(0)))
-    var height = min(length(ui, model.height), max(ui.height - 44, Float32(0)))
+def measure_chooser_frame(mut ui: Ui, th: PennaTheme, requested_height: Float32, max_width: Float32, help: Bool, prompt: String) -> ChooserGeometry:
+    var width = min(length(ui, max_width), max(ui.width - 2 * length(ui, 24), Float32(0)))
+    var height = min(length(ui, requested_height), max(ui.height - 44, Float32(0)))
     var x = (ui.width - width) / 2
     var y = length(ui, 22)
     var notices = List[String]()
-    if model.snapshot.help:
+    if help:
         notices.append("Help: the next key closes this and does nothing else")
-    if model.snapshot.prompt.byte_length() != 0:
-        notices.append(model.snapshot.prompt.copy())
+    if prompt.byte_length() != 0:
+        notices.append(prompt.copy())
     var border = length(ui, surface_metric(th.theme, 1))
     var notice_heights = List[Float32]()
     var notice_height: Float32 = 0
@@ -159,12 +161,15 @@ def measure_chooser(mut ui: Ui, th: PennaTheme, model: ChooserPresentation) -> C
     return ChooserGeometry(ChooserBounds(x, y, width, height), ChooserBounds(x + inset, y + length(ui, 56) + notice_height + length(ui, 8), max(width - 2 * inset, Float32(0)), content), length(ui, 40), 18, list_height, inset, border, notices^, notice_heights^)
 
 
+def measure_chooser(mut ui: Ui, th: PennaTheme, model: ChooserPresentation) -> ChooserGeometry:
+    return measure_chooser_frame(ui, th, model.height, 600, model.snapshot.help, model.snapshot.prompt)
+
 @inline(.never)
-def _footer(mut ui: Ui, th: PennaTheme, search: Optional[Tuple[String, String]], width: Float32) raises:
+def _footer(mut ui: Ui, th: PennaTheme, search: Optional[Tuple[String, String]], width: Float32, buffer: Bool = False) raises:
     var color = chooser_color(th.theme, 1)
     var rule = surface_rule(th.theme)
     var border = length(ui, surface_metric(th.theme, 1))
-    var hints = _hints(Bool(search))
+    var hints = _hints(Bool(search), buffer)
     var total = length(ui, 10) * Float32(max(len(hints) - 1, 0))
     for hint in hints:
         total += _hint_width(ui, th, hint)
@@ -271,12 +276,7 @@ def _row(mut ui: Ui, th: PennaTheme, medium: Int32, key: UInt64, row: ChooserRow
 
 
 @inline(.never)
-def render_chooser(mut ui: Ui, th: PennaTheme, key: UInt64, model: ChooserPresentation, scroll: Float32 = 0, medium_font: Int32 = -1, marked: String = "", overlay: Bool = True) raises -> ChooserResult:
-    if not isfinite(scroll):
-        raise Error("chooser scroll offset is not finite")
-    var medium = th.flat.font if medium_font < 0 else medium_font
-    var search = model.search(marked)
-    var geometry = measure_chooser(ui, th, model)
+def open_chooser_frame(mut ui: Ui, th: PennaTheme, key: UInt64, geometry: ChooserGeometry, title: String, subtitle: String, medium: Int32, overlay: Bool) raises -> ChooserResult:
     var width = geometry.panel.width
     var height = geometry.panel.height
     var x = geometry.panel.x
@@ -288,17 +288,9 @@ def render_chooser(mut ui: Ui, th: PennaTheme, key: UInt64, model: ChooserPresen
     var list_height = geometry.list_height
     var inset = geometry.inset
     var content = geometry.viewport.height
-    var result = ChooserResult(None, False, False, geometry.panel, geometry.viewport)
-    var row_height = geometry.row_height
-    var count = len(model.snapshot.items[].values)
-    var offset = min(max(scroll, Float32(0)), max(Float32(count) * row_height - content, Float32(0)))
-    var first = Int(floor(offset / row_height)) if row_height > 0 else 0
-    var visible = List[ChooserRow]()
-    for index in range(first, min(count, first + 12)):
-        visible.append(model.row(index))
     var backdrop_key = sub(key, 1)
     var backdrop = ui.interact(backdrop_key)
-    result.close = backdrop.pressed
+    var result = ChooserResult(None, False, backdrop.pressed, geometry.panel, geometry.viewport)
     var backdrop_style = Style.col().width(ui.width).height(ui.height).id(backdrop_key)
     if overlay:
         ui.overlay_begin(0, 0, backdrop_style)
@@ -315,8 +307,8 @@ def render_chooser(mut ui: Ui, th: PennaTheme, key: UInt64, model: ChooserPresen
     panel.decorations(ui)
     ui.open(Style.row().width(width).height(length(ui, 56)).pad(length(ui, 12), 0).align(START, CENTER))
     ui.open(Style.col().grow().min_width(0).spacing(length(ui, 2)))
-    _label(ui, model.title, medium, 13, 18, root_color(th.theme, 1))
-    _label(ui, model.subtitle, th.flat.font, 11, 16, chooser_color(th.theme, 1), True, max(width - length(ui, 48), Float32(0)), th.flat.mono)
+    _label(ui, title, medium, 13, 18, root_color(th.theme, 1))
+    _label(ui, subtitle, th.flat.font, 11, 16, chooser_color(th.theme, 1), True, max(width - length(ui, 48), Float32(0)), th.flat.mono)
     ui.close()
     result.close |= _close(ui, th, sub(key, 2))
     ui.close()
@@ -329,18 +321,43 @@ def render_chooser(mut ui: Ui, th: PennaTheme, key: UInt64, model: ChooserPresen
         ui.close()
     ui.open(Style.col().width(width).height(list_height).pad_sides(inset, length(ui, 8), inset, length(ui, 8)).clipped())
     ui.open(Style.col().width(max(width - 2 * inset, Float32(0))).height(content).clipped())
+    return result^
+
+
+def close_chooser_frame(mut ui: Ui, th: PennaTheme, search: Optional[Tuple[String, String]], width: Float32, overlay: Bool, buffer: Bool = False) raises:
+    ui.close()
+    ui.close()
+    _footer(ui, th, search, width, buffer)
+    ui.close()
+    if overlay:
+        ui.overlay_end()
+    else:
+        ui.close()
+
+
+@inline(.never)
+def render_chooser(mut ui: Ui, th: PennaTheme, key: UInt64, model: ChooserPresentation, scroll: Float32 = 0, medium_font: Int32 = -1, marked: String = "", overlay: Bool = True) raises -> ChooserResult:
+    if not isfinite(scroll):
+        raise Error("chooser scroll offset is not finite")
+    var medium = th.flat.font if medium_font < 0 else medium_font
+    var search = model.search(marked)
+    var geometry = measure_chooser(ui, th, model)
+    var width = geometry.panel.width
+    var content = geometry.viewport.height
+    var inset = geometry.inset
+    var row_height = geometry.row_height
+    var count = len(model.snapshot.items[].values)
+    var offset = min(max(scroll, Float32(0)), max(Float32(count) * row_height - content, Float32(0)))
+    var first = Int(floor(offset / row_height)) if row_height > 0 else 0
+    var visible = List[ChooserRow]()
+    for index in range(first, min(count, first + 12)):
+        visible.append(model.row(index))
+    var result = open_chooser_frame(ui, th, key, geometry, model.title, model.subtitle, medium, overlay)
     for slot in range(len(visible)):
         var index = first + slot
         var pressed = _row(ui, th, medium, sub(key, index + 64), visible[slot], model.snapshot.selected == UInt32(index), model.show_key_gutter, max(width - 2 * inset, Float32(0)), Float32(index) * row_height - offset)
         if pressed:
             result.selected = UInt32(index)
             result.activate = pressed.value()
-    ui.close()
-    ui.close()
-    _footer(ui, th, search, width)
-    ui.close()
-    if overlay:
-        ui.overlay_end()
-    else:
-        ui.close()
+    close_chooser_frame(ui, th, search, width, overlay)
     return result^
