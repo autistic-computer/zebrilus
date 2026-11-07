@@ -36,6 +36,7 @@ fn geometry(scene: &Scene) -> Value {
                 "bounds": [glyph.bounds.origin.x.0, glyph.bounds.origin.y.0, glyph.bounds.size.width.0, glyph.bounds.size.height.0],
                 "color": color(glyph.color),
                 "tile": [glyph.tile.texture_id.index, glyph.tile.tile_id.0],
+                "clip": [glyph.content_mask.bounds.origin.x.0, glyph.content_mask.bounds.origin.y.0, glyph.content_mask.bounds.size.width.0, glyph.content_mask.bounds.size.height.0],
                 "order": glyph.order,
             })
         })

@@ -238,7 +238,7 @@ fn variants(role: SurfaceRole) -> Vec<(String, Surface)> {
         TONES.map(|(tone, name)| (format!("{key}[data-tone=\"{name}\"]"), surface.tone(tone)))
     };
     let mut variants = toned(&selector(role), base).to_vec();
-    if role.kind == Kind::Button {
+    if role.kind == Kind::Button || role == SurfaceRole::BADGE {
         let prominent = format!("{}[data-prominent]", selector(role));
         variants.push((prominent.clone(), base.prominent(true)));
         variants.extend(toned(&prominent, base.prominent(true)));

@@ -148,6 +148,14 @@ fn tables(variant: u8) -> Vec<KeyTableSnapshot> {
     tables.snapshot()
 }
 
+fn color_bits(value: ala::Hsla) -> [u32; 8] {
+    let rgba: ala::Rgba = value.into();
+    [
+        rgba.r, rgba.g, rgba.b, rgba.a, value.h, value.s, value.l, value.a,
+    ]
+    .map(f32::to_bits)
+}
+
 fn main() -> Result<(), Box<dyn Error>> {
     let args: Vec<_> = std::env::args().collect();
     let directory = PathBuf::from(args.get(1).ok_or("which-key output directory required")?);
@@ -257,6 +265,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         cx.set_global(value);
         cx.set_reduce_motion(true);
     });
+    let accent = app.update(|cx| color_bits(cx.theme().accent));
     let window = app.open_window(size(px(width), px(height)), |window, cx| {
         window.set_scale_factor(scale);
         let fixture = cx.new(|_| Fixture {
@@ -275,10 +284,30 @@ fn main() -> Result<(), Box<dyn Error>> {
     fs::create_dir_all(&directory)?;
     app.capture_screenshot(window.into())?
         .save(directory.join("native.png"))?;
+    let layouts = app
+        .update_window(window.into(), |_, window, _| {
+            window.layout_diagnostics(4096)
+        })?
+        .ok_or("which-key layout diagnostic limit exceeded")?;
+    fs::write(
+        directory.join("layout.json"),
+        serde_json::to_vec_pretty(
+            &layouts
+                .iter()
+                .map(|layout| {
+                    json!({
+                        "id": layout.id, "parent": layout.parent,
+                        "position": [layout.position.x, layout.position.y],
+                        "size": [layout.size.width, layout.size.height],
+                    })
+                })
+                .collect::<Vec<_>>(),
+        )?,
+    )?;
     fs::write(
         directory.join("input.json"),
         serde_json::to_vec_pretty(
-            &json!({ "width":width,"height":height,"theme":theme,"scale":scale,"variant":variant,"prefix":prefix,"table":table,"all":all,"frame":frame }),
+            &json!({ "width":width,"height":height,"theme":theme,"scale":scale,"variant":variant,"prefix":prefix,"table":table,"all":all,"frame":frame,"accent":accent }),
         )?,
     )?;
     fs::write(
