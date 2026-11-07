@@ -16,6 +16,7 @@ export ZZ_BEND=${ZZ_BEND:-$zz_dir/target/port/zz-bend}
 cd "$mjui_dir"
 case "$action" in
   build-app)
+    if [ "$(uname -s)" = Linux ]; then export MJ_NATIVE_RASTER=${MJ_NATIVE_RASTER:-1}; fi
     MJ_A11Y=0 MJUI_EXAMPLE_BUILD_ONLY=1 MJUI_EXAMPLE_OUT="$zz_dir/target/port/zz-mojo-app.next" bash scripts/run_example.sh "$port_dir/window.mojo"
     mv "$zz_dir/target/port/zz-mojo-app.next" "$zz_dir/target/port/zz-mojo-app"
     python3 "$port_dir/scripts/resources.py" "$zz_dir/target/port/zz-mojo-app"
