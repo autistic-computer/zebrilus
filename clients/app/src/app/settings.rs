@@ -1293,7 +1293,6 @@ mod tests {
             assert_eq!(theme.accent, expected);
             assert_eq!(theme.radius, px(3.0));
             assert!(theme.pill_controls());
-            assert!(theme.tinted());
         });
         preferences.appearance.overrides.radius = Some(5.0);
         preferences.appearance.overrides.accent = Some("green".into());

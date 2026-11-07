@@ -167,7 +167,7 @@ nav:not([data-divider]) > .sidebar-resize:hover {
 
 .marker-dot.bell {
   top: calc(50% - 8px);
-  background: var(--penna-attention);
+  background: var(--penna-accent);
 }
 
 .marker-dot.badge {
@@ -175,7 +175,7 @@ nav:not([data-divider]) > .sidebar-resize:hover {
 }
 
 .marker-dot[data-badge="warning"] {
-  background: var(--penna-attention);
+  background: var(--penna-accent);
 }
 
 .marker-dot[data-badge="danger"] {
@@ -395,7 +395,7 @@ nav:not([data-divider]) > .sidebar-resize:hover {
 }
 
 .flat-rollup .dot.warning {
-  background: var(--penna-attention);
+  background: var(--penna-accent);
 }
 
 .flat-rollup .dot.danger {

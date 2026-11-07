@@ -562,10 +562,7 @@ pub fn flat_rollup(rollup: &AttentionRollup, live: bool, cx: &App) -> Div {
     let muted = theme.foreground.muted();
     let count = |value: u32| div().child(SharedString::from(value.to_string()));
     let dots = [
-        (
-            rollup.needs_you.saturating_add(rollup.bell),
-            theme.attention(),
-        ),
+        (rollup.needs_you.saturating_add(rollup.bell), theme.accent),
         (rollup.failed, theme.danger),
         (rollup.done, theme.success),
     ];

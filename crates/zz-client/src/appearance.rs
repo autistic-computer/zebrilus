@@ -10,7 +10,6 @@ pub const DEFAULT_TINT_HUE: f32 = 60.0;
 pub enum AccentSetting {
     #[default]
     Theme,
-    Ink,
     Named(&'static str),
     Color([f32; 4]),
 }
@@ -18,10 +17,8 @@ pub enum AccentSetting {
 impl AccentSetting {
     pub fn parse(value: &str) -> Option<Self> {
         let value = value.trim();
-        match value {
-            "theme" => return Some(Self::Theme),
-            "ink" => return Some(Self::Ink),
-            _ => {}
+        if value == "theme" {
+            return Some(Self::Theme);
         }
         match ACCENTS.iter().find(|name| **name == value) {
             Some(name) => Some(Self::Named(name)),
@@ -32,7 +29,6 @@ impl AccentSetting {
     pub fn spelled(self) -> String {
         match self {
             Self::Theme => "theme".to_owned(),
-            Self::Ink => "ink".to_owned(),
             Self::Named(name) => name.to_owned(),
             Self::Color([r, g, b, _]) => {
                 let byte = |channel: f32| (channel.clamp(0.0, 1.0) * 255.0).round() as u8;
@@ -227,8 +223,7 @@ mod tests {
     #[test]
     fn accents_parse_names_and_colors_and_spell_them_back() {
         assert_eq!(AccentSetting::parse(" theme "), Some(AccentSetting::Theme));
-        assert_eq!(AccentSetting::parse("ink"), Some(AccentSetting::Ink));
-        assert_eq!(AccentSetting::Ink.spelled(), "ink");
+        assert_eq!(AccentSetting::parse("ink"), None);
         assert_eq!(
             AccentSetting::parse("green"),
             Some(AccentSetting::Named("green"))

@@ -2114,7 +2114,7 @@ mod tests {
         for (accent, tint, controls, glass) in [
             (Some("green"), Some("1"), Some("pill"), Some("none")),
             (Some("#ff8800"), None, Some("rounded"), Some("liquid")),
-            (Some("ink"), None, None, None),
+            (Some("purple"), None, None, None),
             (None, None, None, None),
         ] {
             for (key, value) in [

@@ -380,11 +380,10 @@ function swatches(picks) {
   const custom = accent.custom;
   const input = h("input", { type: "color", value: custom || "#000000", tabindex: -1 });
   input.addEventListener("change", () => set({ accent: preferences.accentHex(input.value) || input.value }));
-  const customSelected = accent.selected !== "ink" && !accent.named.some((named) => named.id === accent.selected);
+  const customSelected = !accent.named.some((named) => named.id === accent.selected);
   return h(
     "div",
     { class: "settings-swatches" },
-    swatch("ink", accent.ink),
     accent.named.map((named) => swatch(named.id, named.color)),
     ringed(customSelected, accent.radius, h("label", { class: "settings-swatch custom", style: { background: custom || "transparent", "border-radius": radius, position: "relative" } }, input)),
   );

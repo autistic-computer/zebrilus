@@ -424,7 +424,7 @@ mod tests {
                 (Some(expected.0), Some(expected.1), Some(expected.2))
             );
         }
-        for accent in ["ink", "green", "#ff8800"] {
+        for accent in ["green", "#ff8800"] {
             let valid = ThemeOverrides {
                 accent: Some(accent.into()),
                 ..ThemeOverrides::default()

@@ -39,7 +39,7 @@ pub enum Badge {
 impl Badge {
     pub fn color(self, cx: &App) -> Hsla {
         match self {
-            Self::NeedsInput => cx.theme().attention(),
+            Self::NeedsInput => cx.theme().accent,
             Self::Failed => cx.theme().danger,
             Self::Working => cx.theme().foreground.muted(),
             Self::Finished => cx.theme().success,

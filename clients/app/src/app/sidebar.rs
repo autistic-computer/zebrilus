@@ -58,7 +58,7 @@ fn target_id(target: Target) -> String {
 
 fn badge_color(badge: SidebarBadge, cx: &App) -> Hsla {
     match badge {
-        SidebarBadge::NeedsInput => cx.theme().attention(),
+        SidebarBadge::NeedsInput => cx.theme().accent,
         SidebarBadge::Failed => cx.theme().danger,
         SidebarBadge::Working => cx.theme().foreground.muted(),
         SidebarBadge::Finished => cx.theme().success,

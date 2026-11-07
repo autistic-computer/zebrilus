@@ -931,7 +931,7 @@ fn windows_agent_badge<'a>(
 
 fn agent_badge_color(badge: AgentBadge, cx: &App) -> Hsla {
     match badge {
-        AgentBadge::NeedsInput => cx.theme().attention(),
+        AgentBadge::NeedsInput => cx.theme().accent,
         AgentBadge::Failed => cx.theme().danger,
         AgentBadge::Working => cx.theme().foreground.muted(),
         AgentBadge::Finished => cx.theme().success,

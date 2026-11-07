@@ -115,7 +115,7 @@ pub fn picks(json: &str, dark: bool) -> Result<String, JsError> {
     let appearance = &preferences.appearance;
     let accent = appearance.accent();
     let custom = Some(accent.as_str())
-        .filter(|accent| *accent != "ink" && !ACCENTS.contains(accent))
+        .filter(|accent| !ACCENTS.contains(accent))
         .and_then(|accent| interface_theme::accent_color(accent, ThemeMode::Dark));
     let neutral = appearance.neutral();
     let hue = neutral.hue;
@@ -131,7 +131,6 @@ pub fn picks(json: &str, dark: bool) -> Result<String, JsError> {
         },
         "accent": {
             "selected": accent,
-            "ink": color(ThemeColor::for_mode(mode).foreground),
             "named": ACCENTS.iter().filter_map(|name| {
                 interface_theme::accent_color(name, mode).map(|value| json!({ "id": name, "color": color(value) }))
             }).collect::<Vec<_>>(),

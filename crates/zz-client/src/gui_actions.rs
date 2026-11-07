@@ -76,10 +76,6 @@ pub const GUI_ACTIONS: [GuiAction; 5] = [
         aliases: &["accent color", "color"],
         values: &[
             GuiChoice {
-                value: "ink",
-                title: "Ink",
-            },
-            GuiChoice {
                 value: "blue",
                 title: "Blue",
             },
@@ -240,8 +236,8 @@ mod tests {
                 .flipped(),
             Some("sidebar")
         );
-        let accent = GuiOffer::fixed(ACCENT, "ink").unwrap();
-        assert_eq!(accent.current_title(), "Ink");
+        let accent = GuiOffer::fixed(ACCENT, "blue").unwrap();
+        assert_eq!(accent.current_title(), "Blue");
         assert_eq!(accent.flipped(), None);
     }
 }

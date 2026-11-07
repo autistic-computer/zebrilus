@@ -1039,7 +1039,7 @@ pub fn parse_config(source: &str, system_font_family: &str) -> ParsedConfig {
                 None => parsed.diagnostics.push(ConfigDiagnostic {
                     line: line_number,
                     message: format!(
-                        "invalid `chrome-accent`: expected theme, ink, {} or a #rrggbb color",
+                        "invalid `chrome-accent`: expected theme, {} or a #rrggbb color",
                         ACCENTS.join(", ")
                     ),
                 }),
@@ -2274,7 +2274,7 @@ mod tests {
             &[
                 (ConfigKey::ControlShape, Some("pill".to_owned())),
                 (ConfigKey::InterfaceGlass, Some(material.to_owned())),
-                (ConfigKey::ChromeAccent, Some("ink".to_owned())),
+                (ConfigKey::ChromeAccent, Some("blue".to_owned())),
             ],
         )
         .expect("write look keys");
@@ -2283,7 +2283,7 @@ mod tests {
             source,
             format!(
                 "interface-theme = macos\ncontrol-shape = pill\ninterface-glass = {material}\n\
-                 chrome-accent = ink\ntray = false\n"
+                 chrome-accent = blue\ntray = false\n"
             )
         );
         let parsed = parse_config(&source, "monospace");
@@ -2302,7 +2302,10 @@ mod tests {
         }
         assert_eq!(parsed.config.control_shape, set(ControlShapeSetting::Pill));
         assert_eq!(parsed.glass, set(Some(material.to_owned())));
-        assert_eq!(parsed.config.chrome_accent, set(AccentSetting::Ink));
+        assert_eq!(
+            parsed.config.chrome_accent,
+            set(AccentSetting::Named("blue"))
+        );
         assert_eq!(appearance_editor_view(&source), "");
 
         write_config_keys_at(&path, &ConfigKey::LOOK.map(|key| (key, None))).expect("reset");
@@ -2342,7 +2345,7 @@ mod tests {
             messages[0],
             "`interface-style` was removed: set the look in Settings > Interface"
         );
-        assert!(messages[1].contains("expected theme, ink, blue"));
+        assert!(messages[1].contains("expected theme, blue"));
         assert!(messages[2].contains("between 0 and 360"));
         assert_eq!(
             messages[3],
