@@ -117,7 +117,7 @@ impl Render for Fixture {
 
 fn state(variant: u8) -> ChooseTreeState {
     let count = match variant {
-        0 | 3 | 4 => 7,
+        0 | 3 | 4 | 5 | 6 => 7,
         1 => 12,
         _ => 0,
     };
@@ -162,9 +162,14 @@ fn state(variant: u8) -> ChooseTreeState {
                 }
             })
             .collect(),
-        search: matches!(variant, 1 | 2).then(|| ChooseTreeSearchState {
-            query: "project query".to_owned(),
-            reverse: variant == 2,
+        search: matches!(variant, 1 | 2 | 6).then(|| ChooseTreeSearchState {
+            query: if variant == 6 {
+                "A long query keeps its source prefix and clips at the native footer boundary. "
+                    .repeat(4)
+            } else {
+                "project query".to_owned()
+            },
+            reverse: matches!(variant, 2 | 6),
         }),
         selected: if variant == 3 {
             3
@@ -179,12 +184,14 @@ fn state(variant: u8) -> ChooseTreeState {
             ChooseTreeKind::Panes
         },
         filter_no_matches: variant == 2,
-        prompt: if variant == 1 {
+        prompt: if variant == 5 {
+            "Choose the pane whose title and current command match this instruction. This notice wraps into several lines while the list keeps its own clipped viewport. ".repeat(2)
+        } else if variant == 1 {
             "Press a target shortcut".to_owned()
         } else {
             String::new()
         },
-        help: variant == 1,
+        help: matches!(variant, 1 | 5),
     }
 }
 
@@ -202,13 +209,15 @@ fn main() -> Result<(), Box<dyn Error>> {
     let theme: usize = args.get(2).ok_or("chooser theme required")?.parse()?;
     let scale: f32 = args.get(3).ok_or("chooser scale required")?.parse()?;
     let variant: u8 = args.get(4).ok_or("chooser variant required")?.parse()?;
-    if theme >= 6 || ![1., 1.25, 2.].contains(&scale) || variant > 4 {
+    if theme >= 6 || ![1., 1.25, 2.].contains(&scale) || variant > 6 {
         return Err("invalid chooser fixture inputs".into());
     }
     let (width, height) = if variant == 1 {
         (480., 300.)
-    } else if variant == 4 {
+    } else if matches!(variant, 4 | 5) {
         (420., 600.)
+    } else if variant == 6 {
+        (480., 360.)
     } else {
         (720., 600.)
     };

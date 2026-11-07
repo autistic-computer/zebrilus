@@ -56,7 +56,7 @@ def main():
     records = []
     for theme in range(6):
         for scale in [1, 1.25, 2]:
-            for variant in range(5):
+            for variant in range(7):
                 directory = DIRECTORY / f'theme-{theme}-scale-{scale:g}-variant-{variant}'
                 if not args.skip_capture:
                     subprocess.run([str(ROOT / 'target/debug/examples/chooser_scene_fixture'), str(directory), str(theme), str(scale), str(variant)], cwd=ROOT, check=True, timeout=60)

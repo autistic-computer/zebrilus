@@ -17,7 +17,7 @@ def main():
     parser.add_argument('--diagnose', action='store_true')
     parser.add_argument('--theme', type=int, choices=range(6), action='append')
     parser.add_argument('--scale', type=float, choices=[1, 1.25, 2], action='append')
-    parser.add_argument('--variant', type=int, choices=range(5), action='append')
+    parser.add_argument('--variant', type=int, choices=range(7), action='append')
     args = parser.parse_args()
     if not args.skip_native:
         subprocess.run(['python3', str(ROOT / 'mojo/scripts/chooser_scene_reference.py')], cwd=ROOT, check=True)
@@ -27,7 +27,7 @@ def main():
     records = []
     for theme in args.theme or range(6):
         for scale in args.scale or [1, 1.25, 2]:
-            for variant in args.variant or range(5):
+            for variant in args.variant or range(7):
                 directory = DIRECTORY / f'theme-{theme}-scale-{scale:g}-variant-{variant}'
                 subprocess.run([str(binary), str(directory / 'input.bin'), str(directory / 'mojo.png')], cwd=MJUI, check=True, timeout=60)
                 with Image.open(directory / 'native.png') as image:

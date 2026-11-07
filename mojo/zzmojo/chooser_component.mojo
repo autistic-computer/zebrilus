@@ -118,6 +118,11 @@ def _hint_width(mut ui: Ui, th: PennaTheme, hint: _Hint) raises -> Float32:
     return width
 
 
+def _notice_height(mut ui: Ui, text: StringSpan, font: Int32, width: Float32, border: Float32) -> Float32:
+    var paragraph = ui.layout_text(text.unsafe_ptr(), text.byte_length(), TextStyle(font, 11, 0, True), max(width - 2 * length(ui, 12), Float32(0)), 16)
+    return Float32(max(len(ui.paras.paras[paragraph].lines), 1)) * 16 + 2 * length(ui, 9) + border
+
+
 @inline(.never)
 def _footer(mut ui: Ui, th: PennaTheme, search: Optional[Tuple[String, String]], width: Float32) raises:
     var color = chooser_color(th.theme, 1)
@@ -246,8 +251,12 @@ def render_chooser(mut ui: Ui, th: PennaTheme, key: UInt64, model: ChooserPresen
         notices.append(model.snapshot.prompt.copy())
     var rule = surface_rule(th.theme)
     var border = length(ui, surface_metric(th.theme, 1))
-    var bar_height = length(ui, 34) + border
-    var notice_height = Float32(len(notices)) * bar_height
+    var notice_heights = List[Float32]()
+    var notice_height: Float32 = 0
+    for notice in notices:
+        var measured = _notice_height(ui, notice, th.flat.mono, width, border)
+        notice_heights.append(measured)
+        notice_height += measured
     var list_height = max(height - length(ui, 56) - length(ui, 34) - notice_height, Float32(0))
     var inset = length(ui, surface_metric(th.theme, 0))
     var content = max(list_height - 2 * length(ui, 8), Float32(0))
@@ -279,10 +288,12 @@ def render_chooser(mut ui: Ui, th: PennaTheme, key: UInt64, model: ChooserPresen
     ui.close()
     result.close |= _close(ui, th, sub(key, 2))
     ui.close()
-    for notice in notices:
-        ui.open(Style.col().width(width).height(bar_height).pad(length(ui, 12), length(ui, 9)).stroke(border, _packed(rule)).border_sides(4).native_paint())
+    for index in range(len(notices)):
+        ref notice = notices[index]
+        ui.open(Style.col().width(width).height(notice_heights[index]).pad(length(ui, 12), length(ui, 9)).stroke(border, _packed(rule)).border_sides(4).native_paint())
         ui.native_surface(NativeSurface(NativeColor(), rule, NativeColor(), 0, border, 2, 0, False))
-        _label(ui, notice, th.flat.mono, 11, 16, panel.color(1))
+        var ink = panel.color(1)
+        ui.text_opts(notice.unsafe_ptr(), notice.byte_length(), TextStyle(th.flat.mono, 11, _packed(ink), True, ink), TextOpts().line_height(16))
         ui.close()
     ui.open(Style.col().width(width).height(list_height).pad_sides(inset, length(ui, 8), inset, length(ui, 8)).clipped())
     ui.open(Style.col().width(max(width - 2 * inset, Float32(0))).height(content).clipped())
