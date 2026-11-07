@@ -10614,6 +10614,7 @@ name = "zz-ui"
 version = "0.22.0"
 dependencies = [
  "ala",
+ "ala-platform",
  "chrono",
  "image",
  "log",

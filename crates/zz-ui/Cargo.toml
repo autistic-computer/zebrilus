@@ -40,6 +40,7 @@ url.workspace = true
 
 [dev-dependencies]
 ala = { workspace = true, features = ["test-support"] }
+ala-platform = { workspace = true, features = ["test-support"] }
 
 [lints]
 workspace = true
