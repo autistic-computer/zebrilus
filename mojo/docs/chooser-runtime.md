@@ -1,0 +1,11 @@
+# Chooser input and scrolling
+
+`zzmojo.chooser_runtime` ports the generic chooser's revision, selection, search and composition state. The Rust GUI delegates to the same renderer-free `zz_client::chooser::ChooserInput` used by the reference oracle. Revision changes clear marked text only when the new source search is absent; repeated revisions preserve the cached state. Committed text clears composition and appends only while the cached search is active. The native marked range spans the entire UTF-16 string, including surrogate pairs. Displayed query plus composition is refused atomically above 64 KiB.
+
+`differential-chooser-runtime` checks 2,746 actual source traces, 8,242 states and 263,744 key policies. It includes unchanged revisions, zero and maximum revisions, Unicode, NUL, inactive search commits and exact byte-limit boundaries. This is input-state evidence; native callback ownership and ordering still require the captured daemon source and chooser owner in the live adapter.
+
+`differential-chooser-scroll` drives an actual ala `UniformList` in its test window, including its scroll handle, layout and wheel listener. All 3,240 cases agree bit for bit: 1,512 non-strict Center requests and 1,728 line/precise wheel events at scales 1, 1.25 and 2, with up to 65,536 rows. A selected row already visible leaves the scroll offset unchanged. The generic chooser uses a clipped bare list, so a live adapter must disable scrollbar chrome and use the measured list viewport and line height.
+
+Run both tasks through the shared 4 GiB guard. The latest scroll run peaked at 757 MiB; the input-state differential peaked at 250 MiB. A production-feature Rust GUI check passed at 2,124 MiB after the state extraction. These helpers do not advertise `client-native-chooser-v1`; that capability stays off until Windows, Panes, Clients and Buffer modes all have their required frontend paths and typed presentation retention.
+
+The separate SDK `composition_revision_probe` verifies callback provenance across identical marked callbacks, unmark, take, clear and explicit counter exhaustion. Its revision does not establish event order or authorize transferring a composition to a new source or field.

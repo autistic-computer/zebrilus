@@ -1,3 +1,7 @@
+mod input;
+
+pub use input::{ChooserInput, ChooserSync};
+
 use zz_protocol::{ChooseBufferItem, ChooseTreeItem, ChooseTreeKind};
 use zz_terminal::Modifiers;
 

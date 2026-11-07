@@ -15,7 +15,7 @@ use zz_ui::chooser::{
     ChooserDimensions, ChooserModal, ChooserSearch as ChooserSearchView, chooser_has_key_gutter,
 };
 
-use zz_client::chooser::chooser_key_is_text;
+use zz_client::chooser::ChooserInput;
 use zz_terminal::{KeyAction, KeyInput};
 
 use crate::{
@@ -100,10 +100,7 @@ pub(crate) struct Chooser<S: ChooserSpec> {
     focus_handle: FocusHandle,
     mux: Entity<MuxClient>,
     scroll_handle: UniformListScrollHandle,
-    revision: u64,
-    selected: Option<u32>,
-    search_active: bool,
-    marked_text: Option<String>,
+    input: ChooserInput,
     input_bounds: Option<Bounds<Pixels>>,
     spec: S,
 }
@@ -114,10 +111,7 @@ impl<S: ChooserSpec> Chooser<S> {
             focus_handle: cx.focus_handle(),
             mux,
             scroll_handle: UniformListScrollHandle::new(),
-            revision: 0,
-            selected: None,
-            search_active: false,
-            marked_text: None,
+            input: ChooserInput::default(),
             input_bounds: None,
             spec: S::default(),
         }
@@ -128,15 +122,19 @@ impl<S: ChooserSpec> Chooser<S> {
     }
 
     pub(crate) fn synchronize(&mut self, state: &S::State, revision: u64, cx: &mut Context<Self>) {
-        if self.revision == revision {
+        if self.input.revision() == revision {
             return;
         }
-        self.revision = revision;
         self.spec.synchronize_local(state, self.mux.read(cx));
-        self.search_active = S::search(state).is_some();
-        self.synchronize_selected(state, cx);
-        if S::search(state).is_none() {
-            self.marked_text = None;
+        let selected = self.spec.effective_selected(state, self.mux.read(cx));
+        let update = self
+            .input
+            .synchronize(revision, selected, S::search(state).is_some());
+        if update.selection_changed {
+            self.scroll_handle.scroll_to_item(
+                usize::try_from(selected).unwrap_or(usize::MAX),
+                ScrollStrategy::Center,
+            );
         }
         cx.notify();
     }
@@ -145,24 +143,10 @@ impl<S: ChooserSpec> Chooser<S> {
         S::send(self.mux.read(cx), action);
     }
 
-    fn synchronize_selected(&mut self, state: &S::State, cx: &Context<Self>) -> bool {
-        let selected = self.spec.effective_selected(state, self.mux.read(cx));
-        if self.selected == Some(selected) {
-            return false;
-        }
-        self.selected = Some(selected);
-        self.scroll_handle.scroll_to_item(
-            usize::try_from(selected).unwrap_or(usize::MAX),
-            ScrollStrategy::Center,
-        );
-        true
-    }
-
     fn on_key_down(&mut self, event: &KeyDownEvent, _: &mut Window, cx: &mut Context<Self>) {
         let keystroke = &event.keystroke;
         let modifiers = keystroke.modifiers;
-        if chooser_key_is_text(
-            self.search_active,
+        if self.input.key_is_text(
             keystroke.key_char.is_some(),
             zz_terminal::Modifiers::new(
                 modifiers.shift,
@@ -193,10 +177,10 @@ impl<S: ChooserSpec> EntityInputHandler for Chooser<S> {
         _: &mut Window,
         _: &mut Context<Self>,
     ) -> Option<String> {
-        let marked = self.marked_text.as_ref()?;
+        let marked = self.input.marked_text()?;
         let length = marked.encode_utf16().count();
         actual_range.replace(0..length);
-        (range.start <= length).then(|| marked.clone())
+        (range.start <= length).then(|| marked.to_owned())
     }
 
     fn selected_text_range(
@@ -212,13 +196,13 @@ impl<S: ChooserSpec> EntityInputHandler for Chooser<S> {
     }
 
     fn marked_text_range(&self, _: &mut Window, _: &mut Context<Self>) -> Option<Range<usize>> {
-        self.marked_text
-            .as_ref()
+        self.input
+            .marked_text()
             .map(|text| 0..text.encode_utf16().count())
     }
 
     fn unmark_text(&mut self, _: &mut Window, cx: &mut Context<Self>) {
-        if self.marked_text.take().is_some() {
+        if self.input.unmark() {
             cx.notify();
         }
     }
@@ -230,8 +214,7 @@ impl<S: ChooserSpec> EntityInputHandler for Chooser<S> {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.marked_text = None;
-        if !text.is_empty() && self.search_active {
+        if let Some(text) = self.input.replace_text(text) {
             self.send(S::search_append(text.to_owned()), cx);
         }
         window.invalidate_character_coordinates();
@@ -246,7 +229,7 @@ impl<S: ChooserSpec> EntityInputHandler for Chooser<S> {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.marked_text = (!text.is_empty()).then(|| text.to_owned());
+        self.input.mark_text(text);
         window.invalidate_character_coordinates();
         cx.notify();
     }
@@ -310,7 +293,7 @@ impl<S: ChooserSpec> Render for Chooser<S> {
 
         let search = S::search(&state).map(|search| {
             let prefix = if search.reverse { "?" } else { "/" };
-            let marked = self.marked_text.as_deref().unwrap_or_default();
+            let marked = self.input.marked_text().unwrap_or_default();
             ChooserSearchView {
                 prefix: prefix.into(),
                 value: format!("{}{marked}", search.query).into(),
