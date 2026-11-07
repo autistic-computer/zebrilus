@@ -51,6 +51,8 @@ from .terminal_history_protocol import history_request, decode_history_budget
 from .input_protocol import InputRoutingState, decode_routing_event
 from .prompt_protocol import decode_prompt_event
 from .chooser_protocol import decode_choose_event
+from .chooser_buffer_protocol import decode_choose_buffer
+from .chooser_plane_protocol import decode_chooser_plane
 from .palette_dialog_state import PaletteDialogs
 from .path_protocol import decode_path_message, PATH_PICKER_EVENT
 from .path_service import PathSource
@@ -552,8 +554,11 @@ struct InteractiveConnection(Movable):
         if event.kind == BATCH:
             if nested:
                 raise Error("nested protocol batches are forbidden")
+            var chooser_revision = self.model.dialogs.chooser_revision
+            var chooser_closed = self.model.dialogs.chooser_closed_revision
             for item in event.batch:
                 self.consume(item.copy(), True)
+            self.model.dialogs.finish_group(chooser_revision, chooser_closed)
             self.materialize()
             return
         if event.kind == WELCOME:
@@ -625,10 +630,7 @@ struct InteractiveConnection(Movable):
                 self.model.view.session = None
                 self.model.view.focused_window = None
                 self.clear_attachment_planes()
-                self.model.dialogs.prompt = None
-                self.model.dialogs.chooser = None
-                self.model.dialogs.prompt_revision += 1
-                self.model.dialogs.chooser_revision += 1
+                self.model.dialogs.reset()
                 self.model.routing.armed = False
                 self.model.routing.table = None
                 var message = (
@@ -673,6 +675,22 @@ struct InteractiveConnection(Movable):
             if not chooser:
                 raise Error("choose-tree event has no decoded payload")
             self.model.dialogs.apply_chooser(chooser.take())
+        elif event.event_kind == Optional[UInt64](
+            13
+        ) or event.event_kind == Optional[UInt64](14):
+            var raw = List[UInt8]()
+            swap(raw, event.raw)
+            var buffer = decode_choose_buffer(raw^)
+            if not buffer:
+                raise Error("choose-buffer event has no decoded payload")
+            self.model.dialogs.apply_buffer(buffer.take())
+        elif event.event_kind == Optional[UInt64](51):
+            var raw = List[UInt8]()
+            swap(raw, event.raw)
+            var plane = decode_chooser_plane(raw^)
+            if not plane:
+                raise Error("chooser presentation event has no decoded payload")
+            self.model.dialogs.apply_plane(plane.take())
         elif event.event_kind == Optional[UInt64](UInt64(PATH_PICKER_EVENT)):
             var raw = List[UInt8]()
             swap(raw, event.raw)

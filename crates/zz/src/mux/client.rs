@@ -3534,9 +3534,11 @@ impl MuxClient {
         self.core.reset_session();
         self.command_prompt_revision = self.command_prompt_revision.wrapping_add(1).max(1);
         self.command_output = None;
-        self.choose_tree_revision = self.choose_tree_revision.wrapping_add(1).max(1);
+        self.choose_tree_revision =
+            zz_client::chooser::next_chooser_revision(self.choose_tree_revision);
         self.choose_tree_closed_revision = self.choose_tree_revision;
-        self.choose_buffer_revision = self.choose_buffer_revision.wrapping_add(1).max(1);
+        self.choose_buffer_revision =
+            zz_client::chooser::next_chooser_revision(self.choose_buffer_revision);
         self.display_panes_revision = self.display_panes_revision.wrapping_add(1).max(1);
         self.menu_revision = self.menu_revision.wrapping_add(1).max(1);
         self.confirm_revision = self.confirm_revision.wrapping_add(1).max(1);
@@ -4427,13 +4429,15 @@ impl MuxClient {
                 self.command_prompt_revision = self.command_prompt_revision.wrapping_add(1).max(1);
             }
             CoreEvent::ChooseTreeChanged => {
-                self.choose_tree_revision = self.choose_tree_revision.wrapping_add(1).max(1);
+                self.choose_tree_revision =
+                    zz_client::chooser::next_chooser_revision(self.choose_tree_revision);
                 if self.core.choose_tree().is_none() {
                     self.choose_tree_closed_revision = self.choose_tree_revision;
                 }
             }
             CoreEvent::ChooseBufferChanged => {
-                self.choose_buffer_revision = self.choose_buffer_revision.wrapping_add(1).max(1);
+                self.choose_buffer_revision =
+                    zz_client::chooser::next_chooser_revision(self.choose_buffer_revision);
             }
             CoreEvent::DisplayPanesChanged => {
                 self.display_panes_revision = self.display_panes_revision.wrapping_add(1).max(1);

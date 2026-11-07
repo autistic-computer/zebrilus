@@ -2,6 +2,10 @@ mod input;
 
 pub use input::{ChooserInput, ChooserSync};
 
+pub fn next_chooser_revision(revision: u64) -> u64 {
+    revision.wrapping_add(1).max(1)
+}
+
 use zz_protocol::{ChooseBufferItem, ChooseTreeItem, ChooseTreeKind};
 use zz_terminal::Modifiers;
 
