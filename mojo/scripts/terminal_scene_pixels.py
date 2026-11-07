@@ -49,7 +49,8 @@ def main():
             records.append(result)
             print(json.dumps(result), flush=True)
     report = {'cases': records, 'exact': all(item['exact'] and item['text_layers_exact'] for item in records)}
-    (DIRECTORY / 'report.json').write_text(json.dumps(report, indent=2) + '\n')
+    report_name = 'report-filtered.json' if args.case or args.scale else 'report.json'
+    (DIRECTORY / report_name).write_text(json.dumps(report, indent=2) + '\n')
     if not report['exact'] and not args.diagnose:
         raise SystemExit('terminal source scene identity is incomplete')
 
