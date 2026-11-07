@@ -577,6 +577,7 @@ mod tests {
             status: zz_protocol::StatusLine::default(),
             key_tables: Vec::new(),
             clock: 0,
+            platform: zz_protocol::HostPlatform::default(),
         };
         assert_eq!(
             TerminalOptions::from_hello(&hello),
