@@ -103,6 +103,95 @@ impl<'de> Deserialize<'de> for Tint {
     }
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct BaseColors {
+    #[serde(skip_serializing_if = "Option::is_none", with = "hex_color")]
+    pub bg: Option<Hsla>,
+    #[serde(skip_serializing_if = "Option::is_none", with = "hex_color")]
+    pub fg: Option<Hsla>,
+    #[serde(skip_serializing_if = "Option::is_none", with = "hex_color")]
+    pub success: Option<Hsla>,
+    #[serde(skip_serializing_if = "Option::is_none", with = "hex_color")]
+    pub warning: Option<Hsla>,
+    #[serde(skip_serializing_if = "Option::is_none", with = "hex_color")]
+    pub danger: Option<Hsla>,
+}
+
+impl BaseColors {
+    fn lay_on(&self, colors: &mut ThemeColor) {
+        for (slot, color) in [
+            (&mut colors.background, self.bg),
+            (&mut colors.foreground, self.fg),
+            (&mut colors.success, self.success),
+            (&mut colors.warning, self.warning),
+            (&mut colors.danger, self.danger),
+        ] {
+            if let Some(color) = color {
+                *slot = color;
+            }
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ModeColors {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub light: Option<BaseColors>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub dark: Option<BaseColors>,
+}
+
+impl ModeColors {
+    pub fn get(&self, mode: ThemeMode) -> Option<&BaseColors> {
+        if mode.is_dark() {
+            self.dark.as_ref()
+        } else {
+            self.light.as_ref()
+        }
+    }
+
+    pub fn set(&mut self, mode: ThemeMode, colors: BaseColors) {
+        if mode.is_dark() {
+            self.dark = Some(colors);
+        } else {
+            self.light = Some(colors);
+        }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.light.is_none() && self.dark.is_none()
+    }
+}
+
+mod hex_color {
+    use ala::Hsla;
+    use serde::{Deserialize as _, Deserializer, Serializer, de::Error as _};
+
+    #[allow(
+        clippy::ref_option,
+        reason = "serde's `with` hands the field over by reference"
+    )]
+    pub fn serialize<S: Serializer>(
+        color: &Option<Hsla>,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error> {
+        match color {
+            Some(color) => serializer.serialize_str(&crate::to_hex(*color)),
+            None => serializer.serialize_none(),
+        }
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(
+        deserializer: D,
+    ) -> Result<Option<Hsla>, D::Error> {
+        Option::<String>::deserialize(deserializer)?
+            .map(|value| crate::parse_hex(&value).map_err(D::Error::custom))
+            .transpose()
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Neutral {
@@ -389,6 +478,8 @@ pub struct InterfaceTheme {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub face: Option<SharedString>,
     pub mode: ModeLock,
+    #[serde(skip_serializing_if = "ModeColors::is_empty")]
+    pub colors: ModeColors,
 }
 
 impl Default for InterfaceTheme {
@@ -403,6 +494,7 @@ impl Default for InterfaceTheme {
             glass: None,
             face: None,
             mode: ModeLock::Follow,
+            colors: ModeColors::default(),
         }
     }
 }
@@ -410,9 +502,13 @@ impl Default for InterfaceTheme {
 impl InterfaceTheme {
     pub fn colors(&self, mode: ThemeMode) -> ThemeColor {
         let neutral = self.neutral.clamped();
-        let mut colors = ThemeColor::for_mode(mode).neutral(neutral.hue, neutral.amount);
+        let mut base = *ThemeColor::for_mode(mode);
+        if let Some(brought) = self.colors.get(mode) {
+            brought.lay_on(&mut base);
+        }
+        let mut colors = base.neutral(neutral.hue, neutral.amount);
         colors.accent = self.tint.color(mode);
-        colors
+        colors.fitted()
     }
 
     pub fn glass(&self, mode: ThemeMode) -> Option<GlassMaterial> {
@@ -424,7 +520,7 @@ impl InterfaceTheme {
 
     pub fn apply(&self, theme: &mut Theme) {
         let mode = theme.mode;
-        theme.colors = self.colors(mode);
+        theme.set_colors(self.colors(mode));
         theme.radius = px(clamp_radius(self.radius));
         theme.control_radius = self.control_radius.map(ControlRadius::pixels);
         theme.smoothing = Smoothing::clamped(self.smoothing);
@@ -1179,5 +1275,45 @@ mod tests {
         assert_eq!(theme.face.as_deref(), Some("Inter"));
         assert!(parse_layers(&[r#"{"name":"Base"}"#, "[]"]).is_err());
         assert_eq!(parse_layers(&[]).unwrap(), InterfaceTheme::default());
+    }
+
+    #[test]
+    fn brought_colors_draw_exactly_and_the_rest_moves_until_it_reads() {
+        let source = r##"{"tint":"#458588","colors":{"dark":{"bg":"#282828","fg":"#a89984","danger":"#cc241d"}}}"##;
+        let theme = parse_theme(source).unwrap();
+        assert_eq!(parse_theme(&theme.to_json()).unwrap(), theme);
+        let dark = kit(&theme, ThemeMode::Dark);
+        let drawn = [
+            dark.background,
+            dark.foreground,
+            dark.foreground.muted(),
+            dark.accent,
+            dark.success,
+            dark.danger,
+        ]
+        .map(crate::to_hex);
+        assert_eq!(
+            drawn,
+            [
+                "#282828", "#a89984", "#9a8c79", "#58989b", "#3fbf74", "#f95546"
+            ]
+        );
+        for (color, from) in [(dark.accent, "#458588"), (dark.danger, "#cc241d")] {
+            let ratio = contrast_ratio(color, dark.background);
+            assert!(
+                (4.5..4.52).contains(&ratio),
+                "{} is {ratio:.3}:1",
+                crate::to_hex(color)
+            );
+            let turn =
+                crate::to_oklch(color).2 - crate::to_oklch(crate::parse_hex(from).unwrap()).2;
+            assert!(turn.abs() < 1.0, "{from} turned {turn:.2} degrees");
+        }
+        assert!(contrast_ratio(dark.foreground.muted(), dark.background) >= 4.5);
+        let tinted = parse_theme(r##"{"tint":"#458588"}"##).unwrap();
+        assert_eq!(
+            kit(&theme, ThemeMode::Light).colors,
+            kit(&tinted, ThemeMode::Light).colors
+        );
     }
 }

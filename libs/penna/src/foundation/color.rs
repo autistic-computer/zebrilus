@@ -65,8 +65,12 @@ const WASH_ALPHA: f32 = 0.28;
 const FLOATING_ALPHA: f32 = 0.90;
 const TINT_CHROMA: f32 = 0.02;
 
+pub(super) const TEXT_CONTRAST: f32 = 4.5;
+const FIT_STEPS: usize = 20;
+
 thread_local! {
     static CONTRAST: Cell<f32> = const { Cell::new(1.0) };
+    static MUTED_CEILING: Cell<f32> = const { Cell::new(MUTED) };
     static MEMO: RefCell<Box<[Option<(MemoKey, Hsla)>]>> =
         RefCell::new(vec![None; MEMO_SLOTS].into_boxed_slice());
 }
@@ -124,7 +128,80 @@ pub(super) fn rest_weight() -> f32 {
 }
 
 pub(super) fn muted_weight() -> f32 {
-    (MUTED / contrast()).clamp(0.0, 1.0)
+    (MUTED / contrast())
+        .clamp(0.0, 1.0)
+        .min(MUTED_CEILING.get())
+}
+
+pub(super) fn set_muted_ceiling(foreground: Hsla, background: Hsla) {
+    MUTED_CEILING.set(muted_ceiling(foreground, background));
+}
+
+fn muted_ceiling(foreground: Hsla, background: Hsla) -> f32 {
+    let background = background.opaque();
+    let reads = |weight: f32| {
+        contrast_ratio(toward_contrast(foreground, weight), background) >= TEXT_CONTRAST
+    };
+    if reads(MUTED) {
+        return MUTED;
+    }
+    if !reads(0.0) {
+        return 0.0;
+    }
+    let (mut low, mut high) = (0.0_f32, MUTED);
+    for _ in 0..FIT_STEPS {
+        let middle = f32::midpoint(low, high);
+        if reads(middle) {
+            low = middle;
+        } else {
+            high = middle;
+        }
+    }
+    low
+}
+
+pub(super) fn read_as_text(color: Hsla, ground: Hsla) -> Hsla {
+    let ground = ground.opaque();
+    if contrast_ratio(color, ground) >= TEXT_CONTRAST {
+        return color;
+    }
+    let (lightness, chroma, hue) = to_oklch(color);
+    let pole = if oklab_lightness(ground) < 0.5 {
+        1.0
+    } else {
+        0.0
+    };
+    let at = |share: f32| {
+        shown_oklch(lightness + (pole - lightness) * share, chroma, hue).opacity(color.a)
+    };
+    let (mut low, mut high) = (0.0_f32, 1.0_f32);
+    for _ in 0..FIT_STEPS {
+        let middle = f32::midpoint(low, high);
+        if contrast_ratio(at(middle), ground) >= TEXT_CONTRAST {
+            high = middle;
+        } else {
+            low = middle;
+        }
+    }
+    at(high)
+}
+
+fn shown_oklch(lightness: f32, chroma: f32, hue: f32) -> Hsla {
+    let (sin, cos) = hue.to_radians().sin_cos();
+    let fits = |chroma: f32| oklab::in_gamut(lightness, chroma * cos, chroma * sin);
+    if fits(chroma) {
+        return oklch(lightness, chroma, hue);
+    }
+    let (mut low, mut high) = (0.0_f32, chroma);
+    for _ in 0..FIT_STEPS {
+        let middle = f32::midpoint(low, high);
+        if fits(middle) {
+            low = middle;
+        } else {
+            high = middle;
+        }
+    }
+    oklch(lightness, low, hue)
 }
 
 pub(super) fn faint_weight() -> f32 {
@@ -335,7 +412,7 @@ pub(super) mod oklab {
     }
 
     #[allow(non_snake_case)]
-    pub fn oklab_to_rgb(L: f32, a: f32, b: f32) -> Rgba {
+    fn oklab_to_linear(L: f32, a: f32, b: f32) -> [f32; 3] {
         let l_ = L + 0.3963377774 * a + 0.2158037573 * b;
         let m_ = L - 0.1055613458 * a - 0.0638541728 * b;
         let s_ = L - 0.0894841775 * a - 1.2914855480 * b;
@@ -344,16 +421,30 @@ pub(super) mod oklab {
         let m = m_ * m_ * m_;
         let s = s_ * s_ * s_;
 
-        let lr = 4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s;
-        let lg = -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s;
-        let lb = -0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * s;
+        [
+            4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s,
+            -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s,
+            -0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * s,
+        ]
+    }
 
+    #[allow(non_snake_case)]
+    pub fn oklab_to_rgb(L: f32, a: f32, b: f32) -> Rgba {
+        let [lr, lg, lb] = oklab_to_linear(L, a, b);
         Rgba {
             r: from_linear(lr).clamp(0.0, 1.0),
             g: from_linear(lg).clamp(0.0, 1.0),
             b: from_linear(lb).clamp(0.0, 1.0),
             a: 1.0,
         }
+    }
+
+    #[allow(non_snake_case)]
+    pub fn in_gamut(L: f32, a: f32, b: f32) -> bool {
+        const SLACK: f32 = 1e-4;
+        oklab_to_linear(L, a, b)
+            .iter()
+            .all(|channel| (-SLACK..=1.0 + SLACK).contains(channel))
     }
 }
 

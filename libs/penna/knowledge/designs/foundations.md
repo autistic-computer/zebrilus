@@ -178,11 +178,15 @@ Roles (CSS root names, the look with the default knobs):
 
 The kit's base colors are these values and the default `neutral` reproduces them exactly (Look). Muted is 0.30 of the way to the pole: `fg-muted` mixes `fg` 0.30 toward its contrast pole (white under dark ink, black under light), and `muted` mixes the ghost paint's ink 0.30 toward the ground under it (on a tint's solid fill it is the ink itself, Look).
 
+A theme can bring its own base colors instead (`colors`, Look): `bg`, `fg` and the status colors, for light, dark or both. An app uses this to draw its chrome in the colors of what it shows, as zz does with a terminal theme. Everything above them is worked out the same way from whatever they are: the surface steps, `divider`, the washes, `primary` (always `fg`), `on-accent` and the glass floor.
+
 Surfaces stack in this order, each layer a step away from the one under it (darker in light, lighter in dark): window `bg`, then `panel`, then cards (`settings.card`), then `popover` and floating panels.
 
 Highlight: what is picked or in focus is a wash of the ink, and a primary action a solid fill of it, whatever the tint. What is on (a switch, a checked box, a slider's value) takes `accent`.
 
-Contrast (WCAG 2, built in step 8): in light and dark, for every tint, accent and `neutral` the knobs allow, muted text, accent, success, warning and danger as text reach 4.5:1 on `bg`, and so does the text on a solid fill of `primary` and the status colors. The muted mix is 0.30, as above. Light variants darken their accent and status colors until near-white text on them reads at 4.5:1, which also makes them read as text. Text on a solid status fill takes whichever of near-white or near-black gives more contrast, so dark variants put near-black labels on their mid-tone status fills. An accent fill holds marks, not text (a knob, a check), so its mark is near-white whenever that reaches 3:1, the floor for marks, and near-black only on an accent too pale for it; the named accents are vivid and all hold near-white in both modes. `interface_theme`'s tests assert all of it. `interface_theme`'s tests assert all of it. `fg-faint` stays under 4.5 on purpose: placeholders and disabled text only.
+Contrast (WCAG 2, built in step 8): in light and dark, for every tint, accent and `neutral` the knobs allow, muted text, accent, success, warning and danger as text reach 4.5:1 on `bg`, and so does the text on a solid fill of `primary` and the status colors. The muted mix is 0.30, as above. Light variants darken their accent and status colors until near-white text on them reads at 4.5:1, which also makes them read as text. Text on a solid status fill takes whichever of near-white or near-black gives more contrast, so dark variants put near-black labels on their mid-tone status fills. An accent fill holds marks, not text (a knob, a check), so its mark is near-white whenever that reaches 3:1, the floor for marks, and near-black only on an accent too pale for it; the named accents are vivid and all hold near-white in both modes. `interface_theme`'s tests assert all of it. `fg-faint` stays under 4.5 on purpose: placeholders and disabled text only.
+
+Base colors from a theme (`colors`) and a person's own accent color are fitted to these rules, since nothing proves them in advance. An accent or status color that reads under 4.5:1 as text on `bg` moves in OKLCH lightness away from `bg`, keeping its hue and as much chroma as the screen can show, until it reaches 4.5:1; on the table's `bg` the table's colors and the named accents never move. The muted mix is the largest weight up to 0.30 that keeps `fg-muted` at 4.5:1 on `bg` (0.30 for the table's colors), so a dim `fg` gets a lighter mix, and an `fg` that reads under 4.5:1 itself draws muted as `fg`. `fg` is never moved: its contrast with `bg` is the theme's choice.
 
 ## Corners, depth, focus, motion
 
@@ -234,6 +238,7 @@ The knobs, as a theme file spells them:
 | `glass` | `none`, `liquid`, or a material of its own | `liquid` |
 | `face` | the interface face; the code face stays the platform's | the platform's |
 | `mode` | `follow`, `light` or `dark` | `follow` |
+| `colors` | `bg`, `fg`, `success`, `warning` and `danger`, for light and for dark | the Color table |
 
 There are no presets to pick. The look starts from the platform's knobs (the `macos` theme file on Apple platforms, `default` elsewhere), and a person sets every knob directly in Appearance, the same in every app:
 
@@ -252,11 +257,11 @@ There are no presets to pick. The look starts from the platform's knobs (the `ma
 | Reduce transparency | glass draws as the `popover` fill |
 | Motion | Off (reduced motion), Default, or Fast (Motion's durations halved) |
 
-Appearance shows them in that order in three groups, none folded away: Look (Mode to UI font), Size (Text size and Density) and Accessibility (Increase contrast, Reduce transparency and Motion). An app's own rows go in groups of their own (zz's Sidebar after Look, and Window, with the app icon and window blur, last). `smoothing` and `mode` have no row: smoothing follows the platform's theme file. A theme file has no row either: an app that reads or writes theme files (the storybook's theme creator) does it itself, and `AppearanceChange::Import` sets every knob from one.
+Appearance shows them in that order in three groups, none folded away: Look (Mode to UI font), Size (Text size and Density) and Accessibility (Increase contrast, Reduce transparency and Motion). An app's own rows go in groups of their own (zz's Terminal and Sidebar after Look, and Window, with the app icon and window blur, last). `smoothing` and `mode` have no row: smoothing follows the platform's theme file. A theme file has no row either: an app that reads or writes theme files (the storybook's theme creator) does it itself, and `AppearanceChange::Import` sets every knob from one.
 
 What follows the platform with no knob: the system face and code face, when scrollbars show, the window controls, and how keys are spelled. Glass is the same everywhere: `liquid` unless a person turns it off.
 
-Everything else is the look and has no knob: each kind's fill, edge, shadow and shape, every state look, outline width, highlight strength, status colors, spacing, sizes, type and motion.
+Everything else is the look and has no knob: each kind's fill, edge, shadow and shape, every state look, outline width, highlight strength, status colors (a theme file's `colors` may bring its own, but no person sets them), spacing, sizes, type and motion.
 
 Corners follow the Corner radius knob, a share from 0 to 100% (`radius` = 25 × share², Knobs below), by four rules, so at any setting every rounded thing reads equally round whatever its size:
 
@@ -291,6 +296,7 @@ How the knobs are spelled and decided:
 - `radius` and `control-radius` clamp to 0 to 25 and `smoothing` to 2 to 5, both where a file is parsed and where a person's override applies. `full` draws capsule controls (buttons, chips, tabs, badges, swatches) as pills and any other control at 25 with its 45% stop. A `radius` or `control-radius` of 25 is a round corner, never a pill.
 - `glass` as an object is a material: `light` and `dark` each name the fields that differ from `liquid` in that mode; an object with neither applies to both modes. Every material's tint rises to the lowest opacity that keeps `fg` at 4.5:1 over a black backdrop under dark text and a white one under light text, blended in sRGB and ignoring blur: 0.596 in light and 0.705 in dark with the default colors, so `liquid` keeps 0.60 in light and draws 0.705 in dark.
 - `mode` other than `follow` beats the person's Mode.
+- `colors` is `{ "light": { ... }, "dark": { ... } }`, each with any of `bg`, `fg`, `success`, `warning` and `danger` as hex colors: `{ "dark": { "bg": "#131313", "fg": "#dddddd", "danger": "#e7988a" } }`. A field left out, or a mode left out, takes the Color table's value. A neutral moves them the way it moves the table, so the default neutral leaves them exact. They are fitted (Color) after the neutral and the tint. A status color brought this way still means its status: whoever fills it keeps it red, green and amber.
 - Unknown keys are ignored, so a file from before step 10 loads as the default look under its own name.
 - Increase contrast (contrast 1 to 2) scales the surface steps, fills, washes and `divider` up by the contrast and the muted and faint mixes down by it, so surfaces stand further apart and secondary text reads closer to `fg`. It adds no edge to any kind.
 - Keyboard focus changes no fill but a field's; everything else shows the ring.

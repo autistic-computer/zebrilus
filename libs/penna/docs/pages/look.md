@@ -44,6 +44,10 @@ Hairlines mean something: a rule, an outline variant, a field being typed in. In
 
 `neutral` tints the window, the text and every surface above them: a hue and an amount, warm 60 at 0.15 by default. Status colors and contrast hold at every value.
 
+## Colors
+
+`colors` swaps the window, the text and the status colors for a theme's own, per mode, so an app can wear the colors of what it shows. Surfaces, washes and hairlines follow from them; accent and status colors move in lightness until they read at 4.5:1.
+
 ## Corners
 
 Every corner follows Corner radius. A control (a button, field, tab, chip, badge or row) rounds to a share of its own height, so a small badge and a tall sidebar entry read equally round: 31% of the height at the default, 45% at 100%. Containers (cards, panels, popovers, dialogs, panes) keep `radius` in pixels, a pane no rounder than 16. A corner inside another is concentric, like the segmented control's pill in its track; a menu's rows keep their control corner, never rounder than the menu, and only `full` makes pills.
@@ -154,6 +158,7 @@ studio.activate(None, Some(window), cx);
 | `glass` | `.glass` | None, liquid or a material; liquid when left out |
 | `face` | `.face` | Interface face; the platform's when left out |
 | `mode` | `.mode` | Follow, light or dark; beats the person's Mode |
+| `colors` | `.colors` | `bg`, `fg`, `success`, `warning`, `danger` per mode; the Color table when left out |
 | | `parse_theme(json)` | Reads a theme file |
 | | `.activate(mode, window, cx)` | Draws the app in it |
 
