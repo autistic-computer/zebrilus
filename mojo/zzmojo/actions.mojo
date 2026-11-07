@@ -13,6 +13,7 @@ struct Action(Copyable, Movable):
     var geometry: Optional[GridSize]
     var frame: List[UInt8]
     var source: Optional[Tuple[UInt64, UInt64]]
+    var output_owner: Optional[UInt64]
 
 
 struct ActionQueue(Movable, Sized):
@@ -35,6 +36,7 @@ struct ActionQueue(Movable, Sized):
         geometry: Optional[GridSize] = None,
         frame: List[UInt8] = List[UInt8](),
         source: Optional[Tuple[UInt64, UInt64]] = None,
+        output_owner: Optional[UInt64] = None,
     ) raises:
         var size = text.byte_length() + len(frame)
         if geometry:
@@ -64,6 +66,7 @@ struct ActionQueue(Movable, Sized):
                         geometry,
                         frame.copy(),
                         source,
+                        output_owner,
                     )
                     self.pending_bytes += size
                     return
@@ -81,6 +84,7 @@ struct ActionQueue(Movable, Sized):
                 geometry,
                 frame.copy(),
                 source,
+                output_owner,
             )
         )
         self.pending_bytes += size

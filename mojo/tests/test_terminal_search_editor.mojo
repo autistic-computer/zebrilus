@@ -68,7 +68,7 @@ def main() raises:
     ui.end_frame()
     assert_true(ui.rect_of(keys.panel).x1 > 450)
     assert_true(ui.rect_of(keys.field).x1 > ui.rect_of(keys.field).x0)
-    assert_true(ui.rect_of(keys.field).x0 >= ui.rect_of(keys.container).x0 + 27)
+    assert_equal(ui.rect_of(keys.field).x0 - ui.rect_of(keys.container).x0, Float32(28))
     assert_equal(ui.rect_of(keys.container).y1 - ui.rect_of(keys.container).y0, Float32(28))
     assert_equal(ui.rect_of(keys.regex).x1 - ui.rect_of(keys.regex).x0, Float32(24))
     var args = argv()

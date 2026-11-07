@@ -5,6 +5,7 @@ struct SearchClipboard(Copyable, Movable, Clipboard):
     var text: String
     var primary_text: String
     var primary_supported: Bool
+    var clipboard_loaded: Bool
     var pending_clipboard: Optional[String]
     var pending_primary: Optional[String]
 
@@ -12,6 +13,7 @@ struct SearchClipboard(Copyable, Movable, Clipboard):
         self.text = String()
         self.primary_text = String()
         self.primary_supported = False
+        self.clipboard_loaded = False
         self.pending_clipboard = None
         self.pending_primary = None
 
@@ -25,7 +27,13 @@ struct SearchClipboard(Copyable, Movable, Clipboard):
 
     def set_clipboard(mut self, text: String):
         self.text = text.copy()
+        self.clipboard_loaded = True
         self.pending_clipboard = text
+
+    def load[Host: Clipboard](mut self, host: Host, maximum: Int) raises:
+        if not self.clipboard_loaded:
+            self.text = host.get_clipboard_bounded(maximum)
+            self.clipboard_loaded = True
 
     def supports_primary(self) -> Bool:
         return self.primary_supported
@@ -59,7 +67,7 @@ def capture_search_clipboard[Host: Clipboard](host: Host, input: TextInput, maxi
     if paste_enabled:
         for event in input.events:
             if event.kind == TEXT_COMMAND and event.cmd == CMD_PASTE:
-                result.text = host.get_clipboard_bounded(maximum)
+                result.load(host, maximum)
                 break
     if primary_enabled and input.primary and result.primary_supported:
         result.primary_text = host.get_primary_selection_bounded(maximum)

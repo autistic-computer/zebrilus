@@ -14,6 +14,7 @@ from .view import WorkspaceView, TERMINAL_KEY
 from .keyboard_controller import KeyboardController, RoutedKey
 from .clipboard_controller import ClipboardController, ClipboardPlan
 from .actions import MAX_PENDING_ACTIONS, MAX_PENDING_INPUT_BYTES
+from .terminal_search_controller import SearchPlan
 
 comptime TEXT_ROUTED: UInt8 = 255
 
@@ -27,15 +28,20 @@ struct _Pending(Copyable, Movable):
     var server: UInt64
     var client: UInt64
     var output: Bool
+    var search: Optional[SearchPlan]
 
 
 struct InputTimeline(Movable):
     var pending: List[_Pending]
     var pending_bytes: Int
+    var initial_focus: Optional[UInt64]
+    var final_focus: Optional[UInt64]
 
     def __init__(out self):
         self.pending = List[_Pending]()
         self.pending_bytes = 0
+        self.initial_focus = None
+        self.final_focus = None
 
     def append(mut self, event: _Pending, bytes: Int) raises:
         if (
@@ -64,6 +70,7 @@ struct InputTimeline(Movable):
                 view.model.source_server,
                 view.model.source_client,
                 output,
+                None,
             ),
             size,
         )
@@ -78,9 +85,16 @@ struct InputTimeline(Movable):
                 plan.server,
                 plan.client,
                 plan.output,
+                None,
             ),
             0,
         )
+
+    def search(mut self, plan: SearchPlan, event: KeyEvent, before_focus: UInt64, after_focus: UInt64) raises:
+        self.append(_Pending(event.text_event, event.text_lo, None, None, plan.server, plan.client, plan.target.command_output, plan.copy()), plan.input.text.value().byte_length() if plan.input.text else 0)
+        if not self.initial_focus:
+            self.initial_focus = before_focus
+        self.final_focus = after_focus
 
     def position(
         self, index: Int, input: TextInput, consumed_prefix: Int
@@ -125,12 +139,20 @@ struct InputTimeline(Movable):
         mut self,
         mut view: WorkspaceView,
         mut ui: Ui,
-        host: Host,
+        mut host: Host,
         mut keyboard: KeyboardController,
         mut clipboard: ClipboardController,
         mut input: TextInput,
         consumed_prefix: Int = 0,
     ) raises -> Bool:
+        var restore_focus: Optional[UInt64] = None
+        if self.initial_focus:
+            if self.final_focus and ui.focus != self.final_focus.value():
+                restore_focus = ui.focus
+            ui.focus = self.initial_focus.value()
+        self.initial_focus = None
+        self.final_focus = None
+        view.prepare_search_input(ui, input, host)
         self.merge(input, consumed_prefix)
         keyboard.filter_text(input, stamped_commands=True)
         var pending = List[_Pending]()
@@ -168,6 +190,10 @@ struct InputTimeline(Movable):
                     if result.unmark:
                         unmark = True
                         composed = False
+                elif captured.search:
+                    view.dispatch_search(ui, input, captured.search.value())
+                continue
+            if view.search_event(ui, input, event, host):
                 continue
             if ui.focus == TERMINAL_KEY and view.active and view.input_pane():
                 if event.kind == TEXT_INSERT:
@@ -193,6 +219,9 @@ struct InputTimeline(Movable):
         input.events = remaining^
         self.pending.clear()
         self.pending_bytes = 0
+        if restore_focus:
+            ui.focus = restore_focus.value()
+        view.finish_search(ui)
         if unmark:
             input.unmark()
         return unmark

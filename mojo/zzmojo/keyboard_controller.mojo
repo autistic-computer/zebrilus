@@ -66,6 +66,7 @@ struct KeyboardController(Movable):
     var source_client: UInt64
     var command_claims: Dict[String, Int]
     var command_positions: Dict[Int32, String]
+    var consumed_commands: Dict[Int32, Bool]
 
     def __init__(out self):
         self.claimed = False
@@ -75,6 +76,7 @@ struct KeyboardController(Movable):
         self.source_client = 0
         self.command_claims = Dict[String, Int]()
         self.command_positions = Dict[Int32, String]()
+        self.consumed_commands = Dict[Int32, Bool]()
 
     def reset(mut self):
         self.claimed = False
@@ -116,6 +118,10 @@ struct KeyboardController(Movable):
                     self.command_positions[key.text_event] = name
             else:
                 self.command_claims[name] = self.command_claims.get(name, 0) + 1
+
+    def claim_text_command(mut self, key: KeyEvent):
+        if not key.release and key.text and key.text_event >= 0:
+            self.consumed_commands[key.text_event] = True
 
     def route(
         mut self,
@@ -206,6 +212,8 @@ struct KeyboardController(Movable):
             if event.kind == TEXT_COMMAND:
                 var name = String(event.cmd, ":", event.mods)
                 var position = event.start if stamped_commands else Int32(index)
+                if self.consumed_commands.get(position, False):
+                    continue
                 if self.command_positions.get(position, String()) == name:
                     continue
                 var claimed = self.command_claims.get(name, 0)
@@ -241,3 +249,4 @@ struct KeyboardController(Movable):
         self.consumed.clear()
         self.command_claims.clear()
         self.command_positions.clear()
+        self.consumed_commands.clear()

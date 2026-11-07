@@ -73,6 +73,7 @@ def build_search_chrome(
     available_width: Float32,
     status: Optional[TerminalSearch],
     command_output: Bool = False,
+    local: Bool = False,
 ) raises -> SearchInputResult:
     var result = SearchInputResult()
     if not editor.session.query:
@@ -80,20 +81,17 @@ def build_search_chrome(
     var query = editor.session.query.value().copy()
     var panel = theme.paint("popover")
     var width = min(Float32(460), max(Float32(0), available_width))
-    ui.overlay_begin(x, y, panel.style(Style.row().width(width).pad(4, 4).spacing(4).wrap().align(0, 1).id(keys.panel)))
+    var panel_style = panel.style(Style.row().width(width).pad(4, 4).spacing(4).wrap().align(0, 1).id(keys.panel))
+    if local:
+        ui.open(panel_style.at(x, y))
+    else:
+        ui.overlay_begin(x, y, panel_style)
     panel.decorations(ui)
     ui.sem(ROLE_REGION, "Terminal search")
-    var field_response = ui.interact(keys.container)
-    if field_response.pressed:
-        ui.focus = keys.field
-        editor.field.focused = True
-        var position = ui.text_hit(keys.field, ui.press_x, ui.press_y)
-        if position.byte >= 0:
-            editor.field.select(position.byte, position.byte)
-        editor.field.blink_t0 = ui.time
-    var field = appearance(theme.theme, recipe("field"), context_state("focused" if ui.focus == keys.field else "rest"), ground("popover"), theme.flat.penna_reduced)
-    ui.open(field.style(Style.row().grow().min_width(min(Float32(110), max(Float32(0), width - 8))).height(28).pad(8, 2).spacing(6).align(0, 1).id(keys.container)))
-    field.decorations(ui, ui.focus_ring(keys.field))
+    var field_state = "focused" if ui.focus == keys.field else "hover" if ui.hot == keys.field or ui.hot == keys.container else "rest"
+    var field = appearance(theme.theme, recipe("field"), context_state(field_state), ground("popover"), theme.flat.penna_reduced)
+    ui.open(field.style(Style.row().grow().min_width(min(Float32(110), max(Float32(0), width - 8))).height(28).pad(8 + field.border_width, 2 + field.border_width).spacing(6).align(0, 1).id(keys.container)))
+    field.decorations(ui)
     var drop = cap_center_drop(ui, theme.flat.font, 13, 13)
     ui.open(Style.col().width(13).height(18))
     ui.open(Style.col().width(13).height(13).at(0, 2.5 + drop))
@@ -125,7 +123,7 @@ def build_search_chrome(
     if _icon_button(ui, theme, keys.close, ICON_X, "Close search"):
         result.append(editor.session.close(pane, command_output))
     ui.close()
-    ui.overlay_end()
+    result.height = ui.close_and_measure(width)
     return result^
 
 
@@ -142,6 +140,7 @@ def build_mode_indicator(
     unseen_output: UInt32,
     right: Float32,
     top: Float32,
+    local: Bool = False,
 ) raises:
     var indicator = mode_indicator(mode, unseen_output)
     if not indicator:
@@ -155,7 +154,11 @@ def build_mode_indicator(
         width += _text_width(ui, value.detail, theme.flat.mono, 12, paint.muted)
         if value.label:
             width += 7
-    ui.overlay_begin(right - width, top, paint.style(Style.row().min_height(28).pad(10, 5).spacing(7).align(0, 1).id(key)))
+    var style = paint.style(Style.row().min_height(28).pad(10, 5).spacing(7).align(0, 1).id(key))
+    if local:
+        ui.open(style.at(right - width, top))
+    else:
+        ui.overlay_begin(right - width, top, style)
     paint.decorations(ui)
     var icon = ICON_COPY if mode.kind == 1 else ICON_FILE if mode.kind == 2 else ICON_ARROW_DOWN
     ui.open(Style.col().width(13).height(16))
@@ -169,4 +172,7 @@ def build_mode_indicator(
     if value.detail.byte_length() > 0:
         ui.text_opts(value.detail.unsafe_ptr(), value.detail.byte_length(), TextStyle(theme.flat.mono, 12, paint.muted, False, paint.color(2)), TextOpts().line_height(16))
     ui.close()
-    ui.overlay_end()
+    if local:
+        ui.close()
+    else:
+        ui.overlay_end()

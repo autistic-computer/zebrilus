@@ -19,6 +19,16 @@ struct SearchTarget(TrivialRegisterPassable):
 
 
 @fieldwise_init
+struct SearchPlan(Copyable, Movable):
+    var target: SearchTarget
+    var kind: UInt8
+    var input: KeyInput
+    var epoch: UInt64
+    var server: UInt64
+    var client: UInt64
+
+
+@fieldwise_init
 struct TargetSearchEffect(Copyable, Movable):
     var target: SearchTarget
     var effect: SearchEffect
@@ -43,6 +53,7 @@ struct TerminalSearchController(Movable):
     var client: UInt64
     var clock: UInt64
     var reserved_entries: Int
+    var closing_owners: Dict[UInt16, SearchTarget]
 
     def __init__(out self):
         self.editors = Dict[String, SearchEditor]()
@@ -53,6 +64,7 @@ struct TerminalSearchController(Movable):
         self.client = 0
         self.clock = 0
         self.reserved_entries = 0
+        self.closing_owners = Dict[UInt16, SearchTarget]()
 
     def touch(mut self, name: String):
         if self.clock == UInt64.MAX:
@@ -128,6 +140,22 @@ struct TerminalSearchController(Movable):
                 return self.targets[name]
         return None
 
+    def target_for_chrome(self, key: UInt64) raises -> Optional[SearchTarget]:
+        for name in self.keys.keys():
+            if not self.editors[name].session.query:
+                continue
+            var keys = self.keys[name]
+            if key == keys.panel or key == keys.field or key == keys.container or key == keys.regex or key == keys.case_policy or key == keys.previous or key == keys.next or key == keys.close:
+                return self.targets[name]
+        return None
+
+    def reset_keys(mut self) raises:
+        self.closing_owners.clear()
+        for name in self.keys.keys():
+            self.editors[name].session.swallowed = None
+            self.editors[name].enter_released = True
+            self.editors[name].escape_released = True
+
     def owns_key(self, key: UInt64) raises -> Bool:
         if key == 0:
             return False
@@ -149,6 +177,7 @@ struct TerminalSearchController(Movable):
             self.client = client
             self.clock = 0
             self.reserved_entries = 0
+            self.closing_owners.clear()
             return
         var live = Dict[String, Bool]()
         for target in valid:
@@ -159,6 +188,12 @@ struct TerminalSearchController(Movable):
                 removed.append(name.copy())
         for name in removed:
             self.remove(name)
+        var released = List[UInt16]()
+        for entry in self.closing_owners.items():
+            if entry.value.name() not in self.editors:
+                released.append(entry.key)
+        for key in released:
+            _ = self.closing_owners.pop(key)
 
     def owned_bytes(self) raises -> Int:
         var bytes = self.reserved_entries * 4096

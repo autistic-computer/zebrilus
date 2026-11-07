@@ -58,9 +58,11 @@ struct Workspace(App, Movable):
             self.view.build(ui, input)
             self.clipboard.deliver(self.view, ui, win)
             self.clipboard.tick(self.view, ui)
-            var text_key = self.view.input_key()
+            var search = self.view.search.target_for_field(ui.focus)
+            var search_input = Bool(search) and ui.text_input
+            var text_key = ui.focus if search_input else self.view.input_key()
             win.set_text_input(
-                ui.focus == TERMINAL_KEY and Bool(self.view.input_pane()),
+                search_input or (ui.focus == TERMINAL_KEY and Bool(self.view.input_pane())),
                 text_key,
             )
             comptime if CompilationTarget.is_linux():
@@ -80,6 +82,7 @@ struct Workspace(App, Movable):
         if event.kind == APP_INACTIVE:
             self.keyboard.reset()
             try:
+                self.view.search.reset_keys()
                 self.view.set_active(False)
             except error:
                 self.view.model.error = String(error)
@@ -107,6 +110,14 @@ struct Workspace(App, Movable):
 
     def on_key(mut self, mut ui: Ui, mut win: Window, key: KeyEvent) -> Bool:
         try:
+            var before_focus = ui.focus
+            var search = self.view.plan_search(ui, self.keyboard, key, Span(win.text.bytes))
+            if search:
+                if search.value().kind != 2:
+                    self.timeline.search(search.value(), key, before_focus, ui.focus)
+                if search.value().kind == 0:
+                    win.text.unmark()
+                return True
             var clipboard = self.clipboard.plan(
                 self.view,
                 ui,

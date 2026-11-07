@@ -25,6 +25,7 @@ from .clipboard_protocol import (
     ClipboardResponse,
     MAX_CLIPBOARD_REPLY_BYTES,
 )
+from .search_ui_commands import SearchUiCommands
 
 comptime KEY = 1
 comptime TEXT = 2
@@ -74,7 +75,7 @@ def run_job(context: MutOpaquePointer[MutUntrackedOrigin]) abi("C"):
                     job.model.session.value()
                 ) if job.model.session else String()
             )
-            job.connection = connect_interactive(job.path, session)
+            job.connection = connect_interactive(job.path, session, native_search=True)
         if job.clipboard_reply:
             ref reply = job.clipboard_reply.value()
             if (
@@ -97,6 +98,8 @@ def run_job(context: MutOpaquePointer[MutUntrackedOrigin]) abi("C"):
                     or source[1] != job.connection.value().client_id
                 ):
                     continue
+            if action.output_owner and job.connection.value().model.events.output.id != action.output_owner:
+                continue
             if action.kind == HISTORY_PREFETCH:
                 if action.pane:
                     job.connection.value().request_history(
@@ -144,7 +147,7 @@ def run_job(context: MutOpaquePointer[MutUntrackedOrigin]) abi("C"):
                         job.model.session.value()
                     ) if job.model.session else String()
                 )
-                job.connection = connect_interactive(job.path, session)
+                job.connection = connect_interactive(job.path, session, native_search=True)
             elif action.kind == CREATE_SESSION:
                 job.model.create_session(job.connection.value())
             elif action.kind == SPLIT_RIGHT or action.kind == SPLIT_DOWN:
@@ -198,6 +201,7 @@ struct AsyncBackend(Movable):
     var clipboard: ClipboardState
     var clipboard_reply: Optional[ClipboardResponse]
     var source: Optional[Tuple[UInt64, UInt64]]
+    var search_commands: SearchUiCommands
 
     def __init__(out self, path: String):
         self.job = OwnedPointer(Job(path))
@@ -206,6 +210,7 @@ struct AsyncBackend(Movable):
         self.clipboard = ClipboardState()
         self.clipboard_reply = None
         self.source = None
+        self.search_commands = SearchUiCommands()
 
     def __deinit__(deinit self):
         if self.busy:
@@ -266,6 +271,7 @@ struct AsyncBackend(Movable):
         epoch: UInt64,
         passive: Bool = False,
         source: Optional[Tuple[UInt64, UInt64]] = None,
+        output_owner: Optional[UInt64] = None,
     ) raises:
         self.queue.append(
             NATIVE_PASSIVE if passive else NATIVE_INPUT,
@@ -274,6 +280,7 @@ struct AsyncBackend(Movable):
             epoch,
             frame=frame,
             source=source if source else self.source,
+            output_owner=output_owner,
         )
 
     def commit(
@@ -352,6 +359,9 @@ struct AsyncBackend(Movable):
             try:
                 self.clipboard.merge(
                     self.job[].connection.value().model.clipboard.take()
+                )
+                self.search_commands.merge(
+                    self.job[].connection.value().model.search_commands.take()
                 )
             except error:
                 model.error = String(error)

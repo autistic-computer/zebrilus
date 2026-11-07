@@ -27,6 +27,8 @@ from .tree_model import MuxSnapshot, ClientView
 from .tree_gate import TreeGate
 from .tree_codec import eligible_delta, eligible_view
 from .client_context import ClientContext
+from .search_ui_commands import SearchUiCommands
+from .terminal_search_protocol import TERMINAL_UI_COMMAND
 from .appearance_protocol import TerminalAppearance, decode_appearance
 from .terminal_model import TerminalViewport, TerminalHistory
 from .terminal_wire import decode_terminal_frame
@@ -112,6 +114,7 @@ struct StreamModel(Copyable, Movable):
     var appearance_provenance: Dict[UInt8, UInt8]
     var appearance_revision: UInt64
     var clipboard: ClipboardState
+    var search_commands: SearchUiCommands
 
     def __init__(out self):
         self.tree = MuxSnapshot()
@@ -124,6 +127,7 @@ struct StreamModel(Copyable, Movable):
         self.history_updates = 0
         self.events = ClientEventState()
         self.clipboard = ClipboardState()
+        self.search_commands = SearchUiCommands()
         self.notice = None
         self.notice_revision = 0
         self.message = None
@@ -541,6 +545,11 @@ struct InteractiveConnection(Movable):
                 self.full_pending.clear()
             self.model.view = view^
             self.tree_dirty = True
+        elif event.event_kind == Optional[UInt64](TERMINAL_UI_COMMAND):
+            var raw = List[UInt8]()
+            swap(raw, event.raw)
+            if not self.model.search_commands.consume(raw^, self.server_id, self.client_id, self.model.events.output.pane, self.model.events.output.id):
+                raise Error("terminal search UI command has no decoded payload")
         elif event.event_kind and (
             event.event_kind.value() == UInt64(CLIPBOARD_WRITE)
             or event.event_kind.value() == UInt64(CLIPBOARD_QUERY)
@@ -631,6 +640,7 @@ def connect_interactive(
     rows: UInt16 = 24,
     cell_width_px: UInt32 = 8,
     cell_height_px: UInt32 = 16,
+    native_search: Bool = False,
 ) raises -> InteractiveConnection:
     var stream = InteractiveConnection(open_connection(path))
     var process = external_call["getpid", UInt32]()
@@ -647,6 +657,7 @@ def connect_interactive(
         options=(UInt64(1) << 21) - 1,
         viewport=False,
         context=context^,
+        native_search=native_search,
     )
     stream.transport.write(Span(hello))
     stream.consume(stream.transport.read_frame())
