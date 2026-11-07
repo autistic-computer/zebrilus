@@ -54,6 +54,7 @@ def main():
         report["toolchain"] = tools
         stage("proof", [tools["bend"], "bend2/PROOF.bend", "--verdict"])
         stage("input-router", ["python3", "scripts/port/input_router.py", "--skip-proof"])
+        stage("input-router-boundary", ["python3", "scripts/port/input_router_boundary.py", "--skip-proof", "--skip-reference"])
         for name in ("core", "layout_edit", "replay", "terminal", "terminal_cells", "terminal_cells_origins", "tree_reducer"):
             stage("bend-" + name, [tools["bend"], f"bend2/{name}.bend", "-o", str(TARGET / (name + ".mjs"))])
         stage("bend-native", [tools["bend"], "bend2/bridge.bend", "-o", str(TARGET / "zz-bend.next")])
