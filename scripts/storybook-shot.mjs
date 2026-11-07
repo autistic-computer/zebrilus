@@ -15,11 +15,12 @@ options:
   --height <px>       viewport height (default 1000)
   --scale <n>         device pixel ratio (default 2)
   --timeout <ms>      give up after this long (default 60000)
+  --hover <x,y>       point at x,y (CSS px from the section's top-left) before the shot
 
 environment: CHROME overrides the browser binary.`;
 
 function parseArgs(argv) {
-    const options = { url: "http://127.0.0.1:8097/", width: 1400, height: 1000, scale: 2, timeout: 60000 };
+    const options = { url: "http://127.0.0.1:8097/", width: 1400, height: 1000, scale: 2, timeout: 60000, hover: "" };
     const positional = [];
     for (let i = 0; i < argv.length; i++) {
         const arg = argv[i];
@@ -158,18 +159,27 @@ async function main() {
                 const section = ${JSON.stringify(section ?? null)};
                 const target = section && document.getElementById(${JSON.stringify(story)} + "-" + section);
                 if (section && !target) throw new Error("no section " + section);
+                target?.scrollIntoView({ block: "center" });
                 const rect = target?.getBoundingClientRect();
                 return {
+                    origin: rect ? { x: rect.left, y: rect.top } : { x: 0, y: 0 },
                     windows: ala.windows().map((window) => ({ id: window.id, mount: window.mount, height: window.height })),
                     clip: rect ? (() => { const x = Math.max(0, rect.left + scrollX - 16); const y = Math.max(0, rect.top + scrollY - 16); return { x, y, width: rect.right + scrollX + 16 - x, height: rect.bottom + scrollY + 16 - y }; })() : null,
                 };
             })()`,
         });
         if (ready.exceptionDetails) throw new Error(ready.exceptionDetails.exception?.description ?? "page failed");
-        const { windows, clip } = ready.result.value;
+        const { windows, clip, origin } = ready.result.value;
+        if (options.hover) {
+            const [x, y] = options.hover.split(",").map(Number);
+            await send("Emulation.setFocusEmulationEnabled", { enabled: true });
+            await send("Page.bringToFront");
+            await send("Input.dispatchMouseEvent", { type: "mouseMoved", x: origin.x + x, y: origin.y + y, button: "none", buttons: 0 });
+            await send("Runtime.evaluate", { awaitPromise: true, expression: "(async () => { await ala.idle(); await new Promise((r) => setTimeout(r, 300)); await ala.idle(); })()" });
+        }
         const shot = await send("Page.captureScreenshot", {
             format: "png",
-            captureBeyondViewport: true,
+            captureBeyondViewport: !options.hover,
             ...(clip ? { clip: { ...clip, scale: 1 } } : {}),
         });
         writeFileSync(options.out, Buffer.from(shot.data, "base64"));
