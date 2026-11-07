@@ -26,6 +26,17 @@ use ala::{Keystroke, SharedString};
 use penna::blocks::palette::PaletteShortcut;
 
 #[must_use]
+pub fn palette_command_rows(
+    query: &str,
+    availability: zz_client::completion::PaneKindAvailability,
+) -> Vec<penna::blocks::palette::PaletteRow> {
+    palette_model::command_entries(query, availability, &|_| None)
+        .into_iter()
+        .map(|entry| entry.row)
+        .collect()
+}
+
+#[must_use]
 pub fn tmux_shortcut(spelling: &SharedString) -> PaletteShortcut {
     let keys: Option<Vec<Keystroke>> = spelling.split_whitespace().map(tmux_keystroke).collect();
     match keys {
