@@ -91,6 +91,8 @@ def main():
         stage("appearance-values", ["python3", "scripts/port/appearance_differential.py"])
         stage("mjui-controls", ["bash", "scripts/penna/check.sh"], cwd=mjui)
         stage("mjui-native-components", ["bash", "scripts/penna/components_check.sh"], cwd=mjui)
+        stage("mjui-native-glass-lifecycle", ["bash", "scripts/penna/glass_lifecycle_check.sh"], cwd=mjui)
+        stage("mjui-native-bounds", ["python3", "scripts/penna/bounds_vectors.py"], cwd=mjui)
         stage("mjui-native-palette-rows", ["python3", "scripts/penna/palette_rows.py"], cwd=mjui)
         stage("mjui-native-palette-chrome", ["python3", "scripts/penna/palette_chrome_pixels.py"], cwd=mjui)
         stage("mjui-native-palette-surface", ["python3", "scripts/penna/palette_surface_pixels.py"], cwd=mjui)
