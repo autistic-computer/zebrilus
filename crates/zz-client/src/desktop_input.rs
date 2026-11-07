@@ -161,3 +161,17 @@ pub fn desktop_dialog_prefix(
     let request = active && !state.sent;
     (state, request)
 }
+
+#[must_use]
+pub fn desktop_prefix_acknowledged(previous: Option<u64>, request_id: u64) -> Option<u64> {
+    previous.max(Some(request_id))
+}
+
+#[must_use]
+pub fn desktop_prefix_reset(previous: Option<u64>, next_request: u64) -> Option<u64> {
+    if next_request == 0 {
+        previous
+    } else {
+        desktop_prefix_acknowledged(previous, next_request)
+    }
+}

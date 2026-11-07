@@ -3,7 +3,7 @@ from std.testing import assert_equal, assert_true, assert_raises
 from zzmojo.actions import ActionQueue, Action, MAX_PENDING_ACTIONS
 from zzmojo.desktop_workspace import DesktopWorkspace
 from zzmojo.desktop_router_delivery import DesktopKeyTarget
-from zzmojo.desktop_key_tables import RetainedKeyTables
+from zzmojo.desktop_key_tables import RetainedKeyTables, encode_key_tables
 from zzmojo.chrome_keymap import ChromeKeymap
 from zzmojo.input_protocol import (
     KeyInput,
@@ -19,7 +19,11 @@ from zzmojo.verified_input_router import (
     no_owner,
 )
 from zzmojo.input_router_codec import encode_outcome
-from zzmojo.protocol import envelope
+from zzmojo.protocol import envelope, Decoder
+from zzmojo.prefix_bindings import PrefixTable, PrefixBinding
+from zzmojo.exec_protocol import Invocation
+from zzmojo.palette_protocol import palette_command_request
+from zzmojo.desktop_input import desktop_guard
 
 
 def same(actual: RouterState, expected: RouterState) raises:
@@ -171,6 +175,14 @@ def main() raises:
     assert_equal(workspace.generation(), generation)
     assert_equal(workspace.session.generation(), serial)
     assert_equal(len(queue), 0)
+    assert_true(plan.failed)
+    with assert_raises():
+        _ = workspace.commit(
+            queue, tables, routing, target, UInt64(12), None, plan^
+        )
+    same(workspace.session.snapshot(), before)
+    assert_equal(workspace.prefix.next, UInt64(0))
+    plan = workspace.prepare(queue, tables, routing, raw(), target, 12)
     queue.append(1, "other", None)
     with assert_raises():
         _ = workspace.commit(
@@ -234,4 +246,142 @@ def main() raises:
         workspace.observe(events)
     same(workspace.session.snapshot(), before)
     assert_equal(workspace.generation(), generation)
+    var choose = Invocation()
+    choose.name = "choose-tree"
+    choose.args = [List[UInt8](String("-s").as_bytes())]
+    var commands: List[Invocation] = [choose^]
+    var bindings: List[PrefixBinding] = [
+        PrefixBinding("x", commands^, False, None)
+    ]
+    var snapshots: List[PrefixTable] = [PrefixTable("prefix", bindings^)]
+    var update: List[UInt8] = [10, 0, 25]
+    update.extend(encode_key_tables(snapshots))
+    assert_true(tables.consume(envelope(Span(update))))
+    plan = workspace.prepare(
+        queue, tables, routing, raw(), target, 200, picker_sidebar=True
+    )
+    assert_equal(plan.plan.value().ui[0].kind, UInt8(4))
+    assert_equal(plan.prefix.value().request, Optional[UInt64](1))
+    assert_equal(Bool(plan.prefix.value().queue), False)
+    assert_equal(workspace.prefix.next, UInt64(0))
+    assert_equal(len(queue), 0)
+    var focus = Invocation()
+    focus.name = "focus-sidebar"
+    var additional: List[Action] = [
+        Action(
+            16,
+            "",
+            None,
+            200,
+            None,
+            palette_command_request(0, focus),
+            workspace.source.value(),
+            None,
+        )
+    ]
+    workspace.stage_actions(queue, plan, additional)
+    receipt = workspace.commit(queue, tables, routing, target, 200, None, plan^)
+    assert_equal(workspace.prefix.next, UInt64(1))
+    assert_equal(workspace.prefix.dialog.sent, False)
+    assert_equal(len(queue), 2)
+    var message = Decoder(queue.items[0].frame.copy())
+    assert_equal(message.uint(), UInt64(9))
+    assert_equal(message.uint(), UInt64(13))
+    assert_equal(message.uint(), UInt64(1))
+    assert_equal(queue.items[1].kind, 16)
+    var ui_effects = workspace.acknowledge(receipt, 200)
+    assert_equal(len(ui_effects), 1)
+    assert_equal(ui_effects[0].kind, UInt8(4))
+    _ = queue.take()
+    plan = workspace.prepare(queue, tables, routing, raw(2), target, 201)
+    receipt = workspace.commit(queue, tables, routing, target, 201, None, plan^)
+    _ = workspace.acknowledge(receipt, 201)
+    assert_equal(len(queue), 0)
+    plan = workspace.prepare(
+        queue, tables, routing, raw(), target, 202, picker_sidebar=True
+    )
+    before = workspace.session.snapshot()
+    workspace.prefix.reset_session()
+    assert_equal(workspace.prefix.acknowledged, Optional[UInt64](1))
+    with assert_raises():
+        _ = workspace.commit(queue, tables, routing, target, 202, None, plan^)
+    same(workspace.session.snapshot(), before)
+    assert_equal(len(queue), 0)
+    assert_equal(workspace.prefix.next, UInt64(1))
+    for _ in range(MAX_PENDING_ACTIONS - 1):
+        queue.append(10, "", UInt64(77))
+    plan = workspace.prepare(
+        queue, tables, routing, raw(), target, 203, picker_sidebar=True
+    )
+    assert_equal(len(plan.plan.value().queue.items), MAX_PENDING_ACTIONS)
+    assert_equal(plan.prefix.value().request, Optional[UInt64](2))
+    with assert_raises():
+        workspace.stage_actions(queue, plan, additional)
+    assert_true(plan.failed)
+    with assert_raises():
+        _ = workspace.commit(queue, tables, routing, target, 203, None, plan^)
+    same(workspace.session.snapshot(), before)
+    assert_equal(len(queue), MAX_PENDING_ACTIONS - 1)
+    assert_equal(workspace.prefix.next, UInt64(1))
+    _ = queue.take()
+    generation = workspace.generation()
+    assert_equal(
+        workspace.reconcile_dialog(queue, False, None, True, 204), False
+    )
+    assert_equal(workspace.generation(), generation)
+    assert_true(workspace.reconcile_dialog(queue, True, None, True, 204))
+    assert_equal(workspace.prefix.next, UInt64(2))
+    assert_equal(workspace.prefix.dialog.pending, Optional[UInt64](2))
+    assert_equal(len(queue), 1)
+    generation = workspace.generation()
+    assert_true(workspace.reconcile_dialog(queue, True, None, True, 204))
+    assert_equal(workspace.generation(), generation)
+    assert_equal(len(queue), 1)
+    assert_equal(
+        workspace.reconcile_dialog(queue, False, None, True, 204), False
+    )
+    assert_equal(workspace.prefix.dialog.pending, Optional[UInt64](2))
+    assert_true(workspace.reconcile_dialog(queue, True, None, True, 204))
+    assert_equal(workspace.prefix.next, UInt64(3))
+    assert_equal(len(queue), 2)
+    assert_equal(
+        workspace.reconcile_dialog(queue, False, UInt64(2), True, 204), False
+    )
+    assert_equal(workspace.prefix.dialog.pending, Optional[UInt64](3))
+    assert_equal(
+        desktop_guard(
+            "x", False, Bool(workspace.prefix.dialog.pending), 0, 0, False
+        ),
+        UInt8(2),
+    )
+    generation = workspace.generation()
+    assert_equal(
+        workspace.reconcile_dialog(queue, False, UInt64(1), True, 204), False
+    )
+    assert_equal(workspace.generation(), generation)
+    assert_equal(
+        workspace.reconcile_dialog(queue, False, UInt64(3), True, 204), False
+    )
+    assert_equal(Bool(workspace.prefix.dialog.pending), False)
+    assert_equal(
+        desktop_guard(
+            "x", False, Bool(workspace.prefix.dialog.pending), 0, 0, False
+        ),
+        UInt8(3),
+    )
+    _ = queue.take()
+    for _ in range(MAX_PENDING_ACTIONS):
+        queue.append(10, "", None)
+    generation = workspace.generation()
+    with assert_raises():
+        _ = workspace.reconcile_dialog(queue, True, None, True, 205)
+    assert_equal(workspace.generation(), generation)
+    assert_equal(workspace.prefix.next, UInt64(3))
+    assert_equal(workspace.prefix.dialog.sent, False)
+    assert_equal(Bool(workspace.prefix.dialog.pending), False)
+    _ = queue.take()
+    assert_true(workspace.reconcile_dialog(queue, True, None, False, 206))
+    assert_equal(workspace.generation(), generation)
+    assert_equal(workspace.prefix.next, UInt64(3))
+    assert_equal(len(queue), 0)
     print(workspace.gate.native_count, workspace.gate.fallback_count)

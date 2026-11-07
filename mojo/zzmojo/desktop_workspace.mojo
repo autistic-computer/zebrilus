@@ -10,6 +10,12 @@ from .desktop_router_delivery import (
     DesktopKeyTarget,
     DesktopUiEffect,
 )
+from .desktop_prefix_cancel import (
+    DesktopPrefixCancel,
+    DesktopPrefixPrepared,
+    desktop_dialog_prefix,
+    desktop_prefix_acknowledged,
+)
 from .input_protocol import (
     KeyInput,
     InputFrame,
@@ -45,6 +51,9 @@ struct DesktopPrepared(Movable):
     var session: InputRouterSession
     var delivery: DesktopDelivery
     var plan: Optional[DesktopDeliveryPlan]
+    var prefix_generation: UInt64
+    var prefix: Optional[DesktopPrefixPrepared]
+    var failed: Bool
 
 
 def _retain_key(mut keys: List[RouterKey], key: RouterKey) raises:
@@ -87,6 +96,7 @@ struct DesktopWorkspace(Movable):
     var session: InputRouterSession
     var delivery: DesktopDelivery
     var gate: InputRouterGate
+    var prefix: DesktopPrefixCancel
     var source: Optional[Tuple[UInt64, UInt64]]
     var _generation: UInt64
     var _next_payload: UInt64
@@ -106,6 +116,7 @@ struct DesktopWorkspace(Movable):
         )
         self.delivery = DesktopDelivery()
         self.gate = InputRouterGate(worker)
+        self.prefix = DesktopPrefixCancel()
         self.source = None
         self._generation = 0
         self._next_payload = 1
@@ -125,9 +136,14 @@ struct DesktopWorkspace(Movable):
             or self.session.generation() == UInt64.MAX
         ):
             raise Error("desktop workspace source generation exhausted")
+        var prefix_state = self.prefix.fork()
+        prefix_state.reset_session()
         var delivery = _fork_delivery(self.delivery)
         var payloads = RouterPayloadArena(
-            self._scope, self.session._payloads._keys.copy(), List[RouterInput](), List[List[UInt8]]()
+            self._scope,
+            self.session._payloads._keys.copy(),
+            List[RouterInput](),
+            List[List[UInt8]](),
         )
         var session = _fork_session(self.session, payloads^)
         var prefix = DesktopKeyTables()
@@ -156,6 +172,7 @@ struct DesktopWorkspace(Movable):
         session._scope = scope
         swap(self.session, session)
         swap(self.delivery, delivery)
+        swap(self.prefix, prefix_state)
         self._scope = scope
         self.source = source
         self._generation += 1
@@ -168,9 +185,16 @@ struct DesktopWorkspace(Movable):
             or self.session.generation() > UInt64.MAX - 2
         ):
             raise Error("desktop observer generation exhausted")
+        var prefix_state = self.prefix.fork()
+        for event in events:
+            if event.kind == 8:
+                prefix_state.reset_session()
         var delivery = _fork_delivery(self.delivery)
         var payloads = RouterPayloadArena(
-            self._scope, self.session._payloads._keys.copy(), List[RouterInput](), List[List[UInt8]]()
+            self._scope,
+            self.session._payloads._keys.copy(),
+            List[RouterInput](),
+            List[List[UInt8]](),
         )
         var session = _fork_session(self.session, payloads^)
         var prefix = DesktopKeyTables()
@@ -196,7 +220,47 @@ struct DesktopWorkspace(Movable):
             raise Error("desktop observer unexpectedly produced delivery")
         swap(self.session, session)
         swap(self.delivery, delivery)
+        swap(self.prefix, prefix_state)
         self._generation += 1
+
+    def reconcile_dialog(
+        mut self,
+        mut queue: ActionQueue,
+        active: Bool,
+        acknowledged: Optional[UInt64],
+        connected: Bool,
+        epoch: UInt64,
+    ) raises -> Bool:
+        if self.delivery._receipt or not self.source and connected:
+            raise Error(
+                "desktop dialog reconciliation has no acknowledged current"
+                " source"
+            )
+        var merged = self.prefix.acknowledged
+        if acknowledged:
+            merged = desktop_prefix_acknowledged(merged, acknowledged.value())
+        var decision = desktop_dialog_prefix(self.prefix.dialog, active, merged)
+        if (
+            not (decision.request and connected)
+            and merged == self.prefix.acknowledged
+            and decision.state.sent == self.prefix.dialog.sent
+            and decision.state.pending == self.prefix.dialog.pending
+        ):
+            return active
+        if self._generation == UInt64.MAX:
+            raise Error("desktop dialog transaction generation exhausted")
+        var current = self.source.value() if self.source else Tuple(
+            UInt64(0), UInt64(0)
+        )
+        var context = DesktopEnvelope(
+            self._scope, current[0], current[1], epoch, None
+        )
+        var prepared = self.prefix.prepare_dialog(
+            queue, context, active, acknowledged, connected
+        )
+        self.prefix.commit(queue, context, prepared)
+        self._generation += 1
+        return active
 
     def install_configured(mut self, configured: ChromeKeymap) raises:
         if self._next_map > UInt32.MAX - 2 or self._generation == UInt64.MAX:
@@ -275,7 +339,7 @@ struct DesktopWorkspace(Movable):
             which_key,
             picker_sidebar,
         )
-        return DesktopPrepared(
+        var prepared = DesktopPrepared(
             self._generation,
             self._next_payload,
             tables.revision,
@@ -287,7 +351,28 @@ struct DesktopWorkspace(Movable):
             candidate^,
             delivery^,
             plan^,
+            self.prefix.generation,
+            None,
+            False,
         )
+        var cancel = False
+        for effect in prepared.plan.value().ui:
+            cancel = cancel or effect.kind == 4 or effect.kind == 5
+        if cancel:
+            var prefix = self.prefix.prepare_cancel(
+                queue, prepared.context, target.connected
+            )
+            var batch = prefix.queue.take()
+            if len(batch.items) != len(queue) + Int(Bool(prefix.request)):
+                raise Error(
+                    "desktop prefix cancellation changed the existing queue"
+                )
+            var actions = List[Action]()
+            if prefix.request:
+                actions.append(batch.items[len(queue)].copy())
+            self.stage_actions(queue, prepared, actions)
+            prepared.prefix = prefix^
+        return prepared^
 
     def stage_actions(
         self,
@@ -295,8 +380,23 @@ struct DesktopWorkspace(Movable):
         mut prepared: DesktopPrepared,
         actions: List[Action],
     ) raises:
+        if prepared.failed:
+            raise Error("desktop workspace action plan was refused")
+        try:
+            self._stage_actions(queue, prepared, actions)
+        except:
+            prepared.failed = True
+            raise
+
+    def _stage_actions(
+        self,
+        queue: ActionQueue,
+        mut prepared: DesktopPrepared,
+        actions: List[Action],
+    ) raises:
         if (
             prepared.generation != self._generation
+            or prepared.prefix_generation != self.prefix.generation
             or prepared.payload != self._next_payload
         ):
             raise Error("desktop workspace action staging is stale")
@@ -332,7 +432,9 @@ struct DesktopWorkspace(Movable):
         var prepared: DesktopPrepared,
     ) raises -> UInt64:
         if (
-            prepared.generation != self._generation
+            prepared.failed
+            or prepared.generation != self._generation
+            or prepared.prefix_generation != self.prefix.generation
             or prepared.payload != self._next_payload
             or not self.source
             or self.source.value() != prepared.source
@@ -357,6 +459,8 @@ struct DesktopWorkspace(Movable):
             raise Error("desktop workspace target projection changed")
         if tables.snapshot.value()[].generation != prepared.tables[].generation:
             raise Error("desktop workspace prefix snapshot changed")
+        if prepared.prefix:
+            self.prefix.validate(prepared.prefix.value(), prepared.context)
         var plan = prepared.plan.take()
         var receipt = prepared.delivery.commit_key(
             prepared.session,
@@ -367,6 +471,8 @@ struct DesktopWorkspace(Movable):
             prepared.context,
             plan^,
         )
+        if prepared.prefix:
+            self.prefix._publish(prepared.prefix.value())
         swap(self.session, prepared.session)
         swap(self.delivery, prepared.delivery)
         self._next_payload += 1

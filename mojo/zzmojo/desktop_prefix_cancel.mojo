@@ -19,6 +19,23 @@ def next_prefix_cancel_request(previous: UInt64) -> UInt64:
     return previous if previous == UInt64.MAX else previous + 1
 
 
+def desktop_prefix_acknowledged(
+    previous: Optional[UInt64], request_id: UInt64
+) -> Optional[UInt64]:
+    return (
+        request_id if not previous
+        or request_id > previous.value() else previous
+    )
+
+
+def desktop_prefix_reset(
+    previous: Optional[UInt64], next_request: UInt64
+) -> Optional[UInt64]:
+    return previous if next_request == 0 else desktop_prefix_acknowledged(
+        previous, next_request
+    )
+
+
 def desktop_dialog_prefix(
     state: DesktopDialogPrefix, active: Bool, acknowledged: Optional[UInt64]
 ) -> DesktopPrefixDecision:
@@ -41,22 +58,40 @@ struct DesktopPrefixPrepared(Movable):
     var original_next: UInt64
     var original_sent: Bool
     var original_pending: Optional[UInt64]
+    var original_acknowledged: Optional[UInt64]
     var context: DesktopEnvelope
     var next: UInt64
     var dialog: DesktopDialogPrefix
     var request: Optional[UInt64]
-    var queue: ActionBatch
+    var acknowledged: Optional[UInt64]
+    var queue: Optional[ActionBatch]
 
 
 struct DesktopPrefixCancel(Movable):
     var next: UInt64
     var dialog: DesktopDialogPrefix
     var generation: UInt64
+    var acknowledged: Optional[UInt64]
 
     def __init__(out self):
         self.next = 0
         self.dialog = DesktopDialogPrefix(False, None)
         self.generation = 0
+        self.acknowledged = None
+
+    def fork(self) -> Self:
+        var result = Self()
+        result.next = self.next
+        result.dialog = self.dialog.copy()
+        result.generation = self.generation
+        result.acknowledged = self.acknowledged
+        return result^
+
+    def reset_session(mut self) raises:
+        if self.generation == UInt64.MAX:
+            raise Error("desktop prefix cancellation generation exhausted")
+        self.acknowledged = desktop_prefix_reset(self.acknowledged, self.next)
+        self.generation += 1
 
     def _prepare(
         self,
@@ -65,6 +100,7 @@ struct DesktopPrefixCancel(Movable):
         dialog: DesktopDialogPrefix,
         wanted: Bool,
         connected: Bool,
+        acknowledged: Optional[UInt64],
     ) raises -> DesktopPrefixPrepared:
         if self.generation == UInt64.MAX:
             raise Error("desktop prefix cancellation generation exhausted")
@@ -91,17 +127,21 @@ struct DesktopPrefixCancel(Movable):
             self.next,
             self.dialog.sent,
             self.dialog.pending,
+            self.acknowledged,
             context.copy(),
             next,
             dialog.copy(),
             request,
+            acknowledged,
             queue.stage(actions),
         )
 
     def prepare_cancel(
         self, queue: ActionQueue, context: DesktopEnvelope, connected: Bool
     ) raises -> DesktopPrefixPrepared:
-        return self._prepare(queue, context, self.dialog, True, connected)
+        return self._prepare(
+            queue, context, self.dialog, True, connected, self.acknowledged
+        )
 
     def prepare_dialog(
         self,
@@ -111,20 +151,20 @@ struct DesktopPrefixCancel(Movable):
         acknowledged: Optional[UInt64],
         connected: Bool,
     ) raises -> DesktopPrefixPrepared:
-        var decision = desktop_dialog_prefix(self.dialog, active, acknowledged)
+        var merged = self.acknowledged
+        if acknowledged:
+            merged = desktop_prefix_acknowledged(merged, acknowledged.value())
+        var decision = desktop_dialog_prefix(self.dialog, active, merged)
         var result = self._prepare(
-            queue, context, decision.state, decision.request, connected
+            queue, context, decision.state, decision.request, connected, merged
         )
         if result.request:
             result.dialog.sent = True
             result.dialog.pending = result.request
         return result^
 
-    def commit(
-        mut self,
-        mut queue: ActionQueue,
-        context: DesktopEnvelope,
-        mut prepared: DesktopPrefixPrepared,
+    def validate(
+        self, prepared: DesktopPrefixPrepared, context: DesktopEnvelope
     ) raises:
         if (
             self.generation == UInt64.MAX
@@ -132,11 +172,28 @@ struct DesktopPrefixCancel(Movable):
             or prepared.original_next != self.next
             or prepared.original_sent != self.dialog.sent
             or prepared.original_pending != self.dialog.pending
+            or prepared.original_acknowledged != self.acknowledged
             or prepared.context != context
         ):
             raise Error("desktop prefix cancellation is stale")
-        queue.validate_batch(prepared.queue)
-        queue.commit_batch(prepared.queue)
+
+    def _publish(mut self, prepared: DesktopPrefixPrepared):
         self.next = prepared.next
-        self.dialog = prepared.dialog.copy()
+        self.dialog.sent = prepared.dialog.sent
+        self.dialog.pending = prepared.dialog.pending
+        self.acknowledged = prepared.acknowledged
         self.generation += 1
+
+    def commit(
+        mut self,
+        mut queue: ActionQueue,
+        context: DesktopEnvelope,
+        mut prepared: DesktopPrefixPrepared,
+    ) raises:
+        self.validate(prepared, context)
+        if not prepared.queue:
+            raise Error("desktop prefix action batch was consumed")
+        queue.validate_batch(prepared.queue.value())
+        queue.commit_batch(prepared.queue.value())
+        self._publish(prepared)
+        prepared.queue = None

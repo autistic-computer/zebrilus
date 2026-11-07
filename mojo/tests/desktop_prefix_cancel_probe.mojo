@@ -7,6 +7,8 @@ from zzmojo.desktop_prefix_cancel import (
     DesktopDialogPrefix,
     desktop_dialog_prefix,
     next_prefix_cancel_request,
+    desktop_prefix_acknowledged,
+    desktop_prefix_reset,
 )
 
 
@@ -82,6 +84,13 @@ def main() raises:
             assert_equal(queue.items[0].source.value()[1], UInt64(3))
             for index in range(frame_size):
                 assert_equal(queue.items[0].frame[index], source.byte())
+        assert_equal(
+            desktop_prefix_acknowledged(acknowledged, previous),
+            source.optional(),
+        )
+        assert_equal(
+            desktop_prefix_reset(acknowledged, previous), source.optional()
+        )
         with assert_raises():
             machine.commit(queue, context, plan)
         cases += 1
@@ -107,4 +116,16 @@ def main() raises:
         machine.commit(queue, DesktopEnvelope(1, 2, 9, 4, None), plan)
     assert_equal(len(queue), 0)
     assert_equal(machine.next, UInt64(0))
+    plan = machine.prepare_dialog(queue, context, False, UInt64(10), False)
+    machine.commit(queue, context, plan)
+    assert_equal(machine.acknowledged, Optional[UInt64](10))
+    plan = machine.prepare_dialog(queue, context, False, UInt64(2), False)
+    machine.commit(queue, context, plan)
+    assert_equal(machine.acknowledged, Optional[UInt64](10))
+    machine.next = 15
+    machine.reset_session()
+    assert_equal(machine.acknowledged, Optional[UInt64](15))
+    machine.next = 0
+    machine.reset_session()
+    assert_equal(machine.acknowledged, Optional[UInt64](15))
     print(cases)

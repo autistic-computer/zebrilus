@@ -2484,7 +2484,10 @@ impl MuxClient {
         cx: &mut Context<Self>,
     ) {
         self.seed_core(EventPayload::PrefixCancelled { request_id });
-        self.prefix_cancelled_request = self.prefix_cancelled_request.max(Some(request_id));
+        self.prefix_cancelled_request = zz_client::desktop_input::desktop_prefix_acknowledged(
+            self.prefix_cancelled_request,
+            request_id,
+        );
         cx.notify();
     }
 
@@ -3527,11 +3530,10 @@ impl MuxClient {
         connection.resync_pending = false;
         connection.full_requests_pending.clear();
         connection.history.clear();
-        if self.next_prefix_cancel_request != 0 {
-            self.prefix_cancelled_request = self
-                .prefix_cancelled_request
-                .max(Some(self.next_prefix_cancel_request));
-        }
+        self.prefix_cancelled_request = zz_client::desktop_input::desktop_prefix_reset(
+            self.prefix_cancelled_request,
+            self.next_prefix_cancel_request,
+        );
         self.core.reset_session();
         self.command_prompt_revision = self.command_prompt_revision.wrapping_add(1).max(1);
         self.command_output = None;
@@ -4424,7 +4426,11 @@ impl MuxClient {
                 "prefix_armed_received armed={armed}"
             ),
             CoreEvent::PrefixCancelled { request_id } => {
-                self.prefix_cancelled_request = self.prefix_cancelled_request.max(Some(request_id));
+                self.prefix_cancelled_request =
+                    zz_client::desktop_input::desktop_prefix_acknowledged(
+                        self.prefix_cancelled_request,
+                        request_id,
+                    );
             }
             CoreEvent::CommandPromptChanged => {
                 self.command_prompt_revision = self.command_prompt_revision.wrapping_add(1).max(1);
