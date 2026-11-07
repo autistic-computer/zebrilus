@@ -1,3 +1,4 @@
+from std.memory import ArcPointer
 from .chrome_keymap import ChromeKeymap, ChromeBinding, chrome_key, MAX_CHROME_BINDINGS, MAX_CHROME_RETAINED_BYTES
 from .chrome_actions import ChromeAction
 from .desktop_key_config import desktop_ala_source, _lower
@@ -162,8 +163,10 @@ struct NativeChromeRecord(Copyable, Movable):
 
 @fieldwise_init
 struct NativeChromePrepared(Movable):
+    var owner: ArcPointer[UInt8]
     var generation: UInt64
     var map_version: UInt64
+    var map_bindings: List[ChromeBinding]
     var bound: List[ChromeBinding]
     var records: List[NativeChromeRecord]
     var retained_bytes: Int
@@ -171,6 +174,7 @@ struct NativeChromePrepared(Movable):
 
 @fieldwise_init
 struct NativeChromeQuery(Copyable, Movable):
+    var owner: ArcPointer[UInt8]
     var generation: UInt64
     var matches: List[Int]
     var pending: Bool
@@ -181,6 +185,19 @@ def _same_strokes(left: List[NativeKeystroke], right: List[NativeKeystroke]) -> 
         return False
     for index in range(len(left)):
         if left[index] != right[index]:
+            return False
+    return True
+
+
+def _same_owner(left: ArcPointer[UInt8], right: ArcPointer[UInt8]) -> Bool:
+    return Int(Pointer(to=left[])) == Int(Pointer(to=right[]))
+
+
+def _same_bindings(left: List[ChromeBinding], right: List[ChromeBinding]) -> Bool:
+    if len(left) != len(right):
+        return False
+    for index in range(len(left)):
+        if left[index].table != right[index].table or left[index].key != right[index].key or left[index].action != right[index].action:
             return False
     return True
 
@@ -229,6 +246,7 @@ def _admit(mut records: List[NativeChromeRecord], mut size: Int, var record: Nat
 
 
 struct DesktopNativeKeymap(Movable):
+    var _owner: ArcPointer[UInt8]
     var generation: UInt64
     var bound: List[ChromeBinding]
     var records: List[NativeChromeRecord]
@@ -239,6 +257,7 @@ struct DesktopNativeKeymap(Movable):
     def __init__(out self, macos: Bool = False, windows: Bool = False) raises:
         if macos and windows:
             raise Error("native chrome platform is inconsistent")
+        self._owner = ArcPointer(UInt8(0))
         self.generation = 0
         self.bound = List[ChromeBinding]()
         self.records = List[NativeChromeRecord]()
@@ -278,10 +297,10 @@ struct DesktopNativeKeymap(Movable):
                     var record = _record(context, chord, self.macos)
                     if record:
                         _admit(records, size, record.take())
-        return NativeChromePrepared(self.generation, map.version(), bound^, records^, size)
+        return NativeChromePrepared(self._owner.copy(), self.generation, map.version(), map.bindings(), bound^, records^, size)
 
     def commit(mut self, map: ChromeKeymap, var prepared: NativeChromePrepared) raises:
-        if prepared.generation != self.generation or prepared.map_version != map.version() or self.generation == UInt64.MAX:
+        if not _same_owner(self._owner, prepared.owner) or prepared.generation != self.generation or prepared.map_version != map.version() or not _same_bindings(prepared.map_bindings, map._bindings) or self.generation == UInt64.MAX:
             raise Error("native chrome installation is stale")
         swap(self.bound, prepared.bound)
         swap(self.records, prepared.records)
@@ -336,10 +355,10 @@ struct DesktopNativeKeymap(Movable):
                         present = present or _same_strokes(self.records[old].strokes, record.strokes)
                     if not present:
                         pending.append(index)
-        return NativeChromeQuery(self.generation, matches^, len(pending) > 0)
+        return NativeChromeQuery(self._owner.copy(), self.generation, matches^, len(pending) > 0)
 
     def resolve(self, query: NativeChromeQuery, index: Int) raises -> NativeChromeRecord:
-        if query.generation != self.generation or index < 0 or index >= len(query.matches):
+        if not _same_owner(self._owner, query.owner) or query.generation != self.generation or index < 0 or index >= len(query.matches):
             raise Error("native chrome query is stale or out of bounds")
         var record = query.matches[index]
         if record < 0 or record >= len(self.records):
