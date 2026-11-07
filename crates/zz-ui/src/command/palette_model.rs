@@ -271,6 +271,75 @@ pub(crate) struct UnifiedPalette {
     pub show_keys: bool,
 }
 
+pub struct PaletteRowNavigation {
+    pub initial: Option<usize>,
+    pub next: Option<usize>,
+    pub parents: Vec<Option<usize>>,
+    pub children: Vec<Option<usize>>,
+}
+
+#[must_use]
+pub fn palette_row_navigation(
+    rows: &[(u8, bool, u32, u8, u32)],
+    current_window: Option<u32>,
+    selected: Option<usize>,
+    direction: isize,
+) -> PaletteRowNavigation {
+    let mut state = UnifiedPalette::new(None);
+    state.chooser_current_window = current_window;
+    state.rows = rows
+        .iter()
+        .map(|&(kind, current, indent, expanded, choice)| PaletteEntry {
+            row: PaletteRow {
+                right: if current { "current" } else { "" }.into(),
+                indent: f32::from_bits(indent),
+                expanded: match expanded {
+                    0 => None,
+                    1 => Some(false),
+                    _ => Some(true),
+                },
+                ..Default::default()
+            },
+            action: match kind {
+                0 => None,
+                1 => Some(PaletteAction::Target {
+                    host: PaletteHostId(0),
+                    target: PaletteTarget::Window(WindowId(0)),
+                    label: String::new(),
+                }),
+                2 => Some(PaletteAction::ChooseWindow(choice)),
+                _ => Some(PaletteAction::History(String::new())),
+            },
+            hint: "",
+            score: 0,
+        })
+        .collect();
+    PaletteRowNavigation {
+        initial: state.initial_selection(),
+        next: state.navigate(selected, direction),
+        parents: (0..=rows.len() + 1)
+            .map(|index| state.parent_index(index))
+            .collect(),
+        children: (0..=rows.len() + 1)
+            .map(|index| state.child_index(index))
+            .collect(),
+    }
+}
+
+#[must_use]
+pub fn palette_layer_pop(bits: u8, count: usize) -> (Vec<bool>, u8) {
+    let mut state = UnifiedPalette::new((bits & 2 != 0).then_some(PaletteMode::Command));
+    state.command = (bits & 1 != 0)
+        .then(|| command_specs().find(|command| command.name == "new-session"))
+        .flatten();
+    state.host = (bits & 4 != 0).then_some(PaletteHostId(0));
+    let results = (0..count).map(|_| state.pop_layer()).collect();
+    let remaining = u8::from(state.command.is_some())
+        | (u8::from(state.mode.is_some()) << 1)
+        | (u8::from(state.host.is_some()) << 2);
+    (results, remaining)
+}
+
 impl UnifiedPalette {
     pub fn new(mode: Option<PaletteMode>) -> Self {
         let settings = PaletteSettings::default();

@@ -11,8 +11,9 @@ pub use level::{
     palette_recents, record_recent,
 };
 pub use palette_model::{
-    PaletteChat, PaletteHostId, PaletteMode, PaletteSettings, PaletteTarget, PaletteTree,
-    PaletteTreeHost, PaletteTreePane, PaletteTreeSession, PaletteTreeWindow, palette_chats,
+    PaletteChat, PaletteHostId, PaletteMode, PaletteRowNavigation, PaletteSettings, PaletteTarget,
+    PaletteTree, PaletteTreeHost, PaletteTreePane, PaletteTreeSession, PaletteTreeWindow,
+    palette_chats, palette_layer_pop, palette_row_navigation,
 };
 pub use palette_places::palette_fleet;
 pub use palette_view::{
