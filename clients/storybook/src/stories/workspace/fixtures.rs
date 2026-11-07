@@ -304,6 +304,7 @@ pub fn status_pane(id: u64, label: &str, kind: PaneKindSnapshot, active: bool) -
         &StatusBarPane {
             id: PaneId(id),
             label: label.into(),
+            program: zz_client::program::resolve([label]),
             kind,
             active,
         },

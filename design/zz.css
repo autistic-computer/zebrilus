@@ -39,11 +39,23 @@
   gap: 5px;
   width: 240px;
   min-width: 36px;
-  height: 32px;
+  height: 28px;
   padding: 0 10px 0 9px;
   font-size: 14px;
   line-height: 18px;
   white-space: nowrap;
+}
+
+[data-penna="tab.strip"] {
+  display: flex;
+  flex-shrink: 1;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  padding: 2px;
+  overflow: hidden;
+  --penna-around: 2px;
+  --penna-around-rows: 28px;
 }
 
 [data-penna="tab.window"]:not([aria-selected="true"], [data-state~="selected"], [data-state~="current"]) {

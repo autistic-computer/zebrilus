@@ -22,7 +22,7 @@ use ala::{
     prelude::*, px,
 };
 pub use penna::blocks::sidebar::sidebar_fade as workspace_sidebar_fade;
-use penna::{Panel, PanelLook, Row, RowLook, Space, Tab, TabLook, TextStyle};
+use penna::{Panel, PanelLook, Row, RowLook, Space, Tab, TabLook, TabStrip, TextStyle};
 
 pub const WORKSPACE_TREE_ROW_HEIGHT: f32 = 32.0;
 pub const WORKSPACE_TREE_INDENT_WIDTH: f32 = 20.0;
@@ -36,6 +36,7 @@ const WORKSPACE_ROW_ACTION_GAP: f32 = 10.0;
 const WORKSPACE_SIDEBAR_ACTIONS_GAP: f32 = 8.0;
 pub const WORKSPACE_SIDEBAR_FADE_HEIGHT: Pixels = px(40.0);
 pub const WORKSPACE_STATUS_PILL_HEIGHT: Pixels = px(32.0);
+pub const WORKSPACE_STATUS_TAB_HEIGHT: Pixels = px(28.0);
 const WORKSPACE_STATUS_LINE_HEIGHT: Pixels = px(18.0);
 const WORKSPACE_STATUS_WINDOW_DEFAULT_WIDTH: Pixels = px(240.0);
 const WORKSPACE_STATUS_WINDOW_MIN_WIDTH: Pixels = px(36.0);
@@ -192,6 +193,16 @@ pub fn workspace_chrome_controls_width_for(count: usize, window: &Window) -> Pix
 }
 
 #[must_use]
+pub fn workspace_status_bar_ground(cx: &App) -> Ground {
+    cx.theme().ground_of(penna::BarLook::Window)
+}
+
+#[must_use]
+pub fn workspace_status_tab_ground(cx: &App) -> Ground {
+    TabStrip::ground(workspace_status_bar_ground(cx), cx)
+}
+
+#[must_use]
 #[allow(clippy::too_many_arguments)]
 pub fn workspace_status_window(
     id: impl Into<ElementId>,
@@ -210,6 +221,7 @@ pub fn workspace_status_window(
         .text_fade(crate::LABEL_FADE)
         .child(name);
     Tab::new(id, TabLook::Window)
+        .on(workspace_status_tab_ground(cx))
         .state(state.paint_state())
         .interactive(state.connected)
         .when(state.connected, ala::Styled::cursor_pointer)
@@ -219,7 +231,7 @@ pub fn workspace_status_window(
         .w(WORKSPACE_STATUS_WINDOW_DEFAULT_WIDTH)
         .min_w(WORKSPACE_STATUS_WINDOW_MIN_WIDTH)
         .max_w(WORKSPACE_STATUS_WINDOW_DEFAULT_WIDTH)
-        .h(WORKSPACE_STATUS_PILL_HEIGHT)
+        .h(WORKSPACE_STATUS_TAB_HEIGHT)
         .items_center()
         .gap(px(5.0))
         .px(px(9.0))

@@ -46,8 +46,9 @@ pub fn status_window(
     let group: SharedString = format!("status-window-{id:?}").into();
     let close_button = actions.close.clone();
     let tooltip = name.clone();
-    let ground = cx.theme().ground_at(TabLook::Window, state.paint_state());
-    let hovered = cx.theme().ground_at(TabLook::Window, PaintState::Hover);
+    let tab = penna::Surface::from(TabLook::Window).on(super::workspace_status_tab_ground(cx));
+    let ground = cx.theme().ground_at(tab, state.paint_state());
+    let hovered = cx.theme().ground_at(tab, PaintState::Hover);
     let hovers = state.connected && !state.active;
     let deck = status_pane_deck(
         ElementId::Name(format!("status-window-panes-{id:?}").into()),

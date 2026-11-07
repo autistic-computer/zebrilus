@@ -741,7 +741,9 @@ function renderTitlebar() {
   if (inline || !state.client) return;
   const model = JSON.parse(state.client.status_bar());
   const strip = el("div", { class: "window-strip" });
-  strip.append(...model.windows.map(windowTab));
+  const tabs = el("div", { class: "window-tabs", "data-penna": "tab.strip", role: "tablist" });
+  tabs.append(...model.windows.map(windowTab));
+  if (model.windows.length) strip.append(tabs);
   if (model.overflow) {
     const more = el("button", { "data-penna": "chrome.button", class: "overflow", title: "All windows" }, `<i data-icon="ellipsis"></i>`);
     more.disabled = !state.connected;
@@ -754,7 +756,7 @@ function renderTitlebar() {
         model.overflow.map((entry) => [entry.label, () => state.client.window_command(entry.id, "select"), entry.active ? "check" : "app-window"]),
       );
     });
-    strip.append(more);
+    tabs.append(more);
   }
   const toggle = el("button", { "data-penna": "chrome.button", class: "titlebar-toggle", title: "Toggle sidebar" }, `<i data-icon="panel-left"></i>`);
   toggle.addEventListener("click", () => emit("toggleSidebar"));

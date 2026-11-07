@@ -183,6 +183,10 @@ the script before it. `pane_program` resolves terminal panes only; Agent panes k
 provider's icon until the kind was removed on 2026-10-23, and `pane_agent` now maps a terminal whose
 program is `claude` or `codex` to its provider, which is what gets the lens button.
 
+**Every pane stack shows it.** The window tabs' stacks in the title bar take the same faces as the
+flat sidebar's: `StatusBarPane.program` carries `pane_program`, and a stack tile draws the
+program's colors unless `program-colors` is off.
+
 **The tree draws the mark alone.** The session tree on desktop, web and iPad puts the program's
 mark, without its tile, in the row's ink where the kind icon was (`zz_ui::program::program_mark`):
 on a pane row, and on a folded window row for its active pane. A logo with more than one color has

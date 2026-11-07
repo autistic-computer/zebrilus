@@ -51,10 +51,8 @@
   display: flex;
   flex: 1;
   align-items: center;
-  gap: 2px;
   min-width: 0;
   height: 100%;
-  padding: 0 2px;
   overflow: hidden;
 }
 
