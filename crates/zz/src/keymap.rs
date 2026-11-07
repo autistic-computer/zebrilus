@@ -1,13 +1,13 @@
 use std::{collections::BTreeMap, rc::Rc};
 
 use ala::{App, Global, KeyBinding, Keystroke};
-use zz_client::{CHROME_TABLES, ChromeAction, ChromeKey, ChromeKeymap, InputRouter};
+use zz_client::{ChromeAction, ChromeKeymap, InputRouter};
 use zz_terminal::KeyAction;
 
 use crate::mux::prefix::terminal_key_input;
 
 #[cfg(test)]
-use zz_client::{BROWSER_TABLE, ChromeProfile};
+use zz_client::{BROWSER_TABLE, ChromeKey, ChromeProfile};
 pub(crate) use zz_config::keymap::{ChromeOverride, ala_source};
 #[cfg(test)]
 use zz_config::keymap::{parse_bind, parse_unbind, tmux_key_name};
@@ -49,16 +49,9 @@ pub(crate) fn install(overrides: &[ChromeOverride], element_selector_hotkey: &st
     let keymap = zz_config::keymap::configured_keymap(overrides, element_selector_hotkey);
 
     let bound = bound_chords(&keymap);
-    let dropped: Vec<_> = cx
+    let dropped = cx
         .try_global::<ChromeState>()
-        .map(|state| {
-            state
-                .bound
-                .iter()
-                .filter(|(chord, _)| !bound.contains_key(*chord))
-                .map(|((table, key), action)| (*table, key.clone(), *action))
-                .collect()
-        })
+        .map(|state| zz_config::keymap::dropped_chords(&state.bound, &bound))
         .unwrap_or_default();
     log::info!(
         target: "zz::config",
@@ -133,34 +126,15 @@ fn chords(cx: &App, table: &str) -> Vec<ChromeChord> {
     let Some(state) = cx.try_global::<ChromeState>() else {
         return Vec::new();
     };
-    let mut chords = state
-        .keymap
-        .table_bindings(table)
+    zz_config::keymap::native_chords(&state.keymap, &state.dropped, table)
         .into_iter()
-        .filter_map(|(key, action)| {
-            Some(ChromeChord {
-                action,
-                source: ala_source(&key)?,
-                key: key.to_string(),
-                live: true,
-            })
+        .map(|chord| ChromeChord {
+            action: chord.action,
+            key: chord.key,
+            source: chord.source,
+            live: chord.live,
         })
-        .collect::<Vec<_>>();
-    chords.extend(
-        state
-            .dropped
-            .iter()
-            .filter(|(dropped, _, _)| *dropped == table)
-            .filter_map(|(_, key, action)| {
-                Some(ChromeChord {
-                    action: *action,
-                    source: ala_source(&ChromeKey::parse(key)?)?,
-                    key: key.clone(),
-                    live: false,
-                })
-            }),
-    );
-    chords
+        .collect()
 }
 
 #[cfg(test)]
@@ -186,15 +160,7 @@ pub(crate) fn test_chords(table: &str) -> Vec<ChromeChord> {
 }
 
 fn bound_chords(keymap: &ChromeKeymap) -> BTreeMap<(&'static str, String), ChromeAction> {
-    CHROME_TABLES
-        .iter()
-        .flat_map(|table| {
-            keymap
-                .table_bindings(table)
-                .into_iter()
-                .map(move |(key, action)| ((*table, key.to_string()), action))
-        })
-        .collect()
+    zz_config::keymap::bound_chords(keymap)
 }
 
 #[cfg(test)]

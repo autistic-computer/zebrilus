@@ -136,10 +136,8 @@ pub fn init(cx: &mut App) {
 }
 
 fn raw_key_bindings() -> [KeyBinding; 2] {
-    [
-        KeyBinding::new("tab", NoAction, Some(TERMINAL_KEY_CONTEXT)),
-        KeyBinding::new("shift-tab", NoAction, Some(TERMINAL_KEY_CONTEXT)),
-    ]
+    zz_client::desktop_surface::TERMINAL_RAW_CHORDS
+        .map(|source| KeyBinding::new(source, NoAction, Some(TERMINAL_KEY_CONTEXT)))
 }
 
 fn terminal_key_bindings(chords: &[ChromeChord]) -> Vec<KeyBinding> {

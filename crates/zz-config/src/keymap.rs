@@ -1,3 +1,9 @@
+mod native;
+pub use native::{
+    BoundChromeChords, DroppedChromeChords, NativeChromeChord, bound_chords, dropped_chords,
+    native_chords,
+};
+
 use zz_client::{CHROME_TABLES, ChromeAction, ChromeKey};
 
 #[derive(Clone, Debug, Eq, PartialEq)]

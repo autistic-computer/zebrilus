@@ -1,5 +1,7 @@
 use crate::ChromeAction;
 
+pub const TERMINAL_RAW_CHORDS: [&str; 2] = ["tab", "shift-tab"];
+
 pub const MIN_TERMINAL_FONT_SIZE_POINTS: f32 = 1.0;
 pub const MAX_TERMINAL_FONT_SIZE_POINTS: f32 = 256.0;
 
@@ -217,4 +219,32 @@ pub const fn browser_native_binding(action: ChromeAction) -> BrowserNativeBindin
         ChromeAction::ClosePane => BrowserNativeBinding::ClosePane,
         _ => BrowserNativeBinding::None,
     }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum UiNativeBinding {
+    None,
+    Increase,
+    Decrease,
+    Reset,
+}
+
+#[must_use]
+pub const fn ui_native_binding(action: ChromeAction) -> UiNativeBinding {
+    match action {
+        ChromeAction::UiZoomIn => UiNativeBinding::Increase,
+        ChromeAction::UiZoomOut => UiNativeBinding::Decrease,
+        ChromeAction::UiZoomReset => UiNativeBinding::Reset,
+        _ => UiNativeBinding::None,
+    }
+}
+
+#[must_use]
+pub fn ui_zoom_for_percent(percent: f32) -> f32 {
+    percent.clamp(50.0, 300.0) / 100.0
+}
+
+#[must_use]
+pub fn ui_percent_for_zoom(zoom: f32) -> f32 {
+    zoom * 100.0
 }

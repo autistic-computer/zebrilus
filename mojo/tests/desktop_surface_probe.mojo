@@ -84,7 +84,7 @@ def main() raises:
     with assert_raises():
         _ = terminal_chrome_key_action(ChromeAction(255, 0), False, False, False)
     with assert_raises():
-        _ = desktop_native_binding(3, ChromeAction(0, 0))
+        _ = desktop_native_binding(4, ChromeAction(0, 0))
     with assert_raises():
         _ = desktop_native_binding(0, ChromeAction(23, 1))
     print(decisions, bindings, floats, steps)

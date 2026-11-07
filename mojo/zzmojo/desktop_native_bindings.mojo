@@ -8,7 +8,7 @@ struct DesktopNativeBinding(TrivialRegisterPassable):
 
 
 def desktop_native_binding(context: UInt8, action: ChromeAction) raises -> DesktopNativeBinding:
-    if context > 2 or not ChromeActions().decode(action.code()):
+    if context > 3 or not ChromeActions().decode(action.code()):
         raise Error("native chrome context or action identity is invalid")
     var kind = action.kind
     if context == 0:
@@ -27,9 +27,11 @@ def desktop_native_binding(context: UInt8, action: ChromeAction) raises -> Deskt
     elif context == 1:
         if kind >= 13 and kind <= 22:
             return DesktopNativeBinding(kind - 12, 0)
-    else:
+    elif context == 2:
         if kind >= 30 and kind <= 50:
             return DesktopNativeBinding(kind - 29, action.index if kind == 37 else UInt8(0))
         if kind == 7:
             return DesktopNativeBinding(22, 0)
+    elif kind >= 10 and kind <= 12:
+        return DesktopNativeBinding(kind - 9, 0)
     return DesktopNativeBinding(0, 0)

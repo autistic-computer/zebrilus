@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use ala::{App, Global, KeyBinding, Pixels, Window, WindowId};
 use penna::{ROOT_KEY_CONTEXT, UiZoom};
-use zz_client::{ChromeAction, UI_TABLE};
+use zz_client::UI_TABLE;
 
 use crate::keymap::ChromeChord;
 
@@ -108,15 +108,16 @@ pub fn is_effective_percent(percent: f32, cx: &App) -> bool {
 }
 
 pub(crate) fn key_bindings(chords: &[ChromeChord]) -> Vec<KeyBinding> {
+    use zz_client::desktop_surface::{UiNativeBinding as Binding, ui_native_binding};
     let context = Some(ROOT_KEY_CONTEXT);
     chords
         .iter()
         .filter_map(|chord| {
-            Some(match chord.action() {
-                ChromeAction::UiZoomIn => chord.binding(IncreaseUiZoom, context),
-                ChromeAction::UiZoomOut => chord.binding(DecreaseUiZoom, context),
-                ChromeAction::UiZoomReset => chord.binding(ResetUiZoom, context),
-                _ => return None,
+            Some(match ui_native_binding(chord.action()) {
+                Binding::Increase => chord.binding(IncreaseUiZoom, context),
+                Binding::Decrease => chord.binding(DecreaseUiZoom, context),
+                Binding::Reset => chord.binding(ResetUiZoom, context),
+                Binding::None => return None,
             })
         })
         .collect()
@@ -127,11 +128,11 @@ fn effective_percent(cx: &App) -> f32 {
 }
 
 fn zoom_for_percent(percent: f32) -> f32 {
-    percent.clamp(MIN_UI_ZOOM, MAX_UI_ZOOM) / 100.0
+    zz_client::desktop_surface::ui_zoom_for_percent(percent)
 }
 
 fn percent_for_zoom(zoom: f32) -> f32 {
-    zoom * 100.0
+    zz_client::desktop_surface::ui_percent_for_zoom(zoom)
 }
 
 #[cfg(test)]
