@@ -129,13 +129,13 @@
     return text.split(".")[1]?.length ?? 0;
   }
 
-  function step(field, direction) {
+  function step(field, direction, from) {
     const input = field.querySelector("input");
     if (!input || input.disabled) return;
     const size = Number(field.dataset.step ?? 1);
     const min = field.dataset.min === undefined ? null : Number(field.dataset.min);
     const max = field.dataset.max === undefined ? null : Number(field.dataset.max);
-    const current = input.value.trim();
+    const current = (from ?? input.value).trim();
     const parsed = current === "" || Number.isNaN(Number(current)) ? null : Number(current);
     let value = (parsed ?? 0) + direction * size;
     let places = Math.max(digits(current), digits(String(size)));
@@ -147,9 +147,50 @@
       value = max;
       places = Math.max(places, digits(String(max)));
     }
-    if (parsed !== null && (direction > 0 ? value <= parsed : value >= parsed)) return;
+    if (from === undefined && parsed !== null && (direction > 0 ? value <= parsed : value >= parsed)) return;
+    if (input.value === value.toFixed(places)) return;
     input.value = value.toFixed(places);
     input.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+
+  function offsetAt(input, x) {
+    const value = input.value;
+    const full = textWidth(input, value);
+    const align = getComputedStyle(input).textAlign;
+    const room = input.clientWidth;
+    const lead = align === "center" ? (room - full) / 2 : align === "right" || align === "end" ? room - full : 0;
+    const local = x - input.getBoundingClientRect().left - input.clientLeft - Math.max(0, lead) + input.scrollLeft;
+    let best = 0;
+    for (let index = 1; index <= value.length; index++) {
+      if (Math.abs(textWidth(input, value.slice(0, index)) - local) < Math.abs(textWidth(input, value.slice(0, best)) - local)) best = index;
+    }
+    return best;
+  }
+
+  function scrub(field, input) {
+    input.addEventListener("mousedown", (event) => {
+      if (event.button !== 0 || input.disabled || document.activeElement === input || event.sourceCapabilities?.firesTouchEvents) return;
+      event.preventDefault();
+      input.focus();
+      const start = event.clientX;
+      const from = input.value;
+      let moved = false;
+      const move = (event) => {
+        const dx = event.clientX - start;
+        if (!moved && Math.abs(dx) < 3) return;
+        moved = true;
+        step(field, Math.trunc(dx / 4), from);
+      };
+      const up = (event) => {
+        document.removeEventListener("mousemove", move);
+        if (moved) return;
+        const at = offsetAt(input, event.clientX);
+        input.setSelectionRange(at, at);
+        paintCaret(input);
+      };
+      document.addEventListener("mousemove", move);
+      document.addEventListener("mouseup", up, { once: true });
+    });
   }
 
   function wire() {
@@ -215,6 +256,7 @@
         const next = input.value.slice(0, input.selectionStart) + event.data + input.value.slice(input.selectionEnd);
         if (!/^[-+]?\d*\.?\d*$/.test(next)) event.preventDefault();
       });
+      scrub(field, input);
       input.addEventListener("keydown", (event) => {
         if (event.key === "ArrowUp" || event.key === "ArrowDown") {
           event.preventDefault();

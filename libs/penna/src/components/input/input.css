@@ -283,6 +283,10 @@
   height: 100%;
 }
 
+.penna-number:not([data-disabled]) > .penna-input > input:not(:focus) {
+  cursor: ew-resize;
+}
+
 :is(.penna-input, .penna-number)[data-penna]:not([data-disabled]):active {
   --penna-fill: var(--input-hover-fill);
 }

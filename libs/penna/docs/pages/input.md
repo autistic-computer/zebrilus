@@ -16,7 +16,7 @@ New windows open in the current directory.</textarea></label><span class="docs-n
 
 - **Field**: the default.
 - **Outline**: on a ground with its own fill.
-- **Number**: steps with its buttons or Up and Down.
+- **Number**: steps with its buttons or Up and Down; slide on the value to scrub it, a step per 4 points.
 - **Multi-line**: grows with its text, then scrolls.
 
 ```rust
