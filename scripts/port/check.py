@@ -90,6 +90,8 @@ def main():
         stage("penna-export", ["cargo", "run", "--locked", "--example", "theme_css", "--", str(mjui / "build/penna-tokens")], cwd=penna)
         stage("appearance-values", ["python3", "scripts/port/appearance_differential.py"])
         stage("mjui-controls", ["bash", "scripts/penna/check.sh"], cwd=mjui)
+        stage("mjui-native-components", ["bash", "scripts/penna/components_check.sh"], cwd=mjui)
+        stage("mjui-native-palette-rows", ["python3", "scripts/penna/palette_rows.py"], cwd=mjui)
         stage("appearance-render", ["bash", "scripts/penna/render.sh"], cwd=mjui)
         stage("appearance-pixels", ["python3", "scripts/port/appearance_pixels.py"])
 
