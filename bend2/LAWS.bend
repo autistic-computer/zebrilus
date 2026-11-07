@@ -6,6 +6,7 @@ import ./terminal_cells_laws.bend as Cells
 import ./terminal_cells_origins_laws.bend as CellOrigins
 import ./tree_laws.bend as Tree
 import ./input_router_laws.bend as InputRouter
+import ./input_router_transaction_laws.bend as InputTransaction
 
 law swap_preserves_count:
   for +node: Core.Layout
