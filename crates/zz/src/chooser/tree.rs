@@ -1,4 +1,5 @@
 use ala::{AnyElement, Entity, MouseButton, prelude::*};
+use zz_client::chooser::tree_row_text;
 use zz_protocol::{
     ChooseTreeAction, ChooseTreeItem, ChooseTreeKind, ChooseTreePaneKind, ChooseTreeState,
     InputMessage,
@@ -188,14 +189,6 @@ fn tree_row_element(
         selected,
         TERMINAL_FONT,
     )
-}
-
-fn tree_row_text(item: &ChooseTreeItem) -> (String, String) {
-    if item.text.is_empty() {
-        (item.label.clone(), item.detail.clone())
-    } else {
-        (item.text.clone(), String::new())
-    }
 }
 
 #[cfg(test)]

@@ -7,10 +7,10 @@ use ala::{
     SharedString, Styled as _, div, prelude::*, px, relative,
 };
 use penna::{Bar, BarLook, Label, Panel, PanelLook, RowLook, RuleLook, TextStyle};
-use zz_client::chooser::SEARCH_HINTS;
-pub use zz_client::chooser::{ChooserHint, chooser_has_key_gutter, chooser_subtitle};
-
-pub const CHOOSER_ROW_HEIGHT: f32 = 40.0;
+pub use zz_client::chooser::{
+    CHOOSER_ROW_HEIGHT, ChooserHint, chooser_has_key_gutter, chooser_subtitle,
+};
+use zz_client::chooser::{SEARCH_HINTS, chooser_modal_height};
 
 #[derive(Clone)]
 pub struct ChooserSearch {
@@ -91,9 +91,8 @@ impl ChooserModal {
 
 impl RenderOnce for ChooserModal {
     fn render(self, window: &mut ala::Window, cx: &mut App) -> impl IntoElement {
-        let rows = f32::from(u8::try_from(self.dimensions.row_count.min(10)).unwrap_or(10));
-        let notices = u8::from(self.help) + u8::from(self.prompt.is_some());
-        let height = 106.0 + rows * CHOOSER_ROW_HEIGHT + f32::from(notices) * 36.0;
+        let height =
+            chooser_modal_height(self.dimensions.row_count, self.help, self.prompt.is_some());
         let ground = cx.theme().ground_of(PanelLook::Picker);
         let notice = |id: &'static str, text: SharedString, cx: &App| {
             Bar::new(id, BarLook::Plain)

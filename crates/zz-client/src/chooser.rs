@@ -1,4 +1,7 @@
-use zz_protocol::{ChooseBufferItem, ChooseTreeKind};
+use zz_protocol::{ChooseBufferItem, ChooseTreeItem, ChooseTreeKind};
+use zz_terminal::Modifiers;
+
+pub const CHOOSER_ROW_HEIGHT: f32 = 40.0;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ChooserHint {
@@ -47,6 +50,27 @@ pub fn chooser_subtitle(summary: impl Into<String>, filter_no_matches: bool) -> 
         format!("{summary} · filter: no matches")
     } else {
         summary
+    }
+}
+
+#[must_use]
+pub fn chooser_modal_height(row_count: usize, help: bool, prompt: bool) -> f32 {
+    let rows = f32::from(u8::try_from(row_count.min(10)).unwrap_or(10));
+    let notices = u8::from(help) + u8::from(prompt);
+    106.0 + rows * CHOOSER_ROW_HEIGHT + f32::from(notices) * 36.0
+}
+
+#[must_use]
+pub const fn chooser_key_is_text(search: bool, character: bool, modifiers: Modifiers) -> bool {
+    search && character && !modifiers.control() && !modifiers.platform() && !modifiers.alt()
+}
+
+#[must_use]
+pub fn tree_row_text(item: &ChooseTreeItem) -> (String, String) {
+    if item.text.is_empty() {
+        (item.label.clone(), item.detail.clone())
+    } else {
+        (item.text.clone(), String::new())
     }
 }
 

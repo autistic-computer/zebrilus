@@ -15,6 +15,7 @@ use zz_ui::chooser::{
     ChooserDimensions, ChooserModal, ChooserSearch as ChooserSearchView, chooser_has_key_gutter,
 };
 
+use zz_client::chooser::chooser_key_is_text;
 use zz_terminal::{KeyAction, KeyInput};
 
 use crate::{
@@ -160,12 +161,16 @@ impl<S: ChooserSpec> Chooser<S> {
     fn on_key_down(&mut self, event: &KeyDownEvent, _: &mut Window, cx: &mut Context<Self>) {
         let keystroke = &event.keystroke;
         let modifiers = keystroke.modifiers;
-        if self.search_active
-            && keystroke.key_char.is_some()
-            && !modifiers.control
-            && !modifiers.platform
-            && !modifiers.alt
-        {
+        if chooser_key_is_text(
+            self.search_active,
+            keystroke.key_char.is_some(),
+            zz_terminal::Modifiers::new(
+                modifiers.shift,
+                modifiers.control,
+                modifiers.alt,
+                modifiers.platform,
+            ),
+        ) {
             return;
         }
         let input = terminal_key_input(keystroke, KeyAction::Press);
