@@ -1,3 +1,4 @@
+from .key_spelling import canonical_protocol_key
 from .protocol import (
     append_uint,
     append_text,
@@ -635,36 +636,7 @@ def decode_routing_event(
 
 
 def canonical_key(value: String) raises -> String:
-    var rest = String(value.strip())
-    if value == " " or rest == "Space":
-        return " "
-    if rest.lower() == "none":
-        return "None"
-    var control = False
-    var alt = False
-    while True:
-        var skip = 0
-        if rest.startswith("Ctrl-"):
-            control = True
-            skip = 5
-        elif rest.startswith("C-"):
-            control = True
-            skip = 2
-        elif rest.startswith("Alt-"):
-            alt = True
-            skip = 4
-        elif rest.startswith("M-"):
-            alt = True
-            skip = 2
-        if skip == 0:
-            break
-        var tail = String(from_utf8=rest.as_bytes()[skip:])
-        rest = tail^
-    if not control and not alt:
-        return rest^
-    if rest == "Space" or (rest.byte_length() == 0 and value.endswith(" ")):
-        rest = " "
-    return String("C-" if control else "", "M-" if alt else "", rest)
+    return canonical_protocol_key(value)
 
 
 def input_key_name(input: KeyInput) raises -> String:
