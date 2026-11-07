@@ -50,7 +50,7 @@ const TMUX_USAGE: &str = concat!(
     "usage: zz [-2CDhlNuVv] [-c shell-command] [-f file] [-L socket-name]\n",
     "            [-S socket-path] [-T features] [command [flags]]"
 );
-const NATIVE_ATTACH_USAGE: &str = "zz: usage: zz [--host <name>] attach [--restart-daemon] [-dEr] [-c working-directory] [-f flags] [session]";
+pub const NATIVE_ATTACH_USAGE: &str = "zz: usage: zz [--host <name>] attach [--restart-daemon] [-dEr] [-c working-directory] [-f flags] [session]";
 const NATIVE_APP_USAGE: &str = "zz: usage: zz app";
 const ALL_HOSTS: &str = "all";
 const SSH_LOGIN_REFUSED: &str = "ssh rejected the login";
@@ -177,19 +177,19 @@ fn parse_daemon_bootstrap_arguments(
 }
 
 #[derive(Debug, PartialEq, Eq)]
-struct NativeAttachArguments {
-    restart_daemon: bool,
-    detach_others: bool,
-    detach_others_hangup: bool,
-    no_update_environment: bool,
-    read_only: bool,
-    client_flags: Option<String>,
-    working_directory: Option<String>,
-    session: Option<String>,
+pub struct NativeAttachArguments {
+    pub restart_daemon: bool,
+    pub detach_others: bool,
+    pub detach_others_hangup: bool,
+    pub no_update_environment: bool,
+    pub read_only: bool,
+    pub client_flags: Option<String>,
+    pub working_directory: Option<String>,
+    pub session: Option<String>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
-enum NativeAttachArgumentError {
+pub enum NativeAttachArgumentError {
     Usage,
     NativeUsage,
     Command(ServerError),
@@ -1760,7 +1760,7 @@ fn tmux_command_starts_server(command: &str) -> bool {
     )
 }
 
-fn parse_native_attach_arguments(
+pub fn parse_native_attach_arguments(
     arguments: impl IntoIterator<Item = RawText>,
 ) -> Result<NativeAttachArguments, NativeAttachArgumentError> {
     let spec = catalog_command_spec("attach-session").expect("attach-session catalog");
@@ -1872,24 +1872,23 @@ fn parse_native_attach_arguments(
     })
 }
 
-fn print_native_attach_argument_error(error: NativeAttachArgumentError) -> ExitCode {
-    let status = match &error {
-        NativeAttachArgumentError::Usage => exit_code_for(CliFailure::TmuxUsage),
-        NativeAttachArgumentError::NativeUsage => exit_code_for(CliFailure::Usage),
-        NativeAttachArgumentError::Command(error) => exit_code_for(CliFailure::Server(error)),
-    };
+#[must_use]
+pub fn native_attach_argument_error_output(error: NativeAttachArgumentError) -> (u8, String) {
     match error {
-        NativeAttachArgumentError::Usage | NativeAttachArgumentError::NativeUsage => {
-            eprintln!("{NATIVE_ATTACH_USAGE}");
-        }
-        NativeAttachArgumentError::Command(error) => {
-            eprintln!("{}", command_error_message(&DaemonError::Server(error)));
-        }
+        NativeAttachArgumentError::Usage => (1, NATIVE_ATTACH_USAGE.to_owned()),
+        NativeAttachArgumentError::NativeUsage => (2, NATIVE_ATTACH_USAGE.to_owned()),
+        NativeAttachArgumentError::Command(error) => (error.exit_code(), error.tmux_message()),
     }
-    status
 }
 
-fn native_attach_command(options: &NativeAttachArguments) -> CommandInvocation {
+fn print_native_attach_argument_error(error: NativeAttachArgumentError) -> ExitCode {
+    let (code, message) = native_attach_argument_error_output(error);
+    eprintln!("{message}");
+    ExitCode::from(code)
+}
+
+#[must_use]
+pub fn native_attach_command(options: &NativeAttachArguments) -> CommandInvocation {
     let mut args = Vec::new();
     if options.detach_others {
         args.push("-d".to_owned());
