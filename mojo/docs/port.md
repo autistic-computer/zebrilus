@@ -35,6 +35,9 @@ pixi run --manifest-path mojo/pixi.toml differential-tree
 pixi run --manifest-path mojo/pixi.toml differential-protocol
 pixi run --manifest-path mojo/pixi.toml test-client-context
 pixi run --manifest-path mojo/pixi.toml differential-client-context
+pixi run --manifest-path mojo/pixi.toml differential-terminal-appearance
+pixi run --manifest-path mojo/pixi.toml test-terminal-settings
+pixi run --manifest-path mojo/pixi.toml differential-terminal-settings
 pixi run --manifest-path mojo/pixi.toml differential-control
 pixi run --manifest-path mojo/pixi.toml differential-terminal
 pixi run --manifest-path mojo/pixi.toml differential-colors
@@ -63,3 +66,5 @@ pixi run --manifest-path mojo/pixi.toml native-smoke
 Protocol differential checks regenerate vectors with the actual Rust encoder and reject stale checked-in fixtures. They cover native hello and command bytes, maximum 64-bit identifiers, Unicode and escaped arguments, raw non-UTF-8 output, stdout ownership, and server errors. Smoke checks start and stop their own daemon on a private `/tmp` socket, compare command stdout/stderr/exit codes against the Rust CLI, and execute an actual split. UI smoke drives real buttons and text input through mjui's headless driver, checks daemon changes, and saves `target/port/smoke-workspace.png`. Terminal interaction helper differential checks live in `scripts/port/terminal_differential.py`.
 
 The command-output smoke opens real output on its private interactive client, checks owner-pane substitution and output resize, parks and restores its input focus through rendered pointer surfaces, exercises native paste/IME and copy-mode dismissal, and verifies exact underlying PTY input bytes. It saves `target/port/command-output-workspace.png`. The SDL provenance test uses native text-editing/text-input events with the dummy video driver; the matching AppKit assertions live in mjui’s `test_textinput` suite and require macOS.
+
+The typed appearance codec retains every font, color, palette, cursor, padding, contrast and provenance field. Its source differential checks complete roundtrips, exact float bits and validation boundaries. Font localization and style requests match the native selection rules, including provenance filtering, ordered fallbacks and features, and weight/zoom bounds. Applying all appearance options and bounded font replacement to the workspace remains in progress.

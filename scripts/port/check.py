@@ -75,7 +75,7 @@ def main():
 
     if args.front in ("app", "all"):
         stage("rust-daemon", ["cargo", "build", "--locked", "-p", "zz-cli"])
-        for task in ("build", "test", "test-tree-codec", "differential-tree", "differential-protocol", "differential-client-context", "differential-terminal-appearance", "differential-control", "differential-terminal", "differential-colors", "differential-layout", "differential-input", "differential-client-events", "differential-terminal-projection", "test-keyboard", "keyboard-smoke", "test-pointer", "pointer-smoke", "test-painter", "test-readiness", "smoke", "stream-smoke", "state-smoke"):
+        for task in ("build", "test", "test-tree-codec", "differential-tree", "differential-protocol", "differential-client-context", "differential-terminal-appearance", "test-terminal-settings", "differential-terminal-settings", "differential-control", "differential-terminal", "differential-colors", "differential-layout", "differential-input", "differential-client-events", "differential-terminal-projection", "test-keyboard", "keyboard-smoke", "test-pointer", "pointer-smoke", "test-command-output", "differential-command-output", "command-output-smoke", "test-painter", "test-readiness", "smoke", "stream-smoke", "state-smoke"):
             stage("mojo-" + task, ["pixi", "run", "--manifest-path", "mojo/pixi.toml", task])
         stage("terminal-differential", ["python3", "scripts/port/terminal_differential.py"])
         stage("mojo-ui", ["pixi", "run", "--manifest-path", "mojo/pixi.toml", "ui-smoke"])

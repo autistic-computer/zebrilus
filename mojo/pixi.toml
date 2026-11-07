@@ -17,6 +17,8 @@ differential-protocol = "python3 ../scripts/port/guard.py python3 scripts/protoc
 test-client-context = "python3 ../scripts/port/guard.py mojo --fp-mode=contract=off -I . tests/test_client_context.mojo"
 differential-client-context = "python3 scripts/client_context_vectors.py"
 differential-terminal-appearance = "python3 scripts/appearance_vectors.py"
+test-terminal-settings = "python3 ../scripts/port/guard.py mojo --fp-mode=contract=off -I . tests/test_terminal_settings.mojo"
+differential-terminal-settings = "python3 scripts/terminal_settings_vectors.py"
 differential-control = "python3 scripts/control_vectors.py"
 differential-tree = "python3 scripts/tree_vectors.py"
 test-tree-codec = "python3 ../scripts/port/guard.py mojo --fp-mode=contract=off -I . tests/test_tree_codec.mojo"
