@@ -50,6 +50,7 @@ from .palette_text import (
 )
 from .palette_target_catalog import target_traits
 from .exec_protocol import Invocation
+from .palette_shortcuts import palette_shortcut
 
 
 def palette_has_arguments(input: String) raises -> Bool:
@@ -273,7 +274,8 @@ struct PaletteModel(Movable):
                 row.detail = command.description
                 row.icon = "Terminal"
                 row.hits = matched.hits.copy()
-                row.shortcut = shortcuts.get(command.name, String())
+                if command.name in shortcuts:
+                    row.shortcut = palette_shortcut(shortcuts[command.name])
                 row.action = 3
                 row.command = command.name
                 rows.append(row^)

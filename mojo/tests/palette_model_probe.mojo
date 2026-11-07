@@ -65,7 +65,7 @@ def write_row(mut bytes: List[UInt8], row: PaletteRow):
     append_uint(bytes, UInt64(Bool(row.expanded)))
     if row.expanded:
         append_uint(bytes, UInt64(row.expanded.value()))
-    append_uint(bytes, UInt64(row.shortcut.byte_length() != 0))
+    append_uint(bytes, UInt64(Bool(row.shortcut)))
     append_uint(bytes, UInt64(row.action))
     write_place(bytes, row.place)
     append_uint(bytes, UInt64(row.index))

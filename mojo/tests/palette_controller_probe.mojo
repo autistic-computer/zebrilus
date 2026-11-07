@@ -220,6 +220,26 @@ def model_actions(fleet: PaletteFleet) raises:
     effect = model.activate(True, fleet)
     assert_equal(effect.kind, 0)
     assert_equal(model.controller.query, ":select-pane ")
+    var shortcuts = Dict[String, String]()
+    model.controller.set_query(":select-pane")
+    shortcuts["select-pane"] = ""
+    model.rebuild(fleet, display, Dict[String, Int](), shortcuts)
+    var shortcut_row = model.controller.selected.value()
+    assert_true(Bool(model.rows[shortcut_row].shortcut))
+    assert_equal(model.rows[shortcut_row].shortcut.value().kind, 1)
+    assert_equal(model.rows[shortcut_row].shortcut.value().text, "")
+    shortcuts["select-pane"] = "C-b %"
+    model.rebuild(fleet, display, Dict[String, Int](), shortcuts)
+    assert_equal(model.rows[shortcut_row].shortcut.value().kind, 0)
+    assert_equal(len(model.rows[shortcut_row].shortcut.value().keys), 2)
+    assert_equal(model.rows[shortcut_row].shortcut.value().keys[0].modifiers, 2)
+    assert_equal(
+        model.rows[shortcut_row].shortcut.value().keys[1].key_char.value(), "%"
+    )
+    shortcuts["select-pane"] = "C-b F1"
+    model.rebuild(fleet, display, Dict[String, Int](), shortcuts)
+    assert_equal(model.rows[shortcut_row].shortcut.value().kind, 1)
+    assert_equal(model.rows[shortcut_row].shortcut.value().text, "C-b F1")
     model.controller.set_query(":rename-session")
     model.rebuild(fleet, display)
     effect = model.activate(False, fleet)

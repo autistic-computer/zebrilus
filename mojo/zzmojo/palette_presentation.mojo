@@ -10,6 +10,7 @@ from .palette_places_search import PaletteCandidate, place_key
 from .palette_controller import PaletteController, palette_place_label
 from .palette_verbs import PaletteVerb, PaletteVerbMatch
 from .palette_fuzzy import FuzzyRange
+from .palette_shortcuts import PaletteShortcut, palette_shortcut
 
 comptime MAX_PALETTE_PRESENTATION_BYTES = 16 * 1024 * 1024
 
@@ -71,7 +72,7 @@ struct PaletteRow(Copyable, Movable):
     var icon: String
     var indent: Float32
     var expanded: Optional[Bool]
-    var shortcut: String
+    var shortcut: Optional[PaletteShortcut]
     var action: UInt8
     var place: PalettePlace
     var index: Int
@@ -89,7 +90,7 @@ struct PaletteRow(Copyable, Movable):
         self.icon = String()
         self.indent = 0
         self.expanded = None
-        self.shortcut = String()
+        self.shortcut = None
         self.action = 0
         self.place = PalettePlace()
         self.index = 0
@@ -121,7 +122,7 @@ def palette_row_bytes(row: PaletteRow) -> Int:
         + row.detail.byte_length()
         + row.right.byte_length()
         + row.icon.byte_length()
-        + row.shortcut.byte_length()
+        + (row.shortcut.value().byte_length() if row.shortcut else 0)
         + row.command.byte_length()
         + row.hint.byte_length()
     )
@@ -260,7 +261,7 @@ def palette_verb_row(
     verbs: List[PaletteVerb],
     found: PaletteVerbMatch,
     shortcuts: Dict[String, String] = Dict[String, String](),
-) -> PaletteRow:
+) raises -> PaletteRow:
     var row = PaletteRow()
     ref verb = verbs[found.index]
     row.label = verb.name
@@ -274,8 +275,8 @@ def palette_verb_row(
     )
     row.action = 2
     row.index = found.index
-    if verb.run == 0 and len(verb.args) == 0:
-        row.shortcut = shortcuts.get(verb.command, String())
+    if verb.run == 0 and len(verb.args) == 0 and verb.command in shortcuts:
+        row.shortcut = palette_shortcut(shortcuts[verb.command])
     return row^
 
 
