@@ -63,6 +63,10 @@ from .palette_component_model import (
 from .search_clipboard import SearchClipboard
 from .palette_text import palette_words
 from .palette_assets import palette_asset_documents
+from .palette_files_component import palette_file_height
+from .palette_ui_keys import palette_ui_key
+from .palette_presentation import PaletteHint
+from std.sys.info import CompilationTarget
 
 comptime PALETTE_UNDO_BYTES: Int = 1024 * 1024
 
@@ -72,15 +76,19 @@ struct PaletteComponentResult(Movable):
     var limited: Bool
     var closed: Bool
     var effect: PaletteEffect
+    var clicked: Optional[Int]
 
     def __init__(out self):
         self.consumed = False
         self.limited = False
         self.closed = False
         self.effect = PaletteEffect()
+        self.clicked = None
 
 
-def palette_kit_row(row: PaletteRow, openai: Int32 = -1, claude: Int32 = -1) -> KitRow:
+def palette_kit_row(
+    row: PaletteRow, openai: Int32 = -1, claude: Int32 = -1
+) -> KitRow:
     var result = KitRow(row.label, row.detail, row.right)
     result.muted_prefix = row.muted_prefix
     result.status = row.status
@@ -122,6 +130,9 @@ struct PaletteComponent(Movable):
     var clicked_handled: Bool
     var asset_openai: Int32
     var asset_claude: Int32
+    var external_rows: Bool
+    var external_empty: String
+    var external_hints: List[PaletteHint]
 
     def __init__(out self, key: UInt64, style: TextStyle) raises:
         self.model = PaletteModel(browser=False, editor=False, insert_path=True)
@@ -139,6 +150,9 @@ struct PaletteComponent(Movable):
         self.clicked_handled = False
         self.asset_openai = -1
         self.asset_claude = -1
+        self.external_rows = False
+        self.external_empty = String()
+        self.external_hints = List[PaletteHint]()
 
     def opened(self) -> Bool:
         return self.model.controller.opened
@@ -186,6 +200,7 @@ struct PaletteComponent(Movable):
         decorations: PaletteDecorations,
         command: Bool = False,
     ) raises:
+        self.external_rows = False
         self.model.controller.start(fleet, command)
         self.model.rebuild(fleet, decorations)
         ui.open_layer(
@@ -209,20 +224,22 @@ struct PaletteComponent(Movable):
         self.panel_height = 0
 
     def close(mut self, mut ui: Ui):
+        self.external_rows = False
         self.model.controller.close()
         self.field.marked.clear()
         self.field.disp.clear()
         self.field.focused = False
         if ui.focus == self.field_key:
             ui.focus = 0
-        ui.close_layer(self.key + 3)
+        ui.close_layer_only(self.key + 3)
         ui.text_input = False
 
     def refresh(
         mut self, fleet: PaletteFleet, decorations: PaletteDecorations
     ) raises:
         if self.opened():
-            self.model.rebuild(fleet, decorations)
+            if not self.external_rows:
+                self.model.rebuild(fleet, decorations)
             self.field.placeholder = self.model.controller.placeholder()
 
     def changed(
@@ -238,10 +255,12 @@ struct PaletteComponent(Movable):
             if not self.model.controller.commit_typed(value, fleet):
                 self.model.controller.set_query(value)
                 self.model.controller.cursor = self.field.caret
-            self.model.rebuild(fleet, decorations)
+            if not self.external_rows:
+                self.model.rebuild(fleet, decorations)
             self.sync_field()
-            self.scroll_top = True
-            self.scroll_selected = False
+            if not self.external_rows:
+                self.scroll_top = True
+                self.scroll_selected = False
         self.trim_undo()
         self.clear_flags()
 
@@ -253,6 +272,7 @@ struct PaletteComponent(Movable):
         fleet: PaletteFleet,
         decorations: PaletteDecorations,
         allow_primary: Bool = True,
+        primary_owned: Bool = True,
     ) raises -> PaletteComponentResult:
         var result = PaletteComponentResult()
         if not self.opened():
@@ -276,14 +296,14 @@ struct PaletteComponent(Movable):
             pointer.marked_sel_a = self.field.marked_a
             pointer.marked_sel_b = self.field.marked_b
             result.limited = True
-        if input.primary and allow_primary:
+        if input.primary and primary_owned and allow_primary:
             if clip.primary_text.byte_length() <= PALETTE_INPUT_BYTES - len(
                 self.field.buf
             ):
                 pointer.primary = input.primary
             else:
                 result.limited = True
-        elif input.primary:
+        elif input.primary and primary_owned:
             result.limited = True
         if ui.retained_input_begin(self.key + 3, self.field_key):
             self.field.update(ui, pointer, clip)
@@ -293,18 +313,27 @@ struct PaletteComponent(Movable):
             return result^
         self.changed(fleet, decorations)
         var row_key = ui.active if ui.active >= self.row_key else ui.press_hot
-        if row_key >= self.row_key and row_key - self.row_key < UInt64(len(self.model.rows)):
+        if row_key >= self.row_key and row_key - self.row_key < UInt64(
+            len(self.model.rows)
+        ):
             var index = Int(row_key - self.row_key)
-            if self.model.rows[index].action != 0 and ui.retained_input_begin(self.key + 3, row_key):
-                var response = ui.interact(row_key, focusable=True, focus_on_press=False)
+            if self.model.rows[index].action != 0 and ui.retained_input_begin(
+                self.key + 3, row_key
+            ):
+                var response = ui.interact(
+                    row_key, focusable=True, focus_on_press=False
+                )
                 ui.retained_input_end()
                 if response.clicked:
                     self.model.controller.selected = index
                     self.model.controller.navigation_engaged = True
-                    result.effect = self.model.activate(False, fleet)
-                    self.model.rebuild(fleet, decorations)
-                    self.sync_field()
-                    self.scroll_top = True
+                    if self.external_rows:
+                        result.clicked = index
+                    else:
+                        result.effect = self.model.activate(False, fleet)
+                        self.model.rebuild(fleet, decorations)
+                        self.sync_field()
+                        self.scroll_top = True
                     self.clicked_handled = True
         if ui.pressed and self.panel_height > 0:
             var x = ui.press_x
@@ -368,9 +397,11 @@ struct PaletteComponent(Movable):
             result.limited = not self.insert(Span(input.bytes)[start:end])
         else:
             var command = event.cmd & ~(CMD_EXTEND | CMD_LOGICAL)
-            if event.cmd & CMD_EXTEND == 0 and (command == CMD_UP or command == CMD_DOWN) and event.mods & (
-                MOD_ALT | MOD_CMD
-            ) == 0:
+            if (
+                event.cmd & CMD_EXTEND == 0
+                and (command == CMD_UP or command == CMD_DOWN)
+                and event.mods & (MOD_ALT | MOD_CMD) == 0
+            ):
                 self.model.navigate(-1 if command == CMD_UP else 1)
                 self.scroll_selected = True
             elif (
@@ -431,6 +462,10 @@ struct PaletteComponent(Movable):
         ui.text_field(self.field_key)
         self.field.focused = ui.focus == self.field_key
         self.bounds = palette_bounds(width, height, len(self.model.rows))
+        if self.external_rows:
+            self.bounds.list_height = palette_file_height(
+                height, len(self.model.rows)
+            )
         var content_width = palette_surface_begin(
             ui,
             theme,
@@ -458,7 +493,14 @@ struct PaletteComponent(Movable):
         )
         var rows_width = palette_list_begin(ui, theme, content_width)
         if len(self.model.rows) == 0:
-            palette_empty(ui, theme, "No matches", rows_width)
+            palette_empty(
+                ui,
+                theme,
+                self.external_empty if self.external_rows else String(
+                    "No matches"
+                ),
+                rows_width,
+            )
         else:
             if self.scroll_top:
                 ui.scroll_to(self.list_key, 0)
@@ -499,15 +541,21 @@ struct PaletteComponent(Movable):
                     if ui.hot == key and ui.hot != self.previous_hot:
                         self.model.controller.selected = index
                         self.model.controller.navigation_engaged = True
-                    var kit_row = palette_kit_row(row, self.asset_openai, self.asset_claude)
-                    if palette_row(
-                        ui,
-                        theme,
-                        key,
-                        kit_row,
-                        self.model.controller.selected == Optional[Int](index),
-                        rows_width,
-                    ) and not self.clicked_handled:
+                    var kit_row = palette_kit_row(
+                        row, self.asset_openai, self.asset_claude
+                    )
+                    if (
+                        palette_row(
+                            ui,
+                            theme,
+                            key,
+                            kit_row,
+                            self.model.controller.selected
+                            == Optional[Int](index),
+                            rows_width,
+                        )
+                        and not self.clicked_handled
+                    ):
                         clicked = index
                 ui.close()
             self.previous_hot = ui.hot
@@ -515,17 +563,29 @@ struct PaletteComponent(Movable):
             if clicked:
                 self.model.controller.selected = clicked
                 self.model.controller.navigation_engaged = True
-                result.effect = self.model.activate(False, fleet)
-                self.model.rebuild(fleet, decorations)
-                self.sync_field()
-                self.scroll_top = True
+                if self.external_rows:
+                    result.clicked = clicked
+                else:
+                    result.effect = self.model.activate(False, fleet)
+                    self.model.rebuild(fleet, decorations)
+                    self.sync_field()
+                    self.scroll_top = True
         palette_list_end(ui)
-        var hints = palette_component_hints(self.model)
+        var hints = self.external_hints.copy() if self.external_rows else palette_component_hints(
+            self.model
+        )
         var kit_hints = List[KitHint](capacity=len(hints))
         for hint in hints:
             var groups = List[List[PaletteKeyPart]]()
             for name in palette_words(hint.key):
-                groups.append(key_parts(KitKeystroke(name)))
+                var parsed = palette_ui_key(name, CompilationTarget.is_macos())
+                groups.append(
+                    key_parts(
+                        KitKeystroke(
+                            parsed.value().key, parsed.value().modifiers
+                        ) if parsed else KitKeystroke(name)
+                    )
+                )
             kit_hints.append(KitHint(hint.label, groups^))
         palette_footer(ui, theme, Span(kit_hints), content_width)
         self.panel_height = ui.close_and_measure(self.bounds.width)

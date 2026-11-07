@@ -67,6 +67,9 @@ from .palette_runtime import PaletteRuntime, PalettePlan
 from .palette_keymap import palette_open_shortcut
 from .palette_controller import PaletteEffect, PALETTE_EXECUTE, PALETTE_ACTIVATE, PALETTE_CONNECT, PALETTE_NOTIFY, PALETTE_LEVEL
 from .palette_places_model import PalettePlace
+from .palette_files import FILES_UP, FILES_DOWN
+from .path_protocol import PATH_OPEN
+from .path_text import start_dir
 from std.sys.info import CompilationTarget
 
 comptime TERMINAL_KEY: UInt64 = 0x7000000000000000
@@ -215,7 +218,12 @@ struct WorkspaceView(Movable):
             return
         if plan.kind == 2 or plan.kind == 3:
             if self.palette.component.opened():
-                self.palette.component.model.navigate(-1 if plan.kind == 2 else 1)
+                if self.palette.files.files.active:
+                    var effect = self.palette.files.files.key(FILES_UP if plan.kind == 2 else FILES_DOWN, self.palette.files.inserts(self.model))
+                    self.palette.file_effect(ui, self.backend, self.model, effect)
+                    self.palette.project_files(self.model)
+                else:
+                    self.palette.component.model.navigate(-1 if plan.kind == 2 else 1)
                 self.palette.component.scroll_selected = True
             return
         if plan.kind != 0:
@@ -232,6 +240,7 @@ struct WorkspaceView(Movable):
 
     def close_palette(mut self, mut ui: Ui) raises:
         var restore = self.palette.restore_output
+        self.palette.files.close(self.backend)
         self.palette.close(ui)
         ui.focus = TERMINAL_KEY
         self.observe_output(ui)
@@ -287,31 +296,77 @@ struct WorkspaceView(Movable):
         elif effect.kind == PALETTE_NOTIFY:
             self.palette.notify(ui, effect.message)
         elif effect.kind == PALETTE_LEVEL:
-            self.palette.notify(ui, "This palette level is not available yet")
+            if effect.slot and effect.slot.value().kind == 3:
+                self.palette.sync_files(ui, self.backend, self.model, self.focus_epoch)
+            else:
+                self.palette.notify(ui, "This palette level is not available yet")
 
     def prepare_palette_input[Host: Clipboard](mut self, mut ui: Ui, input: TextInput, mut host: Host) raises:
         self.palette_closed_frame = False
         self.palette_prepared = True
+        self.pump_palette_files(ui)
         if not self.palette.component.opened():
             return
         self.palette.refresh(self.model, self.backend.online)
-        var result = self.palette.prepare(ui, input, host)
-        if result.closed:
+        var result = self.palette.prepare(ui, input, host, self.backend, self.model, self.focus_epoch)
+        if result.closed or self.palette.files.close_ready:
             self.close_palette(ui)
         self.palette_effect(ui, result.effect)
         if result.limited:
             self.palette.notify(ui, "Palette input exceeds 64 KiB")
 
     def palette_event[Host: Clipboard](mut self, mut ui: Ui, input: TextInput, event: TextEvent, mut host: Host) raises -> Bool:
-        var result = self.palette.event(ui, input, event, host)
+        var result = self.palette.event(ui, input, event, host, self.backend, self.model, self.focus_epoch)
         if not result.consumed:
             return False
-        if result.closed:
+        if result.closed or self.palette.files.close_ready:
             self.close_palette(ui)
         self.palette_effect(ui, result.effect)
         if result.limited:
             self.palette.notify(ui, "Palette input exceeds 64 KiB")
         return True
+
+    def pump_palette_files(mut self, mut ui: Ui) raises:
+        var inbox = self.backend.paths.take()
+        inbox.events.reverse()
+        while len(inbox.events) > 0:
+            var delivery = inbox.events.pop()
+            if delivery.message.kind == PATH_OPEN:
+                if (
+                    self.palette.opened()
+                    or not delivery.message.pane
+                    or not self.backend.path_source
+                    or not delivery.source.matches(
+                        self.backend.path_source.value()
+                    )
+                ):
+                    continue
+                var pane = delivery.message.pane.value()
+                var attached = False
+                for session in self.model.snapshot.sessions:
+                    if self.model.session == Optional[UInt64](session.id):
+                        for window in session.windows:
+                            if pane in window.panes:
+                                attached = True
+                if not attached:
+                    continue
+                self.backend.palette_open(self.focus_epoch, (self.model.source_server, self.model.source_client))
+                self.palette.restore_output = (self.model.source_server, self.model.source_client, self.output.id.value()) if self.output_input and self.output.id else Optional[Tuple[UInt64, UInt64, UInt64]](None)
+                self.blur_pointer(True)
+                self.marked = None
+                self.palette.open(ui, self.model, self.backend.online)
+                self.palette.insert_pane = pane
+                var body = String()
+                if delivery.message.dir:
+                    var text = delivery.message.dir.value().copy()
+                    if text.startswith("/") or text.startswith("~"):
+                        body = start_dir(text, self.palette.home)
+                self.palette.set_files_body(body)
+            else:
+                _ = self.palette.files.apply(self.backend, delivery^)
+        self.palette.sync_files(ui, self.backend, self.model, self.focus_epoch)
+        if self.palette.files.close_ready:
+            self.close_palette(ui)
 
     def search_target(self) -> Optional[SearchTarget]:
         var pane = self.input_pane()
@@ -1230,6 +1285,7 @@ struct WorkspaceView(Movable):
             self.finish_search(ui)
         self.search_prepared = False
         self.poll(ui.time)
+        self.pump_palette_files(ui)
         if self.palette.component.opened():
             self.palette.refresh(self.model, self.backend.online)
         if (
@@ -1398,9 +1454,6 @@ struct WorkspaceView(Movable):
         )
         if self.model.error.byte_length() > 0:
             label(ui, self.theme, self.model.error, flat.danger)
-        elif self.palette.notice.byte_length() > 0 and ui.time < self.palette.notice_until:
-            label(ui, self.theme, self.palette.notice, flat.dim)
-            ui.request_wake(self.palette.notice_until)
         elif self.model.message:
             label(ui, self.theme, self.model.message.value().text, flat.danger if self.model.message.value().kind == 2 else flat.dim)
         else:
@@ -1431,4 +1484,13 @@ struct WorkspaceView(Movable):
         if self.palette.component.opened():
             ui.focus = self.palette.component.field_key
             var result = self.palette.component.build(ui, self.theme, self.palette.projection.fleet, self.palette.projection.decorations, ui.width, ui.height)
+            if self.palette.files.files.active:
+                if self.palette.component.model.controller.selected:
+                    self.palette.files.files.ranking.selected = self.palette.component.model.controller.selected.value()
+                if result.clicked:
+                    self.palette.file_click(ui, self.backend, self.model, result.clicked.value())
+                self.palette.file_notices(ui)
+                if self.palette.files.close_ready:
+                    self.close_palette(ui)
             self.palette_effect(ui, result.effect)
+        self.palette.paint_notifications(ui, self.theme)

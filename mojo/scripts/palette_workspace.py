@@ -19,6 +19,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--skip-build", action="store_true")
     parser.add_argument("--sdk-source", type=Path)
+    parser.add_argument("--native-scene", action="store_true")
     options = parser.parse_args()
     binary = TARGET / "palette-workspace-smoke"
     if not options.skip_build:
@@ -26,6 +27,8 @@ def main():
     subprocess.run(["python3", str(PORT / "scripts/resources.py"), str(binary)], cwd=ROOT, check=True)
     environment = os.environ.copy()
     environment["ZZ_BEND"] = str(TARGET / "zz-bend")
+    if options.native_scene:
+        environment["ZZ_PALETTE_NATIVE_SCENE"] = "1"
     native = ROOT / "target/debug/zz_cli"
     with tempfile.TemporaryDirectory(prefix="zz-palette-workspace-", dir="/tmp") as directory:
         temporary = Path(directory)

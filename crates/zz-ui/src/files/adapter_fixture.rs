@@ -138,3 +138,64 @@ pub fn vectors() -> Value {
     }
     json!({"cases":cases,"source":"actual FilesLevel methods and FilesAction::key through isolated TestAppContext Window"})
 }
+
+pub fn ui_keys() -> Value {
+    let parts = [
+        "",
+        "a",
+        "A",
+        "λ",
+        "İ",
+        "ctrl",
+        "CTRL",
+        "alt",
+        "shift",
+        "fn",
+        "secondary",
+        "cmd",
+        "super",
+        "win",
+        "control",
+        "enter",
+        "tab",
+        "-",
+        "a->A",
+        "A->Z",
+        ">",
+        "x-y",
+        "x--",
+        "x-",
+        "x->λ-ctrl",
+    ];
+    let mut inputs = parts
+        .iter()
+        .map(|value| (*value).to_owned())
+        .collect::<Vec<_>>();
+    for first in parts {
+        for second in parts {
+            inputs.push(format!("{first}-{second}"));
+        }
+    }
+    for first in ["ctrl", "alt", "shift", "fn", "secondary", "cmd"] {
+        for second in ["ctrl", "alt", "shift", "fn", "secondary", "cmd"] {
+            for third in parts {
+                inputs.push(format!("{first}-{second}-{third}"));
+            }
+        }
+    }
+    let cases = inputs
+        .into_iter()
+        .map(|input| {
+            let value = ala::Keystroke::parse(&input).ok().map(|key| {
+                let modifiers = u8::from(key.modifiers.shift)
+                    | (u8::from(key.modifiers.control) << 1)
+                    | (u8::from(key.modifiers.alt) << 2)
+                    | (u8::from(key.modifiers.platform) << 3)
+                    | (u8::from(key.modifiers.function) << 4);
+                json!([key.key, modifiers, key.key_char])
+            });
+            json!([input, value])
+        })
+        .collect::<Vec<_>>();
+    json!({"cases": cases, "source": "actual Keystroke::parse on the native host"})
+}

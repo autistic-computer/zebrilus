@@ -23,6 +23,8 @@ struct Workspace(App, Movable):
     var pointer_mods: UInt32
     var clipboard: ClipboardController
     var timeline: InputTimeline
+    var scene_frames: Int
+    var scene_complete: Bool
 
     def __init__(
         out self, path: String, var startup: Optional[ResumeStartup] = None
@@ -34,6 +36,8 @@ struct Workspace(App, Movable):
         self.pointer_mods = 0
         self.clipboard = ClipboardController()
         self.timeline = InputTimeline()
+        self.scene_frames = 0
+        self.scene_complete = True
 
     def wake(mut self, mut runner: Runner) -> Bool:
         if not self.source[].ready:
@@ -43,6 +47,8 @@ struct Workspace(App, Movable):
         return True
 
     def setup(mut self, mut ui: Ui, win: UInt32) raises:
+        comptime if CompilationTarget.is_linux():
+            ui.native_scene = True
         _ = ui.add_font(resource_path("fonts/Inter-Regular.ttf"))
         _ = ui.add_font(resource_path("fonts/Inter-SemiBold.ttf"))
         _ = ui.add_font(resource_path("fonts/JetBrainsMono-Regular.ttf"))
@@ -102,6 +108,9 @@ struct Workspace(App, Movable):
         return default_event(runner, event)
 
     def tick(mut self, mut ui: Ui, mut win: Window):
+        if ui.native_scene and ui.gen > 0:
+            self.scene_frames += 1
+            self.scene_complete = self.scene_complete and ui.native_scene_complete
         try:
             for event in win.mouse:
                 self.view.mouse(ui, event)
@@ -211,3 +220,6 @@ def main() raises:
             raise Error(app.view.model.error)
         if len(app.view.model.sessions) == 0:
             raise Error("native workspace received no session snapshot")
+        comptime if CompilationTarget.is_linux():
+            if app.scene_frames == 0 or not app.scene_complete:
+                raise Error("native workspace scene replay was incomplete")

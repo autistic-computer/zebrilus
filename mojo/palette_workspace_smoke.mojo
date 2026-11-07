@@ -1,4 +1,5 @@
 from std.sys import argv
+from std.os import getenv
 from std.ffi import external_call
 from std.testing import assert_equal, assert_true, assert_false
 from mjui.ui import Ui
@@ -171,6 +172,7 @@ def main() raises:
     var args = argv()
     var ui = Ui(1)
     ui.sem_on = True
+    ui.native_scene = getenv("ZZ_PALETTE_NATIVE_SCENE", "") == "1"
     _ = ui.add_font(resource_path("fonts/Inter-Regular.ttf"))
     _ = ui.add_font(resource_path("fonts/Inter-SemiBold.ttf"))
     _ = ui.add_font(resource_path("fonts/JetBrainsMono-Regular.ttf"))
@@ -239,6 +241,8 @@ def main() raises:
     assert_equal(view.model.windows[0].name, "palette λ name")
     assert_equal(view.model.source_client, source_client)
     assert_false(Bool(view.model.command_output.viewport))
+    assert_true(len(view.palette.notifications.entries) > 0)
+    assert_true(ui.layer_is_open(view.palette.component.key + 4))
     open_palette(view, ui, host, keyboard, clipboard, timeline)
     var selected = view.palette.component.model.controller.selected
     input = TextInput()
@@ -286,10 +290,23 @@ def main() raises:
     host.primary_supported = True
     host.primary_text = String("x") * (64 * 1024 + 1)
     input = TextInput()
-    input.primary = MouseEvent(MOUSE_DOWN, 0, 0, 1, ui.time, 0)
+    var field_bounds = ui.rect_of(view.palette.component.field_key)
+    input.primary = MouseEvent(
+        MOUSE_DOWN,
+        field_bounds.x1 - 2,
+        (field_bounds.y0 + field_bounds.y1) * 0.5,
+        1,
+        ui.time,
+        0,
+    )
     frame(ui, view, host, keyboard, clipboard, timeline, input^)
     assert_equal(view.palette.component.field.text(), "preserve selection")
     assert_equal(view.palette.component.field.selection(), (0, 18))
+    var before_notice = view.palette.notifications.next_id
+    input = TextInput()
+    input.primary = MouseEvent(MOUSE_DOWN, 560, 74, 1, ui.time, 0)
+    frame(ui, view, host, keyboard, clipboard, timeline, input^)
+    assert_equal(view.palette.notifications.next_id, before_notice)
     host.text = String("x") * (6 * 1024 * 1024)
     input = TextInput()
     input.command(CMD_PASTE)
@@ -330,7 +347,7 @@ def main() raises:
     )
     open_palette(view, ui, host, keyboard, clipboard, timeline)
     var chosen = ui.rect_of(view.palette.component.row_key + 1)
-    var click_x = (chosen.x0 + chosen.x1) * 0.5
+    var click_x = chosen.x0 + 12
     var click_y = (chosen.y0 + chosen.y1) * 0.5
     ui.pointer_down(click_x, click_y, 1)
     frame(ui, view, host, keyboard, clipboard, timeline)
@@ -356,6 +373,21 @@ def main() raises:
     var png = encode_png(pixels.unsafe_ptr(), 1120, 720, 1120 * 4, 4)
     var output = file_write(args[2])
     output.write_bytes(Span(png))
+    var counts = List[Int](length=256, fill=0)
+    for batch in ui.dl.batches:
+        counts[Int(batch.kind)] += Int(batch.end - batch.start)
+    var kinds = String()
+    for index in range(len(counts)):
+        if counts[index] > 0:
+            kinds += String(index, ":", counts[index], " ")
+    print(
+        "palette scene ",
+        ui.native_scene,
+        " complete ",
+        ui.native_scene_complete,
+        " kinds ",
+        kinds,
+    )
     view.close_palette(ui)
     var parked_pane = view.model.pane.value()
     assert_true(parked_pane != first_pane)
@@ -401,7 +433,7 @@ def main() raises:
     var place_bounds = ui.rect_of(
         view.palette.component.row_key + UInt64(place_row)
     )
-    var place_x = (place_bounds.x0 + place_bounds.x1) * 0.5
+    var place_x = place_bounds.x0 + 12
     var place_y = (place_bounds.y0 + place_bounds.y1) * 0.5
     ui.pointer_down(place_x, place_y, 1)
     frame(ui, view, host, keyboard, clipboard, timeline)
