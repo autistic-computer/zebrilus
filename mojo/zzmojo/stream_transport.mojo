@@ -25,6 +25,7 @@ from .tree_model import MuxSnapshot, ClientView
 from .tree_gate import TreeGate
 from .tree_codec import eligible_delta, eligible_view
 from .client_context import ClientContext
+from .appearance_protocol import TerminalAppearance, decode_appearance
 from .terminal_model import TerminalViewport, TerminalHistory
 from .terminal_wire import decode_terminal_frame
 from .input_protocol import InputRoutingState, decode_routing_event
@@ -88,6 +89,9 @@ struct StreamModel(Copyable, Movable):
     var unhandled_bytes: Int
     var revision: UInt64
     var routing: InputRoutingState
+    var appearance: Optional[TerminalAppearance]
+    var appearance_provenance: Dict[UInt8, UInt8]
+    var appearance_revision: UInt64
 
     def __init__(out self):
         self.tree = MuxSnapshot()
@@ -105,6 +109,11 @@ struct StreamModel(Copyable, Movable):
         self.unhandled_bytes = 0
         self.revision = 0
         self.routing = InputRoutingState()
+        self.appearance = None
+        self.appearance_provenance = Dict[UInt8, UInt8]()
+        for key in range(30):
+            self.appearance_provenance[UInt8(key)] = 0
+        self.appearance_revision = 0
 
     def take_events(mut self) -> List[List[UInt8]]:
         var events = self.unhandled^
@@ -386,9 +395,18 @@ struct InteractiveConnection(Movable):
                         self.model.notice_revision += 1
                     self._check_terminal_budget()
                 else:
-                    var retained = event.raw^
-                    event.raw = List[UInt8]()
-                    self._retain(retained^)
+                    var appearance = decode_appearance(event.raw.copy())
+                    if appearance:
+                        ref update = appearance.value()
+                        self.model.appearance = update.appearance.copy()
+                        self.model.appearance_provenance = (
+                            update.provenance.copy()
+                        )
+                        self.model.appearance_revision += 1
+                    else:
+                        var retained = event.raw^
+                        event.raw = List[UInt8]()
+                        self._retain(retained^)
         if not nested:
             self.materialize()
         self.model.revision += 1

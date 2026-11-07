@@ -20,6 +20,7 @@ def integer(value):
 
 def main():
     runpy.run_path(str(ROOT / "scripts/port/guard.py"))["ensure"]()
+    TARGET.mkdir(parents=True, exist_ok=True)
     reference = subprocess.run(
         ["cargo", "run", "--locked", "-p", "zz-protocol", "--example", "client_context_vectors"],
         cwd=ROOT, capture_output=True, check=True, timeout=180,

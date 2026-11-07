@@ -5,6 +5,7 @@ from .terminal_model import TerminalViewport, GRAPHEME
 from .stream_protocol import input_text
 from .input_protocol import InputRoutingState
 from .client_events import StatusLine, CommandOutputState, ClientMessage
+from .appearance_protocol import TerminalAppearance
 
 
 def format_rows(
@@ -203,6 +204,9 @@ struct AppModel(Copyable, Movable):
     var command_output: CommandOutputState
     var message: Optional[ClientMessage]
     var text_pane: Optional[UInt64]
+    var appearance: Optional[TerminalAppearance]
+    var appearance_provenance: Dict[UInt8, UInt8]
+    var appearance_revision: UInt64
 
     def __init__(out self):
         self.sessions = List[Session]()
@@ -225,6 +229,11 @@ struct AppModel(Copyable, Movable):
         self.command_output = CommandOutputState()
         self.message = None
         self.text_pane = None
+        self.appearance = None
+        self.appearance_provenance = Dict[UInt8, UInt8]()
+        for key in range(30):
+            self.appearance_provenance[UInt8(key)] = 0
+        self.appearance_revision = 0
 
     def reconcile(mut self):
         var session, window, pane = _reconciled(
@@ -367,6 +376,11 @@ struct AppModel(Copyable, Movable):
         self.command_output = connection.model.events.output.copy()
         self.message = connection.model.message.copy()
         self.text_pane = self.pane
+        self.appearance = connection.model.appearance.copy()
+        self.appearance_provenance = (
+            connection.model.appearance_provenance.copy()
+        )
+        self.appearance_revision = connection.model.appearance_revision
         self.error = String()
 
     def capture(mut self) raises:

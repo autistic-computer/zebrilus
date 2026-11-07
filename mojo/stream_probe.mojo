@@ -104,6 +104,9 @@ def main() raises:
         pause()
     assert_true(found)
     assert_true(stream.model.bend_tree_updates > 0)
+    assert_true(Bool(stream.model.appearance))
+    assert_true(stream.model.appearance_revision > 0)
+    assert_equal(len(stream.model.appearance_provenance), 30)
     print(
         "native interactive stream passed: colored viewport, direct input,"
         " Bend-mutated cells and split tree"
