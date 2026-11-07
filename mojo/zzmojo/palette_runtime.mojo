@@ -224,8 +224,9 @@ struct PaletteRuntime(Movable):
             return result^
         self.clipboard.primary_supported = host.supports_primary()
         var allow_primary = True
-        var primary_owned = True
-        if input.primary:
+        var indexed = len(input.primaries) > 0 or len(input.pointers) > 0
+        var primary_owned = not indexed
+        if input.primary and not indexed:
             var event = input.primary.value()
             primary_owned = (
                 ui.hit_test(event.x, event.y) == self.component.field_key
@@ -245,6 +246,7 @@ struct PaletteRuntime(Movable):
             self.projection.decorations,
             allow_primary,
             primary_owned,
+            not indexed,
         )
         self.sync_files(ui, backend, model, epoch)
         if result.clicked and self.files.files.active:

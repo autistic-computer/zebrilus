@@ -423,6 +423,12 @@ struct AsyncBackend(Movable):
             output_owner=output_owner,
         )
 
+    def paste(mut self, pane: UInt64, text: String, epoch: UInt64, source: Tuple[UInt64, UInt64]) raises:
+        if text.byte_length() > MAX_PENDING_INPUT_BYTES:
+            raise Error("pending terminal paste exceeds queue limit")
+        if text.byte_length() > 0:
+            self.queue.append(PASTE, text, pane, epoch, source=source)
+
     def commit(
         mut self,
         pane: UInt64,

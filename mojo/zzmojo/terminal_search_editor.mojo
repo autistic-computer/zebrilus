@@ -14,6 +14,7 @@ from mjui.input import (
 from mjui.widgets.textedit import TextEdit, Edit
 from .search_clipboard import SearchClipboard
 from .terminal_search import SearchSession, SearchEffect
+from .editor_pointer import editor_composition
 
 comptime SEARCH_TEXT_BYTES: Int = 1_048_576
 comptime SEARCH_UNDO_BYTES: Int = 4_194_304
@@ -127,12 +128,13 @@ struct SearchEditor(Movable):
         pane: UInt64,
         command_output: Bool = False,
         container: UInt64 = 0,
+        pointer_enabled: Bool = True,
     ) raises -> SearchInputResult:
         var result = SearchInputResult()
         if not self.session.query:
             return result^
         self.clear_flags()
-        if container != 0:
+        if container != 0 and pointer_enabled:
             var response = ui.interact(container)
             if response.hovered or response.held:
                 ui.cursor = CURSOR_TEXT
@@ -153,7 +155,10 @@ struct SearchEditor(Movable):
             pointer.primary = input.primary
         elif input.primary:
             result.limited = True
-        self.field.update(ui, pointer, clip)
+        if pointer_enabled:
+            self.field.update(ui, pointer, clip)
+        else:
+            editor_composition(self.field, ui, pointer)
         self.changed(pane, command_output, result)
         return result^
 

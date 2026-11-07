@@ -8,6 +8,9 @@ from mjui.input import (
     MOUSE_RIGHT_DOWN,
     MOUSE_RIGHT_UP,
     MOUSE_RIGHT_DRAGGED,
+    MOUSE_MIDDLE_DOWN,
+    MOUSE_MIDDLE_UP,
+    MOUSE_MIDDLE_DRAGGED,
     MOUSE_EXITED,
     MOD_SHIFT,
     MOD_ALT,
@@ -332,6 +335,36 @@ def test_surface_blur_cancels_only_its_gesture_and_preserves_fraction() raises:
         decode_input_frame(wheel.value().frame.copy()).lines, Int32(-1)
     )
 
+
+
+def test_middle_tracking_release_retains_pressed_owner_after_focus_and_blur() raises:
+    var value = model()
+    value.terminals[0].metadata.mouse_tracking = True
+    var grids = surfaces()
+    var controller = PointerController()
+    var press = route(controller, value, Span(grids), event(MOUSE_MIDDLE_DOWN), 7)
+    assert_true(Bool(press))
+    assert_equal(decode_input_frame(press.value().frame.copy()).mouse.value().button, Optional[UInt8](1))
+    assert_true(press.value().activate)
+    _ = controller.blur(value, 0, epoch=8)
+    value.pane = UInt64(1)
+    _ = route(controller, value, Span(grids), event(MOUSE_MOVED, 125, 45), 9)
+    var moved = route(controller, value, Span(grids), event(MOUSE_MIDDLE_DRAGGED, 35, 65), 10)
+    assert_true(Bool(moved))
+    assert_equal(moved.value().pane, UInt64(0))
+    assert_equal(moved.value().epoch, UInt64(7))
+    var release = route(controller, value, Span(grids), event(MOUSE_MIDDLE_UP, 500, 500), 11)
+    assert_true(Bool(release))
+    assert_equal(release.value().pane, UInt64(0))
+    assert_equal(release.value().epoch, UInt64(7))
+    assert_true(release.value().passive)
+    assert_true(not release.value().activate)
+    var wire = decode_input_frame(release.value().frame.copy())
+    assert_equal(wire.mouse.value().button, Optional[UInt8](1))
+    assert_equal(wire.mouse.value().phase, UInt8(1))
+    assert_equal(wire.mouse.value().pointer.column, 9)
+    assert_equal(wire.mouse.value().pointer.row, 4)
+    assert_true(not route(controller, value, Span(grids), event(MOUSE_MIDDLE_UP)))
 
 def main() raises:
     TestSuite.discover_tests[__functions_in_module()]().run()

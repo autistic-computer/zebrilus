@@ -5,6 +5,8 @@ from mjui.input import (
     TextEvent,
     TEXT_INSERT,
     TEXT_COMMAND,
+    TEXT_PRIMARY,
+    TEXT_POINTER,
     CMD_COPY,
     CMD_PASTE,
     CMD_SELECT_ALL,
@@ -16,6 +18,8 @@ from .clipboard_controller import ClipboardController, ClipboardPlan
 from .actions import MAX_PENDING_ACTIONS, MAX_PENDING_INPUT_BYTES
 from .terminal_search_controller import SearchPlan
 from .palette_runtime import PalettePlan
+from .editor_pointer import validate_pointer_input
+from .workspace_keys import RawWorkspaceKey, WorkspaceKeyRoute, raw_workspace_key, route_workspace_key
 
 comptime TEXT_ROUTED: UInt8 = 255
 
@@ -31,6 +35,7 @@ struct _Pending(Copyable, Movable):
     var output: Bool
     var search: Optional[SearchPlan]
     var palette: Optional[PalettePlan]
+    var raw: Optional[RawWorkspaceKey]
 
 
 struct InputTimeline(Movable):
@@ -74,6 +79,7 @@ struct InputTimeline(Movable):
                 output,
                 None,
                 None,
+                None,
             ),
             size,
         )
@@ -90,21 +96,56 @@ struct InputTimeline(Movable):
                 plan.output,
                 None,
                 None,
+                None,
             ),
             0,
         )
 
     def search(mut self, plan: SearchPlan, event: KeyEvent, before_focus: UInt64, after_focus: UInt64) raises:
-        self.append(_Pending(event.text_event, event.text_lo, None, None, plan.server, plan.client, plan.target.command_output, plan.copy(), None), plan.input.text.value().byte_length() if plan.input.text else 0)
+        self.append(_Pending(event.text_event, event.text_lo, None, None, plan.server, plan.client, plan.target.command_output, plan.copy(), None, None), plan.input.text.value().byte_length() if plan.input.text else 0)
         if not self.initial_focus:
             self.initial_focus = before_focus
         self.final_focus = after_focus
 
     def palette(mut self, plan: PalettePlan, event: KeyEvent, before_focus: UInt64, after_focus: UInt64) raises:
-        self.append(_Pending(event.text_event, event.text_lo, None, None, plan.server, plan.client, False, None, plan.copy()), 0)
+        self.append(_Pending(event.text_event, event.text_lo, None, None, plan.server, plan.client, False, None, plan.copy(), None), 0)
         if not self.initial_focus:
             self.initial_focus = before_focus
         self.final_focus = after_focus
+
+    def raw_key(mut self, view: WorkspaceView, key: KeyEvent, input: TextInput) raises:
+        var bytes = max(Int(key.text_hi - key.text_lo), 0)
+        self.append(_Pending(key.text_event, key.text_lo, None, None, view.model.source_server, view.model.source_client, False, None, None, raw_workspace_key(key, input)), bytes)
+
+    def capture_route(mut self, view: WorkspaceView, route: WorkspaceKeyRoute, key: KeyEvent) raises:
+        if route.palette:
+            self.palette(route.palette.value(), key, route.before, route.after)
+        elif route.search:
+            self.search(route.search.value(), key, route.before, route.after)
+        elif route.clipboard:
+            self.clipboard(route.clipboard.value(), key)
+        elif route.key:
+            self.key(view, route.key.value(), key)
+
+    def dispatch_raw[Host: Clipboard](mut self, mut view: WorkspaceView, mut ui: Ui, mut host: Host, mut keyboard: KeyboardController, mut clipboard: ClipboardController, mut input: TextInput, raw: RawWorkspaceKey) raises -> Bool:
+        var route = route_workspace_key(view, ui, keyboard, clipboard, raw, input)
+        var unmark = route.unmark
+        if unmark:
+            input.unmark()
+        if route.palette:
+            view.dispatch_palette(ui, input, route.palette.value())
+            unmark = unmark or view.palette_closed_frame
+        elif route.search:
+            view.dispatch_search(ui, input, route.search.value())
+        elif route.clipboard:
+            var plan = route.clipboard.value().copy()
+            var result = clipboard.act(view, ui, host, plan.action, plan.composed, plan.copy())
+            unmark = unmark or result.unmark
+        elif route.key:
+            ref key = route.key.value()
+            var output = view.output_input and view.output.owns(key.pane)
+            view.forward_key(key.pane, key.input, key.epoch, key.release, output, (view.model.source_server, view.model.source_client))
+        return unmark
 
     def position(
         self, index: Int, input: TextInput, consumed_prefix: Int
@@ -155,6 +196,21 @@ struct InputTimeline(Movable):
         mut input: TextInput,
         consumed_prefix: Int = 0,
     ) raises -> Bool:
+        try:
+            validate_pointer_input(input)
+        except error:
+            self.pending.clear()
+            self.pending_bytes = 0
+            self.initial_focus = None
+            self.final_focus = None
+            view.primary.reset()
+            view.pointer.reset()
+            keyboard.clear_text_claims()
+            input.events.clear()
+            input.primaries.clear()
+            input.pointers.clear()
+            input.primary = None
+            raise Error(String(error))
         var restore_focus: Optional[UInt64] = None
         if self.initial_focus:
             if self.final_focus and ui.focus != self.final_focus.value():
@@ -165,14 +221,20 @@ struct InputTimeline(Movable):
         view.prepare_palette_input(ui, input, host)
         view.prepare_search_input(ui, input, host)
         self.merge(input, consumed_prefix)
-        keyboard.filter_text(input, stamped_commands=True)
+        var deferred = False
+        for captured in self.pending:
+            deferred = deferred or Bool(captured.raw)
+        if not deferred:
+            keyboard.filter_text(input, stamped_commands=True)
         var pending = List[_Pending]()
         swap(pending, self.pending)
         self.pending_bytes = 0
         var remaining = List[TextEvent]()
         var unmark = view.palette_closed_frame
         var composed = len(input.marked) > 0
-        for event in input.events:
+        var ordered = List[TextEvent]()
+        swap(ordered, input.events)
+        for event in ordered:
             if event.kind == TEXT_ROUTED:
                 var index = Int(event.start)
                 if index < 0 or index >= len(pending):
@@ -182,13 +244,21 @@ struct InputTimeline(Movable):
                     captured.server != view.model.source_server
                     or captured.client != view.model.source_client
                 ):
+                    if captured.raw:
+                        keyboard.claim_text(captured.raw.value().key, Span(input.bytes))
+                        keyboard.claim_text_command(captured.raw.value().key)
                     if captured.palette:
                         view.palette.pending_open = False
                         view.palette.pending_close = False
                         if ui.focus == view.palette.component.field_key:
                             ui.focus = TERMINAL_KEY
                     continue
-                if captured.key:
+                if captured.raw:
+                    if self.dispatch_raw(view, ui, host, keyboard, clipboard, input, captured.raw.value()):
+                        unmark = True
+                        composed = False
+                        input.unmark()
+                elif captured.key:
                     ref key = captured.key.value()
                     view.forward_key(
                         key.pane,
@@ -214,37 +284,50 @@ struct InputTimeline(Movable):
                         unmark = True
                         composed = False
                 continue
-            if view.palette_event(ui, input, event, host):
-                if view.palette_closed_frame:
+            if event.kind == TEXT_PRIMARY or event.kind == TEXT_POINTER:
+                if view.ordered_pointer(ui, input, event, host):
                     unmark = True
                     composed = False
+                    input.unmark()
                 continue
-            if view.search_event(ui, input, event, host):
-                continue
-            if ui.focus == TERMINAL_KEY and view.active and view.input_pane():
-                if event.kind == TEXT_INSERT:
-                    view.commit_text_event(input, event)
+            var filtered = List[TextEvent]()
+            if deferred:
+                filtered = keyboard.filter_event(event, event.start)
+            else:
+                filtered.append(event)
+            for piece in filtered:
+                if view.palette_event(ui, input, piece, host):
+                    if view.palette_closed_frame:
+                        unmark = True
+                        composed = False
                     continue
-                if event.kind == TEXT_COMMAND:
-                    var action: UInt8 = 0
-                    if event.cmd == CMD_COPY:
-                        action = 1
-                    elif event.cmd == CMD_PASTE:
-                        action = 2
-                    elif event.cmd == CMD_SELECT_ALL:
-                        action = 3
-                    if action != 0:
-                        var result = clipboard.act(
-                            view, ui, host, action, composed
-                        )
-                        if result.unmark:
-                            unmark = True
-                            composed = False
+                if view.search_event(ui, input, piece, host):
+                    continue
+                if ui.focus == TERMINAL_KEY and view.active and view.input_pane():
+                    if piece.kind == TEXT_INSERT:
+                        view.commit_text_event(input, piece)
                         continue
-            remaining.append(event)
+                    if piece.kind == TEXT_COMMAND:
+                        var action: UInt8 = 0
+                        if piece.cmd == CMD_COPY:
+                            action = 1
+                        elif piece.cmd == CMD_PASTE:
+                            action = 2
+                        elif piece.cmd == CMD_SELECT_ALL:
+                            action = 3
+                        if action != 0:
+                            var result = clipboard.act(
+                                view, ui, host, action, composed
+                            )
+                            if result.unmark:
+                                unmark = True
+                                composed = False
+                            continue
+                remaining.append(piece)
         input.events = remaining^
         self.pending.clear()
         self.pending_bytes = 0
+        keyboard.clear_text_claims()
         if restore_focus:
             ui.focus = restore_focus.value()
         view.finish_search(ui)

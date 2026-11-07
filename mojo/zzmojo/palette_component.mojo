@@ -65,6 +65,7 @@ from .palette_text import palette_words
 from .palette_assets import palette_asset_documents
 from .palette_files_component import palette_file_height
 from .palette_ui_keys import palette_ui_key
+from .editor_pointer import editor_composition
 from .palette_presentation import PaletteHint
 from std.sys.info import CompilationTarget
 
@@ -273,6 +274,7 @@ struct PaletteComponent(Movable):
         decorations: PaletteDecorations,
         allow_primary: Bool = True,
         primary_owned: Bool = True,
+        pointer_enabled: Bool = True,
     ) raises -> PaletteComponentResult:
         var result = PaletteComponentResult()
         if not self.opened():
@@ -305,6 +307,11 @@ struct PaletteComponent(Movable):
                 result.limited = True
         elif input.primary and primary_owned:
             result.limited = True
+        if not pointer_enabled:
+            editor_composition(self.field, ui, pointer)
+            self.changed(fleet, decorations)
+            self.clicked_handled = True
+            return result^
         if ui.retained_input_begin(self.key + 3, self.field_key):
             self.field.update(ui, pointer, clip)
             ui.retained_input_end()

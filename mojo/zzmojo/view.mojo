@@ -6,6 +6,16 @@ from mjui.input import (
     TEXT_INSERT,
     MouseEvent,
     MOUSE_DOWN,
+    MOUSE_MOVED,
+    MOUSE_DRAGGED,
+    MOUSE_RIGHT_DRAGGED,
+    MOUSE_EXITED,
+    MOUSE_MIDDLE_DOWN,
+    MOUSE_MIDDLE_UP,
+    MOUSE_MIDDLE_DRAGGED,
+    TEXT_PRIMARY,
+    TEXT_POINTER,
+    MOD_SHIFT,
     MOUSE_RIGHT_DOWN,
     MOUSE_UP,
     MOUSE_RIGHT_UP,
@@ -70,6 +80,10 @@ from .palette_places_model import PalettePlace
 from .palette_files import FILES_UP, FILES_DOWN
 from .path_protocol import PATH_OPEN
 from .path_text import start_dir
+from .primary_paste import PrimaryPasteController, PrimaryTarget
+from .editor_pointer import EditorPointerScope, editor_primary, editor_composition, pointer_payload
+from .actions import MAX_PENDING_INPUT_BYTES, MAX_PENDING_ACTIONS
+from .palette_controller import PALETTE_INPUT_BYTES
 from std.sys.info import CompilationTarget
 
 comptime TERMINAL_KEY: UInt64 = 0x7000000000000000
@@ -111,6 +125,9 @@ struct WorkspaceView(Movable):
     var palette: PaletteRuntime
     var palette_prepared: Bool
     var palette_closed_frame: Bool
+    var primary: PrimaryPasteController
+    var ordered_pointer_frame: Bool
+    var painted_source: Tuple[UInt64, UInt64]
 
     def __init__(
         out self, path: String, var startup: Optional[ResumeStartup] = None
@@ -150,6 +167,9 @@ struct WorkspaceView(Movable):
         self.palette = PaletteRuntime()
         self.palette_prepared = False
         self.palette_closed_frame = False
+        self.primary = PrimaryPasteController()
+        self.ordered_pointer_frame = False
+        self.painted_source = (0, 0)
         self.backend.submit(self.model, self.focus_epoch)
 
     def widget_key(mut self, kind: Int, id: UInt64) raises -> UInt64:
@@ -234,7 +254,7 @@ struct WorkspaceView(Movable):
         self.palette.open(ui, self.model, self.backend.online)
         if self.palette.component.opened():
             var clip = SearchClipboard()
-            _ = self.palette.component.prepare(ui, input, clip, self.palette.projection.fleet, self.palette.projection.decorations, False)
+            _ = self.palette.component.prepare(ui, input, clip, self.palette.projection.fleet, self.palette.projection.decorations, False, False, len(input.primaries) == 0 and len(input.pointers) == 0)
         else:
             self.close_palette(ui)
 
@@ -469,7 +489,7 @@ struct WorkspaceView(Movable):
         var name = target.name()
         if name in self.search_fields or not self.search.editors[name].session.query:
             return
-        var prepared = self.search.editors[name].prepare(ui, input, self.search_clipboard, target.pane, target.command_output, self.search.keys[name].container if pointer else UInt64(0))
+        var prepared = self.search.editors[name].prepare(ui, input, self.search_clipboard, target.pane, target.command_output, self.search.keys[name].container if pointer else UInt64(0), len(input.primaries) == 0 and len(input.pointers) == 0)
         for effect in prepared.effects:
             self.search_frame.append(effect.copy())
         self.search_frame.limited = self.search_frame.limited or prepared.limited
@@ -504,7 +524,7 @@ struct WorkspaceView(Movable):
         var target = self.search.target_for_field(ui.focus)
         if target and self.search_valid(target.value()):
             var name = target.value().name()
-            if input.primary and self.search_clipboard.primary_supported:
+            if input.primary and len(input.primaries) == 0 and len(input.pointers) == 0 and self.search_clipboard.primary_supported:
                 var event = input.primary.value()
                 var hit = ui.hit_test(event.x, event.y)
                 if hit == self.search.keys[name].field or hit == self.search.keys[name].container:
@@ -882,6 +902,7 @@ struct WorkspaceView(Movable):
 
     def set_active(mut self, active: Bool) raises:
         if not active:
+            self.primary.reset()
             self.blur_pointer(True)
             self.active = False
             return
@@ -911,10 +932,177 @@ struct WorkspaceView(Movable):
         self.next_poll = 0
         ui.request_wake(ui.time)
 
+    def pointer_surface_hit(self, ui: Ui, event: MouseEvent) raises -> Optional[PointerSurface]:
+        if self.painted_source != (self.model.source_server, self.model.source_client):
+            return None
+        var hit = ui.hit_test(event.x, event.y)
+        var surfaces = self.pointer_surfaces(ui)
+        for index in range(len(surfaces) - 1, -1, -1):
+            var surface = surfaces[index]
+            if not surface.grid.contains(event.x, event.y):
+                continue
+            var grid_name = String(6, ":", self.output.id.value()) if surface.command_output and self.output.id else String(4, ":", surface.pane)
+            var pane_name = String(5, ":", surface.pane)
+            if (grid_name in self.keys and hit == self.keys[grid_name]) or (pane_name in self.keys and hit == self.keys[pane_name]):
+                return surface
+        return None
+
+    def primary_focus(mut self, mut ui: Ui, surface: PointerSurface) raises:
+        if surface.command_output:
+            self.focus_output(ui)
+        else:
+            if self.output_input or self.model.pane != Optional[UInt64](surface.pane):
+                self.blur_pointer()
+                self.model.select_pane(surface.pane)
+                self.focus_epoch += 1
+            ui.focus = TERMINAL_KEY
+            self.pointer_focus_pane = surface.pane
+            self.pointer_focus_output = False
+        self.cursor_epoch += 1
+
+    def primary_notice(mut self, mut ui: Ui, text: String):
+        try:
+            self.palette.notify(ui, text)
+        except error:
+            self.model.error = String(error)
+
+    def primary_press[Host: Clipboard](mut self, mut ui: Ui, event: MouseEvent, mut host: Host) raises -> Bool:
+        self.primary.reset()
+        if not self.active or not self.model.session:
+            return False
+        var surface = self.pointer_surface_hit(ui, event)
+        if not surface:
+            return False
+        var owner_changed = ui.focus != TERMINAL_KEY or self.input_pane() != Optional[UInt64](surface.value().pane) or self.output_input != surface.value().command_output
+        if not surface.value().command_output and surface.value().pane not in self.model.terminals:
+            return False
+        self.primary_focus(ui, surface.value())
+        if owner_changed:
+            self.marked = None
+        var pane = surface.value().pane
+        var tracking = self.model.command_output.viewport.value().metadata.mouse_tracking if surface.value().command_output else self.model.terminals[pane].metadata.mouse_tracking
+        var target = PrimaryTarget(pane, self.model.source_server, self.model.source_client, self.focus_epoch)
+        if not self.primary.press(target, surface.value().command_output, tracking, event.mods & MOD_SHIFT != 0):
+            var middle = event
+            middle.kind = MOUSE_MIDDLE_DOWN
+            self.mouse(ui, middle)
+            return owner_changed
+        if not self.primary.accepts(target):
+            return owner_changed
+        try:
+            var text = String()
+            comptime if CompilationTarget.is_linux():
+                if host.supports_primary():
+                    text = host.get_primary_selection_bounded(MAX_PENDING_INPUT_BYTES)
+            else:
+                text = host.get_clipboard_bounded(MAX_PENDING_INPUT_BYTES)
+            var paste = self.primary.prepare(target, text)
+            if not paste:
+                return owner_changed
+            if len(self.backend.queue) >= MAX_PENDING_ACTIONS or paste.value().text.byte_length() > MAX_PENDING_INPUT_BYTES - self.backend.queue.pending_bytes:
+                self.primary_notice(ui, "pending terminal paste exceeds queue limit")
+                return owner_changed
+            _ = self.cancel_local_scroll(pane)
+            self.backend.paste(pane, paste.value().text, target.epoch, (target.server, target.client))
+            self.next_poll = 0
+            ui.request_wake(ui.time)
+        except error:
+            self.primary.pending = None
+            self.primary_notice(ui, String(error))
+        return owner_changed
+
+    def ordered_pointer[Host: Clipboard](mut self, mut ui: Ui, input: TextInput, event: TextEvent, mut host: Host) raises -> Bool:
+        var pointer = pointer_payload(input, event)
+        self.ordered_pointer_frame = True
+        if event.kind == TEXT_PRIMARY:
+            if pointer.kind == MOUSE_MIDDLE_UP:
+                if self.primary.release():
+                    return False
+                self.mouse(ui, pointer)
+                return False
+            if pointer.kind == MOUSE_MIDDLE_DRAGGED:
+                if not self.primary.pressed:
+                    self.mouse(ui, pointer)
+                return False
+            if self.palette.opened():
+                var owner = self.palette.component.key + 3
+                if ui.retained_input_begin(owner, self.palette.component.field_key):
+                    var previous_focus = ui.focus
+                    var pasted = editor_primary(self.palette.component.field, ui, pointer, host, PALETTE_INPUT_BYTES - len(input.marked))
+                    ui.retained_input_end()
+                    if pasted.limited:
+                        self.primary_notice(ui, "Palette input exceeds 64 KiB")
+                    if pasted.inserted:
+                        if previous_focus == self.palette.component.field_key:
+                            editor_composition(self.palette.component.field, ui, input)
+                        self.palette.component.changed(self.palette.projection.fleet, self.palette.projection.decorations)
+                        self.palette.sync_files(ui, self.backend, self.model, self.focus_epoch)
+                    return pasted.inserted and previous_focus != self.palette.component.field_key
+                return False
+            var hit = ui.hit_test(pointer.x, pointer.y)
+            var target = self.search.target_for_field(hit)
+            if target and self.search_valid(target.value()):
+                var name = target.value().name()
+                if not self.search.editors[name].session.query:
+                    return False
+                var previous_focus = ui.focus
+                var pasted = editor_primary(self.search.editors[name].field, ui, pointer, host, SEARCH_TEXT_BYTES - len(input.marked))
+                if pasted.limited:
+                    self.model.error = "Terminal search input exceeds its byte limit"
+                if pasted.inserted:
+                    if previous_focus == self.search.keys[name].field:
+                        editor_composition(self.search.editors[name].field, ui, input)
+                    self.search.editors[name].changed(target.value().pane, target.value().command_output, self.search_frame)
+                    self.search.touch(name)
+                    self.search_results(ui, target.value())
+                return pasted.inserted and previous_focus != self.search.keys[name].field
+            return self.primary_press(ui, pointer, host)
+        var before_focus = ui.focus
+        var before_pane = self.input_pane()
+        var before_output = self.output_input
+        var scope = EditorPointerScope(ui)
+        scope.apply(ui, pointer)
+        var single = TextInput()
+        single.marked = input.marked.copy()
+        single.marked_sel_a = input.marked_sel_a
+        single.marked_sel_b = input.marked_sel_b
+        try:
+            if self.palette.opened():
+                var result = self.palette.prepare(ui, single, host, self.backend, self.model, self.focus_epoch)
+                self.palette.component.clicked_handled = True
+                if result.closed or self.palette.files.close_ready:
+                    self.close_palette(ui)
+                self.palette_effect(ui, result.effect)
+                if result.limited:
+                    self.primary_notice(ui, "Palette input exceeds 64 KiB")
+            else:
+                var hit = ui.hit_test(pointer.x, pointer.y)
+                var target = self.search.target_for_field(hit)
+                if target and self.search_valid(target.value()):
+                    var name = target.value().name()
+                    var prepared = self.search.editors[name].prepare(ui, single, self.search_clipboard, target.value().pane, target.value().command_output, self.search.keys[name].container)
+                    for effect in prepared.effects:
+                        self.search_frame.append(effect.copy())
+                    self.search_frame.limited = self.search_frame.limited or prepared.limited
+                    self.search_results(ui, target.value())
+                    self.search_clipboard.deliver(host)
+                else:
+                    self.mouse(ui, pointer)
+        except error:
+            scope.restore(ui)
+            raise Error(String(error))
+        if pointer.kind == MOUSE_UP:
+            ui.active = 0
+        scope.restore(ui)
+        return self.palette_closed_frame or before_focus != ui.focus or before_pane != self.input_pane() or before_output != self.output_input
+
     def mouse(mut self, mut ui: Ui, event: MouseEvent) raises:
-        if self.palette.opened():
+        if self.painted_source != (self.model.source_server, self.model.source_client):
             return
-        if self.terminal_chrome_hit(ui, event.x, event.y):
+        var captured_middle_release = event.kind == MOUSE_MIDDLE_UP and UInt8(1) in self.pointer.captures
+        if self.palette.opened() and not captured_middle_release:
+            return
+        if self.terminal_chrome_hit(ui, event.x, event.y) and not captured_middle_release:
             return
         if self.output.id and (
             event.kind == MOUSE_DOWN
@@ -929,7 +1117,7 @@ struct WorkspaceView(Movable):
             ):
                 return
         var surfaces = self.pointer_surfaces(ui)
-        if event.kind == MOUSE_DOWN or event.kind == MOUSE_RIGHT_DOWN:
+        if event.kind == MOUSE_DOWN or event.kind == MOUSE_RIGHT_DOWN or event.kind == MOUSE_MIDDLE_DOWN:
             for index in range(len(surfaces) - 1, -1, -1):
                 var surface = surfaces[index]
                 if surface.grid.contains(event.x, event.y):
@@ -1115,8 +1303,8 @@ struct WorkspaceView(Movable):
             var key = self.widget_key(
                 6, self.output.id.value()
             ) if output else self.widget_key(4, item.pane)
-            var interaction = ui.interact(key, focusable=True)
-            if interaction.pressed:
+            var interaction = ui.interact(key, focusable=True, focus_on_press=not self.ordered_pointer_frame)
+            if interaction.pressed and not self.ordered_pointer_frame:
                 if output:
                     self.focus_output(ui)
                 elif self.output_input or self.model.pane != Optional[UInt64](
@@ -1494,3 +1682,5 @@ struct WorkspaceView(Movable):
                     self.close_palette(ui)
             self.palette_effect(ui, result.effect)
         self.palette.paint_notifications(ui, self.theme)
+        self.painted_source = (self.model.source_server, self.model.source_client)
+        self.ordered_pointer_frame = False

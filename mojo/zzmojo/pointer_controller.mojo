@@ -8,6 +8,9 @@ from mjui.input import (
     MOUSE_RIGHT_DOWN,
     MOUSE_RIGHT_DRAGGED,
     MOUSE_RIGHT_UP,
+    MOUSE_MIDDLE_DOWN,
+    MOUSE_MIDDLE_UP,
+    MOUSE_MIDDLE_DRAGGED,
     MOD_SHIFT,
     MOD_CTRL,
     MOD_CMD,
@@ -172,7 +175,8 @@ struct PointerController(Movable):
         var removed = List[UInt8]()
         for entry in self.captures.items():
             if (
-                entry.value.surface.pane == pane
+                entry.key != 1
+                and entry.value.surface.pane == pane
                 and entry.value.surface.command_output == command_output
             ):
                 removed.append(entry.key)
@@ -300,15 +304,15 @@ struct PointerController(Movable):
         event: MouseEvent,
         epoch: UInt64,
     ) raises -> Optional[RoutedPointer]:
-        var press = event.kind == MOUSE_DOWN or event.kind == MOUSE_RIGHT_DOWN
-        var release = event.kind == MOUSE_UP or event.kind == MOUSE_RIGHT_UP
+        var press = event.kind == MOUSE_DOWN or event.kind == MOUSE_RIGHT_DOWN or event.kind == MOUSE_MIDDLE_DOWN
+        var release = event.kind == MOUSE_UP or event.kind == MOUSE_RIGHT_UP or event.kind == MOUSE_MIDDLE_UP
         var drag = (
-            event.kind == MOUSE_DRAGGED or event.kind == MOUSE_RIGHT_DRAGGED
+            event.kind == MOUSE_DRAGGED or event.kind == MOUSE_RIGHT_DRAGGED or event.kind == MOUSE_MIDDLE_DRAGGED
         )
         var button = UInt8(
             2 if event.kind == MOUSE_RIGHT_DOWN
             or event.kind == MOUSE_RIGHT_DRAGGED
-            or event.kind == MOUSE_RIGHT_UP else 0
+            or event.kind == MOUSE_RIGHT_UP else 1 if event.kind == MOUSE_MIDDLE_DOWN or event.kind == MOUSE_MIDDLE_UP or event.kind == MOUSE_MIDDLE_DRAGGED else 0
         )
         var capture: Optional[_Capture] = None
         var surface: Optional[PointerSurface]
@@ -353,7 +357,12 @@ struct PointerController(Movable):
                 self.selection_pointer = None
                 self.selection_lines = 0
         elif event.kind == MOUSE_MOVED:
+            var middle: Optional[_Capture] = None
+            if UInt8(1) in self.captures:
+                middle = self.captures[UInt8(1)]
             self.captures.clear()
+            if middle:
+                self.captures[UInt8(1)] = middle.value()
             self.selection_pointer = None
             self.selection_lines = 0
         elif not release and not drag:

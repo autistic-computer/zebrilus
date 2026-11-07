@@ -203,50 +203,49 @@ struct KeyboardController(Movable):
         self.claim_command(key)
         return RoutedKey(pane, captured_epoch, input^, False)
 
-    def filter_text(
-        mut self, mut input: TextInput, stamped_commands: Bool = False
-    ):
+    def filter_event(mut self, event: TextEvent, position: Int32) -> List[TextEvent]:
         var events = List[TextEvent]()
-        for index in range(len(input.events)):
-            var event = input.events[index]
-            if event.kind == TEXT_COMMAND:
-                var name = String(event.cmd, ":", event.mods)
-                var position = event.start if stamped_commands else Int32(index)
-                if self.consumed_commands.get(position, False):
-                    continue
-                if self.command_positions.get(position, String()) == name:
-                    continue
-                var claimed = self.command_claims.get(name, 0)
-                if claimed > 0:
-                    self.command_claims[name] = claimed - 1
-                    continue
-            if event.kind != TEXT_INSERT:
-                events.append(event)
-                continue
-            var segments: List[Tuple[Int32, Int32]] = [(event.start, event.end)]
-            for consumed in self.consumed:
-                var remaining = List[Tuple[Int32, Int32]]()
-                for segment in segments:
-                    if consumed[1] <= segment[0] or consumed[0] >= segment[1]:
-                        remaining.append(segment)
-                    else:
-                        if segment[0] < consumed[0]:
-                            remaining.append((segment[0], consumed[0]))
-                        if segment[1] > consumed[1]:
-                            remaining.append((consumed[1], segment[1]))
-                segments = remaining^
+        if event.kind == TEXT_COMMAND:
+            var name = String(event.cmd, ":", event.mods)
+            if self.consumed_commands.get(position, False):
+                return events^
+            if self.command_positions.get(position, String()) == name:
+                return events^
+            var claimed = self.command_claims.get(name, 0)
+            if claimed > 0:
+                self.command_claims[name] = claimed - 1
+                return events^
+        if event.kind != TEXT_INSERT:
+            events.append(event)
+            return events^
+        var segments: List[Tuple[Int32, Int32]] = [(event.start, event.end)]
+        for consumed in self.consumed:
+            var remaining = List[Tuple[Int32, Int32]]()
             for segment in segments:
-                events.append(
-                    TextEvent(
-                        event.kind,
-                        event.cmd,
-                        event.mods,
-                        segment[0],
-                        segment[1],
-                    )
-                )
-        input.events = events^
+                if consumed[1] <= segment[0] or consumed[0] >= segment[1]:
+                    remaining.append(segment)
+                else:
+                    if segment[0] < consumed[0]:
+                        remaining.append((segment[0], consumed[0]))
+                    if segment[1] > consumed[1]:
+                        remaining.append((consumed[1], segment[1]))
+            segments = remaining^
+        for segment in segments:
+            events.append(TextEvent(event.kind, event.cmd, event.mods, segment[0], segment[1]))
+        return events^
+
+    def clear_text_claims(mut self):
         self.consumed.clear()
         self.command_claims.clear()
         self.command_positions.clear()
         self.consumed_commands.clear()
+
+    def filter_text(mut self, mut input: TextInput, stamped_commands: Bool = False):
+        var events = List[TextEvent]()
+        for index in range(len(input.events)):
+            var event = input.events[index]
+            var position = event.start if stamped_commands else Int32(index)
+            var filtered = self.filter_event(event, position)
+            events.extend(filtered^)
+        input.events = events^
+        self.clear_text_claims()

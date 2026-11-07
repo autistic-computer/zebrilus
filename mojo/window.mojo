@@ -14,6 +14,7 @@ from zzmojo.readiness import Readiness, stream_ready
 from zzmojo.keyboard_controller import KeyboardController
 from zzmojo.clipboard_controller import ClipboardController
 from zzmojo.input_timeline import InputTimeline
+from zzmojo.workspace_keys import raw_workspace_key, route_workspace_key
 
 
 struct Workspace(App, Movable):
@@ -71,6 +72,7 @@ struct Workspace(App, Movable):
             var search_input = Bool(search) and ui.text_input
             var palette_input = self.view.palette.owns_input(ui) and ui.text_input
             var text_key = ui.focus if search_input or palette_input else self.view.input_key()
+            win.set_primary_composition_policy(ui.focus == TERMINAL_KEY and self.view.active and Bool(self.view.input_pane()))
             win.set_text_input(
                 search_input or palette_input or (ui.focus == TERMINAL_KEY and Bool(self.view.input_pane())),
                 text_key,
@@ -112,8 +114,9 @@ struct Workspace(App, Movable):
             self.scene_frames += 1
             self.scene_complete = self.scene_complete and ui.native_scene_complete
         try:
-            for event in win.mouse:
-                self.view.mouse(ui, event)
+            if not win.text.pointer_overflow and len(win.text.primaries) == 0 and len(win.text.pointers) == 0:
+                for event in win.mouse:
+                    self.view.mouse(ui, event)
             for event in win.scrolls:
                 self.view.scroll(ui, event, win.mouse_x, win.mouse_y)
             if self.pointer_mods != ui.mods:
@@ -124,59 +127,20 @@ struct Workspace(App, Movable):
 
     def on_key(mut self, mut ui: Ui, mut win: Window, key: KeyEvent) -> Bool:
         try:
-            var before_focus = ui.focus
-            var cancel = key.text_event >= 0 and Int(key.text_event) < len(win.text.events) and win.text.events[Int(key.text_event)].kind == TEXT_COMMAND and win.text.events[Int(key.text_event)].cmd == CMD_CANCEL
-            var palette = self.view.plan_palette(ui, self.keyboard, key, Span(win.text.bytes), cancel)
-            if palette:
-                if palette.value().kind != 1:
-                    self.timeline.palette(palette.value(), key, before_focus, ui.focus)
-                if palette.value().kind == 0:
-                    win.text.unmark()
+            if win.text.pointer_overflow:
                 return True
-            if self.view.palette.opened():
-                if key.release:
-                    var released = self.keyboard.route(self.view.model, False, key, Span(win.text.bytes), self.view.focus_epoch, self.view.input_pane())
-                    if released:
-                        self.timeline.key(self.view, released.value(), key)
-                        return True
-                return ui.key(key)
-            var search = self.view.plan_search(ui, self.keyboard, key, Span(win.text.bytes))
-            if search:
-                if search.value().kind != 2:
-                    self.timeline.search(search.value(), key, before_focus, ui.focus)
-                if search.value().kind == 0:
-                    win.text.unmark()
-                return True
-            var clipboard = self.clipboard.plan(
-                self.view,
-                ui,
-                self.keyboard,
-                key,
-                Span(win.text.bytes),
-                composed=len(win.text.marked) > 0,
-            )
-            if clipboard:
-                self.timeline.clipboard(clipboard.value(), key)
+            if len(win.text.primaries) > 0 or len(win.text.pointers) > 0:
+                self.timeline.raw_key(self.view, key, win.text)
                 ui.request_wake(ui.time)
                 return True
-            var routed = self.keyboard.route(
-                self.view.model,
-                ui.focus == TERMINAL_KEY and self.view.active,
-                key,
-                Span(win.text.bytes),
-                self.view.focus_epoch,
-                self.view.input_pane(),
-            )
-            if routed:
-                ref event = routed.value()
-                self.timeline.key(self.view, event, key)
-                ui.request_wake(ui.time)
-            if self.keyboard.claimed:
-                return True
+            var route = route_workspace_key(self.view, ui, self.keyboard, self.clipboard, raw_workspace_key(key, win.text), win.text)
+            self.timeline.capture_route(self.view, route, key)
+            if route.unmark:
+                win.text.unmark()
+            return route.claimed
         except error:
             self.view.model.error = String(error)
             return True
-        return ui.key(key)
 
 
 def main() raises:
