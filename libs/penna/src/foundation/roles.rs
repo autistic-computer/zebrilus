@@ -253,9 +253,9 @@ pub const ICON_BUTTON_ROW: SurfaceRole = SurfaceRole::under(
     &SurfaceRole::ICON_BUTTON,
     "icon-button.row",
     "Row actions",
-    "The + and × buttons that show on a hovered row",
+    "The + and × buttons that show on a hovered row, washed when pointed at",
 )
-.with(P.hover(Highlight::None).selected(Highlight::None));
+.with(P.selected(Highlight::None));
 pub const ICON_BUTTON_BAR: SurfaceRole = SurfaceRole::under(
     &SurfaceRole::ICON_BUTTON,
     "icon-button.bar",

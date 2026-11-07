@@ -22,12 +22,14 @@ use super::button_icon::ButtonIcon;
 
 pub const COMPACT_ICON_BUTTON_SIZE: f32 = 24.0;
 const COMPACT_ICON_DROP: Pixels = px(0.5);
+pub const INSIDE_GAP: Pixels = px(4.0);
 
 #[derive(Default, Clone, Copy)]
 pub enum ButtonRounded {
     #[default]
     Medium,
     Size(Pixels),
+    Inside(Surface, Pixels),
 }
 
 impl From<Pixels> for ButtonRounded {
@@ -299,6 +301,15 @@ impl Button {
             .icon(icon.into().relative().top(COMPACT_ICON_DROP))
     }
 
+    #[must_use]
+    pub fn inside(self, around: impl Into<Surface>, height: Pixels) -> Self {
+        let side = height - INSIDE_GAP * 2.0;
+        let icon = (side - px(8.0)).clamp(px(10.0), px(14.0));
+        self.rounded(ButtonRounded::Inside(around.into(), height))
+            .with_size(Size::Size(icon / 0.75))
+            .size(side)
+    }
+
     pub fn flat(mut self) -> Self {
         self.flat = true;
         self
@@ -552,6 +563,18 @@ impl RenderOnce for Button {
                     cx.theme().style_of(surface).smoothing.exponent()
                 }),
             ),
+            ButtonRounded::Inside(around, height) => {
+                let container = cx.theme().layer(around, PaintState::Rest);
+                let radius = crate::blocks::touch::concentric(
+                    crate::foundation::row_radius(&container, height),
+                    INSIDE_GAP,
+                );
+                if radius >= FULL_CORNER_RADIUS || radius * 2.0 >= height - INSIDE_GAP * 2.0 {
+                    (FULL_CORNER_RADIUS, Smoothing::CIRCLE.exponent())
+                } else {
+                    (radius, container.smoothing)
+                }
+            }
         };
         let coarse = crate::blocks::touch::CoarsePointer::get(cx);
         let slop = self.hit_slop.filter(|_| coarse);

@@ -373,7 +373,7 @@ Anatomy, left to right, all from the button's rung of the control ladder (Size):
 - Caret (optional, `.dropdown_caret(true)`): a chevron at the end, `icon_gap` after the label, for a button that opens a menu. It is the same mark as a select's chevron at that size: a rung smaller than the button's icon from `md` up.
 - Focus ring: 1.5px, outside the container, its own radius, one ring width further out on a solid fill (Corners, depth, focus, motion).
 
-Icon only: the button is square (width = height) and must carry a tooltip that names the action, which is also its accessible name. A row's trailing actions use `Button::compact_icon` (24, ghost).
+Icon only: the button is square (width = height) and must carry a tooltip that names the action, which is also its accessible name. A row's trailing actions use `Button::compact_icon` (24, ghost). A button set inside a tab or a row's fill, such as a tab's close or a tree row's actions, takes `.inside(look, height)` with the container's look and height: it sits `INSIDE_GAP` (4) in from the container's top, bottom and trailing edge, so its side is the container's height less 8 and its corner is concentric with the container's (that corner less 4, a circle inside a capsule), and its icon is its side less 8, from 10 to 14. Like every ghost button it washes when pointed at, the row action look (`icon-button.row`) included.
 
 Sizes: `md` by default (follows density). `sm` and `xs` in toolbars, lists and rows that repeat; `lg` and `xl` for the one main action of a sparse screen (an empty state, a first run); `touch` under a coarse pointer. Every button in a row has the same size (Rules 6).
 
@@ -397,7 +397,7 @@ Content: the label is a verb or a short verb phrase in sentence case, one to thr
 
 Placement: buttons in a group sit `gap-related` 8 apart. A dialog's or a form's actions sit at its end, aligned to the trailing edge, the primary last and its cancel just before it. A destructive dialog confirms with a danger button, not a primary one. Ghost buttons in a bar sit `inset-chrome` from its edges.
 
-HTML: `.penna-button` with `data-penna` (the recipe: `button`, `button.quiet` for ghost, `button.outline`), `data-tone`, `data-prominent` (solid), `data-size` (`xsmall` to `touch`), `data-state="current"` (selected), `data-variant` (`link`, `text`), `disabled`, `data-loading`; the label is `.penna-label`, the icon `<i data-icon>`, and a button with a caret takes `data-caret` and holds a `.penna-caret`.
+HTML: `.penna-button` with `data-penna` (the recipe: `button`, `button.quiet` for ghost, `button.outline`), `data-tone`, `data-prominent` (solid), `data-size` (`xsmall` to `touch`), `data-state="current"` (selected), `data-variant` (`link`, `text`), `disabled`, `data-loading`; the label is `.penna-label`, the icon `<i data-icon>`, and a button with a caret takes `data-caret` and holds a `.penna-caret`. A button set inside a tab or row takes `data-inside` with `--penna-inside-rows` set to the container's height, and `kit.js` rounds it concentric.
 
 Status: matches.
 
@@ -1291,7 +1291,7 @@ Looks (`TabLook`):
 Anatomy:
 
 - Container: the rung's height, `control-lg` 32 by default; the look's fill, outline and corners (its radius, capped at 45% of the height).
-- Inset, gap, icon and label are the caller's. The story and `tab.css` use `space-10` at the sides and `space-6` gaps, a 12 icon, a `small` label and an optional `caption` aside in muted ink; a title uses `space-8` and a `small` muted path.
+- Inset, gap, icon and label are the caller's. A close button sits inside the tab (`Button::inside`, Button), the tab's trailing inset `INSIDE_GAP` 4 so the button is as far from the end as from the top. The story and `tab.css` use `space-10` at the sides and `space-6` gaps, a 12 icon, a `small` label and an optional `caption` aside in muted ink; a title uses `space-8` and a `small` muted path.
 - Focus ring: 1.5px, outside the container, with its own radius.
 - Strip (`TabStrip::new(id, look)`, `tab.strip`): the window tabs sit in one track, a wash of its ground with no edge, `space-2` inside it and `space-2` apart. `.with_size()` sets its tabs' height (28 in the title bar), and the strip is that plus `space-2` above and below. Its corner is the tabs' corner plus `space-2`, so the picked tab's glass sits concentric in it: square at a `radius` of 0, a capsule when the tabs are. A strip holding one tab draws no track, only the tab at its place. `TabStrip::ground(on, tabs, cx)` is the ground the tabs inside paint on: the strip's, or `on` for a lone tab.
 

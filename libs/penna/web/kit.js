@@ -119,6 +119,12 @@ function cornerOf(style, width, height) {
     const inset = parseFloat(around) || 0;
     corner = Math.min(share * rows + inset, rows / 2 + inset);
   }
+  const inside = style.getPropertyValue("--penna-inside").trim();
+  if (inside) {
+    const rows = parseFloat(style.getPropertyValue("--penna-inside-rows")) || 28;
+    const share = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--penna-control-share")) || 0;
+    corner = Math.max(Math.min(share * rows, rows / 2) - (parseFloat(inside) || 0), 0);
+  }
   const nest = style.getPropertyValue("--penna-nest-inset").trim();
   if (nest) {
     const outer = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--penna-radius")) || 0;

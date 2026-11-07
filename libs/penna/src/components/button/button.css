@@ -257,3 +257,12 @@
   box-shadow: var(--penna-under);
   pointer-events: none;
 }
+
+.penna-button[data-penna][data-inside] {
+  --penna-inside: 4px;
+  --penna-share: 0;
+  width: calc(var(--penna-inside-rows, 28px) - 8px);
+  height: calc(var(--penna-inside-rows, 28px) - 8px);
+  padding: 0;
+  --penna-icon-size: clamp(10px, calc(var(--penna-inside-rows, 28px) - 16px), 14px);
+}
