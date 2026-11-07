@@ -1114,11 +1114,12 @@ impl Theme {
             PaintState::Focused if kind == Kind::Field => style.selected,
             _ => Highlight::None,
         };
-        let highlight = match highlight {
-            Highlight::Glass if glass.is_some() || ground.glass || self.drawn_glass().is_none() => {
-                Highlight::Accent
-            }
-            highlight => highlight,
+        let unglassed = highlight == Highlight::Glass
+            && (glass.is_some() || ground.glass || self.drawn_glass().is_none());
+        let highlight = if unglassed {
+            Highlight::Accent
+        } else {
+            highlight
         };
         let highlight = match highlight {
             Highlight::Accent if tone == Tone::Neutral => Highlight::Tint,
@@ -1191,7 +1192,11 @@ impl Theme {
         } else {
             self.border()
         };
-        let edged = rimless;
+        let rimmed = unglassed
+            && super::roles::RIMMED_PICKS
+                .iter()
+                .any(|role| role.id == surface.role.id);
+        let edged = rimless || rimmed;
         let border_width = if style.outline || edged {
             self.outline
         } else {
@@ -1568,6 +1573,7 @@ mod tests {
                 "{}",
                 role.id
             );
+            assert_eq!(selected.border_width, px(0.0), "{}", role.id);
         }
         let pane = Surface::new(Kind::Pane.role());
         assert!(theme.layer(pane, PaintState::Rest).glass.is_none());
@@ -1585,7 +1591,23 @@ mod tests {
             let selected = theme.layer(Surface::new(role), PaintState::Selected);
             assert!(selected.glass.is_none(), "{}", role.id);
             assert!(!selected.ground.solid, "{}", role.id);
+            let edge = if role.id == super::super::roles::TAB_WINDOW.id {
+                (
+                    theme.ground().ink.opacity(CONTROL_EDGE_ALPHA),
+                    theme.outline,
+                )
+            } else {
+                (theme.transparent, px(0.0))
+            };
+            assert_eq!(
+                (selected.border, selected.border_width),
+                edge,
+                "{}",
+                role.id
+            );
         }
+        let tab = Surface::new(super::super::roles::TAB_WINDOW);
+        assert_eq!(theme.layer(tab, PaintState::Rest).border_width, px(0.0));
         assert!(theme.layer(pane, PaintState::Rest).glass.is_none());
     }
 
