@@ -272,3 +272,43 @@ struct InputRouterSession(Movable):
 
     def action_body(self, action: RouterAction) raises -> List[UInt8]:
         return self._map.body(action)
+
+    def install_map(mut self, var replacement: RouterMapArena) raises:
+        if len(self._state.effects) != 0 or len(self._delivery) != 0:
+            raise Error("router map installation requires drained effects and delivery")
+        if self._generation == UInt64.MAX:
+            raise Error("router transaction generation exhausted")
+        var state = self._state.copy()
+        state.keymap = replacement.version()
+        validate_router_state(state, replacement, self._payloads)
+        self._map = replacement^
+        self._state = state^
+        self._generation += 1
+
+    def replace_payloads(mut self, var replacement: RouterPayloadArena) raises:
+        if replacement.scope() != self._scope:
+            raise Error("router payload replacement belongs to another source scope")
+        if len(self._delivery) != 0:
+            raise Error("router payload replacement requires consumed delivery")
+        if self._generation == UInt64.MAX:
+            raise Error("router transaction generation exhausted")
+        validate_router_state(self._state, self._map, replacement)
+        for old_index in range(len(self._payloads._inputs)):
+            var payload = self._payloads._inputs[old_index].payload
+            var required = False
+            for effect in self._state.effects:
+                required = required or effect.kind == 0 and effect.input.payload == payload
+            if required:
+                for new_index in range(len(replacement._inputs)):
+                    if replacement._inputs[new_index].payload == payload:
+                        _matching_bytes(self._payloads._bodies[old_index], replacement._bodies[new_index])
+        self._payloads = replacement^
+        self._generation += 1
+
+
+def _matching_bytes(actual: List[UInt8], expected: List[UInt8]) raises:
+    if len(actual) != len(expected):
+        raise Error("router payload replacement changed retained input bytes")
+    for index in range(len(actual)):
+        if actual[index] != expected[index]:
+            raise Error("router payload replacement changed retained input bytes")

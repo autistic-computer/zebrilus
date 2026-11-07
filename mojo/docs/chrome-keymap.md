@@ -1,0 +1,43 @@
+# Chrome keymap
+
+`zzmojo.chrome_keymap` ports the public `zz_client::ChromeKeymap` behavior and `ChromeKey` grammar. `zzmojo.chrome_actions` represents every `ChromeAction`, including all 256 values of each indexed variant. The catalog is compact indexed runtime data generated from an actual Rust reference; it does not generate a large Mojo branch tree. `chrome_catalog.mojo` records the source hash and complete final default bindings for Tui, Desktop and DesktopApple.
+
+Existing palette/search/clipboard planners remain unchanged. This module supplies a complete resolver rather than combining their narrower shortcut predicates. No live routing is enabled by this checkpoint.
+
+# Contract
+
+`ChromeKeymap(profile, scope)` takes profile 0=Tui, 1=Desktop or 2=DesktopApple. Omitting the profile selects Tui, matching the source `new`/`Default` behavior. Platform selection is explicit: a desktop caller must choose the source Desktop profile on other platforms and DesktopApple on macOS/iOS. The scope is a caller-allocated U32 identity for this map owner. The mutable map is movable rather than implicitly copyable, avoiding accidental version forks. Immutable snapshots are returned for display and gate installation.
+
+The API includes `bind`, `unbind`, `binds`, `action_for`, `resolve`, `bindings` and `table_bindings`. `bind` returns an optional exact unknown-action string; resource or malformed typed-input errors raise before changing the map. A real binding replacement/removal advances its revision. Rebinding the same action, unbinding a missing key and an unknown action leave both records and version unchanged. The opaque version combines scope in the high word and revision in the low word. This is an adapter identity, not a claim to reproduce the source's private process-global key-table counter. Revision exhaustion refuses atomically.
+
+Bindings are sorted by exact table spelling and stored key spelling, matching the source's ordered maps. Empty/Unicode/NUL-containing table names are retained. Tables disappear when their last binding is removed. Chrome-key canonicalization is followed by protocol-key canonicalization. Consequently some malformed keys can be stored and appear in `bindings`, but are omitted by `table_bindings` or cannot be addressed through `action_for`. The port preserves that behavior.
+
+`ChromeKey` retains command/control/alt/shift flags and the original base spelling. It implements the source's exact modifier aliases, repeated modifiers, Rust whitespace trimming, literal trailing-space fallback, ASCII normalization and display order. Shift alone turns ASCII letters into their uppercase identity and clears the shift flag; commanded ASCII uppercase becomes lowercase plus shift. Other Unicode letters retain their source spelling. This differs from the palette's display-keystroke model.
+
+Resolution checks an explicit shifted chord first. Platform chords then use their platform spelling without the `Any` fallback. Other inputs try one non-control typed character, then their protocol key name, then `Any`. Resolver results do not depend on press/repeat/release: release precedence belongs to the input router. The existing complete `KeyInput` and key-name helper are reused. Source-invalid Unicode scalars, function values above u8, unknown key variants/actions or modifier bits outside the source's four flags are rejected.
+
+# Typed router boundary
+
+`lookups(input)` returns `ChromeLookups`: the exact raw key identity, optional unshifted character identity, map version, four optional UI/sidebar/terminal/browser action references, and UI/terminal table-presence flags. Key identities encode the complete source key variant and its character/function/user payload without floating point. Character zero is a valid identity, distinguished from an absent optional value.
+
+`key_operation(state, input, payload, armed, claimed)` constructs a complete `RouterOperation` and refuses a map-version mismatch. It never fills missing tables with guessed actions. `action_arena()` captures the current opaque version and full typed action identities. Action references include both kind and indexed value; bodies retain those two bytes before the name. Different out-of-range indexed values therefore remain distinct even when source `name()` returns the same fallback spelling. Names are not used to merge identities.
+
+Dynamic map installation uses `InputRouterSession.install_map`. It requires both retained effects and the delivery mailbox to be empty, preserves every held/local claim and focus/capture field, changes only the retained map identity and advances the existing transaction generation. A refusal changes nothing. A caller must drain and synchronously consume old delivery before this boundary; it must not discard queued effects when bindings change.
+
+`replace_payloads` installs a fresh immutable payload snapshot within the same source scope. Every currently held/local key and queued input must remain valid. Referenced queued input metadata and raw bytes must match exactly; checks borrow the retained byte lists rather than cloning raw bodies. A nonempty delivery mailbox, foreign scope, missing reference or modified retained body refuses atomically. A successful replacement preserves the entire router state and advances generation, invalidating in-flight plans. Unreferenced payloads may be retired after delivery is consumed. Source-scope changes remain an explicit new-session operation, not an implicit generation reset per key.
+
+These lifecycle methods are new adapter policy. They do not claim that the source desktop frontend uses all of the general focus APIs: its actual global interceptor and native context bindings remain a separate integration contract.
+
+# Bounds and evidence
+
+The resolver admits at most 4,096 bindings, 256 tables, 1 MiB of retained table/key spelling bytes and 64 KiB per supplied string or input text. Retained byte accounting includes each record's table and key strings, matching this representation's ownership. Capacity is checked before constructing the replacement record list. There is no truncation or eviction. The underlying router keeps its separate native/outer budgets described in [the Bend router boundary](../../bend2/INPUT_ROUTER_PORT.md).
+
+Run `python3 mojo/scripts/chrome_keymap_vectors.py` from the repository root. The wrapper acquires the shared 4 GiB guard, refreshes the public-API Rust reference, regenerates the compact catalog, builds the native worker and three Mojo probes, and writes `target/port/chrome-keymap-verification.json`.
+
+The source comparison checks 561 typed actions, 599 name parses, 534 chord parses, 192 normalizations, 13,728 actual wire inputs, nine map cases, 636 mutation steps and 1,111,968 resolver queries. Cases include all source profiles, every modifier combination and key action, ASCII controls, Unicode, shifted/unshifted identity, arbitrary text, alias replacement, malformed stored keys, wildcard/platform precedence, table removal and exact sorted listings. Mutation/no-op version behavior is checked against changes in actual source snapshots.
+
+Focused budget assertions exercise the exact 4,096-binding, 256-table and 1 MiB spelling limits, replacement/no-op behavior at capacity, and refusal without record/version changes. The lifecycle probe checks monotonic generations and stale-plan refusal across both map and payload replacements, raw NUL/body preservation, pending-effect/delivery refusal, missing/foreign/modified payload refusal, and release routing back to the original press pane after both a binding change and a new capture pane. All seven operations run through both typed and native checked execution, with zero native fallback. The complete source refresh/build/differential/budget/lifecycle run peaked at 905 MiB; the million-query comparison took about 1.5 seconds on this host.
+
+The initial source run exposed a shared-helper bug: Mojo `String.strip()` removed U+001C–U+001F, while Rust `str::trim` preserves them. `key_spelling.canonical_protocol_key` now uses the source whitespace set, and `input_protocol.canonical_key` delegates to it. `python3 mojo/scripts/key_spelling_vectors.py --shared` compares both helpers with 1,100 actual Rust cases across byte controls and Unicode whitespace. Existing input, keyboard and pointer checks and the native PRIMARY workspace also pass with the corrected helper.
+
+These are executable source comparisons and lifecycle/resource checks. Formal claims remain limited to the pure Bend equations; the complete resolver, frontend dispatch, native context precedence and application behavior are not universally proved.
