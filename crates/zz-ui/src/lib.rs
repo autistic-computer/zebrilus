@@ -2,10 +2,13 @@ pub mod tmux_style;
 
 pub(crate) use penna::{
     blocks::feedback, blocks::notification, blocks::picker, blocks::sidebar, blocks::touch,
-    components::badge, components::button, components::check, components::icon, components::input,
-    components::kbd, components::list, components::menu, components::scroll, components::separator,
-    components::spinner, components::text, components::tooltip, foundation::motion,
+    components::badge, components::button, components::icon, components::input, components::kbd,
+    components::list, components::menu, components::scroll, components::separator,
+    components::spinner, components::tooltip, foundation::motion,
 };
+
+#[cfg(feature = "agent")]
+pub(crate) use penna::{components::check, components::text};
 
 pub(crate) use penna::{
     ActiveTheme, CHROME_GAP, Colorize, Disableable, Edge, ElementExt, Elevation, Emphasis, Fill,
