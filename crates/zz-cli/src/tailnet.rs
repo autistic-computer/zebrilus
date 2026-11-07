@@ -16,7 +16,10 @@ pub(crate) fn run(arguments: impl IntoIterator<Item = String>) -> Result<String,
         .as_slice()
     {
         [] | ["status"] => Ok(report()),
-        _ => Err("usage: zz tailnet [status]".to_owned()),
+        ["hosts"] => tailnet::status()
+            .map(|status| zz_daemon_client::tailnet_offer::offers_json(&tailnet::offers(&status)))
+            .map_err(|error| error.to_string()),
+        _ => Err("usage: zz tailnet [status | hosts]".to_owned()),
     }
 }
 

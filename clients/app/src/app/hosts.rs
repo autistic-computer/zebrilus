@@ -134,6 +134,14 @@ pub(super) fn destination_endpoint(input: &str) -> Result<String, String> {
 
 #[cfg(any(target_os = "ios", target_os = "android", test))]
 pub(crate) fn host_title(endpoint: &str) -> String {
+    if let Some(rest) = endpoint.strip_prefix("tailnet://") {
+        let machine = rest.split(':').next().unwrap_or(rest);
+        return if machine.parse::<std::net::Ipv4Addr>().is_ok() {
+            machine.to_owned()
+        } else {
+            machine.split('.').next().unwrap_or(machine).to_owned()
+        };
+    }
     let Some(rest) = endpoint.strip_prefix("ssh://") else {
         return std::path::Path::new(endpoint)
             .file_stem()
@@ -154,7 +162,10 @@ pub(crate) fn host_title(endpoint: &str) -> String {
 
 #[cfg(any(target_os = "ios", target_os = "android", test))]
 fn host_location(endpoint: &str) -> String {
-    if let Some(rest) = endpoint.strip_prefix("ssh://") {
+    if let Some(rest) = endpoint
+        .strip_prefix("ssh://")
+        .or_else(|| endpoint.strip_prefix("tailnet://"))
+    {
         return rest.trim_end_matches('/').to_owned();
     }
     let parts = endpoint
@@ -815,6 +826,8 @@ mod tests {
         assert_eq!(host_title("ssh://box:2222/run/zz.sock"), "box");
         assert_eq!(host_title("ssh://me@[::1]:22"), "::1");
         assert_eq!(host_title("/tmp/zzlag.sock"), "zzlag");
+        assert_eq!(host_title("tailnet://xps.example.ts.net:9923"), "xps");
+        assert_eq!(host_title("tailnet://100.99.198.46"), "100.99.198.46");
         assert_eq!(
             host_title("/var/folders/5v/T/zz-dev-me/default.sock"),
             "Local socket"
@@ -825,6 +838,10 @@ mod tests {
     fn locations_keep_the_end_of_a_long_socket_path() {
         assert_eq!(host_location("ssh://me@box:2222"), "me@box:2222");
         assert_eq!(host_location("/tmp/zzlag.sock"), "/tmp/zzlag.sock");
+        assert_eq!(
+            host_location("tailnet://xps.example.ts.net"),
+            "xps.example.ts.net"
+        );
         assert_eq!(
             host_location("/var/folders/5v/y9xj/T//zz-dev-me/default.sock"),
             "…/zz-dev-me/default.sock"

@@ -53,6 +53,7 @@ mod solo_tests;
 mod ssh_key;
 #[cfg(all(any(unix, windows), not(any(target_os = "ios", target_os = "android"))))]
 pub mod tailnet;
+pub mod tailnet_offer;
 #[cfg_attr(any(target_os = "ios", target_os = "android"), allow(dead_code))]
 mod terminal_features;
 pub mod transport;

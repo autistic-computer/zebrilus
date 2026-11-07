@@ -137,6 +137,7 @@ pub enum TailnetError {
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Status {
     pub backend: String,
+    pub dns_name: String,
     pub tun: bool,
     pub user_id: u64,
     pub login: String,
@@ -292,6 +293,7 @@ pub fn parse_status(json: &str) -> Result<Status, TailnetError> {
         .unwrap_or_default();
     Ok(Status {
         backend: text(&root["BackendState"]),
+        dns_name: text(&me["DNSName"]).trim_end_matches('.').to_owned(),
         tun: root["TUN"].as_bool().unwrap_or_default(),
         user_id,
         login: login_of(user_id),
@@ -500,7 +502,8 @@ impl Peer {
             .unwrap_or(&self.host)
     }
 
-    fn dial_address(&self) -> Option<IpAddr> {
+    #[must_use]
+    pub fn dial_address(&self) -> Option<IpAddr> {
         self.addresses
             .iter()
             .find(|address| address.is_ipv4())
@@ -525,6 +528,20 @@ pub fn mine(status: &Status) -> Vec<&Peer> {
                 && peer
                     .dial_address()
                     .is_some_and(|address| admit(Allow::Owner, status, &caller, address).is_ok())
+        })
+        .collect()
+}
+
+#[must_use]
+pub fn offers(status: &Status) -> Vec<crate::tailnet_offer::Offer> {
+    mine(status)
+        .into_iter()
+        .map(|peer| crate::tailnet_offer::Offer {
+            name: peer.label().to_owned(),
+            peer: peer.dns_name.trim_end_matches('.').to_owned(),
+            address: peer.dial_address(),
+            port: PORT,
+            os: peer.os.clone(),
         })
         .collect()
 }

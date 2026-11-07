@@ -38,13 +38,24 @@ fn scan() -> DiscoveredHosts {
         .map(|source| Settings::from_config(&source))
         .unwrap_or_default();
     let enabled = settings.mode != Mode::Off;
+    let mut link = None;
     let (summary, entries) = if enabled {
         match tailnet::status() {
             Err(error) => (error.to_string(), Vec::new()),
             Ok(status) => match status.unusable() {
                 Some(reason) => (reason, Vec::new()),
                 None => (
-                    format!("Signed in to {} as {}", status.tailnet, status.host),
+                    {
+                        if !status.dns_name.is_empty() {
+                            link = Some(zz_daemon_client::tailnet_offer::host_link(
+                                &zz_daemon_client::TailnetEndpoint {
+                                    peer: status.dns_name.clone(),
+                                    port: Some(tailnet::PORT),
+                                },
+                            ));
+                        }
+                        format!("Signed in to {} as {}", status.tailnet, status.host)
+                    },
                     tailnet::discover(&status)
                         .into_iter()
                         .filter(|machine| !settings.hide.contains(&machine.label))
@@ -65,5 +76,6 @@ fn scan() -> DiscoveredHosts {
         searching: false,
         enabled,
         hidden: settings.hide,
+        link,
     }
 }

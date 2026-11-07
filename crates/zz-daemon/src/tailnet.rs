@@ -25,6 +25,18 @@ type Current = Arc<RwLock<Option<(Status, Allow)>>>;
 type Live = Arc<Mutex<HashMap<u64, TcpStream>>>;
 
 static NEXT_CONNECTION: AtomicU64 = AtomicU64::new(1);
+static LATEST: RwLock<Option<Status>> = RwLock::new(None);
+
+pub(crate) fn offers_output() -> Result<String, String> {
+    LATEST
+        .read()
+        .as_ref()
+        .map(|status| zz_daemon_client::tailnet_offer::offers_json(&tailnet::offers(status)))
+        .ok_or_else(|| {
+            "this machine is not on the tailnet; run `zz tailnet status` on it to see why"
+                .to_owned()
+        })
+}
 
 struct Listening {
     stop: Arc<AtomicBool>,
@@ -65,6 +77,7 @@ fn supervise(socket: &Path, default_socket: bool, stopping: &dyn Fn() -> bool) {
                     .iter()
                     .map(|address| SocketAddr::new(*address, PORT))
                     .collect();
+                *LATEST.write() = Some(status.clone());
                 *current.write() = Some((status, settings.allow));
                 listening.retain(|address, listener| {
                     let keep = addresses.contains(address);
@@ -102,6 +115,7 @@ fn supervise(socket: &Path, default_socket: bool, stopping: &dyn Fn() -> bool) {
                 }
             }
             Err(reason) => {
+                *LATEST.write() = None;
                 *current.write() = None;
                 for (_, mut listener) in listening.drain() {
                     close(&mut listener);

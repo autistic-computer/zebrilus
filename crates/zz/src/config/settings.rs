@@ -987,6 +987,17 @@ impl SettingsView {
                     },
                 )),
         ];
+        if let Some(link) = discovered.link.clone()
+            && let Some(code) = qr_code(&link)
+        {
+            tailscale_entries.push(
+                SettingEntry::new("Add this machine to a phone")
+                    .description(format!(
+                        "With the Tailscale app on, scan this with the phone's camera to open {link} in zz"
+                    ))
+                    .child(code),
+            );
+        }
         if !discovered.hidden.is_empty() {
             tailscale_entries.push(
                 SettingEntry::new("Hidden machines")
@@ -1563,6 +1574,38 @@ impl Focusable for SettingsView {
     fn focus_handle(&self, _: &App) -> FocusHandle {
         self.focus()
     }
+}
+
+fn qr_code(text: &str) -> Option<AnyElement> {
+    const MODULE: f32 = 4.0;
+    const QUIET: i32 = 4;
+    let code = qrcodegen::QrCode::encode_text(text, qrcodegen::QrCodeEcc::Medium).ok()?;
+    let width = code.size();
+    let unit = |count: i32| px(MODULE * f32::from(i16::try_from(count).unwrap_or(0)));
+    let dark = (0..width)
+        .flat_map(|y| (0..width).map(move |x| (x, y)))
+        .filter(|&(x, y)| code.get_module(x, y))
+        .collect::<Vec<_>>();
+    let side = unit(width + 2 * QUIET);
+    Some(
+        ala::canvas(
+            |_, _, _| (),
+            move |bounds, (), window, _| {
+                window.paint_quad(ala::fill(bounds, ala::white()));
+                for &(x, y) in &dark {
+                    let origin = bounds.origin + ala::point(unit(x + QUIET), unit(y + QUIET));
+                    window.paint_quad(ala::fill(
+                        ala::Bounds::new(origin, ala::size(unit(1), unit(1))),
+                        ala::black(),
+                    ));
+                }
+            },
+        )
+        .w(side)
+        .h(side)
+        .flex_none()
+        .into_any_element(),
+    )
 }
 
 fn boolean_control(

@@ -4567,6 +4567,7 @@ const INSPECT_EVENTS: &[&str] = &[
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum DaemonCommandDispatch {
+    Tailnet,
     Events,
     AgentCatalog,
     Providers,
@@ -4626,7 +4627,7 @@ const DAEMON_COMMAND_DISPATCHES: &[(&str, DaemonCommandDispatch)] = &[
     ("tools", DaemonCommandDispatch::Tools),
     ("fleet", DaemonCommandDispatch::LocalCli),
     ("list-hosts", DaemonCommandDispatch::LocalCli),
-    ("tailnet", DaemonCommandDispatch::LocalCli),
+    ("tailnet", DaemonCommandDispatch::Tailnet),
     ("set-buffer", DaemonCommandDispatch::Buffer),
     ("setb", DaemonCommandDispatch::Buffer),
     ("show-buffer", DaemonCommandDispatch::Buffer),
@@ -7386,7 +7387,7 @@ impl Shared {
         if kind == ClientKind::Interactive
             && !self.read_client(client, |client| client.is_some_and(|c| c.ctrl_initializing))
             && !output.is_empty()
-            && canonical_command(&command.name) != "new-session"
+            && !matches!(canonical_command(&command.name), "new-session" | "tailnet")
             && let Err(error) =
                 self.open_command_output(client, context.pane, command.name.clone(), output)
         {
@@ -8491,7 +8492,18 @@ impl Shared {
                     DaemonCommandDispatch::Tools => {
                         workspace_tools_catalog(&command.args).map_err(Into::into)
                     }
-                    DaemonCommandDispatch::LocalCli => Err(ServerError::InvalidCommand(format!(
+                    DaemonCommandDispatch::Tailnet
+                        if command.args.first().map(ToString::to_string).as_deref()
+                            == Some("hosts") =>
+                    {
+                        crate::tailnet::offers_output()
+                            .map(|output| Execution {
+                                output: output.into(),
+                                effects: Vec::new(),
+                            })
+                            .map_err(|error| ServerError::InvalidCommand(error).into())
+                    }
+                    DaemonCommandDispatch::LocalCli | DaemonCommandDispatch::Tailnet => Err(ServerError::InvalidCommand(format!(
                         "{canonical} reads this machine's zz/config; run it from a shell as `zz {canonical}`"
                     ))
                     .into()),

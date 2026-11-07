@@ -1,7 +1,7 @@
 ---
 type: Design Plan
 title: Tailnet hosts . zz uses the Tailscale you already run
-description: Plan, phases 1 and 2 built, for zz machines to find and attach to each other over Tailscale. When the machine already runs Tailscale and is signed in, zz uses it - no sign-in in zz, trust is "a machine of this tailnet's owner" checked with whois, discovery comes from the peer list. A daemon-owned node built on the tailscale crate (tailscale-rs 0.7, unpatched) exists only for machines you explicitly switch to it. Connections are bridged into the daemon's own local socket, so the daemon loop and wire protocol do not change. Covers macOS, Linux, Windows and WSL2 hosts and which thin clients can use it in which phase.
+description: Plan, phases 1 to 3 built, for zz machines to find and attach to each other over Tailscale. When the machine already runs Tailscale and is signed in, zz uses it - no sign-in in zz, trust is "a machine of this tailnet's owner" checked with whois, discovery comes from the peer list. A daemon-owned node built on the tailscale crate (tailscale-rs 0.7, unpatched) exists only for machines you explicitly switch to it. Connections are bridged into the daemon's own local socket, so the daemon loop and wire protocol do not change. Covers macOS, Linux, Windows and WSL2 hosts and which thin clients can use it in which phase.
 status: In progress
 tags:
 - remote
@@ -14,7 +14,12 @@ timestamp: 2026-11-07T00:00:00-03:00
 
 # Overview
 
-> **Status: phases 1 and 2 built 2026-11-07.** Phase 2: the app finds your machines and lists
+> **Status: phases 1 to 3 built 2026-11-07.** Phase 3: a phone learns your other machines from the
+> first one it reaches (`tailnet hosts`), and desktop Settings › Hosts shows a QR code with a
+> `zz://host/` link to this machine. Verified with the iOS app in the simulator: started on
+> alienware with nothing saved, it listed and saved macbook on its own.
+>
+> **Phase 2 built 2026-11-07.** Phase 2: the app finds your machines and lists
 > them as hosts, Settings › Hosts has a Tailscale group, and the iOS and Android app connects to
 > `tailnet://` through the Tailscale app. Verified with three machines: this Mac found alienware and
 > xps, each Linux box found the other, and the iOS app in the simulator attached to alienware over
@@ -192,7 +197,7 @@ the same list.
 | --- | --- | --- |
 | `zz attach` (raw terminal) and command clients | `tailnet://` endpoint through the local forward socket | 1, built |
 | iOS, Android | the Tailscale app is the VPN; `clients/app` connects through `Endpoint::parse`, and `tailnet://` there resolves with the OS (MagicDNS from the app) and dials a `ClientStream::Tcp`. Type the machine's full MagicDNS name or address in Add host | 2, built |
-| phone bootstrap | QR code and the host list carry each machine's tailnet addresses and stable ID, not only its name, so MagicDNS being off on the phone does not matter | 3 |
+| phone bootstrap | a `tailnet://` connection asks its host `tailnet hosts`, gets the machines that host would admit with their addresses and port, dials each from the phone with a one-second limit, and saves and connects the ones that answer, by MagicDNS name. Desktop Settings › Hosts shows a QR code of `zz://host/<machine>.<tailnet>.ts.net:<port>`; the phone's camera opens it in zz, which adds and connects the machine | 3, built |
 | web (WASM) and the HTML client | a browser cannot open raw TCP, and the page needs HTTPS for WebGPU and the cross-origin isolation headers zz-web sends. This needs an HTTPS gateway (`tailscale serve` in front of zz-web on loopback, checking the identity header Serve adds) and its own design | later |
 
 Since 2026-11-07 zz-web serves nothing without a per-start token carried in the link it prints and
@@ -267,10 +272,21 @@ the first registration, and is not stored.
    merge: a host line wins over a found machine with the same name or address. *Not yet checked:*
    the desktop sidebar drawing found machines on screen (the test reads the same list the sidebar
    does), an Android device, and a real iPhone, which joins as its own Tailscale device.
-3. **Phone bootstrap.** The hosts-from-first-machine request and the QR code, both carrying addresses
-   and stable IDs.
-   *Done when* the iPhone lists and attaches every discovered machine after one scan, with MagicDNS
-   off.
+3. **Phone bootstrap. Built 2026-11-07.** The daemon answers `tailnet hosts` with JSON for the
+   machines it would admit, from the status its 30-second check already holds, so asking costs no
+   probes (`crates/zz-daemon/src/tailnet.rs`, `tailnet_offer::offers_json`); the daemon does not open
+   that output as a view the way it does for other commands an attached client runs. The app asks
+   once per `tailnet://` connection, primary or background, probes the answers itself
+   (`tailnet_offer::reachable`) and adds what answers (`clients/app`). `zz://host/<name>:<port>` links
+   add and connect a machine, and Settings › Hosts draws the QR code with `qrcodegen`.
+   *Checked:* the iOS app in the simulator, started on alienware with no saved hosts, saved
+   `tailnet://macbook...` from alienware's answer and listed both on its Hosts page. The macbook card
+   stays Not connected there because the simulator dials from the Mac's own tailnet address, which
+   the Mac refuses. *Not yet checked:* a real iPhone scanning the QR code (in the simulator two
+   installed apps claim `zz://`, and iOS handed the link to the other one), Android (no NDK toolchain
+   on this Mac; the code is shared with iOS), and the QR code on screen. *Changed from the plan:*
+   saved hosts use the MagicDNS name so they read well, so a phone with MagicDNS off can learn
+   machines but not reconnect to them.
 4. **zz's own node.** `zz-tailnet`, `tailnet = own`, sign in and out, the allow list, `tailnet.sock`.
    *Done when* a Linux box with no Tailscale installed, signed in through zz, shows in the other
    machines' sidebars, attaches to them by name, and refuses a machine not on its allow list.

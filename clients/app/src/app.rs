@@ -86,6 +86,19 @@ pub struct OpenSession {
 }
 
 #[cfg(any(target_os = "ios", target_os = "android"))]
+#[derive(Clone, PartialEq, ala::Action)]
+#[action(namespace = zz, no_json)]
+pub struct OpenHost {
+    pub endpoint: String,
+}
+
+#[cfg(any(target_os = "ios", target_os = "android"))]
+#[must_use]
+pub fn host_from_url(url: &str) -> Option<String> {
+    zz_daemon_client::tailnet_offer::endpoint_from_link(url)
+}
+
+#[cfg(any(target_os = "ios", target_os = "android"))]
 #[must_use]
 pub fn session_from_url(url: &str) -> Option<String> {
     let (_, rest) = url.split_once("://")?;
@@ -98,9 +111,11 @@ pub fn session_from_url(url: &str) -> Option<String> {
 
 pub struct AppShell {
     connection: Entity<Connection>,
-    _connection_subscriptions: [Subscription; 2],
+    _connection_subscriptions: [Subscription; 3],
     #[cfg(any(target_os = "ios", target_os = "android"))]
     fleet: Vec<(Entity<Connection>, Subscription)>,
+    #[cfg(any(target_os = "ios", target_os = "android"))]
+    fleet_found: Vec<Subscription>,
     connection_status: String,
     connected: bool,
     idle_guard: Option<ala::Task<()>>,
@@ -167,7 +182,7 @@ fn watch_connection(
     connection: &Entity<Connection>,
     window: &mut Window,
     cx: &mut Context<AppShell>,
-) -> [Subscription; 2] {
+) -> [Subscription; 3] {
     let observer = cx.observe(connection, |this, connection, cx| {
         let connection = connection.read(cx);
         if this.connected != connection.connected || this.connection_status != connection.status {
@@ -297,7 +312,17 @@ fn watch_connection(
             cx.notify();
         },
     );
-    [observer, events]
+    let found = cx.subscribe_in(
+        connection,
+        window,
+        |this, _, event: &crate::connection::FoundHosts, window, cx| {
+            #[cfg(any(target_os = "ios", target_os = "android"))]
+            this.add_found_hosts(&event.0, window, cx);
+            #[cfg(not(any(target_os = "ios", target_os = "android")))]
+            let _ = (this, event, window, cx);
+        },
+    );
+    [observer, events, found]
 }
 
 impl AppShell {
@@ -346,6 +371,8 @@ impl AppShell {
             _connection_subscriptions: connection_subscriptions,
             #[cfg(any(target_os = "ios", target_os = "android"))]
             fleet: Vec::new(),
+            #[cfg(any(target_os = "ios", target_os = "android"))]
+            fleet_found: Vec::new(),
             connection_status: String::new(),
             connected: false,
             idle_guard: None,
@@ -3093,6 +3120,10 @@ impl Render for AppShell {
             .map(|shell| {
                 #[cfg(target_os = "ios")]
                 let shell = shell.on_action(cx.listener(Self::menu_command));
+                #[cfg(any(target_os = "ios", target_os = "android"))]
+                let shell = shell.on_action(cx.listener(|this, action: &OpenHost, window, cx| {
+                    this.open_host(action.endpoint.clone(), window, cx);
+                }));
                 #[cfg(any(target_os = "ios", target_os = "android"))]
                 let shell = shell.on_action(cx.listener(|this, action: &OpenSession, _, cx| {
                     this.connection.update(cx, |connection, cx| {
