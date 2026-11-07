@@ -36,6 +36,19 @@ struct ChooserResult(Copyable, Movable):
     var viewport: ChooserBounds
 
 
+@fieldwise_init
+struct ChooserGeometry(Copyable, Movable):
+    var panel: ChooserBounds
+    var viewport: ChooserBounds
+    var row_height: Float32
+    var line_height: Float32
+    var list_height: Float32
+    var inset: Float32
+    var border: Float32
+    var notices: List[String]
+    var notice_heights: List[Float32]
+
+
 def _label(mut ui: Ui, text: StringSpan, font: Int32, size: Float32, line: Float32, color: NativeColor, ellipsis: Bool = False, width: Float32 = 0, fallback: Int32 = -1) raises:
     var options = TextOpts().line_height(line)
     var value = String(text)
@@ -121,6 +134,29 @@ def _hint_width(mut ui: Ui, th: PennaTheme, hint: _Hint) raises -> Float32:
 def _notice_height(mut ui: Ui, text: StringSpan, font: Int32, width: Float32, border: Float32) -> Float32:
     var paragraph = ui.layout_text(text.unsafe_ptr(), text.byte_length(), TextStyle(font, 11, 0, True), max(width - 2 * length(ui, 12), Float32(0)), 16)
     return Float32(max(len(ui.paras.paras[paragraph].lines), 1)) * 16 + 2 * length(ui, 9) + border
+
+
+def measure_chooser(mut ui: Ui, th: PennaTheme, model: ChooserPresentation) -> ChooserGeometry:
+    var width = min(length(ui, 600), max(ui.width - 2 * length(ui, 24), Float32(0)))
+    var height = min(length(ui, model.height), max(ui.height - 44, Float32(0)))
+    var x = (ui.width - width) / 2
+    var y = length(ui, 22)
+    var notices = List[String]()
+    if model.snapshot.help:
+        notices.append("Help: the next key closes this and does nothing else")
+    if model.snapshot.prompt.byte_length() != 0:
+        notices.append(model.snapshot.prompt.copy())
+    var border = length(ui, surface_metric(th.theme, 1))
+    var notice_heights = List[Float32]()
+    var notice_height: Float32 = 0
+    for notice in notices:
+        var measured = _notice_height(ui, notice, th.flat.mono, width, border)
+        notice_heights.append(measured)
+        notice_height += measured
+    var list_height = max(height - length(ui, 56) - length(ui, 34) - notice_height, Float32(0))
+    var inset = length(ui, surface_metric(th.theme, 0))
+    var content = max(list_height - 2 * length(ui, 8), Float32(0))
+    return ChooserGeometry(ChooserBounds(x, y, width, height), ChooserBounds(x + inset, y + length(ui, 56) + notice_height + length(ui, 8), max(width - 2 * inset, Float32(0)), content), length(ui, 40), 18, list_height, inset, border, notices^, notice_heights^)
 
 
 @inline(.never)
@@ -240,28 +276,20 @@ def render_chooser(mut ui: Ui, th: PennaTheme, key: UInt64, model: ChooserPresen
         raise Error("chooser scroll offset is not finite")
     var medium = th.flat.font if medium_font < 0 else medium_font
     var search = model.search(marked)
-    var width = min(length(ui, 600), max(ui.width - 2 * length(ui, 24), Float32(0)))
-    var height = min(length(ui, model.height), max(ui.height - 44, Float32(0)))
-    var x = (ui.width - width) / 2
-    var y = length(ui, 22)
-    var notices = List[String]()
-    if model.snapshot.help:
-        notices.append("Help: the next key closes this and does nothing else")
-    if model.snapshot.prompt.byte_length() != 0:
-        notices.append(model.snapshot.prompt.copy())
+    var geometry = measure_chooser(ui, th, model)
+    var width = geometry.panel.width
+    var height = geometry.panel.height
+    var x = geometry.panel.x
+    var y = geometry.panel.y
+    var notices = geometry.notices.copy()
     var rule = surface_rule(th.theme)
-    var border = length(ui, surface_metric(th.theme, 1))
-    var notice_heights = List[Float32]()
-    var notice_height: Float32 = 0
-    for notice in notices:
-        var measured = _notice_height(ui, notice, th.flat.mono, width, border)
-        notice_heights.append(measured)
-        notice_height += measured
-    var list_height = max(height - length(ui, 56) - length(ui, 34) - notice_height, Float32(0))
-    var inset = length(ui, surface_metric(th.theme, 0))
-    var content = max(list_height - 2 * length(ui, 8), Float32(0))
-    var result = ChooserResult(None, False, False, ChooserBounds(x, y, width, height), ChooserBounds(x + inset, y + length(ui, 56) + notice_height + length(ui, 8), max(width - 2 * inset, Float32(0)), content))
-    var row_height = length(ui, 40)
+    var border = geometry.border
+    var notice_heights = geometry.notice_heights.copy()
+    var list_height = geometry.list_height
+    var inset = geometry.inset
+    var content = geometry.viewport.height
+    var result = ChooserResult(None, False, False, geometry.panel, geometry.viewport)
+    var row_height = geometry.row_height
     var count = len(model.snapshot.items[].values)
     var offset = min(max(scroll, Float32(0)), max(Float32(count) * row_height - content, Float32(0)))
     var first = Int(floor(offset / row_height)) if row_height > 0 else 0
