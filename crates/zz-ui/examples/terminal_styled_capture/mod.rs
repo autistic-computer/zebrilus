@@ -44,7 +44,33 @@ fn geometry(scene: &Scene) -> Value {
         "bounds": [line.bounds.origin.x.0, line.bounds.origin.y.0, line.bounds.size.width.0, line.bounds.size.height.0],
         "color": color(line.color), "thickness": line.thickness.0, "wavy": line.wavy == true.into(), "order": line.order,
     })).collect();
-    json!({"quads": quads, "glyphs": glyphs, "underlines": underlines})
+    let result = json!({"quads": quads, "glyphs": glyphs, "underlines": underlines});
+    #[cfg(feature = "scene-fixtures")]
+    let result = {
+        let mut result = result;
+        result["paths"] = json!(scene.paths.iter().map(|path| {
+            let b = path.bounds;
+            let c = path.content_mask.bounds;
+            json!({
+                "bounds_bits": [b.origin.x.0.to_bits(), b.origin.y.0.to_bits(), b.size.width.0.to_bits(), b.size.height.0.to_bits()],
+                "clip_bits": [c.origin.x.0.to_bits(), c.origin.y.0.to_bits(), c.size.width.0.to_bits(), c.size.height.0.to_bits()],
+                "vertices_bits": path.vertices.iter().map(|vertex| [vertex.xy_position.x.0.to_bits(), vertex.xy_position.y.0.to_bits(), vertex.st_position.x.to_bits(), vertex.st_position.y.to_bits()]).collect::<Vec<_>>(),
+                "order": path.order,
+                "color": path.color.as_solid().map(color),
+            })
+        }).collect::<Vec<_>>());
+        result["path_batches"] = json!(
+            scene
+                .batches()
+                .filter_map(|batch| match batch {
+                    ala::PrimitiveBatch::Paths(range) => Some([range.start, range.end]),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+        );
+        result
+    };
+    result
 }
 
 impl PlatformHeadlessRenderer for Capture {

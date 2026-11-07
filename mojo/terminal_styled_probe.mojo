@@ -1,6 +1,7 @@
 from std.sys import argv
 from mjui.ui import Ui, Style
 from mjui.term.grid import TermOpts
+from mjui.term.rows import native_row_y
 from mjui.png import write_png
 from mjui.render.sdlgpu import SdlGpuRenderer
 from zzmojo.terminal_appearance import terminal_metrics
@@ -43,7 +44,7 @@ def count(data: List[UInt8], mut offset: Int, maximum: Int) raises -> Int:
 
 def main() raises:
     var args = argv()
-    if len(args) != 4:
+    if len(args) != 4 and (len(args) != 5 or args[4] != "scene"):
         raise Error("usage: terminal-styled-probe INPUT OUTPUT.png OUTPUT.json")
     var data: List[UInt8]
     with open(args[1], "r") as source:
@@ -135,6 +136,7 @@ def main() raises:
     if offset != len(data):
         raise Error("trailing styled terminal bytes")
     var ui = Ui(device_scale)
+    ui.native_scene = len(args) == 5
     for path in paths:
         _ = ui.add_font(path)
     var fallback_ids = List[Int32]()
@@ -163,6 +165,8 @@ def main() raises:
     else:
         _ = render_viewport_opts(ui, 91, viewport, opts, display_columns, display_rows, True, marked)
     ui.end_frame()
+    if ui.native_scene and not ui.native_scene_complete:
+        raise Error("styled terminal source scene could not be replayed")
     var renderer = SdlGpuRenderer()
     var pixels = renderer.render_offscreen(ui.dl, ui.atlas, width, height, (viewport.metadata.background << 8) | 255)
     write_png(args[2], pixels.unsafe_ptr(), width, height, width * 4)
@@ -219,6 +223,31 @@ def main() raises:
         if index != 0:
             result += ","
         result += String(values[index].to_bits[DType.uint32]())
+    result += '],"text_layers":['
+    ref terminal = ui.term.views[0]
+    var layer_count = 0
+    for row in range(len(terminal.shown)):
+        var entry = Int(terminal.shown[row])
+        if entry < 0:
+            continue
+        for index in range(Int(terminal.entries[entry].l0), Int(terminal.entries[entry].l1)):
+            var layer = terminal.native_layers[index]
+            var x = terminal.x / device_scale + (Float32(terminal.m.w) / device_scale) * Float32(layer.column)
+            var y = native_row_y(terminal.y / device_scale, terminal.m.h, terminal.offset, device_scale, row)
+            if layer_count > 0:
+                result += ","
+            result += String("[") + String(x.to_bits[DType.uint32]()) + "," + String(y.to_bits[DType.uint32]()) + "," + String(layer.width.to_bits[DType.uint32]()) + "," + String((Float32(terminal.m.h) / device_scale).to_bits[DType.uint32]()) + "]"
+            layer_count += 1
+    for run in terminal.selected:
+        for index in range(Int(run.lfirst), Int(run.llast)):
+            var layer = terminal.native_layers[index]
+            var x = terminal.x / device_scale + (Float32(terminal.m.w) / device_scale) * Float32(run.column)
+            x += (Float32(terminal.m.w) / device_scale) * Float32(layer.column)
+            var y = native_row_y(terminal.y / device_scale, terminal.m.h, terminal.offset, device_scale, Int(run.row))
+            if layer_count > 0:
+                result += ","
+            result += String("[") + String(x.to_bits[DType.uint32]()) + "," + String(y.to_bits[DType.uint32]()) + "," + String(layer.width.to_bits[DType.uint32]()) + "," + String((Float32(terminal.m.h) / device_scale).to_bits[DType.uint32]()) + "]"
+            layer_count += 1
     result += "]}"
     with open(args[3], "w") as output:
         output.write(result)

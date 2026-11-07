@@ -99,6 +99,7 @@ def main():
         stage("mjui-native-palette-chrome", ["python3", "scripts/penna/palette_chrome_pixels.py"], cwd=mjui)
         stage("mjui-native-palette-surface", ["python3", "scripts/penna/palette_surface_pixels.py"], cwd=mjui)
         stage("mjui-native-palette-focus", ["python3", "scripts/penna/palette_focus_pixels.py"], cwd=mjui)
+        stage("mjui-native-text-layers", ["bash", "scripts/penna/text_layer_cache_check.sh"], cwd=mjui)
         stage("mjui-default-textedit", ["bash", "scripts/penna/textedit_check.sh"], cwd=mjui)
         stage("appearance-render", ["bash", "scripts/penna/render.sh"], cwd=mjui)
         stage("appearance-pixels", ["python3", "scripts/port/appearance_pixels.py"])

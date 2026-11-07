@@ -477,10 +477,53 @@ pub struct PaintState {
     line_height: Pixels,
 }
 
+#[cfg(feature = "scene-fixtures")]
+#[derive(serde::Serialize)]
+pub struct TerminalTextLayerSnapshot {
+    pub kind: u8,
+    pub bounds_bits: [u32; 4],
+    pub text: String,
+}
+
 impl PaintState {
     #[must_use]
     pub fn selection_bounds(&self) -> &[Bounds<Pixels>] {
         &self.buffers.selection
+    }
+
+    #[cfg(feature = "scene-fixtures")]
+    #[must_use]
+    pub fn text_layer_snapshot(&self) -> Vec<TerminalTextLayerSnapshot> {
+        let mut result = Vec::new();
+        for row in &self.buffers.text {
+            for line in &row.row.lines {
+                result.push(TerminalTextLayerSnapshot {
+                    kind: 0,
+                    bounds_bits: [
+                        f32::from(row.origin.x + self.cell_width * line.start_column).to_bits(),
+                        f32::from(row.origin.y).to_bits(),
+                        f32::from(line.line.width).to_bits(),
+                        f32::from(self.line_height).to_bits(),
+                    ],
+                    text: line.line.text.to_string(),
+                });
+            }
+        }
+        for (kind, line) in [(1, &self.cursor_glyph), (2, &self.composition)] {
+            if let Some(line) = line {
+                result.push(TerminalTextLayerSnapshot {
+                    kind,
+                    bounds_bits: [
+                        f32::from(line.origin.x).to_bits(),
+                        f32::from(line.origin.y).to_bits(),
+                        f32::from(line.line.width).to_bits(),
+                        f32::from(self.line_height).to_bits(),
+                    ],
+                    text: line.line.text.to_string(),
+                });
+            }
+        }
+        result
     }
 }
 

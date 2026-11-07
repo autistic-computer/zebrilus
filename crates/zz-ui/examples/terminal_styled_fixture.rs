@@ -115,6 +115,15 @@ impl Render for Fixture {
                         "grid_bounds": [f32::from(g.grid_bounds.origin.x), f32::from(g.grid_bounds.origin.y), f32::from(g.grid_bounds.size.width), f32::from(g.grid_bounds.size.height)],
                         "content_offset": f32::from(g.content_offset),
                     });
+                    #[cfg(feature = "scene-fixtures")]
+                    {
+                        let scale = window.scale_factor();
+                        let thickness = f32::from(window.text_system().underline_thickness(probe.runs[0].font_id, px(font_size)));
+                        let mut snapshot = geometry.borrow_mut();
+                        snapshot["text_layers"] = serde_json::to_value(state.text_layer_snapshot()).expect("terminal layer snapshot serializes");
+                        snapshot["underline_thickness"] = json!(thickness);
+                        snapshot["box_stroke_width"] = json!((thickness * scale).ceil().max(1.) / scale);
+                    }
                     state
                 },
                 move |bounds, mut state, window, cx| paint.borrow_mut().paint(&mut state, bounds, window, cx),
