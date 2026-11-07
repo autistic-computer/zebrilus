@@ -17,7 +17,7 @@ def main():
         raise SystemExit("run the native mjui test_textinput suite on this host")
     TARGET.mkdir(parents=True, exist_ok=True)
     binary = TARGET / "ime-provenance"
-    subprocess.run(["pixi", "run", "bash", "-c", 'mojo build --fp-mode=contract=off -I src $MJ_LINK -D MJ_SDL=1 -Xlinker "$1/build/lib/libSDL3.a" -Xlinker -lm -Xlinker -ldl "$1/tests/test_ime_provenance.mojo" -o "$2"', "_", str(MJUI), str(binary)], cwd=MJUI, check=True)
+    subprocess.run(["pixi", "run", "bash", "-c", 'mojo build --fp-mode=contract=off -I src $MJ_LINK -D MJ_SDL=1 -Xlinker "$1/build/lib/libSDL3.a" -Xlinker -lm -Xlinker -ldl "$1/tests/ime_provenance_probe.mojo" -o "$2"', "_", str(MJUI), str(binary)], cwd=MJUI, check=True)
     environment = os.environ.copy()
     environment["SDL_VIDEODRIVER"] = "dummy"
     subprocess.run([str(binary)], cwd=MJUI, env=environment, check=True, timeout=20)
