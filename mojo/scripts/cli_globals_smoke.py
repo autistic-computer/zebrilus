@@ -100,7 +100,7 @@ def main():
             assert actual == reference, (reference, actual)
             checked += 1
             compare(["--kill-server"])
-            report = {"passed": True, "native_differentials": checked, "explicit_unsupported": rejected, "scope": "global flags, help/version, raw argv, Unix socket selection/defaults and security, features/UTF8 and existing-daemon modern Exec", "remaining": ["automatic daemon bootstrap", "default-client-command startup", "interactive resume and desktop launch", "remote and control mode", "shell startup", "per-command help", "verbose diagnostics", "non-UTF-8 socket paths", "full Unix path-length boundary"]}
+            report = {"passed": True, "native_differentials": checked, "explicit_unsupported": rejected, "scope": "global flags, help/version, raw argv, Unix socket selection/defaults and security, features/UTF8 and existing-daemon modern Exec", "remaining": ["default-client-command startup", "interactive resume and desktop launch", "remote and control mode", "shell startup", "per-command help", "verbose diagnostics", "non-UTF-8 socket paths", "full Unix path-length boundary"]}
             (TARGET / "cli-globals-smoke.json").write_text(json.dumps(report, indent=2) + "\n")
             print(json.dumps(report))
         finally:

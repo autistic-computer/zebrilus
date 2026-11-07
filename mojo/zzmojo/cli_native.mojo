@@ -3,6 +3,7 @@ from std.sys.info import CompilationTarget
 from .client_context import _copy_c_string, MAX_CONTEXT_BYTES
 from .client_files import errno_text
 from .cli_parse import default_socket, path_join
+from .protocol import parse_id
 
 comptime _BytePointer = Pointer[UInt8, MutUntrackedOrigin]
 comptime _ERRNO: StaticString = "__errno_location" if CompilationTarget.is_linux() else "__error"
@@ -148,3 +149,19 @@ def connect_error(path: String, number: Int32) raises -> String:
             " with escalated permissions"
         )
     return message
+
+
+def parse_connect_errno(error: String) raises -> Optional[Int32]:
+    if not error.startswith("connect ") or not error.endswith(")"):
+        return None
+    var marker = String("failed (errno ")
+    for index in range(error.byte_length() - marker.byte_length(), -1, -1):
+        var bytes = error.as_bytes()[index : index + marker.byte_length()]
+        if List[UInt8](bytes) == List[UInt8](marker.as_bytes()):
+            var digits = String(
+                from_utf8=error.as_bytes()[
+                    index + marker.byte_length() : error.byte_length() - 1
+                ]
+            )
+            return Int32(parse_id("%" + digits, 37))
+    return None

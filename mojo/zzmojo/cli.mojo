@@ -4,7 +4,7 @@ from std.sys.info import CompilationTarget
 from zzmojo.client_files import ClientFiles
 from zzmojo.exec_context import capture_exec_context
 from zzmojo.exec_protocol import split_invocations, EXEC_UTF8
-from zzmojo.exec_client import execute_local
+from zzmojo.exec_client import execute_connected
 from zzmojo.cli_output import stderr_line, write_bytes
 from zzmojo.protocol import parse_id, PROTOCOL_VERSION
 from zzmojo.cli_parse import (
@@ -19,8 +19,10 @@ from zzmojo.cli_native import (
     environment_value,
     label_socket,
     connect_error,
+    parse_connect_errno,
 )
 from zzmojo.cli_help import CLI_HELP
+from zzmojo.cli_startup import prepare_startup
 
 
 def _line(message: String, code: UInt8) -> UInt8:
@@ -30,22 +32,6 @@ def _line(message: String, code: UInt8) -> UInt8:
 
 def _unsupported(name: String) -> UInt8:
     return _line("zz: " + name + " is not implemented by this client", 1)
-
-
-def _connect_errno(error: String) raises -> Optional[Int32]:
-    if not error.startswith("connect ") or not error.endswith(")"):
-        return None
-    var marker = String("failed (errno ")
-    for index in range(error.byte_length() - marker.byte_length(), -1, -1):
-        var bytes = error.as_bytes()[index : index + marker.byte_length()]
-        if List[UInt8](bytes) == List[UInt8](marker.as_bytes()):
-            var digits = String(
-                from_utf8=error.as_bytes()[
-                    index + marker.byte_length() : error.byte_length() - 1
-                ]
-            )
-            return Int32(parse_id("%" + digits, 37))
-    return None
 
 
 def _run(var files: ClientFiles) raises -> UInt8:
@@ -157,6 +143,15 @@ def _run(var files: ClientFiles) raises -> UInt8:
         return _line(
             "zz: socket path exceeds this client's Unix socket limit", 1
         )
+    var startup = prepare_startup(
+        path,
+        Span(commands),
+        parsed.configs,
+        parsed.no_start,
+        parsed.socket_source,
+    )
+    if startup.error:
+        return _line(startup.error.value(), startup.code)
     var origin: Optional[UInt64] = None
     var pane = environment_value("ZZ_PANE")
     if pane and len(pane.value()) > 1 and pane.value()[0] == 37:
@@ -166,17 +161,20 @@ def _run(var files: ClientFiles) raises -> UInt8:
             pass
     var request = capture_exec_context(origin)
     request.commands = commands^
+    request.spawned_server = startup.spawned
     if parsed.utf8:
         request.flags |= EXEC_UTF8
     request.features = terminal_feature_mask(parsed.features)
     try:
-        var result = execute_local(path, request, files^)
+        var result = execute_connected(
+            startup.connection.take(), request, files^
+        )
         if result.exit.outcome == 1:
             return _line("native execution requires an interactive resume", 1)
         return result.code
     except error:
         var message = String(error)
-        var number = _connect_errno(message)
+        var number = parse_connect_errno(message)
         if number:
             return _line(connect_error(path, number.value()), 1)
         raise Error(message)

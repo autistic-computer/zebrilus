@@ -6,11 +6,31 @@ ROOT = Path(__file__).resolve().parents[2]
 MJUI = ROOT.parent / "mjui"
 
 
+def install_backend(binary):
+    source = ROOT / "target/debug/zz_cli"
+    if not source.is_file():
+        return
+    destination = binary.parent.parent / "share/backend"
+    destination.mkdir(parents=True, exist_ok=True)
+    link = destination / "zz"
+    if link.is_symlink():
+        if link.resolve() == source.resolve():
+            return
+        raise SystemExit("daemon backend resource already points elsewhere: " + str(link))
+    if link.exists():
+        raise SystemExit("daemon backend resource already exists: " + str(link))
+    link.symlink_to(source.resolve())
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("binary", type=Path)
+    parser.add_argument("--backend-only", action="store_true")
     args = parser.parse_args()
     binary = args.binary.resolve(strict=True)
+    install_backend(binary)
+    if args.backend_only:
+        return
     destination = binary.parent.parent / "share" / binary.name
     sources = {
         "fonts": MJUI / "bench/assets/fonts",

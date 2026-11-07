@@ -1,8 +1,12 @@
 from std.ffi import external_call
 from std.sys.info import CompilationTarget
-from .transport import open_connection
+from .transport import Connection, open_connection
 from .client_files import ClientFiles, StdinSignal
-from .file_protocol import CLIENT_FILE_REQUEST, decode_file_request, encode_file_response
+from .file_protocol import (
+    CLIENT_FILE_REQUEST,
+    decode_file_request,
+    encode_file_response,
+)
 from .protocol import (
     MAX_FRAME_BYTES,
     Decoder,
@@ -32,7 +36,12 @@ struct ExecutionResult(Movable):
 def execute_local(
     path: String, request: ExecRequest, var files: ClientFiles
 ) raises -> ExecutionResult:
-    var connection = open_connection(path)
+    return execute_connected(open_connection(path), request, files^)
+
+
+def execute_connected(
+    var connection: Connection, request: ExecRequest, var files: ClientFiles
+) raises -> ExecutionResult:
     connection.files = files^
     var timeout: List[Int] = [0, 0]
     comptime LEVEL = 1 if CompilationTarget.is_linux() else 0xFFFF
@@ -40,7 +49,16 @@ def execute_local(
     comptime SEND = 21 if CompilationTarget.is_linux() else 0x1005
     var options: List[Int] = [RECEIVE, SEND]
     for option in options:
-        if external_call["setsockopt", Int32](connection.fd, Int32(LEVEL), Int32(option), timeout.unsafe_ptr(), UInt32(16)) != 0:
+        if (
+            external_call["setsockopt", Int32](
+                connection.fd,
+                Int32(LEVEL),
+                Int32(option),
+                timeout.unsafe_ptr(),
+                UInt32(16),
+            )
+            != 0
+        ):
             raise Error("could not configure command transport")
     _ = timeout
     var signal = StdinSignal()
@@ -67,7 +85,9 @@ def execute_local(
             if rejected:
                 pending = response^
                 continue
-            var status = output.emit(Span(response.output), response.stdout_claim == 2)
+            var status = output.emit(
+                Span(response.output), response.stdout_claim == 2
+            )
             var skip = 0
             var text = response.error.as_bytes()
             if not error_overflow and len(streamed_error) <= len(text):
@@ -111,7 +131,9 @@ def execute_local(
                 var line = notice.value().text + "\n"
                 stderr_line(line.as_bytes())
                 if not error_overflow:
-                    if line.byte_length() > MAX_FRAME_BYTES - len(streamed_error):
+                    if line.byte_length() > MAX_FRAME_BYTES - len(
+                        streamed_error
+                    ):
                         streamed_error.clear()
                         error_overflow = True
                     else:
