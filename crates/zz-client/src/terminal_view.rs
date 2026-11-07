@@ -113,6 +113,34 @@ pub fn accumulate_scroll(remainder: &mut f32, delta: f32) -> i32 {
 }
 
 #[must_use]
+pub const fn should_paste_primary(command_output: bool, mouse_tracking: bool, shift: bool) -> bool {
+    !command_output && (shift || !mouse_tracking)
+}
+
+#[derive(Default)]
+pub struct PrimaryPasteState {
+    pressed: bool,
+}
+
+impl PrimaryPasteState {
+    pub const fn press(&mut self, allowed: bool) -> bool {
+        self.pressed = allowed;
+        allowed
+    }
+
+    pub const fn release(&mut self) -> bool {
+        let pressed = self.pressed;
+        self.pressed = false;
+        pressed
+    }
+
+    #[must_use]
+    pub const fn is_pressed(&self) -> bool {
+        self.pressed
+    }
+}
+
+#[must_use]
 pub fn cursor_should_blink(
     cursor: Option<Cursor>,
     policy: CursorBlinkPolicy,

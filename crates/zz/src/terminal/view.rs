@@ -26,6 +26,7 @@ use zz_client::{
         LOCAL_SCROLL_DEBOUNCE, LOCAL_SCROLL_TIMEOUT, LocalScrollEffect, LocalScrollState,
         LocalScrollStep, LocalScrollSync, local_scroll_available, scroll_fraction_offset,
     },
+    terminal_view::PrimaryPasteState,
 };
 use zz_protocol::{ClientMessageKind, CommandInvocation, InputMessage, PaneId, TerminalUiCommand};
 use zz_terminal::{
@@ -446,7 +447,7 @@ pub(crate) struct TerminalView {
     selection_autoscroll_lines: i32,
     selection_autoscroll_running: bool,
     scrollbar_dragging: bool,
-    primary_paste_pressed: bool,
+    primary_paste_pressed: PrimaryPasteState,
     last_clipboard_image: Option<(u64, Arc<Image>)>,
     shader_epoch: Instant,
     observed_copy_generation: u64,
@@ -1025,7 +1026,7 @@ impl TerminalView {
             selection_autoscroll_lines: 0,
             selection_autoscroll_running: false,
             scrollbar_dragging: false,
-            primary_paste_pressed: false,
+            primary_paste_pressed: PrimaryPasteState::default(),
             last_clipboard_image: None,
             shader_epoch: Instant::now(),
             observed_copy_generation,
@@ -1364,17 +1365,13 @@ impl TerminalView {
                 ["-t", &self.pane.to_string()],
             ));
         }
-        if event.button == MouseButton::Middle {
-            self.primary_paste_pressed = false;
-        }
         if event.button == MouseButton::Middle
-            && should_paste_primary(
+            && self.primary_paste_pressed.press(should_paste_primary(
                 self.command_output,
                 self.retained.read().viewport.mouse_tracking,
                 event.modifiers.shift,
-            )
+            ))
         {
-            self.primary_paste_pressed = true;
             if let Some(text) = read_primary_paste(cx) {
                 self.request_paste(text, cx);
             }
@@ -1580,7 +1577,7 @@ impl TerminalView {
     fn mouse_gesture_active(&self) -> bool {
         self.selection_dragging
             || self.scrollbar_dragging
-            || self.primary_paste_pressed
+            || self.primary_paste_pressed.is_pressed()
             || self.forwarded_mouse_buttons != 0
     }
 
@@ -1599,7 +1596,7 @@ impl TerminalView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if event.button == MouseButton::Middle && std::mem::take(&mut self.primary_paste_pressed) {
+        if event.button == MouseButton::Middle && self.primary_paste_pressed.release() {
             return;
         }
         if self.scrollbar_dragging && event.button == MouseButton::Left {
@@ -2658,11 +2655,7 @@ fn single_character(key: &str) -> Option<char> {
     characters.next().is_none().then_some(character)
 }
 
-use zz_ui::terminal::cursor_should_blink;
-
-const fn should_paste_primary(command_output: bool, mouse_tracking: bool, shift: bool) -> bool {
-    !command_output && (shift || !mouse_tracking)
-}
+use zz_ui::terminal::{cursor_should_blink, should_paste_primary};
 
 fn read_primary_paste(cx: &App) -> Option<String> {
     #[cfg(any(target_os = "linux", target_os = "freebsd"))]

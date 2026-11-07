@@ -23,7 +23,7 @@ use zz_client::local_scroll::{
 #[cfg(test)]
 use zz_client::terminal_color::{contrast_ratio, is_decorative_character, oklab};
 use zz_client::terminal_color::{decorative_glyph, ensure_minimum_contrast, faint_foreground};
-pub use zz_client::terminal_view::cursor_should_blink;
+pub use zz_client::terminal_view::{cursor_should_blink, should_paste_primary};
 use zz_terminal::{
     AppearanceColor, CellWidth, Color, Cursor, CursorStyle, GRAPHEME_TABLE_BIT, Glyph, KittyLayer,
     LocalColors, OVERLAY_RECTANGLE, OverlayKind, PackedCell, PackedStyle, ScrollbarState,
