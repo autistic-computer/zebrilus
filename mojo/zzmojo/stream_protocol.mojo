@@ -1,3 +1,4 @@
+from .exec_protocol import PreparedInvocation, append_prepared
 from .protocol import (
     PROTOCOL_VERSION,
     Decoder,
@@ -80,6 +81,7 @@ def interactive_hello(
     viewport: Bool = True,
     context: Optional[ClientContext] = None,
     native_search: Bool = False,
+    prepared: Optional[List[PreparedInvocation]] = None,
 ) raises -> List[UInt8]:
     var payload = List[UInt8]()
     append_uint(payload, HELLO)
@@ -111,7 +113,13 @@ def interactive_hello(
     append_uint(payload, options)
     append_uint(payload, 0)
     payload.append(1)
-    if session.byte_length() > 0:
+    if prepared:
+        payload.append(1)
+        append_uint(payload, 1)
+        append_uint(payload, UInt64(len(prepared.value())))
+        for command in prepared.value():
+            append_prepared(payload, command)
+    elif session.byte_length() > 0:
         payload.append(1)
         append_uint(payload, 0)
         append_text(payload, session)

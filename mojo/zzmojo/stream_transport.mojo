@@ -1,9 +1,11 @@
+from .exec_protocol import PreparedInvocation
 from std.ffi import external_call
 from std.memory import ArcPointer
 from std.time import perf_counter_ns
 from .transport import Connection, open_connection
 from .protocol import (
     Response,
+    MAX_FRAME_BYTES,
     Decoder,
     command_request,
     decode_response,
@@ -91,6 +93,12 @@ def viewport_bytes(viewport: TerminalViewport) -> Int:
     )
 
 
+@fieldwise_init
+struct InitialResponse(Copyable, Movable):
+    var response: Response
+    var rejected: Bool
+
+
 struct StreamModel(Copyable, Movable):
     var tree: MuxSnapshot
     var view: ClientView
@@ -157,6 +165,9 @@ struct InteractiveConnection(Movable):
     var tree_pending: Bool
     var tree_dirty: Bool
     var tree_received: Bool
+    var initial_pending: Dict[UInt64, Bool]
+    var initial_responses: List[InitialResponse]
+    var initial_bytes: Int
     var response: Optional[Response]
     var waiting: Optional[UInt64]
     var server_id: UInt64
@@ -176,6 +187,9 @@ struct InteractiveConnection(Movable):
         self.tree_pending = False
         self.tree_dirty = False
         self.tree_received = False
+        self.initial_pending = Dict[UInt64, Bool]()
+        self.initial_responses = List[InitialResponse]()
+        self.initial_bytes = 0
         self.response = None
         self.waiting = None
         self.server_id = 0
@@ -466,7 +480,20 @@ struct InteractiveConnection(Movable):
             return
         var reader = Decoder(frame.copy())
         if reader.uint() == 3:
-            var response = decode_response(frame^)
+            var rejected = reader.uint() == 1
+            var request = reader.uint()
+            var initial = request in self.initial_pending
+            var response = decode_response(frame^, cli_errors=initial)
+            if initial:
+                var size = len(response.output) + response.error.byte_length()
+                if size > MAX_FRAME_BYTES - self.initial_bytes:
+                    raise Error("initial command responses exceed byte limit")
+                self.initial_bytes += size
+                _ = self.initial_pending.pop(response.request)
+                self.initial_responses.append(
+                    InitialResponse(response^, rejected)
+                )
+                return
             if (
                 not self.waiting
                 or response.request != self.waiting.value()
@@ -548,7 +575,13 @@ struct InteractiveConnection(Movable):
         elif event.event_kind == Optional[UInt64](TERMINAL_UI_COMMAND):
             var raw = List[UInt8]()
             swap(raw, event.raw)
-            if not self.model.search_commands.consume(raw^, self.server_id, self.client_id, self.model.events.output.pane, self.model.events.output.id):
+            if not self.model.search_commands.consume(
+                raw^,
+                self.server_id,
+                self.client_id,
+                self.model.events.output.pane,
+                self.model.events.output.id,
+            ):
                 raise Error("terminal search UI command has no decoded payload")
         elif event.event_kind and (
             event.event_kind.value() == UInt64(CLIPBOARD_WRITE)
@@ -642,7 +675,34 @@ def connect_interactive(
     cell_height_px: UInt32 = 16,
     native_search: Bool = False,
 ) raises -> InteractiveConnection:
-    var stream = InteractiveConnection(open_connection(path))
+    return connect_interactive_transport(
+        open_connection(path),
+        session,
+        columns,
+        rows,
+        cell_width_px,
+        cell_height_px,
+        native_search,
+    )
+
+
+def connect_interactive_transport(
+    var transport: Connection,
+    session: String,
+    columns: UInt16 = 80,
+    rows: UInt16 = 24,
+    cell_width_px: UInt32 = 8,
+    cell_height_px: UInt32 = 16,
+    native_search: Bool = False,
+    prepared: Optional[List[PreparedInvocation]] = None,
+) raises -> InteractiveConnection:
+    var stream = InteractiveConnection(transport^)
+    if prepared:
+        if len(prepared.value()) > 4096:
+            raise Error("application resume exceeds command count limit")
+        for index in range(len(prepared.value())):
+            stream.initial_pending[UInt64(index + 1)] = True
+        stream.transport.next_request = UInt64(len(prepared.value()) + 1)
     var process = external_call["getpid", UInt32]()
     var instance = UInt64(process)
     var context = ClientContext.capture()
@@ -658,6 +718,7 @@ def connect_interactive(
         viewport=False,
         context=context^,
         native_search=native_search,
+        prepared=prepared,
     )
     stream.transport.write(Span(hello))
     stream.consume(stream.transport.read_frame())

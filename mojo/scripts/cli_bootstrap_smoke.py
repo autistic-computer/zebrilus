@@ -121,7 +121,7 @@ def main():
             assert invoke(isolated, ["new-session", "-d", "-s", "packaged", "sleep 120"], packaged)[0] == 0
             assert invoke(RUST, ["list-sessions", "-F", "#{session_name}"]) == (0, b"packaged\n", b"")
             checked += 1
-            report = {"passed": True, "native_groups": checked, "explicit_backend_failures": refused, "scope": "cold native start policy, whole-chain static rejection, -N, config/stdin preservation, warm dynamic aliases, explicit override and isolated bundled resource", "remaining": ["default-client-command startup", "interactive resume/attach", "foreground daemon entry", "application launch", "remote/control/shell frontends"]}
+            report = {"passed": True, "native_groups": checked, "explicit_backend_failures": refused, "scope": "cold native start policy, whole-chain static rejection, -N, config/stdin preservation, warm dynamic aliases, explicit override and isolated bundled resource", "remaining": ["daemon restart", "foreground daemon entry", "remote/control/shell frontends"]}
             (TARGET / "cli-bootstrap-smoke.json").write_text(json.dumps(report, indent=2) + "\n")
             print(json.dumps(report))
         finally:

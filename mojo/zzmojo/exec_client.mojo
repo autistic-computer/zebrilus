@@ -27,10 +27,20 @@ from .cli_output import CliOutput, stderr_line
 from .stream_protocol import pong
 
 
-@fieldwise_init
 struct ExecutionResult(Movable):
     var code: UInt8
     var exit: ExecExit
+    var connection: Optional[Connection]
+
+    def __init__(
+        out self,
+        code: UInt8,
+        var exit: ExecExit,
+        var connection: Optional[Connection] = None,
+    ):
+        self.code = code
+        self.exit = exit^
+        self.connection = connection^
 
 
 def execute_local(
@@ -120,6 +130,8 @@ def execute_connected(
             elif finished.value().outcome == 3:
                 code = 1
             _ = signal^
+            if finished.value().outcome == 1:
+                return ExecutionResult(code, finished.take(), connection^)
             return ExecutionResult(code, finished.take())
         elif tag == 10:
             var notice = decode_exec_notice(incoming^)

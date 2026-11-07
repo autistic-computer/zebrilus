@@ -4,6 +4,7 @@ from std.sys.info import CompilationTarget
 from .transport import Connection, open_connection
 from .exec_protocol import Invocation
 from .cli_preflight import preflight
+from .cli_attach import parse_attach
 from .cli_backend import spawn_backend, clock_ns
 from .cli_native import parse_connect_errno, connect_error, _errno
 from .client_files import errno_text
@@ -73,13 +74,22 @@ def prepare_startup(
         failure = parse_connect_errno(String(error))
         if not failure:
             raise Error(String(error))
-    var checked = preflight(commands)
+    var native_attach = len(commands) > 0 and (
+        commands[0].name == "attach" or commands[0].name == "attach-session"
+    )
+    var checked = preflight(commands[1:] if native_attach else commands)
+    var restart = False
+    if native_attach:
+        var attached = parse_attach(Span(commands[0].args))
+        if attached.error:
+            return _failed(attached.error.value(), attached.code)
+        restart = attached.restart
+        checked.canonical = "attach-session"
+        checked.starts_server = True
     if checked.error:
         return _failed(checked.error.value(), checked.code)
-    if checked.canonical == "attach-session":
-        return _failed(
-            "zz: interactive attach startup is not implemented by this client"
-        )
+    if restart:
+        return _failed("zz: daemon restart is not implemented by this client")
     if no_start or not checked.starts_server or not _spawnable(failure.value()):
         return _failed(connect_error(path, failure.value()))
     if socket_source == 2:

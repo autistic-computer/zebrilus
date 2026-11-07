@@ -88,7 +88,7 @@ def main():
             assert invoke(RUST, ["-f", "/dev/null", "new-session", "-d", "-s", "default-proof", "sleep 120"], defaults)[0] == 0
             compare(["list-sessions", "-F", "#{session_name}"], defaults)
             before = invoke(RUST, ["list-sessions", "-F", "#{session_name}"])
-            for args in ([], ["-C"], ["-c", "touch unsupported-shell-must-not-run"], ["--host", "remote", "list-sessions"], ["app"], ["daemon"], ["display-message", "--help"], ["--verbose", "list-sessions"]):
+            for args in (["-C"], ["-c", "touch unsupported-shell-must-not-run"], ["--host", "remote", "list-sessions"], ["daemon"], ["display-message", "--help"], ["--verbose", "list-sessions"]):
                 actual = invoke(MOJO, args)
                 assert actual[0] == 1 and b"not implemented by this client" in actual[2], (args, actual)
                 rejected += 1
@@ -100,7 +100,7 @@ def main():
             assert actual == reference, (reference, actual)
             checked += 1
             compare(["--kill-server"])
-            report = {"passed": True, "native_differentials": checked, "explicit_unsupported": rejected, "scope": "global flags, help/version, raw argv, Unix socket selection/defaults and security, features/UTF8 and existing-daemon modern Exec", "remaining": ["default-client-command startup", "interactive resume and desktop launch", "remote and control mode", "shell startup", "per-command help", "verbose diagnostics", "non-UTF-8 socket paths", "full Unix path-length boundary"]}
+            report = {"passed": True, "native_differentials": checked, "explicit_unsupported": rejected, "scope": "global flags, help/version, raw argv, Unix socket selection/defaults and security, features/UTF8 and existing-daemon modern Exec", "remaining": ["daemon restart", "remote and control mode", "shell startup", "per-command help", "verbose diagnostics", "non-UTF-8 socket paths", "full Unix path-length boundary"]}
             (TARGET / "cli-globals-smoke.json").write_text(json.dumps(report, indent=2) + "\n")
             print(json.dumps(report))
         finally:

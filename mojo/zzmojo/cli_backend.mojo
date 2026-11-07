@@ -168,7 +168,9 @@ def physical_directory() raises -> Optional[List[UInt8]]:
     return path^
 
 
-def backend_environment() raises -> List[List[UInt8]]:
+def capture_process_environment(
+    excluded: Span[String, _]
+) raises -> List[List[UInt8]]:
     var pointer = _environment_pointer()
     var values = Dict[String, List[UInt8]]()
     var index = 0
@@ -190,7 +192,10 @@ def backend_environment() raises -> List[List[UInt8]]:
         if separator < 0:
             continue
         var name = String(from_utf8_lossy=Span(bytes)[:separator])
-        if name == "ZZ_TMUX_EXECUTABLE" or name == "ZZ_APP_STARTUP_DIRECTORY":
+        var ignored = False
+        for removed in excluded:
+            ignored = ignored or name == removed
+        if ignored:
             continue
         values[_name_key(Span(bytes)[:separator])] = bytes^
     var keys = List[String]()
@@ -203,6 +208,14 @@ def backend_environment() raises -> List[List[UInt8]]:
         entry.append(0)
         entries.append(entry^)
     return entries^
+
+
+def backend_environment() raises -> List[List[UInt8]]:
+    var excluded: List[String] = [
+        "ZZ_TMUX_EXECUTABLE",
+        "ZZ_APP_STARTUP_DIRECTORY",
+    ]
+    return capture_process_environment(Span(excluded))
 
 
 def daemon_arguments(

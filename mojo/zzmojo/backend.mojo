@@ -1,3 +1,4 @@
+from .app_resume import ResumeStartup
 from std.atomic import Atomic
 from std.memory import OwnedPointer
 from mjui.sys.dispatch import (
@@ -45,6 +46,7 @@ comptime OUTPUT_PASTE = 14
 
 struct Job(Movable):
     var path: String
+    var startup: Optional[ResumeStartup]
     var connection: Optional[Connection]
     var model: AppModel
     var actions: List[Action]
@@ -53,8 +55,11 @@ struct Job(Movable):
     var semaphore: DispatchRef
     var clipboard_reply: Optional[ClipboardResponse]
 
-    def __init__(out self, path: String):
+    def __init__(
+        out self, path: String, var startup: Optional[ResumeStartup] = None
+    ):
         self.path = path
+        self.startup = startup^
         self.connection = None
         self.model = AppModel()
         self.actions = List[Action]()
@@ -75,7 +80,11 @@ def run_job(context: MutOpaquePointer[MutUntrackedOrigin]) abi("C"):
                     job.model.session.value()
                 ) if job.model.session else String()
             )
-            job.connection = connect_interactive(job.path, session, native_search=True)
+            if job.startup:
+                var startup = job.startup.take()
+                job.connection = startup^.connect()
+            else:
+                job.connection = connect_interactive(job.path, session, native_search=True)
         if job.clipboard_reply:
             ref reply = job.clipboard_reply.value()
             if (
@@ -203,8 +212,10 @@ struct AsyncBackend(Movable):
     var source: Optional[Tuple[UInt64, UInt64]]
     var search_commands: SearchUiCommands
 
-    def __init__(out self, path: String):
-        self.job = OwnedPointer(Job(path))
+    def __init__(
+        out self, path: String, var startup: Optional[ResumeStartup] = None
+    ):
+        self.job = OwnedPointer(Job(path, startup^))
         self.queue = ActionQueue()
         self.busy = False
         self.clipboard = ClipboardState()

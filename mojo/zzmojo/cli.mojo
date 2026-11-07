@@ -3,7 +3,13 @@ from std.sys import argv
 from std.sys.info import CompilationTarget
 from zzmojo.client_files import ClientFiles
 from zzmojo.exec_context import capture_exec_context
-from zzmojo.exec_protocol import split_invocations, EXEC_UTF8
+from zzmojo.exec_protocol import (
+    split_invocations,
+    Invocation,
+    EXEC_UTF8,
+    EXEC_RESUME,
+    EXEC_NESTED,
+)
 from zzmojo.exec_client import execute_connected
 from zzmojo.cli_output import stderr_line, write_bytes
 from zzmojo.protocol import parse_id, PROTOCOL_VERSION
@@ -23,6 +29,12 @@ from zzmojo.cli_native import (
 )
 from zzmojo.cli_help import CLI_HELP
 from zzmojo.cli_startup import prepare_startup
+from zzmojo.cli_application import launch_resume
+from zzmojo.cli_default_startup import (
+    default_client_commands,
+    fallback_commands,
+)
+from zzmojo.cli_attach import parse_attach
 
 
 def _line(message: String, code: UInt8) -> UInt8:
@@ -93,7 +105,12 @@ def _run(var files: ClientFiles) raises -> UInt8:
     if len(commands) == 0:
         if conflict and not parsed.host:
             return _line(String(FOREIGN_TMUX_ERROR), 1)
-        return _unsupported("default client startup")
+        if parsed.host:
+            return _unsupported("remote host routing")
+        commands = default_client_commands(
+            path, parsed.configs, parsed.no_start, parsed.socket_source
+        )
+    var application = False
     var command = commands[0].name.copy()
     if command == "--help" or command == "help":
         _ = write_bytes(1, String(CLI_HELP).as_bytes())
@@ -107,7 +124,9 @@ def _run(var files: ClientFiles) raises -> UInt8:
     if command == "app":
         if parsed.host or len(commands[0].args) > 0 or len(commands) != 1:
             return _line("zz: usage: zz app", 2)
-        return _unsupported("desktop application launch")
+        application = True
+        commands = fallback_commands()
+        command = "new-session"
     if parsed.host:
         if command == "daemon" or command == "proxy":
             return _line("zz: --host is not supported for `" + command + "`", 2)
@@ -129,7 +148,7 @@ def _run(var files: ClientFiles) raises -> UInt8:
         or command == "events"
     ):
         return _unsupported(command + " frontend")
-    if conflict:
+    if conflict and not application:
         return _line(String(FOREIGN_TMUX_ERROR), 1)
     if command == "--kill-server":
         var first = commands[0].copy()
@@ -162,6 +181,10 @@ def _run(var files: ClientFiles) raises -> UInt8:
     var request = capture_exec_context(origin)
     request.commands = commands^
     request.spawned_server = startup.spawned
+    request.flags |= EXEC_RESUME
+    if application:
+        request.flags &= ~EXEC_NESTED
+        request.origin = None
     if parsed.utf8:
         request.flags |= EXEC_UTF8
     request.features = terminal_feature_mask(parsed.features)
@@ -170,7 +193,25 @@ def _run(var files: ClientFiles) raises -> UInt8:
             startup.connection.take(), request, files^
         )
         if result.exit.outcome == 1:
-            return _line("native execution requires an interactive resume", 1)
+            if not result.connection:
+                raise Error(
+                    "native resume did not retain its command connection"
+                )
+            var empty_attach = False
+            if result.exit.resume_kind == 1:
+                var attached = parse_attach(Span(request.commands[0].args))
+                if attached.error:
+                    return _line(attached.error.value(), attached.code)
+                if attached.restart:
+                    return _unsupported("daemon restart")
+                empty_attach = (
+                    attached.default_attach and len(request.commands) == 1
+                )
+                result.exit.commands[0].invocation = attached.command.copy()
+            var status = launch_resume(
+                path, result.connection.value(), result.exit, empty_attach
+            )
+            return status if status != 0 else result.code
         return result.code
     except error:
         var message = String(error)

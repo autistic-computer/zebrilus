@@ -1,3 +1,4 @@
+from .app_resume import ResumeStartup
 from mjui.ui import Ui, Style, TextStyle
 from mjui.input import (
     TextInput,
@@ -98,9 +99,11 @@ struct WorkspaceView(Movable):
     var search_prepared: Bool
     var search_fields: Dict[String, Bool]
 
-    def __init__(out self, path: String) raises:
+    def __init__(
+        out self, path: String, var startup: Optional[ResumeStartup] = None
+    ) raises:
         self.path = path
-        self.backend = AsyncBackend(path)
+        self.backend = AsyncBackend(path, startup^)
         self.focus_epoch = 0
         self.model = AppModel()
         self.theme = PennaTheme(DEFAULT_DARK, 0, 1, 2, 3)

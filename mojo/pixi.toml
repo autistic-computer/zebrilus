@@ -40,6 +40,10 @@ cli-bootstrap-smoke = "python3 scripts/cli_bootstrap_smoke.py"
 differential-cli-default = "python3 scripts/cli_default_vectors.py"
 test-cli-default-home = "python3 scripts/cli_default_home.py"
 differential-cli-attach = "python3 scripts/cli_attach_vectors.py"
+differential-app-resume = "python3 scripts/app_resume_vectors.py"
+app-resume-smoke = "python3 scripts/app_resume_smoke.py"
+cli-default-smoke = { cmd = "python3 scripts/cli_default_smoke.py", depends-on = ["build"] }
+app-launch-smoke = { cmd = "python3 scripts/app_launch_smoke.py", depends-on = ["build", "build-app"] }
 test-exec-context = "python3 ../scripts/port/guard.py mojo --fp-mode=contract=off -I . tests/test_exec_context.mojo"
 exec-smoke = "python3 ../scripts/port/guard.py python3 scripts/exec_smoke.py"
 differential-control = "python3 scripts/control_vectors.py"

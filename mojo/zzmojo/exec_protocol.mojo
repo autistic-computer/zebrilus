@@ -8,8 +8,20 @@ from .protocol import (
     validate_envelope,
     decode_error,
 )
-from .tree_wire import read_uint, read_enum, read_bool, read_text, read_count, read_optional_id
-from .client_context import MAX_CONTEXT_PATH, MAX_CONTEXT_BYTES, MAX_CONTEXT_ENTRIES, MAX_CONTEXT_ENTRY
+from .tree_wire import (
+    read_uint,
+    read_enum,
+    read_bool,
+    read_text,
+    read_count,
+    read_optional_id,
+)
+from .client_context import (
+    MAX_CONTEXT_PATH,
+    MAX_CONTEXT_BYTES,
+    MAX_CONTEXT_ENTRIES,
+    MAX_CONTEXT_ENTRY,
+)
 
 comptime EXEC: UInt64 = 48
 comptime EXEC_EXIT: UInt64 = 49
@@ -126,11 +138,15 @@ def _append_optional_id(mut output: List[UInt8], id: Optional[UInt64]):
         append_uint(output, id.value())
 
 
-def _read_optional_bytes(mut reader: Decoder, maximum: Int) raises -> Optional[List[UInt8]]:
+def _read_optional_bytes(
+    mut reader: Decoder, maximum: Int
+) raises -> Optional[List[UInt8]]:
     if not read_bool(reader):
         return None
     var size = read_count(reader, maximum)
-    var bytes = List[UInt8](Span(reader.data)[reader.offset:reader.offset + size])
+    var bytes = List[UInt8](
+        Span(reader.data)[reader.offset : reader.offset + size]
+    )
     reader.offset += size
     return bytes^
 
@@ -148,7 +164,11 @@ def valid_exec_environment(bytes: Span[UInt8, _]) -> Bool:
         if length > 0:
             count += 1
             total += length
-            if count > MAX_CONTEXT_ENTRIES or total > MAX_CONTEXT_BYTES or length > MAX_CONTEXT_ENTRY:
+            if (
+                count > MAX_CONTEXT_ENTRIES
+                or total > MAX_CONTEXT_BYTES
+                or length > MAX_CONTEXT_ENTRY
+            ):
                 return False
             var separator = False
             for index in range(start + 1, end):
@@ -198,11 +218,17 @@ struct ExecRequest(Copyable, Movable):
     def validate(self) raises:
         if Bool(self.cwd) and len(self.cwd.value()) > MAX_CONTEXT_PATH:
             raise Error("exec working directory exceeds byte limit")
-        if Bool(self.tty) and self.tty.value().byte_length() > MAX_EXEC_TTY_BYTES:
+        if (
+            Bool(self.tty)
+            and self.tty.value().byte_length() > MAX_EXEC_TTY_BYTES
+        ):
             raise Error("exec terminal name exceeds byte limit")
         if not valid_exec_environment(Span(self.environment)):
             raise Error("invalid exec environment")
-        if Bool(self.raw_control_line) and self.raw_control_line.value().byte_length() > 65536:
+        if (
+            Bool(self.raw_control_line)
+            and self.raw_control_line.value().byte_length() > 65536
+        ):
             raise Error("exec control line exceeds byte limit")
 
 
@@ -222,7 +248,8 @@ def decode_exec(var frame: List[UInt8]) raises -> Optional[ExecRequest]:
         request.tty = read_text(reader, MAX_EXEC_TTY_BYTES)
     if read_bool(reader):
         request.size = (
-            UInt16(read_uint(reader, 65535)), UInt16(read_uint(reader, 65535))
+            UInt16(read_uint(reader, 65535)),
+            UInt16(read_uint(reader, 65535)),
         )
     request.features = UInt32(read_uint(reader, 4294967295))
     request.startup_reentry = read_optional_id(reader)
@@ -230,7 +257,9 @@ def decode_exec(var frame: List[UInt8]) raises -> Optional[ExecRequest]:
     request.expected_server = read_optional_id(reader)
     request.process = UInt32(read_uint(reader, 4294967295))
     var count = read_count(reader, MAX_CONTEXT_BYTES + MAX_CONTEXT_ENTRIES)
-    request.environment = List[UInt8](Span(reader.data)[reader.offset:reader.offset + count])
+    request.environment = List[UInt8](
+        Span(reader.data)[reader.offset : reader.offset + count]
+    )
     reader.offset += count
     count = read_count(reader)
     for _ in range(count):
@@ -361,7 +390,11 @@ def decode_exec_exit(var frame: List[UInt8]) raises -> Optional[ExecExit]:
                 code = decoded.code
                 message = decoded.message.copy()
                 failure = decoded.bytes.take()
-            exit.commands.append(PreparedInvocation(command^, canonical^, alias, failure^, message^, code))
+            exit.commands.append(
+                PreparedInvocation(
+                    command^, canonical^, alias, failure^, message^, code
+                )
+            )
     elif exit.outcome == 2:
         var decoded = _read_failure(reader)
         exit.code = decoded.code
@@ -379,6 +412,19 @@ def _append_failure(mut output: List[UInt8], bytes: Span[UInt8, _]) raises:
     output.extend(Span(decoded.bytes.value()))
 
 
+def append_prepared(
+    mut output: List[UInt8], command: PreparedInvocation
+) raises:
+    append_invocation(output, command.invocation)
+    output.append(UInt8(Bool(command.canonical)))
+    if command.canonical:
+        append_text(output, command.canonical.value())
+    output.append(UInt8(command.alias_matched))
+    append_uint(output, UInt64(Bool(command.failure)))
+    if command.failure:
+        _append_failure(output, Span(command.failure.value()))
+
+
 def encode_exec_exit(exit: ExecExit) raises -> List[UInt8]:
     if exit.outcome > 3 or (exit.outcome == 1 and exit.resume_kind > 1):
         raise Error("unknown exec outcome")
@@ -390,14 +436,7 @@ def encode_exec_exit(exit: ExecExit) raises -> List[UInt8]:
         append_uint(output, UInt64(exit.resume_kind))
         append_uint(output, UInt64(len(exit.commands)))
         for command in exit.commands:
-            append_invocation(output, command.invocation)
-            output.append(UInt8(Bool(command.canonical)))
-            if command.canonical:
-                append_text(output, command.canonical.value())
-            output.append(UInt8(command.alias_matched))
-            append_uint(output, UInt64(Bool(command.failure)))
-            if command.failure:
-                _append_failure(output, Span(command.failure.value()))
+            append_prepared(output, command)
     elif exit.outcome == 2:
         _append_failure(output, Span(exit.failure))
     return envelope(Span(output))

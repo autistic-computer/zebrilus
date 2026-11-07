@@ -6,6 +6,22 @@ ROOT = Path(__file__).resolve().parents[2]
 MJUI = ROOT.parent / "mjui"
 
 
+def install_application(binary):
+    source = ROOT / "target/port/zz-mojo-app"
+    if not source.is_file():
+        return
+    destination = binary.parent.parent / "share/frontend"
+    destination.mkdir(parents=True, exist_ok=True)
+    link = destination / "zz-app"
+    if link.is_symlink():
+        if link.resolve() == source.resolve():
+            return
+        raise SystemExit("desktop application resource already points elsewhere: " + str(link))
+    if link.exists():
+        raise SystemExit("desktop application resource already exists: " + str(link))
+    link.symlink_to(source.resolve())
+
+
 def install_backend(binary):
     source = ROOT / "target/debug/zz_cli"
     if not source.is_file():
@@ -29,6 +45,7 @@ def main():
     args = parser.parse_args()
     binary = args.binary.resolve(strict=True)
     install_backend(binary)
+    install_application(binary)
     if args.backend_only:
         return
     destination = binary.parent.parent / "share" / binary.name
