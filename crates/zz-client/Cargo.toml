@@ -30,3 +30,10 @@ zz-daemon-client.workspace = true
 
 [lints]
 workspace = true
+
+[features]
+input-router-fixtures = []
+
+[[example]]
+name = "input_router_oracle"
+required-features = ["input-router-fixtures"]

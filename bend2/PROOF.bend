@@ -9,6 +9,7 @@ import ./terminal_proof.bend as Terminal
 import ./terminal_cells_proof.bend as Cells
 import ./terminal_cells_origins_proof.bend as CellOrigins
 import ./tree_proof.bend as Tree
+import ./input_router_proof.bend as InputRouter
 
 def Laws.swap_preserves_count(node, source, target):
   match node:

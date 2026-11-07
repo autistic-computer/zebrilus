@@ -1158,3 +1158,7 @@ mod tests {
         }
     }
 }
+
+#[cfg(feature = "input-router-fixtures")]
+#[path = "input_router_fixture.rs"]
+pub mod fixture;

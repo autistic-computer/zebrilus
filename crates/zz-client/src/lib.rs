@@ -73,3 +73,6 @@ pub use status_bar::{
 
 pub mod appearance;
 pub mod url_input;
+
+#[cfg(feature = "input-router-fixtures")]
+pub use input::fixture::vectors as input_router_vectors;
