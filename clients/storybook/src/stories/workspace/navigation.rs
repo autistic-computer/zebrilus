@@ -4,6 +4,7 @@ use ala::{
 };
 use penna::{ActiveTheme as _, Colorize as _, Icon, IconName, Label, TextStyle, h_flex};
 use zz_client::program::Program;
+use zz_protocol::{HostPlatform, LinuxDistro};
 use zz_ui::{
     navigation::{
         WORKSPACE_TREE_NODE_ICON_SIZE, WorkspaceStatusWindowState, WorkspaceTreeInk,
@@ -319,20 +320,75 @@ fn markers(_: &mut Window, cx: &mut App) -> AnyElement {
             row()
                 .child(labeled(
                     "rest",
-                    tree_host_marker(false, None, cx.theme().ground(), cx),
+                    tree_host_marker(
+                        HostPlatform::Unknown,
+                        cx.theme().foreground,
+                        false,
+                        None,
+                        cx.theme().ground(),
+                        cx,
+                    ),
                 ))
                 .child(labeled(
                     "bell",
-                    tree_host_marker(true, None, cx.theme().ground(), cx),
+                    tree_host_marker(
+                        HostPlatform::Unknown,
+                        cx.theme().foreground,
+                        true,
+                        None,
+                        cx.theme().ground(),
+                        cx,
+                    ),
                 ))
                 .child(labeled(
                     "needs input",
-                    tree_host_marker(false, badge(Badge::NeedsInput), cx.theme().ground(), cx),
+                    tree_host_marker(
+                        HostPlatform::Unknown,
+                        cx.theme().foreground,
+                        false,
+                        badge(Badge::NeedsInput),
+                        cx.theme().ground(),
+                        cx,
+                    ),
                 ))
                 .child(labeled(
                     "both",
-                    tree_host_marker(true, badge(Badge::NeedsInput), cx.theme().ground(), cx),
+                    tree_host_marker(
+                        HostPlatform::Unknown,
+                        cx.theme().foreground,
+                        true,
+                        badge(Badge::NeedsInput),
+                        cx.theme().ground(),
+                        cx,
+                    ),
                 )),
+        )
+        .state(
+            "host platforms",
+            row().children(
+                [
+                    ("macOS", HostPlatform::Macos),
+                    ("Windows", HostPlatform::Windows),
+                    ("Linux", HostPlatform::Linux(LinuxDistro::Other)),
+                    ("Ubuntu", HostPlatform::Linux(LinuxDistro::Ubuntu)),
+                    ("Debian", HostPlatform::Linux(LinuxDistro::Debian)),
+                    ("Arch", HostPlatform::Linux(LinuxDistro::Arch)),
+                    ("Fedora", HostPlatform::Linux(LinuxDistro::Fedora)),
+                ]
+                .map(|(label, platform)| {
+                    labeled(
+                        label,
+                        tree_host_marker(
+                            platform,
+                            cx.theme().foreground,
+                            false,
+                            None,
+                            cx.theme().ground(),
+                            cx,
+                        ),
+                    )
+                }),
+            ),
         )
         .state(
             "nodes",

@@ -3114,6 +3114,7 @@ fn materialize_welcome<S: TransportStream>(
         status: zz_protocol::StatusLine::default(),
         key_tables: Vec::new(),
         clock: welcome.clock,
+        platform: welcome.platform,
     };
     let mut pings = Vec::new();
     let batch = loop {
@@ -4244,6 +4245,7 @@ mod tests {
                         status: StatusLine::default(),
                         key_tables: Vec::new(),
                         clock: 0,
+                        platform: zz_protocol::HostPlatform::default(),
                     })))
                     .expect("send hello");
             });

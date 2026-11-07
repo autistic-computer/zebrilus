@@ -138,6 +138,7 @@ impl WorkspaceSidebar {
                     |changed| age_label(changed, now),
                 );
                 host.folded = self.flat_view.folded_hosts.contains(&id);
+                host.platform = mux.host_platform(id);
                 for chat in &mut host.chats {
                     chat.shortcut = shortcuts
                         .iter()

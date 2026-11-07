@@ -20,11 +20,23 @@ use crate::{
 use super::workspace_tree_marker;
 
 pub fn tree_host_marker(
+    platform: zz_protocol::HostPlatform,
+    color: Hsla,
     bell: bool,
     badge_color: Option<Hsla>,
     ground: Ground,
     cx: &App,
 ) -> AnyElement {
+    let size = crate::rems_from_px(super::WORKSPACE_TREE_NODE_ICON_SIZE);
+    if let Some(icon) = crate::program::platform_icon(platform) {
+        return tree_node_marker(
+            Icon::new(icon).size(size).text_color(color),
+            bell,
+            badge_color,
+            ground,
+            cx,
+        );
+    }
     static LOGO: LazyLock<Arc<ala::Image>> = LazyLock::new(|| {
         Arc::new(ala::Image::from_bytes(
             ala::ImageFormat::Png,
@@ -36,7 +48,7 @@ pub fn tree_host_marker(
         ))
     });
     tree_node_marker(
-        ala::img(Arc::clone(&LOGO)).size(crate::rems_from_px(super::WORKSPACE_TREE_NODE_ICON_SIZE)),
+        ala::img(Arc::clone(&LOGO)).size(size),
         bell,
         badge_color,
         ground,

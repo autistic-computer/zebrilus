@@ -1689,6 +1689,7 @@ mod tests {
                 status: zz_protocol::StatusLine::default(),
                 key_tables: Vec::new(),
                 clock: 0,
+                platform: zz_protocol::HostPlatform::default(),
             }));
             let encoded = zz_protocol::encode_protocol_message(&hello).unwrap();
             let decoded = zz_protocol::decode_protocol_frame(&encoded).unwrap();

@@ -292,7 +292,14 @@ pub fn render_node(node: &Node, active: bool, state: TreeState, cx: &App) -> Any
     let actions = tree_action_strip(format!("tree-actions-{key}"), actions, cx);
     let badge = node.badge.map(|badge| badge.color(cx));
     let marker = if is_host {
-        tree_host_marker(node.bell, badge, ink.ground, cx)
+        tree_host_marker(
+            zz_protocol::HostPlatform::Macos,
+            color,
+            node.bell,
+            badge,
+            ink.ground,
+            cx,
+        )
     } else {
         let icon = node
             .shown_program()

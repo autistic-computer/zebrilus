@@ -1,5 +1,6 @@
 use penna::blocks::sidebar::SIDEBAR_DEFAULT_WIDTH;
 use std::rc::Rc;
+use zz_protocol::{HostPlatform, LinuxDistro};
 
 use ala::{
     AnyElement, App, AppContext as _, Context, IntoElement, Keystroke, ParentElement as _, Render,
@@ -303,14 +304,24 @@ fn host(
             tile.program = resolve(process.iter().copied());
         }
     }
-    FlatHost::new(
+    let mut host = FlatHost::new(
         id,
         name,
         remote,
         connection,
         (windows, rollup),
         |changed_at| age_label(changed_at, NOW),
-    )
+    );
+    host.platform = match name {
+        "macbook" | "studio" => HostPlatform::Macos,
+        "ubuntu" => HostPlatform::Linux(LinuxDistro::Ubuntu),
+        "devbox" => HostPlatform::Linux(LinuxDistro::Arch),
+        "extras" => HostPlatform::Linux(LinuxDistro::Debian),
+        "nas" => HostPlatform::Linux(LinuxDistro::Other),
+        "alienware" => HostPlatform::Windows,
+        _ => HostPlatform::Unknown,
+    };
+    host
 }
 
 fn macbook(rows: Rows) -> FlatHost {
@@ -1143,6 +1154,7 @@ fn hosts(_: &mut Window, cx: &mut App) -> AnyElement {
     let mut lost = devbox(Rows::Chats);
     lost.id = PaletteHostId(8);
     lost.name = "buildbox".into();
+    lost.platform = HostPlatform::Linux(LinuxDistro::Fedora);
     lost.connection = HostConnection::Unreachable(refused.into());
     lost.folded = true;
     let folded = [stale, lost];

@@ -841,6 +841,7 @@ struct HostConnection {
     background_core: ClientCore,
     providers: Option<zz_protocol::ProvidersReport>,
     providers_requested: bool,
+    platform: zz_protocol::HostPlatform,
 }
 
 impl HostConnection {
@@ -873,6 +874,7 @@ impl HostConnection {
             background_core: ClientCore::new(),
             providers: None,
             providers_requested: false,
+            platform: zz_protocol::HostPlatform::Unknown,
         }
     }
 
@@ -893,6 +895,7 @@ impl HostConnection {
             client.server_hello().appearance.clone(),
             client.server_hello().appearance_provenance.clone(),
         ));
+        let platform = client.server_hello().platform;
         let receiver = Arc::clone(&client);
         let (messages, incoming) = decoded_message_channel();
         let reader_thread = thread::Builder::new()
@@ -954,6 +957,7 @@ impl HostConnection {
             background_core: ClientCore::new(),
             providers: None,
             providers_requested: false,
+            platform,
         })
     }
 
@@ -1669,6 +1673,12 @@ impl MuxClient {
         })
     }
 
+    pub fn host_platform(&self, host: HostId) -> zz_protocol::HostPlatform {
+        self.connections
+            .get(&host)
+            .map_or_default(|connection| connection.platform)
+    }
+
     pub(crate) fn host_snapshot(&self, host: HostId) -> Option<&Arc<MuxSnapshot>> {
         if host == self.attached_host && !self.attached_snapshot_pending {
             Some(self.core.snapshot())
@@ -1997,7 +2007,9 @@ impl MuxClient {
             .connections
             .get(&host)
             .is_some_and(|connection| connection.ssh_auth_declined);
+        let platform = self.host_platform(host);
         let mut connection = HostConnection::disconnected_with_route(route);
+        connection.platform = platform;
         connection.last_attached_session = last_attached_session;
         connection.snapshot = snapshot;
         connection.reconnect_generation = reconnect_generation;
@@ -2263,6 +2275,7 @@ impl MuxClient {
         let mut disconnected = HostConnection::disconnected_with_route(route);
         disconnected.last_attached_session = last_attached_session;
         disconnected.reconnect_generation = reconnect_generation;
+        disconnected.platform = connection.platform;
 
         if self.shutting_down {
             disconnected.state = HostState::Unreachable {
@@ -2541,6 +2554,7 @@ impl MuxClient {
             status: StatusLine::default(),
             key_tables: Vec::new(),
             clock: 0,
+            platform: zz_protocol::HostPlatform::default(),
         })));
         connection.reader_thread = None;
         connection.state = HostState::Connected;
@@ -5091,6 +5105,7 @@ mod tests {
             status: StatusLine::default(),
             key_tables: Vec::new(),
             clock: 0,
+            platform: zz_protocol::HostPlatform::default(),
         }
     }
 

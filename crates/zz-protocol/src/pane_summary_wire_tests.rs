@@ -256,6 +256,7 @@ fn welcome_carries_the_daemon_clock() {
         client_instance_id: ClientInstanceId(u64::MAX),
         caps: Welcome::caps_from_strings(&capabilities),
         clock: 1_760_000_000,
+        platform: crate::HostPlatform::default(),
     };
     let message = ProtocolMessage::Welcome(welcome);
     let encoded = encode_protocol_message(&message).unwrap();

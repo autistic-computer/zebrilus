@@ -1467,8 +1467,13 @@ fn render_tree_row(
             this.child(render_host_indicator(index, indicator, cx))
         })
         .child(actions);
+    let platform = match entry.node {
+        TreeNode::Host(host) => runtime.mux.read(cx).host_platform(host),
+        TreeNode::Target(..) => zz_protocol::HostPlatform::Unknown,
+    };
     let marker = render_node_marker(
         entry,
+        platform,
         ink.node(connected && entry.on_active_path),
         runtime.tree_model.has_pending_bell(node),
         node_agent_badge(&runtime.tree_model, &runtime.badges, node),
@@ -1609,6 +1614,7 @@ const fn pane_kind_icon(kind: MuxTreePaneKind) -> IconName {
 
 fn render_node_marker(
     entry: &VisibleTreeEntry,
+    platform: zz_protocol::HostPlatform,
     color: Hsla,
     belled: bool,
     badge: Option<AgentBadge>,
@@ -1618,6 +1624,8 @@ fn render_node_marker(
     let icon = match &entry.kind {
         TreeNodeKind::Host => {
             return tree_host_marker(
+                platform,
+                color,
                 belled,
                 badge.map(|badge| agent_badge_color(badge, cx)),
                 ground,

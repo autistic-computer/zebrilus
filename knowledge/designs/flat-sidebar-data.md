@@ -192,6 +192,17 @@ mark, without its tile, in the row's ink where the kind icon was (`zz_ui::progra
 on a pane row, and on a folded window row for its active pane. A logo with more than one color has
 no single-ink mark, so its row keeps the kind icon.
 
+# Host marks
+
+A host row shows the machine's mark: macOS, Windows, or on Linux its distro family (Ubuntu,
+Debian, Arch, Fedora, or Tux for any other), so the row says which package manager the host uses.
+The daemon sends it in its welcome (`Welcome.platform`, wire v119): its build's OS, and on Linux the
+first of `ID` and `ID_LIKE` in `/etc/os-release` that names a family, so Mint and Pop show Ubuntu
+and Rocky shows Fedora. The client keeps it on the host's connection across reconnects
+(`MuxClient::host_platform`). The session tree draws the mark in the row's ink where the zz logo
+was, and chat view in place of the laptop or server glyph; a host that has not connected yet keeps
+those.
+
 # What the source changed in the first draft
 
 - The draft said agent shadow terminals carry OSC 133 marks and ring the bell at turn end. They do

@@ -3055,6 +3055,7 @@ mod tests {
                 client_instance_id: zz_protocol::ClientInstanceId(1),
                 caps: zz_protocol::Welcome::caps_from_strings(&capabilities),
                 clock: 0,
+                platform: zz_protocol::HostPlatform::default(),
             });
             let initial = ProtocolMessage::Batch(
                 zz_protocol::Batch::from_messages(

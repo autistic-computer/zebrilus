@@ -101,6 +101,7 @@ pub struct FlatHost {
     pub id: PaletteHostId,
     pub name: SharedString,
     pub remote: bool,
+    pub platform: zz_protocol::HostPlatform,
     pub connection: HostConnection,
     pub folded: bool,
     pub rollup: AttentionRollup,
@@ -120,6 +121,7 @@ impl FlatHost {
             id,
             name: name.into(),
             remote,
+            platform: zz_protocol::HostPlatform::Unknown,
             connection,
             folded: false,
             rollup,
@@ -749,11 +751,11 @@ pub fn flat_host_header(
         .on_hover(move |hovered, window, cx| hover(FlatEvent::Hover(target, *hovered), window, cx))
         .on_click(move |_, window, cx| click(FlatEvent::FoldHost(id), window, cx))
         .child(glyph(
-            if host.remote {
+            crate::program::platform_icon(host.platform).unwrap_or(if host.remote {
                 IconName::Server
             } else {
                 IconName::Laptop
-            },
+            }),
             HOST_GLYPH,
             HOST_NAME.design_px(),
             muted,
@@ -955,6 +957,7 @@ mod tests {
                 id: host,
                 name: "macbook".into(),
                 remote: false,
+                platform: zz_protocol::HostPlatform::Macos,
                 connection: HostConnection::Connected,
                 folded: false,
                 rollup: AttentionRollup::default(),

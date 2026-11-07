@@ -363,6 +363,7 @@ pub(super) fn flat_tree(
         |changed_at| age_label(changed_at, now),
     );
     host.folded = view.flat.folded_host;
+    host.platform = core.host_platform();
     let current = snapshot
         .sessions
         .iter()
@@ -567,7 +568,14 @@ fn render_row(
     let actions = tree_action_strip(format!("web-tree-actions-{id}"), actions, cx);
     let badge_color = entry.badge.map(|badge| badge_color(badge, cx));
     let marker = if is_host {
-        tree_host_marker(entry.bell, badge_color, ink.ground, cx)
+        tree_host_marker(
+            connection.read(cx).core.host_platform(),
+            color,
+            entry.bell,
+            badge_color,
+            ink.ground,
+            cx,
+        )
     } else {
         tree_node_marker(
             entry

@@ -494,6 +494,27 @@ mod edge_facts_tests;
 
 const CLIPBOARD_QUERY_TIMEOUT: Duration = Duration::from_secs(5);
 
+fn host_platform() -> zz_protocol::HostPlatform {
+    static PLATFORM: std::sync::OnceLock<zz_protocol::HostPlatform> = std::sync::OnceLock::new();
+    *PLATFORM.get_or_init(|| {
+        if cfg!(target_os = "macos") {
+            zz_protocol::HostPlatform::Macos
+        } else if cfg!(target_os = "windows") {
+            zz_protocol::HostPlatform::Windows
+        } else if cfg!(target_os = "linux") {
+            zz_protocol::HostPlatform::Linux(
+                ["/etc/os-release", "/usr/lib/os-release"]
+                    .iter()
+                    .find_map(|path| std::fs::read_to_string(path).ok())
+                    .map(|text| zz_protocol::LinuxDistro::from_os_release(&text))
+                    .unwrap_or_default(),
+            )
+        } else {
+            zz_protocol::HostPlatform::Unknown
+        }
+    })
+}
+
 fn unix_timestamp() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -6741,6 +6762,7 @@ impl Shared {
             status: StatusLine::default(),
             key_tables: inner.engine.keys.snapshot(),
             clock: unix_timestamp(),
+            platform: host_platform(),
         };
         if kind == ClientKind::Interactive && client_has_terminal {
             return Some((client, hello));

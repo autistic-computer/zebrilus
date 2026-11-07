@@ -35,6 +35,21 @@ pub const CLAUDE_ICON: IconName = IconName::Asset("icons/claude.svg");
 pub const OPENAI_ICON: IconName = IconName::Asset("icons/openai.svg");
 pub const CHROME_ICON: IconName = IconName::Asset("icons/brand-chrome.svg");
 
+#[must_use]
+pub const fn platform_icon(platform: zz_protocol::HostPlatform) -> Option<IconName> {
+    use zz_protocol::{HostPlatform, LinuxDistro};
+    Some(IconName::Asset(match platform {
+        HostPlatform::Unknown => return None,
+        HostPlatform::Macos => "icons/macos.svg",
+        HostPlatform::Windows => "icons/windows.svg",
+        HostPlatform::Linux(LinuxDistro::Ubuntu) => "icons/ubuntu.svg",
+        HostPlatform::Linux(LinuxDistro::Debian) => "icons/debian.svg",
+        HostPlatform::Linux(LinuxDistro::Arch) => "icons/arch.svg",
+        HostPlatform::Linux(LinuxDistro::Fedora) => "icons/fedora.svg",
+        HostPlatform::Linux(LinuxDistro::Other) => "icons/linux.svg",
+    }))
+}
+
 #[derive(rust_embed::RustEmbed)]
 #[folder = "assets"]
 #[include = "programs/*.svgz"]
@@ -281,16 +296,31 @@ pub fn program_mark(
 mod tests {
     use ala::AssetSource as _;
 
-    use super::{Assets, CHROME_ICON, CLAUDE_ICON, OPENAI_ICON, ZZ_LOGO};
+    use zz_protocol::{HostPlatform, LinuxDistro};
+
+    use super::{Assets, CHROME_ICON, CLAUDE_ICON, OPENAI_ICON, ZZ_LOGO, platform_icon};
 
     #[test]
     fn app_icons_load_from_the_app_assets() {
+        let platforms = [
+            HostPlatform::Macos,
+            HostPlatform::Windows,
+            HostPlatform::Linux(LinuxDistro::Other),
+            HostPlatform::Linux(LinuxDistro::Ubuntu),
+            HostPlatform::Linux(LinuxDistro::Debian),
+            HostPlatform::Linux(LinuxDistro::Arch),
+            HostPlatform::Linux(LinuxDistro::Fedora),
+        ]
+        .map(|platform| platform_icon(platform).expect("a known platform has an icon"));
         for path in [
             ZZ_LOGO,
             CLAUDE_ICON.path(),
             OPENAI_ICON.path(),
             CHROME_ICON.path(),
-        ] {
+        ]
+        .into_iter()
+        .chain(platforms.iter().map(crate::IconName::path))
+        {
             let loaded = Assets
                 .load(path)
                 .unwrap_or_else(|error| panic!("{path} failed to load: {error}"));

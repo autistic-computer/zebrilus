@@ -93,7 +93,7 @@ The desktop clients ship no fonts; they render with the system text stack.
 | --- | --- | --- |
 | [Solar Icons Set](https://www.figma.com/community/file/1166831539721848736) by 480 Design | Every glyph in the app and the site except the brand marks: `libs/penna/src/components/icon/solar.json` and `site/src/icons`, adapted to follow the theme radius. Icons Solar lacks are zz's own, drawn in its style. | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). Credit and changes in `LICENSE-SOLAR` beside the set. |
 | [Tabler Icons](https://tabler.io/icons) | The Chrome brand mark, `crates/zz-ui/assets/icons/brand-chrome.svg`. | MIT, © 2020–2026 Paweł Kuna. Retained as `LICENSE-TABLER` beside it. |
-| [Simple Icons](https://simpleicons.org) | The vendor brand marks `crates/zz-ui/assets/icons/openai.svg` and `claude.svg`. | CC0-1.0 |
+| [Simple Icons](https://simpleicons.org) | The vendor brand marks `crates/zz-ui/assets/icons/openai.svg` and `claude.svg`, and the host marks `macos.svg`, `windows.svg`, `linux.svg`, `ubuntu.svg`, `debian.svg`, `arch.svg` and `fedora.svg` beside them. | CC0-1.0 |
 
 ## Interface themes
 

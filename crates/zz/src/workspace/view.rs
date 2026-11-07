@@ -5437,6 +5437,7 @@ mod tests {
                     status: zz_protocol::StatusLine::default(),
                     key_tables: zz_protocol::KeyTables::default().snapshot(),
                     clock: 0,
+                    platform: zz_protocol::HostPlatform::default(),
                 })),
             )
             .unwrap();

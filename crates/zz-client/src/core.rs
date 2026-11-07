@@ -254,6 +254,7 @@ pub enum CoreDetachReason {
 pub struct ClientCore {
     hello_received: bool,
     server_clock: u64,
+    host_platform: zz_protocol::HostPlatform,
     capabilities: Vec<String>,
     appearance: Option<Box<TerminalAppearance>>,
     appearance_provenance: AppearanceProvenance,
@@ -499,9 +500,15 @@ impl ClientCore {
         self.server_clock
     }
 
+    #[must_use]
+    pub const fn host_platform(&self) -> zz_protocol::HostPlatform {
+        self.host_platform
+    }
+
     pub fn adopt_welcome(&mut self, welcome: Welcome) {
         self.hello_received = true;
         self.server_clock = welcome.clock;
+        self.host_platform = welcome.platform;
         self.capabilities = welcome.capability_strings();
         self.command_output_watermark = 0;
     }
@@ -750,9 +757,11 @@ impl ClientCore {
             status,
             key_tables,
             clock,
+            platform,
         } = hello;
         self.hello_received = true;
         self.server_clock = clock;
+        self.host_platform = platform;
         self.capabilities = capabilities;
         self.appearance = Some(Box::new(appearance));
         self.appearance_provenance = appearance_provenance;
@@ -1453,6 +1462,7 @@ mod tests {
             status: StatusLine::default(),
             key_tables: Vec::new(),
             clock: 0,
+            platform: zz_protocol::HostPlatform::default(),
         }))
     }
 
@@ -1940,6 +1950,7 @@ mod tests {
             client_instance_id: zz_protocol::ClientInstanceId(1),
             caps: 0,
             clock: 1_760_000_000,
+            platform: zz_protocol::HostPlatform::default(),
         }));
         assert_eq!(drain(&mut core), vec![CoreEvent::HelloReceived]);
         assert_eq!(core.server_clock(), 1_760_000_000);

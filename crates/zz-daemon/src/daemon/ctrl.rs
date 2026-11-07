@@ -721,6 +721,7 @@ impl Shared {
                 client_instance_id: client_hello.client_instance_id,
                 caps: (1 << zz_protocol::CAPABILITY_NAMES.len()) - 1,
                 clock: unix_timestamp(),
+                platform: host_platform(),
             },
         ))
     }
