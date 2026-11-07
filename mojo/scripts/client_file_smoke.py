@@ -1,4 +1,5 @@
 import json
+import argparse
 import os
 from pathlib import Path
 import runpy
@@ -13,8 +14,16 @@ MOJO = ROOT / "target/port/zz-mojo"
 
 
 def main():
+    global MOJO
     runpy.run_path(str(ROOT / "scripts/port/guard.py"))["ensure"]()
-    subprocess.run(["python3", str(ROOT / "mojo/scripts/build.py")], check=True, timeout=180)
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--exec", action="store_true")
+    options = parser.parse_args()
+    if options.exec:
+        MOJO = ROOT / "target/port/zz-mojo-exec"
+        subprocess.run(["mojo", "build", "--fp-mode=contract=off", "-I", str(ROOT / "mojo"), str(ROOT / "mojo/main.mojo"), "-o", str(MOJO)], check=True, timeout=180)
+    else:
+        subprocess.run(["python3", str(ROOT / "mojo/scripts/build.py")], check=True, timeout=180)
     checked = 0
     with tempfile.TemporaryDirectory(prefix="zz-file-smoke-", dir="/tmp") as directory:
         directory = Path(directory)
@@ -88,7 +97,7 @@ def main():
             assert captures[0] == captures[1], tuple(value[1] for value in captures)
             checked += 1
             report = {"passed": True, "groups": checked, "reference": "actual Rust CLI against a private native daemon", "scope": "client file read/write/append, raw stdout, stdin availability and limits, file and UTF-8 errors, closed stdin, source-file, and 2MiB chunked PTY input"}
-            (ROOT / "target/port/client-file-smoke.json").write_text(json.dumps(report, indent=2) + "\n")
+            (ROOT / "target/port" / ("exec-file-smoke.json" if options.exec else "client-file-smoke.json")).write_text(json.dumps(report, indent=2) + "\n")
             print(json.dumps(report))
         finally:
             subprocess.run([str(RUST), "-S", str(socket), "kill-server"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=10)

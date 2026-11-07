@@ -68,6 +68,23 @@ def _last_error() raises -> String:
     return errno_text(number)
 
 
+def _reserve_standard_descriptors() raises:
+    var path = String("/dev/null")
+    var name = path.as_c_string_span().ptr()
+    for number in range(3):
+        if external_call["fcntl", Int32, num_fixed_args=2](Int32(number), Int32(1), Int32(0)) >= 0:
+            continue
+        var fd = external_call["open", Int32, num_fixed_args=2](name, Int32(2))
+        if fd < 0:
+            raise Error(_last_error())
+        if fd != Int32(number):
+            var result = external_call["dup2", Int32](fd, Int32(number))
+            _ = external_call["close", Int32](fd)
+            if result < 0:
+                raise Error("could not reserve standard descriptor")
+    _ = path
+
+
 def _read_bytes(fd: Int32, maximum: Int, once: Bool) raises -> List[UInt8]:
     var library = OwnedDLHandle()
     var read = library.get_function[Int]("read")
@@ -113,6 +130,7 @@ struct ClientFiles(Movable):
             files.was_closed = files.stdin_error == 9
         elif external_call["fcntl", Int32, num_fixed_args=2](files.stdin_fd, Int32(2), Int32(1)) != 0:
             raise Error("could not protect standard input descriptor")
+        _reserve_standard_descriptors()
         return files^
 
     def __deinit__(deinit self):

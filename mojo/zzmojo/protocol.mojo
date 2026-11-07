@@ -184,20 +184,34 @@ def command_request(
     return envelope(Span(payload))
 
 
-def control_tag(frame: Span[UInt8, _]) raises -> UInt32:
+def control_uint(frame: Span[UInt8, _], field: Int = 0) raises -> UInt32:
     if len(frame) < 9 or frame[4] != 0:
         raise Error("expected control frame")
+    if field < 0 or field > 1:
+        raise Error("unsupported control prefix field")
+    var offset = 8
     var tag: UInt32 = 0
-    for index in range(5):
-        if index + 8 >= len(frame):
-            raise Error("truncated control tag")
-        var byte = frame[index + 8]
-        if index == 4 and byte > 15:
-            raise Error("control tag exceeds u32 range")
-        tag |= UInt32(byte & 127) << UInt32(index * 7)
-        if byte < 128:
-            return tag
-    raise Error("control tag exceeds u32 range")
+    for _ in range(field + 1):
+        tag = 0
+        var done = False
+        for index in range(5):
+            if offset >= len(frame):
+                raise Error("truncated control integer")
+            var byte = frame[offset]
+            offset += 1
+            if index == 4 and byte > 15:
+                raise Error("control integer exceeds u32 range")
+            tag |= UInt32(byte & 127) << UInt32(index * 7)
+            if byte < 128:
+                done = True
+                break
+        if not done:
+            raise Error("control integer exceeds u32 range")
+    return tag
+
+
+def control_tag(frame: Span[UInt8, _]) raises -> UInt32:
+    return control_uint(frame)
 
 
 @fieldwise_init
