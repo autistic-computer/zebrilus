@@ -67,6 +67,9 @@ def fixture(directory):
     number(int(source["marked"] is not None))
     if source["marked"] is not None:
         text(source["marked"])
+    number(len(geometry["glyph_probes"]))
+    for probe in geometry["glyph_probes"]:
+        text(probe["text"])
     assert len(output) <= 1024 * 1024
     path = directory / "input.bin"
     path.write_bytes(output)
@@ -82,7 +85,7 @@ def main():
     parser.add_argument("--scale", type=float, action="append")
     args = parser.parse_args()
     cases = args.case or CASES
-    scales = args.scale or (1, 1.25)
+    scales = args.scale or (1.0, 1.25)
     if len(scales) > 8 or any(not 0.5 <= scale <= 3 for scale in scales):
         raise SystemExit("styled fixture scale exceeds limit")
     DIRECTORY.mkdir(parents=True, exist_ok=True)

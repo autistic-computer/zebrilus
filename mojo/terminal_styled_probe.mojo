@@ -124,6 +124,10 @@ def main() raises:
     var marked: Optional[String] = None
     if number(data, offset) != 0:
         marked = text(data, offset)
+    var probe_words = List[String]()
+    var probes = count(data, offset, 128)
+    for _ in range(probes):
+        probe_words.append(text(data, offset))
     if offset != len(data):
         raise Error("trailing styled terminal bytes")
     var ui = Ui(device_scale)
@@ -161,6 +165,34 @@ def main() raises:
         if index != 0:
             result += ","
         result += String('{"font":') + String(face.font) + ',"bold":' + String(UInt8(face.params.bold)) + ',"italic":' + String(UInt8(face.params.italic)) + "}"
+    result += '],"glyph_probes":['
+    if fallback_count > 0:
+        var words = probe_words.copy()
+        for index in range(len(words)):
+            if index != 0:
+                result += ","
+            var bytes = words[index].as_bytes()
+            var word_id = ui.shaper.word(0, bytes.unsafe_ptr(), len(bytes))
+            var word = ui.shaper.words[word_id]
+            var k = ui.shaper.fonts[0].scale(size)
+            var ascent: Float32 = 0
+            var descent: Float32 = 0
+            for glyph in range(Int(word.glyph_count)):
+                var font_id = Int(ui.shaper.glyph_font[Int(word.fb) + glyph]) if word.fb >= 0 else 0
+                ref face = ui.shaper.fonts[font_id]
+                var metrics = face.metrics.normalized(face.upem).scaled(size)
+                ascent = max(ascent, metrics.ascender)
+                descent = max(descent, -metrics.descender)
+            result += String('{"text":"') + words[index] + '","width":' + String(Float32(word.advance) * k) + ',"ascent":' + String(ascent) + ',"descent":' + String(descent) + ',"glyphs":['
+            var pen: Float32 = 0
+            for glyph in range(Int(word.glyph_count)):
+                if glyph != 0:
+                    result += ","
+                var source = Int(word.glyph_start) + glyph
+                var font_id = Int(ui.shaper.glyph_font[Int(word.fb) + glyph]) if word.fb >= 0 else 0
+                result += String('{"font":') + String(font_id) + ',"glyph":' + String(ui.shaper.gids[source]) + ',"index":' + String(ui.shaper.cluster[source]) + ',"x":' + String(pen + Float32(ui.shaper.xoff[source]) * k) + ',"y":' + String(Float32(ui.shaper.yoff[source]) * k) + "}"
+                pen += Float32(ui.shaper.adv[source]) * k
+            result += "]}"
     result += '],"metric_bits":['
     var values = SIMD[.float32, 8](advance, font.ascender, -font.descender, font.line_gap, metrics.baseline, metrics.width, metrics.height, 0)
     for index in range(7):

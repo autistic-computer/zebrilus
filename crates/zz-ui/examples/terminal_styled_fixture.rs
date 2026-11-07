@@ -39,11 +39,12 @@ impl Render for Fixture {
         let viewport = self.viewport.clone();
         let appearance = self.appearance.clone();
         let family = appearance.font_families[0].clone();
+        let base_font = terminal_font_for_style(&appearance, &family, false, false);
         let prepare = self.cache.clone();
         let paint = self.cache.clone();
         let geometry = self.geometry.clone();
         let marked = self.marked.clone();
-        div().size_full().font_family(family).text_size(px(font_size)).bg(ala::rgb(0x0011_2233)).child(
+        div().size_full().font(base_font).text_size(px(font_size)).bg(ala::rgb(0x0011_2233)).child(
             canvas(
                 move |bounds, window, cx| {
                     let revisions = [1, 2, 3, 4, 5, 6, 7, 8];
@@ -90,11 +91,23 @@ impl Render for Fixture {
                             "synthetic_italic": allowed && style & 2 != 0 && resolved == window.text_system().resolve_font(&without_italic),
                         })
                     }).collect::<Vec<_>>();
+                    let mut glyph_probes = Vec::new();
+                    if appearance.font_families.len() > 1 {
+                        for text in ["界", "中", "語", "a\u{301}", "कित", "ก้", "क्ष", "a\u{308}\u{301}", "שלום", "مرحبا", "語 ", "αβγ Жизнь שלום مرحبا"] {
+                            let line = window.text_system().shape_line(text.into(), px(font_size), &[ala::TextRun {
+                                len: text.len(), font: terminal_font_for_style(&appearance, "JetBrains Mono", false, false), color: ala::Hsla::default(), background_color: None, underline: None, strikethrough: None,
+                            }], None);
+                            glyph_probes.push(json!({
+                                "text": text, "width": f32::from(line.width), "ascent": f32::from(line.ascent), "descent": f32::from(line.descent),
+                                "glyphs": line.runs.iter().flat_map(|run| run.glyphs.iter().map(move |glyph| json!({"font": run.font_id.0, "glyph": glyph.id.0, "index": glyph.index, "x": f32::from(glyph.position.x), "y": f32::from(glyph.position.y)}))).collect::<Vec<_>>(),
+                            }));
+                        }
+                    }
                     *geometry.borrow_mut() = json!({
                         "advance": f32::from(probe.width), "ascent": f32::from(probe.ascent), "descent": f32::from(probe.descent), "line_gap": f32::from(gap),
                         "baseline": f32::from((g.line_height - probe.ascent - probe.descent) / 2. + probe.ascent),
                         "cell_width": f32::from(g.cell_width), "line_height": f32::from(g.line_height),
-                        "columns": g.grid.columns, "rows": g.grid.rows, "faces": faces,
+                        "columns": g.grid.columns, "rows": g.grid.rows, "faces": faces, "glyph_probes": glyph_probes,
                     });
                     state
                 },
