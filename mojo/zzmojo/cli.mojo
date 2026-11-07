@@ -28,6 +28,7 @@ from zzmojo.cli_native import (
     parse_connect_errno,
 )
 from zzmojo.cli_help import CLI_HELP
+from zzmojo.cli_command_help import command_help
 from zzmojo.cli_startup import prepare_startup
 from zzmojo.cli_application import launch_resume
 from zzmojo.cli_default_startup import (
@@ -120,7 +121,11 @@ def _run(var files: ClientFiles) raises -> UInt8:
         if text == "--":
             break
         if text == "--help":
-            return _unsupported("command help")
+            var help = command_help(command)
+            if help.error:
+                return _line(help.error.value(), help.code)
+            _ = write_bytes(1, help.text.as_bytes())
+            return help.code
     if command == "app":
         if parsed.host or len(commands[0].args) > 0 or len(commands) != 1:
             return _line("zz: usage: zz app", 2)

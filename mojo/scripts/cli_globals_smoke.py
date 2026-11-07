@@ -43,11 +43,15 @@ def main():
             assert invoke(RUST, ["-f", "/dev/null", "new-session", "-d", "-s", "global-proof", "sleep 120"])[0] == 0
             for args in (["-h"], ["-V"], ["--version"], ["--help"], ["help"], ["protocol-version"], ["-S", str(socket), "protocol-version"], ["protocol-version", "extra"], ["--socket"], ["--socket="], ["--host"], ["--host="], ["--host=-x", "list-sessions"], ["-X"], ["--unknown"], ["-D"], ["-D", "list-sessions"], ["-c"], ["-c", "x", "list-sessions"], ["-L", "name", "-V"], ["--host=-x", "-h"]):
                 compare(args)
+            for name in ("display-message", "display", "new-session", "attach", "a", "not-a-command", "link-window", "__zz-command-alias-group"):
+                compare([name, "--help"])
+            compare(["display-message", "--help", ";", "new-session"])
             for prefix in ([], ["-S", str(socket)], ["-S", "s"], ["-S" + str(socket)], ["--socket=" + str(socket)], ["-S", str(directory / "missing"), "--socket", str(socket)], ["-2u"], ["-qvN"], ["-f", str(directory / "missing-config")], ["-T", "RGB,clipboard,utf8", "-T", "RGB@", "-2"]):
                 compare([*prefix, "list-sessions", "-F", "#{session_name}"])
             compare(["-u", "display-message", "-p", "#{client_utf8}:#{client_termfeatures}"])
             compare(["display-message", "-p", "世界"])
             compare(["display-message", "-p", "--", "--verbose"])
+            compare(["display-message", "-p", "--", "--help"])
             compare([b"set-buffer", b"-b", b"raw-argv", b"raw\xff\x01"])
             compare(["save-buffer", "-b", "raw-argv", "-"])
             inherited = environment.copy()
@@ -88,7 +92,7 @@ def main():
             assert invoke(RUST, ["-f", "/dev/null", "new-session", "-d", "-s", "default-proof", "sleep 120"], defaults)[0] == 0
             compare(["list-sessions", "-F", "#{session_name}"], defaults)
             before = invoke(RUST, ["list-sessions", "-F", "#{session_name}"])
-            for args in (["-C"], ["-c", "touch unsupported-shell-must-not-run"], ["--host", "remote", "list-sessions"], ["daemon"], ["display-message", "--help"], ["--verbose", "list-sessions"]):
+            for args in (["-C"], ["-c", "touch unsupported-shell-must-not-run"], ["--host", "remote", "list-sessions"], ["daemon"], ["--verbose", "list-sessions"]):
                 actual = invoke(MOJO, args)
                 assert actual[0] == 1 and b"not implemented by this client" in actual[2], (args, actual)
                 rejected += 1
@@ -100,7 +104,7 @@ def main():
             assert actual == reference, (reference, actual)
             checked += 1
             compare(["--kill-server"])
-            report = {"passed": True, "native_differentials": checked, "explicit_unsupported": rejected, "scope": "global flags, help/version, raw argv, Unix socket selection/defaults and security, features/UTF8 and existing-daemon modern Exec", "remaining": ["daemon restart", "remote and control mode", "shell startup", "per-command help", "verbose diagnostics", "non-UTF-8 socket paths", "full Unix path-length boundary"]}
+            report = {"passed": True, "native_differentials": checked, "explicit_unsupported": rejected, "scope": "global flags, help/version, raw argv, Unix socket selection/defaults and security, features/UTF8 and existing-daemon modern Exec", "remaining": ["daemon restart", "remote and control mode", "shell startup", "verbose diagnostics", "non-UTF-8 socket paths", "full Unix path-length boundary"]}
             (TARGET / "cli-globals-smoke.json").write_text(json.dumps(report, indent=2) + "\n")
             print(json.dumps(report))
         finally:

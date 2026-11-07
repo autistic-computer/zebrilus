@@ -30,6 +30,7 @@ test-client-files = "python3 ../scripts/port/guard.py python3 scripts/client_fil
 client-files-smoke = "python3 ../scripts/port/guard.py python3 scripts/client_file_smoke.py"
 differential-exec = "python3 scripts/exec_vectors.py"
 differential-cli-globals = "python3 scripts/cli_globals_vectors.py"
+differential-cli-command-help = "python3 scripts/cli_command_help_vectors.py"
 differential-cli-preflight = "python3 scripts/cli_preflight_vectors.py"
 differential-palette-fuzzy = "python3 scripts/palette_fuzzy_vectors.py"
 differential-palette-commands = "python3 scripts/palette_command_vectors.py"

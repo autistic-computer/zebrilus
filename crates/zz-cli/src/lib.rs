@@ -1506,7 +1506,7 @@ fn help_value(kind: zz_protocol::CommandValueKind) -> &'static str {
     }
 }
 
-fn command_help(command: &str) -> Result<String, ServerError> {
+pub fn command_help(command: &str) -> Result<String, ServerError> {
     use std::fmt::Write as _;
 
     let spec = match zz_protocol::resolve_command(command) {
