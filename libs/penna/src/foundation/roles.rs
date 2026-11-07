@@ -385,7 +385,7 @@ pub const FIELD_ADDRESS: SurfaceRole = SurfaceRole::new(
 )
 .with(P.fill(Fill::None));
 
-pub(crate) const RIMMED_PICKS: [SurfaceRole; 1] = [TAB_WINDOW];
+pub(crate) const RIMMED_PICKS: [SurfaceRole; 2] = [TAB_WINDOW, TAB_PAGE];
 
 pub const RECIPES: [SurfaceRole; 32] = [
     TAB_WINDOW,

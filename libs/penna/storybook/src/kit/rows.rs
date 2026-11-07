@@ -163,7 +163,7 @@ const STRIP_TABS: [(PaintState, &str); 3] = [
 ];
 
 fn strip(cx: &App) -> TabStrip {
-    let on = TabStrip::ground(cx.theme().ground(), cx);
+    let on = TabStrip::ground(cx.theme().ground(), STRIP_TABS.len(), cx);
     TabStrip::new("tab-strip", TabLook::Window)
         .with_size(px(28.0))
         .children(STRIP_TABS.iter().map(|(state, label)| {

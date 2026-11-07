@@ -48,6 +48,10 @@
   --penna-around-rows: var(--penna-control-lg);
 }
 
+.penna-tab-strip[data-penna]:has(> :only-child) {
+  background: none;
+}
+
 .penna-tab[data-still] {
   pointer-events: none;
 }

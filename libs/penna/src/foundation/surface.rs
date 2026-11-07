@@ -1591,7 +1591,10 @@ mod tests {
             let selected = theme.layer(Surface::new(role), PaintState::Selected);
             assert!(selected.glass.is_none(), "{}", role.id);
             assert!(!selected.ground.solid, "{}", role.id);
-            let edge = if role.id == super::super::roles::TAB_WINDOW.id {
+            let edge = if super::super::roles::RIMMED_PICKS
+                .iter()
+                .any(|rimmed| rimmed.id == role.id)
+            {
                 (
                     theme.ground().ink.opacity(CONTROL_EDGE_ALPHA),
                     theme.outline,

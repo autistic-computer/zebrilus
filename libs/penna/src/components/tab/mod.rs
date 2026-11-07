@@ -1,7 +1,7 @@
 use ala::{
     AnyElement, App, Div, ElementId, FULL_CORNER_RADIUS, InteractiveElement as _, IntoElement,
     ParentElement as _, Pixels, RenderOnce, Role, Stateful, StatefulInteractiveElement as _,
-    StyleRefinement, Styled as _, Window, div, px,
+    StyleRefinement, Styled as _, Window, div, prelude::FluentBuilder as _, px,
 };
 
 use crate::{
@@ -127,8 +127,12 @@ impl TabStrip {
     }
 
     #[must_use]
-    pub fn ground(on: Ground, cx: &App) -> Ground {
-        cx.theme().ground_of(Surface::new(roles::TAB_STRIP).on(on))
+    pub fn ground(on: Ground, tabs: usize, cx: &App) -> Ground {
+        if tabs > 1 {
+            cx.theme().ground_of(Surface::new(roles::TAB_STRIP).on(on))
+        } else {
+            on
+        }
     }
 }
 
@@ -176,6 +180,7 @@ impl RenderOnce for TabStrip {
             .layer(Surface::from(self.look).on(layer.ground), PaintState::Rest);
         let inset = Space::S2.rems().to_pixels(window.rem_size());
         let radius = strip_radius(row_radius(&tab, height), height, inset);
+        let track = self.children.len() > 1;
         self.base
             .role(Role::TabList)
             .accessibility_id(author_name(&self.id))
@@ -183,10 +188,12 @@ impl RenderOnce for TabStrip {
             .items_center()
             .gap(inset)
             .p(inset)
-            .layer(&Layer {
-                radius,
-                share: None,
-                ..layer
+            .when(track, |strip| {
+                strip.layer(&Layer {
+                    radius,
+                    share: None,
+                    ..layer
+                })
             })
             .children(self.children)
     }
