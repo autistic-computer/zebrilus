@@ -15,10 +15,10 @@ const STATUS: &str = r#"{
     "3112415680124528": {"LoginName": "owner@example.com"}
   },
   "Peer": {
-    "nodekey:a": {"HostName": "alienware", "DNSName": "alienware.example.ts.net.", "OS": "linux",
+    "nodekey:a": {"ID": "nAlien", "HostName": "alienware", "DNSName": "alienware.example.ts.net.", "OS": "linux",
                   "Online": true, "UserID": 8568435244129308, "Tags": ["tag:box"],
                   "TailscaleIPs": ["100.99.198.46", "fd7a:115c:a1e0::1"]},
-    "nodekey:b": {"HostName": "localhost", "DNSName": "ipad.example.ts.net.", "OS": "iOS",
+    "nodekey:b": {"ID": "nIpad", "HostName": "localhost", "DNSName": "ipad.example.ts.net.", "OS": "iOS",
                   "Online": false, "UserID": 3112415680124528,
                   "TailscaleIPs": ["100.115.130.46"]}
   }
@@ -60,6 +60,35 @@ fn status_reads_self_peers_and_logins() {
         "ipad.example.ts.net."
     );
     assert!(status.peer("xps").is_none());
+}
+
+#[test]
+fn only_online_machines_this_one_would_admit_are_candidates() {
+    let mut status = parse_status(STATUS).unwrap();
+    let names = |status: &Status| {
+        let mut names: Vec<String> = mine(status)
+            .iter()
+            .map(|peer| peer.label().to_owned())
+            .collect();
+        names.sort();
+        names
+    };
+    assert_eq!(names(&status), ["alienware"]);
+    for peer in &mut status.peers {
+        peer.online = true;
+    }
+    assert_eq!(names(&status), ["alienware", "ipad"]);
+    status.peers.push(Peer {
+        id: "nGuest".to_owned(),
+        host: "guest".to_owned(),
+        dns_name: "guest.example.ts.net.".to_owned(),
+        online: true,
+        user_id: 42,
+        login: "guest@example.org".to_owned(),
+        addresses: vec![ip("100.64.0.9")],
+        ..Peer::default()
+    });
+    assert_eq!(names(&status), ["alienware", "ipad"]);
 }
 
 #[test]
@@ -223,13 +252,14 @@ fn admission_follows_the_policy_table() {
 #[test]
 fn settings_take_the_last_valid_line() {
     let settings = Settings::from_config(
-        "tailnet = off\ntailnet-allow = members # coworkers too\ntailnet = sideways\nhost-arch = ssh://arch\n",
+        "tailnet = off\ntailnet-allow = members # coworkers too\ntailnet = sideways\nhost-arch = ssh://arch\ntailnet-hide = xps, ,win-desktop\n",
     );
     assert_eq!(
         settings,
         Settings {
             mode: Mode::Off,
             allow: Allow::Members,
+            hide: vec!["xps".to_owned(), "win-desktop".to_owned()],
         }
     );
     assert_eq!(Settings::from_config(""), Settings::default());

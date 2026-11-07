@@ -1749,6 +1749,12 @@ fn render_new_session_action(
 
 pub(crate) fn close_host(mux: &Entity<MuxClient>, host: HostId, name: &str, cx: &mut App) {
     mux.update(cx, |mux, cx| mux.release_host(host, cx));
+    if crate::config::is_discovered(name, cx) {
+        if let Err(error) = crate::config::hide_discovered_host(name, cx) {
+            log::warn!("could not hide {name} in zz/config: {error}");
+        }
+        return;
+    }
     match crate::config::remove_fleet_host_live(name, cx) {
         Ok(removed) => {
             log::info!(target: "zz::config", "closed fleet host name={name} config_removed={removed}");

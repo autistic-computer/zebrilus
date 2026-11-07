@@ -165,6 +165,14 @@ pub struct TailnetEndpoint {
     pub port: Option<u16>,
 }
 
+impl TailnetEndpoint {
+    pub const DEFAULT_PORT: u16 = if zz_protocol::app_identity::DEVELOPMENT {
+        9923
+    } else {
+        9922
+    };
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SshEndpoint {
     pub user: Option<String>,

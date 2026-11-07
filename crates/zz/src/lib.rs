@@ -28,6 +28,7 @@ mod profile;
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 mod quit_signal;
 mod status_bar;
+mod tailnet;
 mod terminal;
 mod theme;
 mod tray;
@@ -256,6 +257,7 @@ fn run_app(
             #[cfg(target_os = "macos")]
             cx.activate(true);
             config::init(cx);
+            tailnet::start(cx);
             cx.set_global(tray::DesktopTray::default());
             window::background::detect_compositor_support(cx);
             browser::recent_pages::init(cx);

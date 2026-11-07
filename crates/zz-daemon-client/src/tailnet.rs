@@ -20,17 +20,15 @@ use crate::{
     unmasked::SpawnUnmasked as _,
 };
 
-pub const PORT: u16 = if zz_protocol::app_identity::DEVELOPMENT {
-    9923
-} else {
-    9922
-};
+pub const PORT: u16 = TailnetEndpoint::DEFAULT_PORT;
 pub const MODE_KEY: &str = "tailnet";
 pub const ALLOW_KEY: &str = "tailnet-allow";
+pub const HIDE_KEY: &str = "tailnet-hide";
 
 const CLI_TIMEOUT: Duration = Duration::from_secs(5);
 const CLI_POLL: Duration = Duration::from_millis(10);
 const DIAL_TIMEOUT: Duration = Duration::from_secs(5);
+const PROBE_TIMEOUT: Duration = Duration::from_secs(1);
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Mode {
@@ -47,16 +45,17 @@ pub enum Allow {
     Members,
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Settings {
     pub mode: Mode,
     pub allow: Allow,
+    pub hide: Vec<String>,
 }
 
 impl Settings {
     #[must_use]
     pub fn is_key(key: &str) -> bool {
-        matches!(key, MODE_KEY | ALLOW_KEY)
+        matches!(key, MODE_KEY | ALLOW_KEY | HIDE_KEY)
     }
 
     pub fn apply(&mut self, key: &str, value: &str) -> Result<(), String> {
@@ -68,6 +67,14 @@ impl Settings {
             (ALLOW_KEY, "owner") => self.allow = Allow::Owner,
             (ALLOW_KEY, "members") => self.allow = Allow::Members,
             (ALLOW_KEY, _) => return Err("expected owner or members".to_owned()),
+            (HIDE_KEY, names) => {
+                self.hide = names
+                    .split(',')
+                    .map(str::trim)
+                    .filter(|name| !name.is_empty())
+                    .map(str::to_owned)
+                    .collect();
+            }
             _ => return Err(format!("`{key}` is not a tailnet key")),
         }
         Ok(())
@@ -142,6 +149,7 @@ pub struct Status {
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Peer {
+    pub id: String,
     pub host: String,
     pub dns_name: String,
     pub os: String,
@@ -268,6 +276,7 @@ pub fn parse_status(json: &str) -> Result<Status, TailnetError> {
                 .map(|peer| {
                     let user_id = peer["UserID"].as_u64().unwrap_or_default();
                     Peer {
+                        id: text(&peer["ID"]),
                         host: text(&peer["HostName"]),
                         dns_name: text(&peer["DNSName"]),
                         os: text(&peer["OS"]),
@@ -471,6 +480,84 @@ pub fn bridge(tcp: TcpStream, local: LocalStream) -> io::Result<()> {
     let _ = tcp_write.shutdown(Shutdown::Both);
     let _ = upstream.join();
     Ok(())
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Discovered {
+    pub id: String,
+    pub label: String,
+    pub os: String,
+    pub endpoint: TailnetEndpoint,
+}
+
+impl Peer {
+    #[must_use]
+    pub fn label(&self) -> &str {
+        self.dns_name
+            .split('.')
+            .next()
+            .filter(|label| !label.is_empty())
+            .unwrap_or(&self.host)
+    }
+
+    fn dial_address(&self) -> Option<IpAddr> {
+        self.addresses
+            .iter()
+            .find(|address| address.is_ipv4())
+            .or_else(|| self.addresses.first())
+            .copied()
+    }
+}
+
+#[must_use]
+pub fn mine(status: &Status) -> Vec<&Peer> {
+    status
+        .peers
+        .iter()
+        .filter(|peer| {
+            let caller = Caller {
+                host: peer.host.clone(),
+                user_id: peer.user_id,
+                login: peer.login.clone(),
+                tags: peer.tags.clone(),
+            };
+            peer.online
+                && peer
+                    .dial_address()
+                    .is_some_and(|address| admit(Allow::Owner, status, &caller, address).is_ok())
+        })
+        .collect()
+}
+
+#[must_use]
+pub fn discover(status: &Status) -> Vec<Discovered> {
+    let candidates = mine(status);
+    let mut found: Vec<Discovered> = thread::scope(|scope| {
+        let probes: Vec<_> = candidates
+            .into_iter()
+            .map(|peer| {
+                scope.spawn(move || {
+                    let address = SocketAddr::new(peer.dial_address()?, PORT);
+                    TcpStream::connect_timeout(&address, PROBE_TIMEOUT).ok()?;
+                    Some(Discovered {
+                        id: peer.id.clone(),
+                        label: peer.label().to_owned(),
+                        os: peer.os.clone(),
+                        endpoint: TailnetEndpoint {
+                            peer: peer.dns_name.trim_end_matches('.').to_owned(),
+                            port: None,
+                        },
+                    })
+                })
+            })
+            .collect();
+        probes
+            .into_iter()
+            .filter_map(|probe| probe.join().ok().flatten())
+            .collect()
+    });
+    found.sort_by(|left, right| left.label.cmp(&right.label));
+    found
 }
 
 pub fn resolve(endpoint: &TailnetEndpoint) -> Result<SocketAddr, TailnetError> {

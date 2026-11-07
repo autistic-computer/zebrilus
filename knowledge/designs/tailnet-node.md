@@ -1,7 +1,7 @@
 ---
 type: Design Plan
 title: Tailnet hosts . zz uses the Tailscale you already run
-description: Plan, phase 1 built, for zz machines to find and attach to each other over Tailscale. When the machine already runs Tailscale and is signed in, zz uses it - no sign-in in zz, trust is "a machine of this tailnet's owner" checked with whois, discovery comes from the peer list. A daemon-owned node built on the tailscale crate (tailscale-rs 0.7, unpatched) exists only for machines you explicitly switch to it. Connections are bridged into the daemon's own local socket, so the daemon loop and wire protocol do not change. Covers macOS, Linux, Windows and WSL2 hosts and which thin clients can use it in which phase.
+description: Plan, phases 1 and 2 built, for zz machines to find and attach to each other over Tailscale. When the machine already runs Tailscale and is signed in, zz uses it - no sign-in in zz, trust is "a machine of this tailnet's owner" checked with whois, discovery comes from the peer list. A daemon-owned node built on the tailscale crate (tailscale-rs 0.7, unpatched) exists only for machines you explicitly switch to it. Connections are bridged into the daemon's own local socket, so the daemon loop and wire protocol do not change. Covers macOS, Linux, Windows and WSL2 hosts and which thin clients can use it in which phase.
 status: In progress
 tags:
 - remote
@@ -14,7 +14,13 @@ timestamp: 2026-11-07T00:00:00-03:00
 
 # Overview
 
-> **Status: phase 1 built 2026-11-07.** The daemon listens through the running Tailscale, admits
+> **Status: phases 1 and 2 built 2026-11-07.** Phase 2: the app finds your machines and lists
+> them as hosts, Settings › Hosts has a Tailscale group, and the iOS and Android app connects to
+> `tailnet://` through the Tailscale app. Verified with three machines: this Mac found alienware and
+> xps, each Linux box found the other, and the iOS app in the simulator attached to alienware over
+> `tailnet://` and typed into its shell.
+>
+> **Phase 1 built 2026-11-07.** The daemon listens through the running Tailscale, admits
 > callers by whois, and `tailnet://` endpoints, `--host tailnet://...` and `zz tailnet status` work.
 > Verified between a macOS and a CachyOS machine on a personal tailnet in both directions: commands,
 > an interactive attach, `tailnet = off` dropping a live attach within one 30 s check, and the
@@ -157,12 +163,19 @@ cases.
 
 # Discovery
 
-From the peer list, a machine shows in the sidebar when it is online, owned by our user, untagged,
-and a TCP dial to its port 9922 completes within one second with a zz hello in a protocol version we
-speak. Probes run when the peer list changes and once a minute, a few at a time. The row's label is
-the peer's hostname; its key is the stable node ID, so a rename keeps the row. A discovered host and
-an `ssh://` host for the same machine are two rows; removing the discovered one hides it here
-(`tailnet-hide = <stable id>`).
+The app scans every 30 seconds off the UI thread (`crates/zz/src/tailnet.rs`). From the peer list, a
+machine is a candidate when it is online and this machine would admit it under `owner`
+(`tailnet::mine`, the same rule as [Who may attach](#who-may-attach)), whatever `tailnet-allow`
+says, so a work tailnet is never swept. All candidates are dialed at once on the zz port with a
+one-second limit (`tailnet::discover`); a machine that answers becomes a host named by the first
+label of its MagicDNS name, with a `tailnet://` endpoint holding the full name. A probe is a plain
+connect, so the far daemon logs it as an admitted connection.
+
+Found machines go after the host lines (`config::known_hosts`), skipping one whose name, or whose
+tailnet machine, a line already has. The registry, auto-connect and both sidebars take the merged
+list unchanged. **Remove host** on a found machine adds its name to `tailnet-hide` instead of editing
+host lines, and Settings › Hosts lists hidden machines with a Show button. `zz tailnet status` prints
+the same list.
 
 # Platforms
 
@@ -178,7 +191,7 @@ an `ssh://` host for the same machine are two rows; removing the discovered one 
 | Client | How | From phase |
 | --- | --- | --- |
 | `zz attach` (raw terminal) and command clients | `tailnet://` endpoint through the local forward socket | 1, built |
-| iOS, Android | the Tailscale app is the VPN; `clients/app` already connects through `Endpoint::parse`, so `tailnet://` needs a `ClientStream::Tcp` arm there (the forward socket is desktop-only today, and mobile reports `tailnet://` as unsupported) | 2 |
+| iOS, Android | the Tailscale app is the VPN; `clients/app` connects through `Endpoint::parse`, and `tailnet://` there resolves with the OS (MagicDNS from the app) and dials a `ClientStream::Tcp`. Type the machine's full MagicDNS name or address in Add host | 2, built |
 | phone bootstrap | QR code and the host list carry each machine's tailnet addresses and stable ID, not only its name, so MagicDNS being off on the phone does not matter | 3 |
 | web (WASM) and the HTML client | a browser cannot open raw TCP, and the page needs HTTPS for WebGPU and the cross-origin isolation headers zz-web sends. This needs an HTTPS gateway (`tailscale serve` in front of zz-web on loopback, checking the identity header Serve adds) and its own design | later |
 
@@ -246,10 +259,14 @@ the first registration, and is not stored.
    unknown peer and a closed port. *Not yet checked:* a Windows host, a caller from another user
    (only the admission table covers it), and seeing the flow window negotiated (the tailnet arm
    sends the same remote facts as ssh).
-2. **Discover, and phones.** Peer list probing, sidebar rows, hiding, the Settings group;
-   `tailnet://` in the iOS and Android app.
-   *Done when* starting zz on a third machine makes it appear on the other two within a minute with
-   no config edit, and the iPhone attaches to one by address with the Tailscale app on.
+2. **Discover, and phones. Built 2026-11-07.** Peer list probing, the merged host list, hiding, the
+   Settings group; `tailnet://` in the iOS and Android app.
+   *Checked:* with scratch daemons on alienware and xps, `zz tailnet status` on this Mac listed both
+   (2.4 s with the probes) and each Linux box listed the other; the iOS app in the simulator attached
+   to `tailnet://alienware.<tailnet>.ts.net` and a command typed on it ran there. A test pins the
+   merge: a host line wins over a found machine with the same name or address. *Not yet checked:*
+   the desktop sidebar drawing found machines on screen (the test reads the same list the sidebar
+   does), an Android device, and a real iPhone, which joins as its own Tailscale device.
 3. **Phone bootstrap.** The hosts-from-first-machine request and the QR code, both carrying addresses
    and stable IDs.
    *Done when* the iPhone lists and attaches every discovered machine after one scan, with MagicDNS

@@ -122,6 +122,17 @@ pub(crate) struct FleetHosts {
 
 impl Global for FleetHosts {}
 
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub(crate) struct DiscoveredHosts {
+    pub(crate) entries: Vec<HostEntry>,
+    pub(crate) summary: String,
+    pub(crate) searching: bool,
+    pub(crate) enabled: bool,
+    pub(crate) hidden: Vec<String>,
+}
+
+impl Global for DiscoveredHosts {}
+
 #[derive(Default)]
 struct ConfigOverrideTransport {
     client: Option<Weak<InteractiveClient>>,
@@ -650,6 +661,72 @@ pub(crate) fn fleet_hosts(cx: &App) -> Vec<HostEntry> {
         .unwrap_or_default()
 }
 
+pub(crate) fn discovered(cx: &App) -> DiscoveredHosts {
+    cx.try_global::<DiscoveredHosts>()
+        .cloned()
+        .unwrap_or_default()
+}
+
+pub(crate) fn set_discovered(discovered: DiscoveredHosts, cx: &mut App) {
+    if cx.try_global::<DiscoveredHosts>() != Some(&discovered) {
+        cx.set_global(discovered);
+    }
+}
+
+pub(crate) fn known_hosts(cx: &App) -> Vec<HostEntry> {
+    let mut hosts = fleet_hosts(cx);
+    for host in discovered(cx).entries {
+        if !hosts
+            .iter()
+            .any(|known| known.name == host.name || same_machine(&known.endpoint, &host.endpoint))
+        {
+            hosts.push(host);
+        }
+    }
+    hosts
+}
+
+fn same_machine(left: &Endpoint, right: &Endpoint) -> bool {
+    let (Endpoint::Tailnet(left), Endpoint::Tailnet(right)) = (left, right) else {
+        return false;
+    };
+    let machine = |peer: &str| {
+        if peer.parse::<std::net::IpAddr>().is_ok() {
+            peer.to_owned()
+        } else {
+            peer.split('.').next().unwrap_or(peer).to_ascii_lowercase()
+        }
+    };
+    machine(&left.peer) == machine(&right.peer)
+}
+
+pub(crate) fn is_discovered(name: &str, cx: &App) -> bool {
+    !fleet_hosts(cx).iter().any(|host| host.name == name)
+        && discovered(cx).entries.iter().any(|host| host.name == name)
+}
+
+pub(crate) fn hide_discovered_host(name: &str, cx: &mut App) -> io::Result<()> {
+    let mut current = discovered(cx);
+    if !current.hidden.iter().any(|hidden| hidden == name) {
+        current.hidden.push(name.to_owned());
+    }
+    set_config_key_name(
+        zz_daemon_client::tailnet::HIDE_KEY,
+        &current.hidden.join(", "),
+    )?;
+    current.entries.retain(|host| host.name != name);
+    set_discovered(current, cx);
+    Ok(())
+}
+
+pub(crate) fn show_hidden_hosts(cx: &mut App) -> io::Result<()> {
+    remove_config_key_name(zz_daemon_client::tailnet::HIDE_KEY)?;
+    let mut current = discovered(cx);
+    current.hidden.clear();
+    set_discovered(current, cx);
+    Ok(())
+}
+
 #[cfg(test)]
 pub(crate) fn set_fleet_hosts_for_test(entries: Vec<HostEntry>, cx: &mut App) {
     cx.set_global(FleetHosts { entries });
@@ -887,6 +964,32 @@ mod tests {
             .filter(|(key, _)| AppearanceConfigKey::from_config_key(key).is_some())
             .cloned()
             .collect()
+    }
+
+    #[test]
+    fn a_found_machine_matches_a_configured_tailnet_host_by_its_first_label() {
+        let tailnet = |peer: &str| {
+            Endpoint::Tailnet(zz_daemon_client::TailnetEndpoint {
+                peer: peer.to_owned(),
+                port: None,
+            })
+        };
+        assert!(same_machine(
+            &tailnet("Alienware"),
+            &tailnet("alienware.example.ts.net")
+        ));
+        assert!(!same_machine(
+            &tailnet("xps"),
+            &tailnet("alienware.example.ts.net")
+        ));
+        assert!(!same_machine(
+            &tailnet("100.64.0.1"),
+            &tailnet("100.64.0.3")
+        ));
+        assert!(!same_machine(
+            &Endpoint::parse("ssh://alienware").unwrap(),
+            &tailnet("alienware.example.ts.net")
+        ));
     }
 
     #[test]

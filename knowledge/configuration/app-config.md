@@ -40,7 +40,18 @@ host line, as does a remote row's **Close host** . which additionally republishe
 `ssh://...`), so the CLI can reach a machine before it has a line. There is no daemon-side setup:
 ssh owns transport, and zz adds only its own ed25519 key (`zz fleet key`), which the first
 login to a host listed here appends to that host's `authorized_keys`; a raw `--host` destination
-gets nothing written. These local schema entries retain `Default`/`Override` provenance. Daemon-owned value
+gets nothing written. A host line can also name a tailnet machine (`host-arch = tailnet://arch`).
+
+Three keys belong to [tailnet hosts](/designs/tailnet-node.md) and are read by both the daemon and
+the app from the file itself, so they work before any client connects: `tailnet` (`auto` by default,
+`on`, or `off`), `tailnet-allow` (`owner` by default, or `members`) and `tailnet-hide` (a
+comma-separated list of found machines to leave out). The app scans for machines every 30 seconds
+and publishes them through a `DiscoveredHosts` global; `config::known_hosts` merges them after the
+host lines, skipping any whose name or tailnet machine a line already has, and the host registry is
+built from that merged list. **Remove host** on a found machine adds its name to `tailnet-hide`
+instead of editing host lines, and **Settings › Hosts** has a Tailscale group with the on/off
+switch, the sign-in state and a Show button for hidden machines. These local schema entries retain
+`Default`/`Override` provenance. Daemon-owned value
 grammar deliberately stays in the zz-terminal appearance loader or
 mux `set-option` engine.
 

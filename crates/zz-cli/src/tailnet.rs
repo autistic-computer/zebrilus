@@ -48,6 +48,21 @@ fn report() -> String {
     ));
     lines.push(format!("listening  {}", listening(settings.mode, &status)));
     lines.push(format!("admits     {}", admitted(settings.allow, &status)));
+    if status.unusable().is_none() {
+        let found = tailnet::discover(&status);
+        lines.push(if found.is_empty() {
+            "machines   none of yours answer on the zz port".to_owned()
+        } else {
+            format!(
+                "machines   {}",
+                found
+                    .iter()
+                    .map(|machine| format!("{} ({})", machine.endpoint, machine.os))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )
+        });
+    }
     lines.join("\n")
 }
 

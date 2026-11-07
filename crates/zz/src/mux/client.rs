@@ -1199,10 +1199,14 @@ impl MuxClient {
             client.reconcile_hosts(cx);
         })
         .detach();
+        cx.observe_global::<crate::config::DiscoveredHosts>(|client, cx| {
+            client.reconcile_hosts(cx);
+        })
+        .detach();
         let local_host_policy = crate::profile::profile(cx).local_host;
         let registry = HostRegistry::new(
             local_socket_path,
-            &crate::config::fleet_hosts(cx),
+            &crate::config::known_hosts(cx),
             local_host_policy,
         );
         let has_local = registry.get(HostId::LOCAL).is_some();
@@ -1531,7 +1535,7 @@ impl MuxClient {
     }
 
     fn reconcile_hosts(&mut self, cx: &mut Context<Self>) {
-        let configured = crate::config::fleet_hosts(cx);
+        let configured = crate::config::known_hosts(cx);
         let has_retained = self
             .registry
             .iter()
@@ -5427,6 +5431,51 @@ mod tests {
         )
         .expect("connect test client");
         Some((client, server))
+    }
+
+    #[ala::test]
+    fn found_machines_join_the_hosts_unless_one_is_already_configured(cx: &mut TestAppContext) {
+        cx.update(zz_ui::init);
+        let host = |name: &str, peer: &str| zz_daemon_client::HostEntry {
+            name: name.to_owned(),
+            endpoint: Endpoint::Tailnet(zz_daemon_client::TailnetEndpoint {
+                peer: peer.to_owned(),
+                port: None,
+            }),
+        };
+        let mux = cx.update(|cx| {
+            crate::config::set_fleet_hosts_for_test(vec![host("box", "192.0.2.1")], cx);
+            cx.new(|cx| {
+                MuxClient::new_inner(
+                    None,
+                    zz_daemon_client::default_socket_path(),
+                    TerminalColorScheme::Dark,
+                    cx,
+                )
+            })
+        });
+        cx.update(|cx| {
+            crate::config::set_discovered(
+                crate::config::DiscoveredHosts {
+                    entries: vec![
+                        host("box", "192.0.2.2"),
+                        host("desk", "192.0.2.1"),
+                        host("xps", "192.0.2.3"),
+                    ],
+                    enabled: true,
+                    ..crate::config::DiscoveredHosts::default()
+                },
+                cx,
+            );
+        });
+        cx.run_until_parked();
+        let remote = mux.read_with(cx, |mux, _| {
+            mux.fleet_hosts()
+                .filter(|(id, _, _, _)| *id != HostId::LOCAL)
+                .map(|(_, name, _, _)| name.to_owned())
+                .collect::<Vec<_>>()
+        });
+        assert_eq!(remote, ["box", "xps"]);
     }
 
     #[ala::test]

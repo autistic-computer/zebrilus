@@ -199,6 +199,7 @@ impl SettingsView {
         let subscriptions = vec![
             cx.observe(&mux, |_, _, cx| cx.notify()),
             cx.observe_global::<config::FleetHosts>(|_, cx| cx.notify()),
+            cx.observe_global::<config::DiscoveredHosts>(|_, cx| cx.notify()),
             cx.observe_global::<crate::update::UpdateState>(|_, cx| cx.notify()),
             browser_hotkey_subscription(&browser_element_selector_hotkey, window, cx),
             search_provider_subscription(&browser_search_provider, window, cx),
@@ -863,7 +864,8 @@ impl SettingsView {
     fn hosts_section(&self, cx: &Context<Self>) -> AnyElement {
         const INPUT_WIDTH: f32 = 220.0;
 
-        let hosts = config::fleet_hosts(cx);
+        let hosts = config::known_hosts(cx);
+        let discovered = config::discovered(cx);
         let states = self
             .mux
             .read(cx)
@@ -896,14 +898,20 @@ impl SettingsView {
                 };
                 let remove_name = name.clone();
                 let remove_mux = self.mux.clone();
+                let found = config::is_discovered(&name, cx);
+                let (description, action) = if found {
+                    (format!("Found on Tailscale, {}", host.endpoint), "Hide")
+                } else {
+                    (host.endpoint.to_string(), "Remove host")
+                };
                 let entry = SettingEntry::new(name.clone())
-                    .description(host.endpoint.to_string())
+                    .description(description)
                     .title_icon(Icon::new(glyph).text_color(color))
                     .control(
                         Button::new(format!("settings-remove-host-{name}"))
                             .ghost()
                             .icon(IconName::Xmark)
-                            .tooltip(format!("Remove host ({})", state.label()))
+                            .tooltip(format!("{action} ({})", state.label()))
                             .on(settings_card_ground(cx))
                             .on_click(move |_, _, cx| {
                                 let host_id = remove_mux.read(cx).fleet_hosts().find_map(
@@ -971,9 +979,56 @@ impl SettingsView {
             );
         }
 
+        let mut tailscale_entries = vec![
+            SettingEntry::new("Find my machines on Tailscale")
+                .description(if discovered.searching {
+                    "Looking…".to_owned()
+                } else if discovered.summary.is_empty() {
+                    "Machines signed in to your tailnet that run zz show up here".to_owned()
+                } else {
+                    discovered.summary.clone()
+                })
+                .control(boolean_control(
+                    zz_daemon_client::tailnet::MODE_KEY,
+                    discovered.enabled,
+                    |enabled, _, cx| {
+                        let key = zz_daemon_client::tailnet::MODE_KEY;
+                        let value = if *enabled { "auto" } else { "off" };
+                        if let Err(error) = config::set_config_key_name(key, value) {
+                            report_write_error("set", key, &error, cx);
+                        }
+                        crate::tailnet::rescan(cx);
+                    },
+                )),
+        ];
+        if !discovered.hidden.is_empty() {
+            tailscale_entries.push(
+                SettingEntry::new("Hidden machines")
+                    .description(discovered.hidden.join(", "))
+                    .control(
+                        Button::new("settings-show-hidden-hosts")
+                            .ghost()
+                            .label("Show")
+                            .on(settings_card_ground(cx))
+                            .on_click(|_, _, cx| {
+                                if let Err(error) = config::show_hidden_hosts(cx) {
+                                    report_write_error(
+                                        "remove",
+                                        zz_daemon_client::tailnet::HIDE_KEY,
+                                        &error,
+                                        cx,
+                                    );
+                                }
+                                crate::tailnet::rescan(cx);
+                            }),
+                    ),
+            );
+        }
+
         Self::scroll_column("settings-hosts")
             .child(settings_page_title(SettingsSection::Hosts, cx))
             .child(SettingsStack::titled("Machines").children(machine_entries))
+            .child(SettingsStack::titled("Tailscale").children(tailscale_entries))
             .child(SettingsStack::titled("Add host").child(destination))
             .into_any_element()
     }
