@@ -19,6 +19,7 @@ from .terminal_model import (
     TerminalViewport,
 )
 from .terminal_projection import projection_plan
+from mjui.term.overlays import SelectionCoverage
 
 
 @inline(.never)
@@ -109,7 +110,20 @@ def render_viewport_opts(
         revision = (revision & 0x7FFFFFFFFFFFFFFF) | 1
         ui.grid_row(destination, line, visible_columns, revision)
     var overlays = List[GridOverlay]()
-    for overlay in viewport.metadata.overlays:
+    var original = List[GridOverlay]()
+    if opts.native_appearance and opts.rounded_selection:
+        for overlay in viewport.metadata.overlays:
+            original.append(GridOverlay(overlay.row, overlay.start, overlay.end, overlay.kind))
+    var flags = List[UInt16]()
+    if len(original) > 0:
+        try:
+            var coverage = SelectionCoverage(Span(original))
+            for overlay in original:
+                flags.append(overlay.kind | coverage.corners(overlay))
+        except:
+            flags.clear()
+    for index in range(len(viewport.metadata.overlays)):
+        var overlay = viewport.metadata.overlays[index]
         var row = plan.live.display_row(overlay.row)
         var end = min(Int(overlay.end), visible_columns)
         if row and Int(overlay.start) < end:
@@ -118,7 +132,7 @@ def render_viewport_opts(
                     UInt16(row.value()),
                     overlay.start,
                     UInt16(end),
-                    overlay.kind,
+                    flags[index] if len(flags) > 0 else overlay.kind,
                 )
             )
     ui.grid_overlays(

@@ -1647,7 +1647,7 @@ fn collect_overlays(
     clippy::disallowed_methods,
     reason = "terminal overlay colors come from the independent terminal appearance color system"
 )]
-fn overlay_color(kind: OverlayKind, appearance: &TerminalAppearance) -> Hsla {
+pub fn overlay_color(kind: OverlayKind, appearance: &TerminalAppearance) -> Hsla {
     match kind {
         OverlayKind::Selection => appearance_color(appearance.selection_background),
         OverlayKind::SearchMatch => appearance_color(appearance.search_match_color),
@@ -1662,7 +1662,7 @@ fn overlay_color(kind: OverlayKind, appearance: &TerminalAppearance) -> Hsla {
     }
 }
 
-fn copy_cursor_line_color(appearance: &TerminalAppearance) -> Hsla {
+pub fn copy_cursor_line_color(appearance: &TerminalAppearance) -> Hsla {
     let mut color = appearance_color(appearance.copy_cursor_color);
     color.a *= 0.25;
     color
@@ -3017,7 +3017,7 @@ fn contrasted_foreground(foreground: Color, background: Color, minimum: f32) -> 
     })
 }
 
-fn cursor_quad(
+pub fn cursor_quad(
     bounds: Bounds<Pixels>,
     style: CursorStyle,
     cursor_color: Color,
@@ -3060,7 +3060,7 @@ fn cursor_quad(
     }
 }
 
-fn cursor_visible_for_paint(
+pub fn cursor_visible_for_paint(
     cursor: Option<Cursor>,
     composing: bool,
     focused: bool,
@@ -3069,7 +3069,11 @@ fn cursor_visible_for_paint(
     !composing && cursor.is_some_and(|cursor| cursor.visible() && (!focused || blink_visible))
 }
 
-fn selection_corners(viewport: &TerminalViewport, index: usize, radius: Pixels) -> Corners<Pixels> {
+pub fn selection_corners(
+    viewport: &TerminalViewport,
+    index: usize,
+    radius: Pixels,
+) -> Corners<Pixels> {
     let Some(span) = viewport.overlays.get(index).copied() else {
         return Corners::default();
     };

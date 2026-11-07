@@ -226,6 +226,53 @@ def test_native_color_policy() raises:
     )
 
 
+
+def test_native_overlay_projection() raises:
+    for scale in range(1, 3):
+        var ui = Ui(Float32(scale))
+        _ = ui.add_font("bench/assets/fonts/JetBrainsMono-Regular.ttf")
+        var viewport = TerminalViewport()
+        viewport.columns = 4
+        viewport.rows = 3
+        viewport.metadata.foreground = 0xDDEEFF
+        viewport.metadata.background = 0x112233
+        viewport.styles.append(TerminalStyle(0xDDEEFF, 0x112233, 0xFFFFFFFF, 0, 0, 0))
+        viewport.cells.resize(12, TerminalCell(0, 0, 0))
+        viewport.metadata.overlays.append(TerminalOverlay(0, 1, 3, 0))
+        viewport.metadata.overlays.append(TerminalOverlay(1, 0, 4, 0))
+        viewport.metadata.overlays.append(TerminalOverlay(0, 0, 1, 3))
+        viewport.metadata.overlays.append(TerminalOverlay(0, 2, 3, 4))
+        viewport.metadata.cursor = TerminalCursor(0x25ABD5, 3, 0, 2, 1, 0, 0)
+        var opts = TermOpts(0, 13, focused=True, native_colors=True, native_appearance=True, rounded_selection=True, selection=0xE53F99A7, link=0x25ABD5FF, copy_cursor=0xB8C7E06B, cell_width=8, line_height=18, baseline=13)
+        ui.set_time(1)
+        ui.begin_frame(32, 18)
+        var metrics = render_viewport_opts(ui, 73, viewport, opts, 4, 1, True)
+        ui.end_frame()
+        assert_equal(len(ui.dl.native_quads), 7)
+        var line = ui.dl.native_quads[1]
+        assert_equal((line.x, line.y, line.w, line.h), (Float32(0), Float32(0), Float32(4 * metrics.w), Float32(metrics.h)))
+        assert_equal(line.fill.ha, Float32(107) / Float32(255) * Float32(0.25))
+        var selected = ui.dl.native_quads[2]
+        assert_equal((selected.r0, selected.r1, selected.r2, selected.r3), (Float32(3), Float32(3), Float32(0), Float32(0)))
+        assert_equal(selected.fill.ha, Float32(167) / Float32(255))
+        var link = ui.dl.native_quads[3]
+        assert_equal(link.fill.ha, Float32(72) / Float32(255))
+        var underline = ui.dl.native_quads[4]
+        assert_equal((underline.y, underline.h, underline.fill.ha), (Float32(metrics.h - 1), Float32(1), Float32(1)))
+        var copy = ui.dl.native_quads[5]
+        assert_equal(copy.fill.ha, Float32(107) / Float32(255))
+        var cursor = ui.dl.native_quads[6]
+        assert_equal((cursor.x, cursor.y, cursor.w, cursor.h), (Float32(3 * metrics.w), Float32(metrics.h - 2), Float32(metrics.w), Float32(2)))
+        viewport.metadata.overlays[0].kind = 0x100
+        ui.set_time(2)
+        ui.begin_frame(32, 18)
+        _ = render_viewport_opts(ui, 73, viewport, opts, 4, 1, True)
+        ui.end_frame()
+        selected = ui.dl.native_quads[2]
+        assert_equal((selected.r0, selected.r1, selected.r2, selected.r3), (Float32(0), Float32(0), Float32(0), Float32(0)))
+    print("Native terminal overlays: clipped neighbor corners, alpha, link, copy cursor and device geometry passed")
+
 def main() raises:
     test_packed_records_and_dirty_rows()
     test_native_color_policy()
+    test_native_overlay_projection()
