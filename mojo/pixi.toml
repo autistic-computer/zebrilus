@@ -23,6 +23,7 @@ differential-terminal-render = "python3 scripts/terminal_appearance_render_vecto
 differential-terminal-overlays = "python3 scripts/terminal_overlay_vectors.py"
 test-terminal-render-state = "python3 ../scripts/port/guard.py mojo --fp-mode=contract=off -I ../../mjui/src ../../mjui/tests/terminal_appearance_probe.mojo"
 terminal-pixels = "/usr/bin/python3 scripts/terminal_pixels.py"
+terminal-scene-pixels = "python3 scripts/terminal_scene_pixels.py"
 test-terminal-settings = "python3 ../scripts/port/guard.py mojo --fp-mode=contract=off -I . tests/test_terminal_settings.mojo"
 differential-terminal-settings = "python3 scripts/terminal_settings_vectors.py"
 differential-client-files = "python3 scripts/client_file_vectors.py"

@@ -136,6 +136,7 @@ def main() raises:
     if offset != len(data):
         raise Error("trailing styled terminal bytes")
     var ui = Ui(device_scale)
+    ui.native_paths = True
     ui.native_scene = len(args) == 5
     for path in paths:
         _ = ui.add_font(path)
