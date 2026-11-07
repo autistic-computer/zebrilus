@@ -1,4 +1,6 @@
 from std.ffi import external_call
+from std.memory import ArcPointer
+from std.time import perf_counter_ns
 from .transport import Connection, open_connection
 from .protocol import (
     Response,
@@ -28,6 +30,14 @@ from .client_context import ClientContext
 from .appearance_protocol import TerminalAppearance, decode_appearance
 from .terminal_model import TerminalViewport, TerminalHistory
 from .terminal_wire import decode_terminal_frame
+from .terminal_history import (
+    HistorySnapshot,
+    PreparedHistoryPatch,
+    HISTORY_BYTE_BUDGET,
+)
+from .terminal_history_cache import TerminalHistoryCache
+from .history_pacer import HISTORY_BACKFILL_QUIET_NS, bounded_history_range
+from .terminal_history_protocol import history_request, decode_history_budget
 from .input_protocol import InputRoutingState, decode_routing_event
 from .native_cells import MAX_BEND_CELLS
 from .client_events import (
@@ -79,6 +89,9 @@ struct StreamModel(Copyable, Movable):
     var snapshot: MuxSnapshot
     var terminals: Dict[UInt64, TerminalViewport]
     var histories: Dict[UInt64, TerminalHistory]
+    var retained_histories: Dict[UInt64, ArcPointer[HistorySnapshot]]
+    var history_invalidations: Dict[UInt64, UInt64]
+    var history_updates: UInt64
     var events: ClientEventState
     var notice: Optional[ClientNotice]
     var notice_revision: UInt64
@@ -99,6 +112,9 @@ struct StreamModel(Copyable, Movable):
         self.snapshot = MuxSnapshot()
         self.terminals = Dict[UInt64, TerminalViewport]()
         self.histories = Dict[UInt64, TerminalHistory]()
+        self.retained_histories = Dict[UInt64, ArcPointer[HistorySnapshot]]()
+        self.history_invalidations = Dict[UInt64, UInt64]()
+        self.history_updates = 0
         self.events = ClientEventState()
         self.notice = None
         self.notice_revision = 0
@@ -137,6 +153,9 @@ struct InteractiveConnection(Movable):
     var capabilities: UInt64
     var clock: UInt64
     var tree_gate: Optional[TreeGate]
+    var history_cache: TerminalHistoryCache
+    var history_trickle: UInt64
+    var history_deadlines: Dict[UInt64, UInt64]
 
     def __init__(out self, var transport: Connection):
         self.transport = transport^
@@ -153,6 +172,90 @@ struct InteractiveConnection(Movable):
         self.capabilities = 0
         self.clock = 0
         self.tree_gate = None
+        self.history_cache = TerminalHistoryCache()
+        self.history_trickle = 2000
+        self.history_deadlines = Dict[UInt64, UInt64]()
+
+    def request_history(
+        mut self, pane: UInt64, prefetch: Optional[UInt32] = None
+    ) raises:
+        if pane not in self.model.terminals:
+            return
+        if pane in self.history_cache.states:
+            self.history_cache.touch(pane)
+        var context = self.history_cache.request_context(
+            pane, self.model.terminals[pane]
+        )
+        var requested = self.history_cache.pacer.request(
+            pane,
+            prefetch,
+            self.history_trickle,
+            context,
+            UInt64(perf_counter_ns()),
+        )
+        if requested:
+            var bounded = bounded_history_range(
+                requested.value(), self.model.terminals[pane].columns
+            )
+            var frame = history_request(pane, bounded.start, bounded.count)
+            self.transport.write(Span(frame))
+
+    def _history_follow(
+        mut self, pane: UInt64, kind: UInt8, value: UInt64
+    ) raises:
+        if kind == 0:
+            self.request_history(pane, UInt32(value))
+        elif kind == 1:
+            if self.history_cache.pacer.defer(pane, value):
+                self.history_deadlines[pane] = (
+                    UInt64(perf_counter_ns()) + HISTORY_BACKFILL_QUIET_NS
+                )
+        else:
+            self.request_history(pane)
+
+    def history_wait_ns(self) -> Optional[UInt64]:
+        var result: Optional[UInt64] = None
+        var now = UInt64(perf_counter_ns())
+        for entry in self.history_deadlines.items():
+            var wait = entry.value - now if entry.value > now else UInt64(0)
+            if not result or wait < result.value():
+                result = wait
+        return result
+
+    def _history_due(mut self) raises:
+        var now = UInt64(perf_counter_ns())
+        var due = List[UInt64]()
+        for entry in self.history_deadlines.items():
+            if entry.value <= now:
+                due.append(entry.key)
+        for pane in due:
+            _ = self.history_deadlines.pop(pane)
+            var resumed = self.history_cache.pacer.resume_deferred(
+                pane, self.history_cache.mutations(pane)
+            )
+            if resumed == 0:
+                self.request_history(pane)
+            elif resumed == 1:
+                self.history_deadlines[pane] = now + HISTORY_BACKFILL_QUIET_NS
+
+    def _publish_history(mut self) raises:
+        var live_bytes = 0
+        for entry in self.model.terminals.items():
+            live_bytes += viewport_bytes(entry.value)
+        if self.model.events.output.viewport:
+            live_bytes += viewport_bytes(
+                self.model.events.output.viewport.value()
+            )
+        self.history_cache.byte_budget = min(
+            HISTORY_BYTE_BUDGET, max(0, TERMINAL_CACHE_BYTES - live_bytes)
+        )
+        self.history_cache.enforce()
+        self.model.retained_histories = self.history_cache.publish(
+            self.model.terminals
+        )
+        self.model.history_invalidations = (
+            self.history_cache.invalidations.copy()
+        )
 
     def request_tree(mut self) raises:
         if not self.tree_pending:
@@ -200,6 +303,9 @@ struct InteractiveConnection(Movable):
                 retired.append(pane)
         for pane in retired:
             _ = self.model.terminals.pop(pane)
+            self.history_cache.forget(pane)
+            if pane in self.history_deadlines:
+                _ = self.history_deadlines.pop(pane)
         retired.clear()
         for pane in self.full_pending:
             if pane not in live:
@@ -217,6 +323,7 @@ struct InteractiveConnection(Movable):
             and self.model.events.output.pane.value() not in live
         ):
             self.model.events.output.clear()
+        self._publish_history()
         self.tree_dirty = False
 
     def _retain(mut self, var frame: List[UInt8]) raises:
@@ -240,6 +347,7 @@ struct InteractiveConnection(Movable):
                 + len(entry.value.grapheme_offsets) * 4
                 + len(entry.value.grapheme_bytes)
             )
+        size += self.history_cache.owned_bytes()
         if size > TERMINAL_CACHE_BYTES:
             raise Error("retained terminal data exceeds its memory limit")
 
@@ -252,9 +360,16 @@ struct InteractiveConnection(Movable):
             if update.kind == 0:
                 if not update.viewport:
                     raise Error("full terminal frame contains no viewport")
-                self.model.terminals[
-                    update.pane
-                ] = update.viewport.value().copy()
+                var viewport = update.viewport.take()
+                if update.pane in self.history_cache.states:
+                    self.history_cache.states[update.pane].replace(
+                        viewport, self.history_cache.next_row_revision
+                    )
+                self.model.terminals[update.pane] = viewport^
+                _ = self.history_cache.ensure(
+                    update.pane, self.model.terminals[update.pane]
+                )
+                self.request_history(update.pane)
                 if update.pane in self.full_pending:
                     _ = self.full_pending.pop(update.pane)
             elif update.kind == 1:
@@ -263,6 +378,15 @@ struct InteractiveConnection(Movable):
                 else:
                     ref retained = self.model.terminals[update.pane]
                     ref patch = update.patch.value()
+                    var preparation: Optional[PreparedHistoryPatch] = None
+                    if update.pane in self.history_cache.states:
+                        preparation = self.history_cache.states[
+                            update.pane
+                        ].prepare_patch(
+                            retained,
+                            patch,
+                            self.history_cache.next_row_revision,
+                        )
                     var valid = True
                     try:
                         _ = retained.validate_patch(patch)
@@ -286,17 +410,45 @@ struct InteractiveConnection(Movable):
                                     "Bend rejected a validated terminal patch"
                                 )
                             retained.apply(patch)
+                        if preparation:
+                            self.history_cache.states[update.pane].commit_patch(
+                                retained,
+                                patch,
+                                preparation.take(),
+                                self.history_cache.next_row_revision,
+                            )
+                        else:
+                            _ = self.history_cache.ensure(update.pane, retained)
+                        self.request_history(update.pane)
                     else:
                         _ = self.model.terminals.pop(update.pane)
+                        self.history_cache.invalidate(update.pane)
+                        if update.pane in self.history_deadlines:
+                            _ = self.history_deadlines.pop(update.pane)
                         self.request_viewport(update.pane)
             elif update.kind == 2:
                 self.model.events.output.apply_terminal(update)
             elif update.kind == 3:
                 if not update.history:
                     raise Error("history frame contains no history")
-                self.model.histories[
-                    update.pane
-                ] = update.history.value().copy()
+                var arrival = self.history_cache.pacer.chunk_arrived(
+                    update.pane, self.history_cache.mutations(update.pane)
+                )
+                if (
+                    arrival.apply
+                    and update.pane in self.model.terminals
+                    and update.pane in self.history_cache.states
+                ):
+                    if self.history_cache.states[update.pane].apply_history(
+                        self.model.terminals[update.pane],
+                        update.history.take(),
+                        self.history_cache.next_row_revision,
+                    ):
+                        self.model.history_updates += 1
+                self._history_follow(
+                    update.pane, arrival.follow_up.kind, arrival.follow_up.value
+                )
+            self._publish_history()
             self._check_terminal_budget()
             self.model.revision += 1
             return
@@ -369,6 +521,14 @@ struct InteractiveConnection(Movable):
             ):
                 self.model.terminals.clear()
                 self.model.histories.clear()
+                self.model.retained_histories.clear()
+                self.model.history_invalidations.clear()
+                var panes = List[UInt64]()
+                for pane in self.history_cache.last_used:
+                    panes.append(pane)
+                for pane in panes:
+                    self.history_cache.invalidate(pane)
+                self.history_deadlines.clear()
                 self.model.events.output.clear()
                 self.full_pending.clear()
             self.model.view = view^
@@ -404,14 +564,19 @@ struct InteractiveConnection(Movable):
                         )
                         self.model.appearance_revision += 1
                     else:
-                        var retained = event.raw^
-                        event.raw = List[UInt8]()
-                        self._retain(retained^)
+                        var budget = decode_history_budget(event.raw.copy())
+                        if budget:
+                            self.history_trickle = budget.value()
+                        else:
+                            var retained = event.raw^
+                            event.raw = List[UInt8]()
+                            self._retain(retained^)
         if not nested:
             self.materialize()
         self.model.revision += 1
 
     def drain(mut self, limit: Int = 256) raises:
+        self._history_due()
         for _ in range(limit):
             if not readable(self.transport.fd):
                 break

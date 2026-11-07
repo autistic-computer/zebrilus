@@ -28,6 +28,7 @@ comptime RESIZE_TERMINAL = 7
 comptime RESIZE_WINDOW = 8
 comptime NATIVE_INPUT = 9
 comptime NATIVE_PASSIVE = 10
+comptime HISTORY_PREFETCH = 11
 
 
 struct Job(Movable):
@@ -68,6 +69,12 @@ def run_job(context: MutOpaquePointer[MutUntrackedOrigin]) abi("C"):
         var desired_pane = job.model.pane
         var restore_selection = False
         for action in job.actions:
+            if action.kind == HISTORY_PREFETCH:
+                if action.pane:
+                    job.connection.value().request_history(
+                        action.pane.value(), UInt32(Int(action.text))
+                    )
+                continue
             if action.kind == RESIZE_TERMINAL or action.kind == RESIZE_WINDOW:
                 if action.geometry:
                     var size = action.geometry.value()
@@ -168,6 +175,20 @@ struct AsyncBackend(Movable):
         if self.busy or not self.job[].connection:
             return -1
         return self.job[].connection.value().transport.fd
+
+    def history_prefetch(
+        mut self, pane: UInt64, target: UInt32, epoch: UInt64
+    ) raises:
+        self.queue.append(HISTORY_PREFETCH, String(target), pane, epoch)
+
+    def next_history_wake(self, time: Float64) -> Float64:
+        if self.busy or not self.job[].connection:
+            return Float64.MAX
+        var wait = self.job[].connection.value().history_wait_ns()
+        return (
+            time
+            + Float64(wait.value()) / 1_000_000_000 if wait else Float64.MAX
+        )
 
     def resize(
         mut self, pane: Optional[UInt64], size: GridSize, epoch: UInt64

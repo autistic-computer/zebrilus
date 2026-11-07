@@ -29,6 +29,14 @@ from .backend import (
 )
 from .state import AppModel
 from .terminal_painter import render_viewport
+from .terminal_history_painter import render_retained_viewport
+from .local_scroll_controller import (
+    TerminalScrollController,
+    PaneScrollEffect,
+    scroll_context,
+)
+from .input_protocol import input_view
+from .terminal_view import accumulate_scroll
 from .workspace_layout import window_rects, PaneRect
 from .geometry import GridSize, grid_dimension
 from mjui.term.grid import cell_metrics
@@ -59,6 +67,7 @@ struct WorkspaceView(Movable):
     var pointer_focus_output: Bool
     var output: CommandOutputPresentation
     var output_input: Bool
+    var local_scroll: TerminalScrollController
     var output_seen: Optional[UInt64]
     var marked: Optional[String]
     var keys: Dict[String, UInt64]
@@ -85,6 +94,7 @@ struct WorkspaceView(Movable):
         self.pointer_focus_output = False
         self.output = CommandOutputPresentation()
         self.output_input = False
+        self.local_scroll = TerminalScrollController()
         self.output_seen = None
         self.marked = None
         self.keys = Dict[String, UInt64]()
@@ -135,6 +145,8 @@ struct WorkspaceView(Movable):
         epoch: Optional[UInt64] = None,
         release: Bool = False,
     ) raises:
+        if not release and not self.output_input:
+            _ = self.cancel_local_scroll(pane)
         self.backend.input(
             pane,
             input_key(pane, key),
@@ -142,6 +154,35 @@ struct WorkspaceView(Movable):
             release or (self.output_input and self.output.owns(pane)),
         )
         self.next_poll = 0
+
+    def cancel_local_scroll(mut self, pane: UInt64) raises -> Bool:
+        return self.local_scroll.cancel(pane)
+
+    def flush_local_scroll(mut self, pane: UInt64) raises:
+        var target = self.local_scroll.flush(pane)
+        if target:
+            self.backend.input(
+                pane,
+                input_view(pane, 25, target.value()),
+                self.focus_epoch,
+                True,
+            )
+            self.next_poll = 0
+
+    def apply_local_scroll(mut self, effects: List[PaneScrollEffect]) raises:
+        for effect in effects:
+            if effect.kind == 0:
+                self.backend.input(
+                    effect.pane,
+                    input_view(effect.pane, 25, effect.value),
+                    self.focus_epoch,
+                    True,
+                )
+            else:
+                self.backend.history_prefetch(
+                    effect.pane, effect.value, self.focus_epoch
+                )
+            self.next_poll = 0
 
     def input_pane(self) -> Optional[UInt64]:
         return self.output.pane if self.output_input else self.model.pane
@@ -223,18 +264,19 @@ struct WorkspaceView(Movable):
             if index < 0 or ui.term.views[index].gen < 0:
                 continue
             ref grid = ui.term.views[index]
-            var cell = ui.grid_cell_rect(key, 0, 0)
             surfaces.append(
                 PointerSurface(
                     pane,
                     PointerGrid(
-                        cell.x0,
-                        cell.y0,
+                        Float32(grid.x) / ui.scale,
+                        Float32(grid.y) / ui.scale,
                         Float32(grid.cols) * grid.m.width(),
                         Float32(grid.rows) * grid.m.height(),
                         grid.m.width(),
                         grid.m.height(),
-                        0,
+                        self.local_scroll.sub_row(
+                            pane
+                        ) if not output else Float32(0),
                         ui.scale,
                         grid.cols,
                         grid.rows,
@@ -323,8 +365,10 @@ struct WorkspaceView(Movable):
                 if surface.grid.contains(event.x, event.y):
                     if surface.command_output:
                         self.focus_output(ui)
-                    elif self.output_input:
-                        self.blur_pointer()
+                    else:
+                        self.flush_local_scroll(surface.pane)
+                        if self.output_input:
+                            self.blur_pointer()
                     break
         var routed = self.pointer.route(
             self.model, Span(surfaces), event, self.focus_epoch
@@ -336,6 +380,56 @@ struct WorkspaceView(Movable):
         mut self, mut ui: Ui, event: ScrollEvent, x: Float32, y: Float32
     ) raises:
         var surfaces = self.pointer_surfaces(ui)
+        for index in range(len(surfaces) - 1, -1, -1):
+            var surface = surfaces[index]
+            if surface.grid.contains(x, y):
+                if not surface.command_output and event.precise:
+                    var step = self.local_scroll.pixels(
+                        self.model,
+                        surface.pane,
+                        event.dy,
+                        surface.grid.line_height,
+                        UInt64(max(ui.time, Float64(0)) * 1_000_000_000),
+                    )
+                    if step:
+                        self.apply_local_scroll(step.value())
+                        self.pointer.scroll_rows[surface.pane] = 0
+                        self.pointer.claimed = event.dy != 0
+                        ui.request_wake(ui.time)
+                        return
+                if not surface.command_output:
+                    _ = self.local_scroll.clear_fraction(surface.pane)
+                    var context = scroll_context(self.model, surface.pane)
+                    var remainder = self.pointer.scroll_rows.get(
+                        surface.pane, Float32(0)
+                    )
+                    var lines = accumulate_scroll(
+                        remainder,
+                        -event.dy
+                        / surface.grid.line_height if event.precise else -event.dy,
+                    )
+                    if lines > 0 and context.available():
+                        self.pointer.scroll_rows[surface.pane] = remainder
+                        var step = self.local_scroll.rows(
+                            self.model,
+                            surface.pane,
+                            Int64(lines),
+                            UInt64(max(ui.time, Float64(0)) * 1_000_000_000),
+                        )
+                        self.apply_local_scroll(step.value())
+                        self.pointer.claimed = True
+                        ui.request_wake(ui.time)
+                        return
+                    if lines < 0:
+                        var target = self.local_scroll.release(surface.pane)
+                        if target:
+                            self.backend.input(
+                                surface.pane,
+                                input_view(surface.pane, 25, target.value()),
+                                self.focus_epoch,
+                                True,
+                            )
+                break
         var routed = self.pointer.scroll(
             self.model, Span(surfaces), event, x, y, ui.mods, self.focus_epoch
         )
@@ -360,6 +454,9 @@ struct WorkspaceView(Movable):
             self.next_poll = (
                 time + 1 if self.backend.ready_fd() < 0 else Float64.MAX
             )
+        self.next_poll = min(
+            self.next_poll, self.backend.next_history_wake(time)
+        )
         if time >= self.next_poll or len(self.backend.queue) > 0:
             self.backend.submit(self.model, self.focus_epoch)
             self.next_poll = Float64.MAX if self.event_driven else time + 0.25
@@ -540,17 +637,35 @@ struct WorkspaceView(Movable):
                 )
             elif item.pane in self.model.terminals:
                 ref viewport = self.model.terminals[item.pane]
-                _ = render_viewport(
-                    ui,
-                    key,
-                    viewport,
-                    flat.mono,
-                    13,
-                    selected and ui.focus == TERMINAL_KEY and self.active,
-                    Int(columns),
-                    Int(rows),
-                    marked=self.marked if selected else Optional[String](None),
-                )
+                if item.pane in self.model.histories:
+                    _ = render_retained_viewport(
+                        ui,
+                        key,
+                        viewport,
+                        self.model.histories[item.pane],
+                        self.local_scroll.target(item.pane),
+                        self.local_scroll.sub_row(item.pane),
+                        flat.mono,
+                        13,
+                        selected and ui.focus == TERMINAL_KEY and self.active,
+                        Int(columns),
+                        Int(rows),
+                        self.marked if selected else Optional[String](None),
+                    )
+                else:
+                    _ = render_viewport(
+                        ui,
+                        key,
+                        viewport,
+                        flat.mono,
+                        13,
+                        selected and ui.focus == TERMINAL_KEY and self.active,
+                        Int(columns),
+                        Int(rows),
+                        marked=self.marked if selected else Optional[String](
+                            None
+                        ),
+                    )
                 self.visible_panes.append(item.pane)
                 if not item.floating:
                     self.report_geometry(
@@ -570,6 +685,11 @@ struct WorkspaceView(Movable):
 
     def build(mut self, mut ui: Ui, input: TextInput) raises:
         self.poll(ui.time)
+        var now = UInt64(max(ui.time, Float64(0)) * 1_000_000_000)
+        self.apply_local_scroll(self.local_scroll.observe(self.model, now))
+        var scroll_wake = self.local_scroll.next_wake()
+        if scroll_wake:
+            ui.request_wake(Float64(scroll_wake.value()) / 1_000_000_000)
         self.marked = String(from_utf8=Span(input.marked)) if len(
             input.marked
         ) > 0 else Optional[String](None)
@@ -609,6 +729,10 @@ struct WorkspaceView(Movable):
                                     True,
                                 )
                         else:
+                            if self.model.pane:
+                                _ = self.cancel_local_scroll(
+                                    self.model.pane.value()
+                                )
                             self.backend.enqueue(
                                 TEXT, self.model.pane, text, self.focus_epoch
                             )
@@ -666,6 +790,7 @@ struct WorkspaceView(Movable):
                 self.backend.enqueue(
                     RECONNECT, selection_epoch=self.focus_epoch
                 )
+                ui.focus = TERMINAL_KEY
             except error:
                 self.model.error = String(error)
         ui.close()

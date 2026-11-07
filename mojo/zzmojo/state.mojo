@@ -1,3 +1,5 @@
+from std.memory import ArcPointer
+from .terminal_history import HistorySnapshot
 from .protocol import parse_id
 from .stream_transport import InteractiveConnection as Connection
 from .tree_model import MuxSnapshot, WindowSnapshot, _Order, _ordered
@@ -195,6 +197,8 @@ struct AppModel(Copyable, Movable):
     var generation: UInt64
     var snapshot: MuxSnapshot
     var terminals: Dict[UInt64, TerminalViewport]
+    var histories: Dict[UInt64, ArcPointer[HistorySnapshot]]
+    var history_invalidations: Dict[UInt64, UInt64]
     var focus_dirty: Bool
     var source_server: UInt64
     var source_client: UInt64
@@ -220,6 +224,8 @@ struct AppModel(Copyable, Movable):
         self.generation = 0
         self.snapshot = MuxSnapshot()
         self.terminals = Dict[UInt64, TerminalViewport]()
+        self.histories = Dict[UInt64, ArcPointer[HistorySnapshot]]()
+        self.history_invalidations = Dict[UInt64, UInt64]()
         self.focus_dirty = False
         self.source_server = 0
         self.source_client = 0
@@ -360,6 +366,10 @@ struct AppModel(Copyable, Movable):
         var text = _selected_text(terminals, reconciled_pane)
         self.snapshot = snapshot^
         self.terminals = terminals^
+        self.histories = connection.model.retained_histories.copy()
+        self.history_invalidations = (
+            connection.model.history_invalidations.copy()
+        )
         self.sessions = sessions^
         self.windows = windows^
         self.panes = panes^
