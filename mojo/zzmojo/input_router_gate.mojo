@@ -1,7 +1,7 @@
 from std.ffi import external_call
 from .verified_input_router import (
     RouterKey, RouterPayload, RouterAction, RouterInput, RouterEffect,
-    RouterState, RouterOperation, RouterOutcome, reduce_router,
+    RouterState, RouterOperation, RouterOutcome, RouterAnswer, reduce_router,
     MAX_ROUTER_EFFECTS, NATIVE_ROUTER_BYTES,
 )
 from .input_router_codec import (
@@ -216,6 +216,24 @@ struct InputRouterGate(Movable):
         return checked^
 
 
+@fieldwise_init
+struct RouterBatchPrepared(Movable):
+    var generation: UInt64
+    var scope: UInt64
+    var map_version: UInt64
+    var original: List[UInt32]
+    var state: RouterState
+    var delivery: List[RouterEffect]
+    var operation_count: Int
+    var answers: List[RouterAnswer]
+
+
+def _session_words(state: RouterState, delivery: List[RouterEffect]) raises -> List[UInt32]:
+    var answer = RouterAnswer(2)
+    answer.effects = delivery.copy()
+    return encode_outcome(RouterOutcome(state.copy(), answer^))
+
+
 struct InputRouterSession(Movable):
     var _state: RouterState
     var _generation: UInt64
@@ -260,6 +278,54 @@ struct InputRouterSession(Movable):
             delivery.append(effect.copy())
         self._state = prepared.outcome.state.copy()
         self._delivery = delivery^
+        self._generation += 1
+
+    def prepare_batch(self, mut gate: InputRouterGate, operations: List[RouterOperation]) raises -> RouterBatchPrepared:
+        if len(operations) > 32 or self._generation == UInt64.MAX:
+            raise Error("router batch exceeds operation or generation limit")
+        var result = RouterBatchPrepared(self._generation, self._scope, self._map.version(), _session_words(self._state, self._delivery), self._state.copy(), self._delivery.copy(), 0, List[RouterAnswer]())
+        for operation in operations:
+            _ = self.extend_batch(gate, result, operation)
+        return result^
+
+    def extend_batch(self, mut gate: InputRouterGate, mut batch: RouterBatchPrepared, operation: RouterOperation) raises -> RouterAnswer:
+        self.validate_batch(batch)
+        if batch.operation_count >= 32:
+            raise Error("router batch exceeds operation limit")
+        var prepared = gate.execute(batch.state, operation, self._map, self._payloads, self._generation)
+        if len(prepared.outcome.answer.effects) > MAX_ROUTER_EFFECTS - len(batch.delivery):
+            raise Error("router batch delivery exceeds effect limit")
+        var delivery = batch.delivery.copy()
+        for effect in prepared.outcome.answer.effects:
+            delivery.append(effect.copy())
+        swap(batch.state, prepared.outcome.state)
+        batch.delivery = delivery^
+        batch.operation_count += 1
+        batch.answers.append(prepared.outcome.answer.copy())
+        self.validate_batch(batch)
+        return prepared.outcome.answer.copy()
+
+    def validate_batch(self, batch: RouterBatchPrepared) raises:
+        if batch.generation != self._generation or batch.scope != self._scope or batch.scope != self._payloads.scope() or batch.map_version != self._state.keymap or batch.map_version != self._map.version() or self._generation == UInt64.MAX:
+            raise Error("router batch is stale or belongs to another source")
+        if batch.operation_count < 0 or batch.operation_count > 32 or len(batch.answers) != batch.operation_count or len(batch.delivery) > MAX_ROUTER_EFFECTS:
+            raise Error("router batch exceeds count limit")
+        _matching_words(_session_words(self._state, self._delivery), batch.original)
+        validate_router_state(batch.state, self._map, self._payloads)
+        _validate_effects(batch.delivery, self._map, self._payloads)
+        var drained = 0
+        for answer in batch.answers:
+            if answer.kind > 3 or answer.kind != 2 and len(answer.effects) != 0 or len(answer.effects) > MAX_ROUTER_EFFECTS - drained:
+                raise Error("router batch answers exceed type or effect limits")
+            drained += len(answer.effects)
+            _validate_effects(answer.effects, self._map, self._payloads)
+        if state_words(batch.state) * 4 > 1024 * 1024:
+            raise Error("router batch final state exceeds byte limit")
+
+    def commit_batch(mut self, mut batch: RouterBatchPrepared) raises:
+        self.validate_batch(batch)
+        swap(self._state, batch.state)
+        swap(self._delivery, batch.delivery)
         self._generation += 1
 
     def take_effects(mut self) -> List[RouterEffect]:

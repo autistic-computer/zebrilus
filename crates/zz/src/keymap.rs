@@ -121,15 +121,7 @@ pub(crate) fn input_router(cx: &mut App) -> InputRouter {
         );
     }
     let keymap = keymap(cx).expect("chrome keymap installed before workspace");
-    let mut router = InputRouter::new(ChromeKeymap::clone(&keymap));
-    for action in [
-        ChromeAction::UiZoomIn,
-        ChromeAction::UiZoomOut,
-        ChromeAction::UiZoomReset,
-    ] {
-        router.unbind_action(action);
-    }
-    router
+    zz_client::desktop_input::desktop_router(ChromeKeymap::clone(&keymap))
 }
 
 fn keymap(cx: &App) -> Option<Rc<ChromeKeymap>> {

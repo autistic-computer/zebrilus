@@ -25,8 +25,12 @@ use penna::{
 use zz_client::pane_swap_command;
 use zz_client::{
     ChromeAction, Disposition, DropZone, Effect, InputEvent, InputRouter, MenuPointerKind,
-    NormalizedPaneRect, PaneRect, PrefixView, SurfaceKind, coerced_drop_zone, drop_preview_bounds,
-    drop_zone_at,
+    NormalizedPaneRect, PaneRect, PrefixView, SurfaceKind, coerced_drop_zone,
+    desktop_input::{
+        DesktopDrag, DesktopGuard, DesktopGuardContext, DesktopKeyContext, desktop_guard,
+        desktop_intercepts, desktop_key_projection,
+    },
+    drop_preview_bounds, drop_zone_at,
     floating::{
         FloatCells, FloatGrip, FloatWindow, float_drag_command, float_drag_preview, float_pixels,
         float_title,
@@ -1220,12 +1224,10 @@ impl AppView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if window.window_handle() != self.window_handle
-            || matches!(
-                event.keystroke.key.as_str(),
-                "shift" | "control" | "alt" | "platform" | "function"
-            )
-        {
+        if !desktop_intercepts(
+            window.window_handle() == self.window_handle,
+            &event.keystroke.key,
+        ) {
             return;
         }
         if !(event.is_held && self.mux.read(cx).prefix_armed()) {
@@ -1239,26 +1241,37 @@ impl AppView {
         }
         let keystroke = &event.keystroke;
         let overlay_open = self.overlay_open(cx);
-        if !overlay_open
-            && keystroke.key == "escape"
-            && self
-                .pane_drag
-                .as_ref()
-                .is_some_and(|drag| !drag.requires_prefix)
-        {
-            self.pane_drag = None;
-            cx.stop_active_drag(window);
-            cx.notify();
-            cx.stop_propagation();
-            return;
-        }
-        if !overlay_open
-            && self.dialog_prefix_cancel_pending.is_some()
-            && !keystroke.modifiers.platform
-            && !keystroke.modifiers.function
-        {
-            cx.stop_propagation();
-            return;
+        match desktop_guard(DesktopGuardContext {
+            key: &keystroke.key,
+            overlay: overlay_open,
+            cancel_pending: self.dialog_prefix_cancel_pending.is_some(),
+            drag: self.pane_drag.as_ref().map_or(DesktopDrag::None, |drag| {
+                if drag.requires_prefix {
+                    DesktopDrag::Prefix
+                } else {
+                    DesktopDrag::Free
+                }
+            }),
+            modifiers: zz_terminal::Modifiers::new(
+                keystroke.modifiers.shift,
+                keystroke.modifiers.control,
+                keystroke.modifiers.alt,
+                keystroke.modifiers.platform,
+            ),
+            function: keystroke.modifiers.function,
+        }) {
+            DesktopGuard::CancelDrag => {
+                self.pane_drag = None;
+                cx.stop_active_drag(window);
+                cx.notify();
+                cx.stop_propagation();
+                return;
+            }
+            DesktopGuard::WaitPrefixCancel => {
+                cx.stop_propagation();
+                return;
+            }
+            DesktopGuard::Native | DesktopGuard::Route => {}
         }
         let input = terminal_key_input(
             keystroke,
@@ -1292,32 +1305,30 @@ impl AppView {
             (
                 PrefixView {
                     armed: mux.prefix_armed(),
-                    claimed: !overlay_open
-                        && !keystroke.modifiers.platform
-                        && !keystroke.modifiers.function
-                        && mux.claims_prefix_input(&input),
+                    claimed: mux.claims_prefix_input(&input),
                 },
                 active,
             )
         };
+        let projection = desktop_key_projection(DesktopKeyContext {
+            before: self.input_router.active_pane(),
+            active,
+            capture: self.mux.read(cx).modal_capture(),
+            prefix,
+            overlay: overlay_open,
+            modifiers: input.modifiers,
+            function: keystroke.modifiers.function,
+        });
+        let prefix = projection.prefix;
         let armed = prefix.armed;
         if prefix.claimed && armed && keystroke.key == "escape" && self.pane_drag.take().is_some() {
             cx.stop_active_drag(window);
             cx.notify();
         }
-        if active != self.input_router.active_pane() {
-            if let Some((pane, kind)) = active {
-                self.input_router
-                    .event(InputEvent::SetActivePane(pane, kind));
-            } else {
-                self.input_router.event(InputEvent::Detached);
-            }
+        if let Some(event) = projection.event {
+            self.input_router.event(event);
         }
-        self.input_router.set_capture(if overlay_open {
-            None
-        } else {
-            self.mux.read(cx).modal_capture()
-        });
+        self.input_router.set_capture(projection.capture);
         let disposition = self.input_router.key(&input, prefix);
         let effects = self.input_router.drain_effects();
         if prefix.claimed && disposition == Disposition::Native && active.is_none() {
