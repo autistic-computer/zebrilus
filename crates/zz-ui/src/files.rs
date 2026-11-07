@@ -34,6 +34,9 @@ use crate::{
 
 const MAX_ROWS: usize = 200;
 
+#[cfg(feature = "path-rank-fixtures")]
+pub mod rank_fixture;
+
 #[derive(Clone, Debug, Default)]
 pub struct GitMarks {
     exact: HashMap<String, GitMark>,

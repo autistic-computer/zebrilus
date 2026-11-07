@@ -12,6 +12,7 @@ default = []
 agent = ["dep:pele"]
 editor = ["penna/editor"]
 tree-sitter = ["penna/tree-sitter", "dep:tree-sitter-tmux"]
+path-rank-fixtures = ["ala/test-support"]
 
 [dependencies]
 chrono = { workspace = true, features = ["clock"] }
@@ -44,3 +45,7 @@ ala-platform = { workspace = true, features = ["test-support"] }
 
 [lints]
 workspace = true
+
+[[example]]
+name = "path_rank_lifecycle_vectors"
+required-features = ["path-rank-fixtures"]
