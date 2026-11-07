@@ -30,22 +30,13 @@ Hairlines mean something: a rule, an outline variant, a field being typed in. In
 
 ## Tint
 
-`tint` colors what is on, picked or primary. `ink` keeps it all in the text color; a person's accent replaces it.
+`tint` colors the details: a switch that is on, a checked box, a slider's fill, the dot that asks for attention, links. Selection and the main action stay in the ink with any tint. `ink` keeps the details in the text color too; a person's accent replaces it.
 
 ```figure uses=switch,check,list
 <div class="docs-show" data-gap="wide">
   <div class="docs-cell" data-look="default"><div class="docs-look"><button class="penna-button" data-penna="button" data-tone="primary" data-prominent><span class="penna-label" data-penna-text>Save</span></button><button class="penna-toggle" aria-checked="true" aria-label="Sync"></button><label class="penna-checkbox" aria-checked="true"><span class="penna-check"></span><span class="penna-label" data-penna-text>Restore</span></label><span class="penna-list" style="width: 132px"><span class="penna-list-item" data-penna="menu-item" role="option" data-state="selected" aria-selected="true"><span class="penna-list-content"><i class="penna-list-icon" data-icon="square-terminal"></i><span class="penna-list-label"><span class="penna-text" data-penna-text>work</span></span></span></span></span></div><span class="docs-note"><code>ink</code></span></div>
   <div class="docs-cell" data-look="blue"><div class="docs-look"><button class="penna-button" data-penna="button" data-tone="primary" data-prominent><span class="penna-label" data-penna-text>Save</span></button><button class="penna-toggle" aria-checked="true" aria-label="Sync"></button><label class="penna-checkbox" aria-checked="true"><span class="penna-check"></span><span class="penna-label" data-penna-text>Restore</span></label><span class="penna-list" style="width: 132px"><span class="penna-list-item" data-penna="menu-item" role="option" data-state="selected" aria-selected="true"><span class="penna-list-content"><i class="penna-list-icon" data-icon="square-terminal"></i><span class="penna-list-label"><span class="penna-text" data-penna-text>work</span></span></span></span></span></div><span class="docs-note"><code>blue</code></span></div>
   <div class="docs-cell" data-look="pink"><div class="docs-look"><button class="penna-button" data-penna="button" data-tone="primary" data-prominent><span class="penna-label" data-penna-text>Save</span></button><button class="penna-toggle" aria-checked="true" aria-label="Sync"></button><label class="penna-checkbox" aria-checked="true"><span class="penna-check"></span><span class="penna-label" data-penna-text>Restore</span></label><span class="penna-list" style="width: 132px"><span class="penna-list-item" data-penna="menu-item" role="option" data-state="selected" aria-selected="true"><span class="penna-list-content"><i class="penna-list-icon" data-icon="square-terminal"></i><span class="penna-list-label"><span class="penna-text" data-penna-text>work</span></span></span></span></span></div><span class="docs-note"><code>pink</code></span></div>
-</div>
-```
-
-On a tint's solid selection everything in the row takes its ink, and a toned chip turns to a wash of it. With the ink as tint the highlight is a wash and the chip keeps its tone.
-
-```figure uses=list,chip
-<div class="docs-show" data-gap="wide">
-  <div class="docs-cell" data-look="default"><span class="penna-list" style="width: 220px"><span class="penna-list-item" data-penna="menu-item" role="option" data-state="selected" aria-selected="true"><span class="penna-list-content"><i class="penna-list-icon" data-icon="square-terminal"></i><span class="penna-list-label"><span class="penna-text" data-penna-text>work</span></span><span class="penna-chip" data-penna="chip" data-tone="success" data-size="xsmall"><i class="penna-dot" data-tone="success"></i><span class="penna-text penna-chip-label" data-penna-text>Ready</span></span></span></span></span><span class="docs-note"><code>ink</code></span></div>
-  <div class="docs-cell" data-look="blue"><span class="penna-list" style="width: 220px"><span class="penna-list-item" data-penna="menu-item" role="option" data-state="selected" aria-selected="true"><span class="penna-list-content"><i class="penna-list-icon" data-icon="square-terminal"></i><span class="penna-list-label"><span class="penna-text" data-penna-text>work</span></span><span class="penna-chip" data-penna="chip" data-tone="success" data-size="xsmall"><i class="penna-dot" data-tone="success"></i><span class="penna-text penna-chip-label" data-penna-text>Ready</span></span></span></span></span><span class="docs-note"><code>blue</code></span></div>
 </div>
 ```
 

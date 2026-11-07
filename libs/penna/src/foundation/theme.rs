@@ -10,9 +10,7 @@ use ala::{
 
 use crate::{BASE_UI_FONT_SIZE, TITLE_BAR_HEIGHT, foundation::highlighter::HighlightTheme};
 
-use super::{
-    Colorize as _, PrimaryStyle, ShadowMaterial, Smoothing, Space, Surface, ThemeColor, color,
-};
+use super::{Colorize as _, ShadowMaterial, Smoothing, Space, Surface, ThemeColor, Tone, color};
 
 pub const CHROME_GAP: f32 = Space::INSET_CHROME.design_px();
 
@@ -81,7 +79,7 @@ pub struct Theme {
     pub contact_shadow: ShadowMaterial,
     pub float_shadow: ShadowMaterial,
     pub row_inset: Pixels,
-    pub primary: PrimaryStyle,
+    pub detail: Tone,
     pub glass: Option<GlassMaterial>,
     pub inspect: Option<SharedString>,
     pub inspect_strength: f32,
@@ -134,8 +132,21 @@ impl Theme {
         self.control_radius()
     }
 
-    pub fn selection_background(&self) -> Hsla {
-        self.accent.opaque()
+    pub fn accent_ink(&self) -> Hsla {
+        self.on_accent
+            .unwrap_or_else(|| super::color::mark_on(self.accent.opaque()))
+    }
+
+    pub fn detail_color(&self) -> Hsla {
+        self.tone(self.detail)
+    }
+
+    pub fn attention(&self) -> Hsla {
+        if self.tinted() {
+            self.accent
+        } else {
+            self.warning
+        }
     }
 
     pub fn control_roundness(&self) -> f32 {
@@ -164,7 +175,7 @@ impl Theme {
     }
 
     pub fn tinted(&self) -> bool {
-        self.primary == PrimaryStyle::Accent
+        self.detail == Tone::Accent
     }
 
     pub fn glass_effect(&self) -> Option<GlassMaterial> {
@@ -297,7 +308,7 @@ impl From<&ThemeColor> for Theme {
             contact_shadow: ShadowMaterial::CONTACT,
             float_shadow: ShadowMaterial::FLOAT,
             row_inset: px(6.0),
-            primary: PrimaryStyle::Foreground,
+            detail: Tone::Primary,
             glass: None,
             inspect: None,
             inspect_strength: 1.0,

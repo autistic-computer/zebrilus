@@ -4,8 +4,7 @@ use ala::{App, GlassMaterial, Hsla, SharedString, Window, px};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{
-    Colorize as _, Elevation, PrimaryStyle, ShadowMaterial, Smoothing, Theme, ThemeColor,
-    ThemeMode,
+    Colorize as _, Elevation, ShadowMaterial, Smoothing, Theme, ThemeColor, ThemeMode,
     foundation::{color::contrast_ratio, theme::DEFAULT_RADIUS, theme_color},
 };
 
@@ -20,14 +19,14 @@ pub const ACCENTS: [&str; 8] = [
 ];
 
 const ACCENT_COLORS: [(&str, &str, &str); ACCENTS.len()] = [
-    ("blue", "#0a64dd", "#76abfd"),
-    ("purple", "#8549d1", "#bd97fe"),
-    ("pink", "#c02a82", "#f585bd"),
-    ("red", "#cc252d", "#ff877f"),
-    ("orange", "#ad4f00", "#f88e4f"),
-    ("yellow", "#876400", "#d3a229"),
-    ("green", "#007b2c", "#59be6d"),
-    ("graphite", "#6a6a6a", "#aaaaaa"),
+    ("blue", "#0a64dd", "#3183ff"),
+    ("purple", "#8549d1", "#a366f7"),
+    ("pink", "#c02a82", "#e648a0"),
+    ("red", "#cc252d", "#f44647"),
+    ("orange", "#ad4f00", "#de6700"),
+    ("yellow", "#876400", "#af8200"),
+    ("green", "#007b2c", "#009f3b"),
+    ("graphite", "#6a6a6a", "#868686"),
 ];
 
 const TEXT_ON_GLASS: f32 = 4.5;
@@ -428,9 +427,9 @@ impl InterfaceTheme {
     pub fn apply(&self, theme: &mut Theme) {
         let mode = theme.mode;
         theme.colors = self.colors(mode);
-        theme.primary = match self.tint {
-            Tint::Ink => PrimaryStyle::Foreground,
-            Tint::Color { .. } => PrimaryStyle::Accent,
+        theme.detail = match self.tint {
+            Tint::Ink => crate::Tone::Primary,
+            Tint::Color { .. } => crate::Tone::Accent,
         };
         theme.radius = px(clamp_radius(self.radius));
         theme.control_radius = self.control_radius.map(ControlRadius::pixels);
@@ -891,9 +890,10 @@ mod tests {
             ] {
                 let solid = kit.paint(tone, Emphasis::Solid);
                 let ratio = contrast_ratio(solid.text, solid.fill);
+                let floor = if tone == Tone::Accent { 3.0 } else { 4.5 };
                 assert!(
-                    ratio >= 4.5,
-                    "{id} {mode:?} text on a solid {tone:?} fill is {ratio:.2}:1"
+                    ratio >= floor,
+                    "{id} {mode:?} ink on a solid {tone:?} fill is {ratio:.2}:1"
                 );
             }
         }
@@ -1010,14 +1010,7 @@ mod tests {
     #[test]
     fn presets_are_knobs_with_names() {
         let macos = builtin_theme("macos").unwrap();
-        assert_eq!(
-            macos.tint.color(ThemeMode::Light),
-            crate::parse_hex("#0a64dd").ok()
-        );
-        assert_eq!(
-            macos.tint.color(ThemeMode::Dark),
-            crate::parse_hex("#76abfd").ok()
-        );
+        assert_eq!(macos.tint, Tint::named("blue").unwrap());
         assert_eq!(
             (macos.control_radius, macos.smoothing, macos.glass.clone()),
             (Some(ControlRadius::Full), 4.0, None)

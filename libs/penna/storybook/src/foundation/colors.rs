@@ -94,7 +94,7 @@ fn derived(_: &mut Window, cx: &mut App) -> AnyElement {
                 .child(swatch("fill()", accent.fill(), cx))
                 .child(swatch("outline()", accent.outline(), cx))
                 .child(swatch("on()", accent.on(), cx))
-                .child(swatch("selection", theme.selection_background(), cx)),
+                .child(swatch("detail", theme.detail_color(), cx)),
         )
         .into_any_element()
 }

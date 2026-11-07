@@ -665,14 +665,11 @@ mod tests {
         });
         cx.run_until_parked();
         cx.update(|window, cx| {
-            use crate::ActiveTheme as _;
             _ = window.draw(cx);
             let quads = window.painted_quads();
             let selected = quads
                 .iter()
-                .find(|quad| {
-                    quad.background == ala::solid_background(cx.theme().selection_background())
-                })
+                .find(|quad| quad.background == ala::solid_background(crate::picked_menu_fill(cx)))
                 .expect("selected font row");
             assert!(
                 selected.bounds.size.width.0

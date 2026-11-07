@@ -8,8 +8,7 @@ use ala::{
 use serde::{Deserialize, Serialize};
 
 use super::{
-    ActiveTheme as _, Colorize as _, Elevation, Emphasis, Ground, PaintState, PrimaryStyle, Theme,
-    Tone,
+    ActiveTheme as _, Colorize as _, Elevation, Emphasis, Ground, PaintState, Theme, Tone,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -1063,8 +1062,7 @@ impl Theme {
             Elevation::Popover => 2,
             _ => 1,
         };
-        let toned = !(tone == Tone::Neutral
-            || (tone == Tone::Primary && self.primary == PrimaryStyle::Foreground));
+        let toned = !matches!(tone, Tone::Neutral | Tone::Primary);
         let glass_fill = soft.opaque().fill;
         let paint = if surface.prominent && fill != Fill::Glass {
             solid
@@ -1123,7 +1121,7 @@ impl Theme {
             highlight => highlight,
         };
         let highlight = match highlight {
-            Highlight::Accent if tone == Tone::Neutral && !self.tinted() => Highlight::Tint,
+            Highlight::Accent if tone == Tone::Neutral => Highlight::Tint,
             highlight => highlight,
         };
         if highlight == Highlight::Glass {
@@ -1555,7 +1553,6 @@ mod tests {
     #[test]
     fn chrome_items_select_as_glass_and_gapped_panes_take_the_rim() {
         let mut theme = theme();
-        theme.primary = PrimaryStyle::Accent;
         theme.glass = Some(liquid());
         let chrome = [
             super::super::roles::SIDEBAR_ROW,
@@ -1584,12 +1581,10 @@ mod tests {
         assert!(!gapped.ground.glass);
 
         theme.glass = None;
-        let lit = theme.paint_on(theme.ground(), Tone::Primary, Emphasis::Solid);
         for role in chrome {
             let selected = theme.layer(Surface::new(role), PaintState::Selected);
             assert!(selected.glass.is_none(), "{}", role.id);
-            assert_eq!(selected.fill, lit.fill, "{}", role.id);
-            assert!(selected.ground.solid, "{}", role.id);
+            assert!(!selected.ground.solid, "{}", role.id);
         }
         assert!(theme.layer(pane, PaintState::Rest).glass.is_none());
     }
@@ -1959,94 +1954,30 @@ mod tests {
     }
 
     #[test]
-    fn content_on_a_tinted_selection_takes_its_ink() {
+    fn a_picked_row_washes_in_the_ink_whatever_the_accent() {
         let mut theme = theme();
-        let chip = |theme: &Theme, tone, ground| {
-            theme.layer(
-                Surface::new(SurfaceRole::CHIP).tone(tone).on(ground),
-                PaintState::Rest,
-            )
-        };
-        let washed = theme.ground_at(Surface::new(SurfaceRole::MENU_ITEM), PaintState::Selected);
-        assert_eq!(
-            chip(&theme, Tone::Success, washed).fill,
-            theme.success.opacity(0.12)
-        );
-
-        theme.accent = crate::parse_hex("#ad4f00").unwrap();
-        theme.primary = PrimaryStyle::Accent;
-        let picked = theme.ground_at(Surface::new(SurfaceRole::MENU_ITEM), PaintState::Selected);
-        let toned = chip(&theme, Tone::Success, picked);
-        let neutral = chip(&theme, Tone::Neutral, picked);
-        assert_eq!(toned.fill, neutral.fill);
-        assert_eq!(crate::to_hex(toned.text), "#ebebeb");
-        let label = theme.paint_on(picked, Tone::Danger, Emphasis::Ghost);
-        assert_eq!(crate::to_hex(label.text), "#ebebeb");
-        assert_eq!(crate::to_hex(label.muted_at(PaintState::Rest)), "#ebebeb");
-    }
-
-    #[test]
-    fn a_graphite_selection_gives_its_content_the_row_ink() {
-        let mut theme = theme();
-        theme.accent = crate::parse_hex("#aaaaaa").unwrap();
-        theme.primary = PrimaryStyle::Accent;
-        let picked = theme.ground_at(Surface::new(SurfaceRole::MENU_ITEM), PaintState::Selected);
-        assert_eq!(crate::to_hex(picked.fill), "#aaaaaa");
-        let chip = |tone| {
-            theme.layer(
-                Surface::new(SurfaceRole::CHIP).tone(tone).on(picked),
-                PaintState::Rest,
-            )
-        };
-        assert_eq!(chip(Tone::Success).fill, chip(Tone::Neutral).fill);
-        assert_eq!(crate::to_hex(chip(Tone::Success).text), "#010101");
-        let label = theme.paint_on(picked, Tone::Danger, Emphasis::Ghost);
-        assert_eq!(crate::to_hex(label.text), "#010101");
-        assert_eq!(crate::to_hex(label.muted_at(PaintState::Rest)), "#010101");
-        let listed = theme
-            .paint(Tone::Neutral, Emphasis::Ghost)
-            .ground_at(PaintState::Selected);
-        let label = theme.paint_on(listed, Tone::Danger, Emphasis::Ghost);
-        assert_eq!(crate::to_hex(label.muted_at(PaintState::Rest)), "#010101");
-    }
-
-    #[test]
-    fn a_picked_row_washes_in_the_ink_until_a_tint_fills_it() {
-        let mut theme = theme();
-        let menu = theme.ground_of(Surface::new(SurfaceRole::POPOVER));
         let washed = SurfaceRole::under(&SurfaceRole::MENU_ITEM, "test.row", "Test", "")
             .with(StylePatch::EMPTY.selected(Highlight::Tint));
-        for (role, ground) in [
-            (SurfaceRole::MENU_ITEM, menu),
-            (SurfaceRole::ROW, theme.ground()),
-        ] {
-            let picked = theme.layer(Surface::new(role).on(ground), PaintState::Selected);
-            let wash = theme.layer(Surface::new(washed).on(ground), PaintState::Selected);
-            assert_eq!(
-                (picked.fill, picked.text),
-                (wash.fill, wash.text),
-                "{}",
-                role.id
-            );
-        }
-
-        let tint = crate::parse_hex("#ad4f00").unwrap();
-        theme.accent = tint;
-        theme.primary = PrimaryStyle::Accent;
-        let on_tint = crate::parse_hex("#ebebeb").unwrap();
-        for (role, ground) in [
-            (SurfaceRole::MENU_ITEM, menu),
-            (SurfaceRole::ROW, theme.ground()),
-            (SurfaceRole::TAB, theme.ground()),
-        ] {
-            let picked = theme.layer(Surface::new(role).on(ground), PaintState::Selected);
-            assert_eq!(crate::to_hex(picked.fill), "#ad4f00", "{}", role.id);
-            assert_eq!(
-                crate::to_hex(picked.text),
-                crate::to_hex(on_tint),
-                "{}",
-                role.id
-            );
-        }
+        let check = |theme: &Theme| {
+            let menu = theme.ground_of(Surface::new(SurfaceRole::POPOVER));
+            for (role, ground) in [
+                (SurfaceRole::MENU_ITEM, menu),
+                (SurfaceRole::ROW, theme.ground()),
+            ] {
+                let picked = theme.layer(Surface::new(role).on(ground), PaintState::Selected);
+                let wash = theme.layer(Surface::new(washed).on(ground), PaintState::Selected);
+                assert_eq!(
+                    (picked.fill, picked.text),
+                    (wash.fill, wash.text),
+                    "{}",
+                    role.id
+                );
+                assert!(!picked.ground.solid, "{}", role.id);
+            }
+        };
+        check(&theme);
+        theme.accent = crate::parse_hex("#ad4f00").unwrap();
+        theme.detail = Tone::Accent;
+        check(&theme);
     }
 }

@@ -94,17 +94,17 @@
 }
 
 .penna-steps-pills > .penna-step[data-filled] {
-  --penna-step-pole: hsl(from var(--penna-primary) 0 0 calc(clamp(0, (50 - l) * 1000, 1) * 100));
-  --penna-step-fill: var(--penna-primary);
+  --penna-step-pole: hsl(from var(--penna-detail) 0 0 calc(clamp(0, (50 - l) * 1000, 1) * 100));
+  --penna-step-fill: var(--penna-detail);
 }
 
 .penna-steps-pills > .penna-step[data-filled]:hover {
-  --penna-step-fill: color-mix(in oklab, var(--penna-primary) 94%, var(--penna-step-pole));
+  --penna-step-fill: color-mix(in oklab, var(--penna-detail) 94%, var(--penna-step-pole));
 }
 
 .penna-steps:is(:focus-visible, [data-focused]) .penna-step[data-picked]::before {
   outline: 1.5px solid var(--penna-focus-neutral);
-  outline-offset: 1.5px;
+  outline-offset: var(--penna-detail-ring-gap, 1.5px);
 }
 
 .penna-steps[aria-disabled="true"] > :is(.penna-steps-label, .penna-steps-value) {
@@ -117,7 +117,7 @@
 }
 
 .penna-steps[aria-disabled="true"] .penna-step[data-filled] {
-  --penna-step-fill: rgb(from var(--penna-primary) r g b / calc(alpha * 0.5));
+  --penna-step-fill: rgb(from var(--penna-detail) r g b / calc(alpha * 0.5));
 }
 
 .penna-slider {
@@ -174,7 +174,7 @@
   width: var(--penna-value, 0%);
   height: 100%;
   border-radius: 9999px;
-  background: var(--penna-primary);
+  background: var(--penna-detail);
 }
 
 .penna-slider > .penna-rail > .penna-knob {
@@ -203,7 +203,7 @@
 }
 
 .penna-slider[aria-disabled="true"] > .penna-rail > .penna-fill {
-  background: rgb(from var(--penna-primary) r g b / calc(alpha * 0.5));
+  background: rgb(from var(--penna-detail) r g b / calc(alpha * 0.5));
 }
 
 .penna-slider[aria-disabled="true"] > .penna-rail > .penna-knob {

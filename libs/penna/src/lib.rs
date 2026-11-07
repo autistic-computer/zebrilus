@@ -31,12 +31,12 @@ pub use foundation::{
     CORNER_SMOOTHING, Colorize, Density, Disableable, Edge, ElementExt, Elevation, Emphasis,
     FOCUS_RING_WIDTH, Fill, Ground, Highlight, IndexPath, Ink, InteractiveElementExt,
     InteractivePaintExt, Kind, Layer, PANE_HEADER_CONTROL_HEIGHT, PANE_HEADER_HEIGHT, Paint,
-    PaintExt, PaintState, PrimaryStyle, RULE_WIDTH, RuleLook, ScrollbarShow, Selectable, Shadow,
-    ShadowMaterial, Shape, Side, Sizable, Size, Smoothing, Space, Style, StylePatch, StyledExt,
-    Surface, SurfaceRole, TextStyle, Theme, ThemeColor, ThemeMode, Tone, UiZoom, center,
-    cubic_ease, h_flex, inline, inset, knob_shadow, list_row, muted_on, oklab_lightness, oklch,
-    parse_hex, rems_from_px, row_state, split, stack, tiles, to_hex, to_oklch, v_flex,
-    window_border, window_paddings,
+    PaintExt, PaintState, RULE_WIDTH, RuleLook, ScrollbarShow, Selectable, Shadow, ShadowMaterial,
+    Shape, Side, Sizable, Size, Smoothing, Space, Style, StylePatch, StyledExt, Surface,
+    SurfaceRole, TextStyle, Theme, ThemeColor, ThemeMode, Tone, UiZoom, center, cubic_ease, h_flex,
+    inline, inset, knob_shadow, list_row, muted_on, oklab_lightness, oklch, parse_hex,
+    rems_from_px, row_state, split, stack, tiles, to_hex, to_oklch, v_flex, window_border,
+    window_paddings,
 };
 
 pub fn init(cx: &mut ala::App) {
@@ -61,6 +61,18 @@ pub(crate) fn init_without_theme(cx: &mut ala::App) {
         ..InterfaceTheme::default()
     }
     .activate(Some(ThemeMode::Light), None, cx);
+}
+
+#[cfg(test)]
+pub(crate) fn picked_menu_fill(cx: &ala::App) -> ala::Hsla {
+    let theme = cx.theme();
+    let menu = theme.ground_of(Surface::new(SurfaceRole::POPOVER));
+    theme
+        .layer(
+            Surface::new(SurfaceRole::MENU_ITEM).on(menu),
+            PaintState::Selected,
+        )
+        .fill
 }
 
 #[cfg(test)]

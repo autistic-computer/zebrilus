@@ -495,11 +495,11 @@ button[data-penna] {
 
 .penna-switch[data-on] {
   justify-content: flex-end;
-  background: var(--penna-primary);
+  background: var(--penna-detail);
 }
 
 .penna-switch[data-on]::after {
-  background: var(--penna-on-accent);
+  background: var(--penna-on-detail);
 }
 
 [data-penna="dialog"] {

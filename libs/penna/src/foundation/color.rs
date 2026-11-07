@@ -160,16 +160,31 @@ pub(super) fn readable_on(fill: Hsla) -> Hsla {
     })
 }
 
+fn light_ink() -> Hsla {
+    let light = hsla(0., 0., 1., 1.);
+    light.mix_oklab(light.invert_l(), 0.94)
+}
+
 fn readable_on_uncached(fill: Hsla) -> Hsla {
     let fill = fill.opaque();
-    let light = hsla(0., 0., 1., 1.);
-    let light = light.mix_oklab(light.invert_l(), 0.94);
+    let light = light_ink();
     let dark = hsla(0., 0., 0., 1.);
     let dark = dark.mix_oklab(dark.invert_l(), 0.94);
     if contrast_ratio(dark, fill) > contrast_ratio(light, fill) {
         dark
     } else {
         light
+    }
+}
+
+pub(super) const MARK_CONTRAST: f32 = 3.0;
+
+pub(super) fn mark_on(fill: Hsla) -> Hsla {
+    let light = light_ink();
+    if contrast_ratio(light, fill.opaque()) >= MARK_CONTRAST {
+        light
+    } else {
+        readable_on(fill)
     }
 }
 

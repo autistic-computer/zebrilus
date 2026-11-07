@@ -1362,7 +1362,7 @@ mod tests {
                 let highlight = quads
                     .iter()
                     .find(|quad| {
-                        quad.background == ala::solid_background(cx.theme().selection_background())
+                        quad.background == ala::solid_background(crate::picked_menu_fill(cx))
                     })
                     .expect("selected menu entry");
                 assert_eq!(highlight.corner_smoothing, 3.0);
@@ -1424,7 +1424,7 @@ mod tests {
                 let child = quads
                     .iter()
                     .find(|quad| {
-                        quad.background == ala::solid_background(cx.theme().selection_background())
+                        quad.background == ala::solid_background(crate::picked_menu_fill(cx))
                     })
                     .expect("selected submenu leaf has an accent background");
                 let position = |quad: &ala::Quad| {
@@ -1576,9 +1576,7 @@ mod tests {
             let quad = window
                 .painted_quads()
                 .into_iter()
-                .find(|quad| {
-                    quad.background == ala::solid_background(cx.theme().selection_background())
-                })
+                .find(|quad| quad.background == ala::solid_background(crate::picked_menu_fill(cx)))
                 .expect("selected submenu leaf");
             let center = quad.bounds.center();
             ala::point(
@@ -1749,7 +1747,7 @@ mod tests {
     }
     #[test]
     fn a_press_on_a_selected_row_draws_one_pressed_wash() {
-        let mut theme = crate::Theme::from(&*crate::ThemeColor::light());
+        let theme = crate::Theme::from(&*crate::ThemeColor::light());
         let row = Surface::new(SurfaceRole::MENU_ITEM);
         let close = |drawn: Hsla, want: Hsla| {
             let (drawn, want) = (ala::Rgba::from(drawn), ala::Rgba::from(want));
@@ -1765,15 +1763,6 @@ mod tests {
                 .blend(selected)
                 .blend(press_wash(&theme, true)),
             theme.background.blend(pressed),
-        );
-
-        theme.accent = crate::parse_hex("#0a64dd").unwrap();
-        theme.primary = crate::PrimaryStyle::Accent;
-        let selected = theme.layer(row, PaintState::Selected).fill;
-        assert_eq!(selected.a, 1.0);
-        assert_eq!(
-            press_wash(&theme, true),
-            theme.layer(row, PaintState::Active).fill
         );
     }
 }

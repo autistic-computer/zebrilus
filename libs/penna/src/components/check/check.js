@@ -7,7 +7,8 @@ function shape(mark) {
   const side = mark.offsetWidth;
   if (!side) return;
   const filled = mark.hasAttribute("data-on") || mark.hasAttribute("data-mixed");
-  const reach = RING + (filled ? RING : 0);
+  const gap = mark.dataset.tone ? RING : parseFloat(getComputedStyle(mark).getPropertyValue("--penna-detail-ring-gap")) || 0;
+  const reach = RING + (filled ? gap : 0);
   const border = parseFloat(getComputedStyle(mark).borderTopWidth) || 0;
   mark.style.setProperty("--penna-ring-inset", `${-(reach + border)}px`);
   if (mark.dataset.kind === "radio") return;

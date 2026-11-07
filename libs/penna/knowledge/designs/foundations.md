@@ -26,7 +26,7 @@ penna draws zz and nidus: tools people keep open all day, mostly driven from the
 
 1. **The keyboard comes first.** Every action has a keyboard path, and the interface shows it: shortcuts sit beside menu rows and in which-key, and a focus ring appears whenever the keyboard moves focus. Pointer and touch reach the same actions, sized for them. So: every control is focusable unless it is disabled, activates with Space and Enter, and shows its shortcut where it is offered.
 2. **Calm, dense screens.** Most text on a screen is one size (`body`); weight and a few larger steps carry the hierarchy, and color is kept for meaning. Spacing follows relationships, so a dense screen still groups clearly, and density is a setting, never a squeeze. So: two or three text styles in a view, gaps picked by relationship, nothing added for decoration.
-3. **One highlight.** One color marks what is on, picked or in focus. With the default tint it is the ink itself, so the interface stays black and white until an app sets a tint or someone picks an accent. Status colors mean status and always come with an icon or a word. So: at most one primary action in a view, and no color that only decorates.
+3. **One highlight, one accent.** What is picked or in focus is marked in the ink itself, whatever the tint: selection is a wash of the ink and a primary is a solid fill of it. The tint is the accent, a detail: the track of a switch that is on, a slider's fill, a checked box, the dot that asks for attention, and links. With the default tint the accent is the ink too, so the interface stays black and white until an app sets a tint or someone picks one. Status colors mean status and always come with an icon or a word. So: at most one primary action in a view, and no color that only decorates.
 4. **The work leads, chrome recedes.** Bars, headers and toolbars use quiet controls (no fill at rest), muted labels and the smaller rungs, so the eye goes to the content. Text people read (documents, chat) is larger and more open than text people scan (`read-body` against `body`). So: chrome never competes with content for the strongest ink, size or color.
 5. **Every state shows.** A control always tells what it is doing: rest, hover, pressed, focused, selected, disabled, loading or in error. Feedback comes in the same frame as the input. Motion is short (120 to 220ms), shows where something came from or went, and turns off with reduced motion. So: no state without a look, and no animation that only decorates.
 6. **One kit everywhere.** The same components draw native windows on every desktop, the phone and the web, in one look, light and dark, that apps and people adjust with a few knobs (Look). A knob changes color, corners, glass or faces, never a component's fills, edges, sizes, spacing or behavior. So: a component that only works in one look, one mode or one platform has a bug.
@@ -171,18 +171,20 @@ Roles (CSS root names, the look with the default knobs):
 | `muted` | #555553 | #a4a3a0 | muted labels and the ghost paint |
 | `fg-faint` | #90908e | #4d4c4b | placeholders and disabled text only |
 | `divider` | `fg` at 8% | `fg` at 8% | rules and hairlines; control and field edges take `fg` at 14% |
-| `accent` | #2f62d8 | #7f9fff | links of the interface and the accent people pick in Appearance; `primary` takes the tint or the picked accent. Text views draw links in the ink, underlined, and select with a wash of the ink |
-| `on-accent` | #ebebeb | #010101 | text on accent fills |
-| `primary` | #1c1c1a | #e9e7e3 | primary fills and the highlight; follows `fg` while the tint is the ink |
+| `accent` | #2f62d8 | #7f9fff | the tint or the accent people pick in Appearance, kept at this default while the tint is the ink |
+| `on-accent` | #ebebeb | #010101 | text on primary fills (the token keeps its old name) |
+| `primary` | #1c1c1a | #e9e7e3 | primary fills; always `fg` |
+| `detail` | `primary` | `primary` | the details (Principles 3): `accent` once a tint is set, the ink while the tint is the ink; `on-detail` is its mark, near-white on a named accent |
+| `attention` | `warning` | `warning` | the dot that asks for attention: `accent` once a tint is set |
 | `success`, `warning`, `danger` | #007b3e, #a75400, #cc2737 | #3fbf74, #f0a14a, #f2555f | status, always with an icon or a word |
 
 The kit's base colors are these values and the default `neutral` reproduces them exactly (Look). Muted is 0.30 of the way to the pole: `fg-muted` mixes `fg` 0.30 toward its contrast pole (white under dark ink, black under light), and `muted` mixes the ghost paint's ink 0.30 toward the ground under it (on a tint's solid fill it is the ink itself, Look).
 
 Surfaces stack in this order, each layer a step away from the one under it (darker in light, lighter in dark): window `bg`, then `panel`, then cards (`settings.card`), then `popover` and floating panels.
 
-Highlight: what is on, picked or in focus uses `primary`, which is the ink while the tint is the ink, and the tint or the person's accent once either is set.
+Highlight: what is picked or in focus is a wash of the ink, and a primary action a solid fill of it, whatever the tint. What is on (a switch, a checked box, a slider's value) takes `detail`.
 
-Contrast (WCAG 2, built in step 8): in light and dark, for every tint, accent and `neutral` the knobs allow, muted text, accent, success, warning and danger as text reach 4.5:1 on `bg`, and so does the text on a solid fill of any of them. The muted mix is 0.30, as above. Light variants darken their accent and status colors until near-white text on them reads at 4.5:1, which also makes them read as text. Text on a solid fill takes whichever of near-white or near-black gives more contrast, so dark variants put near-black labels on their mid-tone accent and status fills. `interface_theme`'s tests assert all of it. `fg-faint` stays under 4.5 on purpose: placeholders and disabled text only.
+Contrast (WCAG 2, built in step 8): in light and dark, for every tint, accent and `neutral` the knobs allow, muted text, accent, success, warning and danger as text reach 4.5:1 on `bg`, and so does the text on a solid fill of `primary` and the status colors. The muted mix is 0.30, as above. Light variants darken their accent and status colors until near-white text on them reads at 4.5:1, which also makes them read as text. Text on a solid status fill takes whichever of near-white or near-black gives more contrast, so dark variants put near-black labels on their mid-tone status fills. An accent fill holds marks, not text (a knob, a check), so its mark is near-white whenever that reaches 3:1, the floor for marks, and near-black only on an accent too pale for it; the named accents are vivid and all hold near-white in both modes. `interface_theme`'s tests assert all of it. `interface_theme`'s tests assert all of it. `fg-faint` stays under 4.5 on purpose: placeholders and disabled text only.
 
 ## Corners, depth, focus, motion
 
@@ -212,10 +214,10 @@ How each kind draws, at rest and under the pointer:
 | Label (badge, keycap) | a soft wash in its tone, no edge | | |
 | Rule | a hairline in `divider` | | |
 
-- The highlight on a selected row is a wash of the ink while the tint is the ink, and the tint's solid fill once a tint is set. A toned row's highlight is its tone's solid fill in every look.
+- The highlight on a selected row is a wash of the ink, whatever the tint. A toned row's highlight is its tone's solid fill.
 - On that solid fill everything in the row takes the selected ink: label, muted text, icons, and a toned chip or badge, which draws as a wash of the selected ink in place of its tone. The word still says the status (Content). Natively the row hands its fill to its children as their ground (`.on(ground)`, with `cx.theme().ground_at(look, state)`); in HTML a row with `data-state~="selected"` or `"current"` and a solid highlight sets the ground inside it.
 - A chrome item draws its selection as glass, a pill of the material over its bar or sidebar, under the material's rim and light. Its tint is the highlight it replaces, pushed away from the ground by the material's opacity, so over a flat bar or sidebar the pill reads exactly as strong as the highlight does where glass is off, and the blur adds only what lies behind; the highlight is its fallback. The chrome items are sidebar rows (`sidebar.row`, the Settings sections too), the flat sidebar's entries (`row.nav`), window tabs in the title bar (`tab.window`) and a browser's page tabs (`tab.page`). Glass is neutral, so the item keeps the window's ink and hands its children a glass ground, not a solid one. Where glass can't draw (glass `none`, Reduce transparency, or a glass ground under the item) it takes the highlight like any row.
-- The rule is one for every solid ground, whatever its color, so a graphite tint or a primary row in the ink counts as much as blue: the tint's or a tone's solid fill under a selected or current row, and a prominent surface (a solid button, chip or badge). Natively the ground says so (`Ground::solid`: a layer's when it sits on a solid ground, its highlight is the solid fill, or it is prominent and not glass; a paint's when its ground is solid or its fill in that state is more than half opaque). There every tone but a solid one reads as neutral, and muted ink is the ink itself; faint keeps its mix toward the fill. A solid chip or badge keeps its tone, since its own fill carries its label. A status dot turns to the muted ink with the rest, and a dot on a solid chip takes the chip's ink.
+- The rule is one for every solid ground, whatever its color, so a primary row in the ink counts as much as a danger one: a tone's solid fill under a selected or current row, and a prominent surface (a solid button, chip or badge). Natively the ground says so (`Ground::solid`: a layer's when it sits on a solid ground, its highlight is the solid fill, or it is prominent and not glass; a paint's when its ground is solid or its fill in that state is more than half opaque). There every tone but a solid one reads as neutral, and muted ink is the ink itself; faint keeps its mix toward the fill. A solid chip or badge keeps its tone, since its own fill carries its label. A status dot turns to the muted ink with the rest, and a dot on a solid chip takes the chip's ink.
 - In HTML the tokens write one scope per solid ground, listing every role whose selected or current highlight is that fill in the theme (rows, list items, menu and tree rows, tabs, toggled buttons, and the chrome items where glass is off). A role with toned rules lists its untoned rows (`:not([data-tone])`) in the neutral highlight's scope and each `[data-tone]` in its tone's. A scope carries the inks that differ and `--penna-dot` for dots. The looks painted on a solid fill are written once for every scope they fit: the labels (badges, chips, keycaps) and the buttons rows hold (quiet, icon, flat icon and row icon buttons, not prominent ones and none inside a field set in the row), each button with every value it sets and every other value at its initial, so a toned one loses its tone as it does natively. Soft and prominent buttons keep their window paint there, and rows hold neither. A button inside a field set in the row (a menu stepper's quiet buttons) paints on that field's ground natively, so the scopes leave it alone. The solid scopes come last in the tokens, after the reduced-transparency block, so they beat a ground scope around the row at equal specificity. A dot reads `--penna-dot` before its own color, and `data-solid` sets it to the tone's on-ink. Tree rows, like list items, switch their icons to the row's muted ink on selection.
 - Hairlines appear only where they mean something: rules, the outline variants (`button.outline`, `field.outline`, `badge.outline`, `chip.outline`), a field being typed in, and the edge of a gapped pane or a floating surface where glass draws no rim. Increase contrast adds none. Outlines are 1 wide.
 - The knob of a switch or a slider keeps `shadow-contact`, the one control shadow in the look, so a light knob reads on a light ground.
@@ -279,13 +281,13 @@ A material is a full glass definition (blur, tint, saturation, bezel, refraction
 
 Natively the blur reads the backdrop up to 2.5 blur radii past a glass surface's edge; the web's backdrop filter reads only what is under the surface. Where the backdrop changes just outside a glass edge, as under a dialog stacked over another, the two blend it a little differently. That is a raster difference, like text, not a choice.
 
-The kit's theme files: `default` (the table's defaults), `macos` (tint blue, #0a64dd and #76abfd, since ala exposes no system accent; `control-radius` `full`; `smoothing` 4), the look on Apple platforms, and `yaru` (tint orange; `radius` 8; `smoothing` 2; `glass` `none`), which the storybook, the HTML tokens and the parity runs draw as a third look. None of them is a choice a person makes.
+The kit's theme files: `default` (the table's defaults), `macos` (tint `blue`, since ala exposes no system accent; `control-radius` `full`; `smoothing` 4), the look on Apple platforms, and `yaru` (tint orange; `radius` 8; `smoothing` 2; `glass` `none`), which the storybook, the HTML tokens and the parity runs draw as a third look. None of them is a choice a person makes.
 
 HTML: a theme file's knobs generate its tokens (`cargo run --example theme_css`), so the HTML twin follows the same look. A theme that leaves `glass` out gets `liquid` in its tokens. `--penna-control-radius` carries the control corner (9999px for `full`). Under `prefers-reduced-transparency: reduce` the tokens give every glass role the `popover` fill and no backdrop. A card inside a container marked `data-ground` rises one step from that container's fill.
 
 How the knobs are spelled and decided:
 
-- `tint` is `ink`, a named accent (`blue`, `orange`, ...), one hex color for both modes, or `{ "light": ..., "dark": ... }`. Any color sets `accent` and makes `primary` the tint; `ink` leaves `accent` at its default for links. A person's Accent replaces it.
+- `tint` is `ink`, a named accent (`blue`, `orange`, ...), one hex color for both modes, or `{ "light": ..., "dark": ... }`. Any color sets `accent` and the details take it; `ink` leaves the details in the ink and `accent` at its default. A person's Accent replaces it. The named accents, light then dark: blue #0a64dd #3183ff, purple #8549d1 #a366f7, pink #c02a82 #e648a0, red #cc252d #f44647, orange #ad4f00 #de6700, yellow #876400 #af8200, green #007b2c #009f3b, graphite #6a6a6a #868686. Each dark one is the most saturated color of its hue that reads at 4.5:1 as text on `bg` and holds a near-white mark at 3:1.
 - `neutral` is `{ "hue": 60, "amount": 0.15 }` by default, hue in OKLCH degrees. Amount 1 is 0.02 of OKLCH chroma on `bg` and 0.35 of that on `fg`. The base colors in code are the Color table; a neutral moves them by the difference between its tint and the default's, so the default reproduces the table exactly and other values tint like a person's tint did. A person's Tint and Tint strength override the hue and the amount.
 - `radius` and `control-radius` clamp to 0 to 25 and `smoothing` to 2 to 5, both where a file is parsed and where a person's override applies. `full` draws capsule controls (buttons, chips, tabs, badges, swatches) as pills and any other control at 25 with its 45% stop. A `radius` or `control-radius` of 25 is a round corner, never a pill.
 - `glass` as an object is a material: `light` and `dark` each name the fields that differ from `liquid` in that mode; an object with neither applies to both modes. Every material's tint rises to the lowest opacity that keeps `fg` at 4.5:1 over a black backdrop under dark text and a white one under light text, blended in sRGB and ignoring blur: 0.596 in light and 0.705 in dark with the default colors, so `liquid` keeps 0.60 in light and draws 0.705 in dark.
@@ -508,7 +510,7 @@ Kinds:
 
 Anatomy, left to right:
 
-- Box: 14 at `xs` and `sm`, 16 from `md` up; `Size(px)` takes that side, as a task list does to match its font. Off, it takes the tone's outline paint (an edge, no fill; neutral by default); on or mixed, the tone's solid fill (`primary` by default, `.tone()` to change it). A checkbox's corner is a quarter of the theme radius, at most a quarter of the side (3 in a 16 box with the default radius, 2 in Yaru). A radio is round.
+- Box: 14 at `xs` and `sm`, 16 from `md` up; `Size(px)` takes that side, as a task list does to match its font. Off, it takes the tone's outline paint (an edge, no fill; neutral by default); on or mixed, the tone's solid fill (`detail` by default, `.tone()` to change it). A checkbox's corner is a quarter of the theme radius, at most a quarter of the side (3 in a 16 box with the default radius, 2 in Yaru). A radio is round.
 - Mark: a checkbox's `check` icon at 70% of the side (11, or 10 in a 14 box); a mixed checkbox's `minus` at the same size; a radio's dot at 37.5% of the side (6, or 5). It takes the fill's ink.
 - Label (checkbox and radio group): the rung's text style (`caption`, `small`, then `body` from `md` up), `icon_gap` after the box (4, 4, then 6). The box is centered on the label's first line, on its capitals (`cap_center_drop`), and a long label wraps under itself, never under the box.
 - `.on(ground)` paints it for the surface it sits on, such as a picked tile.
@@ -526,7 +528,7 @@ States:
 | mixed | the tone's fill with the minus | a checkbox only |
 | hover | the box takes its paint's hover step | over the box or the label; not under a coarse pointer, not when disabled |
 | pressed | the box takes its paint's active step, while held | not under a coarse pointer |
-| focused | the focus ring, 1.5 outside the box, one ring width off it when filled, in the tone's focus ink | from the keyboard only, never from a click; a radio group rings its picked radio, or its first while none is picked |
+| focused | the focus ring, 1.5 outside the box, one ring width off it when its fill is the ring's ink (a toned box, or the `detail` while the tint is the ink), in the tone's focus ink | from the keyboard only, never from a click; a radio group rings its picked radio, or its first while none is picked |
 | disabled | the paint's disabled step: fainter edge, fill and mark; the label in `fg-faint` | presses and keys are ignored, and it leaves the focus order |
 | error | `.tone(Tone::Danger)`: the edge, or the fill, in the danger tone | its Field shows the message with an icon (Field) |
 
@@ -1145,14 +1147,14 @@ Kinds:
 Anatomy, continuous:
 
 - Box: the rung's `control_px` tall (28 at `md`, which follows density; 44 under a coarse pointer at any size), half the knob inside at each side. The whole box takes the press.
-- Rail: a pill, 4 tall at `xs` and `sm` and 6 from `md` up. Up to the value it takes the primary fill, past it the neutral soft paint's pressed fill (`--penna-control`); `.track(colors)` paints a gradient instead, as on the hue slider.
+- Rail: a pill, 4 tall at `xs` and `sm` and 6 from `md` up. Up to the value it takes the `detail` fill, past it the neutral soft paint's pressed fill (`--penna-control`); `.track(colors)` paints a gradient instead, as on the hue slider.
 - Knob: a circle (Sizes; 28 under a coarse pointer) centered on the value, whichever of `bg` and `fg` is lighter (`--penna-knob`), with `shadow-contact`.
 - Under a coarse pointer, unless `.inline()`: a field at the slider's rung showing the value and a 72 wide preview rail (4 tall, 10 knob); a tap opens a bottom sheet titled by the label, with the value in `title` over a full slider.
 
 Anatomy, stepped (all text `small`, `caption` at `xs` and `sm`; the three parts `space-8` apart):
 
 - Label: before the pills, in the muted ink.
-- Pills: one per step, `space-4` apart, sharing the width, each at most 24 wide. Each is a bar as thick as the continuous rail (4 at `xs` and `sm`, 6 from `md` up) in a hit box the rung's `control_px` tall. Steps up to the picked one take the primary fill, the rest `--penna-control`.
+- Pills: one per step, `space-4` apart, sharing the width, each at most 24 wide. Each is a bar as thick as the continuous rail (4 at `xs` and `sm`, 6 from `md` up) in a hit box the rung's `control_px` tall. Steps up to the picked one take the `detail` fill, the rest `--penna-control`.
 - Value: the picked step's name in the ink, in a 52 wide column after the pills.
 
 Sizes: every rung through `.with_size()` (`Sizable`) on both kinds, `md` by default (follows density):
@@ -1228,8 +1230,8 @@ Kinds: one.
 
 Anatomy:
 
-- Track: a pill with a transparent `space-2` border between its edge and the thumb. Off, it takes the neutral soft paint's pressed fill (`--penna-control`); on, the primary fill.
-- Thumb: a circle as tall as the track less 4, with `shadow-contact`. Off, it is whichever of `bg` and `fg` is lighter (`--penna-knob`); on, the primary's ink. It sits at the start when off and at the end when on.
+- Track: a pill with a transparent `space-2` border between its edge and the thumb. Off, it takes the neutral soft paint's pressed fill (`--penna-control`); on, the `detail` fill.
+- Thumb: a circle as tall as the track less 4, with `shadow-contact`. Off, it is whichever of `bg` and `fg` is lighter (`--penna-knob`); on, the `detail`'s mark (`--penna-on-detail`): near-white on an accent, the primary's ink while the tint is the ink. It sits at the start when off and at the end when on.
 - Name: not drawn. The settings row title beside it names it; `.label()` gives it the same name for accessibility, and `.tooltip()` a tooltip that names it when there is no label.
 
 Sizes (the switch's own geometry; it does not follow density):
@@ -1249,12 +1251,12 @@ States:
 | State | Look | Notes |
 |---|---|---|
 | off | neutral track, thumb at the start | |
-| on | primary track, thumb at the end | |
-| hover | the track one fill step deeper (on: the primary's hover fill); the thumb doesn't change | while interactive |
-| pressed | the track one more step (on: the primary's active fill), while held | as hover |
+| on | `detail` track, thumb at the end | |
+| hover | the track one fill step deeper (on: the `detail`'s hover fill); the thumb doesn't change | while interactive |
+| pressed | the track one more step (on: the `detail`'s active fill), while held | as hover |
 
 Off, a fill step is the neutral soft paint's own step (its pressed fill less its hover fill), so hover and pressed sit one and two steps past `--penna-control`.
-| focused | the focus ring, 1.5 outside the track, one ring width off it when on | from the keyboard only, never from a click |
+| focused | the focus ring, 1.5 outside the track, one ring width off it when on in the ink (no gap on an accent track) | from the keyboard only, never from a click |
 | disabled | track and thumb at half strength | presses are ignored, and it leaves the focus order |
 
 Behavior: it flips on release of a click or tap inside it, and on Space or Enter while focused, and calls `on_click` with the new value; the caller sets `checked`. It is a tab stop when it has `on_click`. The thumb slides in 150ms and holds still with motion off.
@@ -1329,7 +1331,7 @@ Anatomy, top to bottom:
 - Container: `read-body` (14 on 22, 400) set on itself (`TextViewStyle::text`), at most 640 wide (`READING_MEASURE`, about 75 characters). No inset of its own; the page or pane gives one (`inset-page` 32 for a document page).
 - Headings: the reading ladder, all 600 and wrapping: h1 `read-h1` 26 on 32, h2 `read-h2` 20 on 28, h3 `read-h3` 16 on 24, h4 `read-h4` 14 on 22, h5 and h6 `read-h5` 13 on 20.
 - Paragraphs: `read-body`. Bold is 600, italic slants, a strikethrough is a 1px line.
-- Links: the text's ink with a 1px underline; a link's title shows in a tooltip.
+- Links: the `detail` color (the accent, or the text's ink while the tint is the ink) with a 1px underline; a link's title shows in a tooltip.
 - Inline code: the code face at the size of the text around it, on the `card.code` fill, corners at most 6.
 - Lists: items touch, with no gap; markers `•`, `◦`, `▪` by depth, or `1.`; a nested list indents `space-16` (16). A task item's checkbox is as tall as the font, centered on the capitals in a box one line tall, `space-6` (6) before its text.
 - Quotes: a `space-4` (4) bar in the divider color at the start, `space-16` (16) inside it, text in `fg-muted`.

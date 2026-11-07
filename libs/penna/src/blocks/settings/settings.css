@@ -118,7 +118,7 @@
 }
 
 .penna-setting-entry[aria-disabled="true"] .penna-toggle[aria-checked="true"] > .penna-toggle-track {
-  background: rgb(from var(--penna-primary) r g b / calc(alpha * 0.5));
+  background: rgb(from var(--penna-detail) r g b / calc(alpha * 0.5));
 }
 
 .penna-setting-entry[aria-disabled="true"] .penna-toggle .penna-toggle-thumb {
@@ -129,7 +129,7 @@
 }
 
 .penna-setting-entry[aria-disabled="true"] .penna-toggle[aria-checked="true"] .penna-toggle-thumb {
-  --penna-setting-knob: rgb(from var(--penna-on-accent) r g b / calc(alpha * 0.5));
+  --penna-setting-knob: rgb(from var(--penna-on-detail) r g b / calc(alpha * 0.5));
 }
 
 .penna-setting-heading {

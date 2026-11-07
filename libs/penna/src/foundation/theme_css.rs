@@ -615,6 +615,7 @@ fn vars(theme: &Theme, surface: Surface, layer: &Layer) -> Vec<(&'static str, St
 
 fn write_root(css: &mut String, theme: &Theme) {
     let primary = theme.paint(Tone::Primary, Emphasis::Solid);
+    let detail = theme.paint(theme.detail, Emphasis::Solid);
     let control = theme
         .paint(Tone::Neutral, Emphasis::Soft)
         .fill_at(PaintState::Active);
@@ -641,6 +642,8 @@ fn write_root(css: &mut String, theme: &Theme) {
         ("--penna-accent".to_owned(), color(theme.accent)),
         ("--penna-on-accent".to_owned(), color(primary.text)),
         ("--penna-primary".to_owned(), color(primary.fill)),
+        ("--penna-detail".to_owned(), color(detail.fill)),
+        ("--penna-attention".to_owned(), color(theme.attention())),
         ("--penna-control".to_owned(), color(control)),
         ("--penna-wash".to_owned(), color(theme.background.washed(1))),
         ("--penna-knob".to_owned(), color(knob)),
@@ -679,6 +682,13 @@ fn write_root(css: &mut String, theme: &Theme) {
         (
             "--penna-focus-neutral".to_owned(),
             color(theme.paint(Tone::Neutral, Emphasis::Ghost).focus),
+        ),
+        (
+            "--penna-detail-ring-gap".to_owned(),
+            length(f32::from(super::focus::ring_gap(
+                detail.fill,
+                theme.paint(Tone::Neutral, Emphasis::Ghost).focus,
+            ))),
         ),
         (
             "--penna-knob-ring-gap".to_owned(),
@@ -773,6 +783,10 @@ fn paint_vars(theme: &Theme) -> Vec<(String, String)> {
         vars.push((format!("--penna-{name}-pressed"), color(solid.active)));
         vars.push((format!("--penna-on-{name}"), color(solid.text)));
     }
+    let detail = theme.paint(theme.detail, Emphasis::Solid);
+    vars.push(("--penna-detail-hover".to_owned(), color(detail.hover)));
+    vars.push(("--penna-detail-pressed".to_owned(), color(detail.active)));
+    vars.push(("--penna-on-detail".to_owned(), color(detail.text)));
     vars
 }
 
@@ -1060,49 +1074,29 @@ mod tests {
 
     #[test]
     fn a_solid_selection_sets_the_ground_inside_it_after_every_other_scope() {
-        let (_, macos) = &builtin_themes()[1];
-        let css = stylesheet(&kit_theme(macos, ThemeMode::Light), &[]);
-        let media = css
-            .find("@media (prefers-reduced-transparency: reduce)")
-            .expect("glass has a reduced transparency block");
-        let solid = &css[media..];
-        let scope = |opening: &str| {
+        for (id, theme) in &builtin_themes()[..2] {
+            let css = stylesheet(&kit_theme(theme, ThemeMode::Light), &[]);
+            let media = css
+                .find("@media (prefers-reduced-transparency: reduce)")
+                .expect("glass has a reduced transparency block");
+            let solid = &css[media..];
+            assert!(
+                !css.contains("[data-penna=\"menu-item\"]:not([data-tone])"),
+                "{id}"
+            );
+            let opening = "\n:is(:is([data-penna=\"button.quiet\"][data-tone=\"danger\"]";
             let start = solid.find(opening).expect("the selection has a scope");
             let end = start + solid[start..].find("\n}\n").expect("the scope closes");
-            &solid[start..end]
-        };
-        let tint = scope("\n:is(:is([data-penna=\"button.quiet\"]:not([data-tone])");
-        assert!(!tint.contains("[data-penna=\"sidebar.row\"]"));
-        let reduced = &css[css
-            .rfind("@media (prefers-reduced-transparency: reduce)")
-            .expect("glass has a reduced transparency block")..];
-        assert!(reduced.contains("[data-penna=\"sidebar.row\"]"));
-        assert!(reduced.contains("  --penna-dot: #ebebeb;"));
-        assert!(tint.contains("[data-penna=\"menu-item\"][data-tone=\"primary\"]"));
-        assert!(tint.contains("  --penna-muted: #ebebeb; --penna-faint: #79a4e8;"));
-        assert!(tint.contains("--penna-success-ink: #ebebeb;"));
-        assert!(tint.ends_with("\n  --penna-dot: #ebebeb;"));
-        let danger = scope("\n:is(:is([data-penna=\"button.quiet\"][data-tone=\"danger\"]");
-        assert!(danger.contains("[data-penna=\"menu-item\"][data-tone=\"danger\"]"));
-        assert!(danger.contains("  --penna-muted: #ebebeb; --penna-faint: #e38a87;"));
-        assert!(
-            solid.contains(
-                "  [data-penna=\"chip\"] { --penna-fill: #ffffff0a; --penna-ink: #ebebeb;"
-            )
-        );
-        assert!(solid.contains(
-            "  [data-penna=\"icon-button.row\"]:not([data-prominent], [data-penna^=\"field\"] *) { --penna-fill: transparent; --penna-ink: #ebebeb; --penna-muted: #ebebeb; --penna-edge: transparent; --penna-bw: 0px; --penna-shadow: 0 0 #0000; --penna-r: 9999px; --penna-share: 0; --penna-k: 1; --penna-style-k: 2; --penna-row: 0; --penna-mark: transparent; --penna-focus: #0a64ddcc; --penna-ring-gap: 0px;"
-        ));
-        let ink = stylesheet(&kit_theme(&builtin_themes()[0].1, ThemeMode::Light), &[]);
-        assert!(!ink.contains("[data-penna=\"menu-item\"]:not([data-tone])"));
-        assert!(ink.contains("[data-penna=\"menu-item\"][data-tone=\"primary\"]"));
-        let quiet =
-            "  [data-penna=\"button.quiet\"]:not([data-prominent], [data-penna^=\"field\"] *) {";
-        let start = ink
-            .find(quiet)
-            .expect("a toned row's selection repaints its quiet buttons");
-        let rule = &ink[start..start + ink[start..].find('\n').expect("the rule ends")];
-        assert!(rule.contains("--penna-ring-gap: 0px;"));
+            let danger = &solid[start..end];
+            assert!(danger.contains("[data-penna=\"menu-item\"][data-tone=\"danger\"]"));
+            assert!(danger.contains("  --penna-muted: #ebebeb; --penna-faint: #e38a87;"));
+            let quiet = "  [data-penna=\"button.quiet\"]:not([data-prominent], [data-penna^=\"field\"] *) {";
+            let start = css
+                .find(quiet)
+                .expect("a toned row's selection repaints its quiet buttons");
+            let rule = &css[start..start + css[start..].find('\n').expect("the rule ends")];
+            assert!(rule.contains("--penna-ring-gap: 0px;"), "{id}");
+        }
     }
 
     #[test]

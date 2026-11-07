@@ -54,8 +54,7 @@ pub use theme::{
 pub use theme_color::ThemeColor;
 pub use units::{BASE_UI_FONT_SIZE, UiZoom, rems_from_px};
 pub use variant::{
-    Elevation, Emphasis, Ground, InteractivePaintExt, Paint, PaintExt, PaintState, PrimaryStyle,
-    Tone,
+    Elevation, Emphasis, Ground, InteractivePaintExt, Paint, PaintExt, PaintState, Tone,
 };
 pub use window_border::{window_border, window_paddings};
 
