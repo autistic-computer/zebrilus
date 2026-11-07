@@ -76,6 +76,38 @@ def main() raises:
         ui.term.views[index].entries[Int(ui.term.views[index].shown[1])].rev,
         revision,
     )
+    var other = viewport.copy()
+    other.cells[0].glyph = 90
+    var replacement = TerminalHistory()
+    replacement.columns = 1
+    replacement.rows = 6
+    replacement.total = 100
+    replacement.start = 4
+    replacement.styles.append(TerminalStyle(0xFFFFFF, 0xAABBCC, 0, 0, 0, 0))
+    for glyph in range(50, 56):
+        replacement.cells.append(TerminalCell(UInt32(glyph), 0, 0))
+    var restarted: UInt64 = 1
+    var next = TerminalHistoryState(other, restarted)
+    assert_true(next.apply_history(other, replacement^, restarted))
+    var next_snapshot = next.snapshot(other)
+    assert_equal(
+        next_snapshot[].history[0].revision, snapshot[].history[0].revision
+    )
+    for index in range(len(ui.term.views)):
+        ui.term.views[index].reset()
+    ui.begin_frame(8, 54)
+    _ = render_retained_viewport(
+        ui, 71, other, next_snapshot, UInt32(8), 5, 0, 13, True, 1, 3
+    )
+    ui.end_frame()
+    assert_equal(
+        String(from_utf8=Span(ui.term.views[index].text)), String("5\n6\n7\nZ")
+    )
+    pixels = render_rgb(ui.dl, ui.atlas, 8, 54)
+    assert_equal(
+        (pixels[21], pixels[22], pixels[23]),
+        (UInt8(0xAA), UInt8(0xBB), UInt8(0xCC)),
+    )
     viewport.generation += 1
     ui.begin_frame(8, 54)
     _ = render_retained_viewport(

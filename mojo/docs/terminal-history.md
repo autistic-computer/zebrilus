@@ -77,7 +77,8 @@ typing cancels local scroll; selection initiation flushes the target before
 pointer input. Command-output routing retains its own ownership and focus rules.
 
 The retained painter resolves each displayed row from history, the current
-viewport, or below rows. Each row uses its own dictionary and stable revision.
+viewport, or below rows. Each row uses its own dictionary and stable revision. A new server/client
+identity clears the terminal row caches before revision IDs can be reused.
 Fractional scrolling paints the preceding row with the corresponding physical
 pixel offset. Cursor and overlay rows use the live-row projection. Stale snapshot
 headers fall back to the current viewport. Reconnect restores terminal focus;
@@ -103,3 +104,10 @@ fallback. The workspace smoke exercises the actual local-scroll interception,
 debounce, selection flush, input cancellation, retained terminal focus, and
 reconnect focus. Native `Workspace.setup` sets initial terminal focus before
 the first frame; ordinary frames do not force focus. Its image is written to `target/port/history-workspace.png`.
+
+The complete native workspace smoke passed with a 1,443 MiB guarded peak. Its
+reconnect check exposed a row-cache reset bug: old display-row indices survived
+a cache clear. `mjui` now clears both previous and displayed row references. The
+focused regression reuses the same revision IDs with a different cell payload
+and dictionary background, and asserts the new exact pixels after reset; it
+passed with a 556 MiB guarded peak.
