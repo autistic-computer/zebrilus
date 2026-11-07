@@ -767,7 +767,9 @@ impl Client {
                 true
             }
             ChatKey::Changed => true,
-            ChatKey::Start(_) | ChatKey::ChooseMachine(_) | ChatKey::Ignored => false,
+            ChatKey::Start(_) | ChatKey::ChooseMachine(_) | ChatKey::Browser | ChatKey::Ignored => {
+                false
+            }
         }
     }
 }

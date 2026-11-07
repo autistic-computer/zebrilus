@@ -4,9 +4,9 @@ use ala::{
 };
 use penna::IconName;
 use zz_client::new_chat::{
-    AgentChoice, ChatKey, ChatPicker, ChatStage, FolderChoice, MachineChoice, agent_picker_place,
-    close_picker_command, first_chat_commands, folder_start, picker_folders, recent_folders,
-    start_agent_commands,
+    AGENT_CHOICES, AgentChoice, ChatKey, ChatPicker, ChatStage, FolderChoice, MachineChoice,
+    agent_picker_place, close_picker_command, first_chat_commands, folder_start, picker_folders,
+    recent_folders, start_agent_commands,
 };
 use zz_protocol::{CommandInvocation, MuxSnapshot, PaneId, SessionId, WindowId};
 use zz_ui::pane::{ChatPickerRow, ChatPickerTarget, chat_picker_rows, pane_picker_row};
@@ -330,6 +330,7 @@ impl PanePickerView {
             ChatKey::Start(agent) => self.start(chat, agent, cx),
             ChatKey::ChooseFolder => self.choose_folder(chat, cx),
             ChatKey::ChooseMachine(index) => self.choose_machine(chat, index, cx),
+            ChatKey::Browser => self.activate(PaneChoice::Browser, cx),
             ChatKey::Close => self.close(cx),
             ChatKey::Changed => cx.notify(),
             ChatKey::Ignored => return false,
@@ -348,7 +349,12 @@ impl PanePickerView {
         });
     }
 
-    fn chat_rows(&self, chat: &Chat, cx: &mut Context<Self>) -> Vec<AnyElement> {
+    fn offers_browser(&self, cx: &App) -> bool {
+        self.pane.is_some() && browser::controller::is_available(cx)
+    }
+
+    fn chat_rows(&mut self, chat: &Chat, cx: &mut Context<Self>) -> Vec<AnyElement> {
+        self.chat.browser = self.offers_browser(cx);
         chat_picker_rows(
             self.id(),
             &self.chat,
@@ -365,10 +371,11 @@ impl PanePickerView {
                 let hover_view = view.clone();
                 row.on_mouse_move(move |_, _, cx| {
                     hover_view.update(cx, |picker, cx| {
-                        let (ChatPickerTarget::Agent(index, _) | ChatPickerTarget::Machine(index)) =
-                            target
-                        else {
-                            return;
+                        let index = match target {
+                            ChatPickerTarget::Agent(index, _)
+                            | ChatPickerTarget::Machine(index) => index,
+                            ChatPickerTarget::Browser => AGENT_CHOICES.len(),
+                            ChatPickerTarget::MachineLine | ChatPickerTarget::FolderLine => return,
                         };
                         if picker.chat.selected != index {
                             picker.chat.selected = index;
@@ -388,6 +395,7 @@ impl PanePickerView {
                             }
                             ChatPickerTarget::FolderLine => picker.choose_folder(&chat, cx),
                             ChatPickerTarget::Agent(_, agent) => picker.start(&chat, agent, cx),
+                            ChatPickerTarget::Browser => picker.activate(PaneChoice::Browser, cx),
                         }
                     });
                     cx.stop_propagation();
@@ -404,6 +412,7 @@ impl PanePickerView {
             let modifiers = keystroke.modifiers;
             let modified = modifiers.control || modifiers.alt || modifiers.platform;
             self.chat.machines = chat.machines.len();
+            self.chat.browser = self.offers_browser(cx);
             let opening = self.chat.stage != ChatStage::Machines;
             let outcome =
                 self.chat

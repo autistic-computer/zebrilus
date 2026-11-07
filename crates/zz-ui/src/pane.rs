@@ -1617,6 +1617,7 @@ pub enum ChatPickerTarget {
     Machine(usize),
     FolderLine,
     Agent(usize, zz_client::new_chat::AgentChoice),
+    Browser,
 }
 
 const fn machine_icon(remote: bool) -> crate::IconName {
@@ -1714,6 +1715,23 @@ pub fn chat_picker_rows(
             )),
         )
     }));
+    if picker.browser {
+        rows.extend([
+            ChatPickerRow::Label(Box::new(pane_picker_label("Pane", cx))),
+            ChatPickerRow::Item(
+                ChatPickerTarget::Browser,
+                Box::new(pane_picker_row(
+                    ElementId::NamedInteger("chat-picker-browser".into(), pane),
+                    "Browser",
+                    crate::CHROME_ICON,
+                    "b",
+                    picker.selected == AGENT_CHOICES.len(),
+                    enabled,
+                    cx,
+                )),
+            ),
+        ]);
+    }
     rows
 }
 

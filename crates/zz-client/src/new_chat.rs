@@ -350,6 +350,7 @@ pub enum ChatKey {
     Start(AgentChoice),
     ChooseFolder,
     ChooseMachine(usize),
+    Browser,
     Close,
     Changed,
     Ignored,
@@ -455,6 +456,7 @@ pub struct ChatPicker {
     pub folder: Option<String>,
     pub query: String,
     pub machines: usize,
+    pub browser: bool,
 }
 
 impl ChatPicker {
@@ -500,9 +502,14 @@ impl ChatPicker {
                 if let Some(agent) = AGENT_CHOICES.iter().find(|agent| agent.shortcut == key) {
                     return ChatKey::Start(*agent);
                 }
+                let choices = AGENT_CHOICES.len() + usize::from(self.browser);
                 match key {
-                    "j" | "down" => self.step(1, AGENT_CHOICES.len()),
-                    "k" | "up" => self.step(-1, AGENT_CHOICES.len()),
+                    "j" | "down" => self.step(1, choices),
+                    "k" | "up" => self.step(-1, choices),
+                    "b" if self.browser => ChatKey::Browser,
+                    "enter" if self.browser && self.selected == AGENT_CHOICES.len() => {
+                        ChatKey::Browser
+                    }
                     "enter" => AGENT_CHOICES
                         .get(self.selected)
                         .map_or(ChatKey::Ignored, |agent| ChatKey::Start(*agent)),
@@ -948,6 +955,17 @@ mod tests {
             ChatKey::Start(AGENT_CHOICES[0])
         );
         assert_eq!(picker.key("escape", None, false, &[]), ChatKey::Close);
+    }
+
+    #[test]
+    fn b_opens_a_browser_only_where_the_picker_offers_one() {
+        let mut picker = ChatPicker::default();
+        assert_eq!(picker.key("b", Some("b"), false, &[]), ChatKey::Ignored);
+        picker.browser = true;
+        assert_eq!(picker.key("b", Some("b"), false, &[]), ChatKey::Browser);
+        assert_eq!(picker.key("up", None, false, &[]), ChatKey::Changed);
+        assert_eq!(picker.selected, AGENT_CHOICES.len());
+        assert_eq!(picker.key("enter", None, false, &[]), ChatKey::Browser);
     }
 
     #[test]

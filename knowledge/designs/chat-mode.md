@@ -2,7 +2,7 @@
 type: Design Plan
 title: "Chat mode: the sidebar lists agents, not windows"
 description: "The flat sidebar became chat mode: each machine lists one row per window running Claude Code or Codex, the agent's tile leads the pane stack with the panes it split behind it, sessions and agentless windows stay in the session tree, and a host's New agent opens a picker window that starts the agent in a chosen folder inside that folder's session. The sidebar view decides what a new pane offers: agents in chat view, pane kinds in the session tree. Desktop, web, iPad and the HTML client share the zz-client model."
-status: Built (2026-10-28; picker by sidebar view 2026-11-01; New chat row and machine choice 2026-11-06; the HTML client has no file picker yet)
+status: Built (2026-10-28; picker by sidebar view 2026-11-01; New chat row and machine choice 2026-11-06; browser in a split 2026-11-07; the HTML client has no file picker yet)
 resource: crates/zz-client/src/new_chat.rs
 tags:
 - sidebar
@@ -50,7 +50,10 @@ iPad and iPhone, and the HTML client's preference passed in with `set_chat_view`
   `zz_ui::pane::chat_picker_rows`): the machine line (desktop only), the folder line, and Claude
   Code (`c`) or Codex (`x`). `m` or a click on the machine lists every host (`ChatStage::Machines`,
   `MachineChoice`); picking another closes this picker and opens one on that host the way New agent
-  does, so the folders and the chat are that machine's. An offline host is listed dimmed.
+  does, so the folders and the chat are that machine's. An offline host is listed dimmed. A
+  picker that is a pane (a split, not the empty workspace) on the desktop also offers a Browser
+  under Pane (`b`, `ChatKey::Browser`), which turns the pane into a browser as the session tree's
+  picker does.
   So does a window whose only pane is a terminal with nothing running (its foreground is the shell,
   or it is dead: a fresh shell, a CLI that exited); the picker draws over that terminal, Escape
   leaves it alone (`close_picker_command` closes only picker panes), and picking turns that pane
