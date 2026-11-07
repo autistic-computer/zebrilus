@@ -93,6 +93,7 @@ def main():
         stage("mjui-native-components", ["bash", "scripts/penna/components_check.sh"], cwd=mjui)
         stage("mjui-native-palette-rows", ["python3", "scripts/penna/palette_rows.py"], cwd=mjui)
         stage("mjui-native-palette-chrome", ["python3", "scripts/penna/palette_chrome_pixels.py"], cwd=mjui)
+        stage("mjui-native-palette-surface", ["python3", "scripts/penna/palette_surface_pixels.py"], cwd=mjui)
         stage("appearance-render", ["bash", "scripts/penna/render.sh"], cwd=mjui)
         stage("appearance-pixels", ["python3", "scripts/port/appearance_pixels.py"])
 
