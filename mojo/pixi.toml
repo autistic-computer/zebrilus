@@ -70,6 +70,7 @@ differential-terminal = "python3 ../scripts/port/guard.py python3 scripts/termin
 differential-layout = "python3 scripts/layout_vectors.py"
 differential-input = "python3 scripts/input_vectors.py"
 differential-client-events = "python3 scripts/client_event_vectors.py"
+differential-client-attachment = "python3 scripts/client_attachment_vectors.py"
 differential-terminal-projection = "python3 scripts/terminal_projection_vectors.py"
 test-terminal-history = "python3 ../scripts/port/guard.py mojo --fp-mode=contract=off -I . tests/test_terminal_history.mojo"
 test-local-scroll = "python3 ../scripts/port/guard.py mojo --fp-mode=contract=off -I . tests/test_local_scroll_controller.mojo"
