@@ -1,6 +1,7 @@
 # Update Log
 
 ## 2026-11-07
+* **Update**: With glass off (or Reduce transparency), the open window pill takes a hairline edge in place of the glass rim, so it still stands apart from its strip ([native status bar](/designs/native-status-bar.md)).
 * **Update**: The title bar's window pills sit in one strip, a wash with the open pill's glass concentric inside it ([native status bar](/designs/native-status-bar.md)). The pills are 28px, the strip 32px; its corner follows Corner radius (square at 0, a capsule under Pill). The pane stacks on the pills take the running program's colors, as the chats list does ([flat sidebar](/designs/flat-sidebar-data.md#program-icons)).
 * **Update**: Settings pages fade their content under the top and bottom edges while there is more past them. The picked theme, mode and app icon tiles show the menu row's wash instead of a white ring.
 * **Fix**: Menu and select rows round with Corner radius like every other row; they took the menu's corner less its 6px inset, which left them nearly square at middle settings. The agent chat composer follows Corner radius too (square at 0); it was always a pill.
