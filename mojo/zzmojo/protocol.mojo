@@ -169,7 +169,8 @@ def client_hello(
 
 
 def command_request(
-    request: UInt64, name: String, args: Span[String, _]
+    request: UInt64, name: String, args: Span[String, _],
+    stdin_available: Bool = False,
 ) raises -> List[UInt8]:
     if name.byte_length() == 0:
         raise Error("empty command")
@@ -179,8 +180,24 @@ def command_request(
     append_uint(payload, UInt64(len(args)))
     for argument in args:
         append_text(payload, argument)
-    payload.extend([0, 0, 0, 0, 0, 0])
+    payload.extend([0, 0, 0, 0, UInt8(stdin_available), 0])
     return envelope(Span(payload))
+
+
+def control_tag(frame: Span[UInt8, _]) raises -> UInt32:
+    if len(frame) < 9 or frame[4] != 0:
+        raise Error("expected control frame")
+    var tag: UInt32 = 0
+    for index in range(5):
+        if index + 8 >= len(frame):
+            raise Error("truncated control tag")
+        var byte = frame[index + 8]
+        if index == 4 and byte > 15:
+            raise Error("control tag exceeds u32 range")
+        tag |= UInt32(byte & 127) << UInt32(index * 7)
+        if byte < 128:
+            return tag
+    raise Error("control tag exceeds u32 range")
 
 
 @fieldwise_init
@@ -192,7 +209,9 @@ struct Response(Copyable, Movable):
     var stdout_claim: UInt8
 
 
-def decode_error(mut decoder: Decoder) raises -> String:
+def decode_error(
+    mut decoder: Decoder, cli_errors: Bool = False
+) raises -> Tuple[String, UInt8]:
     var prefix: String
     for _ in range(32):
         var tag = decoder.uint()
@@ -201,17 +220,17 @@ def decode_error(mut decoder: Decoder) raises -> String:
         if tag == 0:
             var client = decoder.uint()
             var server = decoder.uint()
-            return (
+            return ((
                 "server protocol mismatch: client "
                 + String(client)
                 + ", server "
                 + String(server)
-            )
+            ), UInt8(1))
         if tag == 6 or tag == 7:
             var pane = decoder.uint()
-            return (
+            return ((
                 "pane is not attached: %" if tag == 6 else "pane has exited: %"
-            ) + String(pane)
+            ) + String(pane), UInt8(1))
         if tag == 1:
             prefix = "target not found: "
         elif tag == 2:
@@ -221,7 +240,7 @@ def decode_error(mut decoder: Decoder) raises -> String:
         elif tag == 4 or tag == 15:
             prefix = "unsupported command: "
         elif tag == 5 or tag == 12 or tag == 14 or tag == 16:
-            prefix = "invalid command: "
+            prefix = "" if cli_errors else "invalid command: "
         elif tag == 8:
             prefix = "internal server error: "
         elif tag == 9:
@@ -232,11 +251,13 @@ def decode_error(mut decoder: Decoder) raises -> String:
             prefix = "can't find pane: "
         else:
             raise Error("unknown server error tag")
-        return prefix + decoder.text()
+        return prefix + decoder.text(), UInt8(2 if tag == 14 or tag == 15 or tag == 16 else 1)
     raise Error("server error nesting exceeds limit")
 
 
-def decode_response(var frame: List[UInt8]) raises -> Response:
+def decode_response(
+    var frame: List[UInt8], cli_errors: Bool = False
+) raises -> Response:
     if validate_envelope(Span(frame)) != 0:
         raise Error("command response on terminal lane")
     var decoder = Decoder(frame^)
@@ -253,7 +274,7 @@ def decode_response(var frame: List[UInt8]) raises -> Response:
             raise Error("unknown stdout claim")
         return Response(request, output^, error^, exit_code, UInt8(claim))
     if kind == 1:
-        var error = decode_error(decoder)
+        var error, code = decode_error(decoder, cli_errors)
         var output = decoder.bytes()
-        return Response(request, output^, error^, 1, 0)
+        return Response(request, output^, error^, code, 0)
     raise Error("unknown command response variant")

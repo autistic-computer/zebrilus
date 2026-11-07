@@ -5,6 +5,8 @@ from std.sys import argv
 from std.sys.info import CompilationTarget
 from .bend_gate import BendGate
 from .client_context import ClientContext
+from .client_files import ClientFiles
+from .file_protocol import CLIENT_FILE_REQUEST, decode_file_request, encode_file_response
 from .protocol import (
     MAX_FRAME_BYTES,
     PROTOCOL_VERSION,
@@ -12,6 +14,7 @@ from .protocol import (
     Response,
     client_hello,
     command_request,
+    control_tag,
     decode_response,
     validate_envelope,
 )
@@ -53,6 +56,7 @@ struct Connection(Movable):
     var server_id: UInt64
     var client_id: UInt64
     var gate: BendGate
+    var files: ClientFiles
 
     def __deinit__(deinit self):
         if self.fd >= 0:
@@ -117,23 +121,32 @@ struct Connection(Movable):
         return frame^
 
     def command(
-        mut self, name: String, args: Span[String, _]
+        mut self, name: String, args: Span[String, _], cli_errors: Bool = False,
     ) raises -> Response:
         var request = self.next_request
         if request == UInt64.MAX:
             raise Error("request identifiers exhausted")
         self.next_request += 1
-        var frame = command_request(request, name, args)
+        var frame = command_request(request, name, args, self.files.enabled)
         self.write(Span(frame))
-        for _ in range(4096):
+        var unsolicited = 0
+        while unsolicited < 4096:
             var incoming = self.read_frame()
             if incoming[4] != 0:
                 raise Error("unexpected terminal frame for command client")
-            var decoder = Decoder(incoming.copy())
-            var tag = decoder.uint()
-            if tag != 3:
+            var tag = control_tag(Span(incoming))
+            if UInt64(tag) == CLIENT_FILE_REQUEST:
+                var file_request = decode_file_request(incoming^)
+                if not file_request:
+                    raise Error("invalid client file request")
+                var file_response = self.files.answer(file_request.value())
+                var outgoing = encode_file_response(file_response)
+                self.write(Span(outgoing))
                 continue
-            var response = decode_response(incoming^)
+            if tag != 3:
+                unsolicited += 1
+                continue
+            var response = decode_response(incoming^, cli_errors)
             if response.request != request:
                 raise Error("response request identifier mismatch")
             return response^
@@ -159,10 +172,10 @@ def open_connection(path: String) raises -> Connection:
     var fd = external_call["socket", Int32](Int32(1), Int32(1), Int32(0))
     if fd < 0:
         raise io_error("socket")
-    if external_call["fcntl", Int32](fd, Int32(2), Int32(1)) != 0:
+    if external_call["fcntl", Int32, num_fixed_args=2](fd, Int32(2), Int32(1)) != 0:
         _ = external_call["close", Int32](fd)
         raise io_error("socket descriptor inheritance")
-    var connection = Connection(fd, 1, 0, 0, gate^)
+    var connection = Connection(fd, 1, 0, 0, gate^, ClientFiles())
     comptime if not CompilationTarget.is_linux():
         var enabled: Int32 = 1
         _ = external_call["setsockopt", Int32](

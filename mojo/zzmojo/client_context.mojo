@@ -111,7 +111,7 @@ def working_directory() raises -> Optional[List[UInt8]]:
     _ = buffer
     var name = String("PWD")
     var getenv = library.get_function[_OptionalBytePointer]("getenv")
-    var declared_pointer = getenv(name.unsafe_ptr())
+    var declared_pointer = getenv(name.as_c_string_span().ptr())
     _ = name
     var declared = _copy_c_string(declared_pointer, MAX_CONTEXT_PATH)
     if Bool(declared) and len(declared.value()) > 0:

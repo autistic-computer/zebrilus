@@ -3,9 +3,11 @@ from std.os import getenv
 from std.sys import argv, stderr
 from zzmojo.transport import connect
 from zzmojo.protocol import parse_id
+from zzmojo.client_files import ClientFiles
 
 
 def main() raises:
+    var files = ClientFiles.capture_stdin()
     var args = argv()
     var errors = stderr
     var path = getenv("ZZ_SOCKET", "")
@@ -25,10 +27,11 @@ def main() raises:
         except:
             pass
     var client = connect(path, origin=origin)
+    client.files = files^
     var arguments = List[String]()
     for index in range(offset + 1, len(args)):
         arguments.append(args[index])
-    var response = client.command(args[offset], Span(arguments))
+    var response = client.command(args[offset], Span(arguments), cli_errors=True)
     var written = 0
     while written < len(response.output):
         var count = external_call["write", Int](

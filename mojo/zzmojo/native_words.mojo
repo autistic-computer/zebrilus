@@ -16,7 +16,7 @@ struct WordBuffer(Movable):
         self.chunk = List[UInt8](length=65536, fill=0)
         comptime if CompilationTarget.is_linux():
             var name = String("zz-tree")
-            self.fd = external_call["memfd_create", Int32](name.unsafe_ptr(), UInt32(1))
+            self.fd = external_call["memfd_create", Int32](name.as_c_string_span().ptr(), UInt32(1))
             _ = name
             if self.fd < 0:
                 raise Error("cannot allocate anonymous tree storage")
@@ -31,9 +31,10 @@ struct WordBuffer(Movable):
                 raise Error("cannot allocate private tree storage")
             self.path = String(from_utf8=Span(bytes)[: len(bytes) - 1])
             self.temporary = True
-            if external_call["fcntl", Int32](self.fd, Int32(2), Int32(1)) != 0:
+            if external_call["fcntl", Int32, num_fixed_args=2](self.fd, Int32(2), Int32(1)) != 0:
                 _ = external_call["close", Int32](self.fd)
-                _ = external_call["unlink", Int32](self.path.unsafe_ptr())
+                _ = external_call["unlink", Int32](bytes.unsafe_ptr())
+                _ = bytes
                 self.fd = -1
                 self.temporary = False
                 raise Error("cannot protect tree storage inheritance")
@@ -42,7 +43,9 @@ struct WordBuffer(Movable):
         if self.fd >= 0:
             _ = external_call["close", Int32](self.fd)
         if self.temporary:
-            _ = external_call["unlink", Int32](self.path.unsafe_ptr())
+            var path = self.path^
+            _ = external_call["unlink", Int32](path.as_c_string_span().ptr())
+            _ = path
 
     def rewind(self) raises:
         if external_call["lseek", Int](Int(self.fd), Int(0), Int(0)) != 0:

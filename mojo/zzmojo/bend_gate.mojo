@@ -106,7 +106,7 @@ struct BendGate(Movable):
         ]
         for index in range(4):
             if descriptors[index] < 3:
-                var duplicate = external_call["fcntl", Int32](
+                var duplicate = external_call["fcntl", Int32, num_fixed_args=2](
                     descriptors[index], Int32(0), Int32(3)
                 )
                 if duplicate < 0:
@@ -116,7 +116,7 @@ struct BendGate(Movable):
                 _ = external_call["close", Int32](descriptors[index])
                 descriptors[index] = duplicate
             if (
-                external_call["fcntl", Int32](
+                external_call["fcntl", Int32, num_fixed_args=2](
                     descriptors[index], Int32(2), Int32(1)
                 )
                 != 0
@@ -128,7 +128,10 @@ struct BendGate(Movable):
         var input_write = descriptors[1]
         var output_read = descriptors[2]
         var output_write = descriptors[3]
+        var executable = path.copy()
+        var executable_ptr = executable.as_c_string_span().ptr()
         var mode = String("serve")
+        var mode_ptr = mode.as_c_string_span().ptr()
         var process = external_call["fork", Int32]()
         if process == 0:
             _ = external_call["close", Int32](input_write)
@@ -139,15 +142,17 @@ struct BendGate(Movable):
                 external_call["_exit", NoneType](Int32(126))
             _ = external_call["close", Int32](input_read)
             _ = external_call["close", Int32](output_write)
-            _ = external_call["execl", Int32](
-                path.unsafe_ptr(),
-                path.unsafe_ptr(),
-                mode.unsafe_ptr(),
+            _ = external_call["execl", Int32, num_fixed_args=1](
+                executable_ptr,
+                executable_ptr,
+                mode_ptr,
                 Optional[Pointer[UInt8, ImmUntrackedOrigin]](None),
             )
             external_call["_exit", NoneType](Int32(127))
             _ = mode
-            _ = path
+            _ = executable
+        _ = mode
+        _ = executable
         _ = external_call["close", Int32](input_read)
         _ = external_call["close", Int32](output_write)
         if process < 0:
