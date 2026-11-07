@@ -1,5 +1,13 @@
 from mjui.ui import Ui, Style
-from mjui.input import TextInput, TEXT_INSERT, MouseEvent
+from mjui.input import (
+    TextInput,
+    TEXT_INSERT,
+    MouseEvent,
+    MOUSE_DOWN,
+    MOUSE_RIGHT_DOWN,
+    MOUSE_UP,
+    MOUSE_RIGHT_UP,
+)
 from mjui.scroll import ScrollEvent
 from mjui.widgets.penna import (
     PennaTheme,
@@ -24,10 +32,13 @@ from .terminal_painter import render_viewport
 from .workspace_layout import window_rects, PaneRect
 from .geometry import GridSize, grid_dimension
 from mjui.term.grid import cell_metrics
+from mjui.term.rows import TermView
 from .input_protocol import KeyInput, input_key, mjui_key_input
 from .terminal_projection import grid_placement
 from .pointer_controller import PointerController, PointerSurface, RoutedPointer
 from .terminal_view import PointerGrid
+from .command_output import CommandOutputPresentation
+from .command_output_chrome import render_mode_indicator
 
 comptime TERMINAL_KEY: UInt64 = 0x7000000000000000
 
@@ -45,6 +56,11 @@ struct WorkspaceView(Movable):
     var visible_panes: List[UInt64]
     var next_autoscroll: Float64
     var pointer_focus_pane: Optional[UInt64]
+    var pointer_focus_output: Bool
+    var output: CommandOutputPresentation
+    var output_input: Bool
+    var output_seen: Optional[UInt64]
+    var marked: Optional[String]
     var keys: Dict[String, UInt64]
     var next_key: UInt64
     var reported: Dict[UInt64, GridSize]
@@ -66,6 +82,11 @@ struct WorkspaceView(Movable):
         self.visible_panes = List[UInt64]()
         self.next_autoscroll = 0
         self.pointer_focus_pane = None
+        self.pointer_focus_output = False
+        self.output = CommandOutputPresentation()
+        self.output_input = False
+        self.output_seen = None
+        self.marked = None
         self.keys = Dict[String, UInt64]()
         self.next_key = 100
         self.reported = Dict[UInt64, GridSize]()
@@ -97,9 +118,10 @@ struct WorkspaceView(Movable):
                 portable = 0x103
             else:
                 raise Error("unknown workspace key")
-            if self.model.pane:
+            var pane = self.input_pane()
+            if pane:
                 self.forward_key(
-                    self.model.pane.value(),
+                    pane.value(),
                     mjui_key_input(portable, 0, 0, 0, 0),
                 )
             self.next_poll = 0
@@ -117,14 +139,83 @@ struct WorkspaceView(Movable):
             pane,
             input_key(pane, key),
             epoch.value() if epoch else self.focus_epoch,
-            release,
+            release or (self.output_input and self.output.owns(pane)),
         )
         self.next_poll = 0
+
+    def input_pane(self) -> Optional[UInt64]:
+        return self.output.pane if self.output_input else self.model.pane
+
+    def input_key(mut self) raises -> UInt64:
+        if self.output_input and self.output.id:
+            return self.widget_key(6, self.output.id.value())
+        if self.model.pane:
+            return self.widget_key(4, self.model.pane.value())
+        return TERMINAL_KEY
+
+    def observe_output(mut self, mut ui: Ui) raises:
+        var changed = (
+            self.output.id != self.model.command_output.id
+            or self.output.pane != self.model.command_output.pane
+            or self.output.server != self.model.source_server
+            or self.output.client != self.model.source_client
+        )
+        if not changed:
+            return
+        var focused = self.output_input
+        if focused or self.pointer_focus_output:
+            self.blur_pointer()
+        if self.output.id:
+            var name = String(6, ":", self.output.id.value())
+            if name in self.keys:
+                var key = self.keys.pop(name)
+                var index = ui.term.find(key)
+                if index >= 0:
+                    _ = ui.term.keys.pop(key)
+                    ui.term.views[index] = TermView(key)
+                    ui.term.views[index].gen = ui.gen - 301
+            var mode_name = String(7, ":", self.output.id.value())
+            if mode_name in self.keys:
+                _ = self.keys.pop(mode_name)
+        var transition = self.output.observe(
+            self.model.command_output,
+            self.model.source_server,
+            self.model.source_client,
+        )
+        self.output_seen = None
+        if focused:
+            self.marked = None
+        if transition.kind == 2 and focused:
+            ui.focus = TERMINAL_KEY
+            self.focus_epoch += 1
+
+    def focus_output(mut self, mut ui: Ui) raises:
+        if not self.output.id or not self.output.pane:
+            return
+        if not self.output_input:
+            self.blur_pointer()
+            self.marked = None
+            self.focus_epoch += 1
+        self.output_input = True
+        var focused = self.output.focus(self.active)
+        if focused:
+            self.backend.input(
+                self.output.pane.value(),
+                focused.value(),
+                self.focus_epoch,
+                True,
+            )
+        ui.focus = TERMINAL_KEY
+        self.pointer_focus_pane = self.output.pane
+        self.pointer_focus_output = True
 
     def pointer_surfaces(self, ui: Ui) raises -> List[PointerSurface]:
         var surfaces = List[PointerSurface](capacity=len(self.visible_panes))
         for pane in self.visible_panes:
-            var name = String(4, ":", pane)
+            var output = self.output.owns(pane)
+            var name = String(
+                6, ":", self.output.id.value()
+            ) if output else String(4, ":", pane)
             if name not in self.keys:
                 continue
             var key = self.keys[name]
@@ -148,21 +239,56 @@ struct WorkspaceView(Movable):
                         grid.cols,
                         grid.rows,
                     ),
+                    output,
                 )
             )
         return surfaces^
 
-    def blur_pointer(mut self) raises:
+    def blur_pointer(mut self, preserve_output: Bool = False) raises:
         if self.pointer_focus_pane:
             var clear = self.pointer.blur(
                 self.model,
                 self.pointer_focus_pane.value(),
+                self.pointer_focus_output,
                 epoch=self.focus_epoch,
             )
             if clear:
                 ref event = clear.value()
                 self.backend.input(event.pane, event.frame, event.epoch, True)
+        if self.output.focused:
+            if self.output.id == self.model.command_output.id:
+                var focused = self.output.focus(False)
+                if focused and self.output.pane:
+                    self.backend.input(
+                        self.output.pane.value(),
+                        focused.value(),
+                        self.focus_epoch,
+                        True,
+                    )
+            else:
+                self.output.focused = False
         self.pointer_focus_pane = None
+        self.pointer_focus_output = False
+        if not preserve_output:
+            self.output_input = False
+
+    def set_active(mut self, active: Bool) raises:
+        if not active:
+            self.blur_pointer(True)
+            self.active = False
+            return
+        self.active = True
+        if self.output_input and self.output.pane:
+            var focused = self.output.focus(True)
+            if focused:
+                self.backend.input(
+                    self.output.pane.value(),
+                    focused.value(),
+                    self.focus_epoch,
+                    True,
+                )
+            self.pointer_focus_pane = self.output.pane
+            self.pointer_focus_output = True
 
     def forward_pointer(mut self, mut ui: Ui, event: RoutedPointer) raises:
         if event.activate:
@@ -172,12 +298,34 @@ struct WorkspaceView(Movable):
                 self.focus_epoch += 1
             ui.focus = TERMINAL_KEY
             self.pointer_focus_pane = event.pane
+            self.pointer_focus_output = False
         self.backend.input(event.pane, event.frame, event.epoch, event.passive)
         self.next_poll = 0
         ui.request_wake(ui.time)
 
     def mouse(mut self, mut ui: Ui, event: MouseEvent) raises:
+        if self.output.id and (
+            event.kind == MOUSE_DOWN
+            or event.kind == MOUSE_RIGHT_DOWN
+            or event.kind == MOUSE_UP
+            or event.kind == MOUSE_RIGHT_UP
+        ):
+            var mode_name = String(7, ":", self.output.id.value())
+            if (
+                mode_name in self.keys
+                and ui.hit_test(event.x, event.y) == self.keys[mode_name]
+            ):
+                return
         var surfaces = self.pointer_surfaces(ui)
+        if event.kind == MOUSE_DOWN or event.kind == MOUSE_RIGHT_DOWN:
+            for index in range(len(surfaces) - 1, -1, -1):
+                var surface = surfaces[index]
+                if surface.grid.contains(event.x, event.y):
+                    if surface.command_output:
+                        self.focus_output(ui)
+                    elif self.output_input:
+                        self.blur_pointer()
+                    break
         var routed = self.pointer.route(
             self.model, Span(surfaces), event, self.focus_epoch
         )
@@ -284,20 +432,33 @@ struct WorkspaceView(Movable):
             var bounds = item.bounds
             if bounds.width <= 0 or bounds.height <= 0:
                 continue
-            var key = self.widget_key(4, item.pane)
+            var output = self.output.owns(item.pane)
+            var key = self.widget_key(
+                6, self.output.id.value()
+            ) if output else self.widget_key(4, item.pane)
             var interaction = ui.interact(key, focusable=True)
             if interaction.pressed:
-                if self.model.pane != Optional[UInt64](item.pane):
+                if output:
+                    self.focus_output(ui)
+                elif self.output_input or self.model.pane != Optional[UInt64](
+                    item.pane
+                ):
                     self.blur_pointer()
                     self.model.select_pane(item.pane)
                     self.focus_epoch += 1
                 self.next_poll = 0
                 ui.focus = TERMINAL_KEY
-            var selected = (
-                self.model.pane and self.model.pane.value() == item.pane
-            )
+            var selected = self.input_pane() == Optional[UInt64](item.pane)
             var background = flat.bg
-            if item.pane in self.model.terminals:
+            if output:
+                background = (
+                    (
+                        self.model.command_output.viewport.value().metadata.background
+                        & 0xFFFFFF
+                    )
+                    << 8
+                ) | 255
+            elif item.pane in self.model.terminals:
                 background = (
                     (
                         self.model.terminals[item.pane].metadata.background
@@ -324,7 +485,8 @@ struct WorkspaceView(Movable):
                 bounds.height - pad_y * 2, metrics.height(), ui.scale
             )
             if (
-                item.pane in self.model.terminals
+                not output
+                and item.pane in self.model.terminals
                 and grid_placement(
                     self.model.terminals[item.pane]
                 ).bottom_anchored
@@ -336,7 +498,47 @@ struct WorkspaceView(Movable):
                     Float32(0),
                 )
             ui.open(pane_style)
-            if item.pane in self.model.terminals:
+            if output:
+                if self.output_seen != self.output.id:
+                    self.focus_output(ui)
+                    self.output_seen = self.output.id
+                _ = self.output.render(
+                    ui,
+                    key,
+                    self.model.command_output,
+                    flat.mono,
+                    13,
+                    self.output.focused
+                    and ui.focus == TERMINAL_KEY
+                    and self.active,
+                    Int(columns),
+                    Int(rows),
+                    self.marked if self.output_input else Optional[String](
+                        None
+                    ),
+                )
+                self.visible_panes.append(item.pane)
+                var resized = self.output.resize(
+                    GridSize(
+                        columns, rows, UInt32(metrics.w), UInt32(metrics.h), 0
+                    ),
+                    Bool(self.model.session),
+                    bounds.width - pad_x * 2 >= metrics.width()
+                    and bounds.height - pad_y * 2 >= metrics.height(),
+                )
+                if resized:
+                    self.backend.input(
+                        item.pane, resized.value(), self.focus_epoch, True
+                    )
+                _ = render_mode_indicator(
+                    ui,
+                    self.theme,
+                    self.model.command_output.viewport.value().metadata.mode,
+                    self.model.command_output.viewport.value().metadata.unseen_output,
+                    self.widget_key(7, self.output.id.value()),
+                    bounds.width,
+                )
+            elif item.pane in self.model.terminals:
                 ref viewport = self.model.terminals[item.pane]
                 _ = render_viewport(
                     ui,
@@ -347,6 +549,7 @@ struct WorkspaceView(Movable):
                     selected and ui.focus == TERMINAL_KEY and self.active,
                     Int(columns),
                     Int(rows),
+                    marked=self.marked if selected else Optional[String](None),
                 )
                 self.visible_panes.append(item.pane)
                 if not item.floating:
@@ -367,9 +570,12 @@ struct WorkspaceView(Movable):
 
     def build(mut self, mut ui: Ui, input: TextInput) raises:
         self.poll(ui.time)
-        if (
-            ui.focus != TERMINAL_KEY
-            or self.pointer_focus_pane != self.model.pane
+        self.marked = String(from_utf8=Span(input.marked)) if len(
+            input.marked
+        ) > 0 else Optional[String](None)
+        self.observe_output(ui)
+        if ui.focus != TERMINAL_KEY or (
+            self.active and self.pointer_focus_pane != self.input_pane()
         ):
             self.blur_pointer()
         if self.pointer.selection_lines != 0:
@@ -393,9 +599,19 @@ struct WorkspaceView(Movable):
                         ]
                     )
                     try:
-                        self.backend.enqueue(
-                            TEXT, self.model.pane, text, self.focus_epoch
-                        )
+                        if self.output_input:
+                            var frame = self.output.text_event(input, event)
+                            if frame and self.output.pane:
+                                self.backend.input(
+                                    self.output.pane.value(),
+                                    frame.value(),
+                                    self.focus_epoch,
+                                    True,
+                                )
+                        else:
+                            self.backend.enqueue(
+                                TEXT, self.model.pane, text, self.focus_epoch
+                            )
                         self.next_poll = 0
                     except error:
                         self.model.error = String(error)
@@ -537,12 +753,14 @@ struct WorkspaceView(Movable):
             label(ui, self.theme, status, flat.dim)
         ui.close()
         ui.close()
-        if (
-            ui.focus != TERMINAL_KEY
-            or self.pointer_focus_pane != self.model.pane
+        if ui.focus != TERMINAL_KEY or (
+            self.active and self.pointer_focus_pane != self.input_pane()
         ):
             self.blur_pointer()
         self.pointer_focus_pane = (
-            self.model.pane if ui.focus == TERMINAL_KEY
+            self.input_pane() if ui.focus == TERMINAL_KEY
             and self.active else Optional[UInt64](None)
+        )
+        self.pointer_focus_output = self.output_input and Bool(
+            self.pointer_focus_pane
         )

@@ -351,7 +351,9 @@ def encode_input_frame(frame: InputFrame) raises -> List[UInt8]:
     append_uint(output, UInt64(frame.kind))
     if frame.kind != 6 and frame.kind != 7:
         append_uint(output, frame.pane)
-    if frame.kind == 1 or frame.kind == 3:
+    if frame.kind == 0:
+        append_text(output, frame.text)
+    elif frame.kind == 1 or frame.kind == 3:
         if not frame.key:
             raise Error("key frame has no key input")
         _append_key(output, frame.key.value())
@@ -412,7 +414,9 @@ def decode_input_frame(var bytes: List[UInt8]) raises -> InputFrame:
     frame.kind = read_enum(reader, 23)
     if frame.kind != 6 and frame.kind != 7:
         frame.pane = reader.uint()
-    if frame.kind == 1 or frame.kind == 3:
+    if frame.kind == 0:
+        frame.text = reader.text()
+    elif frame.kind == 1 or frame.kind == 3:
         frame.key = _read_key(reader)
         frame.text_follows = read_bool(reader)
     elif frame.kind == 6:
@@ -539,11 +543,17 @@ def resize_command_output(
     return encode_input_frame(frame)
 
 
-def input_focus(pane: UInt64, focused: Bool, command_output: Bool = False) raises -> List[UInt8]:
-    return input_view(pane, 23, UInt32(1 if focused else 0), command_output=command_output)
+def input_focus(
+    pane: UInt64, focused: Bool, command_output: Bool = False
+) raises -> List[UInt8]:
+    return input_view(
+        pane, 23, UInt32(1 if focused else 0), command_output=command_output
+    )
 
 
-def input_paste(pane: UInt64, text: String, command_output: Bool = False) raises -> List[UInt8]:
+def input_paste(
+    pane: UInt64, text: String, command_output: Bool = False
+) raises -> List[UInt8]:
     var frame = InputFrame()
     frame.kind = UInt8(7 if command_output else 5)
     frame.pane = pane
@@ -552,7 +562,12 @@ def input_paste(pane: UInt64, text: String, command_output: Bool = False) raises
     return encode_input_frame(frame)
 
 
-def input_copy_selection(pane: UInt64, request_id: UInt64, target: UInt8 = 0, command_output: Bool = False) raises -> List[UInt8]:
+def input_copy_selection(
+    pane: UInt64,
+    request_id: UInt64,
+    target: UInt8 = 0,
+    command_output: Bool = False,
+) raises -> List[UInt8]:
     var frame = InputFrame()
     frame.kind = UInt8(7 if command_output else 5)
     frame.pane = pane

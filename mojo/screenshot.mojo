@@ -41,6 +41,41 @@ def main() raises:
     driver.frame()
     driver.frame()
     if len(args) == 4:
+        for attempt in range(100):
+            driver.scene.view.flush()
+            if (
+                driver.scene.view.model.session
+                and driver.scene.view.model.pane
+                and driver.scene.view.model.pane.value()
+                in driver.scene.view.model.terminals
+                and driver.scene.view.backend.job[].connection
+            ):
+                if (
+                    driver.scene.view.backend.job[]
+                    .connection.value()
+                    .model.view.session
+                    == driver.scene.view.model.session
+                ):
+                    break
+            _ = external_call["usleep", Int32](UInt32(10000))
+            driver.scene.view.poll(Float64(attempt + 1))
+            driver.scene.view.wait()
+            driver.frame()
+        driver.scene.view.flush()
+        assert_true(Bool(driver.scene.view.model.session))
+        assert_true(Bool(driver.scene.view.model.pane))
+        assert_true(
+            driver.scene.view.model.pane.value()
+            in driver.scene.view.model.terminals
+        )
+        assert_true(Bool(driver.scene.view.backend.job[].connection))
+        assert_equal(
+            driver.scene.view.backend.job[]
+            .connection.value()
+            .model.view.session,
+            driver.scene.view.model.session,
+        )
+        assert_equal(driver.scene.view.model.error, String())
         var before = len(driver.scene.view.model.panes)
         driver.click(2)
         driver.scene.view.flush()

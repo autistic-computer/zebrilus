@@ -47,11 +47,9 @@ struct Workspace(App, Movable):
             comptime if CompilationTarget.is_linux():
                 self.source[].cancel()
             self.view.build(ui, input)
-            var text_key = TERMINAL_KEY
-            if self.view.model.pane:
-                text_key = self.view.widget_key(4, self.view.model.pane.value())
+            var text_key = self.view.input_key()
             win.set_text_input(
-                ui.focus == TERMINAL_KEY and Bool(self.view.model.pane),
+                ui.focus == TERMINAL_KEY and Bool(self.view.input_pane()),
                 text_key,
             )
             comptime if CompilationTarget.is_linux():
@@ -71,14 +69,16 @@ struct Workspace(App, Movable):
         if event.kind == APP_INACTIVE:
             self.keyboard.reset()
             try:
-                self.view.blur_pointer()
+                self.view.set_active(False)
             except error:
                 self.view.model.error = String(error)
             self.view.pointer.reset()
-            self.view.active = False
             return True
         if event.kind == APP_ACTIVE:
-            self.view.active = True
+            try:
+                self.view.set_active(True)
+            except error:
+                self.view.model.error = String(error)
             return True
         return default_event(runner, event)
 
@@ -98,10 +98,11 @@ struct Workspace(App, Movable):
         try:
             var routed = self.keyboard.route(
                 self.view.model,
-                ui.focus == TERMINAL_KEY,
+                ui.focus == TERMINAL_KEY and self.view.active,
                 key,
                 Span(win.text.bytes),
                 self.view.focus_epoch,
+                self.view.input_pane(),
             )
             if routed:
                 ref event = routed.value()

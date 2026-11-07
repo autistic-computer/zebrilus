@@ -79,6 +79,7 @@ struct KeyboardController(Movable):
         key: KeyEvent,
         bytes: Span[UInt8, _],
         epoch: UInt64 = 0,
+        target: Optional[UInt64] = None,
     ) raises -> Optional[RoutedKey]:
         self.claimed = False
         if (
@@ -104,7 +105,7 @@ struct KeyboardController(Movable):
             return RoutedKey(owner.pane, owner.epoch, input^, True)
         if not focused or key.consumed:
             return None
-        var pane = model.pane.value()
+        var pane = target.value() if target else model.pane.value()
         var captured_epoch = epoch
         if key.repeat and key.key in self.forwarded:
             var owner = self.forwarded[key.key]
@@ -123,7 +124,8 @@ struct KeyboardController(Movable):
             key.key, key.ch, key.unshifted, key.mods, key.action(), text
         )
         var kitty = _kitty(model, pane)
-        var prefix = model.routing.claims_prefix_input(input)
+        var output = Bool(model.command_output.viewport)
+        var prefix = not output and model.routing.claims_prefix_input(input)
         if not should_send_key(input, kitty, prefix):
             return None
         if prefix and key.repeat and model.routing.armed:

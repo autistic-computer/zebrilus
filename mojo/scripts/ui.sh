@@ -20,6 +20,11 @@ case "$action" in
     mv "$zz_dir/target/port/zz-mojo-app.next" "$zz_dir/target/port/zz-mojo-app"
     python3 "$port_dir/scripts/resources.py" "$zz_dir/target/port/zz-mojo-app"
     ;;
+  build-output-smoke)
+    pixi run bash -c 'mojo build --fp-mode=contract=off -I src -I "$1" $MJ_LINK -o "$2.next" "$1/command_output_smoke.mojo"' _ "$port_dir" "$zz_dir/target/port/command-output-smoke"
+    mv "$zz_dir/target/port/command-output-smoke.next" "$zz_dir/target/port/command-output-smoke"
+    python3 "$port_dir/scripts/resources.py" "$zz_dir/target/port/command-output-smoke"
+    ;;
   run)
     python3 "$zz_dir/scripts/port/guard.py" bash "$port_dir/scripts/ui.sh" build-app
     cd "$launch_dir"
@@ -38,9 +43,10 @@ case "$action" in
     fi
     exec "$zz_dir/target/port/zz-mojo-shot" "$@"
     ;;
-  test-painter|test-readiness)
+  test-painter|test-readiness|test-command-output)
     probe=terminal_painter
     if [ "$action" = test-readiness ]; then probe=readiness; fi
+    if [ "$action" = test-command-output ]; then probe=command_output; fi
     pixi run bash -c 'mojo build --fp-mode=contract=off -I src -I "$1" $MJ_LINK -o "$2" "$1/tests/test_$3.mojo"' _ "$port_dir" "$zz_dir/target/port/$probe-probe" "$probe"
     exec "$zz_dir/target/port/$probe-probe"
     ;;

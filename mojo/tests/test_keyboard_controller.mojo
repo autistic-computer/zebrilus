@@ -68,6 +68,7 @@ def test_raw_text_subtraction_preserves_utf8_and_composition() raises:
     var controller = KeyboardController()
     var input = TextInput()
     input.insert("preé🦀post")
+    input.events[0].cmd = 1
     input.events.append(TextEvent(TEXT_COMMAND, 37, MOD_CTRL, 0, 0))
     input.marked = List[UInt8](String("未完").as_bytes())
     input.marked_sel_a = 0
@@ -89,6 +90,8 @@ def test_raw_text_subtraction_preserves_utf8_and_composition() raises:
     assert_equal(input.events[0].end, Int32(3))
     assert_equal(input.events[1].start, Int32(9))
     assert_equal(input.events[1].end, Int32(13))
+    assert_equal(input.events[0].cmd, UInt8(1))
+    assert_equal(input.events[1].cmd, UInt8(1))
     assert_equal(input.events[2].kind, TEXT_COMMAND)
     assert_equal(input.events[2].cmd, UInt8(37))
     assert_equal(input.events[2].mods, MOD_CTRL)
@@ -350,6 +353,7 @@ def test_detach_deactivation_removed_panes_and_output_surface() raises:
     value.terminals[0] = normal^
     var output = TerminalViewport()
     value.command_output.apply(0, 7, Optional[TerminalViewport](output^))
+    value.routing.table = String("copy-mode")
     var input = TextInput()
     input.insert("a")
     assert_true(
@@ -364,6 +368,49 @@ def test_detach_deactivation_removed_panes_and_output_surface() raises:
     assert_true(Bool(routed))
     controller.filter_text(input)
     assert_equal(len(input.events), 0)
+
+
+def test_local_output_focus_keeps_daemon_selection_and_release_owner() raises:
+    var value = model()
+    value.pane = Optional[UInt64](1)
+    var output = TerminalViewport()
+    value.command_output.apply(0, 7, Optional[TerminalViewport](output^))
+    value.routing.table = String("copy-mode")
+    var controller = KeyboardController()
+    var input = TextInput()
+    input.insert("q")
+    assert_true(
+        not controller.route(
+            value,
+            True,
+            key(Key.Q, 113, 113, 0, 0, 1),
+            Span(input.bytes),
+            7,
+            UInt64(1),
+        )
+    )
+    assert_true(
+        not controller.route(
+            value,
+            True,
+            key(Key.Q, 113, 113, 0, 0, 1),
+            Span(input.bytes),
+            7,
+            UInt64(0),
+        )
+    )
+    var empty = List[UInt8]()
+    var press = controller.route(
+        value, True, key(Key.LEFT), Span(empty), 11, UInt64(0)
+    )
+    assert_true(Bool(press))
+    assert_equal(press.value().pane, UInt64(0))
+    assert_equal(value.pane.value(), UInt64(1))
+    var release = controller.route(
+        value, False, key(Key.LEFT, release=True), Span(empty), 13, UInt64(1)
+    )
+    assert_equal(release.value().pane, UInt64(0))
+    assert_equal(release.value().epoch, UInt64(11))
 
 
 def main() raises:
