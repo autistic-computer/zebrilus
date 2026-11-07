@@ -1,7 +1,7 @@
 use std::{error::Error, io};
 
 use ala::{Keystroke, SharedString};
-use penna::blocks::palette::PaletteShortcut;
+use penna::{blocks::palette::PaletteShortcut, components::kbd::Kbd};
 use serde_json::json;
 use zz_ui::command::{tmux_keystroke, tmux_shortcut};
 
@@ -36,13 +36,25 @@ fn main() -> Result<(), Box<dyn Error>> {
     let cases: Vec<String> = serde_json::from_reader(io::stdin().lock())?;
     let mut bytes = Vec::new();
     let mut ends = Vec::new();
+    let mut labels = Vec::new();
     for case in cases {
         let value = tmux_keystroke(&case);
+        let label = value.as_ref().map(|value| Kbd::format_key(value, true));
         uint(&mut bytes, u64::from(value.is_some()));
         if let Some(value) = value {
             key(&mut bytes, value);
         }
-        match tmux_shortcut(&SharedString::from(case)) {
+        let shortcut = tmux_shortcut(&SharedString::from(case));
+        let sequence = match &shortcut {
+            PaletteShortcut::Keys(keys) => Some(
+                keys.iter()
+                    .map(|key| Kbd::format_key(key, true))
+                    .collect::<Vec<_>>(),
+            ),
+            PaletteShortcut::Text(_) => None,
+        };
+        labels.push(json!({"key":label,"keys":sequence}));
+        match shortcut {
             PaletteShortcut::Keys(keys) => {
                 uint(&mut bytes, 0);
                 text(&mut bytes, "");
@@ -61,7 +73,9 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
     println!(
         "{}",
-        serde_json::to_string(&json!({"bytes":bytes,"ends":ends}))?
+        serde_json::to_string(
+            &json!({"bytes":bytes,"ends":ends,"format":labels,"apple":cfg!(any(target_os="macos",target_os="ios"))})
+        )?
     );
     Ok(())
 }

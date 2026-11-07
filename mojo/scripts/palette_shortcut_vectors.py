@@ -35,6 +35,7 @@ def main():
     subprocess.run(["cargo", "build", "--offline", "-j", "1", "-p", "zz-ui", "--example", "palette_shortcut_vectors"], cwd=ROOT, check=True)
     cases = cases_for()
     reference = json.loads(subprocess.check_output([str(ORACLE)], input=json.dumps(cases).encode()))
+    (TARGET / "palette-shortcuts-source.json").write_text(json.dumps({"apple": reference["apple"], "cases": cases, "format": reference["format"]}, ensure_ascii=True) + "\n")
     binary = TARGET / "palette-shortcuts-probe"
     subprocess.run(["pixi", "run", "--manifest-path", str(PORT / "pixi.toml"), "mojo", "build", "--fp-mode=contract=off", "-I", str(PORT), str(PORT / "tests/palette_shortcuts_probe.mojo"), "-o", str(binary)], cwd=ROOT, check=True)
     with tempfile.TemporaryDirectory(prefix="zz-palette-shortcuts-", dir="/tmp") as directory:
