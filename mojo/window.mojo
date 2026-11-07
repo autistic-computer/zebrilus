@@ -11,6 +11,8 @@ from mjui.resources import resource_path
 from zzmojo.view import WorkspaceView, TERMINAL_KEY
 from zzmojo.readiness import Readiness, stream_ready
 from zzmojo.keyboard_controller import KeyboardController
+from zzmojo.clipboard_controller import ClipboardController
+from zzmojo.input_timeline import InputTimeline
 
 
 struct Workspace(App, Movable):
@@ -18,6 +20,8 @@ struct Workspace(App, Movable):
     var source: OwnedPointer[Readiness]
     var keyboard: KeyboardController
     var pointer_mods: UInt32
+    var clipboard: ClipboardController
+    var timeline: InputTimeline
 
     def __init__(out self, path: String) raises:
         self.view = WorkspaceView(path)
@@ -25,6 +29,8 @@ struct Workspace(App, Movable):
         self.view.event_driven = CompilationTarget.is_linux()
         self.keyboard = KeyboardController()
         self.pointer_mods = 0
+        self.clipboard = ClipboardController()
+        self.timeline = InputTimeline()
 
     def wake(mut self, mut runner: Runner) -> Bool:
         if not self.source[].ready:
@@ -42,11 +48,16 @@ struct Workspace(App, Movable):
 
     def build(mut self, mut ui: Ui, mut win: Window):
         var input = win.take_text()
-        self.keyboard.filter_text(input)
         try:
             comptime if CompilationTarget.is_linux():
                 self.source[].cancel()
+            if self.timeline.process(
+                self.view, ui, win, self.keyboard, self.clipboard, input
+            ):
+                win.text.unmark()
             self.view.build(ui, input)
+            self.clipboard.deliver(self.view, ui, win)
+            self.clipboard.tick(self.view, ui)
             var text_key = self.view.input_key()
             win.set_text_input(
                 ui.focus == TERMINAL_KEY and Bool(self.view.input_pane()),
@@ -96,6 +107,18 @@ struct Workspace(App, Movable):
 
     def on_key(mut self, mut ui: Ui, mut win: Window, key: KeyEvent) -> Bool:
         try:
+            var clipboard = self.clipboard.plan(
+                self.view,
+                ui,
+                self.keyboard,
+                key,
+                Span(win.text.bytes),
+                composed=len(win.text.marked) > 0,
+            )
+            if clipboard:
+                self.timeline.clipboard(clipboard.value(), key)
+                ui.request_wake(ui.time)
+                return True
             var routed = self.keyboard.route(
                 self.view.model,
                 ui.focus == TERMINAL_KEY and self.view.active,
@@ -106,9 +129,7 @@ struct Workspace(App, Movable):
             )
             if routed:
                 ref event = routed.value()
-                self.view.forward_key(
-                    event.pane, event.input, event.epoch, event.release
-                )
+                self.timeline.key(self.view, event, key)
                 ui.request_wake(ui.time)
             if self.keyboard.claimed:
                 return True

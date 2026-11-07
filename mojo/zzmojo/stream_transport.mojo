@@ -46,6 +46,12 @@ from .client_events import (
     ClientMessage,
     decode_client_event,
 )
+from .clipboard_protocol import (
+    ClipboardState,
+    decode_clipboard_event,
+    CLIPBOARD_WRITE,
+    CLIPBOARD_QUERY,
+)
 
 comptime TERMINAL_CACHE_BYTES = 128 * 1024 * 1024
 comptime UNHANDLED_BYTES = 4 * 1024 * 1024
@@ -105,6 +111,7 @@ struct StreamModel(Copyable, Movable):
     var appearance: Optional[TerminalAppearance]
     var appearance_provenance: Dict[UInt8, UInt8]
     var appearance_revision: UInt64
+    var clipboard: ClipboardState
 
     def __init__(out self):
         self.tree = MuxSnapshot()
@@ -116,6 +123,7 @@ struct StreamModel(Copyable, Movable):
         self.history_invalidations = Dict[UInt64, UInt64]()
         self.history_updates = 0
         self.events = ClientEventState()
+        self.clipboard = ClipboardState()
         self.notice = None
         self.notice_revision = 0
         self.message = None
@@ -533,6 +541,18 @@ struct InteractiveConnection(Movable):
                 self.full_pending.clear()
             self.model.view = view^
             self.tree_dirty = True
+        elif event.event_kind and (
+            event.event_kind.value() == UInt64(CLIPBOARD_WRITE)
+            or event.event_kind.value() == UInt64(CLIPBOARD_QUERY)
+        ):
+            var raw = List[UInt8]()
+            swap(raw, event.raw)
+            var clipboard = decode_clipboard_event(raw^)
+            if not clipboard:
+                raise Error("clipboard event has no decoded payload")
+            self.model.clipboard.apply(
+                clipboard.value(), self.server_id, self.client_id
+            )
         else:
             var routing = decode_routing_event(event.raw.copy())
             if routing:

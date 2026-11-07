@@ -1,12 +1,14 @@
 from mjui.ui import Ui, Style
 from mjui.input import (
     TextInput,
+    TextEvent,
     TEXT_INSERT,
     MouseEvent,
     MOUSE_DOWN,
     MOUSE_RIGHT_DOWN,
     MOUSE_UP,
     MOUSE_RIGHT_UP,
+    INSERT_COMPOSED,
 )
 from mjui.scroll import ScrollEvent
 from mjui.widgets.penna import (
@@ -21,7 +23,6 @@ from mjui.widgets.penna import (
 from .backend import (
     AsyncBackend,
     KEY,
-    TEXT,
     CREATE_SESSION,
     SPLIT_RIGHT,
     SPLIT_DOWN,
@@ -144,15 +145,46 @@ struct WorkspaceView(Movable):
         key: KeyInput,
         epoch: Optional[UInt64] = None,
         release: Bool = False,
+        command_output: Optional[Bool] = None,
+        source: Optional[Tuple[UInt64, UInt64]] = None,
     ) raises:
-        if not release and not self.output_input:
+        var output = command_output.value() if command_output else (
+            self.output_input and self.output.owns(pane)
+        )
+        if not release and not output:
             _ = self.cancel_local_scroll(pane)
         self.backend.input(
             pane,
             input_key(pane, key),
             epoch.value() if epoch else self.focus_epoch,
-            release or (self.output_input and self.output.owns(pane)),
+            release or output,
+            source,
         )
+        self.next_poll = 0
+
+    def commit_text_event(mut self, input: TextInput, event: TextEvent) raises:
+        if event.kind != TEXT_INSERT or event.end <= event.start:
+            return
+        var text = String(
+            from_utf8=Span(input.bytes)[Int(event.start) : Int(event.end)]
+        )
+        if self.output_input:
+            if self.output.focused and self.output.pane:
+                self.backend.commit(
+                    self.output.pane.value(),
+                    text,
+                    self.focus_epoch,
+                    composed=event.cmd & INSERT_COMPOSED != 0,
+                    command_output=True,
+                )
+        elif self.model.pane:
+            _ = self.cancel_local_scroll(self.model.pane.value())
+            self.backend.commit(
+                self.model.pane.value(),
+                text,
+                self.focus_epoch,
+                composed=event.cmd & INSERT_COMPOSED != 0,
+            )
         self.next_poll = 0
 
     def cancel_local_scroll(mut self, pane: UInt64) raises -> Bool:
@@ -457,7 +489,7 @@ struct WorkspaceView(Movable):
         self.next_poll = min(
             self.next_poll, self.backend.next_history_wake(time)
         )
-        if time >= self.next_poll or len(self.backend.queue) > 0:
+        if time >= self.next_poll or self.backend.pending():
             self.backend.submit(self.model, self.focus_epoch)
             self.next_poll = Float64.MAX if self.event_driven else time + 0.25
 
@@ -465,10 +497,10 @@ struct WorkspaceView(Movable):
         _ = self.backend.collect(self.model, self.focus_epoch, wait=True)
 
     def flush(mut self):
-        while self.backend.busy or len(self.backend.queue) > 0:
+        while self.backend.busy or self.backend.pending():
             if self.backend.busy:
                 self.wait()
-            if len(self.backend.queue) > 0:
+            if self.backend.pending():
                 self.backend.submit(self.model, self.focus_epoch)
 
     def report_geometry(
@@ -685,6 +717,12 @@ struct WorkspaceView(Movable):
 
     def build(mut self, mut ui: Ui, input: TextInput) raises:
         self.poll(ui.time)
+        if (
+            self.local_scroll.server != self.model.source_server
+            or self.local_scroll.client != self.model.source_client
+        ):
+            for index in range(len(ui.term.views)):
+                ui.term.views[index].reset()
         var now = UInt64(max(ui.time, Float64(0)) * 1_000_000_000)
         self.apply_local_scroll(self.local_scroll.observe(self.model, now))
         var scroll_wake = self.local_scroll.next_wake()
@@ -713,30 +751,8 @@ struct WorkspaceView(Movable):
         if ui.focus == TERMINAL_KEY:
             for event in input.events:
                 if event.kind == TEXT_INSERT and event.end > event.start:
-                    var text = String(
-                        from_utf8=Span(input.bytes)[
-                            Int(event.start) : Int(event.end)
-                        ]
-                    )
                     try:
-                        if self.output_input:
-                            var frame = self.output.text_event(input, event)
-                            if frame and self.output.pane:
-                                self.backend.input(
-                                    self.output.pane.value(),
-                                    frame.value(),
-                                    self.focus_epoch,
-                                    True,
-                                )
-                        else:
-                            if self.model.pane:
-                                _ = self.cancel_local_scroll(
-                                    self.model.pane.value()
-                                )
-                            self.backend.enqueue(
-                                TEXT, self.model.pane, text, self.focus_epoch
-                            )
-                        self.next_poll = 0
+                        self.commit_text_event(input, event)
                     except error:
                         self.model.error = String(error)
         var flat = self.theme.flat
@@ -858,7 +874,7 @@ struct WorkspaceView(Movable):
         ui.close()
         self.terminals(ui)
         ui.close()
-        if len(self.backend.queue) > 0:
+        if self.backend.pending():
             ui.request_wake(ui.time)
         ui.close()
         ui.open(

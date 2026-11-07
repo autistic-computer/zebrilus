@@ -25,6 +25,11 @@ case "$action" in
     mv "$zz_dir/target/port/command-output-smoke.next" "$zz_dir/target/port/command-output-smoke"
     python3 "$port_dir/scripts/resources.py" "$zz_dir/target/port/command-output-smoke"
     ;;
+  build-clipboard-smoke)
+    pixi run bash -c 'mojo build --fp-mode=contract=off -I src -I "$1" $MJ_LINK -D MJ_SDL=1 -Xlinker "$2/build/lib/libSDL3.a" -Xlinker -lm -Xlinker -ldl "$1/clipboard_workspace_smoke.mojo" -o "$3.next"' _ "$port_dir" "$mjui_dir" "$zz_dir/target/port/clipboard-workspace-smoke"
+    mv "$zz_dir/target/port/clipboard-workspace-smoke.next" "$zz_dir/target/port/clipboard-workspace-smoke"
+    python3 "$port_dir/scripts/resources.py" "$zz_dir/target/port/clipboard-workspace-smoke"
+    ;;
   build-history-smoke)
     pixi run bash -c 'mojo build --fp-mode=contract=off -I src -I "$1" $MJ_LINK -o "$2.next" "$1/history_workspace_smoke.mojo"' _ "$port_dir" "$zz_dir/target/port/history-workspace-smoke"
     mv "$zz_dir/target/port/history-workspace-smoke.next" "$zz_dir/target/port/history-workspace-smoke"

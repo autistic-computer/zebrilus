@@ -3,15 +3,13 @@ from mjui.ui import Ui
 from mjui.term.grid import CellMetrics
 from .client_events import CommandOutputState
 from .geometry import GridSize
-from .actions import MAX_PENDING_INPUT_BYTES
 from .terminal_painter import render_viewport
 from .input_protocol import (
     resize_command_output,
     input_focus,
-    input_paste,
     input_copy_selection,
 )
-from .stream_protocol import input_text
+from .terminal_commit import pasted_commit, terminal_commit
 
 
 @fieldwise_init
@@ -20,19 +18,6 @@ struct OutputTransition(Copyable, Movable):
     var id: Optional[UInt64]
     var pane: Optional[UInt64]
     var previous_pane: Optional[UInt64]
-
-
-def pasted_commit(text: String, composed: Bool) -> Bool:
-    if composed:
-        return False
-    if "\n" in text or "\r" in text:
-        return True
-    var count = 0
-    for _ in text.codepoint_slices():
-        count += 1
-        if count > 1:
-            return True
-    return False
 
 
 struct CommandOutputPresentation(Movable):
@@ -117,11 +102,7 @@ struct CommandOutputPresentation(Movable):
             or text.byte_length() == 0
         ):
             return None
-        if text.byte_length() > MAX_PENDING_INPUT_BYTES:
-            raise Error("pending terminal input exceeds queue limit")
-        if pasted_commit(text, composed):
-            return input_paste(self.pane.value(), text, True)
-        return input_text(self.pane.value(), text)
+        return terminal_commit(self.pane.value(), text, composed, True)
 
     def text_event(
         self, input: TextInput, event: TextEvent

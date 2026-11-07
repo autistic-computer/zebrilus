@@ -8,6 +8,8 @@ from mjui.input import (
     MOD_CTRL,
     MOD_ALT,
     MOD_SHIFT,
+    CMD_COPY,
+    CMD_PASTE,
 )
 from mjui.keys import Key
 from zzmojo.state import AppModel, Session, Window, Pane
@@ -61,6 +63,43 @@ def inserted(input: TextInput, index: Int) raises -> String:
     return String(
         from_utf8=Span(input.bytes)[Int(event.start) : Int(event.end)]
     )
+
+
+def test_key_owned_clipboard_commands_do_not_repeat_as_menu_actions() raises:
+    var value = model()
+    var controller = KeyboardController()
+    var input = TextInput()
+    input.command(CMD_COPY, MOD_CTRL)
+    input.command(CMD_PASTE)
+    input.command(CMD_COPY, MOD_CTRL)
+    var routed = controller.route(
+        value, True, key(Key.C, 99, 99, MOD_CTRL), Span(input.bytes)
+    )
+    assert_true(Bool(routed))
+    controller.filter_text(input)
+    assert_equal(len(input.events), 2)
+    assert_equal(input.events[0].cmd, CMD_PASTE)
+    assert_equal(input.events[1].cmd, CMD_COPY)
+    var next = TextInput()
+    next.command(CMD_COPY, MOD_CTRL)
+    controller.filter_text(next)
+    assert_equal(len(next.events), 1)
+
+
+def test_command_consumption_uses_native_event_position() raises:
+    var controller = KeyboardController()
+    var input = TextInput()
+    input.command(CMD_PASTE, MOD_CTRL)
+    input.insert("a")
+    input.command(CMD_PASTE, MOD_CTRL)
+    input.insert("é")
+    var physical = key(Key.V, 118, 118, MOD_CTRL, 1, 3)
+    physical.text_event = 2
+    controller.claim_text(physical, Span(input.bytes))
+    controller.filter_text(input)
+    assert_equal(len(input.events), 2)
+    assert_equal(input.events[0].cmd, CMD_PASTE)
+    assert_equal(inserted(input, 1), "a")
 
 
 def test_raw_text_subtraction_preserves_utf8_and_composition() raises:
@@ -379,16 +418,16 @@ def test_local_output_focus_keeps_daemon_selection_and_release_owner() raises:
     var controller = KeyboardController()
     var input = TextInput()
     input.insert("q")
-    assert_true(
-        not controller.route(
-            value,
-            True,
-            key(Key.Q, 113, 113, 0, 0, 1),
-            Span(input.bytes),
-            7,
-            UInt64(1),
-        )
+    var ordinary = controller.route(
+        value,
+        True,
+        key(Key.Q, 113, 113, 0, 0, 1),
+        Span(input.bytes),
+        7,
+        UInt64(1),
     )
+    assert_true(Bool(ordinary))
+    assert_equal(ordinary.value().pane, UInt64(1))
     assert_true(
         not controller.route(
             value,

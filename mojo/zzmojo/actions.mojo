@@ -12,6 +12,7 @@ struct Action(Copyable, Movable):
     var selection_epoch: UInt64
     var geometry: Optional[GridSize]
     var frame: List[UInt8]
+    var source: Optional[Tuple[UInt64, UInt64]]
 
 
 struct ActionQueue(Movable, Sized):
@@ -33,6 +34,7 @@ struct ActionQueue(Movable, Sized):
         selection_epoch: UInt64 = 0,
         geometry: Optional[GridSize] = None,
         frame: List[UInt8] = List[UInt8](),
+        source: Optional[Tuple[UInt64, UInt64]] = None,
     ) raises:
         var size = text.byte_length() + len(frame)
         if geometry:
@@ -61,6 +63,7 @@ struct ActionQueue(Movable, Sized):
                         selection_epoch,
                         geometry,
                         frame.copy(),
+                        source,
                     )
                     self.pending_bytes += size
                     return
@@ -70,7 +73,15 @@ struct ActionQueue(Movable, Sized):
         ):
             raise Error("pending terminal input exceeds queue limit")
         self.items.append(
-            Action(kind, text, pane, selection_epoch, geometry, frame.copy())
+            Action(
+                kind,
+                text,
+                pane,
+                selection_epoch,
+                geometry,
+                frame.copy(),
+                source,
+            )
         )
         self.pending_bytes += size
 

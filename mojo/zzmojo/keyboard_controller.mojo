@@ -1,4 +1,16 @@
-from mjui.input import KeyEvent, TextEvent, TextInput, TEXT_INSERT
+from mjui.input import (
+    KeyEvent,
+    TextEvent,
+    TextInput,
+    TEXT_INSERT,
+    TEXT_COMMAND,
+    CMD_COPY,
+    CMD_PASTE,
+    CMD_SELECT_ALL,
+    MOD_CTRL,
+    MOD_CMD,
+)
+from mjui.keys import Key
 from .state import AppModel
 from .input_protocol import KeyInput, mjui_key_input, should_send_key
 
@@ -52,6 +64,8 @@ struct KeyboardController(Movable):
     var consumed: List[Tuple[Int32, Int32]]
     var source_server: UInt64
     var source_client: UInt64
+    var command_claims: Dict[String, Int]
+    var command_positions: Dict[Int32, String]
 
     def __init__(out self):
         self.claimed = False
@@ -59,6 +73,8 @@ struct KeyboardController(Movable):
         self.consumed = List[Tuple[Int32, Int32]]()
         self.source_server = 0
         self.source_client = 0
+        self.command_claims = Dict[String, Int]()
+        self.command_positions = Dict[Int32, String]()
 
     def reset(mut self):
         self.claimed = False
@@ -71,6 +87,35 @@ struct KeyboardController(Movable):
                 removed.append(entry.key)
         for key in removed:
             _ = self.forwarded.pop(key)
+
+    def claim_text(mut self, key: KeyEvent, bytes: Span[UInt8, _]) raises:
+        self.claimed = True
+        self.claim_command(key)
+        if (
+            key.text_lo >= 0
+            and key.text_hi > key.text_lo
+            and Int(key.text_hi) <= len(bytes)
+        ):
+            _ = String(from_utf8=bytes[Int(key.text_lo) : Int(key.text_hi)])
+            self.consumed.append((key.text_lo, key.text_hi))
+
+    def claim_command(mut self, key: KeyEvent) raises:
+        if key.release or key.mods & (MOD_CTRL | MOD_CMD) == 0:
+            return
+        var command: UInt8 = 0
+        if key.key == Key.C:
+            command = CMD_COPY
+        elif key.key == Key.V:
+            command = CMD_PASTE
+        elif key.key == Key.A:
+            command = CMD_SELECT_ALL
+        if command != 0:
+            var name = String(command, ":", key.mods)
+            if key.text_event >= 0:
+                if key.text:
+                    self.command_positions[key.text_event] = name
+            else:
+                self.command_claims[name] = self.command_claims.get(name, 0) + 1
 
     def route(
         mut self,
@@ -124,7 +169,9 @@ struct KeyboardController(Movable):
             key.key, key.ch, key.unshifted, key.mods, key.action(), text
         )
         var kitty = _kitty(model, pane)
-        var output = Bool(model.command_output.viewport)
+        var output = model.command_output.pane == Optional[UInt64](
+            pane
+        ) and Bool(model.command_output.viewport)
         var prefix = not output and model.routing.claims_prefix_input(input)
         if not should_send_key(input, kitty, prefix):
             return None
@@ -132,6 +179,7 @@ struct KeyboardController(Movable):
             if text:
                 self.consumed.append((key.text_lo, key.text_hi))
             self.claimed = True
+            self.claim_command(key)
             return None
         if (
             kitty
@@ -146,11 +194,24 @@ struct KeyboardController(Movable):
         if text:
             self.consumed.append((key.text_lo, key.text_hi))
         self.claimed = True
+        self.claim_command(key)
         return RoutedKey(pane, captured_epoch, input^, False)
 
-    def filter_text(mut self, mut input: TextInput):
+    def filter_text(
+        mut self, mut input: TextInput, stamped_commands: Bool = False
+    ):
         var events = List[TextEvent]()
-        for event in input.events:
+        for index in range(len(input.events)):
+            var event = input.events[index]
+            if event.kind == TEXT_COMMAND:
+                var name = String(event.cmd, ":", event.mods)
+                var position = event.start if stamped_commands else Int32(index)
+                if self.command_positions.get(position, String()) == name:
+                    continue
+                var claimed = self.command_claims.get(name, 0)
+                if claimed > 0:
+                    self.command_claims[name] = claimed - 1
+                    continue
             if event.kind != TEXT_INSERT:
                 events.append(event)
                 continue
@@ -178,3 +239,5 @@ struct KeyboardController(Movable):
                 )
         input.events = events^
         self.consumed.clear()
+        self.command_claims.clear()
+        self.command_positions.clear()
