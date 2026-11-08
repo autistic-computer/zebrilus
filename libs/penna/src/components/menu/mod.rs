@@ -10,7 +10,7 @@ use ala::App;
 
 pub use context_menu::{ContextMenu, ContextMenuExt, ContextMenuState};
 pub use dropdown_menu::DropdownMenu;
-pub use popup_menu::{PopupMenu, PopupMenuItem};
+pub use popup_menu::{MenuScope, PopupMenu, PopupMenuItem};
 
 pub(crate) fn init(cx: &mut App) {
     popup_menu::init(cx);

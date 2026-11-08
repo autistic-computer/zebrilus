@@ -95,8 +95,13 @@ function wireSegmented(control) {
   });
 }
 
-function settleSegmented() {
-  document.querySelectorAll(".penna-segmented").forEach((control) => {
+function set(control, index) {
+  control.dataset.value = String(index);
+  placePill(control);
+}
+
+function settleSegmented(root = document) {
+  root.querySelectorAll(".penna-segmented").forEach((control) => {
     control.toggleAttribute("data-still", true);
     wireSegmented(control);
     syncDisabled(control);
@@ -109,6 +114,8 @@ function settleSegmented() {
 }
 
 settleSegmented();
-document.fonts.ready.then(settleSegmented);
+document.fonts.ready.then(() => settleSegmented());
 document.addEventListener("load", (event) => event.target.id === "penna-tokens" && settleSegmented(), true);
+
+globalThis.pennaSegmented = { wire: settleSegmented, set };
 })();

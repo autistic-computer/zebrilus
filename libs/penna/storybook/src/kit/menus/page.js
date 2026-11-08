@@ -84,6 +84,19 @@
     globalThis.pennaInput?.wire(row);
   });
 
+  const MONOSPACED = new Set(["Andale Mono", "Berkeley Mono", "Courier New", "Fira Code", "Iosevka", "Lilex", "Menlo", "Monaco", "PT Mono", "SF Mono", "Victor Mono"]);
+  document.querySelectorAll("[data-scoped-menus]").forEach((row) => {
+    for (const [scope, query] of [[0, ""], [1, ""], [0, "co"]]) {
+      const scopes = [{ label: "Monospaced", keep: (font) => MONOSPACED.has(font) }, { label: "All fonts" }];
+      const menu = new Menu(FONTS.map((label) => ({ label, checked: label === "Menlo" })), { search: "Search fonts", scopes, scope });
+      row.append(menu.element);
+      menu.search.value = query;
+      menu.filter(query);
+    }
+    globalThis.pennaInput?.wire(row);
+    globalThis.pennaSegmented?.wire(row);
+  });
+
   const opened = [];
   document.querySelectorAll("[data-dropdown]").forEach((trigger) => {
     const handle = dropdown(trigger, menus[trigger.dataset.dropdown]());

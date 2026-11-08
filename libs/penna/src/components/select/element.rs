@@ -4,7 +4,7 @@ use ala::{
     prelude::FluentBuilder as _,
 };
 
-use crate::{Ground, Sizable, Size, Tone};
+use crate::{Ground, Sizable, Size, Tone, components::menu::MenuScope};
 
 use super::{
     CONTEXT,
@@ -58,6 +58,12 @@ impl<D: SelectDelegate> Select<D> {
     #[must_use]
     pub fn search_placeholder(mut self, placeholder: impl Into<SharedString>) -> Self {
         self.options.search_placeholder = Some(placeholder.into());
+        self
+    }
+
+    #[must_use]
+    pub fn scopes(mut self, scopes: impl IntoIterator<Item = MenuScope>) -> Self {
+        self.options.scopes = scopes.into_iter().collect();
         self
     }
 

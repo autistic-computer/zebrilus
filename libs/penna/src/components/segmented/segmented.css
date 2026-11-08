@@ -12,6 +12,19 @@
   --penna-segment-ink: var(--penna-ink);
 }
 
+.penna-segmented[data-width="full"] {
+  display: flex;
+  width: 100%;
+}
+
+.penna-segmented[data-width="full"] > .penna-segments {
+  flex: 1 1 0%;
+}
+
+.penna-segmented[data-width="full"] .penna-segment {
+  flex: 1 1 0;
+}
+
 .penna-segmented[data-size] {
   padding: var(--penna-space-2);
 }

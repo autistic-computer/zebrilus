@@ -135,7 +135,7 @@
   white-space: nowrap;
 }
 
-.penna-select-menu[data-searchable] {
+.penna-select-menu:is([data-searchable], [data-scoped]) {
   box-sizing: border-box;
   gap: 0;
   min-width: max(128px + 2 * var(--penna-row-inset), 100%);
@@ -144,7 +144,8 @@
   overflow: hidden;
 }
 
-.penna-select-search {
+.penna-select-search,
+.penna-select-scopes {
   flex: none;
   padding: var(--penna-row-inset) var(--penna-row-inset) 0;
 }

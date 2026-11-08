@@ -67,6 +67,31 @@ function menu(select) {
   return select.querySelector(":scope > .penna-select-menu");
 }
 
+function scopes(select) {
+  try {
+    const parsed = JSON.parse(select.dataset.scopes || "[]");
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function scope(select) {
+  const all = scopes(select);
+  const at = Number.parseInt(select.dataset.scope ?? "0", 10);
+  return all[Math.min(Math.max(Number.isInteger(at) ? at : 0, 0), all.length - 1)] ?? null;
+}
+
+function keeps(entry, name) {
+  return !entry?.keep || entry.keep.includes(name);
+}
+
+function openingScope(select) {
+  const name = options(select)[picked(select)];
+  const at = name === undefined ? -1 : scopes(select).findIndex((entry) => keeps(entry, name));
+  return Math.max(at, 0);
+}
+
 function searchable(select) {
   const flag = select.dataset.searchable;
   return flag === undefined ? options(select).length > 12 : flag !== "false";
@@ -115,19 +140,65 @@ function searchField(select) {
   return wrap;
 }
 
+function scopeField(select) {
+  const segments = document.createElement("div");
+  segments.className = "penna-segments";
+  segments.dataset.penna = "button.quiet";
+  segments.dataset.state = "current";
+  const pill = document.createElement("span");
+  pill.className = "penna-segment-pill";
+  segments.append(pill);
+  for (const entry of scopes(select)) {
+    const segment = document.createElement("span");
+    segment.className = "penna-segment";
+    segment.setAttribute("role", "button");
+    segment.dataset.id = `button:${entry.label}`;
+    const label = document.createElement("span");
+    label.className = "penna-label";
+    label.dataset.pennaText = "";
+    label.textContent = entry.label;
+    segment.append(label);
+    segments.append(segment);
+  }
+  const control = document.createElement("div");
+  control.className = "penna-segmented";
+  control.dataset.penna = "field";
+  control.dataset.width = "full";
+  control.dataset.value = select.dataset.scope ?? "0";
+  control.setAttribute("role", "radiogroup");
+  control.append(segments);
+  control.addEventListener("change", (event) => setScope(select, event.detail.index));
+  const wrap = document.createElement("div");
+  wrap.className = "penna-select-scopes";
+  wrap.append(control);
+  return wrap;
+}
+
+function setScope(select, index) {
+  const count = scopes(select).length;
+  if (!count) return;
+  select.dataset.scope = String((((index % count) + count) % count));
+  const control = menu(select)?.querySelector(".penna-select-scopes .penna-segmented");
+  if (control && control.dataset.value !== select.dataset.scope) globalThis.pennaSegmented?.set(control, Number(select.dataset.scope));
+  filter(select);
+}
+
 function filter(select) {
   const list = menu(select);
-  const input = list?.querySelector(".penna-select-search input");
-  if (!input) return;
-  const query = input.value.trim().toLowerCase();
+  if (!list) return;
+  const input = list.querySelector(".penna-select-search input");
+  const query = input ? input.value.trim().toLowerCase() : "";
+  const entry = scope(select);
+  const narrowed = Boolean(query) || Boolean(entry?.keep);
+  if (!input && !entry) return;
   const names = options(select);
   rows(select).forEach((row, at) => {
-    row.hidden = Boolean(query) && !names[at].toLowerCase().includes(query);
+    row.hidden = !names[at].toLowerCase().includes(query) || !keeps(entry, names[at]);
   });
   const shown = visible(select);
-  list.querySelector(".penna-select-none").hidden = shown.length > 0 || !query;
+  list.querySelector(".penna-select-none").hidden = shown.length > 0 || !narrowed;
   const index = picked(select);
-  highlight(select, !query && index >= 0 ? index : shown[0] ?? -1);
+  highlight(select, !query && shown.includes(index) ? index : shown[0] ?? -1);
 }
 
 function highlight(select, index) {
@@ -148,13 +219,18 @@ function buildMenu(select) {
   list.className = "penna-menu penna-select-menu";
   list.dataset.penna = "popover";
   const search = searchable(select);
+  const scoped = scopes(select).length > 0;
+  if (scoped) select.dataset.scope = String(openingScope(select));
   let holder = list;
-  if (search) {
-    list.dataset.searchable = "";
+  if (search || scoped) {
+    if (search) list.dataset.searchable = "";
+    if (scoped) list.dataset.scoped = "";
     holder = document.createElement("div");
     holder.className = "penna-select-rows";
     holder.setAttribute("role", "menu");
-    list.append(searchField(select), holder);
+    if (search) list.append(searchField(select));
+    if (scoped) list.append(scopeField(select));
+    list.append(holder);
   } else {
     list.setAttribute("role", "menu");
   }
@@ -183,7 +259,7 @@ function buildMenu(select) {
     });
     holder.append(item);
   });
-  if (search) {
+  if (search || scoped) {
     const none = document.createElement("div");
     none.className = "penna-select-none";
     none.hidden = true;
@@ -209,12 +285,12 @@ function buildMenu(select) {
   list.style.setProperty("--penna-select-max", `${Math.min(frame.getBoundingClientRect().height * 0.5, 450)}px`);
   select.append(list);
   pennaKit.ceilText(list);
-  if (search) {
-    globalThis.pennaInput?.wire(list);
-    list.style.width = `${list.getBoundingClientRect().width}px`;
-    list.querySelector(".penna-select-search input").focus({ preventScroll: true });
-  }
-  highlight(select, index);
+  if (search) globalThis.pennaInput?.wire(list);
+  if (scoped) globalThis.pennaSegmented?.wire(list);
+  if (search || scoped) list.style.width = `${list.getBoundingClientRect().width}px`;
+  if (search) list.querySelector(".penna-select-search input").focus({ preventScroll: true });
+  if (scoped) filter(select);
+  else highlight(select, index);
   return list;
 }
 
@@ -281,6 +357,9 @@ function wire(select) {
       const at = Number.parseInt(select.dataset.highlight ?? "-1", 10);
       if (shown && at >= 0) commit(select, at);
       else if (!shown) open(select);
+    } else if (event.key === "Tab" && shown && scopes(select).length > 1 && !event.altKey && !event.ctrlKey && !event.metaKey) {
+      event.preventDefault();
+      setScope(select, Number.parseInt(select.dataset.scope ?? "0", 10) + (event.shiftKey ? -1 : 1));
     } else if (event.key === "Tab" && shown) {
       close(select);
     }

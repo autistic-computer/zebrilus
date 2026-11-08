@@ -70,7 +70,37 @@
       this.list.append(...this.rows.filter(Boolean));
       this.list.addEventListener("keydown", (event) => this.key(event));
       this.query = "";
+      this.scopes = options.scopes ?? [];
+      this.scope = Math.max(0, Math.min(options.scope ?? 0, this.scopes.length - 1));
       this.search = options.search ? this.searchField(options.search) : null;
+      if (this.scopes.length) this.scopeField();
+      if (this.search || this.scopes.length) {
+        this.none = make("div", "penna-popup-none", { hidden: true }, [text("No matches")]);
+        this.list.append(this.none);
+      }
+      if (this.scopes.length) this.refilter();
+    }
+
+    scopeField() {
+      const segments = make("div", "penna-segments", { "data-penna": "button.quiet", "data-state": "current" }, [
+        make("span", "penna-segment-pill"),
+        ...this.scopes.map((scope) => make("span", "penna-segment", { role: "button", "data-id": `button:${scope.label}` }, [text(scope.label)])),
+      ]);
+      this.scopeControl = make("div", "penna-segmented", { "data-penna": "field", "data-width": "full", "data-value": String(this.scope), role: "radiogroup" }, [segments]);
+      this.scopeControl.addEventListener("change", (event) => this.setScope(event.detail.index));
+      this.element.setAttribute("data-scopes", "");
+      this.list.before(make("div", "penna-popup-scopes", {}, [this.scopeControl]));
+    }
+
+    setScope(scope) {
+      this.scope = Math.max(0, Math.min(scope, this.scopes.length - 1));
+      if (this.scopeControl.dataset.value !== String(this.scope)) globalThis.pennaSegmented?.set(this.scopeControl, this.scope);
+      this.refilter();
+    }
+
+    stepScope(delta) {
+      const count = this.scopes.length;
+      if (count > 1) this.setScope((((this.scope + delta) % count) + count) % count);
     }
 
     searchField(placeholder) {
@@ -79,26 +109,34 @@
       const field = make("label", "penna-input", { "data-penna": "field" }, [make("span", "penna-input-prefix", {}, [glyph("search")]), input, make("span", "penna-input-suffix", {}, [clear])]);
       input.addEventListener("input", () => this.filter(input.value));
       input.addEventListener("keydown", (event) => {
-        if (["ArrowDown", "ArrowUp", "Enter", "Escape"].includes(event.key)) this.key(event);
+        if (["ArrowDown", "ArrowUp", "Enter", "Escape", "Tab"].includes(event.key)) this.key(event);
       });
       this.element.setAttribute("data-search", "");
       this.element.prepend(make("div", "penna-popup-search", {}, [field]));
-      this.none = make("div", "penna-popup-none", { hidden: true }, [text("No matches")]);
-      this.list.append(this.none);
       return input;
+    }
+
+    keep() {
+      return this.scopes[this.scope]?.keep ?? null;
     }
 
     matches(ix) {
       const item = this.items[ix];
-      return !this.query || (["item", "submenu", "stepper"].includes(item.kind ?? "item") && item.label.toLowerCase().includes(this.query));
+      const keep = this.keep();
+      if (!this.query && !keep) return true;
+      return ["item", "submenu", "stepper"].includes(item.kind ?? "item") && item.label.toLowerCase().includes(this.query) && (!keep || keep(item.label));
     }
 
     filter(value) {
       this.query = value.trim().toLowerCase();
+      this.refilter();
+    }
+
+    refilter() {
       this.rows.forEach((row, ix) => {
         if (row) row.hidden = !this.matches(ix);
       });
-      this.none.hidden = !this.query || this.items.some((_, ix) => this.clickable(ix));
+      this.none.hidden = !(this.query || this.keep()) || this.items.some((_, ix) => this.clickable(ix));
       const checked = this.query ? -1 : this.items.findIndex((item, ix) => item.checked && this.clickable(ix));
       if (checked >= 0) this.select(checked);
       else this.first();
@@ -200,7 +238,7 @@
     select(ix) {
       this.selected = ix;
       this.paint();
-      if (this.search && ix != null) this.reveal(this.rows[ix]);
+      if ((this.search || this.scopes.length) && ix != null) this.reveal(this.rows[ix]);
     }
 
     reveal(row) {
@@ -266,13 +304,14 @@
 
     move(delta) {
       const ixs = this.items.map((_, ix) => ix).filter((ix) => this.clickable(ix));
-      const first = this.search ? (ixs[0] ?? null) : 0;
+      const filters = this.search || this.scopes.length;
+      const first = filters ? (ixs[0] ?? null) : 0;
       if (delta > 0) {
         if (this.selected == null) return this.select(first);
         this.select(ixs.find((ix) => ix > this.selected) ?? first);
       } else {
         const from = this.selected ?? 0;
-        this.select([...ixs].reverse().find((ix) => ix < from) ?? ixs.at(-1) ?? (this.search ? null : 0));
+        this.select([...ixs].reverse().find((ix) => ix < from) ?? ixs.at(-1) ?? (filters ? null : 0));
       }
     }
 
@@ -285,6 +324,7 @@
       if (event.key === "ArrowUp") return handled(), this.move(-1);
       if (event.key === "Enter") return handled(), this.confirm();
       if (event.key === "Escape") return handled(), this.dismiss();
+      if (event.key === "Tab" && this.scopes.length > 1 && !event.altKey && !event.ctrlKey && !event.metaKey) return handled(), this.stepScope(event.shiftKey ? -1 : 1);
       if (event.key === "ArrowRight") {
         if (this.stepper("up")) return handled();
         const sub = this.active();
@@ -341,10 +381,9 @@
     menu.element.style.top = `${y}px`;
     host.append(menu.element);
     fit(menu.element);
-    if (menu.search) {
-      globalThis.pennaInput?.wire(menu.element);
-      menu.element.style.width = `${menu.element.getBoundingClientRect().width}px`;
-    }
+    if (menu.search) globalThis.pennaInput?.wire(menu.element);
+    if (menu.scopes.length) globalThis.pennaSegmented?.wire(menu.element);
+    if (menu.search || menu.scopes.length) menu.element.style.width = `${menu.element.getBoundingClientRect().width}px`;
     globalThis.pennaKit?.roundAll();
     open.add(menu);
     menu.previous = previous ?? null;
@@ -376,7 +415,7 @@
     const host = trigger.parentElement;
     let menu = null;
     const show = () => {
-      menu = new Menu(items, { onDismiss: () => close(menu), search: options.search });
+      menu = new Menu(items, { onDismiss: () => close(menu), search: options.search, scopes: options.scopes, scope: options.scope });
       menu.trigger = trigger;
       menu.closed = () => {
         trigger.setAttribute("aria-expanded", "false");

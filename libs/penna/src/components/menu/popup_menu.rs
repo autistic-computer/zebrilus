@@ -1,9 +1,12 @@
-use super::actions::{Cancel, Confirm, SelectDown, SelectLeft, SelectRight, SelectUp};
+use super::actions::{
+    Cancel, Confirm, NextScope, PrevScope, SelectDown, SelectLeft, SelectRight, SelectUp,
+};
 use super::menu_item::MenuItemElement;
 use crate::Space;
 use crate::components::button::{Button, ButtonVariants as _};
 use crate::components::input::{self, Input, InputEvent, InputState};
 use crate::components::scroll::ScrollableElement;
+use crate::components::segmented::SegmentedControl;
 use crate::{
     ActiveTheme, Colorize as _, Icon, IconName, Label, Sizable as _, Size, StyledExt, TextStyle,
     components::kbd::Kbd, h_flex, rems_from_px, v_flex,
@@ -32,7 +35,39 @@ pub fn init(cx: &mut App) {
         KeyBinding::new("down", SelectDown, Some(CONTEXT)),
         KeyBinding::new("left", SelectLeft, Some(CONTEXT)),
         KeyBinding::new("right", SelectRight, Some(CONTEXT)),
+        KeyBinding::new("tab", NextScope, Some(CONTEXT)),
+        KeyBinding::new("shift-tab", PrevScope, Some(CONTEXT)),
     ]);
+}
+
+#[derive(Clone)]
+pub struct MenuScope {
+    label: SharedString,
+    keep: Option<Rc<dyn Fn(&str) -> bool>>,
+}
+
+impl MenuScope {
+    pub fn new(label: impl Into<SharedString>, keep: impl Fn(&str) -> bool + 'static) -> Self {
+        Self {
+            label: label.into(),
+            keep: Some(Rc::new(keep)),
+        }
+    }
+
+    pub fn all(label: impl Into<SharedString>) -> Self {
+        Self {
+            label: label.into(),
+            keep: None,
+        }
+    }
+
+    pub fn label(&self) -> SharedString {
+        self.label.clone()
+    }
+
+    pub fn keeps(&self, label: &str) -> bool {
+        self.keep.as_ref().is_none_or(|keep| keep(label))
+    }
 }
 
 pub enum PopupMenuItem {
@@ -259,14 +294,13 @@ impl PopupMenuItem {
         }
     }
 
-    fn matches(&self, query: &str) -> bool {
-        query.is_empty()
-            || match self {
-                PopupMenuItem::Item { label, .. }
-                | PopupMenuItem::Submenu { label, .. }
-                | PopupMenuItem::Stepper { label, .. } => label.to_lowercase().contains(query),
-                _ => false,
-            }
+    fn searchable_label(&self) -> Option<&SharedString> {
+        match self {
+            PopupMenuItem::Item { label, .. }
+            | PopupMenuItem::Submenu { label, .. }
+            | PopupMenuItem::Stepper { label, .. } => Some(label),
+            _ => None,
+        }
     }
 
     #[inline]
@@ -314,6 +348,8 @@ pub struct PopupMenu {
     search: Option<(Entity<InputState>, Subscription)>,
     query: String,
     search_width: Option<Pixels>,
+    scopes: Vec<MenuScope>,
+    scope: usize,
 
     _subscriptions: Vec<Subscription>,
 }
@@ -337,6 +373,8 @@ impl PopupMenu {
             search: None,
             query: String::new(),
             search_width: None,
+            scopes: Vec::new(),
+            scope: 0,
             _subscriptions: vec![],
         }
     }
@@ -408,6 +446,28 @@ impl PopupMenu {
         self
     }
 
+    pub fn scopes(mut self, scopes: impl IntoIterator<Item = MenuScope>, picked: usize) -> Self {
+        self.scopes = scopes.into_iter().collect();
+        self.scope = picked.min(self.scopes.len().saturating_sub(1));
+        self
+    }
+
+    pub fn set_scope(&mut self, scope: usize, cx: &mut Context<Self>) {
+        let scope = scope.min(self.scopes.len().saturating_sub(1));
+        if scope != self.scope {
+            self.scope = scope;
+            self.highlight_query(cx);
+        }
+    }
+
+    fn step_scope(&mut self, step: isize, cx: &mut Context<Self>) {
+        let count = self.scopes.len();
+        if count > 1 {
+            let scope = (self.scope as isize + step).rem_euclid(count as isize) as usize;
+            self.set_scope(scope, cx);
+        }
+    }
+
     pub fn set_query(
         &mut self,
         query: impl Into<SharedString>,
@@ -427,7 +487,11 @@ impl PopupMenu {
         let checked = self
             .query
             .is_empty()
-            .then(|| self.menu_items.iter().position(PopupMenuItem::is_checked))
+            .then(|| {
+                self.menu_items
+                    .iter()
+                    .position(|item| item.is_checked() && self.matches(item))
+            })
             .flatten();
         self.selected_index =
             checked.or_else(|| self.clickable_menu_items().next().map(|(ix, _)| ix));
@@ -437,8 +501,32 @@ impl PopupMenu {
         cx.notify();
     }
 
+    fn scope_keep(&self) -> Option<&Rc<dyn Fn(&str) -> bool>> {
+        self.scopes
+            .get(self.scope)
+            .and_then(|scope| scope.keep.as_ref())
+    }
+
+    fn has_filters(&self) -> bool {
+        self.search.is_some() || !self.scopes.is_empty()
+    }
+
+    fn filtered(&self) -> bool {
+        !self.query.is_empty() || self.scope_keep().is_some()
+    }
+
+    fn matches(&self, item: &PopupMenuItem) -> bool {
+        if !self.filtered() {
+            return true;
+        }
+        item.searchable_label().is_some_and(|label| {
+            label.to_lowercase().contains(&self.query)
+                && self.scope_keep().is_none_or(|keep| keep(label))
+        })
+    }
+
     fn shows(&self, ix: usize, item: &PopupMenuItem) -> bool {
-        !(ix + 1 == self.menu_items.len() && item.is_separator()) && item.matches(&self.query)
+        !(ix + 1 == self.menu_items.len() && item.is_separator()) && self.matches(item)
     }
 
     fn shown_position(&self, ix: usize) -> usize {
@@ -451,7 +539,7 @@ impl PopupMenu {
     }
 
     fn navigable(&self, item: &PopupMenuItem) -> bool {
-        item.is_clickable() && item.matches(&self.query)
+        item.is_clickable() && self.matches(item)
     }
 
     pub fn menu(self, label: impl Into<SharedString>, action: Box<dyn Action>) -> Self {
@@ -685,7 +773,7 @@ impl PopupMenu {
 
         match self.clickable_menu_items().last() {
             Some((last, _)) => self.set_selected_index(last, cx),
-            None if self.search.is_none() => self.set_selected_index(0, cx),
+            None if !self.has_filters() => self.set_selected_index(0, cx),
             None => {}
         }
     }
@@ -699,7 +787,7 @@ impl PopupMenu {
                 .find(|(i, item)| *i > ix && self.navigable(item))
                 .map(|(next, _)| next)
         });
-        let first = if self.search.is_some() {
+        let first = if self.has_filters() {
             self.clickable_menu_items().next().map(|(ix, _)| ix)
         } else {
             Some(0)
@@ -1257,6 +1345,10 @@ impl PopupMenu {
     }
 }
 
+fn popover_ground(cx: &App) -> crate::Ground {
+    cx.theme().ground_of(Surface::new(SurfaceRole::POPOVER))
+}
+
 impl FluentBuilder for PopupMenu {}
 impl EventEmitter<DismissEvent> for PopupMenu {}
 impl Focusable for PopupMenu {
@@ -1288,12 +1380,26 @@ impl Render for PopupMenu {
 
         let max_width = self.max_width();
         let options = RenderOptions { has_left_icon };
-        let scrollable = self.scrollable || self.search.is_some();
+        let scrollable = self.scrollable || self.has_filters();
         let search = self.search.as_ref().map(|(search, _)| search.clone());
-        let search_height = search.as_ref().map_or(Pixels::ZERO, |_| {
-            rems_from_px(Size::Medium.control_px()).to_pixels(window.rem_size())
-                + cx.theme().row_inset
+        let header_row = rems_from_px(Size::Medium.control_px()).to_pixels(window.rem_size())
+            + cx.theme().row_inset;
+        let search_height = header_row
+            * (usize::from(search.is_some()) + usize::from(!self.scopes.is_empty())) as f32;
+        let scopes = (!self.scopes.is_empty()).then(|| {
+            let menu = cx.entity().downgrade();
+            SegmentedControl::new(
+                "menu-scopes",
+                self.scopes.iter().map(|scope| scope.label.clone()),
+            )
+            .selected(self.scope)
+            .full_width()
+            .on(popover_ground(cx))
+            .on_select(move |scope, _, cx| {
+                _ = menu.update(cx, |menu, cx| menu.set_scope(scope, cx));
+            })
         });
+        let switches_scope = self.scopes.len() > 1;
         let shown = self
             .menu_items
             .iter()
@@ -1304,8 +1410,8 @@ impl Render for PopupMenu {
                     .into_any_element()
             })
             .collect::<Vec<_>>();
-        let no_matches = shown.is_empty() && !self.query.is_empty();
-        let popover = cx.theme().ground_of(Surface::new(SurfaceRole::POPOVER));
+        let no_matches = shown.is_empty() && self.filtered();
+        let popover = popover_ground(cx);
 
         let surface = v_flex()
             .id("popup-menu")
@@ -1328,6 +1434,22 @@ impl Render for PopupMenu {
                     },
                 ))
             })
+            .when(switches_scope, |this| {
+                this.capture_action(cx.listener(|this, _: &input::IndentInline, _, cx| {
+                    cx.stop_propagation();
+                    this.step_scope(1, cx);
+                }))
+                .capture_action(cx.listener(|this, _: &input::OutdentInline, _, cx| {
+                    cx.stop_propagation();
+                    this.step_scope(-1, cx);
+                }))
+                .on_action(cx.listener(|this, _: &NextScope, _, cx| {
+                    this.step_scope(1, cx);
+                }))
+                .on_action(cx.listener(|this, _: &PrevScope, _, cx| {
+                    this.step_scope(-1, cx);
+                }))
+            })
             .on_mouse_down_out(cx.listener(Self::on_mouse_down_out))
             .surface(Surface::new(SurfaceRole::POPOVER), cx)
             .text_color(cx.theme().foreground)
@@ -1349,6 +1471,15 @@ impl Render for PopupMenu {
                                 )
                                 .cleanable(true),
                         ),
+                )
+            })
+            .when_some(scopes, |this, scopes| {
+                this.child(
+                    div()
+                        .flex_none()
+                        .px(cx.theme().row_inset)
+                        .pt(cx.theme().row_inset)
+                        .child(scopes),
                 )
             })
             .child(
@@ -1386,7 +1517,7 @@ impl Render for PopupMenu {
                             let first_layout = menu.bounds.size.height == px(0.0);
                             let resized = menu.bounds.size.height != bounds.size.height;
                             menu.bounds = bounds;
-                            if first_layout && menu.search.is_some() {
+                            if first_layout && menu.has_filters() {
                                 menu.search_width = Some(bounds.size.width);
                             }
                             if resized
