@@ -96,7 +96,7 @@ const STORY: Story = Story {
         Section {
             id: "subagents",
             name: "Subagents",
-            summary: "Each subagent is its own row: the CLI's mark, its name, a status glyph (spinning while it works, Needs you, done, failed) and how long it took. Clicking a row opens its chat in a PiP over the thread: its prompt, its own rows, its answer and a footer; the PiP's close button or a second click closes it. An approval waits right under its agent.",
+            summary: "Each subagent is its own row: the CLI's mark, its name, a status glyph (spinning while it works, Needs you, done, failed) and how long it took. Clicking a row opens its chat in a PiP docked beside the thread: its prompt, its own rows, its answer and a footer; the PiP's close button or a second click closes it. An approval waits right under its agent, or in its PiP while that is open.",
             build: chat::subagents,
         },
         Section {

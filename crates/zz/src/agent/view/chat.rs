@@ -1,37 +1,42 @@
-use std::rc::Rc;
+use ala::{AnyElement, App, Context, Entity, Window};
+use zz_protocol::chat::{ChatView, ItemId, RequestView};
+use zz_ui::agent::chat::{ChatHost, ChatLook, ChatPane, chat_surface, shows_chat};
 
-use ala::{
-    AnyElement, Context, Entity, IntoElement, ScrollWheelEvent, Window, div, prelude::*, px,
-};
-use penna::ActiveTheme as _;
-use penna::blocks::chat::spinner_phase;
-use zz_protocol::chat::{ChatView, RequestView};
-use zz_ui::agent::agent_jump_to_bottom_button;
-use zz_ui::agent::chat::{
-    ChatClick, ChatClicks, ChatHooks, chat_agent_pip, chat_column, chat_live, chat_thread,
-    shows_chat,
-};
+use super::{AgentPaneState, AgentView};
 
-use super::{AgentPaneState, AgentView, COMPOSER_OUTER_PADDING};
-
-impl AgentView {
-    fn on_chat_wheel(
-        &mut self,
-        event: &ScrollWheelEvent,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        if self.chat.wheel(event) {
-            cx.defer_in(window, |view, _, cx| {
-                if view.chat.settle() {
-                    cx.notify();
-                }
-            });
-        }
+impl ChatHost for AgentView {
+    fn chat_pane(&mut self) -> &mut ChatPane {
+        &mut self.chat
     }
 
+    fn chat_parts<'a>(&'a mut self, cx: &'a App) -> (&'a mut ChatPane, Option<&'a ChatView>) {
+        (
+            &mut self.chat,
+            self.controller.read(cx).pane_chat(self.pane),
+        )
+    }
+
+    fn chat_read<'a>(&'a self, cx: &'a App) -> (&'a ChatPane, Option<&'a ChatView>) {
+        (&self.chat, self.controller.read(cx).pane_chat(self.pane))
+    }
+
+    fn chat_ask(&self, request: &RequestView, host: &Entity<Self>, cx: &App) -> Option<AnyElement> {
+        let permission = self
+            .pane_state
+            .pending_permissions
+            .iter()
+            .find(|permission| permission.request_id == request.id.0)?;
+        self.render_permission(permission, &self.pane_state, host, cx)
+    }
+
+    fn chat_fork(&mut self, item: &ItemId, cx: &mut Context<Self>) {
+        self.fork_from(item.as_str(), cx);
+    }
+}
+
+impl AgentView {
     pub(super) fn asks_out_of_view(&self) -> bool {
-        self.chat_inline && self.chat.away
+        self.chat_inline && self.chat.away()
     }
 
     pub(super) fn asks_inline(&self, chat: &ChatView, state: &AgentPaneState) -> bool {
@@ -45,116 +50,21 @@ impl AgentView {
                 })
     }
 
-    fn inline_ask(
-        &self,
-        request: &RequestView,
-        state: &AgentPaneState,
-        view: &Entity<Self>,
-        cx: &ala::App,
-    ) -> Option<AnyElement> {
-        let permission = state
-            .pending_permissions
-            .iter()
-            .find(|permission| permission.request_id == request.id.0)?;
-        self.render_permission(permission, state, view, cx)
-    }
-
     pub(super) fn render_chat(
         &mut self,
-        state: &AgentPaneState,
-        view: &Entity<Self>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        let now = zz_client::chat_rows::now_ms();
-        let live = self
-            .controller
-            .read(cx)
-            .pane_chat(self.pane)
-            .is_some_and(chat_live)
-            || self.chat.revealing(now);
-        let phase = if live {
-            spinner_phase(cx.entity_id(), cx)
-        } else {
-            0.0
-        };
-        self.chat.pin();
-        let click: ChatClicks = {
-            let view = view.clone();
-            Rc::new(move |click, _, cx| {
-                view.update(cx, |view, cx| {
-                    if let ChatClick::Fork(item) = click {
-                        view.fork_from(item.as_str(), cx);
-                    }
-                    view.chat.click(click);
-                    cx.notify();
-                });
-            })
-        };
-        let pane = self.pane.0;
-        let wheel = cx.listener(Self::on_chat_wheel);
-        let show_jump = self.chat.shows_jump();
-        let jump = {
-            let view = view.clone();
-            move |_: &ala::ClickEvent, _: &mut Window, cx: &mut ala::App| {
-                view.update(cx, |view, cx| {
-                    view.chat.follow();
-                    cx.notify();
-                });
-                cx.stop_propagation();
-            }
-        };
-        let app: &ala::App = cx;
-        let Some(chat) = self.controller.read(app).pane_chat(self.pane) else {
-            return div().into_any_element();
-        };
-        self.chat.sync(chat);
-        let ask = |request: &RequestView, cx: &ala::App| self.inline_ask(request, state, view, cx);
-        let refs = self.chat_refs(view, app);
-        let hooks = ChatHooks {
-            click: Some(click),
-            ask: Some(&ask),
+        let view = cx.entity();
+        let look = ChatLook {
+            pane: self.pane.0,
             fork: self.forks(),
-            refs: Some(&refs),
+            refs: Some(self.chat_refs(&view, cx)),
             vendor: Some(match self.pane_state.provider {
                 zz_protocol::AgentProvider::ClaudeCode => zz_ui::program::CLAUDE_ICON,
                 zz_protocol::AgentProvider::Codex => zz_ui::program::OPENAI_ICON,
             }),
-            owner: Some(pane),
         };
-        let body = chat_thread(chat, now, &self.chat.open, phase, &hooks, app);
-        let pip = chat_agent_pip(chat, now, &self.chat.open, phase, &hooks, app);
-        self.chat.release(window, cx);
-        let app: &ala::App = cx;
-        div()
-            .relative()
-            .size_full()
-            .child(
-                div()
-                    .id(("agent-chat-scroll", pane))
-                    .size_full()
-                    .overflow_y_scroll()
-                    .track_scroll(&self.chat.scroll)
-                    .on_scroll_wheel(wheel)
-                    .text_color(app.theme().foreground)
-                    .child(chat_column(body)),
-            )
-            .children(pip)
-            .when(show_jump, |root| {
-                root.child(
-                    div()
-                        .absolute()
-                        .left_0()
-                        .right_0()
-                        .bottom(px(2.0 * COMPOSER_OUTER_PADDING))
-                        .flex()
-                        .justify_center()
-                        .child(
-                            agent_jump_to_bottom_button(("agent-chat-jump", pane), app)
-                                .on_click(jump),
-                        ),
-                )
-            })
-            .into_any_element()
+        chat_surface(self, look, window, cx)
     }
 }

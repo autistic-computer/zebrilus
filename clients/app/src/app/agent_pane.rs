@@ -1,25 +1,18 @@
-use std::{
-    cell::RefCell,
-    collections::{HashMap, HashSet},
-    path::PathBuf,
-    rc::Rc,
-    sync::Arc,
-};
+use std::{collections::HashSet, sync::Arc};
 
 use ala::{
-    AnyElement, App, Context, Corners, Entity, FocusHandle, Focusable, IntoElement, ListAlignment,
-    ListState, Pixels, Render, ScrollWheelEvent, Subscription, Window, div, prelude::*, px,
+    AnyElement, App, Context, Corners, Entity, FocusHandle, Focusable, IntoElement, Pixels, Render,
+    Subscription, Window, div, prelude::*,
 };
 use penna::{
     Disableable as _,
     blocks::chat::{
-        COMPOSER_OUTER_PADDING, ChatComposer, Composer, TaskTrayAction, TrayPanel,
-        composer_add_button, empty_state, permission_card, permission_option, queue_chip,
-        spinner_phase, suggestion_list, suggestion_list_height, suggestion_row,
+        ChatComposer, Composer, TaskTrayAction, TrayPanel, composer_add_button, empty_state,
+        permission_card, permission_option, queue_chip, spinner_phase, suggestion_list,
+        suggestion_list_height, suggestion_row,
     },
     components::button::Button,
     components::input::{IndentInline, InputEvent, InputState, MoveDown, MoveUp},
-    components::scroll::Scrollbar,
 };
 use serde_json::Value;
 use zz_client::agent_completion::{
@@ -35,32 +28,24 @@ use zz_client::agent_settings::{
     ComposerSetter, LensSettings, composer_setter, fork_chat_command, real_session, short_folder,
     side_chat_command, source_message,
 };
-use zz_client::agent_transcript::{AgentThreadEntry, ToolPayload, is_zz_command, rewind_command};
-use zz_protocol::chat::RequestView;
+use zz_client::agent_transcript::{AgentThreadEntry, is_zz_command};
+use zz_protocol::chat::{ChatView, ItemId, RequestView};
 use zz_protocol::{
     AgentConnectionPhase, AgentImage, AgentPaneWire, AgentQuestionAnswer, PaneId, PaneSnapshot,
     ProtocolMessage,
 };
 use zz_ui::{
     agent::{
-        AgentEntry, AgentMarkdown, AgentTimeline, AgentTimelineStore, AgentToolEntry,
-        AgentToolKind, AgentToolPayload, AgentToolStatus, AgentToolText, MarkdownSlot, TimelineRow,
-        TimelineStick, agent_jump_to_bottom_button,
-        chat::{
-            ChatClick, ChatClicks, ChatHooks, ChatPane, chat_agent_pip, chat_column, chat_live,
-            chat_thread, shows_chat,
-        },
+        chat::{ChatHost, ChatLook, ChatPane, chat_surface, shows_chat},
         composer_attachment,
         controls::{
             ComposerAction, agent_directory_chip, agent_settings_menu, agent_side_chat_button,
             composer_action, composer_action_button, context_usage_meter, git_summary_footer,
         },
-        fold_timeline_rows,
         presentation::{agent_welcome, error_card},
         question::{QuestionCardAction, QuestionCardState, QuestionCardStep},
         refs::{ChatRefs, open_path},
         tasks::task_tray,
-        tool_output_text,
     },
     command::{PaletteSettings, PaletteTarget, target_hosts, target_picker},
     target::{RefTarget, ResolvedTarget, TargetPicker, mention_at_caret, mention_keys},
@@ -242,11 +227,6 @@ pub(super) struct AgentPane {
     last_input: String,
     last_cursor: usize,
     transcript: Transcript,
-    timeline: Entity<AgentTimelineStore>,
-    rows: Arc<Vec<TimelineRow>>,
-    entry_to_row: Vec<usize>,
-    scroll: ListState,
-    stick: TimelineStick,
     last_sequence: u64,
     last_reclaim_id: u64,
     attachments: Vec<AgentImage>,
@@ -298,13 +278,6 @@ impl AgentPane {
                     this.transcript = Transcript::default();
                     this.usage = None;
                     this.last_sequence = 0;
-                    this.rows = Arc::new(Vec::new());
-                    this.entry_to_row.clear();
-                    this.scroll.reset(0);
-                    this.stick.engage_now(&this.scroll, cx.reduce_motion());
-                    this.timeline.update(cx, |timeline, cx| {
-                        timeline.clear(cx);
-                    });
                     cx.notify();
                 } else if matches!(event,
                 zz_client::CoreEvent::AgentUpdates { pane: changed, .. }
@@ -338,21 +311,6 @@ impl AgentPane {
                 cx.notify();
             }
         });
-        let timeline = cx.new(|_| AgentTimelineStore::default());
-        let timeline_observer = cx.observe(&timeline, |_, _, cx| cx.notify());
-        let scroll = ListState::new(0, ListAlignment::Top, px(1_200.0));
-        let stick = TimelineStick::new(&scroll, cx.reduce_motion());
-        let scroll_view = cx.weak_entity();
-        scroll.set_scroll_handler(move |_, _, cx| {
-            let view = scroll_view.clone();
-            cx.defer(move |cx| {
-                let _ = view.update(cx, |this: &mut Self, cx| {
-                    if this.stick.on_user_scroll(&this.scroll, cx.reduce_motion()) {
-                        cx.notify();
-                    }
-                });
-            });
-        });
         let mention = target_picker(
             &palette_backend(connection.clone(), PaletteSettings::default()),
             Some(input.clone()),
@@ -373,11 +331,6 @@ impl AgentPane {
             last_input: String::new(),
             last_cursor: 0,
             transcript: Transcript::default(),
-            timeline,
-            rows: Arc::new(Vec::new()),
-            entry_to_row: Vec::new(),
-            scroll,
-            stick,
             last_sequence: 0,
             last_reclaim_id: 0,
             attachments: Vec::new(),
@@ -397,7 +350,6 @@ impl AgentPane {
                 observation,
                 events,
                 subscription,
-                timeline_observer,
                 input_observer,
                 chat_release,
             ],
@@ -413,30 +365,6 @@ impl AgentPane {
             .iter()
             .flat_map(|session| &session.windows)
             .find_map(|window| window.panes.get(&self.pane))
-    }
-
-    fn cwd(&self, cx: &App) -> Option<PathBuf> {
-        self.pane_snapshot(cx)
-            .map(|pane| pane.summary.cwd.as_str())
-            .filter(|cwd| !cwd.is_empty())
-            .map(PathBuf::from)
-    }
-
-    fn synchronize_timeline_context(&self, cx: &mut Context<Self>) {
-        let running = self
-            .connection
-            .read(cx)
-            .core
-            .agent_state(self.pane)
-            .is_some_and(|state| turn_running(&state.phase));
-        let streaming = running
-            .then(|| self.transcript.entries.last().map(AgentEntry::id))
-            .flatten();
-        let cwd = self.cwd(cx);
-        self.timeline.update(cx, |timeline, cx| {
-            timeline.set_streaming(streaming, cx);
-            timeline.set_cwd(cwd, cx);
-        });
     }
 
     pub(super) fn set_corner_radii(&mut self, radii: Corners<Pixels>, cx: &mut Context<Self>) {
@@ -677,12 +605,6 @@ impl AgentPane {
         true
     }
 
-    fn rewind_to(&mut self, message_id: &str, cx: &mut Context<Self>) {
-        if self.send_prompt(&rewind_command(message_id), &[], cx) {
-            cx.notify();
-        }
-    }
-
     fn set_from_composer(
         &mut self,
         picked: ComposerSetter<'_>,
@@ -746,7 +668,7 @@ impl AgentPane {
         self.draft_error = None;
         self.input
             .update(cx, |input, cx| input.set_value("", window, cx));
-        self.stick.engage(&self.scroll, cx.reduce_motion());
+        self.chat.follow();
         cx.notify();
     }
 
@@ -756,7 +678,6 @@ impl AgentPane {
             .and_then(|events| events.last())
             .map_or(0, |(sequence, _)| *sequence);
         if newest == self.last_sequence && !self.transcript_dirty {
-            self.synchronize_timeline_context(cx);
             return;
         }
         let skipped = events
@@ -766,13 +687,8 @@ impl AgentPane {
             });
         if newest < self.last_sequence || skipped {
             self.transcript = Transcript::default();
-            self.timeline.update(cx, |timeline, cx| {
-                timeline.clear(cx);
-            });
             self.last_sequence = 0;
         }
-        let old_first = self.transcript.entries.first().map(AgentEntry::id);
-        let old_count = self.rows.len();
         let journal = self.connection.read(cx).agent_events.get(&self.pane);
         let updates: Vec<_> = journal
             .map(|journal| {
@@ -795,52 +711,10 @@ impl AgentPane {
         for (sequence, update) in updates {
             self.restore_prompts(&update, window, cx);
             track_usage(&mut self.usage, &update);
-            if conversation_changed(&update) {
-                self.timeline.update(cx, |timeline, cx| {
-                    timeline.clear(cx);
-                });
-            }
             self.transcript.apply(sequence, &update);
         }
-        self.transcript.synchronize();
         self.last_sequence = newest;
         self.transcript_dirty = false;
-        self.synchronize_timeline_context(cx);
-        let folded = fold_timeline_rows(&self.transcript.entries);
-        self.rows = folded.rows;
-        self.entry_to_row = folded.entry_to_row;
-        if switched
-            || self.transcript.entries.first().map(AgentEntry::id) != old_first
-            || self.rows.len() < old_count
-        {
-            self.scroll.reset(self.rows.len());
-            self.stick.engage_now(&self.scroll, cx.reduce_motion());
-        } else {
-            self.scroll.remeasure_items(0..old_count);
-            if self.rows.len() > old_count {
-                self.scroll
-                    .splice(old_count..old_count, self.rows.len() - old_count);
-            }
-        }
-        self.stick.wake();
-        self.timeline.update(cx, |timeline, cx| {
-            for entry in &self.transcript.entries {
-                match entry {
-                    AgentEntry::User { id, markdown, .. }
-                    | AgentEntry::Assistant { id, markdown, .. }
-                    | AgentEntry::Reasoning { id, markdown, .. }
-                    | AgentEntry::Plan { id, markdown } => {
-                        timeline.synchronize_markdown(
-                            *id,
-                            MarkdownSlot::Body,
-                            markdown.clone(),
-                            cx,
-                        );
-                    }
-                    AgentEntry::Tool(_) => {}
-                }
-            }
-        });
     }
 
     fn restore_prompts(&mut self, update: &Value, window: &mut Window, cx: &mut Context<Self>) {
@@ -913,22 +787,7 @@ impl AgentPane {
     }
 
     fn asks_out_of_view(&self) -> bool {
-        self.chat_inline && self.chat.away
-    }
-
-    fn on_chat_wheel(
-        &mut self,
-        event: &ScrollWheelEvent,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        if self.chat.wheel(event) {
-            cx.defer_in(window, |this, _, cx| {
-                if this.chat.settle() {
-                    cx.notify();
-                }
-            });
-        }
+        self.chat_inline && self.chat.away()
     }
 
     fn permissions(
@@ -937,7 +796,8 @@ impl AgentPane {
         index: usize,
         count: usize,
         current: bool,
-        cx: &mut Context<Self>,
+        entity: &Entity<Self>,
+        cx: &App,
     ) -> AnyElement {
         let request_id = permission.request_id;
         let writable = self.connection.read(cx).connected
@@ -948,8 +808,9 @@ impl AgentPane {
             .into_iter()
             .enumerate()
             .map(|(index, option)| {
-                let enabled = writable;
                 let id = option.id;
+                let chosen = entity.clone();
+                let hovered = entity.clone();
                 permission_option(
                     format!(
                         "agent-permission-option-{}-{request_id}-{index}",
@@ -959,22 +820,27 @@ impl AgentPane {
                     option.name,
                     option.allow == Some(false),
                     current && index == self.permission_selected,
-                    enabled,
+                    writable,
                     cx,
                 )
-                .on_click(cx.listener(move |this, _, _, cx| {
-                    this.choose_permission(request_id, id.clone(), cx);
+                .on_click(move |_, _, cx| {
+                    chosen.update(cx, |this, cx| {
+                        this.choose_permission(request_id, id.clone(), cx);
+                    });
                     cx.stop_propagation();
-                }))
-                .on_hover(cx.listener(move |this, hovered, _, cx| {
-                    if current && *hovered && this.permission_selected != index {
-                        this.permission_selected = index;
-                        cx.notify();
-                    }
-                }))
+                })
+                .on_hover(move |over, _, cx| {
+                    hovered.update(cx, |this, cx| {
+                        if current && *over && this.permission_selected != index {
+                            this.permission_selected = index;
+                            cx.notify();
+                        }
+                    });
+                })
                 .into_any_element()
             })
             .collect();
+        let cancel = entity.clone();
         permission_card(
             permission.title,
             (count > 1).then(|| format!("{}/{count}", index + 1).into()),
@@ -985,10 +851,10 @@ impl AgentPane {
             ))
             .disabled(!writable)
             .tooltip("Cancel request")
-            .on_click(cx.listener(move |this, _, _, cx| {
-                this.respond_permission(request_id, None, cx);
+            .on_click(move |_, _, cx| {
+                cancel.update(cx, |this, cx| this.respond_permission(request_id, None, cx));
                 cx.stop_propagation();
-            })),
+            }),
             cx,
         )
         .into_any_element()
@@ -1156,32 +1022,18 @@ impl AgentPane {
         true
     }
 
-    fn open_output(&self, tool: &AgentToolEntry, cx: &mut Context<Self>) {
-        let cwd = self.cwd(cx).unwrap_or_default();
-        let Some(args) = zz_client::agent_output::output_pane_args(
-            self.pane,
-            &cwd,
-            &tool.label,
-            tool.exit_code,
-            &tool_output_text(tool),
-        ) else {
-            return;
-        };
-        self.connection.update(cx, |connection, cx| {
-            connection.command("split-window", args, cx);
-        });
-    }
-
     fn current_plan(&self, running: bool) -> Option<String> {
-        let source = self
-            .transcript
-            .entries
-            .iter()
-            .rev()
-            .find_map(|entry| match entry {
-                AgentEntry::Plan { markdown, .. } => Some(markdown.full_text()),
-                _ => None,
-            })?;
+        let source =
+            self.transcript
+                .lens
+                .model
+                .entries()
+                .iter()
+                .rev()
+                .find_map(|entry| match entry {
+                    AgentThreadEntry::Plan { markdown, .. } => Some(markdown.clone()),
+                    _ => None,
+                })?;
         let (done, total, _) = zz_ui::agent::plan_progress(&source);
         (total > 0 && (done < total || running)).then_some(source)
     }
@@ -1204,22 +1056,13 @@ impl AgentPane {
                 });
             }
             TaskTrayAction::Reveal(tool_call_id) => {
-                if let Some(row) = self.tool_row(&tool_call_id) {
-                    self.stick.reveal(&self.scroll, row);
-                }
+                self.chat.reveal(
+                    &self.transcript.lens.chat,
+                    &ItemId::new(tool_call_id.to_string()),
+                );
             }
         }
         cx.notify();
-    }
-
-    fn tool_row(&self, tool_call_id: &str) -> Option<usize> {
-        let entry = self.transcript.lens.model.tool_entry(tool_call_id)?;
-        let index = self
-            .transcript
-            .entries
-            .iter()
-            .position(|candidate| candidate.id() == entry)?;
-        self.entry_to_row.get(index).copied()
     }
 
     fn key_down(&mut self, event: &ala::KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
@@ -1329,21 +1172,6 @@ impl AgentPane {
         let failed = matches!(state.phase, AgentConnectionPhase::Failed { .. });
         Some(error_card(error, failed, cx).into_any_element())
     }
-
-    fn drive_stick(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if cx.reduce_motion() || !self.stick.wants_frame(&self.scroll) {
-            return;
-        }
-        self.stick.arm();
-        let view = cx.weak_entity();
-        window.on_next_frame(move |_, cx| {
-            let _ = view.update(cx, |this: &mut Self, cx| {
-                if this.stick.step(&this.scroll) {
-                    cx.notify();
-                }
-            });
-        });
-    }
 }
 
 impl Focusable for AgentPane {
@@ -1389,8 +1217,6 @@ impl Render for AgentPane {
         if state.tasks.is_empty() && self.tray_open == Some(TrayPanel::Tasks) {
             self.tray_open = None;
         }
-        self.stick.set_bottom_padding(COMPOSER_OUTER_PADDING);
-        self.drive_stick(window, cx);
         let use_chat = shows_chat(&self.transcript.lens.chat);
         let open_in_chat = |lens: &Self, request_id: u64| {
             use_chat
@@ -1401,53 +1227,36 @@ impl Render for AgentPane {
                     .open_requests()
                     .any(|request| request.id.0 == request_id)
         };
-        let show_jump = !use_chat && !self.rows.is_empty() && self.stick.shows_jump_button();
         let mut prefix = Vec::new();
-        let mut inline = HashMap::new();
         self.chat_inline = false;
         if let Some(index) = current_permission {
             let request_id = permissions[index].request_id;
-            let in_chat = open_in_chat(self, request_id);
-            self.chat_inline = in_chat;
-            let (shown, count) = if in_chat {
-                (0, 1)
-            } else {
-                (index, permissions.len())
-            };
-            let card = if let Some(card) = self
-                .question
-                .as_ref()
-                .filter(|card| card.request_id() == request_id)
-            {
-                let entity = cx.entity();
-                card.render(
-                    &format!("web-agent-question-{}-{request_id}", self.pane.0),
-                    (count > 1).then(|| format!("{}/{count}", shown + 1).into()),
-                    writable,
-                    move |action, window, cx| {
-                        entity.update(cx, |this, cx| {
-                            this.question_action(action, window, cx);
-                        });
-                    },
-                    cx,
-                )
-                .into_any_element()
-            } else {
-                self.permissions(permissions[index].clone(), shown, count, true, cx)
-            };
-            if in_chat {
-                inline.insert(request_id, card);
-            } else {
+            self.chat_inline = open_in_chat(self, request_id);
+            if !self.chat_inline {
+                let count = permissions.len();
+                let card = if let Some(card) = self
+                    .question
+                    .as_ref()
+                    .filter(|card| card.request_id() == request_id)
+                {
+                    let entity = cx.entity();
+                    card.render(
+                        &format!("web-agent-question-{}-{request_id}", self.pane.0),
+                        (count > 1).then(|| format!("{}/{count}", index + 1).into()),
+                        writable,
+                        move |action, window, cx| {
+                            entity.update(cx, |this, cx| {
+                                this.question_action(action, window, cx);
+                            });
+                        },
+                        cx,
+                    )
+                    .into_any_element()
+                } else {
+                    let entity = cx.entity();
+                    self.permissions(permissions[index].clone(), index, count, true, &entity, cx)
+                };
                 prefix.push(card);
-            }
-        }
-        for permission in pending
-            .iter()
-            .filter(|request| Some(request.request_id) != permission_id)
-        {
-            if permission.questions.is_empty() && open_in_chat(self, permission.request_id) {
-                let card = self.permissions(permission.clone(), 0, 1, false, cx);
-                inline.insert(permission.request_id, card);
             }
         }
         if state.queued_prompts > 0 {
@@ -1524,7 +1333,6 @@ impl Render for AgentPane {
         let usage = self.usage.map(|(used, size)| {
             context_usage_meter(("agent-context-usage", self.pane.0), used, size, cx)
         });
-        let pane = self.pane;
         let watch_only = self.connection.read(cx).agent_watch_only(self.pane);
         let composer = if watch_only {
             div()
@@ -1606,40 +1414,14 @@ impl Render for AgentPane {
             }
             .into_any_element()
         };
-        let chat = use_chat.then(|| self.render_chat(inline, window, cx));
+        let chat = use_chat.then(|| self.render_chat(window, cx));
         let provider = self
             .pane_snapshot(cx)
             .and_then(zz_client::window_summary::pane_agent);
-        let empty = (self.rows.is_empty() && !use_chat).then(|| {
-            match agent_empty(connected, &state.phase, provider) {
-                AgentEmpty::Welcome(provider) => agent_welcome(provider, cx),
-                AgentEmpty::Message { text, busy } => empty_state(text, busy, cx.entity_id(), cx),
-            }
+        let empty = (!use_chat).then(|| match agent_empty(connected, &state.phase, provider) {
+            AgentEmpty::Welcome(provider) => agent_welcome(provider, cx),
+            AgentEmpty::Message { text, busy } => empty_state(text, busy, cx.entity_id(), cx),
         });
-        let timeline = AgentTimeline::new(
-            self.rows.clone(),
-            self.scroll.clone(),
-            self.timeline.clone(),
-        )
-        .active_turn(running)
-        .bottom_padding(COMPOSER_OUTER_PADDING)
-        .open_output({
-            let entity = cx.entity();
-            move |tool, _, cx| entity.update(cx, |this, cx| this.open_output(tool, cx))
-        });
-        let timeline = if self.connection.read(cx).agent_verbs_supported(pane) {
-            let rewind_view = cx.entity();
-            timeline.rewind(
-                writable
-                    && state.phase == AgentConnectionPhase::Ready
-                    && state.pending_permission.is_none(),
-                move |message_id, _, cx| {
-                    rewind_view.update(cx, |this, cx| this.rewind_to(message_id, cx));
-                },
-            )
-        } else {
-            timeline
-        };
         div()
             .relative()
             .flex()
@@ -1658,42 +1440,7 @@ impl Render for AgentPane {
                     .min_h_0()
                     .overflow_hidden()
                     .children(empty)
-                    .children(chat)
-                    .when(!self.rows.is_empty() && !use_chat, |area| {
-                        area.child(timeline).child(
-                            div()
-                                .absolute()
-                                .top_0()
-                                .left_0()
-                                .right_0()
-                                .bottom(px(COMPOSER_OUTER_PADDING))
-                                .child(Scrollbar::vertical(&self.scroll)),
-                        )
-                    })
-                    .when(show_jump, |area| {
-                        area.child(
-                            div()
-                                .absolute()
-                                .left_0()
-                                .right_0()
-                                .bottom(px(2.0 * COMPOSER_OUTER_PADDING))
-                                .flex()
-                                .justify_center()
-                                .child(
-                                    agent_jump_to_bottom_button(
-                                        ("web-agent-jump-to-end", self.pane.0),
-                                        cx,
-                                    )
-                                    .on_click(cx.listener(
-                                        |this, _, _, cx| {
-                                            this.stick.engage(&this.scroll, cx.reduce_motion());
-                                            cx.notify();
-                                            cx.stop_propagation();
-                                        },
-                                    )),
-                                ),
-                        )
-                    }),
+                    .children(chat),
             )
             .child(composer)
             .capture_action(cx.listener(Self::complete))
@@ -1704,103 +1451,79 @@ impl Render for AgentPane {
     }
 }
 
+impl ChatHost for AgentPane {
+    fn chat_pane(&mut self) -> &mut ChatPane {
+        &mut self.chat
+    }
+
+    fn chat_parts<'a>(&'a mut self, _: &'a App) -> (&'a mut ChatPane, Option<&'a ChatView>) {
+        (&mut self.chat, Some(&self.transcript.lens.chat))
+    }
+
+    fn chat_read<'a>(&'a self, _: &'a App) -> (&'a ChatPane, Option<&'a ChatView>) {
+        (&self.chat, Some(&self.transcript.lens.chat))
+    }
+
+    fn chat_ask(&self, request: &RequestView, host: &Entity<Self>, cx: &App) -> Option<AnyElement> {
+        let pending = self.pending_permissions(cx);
+        let current = pending
+            .iter()
+            .find(|permission| !self.permission_answered.contains(&permission.request_id))
+            .map(|permission| permission.request_id);
+        let permission = pending
+            .into_iter()
+            .find(|permission| permission.request_id == request.id.0)?;
+        if Some(permission.request_id) != current {
+            return permission
+                .questions
+                .is_empty()
+                .then(|| self.permissions(permission, 0, 1, false, host, cx));
+        }
+        let Some(card) = self
+            .question
+            .as_ref()
+            .filter(|card| card.request_id() == permission.request_id)
+        else {
+            return Some(self.permissions(permission, 0, 1, true, host, cx));
+        };
+        let connection = self.connection.read(cx);
+        let writable = connection.connected && !connection.core.attached_read_only();
+        let entity = host.clone();
+        Some(
+            card.render(
+                &format!(
+                    "web-agent-question-{}-{}",
+                    self.pane.0, permission.request_id
+                ),
+                None,
+                writable,
+                move |action, window, cx| {
+                    entity.update(cx, |this, cx| this.question_action(action, window, cx));
+                },
+                cx,
+            )
+            .into_any_element(),
+        )
+    }
+
+    fn chat_fork(&mut self, item: &ItemId, cx: &mut Context<Self>) {
+        self.fork_from(item.as_str(), cx);
+    }
+}
+
 impl AgentPane {
-    fn render_chat(
-        &mut self,
-        inline: HashMap<u64, AnyElement>,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> AnyElement {
-        let now = zz_client::chat_rows::now_ms();
-        let phase = if chat_live(&self.transcript.lens.chat) || self.chat.revealing(now) {
-            spinner_phase(cx.entity_id(), cx)
-        } else {
-            0.0
-        };
-        self.chat.sync(&self.transcript.lens.chat);
-        self.chat.release(window, cx);
-        self.chat.pin();
+    fn render_chat(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         let entity = cx.entity();
-        let click: ChatClicks = {
-            let entity = entity.clone();
-            Rc::new(move |click, _, cx| {
-                entity.update(cx, |this, cx| {
-                    if let ChatClick::Fork(item) = click {
-                        this.fork_from(item.as_str(), cx);
-                    }
-                    this.chat.click(click);
-                    cx.notify();
-                });
-            })
-        };
-        let show_jump = self.chat.shows_jump();
-        let jump = cx.listener(|this, _, _, cx| {
-            this.chat.follow();
-            cx.notify();
-            cx.stop_propagation();
-        });
-        let wheel = cx.listener(Self::on_chat_wheel);
-        let pane = self.pane.0;
-        let inline = RefCell::new(inline);
-        let ask = |request: &RequestView, _: &App| inline.borrow_mut().remove(&request.id.0);
-        let forks = self.forks(cx);
-        let refs = self.chat_refs(&entity, cx);
-        let hooks = ChatHooks {
-            click: Some(click),
-            ask: Some(&ask),
-            fork: forks,
-            refs: Some(&refs),
+        let look = ChatLook {
+            pane: self.pane.0,
+            fork: self.forks(cx),
+            refs: Some(self.chat_refs(&entity, cx)),
             vendor: self.provider(cx).map(|provider| match provider {
                 zz_protocol::AgentProvider::ClaudeCode => zz_ui::program::CLAUDE_ICON,
                 zz_protocol::AgentProvider::Codex => zz_ui::program::OPENAI_ICON,
             }),
-            owner: Some(pane),
         };
-        let body = chat_thread(
-            &self.transcript.lens.chat,
-            now,
-            &self.chat.open,
-            phase,
-            &hooks,
-            cx,
-        );
-        let pip = chat_agent_pip(
-            &self.transcript.lens.chat,
-            now,
-            &self.chat.open,
-            phase,
-            &hooks,
-            cx,
-        );
-        div()
-            .relative()
-            .size_full()
-            .child(
-                div()
-                    .id(("web-agent-chat-scroll", pane))
-                    .size_full()
-                    .overflow_y_scroll()
-                    .track_scroll(&self.chat.scroll)
-                    .on_scroll_wheel(wheel)
-                    .child(chat_column(body)),
-            )
-            .children(pip)
-            .when(show_jump, |root| {
-                root.child(
-                    div()
-                        .absolute()
-                        .left_0()
-                        .right_0()
-                        .bottom(px(2.0 * COMPOSER_OUTER_PADDING))
-                        .flex()
-                        .justify_center()
-                        .child(
-                            agent_jump_to_bottom_button(("web-agent-chat-jump", pane), cx)
-                                .on_click(jump),
-                        ),
-                )
-            })
-            .into_any_element()
+        chat_surface(self, look, window, cx)
     }
 }
 
@@ -1822,20 +1545,12 @@ fn preview_image(image: &AgentImage) -> Option<Arc<ala::Image>> {
 
 struct Transcript {
     lens: LensTranscript<Arc<ala::Image>>,
-    entries: Vec<AgentEntry>,
-    markdown: HashMap<u64, AgentMarkdown>,
-    tool_payloads: HashMap<(u64, usize), AgentToolPayload>,
-    revision: u64,
 }
 
 impl Default for Transcript {
     fn default() -> Self {
         Self {
             lens: LensTranscript::new(decode_transcript_image),
-            entries: Vec::new(),
-            markdown: HashMap::new(),
-            tool_payloads: HashMap::new(),
-            revision: 0,
         }
     }
 }
@@ -1846,201 +1561,16 @@ impl Transcript {
             text.to_owned(),
             images.iter().filter_map(preview_image).collect(),
         );
-        self.synchronize();
-    }
-
-    fn synchronize(&mut self) {
-        let model = &self.lens.model;
-        let changed = model.changed_entries(self.revision);
-        let indices = changed.unwrap_or_else(|| (0..model.entries().len()).collect());
-        for index in indices {
-            let source = &model.entries()[index];
-            let parent = model
-                .tool_parent(source.id())
-                .and_then(|parent| model.tool_entry(parent));
-            let entry =
-                ui_entry_with_markdown(source, parent, &mut self.markdown, &mut self.tool_payloads);
-            if index < self.entries.len() {
-                self.entries[index] = entry;
-            } else {
-                self.entries.push(entry);
-            }
-        }
-        self.revision = model.revision();
     }
 
     fn apply(&mut self, _sequence: u64, item: &Value) {
-        if self.lens.apply(item) {
-            self.entries.clear();
-            self.markdown.clear();
-            self.tool_payloads.clear();
-            self.revision = 0;
-        }
-        self.synchronize();
+        self.lens.apply(item);
     }
-}
 
-fn streaming_markdown(
-    markdown: &mut HashMap<u64, AgentMarkdown>,
-    id: u64,
-    source: &str,
-) -> AgentMarkdown {
-    let markdown = markdown
-        .entry(id)
-        .or_insert_with(|| AgentMarkdown::new(source));
-    markdown.synchronize_append(source);
-    markdown.clone()
-}
-
-fn replaced_markdown(
-    markdown: &mut HashMap<u64, AgentMarkdown>,
-    id: u64,
-    source: &str,
-) -> AgentMarkdown {
-    let markdown = markdown
-        .entry(id)
-        .or_insert_with(|| AgentMarkdown::new(source));
-    markdown.replace(source);
-    markdown.clone()
-}
-
-fn ui_entry_with_markdown(
-    entry: &AgentThreadEntry<Arc<ala::Image>>,
-    parent: Option<u64>,
-    markdown_sources: &mut HashMap<u64, AgentMarkdown>,
-    tool_payloads: &mut HashMap<(u64, usize), AgentToolPayload>,
-) -> AgentEntry {
-    match entry {
-        AgentThreadEntry::User {
-            id,
-            markdown,
-            images,
-            ..
-        } => AgentEntry::User {
-            id: *id,
-            markdown: streaming_markdown(markdown_sources, *id, markdown),
-            images: images.clone().into(),
-            rewind_id: entry.rewind_id().map(ala::SharedString::from),
-        },
-        AgentThreadEntry::Assistant {
-            id,
-            markdown,
-            aside,
-            ..
-        } => AgentEntry::Assistant {
-            id: *id,
-            markdown: streaming_markdown(markdown_sources, *id, markdown),
-            aside: aside.map(|aside| zz_ui::agent::AgentAside {
-                side: aside.side,
-                reply_to: aside.reply_to,
-            }),
-        },
-        AgentThreadEntry::Reasoning {
-            id,
-            label,
-            markdown,
-            default_expanded,
-        } => AgentEntry::Reasoning {
-            id: *id,
-            label: ala::SharedString::from(label.clone()),
-            markdown: streaming_markdown(markdown_sources, *id, markdown),
-            default_expanded: *default_expanded,
-        },
-        AgentThreadEntry::Tool {
-            id,
-            kind,
-            status,
-            label,
-            location,
-            input,
-            output,
-            default_expanded,
-            exit_code,
-            ..
-        } => {
-            tool_payloads.retain(|(entry_id, slot), _| {
-                *entry_id != *id
-                    || (*slot == 0 && input.is_some())
-                    || (*slot > 0 && *slot <= output.len())
-            });
-            AgentEntry::Tool(AgentToolEntry {
-                id: *id,
-                kind: AgentToolKind::from(*kind),
-                status: AgentToolStatus::from(*status),
-                label: ala::SharedString::from(label.clone()),
-                location: location.clone().map(ala::SharedString::from),
-                input: input
-                    .as_ref()
-                    .map(|payload| retained_tool_payload(tool_payloads, *id, 0, payload)),
-                output: output
-                    .iter()
-                    .enumerate()
-                    .map(|(index, payload)| {
-                        retained_tool_payload(tool_payloads, *id, index + 1, payload)
-                    })
-                    .collect::<Vec<_>>()
-                    .into(),
-                default_expanded: *default_expanded,
-                parent,
-                exit_code: *exit_code,
-            })
-        }
-        AgentThreadEntry::Plan { id, markdown } => AgentEntry::Plan {
-            id: *id,
-            markdown: replaced_markdown(markdown_sources, *id, markdown),
-        },
+    #[cfg(test)]
+    fn entries(&self) -> &[AgentThreadEntry<Arc<ala::Image>>] {
+        self.lens.model.entries()
     }
-}
-
-fn retained_tool_payload(
-    retained: &mut HashMap<(u64, usize), AgentToolPayload>,
-    entry_id: u64,
-    slot: usize,
-    payload: &ToolPayload,
-) -> AgentToolPayload {
-    let key = (entry_id, slot);
-    let next = match (retained.get(&key), payload) {
-        (
-            Some(AgentToolPayload::Diff {
-                old: retained_old,
-                new: retained_new,
-                ..
-            }),
-            ToolPayload::Diff { path, old, new },
-        ) if retained_old.is_some() == old.is_some() => {
-            if let (Some(retained_old), Some(old)) = (retained_old, old) {
-                retained_old.synchronize(old);
-            }
-            retained_new.synchronize(new);
-            AgentToolPayload::Diff {
-                path: path.clone().into(),
-                old: retained_old.clone(),
-                new: retained_new.clone(),
-            }
-        }
-        (Some(AgentToolPayload::Text(retained)), ToolPayload::Text(text)) => {
-            retained.synchronize(text);
-            AgentToolPayload::Text(retained.clone())
-        }
-        (Some(AgentToolPayload::Json(retained)), ToolPayload::Json(text)) => {
-            retained.synchronize(text);
-            AgentToolPayload::Json(retained.clone())
-        }
-        (Some(AgentToolPayload::Terminal(retained)), ToolPayload::Terminal(text)) => {
-            retained.synchronize(text);
-            AgentToolPayload::Terminal(retained.clone())
-        }
-        (_, ToolPayload::Diff { path, old, new }) => AgentToolPayload::Diff {
-            path: path.clone().into(),
-            old: old.as_deref().map(AgentToolText::new),
-            new: AgentToolText::new(new),
-        },
-        (_, ToolPayload::Text(text)) => AgentToolPayload::Text(AgentToolText::new(text)),
-        (_, ToolPayload::Json(text)) => AgentToolPayload::Json(AgentToolText::new(text)),
-        (_, ToolPayload::Terminal(text)) => AgentToolPayload::Terminal(AgentToolText::new(text)),
-    };
-    retained.insert(key, next.clone());
-    next
 }
 
 #[cfg(test)]
@@ -2049,6 +1579,7 @@ mod tests {
     use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
     use serde_json::json;
     use zz_client::agent_lens::permission_questions;
+    use zz_client::agent_transcript::{AgentToolStatusModel, ToolPayload};
 
     #[test]
     fn replayed_image_only_messages_and_text_chunks_share_the_user_row() {
@@ -2060,22 +1591,22 @@ mod tests {
             {"sessionUpdate":"user_message_chunk","messageId":"a","content":{"type":"text","text":"Look at this"}},
             {"sessionUpdate":"user_message_chunk","messageId":"b","content":content}
         ]}));
-        assert_eq!(transcript.entries.len(), 2);
-        let AgentEntry::User {
+        assert_eq!(transcript.entries().len(), 2);
+        let AgentThreadEntry::User {
             markdown, images, ..
-        } = &transcript.entries[0]
+        } = &transcript.entries()[0]
         else {
             panic!()
         };
-        assert_eq!(markdown.full_text(), "Look at this");
+        assert_eq!(markdown, "Look at this");
         assert_eq!(images.len(), 1);
-        let AgentEntry::User {
+        let AgentThreadEntry::User {
             markdown, images, ..
-        } = &transcript.entries[1]
+        } = &transcript.entries()[1]
         else {
             panic!()
         };
-        assert!(markdown.trim_is_empty());
+        assert!(markdown.trim().is_empty());
         assert_eq!(images.len(), 1);
     }
 
@@ -2091,12 +1622,12 @@ mod tests {
         transcript.local_prompt("", &[image]);
         transcript.apply(1, &json!({"item":"turnStarted"}));
         transcript.apply(2, &json!({"item":"update","update":{"sessionUpdate":"user_message_chunk","content":content}}));
-        assert_eq!(transcript.entries.len(), 1);
+        assert_eq!(transcript.entries().len(), 1);
         transcript.apply(3, &json!({"item":"promptFinished"}));
         transcript.apply(4, &json!({"item":"update","update":{"sessionUpdate":"user_message_chunk","content":content}}));
-        assert_eq!(transcript.entries.len(), 2);
-        for entry in &transcript.entries {
-            let AgentEntry::User { images, .. } = entry else {
+        assert_eq!(transcript.entries().len(), 2);
+        for entry in transcript.entries() {
+            let AgentThreadEntry::User { images, .. } = entry else {
                 panic!()
             };
             assert_eq!(images.len(), 1);
@@ -2110,11 +1641,11 @@ mod tests {
             transcript.apply(sequence, &json!({"item":"update","update":{
                 "sessionUpdate":"plan","entries":[{"content":"Ship shared UI","priority":"high","status":status}]
             }}));
-            let AgentEntry::Plan { markdown, .. } = &transcript.entries[0] else {
+            let AgentThreadEntry::Plan { markdown, .. } = &transcript.entries()[0] else {
                 panic!()
             };
             assert_eq!(
-                markdown.full_text(),
+                markdown,
                 if sequence == 1 {
                     "- [~] Ship shared UI"
                 } else {
@@ -2122,7 +1653,7 @@ mod tests {
                 }
             );
         }
-        assert_eq!(transcript.entries.len(), 1);
+        assert_eq!(transcript.entries().len(), 1);
     }
 
     #[test]
@@ -2133,26 +1664,29 @@ mod tests {
             "locations":[{"path":"src/main.rs","line":12}],
             "content":[{"type":"terminal","terminalId":"pty-1"}],"rawOutput":{"ignored":true}
         }}));
-        let AgentEntry::Tool(tool) = &transcript.entries[0] else {
+        let AgentThreadEntry::Tool {
+            location, output, ..
+        } = &transcript.entries()[0]
+        else {
             panic!()
         };
-        assert_eq!(tool.location.as_deref(), Some("src/main.rs:12"));
-        assert!(matches!(&tool.output[0], AgentToolPayload::Terminal(_)));
+        assert_eq!(location.as_deref(), Some("src/main.rs:12"));
+        assert!(matches!(&output[0], ToolPayload::Terminal(_)));
         transcript.apply(2, &json!({"item":"permissionRequested","request_id":7,
             "tool_call":{"toolCallId":"t"},"options":[{"optionId":"allow","name":"Allow once","kind":"allow_once"}]}));
-        let AgentEntry::Tool(tool) = &transcript.entries[0] else {
+        let AgentThreadEntry::Tool { status, .. } = &transcript.entries()[0] else {
             panic!()
         };
-        assert_eq!(tool.status, AgentToolStatus::NeedsApproval);
+        assert_eq!(*status, AgentToolStatusModel::NeedsApproval);
         assert_eq!(transcript.lens.model.permissions().len(), 1);
         transcript.apply(
             3,
             &json!({"item":"permissionResolved","request_id":7,"canceled":true}),
         );
-        let AgentEntry::Tool(tool) = &transcript.entries[0] else {
+        let AgentThreadEntry::Tool { status, .. } = &transcript.entries()[0] else {
             panic!()
         };
-        assert_eq!(tool.status, AgentToolStatus::Canceled);
+        assert_eq!(*status, AgentToolStatusModel::Canceled);
         assert!(transcript.lens.model.permissions().is_empty());
     }
 
@@ -2182,87 +1716,7 @@ mod tests {
     }
 
     #[test]
-    fn subagent_steps_carry_their_agents_entry_into_the_fold() {
-        let mut transcript = Transcript::default();
-        transcript.apply(
-            1,
-            &json!({"item":"update","update":{
-            "sessionUpdate":"tool_call","toolCallId":"agent-1","title":"Survey","kind":"think"}}),
-        );
-        transcript.apply(
-            2,
-            &json!({"item":"update","update":{
-            "sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"meanwhile"}}}),
-        );
-        transcript.apply(
-            3,
-            &json!({"item":"update","update":{
-            "sessionUpdate":"tool_call","toolCallId":"read-1","title":"Read a.rs","kind":"read",
-            "_meta":{"zz":{"parent":"agent-1"}}}}),
-        );
-        let agent = transcript.entries[0].id();
-        let parents = transcript
-            .entries
-            .iter()
-            .map(zz_ui::agent::timeline_parent)
-            .collect::<Vec<_>>();
-        assert_eq!(parents, [None, None, Some(agent)]);
-        assert_eq!(
-            fold_timeline_rows(&transcript.entries).entry_to_row,
-            [0, 0, 0],
-            "the agent, the message and the step share the turn's row"
-        );
-    }
-
-    #[test]
-    fn a_step_that_arrives_before_its_agent_learns_its_parent_later() {
-        let mut transcript = Transcript::default();
-        transcript.apply(
-            1,
-            &json!({"item":"update","update":{
-            "sessionUpdate":"tool_call","toolCallId":"read-1","title":"Read a.rs","kind":"read",
-            "_meta":{"zz":{"parent":"agent-1"}}}}),
-        );
-        assert_eq!(zz_ui::agent::timeline_parent(&transcript.entries[0]), None);
-        transcript.apply(
-            2,
-            &json!({"item":"update","update":{
-            "sessionUpdate":"tool_call","toolCallId":"agent-1","title":"Survey","kind":"think"}}),
-        );
-        assert_eq!(
-            zz_ui::agent::timeline_parent(&transcript.entries[0]),
-            Some(transcript.entries[1].id())
-        );
-    }
-
-    #[test]
-    fn a_step_that_arrives_before_its_agent_leaves_its_place_for_the_agents_row() {
-        let mut transcript = Transcript::default();
-        transcript.apply(
-            1,
-            &json!({"item":"update","update":{
-            "sessionUpdate":"tool_call","toolCallId":"read-1","title":"Read a.rs","kind":"read",
-            "_meta":{"zz":{"parent":"agent-1"}}}}),
-        );
-        transcript.apply(
-            2,
-            &json!({"item":"update","update":{
-            "sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"meanwhile"}}}),
-        );
-        transcript.apply(
-            3,
-            &json!({"item":"update","update":{
-            "sessionUpdate":"tool_call","toolCallId":"agent-1","title":"Survey","kind":"think"}}),
-        );
-        assert_eq!(
-            fold_timeline_rows(&transcript.entries).entry_to_row,
-            [0, 0, 0],
-            "a step that came before its agent still lands in the turn's row"
-        );
-    }
-
-    #[test]
-    fn prompt_rows_carry_their_rewind_id_into_the_timeline() {
+    fn prompt_rows_carry_their_rewind_id() {
         let prompt = |id: &str, text: &str| json!({"sessionUpdate":"user_message_chunk","messageId":id,"content":{"type":"text","text":text}});
         let mut transcript = Transcript::default();
         transcript.apply(
@@ -2275,12 +1729,10 @@ mod tests {
             &json!({"item":"update","update":prompt("u-2", "second")}),
         );
         let rewind_ids = transcript
-            .entries
+            .entries()
             .iter()
-            .map(|entry| match entry {
-                AgentEntry::User { rewind_id, .. } => rewind_id.as_deref(),
-                _ => None,
-            })
+            .filter(|entry| matches!(entry, AgentThreadEntry::User { .. }))
+            .map(AgentThreadEntry::rewind_id)
             .collect::<Vec<_>>();
         assert_eq!(rewind_ids, [Some("u-1"), None, Some("u-2")]);
     }
@@ -2290,11 +1742,11 @@ mod tests {
         for (outcome, expected) in [
             (
                 json!({"outcome":"failed","message":"lost connection"}),
-                AgentToolStatus::Failed,
+                AgentToolStatusModel::Failed,
             ),
             (
                 json!({"outcome":"finished","stop_reason":"cancelled"}),
-                AgentToolStatus::Canceled,
+                AgentToolStatusModel::Canceled,
             ),
         ] {
             let mut transcript = Transcript::default();
@@ -2302,10 +1754,10 @@ mod tests {
                 "sessionUpdate":"tool_call","toolCallId":"t","title":"Read file","kind":"read","status":"in_progress"
             }}));
             transcript.apply(2, &json!({"item":"promptFinished","outcome":outcome}));
-            let AgentEntry::Tool(tool) = &transcript.entries[0] else {
+            let AgentThreadEntry::Tool { status, .. } = &transcript.entries()[0] else {
                 panic!()
             };
-            assert_eq!(tool.status, expected);
+            assert_eq!(*status, expected);
         }
     }
 
@@ -2313,15 +1765,15 @@ mod tests {
     fn submitted_prompt_is_visible_without_a_provider_echo_and_not_duplicated_by_one() {
         let mut transcript = Transcript::default();
         transcript.local_prompt("hello world", &[]);
-        assert_eq!(transcript.entries.len(), 1);
+        assert_eq!(transcript.entries().len(), 1);
         transcript.apply(1, &json!({"item":"turnStarted"}));
         for (sequence, text) in [(2, "hello"), (3, " world")] {
             transcript.apply(sequence, &json!({"item":"update","update":{"sessionUpdate":"user_message_chunk","content":{"type":"text","text":text}}}));
         }
-        assert_eq!(transcript.entries.len(), 1);
+        assert_eq!(transcript.entries().len(), 1);
         transcript.apply(4, &json!({"item":"promptFinished"}));
         transcript.apply(5, &json!({"item":"update","update":{"sessionUpdate":"user_message_chunk","content":{"type":"text","text":"another client"}}}));
-        assert_eq!(transcript.entries.len(), 2);
+        assert_eq!(transcript.entries().len(), 2);
     }
 
     #[test]
@@ -2330,14 +1782,14 @@ mod tests {
         for (sequence, text) in [(1, "hello"), (2, " world")] {
             transcript.apply(sequence, &json!({"item":"update","update":{"sessionUpdate":"agent_message_chunk","messageId":"a","content":{"type":"text","text":text}}}));
         }
-        assert_eq!(transcript.entries.len(), 1);
-        let AgentEntry::Assistant { markdown, .. } = &transcript.entries[0] else {
+        assert_eq!(transcript.entries().len(), 1);
+        let AgentThreadEntry::Assistant { markdown, .. } = &transcript.entries()[0] else {
             panic!()
         };
-        assert_eq!(markdown.full_text(), "hello world");
+        assert_eq!(markdown, "hello world");
         transcript.apply(3, &json!({"item":"promptFinished"}));
         transcript.apply(4, &json!({"item":"update","update":{"sessionUpdate":"agent_message_chunk","messageId":"a","content":{"type":"text","text":"next"}}}));
-        assert_eq!(transcript.entries.len(), 2);
+        assert_eq!(transcript.entries().len(), 2);
     }
 
     #[test]
@@ -2346,16 +1798,16 @@ mod tests {
         transcript.apply(1, &json!({"item":"sessionReset","restoring":true}));
         transcript.apply(2, &json!({"item":"update","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"restored"}}}));
         transcript.apply(3, &json!({"item":"sessionSwitched","replay":[]}));
-        let AgentEntry::Assistant { markdown, .. } = &transcript.entries[0] else {
+        let AgentThreadEntry::Assistant { markdown, .. } = &transcript.entries()[0] else {
             panic!()
         };
-        assert_eq!(markdown.full_text(), "restored");
+        assert_eq!(markdown, "restored");
         transcript.apply(4, &json!({"item":"sessionSwitched","replay":[{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"another session"}}]}));
-        assert_eq!(transcript.entries.len(), 1);
-        let AgentEntry::Assistant { markdown, .. } = &transcript.entries[0] else {
+        assert_eq!(transcript.entries().len(), 1);
+        let AgentThreadEntry::Assistant { markdown, .. } = &transcript.entries()[0] else {
             panic!()
         };
-        assert_eq!(markdown.full_text(), "another session");
+        assert_eq!(markdown, "another session");
     }
 
     #[test]
@@ -2363,12 +1815,12 @@ mod tests {
         let mut transcript = Transcript::default();
         transcript.apply(1, &json!({"item":"update","update":{"sessionUpdate":"tool_call","toolCallId":"t","title":"Run tests"}}));
         transcript.apply(2, &json!({"item":"update","update":{"sessionUpdate":"tool_call_update","toolCallId":"t","status":"completed"}}));
-        let AgentEntry::Tool(tool) = &transcript.entries[0] else {
+        let AgentThreadEntry::Tool { status, .. } = &transcript.entries()[0] else {
             panic!()
         };
-        assert_eq!(tool.status, AgentToolStatus::Completed);
+        assert_eq!(*status, AgentToolStatusModel::Completed);
         transcript.apply(3, &json!({"item":"sessionReset"}));
-        assert!(transcript.entries.is_empty());
+        assert!(transcript.entries().is_empty());
         assert!(transcript.lens.model.permissions().is_empty());
     }
 }

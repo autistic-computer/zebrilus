@@ -66,11 +66,10 @@ impl AgentConnectionState {
     }
 }
 
+pub(crate) use zz_client::agent_transcript::{AgentPermissionKind, AgentPermissionRequest};
 #[cfg(test)]
-pub(crate) use zz_client::agent_transcript::AgentPermissionOption;
 pub(crate) use zz_client::agent_transcript::{
-    AgentPermissionKind, AgentPermissionRequest, AgentToolKindModel, AgentToolStatusModel,
-    ToolPayload,
+    AgentPermissionOption, AgentToolKindModel, AgentToolStatusModel, ToolPayload,
 };
 use zz_client::agent_transcript::{AgentTranscript, capped, is_zz_command};
 pub(crate) type AgentThreadEntry = zz_client::agent_transcript::AgentThreadEntry<Arc<Image>>;
@@ -119,6 +118,7 @@ pub(crate) struct AgentPaneState {
 struct AgentThread {
     transcript: AgentTranscript<Arc<Image>>,
     chat: ChatView,
+    chat_revision: u64,
     provider: AgentProvider,
     connection: AgentConnectionState,
     submitted: bool,
@@ -141,6 +141,7 @@ impl AgentThread {
         Self {
             transcript: AgentTranscript::new(transcript_image),
             chat: ChatView::default(),
+            chat_revision: 0,
             provider,
             connection: AgentConnectionState::Starting,
             submitted: false,
@@ -309,7 +310,6 @@ enum RuntimeEvent {
 struct PaneViewport {
     last_applied: u64,
     queued_prompts: usize,
-    conversation_epoch: u64,
     last_reclaim_id: u64,
 }
 
@@ -350,6 +350,12 @@ impl AgentController {
         self.panes.get(&pane).map(|thread| &thread.chat)
     }
 
+    pub(crate) fn pane_chat_revision(&self, pane: PaneId) -> u64 {
+        self.panes
+            .get(&pane)
+            .map_or(0, |thread| thread.chat_revision)
+    }
+
     pub(crate) fn pane_state(&self, pane: PaneId) -> Option<AgentPaneState> {
         self.panes.get(&pane).map(|thread| {
             let mut state = thread.snapshot();
@@ -368,12 +374,6 @@ impl AgentController {
             .map_or(0, |viewport| viewport.queued_prompts)
     }
 
-    pub(crate) fn conversation_epoch(&self, pane: PaneId) -> u64 {
-        self.viewports
-            .get(&pane)
-            .map_or(0, |viewport| viewport.conversation_epoch)
-    }
-
     pub(crate) fn pane_entries(&self, pane: PaneId) -> Option<(&[AgentThreadEntry], &[u64], u64)> {
         self.panes.get(&pane).map(|thread| {
             (
@@ -382,10 +382,6 @@ impl AgentController {
                 thread.transcript.revision(),
             )
         })
-    }
-
-    pub(crate) fn pane_entry_changes(&self, pane: PaneId, since: u64) -> Option<Vec<usize>> {
-        self.panes.get(&pane)?.transcript.changed_entries(since)
     }
 
     pub(crate) fn registered_panes(&self) -> BTreeSet<PaneId> {
@@ -402,10 +398,8 @@ impl AgentController {
                 .insert(pane, AgentThread::new(provider, cwd, None));
         }
         self.retained_panes.insert(pane);
-        let viewport = self.viewports.entry(pane).or_default();
         if provider_changed {
-            viewport.conversation_epoch = viewport.conversation_epoch.saturating_add(1);
-            viewport.last_applied = 0;
+            self.viewports.entry(pane).or_default().last_applied = 0;
         }
     }
 
@@ -607,17 +601,6 @@ impl AgentController {
         known && self.send(pane, AgentRequest::StopTask { task_id }, cx)
     }
 
-    pub(crate) fn tool_parent_entry(&self, pane: PaneId, entry_id: u64) -> Option<u64> {
-        let transcript = &self.panes.get(&pane)?.transcript;
-        transcript
-            .tool_parent(entry_id)
-            .and_then(|parent| transcript.tool_entry(parent))
-    }
-
-    pub(crate) fn tool_entry(&self, pane: PaneId, tool_call_id: &str) -> Option<u64> {
-        self.panes.get(&pane)?.transcript.tool_entry(tool_call_id)
-    }
-
     pub(crate) fn is_shutting_down(&self) -> bool {
         self.shutting_down
     }
@@ -719,10 +702,11 @@ impl AgentController {
                 }
             }
             if let AgentStreamPayload::Chat { event } = &item.payload {
-                if let Some(thread) = self.panes.get_mut(&pane)
-                    && let Err(skip) = thread.chat.apply(event)
-                {
-                    log::debug!(target: "zz::agent", "chat view skipped {event:?}: {skip:?}");
+                if let Some(thread) = self.panes.get_mut(&pane) {
+                    thread.chat_revision += 1;
+                    if let Err(skip) = thread.chat.apply(event) {
+                        log::debug!(target: "zz::agent", "chat view skipped {event:?}: {skip:?}");
+                    }
                 }
                 changed = true;
                 continue;
@@ -1015,8 +999,6 @@ impl AgentController {
                 }
             }
             RuntimeEvent::SessionReset { pane, restoring } => {
-                let viewport = self.viewport_mut(pane);
-                viewport.conversation_epoch = viewport.conversation_epoch.saturating_add(1);
                 if let Some(thread) = self.panes.get_mut(&pane) {
                     thread.reset_for_open(restoring);
                     changed_pane = Some(pane);
@@ -1041,14 +1023,6 @@ impl AgentController {
                 cwd,
                 replay,
             } => {
-                if self
-                    .panes
-                    .get(&pane)
-                    .is_some_and(|thread| !thread.session_reset)
-                {
-                    let viewport = self.viewport_mut(pane);
-                    viewport.conversation_epoch = viewport.conversation_epoch.saturating_add(1);
-                }
                 if let Some(thread) = self.panes.get_mut(&pane) {
                     if !thread.session_reset {
                         thread.reset_for_open(true);
@@ -2775,50 +2749,6 @@ mod tests {
                 let pane_state = controller.pane_state(pane).expect("the pane is registered");
                 assert!(pane_state.tasks.is_empty());
                 assert!(pane_state.pending_permissions.is_empty());
-            });
-        });
-    }
-
-    #[ala::test]
-    fn subagent_tool_rows_resolve_to_their_agents_entry(cx: &mut TestAppContext) {
-        let (controller, _sink) = proxy_controller(cx);
-        let pane = PaneId(10);
-        cx.update(|cx| {
-            controller.update(cx, |controller, cx| {
-                ready_pane(controller, pane);
-                controller.apply_stream_items(
-                    pane,
-                    vec![
-                        item(
-                            1,
-                            AgentStreamPayload::Update {
-                                update: serde_json::json!({
-                                    "sessionUpdate": "tool_call",
-                                    "toolCallId": "agent-1",
-                                    "title": "Survey",
-                                    "kind": "think",
-                                }),
-                            },
-                        ),
-                        item(
-                            2,
-                            AgentStreamPayload::Update {
-                                update: serde_json::json!({
-                                    "sessionUpdate": "tool_call",
-                                    "toolCallId": "read-1",
-                                    "title": "Read a.rs",
-                                    "kind": "read",
-                                    "_meta": {"zz": {"parent": "agent-1"}},
-                                }),
-                            },
-                        ),
-                    ],
-                    cx,
-                );
-                let agent = controller.tool_entry(pane, "agent-1").expect("agent row");
-                let step = controller.tool_entry(pane, "read-1").expect("step row");
-                assert_eq!(controller.tool_parent_entry(pane, step), Some(agent));
-                assert_eq!(controller.tool_parent_entry(pane, agent), None);
             });
         });
     }

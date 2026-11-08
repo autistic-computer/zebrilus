@@ -121,8 +121,8 @@ composer under the same terminal header. The lens closes by itself when the pane
 agent CLI stops being its foreground program. A client tracks the stream only for lenses it shows:
 opening sends a replay from seq 0 and starts a cursor, closing drops the cursor and anything
 buffered, so reopening replays from the start. The kept pieces are
-`AgentTimeline` and its rows (`render_user_entry`, `render_answer`), `permission_card`, the question
-card, `AgentComposer` and the task tray.
+the chat view (`zz_ui::agent::chat`), `permission_card`, the question card, `AgentComposer` and
+the task tray.
 
 # Map and deletion plan
 

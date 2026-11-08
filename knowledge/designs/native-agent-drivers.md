@@ -168,8 +168,8 @@ to work on the desktop and the phone. The design board is the "Quiet timeline" a
   Rows draw no fill: their ink is muted, and a row you can open brightens under the pointer. After the turn it reads "Worked 2m 14s"
   with no leading icon, then one icon per kind (read, search, edit, command, fetch, other tool,
   agent, and a red warning for failures), each with its count in a badge on its top right and a
-  tooltip naming it ("3 commands"). The clock lives in `AgentTimelineStore` (`tick_turn_clocks`,
-  run on every timeline render), so turns replayed from history show no time.
+  tooltip naming it ("3 commands"). The clock comes from the chat's turn times
+  (`chat_rows::turn_rows`).
 - **Opened.** A click lists the turn in order: "Thought" with its text, narration in muted 12px, and
   one line per tool. Subagent steps fold under their agent's line, which shows the agent icon and no
   count; their own view is the PiP work, parked.

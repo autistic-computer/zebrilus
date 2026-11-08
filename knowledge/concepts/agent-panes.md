@@ -290,9 +290,10 @@ markdown carries them as `zzref:` links; the user's bubble draws them as clickab
   keeps its text (`chat_rows::reasoning_body`). The opened text is selectable and scrolls inside
   260 px. Claude's thinking reads the same way.
 - **Subagents.** One row each: the CLI's mark, the name, a status glyph (spinning, Needs you, done,
-  failed, stopped) and the time it took. Clicking one opens its chat in a PiP over the thread
-  (`chat_agent_pip`): the prompt it was given, its own rows, its answer and a footer; its close
-  button or a second click closes it. An approval it waits on sits under its row.
+  failed, stopped) and the time it took. Clicking one opens its chat in a PiP docked beside the
+  thread (`chat_agent_pip`, `chat_pip_frame`; on touch it covers the thread): the prompt it was
+  given, its own rows, its answer and a footer; its close button or a second click closes it. An
+  approval it waits on sits under its row, or in the PiP while that agent's PiP is open.
 - **Answered questions.** The question, with the answer under it.
 - **Codex's async questions.** Codex can ask without stopping its turn
   (`request_user_input_async`); the app server sends that as an `agentMessage` with
