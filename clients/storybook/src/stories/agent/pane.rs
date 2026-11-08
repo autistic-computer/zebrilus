@@ -424,6 +424,7 @@ impl AgentPaneStory {
                 armed: flip.armed(),
                 pending: flip.pending(),
             }),
+            &zz_ui::pane::PaneActionKeys::default(),
             move |action, _, cx| {
                 if action == TerminalPaneAction::Flip {
                     entity.update(cx, |view, cx| {
@@ -736,6 +737,7 @@ fn render_flip_buttons(_: &mut Window, cx: &mut App) -> AnyElement {
                     armed: case.armed,
                     pending: case.pending,
                 }),
+                &zz_ui::pane::PaneActionKeys::default(),
                 |_, _, _| {},
                 cx,
             );

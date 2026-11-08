@@ -39,6 +39,15 @@ const WORKSPACE_STATUS_LINE_HEIGHT: Pixels = px(18.0);
 const WORKSPACE_STATUS_WINDOW_DEFAULT_WIDTH: Pixels = px(240.0);
 const WORKSPACE_STATUS_WINDOW_MIN_WIDTH: Pixels = px(36.0);
 
+#[must_use]
+pub fn workspace_status_tab_height(alone: bool) -> Pixels {
+    if alone {
+        WORKSPACE_STATUS_TAB_HEIGHT + px(Space::S2.design_px() * 2.0)
+    } else {
+        WORKSPACE_STATUS_TAB_HEIGHT
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct WorkspaceStatusWindowState {
     pub connected: bool,
@@ -234,7 +243,13 @@ pub fn workspace_status_window(
         .w(WORKSPACE_STATUS_WINDOW_DEFAULT_WIDTH)
         .min_w(WORKSPACE_STATUS_WINDOW_MIN_WIDTH)
         .max_w(WORKSPACE_STATUS_WINDOW_DEFAULT_WIDTH)
-        .h(WORKSPACE_STATUS_TAB_HEIGHT)
+        .map(|item| {
+            if state.alone {
+                item.h_full()
+            } else {
+                item.h(WORKSPACE_STATUS_TAB_HEIGHT)
+            }
+        })
         .items_center()
         .gap(px(5.0))
         .px(px(9.0))

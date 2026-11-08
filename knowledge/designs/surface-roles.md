@@ -466,7 +466,7 @@ What the inventory found on the kinds themselves:
 | `sheet` | which-key, phone bottom sheets | `kit/which_key.rs:419`, `kit/sheet.rs:355` | |
 | `toast` | notifications, update offer, disconnected banner, pinch HUD | `kit/overlay/notification.rs:69`, `app/app.rs:2238`, `kit/compact/hud.rs:18` | banner and HUD used the popover look; fixed, both draw as toasts |
 | `tooltip` | floating | `kit/tooltip/mod.rs:53` | |
-| `keycap` | key hints everywhere | `kit/kbd.rs:189`, `:253` | Soft, Outline and plain text versions; fixed, `Kbd` and `Keycap` draw one cap (menus and tooltips still show bindings as text) |
+| `keycap` | key hints everywhere | `kit/kbd.rs:189`, `:253` | Soft, Outline and plain text versions; fixed, `Kbd` and `Keycap` draw one cap (menus still show bindings as text) |
 
 Scrims (dimming behind dialogs, pickers, sheets, the slideover and modal floats) are not a role:
 they fill with `theme.scrim`.

@@ -1,15 +1,13 @@
 use crate::config::settings::OpenSettings;
 use crate::mux::client::MuxClient;
-use crate::mux::prefix::display_keystroke;
+use crate::mux::prefix::{bound_key, display_keystroke, split_hint_matches};
 use ala::{
     App, Context, FocusHandle, Focusable, KeyDownEvent, Keystroke, MouseButton, Render, Window,
     prelude::*,
 };
 use penna::components::button::{Button, ButtonVariants as _};
 use zz_client::{ChromeAction, UI_TABLE};
-use zz_protocol::{
-    CommandInvocation, KeyBindingSnapshot, TmuxOption, command_spec, parse_tmux_command_options,
-};
+use zz_protocol::{CommandInvocation, KeyBindingSnapshot};
 use zz_ui::shell::{
     empty_workspace, empty_workspace_action, empty_workspace_caption, empty_workspace_connect,
     empty_workspace_hint, empty_workspace_keys,
@@ -84,48 +82,11 @@ const BINDINGS: [BindingHint; 5] = [
     },
 ];
 
-fn split_hint_matches(command: &CommandInvocation, horizontal: bool) -> bool {
-    if !matches!(command.name.as_str(), "split-window" | "splitw") {
-        return false;
-    }
-    let Some(spec) = command_spec(&command.name) else {
-        return false;
-    };
-    let Ok(parsed) = parse_tmux_command_options(spec, command) else {
-        return false;
-    };
-    let kind = parsed
-        .options
-        .iter()
-        .rev()
-        .find_map(|option| match option {
-            TmuxOption::Value("--kind", kind) => Some(*kind),
-            _ => None,
-        })
-        .unwrap_or("terminal");
-    matches!(kind, "terminal" | "picker")
-        && parsed.options.contains(&TmuxOption::Flag("-h")) == horizontal
-}
-
 fn resolve_binding_key(
     hint: &BindingHint,
     prefix_bindings: &[KeyBindingSnapshot],
 ) -> Option<Keystroke> {
-    let stock_key = || display_keystroke(hint.hint.key);
-    if prefix_bindings.is_empty() {
-        return stock_key();
-    }
-
-    let binding = prefix_bindings
-        .iter()
-        .filter(|binding| {
-            binding
-                .commands
-                .first()
-                .is_some_and(|command| (hint.matches)(command))
-        })
-        .min_by_key(|binding| binding.key == hint.hint.key)?;
-    display_keystroke(&binding.key).or_else(stock_key)
+    bound_key(prefix_bindings, hint.hint.key, hint.matches)
 }
 
 fn hint_keys(

@@ -6,8 +6,8 @@ use crate::{
 };
 use ala::{
     AnyElement, App, BorderStyle, Bounds, Corners, CursorStyle, ElementId, GlassMaterial, Hsla,
-    IntoElement, ParentElement as _, Pixels, SharedString, Stateful, Styled as _, StyledText,
-    Window, canvas, div, prelude::*, px, quad, relative, size,
+    IntoElement, Keystroke, ParentElement as _, Pixels, SharedString, Stateful, Styled as _,
+    StyledText, Window, canvas, div, prelude::*, px, quad, relative, size,
 };
 use penna::{
     Bar, BarLook, Chip, ChipLook, ContentLook, Label, Row, RowLook, RuleLook, Tab, TabLook,
@@ -170,6 +170,24 @@ impl RenderOnce for PaneTitle {
     }
 }
 
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct PaneActionKeys(Vec<(TerminalPaneAction, Vec<Keystroke>)>);
+
+impl PaneActionKeys {
+    #[must_use]
+    pub fn new(keys: impl IntoIterator<Item = (TerminalPaneAction, Vec<Keystroke>)>) -> Self {
+        Self(keys.into_iter().collect())
+    }
+
+    #[must_use]
+    pub fn of(&self, action: TerminalPaneAction) -> &[Keystroke] {
+        self.0
+            .iter()
+            .find(|(bound, _)| *bound == action)
+            .map_or(&[], |(_, keys)| keys)
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TerminalPaneAction {
     SplitBottom,
@@ -302,6 +320,7 @@ pub fn terminal_pane_header(
         drag,
         floats,
         flip,
+        &PaneActionKeys::default(),
         on_action,
         cx,
     )
@@ -493,6 +512,7 @@ pub fn pane_header(
     drag: PaneDragSource,
     floats: bool,
     flip: Option<PaneFlip>,
+    keys: &PaneActionKeys,
     on_action: impl Fn(TerminalPaneAction, &mut Window, &mut App) + 'static,
     cx: &App,
 ) -> Stateful<ala::Div> {
@@ -504,6 +524,7 @@ pub fn pane_header(
         pane_header_icon_button(label, icon, true, cx)
             .debug_selector(move || format!("pane-action-{label}"))
             .tooltip(label)
+            .tooltip_keys(keys.of(action).to_vec())
             .on_click(move |_, window, cx| {
                 cx.stop_propagation();
                 on_action(action, window, cx);

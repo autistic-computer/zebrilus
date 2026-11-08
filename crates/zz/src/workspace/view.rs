@@ -554,6 +554,7 @@ struct TerminalHeaderState {
     can_drag: bool,
     floats: bool,
     flip: Option<PaneFlip>,
+    keys: zz_ui::pane::PaneActionKeys,
     radii: Corners<Pixels>,
     opacity: f32,
 }
@@ -598,6 +599,7 @@ impl Render for TerminalHeaderView {
             }),
             state.floats,
             state.flip,
+            &state.keys,
             move |action, window, cx| {
                 if matches!(action, TerminalPaneAction::Flip) {
                     if let Some(app) = flip_app.upgrade() {
@@ -3543,6 +3545,7 @@ impl AppView {
                             && window.panes.len() > 1,
                         floats: window.floating.iter().any(|float| float.pane == *pane),
                         flip: self.pane_flip(snapshot),
+                        keys: self.pane_action_keys(cx),
                         radii,
                         opacity: if inactive { inactive_opacity } else { 1.0 },
                     };
@@ -4110,6 +4113,14 @@ impl AppView {
         )
     }
 
+    fn pane_action_keys(&self, cx: &App) -> zz_ui::pane::PaneActionKeys {
+        let mux = self.mux.read(cx);
+        crate::mux::prefix::pane_action_keys(
+            mux.canonical_prefix().as_deref(),
+            mux.prefix_bindings(),
+        )
+    }
+
     fn pip_header(
         &self,
         pane: PaneId,
@@ -4130,6 +4141,7 @@ impl AppView {
                 can_drag: connected,
                 floats: true,
                 flip: snapshot.and_then(|snapshot| self.pane_flip(snapshot)),
+                keys: self.pane_action_keys(cx),
                 radii: Corners::default(),
                 opacity,
             };
@@ -4155,6 +4167,7 @@ impl AppView {
                 PaneDragSource::new(pane, label, connected, |_, _, _| {}),
                 true,
                 None,
+                &self.pane_action_keys(cx),
                 move |action, _, cx| {
                     for command in action.commands(pane, None) {
                         mux.read(cx).execute(command);

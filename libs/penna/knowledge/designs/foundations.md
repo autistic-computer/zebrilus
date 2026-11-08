@@ -721,7 +721,7 @@ Status: matches.
 
 ### Keycap
 
-A keycap shows a keystroke the way it is pressed: a field's shortcut hint, a shortcut in a settings row, the which-key prefix, the key inside a button that submits. Menus and tooltips show their shortcuts as plain text (`Kbd::text()`) instead; to tag something with a word, use a badge.
+A keycap shows a keystroke the way it is pressed: a field's shortcut hint, a shortcut in a settings row, the which-key prefix, a tooltip's key, the key inside a button that submits. Menus show their shortcuts as plain text (`Kbd::text()`) instead; to tag something with a word, use a badge.
 
 Kinds:
 
@@ -1338,7 +1338,7 @@ Anatomy:
 - Container: the rung's height, `control-lg` 32 by default; the look's fill, outline and corners (its radius, capped at 45% of the height).
 - Inset, gap, icon and label are the caller's. A close button sits inside the tab (`Button::inside`, Button), the tab's trailing inset `INSIDE_GAP` 4 so the button is as far from the end as from the top. The story and `tab.css` use `space-10` at the sides and `space-6` gaps, a 12 icon, a `small` label and an optional `caption` aside in muted ink; a title uses `space-8` and a `small` muted path.
 - Focus ring: 1.5px, outside the container, with its own radius.
-- Strip (`TabStrip::new(id, look)`, `tab.strip`): the window tabs sit in one track, a wash of its ground with no edge, `space-2` inside it and `space-2` apart. `.with_size()` sets its tabs' height (28 in the title bar), and the strip is that plus `space-2` above and below. Its corner is the tabs' corner plus `space-2`, so the picked tab's glass sits concentric in it: square at a `radius` of 0, a capsule when the tabs are. A strip holding one tab draws no track, only the tab at its place. `TabStrip::ground(on, tabs, cx)` is the ground the tabs inside paint on: the strip's, or `on` for a lone tab.
+- Strip (`TabStrip::new(id, look)`, `tab.strip`): the window tabs sit in one track, a wash of its ground with no edge, `space-2` inside it and `space-2` apart. `.with_size()` sets its tabs' height (28 in the title bar), and the strip is that plus `space-2` above and below. Its corner is the tabs' corner plus `space-2`, so the picked tab's glass sits concentric in it: square at a `radius` of 0, a capsule when the tabs are. A strip holding one tab draws no track and no inset, and the tab fills it (`.h_full()`), so a lone window tab is 32 in the title bar, as tall as the buttons beside it, and the strip keeps its height when a second tab opens. `TabStrip::ground(on, tabs, cx)` is the ground the tabs inside paint on: the strip's, or `on` for a lone tab.
 
 Sizes: `.with_size()` (or `.xsmall()` to `.touch()`) moves only the height along the control ladder: 20, 24, 28 (follows density), 32 (the default), 40, 44. Text, inset and icons stay the caller's. Every tab in a bar has the same size (Rules 6).
 
@@ -1362,7 +1362,7 @@ Content: the label names what the tab shows, as people name it: a session, a pag
 
 Placement: tabs sit side by side in a bar, each as wide as its content; an app that wants them equal gives each the same width. One tab per bar is selected. A title sits in its pane's header.
 
-HTML: `.penna-tab[role="tab"][data-penna]` (`tab.window`, `tab.page`, `tab.tray`, `button.title`) inside a `[role="tablist"]`, with `data-size` (`xsmall` to `touch`; large when absent), `data-state`, `aria-selected`, `aria-disabled`, `data-still` and `tabindex`. It holds `<i data-icon>`, `.penna-tab-label`, `.penna-tab-aside` or `.penna-tab-path`, each text run in `.penna-text[data-penna-text]`. A title is `.penna-tab.penna-title-tab` in a `.penna-pane-header[data-penna="bar.pane"]`. A strip is `.penna-tab-strip[data-penna="tab.strip"][role="tablist"]` around the tabs, its corner set by `kit.js` from `--penna-around`; with one tab (`:only-child`) it draws no fill.
+HTML: `.penna-tab[role="tab"][data-penna]` (`tab.window`, `tab.page`, `tab.tray`, `button.title`) inside a `[role="tablist"]`, with `data-size` (`xsmall` to `touch`; large when absent), `data-state`, `aria-selected`, `aria-disabled`, `data-still` and `tabindex`. It holds `<i data-icon>`, `.penna-tab-label`, `.penna-tab-aside` or `.penna-tab-path`, each text run in `.penna-text[data-penna-text]`. A title is `.penna-tab.penna-title-tab` in a `.penna-pane-header[data-penna="bar.pane"]`. A strip is `.penna-tab-strip[data-penna="tab.strip"][role="tablist"]` around the tabs, its corner set by `kit.js` from `--penna-around`; with one tab (`:only-child`) it draws no fill and no inset, and the tab grows by `space-2` above and below to fill it.
 
 Status: matches.
 
@@ -1460,15 +1460,16 @@ Kinds:
 | Kind | Call | Use |
 |---|---|---|
 | Label | `Tooltip::new(text)`; `.tooltip(text)` on a button, switch or slider | names the control |
-| Label and key | `Tooltip::new(text).action(&action, context)` | names it and shows the key bound to that action in that key context |
+| Label and key | `Tooltip::new(text).action(&action, context)` | names it and shows the keys bound to that action in that key context |
+| Label and keys | `Tooltip::new(text).keys(strokes)`; `.tooltip_keys(strokes)` on a button | names it and shows a sequence the app binds itself, such as a prefix and then a key |
 
 Any element takes one with ala's `.tooltip(|window, cx| Tooltip::new(..).build(window, cx))`; that one shows on hover only. A button's `.tooltip(text)` also shows on keyboard focus.
 
 Anatomy, left to right:
 
-- Box: the `tooltip` surface role, a floating surface with the popover fill, a hairline edge and `shadow-contact`; radius the theme radius capped at 45% of its height. Inset `space-2` (2) above and below and `space-8` (8) at the sides, so it is a `small` line (16) plus 4, and the edge.
+- Box: the `tooltip` surface role, a floating surface with the popover fill, a hairline edge and `shadow-contact`; radius the theme radius capped at 45% of its height. Inset `space-4` (4) above and below and `space-10` (10) at the sides, so it is a `small` line (16) plus 8, and the edge.
 - Label: `small` (12 on 16, 400) in the surface's ink, on one line. It never wraps.
-- Key (optional): `small` in `fg-muted`, `space-12` (12) after the label, the binding written as text (⌘D on macOS, Ctrl+D elsewhere).
+- Key (optional): one `sm` keycap (16, the `small` line) per keystroke, on the tooltip's ground, `gap-tight` (4) apart and `space-12` (12) after the label: ⌘D on macOS, Ctrl+D elsewhere, and a prefix then a key as two caps (⌃A |).
 
 States:
 
@@ -1479,11 +1480,11 @@ States:
 
 Behavior: it shows 500ms after the pointer comes to rest on its target. Its frame starts 1px right of and below the pointer and the box sits `space-12` inside that frame, so it clears the cursor by 13. Where it would cross the window's right or bottom edge it flips to the other side of the pointer. It hides when the pointer leaves the target or presses. When the keyboard focuses its target it shows at once, placed as if the pointer rested on the middle of the target's bottom edge, and hides when focus leaves, on Escape (which still reaches the rest of the window) or when the pointer moves; it comes back only on the next keyboard focus. Natively, a long press on touch shows it until the finger lifts. One tooltip shows at a time, and a disabled button's tooltip still shows.
 
-Content: a noun or a short verb phrase in sentence case that names the action or the thing ("Split right", "Notifications", "Copy path"), with no closing period. Never an instruction ("Click to split") or a sentence. On an icon-only button it is required and is the button's accessible name too. Don't repeat a label that is already visible; on a labeled control a tooltip adds the key or nothing. Give the key with `.action()` (`data-tooltip-key`), never typed into the text.
+Content: a noun or a short verb phrase in sentence case that names the action or the thing ("Split right", "Notifications", "Copy path"), with no closing period. Never an instruction ("Click to split") or a sentence. On an icon-only button it is required and is the button's accessible name too. Don't repeat a label that is already visible; on a labeled control a tooltip adds the key or nothing. Give the key with `.action()` or `.keys()` (`data-tooltip-key`), never typed into the text.
 
 Placement: it follows the pointer, not the target, so there is nothing to place. Give one to every icon-only button (Button) and to controls whose key is worth learning.
 
-HTML: any element with `data-tooltip="Label"` gets one from `tooltip.js`; `data-tooltip-key="cmd-d"` adds the key, written by `kbd.js` as a keycap's text. The script builds `.penna-tooltip[data-penna="tooltip"][role="tooltip"][data-floating]` with a `span[data-penna-text]` per run and `.penna-tooltip-key` for the key, sets `data-open` while shown, and places it with the same delay, offset and edge flip: on the window with `data-fixed`, or inside the nearest `[data-tooltip-host]` within a story section. A `[data-tooltip]` element that takes focus matching `:focus-visible` shows its tooltip at once from the middle of its bottom edge, until `focusout`, Escape or a pointer move. A touch press held 500ms on a `[data-tooltip]` element shows its tooltip from the press point until the finger lifts, as natively: moving more than 8 before then cancels it, and once shown the press neither scrolls nor clicks. `data-tooltip-pinned` keeps it open. A static box is the same markup without `data-floating`; the key run takes `data-kbd-text`.
+HTML: any element with `data-tooltip="Label"` gets one from `tooltip.js`; `data-tooltip-key="cmd-d"` adds the key, and a sequence is its strokes split by spaces (`"ctrl-a |"`). The script builds `.penna-tooltip[data-penna="tooltip"][role="tooltip"][data-floating]` with a `span[data-penna-text]` per run and `.penna-tooltip-key` holding a small `kbd.penna-kbd` per stroke, sets `data-open` while shown, and places it with the same delay, offset and edge flip: on the window with `data-fixed`, or inside the nearest `[data-tooltip-host]` within a story section. A `[data-tooltip]` element that takes focus matching `:focus-visible` shows its tooltip at once from the middle of its bottom edge, until `focusout`, Escape or a pointer move. A touch press held 500ms on a `[data-tooltip]` element shows its tooltip from the press point until the finger lifts, as natively: moving more than 8 before then cancels it, and once shown the press neither scrolls nor clicks. `data-tooltip-pinned` keeps it open. A static box is the same markup without `data-floating`, its `.penna-tooltip-key` holding the caps.
 
 Status: matches.
 

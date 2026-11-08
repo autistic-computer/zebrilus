@@ -187,7 +187,13 @@ impl RenderOnce for TabStrip {
             .flex()
             .items_center()
             .gap(inset)
-            .p(inset)
+            .map(|strip| {
+                if track {
+                    strip.p(inset)
+                } else {
+                    strip.h(height + inset * 2.0)
+                }
+            })
             .when(track, |strip| {
                 strip.layer(&Layer {
                     radius,

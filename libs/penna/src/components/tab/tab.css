@@ -49,7 +49,13 @@
 }
 
 .penna-tab-strip[data-penna]:has(> :only-child) {
+  padding: 0;
   background: none;
+}
+
+.penna-tab-strip[data-penna] > .penna-tab:only-child {
+  box-sizing: content-box;
+  padding-block: var(--penna-space-2);
 }
 
 .penna-tab[data-still] {

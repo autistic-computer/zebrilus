@@ -3,8 +3,8 @@ use std::rc::Rc;
 
 use ala::{
     AnyElement, App, ClickEvent, Div, ElementId, FULL_CORNER_RADIUS, Hsla, InteractiveElement,
-    Interactivity, IntoElement, MouseButton, ParentElement, Pixels, RenderOnce, Role, SharedString,
-    Stateful, StatefulInteractiveElement as _, StyleRefinement, Styled, Window, div,
+    Interactivity, IntoElement, Keystroke, MouseButton, ParentElement, Pixels, RenderOnce, Role,
+    SharedString, Stateful, StatefulInteractiveElement as _, StyleRefinement, Styled, Window, div,
     prelude::FluentBuilder as _, px,
 };
 
@@ -246,6 +246,7 @@ pub struct Button {
     size: Size,
     compact: bool,
     tooltip: Option<SharedString>,
+    tooltip_keys: Vec<Keystroke>,
     on_click: Option<Rc<dyn Fn(&ClickEvent, &mut Window, &mut App)>>,
     on_hover: Option<Rc<dyn Fn(&bool, &mut Window, &mut App)>>,
     loading: bool,
@@ -280,6 +281,7 @@ impl Button {
             rounded: ButtonRounded::Medium,
             size: Size::Medium,
             tooltip: None,
+            tooltip_keys: Vec::new(),
             on_click: None,
             on_hover: None,
             loading: false,
@@ -338,6 +340,12 @@ impl Button {
 
     pub fn tooltip(mut self, tooltip: impl Into<SharedString>) -> Self {
         self.tooltip = Some(tooltip.into());
+        self
+    }
+
+    #[must_use]
+    pub fn tooltip_keys(mut self, keys: impl IntoIterator<Item = Keystroke>) -> Self {
+        self.tooltip_keys = keys.into_iter().collect();
         self
     }
 
@@ -767,13 +775,19 @@ impl RenderOnce for Button {
                     .text_color(rest.text.opacity(0.8))
             })
             .when_some(self.tooltip.clone(), |this, tooltip| {
-                this.tooltip(move |window, cx| Tooltip::new(tooltip.clone()).build(window, cx))
+                let keys = self.tooltip_keys.clone();
+                this.tooltip(move |window, cx| {
+                    Tooltip::new(tooltip.clone())
+                        .keys(keys.clone())
+                        .build(window, cx)
+                })
             });
         let element = crate::components::tooltip::with_focus_tooltip(
             element,
             &self.id,
             is_focused,
             self.tooltip,
+            &self.tooltip_keys,
             window,
             cx,
         );

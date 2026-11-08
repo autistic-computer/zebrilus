@@ -73,7 +73,7 @@ pub fn status_window(
                             format!("status-window-close-{id:?}").into(),
                         ))
                         .icon(IconName::Xmark)
-                        .inside(tab, super::WORKSPACE_STATUS_TAB_HEIGHT)
+                        .inside(tab, super::workspace_status_tab_height(state.alone))
                         .hit_slop(CLOSE_SLOP, CLOSE_SLOP)
                         .tooltip("Close window"),
                         if hovers { hovered } else { ground },
