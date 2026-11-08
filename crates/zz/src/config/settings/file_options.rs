@@ -1,13 +1,20 @@
 use super::*;
 use penna::components::menu::MenuScope;
-use std::path::Path;
+use std::{collections::HashSet, path::Path};
 use zz_protocol::{CommandInvocation, MuxOptionKey, MuxOptions};
-use zz_terminal::{AppearanceConfigKey, TerminalAppearance};
+use zz_terminal::{
+    AppearanceConfigKey, GhosttyTheme, TerminalAppearance, TerminalColorScheme, ThemeChoice,
+};
+
+const BUILT_IN_THEME: &str = "Built-in";
+const CONTRAST_ON: &str = "4.5";
 
 #[derive(Clone, Copy)]
 enum FileKey {
     Mux(MuxOptionKey),
     Appearance(AppearanceConfigKey),
+    ThemeSlot(TerminalColorScheme),
+    Contrast,
 }
 
 impl FileKey {
@@ -15,6 +22,9 @@ impl FileKey {
         match self {
             Self::Mux(key) => key.as_str(),
             Self::Appearance(key) => key.as_str(),
+            Self::ThemeSlot(TerminalColorScheme::Light) => "light-theme",
+            Self::ThemeSlot(TerminalColorScheme::Dark) => "dark-theme",
+            Self::Contrast => AppearanceConfigKey::MinimumContrast.as_str(),
         }
     }
 
@@ -22,13 +32,24 @@ impl FileKey {
         match self {
             Self::Mux(key) => config::file_options::mux_option_value(source, key),
             Self::Appearance(key) => config::file_options::appearance_value(source, key),
+            Self::ThemeSlot(scheme) => {
+                let (light, dark) = theme_slots(source);
+                match scheme {
+                    TerminalColorScheme::Light => light,
+                    TerminalColorScheme::Dark => dark,
+                }
+            }
+            Self::Contrast => {
+                config::file_options::appearance_value(source, AppearanceConfigKey::MinimumContrast)
+            }
         }
     }
 
     fn default_value(self) -> String {
         match self {
             Self::Mux(key) => MuxOptions::default().get(key).unwrap().value.clone(),
-            Self::Appearance(AppearanceConfigKey::Theme) => String::new(),
+            Self::Appearance(AppearanceConfigKey::Theme) | Self::ThemeSlot(_) => String::new(),
+            Self::Contrast => TerminalAppearance::default().minimum_contrast.to_string(),
             Self::Appearance(AppearanceConfigKey::WindowPaddingX) => {
                 TerminalAppearance::default().padding_left.to_string()
             }
@@ -100,10 +121,16 @@ impl SettingsView {
                         true,
                     ),
                     (
-                        FileKey::Appearance(AppearanceConfigKey::Theme),
-                        "Theme",
+                        FileKey::ThemeSlot(TerminalColorScheme::Light),
+                        "Light theme",
                         false,
                     ),
+                    (
+                        FileKey::ThemeSlot(TerminalColorScheme::Dark),
+                        "Dark theme",
+                        false,
+                    ),
+                    (FileKey::Contrast, "Improve text contrast", false),
                     (
                         FileKey::Appearance(AppearanceConfigKey::CursorStyle),
                         "Cursor style",
@@ -149,6 +176,14 @@ impl SettingsView {
                     ),
                 );
             }
+            let themes = if kind == ConfigFileKind::Terminal {
+                zz_terminal::enumerate_ghostty_themes_for(
+                    import_color_scheme(cx),
+                    config::import_target_path().ok().as_deref(),
+                )
+            } else {
+                Vec::new()
+            };
             let mut subscriptions = Vec::new();
             let mut rows = Vec::new();
             for (index, (key, title, numeric)) in definitions.into_iter().enumerate() {
@@ -201,7 +236,7 @@ impl SettingsView {
                     },
                 ));
                 let selected = select_value(key, value.as_deref().unwrap_or(&key.default_value()));
-                let choices = option_choices(key, import_color_scheme(cx));
+                let choices = option_choices(key);
                 let mut scopes = Vec::new();
                 let select = if matches!(key, FileKey::Appearance(AppearanceConfigKey::FontFamily))
                 {
@@ -211,6 +246,16 @@ impl SettingsView {
                         cx,
                     );
                     scopes = font_scopes;
+                    Some(select)
+                } else if let FileKey::ThemeSlot(scheme) = key {
+                    let (select, theme_scopes) = theme_select(
+                        scheme,
+                        value.as_deref().unwrap_or_default(),
+                        &themes,
+                        window,
+                        cx,
+                    );
+                    scopes = theme_scopes;
                     Some(select)
                 } else if choices.is_empty() {
                     None
@@ -388,7 +433,8 @@ impl SettingsView {
         });
         for (index, row) in controls.rows.iter().enumerate() {
             let description = match row.key.name() {
-                "theme" => Some("Replaces custom terminal colors"),
+                "light-theme" | "dark-theme" => Some("Replaces custom terminal colors"),
+                "minimum-contrast" => Some("Lifts text under 4.5:1 against its background"),
                 "prefix" => Some("The key you press before each shortcut"),
                 "font-thicken-strength" if !smoothing_enabled => Some("Needs font smoothing"),
                 "font-thicken-strength" => Some("0 to 255"),
@@ -425,13 +471,38 @@ impl SettingsView {
                     }),
                 )
                 .into_any_element()
+            } else if matches!(row.key, FileKey::Contrast) {
+                let enabled = row
+                    .value
+                    .as_deref()
+                    .unwrap_or(&row.key.default_value())
+                    .parse::<f32>()
+                    .is_ok_and(|minimum| minimum > 1.0);
+                boolean_control(
+                    row.key.name(),
+                    enabled,
+                    cx.listener(move |this, enabled: &bool, window, cx| {
+                        this.commit_file_option(
+                            kind,
+                            index,
+                            Some(if *enabled { CONTRAST_ON } else { "1" }),
+                            window,
+                            cx,
+                        );
+                    }),
+                )
+                .into_any_element()
             } else if let Some(select) = &row.select {
-                if row.key.name() == "font-family" {
+                if !row.scopes.is_empty() || row.key.name() == "font-family" {
                     div()
                         .flex_none()
                         .child(
                             Select::new(select)
-                                .search_placeholder("Search fonts")
+                                .search_placeholder(if row.key.name() == "font-family" {
+                                    "Search fonts"
+                                } else {
+                                    "Search themes"
+                                })
                                 .scopes(row.scopes.clone())
                                 .on(settings_card_ground(cx)),
                         )
@@ -516,7 +587,10 @@ impl SettingsView {
                 display_value(key, value)
                     == display_value(key, saved.unwrap_or(&key.default_value()))
             }))
-            && !(matches!(key, FileKey::Appearance(AppearanceConfigKey::Theme)) && value.is_some())
+            && !(matches!(
+                key,
+                FileKey::Appearance(AppearanceConfigKey::Theme) | FileKey::ThemeSlot(_)
+            ) && value.is_some())
         {
             return;
         }
@@ -539,6 +613,26 @@ impl SettingsView {
                 }
                 FileKey::Appearance(key) => {
                     config::file_options::write_appearance_option(&path, key, value)?;
+                }
+                FileKey::ThemeSlot(scheme) => {
+                    let (light, dark) = theme_slots(&source);
+                    let picked = value.map(str::to_owned);
+                    let (light, dark) = match scheme {
+                        TerminalColorScheme::Light => (picked, dark),
+                        TerminalColorScheme::Dark => (light, picked),
+                    };
+                    config::file_options::write_appearance_option(
+                        &path,
+                        AppearanceConfigKey::Theme,
+                        ThemeChoice::spelled(light.as_deref(), dark.as_deref()).as_deref(),
+                    )?;
+                }
+                FileKey::Contrast => {
+                    config::file_options::write_appearance_option(
+                        &path,
+                        AppearanceConfigKey::MinimumContrast,
+                        value,
+                    )?;
                 }
             }
             Ok(())
@@ -856,7 +950,49 @@ fn display_value(key: FileKey, value: &str) -> String {
     }
 }
 
-fn option_choices(key: FileKey, scheme: TerminalColorScheme) -> Vec<(String, String)> {
+fn theme_slots(source: &str) -> (Option<String>, Option<String>) {
+    config::file_options::appearance_value(source, AppearanceConfigKey::Theme)
+        .and_then(|value| ThemeChoice::parse(&value).ok())
+        .map(|choice| choice.slots(&config::import_target_path().unwrap_or_default()))
+        .unwrap_or_default()
+}
+
+fn theme_select(
+    scheme: TerminalColorScheme,
+    selected: &str,
+    themes: &[GhosttyTheme],
+    window: &mut Window,
+    cx: &mut Context<SettingsView>,
+) -> (Entity<SelectState<Vec<SettingsSelectItem>>>, Vec<MenuScope>) {
+    let mut choices = vec![(BUILT_IN_THEME, "")];
+    choices.extend(
+        themes
+            .iter()
+            .map(|theme| (theme.name.as_str(), theme.name.as_str())),
+    );
+    if !selected.is_empty() && !themes.iter().any(|theme| theme.name == selected) {
+        choices.push((selected, selected));
+    }
+    let select = settings_select_state(&choices, selected, window, cx);
+    let own = themes
+        .iter()
+        .filter(|theme| theme.appearance.background_scheme() == scheme)
+        .map(|theme| theme.name.clone())
+        .collect::<HashSet<_>>();
+    let label = match scheme {
+        TerminalColorScheme::Light => "Light",
+        TerminalColorScheme::Dark => "Dark",
+    };
+    let scopes = vec![
+        MenuScope::new(label, move |name| {
+            name == BUILT_IN_THEME || own.contains(name)
+        }),
+        MenuScope::all("All themes"),
+    ];
+    (select, scopes)
+}
+
+fn option_choices(key: FileKey) -> Vec<(String, String)> {
     let choices = match key.name() {
         "mode-keys" => vec![("Vi", "vi"), ("Emacs", "emacs")],
         "set-clipboard" => vec![("On", "on"), ("External", "external"), ("Off", "off")],
@@ -867,15 +1003,6 @@ fn option_choices(key: FileKey, scheme: TerminalColorScheme) -> Vec<(String, Str
             ("Hollow block", "block_hollow"),
         ],
         "cursor-style-blink" => vec![("On", "on"), ("Off", "off"), ("Terminal", "terminal")],
-        "theme" => {
-            let mut choices = vec![("None".to_owned(), String::new())];
-            choices.extend(
-                zz_terminal::enumerate_ghostty_themes_for(scheme)
-                    .into_iter()
-                    .map(|theme| (theme.name.clone(), theme.name)),
-            );
-            return choices;
-        }
         _ => Vec::new(),
     };
     choices

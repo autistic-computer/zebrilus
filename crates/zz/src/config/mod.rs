@@ -385,6 +385,7 @@ pub(crate) fn shown_theme(cx: &App) -> InterfaceTheme {
         && let Some(look) = crate::theme::terminal_appearance(cx)
             .as_deref()
             .and_then(zz_ui::terminal::terminal_look)
+        && look.mode == crate::theme::asked_mode(cx)
     {
         wear_terminal_look(&mut theme, look, appearance.overrides.accent.is_some());
     }
@@ -2513,6 +2514,8 @@ mod tests {
             load_ghostty_appearance_from_for(&ghostty_root, TerminalColorScheme::Dark);
         let values = crate::config::import::ghostty_import_values(&donor_appearance)
             .expect("serialize donor values");
+        crate::config::import::copy_theme_files(&donor_appearance, &ghostty_root, &zz_config)
+            .expect("copy the theme next to zz config");
         import_appearance_values_at(&zz_config, &values).expect("write imported zz config");
 
         fs::remove_file(&ghostty_root).expect("delete Ghostty donor");
@@ -2527,10 +2530,9 @@ mod tests {
              future-key = byte-identical\n"
         ));
         let parsed = parse_config(&imported);
-        let resolved = apply_appearance_overrides(
-            AppearanceLoad::defaults_for(TerminalColorScheme::Dark),
-            &parsed_appearance_entries(&parsed),
-        );
+        let mut load = AppearanceLoad::defaults_for(TerminalColorScheme::Dark);
+        load.root = Some(zz_config.clone());
+        let resolved = apply_appearance_overrides(load, &parsed_appearance_entries(&parsed));
         assert_eq!(resolved.appearance, donor_appearance.appearance);
     }
 

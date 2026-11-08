@@ -212,7 +212,7 @@ Browser, Terminal, Hosts, Agents, System, About:
 | Panes | Layout (`pane-gaps`), Focus (`pane-inactive-opacity`, `pane-glow-strength`), Frame (`pane-margin`); gapped panes draw their frame in glass, with corners that follow Interface's Corner radius up to 16 at 100% (`Theme::pane_radius()`), and the rim from the theme's glass (a hairline the outline's width without glass). PiPs take the same corner and follow Glass like a menu |
 | Multiplexer | Navigation, split shortcuts, Options rows, Import from tmux (one button over the system file picker), and the `zz/mux.conf` path with Reload |
 | Browser | Browser-local shortcuts, beginning with the element-selector hotkey |
-| Terminal | Preview, Appearance rows, Import from Ghostty (one button over the system file picker), and the `zz/config` path |
+| Terminal | Preview, Appearance rows (Light theme and Dark theme, Improve text contrast among them), Import from Ghostty (one button over the system file picker), and the `zz/config` path |
 | Hosts | Configured `host-<name>` machines, live connection state, Remove, and an inline Add host form |
 | Agents | Coding agents (Set up, the startup hook for Claude Code and Codex in terminal panes), then Claude Code and Codex on each connected host: installed and newest version, Update or Install through the vendor's own updater, its progress line and error |
 | System | Command palette (`palette-window-layout`, `palette-show-keys`), Tray, Notifications, Daemon (`quit-daemon-on-exit`), Experimental (`palette-vim-mode` and the pane gates) |

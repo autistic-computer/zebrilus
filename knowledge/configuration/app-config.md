@@ -325,8 +325,8 @@ the accent and status colors at least 3:1, and text on the accent at least 3:1. 
 `every_accent_reads_in_every_theme_at_any_neutral` holds each of the eight named accents to the same
 floors on every file at any tint, with the tint hue every 30 degrees.
 
-Chrome colors come from the theme and the keys above, never from the terminal's palette: there
-is no key that makes application chrome follow terminal colors.
+Chrome colors come from the theme and the keys above, and from the terminal's colors only through
+`chrome-terminal-colors`, while the terminal's theme is light in light mode or dark in dark mode.
 
 `chrome-contrast` adjusts derived surfaces, muted text, fills, and edges without storing colors.
 The default is 1.0; desktop and browser Settings show it as 0%. Reset removes the override.
@@ -540,8 +540,8 @@ daemon still resolves cells with the host's colors but tags where each came from
 so the client repaints default and palette 0-15 colors (`LocalColors::recolor`) and leaves 256-color
 and RGB picks alone; an inverted cell, whose source isn't tagged, is matched by value.
 
-`minimum-contrast` (a WCAG ratio from 1 to 21, default 4.5) keeps terminal text readable whatever the
-theme or the application picked: any text color below the floor against its cell background gets
+`minimum-contrast` (a WCAG ratio from 1 to 21, default 4.5; Settings › Terminal's Improve text
+contrast writes 4.5 or 1) keeps terminal text readable whatever the theme or the application picked: any text color below the floor against its cell background gets
 lighter or darker until it reaches it, keeping its hue. Faint text is dimmed against its cell background
 before correction, so dim placeholders and input text retain the same contrast floor. Lower values
 such as 2 preserve more application colors; 1 turns correction off. Box drawing, block and Powerline
@@ -550,14 +550,22 @@ glyphs skip correction.
 File order is preserved, including repeated `palette`, face-specific font-family, and `font-feature`
 entries. `config-file` is not part of the native override surface.
 
-`theme = NAME` is transported like every other daemon-owned key. The daemon resolves it first, ahead
-of the rest of the override set: it looks `NAME` up in the standard Ghostty theme directories
-(`$XDG_CONFIG_HOME/ghostty/themes`, `~/.config/ghostty/themes`, the macOS Application Support
-directory, `$XDG_DATA_DIRS/ghostty/themes`, and the installed Ghostty resources), loads that file,
-and tags every key it sets `theme-file`. The remaining override entries then apply on top, so an
-explicit `background = …` beside a `theme` line wins. Adaptive `light:name,dark:name` values select
-by the current color scheme. A name that cannot be resolved produces a daemon diagnostic and leaves
-the rest of the set applied. Settings has no theme picker . `theme` is a file-only key.
+`theme` is transported like every other daemon-owned key. The daemon resolves it first, ahead
+of the rest of the override set: it looks each name up in `themes/` beside `zz/config`, then in the
+standard Ghostty theme directories (`$XDG_CONFIG_HOME/ghostty/themes`, `~/.config/ghostty/themes`,
+the macOS Application Support directory, `$XDG_DATA_DIRS/ghostty/themes`, and the installed Ghostty
+resources), loads that file, and tags every key it sets `theme-file`. The remaining override entries
+then apply on top, so an explicit `background = …` beside a `theme` line wins. A name that cannot be
+resolved produces a daemon diagnostic and leaves the rest of the set applied.
+
+zz's mode picks the theme (`theme-mode`, else the system's). `light:A,dark:B` names one for each
+mode, and either side may be left out (`dark:B`), so that mode draws zz's built-in colors. A lone
+`theme = NAME` counts as light or dark by its background (lighter than its foreground is light,
+`TerminalAppearance::background_scheme`) and paints only that mode; the other one draws the built-in
+colors. Settings › Terminal writes the key with Light theme and Dark theme, two searchable lists of
+the installed themes that open on themes of their own kind (Light or Dark, with All themes beside
+it); picking either one writes the pair and removes custom terminal colors, and Built-in leaves
+that side out.
 
 The `zz-*` extension keys are **zz/config-native** daemon-owned settings. The Ghostty parser also
 accepts their spellings, which is what makes a Ghostty file importable, but they are zz's keys.
@@ -664,11 +672,12 @@ mistaken for the line's preserved trailing comment.
 
 # Import
 
-`crates/zz/src/config/import.rs` owns the one-shot import. `import_ghostty_config_from(path, scheme)`
+`crates/zz-config/src/import.rs` owns the one-shot import. `import_ghostty_config_from(path, scheme)`
 reads a chosen donor (`import_ghostty_config` delegates with the discovered default), parses it client-side with the zz-terminal loader, and serializes every key the donor set, directly
-(`Ghostty` provenance) or through its `theme` directive (`ThemeFile`), into concrete
-`zz/config` values. Theme-derived values are flattened for the current color scheme; an import is a
-snapshot.
+(`Ghostty` provenance), into concrete `zz/config` values. A `theme` directive comes across as the
+same `theme` line, with both modes, and the theme files it names are copied into `themes/` beside
+`zz/config` (`copy_theme_files`), so the import keeps working once Ghostty is gone; the colors the
+theme set are cleared from `zz/config` instead of copied. Everything else is a snapshot.
 
 `config/mod.rs` `import_appearance_values_at` applies those values with **donor-wins replace
 semantics**: scalar keys edit the last occurrence in place (preserving spelling, spacing, inline
@@ -709,7 +718,7 @@ always-live inactive-opacity factor and the selected pane's edge strength, which
 | Agents | **Coding agents** (Set up, which installs the startup hook `zz tools --install-hooks` writes for Claude Code and Codex) · one group per host (This Mac or the host's name): Claude Code and Codex with the path the host's daemon found, the installed version, the newest release, and Update or Install, which runs the vendor's updater on that host (`claude update`, `codex update`, `brew upgrade --cask` for Homebrew installs, the vendor install script when missing) with its latest output line and any error under the row; an install something else owns (a root-owned npm prefix, mise, Nix, Snap, winget, a system package) gets no Update button but says who owns it and offers its update command to copy; a disconnected host says so; **Check again** asks every connected host. Nothing is written to `zz/config`; the daemon answers the internal `providers` command ([wire protocol](/protocol/wire-protocol.md)) |
 | System | **Command palette** (`palette-window-layout` as Window chooser, Tree or Flat, `palette-show-keys` as Show shortcuts) · **Tray** (`tray`, only where the profile has one) · **Notifications** (`notifications`) · **Daemon** (`quit-daemon-on-exit`) · **Experimental** (`palette-vim-mode` as Command palette Vim mode, and `experimental-editor-pane`, present only with its cargo feature). `auto-restart-stale-daemon` is a file key with no Settings row |
 | Multiplexer | **Navigation** (`which-key-delay`), **Split panes** (a key field per split), **Options** (Prefix as a key field, Mode keys, Mouse, History limit, Clipboard, Escape time), **Import** (Open, which opens `zz/mux.conf` in the default text editor, and Import from tmux). Edits made outside zz apply when the zz window is focused again |
-| Terminal | **Appearance** (Font family as a searchable list of installed fonts that opens on Monospaced, with All fonts one Tab or click away, Font size, macOS Font smoothing and Smoothing strength, Theme, Cursor style, Cursor blink, Background opacity, Padding X/Y), **Import** (Open, which opens `zz/config` in the default text editor, and Import from Ghostty) |
+| Terminal | **Appearance** (Font family as a searchable list of installed fonts that opens on Monospaced, with All fonts one Tab or click away, Font size, macOS Font smoothing and Smoothing strength, Light theme and Dark theme (searchable lists of the installed themes, each opening on its own kind, written as `theme = light:A,dark:B`), Improve text contrast (`minimum-contrast` 4.5 or 1), Cursor style, Cursor blink, Background opacity, Padding X/Y), **Import** (Open, which opens `zz/config` in the default text editor, and Import from Ghostty) |
 | About | Centered mark (the Dock render at 88pt), name, tagline and version badge · **Updates** (`check-for-updates`, plus a Latest release row whose description is the update state, such as "zz 0.23.0 is out, you have 0.22.0" or "The check failed: …", with Check now, or Update / What's new once a newer release is known; desktop only) · **Build** (`CARGO_PKG_VERSION`, OS · arch, the short `ZZ_ALA_SOURCE` revision, with a copy button on Version that puts all three on one line) · **Project** (repository, releases, new issue, license) |
 
 A row is its title and its control, with no provenance badge and no Reset button. A short

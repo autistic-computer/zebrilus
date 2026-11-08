@@ -947,7 +947,9 @@ fn resolve_appearance(
     color_scheme: TerminalColorScheme,
     entries: &[ConfigOverrideEntry],
 ) -> AppearanceLoad {
-    apply_appearance_overrides(AppearanceLoad::defaults_for(color_scheme), entries)
+    let mut load = AppearanceLoad::defaults_for(color_scheme);
+    load.root = zz_config::config_path_for_write().ok();
+    apply_appearance_overrides(load, entries)
 }
 
 const CURSOR_STYLE_OVERRIDES: [(&str, Option<(CursorStyle, CursorBlinkPolicy)>); 7] = [

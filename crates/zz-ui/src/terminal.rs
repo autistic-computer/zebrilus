@@ -1510,10 +1510,9 @@ pub fn terminal_look(appearance: &TerminalAppearance) -> Option<TerminalLook> {
             .or_else(|| Some(slot(index)).filter(|candidate| reads_as(*candidate)))
             .map(|candidate| color(candidate, 1.0))
     };
-    let mode = if oklab(background).0 < oklab(foreground).0 {
-        ThemeMode::Dark
-    } else {
-        ThemeMode::Light
+    let mode = match appearance.background_scheme() {
+        zz_terminal::TerminalColorScheme::Dark => ThemeMode::Dark,
+        zz_terminal::TerminalColorScheme::Light => ThemeMode::Light,
     };
     Some(TerminalLook {
         mode,
