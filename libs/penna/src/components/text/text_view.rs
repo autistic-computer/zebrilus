@@ -192,7 +192,7 @@ impl Element for TextView {
 
             if let Some(text) = self.text.clone() {
                 if self.streaming {
-                    state.synchronize_markdown(text.as_str(), false, cx);
+                    state.synchronize_markdown(text.as_str(), true, cx);
                 } else {
                     state.set_text(text.as_str(), cx);
                 }
