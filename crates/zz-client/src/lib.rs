@@ -17,6 +17,7 @@ pub mod completion;
 mod core;
 pub mod desktop_input;
 pub mod desktop_nav;
+pub mod desktop_nav_tree;
 pub mod desktop_surface;
 pub mod floating;
 pub mod fuzzy;

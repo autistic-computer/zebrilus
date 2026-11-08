@@ -1,7 +1,7 @@
 use std::path::Path;
 use zz_protocol::{CommandInvocation, NEW_SESSION_ATTACH_CAPABILITY, PaneId, SessionId, WindowId};
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum NavTarget {
     Session(SessionId),
     Window(WindowId),

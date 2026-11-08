@@ -185,19 +185,15 @@ pub struct WorkspaceSidebar {
 const WINDOW_SHORTCUTS: u8 = 9;
 
 fn shortcut_windows(model: &MuxTreeModel) -> impl Iterator<Item = (HostId, WindowId)> + '_ {
-    model
-        .hosts
-        .iter()
-        .filter(|host| host.connected())
-        .flat_map(|host| {
-            host.sessions.iter().flat_map(move |session| {
-                session
-                    .windows
-                    .iter()
-                    .map(move |window| (host.id, window.id))
-            })
-        })
-        .take(usize::from(WINDOW_SHORTCUTS))
+    zz_client::desktop_nav_tree::shortcut_windows(model.hosts.iter().map(|host| {
+        (
+            host.id,
+            host.connected(),
+            host.sessions
+                .iter()
+                .map(|session| session.windows.iter().map(|window| window.id)),
+        )
+    }))
 }
 
 impl WorkspaceSidebar {
@@ -544,28 +540,22 @@ impl WorkspaceSidebar {
 
     fn rebuild_projection(&mut self) {
         let projection = TreeProjection::new(&self.tree_model, &self.expanded);
-        self.expanded
-            .retain(|node| projection.expandable.contains(node));
+        zz_client::desktop_nav_tree::retain_projection(
+            &mut self.expanded,
+            &mut self.selected,
+            &projection.expandable,
+            &projection.visible_indices,
+            self.tree_model.hosts.first().map(MuxTreeHost::node),
+        );
         self.visible_entries = projection.entries.into();
         self.visible_indices = projection.visible_indices;
-        if self
-            .selected
-            .is_some_and(|selected| !self.visible_indices.contains_key(&selected))
-        {
-            self.selected = self.tree_model.hosts.first().map(MuxTreeHost::node);
-        }
     }
 
     fn toggle_expanded(&mut self, node: TreeNode, cx: &mut Context<Self>) {
         if !self.tree_model.is_expandable(node) {
             return;
         }
-        let expanded = if self.expanded.remove(&node) {
-            false
-        } else {
-            self.expanded.insert(node);
-            true
-        };
+        let expanded = zz_client::desktop_nav_tree::toggle_expanded(&mut self.expanded, node);
         self.selected = Some(node);
         self.rebuild_projection();
         log::trace!(
@@ -722,12 +712,12 @@ impl WorkspaceSidebar {
         expand_new_hosts(&mut self.expanded, &self.tree_model, &model);
         self.active_target = model.active_target;
         self.tree_model = Rc::new(model);
-        if previous_active != self.active_target
-            && let Some(node) = self.active_target
-        {
-            expand_path_to(&mut self.expanded, &self.tree_model, node);
-            self.selected = Some(node);
-        }
+        zz_client::desktop_nav_tree::follow_active(
+            previous_active,
+            self.active_target,
+            &mut self.selected,
+            |node| expand_path_to(&mut self.expanded, &self.tree_model, node),
+        );
         self.rebuild_projection();
         if previous_active != self.active_target
             && let Some(node) = self.active_target
@@ -919,16 +909,12 @@ fn expand_new_hosts(
     previous: &MuxTreeModel,
     next: &MuxTreeModel,
 ) {
-    let previous_hosts = previous
-        .hosts
-        .iter()
-        .map(|host| host.id)
-        .collect::<BTreeSet<_>>();
-    expanded.extend(
-        next.hosts
-            .iter()
-            .filter(|host| host.id == HostId::LOCAL && !previous_hosts.contains(&host.id))
-            .map(MuxTreeHost::node),
+    zz_client::desktop_nav_tree::expand_new_hosts(
+        expanded,
+        previous.hosts.iter().map(|host| host.id),
+        next.hosts.iter().map(|host| host.id),
+        HostId::LOCAL,
+        TreeNode::Host,
     );
 }
 
@@ -1039,136 +1025,96 @@ struct TreeProjection {
 
 impl TreeProjection {
     fn new(model: &MuxTreeModel, expanded: &BTreeSet<TreeNode>) -> Self {
-        let mut entries = Vec::new();
-        let mut visible_indices = BTreeMap::new();
-        let expandable = expandable_nodes(model);
-
-        for host in &model.hosts {
-            let host_node = host.node();
-            let host_expanded = expanded.contains(&host_node);
-            push_visible_entry(
-                &mut entries,
-                &mut visible_indices,
-                VisibleTreeEntry {
-                    node: host_node,
-                    parent: None,
-                    label: host.name.clone().into(),
-                    depth: 0,
-                    kind: TreeNodeKind::Host,
-                    expandable: true,
-                    expanded: host_expanded,
-                    on_active_path: false,
-                    program: None,
-                },
-            );
-
-            if !host_expanded {
-                continue;
-            }
-            for session in &host.sessions {
-                let session_node = TreeNode::Target(host.id, session.target());
-                let session_expandable = !session.windows.is_empty();
-                let session_expanded = session_expandable && expanded.contains(&session_node);
-                push_visible_entry(
-                    &mut entries,
-                    &mut visible_indices,
-                    VisibleTreeEntry {
-                        node: session_node,
-                        parent: Some(host_node),
-                        label: session.label.text.clone().into(),
-                        depth: 1,
-                        kind: TreeNodeKind::Session,
-                        expandable: session_expandable,
-                        expanded: session_expanded,
-                        on_active_path: session.active,
-                        program: None,
-                    },
-                );
-
-                if !session_expanded {
-                    continue;
-                }
-                for window in &session.windows {
-                    let window_node = TreeNode::Target(host.id, window.target());
-                    let window_expandable = !window.panes.is_empty();
-                    let window_expanded = window_expandable && expanded.contains(&window_node);
-                    push_visible_entry(
-                        &mut entries,
-                        &mut visible_indices,
-                        VisibleTreeEntry {
-                            node: window_node,
-                            parent: Some(session_node),
-                            label: window.label().into(),
-                            depth: 2,
-                            kind: TreeNodeKind::Window,
-                            expandable: window_expandable,
-                            expanded: window_expanded,
-                            on_active_path: window.active,
-                            program: if window_expanded {
+        use crate::mux::nav::from_desktop_nav_node;
+        use zz_client::desktop_nav::NavTarget;
+        use zz_client::desktop_nav_tree::{NavNode, project_tree};
+        let projection = project_tree(
+            model.hosts.iter().map(|host| {
+                (
+                    host.id,
+                    host.sessions.iter().map(|session| {
+                        (
+                            session.id,
+                            session.active,
+                            session.windows.iter().map(|window| {
+                                (
+                                    window.id,
+                                    window.active,
+                                    window.active_pane,
+                                    window.panes.iter().map(|pane| pane.id),
+                                )
+                            }),
+                        )
+                    }),
+                )
+            }),
+            |node| expanded.contains(&from_desktop_nav_node(node)),
+        );
+        let entries = projection
+            .entries
+            .into_iter()
+            .map(|entry| {
+                let host = &model.hosts[entry.host_index];
+                let (label, kind, program) = match entry.node {
+                    NavNode::Host(_) => (host.name.clone(), TreeNodeKind::Host, None),
+                    NavNode::Target(_, NavTarget::Session(_)) => {
+                        let session =
+                            &host.sessions[entry.session_index.expect("projected session index")];
+                        (session.label.text.clone(), TreeNodeKind::Session, None)
+                    }
+                    NavNode::Target(_, NavTarget::Window(_)) => {
+                        let window = &host.sessions
+                            [entry.session_index.expect("projected session index")]
+                        .windows[entry.window_index.expect("projected window index")];
+                        (
+                            window.label(),
+                            TreeNodeKind::Window,
+                            if entry.expanded {
                                 None
                             } else {
                                 window.program()
                             },
-                        },
-                    );
-
-                    if !window_expanded {
-                        continue;
+                        )
                     }
-                    for pane in &window.panes {
-                        push_visible_entry(
-                            &mut entries,
-                            &mut visible_indices,
-                            VisibleTreeEntry {
-                                node: TreeNode::Target(host.id, pane.target()),
-                                parent: Some(window_node),
-                                label: pane.label.clone().into(),
-                                depth: 3,
-                                kind: TreeNodeKind::Pane { kind: pane.kind },
-                                expandable: false,
-                                expanded: false,
-                                on_active_path: window.active && pane.id == window.active_pane,
-                                program: pane.program,
-                            },
-                        );
+                    NavNode::Target(_, NavTarget::Pane(_)) => {
+                        let pane = &host.sessions
+                            [entry.session_index.expect("projected session index")]
+                        .windows[entry.window_index.expect("projected window index")]
+                        .panes[entry.pane_index.expect("projected pane index")];
+                        (
+                            pane.label.clone(),
+                            TreeNodeKind::Pane { kind: pane.kind },
+                            pane.program,
+                        )
                     }
+                };
+                VisibleTreeEntry {
+                    node: from_desktop_nav_node(entry.node),
+                    parent: entry.parent.map(from_desktop_nav_node),
+                    label: label.into(),
+                    depth: entry.depth,
+                    kind,
+                    expandable: entry.expandable,
+                    expanded: entry.expanded,
+                    on_active_path: entry.on_active_path,
+                    program,
                 }
-            }
-        }
-
+            })
+            .collect();
         Self {
             entries,
-            visible_indices,
-            expandable,
+            visible_indices: projection
+                .visible_indices
+                .into_iter()
+                .map(|(node, index)| (from_desktop_nav_node(node), index))
+                .collect(),
+            expandable: projection
+                .expandable
+                .into_iter()
+                .map(from_desktop_nav_node)
+                .collect(),
         }
     }
-}
-
-fn expandable_nodes(model: &MuxTreeModel) -> BTreeSet<TreeNode> {
-    let mut expandable = BTreeSet::new();
-    for host in &model.hosts {
-        expandable.insert(host.node());
-        for session in &host.sessions {
-            if !session.windows.is_empty() {
-                expandable.insert(TreeNode::Target(host.id, session.target()));
-            }
-            for window in &session.windows {
-                if !window.panes.is_empty() {
-                    expandable.insert(TreeNode::Target(host.id, window.target()));
-                }
-            }
-        }
-    }
-    expandable
-}
-
-fn push_visible_entry(
-    entries: &mut Vec<VisibleTreeEntry>,
-    visible_indices: &mut BTreeMap<TreeNode, usize>,
-    entry: VisibleTreeEntry,
-) {
-    visible_indices.insert(entry.node, entries.len());
-    entries.push(entry);
 }
 
 #[derive(Clone, Debug)]

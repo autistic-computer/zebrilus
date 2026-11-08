@@ -97,6 +97,22 @@ impl MuxTreeModel {
                         let focused_window = snapshot.map_or(session.active_window, |snapshot| {
                             snapshot.focused_window_for(session)
                         });
+                        active_target = zz_client::desktop_nav_tree::active_for_session(
+                            active_target.map(to_desktop_nav_node),
+                            host,
+                            attached_host,
+                            session.id,
+                            attached,
+                            focused_window,
+                            session.windows.iter().map(|window| {
+                                (
+                                    window.id,
+                                    window.active_pane,
+                                    window.panes.values().map(|pane| pane.id),
+                                )
+                            }),
+                        )
+                        .map(from_desktop_nav_node);
                         let windows = session
                             .windows
                             .iter()
@@ -104,19 +120,9 @@ impl MuxTreeModel {
                                 let window_active = active && window.id == focused_window;
                                 let panes = ordered_panes(window)
                                     .into_iter()
-                                    .map(|pane| {
-                                        let pane_active =
-                                            window_active && pane.id == window.active_pane;
-                                        if pane_active {
-                                            active_target = Some(TreeNode::Target(
-                                                host,
-                                                TreeTarget::Pane(pane.id),
-                                            ));
-                                        }
-                                        MuxTreePane {
-                                            index: pane_index(window, pane.id),
-                                            ..MuxTreePane::from_snapshot(pane)
-                                        }
+                                    .map(|pane| MuxTreePane {
+                                        index: pane_index(window, pane.id),
+                                        ..MuxTreePane::from_snapshot(pane)
                                     })
                                     .collect();
                                 MuxTreeWindow {
@@ -129,15 +135,6 @@ impl MuxTreeModel {
                                 }
                             })
                             .collect::<Vec<_>>();
-
-                        if active && active_target.is_none() {
-                            active_target = windows.iter().find(|window| window.active).map_or(
-                                Some(TreeNode::Target(host, TreeTarget::Session(session.id))),
-                                |window| {
-                                    Some(TreeNode::Target(host, TreeTarget::Window(window.id)))
-                                },
-                            );
-                        }
 
                         MuxTreeSession {
                             id: session.id,
@@ -168,20 +165,20 @@ impl MuxTreeModel {
     pub fn is_expandable(&self, node: TreeNode) -> bool {
         match node {
             TreeNode::Host(host) => self.host(host).is_some(),
-            TreeNode::Target(host, TreeTarget::Session(id)) => self
-                .host(host)
-                .and_then(|host| host.sessions.iter().find(|session| session.id == id))
-                .is_some_and(|session| !session.windows.is_empty()),
-            TreeNode::Target(host, TreeTarget::Window(id)) => self
-                .host(host)
-                .and_then(|host| {
-                    host.sessions
-                        .iter()
-                        .flat_map(|session| &session.windows)
-                        .find(|window| window.id == id)
-                })
-                .is_some_and(|window| !window.panes.is_empty()),
-            TreeNode::Target(_, TreeTarget::Pane(_)) => false,
+            TreeNode::Target(host, target) => self.host(host).is_some_and(|host| {
+                zz_client::desktop_nav_tree::target_expandable(
+                    desktop_nav_target(target),
+                    host.sessions.iter().map(|session| {
+                        (
+                            session.id,
+                            session
+                                .windows
+                                .iter()
+                                .map(|window| (window.id, window.panes.iter().map(|pane| pane.id))),
+                        )
+                    }),
+                )
+            }),
         }
     }
 
@@ -195,60 +192,53 @@ impl MuxTreeModel {
         self.hosts.iter().map(|host| host.sessions.len()).sum()
     }
 
+    fn target_owner(
+        &self,
+        host: HostId,
+        target: TreeTarget,
+    ) -> Option<zz_client::desktop_nav_tree::NavOwner> {
+        zz_client::desktop_nav_tree::target_owner(
+            desktop_nav_target(target),
+            self.host(host)?.sessions.iter().flat_map(|session| {
+                session.windows.iter().map(move |window| {
+                    (
+                        session.id,
+                        window.id,
+                        window.panes.iter().map(|pane| pane.id),
+                    )
+                })
+            }),
+        )
+    }
+
     #[must_use]
     pub fn session_for_target(&self, host: HostId, target: TreeTarget) -> Option<SessionId> {
-        let sessions = &self.host(host)?.sessions;
+        self.host(host)?;
         match target {
             TreeTarget::Session(session) => Some(session),
-            TreeTarget::Window(window) => sessions
-                .iter()
-                .find(|session| {
-                    session
-                        .windows
-                        .iter()
-                        .any(|candidate| candidate.id == window)
-                })
-                .map(|session| session.id),
-            TreeTarget::Pane(pane) => sessions
-                .iter()
-                .find(|session| {
-                    session
-                        .windows
-                        .iter()
-                        .any(|window| window.panes.iter().any(|candidate| candidate.id == pane))
-                })
-                .map(|session| session.id),
+            _ => self.target_owner(host, target).map(|owner| owner.session),
         }
     }
 
     fn window_for_target(&self, host: HostId, target: TreeTarget) -> Option<WindowId> {
-        self.host(host)?
-            .sessions
-            .iter()
-            .flat_map(|session| &session.windows)
-            .find(|window| match target {
-                TreeTarget::Window(id) => window.id == id,
-                TreeTarget::Pane(id) => window.panes.iter().any(|pane| pane.id == id),
-                TreeTarget::Session(_) => false,
-            })
-            .map(|window| window.id)
+        self.target_owner(host, target).map(|owner| owner.window)
     }
 
     #[must_use]
     pub fn renameable_name(&self, host: HostId, target: TreeTarget) -> Option<&str> {
-        let sessions = &self.host(host)?.sessions;
-        match target {
-            TreeTarget::Session(session) => sessions
-                .iter()
-                .find(|candidate| candidate.id == session)
-                .map(|session| session.name.as_str()),
-            TreeTarget::Window(window) => sessions
-                .iter()
-                .flat_map(|session| &session.windows)
-                .find(|candidate| candidate.id == window)
-                .map(|window| window.name.as_str()),
-            TreeTarget::Pane(_) => None,
-        }
+        zz_client::desktop_nav_tree::renameable_name(
+            desktop_nav_target(target),
+            self.host(host)?.sessions.iter().map(|session| {
+                (
+                    session.id,
+                    session.name.as_str(),
+                    session
+                        .windows
+                        .iter()
+                        .map(|window| (window.id, window.name.as_str())),
+                )
+            }),
+        )
     }
 
     #[must_use]
@@ -257,13 +247,9 @@ impl MuxTreeModel {
             TreeNode::Target(host, target @ (TreeTarget::Session(_) | TreeTarget::Window(_))) => {
                 Some((host, target))
             }
-            TreeNode::Target(host, TreeTarget::Pane(pane)) => self
-                .host(host)?
-                .sessions
-                .iter()
-                .flat_map(|session| &session.windows)
-                .find(|window| window.panes.iter().any(|candidate| candidate.id == pane))
-                .map(|window| (host, window.target())),
+            TreeNode::Target(host, target @ TreeTarget::Pane(_)) => self
+                .target_owner(host, target)
+                .map(|owner| (host, TreeTarget::Window(owner.window))),
             TreeNode::Host(_) => None,
         }
     }
@@ -443,11 +429,6 @@ pub struct MuxTreeSession {
 }
 
 impl MuxTreeSession {
-    #[must_use]
-    pub const fn target(&self) -> TreeTarget {
-        TreeTarget::Session(self.id)
-    }
-
     fn has_pending_bell(&self) -> bool {
         self.windows.iter().any(MuxTreeWindow::has_pending_bell)
     }
@@ -464,11 +445,6 @@ pub struct MuxTreeWindow {
 }
 
 impl MuxTreeWindow {
-    #[must_use]
-    pub const fn target(&self) -> TreeTarget {
-        TreeTarget::Window(self.id)
-    }
-
     #[must_use]
     pub fn label(&self) -> String {
         self.name.clone()
@@ -520,11 +496,6 @@ impl MuxTreePane {
             program: pane_program(pane),
         }
     }
-
-    #[must_use]
-    pub const fn target(&self) -> TreeTarget {
-        TreeTarget::Pane(self.id)
-    }
 }
 
 pub use zz_client::navigation::{ordered_panes, pane_index, pane_label};
@@ -564,28 +535,43 @@ pub fn active_tree_target(
 pub use zz_client::navigation::{SessionLabel, session_label};
 
 pub fn expand_path_to(expanded: &mut BTreeSet<TreeNode>, model: &MuxTreeModel, node: TreeNode) {
-    let TreeNode::Target(host, target) = node else {
-        return;
+    let owner = match node {
+        TreeNode::Target(host, target) => model.target_owner(host, target),
+        TreeNode::Host(_) => None,
     };
-    let Some(host_model) = model.host(host) else {
-        return;
-    };
-    expanded.insert(TreeNode::Host(host));
-    for session in &host_model.sessions {
-        if session.target() == target {
-            return;
+    expanded.extend(
+        zz_client::desktop_nav_tree::path_ancestors(
+            to_desktop_nav_node(node),
+            model.host(node.host()).is_some(),
+            owner,
+        )
+        .into_iter()
+        .map(from_desktop_nav_node),
+    );
+}
+
+pub(crate) fn to_desktop_nav_node(node: TreeNode) -> zz_client::desktop_nav_tree::NavNode<HostId> {
+    match node {
+        TreeNode::Host(host) => zz_client::desktop_nav_tree::NavNode::Host(host),
+        TreeNode::Target(host, target) => {
+            zz_client::desktop_nav_tree::NavNode::Target(host, desktop_nav_target(target))
         }
-        for window in &session.windows {
-            if window.target() == target {
-                expanded.insert(TreeNode::Target(host, session.target()));
-                return;
-            }
-            if window.panes.iter().any(|pane| pane.target() == target) {
-                expanded.insert(TreeNode::Target(host, session.target()));
-                expanded.insert(TreeNode::Target(host, window.target()));
-                return;
-            }
-        }
+    }
+}
+
+pub(crate) fn from_desktop_nav_node(
+    node: zz_client::desktop_nav_tree::NavNode<HostId>,
+) -> TreeNode {
+    match node {
+        zz_client::desktop_nav_tree::NavNode::Host(host) => TreeNode::Host(host),
+        zz_client::desktop_nav_tree::NavNode::Target(host, target) => TreeNode::Target(
+            host,
+            match target {
+                zz_client::desktop_nav::NavTarget::Session(session) => TreeTarget::Session(session),
+                zz_client::desktop_nav::NavTarget::Window(window) => TreeTarget::Window(window),
+                zz_client::desktop_nav::NavTarget::Pane(pane) => TreeTarget::Pane(pane),
+            },
+        ),
     }
 }
 
