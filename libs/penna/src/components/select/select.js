@@ -67,6 +67,69 @@ function menu(select) {
   return select.querySelector(":scope > .penna-select-menu");
 }
 
+function searchable(select) {
+  const flag = select.dataset.searchable;
+  return flag === undefined ? options(select).length > 12 : flag !== "false";
+}
+
+function rows(select) {
+  return [...(menu(select)?.querySelectorAll('[data-penna="menu-item"]') ?? [])];
+}
+
+function visible(select) {
+  return rows(select).flatMap((row, at) => (row.hidden ? [] : [at]));
+}
+
+function searchField(select) {
+  const field = document.createElement("label");
+  field.className = "penna-input";
+  field.dataset.penna = "field";
+  const prefix = document.createElement("span");
+  prefix.className = "penna-input-prefix";
+  const glass = document.createElement("i");
+  glass.dataset.icon = "search";
+  prefix.append(glass);
+  const input = document.createElement("input");
+  input.placeholder = select.dataset.searchPlaceholder || "Search";
+  input.setAttribute("aria-label", input.placeholder);
+  const suffix = document.createElement("span");
+  suffix.className = "penna-input-suffix";
+  const clear = document.createElement("button");
+  clear.className = "penna-button penna-input-clear";
+  clear.dataset.id = "penna-input-clear";
+  clear.dataset.penna = "button.quiet";
+  clear.dataset.shape = "icon";
+  clear.dataset.size = "small";
+  clear.type = "button";
+  clear.tabIndex = -1;
+  clear.setAttribute("aria-label", "Clear");
+  const mark = document.createElement("i");
+  mark.dataset.icon = "circle-x";
+  clear.append(mark);
+  suffix.append(clear);
+  field.append(prefix, input, suffix);
+  input.addEventListener("input", () => filter(select));
+  const wrap = document.createElement("div");
+  wrap.className = "penna-select-search";
+  wrap.append(field);
+  return wrap;
+}
+
+function filter(select) {
+  const list = menu(select);
+  const input = list?.querySelector(".penna-select-search input");
+  if (!input) return;
+  const query = input.value.trim().toLowerCase();
+  const names = options(select);
+  rows(select).forEach((row, at) => {
+    row.hidden = Boolean(query) && !names[at].toLowerCase().includes(query);
+  });
+  const shown = visible(select);
+  list.querySelector(".penna-select-none").hidden = shown.length > 0 || !query;
+  const index = picked(select);
+  highlight(select, !query && index >= 0 ? index : shown[0] ?? -1);
+}
+
 function highlight(select, index) {
   const list = menu(select);
   if (!list) return;
@@ -84,7 +147,17 @@ function buildMenu(select) {
   const list = document.createElement("div");
   list.className = "penna-menu penna-select-menu";
   list.dataset.penna = "popover";
-  list.setAttribute("role", "menu");
+  const search = searchable(select);
+  let holder = list;
+  if (search) {
+    list.dataset.searchable = "";
+    holder = document.createElement("div");
+    holder.className = "penna-select-rows";
+    holder.setAttribute("role", "menu");
+    list.append(searchField(select), holder);
+  } else {
+    list.setAttribute("role", "menu");
+  }
   const names = options(select);
   const index = picked(select);
   names.forEach((name, at) => {
@@ -108,21 +181,39 @@ function buildMenu(select) {
       event.stopPropagation();
       commit(select, at);
     });
-    list.append(item);
+    holder.append(item);
   });
+  if (search) {
+    const none = document.createElement("div");
+    none.className = "penna-select-none";
+    none.hidden = true;
+    const label = document.createElement("span");
+    label.className = "penna-label";
+    label.dataset.pennaText = "";
+    label.textContent = "No matches";
+    none.append(label);
+    holder.append(none);
+  }
   if (!names.length) {
     const empty = document.createElement("div");
     empty.className = "penna-select-empty";
     const icon = document.createElement("i");
     icon.dataset.icon = "inbox";
     empty.append(icon);
-    list.append(empty);
+    holder.append(empty);
   }
-  list.addEventListener("mousedown", (event) => event.preventDefault());
+  list.addEventListener("mousedown", (event) => {
+    if (!event.target.closest(".penna-select-search")) event.preventDefault();
+  });
   const frame = select.closest("section") ?? document.documentElement;
   list.style.setProperty("--penna-select-max", `${Math.min(frame.getBoundingClientRect().height * 0.5, 450)}px`);
   select.append(list);
   pennaKit.ceilText(list);
+  if (search) {
+    globalThis.pennaInput?.wire(list);
+    list.style.width = `${list.getBoundingClientRect().width}px`;
+    list.querySelector(".penna-select-search input").focus({ preventScroll: true });
+  }
   highlight(select, index);
   return list;
 }
@@ -137,9 +228,11 @@ function open(select) {
 
 function close(select) {
   if (!select.hasAttribute("data-open")) return;
+  const inside = menu(select)?.contains(document.activeElement);
   select.removeAttribute("data-open");
   select.setAttribute("aria-expanded", "false");
   menu(select)?.remove();
+  if (inside) select.focus({ preventScroll: true });
   paintTrigger(select);
 }
 
@@ -151,10 +244,10 @@ function commit(select, index) {
 }
 
 function step(select, delta) {
-  const count = options(select).length;
-  if (!count) return;
-  const current = Number.parseInt(select.dataset.highlight ?? "-1", 10);
-  const next = current < 0 ? (delta > 0 ? 0 : count - 1) : (current + delta + count) % count;
+  const shown = visible(select);
+  if (!shown.length) return;
+  const at = shown.indexOf(Number.parseInt(select.dataset.highlight ?? "-1", 10));
+  const next = at < 0 ? (delta > 0 ? shown[0] : shown.at(-1)) : shown[(at + delta + shown.length) % shown.length];
   highlight(select, next);
 }
 
@@ -183,7 +276,7 @@ function wire(select) {
       event.preventDefault();
       if (shown) step(select, event.key === "ArrowDown" ? 1 : -1);
       else open(select);
-    } else if (event.key === "Enter" || event.key === " ") {
+    } else if (event.key === "Enter" || (event.key === " " && !event.target.closest(".penna-select-search"))) {
       event.preventDefault();
       const at = Number.parseInt(select.dataset.highlight ?? "-1", 10);
       if (shown && at >= 0) commit(select, at);
@@ -193,7 +286,8 @@ function wire(select) {
     }
   });
   select.addEventListener("focusin", () => paintTrigger(select));
-  select.addEventListener("focusout", () => {
+  select.addEventListener("focusout", (event) => {
+    if (select.contains(event.relatedTarget)) return;
     if (!select.hasAttribute("data-pinned") && document.hasFocus()) close(select);
     requestAnimationFrame(() => paintTrigger(select));
   });

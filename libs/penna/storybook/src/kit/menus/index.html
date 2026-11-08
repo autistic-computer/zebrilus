@@ -8,6 +8,7 @@
     <link rel="stylesheet" href="../../../../web/story.css" />
     <link rel="stylesheet" href="../../../../src/components/button/button.css" />
     <link rel="stylesheet" href="../../../../src/components/tooltip/tooltip.css" />
+    <link rel="stylesheet" href="../../../../src/components/input/input.css" />
     <link rel="stylesheet" href="../../../../src/components/menu/menu.css" />
     <link rel="stylesheet" href="page.css" />
     <script src="../../../../web/kit.js" data-tokens="../../../../web/tokens/"></script>
@@ -15,6 +16,7 @@
     <script src="../../../../src/components/button/button.js" defer></script>
     <script src="../../../../src/components/kbd/kbd.js" defer></script>
     <script src="../../../../src/components/tooltip/tooltip.js" defer></script>
+    <script src="../../../../src/components/input/input.js" defer></script>
     <script src="../../../../src/components/menu/menu.js" defer></script>
     <script src="page.js" defer></script>
   </head>
@@ -42,6 +44,15 @@
         <div class="story-state">
           <div class="story-label">submenu open, first row highlighted</div>
           <div class="menus-stage" data-tooltip-host><div class="menus-row" data-menus="pane" data-highlight="submenu"></div></div>
+        </div>
+      </div>
+    </section>
+
+    <section data-section="search">
+      <div class="story-states">
+        <div class="story-state">
+          <div class="story-label">nothing typed, "mono", "zz"</div>
+          <div class="menus-search"><div class="menus-row" data-search-menus></div></div>
         </div>
       </div>
     </section>

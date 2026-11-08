@@ -65,6 +65,12 @@ pub const STORY: Story = Story {
             build: |window, cx| Menus::view(Highlight::Submenu, window, cx),
         },
         Section {
+            id: "search",
+            name: "Searchable menu",
+            summary: "A search field sits on top and the rows scroll under it. With nothing typed the checked row is highlighted; typing keeps the rows whose label holds the text, in any case, and highlights the first; when nothing matches a faint row says so.",
+            build: |window, cx| SearchMenus::view(window, cx),
+        },
+        Section {
             id: "triggers",
             name: "Triggers",
             summary: "A dropdown Button and a context-menu region at rest. Both open the same PopupMenu, only on interaction.",
@@ -232,6 +238,65 @@ impl Render for Menus {
             Highlight::Submenu => "submenu open, first row highlighted",
         };
         states().state(caption, div().min_h(px(380.0)).child(menus))
+    }
+}
+
+const FONTS: [&str; 20] = [
+    "Andale Mono",
+    "Arial",
+    "Avenir",
+    "Berkeley Mono",
+    "Courier New",
+    "Fira Code",
+    "Georgia",
+    "Helvetica",
+    "Inter",
+    "Iosevka",
+    "Lilex",
+    "Menlo",
+    "Monaco",
+    "PT Mono",
+    "SF Mono",
+    "Times",
+    "Trebuchet MS",
+    "Verdana",
+    "Victor Mono",
+    "Zapfino",
+];
+
+struct SearchMenus {
+    menus: [Entity<PopupMenu>; 3],
+}
+
+impl SearchMenus {
+    fn view(window: &mut Window, cx: &mut App) -> AnyView {
+        let menus = ["", "mono", "zz"].map(|query| {
+            let menu = PopupMenu::build(window, cx, |menu, window, cx| {
+                FONTS.iter().fold(
+                    menu.search("Search fonts", window, cx)
+                        .min_w(px(200.0))
+                        .max_h(px(260.0)),
+                    |menu, font| menu.item(PopupMenuItem::new(*font).checked(*font == "Menlo")),
+                )
+            });
+            menu.update(cx, |menu, cx| menu.set_query(query, window, cx));
+            menu
+        });
+        cx.new(|_| Self { menus }).into()
+    }
+}
+
+impl Render for SearchMenus {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        states().state(
+            "nothing typed, \"mono\", \"zz\"",
+            div().min_h(px(280.0)).child(
+                h_flex()
+                    .items_start()
+                    .gap(Space::S24)
+                    .children(self.menus.iter().cloned()),
+            ),
+        )
     }
 }
 

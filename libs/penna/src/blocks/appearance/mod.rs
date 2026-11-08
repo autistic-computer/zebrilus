@@ -701,6 +701,7 @@ pub fn kit_row<T: Copy>(
                     Select::new(&select)
                         .title(title)
                         .placeholder("System default")
+                        .search_placeholder("Search fonts")
                         .on(crate::blocks::settings::settings_card_ground(cx)),
                 ),
             )

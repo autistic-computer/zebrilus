@@ -73,6 +73,17 @@
     }
   });
 
+  const FONTS = ["Andale Mono", "Arial", "Avenir", "Berkeley Mono", "Courier New", "Fira Code", "Georgia", "Helvetica", "Inter", "Iosevka", "Lilex", "Menlo", "Monaco", "PT Mono", "SF Mono", "Times", "Trebuchet MS", "Verdana", "Victor Mono", "Zapfino"];
+  document.querySelectorAll("[data-search-menus]").forEach((row) => {
+    for (const query of ["", "mono", "zz"]) {
+      const menu = new Menu(FONTS.map((label) => ({ label, checked: label === "Menlo" })), { search: "Search fonts" });
+      row.append(menu.element);
+      menu.search.value = query;
+      menu.filter(query);
+    }
+    globalThis.pennaInput?.wire(row);
+  });
+
   const opened = [];
   document.querySelectorAll("[data-dropdown]").forEach((trigger) => {
     const handle = dropdown(trigger, menus[trigger.dataset.dropdown]());

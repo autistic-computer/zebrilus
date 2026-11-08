@@ -50,6 +50,18 @@ impl<D: SelectDelegate> Select<D> {
     }
 
     #[must_use]
+    pub fn searchable(mut self, searchable: bool) -> Self {
+        self.options.searchable = Some(searchable);
+        self
+    }
+
+    #[must_use]
+    pub fn search_placeholder(mut self, placeholder: impl Into<SharedString>) -> Self {
+        self.options.search_placeholder = Some(placeholder.into());
+        self
+    }
+
+    #[must_use]
     pub fn on(mut self, ground: Ground) -> Self {
         self.options.on = Some(ground);
         self

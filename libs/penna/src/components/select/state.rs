@@ -37,6 +37,8 @@ pub(super) struct SelectOptions {
     pub(super) placeholder: Option<SharedString>,
     pub(super) title: Option<SharedString>,
     pub(super) menu_max_h: Option<Length>,
+    pub(super) searchable: Option<bool>,
+    pub(super) search_placeholder: Option<SharedString>,
     pub(super) disabled: bool,
     pub(super) tone: Tone,
     pub(super) on: Option<Ground>,
@@ -134,6 +136,12 @@ impl<D: SelectDelegate> SelectState<D> {
         }
     }
 
+    fn searchable(&self) -> bool {
+        self.options
+            .searchable
+            .unwrap_or(self.delegate.items_count() > SEARCH_FROM)
+    }
+
     fn open_menu(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.menu.is_some() || self.sheet || self.options.disabled {
             return;
@@ -148,8 +156,17 @@ impl<D: SelectDelegate> SelectState<D> {
             .as_ref()
             .and_then(|item| self.delegate.position(item.value()));
         let state = cx.entity().downgrade();
+        let search = self.searchable().then(|| {
+            self.options
+                .search_placeholder
+                .clone()
+                .unwrap_or_else(|| SharedString::new_static("Search"))
+        });
         let menu = PopupMenu::build(window, cx, |menu, window, cx| {
             let mut menu = menu.scrollable(true).min_w(self.trigger_bounds.size.width);
+            if let Some(placeholder) = search {
+                menu = menu.search(placeholder, window, cx);
+            }
             if let Some(Length::Definite(height)) = self.options.menu_max_h {
                 menu = menu.max_h(
                     height.to_pixels(window.viewport_size().height.into(), window.rem_size()),
@@ -198,11 +215,16 @@ impl<D: SelectDelegate> SelectState<D> {
     }
 
     fn open_sheet(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.delegate.items_count() > SEARCH_FROM {
+        if self.searchable() {
             if let Some((search, _)) = &self.search {
                 search.update(cx, |search, cx| search.set_value("", window, cx));
             } else {
-                let search = cx.new(|cx| InputState::new(window, cx).placeholder("Search"));
+                let placeholder = self
+                    .options
+                    .search_placeholder
+                    .clone()
+                    .unwrap_or_else(|| SharedString::new_static("Search"));
+                let search = cx.new(|cx| InputState::new(window, cx).placeholder(placeholder));
                 let subscription = cx.subscribe(&search, |_, _, event: &InputEvent, cx| {
                     if matches!(event, InputEvent::Change) {
                         cx.notify();
@@ -598,6 +620,85 @@ mod tests {
         cx.run_until_parked();
         cx.simulate_click(bounds.center(), ala::Modifiers::default());
         assert!(state.read_with(cx, |state, _| state.menu.is_none()));
+    }
+
+    #[ala::test]
+    fn a_long_select_filters_its_menu_as_you_type(cx: &mut TestAppContext) {
+        use ala::Focusable as _;
+        cx.update(|cx| {
+            crate::init(cx);
+            cx.set_reduce_motion(true);
+        });
+        let fonts = [
+            "Andale Mono",
+            "Arial",
+            "Berkeley Mono",
+            "Courier New",
+            "Fira Code",
+            "Georgia",
+            "Helvetica",
+            "Inter",
+            "Menlo",
+            "Monaco",
+            "PT Mono",
+            "Times",
+            "Verdana",
+        ];
+        let (preview, cx) = cx.add_window_view(|window, cx| Preview {
+            state: cx.new(|cx| {
+                SelectState::new(
+                    fonts.iter().map(|font| (*font).to_owned()).collect(),
+                    Some(IndexPath::new(6)),
+                    window,
+                    cx,
+                )
+            }),
+            disabled: false,
+        });
+        let state = preview.read_with(cx, |preview, _| preview.state.clone());
+        let draw = |cx: &mut ala::VisualTestContext| {
+            cx.run_until_parked();
+            cx.update(|window, cx| {
+                _ = window.draw(cx);
+            });
+        };
+        draw(cx);
+        let bounds = state.read_with(cx, |state, _| state.trigger_bounds);
+        let picked = |cx: &mut ala::VisualTestContext| {
+            state.read_with(cx, |state, _| state.selected_value().cloned())
+        };
+
+        cx.simulate_click(bounds.center(), ala::Modifiers::default());
+        draw(cx);
+        cx.simulate_input("mono");
+        draw(cx);
+        cx.simulate_keystrokes("enter");
+        assert_eq!(picked(cx), Some("Andale Mono".into()));
+
+        cx.simulate_click(bounds.center(), ala::Modifiers::default());
+        draw(cx);
+        cx.simulate_input("MONO");
+        cx.simulate_keystrokes("down down down enter");
+        assert_eq!(picked(cx), Some("Andale Mono".into()));
+
+        cx.simulate_click(bounds.center(), ala::Modifiers::default());
+        draw(cx);
+        cx.simulate_input("mono");
+        cx.simulate_keystrokes("down enter");
+        assert_eq!(picked(cx), Some("Berkeley Mono".into()));
+
+        cx.update(|window, cx| state.focus_handle(cx).focus(window, cx));
+        cx.simulate_keystrokes("down");
+        draw(cx);
+        cx.simulate_input("zz");
+        draw(cx);
+        assert!(cx.debug_bounds("menu-no-matches").is_some());
+        cx.simulate_keystrokes("enter");
+        assert!(state.read_with(cx, |state, _| state.menu.is_some()));
+        cx.simulate_keystrokes("escape");
+        assert!(state.read_with(cx, |state, _| state.menu.is_none()));
+        assert_eq!(picked(cx), Some("Berkeley Mono".into()));
+        cx.update(|window, cx| assert!(state.focus_handle(cx).is_focused(window)));
     }
 
     #[ala::test]

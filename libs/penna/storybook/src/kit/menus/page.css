@@ -48,3 +48,12 @@
   stroke-linecap: butt;
 }
 
+.menus-search {
+  min-height: 280px;
+  --penna-popup-max: 260px;
+}
+
+.menus-search .penna-popup-items {
+  box-sizing: border-box;
+  min-width: 200px;
+}

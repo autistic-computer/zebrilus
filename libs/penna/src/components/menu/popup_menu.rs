@@ -2,10 +2,11 @@ use super::actions::{Cancel, Confirm, SelectDown, SelectLeft, SelectRight, Selec
 use super::menu_item::MenuItemElement;
 use crate::Space;
 use crate::components::button::{Button, ButtonVariants as _};
+use crate::components::input::{self, Input, InputEvent, InputState};
 use crate::components::scroll::ScrollableElement;
 use crate::{
-    ActiveTheme, Icon, IconName, Sizable as _, Size, StyledExt, TextStyle, components::kbd::Kbd,
-    h_flex, rems_from_px, v_flex,
+    ActiveTheme, Colorize as _, Icon, IconName, Label, Sizable as _, Size, StyledExt, TextStyle,
+    components::kbd::Kbd, h_flex, rems_from_px, v_flex,
 };
 use crate::{
     Edge, ElementExt, Kind, PaintState, RuleLook, Side, Surface, SurfaceRole,
@@ -258,6 +259,16 @@ impl PopupMenuItem {
         }
     }
 
+    fn matches(&self, query: &str) -> bool {
+        query.is_empty()
+            || match self {
+                PopupMenuItem::Item { label, .. }
+                | PopupMenuItem::Submenu { label, .. }
+                | PopupMenuItem::Stepper { label, .. } => label.to_lowercase().contains(query),
+                _ => false,
+            }
+    }
+
     #[inline]
     fn is_checked(&self) -> bool {
         match self {
@@ -300,6 +311,9 @@ pub struct PopupMenu {
     scrollable: bool,
     scroll_handle: ScrollHandle,
     submenu_anchor: (Anchor, Pixels),
+    search: Option<(Entity<InputState>, Subscription)>,
+    query: String,
+    search_width: Option<Pixels>,
 
     _subscriptions: Vec<Subscription>,
 }
@@ -320,6 +334,9 @@ impl PopupMenu {
             scrollable: false,
             scroll_handle: ScrollHandle::default(),
             submenu_anchor: (Anchor::TopLeft, Pixels::ZERO),
+            search: None,
+            query: String::new(),
+            search_width: None,
             _subscriptions: vec![],
         }
     }
@@ -371,6 +388,70 @@ impl PopupMenu {
     pub fn scrollable(mut self, scrollable: bool) -> Self {
         self.scrollable = scrollable;
         self
+    }
+
+    pub fn search(
+        mut self,
+        placeholder: impl Into<SharedString>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
+        let placeholder = placeholder.into();
+        let input = cx.new(|cx| InputState::new(window, cx).placeholder(placeholder));
+        let subscription = cx.subscribe(&input, |this, input, event: &InputEvent, cx| {
+            if matches!(event, InputEvent::Change) {
+                this.query = input.read(cx).value().trim().to_lowercase();
+                this.highlight_query(cx);
+            }
+        });
+        self.search = Some((input, subscription));
+        self
+    }
+
+    pub fn set_query(
+        &mut self,
+        query: impl Into<SharedString>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some((search, _)) = &self.search else {
+            return;
+        };
+        let query = query.into();
+        self.query = query.trim().to_lowercase();
+        search.update(cx, |search, cx| search.set_value(query, window, cx));
+        self.highlight_query(cx);
+    }
+
+    fn highlight_query(&mut self, cx: &mut Context<Self>) {
+        let checked = self
+            .query
+            .is_empty()
+            .then(|| self.menu_items.iter().position(PopupMenuItem::is_checked))
+            .flatten();
+        self.selected_index =
+            checked.or_else(|| self.clickable_menu_items().next().map(|(ix, _)| ix));
+        if let Some(ix) = self.selected_index {
+            self.scroll_handle.scroll_to_item(self.shown_position(ix));
+        }
+        cx.notify();
+    }
+
+    fn shows(&self, ix: usize, item: &PopupMenuItem) -> bool {
+        !(ix + 1 == self.menu_items.len() && item.is_separator()) && item.matches(&self.query)
+    }
+
+    fn shown_position(&self, ix: usize) -> usize {
+        self.menu_items
+            .iter()
+            .enumerate()
+            .take(ix)
+            .filter(|(at, item)| self.shows(*at, item))
+            .count()
+    }
+
+    fn navigable(&self, item: &PopupMenuItem) -> bool {
+        item.is_clickable() && item.matches(&self.query)
     }
 
     pub fn menu(self, label: impl Into<SharedString>, action: Box<dyn Action>) -> Self {
@@ -486,7 +567,7 @@ impl PopupMenu {
         self.menu_items
             .iter()
             .enumerate()
-            .filter(|(_, item)| item.is_clickable())
+            .filter(|(_, item)| self.navigable(item))
     }
 
     fn on_click(&mut self, ix: usize, window: &mut Window, cx: &mut Context<Self>) {
@@ -575,7 +656,7 @@ impl PopupMenu {
     pub(crate) fn set_selected_index(&mut self, ix: usize, cx: &mut Context<Self>) {
         if self.selected_index != Some(ix) {
             self.selected_index = Some(ix);
-            self.scroll_handle.scroll_to_item(ix);
+            self.scroll_handle.scroll_to_item(self.shown_position(ix));
             cx.notify();
         }
     }
@@ -596,34 +677,36 @@ impl PopupMenu {
             .iter()
             .enumerate()
             .rev()
-            .find(|(i, item)| *i < ix && item.is_clickable())
+            .find(|(i, item)| *i < ix && self.navigable(item))
         {
             self.set_selected_index(prev_ix, cx);
             return;
         }
 
-        let last_clickable_ix = self.clickable_menu_items().last().map(|(ix, _)| ix);
-        self.set_selected_index(last_clickable_ix.unwrap_or(0), cx);
+        match self.clickable_menu_items().last() {
+            Some((last, _)) => self.set_selected_index(last, cx),
+            None if self.search.is_none() => self.set_selected_index(0, cx),
+            None => {}
+        }
     }
 
     fn select_down(&mut self, _: &SelectDown, _: &mut Window, cx: &mut Context<Self>) {
         cx.stop_propagation();
-        let Some(ix) = self.selected_index else {
-            self.set_selected_index(0, cx);
-            return;
+        let next = self.selected_index.and_then(|ix| {
+            self.menu_items
+                .iter()
+                .enumerate()
+                .find(|(i, item)| *i > ix && self.navigable(item))
+                .map(|(next, _)| next)
+        });
+        let first = if self.search.is_some() {
+            self.clickable_menu_items().next().map(|(ix, _)| ix)
+        } else {
+            Some(0)
         };
-
-        if let Some((next_ix, _)) = self
-            .menu_items
-            .iter()
-            .enumerate()
-            .find(|(i, item)| *i > ix && item.is_clickable())
-        {
-            self.set_selected_index(next_ix, cx);
-            return;
+        if let Some(ix) = next.or(first) {
+            self.set_selected_index(ix, cx);
         }
-
-        self.set_selected_index(0, cx);
     }
 
     fn select_left(&mut self, _: &SelectLeft, window: &mut Window, cx: &mut Context<Self>) {
@@ -1177,8 +1260,11 @@ impl PopupMenu {
 impl FluentBuilder for PopupMenu {}
 impl EventEmitter<DismissEvent> for PopupMenu {}
 impl Focusable for PopupMenu {
-    fn focus_handle(&self, _: &App) -> FocusHandle {
-        self.focus_handle.clone()
+    fn focus_handle(&self, cx: &App) -> FocusHandle {
+        self.search.as_ref().map_or_else(
+            || self.focus_handle.clone(),
+            |(search, _)| search.focus_handle(cx),
+        )
     }
 }
 
@@ -1192,7 +1278,6 @@ impl Render for PopupMenu {
         self.update_submenu_menu_anchor(window);
 
         let view = cx.entity().clone();
-        let items_count = self.menu_items.len();
 
         let max_height = self.max_height.unwrap_or_else(|| {
             let window_half_height = window.window_bounds().get_bounds().size.height * 0.5;
@@ -1203,6 +1288,24 @@ impl Render for PopupMenu {
 
         let max_width = self.max_width();
         let options = RenderOptions { has_left_icon };
+        let scrollable = self.scrollable || self.search.is_some();
+        let search = self.search.as_ref().map(|(search, _)| search.clone());
+        let search_height = search.as_ref().map_or(Pixels::ZERO, |_| {
+            rems_from_px(Size::Medium.control_px()).to_pixels(window.rem_size())
+                + cx.theme().row_inset
+        });
+        let shown = self
+            .menu_items
+            .iter()
+            .enumerate()
+            .filter(|(ix, item)| self.shows(*ix, item))
+            .map(|(ix, item)| {
+                self.render_item(ix, item, options, window, cx)
+                    .into_any_element()
+            })
+            .collect::<Vec<_>>();
+        let no_matches = shown.is_empty() && !self.query.is_empty();
+        let popover = cx.theme().ground_of(Surface::new(SurfaceRole::POPOVER));
 
         let surface = v_flex()
             .id("popup-menu")
@@ -1215,11 +1318,39 @@ impl Render for PopupMenu {
             .on_action(cx.listener(Self::select_right))
             .on_action(cx.listener(Self::confirm))
             .on_action(cx.listener(Self::dismiss))
+            .when(search.is_some(), |this| {
+                this.capture_action(cx.listener(|this, _: &input::MoveUp, window, cx| {
+                    this.select_up(&SelectUp, window, cx);
+                }))
+                .capture_action(cx.listener(
+                    |this, _: &input::MoveDown, window, cx| {
+                        this.select_down(&SelectDown, window, cx);
+                    },
+                ))
+            })
             .on_mouse_down_out(cx.listener(Self::on_mouse_down_out))
             .surface(Surface::new(SurfaceRole::POPOVER), cx)
             .text_color(cx.theme().foreground)
             .relative()
             .occlude()
+            .when_some(search, |this, search| {
+                this.child(
+                    div()
+                        .flex_none()
+                        .px(cx.theme().row_inset)
+                        .pt(cx.theme().row_inset)
+                        .child(
+                            Input::new(&search)
+                                .on(popover)
+                                .prefix(
+                                    Icon::new(IconName::Search)
+                                        .with_size(Size::Medium)
+                                        .text_color(cx.theme().foreground.muted()),
+                                )
+                                .cleanable(true),
+                        ),
+                )
+            })
             .child(
                 v_flex()
                     .id("items")
@@ -1227,34 +1358,48 @@ impl Render for PopupMenu {
                     .list_inset(cx)
                     .min_w(rems(8.))
                     .when_some(self.min_width, |this, min_width| this.min_w(min_width))
+                    .when_some(self.search_width, |this, width| this.min_w(width))
                     .max_w(max_width)
-                    .when(self.scrollable, |this| {
-                        this.max_h(max_height)
+                    .when(scrollable, |this| {
+                        this.max_h(max_height - search_height)
                             .overflow_y_scroll()
                             .track_scroll(&self.scroll_handle)
                     })
-                    .children(
-                        self.menu_items
-                            .iter()
-                            .enumerate()
-                            .filter(|(ix, item)| !(*ix + 1 == items_count && item.is_separator()))
-                            .map(|(ix, item)| self.render_item(ix, item, options, window, cx)),
-                    )
+                    .children(shown)
+                    .when(no_matches, |this| {
+                        this.child(
+                            div()
+                                .debug_selector(|| "menu-no-matches".into())
+                                .flex()
+                                .items_center()
+                                .h(rems_from_px(Size::Medium.control_px()))
+                                .px(Space::S8)
+                                .child(
+                                    Label::new(TextStyle::Small, "No matches")
+                                        .faint()
+                                        .on(popover),
+                                ),
+                        )
+                    })
                     .on_prepaint(move |bounds, _, cx| {
                         view.update(cx, |menu, cx| {
                             let first_layout = menu.bounds.size.height == px(0.0);
+                            let resized = menu.bounds.size.height != bounds.size.height;
                             menu.bounds = bounds;
-                            if first_layout
-                                && menu.scrollable
+                            if first_layout && menu.search.is_some() {
+                                menu.search_width = Some(bounds.size.width);
+                            }
+                            if resized
+                                && scrollable
                                 && let Some(ix) = menu.selected_index
                             {
-                                menu.scroll_handle.scroll_to_item(ix);
+                                menu.scroll_handle.scroll_to_item(menu.shown_position(ix));
                                 cx.notify();
                             }
                         })
                     }),
             )
-            .when(self.scrollable, |this| {
+            .when(scrollable, |this| {
                 this.vertical_scrollbar(&self.scroll_handle)
             });
         crate::foundation::surface_enter(surface, "menu-open", px(0.0))

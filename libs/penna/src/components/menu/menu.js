@@ -69,6 +69,39 @@
       this.rows = items.map((item, ix) => (ix === last && item.kind === "separator" ? null : this.row(item, ix, icons)));
       this.list.append(...this.rows.filter(Boolean));
       this.list.addEventListener("keydown", (event) => this.key(event));
+      this.query = "";
+      this.search = options.search ? this.searchField(options.search) : null;
+    }
+
+    searchField(placeholder) {
+      const input = make("input", "", { placeholder, "aria-label": placeholder });
+      const clear = make("button", "penna-button penna-input-clear", { type: "button", tabindex: "-1", "data-id": "penna-input-clear", "data-penna": "button.quiet", "data-shape": "icon", "data-size": "small", "aria-label": "Clear" }, [glyph("circle-x")]);
+      const field = make("label", "penna-input", { "data-penna": "field" }, [make("span", "penna-input-prefix", {}, [glyph("search")]), input, make("span", "penna-input-suffix", {}, [clear])]);
+      input.addEventListener("input", () => this.filter(input.value));
+      input.addEventListener("keydown", (event) => {
+        if (["ArrowDown", "ArrowUp", "Enter", "Escape"].includes(event.key)) this.key(event);
+      });
+      this.element.setAttribute("data-search", "");
+      this.element.prepend(make("div", "penna-popup-search", {}, [field]));
+      this.none = make("div", "penna-popup-none", { hidden: true }, [text("No matches")]);
+      this.list.append(this.none);
+      return input;
+    }
+
+    matches(ix) {
+      const item = this.items[ix];
+      return !this.query || (["item", "submenu", "stepper"].includes(item.kind ?? "item") && item.label.toLowerCase().includes(this.query));
+    }
+
+    filter(value) {
+      this.query = value.trim().toLowerCase();
+      this.rows.forEach((row, ix) => {
+        if (row) row.hidden = !this.matches(ix);
+      });
+      this.none.hidden = !this.query || this.items.some((_, ix) => this.clickable(ix));
+      const checked = this.query ? -1 : this.items.findIndex((item, ix) => item.checked && this.clickable(ix));
+      if (checked >= 0) this.select(checked);
+      else this.first();
     }
 
     slot(icons, item) {
@@ -79,7 +112,7 @@
 
     clickable(ix) {
       const item = this.items[ix];
-      return Boolean(item) && item.kind !== "separator" && item.kind !== "label" && !item.disabled;
+      return Boolean(item) && item.kind !== "separator" && item.kind !== "label" && !item.disabled && this.matches(ix);
     }
 
     row(item, ix, icons) {
@@ -92,7 +125,7 @@
       } else if (kind === "stepper") {
         row.setAttribute("aria-label", `${item.label}: ${item.format(item.value)}; Left and Right adjust, Enter resets`);
         const button = (id, attrs, children) =>
-          make("button", "penna-button", { type: "button", tabindex: "-1", "data-penna": "button.quiet", "data-flat": true, "data-size": "small", "data-id": `${id}-${ix}`, ...attrs }, children);
+          make("button", "penna-button", { type: "button", tabindex: "-1", "data-id": "penna-input-clear", "data-penna": "button.quiet", "data-flat": true, "data-size": "small", "data-id": `${id}-${ix}`, ...attrs }, children);
         const value = text(item.format(item.value));
         const group = make("span", "penna-popup-stepper", { "data-penna": "field" }, [
           button("menu-step-down", { "data-shape": "icon", "aria-label": `Decrease ${item.label}`, "data-tooltip": `Decrease ${item.label}`, "data-step": "down" }, [glyph("minus")]),
@@ -167,6 +200,15 @@
     select(ix) {
       this.selected = ix;
       this.paint();
+      if (this.search && ix != null) this.reveal(this.rows[ix]);
+    }
+
+    reveal(row) {
+      if (!row) return;
+      const box = this.list.getBoundingClientRect();
+      const at = row.getBoundingClientRect();
+      if (at.top < box.top) this.list.scrollTop -= box.top - at.top;
+      else if (at.bottom > box.bottom) this.list.scrollTop += at.bottom - box.bottom;
     }
 
     paint() {
@@ -199,7 +241,7 @@
     }
 
     focus() {
-      this.list.focus({ preventScroll: true });
+      (this.search ?? this.list).focus({ preventScroll: true });
     }
 
     step(ix, action) {
@@ -224,12 +266,13 @@
 
     move(delta) {
       const ixs = this.items.map((_, ix) => ix).filter((ix) => this.clickable(ix));
+      const first = this.search ? (ixs[0] ?? null) : 0;
       if (delta > 0) {
-        if (this.selected == null) return this.select(0);
-        this.select(ixs.find((ix) => ix > this.selected) ?? 0);
+        if (this.selected == null) return this.select(first);
+        this.select(ixs.find((ix) => ix > this.selected) ?? first);
       } else {
         const from = this.selected ?? 0;
-        this.select([...ixs].reverse().find((ix) => ix < from) ?? ixs.at(-1) ?? 0);
+        this.select([...ixs].reverse().find((ix) => ix < from) ?? ixs.at(-1) ?? (this.search ? null : 0));
       }
     }
 
@@ -298,6 +341,10 @@
     menu.element.style.top = `${y}px`;
     host.append(menu.element);
     fit(menu.element);
+    if (menu.search) {
+      globalThis.pennaInput?.wire(menu.element);
+      menu.element.style.width = `${menu.element.getBoundingClientRect().width}px`;
+    }
     globalThis.pennaKit?.roundAll();
     open.add(menu);
     menu.previous = previous ?? null;
@@ -329,7 +376,7 @@
     const host = trigger.parentElement;
     let menu = null;
     const show = () => {
-      menu = new Menu(items, { onDismiss: () => close(menu) });
+      menu = new Menu(items, { onDismiss: () => close(menu), search: options.search });
       menu.trigger = trigger;
       menu.closed = () => {
         trigger.setAttribute("aria-expanded", "false");
