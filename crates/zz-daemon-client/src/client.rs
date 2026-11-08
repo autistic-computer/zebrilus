@@ -692,6 +692,14 @@ impl CommandClient {
         })
     }
 
+    fn unanswered(&self, error: DaemonError) -> DaemonError {
+        #[cfg(all(any(unix, windows), not(any(target_os = "ios", target_os = "android"))))]
+        if let Some(forward) = &self._tailnet_forward {
+            return tailnet_closed(forward.endpoint(), error);
+        }
+        error
+    }
+
     fn run_single(&mut self, chain: ExecChain<'_>) -> Result<Option<CommandOutcome>, DaemonError> {
         let mut outcome = None;
         let end = self.exec_chain(chain, |ran| {
@@ -771,10 +779,10 @@ impl CommandClient {
         let first = match first {
             Err(error) if !*answered && exec_maybe_unsupported(&error) => {
                 let Ok((link, speaks_exec)) = self.route.connect_legacy() else {
-                    return Ok(ExecChainEnd::Failed(error));
+                    return Ok(ExecChainEnd::Failed(self.unanswered(error)));
                 };
                 if speaks_exec {
-                    return Ok(ExecChainEnd::Failed(error));
+                    return Ok(ExecChainEnd::Failed(self.unanswered(error)));
                 }
                 log::debug!(
                     target: "zz_daemon::diagnostics::client",

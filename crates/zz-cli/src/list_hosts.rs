@@ -100,13 +100,10 @@ fn probe_endpoint(endpoint: &Endpoint) -> HostProbe {
             format!("no daemon socket at {}", path.display()),
         ),
         Endpoint::Tailnet(endpoint) => {
-            match zz_daemon_client::tailnet::resolve(endpoint)
+            match zz_daemon_client::tailnet::probe(endpoint, TAILNET_PROBE_TIMEOUT)
                 .map_err(|error| error.to_string())
-                .and_then(|address| {
-                    std::net::TcpStream::connect_timeout(&address, TAILNET_PROBE_TIMEOUT)
-                        .map_err(|error| error.to_string())
-                }) {
-                Ok(_) => HostProbe {
+            {
+                Ok(()) => HostProbe {
                     status: HostStatus::Ready,
                     version: String::new(),
                     protocol: String::new(),

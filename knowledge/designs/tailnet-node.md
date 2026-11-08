@@ -1,7 +1,7 @@
 ---
 type: Design Plan
 title: Tailnet hosts . zz uses the Tailscale you already run
-description: Plan, phases 1 to 3 built, for zz machines to find and attach to each other over Tailscale. When the machine already runs Tailscale and is signed in, zz uses it - no sign-in in zz, trust is "a machine of this tailnet's owner" checked with whois, discovery comes from the peer list. A daemon-owned node built on the tailscale crate (tailscale-rs 0.7, unpatched) exists only for machines you explicitly switch to it. Connections are bridged into the daemon's own local socket, so the daemon loop and wire protocol do not change. Covers macOS, Linux, Windows and WSL2 hosts and which thin clients can use it in which phase.
+description: Plan, phases 1 to 4 built, for zz machines to find and attach to each other over Tailscale. When the machine already runs Tailscale and is signed in, zz uses it - no sign-in in zz, trust is "a machine of this tailnet's owner" checked with whois, discovery comes from the peer list. A daemon-owned node built on the tailscale crate (tailscale-rs 0.7, unpatched) exists only for machines you explicitly switch to it. Connections are bridged into the daemon's own local socket, so the daemon loop and wire protocol do not change. Covers macOS, Linux, Windows and WSL2 hosts and which thin clients can use it in which phase.
 status: In progress
 tags:
 - remote
@@ -14,7 +14,13 @@ timestamp: 2026-11-07T00:00:00-03:00
 
 # Overview
 
-> **Status: phases 1 to 3 built 2026-11-07.** Phase 3: a phone learns your other machines from the
+> **Status: phases 1 to 4 built 2026-11-07.** Phase 4: with `tailnet = own` the daemon runs zz's
+> own Tailscale node, signed in with `zz tailnet login`, admitting only machines on its allow list
+> and dialing for local clients through `default.tailnet.sock`. Verified on alienware: the own node
+> and a system-Tailscale daemon attached to each other, the allow list refused and then admitted,
+> and the Mac listed the new node.
+>
+> **Phase 3 built 2026-11-07.** Phase 3: a phone learns your other machines from the
 > first one it reaches (`tailnet hosts`), and desktop Settings › Hosts shows a QR code with a
 > `zz://host/` link to this machine. Verified with the iOS app in the simulator: started on
 > alienware with nothing saved, it listed and saved macbook on its own.
@@ -47,7 +53,7 @@ discovery becomes "your machines that answer on the zz port".
 | --- | --- |
 | `auto` (default) | the daemon on the platform's default socket uses the machine's Tailscale when it is running, signed in and has a network interface; otherwise no tailnet, and `zz tailnet status` says why. Daemons on other sockets (tests, scratch daemons, a second daemon) stay off the tailnet |
 | `on` | as `auto`, from whichever socket this daemon serves |
-| `own` (phase 4) | runs the daemon's own node with the `tailscale` crate, for boxes without Tailscale; you sign it in once |
+| `own` | runs the daemon's own node with the `tailscale` crate, for boxes without Tailscale; you sign it in once |
 | `off` | no tailnet; a daemon that was listening stops and drops its tailnet clients at its next 30 s check |
 
 `auto` never falls back to `own` by itself: a stopped or signed-out Tailscale is a choice zz does
@@ -188,7 +194,7 @@ the same list.
 | --- | --- | --- |
 | macOS | works with the App Store, standalone and Homebrew Tailscale. With the application firewall on, macOS asks once to accept incoming connections for the daemon | arm64 only |
 | Linux | works with kernel networking. A host firewall that drops inbound (`ufw` default) needs `ufw allow in on tailscale0`, which Tailscale's own docs recommend; `zz tailnet status` prints it when no peer has ever connected. Userspace-networking tailscaled is reported as unusable | x86_64 and arm64 |
-| Windows | works with the Windows client. The bridge goes into the daemon's named pipe. The first listen raises a Windows Firewall prompt; the installer adds a rule for the daemon scoped to the Tailscale interface | not supported in phase 4 |
+| Windows | works with the Windows client. The bridge goes into the daemon's named pipe. The first listen raises a Windows Firewall prompt; the installer adds a rule for the daemon scoped to the Tailscale interface | not supported: the crate does not run there, and `tailnet = own` says so |
 | WSL2 | Tailscale running inside the distro works as on Linux. Tailscale on the Windows side does not reach a daemon in WSL's default NAT network; that case is reported, not bridged | works as on Linux, the simplest setup for WSL |
 
 # Thin clients
@@ -206,35 +212,69 @@ and `Origin` headers it checked. A tailnet gateway would sit in front of that, n
 
 # zz's own node
 
-Only with `tailnet = own`. The daemon starts a `tailscale::Device` in a new crate, `crates/zz-tailnet`,
-which runs one Tokio runtime on its own thread and hands the synchronous daemon a small handle:
-status, dial, accept. The daemon depends on it behind a `tailnet-own` Cargo feature, on for Linux and
-arm64 macOS desktop builds. Keys live in `<data dir>/tailnet/keys.json` (`0600`, in a `0700`
-directory). The node is named `zz-<machine>`.
+Only with `tailnet = own`. `crates/zz-tailnet` runs a `tailscale::Device` (the crate at exactly 0.7.1,
+unpatched) on a two-thread Tokio runtime and gives the synchronous daemon a handle: state, peer lookup,
+stop (`crates/zz-daemon/src/tailnet.rs`, module `own`). The daemon depends on it behind the
+`tailnet-own` Cargo feature, on by default; the crate builds empty except on Linux and arm64 macOS,
+where the `tailscale` crate runs. zz writes the keys itself to
+`<data dir>/<zz or zz-dev>/tailnet/keys.json` (`0600`, in a `0700` directory), in the crate's own
+format; the crate's helper would write them with default permissions. The node is named
+`zz-<machine>` unless `tailnet-hostname` says otherwise.
 
-- **Sign in.** `Device::is_authorized` returns a login URL for a new node; Settings shows it, and the
-  crate polls until the login completes.
-- **Sign out.** No logout call in the crate: shut the node down and delete the keys. Settings links to
-  the admin console to remove the device.
-- **Accepting.** The node listens on 9922 in its own userspace network stack and bridges the same way.
-- **Dialing.** The OS has no tailnet route here, so clients ask the daemon to dial: they write the
-  peer to a second owner-only endpoint, `tailnet.sock`, and the daemon dials through the node and pipes
-  the bytes.
+- **Sign in.** `zz tailnet login` sets `tailnet = own`, wakes the daemon's 30-second check, prints the
+  link `Device::is_authorized` returns, and waits up to ten minutes for the sign-in.
+  `--auth-key-file FILE` hands the daemon a key for the first registration; it is never stored.
+  Settings › Hosts offers **Use zz's own Tailscale connection** when the Tailscale app is not signed
+  in, then a **Sign in** button that opens the link, and rechecks every 2 seconds until it is done.
+- **Tailnet Lock.** On a locked tailnet the new node stays locked out (the admin console says
+  "Locked out") until a signing machine runs `tailscale lock sign nodekey:...`. The node still gets
+  the peer list, so it cannot tell it is locked out; `zz tailnet status` always prints the sign
+  command with its node key.
+- **Sign out.** `zz tailnet logout` sets `tailnet = auto`, stops the node and deletes its keys, then
+  points at the admin console to remove the device; the crate has no logout call. Settings › Hosts
+  **Sign out** does the same.
+- **Accepting.** The node listens on the zz port at both of its addresses in its own userspace network
+  stack. It closes a connection from its own addresses, looks the caller up with
+  `peer_by_tailnet_ip`, and under `owner` admits only stable IDs on the allow list
+  (`<data dir>/<zz or zz-dev>/tailnet/allow`, one `ID NAME` line each, `0600`); under `members` it
+  admits any peer the lookup knows. Admitted connections go into the daemon's own socket, and either
+  side closing ends both. Stopping the node (`tailnet` changed, sign-out, daemon exit) drops its
+  runtime and every connection it bridged.
+- **Allow list.** `zz tailnet allow NAME` stores the stable ID of the machine named `NAME` on this
+  tailnet: a short name is looked up as `NAME.<this tailnet>`, so a node shared in from another
+  tailnet under the same short name never matches. `zz tailnet allow` lists the entries and
+  `zz tailnet disallow NAME` removes one by name, short name or ID.
+- **Dialing.** The OS has no tailnet route here, so the daemon serves an owner-only socket next to
+  its own, `default.tailnet.sock` for `default.sock`. A client writes `PEER PORT` and a newline,
+  reads `ok` or `error REASON`, and then the bytes are piped through the node. `TailnetForward` and
+  the `list-hosts` probe try that socket first and use the OS route when it is missing, so a machine
+  dials through its own node exactly when its daemon runs one.
 
 What the 0.7.1 crate does not offer, and what zz does instead of patching it:
 
 | Missing | zz does |
 | --- | --- |
-| which user owns a peer | admit by allow list. `zz tailnet allow NAME` takes a full MagicDNS name or a stable ID, refuses a short name that matches more than one node (the crate keeps only the most recent node for a duplicated short name), and stores the stable ID; on accept, `peer_by_tailnet_ip` gives the caller's stable ID to compare |
-| a list of every peer | no discovery from this box; other machines still find it through their own Tailscale's peer list. Hosts here are added by name |
+| which user owns a peer | admit by allow list; on accept, `peer_by_tailnet_ip` gives the caller's stable ID to compare |
+| a list of every peer | no discovery from this box; other machines still find it through their own Tailscale's peer list (they show it with no OS, which the crate does not report). Hosts here are added by name |
 | logout, runtime rename | delete keys to sign out; restart the node to rename |
 | MagicDNS, HTTPS certificates, Serve | names resolve with `peer_by_name`; no web client on this box |
+| direct connections | none yet: every packet goes through a DERP relay, which caps throughput |
 | iOS, Android | phones use the Tailscale app |
 
-The crate's own docs still carry an early "unstable" warning that predates its 0.6.0 audit release.
-`own` stays opt-in for that reason as well as for the missing owner check. Pin an exact version.
-Measure the release `zz` binary and the daemon's idle memory with the feature on and off before
-landing it, and record both here.
+The 0.7.1 docs say its cryptography is unaudited and ask that nothing in production depend on it
+yet. `own` stays opt-in for that reason as well as for the missing owner check.
+
+Measured on alienware (x86_64, release `zz_cli`, dev identity) on 2026-11-07, idle daemon with one
+shell session, 45 seconds after start, two rounds with the same result:
+
+| Build | Binary | Private memory | Threads |
+| --- | --- | --- | --- |
+| without `tailnet-own` | 28.0 MB | 18.2 MB | 4 |
+| with it, `tailnet = auto` | 40.9 MB | 10.1 MB | 4 |
+| with it, `tailnet = own`, signed in | 40.9 MB | 21.6 MB | 6 |
+
+The feature adds 12.9 MB to the binary, and a running node costs about 11.5 MB and two threads over
+the same binary idling. Why the build without the feature idles higher is not explained yet.
 
 # Settings
 
@@ -243,10 +283,10 @@ file). An invalid value is a config diagnostic and leaves the default:
 
 | Key | Default | Meaning |
 | --- | --- | --- |
-| `tailnet` | `auto` | `auto`, `on`, `off`, or `own` once phase 4 lands; see [Overview](#overview) |
+| `tailnet` | `auto` | `auto`, `on`, `off`, or `own`; see [Overview](#overview) |
 | `tailnet-allow` | `owner` | see [Who may attach](#who-may-attach) |
-| `tailnet-hostname` | `zz-<machine>` | `own` only |
-| `tailnet-control-url` | Tailscale's | `own` only, such as Headscale |
+| `tailnet-hostname` | `zz-<machine>` | `own` only; letters, digits and dashes |
+| `tailnet-control-url` | Tailscale's | `own` only, an `http://` or `https://` address such as a Headscale server |
 
 The auth key is never a config key: it comes only from `zz tailnet login --auth-key-file`, is used for
 the first registration, and is not stored.
@@ -287,9 +327,19 @@ the first registration, and is not stored.
    on this Mac; the code is shared with iOS), and the QR code on screen. *Changed from the plan:*
    saved hosts use the MagicDNS name so they read well, so a phone with MagicDNS off can learn
    machines but not reconnect to them.
-4. **zz's own node.** `zz-tailnet`, `tailnet = own`, sign in and out, the allow list, `tailnet.sock`.
-   *Done when* a Linux box with no Tailscale installed, signed in through zz, shows in the other
-   machines' sidebars, attaches to them by name, and refuses a machine not on its allow list.
+4. **zz's own node. Built 2026-11-07.** `zz-tailnet`, `tailnet = own`, `zz tailnet login`, `logout`,
+   `allow` and `disallow`, the dial socket, and the Settings buttons. A command client whose tailnet
+   peer closes before answering now gets the refusal message too (it used to show a raw protocol
+   error, because the first exchange happens on the first command, not at connect).
+   *Checked:* on alienware (CachyOS), a scratch daemon with `tailnet = own` printed a sign-in link and
+   came up as `zz-alienware` once it was approved. The tailnet uses Tailnet Lock, so it stayed locked
+   out until `tailscale lock sign` on the Mac. Then the own node ran `list-sessions` on a second
+   scratch daemon using alienware's system Tailscale; that daemon was refused by the own node, got
+   in after `zz tailnet allow alienware` (stable ID stored), and was refused again after `disallow`,
+   with the refusal message. The Mac's `zz tailnet status` listed `zz-alienware`.
+   *Not yet checked:* a box with no Tailscale installed at all (alienware runs it too, though the own
+   node never touches it), arm64 macOS, an auth-key sign-in, and the Settings buttons and the app
+   sidebar on screen.
 
 The web and HTML clients over the tailnet need their own design after phase 2.
 
@@ -299,14 +349,13 @@ Few and exact:
 
 - the admission table (built): tagged box and the owner's phone on a personal tailnet, an invited
   user, our own address, no identity, same user, coworker, tagged caller and tagged self on an
-  organization tailnet, and `members`, each with its exact verdict; the allow-list cases join it
-  in phase 4;
+  organization tailnet, and `members`, each with its exact verdict;
 - status and whois parsing from fixed JSON, and the usability reasons for `NeedsLogin`, no `TUN` and
   no account (built);
 - settings from config text, and `tailnet://` parsing and printing (built);
 - discovery filtering from a fixed peer list: other user, tagged, offline, probe timeout and protocol
   mismatch each drop the peer, and a rename keeps the stable ID;
-- allow-list enrollment: an ambiguous short name is refused, a full name stores the right stable ID.
+- the own node's status lines, read back to the same state, and the dial socket's path (built).
 
 Real tailnet traffic stays a manual acceptance step per phase, on two machines.
 

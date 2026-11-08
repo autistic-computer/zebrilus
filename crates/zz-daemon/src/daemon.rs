@@ -8492,18 +8492,19 @@ impl Shared {
                     DaemonCommandDispatch::Tools => {
                         workspace_tools_catalog(&command.args).map_err(Into::into)
                     }
-                    DaemonCommandDispatch::Tailnet
-                        if command.args.first().map(ToString::to_string).as_deref()
-                            == Some("hosts") =>
-                    {
-                        crate::tailnet::offers_output()
-                            .map(|output| Execution {
-                                output: output.into(),
-                                effects: Vec::new(),
-                            })
-                            .map_err(|error| ServerError::InvalidCommand(error).into())
-                    }
-                    DaemonCommandDispatch::LocalCli | DaemonCommandDispatch::Tailnet => Err(ServerError::InvalidCommand(format!(
+                    DaemonCommandDispatch::Tailnet => crate::tailnet::command(
+                        &command
+                            .args
+                            .iter()
+                            .map(ToString::to_string)
+                            .collect::<Vec<_>>(),
+                    )
+                    .map(|output| Execution {
+                        output: output.into(),
+                        effects: Vec::new(),
+                    })
+                    .map_err(|error| ServerError::InvalidCommand(error).into()),
+                    DaemonCommandDispatch::LocalCli => Err(ServerError::InvalidCommand(format!(
                         "{canonical} reads this machine's zz/config; run it from a shell as `zz {canonical}`"
                     ))
                     .into()),

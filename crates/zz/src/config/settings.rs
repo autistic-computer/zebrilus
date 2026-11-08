@@ -1004,6 +1004,47 @@ impl SettingsView {
                     .child(code),
             );
         }
+        if let Some(url) = discovered.login.clone() {
+            tailscale_entries.push(
+                SettingEntry::new("Sign in")
+                    .description(format!("Open {url} to add this machine to your tailnet"))
+                    .control(
+                        Button::new("settings-tailnet-sign-in")
+                            .label("Sign in")
+                            .on(settings_card_ground(cx))
+                            .on_click(move |_, _, cx| cx.open_url(&url)),
+                    ),
+            );
+        }
+        if discovered.own {
+            tailscale_entries.push(
+                SettingEntry::new("zz's own connection")
+                    .description(
+                        "Signs this machine out of the tailnet, deletes its keys and goes back to the Tailscale app",
+                    )
+                    .control(
+                        Button::new("settings-tailnet-sign-out")
+                            .ghost()
+                            .label("Sign out")
+                            .on(settings_card_ground(cx))
+                            .on_click(|_, _, cx| crate::tailnet::sign_out(cx)),
+                    ),
+            );
+        } else if discovered.enabled && discovered.link.is_none() && !discovered.searching {
+            tailscale_entries.push(
+                SettingEntry::new("Use zz's own Tailscale connection")
+                    .description(
+                        "For a machine without the Tailscale app: zz joins your tailnet by itself after you sign in",
+                    )
+                    .control(
+                        Button::new("settings-tailnet-use-own")
+                            .ghost()
+                            .label("Use")
+                            .on(settings_card_ground(cx))
+                            .on_click(|_, _, cx| crate::tailnet::use_own(cx)),
+                    ),
+            );
+        }
         if !discovered.hidden.is_empty() {
             tailscale_entries.push(
                 SettingEntry::new("Hidden machines")
