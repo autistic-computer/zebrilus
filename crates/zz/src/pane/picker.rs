@@ -339,6 +339,12 @@ impl PanePickerView {
         true
     }
 
+    pub(crate) fn forget_folder(&mut self, cx: &mut Context<Self>) {
+        self.chat.folder = None;
+        self.chat.open(ChatStage::Agents);
+        cx.notify();
+    }
+
     pub(crate) fn pick_folder(&mut self, folder: &str, cx: &mut Context<Self>) {
         self.chat.pick(folder);
         cx.notify();

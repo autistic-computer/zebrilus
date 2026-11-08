@@ -126,55 +126,6 @@ fn session_target(session: SessionId) -> String {
     format!("{session}:")
 }
 
-#[must_use]
-pub fn open_picker_commands(
-    snapshot: &MuxSnapshot,
-    attached: Option<SessionId>,
-) -> Vec<CommandInvocation> {
-    let folders = recent_folders(snapshot);
-    let folder = folders[0].path.as_str();
-    let session = session_for_folder(snapshot, folder)
-        .or(attached.filter(|attached| {
-            snapshot
-                .sessions
-                .iter()
-                .any(|session| session.id == *attached)
-        }))
-        .or_else(|| snapshot.sessions.first().map(|session| session.id));
-    let picker = |target: String| {
-        command(
-            "new-window",
-            [
-                "-t".to_owned(),
-                target,
-                "--kind".to_owned(),
-                "picker".to_owned(),
-            ],
-        )
-    };
-    if let Some(session) = session {
-        return vec![picker(session_target(session))];
-    }
-    let name = session_name(folder);
-    vec![
-        command(
-            "new-session",
-            [
-                "-d".to_owned(),
-                "-s".to_owned(),
-                name.clone(),
-                "-c".to_owned(),
-                folder.to_owned(),
-            ],
-        ),
-        picker(format!("{name}:")),
-        command(
-            "kill-window",
-            ["-a".to_owned(), "-t".to_owned(), format!("{name}:")],
-        ),
-    ]
-}
-
 fn holder(snapshot: &MuxSnapshot, pane: PaneId) -> Option<(&SessionSnapshot, WindowId)> {
     snapshot.sessions.iter().find_map(|session| {
         session
@@ -944,22 +895,6 @@ mod tests {
             ]
         );
         assert_eq!(recent_folders(&snapshot(Vec::new()))[0].path, "~");
-    }
-
-    #[test]
-    fn a_new_chat_opens_its_picker_in_the_session_of_the_last_folder() {
-        assert_eq!(
-            lines(&open_picker_commands(&fleet(), Some(SessionId(2)))),
-            ["new-window -t $1: --kind picker"]
-        );
-        assert_eq!(
-            lines(&open_picker_commands(&snapshot(Vec::new()), None)),
-            [
-                "new-session -d -s home -c ~",
-                "new-window -t home: --kind picker",
-                "kill-window -a -t home:",
-            ]
-        );
     }
 
     #[test]

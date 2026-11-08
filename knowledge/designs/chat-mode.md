@@ -2,7 +2,7 @@
 type: Design Plan
 title: "Chat mode: the sidebar lists agents, not windows"
 description: "The flat sidebar became chat mode: each machine lists one row per window running Claude Code or Codex, the agent's tile leads the pane stack with the panes it split behind it, sessions, agentless windows and machines without a chat stay in the session tree, and New chat opens the agent picker with no window behind it, which starts the agent in a chosen folder inside that folder's session. The sidebar view decides what a new pane offers: agents in chat view, pane kinds in the session tree. Desktop, web, iPad and the HTML client share the zz-client model."
-status: Built (2026-10-28; picker by sidebar view 2026-11-01; New chat row and machine choice 2026-11-06; browser in a split 2026-11-07; only chats listed and a New chat screen 2026-11-08; the HTML client has no file picker yet)
+status: Built (2026-10-28; picker by sidebar view 2026-11-01; New chat row and machine choice 2026-11-06; another machine keeps the New chat screen 2026-11-08; browser in a split 2026-11-07; only chats listed and a New chat screen 2026-11-08; the HTML client has no file picker yet)
 resource: crates/zz-client/src/new_chat.rs
 tags:
 - sidebar
@@ -54,9 +54,13 @@ agent` on its shell) or, with no session for that folder, a session named after 
 (`first_chat_commands`); both are `landing_chat_commands`. The screen goes away once another chat is
 on screen or a row is pressed, Escape on web, iPad and the HTML client closes it, and turning chat
 view off from it shows the window that was there.
-Picking another machine on it opens a picker window on that machine, `new-window -t <session>:
---kind picker` in the session of the folder its agents used last (`recent_folders`,
-`session_for_folder`), and the desktop follows that window once it appears. Pressing another row in
+Picking another machine on it keeps the New chat screen and attaches the desktop to that machine
+(`attach_to_host_default`), so its folders, the folder browser and the chat are that machine's, and
+the screen stays up over whatever window the machine had focused: it goes away for a chat that was
+not there when the screen opened, or for another chat on the same machine
+(`sidebar::flat::landing_follows`). Picking another machine on a picker pane closes that pane and
+shows the New chat screen on that machine the same way, so a new chat on any machine starts from one
+screen. Pressing another row in
 chat view while a picker window is on screen closes that window (`leave_picker_command`), so a New
 chat left unpicked leaves nothing behind.
 
@@ -69,7 +73,7 @@ iPad and iPhone, and the HTML client's preference passed in with `set_chat_view`
 - **Chat view.** Every picker pane offers the agents (`ChatPicker`, drawn by
   `zz_ui::pane::chat_picker_rows`): the machine line (desktop only), the folder line, and Claude
   Code (`c`) or Codex (`x`). `m` or a click on the machine lists every host (`ChatStage::Machines`,
-  `MachineChoice`); picking another closes this picker and opens one on that host, so the folders and the chat are that machine's. An offline host is listed dimmed. A
+  `MachineChoice`); picking another closes this picker and shows the New chat screen on that host, so the folders and the chat are that machine's. An offline host is listed dimmed. A
   picker that is a split (its window holds another pane, `picker_in_split`) on the desktop also
   offers Terminal (`t`, `ChatKey::Terminal`) and Browser (`b`, `ChatKey::Browser`) under Pane,
   which turn the pane into one as the session tree's picker does, so a chat keeps its terminals and

@@ -2631,8 +2631,6 @@ impl AppView {
     }
 
     fn on_choose_machine(&mut self, choose: &ChooseMachine, cx: &mut Context<Self>) {
-        self.sidebar
-            .update(cx, |sidebar, cx| sidebar.new_chat(choose.host, cx));
         let mux = self.mux.read(cx);
         if let Some(command) = choose
             .pane
@@ -2640,6 +2638,9 @@ impl AppView {
         {
             mux.execute(command);
         }
+        self.empty_picker.update(cx, PanePickerView::forget_folder);
+        self.sidebar
+            .update(cx, |sidebar, cx| sidebar.new_chat(choose.host, cx));
     }
 
     fn empty_focus(&self, cx: &App) -> FocusHandle {
