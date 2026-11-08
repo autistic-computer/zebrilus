@@ -38,6 +38,8 @@ Sourced from Ghostty's MIT/X11-licensed terminal/res/rgb.txt.
 zz builds against the Apache-2.0 `gpui` and `gpui_platform` crates (now `ala` and `ala-platform`) and the upstream utility crates they need only. No GPL-licensed Zed
 code is linked into any zz binary.
 
+`mojo/zzmojo/desktop_native_keymap.mojo` ports keystroke parsing, character-alternative matching and native binding/pending lookup from `libs/ala/crates/ala/src/platform/keystroke.rs` and `libs/ala/crates/ala/src/keymap.rs`, including zz's fork changes. Those portions are Apache-2.0, copyright Zed Industries and contributors; the full license is retained at [`libs/ala/crates/ala/LICENSE-APACHE`](libs/ala/crates/ala/LICENSE-APACHE).
+
 ## Bundled binaries
 
 | Project | What ships | License |
