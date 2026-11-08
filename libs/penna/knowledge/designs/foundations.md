@@ -390,6 +390,8 @@ States:
 | disabled | faint label, no hover or press | leaves the focus order; its tooltip still shows |
 | loading | a spinner in the icon's place, or before the label when there is no icon | clicks are ignored; the label stays |
 
+A chrome toggle, a title bar button that turns a view on and off (the sidebar, the chat view), shows on with its duotone glyph instead of the selected fill, so the title bar has no fill at rest. Its paint, hover and press stay those of the chrome button.
+
 In a window that is not active, a glass button flattens and its label fades, like the rest of the window's chrome.
 
 Behavior: it fires on release of a click or tap inside it, and on Space or Enter while focused. A button with a caret opens its menu below it. A tooltip shows after the hover delay, and at once when the keyboard focuses the button.
@@ -638,10 +640,10 @@ Kinds:
 
 | Kind | Call | Draws |
 |---|---|---|
-| Glyph | `Icon::new(IconName::Bell)`, or an `IconName` wherever a component takes an icon | one of the set's 97 glyphs, drawn for the theme |
+| Glyph | `Icon::new(IconName::Bell)`, or an `IconName` wherever a component takes an icon | one of the set's 99 glyphs, drawn for the theme |
 | Asset | `IconName::Asset("icons/logo.svg")`, `Icon::empty().path(path)` | the app's own SVG, as it is |
 
-The set: 97 glyphs in eight groups (chrome and layout, actions, things, navigation, keys, status, people and agents, theme), each on a 24 grid with a 1.5 stroke, no fill, in the current color. Corners take half the theme radius in grid units with the kit's corner smoothing, capped at 0.45 of the shorter side like every corner the kit draws; at radius 0 corners are sharp, caps square and joins mitered. So the set changes with the theme, natively and in each theme's `-icons.css`.
+The set: 99 glyphs in eight groups (chrome and layout, actions, things, navigation, keys, status, people and agents, theme), each on a 24 grid with a 1.5 stroke, no fill, in the current color. The two duotone glyphs (`ChatDuotone`, `PanelLeftDuotone`) are their outline glyph with the inside filled at 35% of the same color, for a chrome toggle that is on (Button). Corners take half the theme radius in grid units with the kit's corner smoothing, capped at 0.45 of the shorter side like every corner the kit draws; at radius 0 corners are sharp, caps square and joins mitered. So the set changes with the theme, natively and in each theme's `-icons.css`.
 
 Anatomy: a square box the icon's size, the glyph scaled to fill it, in the color of the text around it unless `.text_color()` sets one.
 
