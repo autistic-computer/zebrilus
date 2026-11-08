@@ -19,6 +19,7 @@ use penna::{
     blocks::notification::Notification,
     components::button::{Button, ButtonVariants as _},
     components::input::{Input, InputEvent, InputState, NumberInput},
+    components::key_field::{KeyField, KeyFieldEvent, KeyFieldState},
     components::menu::{DropdownMenu as _, PopupMenuItem},
     components::select::{Select, SelectEvent, SelectState},
     components::switch::Switch,
@@ -62,7 +63,7 @@ pub(crate) const KEYBIND: &str = "cmd-,";
 #[cfg(not(target_os = "macos"))]
 pub(crate) const KEYBIND: &str = "ctrl-,";
 const CONTROL_WIDTH: f32 = 120.0;
-const KEY_INPUT_WIDTH: f32 = 65.0;
+const KEY_INPUT_WIDTH: f32 = 96.0;
 const APP_ICON_PREVIEW_SIZE: f32 = 48.0;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -185,6 +186,11 @@ impl SettingsView {
             cx.observe_global::<config::FleetHosts>(|_, cx| cx.notify()),
             cx.observe_global::<config::DiscoveredHosts>(|_, cx| cx.notify()),
             cx.observe_global::<crate::update::UpdateState>(|_, cx| cx.notify()),
+            cx.observe_window_activation(window, |this, window, cx| {
+                if window.is_window_active() {
+                    this.pick_up_outside_edits(cx);
+                }
+            }),
             browser_hotkey_subscription(&browser_element_selector_hotkey, window, cx),
             search_provider_subscription(&browser_search_provider, window, cx),
             ui_font_subscription(&ui_font_family, window, cx),
@@ -1309,16 +1315,7 @@ impl SettingsView {
     }
 
     fn config_file_section(&self, kind: ConfigFileKind, cx: &mut Context<Self>) -> AnyElement {
-        let file = self.config_file_editor(kind);
-        let path = file.path.as_ref().map_or_else(
-            || kind.file_name().to_owned(),
-            |path| path.display().to_string(),
-        );
-        let error = file.error.clone();
-        let local = {
-            let mux = self.mux.read(cx);
-            mux.is_connected() && mux.attached_host() == HostId::LOCAL
-        };
+        let error = self.config_file_editor(kind).error.clone();
 
         Self::scroll_column("settings-config-file")
             .child(
@@ -1331,57 +1328,15 @@ impl SettingsView {
                     })
                     .when(kind == ConfigFileKind::Mux, |page| {
                         page.child(
-                            SettingsStack::titled("Navigation")
-                                .child(
-                                    Self::boolean_setting(
-                                        ConfigKey::PickerFocusSidebar,
-                                        "Focus sidebar for session and window pickers",
-                                        config::resolved_config(cx).picker_focus_sidebar,
-                                    )
-                                    .description("Prefix + s and Prefix + w"),
-                                )
-                                .child(
-                                    Self::numeric_setting(
-                                        "Which-key delay",
-                                        &self.which_key_delay,
-                                        cx,
-                                    )
+                            SettingsStack::titled("Navigation").child(
+                                Self::numeric_setting("Which-key delay", &self.which_key_delay, cx)
                                     .description("Milliseconds after the prefix, 0 turns it off"),
-                                ),
+                            ),
                         )
                         .child(self.mux_splits_section(cx))
                     })
                     .child(self.file_options_section(kind, cx))
                     .child(self.file_import_section(kind, cx))
-                    .child(
-                        div()
-                            .flex()
-                            .flex_none()
-                            .items_center()
-                            .gap(px(10.0))
-                            .child(
-                                Label::new(TextStyle::Caption, path)
-                                    .muted()
-                                    .flex_1()
-                                    .min_w_0()
-                                    .text_ellipsis(),
-                            )
-                            .when(kind == ConfigFileKind::Mux, |row| {
-                                row.child(
-                                    Button::new("settings-reload-mux-config")
-                                        .label("Reload")
-                                        .disabled(!local || self.pending_file_command.is_some())
-                                        .tooltip(if local {
-                                            "Reload zz/mux.conf"
-                                        } else {
-                                            "Connect to a local session to reload"
-                                        })
-                                        .on_click(cx.listener(|this, _, _, cx| {
-                                            this.reload_mux_configuration(cx);
-                                        })),
-                                )
-                            }),
-                    )
                     .when_some(error, |page, error| {
                         page.child(
                             Label::new(TextStyle::Caption, error)
@@ -1709,6 +1664,62 @@ fn config_file_path(kind: ConfigFileKind) -> io::Result<PathBuf> {
     }
 }
 
+fn key_field_state(
+    spelling: &str,
+    window: &mut Window,
+    cx: &mut Context<SettingsView>,
+) -> Entity<KeyFieldState> {
+    let keystroke = zz_ui::command::tmux_keystroke(spelling);
+    cx.new(|cx| KeyFieldState::new(window, cx).value(keystroke))
+}
+
+fn key_field_control(field: &Entity<KeyFieldState>, disabled: bool, cx: &App) -> ala::Div {
+    div().w(px(KEY_INPUT_WIDTH)).flex_none().child(
+        KeyField::new(field)
+            .disabled(disabled)
+            .on(settings_card_ground(cx)),
+    )
+}
+
+fn reject_recorded_key(cx: &mut App) {
+    toast::push(
+        Notification::info(if cfg!(target_os = "macos") {
+            "Multiplexer keys can't use Command or Fn"
+        } else {
+            "Multiplexer keys can't use Super or Fn"
+        }),
+        cx,
+    );
+}
+
+fn recorded_tmux_key(keystroke: &ala::Keystroke) -> Option<String> {
+    let modifiers = keystroke.modifiers;
+    if modifiers.platform || modifiers.function {
+        return None;
+    }
+    let commanded = modifiers.control || modifiers.alt;
+    let (base, shift) = match keystroke.key.as_str() {
+        "space" => ("Space".to_owned(), modifiers.shift),
+        key => match zz_config::keymap::tmux_key_name(key) {
+            Some(name) => (name.to_owned(), modifiers.shift),
+            None => match keystroke.key_char.as_deref() {
+                Some(text) if !commanded && text.chars().count() == 1 => (text.to_owned(), false),
+                _ => (key.to_owned(), modifiers.shift),
+            },
+        },
+    };
+    let key = zz_client::ChromeKey {
+        command: false,
+        control: modifiers.control,
+        alt: modifiers.alt,
+        shift,
+        base,
+    }
+    .normalized()
+    .to_string();
+    zz_mux::parse_tmux_key(&key).map(|_| key)
+}
+
 fn text_value_input(
     value: &str,
     window: &mut Window,
@@ -1987,7 +1998,6 @@ fn refresh_settings_preview(key: ConfigKey, cx: &mut App) {
                 | ConfigKey::PaletteWindowLayout
                 | ConfigKey::PaletteShowKeys
                 | ConfigKey::PaletteVimMode
-                | ConfigKey::PickerFocusSidebar
                 | ConfigKey::WhichKeyDelay
                 | ConfigKey::ProgramColors
                 | ConfigKey::ChromeTerminalColors
@@ -2082,7 +2092,6 @@ fn numeric_config_value(config: &AppConfig, key: ConfigKey) -> ConfigValue<f32> 
         | ConfigKey::PaletteWindowLayout
         | ConfigKey::PaletteShowKeys
         | ConfigKey::PaletteVimMode
-        | ConfigKey::PickerFocusSidebar
         | ConfigKey::WindowBackgroundBlur
         | ConfigKey::Motion
         | ConfigKey::Tray
@@ -2177,6 +2186,23 @@ fn report_write_error(operation: &str, key: &str, error: &std::io::Error, cx: &m
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn recorded_keys_save_as_tmux_spellings() {
+        let recorded = |source: &str, key_char: Option<&str>| {
+            let mut keystroke = ala::Keystroke::parse(source).unwrap();
+            keystroke.key_char = key_char.map(str::to_owned);
+            recorded_tmux_key(&keystroke)
+        };
+        assert_eq!(recorded("ctrl-b", None).as_deref(), Some("C-b"));
+        assert_eq!(recorded("\"", Some("\"")).as_deref(), Some("\""));
+        assert_eq!(recorded("shift-l", Some("L")).as_deref(), Some("L"));
+        assert_eq!(recorded("alt-a", Some("å")).as_deref(), Some("M-a"));
+        assert_eq!(recorded("ctrl-space", None).as_deref(), Some("C-Space"));
+        assert_eq!(recorded("alt-up", None).as_deref(), Some("M-Up"));
+        assert_eq!(recorded("f5", None).as_deref(), Some("F5"));
+        assert_eq!(recorded("cmd-b", None), None);
+    }
 
     #[test]
     fn percentage_inputs_convert_and_reject_invalid_edits() {

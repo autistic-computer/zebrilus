@@ -91,7 +91,7 @@ use crate::{
         },
         hosts::HostId,
         nav::{TreeTarget, kill_target_command},
-        prefix::{binds_input, is_all_keys_input, is_sidebar_picker_input, terminal_key_input},
+        prefix::{binds_input, is_all_keys_input, terminal_key_input},
     },
     pane::display::DisplayPanesView,
     pane::layout::{SeparatorSide, pane_separator},
@@ -1358,25 +1358,6 @@ impl AppView {
                         );
                         self.which_key = WhichKeySheet::build(self.mux.read(cx), "prefix", true);
                         cx.notify();
-                    } else if armed
-                        && cx
-                            .try_global::<config::AppConfig>()
-                            .is_some_and(|config| config.picker_focus_sidebar.value)
-                        && is_sidebar_picker_input(self.mux.read(cx).prefix_bindings(), &input)
-                    {
-                        self.input_router.suppress_release(
-                            input
-                                .unshifted_codepoint
-                                .map_or(input.key, zz_terminal::KeyCode::Character),
-                        );
-                        self.mux.update(cx, |mux, _| {
-                            if mux.send_prefix_cancel().is_some() {
-                                mux.execute(CommandInvocation::new(
-                                    "focus-sidebar",
-                                    [] as [&str; 0],
-                                ));
-                            }
-                        });
                     } else if armed
                         && let Some(action) = self.prefix_chrome_action(keystroke, &input, cx)
                     {

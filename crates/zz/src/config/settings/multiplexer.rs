@@ -18,7 +18,8 @@ const PANE_KINDS: [(SplitPaneKind, &str); 3] = [
 struct SplitControl {
     binding: Option<KeyBindingSnapshot>,
     preferred_key: Option<String>,
-    key: Entity<InputState>,
+    spelling: String,
+    key: Entity<KeyFieldState>,
 }
 
 pub(super) struct SplitControls {
@@ -45,27 +46,45 @@ impl SettingsView {
             let rows = DIRECTIONS.map(|direction| SplitControl {
                 binding: None,
                 preferred_key: None,
-                key: text_value_input(default_key(direction), window, cx),
+                spelling: default_key(direction).to_owned(),
+                key: key_field_state(default_key(direction), window, cx),
             });
             let subscriptions = rows
                 .iter()
                 .enumerate()
                 .map(|(index, row)| {
-                    cx.subscribe_in(&row.key, window, move |this, _, event, window, cx| {
-                        if matches!(event, InputEvent::PressEnter { .. }) {
-                            let kind = this.mux_split_controls.as_ref().and_then(|controls| {
-                                controls.rows[index]
-                                    .binding
-                                    .as_ref()
-                                    .map_or(Some(SplitPaneKind::Picker), |binding| {
-                                        split_binding_kind(binding, DIRECTIONS[index])
-                                    })
-                            });
-                            if let Some(kind) = kind {
-                                this.commit_mux_split(index, kind, window, cx);
+                    cx.subscribe_in(
+                        &row.key,
+                        window,
+                        move |this, field, event: &KeyFieldEvent, window, cx| {
+                            let KeyFieldEvent::Record(keystroke) = event;
+                            let Some(spelling) = recorded_tmux_key(keystroke) else {
+                                reject_recorded_key(cx);
+                                this.reset_split_key(index, field, cx);
+                                return;
+                            };
+                            let Some(controls) = this.mux_split_controls.as_mut() else {
+                                return;
+                            };
+                            let row = &mut controls.rows[index];
+                            let kind = row
+                                .binding
+                                .as_ref()
+                                .map_or(Some(SplitPaneKind::Picker), |binding| {
+                                    split_binding_kind(binding, DIRECTIONS[index])
+                                });
+                            let previous = std::mem::replace(&mut row.spelling, spelling);
+                            if let Some(kind) = kind
+                                && this.commit_mux_split(index, kind, window, cx)
+                            {
+                                return;
                             }
-                        }
-                    })
+                            if let Some(controls) = this.mux_split_controls.as_mut() {
+                                controls.rows[index].spelling = previous;
+                            }
+                            this.reset_split_key(index, field, cx);
+                        },
+                    )
                 })
                 .collect();
             self.mux_split_controls = Some(SplitControls {
@@ -118,8 +137,10 @@ impl SettingsView {
                 let key = binding
                     .as_ref()
                     .map_or(default_key(direction), |binding| &binding.key);
-                row.key
-                    .update(cx, |input, cx| input.set_value(key, window, cx));
+                key.clone_into(&mut row.spelling);
+                row.key.update(cx, |field, cx| {
+                    field.set_value(zz_ui::command::tmux_keystroke(key), cx);
+                });
                 row.binding = binding;
             }
         }
@@ -189,13 +210,7 @@ impl SettingsView {
                                     .muted()
                                     .on(settings_card_ground(cx)),
                             )
-                            .child(
-                                div().w(px(KEY_INPUT_WIDTH)).child(
-                                    Input::new(&row.key)
-                                        .disabled(disabled)
-                                        .on(settings_card_ground(cx)),
-                                ),
-                            )
+                            .child(key_field_control(&row.key, disabled, cx))
                             .child(
                                 Button::new(("settings-split-kind", index))
                                     .label(label)
@@ -252,16 +267,24 @@ impl SettingsView {
         div().flex_none().child(stack).into_any_element()
     }
 
+    fn reset_split_key(&self, index: usize, field: &Entity<KeyFieldState>, cx: &mut Context<Self>) {
+        let Some(controls) = &self.mux_split_controls else {
+            return;
+        };
+        let keystroke = zz_ui::command::tmux_keystroke(&controls.rows[index].spelling);
+        field.update(cx, |field, cx| field.set_value(keystroke, cx));
+    }
+
     fn commit_mux_split(
         &mut self,
         index: usize,
         kind: SplitPaneKind,
         window: &mut Window,
         cx: &mut Context<Self>,
-    ) {
+    ) -> bool {
         if let Some(reason) = self.mux_split_disabled_reason(cx) {
             toast::push(Notification::info(reason), cx);
-            return;
+            return false;
         }
         let controls = self.mux_split_controls.as_ref().unwrap();
         let row = &controls.rows[index];
@@ -278,15 +301,15 @@ impl SettingsView {
                 Notification::info("The shortcut changed. Review it and try again."),
                 cx,
             );
-            return;
+            return false;
         }
-        let key = row.key.read(cx).value();
+        let key = row.spelling.clone();
         let previous_key = row.binding.as_ref().map(|binding| binding.key.clone());
         if row.binding.as_ref().is_some_and(|binding| {
             split_binding_kind(binding, DIRECTIONS[index]) == Some(kind)
                 && zz_mux::parse_tmux_key(key.trim()).as_deref() == Some(binding.key.as_str())
         }) {
-            return;
+            return true;
         }
         let file = self.config_file_editor(ConfigFileKind::Mux);
         let source = match update_split_binding(
@@ -300,11 +323,11 @@ impl SettingsView {
             Ok(source) => source,
             Err(error) => {
                 toast::push(Notification::error(error), cx);
-                return;
+                return false;
             }
         };
         if source == file.saved {
-            return;
+            return true;
         }
         let path = file
             .path
@@ -322,7 +345,7 @@ impl SettingsView {
                     Notification::info("Configuration changed on disk. Review it and try again."),
                     cx,
                 );
-                return;
+                return false;
             }
             Err(error) => {
                 toast::push(
@@ -331,14 +354,14 @@ impl SettingsView {
                     )),
                     cx,
                 );
-                return;
+                return false;
             }
         };
         if let Err(error) =
             config::write_config_editor_source(&path, &source, ConfigFileKind::Mux.max_bytes())
         {
             report_write_error("save", ConfigFileKind::Mux.file_name(), &error, cx);
-            return;
+            return false;
         }
         let file = self.config_file_editor_mut(ConfigFileKind::Mux);
         file.path = Some(path);
@@ -356,6 +379,7 @@ impl SettingsView {
             timed_out: false,
         });
         self.wait_for_mux_split(cx);
+        true
     }
 
     fn wait_for_mux_split(&mut self, cx: &mut Context<Self>) {

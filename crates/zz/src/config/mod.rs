@@ -2986,6 +2986,7 @@ mod tests {
             .chain(zz_config::RETIRED_MATERIAL_KEYS)
             .chain(zz_config::RETIRED_AGENT_KEYS)
             .chain(zz_config::RETIRED_THEME_KEYS)
+            .chain(zz_config::RETIRED_NAVIGATION_KEYS)
         {
             assert_eq!(ConfigKey::parse(key), None, "{key}");
         }

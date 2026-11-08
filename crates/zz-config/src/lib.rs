@@ -76,7 +76,6 @@ pub enum ConfigKey {
     PaletteWindowLayout,
     PaletteShowKeys,
     PaletteVimMode,
-    PickerFocusSidebar,
     WhichKeyDelay,
     UseSystemTitlebar,
     WindowCornerRadius,
@@ -124,7 +123,6 @@ impl ConfigKey {
             Self::PaletteWindowLayout => "palette-window-layout",
             Self::PaletteShowKeys => "palette-show-keys",
             Self::PaletteVimMode => "palette-vim-mode",
-            Self::PickerFocusSidebar => "picker-focus-sidebar",
             Self::WhichKeyDelay => "which-key-delay",
             Self::UseSystemTitlebar => "use-system-titlebar",
             Self::WindowCornerRadius => "window-corner-radius",
@@ -172,7 +170,6 @@ impl ConfigKey {
             "palette-window-layout" => Some(Self::PaletteWindowLayout),
             "palette-show-keys" => Some(Self::PaletteShowKeys),
             "palette-vim-mode" => Some(Self::PaletteVimMode),
-            "picker-focus-sidebar" => Some(Self::PickerFocusSidebar),
             "which-key-delay" => Some(Self::WhichKeyDelay),
             "use-system-titlebar" => Some(Self::UseSystemTitlebar),
             "window-corner-radius" => Some(Self::WindowCornerRadius),
@@ -234,7 +231,6 @@ impl ConfigKey {
             | Self::PaletteWindowLayout
             | Self::PaletteShowKeys
             | Self::PaletteVimMode
-            | Self::PickerFocusSidebar
             | Self::WindowBackgroundBlur
             | Self::Motion
             | Self::Tray
@@ -360,7 +356,6 @@ pub struct AppConfig {
     pub palette_window_layout: ConfigValue<PaletteWindowLayout>,
     pub palette_show_keys: ConfigValue<bool>,
     pub palette_vim_mode: ConfigValue<bool>,
-    pub picker_focus_sidebar: ConfigValue<bool>,
     pub which_key_delay: ConfigValue<f32>,
     pub use_system_titlebar: ConfigValue<bool>,
     pub window_corner_radius: ConfigValue<f32>,
@@ -403,7 +398,6 @@ impl Default for AppConfig {
             palette_window_layout: ConfigValue::from_default(PaletteWindowLayout::Grouped),
             palette_show_keys: ConfigValue::from_default(true),
             palette_vim_mode: ConfigValue::from_default(false),
-            picker_focus_sidebar: ConfigValue::from_default(false),
             which_key_delay: ConfigValue::from_default(DEFAULT_WHICH_KEY_DELAY),
             use_system_titlebar: ConfigValue::from_default(DEFAULT_USE_SYSTEM_TITLEBAR),
             window_corner_radius: ConfigValue::from_default(DEFAULT_WINDOW_CORNER_RADIUS),
@@ -449,7 +443,6 @@ impl AppConfig {
         match key {
             ConfigKey::PaletteShowKeys => Some(&mut self.palette_show_keys),
             ConfigKey::PaletteVimMode => Some(&mut self.palette_vim_mode),
-            ConfigKey::PickerFocusSidebar => Some(&mut self.picker_focus_sidebar),
             ConfigKey::UseSystemTitlebar => Some(&mut self.use_system_titlebar),
             ConfigKey::WindowBackgroundBlur => Some(&mut self.window_background_blur),
             ConfigKey::Tray => Some(&mut self.tray),
@@ -836,6 +829,16 @@ pub fn parse_config(source: &str, system_font_family: &str) -> ParsedConfig {
             continue;
         }
 
+        if RETIRED_NAVIGATION_KEYS.contains(&key) {
+            parsed.diagnostics.push(ConfigDiagnostic {
+                line: line_number,
+                message: format!(
+                    "`{key}` was removed: Prefix + s and Prefix + w open their pickers in the pane"
+                ),
+            });
+            continue;
+        }
+
         if RETIRED_THEME_KEYS.contains(&key) {
             parsed.diagnostics.push(ConfigDiagnostic {
                 line: line_number,
@@ -1094,7 +1097,6 @@ pub fn parse_config(source: &str, system_font_family: &str) -> ParsedConfig {
             | ConfigKey::PaletteWindowLayout
             | ConfigKey::PaletteShowKeys
             | ConfigKey::PaletteVimMode
-            | ConfigKey::PickerFocusSidebar
             | ConfigKey::WindowBackgroundBlur
             | ConfigKey::Motion
             | ConfigKey::Tray
@@ -1468,6 +1470,8 @@ pub const RETIRED_STATUS_KEYS: [&str; 5] = [
 
 pub const RETIRED_THEME_KEYS: [&str; 1] = ["interface-theme"];
 
+pub const RETIRED_NAVIGATION_KEYS: [&str; 1] = ["picker-focus-sidebar"];
+
 pub const RETIRED_MOTION_KEYS: [&str; 3] =
     ["animations", "animation-speed", "window-background-opacity"];
 
@@ -1481,6 +1485,7 @@ pub fn is_app_config_key(key: &str) -> bool {
         || RETIRED_MATERIAL_KEYS.contains(&key)
         || RETIRED_AGENT_KEYS.contains(&key)
         || RETIRED_THEME_KEYS.contains(&key)
+        || RETIRED_NAVIGATION_KEYS.contains(&key)
         || MuxOptionKey::from_config_key(key).is_some()
         || key.starts_with("host-")
         || zz_daemon_client::tailnet::Settings::is_key(key)
@@ -2035,11 +2040,11 @@ mod tests {
                     .join(CONFIG_DIRECTORY_NAME)
                     .join(CONFIG_FILE_NAME)
             );
-            write_config_edit_at(&path, "picker-focus-sidebar", Some("true")).unwrap();
-            write_config_edit_at(&path, "picker-focus-sidebar", Some("false")).unwrap();
+            write_config_edit_at(&path, "palette-vim-mode", Some("true")).unwrap();
+            write_config_edit_at(&path, "palette-vim-mode", Some("false")).unwrap();
             assert_eq!(
                 read_config_source(&path).unwrap(),
-                "picker-focus-sidebar = false\n"
+                "palette-vim-mode = false\n"
             );
             assert_eq!(discover_config_path(&candidates), Some(path));
         }
@@ -2060,13 +2065,13 @@ mod tests {
         );
         let existing = &candidates[1];
         fs::create_dir_all(existing.parent().unwrap()).unwrap();
-        fs::write(existing, "# keep this\npicker-focus-sidebar = true\n").unwrap();
+        fs::write(existing, "# keep this\npalette-vim-mode = true\n").unwrap();
         let path = config_write_path(&candidates).unwrap();
         assert_eq!(&path, existing);
-        write_config_edit_at(&path, "picker-focus-sidebar", Some("false")).unwrap();
+        write_config_edit_at(&path, "palette-vim-mode", Some("false")).unwrap();
         assert_eq!(
             read_config_source(existing).unwrap(),
-            "# keep this\npicker-focus-sidebar = false\n"
+            "# keep this\npalette-vim-mode = false\n"
         );
         assert!(!candidates[0].exists());
     }
