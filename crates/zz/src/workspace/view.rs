@@ -576,6 +576,7 @@ impl PaneContent {
 #[derive(Clone, Debug, PartialEq)]
 struct TerminalHeaderState {
     icon: penna::IconName,
+    program: Option<&'static zz_client::program::Program>,
     active: bool,
     title: String,
     can_drag: bool,
@@ -618,7 +619,7 @@ impl Render for TerminalHeaderView {
         let flip_app = self.app.clone();
         let title = state.title.clone();
         let header = zz_ui::pane::pane_header(
-            state.icon.clone(),
+            zz_ui::pane::pane_heading_icon(state.icon.clone(), state.program),
             state.active,
             title.clone(),
             state.folder.clone().map(Into::into),
@@ -3569,10 +3570,12 @@ impl AppView {
                 let header_view = terminal_header
                     .and_then(|snapshot| Some((snapshot, self.terminal_headers.get(pane)?)));
                 let content = if let Some((snapshot, header_view)) = header_view {
+                    let heading = zz_client::window_summary::pane_heading(snapshot);
                     let state = TerminalHeaderState {
                         icon: zz_ui::pane::pane_kind_icon(&snapshot.kind),
+                        program: heading.program,
                         active,
-                        title: zz_client::navigation::pane_label(snapshot),
+                        title: heading.title,
                         can_drag: self.mux.read(cx).is_connected()
                             && window.zoomed_pane.is_none()
                             && window.panes.len() > 1,
@@ -4119,7 +4122,7 @@ impl AppView {
             } else {
                 let label = if title.left.is_empty() {
                     snapshot
-                        .map(zz_client::navigation::pane_label)
+                        .map(|pane| zz_client::window_summary::pane_heading(pane).title)
                         .unwrap_or_default()
                 } else {
                     title.left
@@ -4179,11 +4182,14 @@ impl AppView {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let connected = self.mux.read(cx).is_connected();
+        let program =
+            snapshot.and_then(|pane| zz_client::window_summary::pane_heading(pane).program);
         if let Some(header_view) = self.terminal_headers.get(&pane) {
             let state = TerminalHeaderState {
                 icon: snapshot.map_or(penna::IconName::SquareTerminal, |pane| {
                     zz_ui::pane::pane_kind_icon(&pane.kind)
                 }),
+                program,
                 active,
                 title: label,
                 can_drag: connected,
@@ -4214,7 +4220,7 @@ impl AppView {
         div()
             .opacity(opacity)
             .child(zz_ui::pane::pane_header(
-                icon,
+                zz_ui::pane::pane_heading_icon(icon, program),
                 active,
                 label.clone(),
                 snapshot

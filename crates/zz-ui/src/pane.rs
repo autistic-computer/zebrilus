@@ -51,6 +51,16 @@ pub const fn pane_kind_icon(kind: &zz_protocol::PaneKindSnapshot) -> IconName {
     }
 }
 
+#[must_use]
+pub fn pane_heading_icon(
+    kind: IconName,
+    program: Option<&'static zz_client::program::Program>,
+) -> Icon {
+    program
+        .and_then(crate::program::program_icon)
+        .unwrap_or_else(|| Icon::new(kind))
+}
+
 const PANE_TITLE_GROUP: &str = "pane-title";
 const PANE_TITLE_ICON_SIZE: f32 = 14.0;
 const PANE_TITLE_MAX_WIDTH: f32 = 168.0;
@@ -502,7 +512,7 @@ pub fn pane_flip_overlay(
     reason = "a header is the sum of these independent pieces"
 )]
 pub fn pane_header(
-    icon: IconName,
+    icon: impl Into<Icon>,
     active: bool,
     title: impl Into<SharedString>,
     folder: Option<SharedString>,

@@ -454,16 +454,19 @@ impl AppShell {
         if snapshot.is_some_and(|pane| draws_own_header(&pane.kind)) {
             return surface;
         }
+        let heading = snapshot.map(zz_client::window_summary::pane_heading);
+        let program = heading.as_ref().and_then(|heading| heading.program);
         let label = if title.is_empty() {
-            snapshot
-                .map(zz_client::navigation::pane_label)
-                .unwrap_or_default()
+            heading.map(|heading| heading.title).unwrap_or_default()
         } else {
             title
         };
-        let icon = snapshot.map_or(penna::IconName::SquareTerminal, |pane| {
-            zz_ui::pane::pane_kind_icon(&pane.kind)
-        });
+        let icon = zz_ui::pane::pane_heading_icon(
+            snapshot.map_or(penna::IconName::SquareTerminal, |pane| {
+                zz_ui::pane::pane_kind_icon(&pane.kind)
+            }),
+            program,
+        );
         let focused = active.active_pane == pane;
         let writable = !self.connection.read(cx).core.attached_read_only();
         let header = self.pane_header(pane, icon, label, focused, writable, true, cx);

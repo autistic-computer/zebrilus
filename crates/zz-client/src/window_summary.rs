@@ -167,6 +167,33 @@ pub fn pane_program(pane: &PaneSnapshot) -> Option<&'static Program> {
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PaneHeading {
+    pub title: String,
+    pub program: Option<&'static Program>,
+}
+
+#[must_use]
+pub fn pane_heading(pane: &PaneSnapshot) -> PaneHeading {
+    if !matches!(pane.kind, PaneKindSnapshot::Terminal) {
+        return PaneHeading {
+            title: pane_label(pane),
+            program: None,
+        };
+    }
+    let program = pane_program(pane);
+    let title = program
+        .map(|program| program.name.to_owned())
+        .or_else(|| {
+            pane.summary
+                .process
+                .first()
+                .map(|entry| last_component(entry).to_owned())
+        })
+        .unwrap_or_else(|| pane_label(pane));
+    PaneHeading { title, program }
+}
+
 #[must_use]
 pub fn pane_agent(pane: &PaneSnapshot) -> Option<AgentProvider> {
     match pane_program(pane)?.id {
@@ -558,7 +585,8 @@ fn browser_host(url: &str) -> String {
 #[cfg(test)]
 mod tests {
     use zz_protocol::{
-        BrowserDescriptor, EditorDescriptor, LayoutNode, PaneStatus, PaneSummary, SplitId,
+        AgentDescriptor, BrowserDescriptor, EditorDescriptor, LayoutNode, PaneStatus, PaneSummary,
+        SplitId,
     };
 
     use super::*;
@@ -586,6 +614,28 @@ mod tests {
             title: title.to_owned(),
             ..pane(id, PaneKindSnapshot::Terminal)
         }
+    }
+
+    #[test]
+    fn a_terminal_is_headed_by_its_program_then_its_command_then_its_title() {
+        let heading = |title: &str, process: &[&str]| {
+            let mut pane = terminal(1, title);
+            pane.summary.process = process.iter().map(|entry| (*entry).to_owned()).collect();
+            let heading = pane_heading(&pane);
+            (heading.title, heading.program.map(|program| program.id))
+        };
+        assert_eq!(
+            heading("vim ~/dev/zz", &["/opt/homebrew/bin/nvim", "nvim"]),
+            ("Neovim".to_owned(), Some("neovim"))
+        );
+        assert_eq!(
+            heading("~/dev/zz", &["/usr/local/bin/frobnicate", "frobnicate"]),
+            ("frobnicate".to_owned(), None)
+        );
+        assert_eq!(heading("bash", &[]), ("bash".to_owned(), None));
+        let mut chat = agent(2, "Fix the build");
+        chat.kind = PaneKindSnapshot::Agent(AgentDescriptor::default());
+        assert_eq!(pane_heading(&chat).title, "Fix the build");
     }
 
     fn agent(id: u64, title: &str) -> PaneSnapshot {

@@ -1526,7 +1526,7 @@ impl AppShell {
     pub(super) fn pane_header(
         &self,
         pane_id: PaneId,
-        icon: IconName,
+        icon: penna::Icon,
         title: String,
         active: bool,
         can_drag: bool,
@@ -2138,11 +2138,14 @@ impl AppShell {
                 }
             };
             let content = if frame.header {
-                let title = zz_client::navigation::pane_label(pane);
+                let heading = zz_client::window_summary::pane_heading(pane);
                 let header = self.pane_header(
                     pane_id,
-                    zz_ui::pane::pane_kind_icon(&pane.kind),
-                    title,
+                    zz_ui::pane::pane_heading_icon(
+                        zz_ui::pane::pane_kind_icon(&pane.kind),
+                        heading.program,
+                    ),
+                    heading.title,
                     active_window.active_pane == pane_id,
                     can_drag,
                     false,

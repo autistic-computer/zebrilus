@@ -240,6 +240,12 @@ pub fn program_glyph_path(program: &Program) -> SharedString {
     .into()
 }
 
+#[must_use]
+pub fn program_icon(program: &Program) -> Option<Icon> {
+    matches!(program.look, Look::Mark { .. })
+        .then(|| Icon::empty().path(program_glyph_path(program)))
+}
+
 pub fn program_tile(program: &'static Program, size: Pixels, dimmed: f32, cx: &App) -> ala::Div {
     let theme = cx.theme();
     Face {
