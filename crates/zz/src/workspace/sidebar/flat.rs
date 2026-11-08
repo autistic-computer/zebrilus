@@ -43,6 +43,7 @@ pub(super) struct FlatView {
     last_chat: Option<(HostId, WindowId)>,
     landing: bool,
     landing_from: Option<(HostId, WindowId)>,
+    entered: bool,
 }
 
 fn connection(state: &HostState, loaded: bool) -> HostConnection {
@@ -342,6 +343,7 @@ impl WorkspaceSidebar {
     }
 
     fn enter_chat_view(&mut self, cx: &mut Context<Self>) {
+        self.flat_view.entered = true;
         let target = {
             let mux = self.mux.read(cx);
             if on_chat(mux).is_some() {
@@ -377,6 +379,20 @@ impl WorkspaceSidebar {
     }
 
     pub(super) fn follow_chats(&mut self, cx: &mut Context<Self>) {
+        if self.flat && !self.flat_view.entered {
+            let loaded = {
+                let mux = self.mux.read(cx);
+                mux.attached_session().is_some()
+                    && mux
+                        .host_snapshot(mux.attached_host())
+                        .is_some_and(|snapshot| !snapshot.sessions.is_empty())
+            };
+            if loaded {
+                self.enter_chat_view(cx);
+                cx.emit(super::SidebarModeChanged);
+                cx.notify();
+            }
+        }
         if self.flat_view.landing
             && on_chat(self.mux.read(cx))
                 .is_some_and(|chat| Some(chat) != self.flat_view.landing_from)

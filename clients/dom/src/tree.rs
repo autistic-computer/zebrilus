@@ -11,9 +11,9 @@ use zz_client::{
     },
     navigation::{RenameTarget, ordered_panes, pane_label, rename_prompt_command, session_label},
     new_chat::{
-        AGENT_CHOICES, ChatKey, ChatPicker, ChatStage, ChatViewEntry, agent_picker_place,
-        close_picker_command, entering_chat_view, focused_window, folder_rows,
-        leave_picker_command, open_picker_commands, picker_folders, start_agent_commands,
+        AGENT_CHOICES, ChatKey, ChatPicker, ChatStage, ChatViewPlace, FolderChoice,
+        agent_picker_place, close_picker_command, folder_rows, landing_chat_commands,
+        leave_picker_command, picker_folders, recent_folders, start_agent_commands,
     },
     pane_drop_command,
     pane_picker::{PanePickerKey, pane_choices, pane_kind_command, pane_picker_key},
@@ -47,33 +47,31 @@ pub struct Sidebar {
     clock: DaemonClock,
     chat_pickers: BTreeMap<PaneId, ChatPicker>,
     chat_view: bool,
-    last_chat: Option<WindowId>,
+    place: ChatViewPlace,
+    landing_picker: ChatPicker,
 }
 
 #[wasm_bindgen]
 impl Client {
-    pub fn set_chat_view(&mut self, on: bool) {
-        self.sidebar.chat_view = on;
-    }
-
-    pub fn enter_chat_view(&mut self) {
-        if self.core.attached_read_only() {
-            return;
-        }
+    pub fn set_chat_view(&mut self, on: bool) -> bool {
+        let was = std::mem::replace(&mut self.sidebar.chat_view, on);
         let snapshot = self.core.snapshot();
-        let focused = focused_window(snapshot, self.core.attached_session());
-        match entering_chat_view(snapshot, focused, self.sidebar.last_chat) {
-            ChatViewEntry::Stay => {}
-            ChatViewEntry::Open(window) => {
-                self.sidebar_activate(&format!("window-{window}"));
+        let attached = self.core.attached_session();
+        let open = match (was, on) {
+            (true, false) => {
+                self.sidebar.place.leave(snapshot, attached);
+                None
             }
-            ChatViewEntry::NewChat => self.new_chat(),
+            (false, true) => self.sidebar.place.enter(snapshot, attached),
+            (true, true) => self.sidebar.place.follow(snapshot, attached),
+            (false, false) => None,
+        };
+        match open {
+            Some(window) if !self.core.attached_read_only() => {
+                self.sidebar_activate(&format!("window-{window}"))
+            }
+            _ => false,
         }
-    }
-
-    pub fn leave_chat_view(&mut self) {
-        self.sidebar.last_chat =
-            focused_window(self.core.snapshot(), self.core.attached_session());
     }
 
     pub fn tree(&self) -> String {
@@ -103,6 +101,7 @@ impl Client {
             "generation": snapshot.generation,
             "readOnly": self.core.attached_read_only(),
             "prefix": self.core.prefix_armed(),
+            "landing": self.sidebar.chat_view && self.sidebar.place.landing(),
             "focusFollowsMouse": self
                 .core
                 .mux_options()
@@ -560,6 +559,7 @@ impl Client {
         let Some(target) = parse_target(key) else {
             return false;
         };
+        self.sidebar.place.close_landing();
         if self.sidebar.chat_view && !self.core.attached_read_only() {
             if let Some(command) =
                 leave_picker_command(self.core.snapshot(), self.core.attached_session(), target)
@@ -679,12 +679,51 @@ impl Client {
     }
 
     pub fn new_chat(&mut self) {
-        if self.core.attached_read_only() {
+        if self.core.attached_read_only() || self.sidebar.place.landing() {
             return;
         }
-        for command in open_picker_commands(self.core.snapshot(), self.core.attached_session()) {
-            self.invoke(command);
+        self.sidebar.landing_picker = ChatPicker::default();
+        self.sidebar
+            .place
+            .new_chat(self.core.snapshot(), self.core.attached_session());
+    }
+
+    pub fn landing_picker(&self) -> String {
+        if !self.sidebar.chat_view || !self.sidebar.place.landing() {
+            return "null".to_owned();
         }
+        chat_json(
+            &self.sidebar.landing_picker,
+            &recent_folders(self.core.snapshot()),
+        )
+    }
+
+    pub fn landing_picker_key(
+        &mut self,
+        key: &str,
+        shift: bool,
+        control: bool,
+        alt: bool,
+        meta: bool,
+    ) -> bool {
+        if self
+            .core
+            .claims_prefix_input(&key_input(key, shift, control, alt, meta))
+        {
+            return false;
+        }
+        let folders = recent_folders(self.core.snapshot());
+        let picker = &mut self.sidebar.landing_picker;
+        let rows = folder_rows(&picker.query, &folders, &[]);
+        let text = (key.chars().count() == 1).then_some(key);
+        let outcome = picker.key(&browser_key_name(key), text, control || alt || meta, &rows);
+        self.settle_landing(outcome)
+    }
+
+    pub fn landing_picker_click(&mut self, target: &str, index: usize) {
+        let folders = recent_folders(self.core.snapshot());
+        let outcome = picker_click(&mut self.sidebar.landing_picker, &folders, target, index);
+        self.settle_landing(outcome);
     }
 
     pub fn chat_picker(&mut self, pane: f64) -> String {
@@ -696,25 +735,7 @@ impl Client {
         }
         let folders = picker_folders(snapshot, pane);
         let picker = self.sidebar.chat_pickers.entry(pane).or_default();
-        json!({
-            "stage": match picker.stage {
-                ChatStage::Agents | ChatStage::Machines => "agents",
-                ChatStage::Folders => "folders",
-            },
-            "selected": picker.selected,
-            "folder": picker.folder(&folders),
-            "query": picker.query,
-            "folders": folder_rows(&picker.query, &folders, &[]).iter().map(|row| json!({
-                "path": row.path,
-                "note": row.note,
-            })).collect::<Vec<_>>(),
-            "agents": AGENT_CHOICES.iter().map(|agent| json!({
-                "title": agent.title(),
-                "shortcut": agent.shortcut,
-                "program": agent.program,
-            })).collect::<Vec<_>>(),
-        })
-        .to_string()
+        chat_json(picker, &folders)
     }
 
     pub fn chat_picker_key(
@@ -745,30 +766,93 @@ impl Client {
         let pane = pane_id(pane);
         let folders = picker_folders(self.core.snapshot(), pane);
         let picker = self.sidebar.chat_pickers.entry(pane).or_default();
-        let outcome = match target {
-            "folder-line" => {
-                picker.open(ChatStage::Folders);
-                ChatKey::Changed
-            }
-            "folder" => {
-                if let Some(row) = folder_rows(&picker.query, &folders, &[]).get(index) {
-                    picker.pick(&row.path);
-                }
-                ChatKey::Changed
-            }
-            "agent" => AGENT_CHOICES
-                .get(index)
-                .map_or(ChatKey::Ignored, |agent| ChatKey::Start(*agent)),
-            _ => {
-                picker.selected = index;
-                ChatKey::Changed
-            }
-        };
+        let outcome = picker_click(picker, &folders, target, index);
         self.settle_chat(pane, outcome);
     }
 }
 
+fn chat_json(picker: &ChatPicker, folders: &[FolderChoice]) -> String {
+    json!({
+        "stage": match picker.stage {
+            ChatStage::Agents | ChatStage::Machines => "agents",
+            ChatStage::Folders => "folders",
+        },
+        "selected": picker.selected,
+        "folder": picker.folder(folders),
+        "query": picker.query,
+        "folders": folder_rows(&picker.query, folders, &[]).iter().map(|row| json!({
+            "path": row.path,
+            "note": row.note,
+        })).collect::<Vec<_>>(),
+        "agents": AGENT_CHOICES.iter().map(|agent| json!({
+            "title": agent.title(),
+            "shortcut": agent.shortcut,
+            "program": agent.program,
+        })).collect::<Vec<_>>(),
+    })
+    .to_string()
+}
+
+fn picker_click(
+    picker: &mut ChatPicker,
+    folders: &[FolderChoice],
+    target: &str,
+    index: usize,
+) -> ChatKey {
+    match target {
+        "folder-line" => {
+            picker.open(ChatStage::Folders);
+            ChatKey::Changed
+        }
+        "folder" => {
+            if let Some(row) = folder_rows(&picker.query, folders, &[]).get(index) {
+                picker.pick(&row.path);
+            }
+            ChatKey::Changed
+        }
+        "agent" => AGENT_CHOICES
+            .get(index)
+            .map_or(ChatKey::Ignored, |agent| ChatKey::Start(*agent)),
+        _ => {
+            picker.selected = index;
+            ChatKey::Changed
+        }
+    }
+}
+
 impl Client {
+    fn settle_landing(&mut self, outcome: ChatKey) -> bool {
+        match outcome {
+            ChatKey::Start(agent) if !self.core.attached_read_only() => {
+                let snapshot = self.core.snapshot();
+                let folder = self
+                    .sidebar
+                    .landing_picker
+                    .folder(&recent_folders(snapshot))
+                    .to_owned();
+                let launches = zz_client::agent_launch::AgentLaunches::default();
+                for command in landing_chat_commands(snapshot, &folder, agent, &launches) {
+                    self.invoke(command);
+                }
+                true
+            }
+            ChatKey::ChooseFolder => {
+                self.sidebar.landing_picker.open(ChatStage::Folders);
+                true
+            }
+            ChatKey::Close => {
+                self.sidebar.place.close_landing();
+                true
+            }
+            ChatKey::Changed => true,
+            ChatKey::Start(_)
+            | ChatKey::ChooseMachine(_)
+            | ChatKey::Terminal
+            | ChatKey::Browser
+            | ChatKey::Ignored => false,
+        }
+    }
+
     fn settle_chat(&mut self, pane: PaneId, outcome: ChatKey) -> bool {
         match outcome {
             ChatKey::Start(agent) if !self.core.attached_read_only() => {

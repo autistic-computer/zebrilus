@@ -420,6 +420,84 @@ pub fn entering_chat_view(
         .map_or(ChatViewEntry::NewChat, ChatViewEntry::Open)
 }
 
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct ChatViewPlace {
+    landing: bool,
+    landing_from: Option<WindowId>,
+    last_chat: Option<WindowId>,
+    entered: bool,
+}
+
+impl ChatViewPlace {
+    #[must_use]
+    pub const fn landing(&self) -> bool {
+        self.landing
+    }
+
+    fn land(&mut self, from: Option<WindowId>) {
+        self.landing = true;
+        self.landing_from = from;
+    }
+
+    pub fn new_chat(&mut self, snapshot: &MuxSnapshot, attached: Option<SessionId>) {
+        if !self.landing {
+            self.land(focused_window(snapshot, attached));
+        }
+    }
+
+    pub const fn close_landing(&mut self) {
+        self.landing = false;
+    }
+
+    pub fn leave(&mut self, snapshot: &MuxSnapshot, attached: Option<SessionId>) {
+        if !std::mem::take(&mut self.landing) {
+            self.last_chat = focused_window(snapshot, attached);
+        }
+    }
+
+    pub fn enter(
+        &mut self,
+        snapshot: &MuxSnapshot,
+        attached: Option<SessionId>,
+    ) -> Option<WindowId> {
+        self.entered = !snapshot.sessions.is_empty() && attached.is_some();
+        if !self.entered {
+            return None;
+        }
+        let focused = focused_window(snapshot, attached);
+        match entering_chat_view(snapshot, focused, self.last_chat) {
+            ChatViewEntry::Stay => None,
+            ChatViewEntry::Open(window) => Some(window),
+            ChatViewEntry::NewChat => {
+                self.land(focused);
+                None
+            }
+        }
+    }
+
+    pub fn follow(
+        &mut self,
+        snapshot: &MuxSnapshot,
+        attached: Option<SessionId>,
+    ) -> Option<WindowId> {
+        if !self.entered {
+            return self.enter(snapshot, attached);
+        }
+        let focused = focused_window(snapshot, attached);
+        if self.landing
+            && let Some(focused) = focused
+            && Some(focused) != self.landing_from
+            && all_windows(snapshot)
+                .find(|window| window.id == focused)
+                .and_then(summarize_chat)
+                .is_some()
+        {
+            self.landing = false;
+        }
+        None
+    }
+}
+
 #[must_use]
 pub fn leave_picker_command(
     snapshot: &MuxSnapshot,
@@ -1069,6 +1147,31 @@ mod tests {
         );
         assert_eq!(leave(3, SidebarTarget::Window(WindowId(3))), None);
         assert_eq!(leave(1, SidebarTarget::Window(WindowId(2))), None);
+    }
+
+    #[test]
+    fn the_chat_view_place_enters_once_loaded_and_follows_new_chats() {
+        let attached = Some(SessionId(1));
+        let mut place = ChatViewPlace::default();
+        assert_eq!(place.follow(&snapshot(Vec::new()), None), None);
+        let mut shells = snapshot(vec![session(1, vec![window(1, vec![shell(1, "~", 9)])])]);
+        assert_eq!(place.follow(&shells, attached), None);
+        assert!(place.landing());
+        shells.sessions[0]
+            .windows
+            .push(window(2, vec![agent(2, "~", 10)]));
+        assert_eq!(place.follow(&shells, attached), None);
+        assert!(place.landing());
+        shells.sessions[0].active_window = WindowId(2);
+        assert_eq!(place.follow(&shells, attached), None);
+        assert!(!place.landing());
+        place.leave(&shells, attached);
+        shells.sessions[0].active_window = WindowId(1);
+        assert_eq!(place.enter(&shells, attached), Some(WindowId(2)));
+        place.new_chat(&shells, attached);
+        assert!(place.landing());
+        place.close_landing();
+        assert!(!place.landing());
     }
 
     #[test]

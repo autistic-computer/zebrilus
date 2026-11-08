@@ -76,7 +76,7 @@ function render() {
   frame = 0;
   if (treeDirty && state.client) {
     treeDirty = false;
-    state.client.set_chat_view(state.chatView);
+    if (state.client.set_chat_view(state.chatView)) flush();
     state.tree = JSON.parse(state.client.tree());
     for (const handler of phases.tree) handler(state.tree);
   }

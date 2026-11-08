@@ -822,6 +822,10 @@ function render() {
   prefixArmed = Boolean(tree?.prefix);
   if (pipDrag?.landing !== undefined && (tree?.generation ?? 0) > pipDrag.landing) pipDrag = null;
   if (paneDrag && (!window || paneDrag.window !== window.id || layoutKey(window.layout) !== paneDrag.layout || window.zoomedPane || !writable() || (paneDrag.requiresPrefix && !prefixArmed))) cancelDrags();
+  if (tree?.landing) {
+    renderLanding();
+    return;
+  }
   if (!window) {
     content.replaceChildren();
     renderEmpty();
@@ -893,14 +897,7 @@ on("attached", () => {
 
 state.chatView = Boolean(preferences.flat_sidebar);
 on("preferences", () => {
-  const chatView = Boolean(preferences.flat_sidebar);
-  if (state.client && state.connected && chatView !== state.chatView) {
-    state.client.set_chat_view(chatView);
-    if (chatView) state.client.enter_chat_view();
-    else state.client.leave_chat_view();
-    flush();
-  }
-  state.chatView = chatView;
+  state.chatView = Boolean(preferences.flat_sidebar);
   markTree();
 });
 
@@ -934,7 +931,7 @@ on("focus", () => {
 
 const AGENT_ICONS = { claude: "asterisk", codex: "braces" };
 
-function chatRows(pane, list, chat, view) {
+function chatRows(click, list, chat, view) {
   const row = (target, index, icon, title, note, shortcut, selected) => {
     const element = el("div", { class: "picker-row", "data-penna": "menu-item.card" });
     if (selected) element.dataset.state = "current";
@@ -944,14 +941,14 @@ function chatRows(pane, list, chat, view) {
     if (shortcut) element.querySelector("[data-penna='keycap'] > span").textContent = shortcut;
     element.addEventListener("mousemove", () => {
       if (target !== "folder-line" && !selected) {
-        state.client.chat_picker_click(pane.id, "hover", index);
+        click("hover", index);
         view.update();
       }
     });
     element.addEventListener("pointerdown", (event) => {
       event.stopPropagation();
       if (!writable()) return;
-      state.client.chat_picker_click(pane.id, target, index);
+      click(target, index);
       flush();
       view.update();
     });
@@ -981,7 +978,7 @@ function picker(pane) {
     update() {
       const chat = JSON.parse(state.client.chat_picker(pane.id));
       if (chat) {
-        chatRows(pane, list, chat, view);
+        chatRows((target, index) => state.client.chat_picker_click(pane.id, target, index), list, chat, view);
         return;
       }
       list.replaceChildren(
@@ -1025,9 +1022,40 @@ function picker(pane) {
 
 paneRenderer("picker", picker);
 
+const landing = el("div", { class: "pane-picker" }, `<div class="picker-choices"></div>`);
+const landingView = {
+  update() {
+    const chat = JSON.parse(state.client.landing_picker());
+    if (!chat) {
+      markTree();
+      return;
+    }
+    chatRows((target, index) => state.client.landing_picker_click(target, index), landing.querySelector(".picker-choices"), chat, landingView);
+  },
+};
+
+function renderLanding() {
+  empty.hidden = true;
+  if (content.firstChild !== landing || content.childElementCount !== 1) {
+    content.replaceChildren(landing);
+    $(".ime")?.focus({ preventScroll: true });
+  }
+  landingView.update();
+}
+
 onKey((event) => {
+  if (event.isComposing) return false;
+  if (state.tree?.landing) {
+    if (event.target.closest?.("input, textarea, select, [contenteditable]") && !event.target.classList.contains("ime")) return false;
+    if (!state.client.landing_picker_key(event.key, event.shiftKey, event.ctrlKey, event.altKey, event.metaKey)) return false;
+    event.preventDefault();
+    flush();
+    landingView.update();
+    return true;
+  }
+  if (event.target.closest?.("input, textarea, select, [contenteditable]")) return false;
   const window = activeWindow();
-  if (!window || event.isComposing || event.target.closest?.("input, textarea, select, [contenteditable]")) return false;
+  if (!window) return false;
   const view = pickers.get(window.activePane);
   if (!view) return false;
   if (JSON.parse(state.client.chat_picker(window.activePane))) {

@@ -72,7 +72,11 @@ function actionRow(icon, label, onClick) {
 }
 
 function renderActions() {
-  const rows = preferences.flat_sidebar && state.connected ? [actionRow("chat-plus", "New chat", () => state.client.new_chat())] : [];
+  const rows = preferences.flat_sidebar && state.connected ? [actionRow("chat-plus", "New chat", () => {
+    if (!writable()) return;
+    state.client.new_chat();
+    markTree();
+  })] : [];
   actions.replaceChildren(...rows);
 }
 

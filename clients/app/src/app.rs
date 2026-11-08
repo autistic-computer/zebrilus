@@ -129,6 +129,7 @@ pub struct AppShell {
     #[cfg(any(target_os = "ios", target_os = "android"))]
     browsers: HashMap<PaneId, Entity<browser_pane::BrowserPane>>,
     pickers: HashMap<PaneId, Entity<picker::PanePicker>>,
+    landing_picker: Option<Entity<picker::PanePicker>>,
     folder_pick: Option<(ala::WeakEntity<picker::PanePicker>, String)>,
     sidebar: bool,
     slideover: bool,
@@ -238,8 +239,13 @@ fn watch_connection(
                     this.set_split_drag(None);
                     this.pane_drag = None;
                     this.pane_layout_override = None;
+                    if matches!(event, zz_client::CoreEvent::HelloReceived) {
+                        this.flat.place = zz_client::new_chat::ChatViewPlace::default();
+                    }
+                    sidebar::follow_chat_view(this, cx);
                 }
                 zz_client::CoreEvent::SnapshotChanged => {
+                    sidebar::follow_chat_view(this, cx);
                     if this.split_drag.is_some_and(|state| {
                         state.committed_generation.is_some_and(|generation| {
                             generation < connection.read(cx).core.snapshot().generation
@@ -386,6 +392,7 @@ impl AppShell {
             #[cfg(any(target_os = "ios", target_os = "android"))]
             browsers: HashMap::new(),
             pickers: HashMap::new(),
+            landing_picker: None,
             folder_pick: None,
             sidebar: preferences.sidebar,
             slideover: false,
@@ -1443,6 +1450,41 @@ impl AppShell {
         picker
     }
 
+    fn landing(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Option<AnyElement> {
+        if !self.preferences.flat_sidebar
+            || !self.flat.place.landing()
+            || !self.connection.read(cx).connected
+        {
+            return None;
+        }
+        let picker = if let Some(picker) = &self.landing_picker {
+            picker.clone()
+        } else {
+            let connection = self.connection.clone();
+            let picker = cx.new(|cx| picker::PanePicker::landing(connection, cx));
+            cx.subscribe(
+                &picker,
+                |shell, picker, choose: &picker::ChooseFolder, cx| {
+                    shell.folder_pick = Some((picker.downgrade(), choose.start.clone()));
+                    cx.notify();
+                },
+            )
+            .detach();
+            cx.subscribe(&picker, |shell, _, _: &picker::LeaveLanding, cx| {
+                shell.flat.place.close_landing();
+                cx.notify();
+            })
+            .detach();
+            self.landing_picker = Some(picker.clone());
+            picker
+        };
+        let focus = picker.read(cx).focus_handle(cx);
+        if !focus.contains_focused(window, cx) && !self.sidebar_focus.contains_focused(window, cx) {
+            focus.focus(window, cx);
+        }
+        Some(div().size_full().child(picker).into_any_element())
+    }
+
     fn agent_picker_shown(&self, pane: PaneId, cx: &App) -> bool {
         agent_picker_place(
             self.connection.read(cx).core.snapshot(),
@@ -1811,6 +1853,10 @@ impl AppShell {
             }
             self.pane_layout_override = None;
             return self.render_settings(section, window, cx);
+        }
+        if let Some(landing) = self.landing(window, cx) {
+            self.pane_layout_override = None;
+            return landing;
         }
         let Some(active_window) = self.active_window(cx) else {
             if self.pane_drag.take().is_some() {

@@ -16,10 +16,7 @@ use penna::{
 use std::{collections::BTreeSet, rc::Rc};
 use zz_client::{
     ChromeAction,
-    new_chat::{
-        ChatViewEntry, entering_chat_view, focused_window, leave_picker_command,
-        open_picker_commands,
-    },
+    new_chat::{ChatViewPlace, leave_picker_command},
     sidebar::{
         SidebarBadge, SidebarNode, SidebarRow as TreeRow, navigation_rows, sidebar_activation,
         sidebar_active, sidebar_add_command, sidebar_close_command, sidebar_rename_command,
@@ -27,7 +24,7 @@ use zz_client::{
     },
     window_summary::{DaemonClock, PaneTag, age_label, summarize_chats},
 };
-use zz_protocol::{CommandInvocation, MuxSnapshot, PaneId, WindowId};
+use zz_protocol::{CommandInvocation, MuxSnapshot, PaneId};
 use zz_ui::{
     command::PaletteHostId,
     navigation::{
@@ -331,7 +328,7 @@ pub(super) struct Flat {
     state: FlatState,
     folded_host: bool,
     scroll: ScrollHandle,
-    last_chat: Option<WindowId>,
+    pub place: ChatViewPlace,
 }
 
 fn host_connection(connection: &Connection) -> HostConnection {
@@ -426,17 +423,37 @@ pub(super) fn flat_tree(
 }
 
 pub(super) fn new_chat(view: &mut AppShell, cx: &mut Context<AppShell>) {
+    let connection = view.connection.read(cx);
+    if writable(connection) {
+        view.flat.place.new_chat(
+            connection.core.snapshot(),
+            connection.core.attached_session(),
+        );
+        cx.notify();
+    }
+}
+
+pub(super) fn follow_chat_view(view: &mut AppShell, cx: &mut Context<AppShell>) {
+    if !view.preferences.flat_sidebar {
+        return;
+    }
     let connection = view.connection.clone();
-    if writable(connection.read(cx)) {
-        connection.update(cx, |connection, cx| {
-            let commands = open_picker_commands(
+    let landing = view.flat.place.landing();
+    let open = {
+        let connection = connection.read(cx);
+        view.flat
+            .place
+            .follow(
                 connection.core.snapshot(),
                 connection.core.attached_session(),
-            );
-            for command in commands {
-                connection.invoke(command, cx);
-            }
-        });
+            )
+            .filter(|_| writable(connection))
+    };
+    if landing != view.flat.place.landing() {
+        cx.notify();
+    }
+    if let Some(window) = open {
+        activate(&connection, Target::Window(window), cx);
     }
 }
 
@@ -469,6 +486,7 @@ fn flat_event(
     if view.slideover && connection.read(cx).connected {
         view.release_sidebar_focus(window, cx);
     }
+    view.flat.place.close_landing();
     leave_abandoned_picker(&connection, target, cx);
     activate(&connection, target, cx);
 }
@@ -493,31 +511,27 @@ pub(super) fn set_chat_view(view: &mut AppShell, on: bool, cx: &mut Context<AppS
     if view.preferences.flat_sidebar == on {
         return;
     }
-    let connection = view.connection.clone();
-    let focused = {
-        let connection = connection.read(cx);
-        focused_window(
-            connection.core.snapshot(),
-            connection.core.attached_session(),
-        )
-    };
     view.preferences.flat_sidebar = on;
     view.preferences.save();
-    if !on {
-        view.flat.last_chat = focused;
-        return;
-    }
-    let entry = {
+    let connection = view.connection.clone();
+    let open = {
         let connection = connection.read(cx);
-        if !writable(connection) {
-            return;
+        let (snapshot, attached) = (
+            connection.core.snapshot(),
+            connection.core.attached_session(),
+        );
+        if on {
+            view.flat
+                .place
+                .enter(snapshot, attached)
+                .filter(|_| writable(connection))
+        } else {
+            view.flat.place.leave(snapshot, attached);
+            None
         }
-        entering_chat_view(connection.core.snapshot(), focused, view.flat.last_chat)
     };
-    match entry {
-        ChatViewEntry::Stay => {}
-        ChatViewEntry::Open(window) => activate(&connection, Target::Window(window), cx),
-        ChatViewEntry::NewChat => new_chat(view, cx),
+    if let Some(window) = open {
+        activate(&connection, Target::Window(window), cx);
     }
 }
 

@@ -38,10 +38,12 @@ agent's window and so belongs to the chat. Raw mode shows the same window as a t
 Chat view is a place, not a filter over the window on screen: the window in the workspace is always
 one the sidebar lists. Turning chat view on while the focused window is neither a chat nor a picker
 window switches to a chat: the one that was on screen when chat view was last turned off, else the
-most recently active chat (`entering_chat_view`). The desktop looks on the attached machine first,
-then on any connected machine, and with no chat anywhere shows the New chat screen; web, iPad and the
-HTML client open a picker window then, as their New chat does. Turning chat view off from a chat
-keeps that chat: the session tree lists every window.
+most recently active chat (`entering_chat_view`), and with no chat it shows the New chat screen. The
+desktop looks on the attached machine first, then on any connected machine. A client that starts in
+chat view does the same once its first snapshot arrives. Turning chat view off from a chat keeps that
+chat: the session tree lists every window. Web, iPad and the HTML client keep this state in
+`ChatViewPlace`: the New chat screen and the window it covers, the chat left last, and whether the
+view has been entered.
 
 # Starting a chat
 
@@ -50,13 +52,13 @@ behind it (the empty workspace's picker), so nothing is made until an agent is p
 opens a window for it in the folder's session (`new-window -c <folder>`, then `select-pane-kind
 agent` on its shell) or, with no session for that folder, a session named after it
 (`first_chat_commands`); both are `landing_chat_commands`. The screen goes away once another chat is
-on screen or a row is pressed, and turning chat view off from it shows the window that was there.
+on screen or a row is pressed, Escape on web, iPad and the HTML client closes it, and turning chat
+view off from it shows the window that was there.
 Picking another machine on it opens a picker window on that machine, `new-window -t <session>:
 --kind picker` in the session of the folder its agents used last (`recent_folders`,
-`session_for_folder`), and the desktop follows that window once it appears. Web, iPad and the HTML
-client open a picker window for New chat too, on the attached host. Pressing another row in chat view
-while a picker window is on screen closes that window (`leave_picker_command`), so a New chat left
-unpicked leaves nothing behind.
+`session_for_folder`), and the desktop follows that window once it appears. Pressing another row in
+chat view while a picker window is on screen closes that window (`leave_picker_command`), so a New
+chat left unpicked leaves nothing behind.
 
 # What a picker offers
 
@@ -126,8 +128,6 @@ flip adds the `agent <claude|codex>` kind to `select-pane-kind`, for a picker or
 
 # Not built
 
-- The New chat screen on web, iPad and the HTML client: they open a picker window instead.
-- Switching to a chat when a client launches in chat view on a window that is not one.
 - A way back to the CLI from a desktop agent pane.
 - A file picker in the HTML client.
 - Remembering the last picked model and effort on web, iPad, iPhone and the HTML client.
