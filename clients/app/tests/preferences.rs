@@ -125,6 +125,7 @@ fn a_preferences_file_written_before_appearance_moved_into_the_kit_loads_the_sam
     expected["density"] = "regular".into();
     expected["reduce_transparency"] = false.into();
     expected["motion"] = "default".into();
+    expected["mono_font_family"] = "".into();
     let fields = expected.as_object_mut().unwrap();
     for retired in [
         "theme",
