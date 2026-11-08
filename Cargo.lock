@@ -11856,6 +11856,7 @@ dependencies = [
  "smallvec",
  "tree-sitter-tmux",
  "url",
+ "usvg",
  "web-time",
  "zz-client",
  "zz-protocol",

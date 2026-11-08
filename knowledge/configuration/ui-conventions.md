@@ -4,7 +4,7 @@ title: UI design conventions
 description: The component, palette, and styling rules that keep zz application chrome consistent and theme-aware.
 resource: crates/zz-ui/src/command/palette_view.rs
 tags: [ui, ala, zz-ui, theme, chrome, clippy]
-timestamp: 2026-10-31T00:00:00Z
+timestamp: 2026-11-08T00:00:00Z
 ---
 
 # Overview
@@ -499,7 +499,11 @@ round to the same device pixel grid. Rows that wrap give the icon a first-line s
 first line's pixel line height. The agent timeline's activity rows, cards, alerts, task tray and composer
 footer, the workspace status pills, markdown task lists and the settings disclosure heading all
 use it. The glyph's own ink has to be centred in its 24-unit box too; the ala notes are in
-the `ala-interface` skill (`skills/ala-interface` in autistic-computer/agents).
+the `ala-interface` skill (`skills/ala-interface` in autistic-computer/agents). Brand marks in
+`crates/zz-ui/assets/icons` (the host OS marks, the Chrome mark) fit their ink's longer side to the
+20-unit live area the Solar strokes are drawn on, 2 to 22, with the ink centred at 12; the Apple
+mark sits 0.55 units higher, where SF Pro places its own (its box centre 2.8% of its height above
+the cap centre). `program::tests` checks the host marks.
 
 A radius is a *request*, not the final corner. ala caps one at half the shorter side . the point a
 rounded rectangle stops existing . so one global setting applied to components of different sizes

@@ -327,4 +327,43 @@ mod tests {
             assert!(loaded.is_some(), "{path} is not in crates/zz-ui/assets");
         }
     }
+
+    #[test]
+    fn host_marks_fill_the_icon_live_area_centred() {
+        for (platform, center_y) in [
+            (HostPlatform::Macos, 11.45),
+            (HostPlatform::Windows, 12.0),
+            (HostPlatform::Linux(LinuxDistro::Other), 12.0),
+            (HostPlatform::Linux(LinuxDistro::Ubuntu), 12.0),
+            (HostPlatform::Linux(LinuxDistro::Debian), 12.0),
+            (HostPlatform::Linux(LinuxDistro::Arch), 12.0),
+            (HostPlatform::Linux(LinuxDistro::Fedora), 12.0),
+        ] {
+            let path = platform_icon(platform)
+                .expect("a known platform has an icon")
+                .path();
+            let svg = Assets
+                .load(path)
+                .ok()
+                .flatten()
+                .expect("the mark is bundled");
+            let ink = usvg::Tree::from_data(&svg, &usvg::Options::default())
+                .expect("the mark parses")
+                .root()
+                .abs_bounding_box();
+            let measured = [
+                ink.width().max(ink.height()),
+                f32::midpoint(ink.left(), ink.right()),
+                f32::midpoint(ink.top(), ink.bottom()),
+            ];
+            let expected = [20.0, 12.0, center_y];
+            assert!(
+                measured
+                    .iter()
+                    .zip(expected)
+                    .all(|(measured, expected)| (measured - expected).abs() < 0.02),
+                "{path}: ink side and centre {measured:?}, want {expected:?}"
+            );
+        }
+    }
 }

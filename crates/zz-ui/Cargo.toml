@@ -40,6 +40,7 @@ url.workspace = true
 
 [dev-dependencies]
 ala = { workspace = true, features = ["test-support"] }
+usvg.workspace = true
 
 [lints]
 workspace = true
