@@ -57,7 +57,7 @@ type PaneActionBinding = (
     fn(&CommandInvocation) -> bool,
 );
 
-const PANE_ACTION_BINDINGS: [PaneActionBinding; 5] = [
+const PANE_ACTION_BINDINGS: [PaneActionBinding; 6] = [
     (TerminalPaneAction::SplitBottom, "\"", |command| {
         split_hint_matches(command, false)
     }),
@@ -72,6 +72,14 @@ const PANE_ACTION_BINDINGS: [PaneActionBinding; 5] = [
     }),
     (TerminalPaneAction::Zoom, "z", |command| {
         runs(command, "resize-pane", Some("-Z"))
+    }),
+    (TerminalPaneAction::Close, "x", |command| {
+        runs(command, "kill-pane", None)
+            || command.name == "confirm-before"
+                && command
+                    .args
+                    .last()
+                    .is_some_and(|arg| arg.split_whitespace().next() == Some("kill-pane"))
     }),
 ];
 
@@ -221,7 +229,7 @@ mod tests {
         assert_eq!(spelled(TerminalPaneAction::Float), ["ctrl-a", "@"]);
         assert_eq!(spelled(TerminalPaneAction::Tile), ["ctrl-a", "@"]);
         assert_eq!(spelled(TerminalPaneAction::Zoom), ["ctrl-a", "z"]);
-        assert!(spelled(TerminalPaneAction::Close).is_empty());
+        assert_eq!(spelled(TerminalPaneAction::Close), ["ctrl-a", "x"]);
         assert!(
             pane_action_keys(None, &prefix)
                 .of(TerminalPaneAction::Zoom)
