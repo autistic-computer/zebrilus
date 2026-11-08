@@ -31,17 +31,16 @@ use zz_daemon_client::{
     AskpassPrompt, AskpassReply, DaemonError, Endpoint, EndpointError, InteractiveClient,
     RemoteInstall, RemoteRestart, terminate_incompatible_daemon,
 };
-#[cfg(test)]
-use zz_protocol::StatusLine;
 use zz_protocol::{
     BrowserCommand, ChooseBufferState, ChooseTreeState, ClientMessageKind, ClipboardProducer,
     CommandInvocation, CommandPromptState, CommandResponse, ConfirmState, DisplayPanesState, Event,
     EventPayload, GitMark, GuiResponse, InputMessage, KeyBindingSnapshot, KeyTableSnapshot,
-    LayoutNode, MenuState, MuxOptionKey, MuxSnapshot, NEW_SESSION_ATTACH_CAPABILITY,
-    PROTOCOL_VERSION, PaneId, PaneKindSnapshot, PastedImageFormat, PathEntry, PathListRoot,
-    ProtocolError, ProtocolMessage, ServerError, ServerHello, SessionId, TerminalUiCommand,
-    WindowSnapshot,
+    LayoutNode, MenuState, MuxOptionKey, MuxSnapshot, PROTOCOL_VERSION, PaneId, PaneKindSnapshot,
+    PastedImageFormat, PathEntry, PathListRoot, ProtocolError, ProtocolMessage, ServerError,
+    ServerHello, SessionId, TerminalUiCommand, WindowSnapshot,
 };
+#[cfg(test)]
+use zz_protocol::{NEW_SESSION_ATTACH_CAPABILITY, StatusLine};
 use zz_terminal::{
     AppearanceProvenance, ClipboardTarget, IMAGE_PLACEHOLDER_SCHEME, PackedCell,
     TerminalAppearance, TerminalColorScheme, TerminalDictionary, TerminalDiffScratch,
@@ -152,20 +151,11 @@ fn new_session_commands(
     capabilities: &[String],
     working_directory: Option<&Path>,
 ) -> Vec<CommandInvocation> {
-    if host != HostId::LOCAL {
-        return vec![CommandInvocation::new("new-session", ["-d"])];
-    }
-    let arguments = working_directory.map_or_else(Vec::new, |directory| {
-        vec!["-c".to_owned(), directory.to_string_lossy().into_owned()]
-    });
-    let mut commands = vec![CommandInvocation::new("new-session", arguments)];
-    if !capabilities
-        .iter()
-        .any(|capability| capability == NEW_SESSION_ATTACH_CAPABILITY)
-    {
-        commands.push(CommandInvocation::new("attach-session", [] as [&str; 0]));
-    }
-    commands
+    zz_client::desktop_nav::new_session_commands(
+        host == HostId::LOCAL,
+        capabilities,
+        working_directory,
+    )
 }
 
 fn snapshot_contains_pane(snapshot: &MuxSnapshot, pane: PaneId) -> bool {

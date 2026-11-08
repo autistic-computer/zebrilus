@@ -500,7 +500,7 @@ impl Render for AppShell {
                     shell
                         .mux
                         .read(cx)
-                        .execute(CommandInvocation::new("detach-client", [] as [&str; 0]));
+                        .execute(zz_client::desktop_nav::detach_command());
                 }))
                 .on_action(cx.listener(|shell, _: &menus::ZoomPane, _, cx| {
                     shell.pane_menu_command("resize-pane", &["-Z"], cx);

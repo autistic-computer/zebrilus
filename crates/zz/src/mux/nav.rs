@@ -589,27 +589,14 @@ pub fn expand_path_to(expanded: &mut BTreeSet<TreeNode>, model: &MuxTreeModel, n
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum NavActivation {
-    AttachHost(HostId),
-    Attach {
-        host: HostId,
-        session: SessionId,
-    },
-    AttachAt {
-        host: HostId,
-        target: String,
-    },
-    Execute {
-        host: HostId,
-        commands: Vec<CommandInvocation>,
-    },
-    AttachThenExecute {
-        host: HostId,
-        session: SessionId,
-        commands: Vec<CommandInvocation>,
-    },
-    Reconnect(HostId),
+pub type NavActivation = zz_client::desktop_nav::NavActivation<HostId>;
+
+fn desktop_nav_target(target: TreeTarget) -> zz_client::desktop_nav::NavTarget {
+    match target {
+        TreeTarget::Session(session) => zz_client::desktop_nav::NavTarget::Session(session),
+        TreeTarget::Window(window) => zz_client::desktop_nav::NavTarget::Window(window),
+        TreeTarget::Pane(pane) => zz_client::desktop_nav::NavTarget::Pane(pane),
+    }
 }
 
 #[must_use]
@@ -622,35 +609,15 @@ pub fn activation_for_target(
     attached_session: Option<SessionId>,
     connected: bool,
 ) -> Option<NavActivation> {
-    if !connected {
-        return None;
-    }
-
-    if !matches!(target, TreeTarget::Session(_))
-        && let Some(session) = owner_session
-        && (host != attached_host || Some(session) != attached_session)
-    {
-        let window = owner_window?;
-        return Some(NavActivation::AttachAt {
-            host,
-            target: match target {
-                TreeTarget::Pane(pane) => format!("{session}:{window}.{pane}"),
-                _ => format!("{session}:{window}"),
-            },
-        });
-    }
-
-    match target {
-        TreeTarget::Session(session) => Some(NavActivation::Attach { host, session }),
-        TreeTarget::Window(window) => Some(NavActivation::Execute {
-            host,
-            commands: vec![select_window_command(window)],
-        }),
-        TreeTarget::Pane(pane) => Some(NavActivation::Execute {
-            host,
-            commands: select_pane_commands(pane),
-        }),
-    }
+    zz_client::desktop_nav::activation_for_target(
+        host,
+        desktop_nav_target(target),
+        owner_session,
+        owner_window,
+        attached_host,
+        attached_session,
+        connected,
+    )
 }
 
 #[must_use]
@@ -712,20 +679,17 @@ pub fn activate_nav(mux: &Entity<MuxClient>, activation: NavActivation, cx: &mut
 
 #[must_use]
 pub fn new_window_command(session: SessionId) -> CommandInvocation {
-    CommandInvocation::new("new-window", vec!["-t".to_owned(), session.to_string()])
+    zz_client::desktop_nav::new_window_command(session)
 }
 
 #[must_use]
 pub fn select_window_command(window: WindowId) -> CommandInvocation {
-    CommandInvocation::new("select-window", vec!["-t".to_owned(), window.to_string()])
+    zz_client::desktop_nav::select_window_command(window)
 }
 
 #[must_use]
 pub fn select_pane_commands(pane: PaneId) -> Vec<CommandInvocation> {
-    vec![
-        CommandInvocation::new("select-window", ["-t".to_owned(), pane.to_string()]),
-        CommandInvocation::new("select-pane", ["-t".to_owned(), pane.to_string()]),
-    ]
+    zz_client::desktop_nav::select_pane_commands(pane)
 }
 
 #[must_use]
@@ -746,33 +710,10 @@ pub fn rename_prompt_command(
 
 #[must_use]
 pub fn kill_target_command(target: TreeTarget) -> CommandInvocation {
-    match target {
-        TreeTarget::Session(session) => {
-            CommandInvocation::new("kill-session", ["-t".to_owned(), session.to_string()])
-        }
-        TreeTarget::Window(window) => {
-            CommandInvocation::new("kill-window", ["-t".to_owned(), window.to_string()])
-        }
-        TreeTarget::Pane(pane) => {
-            CommandInvocation::new("kill-pane", ["-t".to_owned(), pane.to_string()])
-        }
-    }
+    zz_client::desktop_nav::kill_target_command(desktop_nav_target(target))
 }
 
 #[must_use]
 pub fn picker_split_command(pane: PaneId, axis: Axis) -> CommandInvocation {
-    CommandInvocation::new(
-        "split-window",
-        vec![
-            "--kind".to_owned(),
-            "picker".to_owned(),
-            match axis {
-                Axis::Horizontal => "-h",
-                Axis::Vertical => "-v",
-            }
-            .to_owned(),
-            "-t".to_owned(),
-            pane.to_string(),
-        ],
-    )
+    zz_client::picker_split_command(pane, axis)
 }
