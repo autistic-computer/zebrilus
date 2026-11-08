@@ -28,11 +28,7 @@ pub const WINDOW_CONTROLS: SurfaceRole = SurfaceRole::under(
     "Window controls",
     "Minimize, maximize and close on Windows and Linux",
 )
-.with(
-    P.shape(Shape::Square)
-        .hover(Highlight::Tint)
-        .selected(Highlight::None),
-);
+.with(P.hover(Highlight::Tint).selected(Highlight::None));
 pub const SIDEBAR: SurfaceRole = SurfaceRole::new(
     "sidebar",
     Kind::Panel,

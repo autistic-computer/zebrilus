@@ -755,13 +755,7 @@ impl SettingsView {
             ),
             AppearancePageItem::App(row @ ZzRow::WindowCornerRadius) => {
                 Self::numeric_setting(row.title(), &self.window_corner_radius, cx)
-                    .description("No effect with the system titlebar")
             }
-            AppearancePageItem::App(row @ ZzRow::UseSystemTitlebar) => Self::boolean_setting(
-                ConfigKey::UseSystemTitlebar,
-                row.title(),
-                resolved.use_system_titlebar,
-            ),
             item => {
                 return kit_row(
                     item,
@@ -1558,9 +1552,7 @@ impl Render for SettingsView {
             .overflow_hidden()
             .text_color(cx.theme().foreground)
             .when(
-                !penna::draws_window_controls(window)
-                    && !window.is_fullscreen()
-                    && !crate::profile::profile(cx).fixed_window,
+                !window.is_fullscreen() && !crate::profile::profile(cx).fixed_window,
                 |this| {
                     this.child(window_drag_handle(
                         "settings-top-drag",
@@ -2153,8 +2145,7 @@ fn numeric_config_value(config: &AppConfig, key: ConfigKey) -> ConfigValue<f32> 
         ConfigKey::WindowCornerRadius => config.window_corner_radius,
         ConfigKey::EditorFontSize => config.editor_font_size,
         ConfigKey::WhichKeyDelay => config.which_key_delay,
-        ConfigKey::UseSystemTitlebar
-        | ConfigKey::PaletteWindowLayout
+        ConfigKey::PaletteWindowLayout
         | ConfigKey::PaletteShowKeys
         | ConfigKey::PaletteVimMode
         | ConfigKey::WindowBackgroundBlur

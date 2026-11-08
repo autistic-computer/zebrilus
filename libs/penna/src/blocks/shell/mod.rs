@@ -97,9 +97,6 @@ pub fn window_drag_handle<E: InteractiveElementExt + FluentBuilder>(
     window: &mut Window,
     cx: &mut App,
 ) -> E {
-    if cfg!(target_os = "windows") {
-        return strip;
-    }
     let state = window.use_keyed_state(key.into(), cx, |_, _| DragCandidate {
         armed: false,
         accepts_click: false,

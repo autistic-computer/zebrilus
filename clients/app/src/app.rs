@@ -1566,6 +1566,7 @@ impl AppShell {
             place,
             None,
             &zz_ui::pane::PaneActionKeys::default(),
+            ala::px(0.0),
             move |action, _, cx| {
                 if action == zz_ui::pane::TerminalPaneAction::Flip {
                     let _ = flip_view.update(cx, |this, cx| this.flip_pane(pane_id, cx));

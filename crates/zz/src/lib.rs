@@ -44,7 +44,9 @@ use std::{
 };
 
 use ala::Styled as _;
-use ala::{AnyView, App, AppContext, Context, Entity, Window, WindowOptions, px, size};
+use ala::{
+    AnyView, App, AppContext, Context, Entity, Window, WindowDecorations, WindowOptions, px, size,
+};
 use ala_cef::{BrowserBootstrap, BrowserError, BrowserRuntime};
 use penna::{Root, ThemeMode};
 pub(crate) use zz_cli::application_arguments;
@@ -290,7 +292,6 @@ fn run_app(
                 size(px(1080.0), px(720.0)),
                 minimum_window_size,
             );
-            let window_decorations = config::window_decorations(cx);
             let mut titlebar = config::titlebar_options(cx);
             if cfg!(target_os = "linux") {
                 titlebar.title = Some(zz_protocol::app_identity::DISPLAY_NAME.into());
@@ -303,7 +304,7 @@ fn run_app(
                     window_background: config::window_background_appearance(cx),
                     display_id: restored_window.display_id,
                     window_min_size: Some(minimum_window_size),
-                    window_decorations: Some(window_decorations),
+                    window_decorations: Some(WindowDecorations::Client),
                     app_id: Some(zz_protocol::app_identity::DIRECTORY.into()),
                     #[cfg(target_os = "linux")]
                     icon: (cx.compositor_name() == "X11").then(app_icon::x11_window_icon),

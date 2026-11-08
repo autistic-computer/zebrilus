@@ -207,7 +207,7 @@ Browser, Terminal, Hosts, Agents, System, About:
 
 | Section | Contents |
 |---------|----------|
-| Interface | Look (a Mode segmented control for `theme-mode`, the Accent swatches for `chrome-accent`, the Tint, Tint strength and Corner radius sliders for `chrome-tint-hue`, `chrome-tint` and `widget-corner-radius`, the Controls segmented control and the Glass switch for `control-shape` and `interface-glass`, the system UI font picker, and Mono font for `ui-mono-font-family`, opening on Monospaced), Terminal (a live preview, Light theme and Dark theme, Window follows the theme for `chrome-terminal-colors`, Background opacity), Sidebar (`program-colors`), Size (transient UI zoom, `chrome-density` as Density), Accessibility (`chrome-contrast` as Increase contrast, `minimum-contrast` as Terminal text contrast, `reduce-transparency` as Reduce transparency, `motion` as Motion), Window (macOS app-icon pickers, window blur, Linux `window-corner-radius` and `use-system-titlebar`) |
+| Interface | Look (a Mode segmented control for `theme-mode`, the Accent swatches for `chrome-accent`, the Tint, Tint strength and Corner radius sliders for `chrome-tint-hue`, `chrome-tint` and `widget-corner-radius`, the Controls segmented control and the Glass switch for `control-shape` and `interface-glass`, the system UI font picker, and Mono font for `ui-mono-font-family`, opening on Monospaced), Terminal (a live preview, Light theme and Dark theme, Window follows the theme for `chrome-terminal-colors`, Background opacity), Sidebar (`program-colors`), Size (transient UI zoom, `chrome-density` as Density), Accessibility (`chrome-contrast` as Increase contrast, `minimum-contrast` as Terminal text contrast, `reduce-transparency` as Reduce transparency, `motion` as Motion), Window (macOS app-icon pickers, window blur, Linux `window-corner-radius`) |
 | Editor | Editor-pane typography and display controls, when compiled in |
 | Panes | Layout (`pane-gaps`), Focus (`pane-inactive-opacity`, `pane-glow-strength`), Frame (`pane-margin`); gapped panes draw their frame in glass, with corners that follow Interface's Corner radius up to 16 at 100% (`Theme::pane_radius()`), and the rim from the theme's glass (a hairline the outline's width without glass). PiPs take the same corner and follow Glass like a menu |
 | Multiplexer | Navigation, split shortcuts, Options rows, Import from tmux (one button over the system file picker), and the `zz/mux.conf` path with Reload |
@@ -319,16 +319,20 @@ title-bar row**: the sidebar's titlebar-height strip is the window's title bar (
 traffic lights, the `WindowControlArea::Drag` region, and the double-click handler), so the
 workspace reaches the window's top edge and the panes occupy that height. `WindowCorners` therefore
 gives the workspace the whole right edge (`.right()`), not only the bottom-right corner. Platforms
-that draw their own minimize/maximize/close buttons have nowhere left to put them, so where
-`draws_window_controls` holds . Windows, and Linux under client-side decorations . `AppShell` gives
-that height back at the top of the content column as `shell::app_titlebar_strip`: a real 34px flex
-row filled with `theme::chrome_background`, so it and the sidebar's strip read as one bar across the
-window. It carries `zz_ui::WindowControls` at its right, is a `WindowControlArea::Drag` region left
-of them (the area sits beside the buttons, never around them, or it would answer their hit tests),
-and owns the exposed top-right corner . `AppView` drops to `.right().bottom()` while it is mounted.
-The gate is re-read every render, so toggling `use-system-titlebar` moves the corner and the height
-on the spot. macOS draws no buttons, mounts no strip, and keeps the panes at the top edge. On Linux it mounts them
-inside an app-owned client-side frame because the forked zz-ui frame fixes its corner
+that draw their own minimize/maximize/close buttons (where `draws_window_controls` holds: Windows,
+and Linux under client-side decorations) float them over the content instead of giving them a row:
+`AppShell::render_floating_window_controls` pins `penna::WindowControls` to the top-right, `pane_margin`
+from the top and `pane_margin + WINDOW_CONTROLS_INSET` from the right, centered on the pane header
+row. The controls are 22px rounded squares 4px apart (`WINDOW_CONTROLS_SPAN`, 74px), the size of the
+pane header buttons, and they `occlude` so a press never reaches the header under them. `AppView`
+finds the pane at the layout's top-right (`top_right_pane`, or the zoomed pane) and widens that
+pane's header right padding by the span plus 8px (`window_controls_inset`), so its buttons move
+left of the controls; terminal and agent headers take it through `pane_header`'s `trailing_inset`,
+browser headers through `BrowserHeader::trailing_inset`. Editor and picker panes have no header,
+so the controls sit over their content. Titlebar mode, and the slide between modes, show the status
+bar instead, which carries the controls at its right end. Pane headers are window drag handles on
+every platform (`window_drag_handle`; Windows moves through `WM_SYSCOMMAND` `SC_MOVE`). On Linux the
+shell sits inside an app-owned client-side frame because the forked zz-ui frame fixes its corner
 radius at zero. The frame uses a fixed 13.5px macOS 27-style window radius on every
 exposed corner, retains the existing shadow, border, and resize hit zones, and squares any corner
 touching a tiled edge; a fully maximized window is square. `lib.rs` disables `Root`'s built-in border

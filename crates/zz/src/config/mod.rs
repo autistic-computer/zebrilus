@@ -4,7 +4,7 @@ use std::{
     sync::{Arc, Weak},
 };
 
-use ala::{App, Corners, Global, Pixels, WindowBackgroundAppearance, WindowDecorations, px};
+use ala::{App, Corners, Global, Pixels, WindowBackgroundAppearance, px};
 use zz_client::url_input::SearchProvider;
 use zz_daemon_client::{Endpoint, InteractiveClient};
 pub(crate) use zz_daemon_client::{HostEntry, validate_fleet_host};
@@ -198,7 +198,6 @@ fn install_config(path: Option<&Path>, parsed: Option<io::Result<ParsedConfig>>,
         apply_density(cx);
         apply_program_colors(cx);
         apply_window_background_appearance(cx);
-        apply_window_decorations(cx);
         crate::app_icon::apply(cx);
         cx.set_global(FleetHosts::default());
         cx.set_global(DaemonConfigOverrides::default());
@@ -230,7 +229,7 @@ fn install_config(path: Option<&Path>, parsed: Option<io::Result<ParsedConfig>>,
 
     log::info!(
         target: "zz::config",
-        "application configuration path={} pane_gaps={} pane_inactive_opacity={} pane_margin={} widget_corner_radius={} chrome_contrast={} window_corner_radius={} editor_font_size={} editor_line_numbers={} editor_relative_line_numbers={} editor_soft_wrap={} editor_vim_mode={} browser_element_selector_hotkey={} browser_search_provider={} browser_egress={} use_system_titlebar={} window_background_blur={} motion={} tray={} quit_daemon_on_exit={} auto_restart_stale_daemon={} check_for_updates={} daemon_override_entries={}",
+        "application configuration path={} pane_gaps={} pane_inactive_opacity={} pane_margin={} widget_corner_radius={} chrome_contrast={} window_corner_radius={} editor_font_size={} editor_line_numbers={} editor_relative_line_numbers={} editor_soft_wrap={} editor_vim_mode={} browser_element_selector_hotkey={} browser_search_provider={} browser_egress={} window_background_blur={} motion={} tray={} quit_daemon_on_exit={} auto_restart_stale_daemon={} check_for_updates={} daemon_override_entries={}",
         path.display(),
         parsed.config.pane_gaps.value,
         parsed.config.pane_inactive_opacity.value,
@@ -246,7 +245,6 @@ fn install_config(path: Option<&Path>, parsed: Option<io::Result<ParsedConfig>>,
         parsed.browser.element_selector_hotkey.value,
         parsed.browser.search_provider.value.as_str(),
         parsed.config.browser_egress.value,
-        parsed.config.use_system_titlebar.value,
         parsed.config.window_background_blur.value,
         parsed.config.motion.value.as_str(),
         parsed.config.tray.value,
@@ -281,7 +279,6 @@ fn install_config(path: Option<&Path>, parsed: Option<io::Result<ParsedConfig>>,
     apply_density(cx);
     apply_program_colors(cx);
     apply_window_background_appearance(cx);
-    apply_window_decorations(cx);
     crate::app_icon::apply(cx);
     cx.set_global(DaemonConfigOverrides {
         entries: parsed.daemon_entries,
@@ -513,14 +510,6 @@ pub(crate) fn window_background_appearance(cx: &App) -> WindowBackgroundAppearan
     crate::window::background::native_appearance(requested_window_background_appearance(cx))
 }
 
-pub(crate) fn window_decorations(cx: &App) -> WindowDecorations {
-    if cfg!(target_os = "linux") && resolved_config(cx).use_system_titlebar.value {
-        WindowDecorations::Server
-    } else {
-        WindowDecorations::Client
-    }
-}
-
 fn apply_program_colors(cx: &mut App) {
     let colors = resolved_config(cx).program_colors.value;
     cx.set_global(zz_ui::program::ProgramColors(colors));
@@ -542,20 +531,6 @@ fn apply_animations(cx: &mut App) {
 
 pub(crate) fn titlebar_options(cx: &App) -> ala::TitlebarOptions {
     penna::TitleBar::title_bar_options(penna::Theme::global(cx).title_bar_height())
-}
-
-fn apply_window_decorations(cx: &mut App) {
-    let decorations = window_decorations(cx);
-    for window in cx.windows() {
-        window
-            .update(cx, |_, window, _| {
-                if decorations == WindowDecorations::Server {
-                    window.set_client_inset(px(0.0));
-                }
-                window.request_decorations(decorations);
-            })
-            .ok();
-    }
 }
 
 fn requested_window_background_appearance(cx: &App) -> WindowBackgroundAppearance {
@@ -1225,7 +1200,6 @@ mod tests {
              pane-inactive-opacity = 0.85\n\
              pane-margin = 6 # inline comments are allowed\n\
              window-corner-radius = 10\n\
-             use-system-titlebar = true\n\
              window-background-blur = true\n\
              motion = off\n\
              notifications = false\n\
@@ -1285,11 +1259,6 @@ mod tests {
         assert_f32_eq(parsed.config.window_corner_radius.value, 10.0);
         assert_eq!(
             parsed.config.window_corner_radius.provenance,
-            ConfigProvenance::Override
-        );
-        assert!(parsed.config.use_system_titlebar.value);
-        assert_eq!(
-            parsed.config.use_system_titlebar.provenance,
             ConfigProvenance::Override
         );
         assert!(parsed.config.window_background_blur.value);
@@ -1959,7 +1928,6 @@ mod tests {
              chrome-tint = -1\n\
              pane-margin = NaN\n\
              window-corner-radius = 300\n\
-             use-system-titlebar = sometimes\n\
              window-background-blur = perhaps\n\
              future-setting = 12\n\
              malformed\n",
@@ -1978,11 +1946,6 @@ mod tests {
             parsed.config.window_corner_radius.provenance,
             ConfigProvenance::Override
         );
-        assert!(!parsed.config.use_system_titlebar.value);
-        assert_eq!(
-            parsed.config.use_system_titlebar.provenance,
-            ConfigProvenance::Override
-        );
         assert!(!parsed.config.window_background_blur.value);
         assert_eq!(
             parsed.config.window_background_blur.provenance,
@@ -1996,14 +1959,13 @@ mod tests {
             parsed.config.pane_margin.provenance,
             ConfigProvenance::Override
         );
-        assert_eq!(parsed.diagnostics.len(), 7);
+        assert_eq!(parsed.diagnostics.len(), 6);
         assert!(parsed.diagnostics[0].message.contains("between 0 and 1"));
         assert!(parsed.diagnostics[1].message.contains("finite"));
         assert!(parsed.diagnostics[2].message.contains("between 0 and 32"));
         assert!(parsed.diagnostics[3].message.contains("expected a boolean"));
-        assert!(parsed.diagnostics[4].message.contains("expected a boolean"));
-        assert!(parsed.diagnostics[5].message.contains("unsupported key"));
-        assert_eq!(parsed.diagnostics[6].message, "expected `key = value`");
+        assert!(parsed.diagnostics[4].message.contains("unsupported key"));
+        assert_eq!(parsed.diagnostics[5].message, "expected `key = value`");
     }
 
     #[test]
@@ -2615,23 +2577,6 @@ mod tests {
         assert!(cx.update(|cx| fleet_hosts(cx)).is_empty());
     }
 
-    #[cfg(target_os = "linux")]
-    #[ala::test]
-    fn system_titlebar_selects_server_side_decorations(cx: &mut ala::TestAppContext) {
-        assert_eq!(
-            cx.update(|cx| window_decorations(cx)),
-            WindowDecorations::Client
-        );
-
-        let config = parse_config("use-system-titlebar = true\n").config;
-        cx.update(|cx| cx.set_global(AppConfig::from(config)));
-
-        assert_eq!(
-            cx.update(|cx| window_decorations(cx)),
-            WindowDecorations::Server
-        );
-    }
-
     #[ala::test]
     fn window_background_blur_selects_the_platform_blur_request(cx: &mut ala::TestAppContext) {
         assert_eq!(
@@ -2967,7 +2912,6 @@ mod tests {
     #[test]
     fn named_config_keys_round_trip_and_retired_ones_do_not() {
         let named = [
-            "use-system-titlebar",
             "window-corner-radius",
             "window-background-blur",
             "motion",
@@ -3015,6 +2959,7 @@ mod tests {
             .chain(zz_config::RETIRED_AGENT_KEYS)
             .chain(zz_config::RETIRED_THEME_KEYS)
             .chain(zz_config::RETIRED_NAVIGATION_KEYS)
+            .chain(zz_config::RETIRED_WINDOW_KEYS)
         {
             assert_eq!(ConfigKey::parse(key), None, "{key}");
         }

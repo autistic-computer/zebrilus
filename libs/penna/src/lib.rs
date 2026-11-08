@@ -11,8 +11,9 @@ pub use blocks::inspector::Inspector;
 pub use blocks::notice::Notice;
 pub use blocks::steps::Steps;
 pub use blocks::title_bar::{
-    MACOS_TRAFFIC_LIGHT_SPAN, TITLE_BAR_HEIGHT, TitleBar, WindowControls, draws_window_controls,
-    macos_traffic_light_clearance, window_controls_width,
+    MACOS_TRAFFIC_LIGHT_SPAN, TITLE_BAR_HEIGHT, TitleBar, WINDOW_CONTROLS_INSET,
+    WINDOW_CONTROLS_SPAN, WindowControls, draws_window_controls, macos_traffic_light_clearance,
+    window_controls_width,
 };
 pub use components::bar::{Bar, BarLook};
 pub use components::card::{Card, CardLook};

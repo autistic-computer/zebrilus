@@ -129,7 +129,6 @@ The client-local schema includes these scalar settings and chrome colors.
 
 | Key | Default | Valid range | Consumer |
 | --- | ---: | --- | --- |
-| `use-system-titlebar` | `false` | `true` or `false` | On Linux, request a desktop-owned titlebar and window border instead of client-side window decorations |
 | `window-corner-radius` | `13.5` | `0..=32` | The app-drawn window frame's corner, visible only under Linux client-side decorations |
 | `window-background-blur` | `false` | `true` or `false` | Whether the desktop shows through the window chrome, blurred: on fills the chrome at 93% over the blur, off makes it opaque |
 | `motion` | `default` | `off`, `default` or `fast` | Interface motion. `off` stops transitions, loading indicators, scrollbar fades, and animated UI images; `fast` runs them at twice their designed speed, through the process-wide `ala::animation_speed` that scales ala `with_animation` timings, every spring step, and the hand-timed fades (chevrons, pane arrivals, the sidebar slide, press highlights, streaming text, the agent pulse). Scroll physics, cursor blink and timers stay as they are. Settings > Interface shows it as Motion |
@@ -359,14 +358,12 @@ rejects `select-pane-kind … editor` while the flag is off. To enable it again,
 gate directly; the picker row follows the `zz/config` entry, not the mux option. Panes that already
 exist keep rendering on reattach when the switch is off; flipping it never destroys pane state.
 
-`use-system-titlebar` maps to ala server-side decorations for the main window on
-Linux. It is applied at window creation and re-requested for every open window after a watched
-configuration change, so switching modes does not require a restart. KDE supports the request on
-both Wayland and X11 in the pinned ala backend. A Wayland compositor without server-decoration
-support keeps client-side decorations; ala reports the negotiated mode and the app-owned rounded
-frame follows that result. Returning to server decorations also clears the client frame inset.
-The in-app navigation/status strip remains available, but its Linux window controls disappear when
-the desktop owns them.
+The main window always asks for client-side decorations: zz draws its own minimize, maximize and
+close on Linux and Windows. `use-system-titlebar` went on 2026-11-08
+(`zz_config::RETIRED_WINDOW_KEYS`); a line with it is reported with
+`` `use-system-titlebar` was removed: zz draws its own window controls `` and skipped. A
+compositor that still insists on server-side decorations gets its own titlebar, ala reports
+`Decorations::Server`, and zz draws no controls.
 
 `window-background-blur` requests `WindowBackgroundAppearance::Blurred` for both newly created and
 already-open windows. `window/background.rs` maps that request to a transparent ala surface plus
@@ -710,7 +707,7 @@ always-live inactive-opacity factor and the selected pane's edge strength, which
 
 | Page | Groups |
 | --- | --- |
-| Interface | **Look** (`theme-mode` as Mode, a System, Light and Dark segmented control, `chrome-accent` as Accent swatches with a custom color picker, `chrome-tint-hue` as Tint and `chrome-tint` as Tint strength, `widget-corner-radius` as Corner radius in percent, three sliders, `control-shape` as Controls, a segmented control, `interface-glass` as Glass, a switch, `UI font`, and Mono font) · **Terminal** (a live preview, Light theme and Dark theme, searchable lists of the installed themes that open on their own kind and write `theme = light:A,dark:B`, `chrome-terminal-colors` as Window follows the theme, and `background-opacity` as Background opacity) · **Sidebar** (`program-colors`) · **Size** (transient `UI zoom` as Text size, `chrome-density` as Density) · **Accessibility** (`chrome-contrast` as Increase contrast, a slider, `minimum-contrast` as Terminal text contrast, a switch for 4.5 or 1, `reduce-transparency` as Reduce transparency, `motion` as Motion, an Off, Default and Fast segmented control) · **Window**, where it has rows (macOS `app-icon` as three icon tiles, `window-background-blur` as "Window blur" where the platform profile has it, Linux `window-corner-radius` and `use-system-titlebar`) |
+| Interface | **Look** (`theme-mode` as Mode, a System, Light and Dark segmented control, `chrome-accent` as Accent swatches with a custom color picker, `chrome-tint-hue` as Tint and `chrome-tint` as Tint strength, `widget-corner-radius` as Corner radius in percent, three sliders, `control-shape` as Controls, a segmented control, `interface-glass` as Glass, a switch, `UI font`, and Mono font) · **Terminal** (a live preview, Light theme and Dark theme, searchable lists of the installed themes that open on their own kind and write `theme = light:A,dark:B`, `chrome-terminal-colors` as Window follows the theme, and `background-opacity` as Background opacity) · **Sidebar** (`program-colors`) · **Size** (transient `UI zoom` as Text size, `chrome-density` as Density) · **Accessibility** (`chrome-contrast` as Increase contrast, a slider, `minimum-contrast` as Terminal text contrast, a switch for 4.5 or 1, `reduce-transparency` as Reduce transparency, `motion` as Motion, an Off, Default and Fast segmented control) · **Window**, where it has rows (macOS `app-icon` as three icon tiles, `window-background-blur` as "Window blur" where the platform profile has it, Linux `window-corner-radius`) |
 | Browser | **Network** (`browser-egress`) · **Agents** (`browser-remote-debugging-port` as an on/off switch that writes `9222`) · **Search** (`browser-search-provider`) · **Shortcuts** (`browser-element-selector-hotkey`) |
 | Editor | **Typography** (`editor-font-size`) · **Display** (`editor-line-numbers`, `editor-relative-line-numbers`, `editor-soft-wrap`, `editor-vim-mode`) |
 | Panes | **Layout** (`pane-gaps`) · **Focus** (`pane-inactive-opacity`, `pane-glow-strength` as Selected pane edge) · **Frame** (`pane-margin`, disabled without gaps) |
@@ -832,9 +829,6 @@ provenance, and refreshes the open Settings route.
 # Examples
 
 ```ini
-# Let KDE (or another capable Linux desktop) own the titlebar and window border.
-use-system-titlebar = true
-
 # Blend the terminal color over its opaque pane base.
 background-opacity = 0.85
 

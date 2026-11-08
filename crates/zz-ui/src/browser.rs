@@ -39,6 +39,7 @@ pub struct BrowserHeader {
     tabs: AnyElement,
     actions: AnyElement,
     toolbar: BrowserToolbar,
+    trailing_inset: Pixels,
 }
 
 impl BrowserHeader {
@@ -56,7 +57,14 @@ impl BrowserHeader {
             tabs: tabs.into_any_element(),
             actions: actions.into_any_element(),
             toolbar,
+            trailing_inset: px(0.0),
         }
+    }
+
+    #[must_use]
+    pub fn trailing_inset(mut self, inset: Pixels) -> Self {
+        self.trailing_inset = inset;
+        self
     }
 }
 
@@ -82,7 +90,8 @@ impl RenderOnce for BrowserHeader {
                     .h(px(BROWSER_TAB_ROW_HEIGHT))
                     .flex_none()
                     .gap_2()
-                    .px(px(crate::CHROME_GAP))
+                    .pl(px(crate::CHROME_GAP))
+                    .pr(px(crate::CHROME_GAP) + self.trailing_inset)
                     .font_family(cx.theme().font_family.clone())
                     .type_style(TextStyle::Body, cx)
                     .line_height(px(16.0))

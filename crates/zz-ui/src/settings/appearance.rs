@@ -10,7 +10,6 @@ pub enum ZzRow {
     AppIcon,
     WindowBackgroundBlur,
     WindowCornerRadius,
-    UseSystemTitlebar,
 }
 
 impl ZzRow {
@@ -26,7 +25,6 @@ impl ZzRow {
             Self::AppIcon => "App Icon",
             Self::WindowBackgroundBlur => "Window blur",
             Self::WindowCornerRadius => "Window corner radius",
-            Self::UseSystemTitlebar => "System titlebar",
         }
     }
 }
@@ -70,7 +68,6 @@ pub fn appearance_page_items(macos: bool, has_window_blur: bool) -> Vec<Appearan
         macos.then_some(ZzRow::AppIcon),
         has_window_blur.then_some(ZzRow::WindowBackgroundBlur),
         cfg!(target_os = "linux").then_some(ZzRow::WindowCornerRadius),
-        cfg!(target_os = "linux").then_some(ZzRow::UseSystemTitlebar),
     ];
     if window.iter().any(Option::is_some) {
         items.push(AppearancePageItem::Group { title: "Window" });
@@ -121,10 +118,7 @@ mod tests {
             Item::App(ZzRow::WindowBackgroundBlur),
         ];
         if cfg!(target_os = "linux") {
-            expected.extend([
-                Item::App(ZzRow::WindowCornerRadius),
-                Item::App(ZzRow::UseSystemTitlebar),
-            ]);
+            expected.push(Item::App(ZzRow::WindowCornerRadius));
         }
         assert_eq!(appearance_page_items(true, true), expected);
 

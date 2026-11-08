@@ -316,6 +316,7 @@ pub fn terminal_pane_header(
         state,
         flip,
         &PaneActionKeys::default(),
+        px(0.0),
         on_action,
         cx,
     )
@@ -509,6 +510,7 @@ pub fn pane_header(
     state: PaneState,
     flip: Option<PaneFlip>,
     keys: &PaneActionKeys,
+    trailing_inset: Pixels,
     on_action: impl Fn(TerminalPaneAction, &mut Window, &mut App) + 'static,
     cx: &App,
 ) -> Stateful<ala::Div> {
@@ -530,7 +532,8 @@ pub fn pane_header(
         .size_full()
         .items_center()
         .gap(px(8.0))
-        .px(px(crate::CHROME_GAP))
+        .pl(px(crate::CHROME_GAP))
+        .pr(px(crate::CHROME_GAP) + trailing_inset)
         .font_family(cx.theme().font_family.clone())
         .type_style(TextStyle::Body, cx)
         .line_height(px(16.0))

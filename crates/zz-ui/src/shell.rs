@@ -121,6 +121,7 @@ pub fn workspace_status_bar(
         div()
             .flex_none()
             .h(height)
+            .pr(penna::WINDOW_CONTROLS_INSET)
             .child(controls)
             .into_any_element()
     });

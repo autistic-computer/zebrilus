@@ -247,6 +247,33 @@ fn browser_metadata_command(
     }
 }
 
+const WINDOW_CONTROLS_CLEARANCE: Pixels = px(8.0);
+
+fn window_controls_inset(holds_controls: bool) -> Pixels {
+    if holds_controls {
+        penna::WINDOW_CONTROLS_SPAN + WINDOW_CONTROLS_CLEARANCE
+    } else {
+        px(0.0)
+    }
+}
+
+fn top_right_pane(node: &LayoutNode) -> Option<PaneId> {
+    match node {
+        LayoutNode::Pane(pane) => Some(*pane),
+        LayoutNode::Empty => None,
+        LayoutNode::Split {
+            axis: Axis::Horizontal,
+            second,
+            ..
+        } => top_right_pane(second),
+        LayoutNode::Split {
+            axis: Axis::Vertical,
+            first,
+            ..
+        } => top_right_pane(first),
+    }
+}
+
 fn collect_pane_corners(
     node: &LayoutNode,
     corners: WindowCorners,
@@ -556,6 +583,7 @@ struct TerminalHeaderState {
     folder: Option<String>,
     flip: Option<PaneFlip>,
     keys: zz_ui::pane::PaneActionKeys,
+    trailing_inset: Pixels,
     radii: Corners<Pixels>,
     opacity: f32,
 }
@@ -602,6 +630,7 @@ impl Render for TerminalHeaderView {
             state.place,
             state.flip,
             &state.keys,
+            state.trailing_inset,
             move |action, window, cx| {
                 if matches!(action, TerminalPaneAction::Flip) {
                     if let Some(app) = flip_app.upgrade() {
@@ -761,6 +790,7 @@ pub struct AppView {
     pane_drag: Option<PaneDragState>,
     pane_drop_preview: Rc<Cell<DropPreviewFrame>>,
     pane_layout_override: Option<PaneLayoutOverride>,
+    window_controls_pane: Option<PaneId>,
     pane_canvas_bounds: Rc<Cell<Bounds<Pixels>>>,
     pane_arrivals: PaneArrivals,
     input_router: InputRouter,
@@ -1180,6 +1210,7 @@ impl AppView {
             pane_drag: None,
             pane_drop_preview: Rc::new(Cell::new(DropPreviewFrame::default())),
             pane_layout_override: None,
+            window_controls_pane: None,
             pane_canvas_bounds: Rc::new(Cell::new(Bounds::default())),
             pane_arrivals: PaneArrivals::default(),
             input_router,
@@ -3552,6 +3583,9 @@ impl AppView {
                         folder: zz_client::navigation::pane_folder(snapshot),
                         flip: None,
                         keys: self.pane_action_keys(cx),
+                        trailing_inset: window_controls_inset(
+                            self.window_controls_pane == Some(*pane),
+                        ),
                         radii,
                         opacity: if inactive { inactive_opacity } else { 1.0 },
                     };
@@ -3816,6 +3850,16 @@ impl AppView {
             let corners = by_pane.get(pane).copied().unwrap_or(WindowCorners::NONE);
             output.update(cx, |output, cx| {
                 output.set_window_corners(corners, cx);
+            });
+        }
+    }
+
+    fn synchronize_window_controls_pane(&mut self, pane: Option<PaneId>, cx: &mut Context<Self>) {
+        self.window_controls_pane = pane;
+        for (id, browser) in &self.browsers {
+            let inset = window_controls_inset(Some(*id) == pane);
+            browser.update(cx, |browser, cx| {
+                browser.set_header_trailing_inset(inset, cx);
             });
         }
     }
@@ -4149,6 +4193,7 @@ impl AppView {
                 folder: snapshot.and_then(zz_client::navigation::pane_folder),
                 flip: None,
                 keys: self.pane_action_keys(cx),
+                trailing_inset: px(0.0),
                 radii: Corners::default(),
                 opacity,
             };
@@ -4181,6 +4226,7 @@ impl AppView {
                 },
                 None,
                 &self.pane_action_keys(cx),
+                px(0.0),
                 move |action, _, cx| {
                     for command in action.commands(pane, None) {
                         mux.read(cx).execute(command);
@@ -4422,25 +4468,12 @@ impl Render for AppView {
         self.reconcile_float_drag(active_window, cx);
         self.reconcile_pane_drag(active_window, prefix_armed, window, cx);
         self.reconcile_pane_layout_override(active_window, snapshot.generation);
-        let chrome_above_panes =
-            matches!(chrome, ChromeMode::Titlebar) || draws_window_controls(window);
+        let chrome_above_panes = matches!(chrome, ChromeMode::Titlebar);
         let layout_corners = match chrome {
             ChromeMode::Sidebar if route == WorkspaceRoute::App => {
-                let corners = WindowCorners::for_window(window).right().top();
-                if chrome_above_panes {
-                    WindowCorners::NONE
-                } else {
-                    corners
-                }
+                WindowCorners::for_window(window).right().top()
             }
-            ChromeMode::Sidebar => {
-                let corners = WindowCorners::for_window(window).right();
-                if chrome_above_panes {
-                    corners.bottom()
-                } else {
-                    corners
-                }
-            }
+            ChromeMode::Sidebar => WindowCorners::for_window(window).right(),
             ChromeMode::Titlebar => WindowCorners::for_window(window).bottom(),
         };
         let predicted_layout = self
@@ -4450,6 +4483,18 @@ impl Render for AppView {
         let pane_layout =
             active_window.map(|window| predicted_layout.as_ref().unwrap_or(&window.layout));
         self.synchronize_pane_corners(active_window, pane_layout, layout_corners, cx);
+        let window_controls_pane = (route == WorkspaceRoute::App
+            && chrome == ChromeMode::Sidebar
+            && draws_window_controls(window))
+        .then(|| {
+            active_window.and_then(|active| {
+                active
+                    .zoomed_pane
+                    .or_else(|| pane_layout.and_then(top_right_pane))
+            })
+        })
+        .flatten();
+        self.synchronize_window_controls_pane(window_controls_pane, cx);
         let pane_drag_armed = prefix_armed
             && active_window
                 .is_some_and(|window| window.zoomed_pane.is_none() && window.panes.len() > 1);

@@ -369,6 +369,7 @@ struct ChromeState {
     place: zz_ui::pane::PaneState,
     drag_title: String,
     opacity: f32,
+    trailing_inset: Pixels,
     shows_empty_state: bool,
     can_go_back: bool,
     can_go_forward: bool,
@@ -420,6 +421,7 @@ pub(crate) struct BrowserView {
     omnibox: OmniboxState,
     focus_handle: FocusHandle,
     chrome_opacity: f32,
+    header_trailing_inset: Pixels,
     window_corners: WindowCorners,
     content_bounds: Option<Bounds<Pixels>>,
     page_buttons_down: u8,
@@ -632,6 +634,7 @@ impl BrowserView {
                 place: zz_ui::pane::PaneState::default(),
                 drag_title: initial_url.clone(),
                 opacity: 1.0,
+                trailing_inset: px(0.0),
                 shows_empty_state: is_blank_url(&initial_url),
                 can_go_back: false,
                 can_go_forward: false,
@@ -779,6 +782,7 @@ impl BrowserView {
             omnibox: OmniboxState::default(),
             focus_handle,
             chrome_opacity: 1.0,
+            header_trailing_inset: px(0.0),
             window_corners: WindowCorners::NONE,
             content_bounds: None,
             page_buttons_down: 0,
@@ -939,6 +943,13 @@ impl BrowserView {
     pub(crate) fn set_window_corners(&mut self, corners: WindowCorners, cx: &mut Context<Self>) {
         if self.window_corners != corners {
             self.window_corners = corners;
+            cx.notify();
+        }
+    }
+
+    pub(crate) fn set_header_trailing_inset(&mut self, inset: Pixels, cx: &mut Context<Self>) {
+        if self.header_trailing_inset != inset {
+            self.header_trailing_inset = inset;
             cx.notify();
         }
     }
@@ -3737,13 +3748,16 @@ impl Render for BrowserChromeView {
             .w_full()
             .flex_none()
             .opacity(self.state.opacity)
-            .child(BrowserHeader::new(
-                self.state.active,
-                tabs,
-                actions,
-                BrowserToolbar::new(back, forward, reload, address, picker, more)
-                    .show_separator(!self.state.shows_empty_state),
-            ))
+            .child(
+                BrowserHeader::new(
+                    self.state.active,
+                    tabs,
+                    actions,
+                    BrowserToolbar::new(back, forward, reload, address, picker, more)
+                        .show_separator(!self.state.shows_empty_state),
+                )
+                .trailing_inset(self.state.trailing_inset),
+            )
     }
 }
 
@@ -3783,6 +3797,7 @@ impl Render for BrowserView {
             place,
             drag_title,
             opacity: self.chrome_opacity,
+            trailing_inset: self.header_trailing_inset,
             shows_empty_state,
             can_go_back: self.can_go_back,
             can_go_forward: self.can_go_forward,

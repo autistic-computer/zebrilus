@@ -339,7 +339,7 @@ recipes; penna's `knowledge/designs/kit.md` maps each to the recipe and look tha
 | Role | Group | Covers | Where | Drift found |
 |---|---|---|---|---|
 | `window` | panel | window plane (solid or blurred), Linux frame shadow and edge | `ui/shell.rs:36`, `zz/window/frame.rs:113` | desktop 93% under blur, thin client opaque; nothing draws through the role yet |
-| `titlebar` | bar | title bar strip, the control strip above panes | `ui/shell.rs:137` | |
+| `titlebar` | bar | title bar strip | `ui/shell.rs:137` | |
 | `chrome.button` | icon-button | sidebar toggle, settings gear, tree/flat eye, iPad search, window overflow | `ui/navigation.rs:101` | already one function |
 | `titlebar.window-tab` | tab | window pills with hover close and bell/activity dots | `ui/navigation.rs:162` | active looks the same as hover; Default still lifts both, a theme can tell them apart (`selected: glass` turns the active pill to glass) |
 | `titlebar.status-chip` | badge | update "v1.2", host name (the agents chip, "2 running", went on 2026-10-24) | `ui/navigation/status.rs:54`, `zz/status_bar.rs:139` | three treatments, hand-made dot; fixed, one chip |

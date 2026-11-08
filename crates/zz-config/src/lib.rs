@@ -45,7 +45,6 @@ pub const DEFAULT_WIDGET_CORNER_RADIUS: f32 = 12.0;
 pub const DEFAULT_CHROME_CONTRAST: f32 = 1.0;
 pub const DEFAULT_REDUCE_TRANSPARENCY: bool = false;
 pub const DEFAULT_CHROME_TINT: f32 = 0.15;
-pub const DEFAULT_USE_SYSTEM_TITLEBAR: bool = false;
 pub const DEFAULT_WINDOW_BACKGROUND_BLUR: bool = false;
 pub const DEFAULT_TRAY: bool = true;
 pub const DEFAULT_NOTIFICATIONS: bool = true;
@@ -77,7 +76,6 @@ pub enum ConfigKey {
     PaletteShowKeys,
     PaletteVimMode,
     WhichKeyDelay,
-    UseSystemTitlebar,
     WindowCornerRadius,
     WindowBackgroundBlur,
     Motion,
@@ -125,7 +123,6 @@ impl ConfigKey {
             Self::PaletteShowKeys => "palette-show-keys",
             Self::PaletteVimMode => "palette-vim-mode",
             Self::WhichKeyDelay => "which-key-delay",
-            Self::UseSystemTitlebar => "use-system-titlebar",
             Self::WindowCornerRadius => "window-corner-radius",
             Self::WindowBackgroundBlur => "window-background-blur",
             Self::Motion => "motion",
@@ -173,7 +170,6 @@ impl ConfigKey {
             "palette-show-keys" => Some(Self::PaletteShowKeys),
             "palette-vim-mode" => Some(Self::PaletteVimMode),
             "which-key-delay" => Some(Self::WhichKeyDelay),
-            "use-system-titlebar" => Some(Self::UseSystemTitlebar),
             "window-corner-radius" => Some(Self::WindowCornerRadius),
             "window-background-blur" => Some(Self::WindowBackgroundBlur),
             "motion" => Some(Self::Motion),
@@ -230,8 +226,7 @@ impl ConfigKey {
             Self::WindowCornerRadius => Some((0.0, MAX_WINDOW_CORNER_RADIUS)),
             Self::EditorFontSize => Some((MIN_EDITOR_FONT_SIZE, MAX_EDITOR_FONT_SIZE)),
             Self::WhichKeyDelay => Some((0.0, MAX_WHICH_KEY_DELAY)),
-            Self::UseSystemTitlebar
-            | Self::PaletteWindowLayout
+            Self::PaletteWindowLayout
             | Self::PaletteShowKeys
             | Self::PaletteVimMode
             | Self::WindowBackgroundBlur
@@ -364,7 +359,6 @@ pub struct AppConfig {
     pub palette_show_keys: ConfigValue<bool>,
     pub palette_vim_mode: ConfigValue<bool>,
     pub which_key_delay: ConfigValue<f32>,
-    pub use_system_titlebar: ConfigValue<bool>,
     pub window_corner_radius: ConfigValue<f32>,
     pub window_background_blur: ConfigValue<bool>,
     pub motion: ConfigValue<MotionSetting>,
@@ -406,7 +400,6 @@ impl Default for AppConfig {
             palette_show_keys: ConfigValue::from_default(true),
             palette_vim_mode: ConfigValue::from_default(false),
             which_key_delay: ConfigValue::from_default(DEFAULT_WHICH_KEY_DELAY),
-            use_system_titlebar: ConfigValue::from_default(DEFAULT_USE_SYSTEM_TITLEBAR),
             window_corner_radius: ConfigValue::from_default(DEFAULT_WINDOW_CORNER_RADIUS),
             window_background_blur: ConfigValue::from_default(DEFAULT_WINDOW_BACKGROUND_BLUR),
             motion: ConfigValue::from_default(MotionSetting::Default),
@@ -450,7 +443,6 @@ impl AppConfig {
         match key {
             ConfigKey::PaletteShowKeys => Some(&mut self.palette_show_keys),
             ConfigKey::PaletteVimMode => Some(&mut self.palette_vim_mode),
-            ConfigKey::UseSystemTitlebar => Some(&mut self.use_system_titlebar),
             ConfigKey::WindowBackgroundBlur => Some(&mut self.window_background_blur),
             ConfigKey::Tray => Some(&mut self.tray),
             ConfigKey::Notifications => Some(&mut self.notifications),
@@ -891,6 +883,14 @@ pub fn parse_config(source: &str, system_font_family: &str) -> ParsedConfig {
             continue;
         }
 
+        if RETIRED_WINDOW_KEYS.contains(&key) {
+            parsed.diagnostics.push(ConfigDiagnostic {
+                line: line_number,
+                message: format!("`{key}` was removed: zz draws its own window controls"),
+            });
+            continue;
+        }
+
         if RETIRED_MATERIAL_KEYS.contains(&key) {
             let instead = if key == "widget-glass" {
                 "set `interface-glass`, or Glass in Settings > Interface"
@@ -1117,8 +1117,7 @@ pub fn parse_config(source: &str, system_font_family: &str) -> ParsedConfig {
             ConfigKey::ChromeTintHue => &mut parsed.config.chrome_tint_hue,
             ConfigKey::EditorFontSize => &mut parsed.config.editor_font_size,
             ConfigKey::WhichKeyDelay => &mut parsed.config.which_key_delay,
-            ConfigKey::UseSystemTitlebar
-            | ConfigKey::PaletteWindowLayout
+            ConfigKey::PaletteWindowLayout
             | ConfigKey::PaletteShowKeys
             | ConfigKey::PaletteVimMode
             | ConfigKey::WindowBackgroundBlur
@@ -1495,6 +1494,8 @@ pub const RETIRED_STATUS_KEYS: [&str; 5] = [
 
 pub const RETIRED_THEME_KEYS: [&str; 1] = ["interface-theme"];
 
+pub const RETIRED_WINDOW_KEYS: [&str; 1] = ["use-system-titlebar"];
+
 pub const RETIRED_NAVIGATION_KEYS: [&str; 1] = ["picker-focus-sidebar"];
 
 pub const RETIRED_MOTION_KEYS: [&str; 3] =
@@ -1511,6 +1512,7 @@ pub fn is_app_config_key(key: &str) -> bool {
         || RETIRED_AGENT_KEYS.contains(&key)
         || RETIRED_THEME_KEYS.contains(&key)
         || RETIRED_NAVIGATION_KEYS.contains(&key)
+        || RETIRED_WINDOW_KEYS.contains(&key)
         || MuxOptionKey::from_config_key(key).is_some()
         || key.starts_with("host-")
         || zz_daemon_client::tailnet::Settings::is_key(key)
