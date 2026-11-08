@@ -1,6 +1,6 @@
 ---
 type: Protocol
-title: zz wire protocol (v119)
+title: zz wire protocol (v120)
 description: The versioned, little-endian length-prefixed, postcard-encoded control protocol whose ProtocolMessage enum carries the entire client/daemon conversation over local IPC or an SSH tunnel.
 resource: crates/zz-protocol/src/framing.rs
 tags: [protocol, wire, framing, postcard, versioning]
@@ -15,7 +15,7 @@ daemon through an OpenSSH `ssh -L` Unix-socket forward. iOS instead carries the 
 through `zz proxy` over an in-process `russh` SSH channel.
 Every message is wrapped in a fixed envelope carrying a `u32` little-endian length prefix, a
 one-byte **lane** tag, a **flags** byte, and a `u16` **protocol version**. The current wire version is
-**`PROTOCOL_VERSION = 119`** (`crates/zz-protocol/src/message.rs`).
+**`PROTOCOL_VERSION = 120`** (`crates/zz-protocol/src/message.rs`).
 
 The version is a gate, not a negotiation: a frame whose envelope version differs from the running
 build's is rejected outright. Before disconnecting, a daemon makes a best-effort
@@ -64,7 +64,7 @@ Relevant constants (`framing.rs`): `MAX_FRAME_BYTES = 64 * 1024 * 1024`, `ENVELO
 | length | 0..4 | `u32` LE | Bytes following the prefix (`4 + payload`) |
 | lane | 4 | `u8` | `0` = Control, `1` = Terminal |
 | flags | 5 | `u8` | `0x00` only; every other value is rejected |
-| version | 6..8 | `u16` LE | `PROTOCOL_VERSION` (119) |
+| version | 6..8 | `u16` LE | `PROTOCOL_VERSION` (120) |
 | payload | 8.. | bytes | `postcard(ProtocolMessage)` (Control) or packed terminal sections |
 
 # Schema . `ProtocolMessage` (Control lane)
@@ -1049,6 +1049,11 @@ host uses, from `ID` and then `ID_LIKE` in `/etc/os-release` (Mint and Pop are U
 Debian, Manjaro and EndeavourOS Arch, RHEL, CentOS, Rocky and Alma Fedora). Clients draw the host's mark
 in the sidebar from it.
 
+v120 appends `PaneSummary.shell`, the shell the pane last sat at its prompt in (`bash`, `fish`,
+`pwsh`; empty until one is seen), read from the foreground process once it has been there 250 ms
+and not from the title, so a pane whose shell writes no title, or writes a path, still names its
+shell ([snapshots](/protocol/snapshots.md#pane-status-summary-and-time)).
+
 v118 brings the agent pane kind back, for a chat over Claude Code or Codex that a pane flips to
 and from the CLI's own TUI. It appends `PaneKindSnapshot::Agent(AgentDescriptor)` after `Editor`
 and `ChooseTreePaneKind::Agent` after `Editor`. `AgentDescriptor { provider, cwd, session_id,
@@ -1061,9 +1066,11 @@ to go idle ([agent panes](/concepts/agent-panes.md)).
 
 # Versioning & compatibility
 
-- **`PROTOCOL_VERSION: u16 = 119`** is stamped into every frame's envelope and re-checked inside
+- **`PROTOCOL_VERSION: u16 = 120`** is stamped into every frame's envelope and re-checked inside
   `Hello` and `Welcome` (`validate_control_message` rejects an inner-version mismatch even if the envelope
   version passed).
+- v120 requires updated clients and daemon together, including the daemon on every ssh host.
+  v120 appends `PaneSummary.shell`.
 - v119 requires updated clients and daemon together, including the daemon on every ssh host.
   v119 appends `Welcome.platform` and `ServerHello.platform`.
 - v118 requires updated clients and daemon together, including the daemon on every ssh host.

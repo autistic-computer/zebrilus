@@ -1,7 +1,10 @@
 use std::collections::BTreeSet;
 
 use ala::{App, Entity, SharedString};
-use zz_client::{program::Program, window_summary::pane_program};
+use zz_client::{
+    program::Program,
+    window_summary::{pane_heading, pane_program},
+};
 use zz_protocol::{
     Axis, CommandInvocation, MuxSnapshot, PaneId, PaneKindSnapshot, PaneSnapshot, PaneStatusState,
     SessionId, WindowId,
@@ -512,7 +515,7 @@ impl MuxTreePane {
         Self {
             id: pane.id,
             index: 0,
-            label: pane_label(pane),
+            label: pane_heading(pane).title,
             cwd: pane.summary.cwd.clone(),
             kind,
             bell: pane.bell,
@@ -527,7 +530,7 @@ impl MuxTreePane {
     }
 }
 
-pub use zz_client::navigation::{ordered_panes, pane_index, pane_label};
+pub use zz_client::navigation::{ordered_panes, pane_index};
 
 #[derive(Clone, Debug)]
 pub enum TreeNodeKind {

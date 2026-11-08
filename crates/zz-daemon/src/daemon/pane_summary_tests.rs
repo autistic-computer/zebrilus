@@ -1157,20 +1157,29 @@ fn a_spawn_in_a_known_directory_rides_its_own_publish() {
         (pane, (summary.cwd, summary.repo, summary.branch), published)
     };
     let generation = || shared.inner.lock().engine.state.generation();
+    let sighted = |pane: PaneId| {
+        let terminal = Arc::clone(&shared.inner.lock().terminals[&pane]);
+        wait_until("the pane's shell", || {
+            shared.check_pane_runtime(pane, &terminal, false, Instant::now());
+            !summary(&shared.inner.lock(), pane).shell.is_empty()
+        });
+    };
 
     let fresh = age_known(Duration::ZERO);
-    let (_, location, published) = spawn();
+    let (pane, location, published) = spawn();
     assert_eq!(location, expected);
     assert!(published);
+    sighted(pane);
     let after_spawn = generation();
     shared.settle_pane_locations();
     assert_eq!(generation(), after_spawn);
     assert_eq!(read_at(), fresh, "a fresh entry is not read again");
 
     let stale = age_known(LOCATION_FRESH);
-    let (_, location, published) = spawn();
+    let (pane, location, published) = spawn();
     assert_eq!(location, expected);
     assert!(published);
+    sighted(pane);
     let after_spawn = generation();
     shared.settle_pane_locations();
     wait_until("the refresh", || read_at() > stale);

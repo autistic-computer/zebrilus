@@ -28267,7 +28267,7 @@ impl Shared {
             .tty()
             .map(|path| path.to_string_lossy().into_owned())
             .unwrap_or_default();
-        let ((changed, events), relocated, program) = {
+        let ((changed, events), relocated, program, shell) = {
             let mut inner = self.inner.lock();
             if !inner
                 .terminals
@@ -28324,10 +28324,15 @@ impl Shared {
             self.schedule_window_renames(&mut inner);
             let program =
                 pane_summary::sight_program(&mut inner, pane, foreground, current_command, now);
-            (result, relocated, program)
+            let shell = pane_summary::sight_shell(&mut inner, pane, foreground, current_command);
+            (result, relocated, program, shell)
         };
+        if let pane_summary::ShellSighting::Young(wait) = shell {
+            self.settle_pane_program(pane, terminal, wait);
+        }
         let changed = if (relocated && self.locate_moved_pane(pane))
             || program == pane_summary::ProgramSighting::Cleared
+            || shell == pane_summary::ShellSighting::Named
         {
             Some(timers::PublishReason::Tree)
         } else {

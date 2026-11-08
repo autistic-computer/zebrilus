@@ -2222,7 +2222,7 @@ impl AppShell {
                     None => PaneDragOverlayState::Armed,
                 };
                 let view = cx.entity();
-                let title = zz_client::navigation::pane_label(pane);
+                let title = zz_client::window_summary::pane_heading(pane).title;
                 status_overlays.push(
                     pane_drag_overlay(("web-pane-drag-overlay", pane_id.0), state, radii, cx)
                         .on_click(cx.listener(move |this, _, window, cx| {

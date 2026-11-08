@@ -377,7 +377,7 @@ impl Shared {
         }
     }
 
-    fn settle_pane_program(
+    pub(super) fn settle_pane_program(
         self: &Arc<Self>,
         pane: PaneId,
         terminal: &Arc<TerminalSession>,
@@ -411,7 +411,7 @@ impl Shared {
         let command = foreground
             .and_then(process_info::command_name)
             .unwrap_or_default();
-        let sighting = {
+        let (sighting, shell) = {
             let mut inner = self.inner.lock();
             inner.locations.program_settling.remove(&pane);
             if !inner
@@ -421,8 +421,17 @@ impl Shared {
             {
                 return;
             }
-            sight_program(&mut inner, pane, foreground, &command, Instant::now())
+            let shell = sight_shell(&mut inner, pane, foreground, &command);
+            (
+                sight_program(&mut inner, pane, foreground, &command, Instant::now()),
+                shell,
+            )
         };
+        match shell {
+            ShellSighting::Unchanged => {}
+            ShellSighting::Named => self.request_publish(timers::PublishReason::Tree),
+            ShellSighting::Young(wait) => self.settle_pane_program(pane, terminal, wait),
+        }
         match sighting {
             ProgramSighting::Unchanged => {}
             ProgramSighting::Cleared => self.request_publish(timers::PublishReason::Tree),
@@ -554,6 +563,39 @@ pub(super) fn forget_pane_program(inner: &mut ServerState, pane: PaneId) {
     inner.locations.programs.remove(&pane);
     inner.locations.program_settling.remove(&pane);
     inner.locations.program_checked.remove(&pane);
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum ShellSighting {
+    Unchanged,
+    Named,
+    Young(Duration),
+}
+
+pub(super) fn sight_shell(
+    inner: &mut ServerState,
+    pane: PaneId,
+    foreground: Option<u32>,
+    command: &str,
+) -> ShellSighting {
+    let (Some(foreground), Some(shell)) = (foreground, process_info::shell_name(command)) else {
+        return ShellSighting::Unchanged;
+    };
+    let state = &mut inner.engine.state;
+    if state
+        .pane(pane)
+        .is_none_or(|pane| pane.summary.shell == shell)
+    {
+        return ShellSighting::Unchanged;
+    }
+    if let Some(age) = process_info::running_for(foreground).filter(|age| *age < PROGRAM_SETTLE) {
+        return ShellSighting::Young(PROGRAM_SETTLE.saturating_sub(age));
+    }
+    if state.update_pane_summary(pane, |summary| shell.clone_into(&mut summary.shell)) {
+        ShellSighting::Named
+    } else {
+        ShellSighting::Unchanged
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

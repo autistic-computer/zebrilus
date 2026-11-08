@@ -190,6 +190,7 @@ pub fn pane_heading(pane: &PaneSnapshot) -> PaneHeading {
                 .first()
                 .map(|entry| last_component(entry).to_owned())
         })
+        .or_else(|| (!pane.summary.shell.is_empty()).then(|| pane.summary.shell.clone()))
         .unwrap_or_else(|| pane_label(pane));
     PaneHeading { title, program }
 }
@@ -633,6 +634,9 @@ mod tests {
             ("frobnicate".to_owned(), None)
         );
         assert_eq!(heading("bash", &[]), ("bash".to_owned(), None));
+        let mut fish = terminal(3, "~/d/a/zebrilus");
+        fish.summary.shell = "fish".to_owned();
+        assert_eq!(pane_heading(&fish).title, "fish");
         let mut chat = agent(2, "Fix the build");
         chat.kind = PaneKindSnapshot::Agent(AgentDescriptor::default());
         assert_eq!(pane_heading(&chat).title, "Fix the build");

@@ -206,8 +206,9 @@ folder (`navigation::pane_folder`, home as `~`, one ink step under the title). A
 headed by the program in its foreground, never by the title the program writes: a program in
 the catalog shows its mark and name (`nvim`, also through a `vim` alias, is the Neovim mark and
 "Neovim"), another program its command name under the terminal icon, and a shell at its prompt
-the title zz's shell integration writes there, "bash" or "zsh" (`window_summary::pane_heading`,
-`pane::pane_heading_icon`). The title is the session title
+its name, "bash", "fish" or "pwsh", which the daemon reads from the process and not from a title
+(`PaneSummary.shell`; the title stands in only before a shell is seen). The session tree's pane
+rows read the same (`window_summary::pane_heading`, `pane::pane_heading_icon`). The title is the session title
 for an agent, or the provider's name, "Claude Code" or "Codex", while it has none
 (`navigation::pane_label`); a browser shows a globe and "Browser" (`BrowserTabStrip::title`).
 Dragging it splits or swaps under the existing availability rules (`pane::PaneDragSource`).
