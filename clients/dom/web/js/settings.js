@@ -442,6 +442,15 @@ function appearancePage() {
           onpick: (value) => set({ ui_font_family: value }),
         }),
       }),
+      entry({
+        title: "Mono font",
+        control: choose({
+          value: picks.mono,
+          placeholder: "Terminal font",
+          items: [{ title: "Terminal font", value: "" }, ...availableFonts(MONO_FONTS).map((font) => ({ title: font, value: font, font }))],
+          onpick: (value) => set({ mono_font_family: value }),
+        }),
+      }),
     ]),
     group("Sidebar"),
     card([

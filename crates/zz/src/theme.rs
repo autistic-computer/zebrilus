@@ -114,6 +114,12 @@ fn apply_zz_overrides(cx: &mut App) {
     let ui_font_family = Some(ui_font)
         .filter(|family| !family.is_empty() && cx.text_system().has_font(family))
         .map_or_else(|| ala::Font::default().family, SharedString::from);
+    let mono_font_family = config::ui_mono_font_family(cx)
+        .value
+        .filter(|family| cx.text_system().has_font(family))
+        .map(SharedString::from)
+        .or(terminal_mono_font_family)
+        .unwrap_or_else(penna::foundation::platform_mono_font_family);
     let chrome_contrast = config::chrome_contrast(cx);
     let reduce_transparency = config::resolved_config(cx).reduce_transparency.value;
     let pane_look = PaneLook {
@@ -126,9 +132,7 @@ fn apply_zz_overrides(cx: &mut App) {
     let theme = Theme::global_mut(cx);
 
     theme.font_family = ui_font_family;
-    if let Some(font_family) = terminal_mono_font_family {
-        theme.mono_font_family = font_family;
-    }
+    theme.mono_font_family = mono_font_family;
 
     theme.set_contrast(chrome_contrast);
     if reduce_transparency {

@@ -50,6 +50,7 @@ pub use text_style::TextStyle;
 pub use theme::{
     ADAPTIVE_CORNER_FRACTION, ActiveTheme, CHROME_GAP, CORNER_SMOOTHING,
     PANE_HEADER_CONTROL_HEIGHT, PANE_HEADER_HEIGHT, ScrollbarShow, Theme, ThemeMode,
+    platform_mono_font_family,
 };
 pub use theme_color::ThemeColor;
 pub use units::{BASE_UI_FONT_SIZE, UiZoom, rems_from_px};

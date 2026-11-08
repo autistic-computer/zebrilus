@@ -123,7 +123,7 @@ the busy choice and an armed flip show in the pane's corner, the armed one from 
 side chat a floating one. Composer actions share the desktop presentation. Appearance preferences for the
 browser live in local storage: system/light/dark mode, zoom, animations, contrast, reduce
 transparency, and the knobs Interface sets over the platform's look (the default theme file in the
-browser): the accent, the tint, the corner radius, the control shape, the glass and the UI font.
+browser): the accent, the tint, the corner radius, the control shape, the glass, the UI font and the Mono font.
 The Theme file menu copies the look, pastes a theme file over every knob, or resets them.
 The animation switch respects the platform’s reduced-motion preference. Terminal color schemes
 follow the effective light/dark mode after attachment and when that mode changes. Numeric fields,

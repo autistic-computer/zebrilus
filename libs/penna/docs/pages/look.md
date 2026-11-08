@@ -108,6 +108,7 @@ The same in every app, in Appearance, in three groups: Look, Size and Accessibil
 | Controls | Rounded follows the radius; Pill makes controls pills |
 | Glass | A switch: on draws liquid glass, off draws none |
 | UI font | The face |
+| Mono font | The code face; its list opens on Monospaced |
 | Text size | The root size; everything scales with it |
 | Density | Compact, regular or comfortable rows and controls |
 | Increase contrast | 0 to 100%: surfaces and fills further apart, muted text closer to the ink; no edges |

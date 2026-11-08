@@ -1,6 +1,6 @@
 use super::*;
 use penna::components::menu::MenuScope;
-use std::{collections::HashSet, path::Path};
+use std::path::Path;
 use zz_protocol::{CommandInvocation, MuxOptionKey, MuxOptions};
 use zz_terminal::{AppearanceConfigKey, TerminalAppearance};
 
@@ -756,21 +756,7 @@ fn terminal_font_select(
     window: &mut Window,
     cx: &mut Context<SettingsView>,
 ) -> (Entity<SelectState<Vec<SettingsSelectItem>>>, Vec<MenuScope>) {
-    let monospaced = cx
-        .text_system()
-        .monospaced_font_names()
-        .into_iter()
-        .collect::<HashSet<_>>();
-    let scopes = if monospaced.is_empty() {
-        Vec::new()
-    } else {
-        vec![
-            MenuScope::new("Monospaced", move |family| {
-                family == "Default" || monospaced.contains(family)
-            }),
-            MenuScope::all("All fonts"),
-        ]
-    };
+    let scopes = penna::blocks::appearance::monospaced_scopes("Default", cx);
     let mut families = cx.text_system().all_font_names();
     families.retain(|family| !family.starts_with('.') && !family.trim().is_empty());
     if !selected.is_empty() {

@@ -63,6 +63,7 @@ pub(crate) const KEYBIND: &str = "cmd-,";
 #[cfg(not(target_os = "macos"))]
 pub(crate) const KEYBIND: &str = "ctrl-,";
 const CONTROL_WIDTH: f32 = 120.0;
+const TERMINAL_FONT: &str = "Terminal font";
 const KEY_INPUT_WIDTH: f32 = 96.0;
 const APP_ICON_PREVIEW_SIZE: f32 = 48.0;
 
@@ -173,7 +174,8 @@ impl SettingsView {
             |change, _, cx| appearance_changed(change, cx),
             window,
             cx,
-        );
+        )
+        .mono_default(TERMINAL_FONT);
         let window_corner_radius = numeric_value_input(
             ConfigKey::WindowCornerRadius,
             observed.window_corner_radius.value,
@@ -1855,13 +1857,11 @@ fn appearance_changed(change: AppearanceChange, cx: &mut App) {
                 )),
             )
         }
-        AppearanceChange::ResetLook => (
-            ConfigKey::ChromeAccent,
-            config::set_config_keys(&config::look_edits(
-                &interface_theme::ThemeOverrides::default(),
-                None,
-            )),
-        ),
+        AppearanceChange::ResetLook => {
+            let mut edits = config::look_edits(&interface_theme::ThemeOverrides::default(), None);
+            edits.push((ConfigKey::UiMonoFontFamily, None));
+            (ConfigKey::ChromeAccent, config::set_config_keys(&edits))
+        }
         AppearanceChange::Accent(accent) => {
             let key = ConfigKey::ChromeAccent;
             let result = match accent {
@@ -1896,6 +1896,10 @@ fn appearance_changed(change: AppearanceChange, cx: &mut App) {
         AppearanceChange::UiFont(family) => (
             ConfigKey::UiFontFamily,
             config::set_ui_font_family((!family.is_empty()).then_some(family.as_str())),
+        ),
+        AppearanceChange::MonoFont(family) => (
+            ConfigKey::UiMonoFontFamily,
+            config::set_ui_mono_font_family((!family.is_empty()).then_some(family.as_str())),
         ),
         AppearanceChange::Zoom(zoom) => {
             crate::ui_scale::set_percent(zoom * 100.0, cx);
@@ -2158,6 +2162,7 @@ fn numeric_config_value(config: &AppConfig, key: ConfigKey) -> ConfigValue<f32> 
         | ConfigKey::ControlShape
         | ConfigKey::InterfaceGlass
         | ConfigKey::UiFontFamily
+        | ConfigKey::UiMonoFontFamily
         | ConfigKey::AppIcon
         | ConfigKey::ChromeAccent
         | ConfigKey::ChromeDensity => {
@@ -2380,6 +2385,7 @@ mod tests {
                     value: Some(family.clone()),
                     provenance: ConfigProvenance::Override,
                 },
+                ..zz_config::UiFontConfig::default()
             }));
             settings.update(cx, |settings, cx| {
                 settings.ui_font_family.update(cx, |select, cx| {

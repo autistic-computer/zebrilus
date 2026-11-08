@@ -90,7 +90,7 @@ An inset reaches the text's line box, not its letters. In `body` (13 on 18) capi
 
 ## Type
 
-Faces: the platform system face natively (`.SystemUIFont`), Inter Variable in the storybook and on the web. The code face is the platform's natively (`Theme::mono_font_family`: Menlo on macOS and iOS, Consolas on Windows, DejaVu Sans Mono elsewhere) and Lilex in the storybook and on the web. Weights: 400 text, 500 emphasis in the interface (`strong`), 600 headings. No other weights.
+Faces: the platform system face natively (`.SystemUIFont`), Inter Variable in the storybook and on the web. The code face is the platform's natively (`Theme::mono_font_family`: Menlo on macOS and iOS, Consolas on Windows, DejaVu Sans Mono elsewhere) and Lilex in the storybook and on the web, until Appearance's Mono font picks another. Weights: 400 text, 500 emphasis in the interface (`strong`), 600 headings. No other weights.
 
 Interface (`TextStyle`, built):
 
@@ -236,7 +236,7 @@ The knobs, as a theme file spells them:
 | `control-radius` | 0 to 25, or `full` for pills | `radius` |
 | `smoothing` | 2 (round arcs) to 5 (squircle) | 3 |
 | `glass` | `none`, `liquid`, or a material of its own | `liquid` |
-| `face` | the interface face; the code face stays the platform's | the platform's |
+| `face` | the interface face | the platform's |
 | `mode` | `follow`, `light` or `dark` | `follow` |
 | `colors` | `bg`, `fg`, `success`, `warning` and `danger`, for light and for dark | the Color table |
 
@@ -251,15 +251,16 @@ There are no presets to pick. The look starts from the platform's knobs (the `ma
 | Controls | `control-radius`: Rounded follows `radius`, Pill is `full` |
 | Glass | `glass`, a switch: on draws `liquid`, or a theme file's own material once one is pasted in; off draws none |
 | UI font | `face` |
+| Mono font | the code face: code blocks, inline code and every other monospaced line in the interface. Not a theme knob, so a theme file leaves it alone. Its list opens on Monospaced, with All fonts beside it. Default is the platform's code face, or one the app names (zz: the terminal font) |
 | Text size | the root rem; everything scales with it |
 | Density | compact, regular or comfortable (Size) |
 | Increase contrast | a slider from 0 to 100%, contrast 1 to 2: surface steps, fills and the divider further from their ground, muted and faint text closer to `fg`; no edges |
 | Reduce transparency | glass draws as the `popover` fill |
 | Motion | Off (reduced motion), Default, or Fast (Motion's durations halved) |
 
-Appearance shows them in that order in three groups, none folded away: Look (Mode to UI font), Size (Text size and Density) and Accessibility (Increase contrast, Reduce transparency and Motion). An app's own rows go in groups of their own (zz's Terminal and Sidebar after Look, and Window, with the app icon and window blur, last). `smoothing` and `mode` have no row: smoothing follows the platform's theme file. A theme file has no row either: an app that reads or writes theme files (the storybook's theme creator) does it itself, and `AppearanceChange::Import` sets every knob from one.
+Appearance shows them in that order in three groups, none folded away: Look (Mode to Mono font), Size (Text size and Density) and Accessibility (Increase contrast, Reduce transparency and Motion). An app's own rows go in groups of their own (zz's Terminal and Sidebar after Look, and Window, with the app icon and window blur, last). `smoothing` and `mode` have no row: smoothing follows the platform's theme file. A theme file has no row either: an app that reads or writes theme files (the storybook's theme creator) does it itself, and `AppearanceChange::Import` sets every knob from one.
 
-What follows the platform with no knob: the system face and code face, when scrollbars show, the window controls, and how keys are spelled. Glass is the same everywhere: `liquid` unless a person turns it off.
+What follows the platform with no knob: the system face, when scrollbars show, the window controls, and how keys are spelled. Glass is the same everywhere: `liquid` unless a person turns it off.
 
 Everything else is the look and has no knob: each kind's fill, edge, shadow and shape, every state look, outline width, highlight strength, status colors (a theme file's `colors` may bring its own, but no person sets them), spacing, sizes, type and motion.
 

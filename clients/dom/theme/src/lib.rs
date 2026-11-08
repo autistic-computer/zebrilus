@@ -43,7 +43,10 @@ fn kit(preferences: &Preferences, mode: ThemeMode) -> Theme {
     kit.font_family = if font.is_empty() { WEB_UI_FONT } else { font }
         .to_owned()
         .into();
-    if let Some(family) = &preferences.terminal_font_family {
+    let mono = preferences.appearance.mono_font();
+    if !mono.is_empty() {
+        kit.mono_font_family = mono.to_owned().into();
+    } else if let Some(family) = &preferences.terminal_font_family {
         kit.mono_font_family = family.clone().into();
     }
     kit
@@ -148,6 +151,7 @@ pub fn picks(json: &str, dark: bool) -> Result<String, JsError> {
         "controls": interface_theme::control_shape_setting(appearance.controls()).as_str(),
         "glass": glass,
         "font": preferences.shown_ui_font(),
+        "mono": appearance.mono_font(),
         "limits": {
             "radius": interface_theme::MAX_CORNER_RADIUS,
         },

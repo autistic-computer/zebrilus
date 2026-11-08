@@ -366,6 +366,8 @@ Native entrypoints set `penna::blocks::appearance::AvailableFonts` from their al
 (`crates/zz/src/lib.rs` builds it before the platform moves into the application). The picker
 (`ui_font_select`, which the kit's UI font row uses) queries that catalog directly to avoid offering ala
 fallback names that are not installed; without it, as in the thin clients, it lists the text system's names.
+Mono font (`ui-mono-font-family`) sits under it and uses the same catalog (`mono_font_select`), with
+`monospaced_scopes` opening its list on Monospaced; its default item is Terminal font.
 
 # UI zoom and scalable metrics
 
@@ -427,8 +429,9 @@ Corner smoothing is not a material: every window draws `CORNER_SMOOTHING` (4), w
 
 - `font_family` from `ui-font-family` when present, else the platform file's face
   (`Appearance::ui_font()`), else the system UI font;
-- `mono_font_family` from the terminal's resolved primary family, so Agent Markdown and code blocks
-  match the terminal typeface;
+- `mono_font_family` from `ui-mono-font-family` when installed, else the terminal's resolved primary
+  family, so Agent Markdown and code blocks match the terminal typeface until Mono font picks
+  another, else the platform's code face;
 - the contrast (`Theme::set_contrast`) from `chrome-contrast`, preserved across the same refreshes;
 - no glass under `reduce-transparency`;
 - the pane glow and gaps (the `zz_ui::pane_look::PaneLook` global) from `pane-glow-strength` and

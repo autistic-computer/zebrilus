@@ -106,6 +106,7 @@ fn a_preferences_file_written_before_appearance_moved_into_the_kit_loads_the_sam
             contrast: 1.4,
             reduce_transparency: false,
             ui_font_family: "Inter Variable".into(),
+            mono_font_family: String::new(),
             zoom: 1.35,
             motion: penna::foundation::motion::Motion::Default,
             density: penna::Density::Regular,

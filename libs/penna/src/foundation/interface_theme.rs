@@ -726,6 +726,7 @@ pub struct Appearance {
     pub contrast: f32,
     pub reduce_transparency: bool,
     pub ui_font_family: String,
+    pub mono_font_family: String,
     pub zoom: f32,
     pub motion: crate::foundation::motion::Motion,
     pub density: crate::Density,
@@ -739,6 +740,7 @@ impl Default for Appearance {
             contrast: 1.0,
             reduce_transparency: false,
             ui_font_family: String::new(),
+            mono_font_family: String::new(),
             zoom: 1.0,
             motion: crate::foundation::motion::Motion::Default,
             density: crate::Density::Regular,
@@ -760,6 +762,7 @@ pub enum AppearanceChange {
     Contrast(f32),
     ReduceTransparency(bool),
     UiFont(String),
+    MonoFont(String),
     Zoom(f32),
     Motion(crate::foundation::motion::Motion),
     Density(crate::Density),
@@ -824,6 +827,10 @@ impl Appearance {
         }
     }
 
+    pub fn mono_font(&self) -> &str {
+        &self.mono_font_family
+    }
+
     pub fn import(&mut self, theme: &InterfaceTheme) {
         self.overrides = ThemeOverrides::from_theme(theme);
         self.ui_font_family = theme.face.as_deref().unwrap_or("").to_owned();
@@ -832,6 +839,7 @@ impl Appearance {
     pub fn reset_look(&mut self) {
         self.overrides = ThemeOverrides::default();
         self.ui_font_family.clear();
+        self.mono_font_family.clear();
     }
 
     pub fn change(&mut self, change: AppearanceChange) {
@@ -850,6 +858,7 @@ impl Appearance {
             AppearanceChange::Contrast(contrast) => self.contrast = contrast,
             AppearanceChange::ReduceTransparency(reduce) => self.reduce_transparency = reduce,
             AppearanceChange::UiFont(family) => self.ui_font_family = family,
+            AppearanceChange::MonoFont(family) => self.mono_font_family = family,
             AppearanceChange::Zoom(zoom) => self.zoom = zoom,
             AppearanceChange::Motion(motion) => self.motion = motion,
             AppearanceChange::Density(density) => self.density = density,
@@ -867,8 +876,15 @@ impl Appearance {
         } else {
             ala::Font::default().family
         };
+        let mono = self.mono_font();
+        let mono = if !mono.is_empty() && cx.text_system().has_font(mono) {
+            SharedString::from(mono.to_owned())
+        } else {
+            crate::foundation::platform_mono_font_family()
+        };
         let theme = Theme::global_mut(cx);
         theme.font_family = family;
+        theme.mono_font_family = mono;
         theme.set_contrast(self.contrast);
         if self.reduce_transparency {
             theme.glass = None;
@@ -1122,7 +1138,7 @@ mod tests {
             serde_json::from_str::<Appearance>("{}").unwrap(),
             Appearance::default()
         );
-        let source = r#"{"mode":"dark","theme":"macos","radius":12,"accent":"green","tint":0.25,"tint-hue":145,"controls":"pill","glass":"none","contrast":1.5,"reduce_transparency":true,"ui_font_family":"Inter","zoom":1.25,"motion":"fast","density":"comfortable","sidebar":true}"#;
+        let source = r#"{"mode":"dark","theme":"macos","radius":12,"accent":"green","tint":0.25,"tint-hue":145,"controls":"pill","glass":"none","contrast":1.5,"reduce_transparency":true,"ui_font_family":"Inter","mono_font_family":"Lilex","zoom":1.25,"motion":"fast","density":"comfortable","sidebar":true}"#;
         let appearance = serde_json::from_str::<Appearance>(source).unwrap();
         assert_eq!(
             appearance,
@@ -1139,6 +1155,7 @@ mod tests {
                 contrast: 1.5,
                 reduce_transparency: true,
                 ui_font_family: "Inter".into(),
+                mono_font_family: "Lilex".into(),
                 zoom: 1.25,
                 motion: crate::foundation::motion::Motion::Fast,
                 density: crate::Density::Comfortable,
@@ -1155,6 +1172,7 @@ mod tests {
     fn a_persons_knobs_sit_over_the_platform_look_and_a_theme_file_sets_them_all() {
         let mut appearance = Appearance {
             ui_font_family: "Inter".into(),
+            mono_font_family: "Berkeley Mono".into(),
             ..Appearance::default()
         };
         assert_eq!(appearance.shown_theme(), *platform_theme());
@@ -1193,9 +1211,11 @@ mod tests {
         assert_eq!(appearance.accent(), "orange");
         assert_eq!(appearance.controls(), Controls::Rounded);
         assert_eq!(appearance.ui_font(), "Lilex");
+        assert_eq!(appearance.mono_font(), "Berkeley Mono");
 
         appearance.change(AppearanceChange::ResetLook);
         assert_eq!(appearance.overrides, ThemeOverrides::default());
+        assert_eq!(appearance.mono_font(), "");
         assert_eq!(appearance.shown_theme(), *platform_theme());
     }
 

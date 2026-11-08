@@ -275,6 +275,18 @@ impl Theme {
     }
 }
 
+pub fn platform_mono_font_family() -> SharedString {
+    if cfg!(any(target_os = "macos", target_os = "ios")) {
+        "Menlo".into()
+    } else if cfg!(target_os = "windows") {
+        "Consolas".into()
+    } else if cfg!(target_family = "wasm") {
+        "Lilex".into()
+    } else {
+        "DejaVu Sans Mono".into()
+    }
+}
+
 impl From<&ThemeColor> for Theme {
     fn from(colors: &ThemeColor) -> Self {
         Theme {
@@ -282,13 +294,7 @@ impl From<&ThemeColor> for Theme {
             transparent: Hsla::transparent_black(),
             font_family: ".SystemUIFont".into(),
             font_size: px(BASE_UI_FONT_SIZE),
-            mono_font_family: if cfg!(any(target_os = "macos", target_os = "ios")) {
-                "Menlo".into()
-            } else if cfg!(target_os = "windows") {
-                "Consolas".into()
-            } else {
-                "DejaVu Sans Mono".into()
-            },
+            mono_font_family: platform_mono_font_family(),
             mono_font_size: px(13.),
             radius: px(DEFAULT_RADIUS),
             control_radius: None,

@@ -99,6 +99,9 @@ fn parse_config(source: &str) -> ParsedConfig {
 pub(crate) fn set_ui_font_family(family: Option<&str>) -> io::Result<()> {
     zz_config::set_ui_font_family(family, ala::Font::default().family.as_ref())
 }
+pub(crate) fn set_ui_mono_font_family(family: Option<&str>) -> io::Result<()> {
+    zz_config::set_ui_mono_font_family(family)
+}
 #[cfg(test)]
 fn write_ui_font_family_at(path: &Path, family: Option<&str>) -> io::Result<bool> {
     zz_config::write_ui_font_family_at(path, family, ala::Font::default().family.as_ref())
@@ -416,6 +419,7 @@ pub(crate) fn appearance(cx: &App) -> Appearance {
         contrast: resolved.chrome_contrast.value,
         reduce_transparency: resolved.reduce_transparency.value,
         ui_font_family: ui_font_family(cx).value.unwrap_or_default(),
+        mono_font_family: ui_mono_font_family(cx).value.unwrap_or_default(),
         zoom: penna::UiZoom::get(cx),
         motion: interface_theme::kit_motion(resolved.motion.value),
         density: interface_theme::kit_density(resolved.chrome_density.value),
@@ -646,6 +650,14 @@ pub(crate) fn ui_font_family(cx: &App) -> ConfigValue<Option<String>> {
         .unwrap_or_default()
         .0
         .family
+}
+
+pub(crate) fn ui_mono_font_family(cx: &App) -> ConfigValue<Option<String>> {
+    cx.try_global::<UiFontConfig>()
+        .cloned()
+        .unwrap_or_default()
+        .0
+        .mono_family
 }
 
 pub(crate) fn browser_config(cx: &App) -> BrowserConfig {
@@ -2217,6 +2229,17 @@ mod tests {
             });
         }
 
+        for family in [Some("Arial"), None] {
+            zz_config::write_ui_mono_font_family_at(&path, family).expect("write mono font");
+            cx.update(|cx| {
+                install_config(Some(&path), Some(load_config(&path)), cx);
+                crate::theme::refresh_current_theme(cx);
+                let expected = family.map_or_else(|| mono.clone(), ala::SharedString::from);
+                assert_eq!(penna::Theme::global(cx).mono_font_family, expected);
+                assert_eq!(appearance(cx).mono_font(), family.unwrap_or_default());
+            });
+        }
+
         write_ui_font_family_at(&path, Some("Arial")).expect("write another override");
         write_config_edit_at(&path, ConfigKey::UiFontFamily.as_str(), None)
             .expect("reset override");
@@ -2975,6 +2998,7 @@ mod tests {
             "control-shape",
             "interface-glass",
             "ui-font-family",
+            "ui-mono-font-family",
             "app-icon",
         ];
         for key in named {

@@ -114,6 +114,7 @@ pub enum ConfigKey {
     ControlShape,
     InterfaceGlass,
     UiFontFamily,
+    UiMonoFontFamily,
     AppIcon,
 }
 
@@ -161,6 +162,7 @@ impl ConfigKey {
             Self::ControlShape => "control-shape",
             Self::InterfaceGlass => "interface-glass",
             Self::UiFontFamily => "ui-font-family",
+            Self::UiMonoFontFamily => "ui-mono-font-family",
             Self::AppIcon => "app-icon",
         }
     }
@@ -208,6 +210,7 @@ impl ConfigKey {
             "control-shape" => Some(Self::ControlShape),
             "interface-glass" => Some(Self::InterfaceGlass),
             "ui-font-family" => Some(Self::UiFontFamily),
+            "ui-mono-font-family" => Some(Self::UiMonoFontFamily),
             "app-icon" => Some(Self::AppIcon),
             _ => None,
         }
@@ -258,11 +261,12 @@ impl ConfigKey {
             | Self::ChromeAccent
             | Self::ChromeDensity
             | Self::UiFontFamily
+            | Self::UiMonoFontFamily
             | Self::AppIcon => None,
         }
     }
 
-    pub const LOOK: [Self; 7] = [
+    pub const LOOK: [Self; 8] = [
         Self::ChromeAccent,
         Self::ChromeTint,
         Self::ChromeTintHue,
@@ -270,6 +274,7 @@ impl ConfigKey {
         Self::ControlShape,
         Self::InterfaceGlass,
         Self::UiFontFamily,
+        Self::UiMonoFontFamily,
     ];
 }
 
@@ -317,12 +322,14 @@ impl Default for BrowserConfig {
 #[derive(Clone, Debug, PartialEq)]
 pub struct UiFontConfig {
     pub family: ConfigValue<Option<String>>,
+    pub mono_family: ConfigValue<Option<String>>,
 }
 
 impl Default for UiFontConfig {
     fn default() -> Self {
         Self {
             family: ConfigValue::from_default(None),
+            mono_family: ConfigValue::from_default(None),
         }
     }
 }
@@ -482,6 +489,7 @@ impl AppConfig {
             | ConfigKey::ControlShape
             | ConfigKey::InterfaceGlass
             | ConfigKey::UiFontFamily
+            | ConfigKey::UiMonoFontFamily
             | ConfigKey::AppIcon => None,
         }
     }
@@ -972,6 +980,22 @@ pub fn parse_config(source: &str, system_font_family: &str) -> ParsedConfig {
             continue;
         }
 
+        if key == ConfigKey::UiMonoFontFamily {
+            let target = &mut parsed.ui_font.mono_family;
+            target.provenance = ConfigProvenance::Override;
+            match parse_config_string(value).and_then(|family| {
+                validate_ui_font_family(&family).map_err(str::to_owned)?;
+                Ok(family)
+            }) {
+                Ok(family) => target.value = Some(family),
+                Err(message) => parsed.diagnostics.push(ConfigDiagnostic {
+                    line: line_number,
+                    message: format!("invalid `{}`: {message}", key.as_str()),
+                }),
+            }
+            continue;
+        }
+
         if key == ConfigKey::UiFontFamily {
             let target = &mut parsed.ui_font.family;
             target.provenance = ConfigProvenance::Override;
@@ -1124,6 +1148,7 @@ pub fn parse_config(source: &str, system_font_family: &str) -> ParsedConfig {
             | ConfigKey::ChromeAccent
             | ConfigKey::ChromeDensity
             | ConfigKey::UiFontFamily
+            | ConfigKey::UiMonoFontFamily
             | ConfigKey::AppIcon => {
                 unreachable!("handled above")
             }
@@ -1733,6 +1758,23 @@ pub fn write_ui_font_family_at(
         path,
         ConfigKey::UiFontFamily.as_str(),
         Some(&quoted_config_string(family)),
+    )
+}
+
+pub fn set_ui_mono_font_family(family: Option<&str>) -> io::Result<()> {
+    let path = config_path_for_write()?;
+    write_ui_mono_font_family_at(&path, family).map(drop)
+}
+
+pub fn write_ui_mono_font_family_at(path: &Path, family: Option<&str>) -> io::Result<bool> {
+    if let Some(family) = family {
+        validate_ui_font_family(family)
+            .map_err(|message| io::Error::new(ErrorKind::InvalidInput, message))?;
+    }
+    write_config_edit_at(
+        path,
+        ConfigKey::UiMonoFontFamily.as_str(),
+        family.map(quoted_config_string).as_deref(),
     )
 }
 

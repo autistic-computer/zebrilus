@@ -175,7 +175,13 @@ impl Preferences {
         });
         let terminal =
             localized_font_appearance(&connection.read(cx).core, &available_fonts, "Lilex", cx);
-        Theme::global_mut(cx).mono_font_family = terminal.font_families[0].clone().into();
+        let mono = self.appearance.mono_font();
+        if !available_fonts
+            .iter()
+            .any(|family| !mono.is_empty() && family.eq_ignore_ascii_case(mono))
+        {
+            Theme::global_mut(cx).mono_font_family = terminal.font_families[0].clone().into();
+        }
         connection.update(cx, Connection::set_color_scheme);
         cx.refresh_windows();
     }
@@ -228,7 +234,8 @@ impl Controls {
             },
             window,
             cx,
-        );
+        )
+        .mono_default("Terminal font");
         let pane_values = [
             preferences.pane_inactive_opacity,
             preferences.pane_glow_strength,

@@ -74,6 +74,7 @@ mod tests {
             Item::Controls,
             Item::Glass,
             Item::UiFontFamily,
+            Item::MonoFontFamily,
             Item::Group { title: "Terminal" },
             Item::App(ZzRow::TerminalColors),
             Item::Group { title: "Sidebar" },

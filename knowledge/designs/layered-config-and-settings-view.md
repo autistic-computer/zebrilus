@@ -55,7 +55,7 @@ place that already owns each grammar.
 
 | Group | Owner | Where the grammar lives |
 |-------|-------|-------------------------|
-| Window chrome, pane geometry, theme mode, and the look's knobs over the platform's theme file (`chrome-accent`, `chrome-tint`, `chrome-tint-hue`, `widget-corner-radius`, `control-shape`, `interface-glass`, `ui-font-family`) | GUI client | `crates/zz/src/config/mod.rs` |
+| Window chrome, pane geometry, theme mode, and the look's knobs over the platform's theme file (`chrome-accent`, `chrome-tint`, `chrome-tint-hue`, `widget-corner-radius`, `control-shape`, `interface-glass`, `ui-font-family`, `ui-mono-font-family`) | GUI client | `crates/zz/src/config/mod.rs` |
 | Browser-local element-selector hotkey | GUI client | `crates/zz/src/config/mod.rs` |
 | Repeatable `chrome-keybind` / `chrome-unbind` overrides for `ui`, `sidebar`, `browser`, and `terminal` actions | GUI client | `crates/zz/src/config/mod.rs` + `crates/zz-client/src/chrome.rs` |
 | Agent launch keys (`agent-command`, `agent-claude-code-command`, `agent-auto-approve`) | daemon (mux options since the runtime moved there) | `crates/zz-mux/src/command.rs`; no settings row. `agent-working-directory` was removed on 2026-10-23 with the Agent pane and now reports a "was removed" diagnostic ([agent lens](/designs/agent-lens.md)) |
