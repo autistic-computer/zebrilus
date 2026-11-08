@@ -15,6 +15,7 @@ mod docs;
 mod feedback;
 mod icons;
 mod inputs;
+mod key_field;
 pub(crate) mod layout;
 mod markdown;
 pub mod menus;
@@ -35,6 +36,7 @@ pub mod which_key;
 pub const STORIES: &[Story] = &[
     buttons::STORY,
     inputs::STORY,
+    key_field::STORY,
     selection::STORY,
     checks::STORY,
     display::STORY,

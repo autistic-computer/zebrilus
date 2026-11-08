@@ -44,6 +44,7 @@ pub fn init(cx: &mut ala::App) {
     #[cfg(feature = "editor")]
     blocks::code_editor::init(cx);
     components::input::init(cx);
+    components::key_field::init(cx);
     components::menu::init(cx);
     foundation::overlay::init(cx);
     components::popover::init(cx);

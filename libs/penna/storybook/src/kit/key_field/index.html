@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Key field</title>
+    <link rel="stylesheet" href="../../../../web/penna.css" />
+    <link rel="stylesheet" href="../../../../web/story.css" />
+    <link rel="stylesheet" href="../../../../src/components/kbd/kbd.css" />
+    <link rel="stylesheet" href="../../../../src/components/key_field/key_field.css" />
+    <link rel="stylesheet" href="../../../../src/blocks/settings/settings.css" />
+    <link rel="stylesheet" href="page.css" />
+    <script src="../../../../web/kit.js" data-tokens="../../../../web/tokens/"></script>
+    <script src="../../../../src/components/kbd/kbd.js" defer></script>
+    <script src="../../../../src/components/key_field/key_field.js" defer></script>
+    <script src="../../../../web/story.js" defer></script>
+  </head>
+  <body>
+    <section data-section="key-field">
+      <div class="story-states" data-columns style="--columns: 3">
+        <div class="story-state">
+          <div class="story-label">empty</div>
+          <div class="key-field-box"><div class="penna-key-field" data-penna="field" data-id="key-empty"></div></div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">a key</div>
+          <div class="key-field-box"><div class="penna-key-field" data-penna="field" data-id="key-control" data-key="ctrl-b"></div></div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">a shifted symbol</div>
+          <div class="key-field-box"><div class="penna-key-field" data-penna="field" data-id="key-symbol" data-key="&quot;"></div></div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">a chord</div>
+          <div class="key-field-box"><div class="penna-key-field" data-penna="field" data-id="key-chord" data-key="cmd-shift-p"></div></div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">disabled</div>
+          <div class="key-field-box"><div class="penna-key-field" data-penna="field" data-id="key-disabled" data-key="ctrl-b" aria-disabled="true"></div></div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">placeholder</div>
+          <div class="key-field-box"><div class="penna-key-field" data-penna="field" data-id="key-unbound" data-placeholder="Unbound"></div></div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">xsmall</div>
+          <div class="key-field-box"><div class="penna-key-field" data-penna="field" data-id="key-xsmall" data-key="ctrl-a" data-size="xsmall"></div></div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">small</div>
+          <div class="key-field-box"><div class="penna-key-field" data-penna="field" data-id="key-small" data-key="ctrl-a" data-size="small"></div></div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">large</div>
+          <div class="key-field-box"><div class="penna-key-field" data-penna="field" data-id="key-large" data-key="ctrl-a" data-size="large"></div></div>
+        </div>
+      </div>
+    </section>
+
+    <section data-section="key-field-settings">
+      <div class="story-states" data-columns style="--columns: 1">
+        <div class="story-state">
+          <div class="story-label">prefix and split keys</div>
+          <div class="penna-settings-stack">
+            <div class="penna-settings-group"><span data-penna-text>Multiplexer</span></div>
+            <div class="penna-settings-list" role="list" data-id="stack-keys">
+              <div class="penna-setting-entry" role="listitem" data-id="entry-prefix">
+                <div data-penna="settings.card" data-ground>
+                  <div class="penna-setting-body">
+                    <div class="penna-setting-heading">
+                      <div class="penna-setting-copy">
+                        <div class="penna-setting-title"><span data-penna-text>Prefix</span></div>
+                        <div class="penna-setting-description"><span data-penna-text>Pressed before every multiplexer shortcut</span></div>
+                      </div>
+                      <div class="key-field-control"><div class="penna-key-field" data-penna="field" data-id="key-prefix" data-key="ctrl-b"></div></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="penna-setting-entry" role="listitem" data-id="entry-split">
+                <div data-penna="settings.card" data-ground>
+                  <div class="penna-setting-rule"><div data-penna="rule.list"></div></div>
+                  <div class="penna-setting-body">
+                    <div class="penna-setting-heading">
+                      <div class="penna-setting-copy">
+                        <div class="penna-setting-title"><span data-penna-text>Split right</span></div>
+                      </div>
+                      <div class="key-field-control"><div class="penna-key-field" data-penna="field" data-id="key-split" data-key="%"></div></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section data-section="key-field-recording">
+      <div class="story-states" data-columns style="--columns: 3">
+        <div class="story-state">
+          <div class="story-label">recording</div>
+          <div class="key-field-box"><div class="penna-key-field" data-penna="field" data-id="key-recording" data-key="ctrl-b" data-state="recording"></div></div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">resting</div>
+          <div class="key-field-box"><div class="penna-key-field" data-penna="field" data-id="key-resting" data-key="ctrl-b"></div></div>
+        </div>
+      </div>
+    </section>
+  </body>
+</html>

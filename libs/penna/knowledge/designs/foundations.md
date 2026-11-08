@@ -753,6 +753,42 @@ HTML: `<kbd class="penna-kbd" data-penna="keycap">` with `data-kbd`, the keystro
 
 Status: matches.
 
+### Key field
+
+A key field records one keystroke the person presses: a shortcut, a prefix key. To show a keystroke that can't be changed, use a keycap; to type text, an input.
+
+Kinds: one. `KeyField::new(&state)` draws a `KeyFieldState`, which holds the keystroke (`.value()` when built, `set_value()` later, `keystroke()` to read it) and emits `KeyFieldEvent::Record(keystroke)` when one is recorded.
+
+Anatomy, all from the field's rung of the control ladder (Size):
+
+- Container: a field (the field role's fill, a hairline edge of at least 1px, radius the theme radius capped at 45% of the height), height `control_px`, the field inset at both sides (6, 6, 8, 10, 12, 12 from `xs` to `touch`). It is as wide as its container.
+- Value: the keystroke as a keycap, centered; `sm` caps at `xs` and `sm`, `md` caps from `md` up. On a ground (`.on(ground)`) the cap takes that ground too.
+- Placeholder: with no keystroke, the placeholder (`.placeholder()`, or "None") centered in the field's faint ink, in the rung's text style (`caption`, `small`, `body`, `body`, `lead`, `touch-body`).
+- Prompt: while recording, "Press a key" at the start of the field, in the faint ink, in place of the value.
+
+Sizes: `md` by default (follows density). Same rungs and uses as a field.
+
+States:
+
+| State | Look | Notes |
+|---|---|---|
+| rest | the field's fill and edge, the value centered | |
+| hover | the fill's hover step | not when disabled |
+| focused | the field's focus edge, the value centered | from Tab, or after a recording |
+| recording | the focused look with the prompt at the start | the field holds focus |
+| disabled | the field's disabled paint | leaves the focus order and never records |
+| error | `.tone(Tone::Danger)` paints the edge in the danger tone, like a field | |
+
+Behavior: a press focuses the field and starts recording, as a press in a text field focuses it; Tab only focuses it, and Enter or Space then starts recording. While recording, the next key that isn't a modifier alone is recorded: it is taken before any key binding (`App::intercept_keystrokes`), so a shortcut the app binds is recorded instead of run. Recording stops, focus stays, and the field emits `KeyFieldEvent::Record`. A held key's repeats are ignored. A symbol typed with Shift records as the symbol (`"`, not Shift-'), the way a keymap spells it; Shift stays on letters and named keys. Escape with no modifier cancels, and so does leaving the field.
+
+Content: the placeholder says what no keystroke means ("None", "Unbound"), in sentence case. The settings row's title names what the key does, and its description says when it is pressed.
+
+Placement: at the end of a settings row, on the card's ground, at a width the caller sets (96 fits a chord of three modifiers and a key at `md`); in a form, in a Field.
+
+HTML: `div.penna-key-field[data-penna="field"]` with `data-key`, the keystroke as the keymap spells it (`ctrl-b`, `cmd-shift-p`, `%`), `data-placeholder`, `data-size` (`xsmall` to `touch`), `data-tone="danger"`, `aria-disabled="true"`, and `data-state="recording"` (or `"focused"`) to show that state at load. `key_field.js` makes it a `role="button"` tab stop, writes a `<kbd class="penna-kbd" data-penna="keycap" data-kbd>` for the value (filled by `kbd.js`) or a `.penna-key-field-text` run for the placeholder and prompt, sets `data-state` (`focused`, `recording`, `disabled`) and `aria-label`, records on a press or on Enter and Space, captures the next keydown on the document while recording (default prevented, propagation stopped), and fires `change` with `{ key }`. A field marked `data-state="recording"` starts recording when the page loads.
+
+Status: matches.
+
 ### Label
 
 A label is one run of interface text in a text style: a title, a row's name, a description, a value. For text people read (documents, chat), use the text component; a button, chip or menu row draws its own label.
