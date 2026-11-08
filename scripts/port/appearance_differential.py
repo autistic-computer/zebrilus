@@ -42,18 +42,21 @@ def main():
     importer = runpy.run_path(str(args.mjui / "scripts/penna/import.py"))
     expected = json.loads((args.mjui / "docs/penna/values.json").read_text())
     contract = json.loads((args.mjui / "docs/penna/contract.json").read_text())
-    mismatches = []
-    checked = 0
+    groups = []
     for theme in contract["themes"]:
         css = args.mjui / "build/penna-tokens" / (theme + ".css")
         if hashlib.sha256(css.read_bytes()).hexdigest() != contract["sources"][theme]["sha256"]:
             raise SystemExit(f"appearance contract does not match fresh CSS: {css}")
         keys = [key for key in expected if key.startswith(theme + "|")]
-        descriptors = [key.split("|")[1:] for key in keys]
-        properties = list(importer["BASE"])
-        page = "<!doctype html><meta charset=utf-8><style>" + css.read_text() + "</style><pre id=result></pre><script>"
-        page += "const descriptors=" + json.dumps(descriptors) + ";const properties=" + json.dumps(properties) + ";"
-        page += """const results=descriptors.map(([role,tone,prominent,state])=>{
+        groups.append((theme, keys, css.read_text()))
+    properties = list(importer["BASE"])
+    inputs = [(css, [key.split("|")[1:] for key in keys]) for _, keys, css in groups]
+    page = "<!doctype html><meta charset=utf-8><style id=theme></style><pre id=result></pre><script>"
+    page += "const groups=" + json.dumps(inputs) + ";const properties=" + json.dumps(properties) + ";"
+    page += """const stylesheet=document.getElementById('theme');
+const results=groups.map(([css,descriptors])=>{
+stylesheet.textContent=css;
+return descriptors.map(([role,tone,prominent,state])=>{
 const element=document.createElement('div');
 element.dataset.penna=role;
 if(tone)element.dataset.tone=tone;
@@ -64,14 +67,28 @@ const computed=getComputedStyle(element);
 const values=Object.fromEntries(properties.map(name=>[name,computed.getPropertyValue('--penna-'+name).trim()]));
 element.remove();
 return values;
-});document.getElementById('result').textContent=JSON.stringify(results);</script>"""
-        with tempfile.TemporaryDirectory(prefix="zz-css-") as temporary:
-            path = Path(temporary) / "contract.html"
-            path.write_text(page)
-            result = subprocess.run([args.chrome, "--headless=new", "--disable-gpu", "--no-first-run", "--no-default-browser-check", "--user-data-dir=" + str(Path(temporary) / "profile"), "--virtual-time-budget=1000", "--dump-dom", path.as_uri()], capture_output=True, text=True, timeout=60, check=True)
-        document = ResultParser()
-        document.feed(result.stdout)
-        actual = json.loads("".join(document.parts))
+});
+});document.getElementById('result').textContent=JSON.stringify(results);
+stylesheet.remove();document.currentScript.remove();</script>"""
+    with tempfile.TemporaryDirectory(prefix="zz-css-") as temporary:
+        path = Path(temporary) / "contract.html"
+        path.write_text(page)
+        try:
+            result = subprocess.run([args.chrome, "--headless=new", "--disable-gpu", "--disable-background-networking", "--disable-component-update", "--disable-extensions", "--num-raster-threads=1", "--renderer-process-limit=1", "--no-first-run", "--no-default-browser-check", "--user-data-dir=" + str(Path(temporary) / "profile"), "--virtual-time-budget=1000", "--dump-dom", path.as_uri()], capture_output=True, text=True, timeout=60, check=True)
+        except subprocess.TimeoutExpired as error:
+            target = ROOT / "target/port/appearance-browser-error.log"
+            target.parent.mkdir(parents=True, exist_ok=True)
+            details = error.stderr or b""
+            target.write_bytes(details.encode() if isinstance(details, str) else details)
+            raise RuntimeError(f"appearance browser timed out; diagnostic saved to {target}") from error
+    document = ResultParser()
+    document.feed(result.stdout)
+    actual_groups = json.loads("".join(document.parts))
+    if len(actual_groups) != len(groups):
+        raise SystemExit(f"browser returned {len(actual_groups)} of {len(groups)} themes")
+    mismatches = []
+    checked = 0
+    for (theme, keys, _), actual in zip(groups, actual_groups, strict=True):
         if len(actual) != len(keys):
             raise SystemExit(f"browser returned {len(actual)} of {len(keys)} recipes for {theme}")
         for key, values in zip(keys, actual, strict=True):

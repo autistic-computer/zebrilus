@@ -12,7 +12,7 @@ from mjui.widgets.penna_glass import material
 from mjui.widgets.penna_chooser_data import chooser_color
 from mjui.widgets.penna_geometry import length, text_width
 from mjui.widgets.penna_icon_names import named_icon
-from mjui.widgets.penna_palette_shortcuts import PaletteKeystroke, key_parts, _packed
+from mjui.widgets.penna_palette_shortcuts import PaletteKeystroke, PaletteKeyPart, key_parts, _packed
 from mjui.widgets.penna_palette_surface_data import surface_metric, surface_rule
 from mjui.widgets.controls import _input, _nav, _paint_state
 from mjui.widgets.key import sub
@@ -87,12 +87,21 @@ def _close(mut ui: Ui, th: PennaTheme, key: UInt64) raises -> Bool:
 
 
 def _cap_width(mut ui: Ui, th: PennaTheme, stroke: PaletteKeystroke) raises -> Float32:
-    var parts = key_parts(stroke)
+    var parts = _hint_parts(stroke)
     var width = length(ui, 2) * Float32(max(len(parts) - 1, 0))
     for part in parts:
         width += length(ui, 13) if part.icon else _width(ui, part.value, th.flat.font, 11, 16)
     var paint = th.paint("keycap")
     return max(length(ui, 18), width + length(ui, 8) + 2 * length(ui, paint.border_width))
+
+
+def _hint_parts(stroke: PaletteKeystroke) -> List[PaletteKeyPart]:
+    var parts = key_parts(stroke)
+    if stroke.key.byte_length() == 1:
+        var byte = stroke.key.as_bytes()[0]
+        if byte >= 97 and byte <= 122 and len(parts) > 0 and not parts[len(parts) - 1].icon:
+            parts[len(parts) - 1].value = String(chr(Int(byte) - 32))
+    return parts^
 
 
 @inline(.never)
@@ -102,7 +111,7 @@ def _cap(mut ui: Ui, th: PennaTheme, stroke: PaletteKeystroke) raises:
     ui.open(paint.style(Style.row().width(width).height(length(ui, 18)).pad(length(ui, 4), 0).align(CENTER, CENTER)))
     paint.decorations(ui)
     ui.open(Style.row().spacing(length(ui, 2)).align(CENTER, CENTER))
-    var parts = key_parts(stroke)
+    var parts = _hint_parts(stroke)
     for part in parts:
         if part.icon:
             _icon(ui, th, part.value, 13, paint.color(2))
