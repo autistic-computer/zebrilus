@@ -1,5 +1,6 @@
 use super::*;
-use std::path::Path;
+use penna::components::menu::MenuScope;
+use std::{collections::HashSet, path::Path};
 use zz_protocol::{CommandInvocation, MuxOptionKey, MuxOptions};
 use zz_terminal::{AppearanceConfigKey, TerminalAppearance};
 
@@ -51,6 +52,7 @@ struct OptionRow {
     input: Entity<InputState>,
     select: Option<Entity<SelectState<Vec<SettingsSelectItem>>>>,
     key_field: Option<Entity<KeyFieldState>>,
+    scopes: Vec<MenuScope>,
     numeric: bool,
 }
 
@@ -200,13 +202,16 @@ impl SettingsView {
                 ));
                 let selected = select_value(key, value.as_deref().unwrap_or(&key.default_value()));
                 let choices = option_choices(key, import_color_scheme(cx));
+                let mut scopes = Vec::new();
                 let select = if matches!(key, FileKey::Appearance(AppearanceConfigKey::FontFamily))
                 {
-                    Some(terminal_font_select(
+                    let (select, font_scopes) = terminal_font_select(
                         &display_value(key, value.as_deref().unwrap_or_default()),
                         window,
                         cx,
-                    ))
+                    );
+                    scopes = font_scopes;
+                    Some(select)
                 } else if choices.is_empty() {
                     None
                 } else {
@@ -270,6 +275,7 @@ impl SettingsView {
                     input,
                     select,
                     key_field,
+                    scopes,
                     numeric,
                 });
             }
@@ -426,6 +432,7 @@ impl SettingsView {
                         .child(
                             Select::new(select)
                                 .search_placeholder("Search fonts")
+                                .scopes(row.scopes.clone())
                                 .on(settings_card_ground(cx)),
                         )
                         .into_any_element()
@@ -748,7 +755,22 @@ fn terminal_font_select(
     selected: &str,
     window: &mut Window,
     cx: &mut Context<SettingsView>,
-) -> Entity<SelectState<Vec<SettingsSelectItem>>> {
+) -> (Entity<SelectState<Vec<SettingsSelectItem>>>, Vec<MenuScope>) {
+    let monospaced = cx
+        .text_system()
+        .monospaced_font_names()
+        .into_iter()
+        .collect::<HashSet<_>>();
+    let scopes = if monospaced.is_empty() {
+        Vec::new()
+    } else {
+        vec![
+            MenuScope::new("Monospaced", move |family| {
+                family == "Default" || monospaced.contains(family)
+            }),
+            MenuScope::all("All fonts"),
+        ]
+    };
     let mut families = cx.text_system().all_font_names();
     families.retain(|family| !family.starts_with('.') && !family.trim().is_empty());
     if !selected.is_empty() {
@@ -767,7 +789,8 @@ fn terminal_font_select(
                 .map(|family| SettingsSelectItem::new(family.clone(), family).preview_font()),
         )
         .collect();
-    cx.new(|cx| SelectState::new(items, Some(IndexPath::new(index)), window, cx))
+    let select = cx.new(|cx| SelectState::new(items, Some(IndexPath::new(index)), window, cx));
+    (select, scopes)
 }
 
 fn open_in_text_editor(path: &Path, cx: &App) {
