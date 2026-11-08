@@ -20,6 +20,7 @@ use crate::{
     attachment::{open_attachment_preview, open_render_image_preview},
     button::{Button, ButtonLook, ButtonVariants as _},
     h_flex,
+    mend::PENDING_LINK_URL,
     text::{
         CODE_BLOCK_GROUP, CodeBlock, MarkdownExtensions, MarkdownNode, MarkdownParseContext,
         MarkdownPlugin, TextView, TextViewState, TextViewStyle, markdown_ast,
@@ -47,7 +48,8 @@ const FIGURE_RENDER_DEBOUNCE: Duration = Duration::from_millis(250);
 const FIGURE_CACHE_CAPACITY: usize = 16;
 const HTML_PREVIEW_BUDGET_BYTES: usize = 64 * 1024 * 1024;
 const HTML_PREVIEW_WIDTH_STEP: f32 = 32.0;
-const MAX_STREAMING_MEND_BYTES: usize = 64 * 1024;
+pub(crate) const MAX_STREAMING_MEND_BYTES: usize = 64 * 1024;
+const INERT_LINK_URL: &str = "data:,";
 
 pub use zz_client::agent_timeline::plan_progress;
 use zz_client::agent_timeline::{PlanItemState, plan_items};
@@ -700,6 +702,7 @@ pub(crate) fn assistant_markdown_extensions() -> MarkdownExtensions {
                 .plugin(MermaidPlugin)
                 .plugin(SvgPlugin)
                 .plugin(RichMarkdownPlugin)
+                .link_rewriter(|url| (url == PENDING_LINK_URL).then(|| INERT_LINK_URL.to_owned()))
         })
         .clone()
 }

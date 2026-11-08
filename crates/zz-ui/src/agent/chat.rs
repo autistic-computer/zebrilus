@@ -52,6 +52,7 @@ pub struct ChatOpen {
     pub arrivals: HashMap<ItemId, u64>,
     pub images: HashMap<ItemId, Arc<[Arc<Image>]>>,
     pub texts: HashMap<ItemId, SharedString>,
+    pub previews: HashMap<ItemId, SharedString>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -104,6 +105,10 @@ const REVEAL_MS_PER_CHAR: u64 = 2;
 const USER_MAX_HEIGHT: f32 = 260.0;
 const THOUGHT_MAX_HEIGHT: f32 = 260.0;
 const PIP_GAP: f32 = 10.0;
+const PREVIEW_MAX_BYTES: usize = 32 * 1024;
+const PREVIEW_MAX_LINES: usize = 512;
+const PREVIEW_HEIGHT: f32 = 420.0;
+const PREVIEW_MARKER: &str = "\n\n… [long message cut here; copy the full message below]";
 const PIP_MIN_WIDTH: f32 = 280.0;
 const PIP_MAX_WIDTH: f32 = 520.0;
 
@@ -331,7 +336,9 @@ impl ChatPane {
 
     fn sync_texts(&mut self, view: &ChatView) {
         let texts = &mut self.open.texts;
+        let previews = &mut self.open.previews;
         texts.retain(|id, _| view.item(id).is_some());
+        previews.retain(|id, _| texts.contains_key(id));
         for item in view.items.values() {
             if !matches!(item.kind, ItemKind::User | ItemKind::Agent) {
                 continue;
@@ -340,8 +347,17 @@ impl ChatPane {
                 held.len() == item.body.text.len()
                     && (!item.status.is_open() || held.as_ref() == item.body.text)
             });
-            if !fresh {
-                texts.insert(item.id.clone(), item.body.text.clone().into());
+            if fresh {
+                continue;
+            }
+            texts.insert(item.id.clone(), item.body.text.clone().into());
+            match preview(&item.body.text).filter(|_| item.kind == ItemKind::Agent) {
+                Some(cut) => {
+                    previews.insert(item.id.clone(), cut.into());
+                }
+                None => {
+                    previews.remove(&item.id);
+                }
             }
         }
     }
@@ -880,7 +896,7 @@ impl Draw<'_, '_> {
                 self.hooks.refs,
                 cx,
             ),
-            Unit::Text(id) => markdown(id, self.shown_text(id), self.streams(id), self.hooks, cx),
+            Unit::Text(id) => self.reply(id),
             Unit::Run(run) => self.run(run, live),
             Unit::Subagent(id) => self.agents(std::slice::from_ref(id)),
             Unit::Agents(ids) => self.agents(ids),
@@ -960,6 +976,20 @@ impl Draw<'_, '_> {
             .get(id)
             .cloned()
             .unwrap_or_else(|| text_of(self.view, id))
+    }
+
+    fn reply(&self, id: &ItemId) -> AnyElement {
+        if let Some(cut) = self.open.previews.get(id) {
+            return long_reply(id, cut.clone(), self.text(id), self.hooks, self.cx);
+        }
+        let streams = self.streams(id);
+        let text = self.shown_text(id);
+        let text = if streams && text.len() <= super::MAX_STREAMING_MEND_BYTES {
+            crate::mend::mend(&text).map_or(text, SharedString::from)
+        } else {
+            text
+        };
+        markdown(id, text, streams, false, self.hooks, self.cx)
     }
 
     fn streams(&self, id: &ItemId) -> bool {
@@ -1148,6 +1178,7 @@ impl Draw<'_, '_> {
                 body.child(markdown(
                     &ItemId::new(format!("result-{}", id.as_str())),
                     result.into(),
+                    false,
                     false,
                     self.hooks,
                     cx,
@@ -1507,10 +1538,61 @@ fn block_scope(owner: Option<u64>, id: &str) -> u64 {
     hasher.finish()
 }
 
+fn preview(text: &str) -> Option<String> {
+    let mut end = text.len().min(PREVIEW_MAX_BYTES);
+    while !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    if let Some((newline, _)) = text[..end].match_indices('\n').nth(PREVIEW_MAX_LINES - 1) {
+        end = newline + 1;
+    }
+    if end >= text.len() {
+        return None;
+    }
+    let prefix = &text[..end];
+    let mut cut = crate::mend::mend(prefix).unwrap_or_else(|| prefix.to_owned());
+    cut.push_str(PREVIEW_MARKER);
+    Some(cut)
+}
+
+fn long_reply(
+    id: &ItemId,
+    cut: SharedString,
+    full: SharedString,
+    hooks: &ChatHooks<'_>,
+    cx: &App,
+) -> AnyElement {
+    v_flex()
+        .w_full()
+        .gap_2()
+        .child(markdown(id, cut, false, true, hooks, cx))
+        .child(
+            h_flex().w_full().justify_end().child(
+                Button::new(SharedString::from(format!(
+                    "chat-copy-full-{}",
+                    id.as_str()
+                )))
+                .icon(IconName::Copy)
+                .label("Copy full message")
+                .on_click(move |_, window, cx| {
+                    cx.write_to_clipboard(ClipboardItem::new_string(full.to_string()));
+                    window.push_notification(
+                        Notification::new()
+                            .message("Copied")
+                            .autohide_after(Duration::from_millis(1600)),
+                        cx,
+                    );
+                }),
+            ),
+        )
+        .into_any_element()
+}
+
 fn markdown(
     id: &ItemId,
     text: SharedString,
     streaming: bool,
+    scrolls: bool,
     hooks: &ChatHooks<'_>,
     cx: &App,
 ) -> AnyElement {
@@ -1533,7 +1615,8 @@ fn markdown(
             agent_text_view(view, scope, hooks.owner, cx)
                 .selectable(true)
                 .streaming(streaming)
-                .markdown_extensions(assistant_markdown_extensions()),
+                .markdown_extensions(assistant_markdown_extensions())
+                .when(scrolls, |text| text.scrollable(true).h(px(PREVIEW_HEIGHT))),
         )
         .into_any_element()
 }
@@ -2324,6 +2407,30 @@ mod tests {
             at,
         })
         .expect("end");
+    }
+
+    #[test]
+    fn a_long_reply_shows_its_first_512_lines_and_copies_whole() {
+        let mut view = ready("s1");
+        let long = "line\n".repeat(600);
+        view.apply(&ChatEvent::ItemStarted {
+            item: ItemId::new("long"),
+            turn: Some(TurnId(1)),
+            parent: None,
+            kind: ItemKind::Agent,
+            body: ItemBody::text(long.clone()),
+            at: 3,
+        })
+        .expect("reply");
+        finished(&mut view, "short", None, ItemKind::Agent, 4);
+        let mut pane = ChatPane::default();
+        pane.sync(&view);
+        assert_eq!(
+            pane.open.previews[&ItemId::new("long")].as_ref(),
+            format!("{}{}", "line\n".repeat(512), super::PREVIEW_MARKER)
+        );
+        assert_eq!(pane.open.texts[&ItemId::new("long")].as_ref(), long);
+        assert!(!pane.open.previews.contains_key(&ItemId::new("short")));
     }
 
     #[test]

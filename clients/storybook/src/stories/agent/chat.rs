@@ -961,6 +961,11 @@ fn said(prompt: &str, reply: &str) -> Script {
 }
 
 pub fn messages(window: &mut Window, cx: &mut App) -> AnyView {
+    let lines = (1..=600)
+        .map(|line| format!("test browser::tab_strip::case_{line:03} ... ok"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let log = format!("Here is the whole run:\n\n```\n{lines}\n```");
     let pasted = (1..=40)
         .map(|line| format!("{line}. a pasted line of the brief, long enough to wrap once or twice in the bubble"))
         .collect::<Vec<_>>()
@@ -1033,6 +1038,11 @@ pub fn messages(window: &mut Window, cx: &mut App) -> AnyView {
             (
                 "a screenshot with no text",
                 Thread::new(shown("", &[tab_strip_screenshot()])),
+            ),
+            (
+                "a 600-line log: the first 512 lines scroll in a 420px box, Copy takes all of it",
+                Thread::new(said("Paste the whole test run.", &log))
+                    .framed(Frame::Scroll(Some(600.0))),
             ),
         ],
         window,
@@ -1218,11 +1228,6 @@ const SVG: &str = "The p99 per build:\n\n\
 ```";
 
 pub fn markdown(window: &mut Window, cx: &mut App) -> AnyView {
-    let lines = (1..=600)
-        .map(|line| format!("test browser::tab_strip::case_{line:03} ... ok"))
-        .collect::<Vec<_>>()
-        .join("\n");
-    let log = format!("Here is the whole run:\n\n```\n{lines}\n```");
     threads(
         vec![
             (
@@ -1282,11 +1287,6 @@ pub fn markdown(window: &mut Window, cx: &mut App) -> AnyView {
                 Thread::new(said("Draw the prompt flow.", BROKEN_MERMAID)),
             ),
             ("an SVG", Thread::new(said("Chart the p99s.", SVG))),
-            (
-                "a 600-line log, in a pane 480px tall",
-                Thread::new(said("Paste the whole test run.", &log))
-                    .framed(Frame::Scroll(Some(480.0))),
-            ),
         ],
         window,
         cx,
