@@ -1140,8 +1140,8 @@ pub static DAEMON_COMMAND_SPECS: &[CommandSpec] = &[
     CommandSpec {
         name: "tailnet",
         aliases: &[],
-        description: "Show whether this machine's zz daemon is reachable over Tailscale, and who may attach",
-        usage: "[status | hosts]",
+        description: "Show whether this machine's zz daemon is reachable over Tailscale and who may attach, or sign zz's own Tailscale node in and out",
+        usage: "[status | hosts | login | logout | allow [NAME] | disallow NAME]",
         options: &[],
         positionals: &[],
         variadic: Some(FreeForm),

@@ -252,20 +252,52 @@ fn admission_follows_the_policy_table() {
 #[test]
 fn settings_take_the_last_valid_line() {
     let settings = Settings::from_config(
-        "tailnet = off\ntailnet-allow = members # coworkers too\ntailnet = sideways\nhost-arch = ssh://arch\ntailnet-hide = xps, ,win-desktop\n",
+        "tailnet = own\ntailnet-allow = members # coworkers too\ntailnet = sideways\nhost-arch = ssh://arch\ntailnet-hide = xps, ,win-desktop\ntailnet-hostname = zz-box\ntailnet-hostname = zz box\ntailnet-control-url = https://headscale.example.com\n",
     );
     assert_eq!(
         settings,
         Settings {
-            mode: Mode::Off,
+            mode: Mode::Own,
             allow: Allow::Members,
             hide: vec!["xps".to_owned(), "win-desktop".to_owned()],
+            hostname: Some("zz-box".to_owned()),
+            control_url: Some("https://headscale.example.com".to_owned()),
         }
     );
     assert_eq!(Settings::from_config(""), Settings::default());
     assert_eq!(
         Settings::default().apply("tailnet", "sideways"),
-        Err("expected auto, on or off".to_owned())
+        Err("expected auto, on, off or own".to_owned())
+    );
+}
+
+#[test]
+fn own_node_states_survive_the_status_line() {
+    for state in [
+        OwnState::Off("tailnet = auto".to_owned()),
+        OwnState::Starting,
+        OwnState::NeedsLogin("https://login.tailscale.com/a/1f2e3d".to_owned()),
+        OwnState::Running {
+            name: "zz-alienware.example.ts.net".to_owned(),
+            key: "nodekey:d1e10fb2aa477d2b7e54a96609055e4a3d1b7b582af050c4ffcb5081ccab082b"
+                .to_owned(),
+            addresses: vec![
+                "100.64.0.7".parse().unwrap(),
+                "fd7a:115c:a1e0::7".parse().unwrap(),
+            ],
+        },
+        OwnState::Failed("the auth key was rejected".to_owned()),
+    ] {
+        assert_eq!(
+            OwnState::parse(&state.to_line()),
+            Some(state.clone()),
+            "{state:?}"
+        );
+    }
+    assert_eq!(OwnState::parse("login"), None);
+    assert_eq!(
+        dial_socket(Path::new("/run/user/1000/zz/default.sock")),
+        PathBuf::from("/run/user/1000/zz/default.tailnet.sock")
     );
 }
 

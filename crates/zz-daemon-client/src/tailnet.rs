@@ -24,6 +24,8 @@ pub const PORT: u16 = TailnetEndpoint::DEFAULT_PORT;
 pub const MODE_KEY: &str = "tailnet";
 pub const ALLOW_KEY: &str = "tailnet-allow";
 pub const HIDE_KEY: &str = "tailnet-hide";
+pub const HOSTNAME_KEY: &str = "tailnet-hostname";
+pub const CONTROL_URL_KEY: &str = "tailnet-control-url";
 
 const CLI_TIMEOUT: Duration = Duration::from_secs(5);
 const CLI_POLL: Duration = Duration::from_millis(10);
@@ -36,6 +38,7 @@ pub enum Mode {
     Auto,
     On,
     Off,
+    Own,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -50,12 +53,17 @@ pub struct Settings {
     pub mode: Mode,
     pub allow: Allow,
     pub hide: Vec<String>,
+    pub hostname: Option<String>,
+    pub control_url: Option<String>,
 }
 
 impl Settings {
     #[must_use]
     pub fn is_key(key: &str) -> bool {
-        matches!(key, MODE_KEY | ALLOW_KEY | HIDE_KEY)
+        matches!(
+            key,
+            MODE_KEY | ALLOW_KEY | HIDE_KEY | HOSTNAME_KEY | CONTROL_URL_KEY
+        )
     }
 
     pub fn apply(&mut self, key: &str, value: &str) -> Result<(), String> {
@@ -63,7 +71,8 @@ impl Settings {
             (MODE_KEY, "auto") => self.mode = Mode::Auto,
             (MODE_KEY, "on") => self.mode = Mode::On,
             (MODE_KEY, "off") => self.mode = Mode::Off,
-            (MODE_KEY, _) => return Err("expected auto, on or off".to_owned()),
+            (MODE_KEY, "own") => self.mode = Mode::Own,
+            (MODE_KEY, _) => return Err("expected auto, on, off or own".to_owned()),
             (ALLOW_KEY, "owner") => self.allow = Allow::Owner,
             (ALLOW_KEY, "members") => self.allow = Allow::Members,
             (ALLOW_KEY, _) => return Err("expected owner or members".to_owned()),
@@ -74,6 +83,24 @@ impl Settings {
                     .filter(|name| !name.is_empty())
                     .map(str::to_owned)
                     .collect();
+            }
+            (HOSTNAME_KEY, name) => {
+                if !name.is_empty()
+                    && name
+                        .chars()
+                        .all(|character| character.is_ascii_alphanumeric() || character == '-')
+                {
+                    self.hostname = Some(name.to_owned());
+                } else {
+                    return Err("expected letters, digits and dashes".to_owned());
+                }
+            }
+            (CONTROL_URL_KEY, url) => {
+                if url.starts_with("https://") || url.starts_with("http://") {
+                    self.control_url = Some(url.to_owned());
+                } else {
+                    return Err("expected an http:// or https:// address".to_owned());
+                }
             }
             _ => return Err(format!("`{key}` is not a tailnet key")),
         }
@@ -104,6 +131,7 @@ impl Mode {
             Self::Auto => "auto",
             Self::On => "on",
             Self::Off => "off",
+            Self::Own => "own",
         }
     }
 }
@@ -598,7 +626,198 @@ pub fn resolve(endpoint: &TailnetEndpoint) -> Result<SocketAddr, TailnetError> {
     Ok(SocketAddr::new(*address, port))
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum OwnState {
+    Off(String),
+    Starting,
+    NeedsLogin(String),
+    Running {
+        name: String,
+        key: String,
+        addresses: Vec<IpAddr>,
+    },
+    Failed(String),
+}
+
+impl OwnState {
+    #[must_use]
+    pub fn to_line(&self) -> String {
+        match self {
+            Self::Off(reason) => format!("off {reason}"),
+            Self::Starting => "starting".to_owned(),
+            Self::NeedsLogin(url) => format!("login {url}"),
+            Self::Running {
+                name,
+                key,
+                addresses,
+            } => {
+                let mut line = format!("running {name} {key}");
+                for address in addresses {
+                    line.push(' ');
+                    line.push_str(&address.to_string());
+                }
+                line
+            }
+            Self::Failed(reason) => format!("failed {reason}"),
+        }
+    }
+
+    #[must_use]
+    pub fn parse(line: &str) -> Option<Self> {
+        let line = line.trim();
+        let (word, rest) = line.split_once(' ').unwrap_or((line, ""));
+        match word {
+            "off" => Some(Self::Off(rest.to_owned())),
+            "starting" => Some(Self::Starting),
+            "login" if !rest.is_empty() => Some(Self::NeedsLogin(rest.to_owned())),
+            "running" => {
+                let mut parts = rest.split_whitespace();
+                let name = parts.next()?.to_owned();
+                let key = parts.next()?.to_owned();
+                let addresses = parts.filter_map(|part| part.parse().ok()).collect();
+                Some(Self::Running {
+                    name,
+                    key,
+                    addresses,
+                })
+            }
+            "failed" => Some(Self::Failed(rest.to_owned())),
+            _ => None,
+        }
+    }
+
+    #[must_use]
+    pub fn describe(&self) -> String {
+        match self {
+            Self::Off(reason) => format!("zz's own node is off: {reason}"),
+            Self::Starting => "zz's own node is starting".to_owned(),
+            Self::NeedsLogin(url) => format!("sign zz's own node in at {url}"),
+            Self::Running { name, .. } => format!("zz's own node is signed in as {name}"),
+            Self::Failed(reason) => format!("zz's own node stopped: {reason}"),
+        }
+    }
+}
+
+#[must_use]
+pub fn dial_socket(daemon_socket: &Path) -> PathBuf {
+    daemon_socket.with_extension("tailnet.sock")
+}
+
+#[cfg(unix)]
+fn own_dial(endpoint: &TailnetEndpoint) -> Option<Result<LocalStream, TailnetError>> {
+    use std::io::Write as _;
+
+    let socket = dial_socket(&crate::transport::default_socket_path());
+    let mut stream = LocalTransport::connect(&socket).ok()?;
+    let port = endpoint.port.unwrap_or(PORT);
+    let request = format!("{} {port}\n", endpoint.peer);
+    if let Err(error) = stream.write_all(request.as_bytes()) {
+        return Some(Err(error.into()));
+    }
+    let mut reply = Vec::new();
+    let mut byte = [0_u8; 1];
+    while reply.len() < 1024 {
+        match stream.read(&mut byte) {
+            Ok(1) if byte[0] == b'\n' => break,
+            Ok(1) => reply.push(byte[0]),
+            Ok(_) => break,
+            Err(error) => return Some(Err(error.into())),
+        }
+    }
+    let reply = String::from_utf8_lossy(&reply).into_owned();
+    if reply == "ok" {
+        Some(Ok(stream))
+    } else {
+        Some(Err(TailnetError::Unusable(
+            reply.strip_prefix("error ").map_or_else(
+                || "zz's own node closed the connection".to_owned(),
+                str::to_owned,
+            ),
+        )))
+    }
+}
+
+#[cfg(not(unix))]
+fn own_dial(_: &TailnetEndpoint) -> Option<Result<LocalStream, TailnetError>> {
+    None
+}
+
+pub fn probe(endpoint: &TailnetEndpoint, timeout: Duration) -> Result<(), TailnetError> {
+    if let Some(dialed) = own_dial(endpoint) {
+        return dialed.map(drop);
+    }
+    let target = resolve(endpoint)?;
+    TcpStream::connect_timeout(&target, timeout)
+        .map(drop)
+        .map_err(|error| TailnetError::Unreachable {
+            target,
+            reason: error.to_string(),
+        })
+}
+
+enum Upstream {
+    Tcp(TcpStream),
+    Own(LocalStream),
+}
+
+enum Route {
+    Tcp(SocketAddr),
+    Own(TailnetEndpoint),
+}
+
+impl Route {
+    fn open(endpoint: &TailnetEndpoint) -> Result<(Self, Upstream), TailnetError> {
+        if let Some(dialed) = own_dial(endpoint) {
+            return dialed.map(|stream| (Self::Own(endpoint.clone()), Upstream::Own(stream)));
+        }
+        let target = resolve(endpoint)?;
+        let first = TcpStream::connect_timeout(&target, DIAL_TIMEOUT).map_err(|error| {
+            TailnetError::Unreachable {
+                target,
+                reason: error.to_string(),
+            }
+        })?;
+        Ok((Self::Tcp(target), Upstream::Tcp(first)))
+    }
+
+    fn dial(&self) -> Result<Upstream, TailnetError> {
+        match self {
+            Self::Tcp(target) => TcpStream::connect_timeout(target, DIAL_TIMEOUT)
+                .map(Upstream::Tcp)
+                .map_err(|error| TailnetError::Unreachable {
+                    target: *target,
+                    reason: error.to_string(),
+                }),
+            Self::Own(endpoint) => own_dial(endpoint)
+                .unwrap_or_else(|| {
+                    Err(TailnetError::Unusable(
+                        "zz's own node stopped listening for dials".to_owned(),
+                    ))
+                })
+                .map(Upstream::Own),
+        }
+    }
+}
+
+fn splice(own: LocalStream, local: LocalStream) -> io::Result<()> {
+    let mut own_read = own.try_clone()?;
+    let mut local_write = local.try_clone()?;
+    let upstream = thread::Builder::new()
+        .name("zz-tailnet-pump".to_owned())
+        .spawn(move || {
+            let _ = io::copy(&mut own_read, &mut local_write);
+            let _ = TransportStream::shutdown(&local_write);
+        })?;
+    let mut local_read = local;
+    let mut own_write = own;
+    let _ = io::copy(&mut local_read, &mut own_write);
+    let _ = TransportStream::shutdown(&own_write);
+    let _ = upstream.join();
+    Ok(())
+}
+
 pub struct TailnetForward {
+    endpoint: TailnetEndpoint,
     socket: PathBuf,
     stop: Arc<AtomicBool>,
     thread: Option<JoinHandle<()>>,
@@ -607,13 +826,8 @@ pub struct TailnetForward {
 
 impl TailnetForward {
     pub fn start(endpoint: &TailnetEndpoint) -> Result<Self, TailnetError> {
-        let target = resolve(endpoint)?;
-        let first = TcpStream::connect_timeout(&target, DIAL_TIMEOUT).map_err(|error| {
-            TailnetError::Unreachable {
-                target,
-                reason: error.to_string(),
-            }
-        })?;
+        let (route, first) = Route::open(endpoint)?;
+        let route = Arc::new(route);
         let first = Arc::new(parking_lot::Mutex::new(Some(first)));
         let (directory, socket) = forward_socket()?;
         let listener = LocalTransport::bind(&socket)?;
@@ -627,27 +841,24 @@ impl TailnetForward {
                         break;
                     }
                     let dialed = first.lock().take();
+                    let route = Arc::clone(&route);
                     let _ = thread::Builder::new()
                         .name("zz-tailnet-dial".to_owned())
-                        .spawn(move || {
-                            let tcp = dialed.map_or_else(
-                                || TcpStream::connect_timeout(&target, DIAL_TIMEOUT),
-                                Ok,
-                            );
-                            match tcp {
-                                Ok(tcp) => {
-                                    let _ = bridge(tcp, local);
-                                }
-                                Err(error) => {
-                                    log::debug!(
-                                        "could not reach {target} over the tailnet: {error}"
-                                    );
-                                }
+                        .spawn(move || match dialed.map_or_else(|| route.dial(), Ok) {
+                            Ok(Upstream::Tcp(tcp)) => {
+                                let _ = bridge(tcp, local);
+                            }
+                            Ok(Upstream::Own(own)) => {
+                                let _ = splice(own, local);
+                            }
+                            Err(error) => {
+                                log::debug!("could not reach the tailnet peer: {error}");
                             }
                         });
                 }
             })?;
         Ok(Self {
+            endpoint: endpoint.clone(),
             socket,
             stop,
             thread: Some(thread),
@@ -658,6 +869,11 @@ impl TailnetForward {
     #[must_use]
     pub fn socket(&self) -> &Path {
         &self.socket
+    }
+
+    #[must_use]
+    pub const fn endpoint(&self) -> &TailnetEndpoint {
+        &self.endpoint
     }
 }
 

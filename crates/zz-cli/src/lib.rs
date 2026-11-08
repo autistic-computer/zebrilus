@@ -929,7 +929,7 @@ fn run_command_mode(
 
     if command == "tailnet" {
         return Some(
-            match tailnet::run(invocation.args.iter().map(ToString::to_string)) {
+            match tailnet::run(invocation.args.iter().map(ToString::to_string), socket_path) {
                 Ok(output) => {
                     println!("{output}");
                     ExitCode::SUCCESS

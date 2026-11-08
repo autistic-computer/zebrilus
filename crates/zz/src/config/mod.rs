@@ -130,6 +130,8 @@ pub(crate) struct DiscoveredHosts {
     pub(crate) enabled: bool,
     pub(crate) hidden: Vec<String>,
     pub(crate) link: Option<String>,
+    pub(crate) own: bool,
+    pub(crate) login: Option<String>,
 }
 
 impl Global for DiscoveredHosts {}
