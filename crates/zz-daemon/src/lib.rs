@@ -65,6 +65,24 @@ pub(crate) fn pid_alive(pid: u32) -> bool {
             || std::io::Error::last_os_error().raw_os_error() == Some(libc::EPERM))
 }
 
+#[cfg(windows)]
+#[allow(unsafe_code, clippy::undocumented_unsafe_blocks)]
+pub(crate) fn pid_alive(pid: u32) -> bool {
+    use windows_sys::Win32::{
+        Foundation::{CloseHandle, STILL_ACTIVE},
+        System::Threading::{GetExitCodeProcess, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION},
+    };
+    let process = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid) };
+    if process.is_null() {
+        // Access denied means it exists, like EPERM above.
+        return std::io::Error::last_os_error().kind() == std::io::ErrorKind::PermissionDenied;
+    }
+    let mut code = 0;
+    let read = unsafe { GetExitCodeProcess(process, &mut code) } != 0;
+    unsafe { CloseHandle(process) };
+    read && code == STILL_ACTIVE.cast_unsigned()
+}
+
 fn tmux_shim_environment(
     tmux_shim: Option<&Path>,
     zz_executable: Option<&Path>,

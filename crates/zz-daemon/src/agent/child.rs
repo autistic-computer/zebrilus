@@ -251,6 +251,20 @@ impl Process {
     }
 }
 
+// Managed app-server daemons listen on a Unix socket, so callers never find
+// one to connect to elsewhere.
+#[cfg(not(unix))]
+impl Process {
+    pub(crate) fn connect(
+        _path: &std::path::Path,
+        _agent: &str,
+        _generation: u64,
+        _events: &Sender<ChildEvent>,
+    ) -> Result<Self, String> {
+        Err("connecting to a managed agent daemon needs a Unix socket".to_owned())
+    }
+}
+
 #[cfg(unix)]
 impl Process {
     pub(crate) fn connect(

@@ -58,7 +58,7 @@ rustix = { workspace = true, features = ["fs", "net"] }
 zz-tailnet = { workspace = true, optional = true }
 
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_System_Pipes"] }
+windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_System_Pipes", "Win32_System_Threading"] }
 
 [dev-dependencies]
 chrono = { workspace = true, features = ["clock"] }
