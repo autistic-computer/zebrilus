@@ -243,28 +243,12 @@ pub fn summarize_chat(window: &WindowSnapshot) -> Option<WindowSummary> {
         .map(|pane| pane_attention(pane))
         .max()
         .unwrap_or_default();
-    let Some(agent) = panes
+    let agent = panes
         .iter()
         .copied()
         .filter(runs_agent)
         .find(|pane| pane.id == window.active_pane)
-        .or_else(|| panes.iter().copied().find(runs_agent))
-    else {
-        let picking = !panes.is_empty()
-            && panes
-                .iter()
-                .all(|pane| matches!(pane.kind, PaneKindSnapshot::Picker));
-        return picking.then(|| WindowSummary {
-            window: window.id,
-            index: window.index,
-            headline: window.active_pane,
-            title: "New agent".to_owned(),
-            detail: vec![part("Pick a CLI", Tone::Muted)],
-            changed_at: 0,
-            tiles: panes.iter().copied().map(pane_tile).collect(),
-            attention,
-        });
-    };
+        .or_else(|| panes.iter().copied().find(runs_agent))?;
     let title = window_title(window, Some(agent), Some(agent));
     let quiet = agent.status.is_none() && !agent.summary.unseen && !agent.dead;
     let detail = match (quiet, location(agent), pane_program(agent)) {
@@ -1279,18 +1263,22 @@ mod tests {
     }
 
     #[test]
-    fn only_agents_and_pickers_make_chats() {
+    fn only_windows_with_an_agent_are_chats() {
         assert_eq!(summarize_chat(&window(1, vec![terminal(1, "zsh")])), None);
-        let picking = summarize_chat(&window(2, vec![pane(5, PaneKindSnapshot::Picker)]))
-            .expect("a window of pickers is a chat being started");
-        assert_eq!(picking.title, "New agent");
-        assert_eq!(texts(&picking), [("Pick a CLI", Tone::Muted)]);
-        assert_eq!(picking.tiles[0].tag, PaneTag::Picker);
-        let split = window(
-            3,
-            vec![terminal(1, "zsh"), pane(2, PaneKindSnapshot::Picker)],
+        assert_eq!(
+            summarize_chat(&window(2, vec![pane(5, PaneKindSnapshot::Picker)])),
+            None
         );
-        assert_eq!(summarize_chat(&split), None);
+        let split = summarize_chat(&window(
+            3,
+            vec![
+                terminal(1, "zsh"),
+                pane(2, PaneKindSnapshot::Picker),
+                agent(3, "Docs"),
+            ],
+        ))
+        .expect("a window with an agent is a chat");
+        assert_eq!(split.headline, PaneId(3));
     }
 
     #[test]

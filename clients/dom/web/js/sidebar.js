@@ -264,20 +264,6 @@ function rollup(counts, live) {
   return element;
 }
 
-function addButton(icon, title, run) {
-  const button = document.createElement("button");
-  button.dataset.penna = "icon-button.row";
-  button.className = "flat-add";
-  button.title = title;
-  button.innerHTML = `<i data-icon="${icon}"></i>`;
-  button.addEventListener("click", (event) => {
-    event.stopPropagation();
-    if (writable()) run();
-    flush();
-  });
-  return button;
-}
-
 function tileStack(window) {
   const stack = document.createElement("span");
   stack.className = "flat-stack";
@@ -303,6 +289,11 @@ function tileStack(window) {
 
 function renderFlat() {
   const host = JSON.parse(state.client.flat_sidebar(Date.now() / 1000));
+  list.className = "flat";
+  if (!host.chats.length) {
+    list.replaceChildren();
+    return;
+  }
   const live = state.connected;
   const rows = [];
   const header = document.createElement("div");
@@ -314,7 +305,6 @@ function renderFlat() {
   header.querySelector(".flat-name").textContent = host.name;
   if (flatFolds.host) header.append(rollup(host.rollup, live));
   if (!live) header.insertAdjacentHTML("beforeend", `<i data-icon="circle-x" class="flat-status"></i>`);
-  if (live) header.append(addButton("chat-plus", "New agent", () => state.client.new_chat()));
   header.addEventListener("click", () => {
     flatFolds.host = !flatFolds.host;
     markTree();

@@ -10,10 +10,11 @@ use ala::{
 };
 use penna::{components::menu::PopupMenuItem, components::scroll::ScrollableElement as _};
 use zz_client::{
-    new_chat::open_picker_commands,
-    window_summary::{age_label, summarize_chats},
+    new_chat::{leave_picker_command, open_picker_commands},
+    sidebar::SidebarTarget,
+    window_summary::{age_label, summarize_chat, summarize_chats},
 };
-use zz_protocol::{PaneKindSnapshot, SessionId, WindowId};
+use zz_protocol::{PaneKindSnapshot, SessionId, WindowId, WindowSnapshot};
 use zz_ui::{
     command::PaletteHostId,
     navigation::{
@@ -39,6 +40,9 @@ pub(super) struct FlatView {
     scroll: ScrollHandle,
     awaiting: Option<(HostId, BTreeSet<WindowId>)>,
     moving: Option<(HostId, WindowId, SessionId)>,
+    last_chat: Option<(HostId, WindowId)>,
+    landing: bool,
+    landing_from: Option<(HostId, WindowId)>,
 }
 
 fn connection(state: &HostState, loaded: bool) -> HostConnection {
@@ -77,6 +81,48 @@ fn current_window(mux: &MuxClient) -> Option<(PaletteHostId, WindowId)> {
         .iter()
         .find(|candidate| candidate.id == session)?;
     Some((host.into(), snapshot.focused_window_for(session)))
+}
+
+fn focused_window(mux: &MuxClient) -> Option<(HostId, &WindowSnapshot)> {
+    let (host, window) = current_window(mux)?;
+    let host = HostId::from(host);
+    mux.host_snapshot(host)?
+        .sessions
+        .iter()
+        .flat_map(|session| &session.windows)
+        .find(|candidate| candidate.id == window)
+        .map(|window| (host, window))
+}
+
+fn on_chat(mux: &MuxClient) -> Option<(HostId, WindowId)> {
+    focused_window(mux)
+        .filter(|(_, window)| summarize_chat(window).is_some())
+        .map(|(host, window)| (host, window.id))
+}
+
+fn is_chat(mux: &MuxClient, (host, window): (HostId, WindowId)) -> bool {
+    mux.host_snapshot(host).is_some_and(|snapshot| {
+        snapshot
+            .sessions
+            .iter()
+            .flat_map(|session| &session.windows)
+            .any(|candidate| candidate.id == window && summarize_chat(candidate).is_some())
+    })
+}
+
+fn latest_chat(mux: &MuxClient, only: Option<HostId>) -> Option<(HostId, WindowId)> {
+    mux.fleet_hosts()
+        .filter(|(host, ..)| only.is_none_or(|only| only == *host))
+        .filter_map(|(host, _, _, snapshot)| Some((host, snapshot?)))
+        .flat_map(|(host, snapshot)| {
+            snapshot
+                .sessions
+                .iter()
+                .flat_map(|session| &session.windows)
+                .filter_map(move |window| summarize_chat(window).map(|chat| (host, chat)))
+        })
+        .max_by_key(|(_, chat)| chat.changed_at)
+        .map(|(host, chat)| (host, chat.window))
 }
 
 fn window_menu(sidebar: &Entity<WorkspaceSidebar>) -> FlatMenu {
@@ -204,6 +250,22 @@ impl WorkspaceSidebar {
                 activate_sidebar(&sidebar.mux, activation, cx);
             }
         };
+        let leaving = match event {
+            FlatEvent::Open(_, window) => Some(SidebarTarget::Window(window)),
+            FlatEvent::OpenPane(_, _, pane) => Some(SidebarTarget::Pane(pane)),
+            _ => None,
+        };
+        if let Some(target) = leaving {
+            let mux = self.mux.read(cx);
+            if let Some(command) = mux
+                .host_snapshot(attached_host)
+                .and_then(|snapshot| leave_picker_command(snapshot, attached, target))
+            {
+                mux.execute_on_host(attached_host, command);
+            }
+            self.flat_view.landing = false;
+            cx.emit(super::SidebarModeChanged);
+        }
         match event {
             FlatEvent::Open(host, window) => activate(
                 TreeNode::Target(host.into(), TreeTarget::Window(window)),
@@ -224,7 +286,6 @@ impl WorkspaceSidebar {
                 }
                 cx.notify();
             }
-            FlatEvent::NewChat(host) => self.new_chat(host.into(), cx),
             FlatEvent::Connect(host) | FlatEvent::Upgrade(host) => {
                 self.mux
                     .update(cx, |mux, cx| mux.install_or_retry_host(host.into(), cx));
@@ -239,6 +300,15 @@ impl WorkspaceSidebar {
 
     pub(crate) fn new_chat(&mut self, host: HostId, cx: &mut Context<Self>) {
         let mux = self.mux.read(cx);
+        if host == mux.attached_host() {
+            if !self.flat_view.landing {
+                self.flat_view.landing = true;
+                self.flat_view.landing_from = on_chat(mux);
+                cx.emit(super::SidebarModeChanged);
+                cx.notify();
+            }
+            return;
+        }
         let Some(snapshot) = mux.host_snapshot(host) else {
             return;
         };
@@ -257,11 +327,63 @@ impl WorkspaceSidebar {
         self.flat_view.awaiting = Some((host, known));
     }
 
+    fn open_window(&mut self, host: HostId, window: WindowId, cx: &mut Context<Self>) {
+        let (attached_host, attached) = {
+            let mux = self.mux.read(cx);
+            (mux.attached_host(), mux.attached_session())
+        };
+        if let Some(activation) = self.tree_model.activation_for_node(
+            TreeNode::Target(host, TreeTarget::Window(window)),
+            attached_host,
+            attached,
+        ) {
+            activate_sidebar(&self.mux, activation, cx);
+        }
+    }
+
+    fn enter_chat_view(&mut self, cx: &mut Context<Self>) {
+        let target = {
+            let mux = self.mux.read(cx);
+            if on_chat(mux).is_some() {
+                return;
+            }
+            self.flat_view
+                .last_chat
+                .filter(|last| is_chat(mux, *last))
+                .or_else(|| latest_chat(mux, Some(mux.attached_host())))
+                .or_else(|| latest_chat(mux, None))
+        };
+        if let Some((host, window)) = target {
+            self.open_window(host, window, cx);
+        } else {
+            self.flat_view.landing = true;
+            self.flat_view.landing_from = None;
+        }
+    }
+
+    fn leave_chat_view(&mut self, cx: &App) {
+        if !self.flat_view.landing {
+            self.flat_view.last_chat = on_chat(self.mux.read(cx));
+        }
+        self.flat_view.landing = false;
+    }
+
+    pub(crate) const fn chat_landing(&self) -> bool {
+        self.flat && self.flat_view.landing
+    }
+
     pub(crate) fn follow_moved_window(&mut self, host: HostId, window: WindowId, from: SessionId) {
         self.flat_view.moving = Some((host, window, from));
     }
 
     pub(super) fn follow_chats(&mut self, cx: &mut Context<Self>) {
+        if self.flat_view.landing
+            && on_chat(self.mux.read(cx))
+                .is_some_and(|chat| Some(chat) != self.flat_view.landing_from)
+        {
+            self.flat_view.landing = false;
+            cx.emit(super::SidebarModeChanged);
+        }
         let mux = self.mux.read(cx);
         let session_of = |host: HostId, window: WindowId| {
             mux.host_snapshot(host).and_then(|snapshot| {
@@ -310,6 +432,10 @@ impl WorkspaceSidebar {
             return;
         };
         let (attached_host, attached) = (mux.attached_host(), mux.attached_session());
+        if self.flat_view.awaiting.is_some() && self.flat_view.landing {
+            self.flat_view.landing = false;
+            cx.emit(super::SidebarModeChanged);
+        }
         self.flat_view.awaiting = None;
         self.flat_view.moving = None;
         if let Some(activation) = self.tree_model.activation_for_node(
@@ -336,6 +462,9 @@ impl WorkspaceSidebar {
     }
 
     pub(super) fn toggle_flat(&mut self, cx: &mut Context<Self>) {
+        if self.flat {
+            self.leave_chat_view(cx);
+        }
         self.flat = !self.flat;
         let value = if self.flat { "true" } else { "false" };
         if let Err(error) =
@@ -346,6 +475,9 @@ impl WorkspaceSidebar {
         let mut config = crate::config::resolved_config(cx);
         config.0.flat_sidebar.value = self.flat;
         cx.set_global(config);
+        if self.flat {
+            self.enter_chat_view(cx);
+        }
         cx.emit(super::SidebarModeChanged);
         cx.notify();
     }

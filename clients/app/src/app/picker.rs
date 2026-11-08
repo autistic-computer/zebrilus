@@ -158,6 +158,7 @@ impl PanePicker {
                                 }
                                 ChatPickerTarget::MachineLine
                                 | ChatPickerTarget::Machine(_)
+                                | ChatPickerTarget::Terminal
                                 | ChatPickerTarget::Browser => {}
                             }
                             cx.notify();
@@ -311,7 +312,10 @@ impl PanePicker {
                 ChatKey::ChooseFolder => self.choose_folder(&folders, cx),
                 ChatKey::Close => self.close(cx),
                 ChatKey::Changed => cx.notify(),
-                ChatKey::ChooseMachine(_) | ChatKey::Browser | ChatKey::Ignored => return,
+                ChatKey::ChooseMachine(_)
+                | ChatKey::Terminal
+                | ChatKey::Browser
+                | ChatKey::Ignored => return,
             }
             cx.stop_propagation();
             return;

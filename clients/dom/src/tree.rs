@@ -11,8 +11,9 @@ use zz_client::{
     },
     navigation::{RenameTarget, ordered_panes, pane_label, rename_prompt_command, session_label},
     new_chat::{
-        AGENT_CHOICES, ChatKey, ChatPicker, ChatStage, agent_picker_place, close_picker_command,
-        folder_rows, open_picker_commands, picker_folders, start_agent_commands,
+        AGENT_CHOICES, ChatKey, ChatPicker, ChatStage, ChatViewEntry, agent_picker_place,
+        close_picker_command, entering_chat_view, focused_window, folder_rows,
+        leave_picker_command, open_picker_commands, picker_folders, start_agent_commands,
     },
     pane_drop_command,
     pane_picker::{PanePickerKey, pane_choices, pane_kind_command, pane_picker_key},
@@ -46,12 +47,33 @@ pub struct Sidebar {
     clock: DaemonClock,
     chat_pickers: BTreeMap<PaneId, ChatPicker>,
     chat_view: bool,
+    last_chat: Option<WindowId>,
 }
 
 #[wasm_bindgen]
 impl Client {
     pub fn set_chat_view(&mut self, on: bool) {
         self.sidebar.chat_view = on;
+    }
+
+    pub fn enter_chat_view(&mut self) {
+        if self.core.attached_read_only() {
+            return;
+        }
+        let snapshot = self.core.snapshot();
+        let focused = focused_window(snapshot, self.core.attached_session());
+        match entering_chat_view(snapshot, focused, self.sidebar.last_chat) {
+            ChatViewEntry::Stay => {}
+            ChatViewEntry::Open(window) => {
+                self.sidebar_activate(&format!("window-{window}"));
+            }
+            ChatViewEntry::NewChat => self.new_chat(),
+        }
+    }
+
+    pub fn leave_chat_view(&mut self) {
+        self.sidebar.last_chat =
+            focused_window(self.core.snapshot(), self.core.attached_session());
     }
 
     pub fn tree(&self) -> String {
@@ -538,6 +560,13 @@ impl Client {
         let Some(target) = parse_target(key) else {
             return false;
         };
+        if self.sidebar.chat_view && !self.core.attached_read_only() {
+            if let Some(command) =
+                leave_picker_command(self.core.snapshot(), self.core.attached_session(), target)
+            {
+                self.invoke(command);
+            }
+        }
         let activation =
             sidebar_activation(self.core.snapshot(), self.core.attached_session(), target);
         if let Some(session) = activation.attach {
@@ -771,7 +800,11 @@ impl Client {
                 true
             }
             ChatKey::Changed => true,
-            ChatKey::Start(_) | ChatKey::ChooseMachine(_) | ChatKey::Browser | ChatKey::Ignored => {
+            ChatKey::Start(_)
+            | ChatKey::ChooseMachine(_)
+            | ChatKey::Terminal
+            | ChatKey::Browser
+            | ChatKey::Ignored => {
                 false
             }
         }

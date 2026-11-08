@@ -1103,8 +1103,8 @@ impl AppShell {
                 workspace_sidebar_view_button("web-sidebar-view", self.preferences.flat_sidebar)
                     .on(ground)
                     .on_click(cx.listener(|this, _, _, cx| {
-                        this.preferences.flat_sidebar = !this.preferences.flat_sidebar;
-                        this.preferences.save();
+                        let on = !this.preferences.flat_sidebar;
+                        sidebar::set_chat_view(this, on, cx);
                         cx.notify();
                     })),
                 self.controls(ground, cx),
@@ -1495,7 +1495,6 @@ impl AppShell {
         let touch_view = cx.weak_entity();
         let flip_view = cx.weak_entity();
         let connection = self.connection.clone();
-        let flip = self.pane_flip(pane_id, cx);
         let float_rows = self.pip_fill_rows(cx);
         zz_ui::pane::pane_header(
             icon,
@@ -1510,7 +1509,7 @@ impl AppShell {
                 });
             })),
             floats,
-            flip,
+            None,
             &zz_ui::pane::PaneActionKeys::default(),
             move |action, _, cx| {
                 if action == zz_ui::pane::TerminalPaneAction::Flip {

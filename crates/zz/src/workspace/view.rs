@@ -707,6 +707,7 @@ struct SynchronizeSignature {
     sidebar_focused: bool,
     route: WorkspaceRoute,
     chat_mode: bool,
+    chat_landing: bool,
 }
 
 #[allow(clippy::struct_excessive_bools)]
@@ -1897,12 +1898,13 @@ impl AppView {
 
     fn synchronize_panes(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let revision = AppRevision::for_mux(self.mux.read(cx));
-        let (sidebar_focused, route, chat_mode) = {
+        let (sidebar_focused, route, chat_mode, chat_landing) = {
             let sidebar = self.sidebar.read(cx);
             (
                 sidebar.is_focused(window),
                 sidebar.route(),
                 sidebar.chat_mode(),
+                sidebar.chat_landing(),
             )
         };
         if let Some(last) = &self.synchronized_signature
@@ -1910,6 +1912,7 @@ impl AppView {
             && last.sidebar_focused == sidebar_focused
             && last.route == route
             && last.chat_mode == chat_mode
+            && last.chat_landing == chat_landing
         {
             return;
         }
@@ -1950,7 +1953,8 @@ impl AppView {
         let sidebar_focus_revision = mux.sidebar_focus_revision();
         let sidebar_focus_requested = sidebar_focus_revision != self.sidebar_focus_revision;
         let bell_revision = mux.bell_revision();
-        let empty_workspace_visible = !mux.has_hosts()
+        let empty_workspace_visible = chat_landing
+            || !mux.has_hosts()
             || empty_workspace_available(
                 snapshot.generation,
                 snapshot.sessions.len(),
@@ -1961,6 +1965,9 @@ impl AppView {
             self.empty_workspace_visible,
             self.empty_workspace_focus_pending,
         );
+        if self.empty_workspace_visible && !empty_workspace_visible {
+            self.pane_focus_owed = true;
+        }
         self.empty_workspace_visible = empty_workspace_visible;
         if bell_revision != self.bell_revision {
             self.bell_revision = bell_revision;
@@ -2544,6 +2551,7 @@ impl AppView {
             sidebar_focused: self.sidebar.read(cx).is_focused(window),
             route,
             chat_mode,
+            chat_landing,
         });
     }
 
@@ -2724,10 +2732,6 @@ impl AppView {
             }
         }
         cx.notify();
-    }
-
-    fn pane_flip(&self, snapshot: &zz_protocol::PaneSnapshot) -> Option<PaneFlip> {
-        PaneFlip::of(snapshot, self.flips.state(snapshot.id))
     }
 
     fn flip_overlay(&self, pane: PaneId, cx: &mut Context<Self>) -> Option<AnyElement> {
@@ -3544,7 +3548,7 @@ impl AppView {
                             && window.zoomed_pane.is_none()
                             && window.panes.len() > 1,
                         floats: window.floating.iter().any(|float| float.pane == *pane),
-                        flip: self.pane_flip(snapshot),
+                        flip: None,
                         keys: self.pane_action_keys(cx),
                         radii,
                         opacity: if inactive { inactive_opacity } else { 1.0 },
@@ -4140,7 +4144,7 @@ impl AppView {
                 title: label,
                 can_drag: connected,
                 floats: true,
-                flip: snapshot.and_then(|snapshot| self.pane_flip(snapshot)),
+                flip: None,
                 keys: self.pane_action_keys(cx),
                 radii: Corners::default(),
                 opacity,
@@ -4400,7 +4404,8 @@ impl Render for AppView {
             .sessions
             .iter()
             .find(|session| Some(session.id) == attached);
-        let active_window = active_session.and_then(|session| {
+        let landing = self.sidebar.read(cx).chat_landing();
+        let active_window = active_session.filter(|_| !landing).and_then(|session| {
             let focused_window = snapshot.focused_window_for(session);
             session
                 .windows
@@ -4534,7 +4539,8 @@ impl Render for AppView {
                     cx,
                 )
             }
-        } else if !has_hosts
+        } else if landing
+            || !has_hosts
             || empty_workspace_available(
                 snapshot.generation,
                 snapshot.sessions.len(),

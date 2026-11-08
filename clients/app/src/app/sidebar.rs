@@ -16,7 +16,10 @@ use penna::{
 use std::{collections::BTreeSet, rc::Rc};
 use zz_client::{
     ChromeAction,
-    new_chat::open_picker_commands,
+    new_chat::{
+        ChatViewEntry, entering_chat_view, focused_window, leave_picker_command,
+        open_picker_commands,
+    },
     sidebar::{
         SidebarBadge, SidebarNode, SidebarRow as TreeRow, navigation_rows, sidebar_activation,
         sidebar_active, sidebar_add_command, sidebar_close_command, sidebar_rename_command,
@@ -24,7 +27,7 @@ use zz_client::{
     },
     window_summary::{DaemonClock, PaneTag, age_label, summarize_chats},
 };
-use zz_protocol::{CommandInvocation, MuxSnapshot, PaneId};
+use zz_protocol::{CommandInvocation, MuxSnapshot, PaneId, WindowId};
 use zz_ui::{
     command::PaletteHostId,
     navigation::{
@@ -328,6 +331,7 @@ pub(super) struct Flat {
     state: FlatState,
     folded_host: bool,
     scroll: ScrollHandle,
+    last_chat: Option<WindowId>,
 }
 
 fn host_connection(connection: &Connection) -> HostConnection {
@@ -451,10 +455,6 @@ fn flat_event(
             cx.notify();
             return;
         }
-        FlatEvent::NewChat(_) => {
-            new_chat(view, cx);
-            return;
-        }
         FlatEvent::Connect(_) | FlatEvent::Upgrade(_) => {
             connection.update(cx, Connection::reconnect);
             return;
@@ -469,7 +469,56 @@ fn flat_event(
     if view.slideover && connection.read(cx).connected {
         view.release_sidebar_focus(window, cx);
     }
+    leave_abandoned_picker(&connection, target, cx);
     activate(&connection, target, cx);
+}
+
+fn leave_abandoned_picker(connection: &Entity<Connection>, target: Target, cx: &mut App) {
+    connection.update(cx, |connection, cx| {
+        if !writable(connection) {
+            return;
+        }
+        let command = leave_picker_command(
+            connection.core.snapshot(),
+            connection.core.attached_session(),
+            target,
+        );
+        if let Some(command) = command {
+            connection.invoke(command, cx);
+        }
+    });
+}
+
+pub(super) fn set_chat_view(view: &mut AppShell, on: bool, cx: &mut Context<AppShell>) {
+    if view.preferences.flat_sidebar == on {
+        return;
+    }
+    let connection = view.connection.clone();
+    let focused = {
+        let connection = connection.read(cx);
+        focused_window(
+            connection.core.snapshot(),
+            connection.core.attached_session(),
+        )
+    };
+    view.preferences.flat_sidebar = on;
+    view.preferences.save();
+    if !on {
+        view.flat.last_chat = focused;
+        return;
+    }
+    let entry = {
+        let connection = connection.read(cx);
+        if !writable(connection) {
+            return;
+        }
+        entering_chat_view(connection.core.snapshot(), focused, view.flat.last_chat)
+    };
+    match entry {
+        ChatViewEntry::Stay => {}
+        ChatViewEntry::Open(window) => activate(&connection, Target::Window(window), cx),
+        ChatViewEntry::NewChat => new_chat(view, cx),
+    }
 }
 
 fn disclosure_id(target: Target) -> String {

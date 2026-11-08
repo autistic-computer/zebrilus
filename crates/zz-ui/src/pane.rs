@@ -1645,6 +1645,7 @@ pub enum ChatPickerTarget {
     Machine(usize),
     FolderLine,
     Agent(usize, zz_client::new_chat::AgentChoice),
+    Terminal,
     Browser,
 }
 
@@ -1743,23 +1744,43 @@ pub fn chat_picker_rows(
             )),
         )
     }));
-    if picker.browser {
-        rows.extend([
-            ChatPickerRow::Label(Box::new(pane_picker_label("Pane", cx))),
-            ChatPickerRow::Item(
-                ChatPickerTarget::Browser,
-                Box::new(pane_picker_row(
-                    ElementId::NamedInteger("chat-picker-browser".into(), pane),
-                    "Browser",
-                    crate::CHROME_ICON,
-                    "b",
-                    picker.selected == AGENT_CHOICES.len(),
-                    enabled,
-                    cx,
-                )),
-            ),
-        ]);
+    let offers = picker.pane_offers();
+    if !offers.is_empty() {
+        rows.push(ChatPickerRow::Label(Box::new(pane_picker_label(
+            "Pane", cx,
+        ))));
     }
+    rows.extend(offers.into_iter().enumerate().filter_map(|(index, offer)| {
+        let (target, name, title, icon, key) = match offer {
+            zz_client::new_chat::ChatKey::Terminal => (
+                ChatPickerTarget::Terminal,
+                "chat-picker-terminal",
+                "Terminal",
+                crate::IconName::SquareTerminal,
+                "t",
+            ),
+            zz_client::new_chat::ChatKey::Browser => (
+                ChatPickerTarget::Browser,
+                "chat-picker-browser",
+                "Browser",
+                crate::CHROME_ICON,
+                "b",
+            ),
+            _ => return None,
+        };
+        Some(ChatPickerRow::Item(
+            target,
+            Box::new(pane_picker_row(
+                ElementId::NamedInteger(name.into(), pane),
+                title,
+                icon,
+                key,
+                picker.selected == AGENT_CHOICES.len() + index,
+                enabled,
+                cx,
+            )),
+        ))
+    }));
     rows
 }
 

@@ -53,7 +53,7 @@ pub const STORY: Story = Story {
         Section {
             id: "sidebar",
             name: "Sidebar",
-            summary: "Two hosts built from mux snapshots and run through summarize_chats: only windows running Claude Code or Codex make rows, and a window holding only a picker is a chat being started. Click a row to make it current, click a host header to fold it; hover is real state; a right click opens the row's menu. Pointing at a host shows New agent; nas is connected with no agents. New chat and Add host head the list, the chat button beside the sidebar toggle switches between the chats and the session tree, and Settings spans the foot.",
+            summary: "Two hosts built from mux snapshots and run through summarize_chats: only windows running Claude Code or Codex make rows, and a machine with none is left out. Click a row to make it current, click a host header to fold it; hover is real state; a right click opens the row's menu. New chat and Add host head the list, the chat button beside the sidebar toggle switches between the chats and the session tree, and Settings spans the foot.",
             build: |_, cx| cx.new(|_| Live::new(Some(SIDEBAR_HEIGHT))).into(),
         },
         Section {
@@ -86,7 +86,7 @@ pub const STORY: Story = Story {
         Section {
             id: "hosts",
             name: "Hosts",
-            summary: "A folded host keeps a rollup of what needs you on the right. A connected host shows New agent at its right edge on hover. A host that is not connected shows a status icon, with Connect, Retry or Upgrade when there is something to do; hover the icon for the reason. Its rows dim and keep their last known state, with no spinners.",
+            summary: "A folded host keeps a rollup of what needs you on the right. A host that is not connected shows a status icon, with Connect, Retry or Upgrade when there is something to do; hover the icon for the reason. Its rows dim and keep their last known state, with no spinners.",
             build: |_, cx| stateless(hosts, cx),
         },
     ],
@@ -685,25 +685,21 @@ fn offline(id: u32, name: &str, connection: HostConnection) -> FlatHost {
         name,
         true,
         connection,
-        Vec::new(),
-        &[],
-    )
-}
-
-fn empty(id: u32, name: &str) -> FlatHost {
-    host(
-        Rows::Chats,
-        PaletteHostId(id),
-        name,
-        true,
-        HostConnection::Connected,
-        Vec::new(),
+        vec![session(
+            1,
+            name,
+            vec![window(
+                1,
+                None,
+                vec![claude(u64::from(id) * 10, "Release notes").ago(3 * HOUR)],
+            )],
+        )],
         &[],
     )
 }
 
 pub(crate) fn sidebar_hosts() -> Vec<FlatHost> {
-    vec![macbook(Rows::Chats), ubuntu(Rows::Chats), empty(9, "nas")]
+    vec![macbook(Rows::Chats), ubuntu(Rows::Chats)]
 }
 
 fn window_menu() -> FlatMenu {
@@ -764,7 +760,7 @@ impl Live {
                 true
             }
             FlatEvent::Hover(target, hovered) => self.state.hover(target, hovered),
-            FlatEvent::NewChat(_) | FlatEvent::Connect(_) | FlatEvent::Upgrade(_) => false,
+            FlatEvent::Connect(_) | FlatEvent::Upgrade(_) => false,
         };
         if changed {
             cx.notify();
@@ -1158,13 +1154,6 @@ fn hosts(_: &mut Window, cx: &mut App) -> AnyElement {
     lost.connection = HostConnection::Unreachable(refused.into());
     lost.folded = true;
     let folded = [stale, lost];
-    let mut quiet = macbook(Rows::Chats);
-    quiet.folded = true;
-    let adding = [quiet, empty(9, "nas")];
-    let adding_state = FlatState {
-        hovered: Some(FlatTarget::Host(MACBOOK)),
-        ..FlatState::default()
-    };
     states()
         .columns(2)
         .state(
@@ -1174,21 +1163,6 @@ fn hosts(_: &mut Window, cx: &mut App) -> AnyElement {
                 flat_sidebar(
                     &folding,
                     folding_state,
-                    &handler,
-                    &window_menu(),
-                    cx.theme().ground(),
-                    cx,
-                ),
-                cx,
-            ),
-        )
-        .state(
-            "new session: on the hovered host only, even one with no sessions",
-            host_frame(
-                "flat-hosts-new-session",
-                flat_sidebar(
-                    &adding,
-                    adding_state,
                     &handler,
                     &window_menu(),
                     cx.theme().ground(),

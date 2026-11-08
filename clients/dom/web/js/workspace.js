@@ -893,7 +893,14 @@ on("attached", () => {
 
 state.chatView = Boolean(preferences.flat_sidebar);
 on("preferences", () => {
-  state.chatView = Boolean(preferences.flat_sidebar);
+  const chatView = Boolean(preferences.flat_sidebar);
+  if (state.client && state.connected && chatView !== state.chatView) {
+    state.client.set_chat_view(chatView);
+    if (chatView) state.client.enter_chat_view();
+    else state.client.leave_chat_view();
+    flush();
+  }
+  state.chatView = chatView;
   markTree();
 });
 

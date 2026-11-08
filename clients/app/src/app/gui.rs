@@ -59,10 +59,7 @@ impl AppShell {
                             .change_appearance(AppearanceChange::Accent(Some(value.clone())));
                         self.theme_changed(window, cx);
                     }
-                    SIDEBAR_LAYOUT => {
-                        self.preferences.flat_sidebar = on;
-                        self.preferences.save();
-                    }
+                    SIDEBAR_LAYOUT => super::sidebar::set_chat_view(self, on, cx),
                     _ => {}
                 }
                 cx.notify();

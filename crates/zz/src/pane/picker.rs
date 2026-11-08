@@ -5,8 +5,8 @@ use ala::{
 use penna::IconName;
 use zz_client::new_chat::{
     AGENT_CHOICES, AgentChoice, ChatKey, ChatPicker, ChatStage, FolderChoice, MachineChoice,
-    agent_picker_place, close_picker_command, first_chat_commands, folder_start, picker_folders,
-    recent_folders, start_agent_commands,
+    agent_picker_place, close_picker_command, folder_start, landing_chat_commands, picker_folders,
+    picker_in_split, recent_folders, start_agent_commands,
 };
 use zz_protocol::{CommandInvocation, MuxSnapshot, PaneId, SessionId, WindowId};
 use zz_ui::pane::{ChatPickerRow, ChatPickerTarget, chat_picker_rows, pane_picker_row};
@@ -314,7 +314,7 @@ impl PanePickerView {
         let folder = self.chat.folder(&chat.folders);
         let launches = crate::agent::launch::load();
         let (Some(pane), Some((from, window))) = (self.pane, chat.place) else {
-            for command in first_chat_commands(folder, agent, &launches) {
+            for command in landing_chat_commands(&mux.snapshot(), folder, agent, &launches) {
                 mux.execute(command);
             }
             return;
@@ -330,6 +330,7 @@ impl PanePickerView {
             ChatKey::Start(agent) => self.start(chat, agent, cx),
             ChatKey::ChooseFolder => self.choose_folder(chat, cx),
             ChatKey::ChooseMachine(index) => self.choose_machine(chat, index, cx),
+            ChatKey::Terminal => self.activate(PaneChoice::Terminal, cx),
             ChatKey::Browser => self.activate(PaneChoice::Browser, cx),
             ChatKey::Close => self.close(cx),
             ChatKey::Changed => cx.notify(),
@@ -349,12 +350,16 @@ impl PanePickerView {
         });
     }
 
-    fn offers_browser(&self, cx: &App) -> bool {
-        self.pane.is_some() && browser::controller::is_available(cx)
+    fn sync_offers(&mut self, cx: &App) {
+        let split = self
+            .pane
+            .is_some_and(|pane| picker_in_split(&self.mux.read(cx).snapshot(), pane));
+        self.chat.terminal = split;
+        self.chat.browser = split && browser::controller::is_available(cx);
     }
 
     fn chat_rows(&mut self, chat: &Chat, cx: &mut Context<Self>) -> Vec<AnyElement> {
-        self.chat.browser = self.offers_browser(cx);
+        self.sync_offers(cx);
         chat_picker_rows(
             self.id(),
             &self.chat,
@@ -374,7 +379,10 @@ impl PanePickerView {
                         let index = match target {
                             ChatPickerTarget::Agent(index, _)
                             | ChatPickerTarget::Machine(index) => index,
-                            ChatPickerTarget::Browser => AGENT_CHOICES.len(),
+                            ChatPickerTarget::Terminal => AGENT_CHOICES.len(),
+                            ChatPickerTarget::Browser => {
+                                AGENT_CHOICES.len() + usize::from(picker.chat.terminal)
+                            }
                             ChatPickerTarget::MachineLine | ChatPickerTarget::FolderLine => return,
                         };
                         if picker.chat.selected != index {
@@ -395,6 +403,9 @@ impl PanePickerView {
                             }
                             ChatPickerTarget::FolderLine => picker.choose_folder(&chat, cx),
                             ChatPickerTarget::Agent(_, agent) => picker.start(&chat, agent, cx),
+                            ChatPickerTarget::Terminal => {
+                                picker.activate(PaneChoice::Terminal, cx);
+                            }
                             ChatPickerTarget::Browser => picker.activate(PaneChoice::Browser, cx),
                         }
                     });
@@ -412,7 +423,7 @@ impl PanePickerView {
             let modifiers = keystroke.modifiers;
             let modified = modifiers.control || modifiers.alt || modifiers.platform;
             self.chat.machines = chat.machines.len();
-            self.chat.browser = self.offers_browser(cx);
+            self.sync_offers(cx);
             let opening = self.chat.stage != ChatStage::Machines;
             let outcome =
                 self.chat

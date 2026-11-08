@@ -26,11 +26,11 @@ use crate::{
     muted_on,
     navigation::{
         pane_stack::{PaneStack, StackAction, StackSize, StackTile},
-        workspace_row_action, workspace_row_fill,
+        workspace_row_fill,
     },
     spinner::Spinner,
     tooltip::Tooltip,
-    touch::{CoarsePointer, TOUCH_TARGET},
+    touch::CoarsePointer,
     v_flex,
 };
 
@@ -50,8 +50,6 @@ const HOST_GAP: f32 = 18.0;
 const HOST_GLYPH: f32 = 16.0;
 const HOST_LINE: f32 = 16.0;
 const HOST_SPACING: f32 = 8.0;
-const ADD_BUTTON_SIZE: f32 = 18.0;
-const ADD_BUTTON_ICON: f32 = 14.0;
 const CHEVRON_SIZE: f32 = 10.0;
 const NOTE_LINE: f32 = 15.0;
 const HEADER_BUTTON_HEIGHT: f32 = 20.0;
@@ -148,7 +146,6 @@ pub enum FlatEvent {
     Open(PaletteHostId, WindowId),
     OpenPane(PaletteHostId, WindowId, PaneId),
     FoldHost(PaletteHostId),
-    NewChat(PaletteHostId),
     Connect(PaletteHostId),
     Upgrade(PaletteHostId),
     Hover(FlatTarget, bool),
@@ -426,12 +423,6 @@ fn row_description(window: &FlatWindow) -> String {
     .filter(|part| !part.is_empty())
     .collect::<Vec<_>>()
     .join(", ")
-}
-
-fn icon_button(id: impl Into<ElementId>, icon: IconName, icon_size: f32) -> Button {
-    Button::new(id)
-        .child(Icon::new(icon).size(px(icon_size)))
-        .px_0()
 }
 
 pub fn flat_window_row(
@@ -720,16 +711,6 @@ pub fn flat_host_header(
                 None => spinner(STATUS_ICON, HOST_NAME.design_px(), note.color, cx),
             })
     });
-    let new_chat = (host.live() && (hovered || coarse)).then(|| {
-        add_button(
-            ElementId::from(("flat-new-chat", id.0)),
-            IconName::ChatPlus,
-            "New agent",
-            FlatEvent::NewChat(id),
-            handler,
-            cx,
-        )
-    });
     let hover = handler.clone();
     let click = handler.clone();
     h_flex()
@@ -789,7 +770,6 @@ pub fn flat_host_header(
                 header_button(("flat-host-action", id.0), label, event, handler)
             }),
         )
-        .children(new_chat)
 }
 
 pub fn flat_action_row(
@@ -847,35 +827,6 @@ pub fn flat_action_row(
         )
 }
 
-fn add_button(
-    id: ElementId,
-    icon: IconName,
-    tooltip: &'static str,
-    event: FlatEvent,
-    handler: &FlatHandler,
-    cx: &App,
-) -> impl IntoElement + use<> {
-    let handler = handler.clone();
-    let button = workspace_row_action(
-        icon_button(id.clone(), icon, ADD_BUTTON_ICON),
-        cx.theme().ground(),
-        false,
-        cx,
-    )
-    .size(px(ADD_BUTTON_SIZE))
-    .debug_selector(|| "flat-new-chat".into())
-    .hit_slop(
-        (TOUCH_TARGET - ADD_BUTTON_SIZE) / 2.0,
-        (TOUCH_TARGET - ADD_BUTTON_SIZE) / 2.0,
-    )
-    .tooltip(tooltip)
-    .on_click(move |_: &ClickEvent, window, cx| {
-        cx.stop_propagation();
-        handler(event, window, cx);
-    });
-    motion::appear(ElementId::from((id, "appear")), button)
-}
-
 pub fn flat_sidebar(
     hosts: &[FlatHost],
     state: FlatState,
@@ -895,7 +846,11 @@ pub fn flat_sidebar(
         .w_full()
         .flex_none()
         .pr(crate::sidebar::SIDEBAR_SCROLLBAR_GUTTER);
-    for (index, host) in hosts.iter().enumerate() {
+    for (index, host) in hosts
+        .iter()
+        .filter(|host| !host.chats.is_empty())
+        .enumerate()
+    {
         list = list.child(motion::enter(
             ("flat-host-enter", host.id.0),
             flat_host_header(
@@ -1009,26 +964,16 @@ mod tests {
     }
 
     #[ala::test]
-    fn the_sidebar_toggle_shares_the_row_actions_column_and_settings_spans_the_rows(
-        cx: &mut ala::TestAppContext,
-    ) {
+    fn settings_spans_the_rows(cx: &mut ala::TestAppContext) {
         cx.update(crate::init);
         let (_, cx) = cx.add_window_view(|_, _| Sidebar);
         cx.update(|window, cx| {
             _ = window.draw(cx);
         });
-        let new_chat = cx.debug_bounds("flat-new-chat").unwrap();
-        let toggle = cx.debug_bounds("toggle").unwrap();
-        assert_eq!(toggle.center().x, new_chat.center().x);
         let rows = cx.debug_bounds("rows").unwrap();
         let settings = cx.debug_bounds("settings").unwrap();
         assert_eq!(settings.right(), rows.right() - SIDEBAR_SCROLLBAR_GUTTER);
         assert_eq!(settings.left(), rows.left());
-        let inset = cx.update(|_, cx| header_inset(cx));
-        assert_eq!(
-            new_chat.right(),
-            rows.right() - SIDEBAR_SCROLLBAR_GUTTER - inset
-        );
     }
 
     #[test]
