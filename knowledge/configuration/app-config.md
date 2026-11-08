@@ -226,10 +226,9 @@ and `apply_zz_overrides` then sets the contrast, drops the glass under `reduce-t
 its role from there, so no component is plumbed individually. Because the theme and the overrides
 are reapplied on every theme rebuild, they survive a light/dark switch, the same treatment
 `mono_font_family` gets. A gapped pane's corner follows the same radius: `config::pane_content_radii` starts from
-`Theme::pane_radius()`, the radius a 22px header control rounds to plus the 6px (`CHROME_GAP`) it
-sits in from the pane's top and sides, so the pane stays concentric with the controls in its header
-(about 13.6 at Default's 10, 17 once the controls are capsules, 0 for a square theme), and resolves
-it per corner.
+`Theme::pane_radius()`, the theme radius up to 10.24 (64% on the slider), then a parabola that
+leaves the radius at its slope and lands flat on 16 at 100%, whatever the control shape (11.8 at
+the default 12, 0 for a square theme), and resolves it per corner.
 
 Every rounded surface is a **squircle** . iOS-style continuous corners, set as the ala window
 default (`penna::CORNER_SMOOTHING`, 4, from the kit's `foundation/theme.rs`) by `penna::Root::new`

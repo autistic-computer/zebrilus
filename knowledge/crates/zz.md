@@ -4,7 +4,7 @@ title: zz crate (the ala client)
 description: The long-lived ala desktop client, linking zz-cli for CLI dispatch, daemon spawning, and terminal attach, and hosting terminal, Chromium browser and agent chat panes, with the flip button that switches a pane between the Claude Code or Codex CLI and its chat.
 resource: crates/zz/src/lib.rs
 tags: [ala, crate, client, terminal, browser, agent, ui]
-timestamp: 2026-11-01T20:00:00-03:00
+timestamp: 2026-11-08T00:00:00-03:00
 ---
 
 # Overview
@@ -209,7 +209,7 @@ Browser, Terminal, Hosts, Providers, System, About:
 |---------|----------|
 | Interface | Look (a Mode segmented control for `theme-mode`, the Accent swatches for `chrome-accent`, the Tint, Tint strength and Corner radius sliders for `chrome-tint-hue`, `chrome-tint` and `widget-corner-radius`, the Controls segmented control and the Glass switch for `control-shape` and `interface-glass`, and the system UI font picker), Sidebar (`program-colors`), Size (transient UI zoom, `chrome-density` as Density), Accessibility (`chrome-contrast` as Increase contrast, `reduce-transparency` as Reduce transparency, `motion` as Motion), Window (macOS app-icon pickers, window blur, Linux `window-corner-radius` and `use-system-titlebar`) |
 | Editor | Editor-pane typography and display controls, when compiled in |
-| Panes | Layout (`pane-gaps`), Focus (`pane-inactive-opacity`, `pane-glow-strength`), Frame (`pane-margin`); gapped panes draw their frame in glass, with corners concentric with their header's buttons so they follow Interface's Corner radius, and the rim from the theme's glass (a hairline the outline's width without glass). PiPs take the same corner and follow Glass like a menu |
+| Panes | Layout (`pane-gaps`), Focus (`pane-inactive-opacity`, `pane-glow-strength`), Frame (`pane-margin`); gapped panes draw their frame in glass, with corners that follow Interface's Corner radius up to 16 at 100% (`Theme::pane_radius()`), and the rim from the theme's glass (a hairline the outline's width without glass). PiPs take the same corner and follow Glass like a menu |
 | Multiplexer | Navigation, split shortcuts, Options rows, Import from tmux (one button over the system file picker), and the `zz/mux.conf` path with Reload |
 | Browser | Browser-local shortcuts, beginning with the element-selector hotkey |
 | Terminal | Preview, Appearance rows, Import from Ghostty (one button over the system file picker), and the `zz/config` path |

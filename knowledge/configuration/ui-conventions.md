@@ -142,8 +142,9 @@ defines roles: zz has none of its own, and no widget takes a role from outside p
    Gapped panes cast the `pane` role's shadow (the contact shadow in every built-in) and draw their frame
    only in glass: no border, the glass edge (glint, fresnel, thin contour) is the frame, tinted
    with the pane's own color, its rim the theme's glass as the theme defines it (glint width,
-   specular, fresnel, edge, noise) and its corners the theme radius plus 3.5
-   (`Theme::pane_radius()`). A theme without glass (Default) draws a hairline the outline's width
+   specular, fresnel, edge, noise) and its corners `Theme::pane_radius()`: the theme radius up to
+   10.24, then a parabola from there to 16 at 100% Corner radius, whatever the control shape (11.8
+   at the default 12). A theme without glass (Default) draws a hairline the outline's width
    instead (`zz_ui::pane_look::PaneLook::edge_width`), none when the outline is 0. The
    continuous app background sits beneath both pane and shadow. Flush panes have no
    outer shadow. Only shared divider segments touching the active flush pane use the accent

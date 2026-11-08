@@ -99,6 +99,7 @@ pub const CORNER_SMOOTHING: f32 = 4.0;
 pub const DEFAULT_RADIUS: f32 = 12.0;
 pub const ADAPTIVE_CORNER_FRACTION: f32 = 0.45;
 pub const PANE_HEADER_CONTROL_HEIGHT: Pixels = px(22.0);
+const MAX_PANE_RADIUS: f32 = 16.0;
 pub const PANE_HEADER_HEIGHT: Pixels = px(22.0 + 2.0 * CHROME_GAP);
 const FLUSH_PANE_HEADER_HEIGHT: Pixels = px(40.0);
 
@@ -170,11 +171,12 @@ impl Theme {
     }
 
     pub fn pane_radius(&self) -> Pixels {
-        if self.radius <= px(0.0) {
-            return px(0.0);
+        let share = super::interface_theme::corner_share(f32::from(self.radius));
+        let knee = MAX_PANE_RADIUS / super::interface_theme::MAX_CORNER_RADIUS;
+        if share <= knee {
+            return self.radius.max(px(0.0));
         }
-        self.radius
-            .min(self.control_corner(PANE_HEADER_CONTROL_HEIGHT) + px(CHROME_GAP))
+        px(MAX_PANE_RADIUS * (1.0 - (1.0 - share).powi(2) / (1.0 - knee)))
     }
 
     pub fn pane_header_height(&self) -> Pixels {
@@ -363,8 +365,8 @@ mod tests {
     }
 
     #[test]
-    fn every_control_rounds_to_one_share_of_its_height_and_a_pane_to_the_radius_up_to_its_buttons_plus_the_gap()
-     {
+    fn every_control_rounds_to_one_share_of_its_height_and_a_pane_eases_from_the_radius_to_sixteen()
+    {
         let theme = Theme::default();
         assert!((theme.control_roundness() - 0.31177).abs() < 1e-4);
         assert!((f32::from(theme.control_corner(px(28.0))) - 8.7295).abs() < 1e-3);
@@ -376,25 +378,24 @@ mod tests {
         assert!((f32::from(widest.control_corner(px(28.0))) - 12.6).abs() < 1e-4);
         for (radius, pane) in [
             (4.0, 4.0),
-            (8.41, 8.41),
-            (12.0, 12.0),
-            (16.0, 13.92),
-            (25.0, 15.9),
+            (10.24, 10.24),
+            (12.0, 11.8063),
+            (16.0, 14.2222),
+            (20.25, 15.5556),
+            (25.0, 16.0),
         ] {
-            let theme = Theme {
-                radius: px(radius),
-                ..Theme::default()
-            };
-            assert!(
-                (f32::from(theme.pane_radius()) - pane).abs() < 1e-3,
-                "{radius}"
-            );
+            for control_radius in [None, Some(ala::FULL_CORNER_RADIUS)] {
+                let theme = Theme {
+                    radius: px(radius),
+                    control_radius,
+                    ..Theme::default()
+                };
+                assert!(
+                    (f32::from(theme.pane_radius()) - pane).abs() < 1e-3,
+                    "{radius} {control_radius:?}"
+                );
+            }
         }
-        let capsules = Theme {
-            control_radius: Some(ala::FULL_CORNER_RADIUS),
-            ..Theme::default()
-        };
-        assert_eq!(capsules.pane_radius(), px(12.0));
         let square = Theme {
             radius: px(0.0),
             ..Theme::default()
