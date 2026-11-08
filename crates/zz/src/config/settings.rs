@@ -288,7 +288,9 @@ impl SettingsView {
             return true;
         }
         let (kind, slot) = match section {
-            SettingsSection::Terminal if self.terminal_config_editor.is_none() => {
+            SettingsSection::Terminal | SettingsSection::Appearance
+                if self.terminal_config_editor.is_none() =>
+            {
                 (ConfigFileKind::Terminal, &mut self.terminal_config_editor)
             }
             SettingsSection::Multiplexer if self.mux_config_editor.is_none() => {
@@ -369,14 +371,14 @@ impl SettingsView {
         if !initialized {
             match section {
                 SettingsSection::Multiplexer => self.reload_config_editor(ConfigFileKind::Mux, cx),
-                SettingsSection::Terminal => {
+                SettingsSection::Terminal | SettingsSection::Appearance => {
                     self.reload_config_editor(ConfigFileKind::Terminal, cx);
                 }
                 _ => {}
             }
         }
         self.section = section;
-        if section != SettingsSection::Terminal {
+        if !shows_terminal_preview(section) {
             self.release_terminal_preview();
         }
         cx.notify();
@@ -392,7 +394,7 @@ impl SettingsView {
     }
 
     fn synchronize_terminal_preview(&mut self, cx: &mut Context<Self>) {
-        if self.section != SettingsSection::Terminal {
+        if !shows_terminal_preview(self.section) {
             return;
         }
         let source = self.terminal_preview_source(cx);
@@ -730,6 +732,16 @@ impl SettingsView {
                 resolved.chrome_terminal_colors,
             )
             .description("Draw the window in the terminal theme's colors"),
+            AppearancePageItem::App(ZzRow::TerminalPreview) => {
+                SettingEntry::new(ZzRow::TerminalPreview.title())
+                    .children(self.terminal_preview.clone())
+            }
+            AppearancePageItem::App(
+                row @ (ZzRow::LightTheme
+                | ZzRow::DarkTheme
+                | ZzRow::BackgroundOpacity
+                | ZzRow::TerminalContrast),
+            ) => return self.terminal_look_entry(row, cx),
             AppearancePageItem::App(row @ ZzRow::ProgramColors) => Self::boolean_setting(
                 ConfigKey::ProgramColors,
                 row.title(),
@@ -1696,6 +1708,13 @@ fn config_file_editor(kind: ConfigFileKind) -> ConfigFileEditor {
     ConfigFileEditor { path, saved, error }
 }
 
+const fn shows_terminal_preview(section: SettingsSection) -> bool {
+    matches!(
+        section,
+        SettingsSection::Terminal | SettingsSection::Appearance
+    )
+}
+
 fn config_file_path(kind: ConfigFileKind) -> io::Result<PathBuf> {
     match kind {
         ConfigFileKind::Mux => zz_daemon_client::mux_config_write_path().ok_or_else(|| {
@@ -2303,7 +2322,7 @@ mod tests {
         let settings = captured.borrow().clone().expect("captured settings view");
 
         settings.read_with(cx, |settings, _| {
-            assert!(settings.terminal_config_editor.is_none());
+            assert!(settings.terminal_config_editor.is_some());
             assert!(settings.mux_config_editor.is_none());
             assert!(settings.hosts_state.is_none());
         });
@@ -2316,7 +2335,6 @@ mod tests {
         assert!(initialized);
         settings.read_with(cx, |settings, _| {
             assert!(settings.hosts_state.is_some());
-            assert!(settings.terminal_config_editor.is_none());
             assert!(settings.mux_config_editor.is_none());
         });
 
@@ -2332,7 +2350,7 @@ mod tests {
                 settings.ensure_section_state(SettingsSection::Terminal, window, cx)
             })
         });
-        assert!(initialized);
+        assert!(!initialized);
         settings.read_with(cx, |settings, _| {
             assert!(settings.terminal_config_editor.is_some());
             assert!(settings.mux_config_editor.is_none());

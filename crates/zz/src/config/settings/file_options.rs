@@ -45,6 +45,15 @@ impl FileKey {
         }
     }
 
+    const fn on_interface(self) -> bool {
+        matches!(
+            self,
+            Self::ThemeSlot(_)
+                | Self::Contrast
+                | Self::Appearance(AppearanceConfigKey::BackgroundOpacity)
+        )
+    }
+
     fn default_value(self) -> String {
         match self {
             Self::Mux(key) => MuxOptions::default().get(key).unwrap().value.clone(),
@@ -87,7 +96,7 @@ impl SettingsView {
     pub(super) fn synchronize_file_options(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let kind = match self.section {
             SettingsSection::Multiplexer => ConfigFileKind::Mux,
-            SettingsSection::Terminal => ConfigFileKind::Terminal,
+            SettingsSection::Terminal | SettingsSection::Appearance => ConfigFileKind::Terminal,
             _ => return,
         };
         let source = self.config_file_editor(kind).saved.clone();
@@ -130,7 +139,7 @@ impl SettingsView {
                         "Dark theme",
                         false,
                     ),
-                    (FileKey::Contrast, "Improve text contrast", false),
+                    (FileKey::Contrast, "Terminal text contrast", false),
                     (
                         FileKey::Appearance(AppearanceConfigKey::CursorStyle),
                         "Cursor style",
@@ -419,110 +428,144 @@ impl SettingsView {
             return div().into_any_element();
         };
         let disabled = self.file_controls_disabled(kind, cx);
-        let smoothing_enabled = controls.rows.iter().any(|row| {
-            row.key.name() == "font-thicken"
-                && matches!(row.value.as_deref(), Some("true" | "yes" | "on" | "1"))
-        });
         let mut stack = SettingsStack::titled(if kind == ConfigFileKind::Mux {
             "Options"
         } else {
-            "Appearance"
+            "Display"
         })
         .when(disabled && kind == ConfigFileKind::Mux, |stack| {
             stack.note("Connect to a local session to edit these")
         });
         for (index, row) in controls.rows.iter().enumerate() {
-            let description = match row.key.name() {
-                "light-theme" | "dark-theme" => Some("Replaces custom terminal colors"),
-                "minimum-contrast" => Some("Lifts text under 4.5:1 against its background"),
-                "prefix" => Some("The key you press before each shortcut"),
-                "font-thicken-strength" if !smoothing_enabled => Some("Needs font smoothing"),
-                "font-thicken-strength" => Some("0 to 255"),
-                _ => None,
-            };
-            let entry = SettingEntry::new(row.title)
-                .when_some(description, SettingEntry::description)
-                .disabled(
-                    disabled || row.key.name() == "font-thicken-strength" && !smoothing_enabled,
-                );
-            let control = if matches!(row.key.name(), "mouse" | "font-thicken") {
-                let default = row.key.default_value();
-                let enabled = matches!(
-                    row.value.as_deref().unwrap_or(&default),
-                    "on" | "true" | "yes" | "1"
-                );
-                let is_appearance = matches!(row.key, FileKey::Appearance(_));
-                boolean_control(
-                    row.key.name(),
-                    enabled,
-                    cx.listener(move |this, enabled: &bool, window, cx| {
-                        this.commit_file_option(
-                            kind,
-                            index,
-                            Some(match (*enabled, is_appearance) {
-                                (true, true) => "true",
-                                (false, true) => "false",
-                                (true, false) => "on",
-                                (false, false) => "off",
-                            }),
-                            window,
-                            cx,
-                        );
-                    }),
-                )
-                .into_any_element()
-            } else if matches!(row.key, FileKey::Contrast) {
-                let enabled = row
-                    .value
-                    .as_deref()
-                    .unwrap_or(&row.key.default_value())
-                    .parse::<f32>()
-                    .is_ok_and(|minimum| minimum > 1.0);
-                boolean_control(
-                    row.key.name(),
-                    enabled,
-                    cx.listener(move |this, enabled: &bool, window, cx| {
-                        this.commit_file_option(
-                            kind,
-                            index,
-                            Some(if *enabled { CONTRAST_ON } else { "1" }),
-                            window,
-                            cx,
-                        );
-                    }),
-                )
-                .into_any_element()
-            } else if let Some(select) = &row.select {
-                if !row.scopes.is_empty() || row.key.name() == "font-family" {
-                    div()
-                        .flex_none()
-                        .child(
-                            Select::new(select)
-                                .search_placeholder(if row.key.name() == "font-family" {
-                                    "Search fonts"
-                                } else {
-                                    "Search themes"
-                                })
-                                .scopes(row.scopes.clone())
-                                .on(settings_card_ground(cx)),
-                        )
-                        .into_any_element()
-                } else {
-                    select_control(select, cx).into_any_element()
-                }
-            } else if let Some(field) = &row.key_field {
-                key_field_control(field, disabled, cx).into_any_element()
-            } else if row.numeric {
-                numeric_control(&row.input, cx).into_any_element()
-            } else {
-                div()
-                    .w(px(200.0))
-                    .child(Input::new(&row.input).on(settings_card_ground(cx)))
-                    .into_any_element()
-            };
-            stack = stack.child(entry.control(control));
+            if kind == ConfigFileKind::Terminal && row.key.on_interface() {
+                continue;
+            }
+            stack = stack.child(self.file_option_entry(kind, index, cx));
         }
         div().flex_none().child(stack).into_any_element()
+    }
+
+    pub(super) fn terminal_look_entry(
+        &self,
+        row: ZzRow,
+        cx: &Context<Self>,
+    ) -> Option<SettingEntry> {
+        let key = match row {
+            ZzRow::LightTheme => FileKey::ThemeSlot(TerminalColorScheme::Light),
+            ZzRow::DarkTheme => FileKey::ThemeSlot(TerminalColorScheme::Dark),
+            ZzRow::BackgroundOpacity => FileKey::Appearance(AppearanceConfigKey::BackgroundOpacity),
+            ZzRow::TerminalContrast => FileKey::Contrast,
+            _ => return None,
+        };
+        let index = self
+            .file_options
+            .get(&ConfigFileKind::Terminal)?
+            .rows
+            .iter()
+            .position(|option| option.key.name() == key.name())?;
+        Some(self.file_option_entry(ConfigFileKind::Terminal, index, cx))
+    }
+
+    fn file_option_entry(
+        &self,
+        kind: ConfigFileKind,
+        index: usize,
+        cx: &Context<Self>,
+    ) -> SettingEntry {
+        let controls = &self.file_options[&kind];
+        let row = &controls.rows[index];
+        let disabled = self.file_controls_disabled(kind, cx);
+        let smoothing_enabled = controls.rows.iter().any(|row| {
+            row.key.name() == "font-thicken"
+                && matches!(row.value.as_deref(), Some("true" | "yes" | "on" | "1"))
+        });
+        let description = match row.key.name() {
+            "light-theme" | "dark-theme" => Some("Replaces custom terminal colors"),
+            "minimum-contrast" => Some("Lifts terminal text under 4.5:1 against its background"),
+            "prefix" => Some("The key you press before each shortcut"),
+            "font-thicken-strength" if !smoothing_enabled => Some("Needs font smoothing"),
+            "font-thicken-strength" => Some("0 to 255"),
+            _ => None,
+        };
+        let entry = SettingEntry::new(row.title)
+            .when_some(description, SettingEntry::description)
+            .disabled(disabled || row.key.name() == "font-thicken-strength" && !smoothing_enabled);
+        let control = if matches!(row.key.name(), "mouse" | "font-thicken") {
+            let default = row.key.default_value();
+            let enabled = matches!(
+                row.value.as_deref().unwrap_or(&default),
+                "on" | "true" | "yes" | "1"
+            );
+            let is_appearance = matches!(row.key, FileKey::Appearance(_));
+            boolean_control(
+                row.key.name(),
+                enabled,
+                cx.listener(move |this, enabled: &bool, window, cx| {
+                    this.commit_file_option(
+                        kind,
+                        index,
+                        Some(match (*enabled, is_appearance) {
+                            (true, true) => "true",
+                            (false, true) => "false",
+                            (true, false) => "on",
+                            (false, false) => "off",
+                        }),
+                        window,
+                        cx,
+                    );
+                }),
+            )
+            .into_any_element()
+        } else if matches!(row.key, FileKey::Contrast) {
+            let enabled = row
+                .value
+                .as_deref()
+                .unwrap_or(&row.key.default_value())
+                .parse::<f32>()
+                .is_ok_and(|minimum| minimum > 1.0);
+            boolean_control(
+                row.key.name(),
+                enabled,
+                cx.listener(move |this, enabled: &bool, window, cx| {
+                    this.commit_file_option(
+                        kind,
+                        index,
+                        Some(if *enabled { CONTRAST_ON } else { "1" }),
+                        window,
+                        cx,
+                    );
+                }),
+            )
+            .into_any_element()
+        } else if let Some(select) = &row.select {
+            if !row.scopes.is_empty() || row.key.name() == "font-family" {
+                div()
+                    .flex_none()
+                    .child(
+                        Select::new(select)
+                            .search_placeholder(if row.key.name() == "font-family" {
+                                "Search fonts"
+                            } else {
+                                "Search themes"
+                            })
+                            .scopes(row.scopes.clone())
+                            .on(settings_card_ground(cx)),
+                    )
+                    .into_any_element()
+            } else {
+                select_control(select, cx).into_any_element()
+            }
+        } else if let Some(field) = &row.key_field {
+            key_field_control(field, disabled, cx).into_any_element()
+        } else if row.numeric {
+            numeric_control(&row.input, cx).into_any_element()
+        } else {
+            div()
+                .w(px(200.0))
+                .child(Input::new(&row.input).on(settings_card_ground(cx)))
+                .into_any_element()
+        };
+        entry.control(control)
     }
 
     pub(super) fn file_import_section(
@@ -1137,6 +1180,8 @@ mod tests {
                 settings.synchronize_terminal_preview(cx);
                 let preview = settings.terminal_preview.as_ref().unwrap().downgrade();
                 settings.set_section(SettingsSection::Appearance, window, cx);
+                assert!(settings.terminal_preview.is_some());
+                settings.set_section(SettingsSection::Browser, window, cx);
                 assert!(settings.terminal_preview.is_none());
                 preview
             })
