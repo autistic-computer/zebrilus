@@ -5,7 +5,7 @@ pub mod status;
 
 use crate::{
     ActiveTheme as _, Colorize as _, Disableable as _, Emphasis, Ground, IconName, PaintState,
-    Selectable as _, Sizable as _, StyledExt as _, Surface, Tone,
+    Sizable as _, StyledExt as _, Surface, Tone,
     button::{Button, ButtonLook, ButtonVariants as _, INSIDE_GAP},
     kbd::Kbd,
     rems_from_px,
@@ -67,8 +67,13 @@ impl WorkspaceStatusWindowState {
 }
 
 #[must_use]
-pub fn workspace_layout_button(id: impl Into<ElementId>) -> Button {
-    chrome_button(id, IconName::PanelLeft, "Toggle sidebar")
+pub fn workspace_layout_button(id: impl Into<ElementId>, open: bool) -> Button {
+    let icon = if open {
+        IconName::PanelLeftDuotone
+    } else {
+        IconName::PanelLeft
+    };
+    chrome_button(id, icon, "Toggle sidebar")
 }
 
 #[must_use]
@@ -83,16 +88,12 @@ pub fn workspace_settings_button(id: impl Into<ElementId>) -> Button {
 
 #[must_use]
 pub fn workspace_sidebar_view_button(id: impl Into<ElementId>, flat: bool) -> Button {
-    chrome_button(
-        id,
-        IconName::Chat,
-        if flat {
-            "Show the session tree"
-        } else {
-            "Show chats"
-        },
-    )
-    .selected(flat)
+    let (icon, tooltip) = if flat {
+        (IconName::ChatDuotone, "Show the session tree")
+    } else {
+        (IconName::Chat, "Show chats")
+    };
+    chrome_button(id, icon, tooltip)
 }
 
 #[must_use]

@@ -1002,7 +1002,7 @@ impl AppShell {
             .items_center()
             .gap_1()
             .child(
-                workspace_layout_button("web-sidebar")
+                workspace_layout_button("web-sidebar", true)
                     .on(ground)
                     .on_click(cx.listener(|this, _, window, cx| this.toggle_sidebar(window, cx))),
             )

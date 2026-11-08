@@ -802,12 +802,13 @@ impl WorkspaceSidebar {
 
     pub(crate) fn render_controls(
         sidebar: &Entity<Self>,
+        open: bool,
         ground: Ground,
         cx: &App,
     ) -> Option<AnyElement> {
         let sidebar = sidebar.clone();
         (!crate::profile::profile(cx).fixed_window).then(|| {
-            workspace_layout_button("workspace-layout")
+            workspace_layout_button("workspace-layout", open)
                 .on(ground)
                 .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
                 .on_click(move |_, _, cx| {
@@ -989,7 +990,12 @@ impl Render for WorkspaceSidebar {
             Some(
                 workspace_sidebar_titlebar_controls(
                     self.render_view_button(&sidebar, cx),
-                    div().children(Self::render_controls(&sidebar, self.content_ground(cx), cx)),
+                    div().children(Self::render_controls(
+                        &sidebar,
+                        self.mode == ChromeMode::Sidebar,
+                        self.content_ground(cx),
+                        cx,
+                    )),
                 )
                 .into_any_element(),
             )

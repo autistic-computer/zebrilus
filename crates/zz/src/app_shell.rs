@@ -255,7 +255,9 @@ impl AppShell {
 
     fn render_status_bar(&self, window: &mut Window, cx: &mut App) -> AnyElement {
         let width = workspace_chrome_controls_width_for(1, window);
-        let controls = WorkspaceSidebar::render_controls(&self.sidebar, cx.theme().ground(), cx);
+        let open = self.sidebar.read(cx).mode() == ChromeMode::Sidebar;
+        let controls =
+            WorkspaceSidebar::render_controls(&self.sidebar, open, cx.theme().ground(), cx);
         let bar = render_gui_status_bar(
             &self.mux,
             controls.map(|controls| (controls, width)),

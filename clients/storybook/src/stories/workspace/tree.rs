@@ -409,7 +409,7 @@ pub fn tree_list(
 }
 
 pub fn chrome_controls() -> penna::components::button::Button {
-    workspace_layout_button("layout")
+    workspace_layout_button("layout", true)
 }
 
 pub fn sidebar(
