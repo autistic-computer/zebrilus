@@ -91,8 +91,9 @@ a missing scale means a sharp vertex.
 - Corner scales come from Solar: a scale is Solar's corner size divided by 12, so the default theme
   radius (24, which is 12 grid units) draws Solar's corners and smaller radii sharpen them in step.
   Big boxes land on the 0.45 cap the way Solar's near-squircle boxes do.
-- Organic outlines Solar draws with curves (bell, moon, braces, the chat bubble, the palette, the
-  steam over the cup) stay fixed `d` paths; they have no corners for the radius to change.
+- Organic outlines Solar draws with curves (bell, moon, braces, the palette, the steam over the
+  cup) stay fixed `d` paths; they have no corners for the radius to change. The chat bubble is
+  zz's own: a `shape` with `panel-left`'s corners, so the two title bar toggles round together.
 - Dots are filled `dot` parts, never smaller than the stroke: 1.75 for the small accents (window lights, the `i` and `!` dots, the
   keyboard's keys, the drive's lights), 3 for grips, ellipses and palette wells. Round things stay circles.
 - Arrow shafts stop about 1.25 units short of the tip, so at radius 0 the shaft's square cap does
