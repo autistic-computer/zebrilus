@@ -203,7 +203,7 @@ empty vector that restores donor/default values.
 
 The settings view is a route in the main window opened with `Cmd+,` on macOS or `Ctrl+,`
 elsewhere. `SettingsSection::ALL` is ten pages, titled Interface, Editor, Panes, Multiplexer,
-Browser, Terminal, Hosts, Providers, System, About:
+Browser, Terminal, Hosts, Agents, System, About:
 
 | Section | Contents |
 |---------|----------|
@@ -214,8 +214,8 @@ Browser, Terminal, Hosts, Providers, System, About:
 | Browser | Browser-local shortcuts, beginning with the element-selector hotkey |
 | Terminal | Preview, Appearance rows, Import from Ghostty (one button over the system file picker), and the `zz/config` path |
 | Hosts | Configured `host-<name>` machines, live connection state, Remove, and an inline Add host form |
-| Providers | Claude Code and Codex on each connected host: installed and newest version, Update or Install through the vendor's own updater, its progress line and error |
-| System | Daemon (`quit-daemon-on-exit`), Experimental pane gates |
+| Agents | Coding agents (Set up, the startup hook for Claude Code and Codex in terminal panes), then Claude Code and Codex on each connected host: installed and newest version, Update or Install through the vendor's own updater, its progress line and error |
+| System | Command palette (`palette-window-layout`, `palette-show-keys`), Tray, Notifications, Daemon (`quit-daemon-on-exit`), Experimental (`palette-vim-mode` and the pane gates) |
 | About | Version, build identity, and project links |
 
 A **Devices** pairing page sat in this list until 2026-08-01 and was deleted with QUIC pairing.

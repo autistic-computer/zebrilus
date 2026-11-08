@@ -1124,6 +1124,22 @@ impl SettingsView {
         });
         Self::scroll_column("settings-agents")
             .child(settings_page_title(SettingsSection::Agents, cx))
+            .child(
+                SettingsStack::titled("Coding agents").child(
+                    SettingEntry::new("Claude Code and Codex")
+                        .description(
+                            "A startup hook so the ones in terminal panes know they run in zz",
+                        )
+                        .control(
+                            Button::new("settings-agent-setup")
+                                .label("Set up")
+                                .on(settings_card_ground(cx))
+                                .on_click(|_, window, cx| {
+                                    crate::config::agent_setup::set_up_agents(window, cx);
+                                }),
+                        ),
+                ),
+            )
             .children(stacks)
             .child(
                 h_flex().justify_end().child(
@@ -1155,15 +1171,7 @@ impl SettingsView {
                         ConfigKey::PaletteShowKeys,
                         "Command shortcuts",
                         resolved.palette_show_keys,
-                    ))
-                    .child(
-                        Self::boolean_setting(
-                            ConfigKey::PaletteVimMode,
-                            "Vim mode",
-                            resolved.palette_vim_mode,
-                        )
-                        .description("Esc for normal mode: j k move, l into, h up"),
-                    ),
+                    )),
             )
             .when(crate::profile::profile(cx).has_tray, |column| {
                 column.child(
@@ -1173,22 +1181,6 @@ impl SettingsView {
                     ),
                 )
             })
-            .child(
-                SettingsStack::titled("Coding agents").child(
-                    SettingEntry::new("Claude Code and Codex")
-                        .description(
-                            "A startup hook so the ones in terminal panes know they run in zz",
-                        )
-                        .control(
-                            Button::new("settings-agent-setup")
-                                .label("Set up")
-                                .on(settings_card_ground(cx))
-                                .on_click(|_, window, cx| {
-                                    crate::config::agent_setup::set_up_agents(window, cx);
-                                }),
-                        ),
-                ),
-            )
             .child(
                 SettingsStack::titled("Notifications").child(
                     Self::boolean_setting(
@@ -1211,20 +1203,23 @@ impl SettingsView {
                     ),
                 )
             })
-            .when(
-                cfg!(any(feature = "agent-pane", feature = "editor-pane")),
-                |column| {
-                    column.child(SettingsStack::titled("Experimental").when(
-                        cfg!(feature = "editor-pane"),
-                        |group| {
-                            group.child(Self::boolean_setting(
-                                ConfigKey::ExperimentalEditorPane,
-                                "Editor pane",
-                                resolved.experimental_editor_pane,
-                            ))
-                        },
-                    ))
-                },
+            .child(
+                SettingsStack::titled("Experimental")
+                    .child(
+                        Self::boolean_setting(
+                            ConfigKey::PaletteVimMode,
+                            "Command palette Vim mode",
+                            resolved.palette_vim_mode,
+                        )
+                        .description("Esc for normal mode: j k move, l into, h up"),
+                    )
+                    .when(cfg!(feature = "editor-pane"), |group| {
+                        group.child(Self::boolean_setting(
+                            ConfigKey::ExperimentalEditorPane,
+                            "Editor pane",
+                            resolved.experimental_editor_pane,
+                        ))
+                    }),
             )
             .into_any_element()
     }

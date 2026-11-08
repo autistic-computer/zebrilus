@@ -681,6 +681,12 @@ impl AppShell {
                             )
                         },
                     )
+                    .when(shown(Setting::CommandPalette, phone), |page| {
+                        page.child(
+                            SettingsStack::titled("Experimental")
+                                .child(self.palette_vim_setting(cx)),
+                        )
+                    })
                     .into_any_element();
             }
             SettingsSection::About => return large(about_page(cx)).into_any_element(),
@@ -826,18 +832,21 @@ impl AppShell {
                         cx.notify();
                     })),
             ),
-            SettingEntry::new("Vim mode")
-                .description("Esc for normal mode: j k move, l into, h up")
-                .control(
-                    Switch::new("settings-palette-vim-mode")
-                        .checked(self.preferences.palette_vim_mode)
-                        .on_click(cx.listener(|this, _, _, cx| {
-                            this.preferences.palette_vim_mode = !this.preferences.palette_vim_mode;
-                            this.preferences.save();
-                            cx.notify();
-                        })),
-                ),
         ]
+    }
+
+    fn palette_vim_setting(&self, cx: &Context<Self>) -> SettingEntry {
+        SettingEntry::new("Command palette Vim mode")
+            .description("Esc for normal mode: j k move, l into, h up")
+            .control(
+                Switch::new("settings-palette-vim-mode")
+                    .checked(self.preferences.palette_vim_mode)
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.preferences.palette_vim_mode = !this.preferences.palette_vim_mode;
+                        this.preferences.save();
+                        cx.notify();
+                    })),
+            )
     }
 }
 
