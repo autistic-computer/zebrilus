@@ -839,7 +839,8 @@ function systemPage() {
     heading("System"),
     stack("Command palette", [
       entry({
-        title: "Navigation layout",
+        title: "Window chooser",
+        description: "Sessions and windows before you type",
         control: choose({
           value: p.palette_grouped ? "grouped" : "flat",
           className: "choice",
@@ -847,7 +848,7 @@ function systemPage() {
           onpick: (value) => set({ palette_grouped: value === "grouped" }),
         }),
       }),
-      entry({ title: "Command shortcuts", control: toggle(p.palette_show_keys, "Command shortcuts", (value) => set({ palette_show_keys: value })) }),
+      entry({ title: "Show shortcuts", description: "Each command's keys beside it", control: toggle(p.palette_show_keys, "Show shortcuts", (value) => set({ palette_show_keys: value })) }),
     ]),
   ];
 }

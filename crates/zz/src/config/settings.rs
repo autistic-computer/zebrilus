@@ -1160,18 +1160,24 @@ impl SettingsView {
             .child(settings_page_title(SettingsSection::Advanced, cx))
             .child(
                 SettingsStack::titled("Command palette")
-                    .child(Self::palette_choice_setting(
-                        ConfigKey::PaletteWindowLayout,
-                        "Navigation layout",
-                        resolved.palette_window_layout.value.as_str(),
-                        &[("grouped", "Tree"), ("flat", "Flat")],
-                        cx,
-                    ))
-                    .child(Self::boolean_setting(
-                        ConfigKey::PaletteShowKeys,
-                        "Command shortcuts",
-                        resolved.palette_show_keys,
-                    )),
+                    .child(
+                        Self::palette_choice_setting(
+                            ConfigKey::PaletteWindowLayout,
+                            "Window chooser",
+                            resolved.palette_window_layout.value.as_str(),
+                            &[("grouped", "Tree"), ("flat", "Flat")],
+                            cx,
+                        )
+                        .description("Sessions and windows before you type"),
+                    )
+                    .child(
+                        Self::boolean_setting(
+                            ConfigKey::PaletteShowKeys,
+                            "Show shortcuts",
+                            resolved.palette_show_keys,
+                        )
+                        .description("Each command's keys beside it"),
+                    ),
             )
             .when(crate::profile::profile(cx).has_tray, |column| {
                 column.child(

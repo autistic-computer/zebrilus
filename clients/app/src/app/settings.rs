@@ -818,20 +818,25 @@ impl AppShell {
 impl AppShell {
     fn palette_settings(&self, cx: &Context<Self>) -> Vec<SettingEntry> {
         vec![
-            SettingEntry::new("Navigation layout").control(choice_select(
-                &self.settings_controls.palette_layout,
-                "Navigation layout",
-                cx,
-            )),
-            SettingEntry::new("Command shortcuts").control(
-                Switch::new("settings-palette-show-keys")
-                    .checked(self.preferences.palette_show_keys)
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        this.preferences.palette_show_keys = !this.preferences.palette_show_keys;
-                        this.preferences.save();
-                        cx.notify();
-                    })),
-            ),
+            SettingEntry::new("Window chooser")
+                .description("Sessions and windows before you type")
+                .control(choice_select(
+                    &self.settings_controls.palette_layout,
+                    "Window chooser",
+                    cx,
+                )),
+            SettingEntry::new("Show shortcuts")
+                .description("Each command's keys beside it")
+                .control(
+                    Switch::new("settings-palette-show-keys")
+                        .checked(self.preferences.palette_show_keys)
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.preferences.palette_show_keys =
+                                !this.preferences.palette_show_keys;
+                            this.preferences.save();
+                            cx.notify();
+                        })),
+                ),
         ]
     }
 
