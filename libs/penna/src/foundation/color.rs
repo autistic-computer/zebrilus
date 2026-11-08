@@ -66,6 +66,7 @@ const FLOATING_ALPHA: f32 = 0.90;
 const TINT_CHROMA: f32 = 0.02;
 
 pub(super) const TEXT_CONTRAST: f32 = 4.5;
+pub(super) const FOREGROUND_CONTRAST: f32 = 7.0;
 const FIT_STEPS: usize = 20;
 
 thread_local! {
@@ -161,8 +162,12 @@ fn muted_ceiling(foreground: Hsla, background: Hsla) -> f32 {
 }
 
 pub(super) fn read_as_text(color: Hsla, ground: Hsla) -> Hsla {
+    fit_contrast(color, ground, TEXT_CONTRAST)
+}
+
+pub(super) fn fit_contrast(color: Hsla, ground: Hsla, floor: f32) -> Hsla {
     let ground = ground.opaque();
-    if contrast_ratio(color, ground) >= TEXT_CONTRAST {
+    if contrast_ratio(color, ground) >= floor {
         return color;
     }
     let (lightness, chroma, hue) = to_oklch(color);
@@ -177,7 +182,7 @@ pub(super) fn read_as_text(color: Hsla, ground: Hsla) -> Hsla {
     let (mut low, mut high) = (0.0_f32, 1.0_f32);
     for _ in 0..FIT_STEPS {
         let middle = f32::midpoint(low, high);
-        if contrast_ratio(at(middle), ground) >= TEXT_CONTRAST {
+        if contrast_ratio(at(middle), ground) >= floor {
             high = middle;
         } else {
             low = middle;

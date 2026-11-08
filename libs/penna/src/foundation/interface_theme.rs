@@ -1298,7 +1298,7 @@ mod tests {
     }
 
     #[test]
-    fn brought_colors_draw_exactly_and_the_rest_moves_until_it_reads() {
+    fn brought_colors_move_only_until_they_read() {
         let source = r##"{"tint":"#458588","colors":{"dark":{"bg":"#282828","fg":"#a89984","danger":"#cc241d"}}}"##;
         let theme = parse_theme(source).unwrap();
         assert_eq!(parse_theme(&theme.to_json()).unwrap(), theme);
@@ -1315,13 +1315,17 @@ mod tests {
         assert_eq!(
             drawn,
             [
-                "#282828", "#a89984", "#9a8c79", "#58989b", "#3fbf74", "#f95546"
+                "#282828", "#c0b19b", "#998c7b", "#58989b", "#3fbf74", "#f95546"
             ]
         );
-        for (color, from) in [(dark.accent, "#458588"), (dark.danger, "#cc241d")] {
+        for (color, from, floor) in [
+            (dark.foreground, "#a89984", 7.0),
+            (dark.accent, "#458588", 4.5),
+            (dark.danger, "#cc241d", 4.5),
+        ] {
             let ratio = contrast_ratio(color, dark.background);
             assert!(
-                (4.5..4.52).contains(&ratio),
+                (floor..floor + 0.03).contains(&ratio),
                 "{} is {ratio:.3}:1",
                 crate::to_hex(color)
             );
