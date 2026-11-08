@@ -91,28 +91,24 @@ function iconButton(role, action, icon, label) {
   return button;
 }
 
-function headerActions(floats) {
-  return floats
-    ? [
-        ["tile", "layout-columns", "Tile back"],
-        ["zoom", "window-maximize", "Zoom"],
-      ]
+function headerActions(floats, lone, zoomed) {
+  const zoom = zoomed ? ["zoom", "shrink", "Unzoom"] : ["zoom", "expand", "Zoom"];
+  const actions = floats
+    ? [["tile", "layout-columns", "Tile back"], zoom]
     : [
         ["split-bottom", "panel-bottom", "Split bottom"],
         ["split-right", "panel-right", "Split right"],
-        ["float", "picture-in-picture", "Float"],
+        ...(lone || zoomed ? [] : [["float", "picture-in-picture", "Float"]]),
+        ...(lone ? [] : [zoom]),
       ];
+  return [...actions, ["close", "xmark", "Close pane"]];
 }
 
 function header(pane) {
   const element = el("div", { "data-penna": "bar.pane" });
   const slot = el("div", { class: "title-slot" });
   const title = el("div", { "data-penna": "button.title", class: "pane-title" });
-  title.innerHTML = `<span class="title-icon"><i data-icon="square-terminal" class="kind"></i><i data-icon="arrows-move" class="move"></i></span><span class="title" data-text></span>`;
-  const close = iconButton("button.quiet", "close", "xmark", "Close pane");
-  close.classList.add("title-close");
-  close.dataset.inside = "";
-  title.append(close);
+  title.innerHTML = `<span class="title-icon"><i data-icon="square-terminal" class="kind"></i><i data-icon="arrows-move" class="move"></i></span><span class="title" data-text></span><span class="folder" data-text></span>`;
   slot.append(title);
   const extras = el("div", { class: "header-extras" });
   const actions = el("div", { class: "header-actions" });
@@ -131,7 +127,7 @@ function header(pane) {
     if (pane.floating) beginPip(pane, event);
     else beginPaneDrag(pane.id, event, false);
   });
-  return { element, title, extras, actions, floats: null };
+  return { element, title, extras, actions, place: null };
 }
 
 function runAction(id, action) {
@@ -181,10 +177,6 @@ function paneElement(id) {
   });
   badges.addEventListener("pointerdown", (event) => event.stopPropagation());
   badges.addEventListener("click", (event) => {
-    if (event.target.closest("[data-action='unzoom']") && writable()) {
-      state.client.pane_action(id, "zoom", 0);
-      flush();
-    }
     const choice = event.target.closest("[data-flip]")?.dataset.flip;
     if (choice) globalThis.zzAgent?.chooseFlip(id, choice);
   });
@@ -258,9 +250,6 @@ function chrome(pane, info, window, floating) {
   if (terminal && info.waiting) tags.push(badge("clock", `Waiting for %${pane.id}`));
   if (info.deadLabel) tags.push(badge("circle-x", info.deadLabel));
   if (info.synchronized) tags.push(badge("layers", "Sync"));
-  if (window.zoomedPane === pane.id) {
-    tags.push(`<button data-penna="chip.floating" class="unzoom" data-action="unzoom" aria-label="Unzoom"><i data-icon="window-restore"></i><span data-text>Unzoom</span></button>`);
-  }
   const html = tags.join("");
   if (pane.badges.dataset.html !== html) {
     pane.badges.dataset.html = html;
@@ -275,12 +264,16 @@ function renderHeader(parts, pane, info, window, floats, label) {
   parts.element.parentElement?.toggleAttribute("data-inactive", !active);
   parts.element.toggleAttribute("data-active", active);
   parts.title.querySelector(".title").textContent = label ?? info.label ?? "";
+  parts.title.querySelector(".folder").textContent = info.folder ?? "";
   parts.title.querySelector(".kind").dataset.icon = paneIcon(info.kind);
   parts.title.toggleAttribute("data-movable", floats ? writable() : canDrag(window));
-  if (parts.floats !== floats) {
-    parts.floats = floats;
+  const lone = window.panes.length === 1;
+  const zoomed = window.zoomedPane === pane.id;
+  const place = `${floats} ${lone} ${zoomed}`;
+  if (parts.place !== place) {
+    parts.place = place;
     parts.actions.replaceChildren(
-      ...headerActions(floats).map(([action, icon, title]) => iconButton("icon-button.bar", action, icon, title)),
+      ...headerActions(floats, lone, zoomed).map(([action, icon, title]) => iconButton("icon-button.bar", action, icon, title)),
     );
   }
   const extras = headerButtons.map((factory) => factory(pane, info)).filter(Boolean);
@@ -860,7 +853,7 @@ phase("panes", (ids) => {
   for (const id of ids) panes.get(id)?.view?.update?.();
 });
 function fades() {
-  for (const label of document.querySelectorAll(".pane-title > .title, .tab-name")) {
+  for (const label of document.querySelectorAll(".tab-name")) {
     label.toggleAttribute("data-fade", label.scrollWidth > label.clientWidth + 0.5);
   }
 }

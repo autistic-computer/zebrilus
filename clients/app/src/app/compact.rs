@@ -755,7 +755,7 @@ impl AppShell {
                 terminal.update(cx, |terminal, cx| {
                     terminal.set_extra_height(self.compact.extra_height, cx);
                     terminal.set_text_dimmed(false, 1.0, cx);
-                    terminal.set_pane_status(dead.clone(), pane.synchronized_input, false, cx);
+                    terminal.set_pane_status(dead.clone(), pane.synchronized_input, cx);
                     terminal.set_corner_radii(
                         Corners {
                             top_left: px(0.0),

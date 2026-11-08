@@ -7854,6 +7854,7 @@ dependencies = [
  "russh",
  "rustix",
  "security-framework-sys",
+ "serde_json",
  "sysinfo",
  "tempfile",
  "thiserror 2.0.21",

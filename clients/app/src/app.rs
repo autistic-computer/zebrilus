@@ -1538,10 +1538,23 @@ impl AppShell {
         let flip_view = cx.weak_entity();
         let connection = self.connection.clone();
         let float_rows = self.pip_fill_rows(cx);
+        let (place, folder) = {
+            let snapshot = connection.read(cx).core.snapshot();
+            let mut place = zz_client::floating::pane_state(snapshot, pane_id);
+            place.floats |= floats;
+            let folder = snapshot
+                .sessions
+                .iter()
+                .flat_map(|session| &session.windows)
+                .find_map(|window| window.panes.get(&pane_id))
+                .and_then(zz_client::navigation::pane_folder);
+            (place, folder)
+        };
         zz_ui::pane::pane_header(
             icon,
             active,
             title.clone(),
+            folder.map(Into::into),
             PaneDragSource::new(pane_id, title, can_drag, move |drag, _, cx| {
                 view.update(cx, |this, cx| this.on_pane_drag_start(*drag, cx));
             })
@@ -1550,7 +1563,7 @@ impl AppShell {
                     this.touch_pane_drag(pane_id, event, window, cx);
                 });
             })),
-            floats,
+            place,
             None,
             &zz_ui::pane::PaneActionKeys::default(),
             move |action, _, cx| {
@@ -2056,12 +2069,7 @@ impl AppShell {
                             self.preferences.pane_inactive_opacity,
                             cx,
                         );
-                        terminal.set_pane_status(
-                            dead_label.clone(),
-                            pane.synchronized_input,
-                            active_window.zoomed_pane == Some(pane_id),
-                            cx,
-                        );
+                        terminal.set_pane_status(dead_label.clone(), pane.synchronized_input, cx);
                         terminal.set_corner_radii(
                             Corners {
                                 top_left: px(0.0),
@@ -2187,27 +2195,6 @@ impl AppShell {
             }
             if !terminal_pane && pane.synchronized_input {
                 status_tags.push(zz_ui::pane::pane_sync_badge(cx).into_any_element());
-            }
-            if !terminal_pane && active_window.zoomed_pane == Some(pane_id) {
-                let connection = self.connection.clone();
-                let control = div()
-                    .id(("web-unzoom-pane", pane_id.0))
-                    .cursor_pointer()
-                    .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-                    .on_mouse_up(MouseButton::Left, move |_, _, cx| {
-                        connection.update(cx, |connection, cx| {
-                            if !connection.core.attached_read_only() {
-                                connection.command(
-                                    "resize-pane",
-                                    vec!["-Z".into(), "-t".into(), pane_id.to_string()],
-                                    cx,
-                                );
-                            }
-                        });
-                        cx.stop_propagation();
-                    })
-                    .child(zz_ui::pane::pane_unzoom_control());
-                status_tags.push(control.into_any_element());
             }
             let mut status_overlays = if status_tags.is_empty() {
                 Vec::new()

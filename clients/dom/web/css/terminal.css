@@ -156,18 +156,6 @@
   color: var(--penna-muted);
 }
 
-.term .unzoom {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 28px;
-  padding: 0 12px;
-  font-family: inherit;
-  font-size: 13px;
-  line-height: 1;
-  --penna-icon-size: 14px;
-}
-
 .term .chip-line {
   font-family: inherit;
   display: flex;

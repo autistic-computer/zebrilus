@@ -382,7 +382,7 @@ pub struct BrowserTabStrip {
     on_activate: BrowserTabAction,
     on_close: BrowserTabAction,
     on_new_tab: BrowserMenuAction,
-    title: Option<(crate::pane::PaneDragSource, BrowserMenuAction)>,
+    title: Option<crate::pane::PaneDragSource>,
 }
 
 impl BrowserTabStrip {
@@ -398,12 +398,8 @@ impl BrowserTabStrip {
     }
 
     #[must_use]
-    pub fn title(
-        mut self,
-        drag: crate::pane::PaneDragSource,
-        on_close_pane: impl Fn(&mut Window, &mut App) + 'static,
-    ) -> Self {
-        self.title = Some((drag, Rc::new(on_close_pane)));
+    pub fn title(mut self, drag: crate::pane::PaneDragSource) -> Self {
+        self.title = Some(drag);
         self
     }
 
@@ -436,9 +432,8 @@ impl RenderOnce for BrowserTabStrip {
             on_new_tab,
             title,
         } = self;
-        let title = title.map(|(drag, close_pane)| {
+        let title = title.map(|drag| {
             crate::pane::PaneTitle::new("browser-pane-title", IconName::Globe, "Browser", drag)
-                .on_close(move |window, cx| close_pane(window, cx))
         });
         let width = window.use_keyed_state("browser-tab-strip-width", cx, |_, _| None::<Pixels>);
         let count = f32::from(u16::try_from(tabs.len().max(1)).unwrap_or(u16::MAX));
@@ -1346,11 +1341,8 @@ mod tests {
         accepted: Arc<Mutex<Vec<usize>>>,
     }
 
-    const PANE_CLOSED: u64 = u64::MAX;
-
     struct BrowserHeaderTest {
         drags: Arc<Mutex<Vec<crate::pane::PaneDrag>>>,
-        closed: Arc<Mutex<Vec<u64>>>,
         site_controls_opened: Arc<Mutex<bool>>,
         address: Entity<InputState>,
         address_clicked: bool,
@@ -1380,7 +1372,6 @@ mod tests {
                     )
                 });
             let drags = self.drags.clone();
-            let closed = self.closed.clone();
             div().w(px(600.0)).child(BrowserHeader::new(
                 true,
                 BrowserTabStrip::new(
@@ -1389,15 +1380,12 @@ mod tests {
                         .collect(),
                     self.active,
                 )
-                .title(
-                    crate::pane::PaneDragSource::new(
-                        zz_protocol::PaneId(3),
-                        "Browser",
-                        true,
-                        move |drag, _, _| drags.lock().unwrap().push(*drag),
-                    ),
-                    move |_, _| closed.lock().unwrap().push(PANE_CLOSED),
-                ),
+                .title(crate::pane::PaneDragSource::new(
+                    zz_protocol::PaneId(3),
+                    "Browser",
+                    true,
+                    move |drag, _, _| drags.lock().unwrap().push(*drag),
+                )),
                 browser_toolbar_cluster()
                     .child(
                         crate::pane::pane_header_icon_button(
@@ -1446,7 +1434,6 @@ mod tests {
         cx.update(crate::init);
         let (view, cx) = cx.add_window_view(|window, cx| BrowserHeaderTest {
             drags: Arc::new(Mutex::new(Vec::new())),
-            closed: Arc::new(Mutex::new(Vec::new())),
             site_controls_opened: Arc::new(Mutex::new(false)),
             address: cx.new(|cx| InputState::new(window, cx)),
             address_clicked: false,
@@ -1513,16 +1500,6 @@ mod tests {
         assert!(first.size.width >= px(BROWSER_TAB_MIN_WIDTH));
         assert!(first.size.width < px(BROWSER_TAB_LABEL_WIDTH));
         assert!(last.right() <= strip.right());
-        cx.simulate_mouse_move(title.center(), None, Modifiers::none());
-        cx.update(|window, cx| {
-            _ = window.draw(cx);
-        });
-        let close = cx.debug_bounds("pane-title-close").unwrap();
-        cx.simulate_click(close.center(), Modifiers::none());
-        assert_eq!(
-            view.read_with(cx, |view, _| view.closed.lock().unwrap().clone()),
-            [PANE_CLOSED]
-        );
         cx.simulate_mouse_down(title.center(), MouseButton::Left, Modifiers::none());
         let target = title.center() + point(px(40.0), px(0.0));
         cx.simulate_mouse_move(target, MouseButton::Left, Modifiers::none());

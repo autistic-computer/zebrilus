@@ -9,7 +9,9 @@ use zz_client::{
         FloatCells, PipGeometry, float_pane_commands, float_placement, float_title,
         tile_pane_command, zoom_pane_command,
     },
-    navigation::{RenameTarget, ordered_panes, pane_label, rename_prompt_command, session_label},
+    navigation::{
+        RenameTarget, ordered_panes, pane_folder, pane_label, rename_prompt_command, session_label,
+    },
     new_chat::{
         AGENT_CHOICES, ChatKey, ChatPicker, ChatStage, ChatViewPlace, FolderChoice,
         agent_picker_place, close_picker_command, folder_rows, landing_chat_commands,
@@ -967,6 +969,7 @@ impl Client {
                 json!({
                     "id": pane.id.0,
                     "label": pane_label(pane),
+                    "folder": pane_folder(pane),
                     "kind": if agent_picker { "picker" } else { kind(&pane.kind) },
                     "dead": pane.dead,
                     "deadStatus": pane.dead_status,

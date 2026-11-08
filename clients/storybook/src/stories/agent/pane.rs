@@ -416,8 +416,12 @@ impl AgentPaneStory {
             },
             true,
             title,
+            Some("~/dev/autistic-computer/zebrilus".into()),
             PaneDragSource::new(self.pane(), title, true, |_, _, _| {}),
-            self.look == Look::Floating,
+            zz_ui::pane::PaneState {
+                floats: self.look == Look::Floating,
+                ..zz_ui::pane::PaneState::default()
+            },
             Some(PaneFlip {
                 provider: self.scene.provider(),
                 to: self.side.flip_to(),
@@ -729,8 +733,12 @@ fn render_flip_buttons(_: &mut Window, cx: &mut App) -> AnyElement {
                 },
                 case.active,
                 case.title,
+                None,
                 PaneDragSource::new(PaneId(index as u64 + 1), case.title, true, |_, _, _| {}),
-                case.floats,
+                zz_ui::pane::PaneState {
+                    floats: case.floats,
+                    ..zz_ui::pane::PaneState::default()
+                },
                 Some(PaneFlip {
                     provider: case.provider,
                     to: case.to,

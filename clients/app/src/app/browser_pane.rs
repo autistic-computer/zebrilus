@@ -837,8 +837,8 @@ impl BrowserPane {
                     .map_or_else(|| "Browser".to_owned(), zz_client::navigation::pane_label),
             )
         };
-        let floats =
-            zz_client::floating::pane_floats(self.connection.read(cx).core.snapshot(), pane);
+        let place = zz_client::floating::pane_state(self.connection.read(cx).core.snapshot(), pane);
+        let floats = place.floats;
         let drag_handler = self.header_drag_handler.clone();
         let mut drag = PaneDragSource::new(
             pane,
@@ -856,7 +856,6 @@ impl BrowserPane {
                 handler(event, window, cx);
             }));
         }
-        let close_connection = self.connection.clone();
         let weak = cx.weak_entity();
         let close = weak.clone();
         let new = weak.clone();
@@ -872,30 +871,22 @@ impl BrowserPane {
                     this.add_tab("about:blank".into(), window, cx);
                 });
             })
-            .title(drag, move |_, cx| {
-                if !writable {
-                    return;
-                }
-                close_connection.update(cx, |connection, cx| {
-                    connection.command("kill-pane", vec!["-t".to_owned(), pane.to_string()], cx);
-                });
-            });
+            .title(drag);
         let actions =
             div()
                 .flex()
                 .gap_1()
-                .children(zz_ui::pane::pane_header_actions(floats).iter().map(
+                .children(zz_ui::pane::pane_header_actions(place).into_iter().map(
                     |(action, icon, label)| {
                         let connection = self.connection.clone();
-                        let action = *action;
                         let float_rows = self.float_rows_handler.clone();
                         pane_header_icon_button(
                             ("ios-browser-action", action as usize),
-                            icon.clone(),
+                            icon,
                             writable,
                             cx,
                         )
-                        .tooltip(*label)
+                        .tooltip(label)
                         .on_click(move |_, _, cx| {
                             let rows = float_rows.as_ref().and_then(|rows| rows(cx));
                             connection.update(cx, |connection, cx| {

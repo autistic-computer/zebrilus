@@ -581,6 +581,27 @@ pub fn pane_floats(snapshot: &MuxSnapshot, pane: PaneId) -> bool {
         .any(|window| window.floating.iter().any(|float| float.pane == pane))
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct PaneState {
+    pub floats: bool,
+    pub lone: bool,
+    pub zoomed: bool,
+}
+
+#[must_use]
+pub fn pane_state(snapshot: &MuxSnapshot, pane: PaneId) -> PaneState {
+    snapshot
+        .sessions
+        .iter()
+        .flat_map(|session| &session.windows)
+        .find(|window| window.panes.contains_key(&pane))
+        .map_or_else(PaneState::default, |window| PaneState {
+            floats: window.floating.iter().any(|float| float.pane == pane),
+            lone: window.panes.len() == 1,
+            zoomed: window.zoomed_pane == Some(pane),
+        })
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct OverlayFrame {
     pub bounds: PixelRect,

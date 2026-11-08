@@ -1,7 +1,7 @@
 use crate::{
     ActiveTheme as _, Colorize as _, Disableable as _, ElementExt as _, Emphasis, Fill, Icon,
     IconName, Layer, PaintState, Selectable as _, Sizable as _, StyledExt as _, Tone,
-    button::{Button, ButtonLook, ButtonVariants as _},
+    button::{Button, ButtonLook},
     pane_look::PaneLook,
 };
 use ala::{
@@ -31,7 +31,7 @@ pub fn pane_header_icon_button(
         .look(ButtonLook::Bar)
         .size(crate::PANE_HEADER_CONTROL_HEIGHT)
         .disabled(!enabled)
-        .text_color(cx.theme().foreground.faint())
+        .text_color(cx.theme().foreground.rest())
 }
 
 pub const fn agent_provider_icon(provider: zz_protocol::AgentProvider) -> IconName {
@@ -61,7 +61,8 @@ pub struct PaneTitle {
     icon: Icon,
     label: AnyElement,
     drag: PaneDragSource,
-    on_close: Option<std::rc::Rc<dyn Fn(&mut Window, &mut App)>>,
+    fill: bool,
+    folder: Option<SharedString>,
 }
 
 impl PaneTitle {
@@ -76,13 +77,15 @@ impl PaneTitle {
             icon: icon.into(),
             label: label.into_any_element(),
             drag,
-            on_close: None,
+            fill: false,
+            folder: None,
         }
     }
 
     #[must_use]
-    pub fn on_close(mut self, on_close: impl Fn(&mut Window, &mut App) + 'static) -> Self {
-        self.on_close = Some(std::rc::Rc::new(on_close));
+    pub fn fill(mut self, folder: Option<SharedString>) -> Self {
+        self.fill = true;
+        self.folder = folder;
         self
     }
 }
@@ -114,58 +117,40 @@ impl RenderOnce for PaneTitle {
                 )
             });
         let ground = cx.theme().ground_of(BarLook::Pane);
-        let close = self.on_close.map(|on_close| {
+        let text = |child: AnyElement| {
             div()
-                .flex_none()
-                .debug_selector(|| "pane-title-close".into())
-                .when(!coarse, |close| {
-                    close
-                        .invisible()
-                        .group_hover(PANE_TITLE_GROUP, ala::Styled::visible)
-                })
-                .child(
-                    Button::new("pane-title-close")
-                        .ghost()
-                        .icon(IconName::Xmark)
-                        .inside(TabLook::Title, crate::PANE_HEADER_CONTROL_HEIGHT)
-                        .on(ground)
-                        .text_color(cx.theme().foreground.faint())
-                        .tooltip("Close pane")
-                        .on_click(move |_, window, cx| {
-                            cx.stop_propagation();
-                            on_close(window, cx);
-                        }),
-                )
-        });
-        let end = if close.is_some() {
-            crate::button::INSIDE_GAP
-        } else {
-            px(8.0)
+                .min_w_0()
+                .overflow_hidden()
+                .whitespace_nowrap()
+                .text_ellipsis()
+                .child(child)
         };
+        let folder = self.folder.map(|folder| {
+            text(folder.into_any_element())
+                .flex_1()
+                .text_color(cx.theme().foreground.muted())
+        });
         let title = Tab::new(self.id, TabLook::Title)
             .on(ground)
             .group(PANE_TITLE_GROUP)
             .debug_selector(|| "pane-title".into())
             .flex()
-            .flex_initial()
-            .max_w(px(PANE_TITLE_MAX_WIDTH))
+            .map(|title| {
+                if self.fill {
+                    title.flex_1().min_w_0()
+                } else {
+                    title.flex_initial().max_w(px(PANE_TITLE_MAX_WIDTH))
+                }
+            })
             .h(crate::PANE_HEADER_CONTROL_HEIGHT)
             .items_center()
             .gap(px(6.0))
             .pl(px(6.0))
-            .pr(end)
-            .text_color(cx.theme().foreground.muted())
+            .pr(px(8.0))
+            .text_color(cx.theme().foreground.rest())
             .child(icon)
-            .child(
-                div()
-                    .flex_initial()
-                    .min_w_0()
-                    .overflow_hidden()
-                    .whitespace_nowrap()
-                    .text_fade(crate::LABEL_FADE)
-                    .child(self.label),
-            )
-            .children(close);
+            .child(text(self.label).flex_initial())
+            .children(folder);
         self.drag.attach(title)
     }
 }
@@ -271,44 +256,53 @@ impl TerminalPaneAction {
     }
 }
 
-pub const fn pane_header_actions(
-    floats: bool,
-) -> &'static [(TerminalPaneAction, IconName, &'static str)] {
-    if floats {
-        &[
-            (
-                TerminalPaneAction::Tile,
-                IconName::LayoutColumns,
-                "Tile back",
-            ),
-            (TerminalPaneAction::Zoom, IconName::WindowMaximize, "Zoom"),
-        ]
+pub use zz_client::floating::PaneState;
+
+#[must_use]
+pub fn pane_header_actions(state: PaneState) -> Vec<(TerminalPaneAction, IconName, &'static str)> {
+    let zoom = if state.zoomed {
+        (TerminalPaneAction::Zoom, IconName::Shrink, "Unzoom")
     } else {
-        &[
-            (
-                TerminalPaneAction::SplitBottom,
-                IconName::PanelBottom,
-                "Split bottom",
-            ),
-            (
-                TerminalPaneAction::SplitRight,
-                IconName::PanelRight,
-                "Split right",
-            ),
-            (
+        (TerminalPaneAction::Zoom, IconName::Expand, "Zoom")
+    };
+    let mut actions = Vec::new();
+    if state.floats {
+        actions.push((
+            TerminalPaneAction::Tile,
+            IconName::LayoutColumns,
+            "Tile back",
+        ));
+    } else {
+        actions.push((
+            TerminalPaneAction::SplitBottom,
+            IconName::PanelBottom,
+            "Split bottom",
+        ));
+        actions.push((
+            TerminalPaneAction::SplitRight,
+            IconName::PanelRight,
+            "Split right",
+        ));
+        if !state.lone && !state.zoomed {
+            actions.push((
                 TerminalPaneAction::Float,
                 IconName::PictureInPicture,
                 "Float",
-            ),
-        ]
+            ));
+        }
     }
+    if state.floats || !state.lone {
+        actions.push(zoom);
+    }
+    actions.push((TerminalPaneAction::Close, IconName::Xmark, "Close pane"));
+    actions
 }
 
 pub fn terminal_pane_header(
     active: bool,
     title: impl Into<SharedString>,
     drag: PaneDragSource,
-    floats: bool,
+    state: PaneState,
     flip: Option<PaneFlip>,
     on_action: impl Fn(TerminalPaneAction, &mut Window, &mut App) + 'static,
     cx: &App,
@@ -317,8 +311,9 @@ pub fn terminal_pane_header(
         IconName::SquareTerminal,
         active,
         title,
+        None,
         drag,
-        floats,
+        state,
         flip,
         &PaneActionKeys::default(),
         on_action,
@@ -509,15 +504,15 @@ pub fn pane_header(
     icon: IconName,
     active: bool,
     title: impl Into<SharedString>,
+    folder: Option<SharedString>,
     drag: PaneDragSource,
-    floats: bool,
+    state: PaneState,
     flip: Option<PaneFlip>,
     keys: &PaneActionKeys,
     on_action: impl Fn(TerminalPaneAction, &mut Window, &mut App) + 'static,
     cx: &App,
 ) -> Stateful<ala::Div> {
     let on_action = std::rc::Rc::new(on_action);
-    let close = std::rc::Rc::clone(&on_action);
     let toggle = std::rc::Rc::clone(&on_action);
     let action = |action, icon, label: &'static str| {
         let on_action = std::rc::Rc::clone(&on_action);
@@ -546,9 +541,9 @@ pub fn pane_header(
                     "terminal-pane-title",
                     icon,
                     title.into(),
-                    drag.floating(floats),
+                    drag.floating(state.floats),
                 )
-                .on_close(move |window, cx| close(TerminalPaneAction::Close, window, cx)),
+                .fill(folder),
             ),
         )
         .children(flip.map(|flip| {
@@ -577,9 +572,9 @@ pub fn pane_header(
                         .group_hover("terminal-pane-header", ala::Styled::visible)
                 })
                 .children(
-                    pane_header_actions(floats)
-                        .iter()
-                        .map(|(kind, icon, label)| action(*kind, icon.clone(), label)),
+                    pane_header_actions(state)
+                        .into_iter()
+                        .map(|(kind, icon, label)| action(kind, icon, label)),
                 ),
         );
     div()
@@ -1484,13 +1479,6 @@ pub fn pane_indicator(
         })
 }
 
-pub fn pane_unzoom_control() -> Button {
-    Button::new("pane-unzoom")
-        .icon(IconName::WindowRestore)
-        .label("Unzoom")
-        .look(ButtonLook::FloatingChip)
-}
-
 pub fn terminal_mode_indicator(
     id: impl Into<ElementId>,
     label: Option<impl Into<SharedString>>,
@@ -1874,29 +1862,24 @@ mod tests {
     struct TitleTest {
         label: &'static str,
         started: Vec<PaneDrag>,
-        closed: usize,
     }
 
     impl Render for TitleTest {
         fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
             let view = cx.entity();
-            let close = cx.entity();
-            div().w(px(400.0)).h(px(100.0)).flex().child(
-                PaneTitle::new(
-                    "title",
-                    IconName::SquareTerminal,
+            div().w(px(400.0)).h(px(100.0)).flex().child(PaneTitle::new(
+                "title",
+                IconName::SquareTerminal,
+                self.label,
+                PaneDragSource::new(
+                    zz_protocol::PaneId(3),
                     self.label,
-                    PaneDragSource::new(
-                        zz_protocol::PaneId(3),
-                        self.label,
-                        true,
-                        move |drag, _, cx| {
-                            view.update(cx, |view, _| view.started.push(*drag));
-                        },
-                    ),
-                )
-                .on_close(move |_, cx| close.update(cx, |view, _| view.closed += 1)),
-            )
+                    true,
+                    move |drag, _, cx| {
+                        view.update(cx, |view, _| view.started.push(*drag));
+                    },
+                ),
+            ))
         }
     }
 
@@ -1905,7 +1888,6 @@ mod tests {
         let (_, cx) = cx.add_window_view(|_, _| TitleTest {
             label,
             started: Vec::new(),
-            closed: 0,
         });
         cx.run_until_parked();
         cx.update(|window, cx| {
@@ -1942,13 +1924,12 @@ mod tests {
     }
 
     #[ala::test]
-    fn the_title_drags_the_pane_and_its_x_closes_it(cx: &mut ala::TestAppContext) {
+    fn the_title_drags_the_pane(cx: &mut ala::TestAppContext) {
         use ala::{Modifiers, MouseButton};
         cx.update(crate::init);
         let (view, cx) = cx.add_window_view(|_, _| TitleTest {
             label: "cargo test",
             started: Vec::new(),
-            closed: 0,
         });
         let draw = |cx: &mut ala::VisualTestContext| {
             cx.run_until_parked();
@@ -1958,18 +1939,6 @@ mod tests {
         };
         draw(cx);
         let title = cx.debug_bounds("pane-title").unwrap();
-        cx.simulate_mouse_move(title.center(), None, Modifiers::default());
-        draw(cx);
-        let close = cx.debug_bounds("pane-title-close").unwrap();
-        let gap = crate::button::INSIDE_GAP;
-        assert_eq!(
-            (title.right() - close.right(), close.top() - title.top()),
-            (gap, gap)
-        );
-        cx.simulate_click(close.center(), Modifiers::default());
-        draw(cx);
-        assert_eq!(view.read_with(cx, |view, _| view.closed), 1);
-        assert!(view.read_with(cx, |view, _| view.started.is_empty()));
 
         let start = point(title.left() + px(10.0), title.center().y);
         cx.simulate_mouse_down(start, MouseButton::Left, Modifiers::default());
@@ -1992,7 +1961,38 @@ mod tests {
             MouseButton::Left,
             Modifiers::default(),
         );
-        assert_eq!(view.read_with(cx, |view, _| view.closed), 1);
+    }
+
+    #[test]
+    fn header_actions_follow_where_the_pane_sits() {
+        let labels = |state| {
+            pane_header_actions(state)
+                .into_iter()
+                .map(|(_, _, label)| label)
+                .collect::<Vec<_>>()
+        };
+        let lone = PaneState {
+            lone: true,
+            ..PaneState::default()
+        };
+        let zoomed = PaneState {
+            zoomed: true,
+            ..PaneState::default()
+        };
+        let floats = PaneState {
+            floats: true,
+            ..PaneState::default()
+        };
+        assert_eq!(labels(lone), ["Split bottom", "Split right", "Close pane"]);
+        assert_eq!(
+            labels(PaneState::default()),
+            ["Split bottom", "Split right", "Float", "Zoom", "Close pane"]
+        );
+        assert_eq!(
+            labels(zoomed),
+            ["Split bottom", "Split right", "Unzoom", "Close pane"]
+        );
+        assert_eq!(labels(floats), ["Tile back", "Zoom", "Close pane"]);
     }
 
     #[test]

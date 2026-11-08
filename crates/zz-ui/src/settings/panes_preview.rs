@@ -7,8 +7,8 @@ use crate::{
     input::InputState,
     pane::{
         PaneChrome, PaneDragSource, PaneFlip, PaneSplitAxis, PaneSplitHighlight, PaneSplitSide,
-        pane_header_actions, pane_header_frame, pane_header_icon_button, pane_split_surface,
-        pane_surface, terminal_pane_header,
+        PaneState, pane_header_actions, pane_header_frame, pane_header_icon_button,
+        pane_split_surface, pane_surface, terminal_pane_header,
     },
     pane_look::PaneLook,
 };
@@ -232,7 +232,7 @@ fn terminal_sample(
         active,
         title,
         noop_drag(pane, title),
-        false,
+        PaneState::default(),
         flip,
         |_, _, _| {},
         cx,
@@ -296,14 +296,14 @@ fn browser_sample(
         browser_toolbar_button(cx, id, icon, tooltip, disabled, false)
     };
     let actions = div().flex().flex_none().items_center().gap_1().children(
-        pane_header_actions(false)
+        pane_header_actions(PaneState::default())
             .iter()
             .map(|(_, icon, label)| pane_header_icon_button(*label, icon.clone(), true, cx)),
     );
     let header = BrowserHeader::new(
         active,
         BrowserTabStrip::new(vec![BrowserTabInfo::new(1, "zed.dev", "Zed docs")], 0)
-            .title(noop_drag(3, "Browser"), |_, _| {}),
+            .title(noop_drag(3, "Browser")),
         actions,
         BrowserToolbar::new(
             button("browser-back", IconName::ArrowLeft, "Back", false),

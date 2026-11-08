@@ -33,7 +33,7 @@ use zz_terminal::{
 use zz_ui::{
     pane::{
         PaneOverlayCorner, pane_overlay_stack, pane_status_badge, pane_sync_badge,
-        pane_unzoom_control, terminal_link_popup, terminal_mode_indicator, terminal_status_popup,
+        terminal_link_popup, terminal_mode_indicator, terminal_status_popup,
     },
     pane_look::pane_color,
     terminal::{
@@ -155,7 +155,7 @@ pub struct TerminalPane {
     font_delta: f32,
     available_fonts: Vec<String>,
     text_opacity: f32,
-    pane_status: (Option<String>, bool, bool),
+    pane_status: (Option<String>, bool),
     corner_radii: Corners<Pixels>,
     rows_above: bool,
     rows_below: bool,
@@ -299,7 +299,7 @@ impl TerminalPane {
             font_delta: 0.,
             available_fonts: cx.text_system().all_font_names(),
             text_opacity: 1.0,
-            pane_status: (None, false, false),
+            pane_status: (None, false),
             corner_radii: Corners::default(),
             rows_above: false,
             rows_below: false,
@@ -385,10 +385,9 @@ impl TerminalPane {
         &mut self,
         dead: Option<String>,
         synchronized: bool,
-        zoomed: bool,
         cx: &mut Context<Self>,
     ) {
-        let status = (dead, synchronized, zoomed);
+        let status = (dead, synchronized);
         if self.pane_status != status {
             self.pane_status = status;
             cx.notify();
@@ -1857,25 +1856,6 @@ impl Render for TerminalPane {
         }
         if self.pane_status.1 {
             top_right.push(pane_sync_badge(cx).into_any_element());
-        }
-        if self.pane_status.2 {
-            top_right.push(
-                pane_unzoom_control()
-                    .on_click(cx.listener(|view, _, _, cx| {
-                        let pane = view.pane;
-                        view.connection.update(cx, |connection, cx| {
-                            if !connection.core.attached_read_only() {
-                                connection.command(
-                                    "resize-pane",
-                                    vec!["-Z".into(), "-t".into(), pane.to_string()],
-                                    cx,
-                                );
-                            }
-                        });
-                        cx.stop_propagation();
-                    }))
-                    .into_any_element(),
-            );
         }
         if !top_right.is_empty() {
             root = root.child(

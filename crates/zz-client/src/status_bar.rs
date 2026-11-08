@@ -78,7 +78,17 @@ impl StatusBarModel {
                                 window.automatic_rename
                                     && matches!(pane.kind, PaneKindSnapshot::Browser(_))
                             })
-                            .map_or_else(|| window.name.clone(), pane_label),
+                            .map_or_else(
+                                || match agent_provider {
+                                    Some(provider)
+                                        if window.automatic_rename && window.name == "agent" =>
+                                    {
+                                        provider.label().to_owned()
+                                    }
+                                    _ => window.name.clone(),
+                                },
+                                pane_label,
+                            ),
                         active: focused_window == Some(window.id),
                         bell,
                         activity: window.activity,
@@ -311,7 +321,7 @@ mod tests {
     }
 
     #[test]
-    fn agent_terminals_keep_their_window_name_and_report_their_provider() {
+    fn untitled_agent_windows_show_their_provider_and_report_it() {
         let mut snapshot = snapshot();
         for provider in [AgentProvider::Codex, AgentProvider::ClaudeCode] {
             snapshot.sessions[0].windows[1]
@@ -320,7 +330,7 @@ mod tests {
             let model = StatusBarModel::from_snapshot(&snapshot, Some(SessionId(1)));
 
             assert_eq!(model.windows[1].name, "agent");
-            assert_eq!(model.windows[1].label, "agent");
+            assert_eq!(model.windows[1].label, provider.label());
             assert_eq!(model.windows[1].agent_provider, Some(provider));
         }
     }

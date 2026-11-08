@@ -76,11 +76,7 @@ use crate::{
     config::pane_content_radii,
     diagnostics,
     keymap::ChromeChord,
-    mux::{
-        client::MuxClient,
-        nav::{TreeTarget, kill_target_command},
-        prefix::terminal_key_input,
-    },
+    mux::{client::MuxClient, prefix::terminal_key_input},
     window::corners::{WindowCorners, round_div_radii},
     workspace::ClosePane,
 };
@@ -370,6 +366,7 @@ struct ChromeState {
     active: bool,
     can_drag: bool,
     floats: bool,
+    place: zz_ui::pane::PaneState,
     drag_title: String,
     opacity: f32,
     shows_empty_state: bool,
@@ -632,6 +629,7 @@ impl BrowserView {
                 active: false,
                 can_drag: false,
                 floats: false,
+                place: zz_ui::pane::PaneState::default(),
                 drag_title: initial_url.clone(),
                 opacity: 1.0,
                 shows_empty_state: is_blank_url(&initial_url),
@@ -3671,7 +3669,6 @@ impl Render for BrowserChromeView {
         let tabs = match self.browser.upgrade() {
             Some(browser) => {
                 let drag_browser = self.browser.clone();
-                let close_browser = self.browser.clone();
                 tabs.title(
                     PaneDragSource::new(
                         browser.read(cx).pane,
@@ -3684,15 +3681,6 @@ impl Render for BrowserChromeView {
                         },
                     )
                     .floating(self.state.floats),
-                    move |_, cx| {
-                        if let Some(browser) = close_browser.upgrade() {
-                            browser.update(cx, |view, cx| {
-                                view.mux
-                                    .read(cx)
-                                    .execute(kill_target_command(TreeTarget::Pane(view.pane)));
-                            });
-                        }
-                    },
                 )
             }
             None => tabs,
@@ -3718,13 +3706,12 @@ impl Render for BrowserChromeView {
             )
         };
         let actions = div().flex().flex_none().items_center().gap_1().children(
-            zz_ui::pane::pane_header_actions(self.state.floats)
-                .iter()
+            zz_ui::pane::pane_header_actions(self.state.place)
+                .into_iter()
                 .map(|(action, icon, label)| {
                     let browser = self.browser.clone();
-                    let action = *action;
-                    pane_header_icon_button(*label, icon.clone(), true, cx)
-                        .tooltip(*label)
+                    pane_header_icon_button(label, icon, true, cx)
+                        .tooltip(label)
                         .on_click(move |_, window, cx| {
                             cx.stop_propagation();
                             if let Some(browser) = browser.upgrade() {
@@ -3768,7 +3755,7 @@ impl Render for BrowserView {
             self.refresh_chrome_profiles(false, window, cx);
         }
         let (tabs, active_tab_index) = self.tab_strip_state(cx);
-        let (active, can_drag, floats, drag_title) = {
+        let (active, can_drag, floats, place, drag_title) = {
             let mux = self.mux.read(cx);
             let snapshot = mux.snapshot();
             let pane_window = snapshot
@@ -3783,6 +3770,7 @@ impl Render for BrowserView {
                         window.zoomed_pane.is_none() && window.panes.len() > 1
                     }),
                 zz_client::floating::pane_floats(&snapshot, self.pane),
+                zz_client::floating::pane_state(&snapshot, self.pane),
                 pane_window
                     .and_then(|window| window.panes.get(&self.pane))
                     .map_or_else(|| "Browser".to_owned(), zz_client::navigation::pane_label),
@@ -3792,6 +3780,7 @@ impl Render for BrowserView {
             active,
             can_drag,
             floats,
+            place,
             drag_title,
             opacity: self.chrome_opacity,
             shows_empty_state,

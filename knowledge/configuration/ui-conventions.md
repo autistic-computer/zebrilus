@@ -201,15 +201,23 @@ after the last tab, then the split buttons at the row's end; under it the naviga
 never scrolling: each up to 180px, shrinking evenly, and below 84px a tab shows only its favicon,
 which turns into its X on hover.
 Every header's title is the drag handle: `pane::PaneTitle`, a 22px button
-(a `Tab` in `TabLook::Title`, `button.title`) holding the kind icon and the title, the provider name and session title
-for an agent, and a globe with "Browser" for a browser (`BrowserTabStrip::title`). Dragging it splits or swaps under the existing availability rules
-(`pane::PaneDragSource`). Pointed at, it tints, its icon turns into the four-way move arrows, and
-an X at its right end closes the pane; a coarse pointer (touch, iPad) never hovers, so there the X
-always shows and the icon stays. The title keeps one width, 180px (as wide as a browser tab;
-less only when the header is narrower), whatever its label, so the X sits in the same place; a label too long for it fades out
-over its last 28px under the X (`text_fade`) instead of ending in an ellipsis. Only "Browser",
-which never changes, sizes to its label (`PaneTitle::fit`). Split bottom and Split right stay on
-the right.
+(a `Tab` in `TabLook::Title`, `button.title`) holding the kind icon, the title and the pane's
+folder (`navigation::pane_folder`, home as `~`, one ink step under the title). The title is the session title
+for an agent, or the provider's name, "Claude Code" or "Codex", while it has none
+(`navigation::pane_label`); a browser shows a globe and "Browser" (`BrowserTabStrip::title`).
+Dragging it splits or swaps under the existing availability rules (`pane::PaneDragSource`).
+Pointed at, it tints and its icon turns into the four-way move arrows; a coarse pointer (touch,
+iPad) never hovers, so there the icon stays. A terminal or agent title fills the header up to its
+buttons (`PaneTitle::fill`): the title keeps its width and the folder takes what is left, each
+ending in an ellipsis when it runs out of room. Only "Browser", which shares its row with the
+tabs, sizes to its label.
+
+The buttons on the right come from `pane::pane_header_actions`, in the title's ink, and depend on
+where the pane sits (`floating::pane_state`): Split bottom and Split right; then Float and Zoom
+when the window holds another pane, since floating or zooming a lone pane does nothing, with no
+Float on a zoomed pane, which the daemon refuses to float; and Close pane last. A floating pane has Tile back, Zoom and Close pane. Zoom is the arrows-out glyph
+(`IconName::Expand`); on a zoomed pane it reads Unzoom with the arrows-in glyph
+(`IconName::Shrink`), and no pill sits over the pane.
 The URL field contains a 24px site-controls button at its left edge. Its popup reads Chromium connection
 status and tab sound state when opened, and offers the existing site-data clearing confirmation.
 The URL field is a neutral ghost field: no resting background, the ghost hover fill, and a

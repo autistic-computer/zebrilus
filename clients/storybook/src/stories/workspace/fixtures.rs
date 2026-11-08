@@ -230,7 +230,7 @@ impl TerminalPane {
             self.active,
             self.title,
             PaneDragSource::new(PaneId(self.id), self.title, true, |_, _, _| {}),
-            false,
+            zz_ui::pane::PaneState::default(),
             self.flip,
             |_, _, _| {},
             cx,

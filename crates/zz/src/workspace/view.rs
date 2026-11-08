@@ -52,7 +52,7 @@ use zz_ui::{
         pane_border_color, pane_drag_overlay, pane_drag_preview, pane_drop_preview,
         pane_header_frame, pane_indicator, pane_indicator_overlay, pane_overlay_stack,
         pane_split_hit_target, pane_split_slot, pane_split_surface, pane_surface, pane_sync_badge,
-        pane_unzoom_control, pane_waiting_state,
+        pane_waiting_state,
     },
     pane_look::{PaneLook, pane_color},
     shell::{app_connection_state, app_workspace_surface},
@@ -552,7 +552,8 @@ struct TerminalHeaderState {
     active: bool,
     title: String,
     can_drag: bool,
-    floats: bool,
+    place: zz_ui::pane::PaneState,
+    folder: Option<String>,
     flip: Option<PaneFlip>,
     keys: zz_ui::pane::PaneActionKeys,
     radii: Corners<Pixels>,
@@ -592,12 +593,13 @@ impl Render for TerminalHeaderView {
             state.icon.clone(),
             state.active,
             title.clone(),
+            state.folder.clone().map(Into::into),
             PaneDragSource::new(pane, title, state.can_drag, move |drag, _, cx| {
                 if let Some(app) = drag_app.upgrade() {
                     app.update(cx, |view, cx| view.on_pane_drag_start(*drag, cx));
                 }
             }),
-            state.floats,
+            state.place,
             state.flip,
             &state.keys,
             move |action, window, cx| {
@@ -625,7 +627,7 @@ impl Render for TerminalHeaderView {
                 }
             });
         });
-        let header = if state.floats {
+        let header = if state.place.floats {
             header
         } else {
             window_drag_handle(("pane-header-window-drag", pane.0), header, window, cx)
@@ -3514,12 +3516,7 @@ impl AppView {
                     });
                 if let Some(terminal) = terminal_overlay {
                     terminal.update(cx, |terminal, cx| {
-                        terminal.set_pane_status(
-                            dead_label.clone(),
-                            synchronized,
-                            window.zoomed_pane == Some(*pane),
-                            cx,
-                        );
+                        terminal.set_pane_status(dead_label.clone(), synchronized, cx);
                     });
                 }
                 let pane_content = self.pane_content(*pane, inactive, inactive_opacity, cx);
@@ -3547,7 +3544,12 @@ impl AppView {
                         can_drag: self.mux.read(cx).is_connected()
                             && window.zoomed_pane.is_none()
                             && window.panes.len() > 1,
-                        floats: window.floating.iter().any(|float| float.pane == *pane),
+                        place: zz_ui::pane::PaneState {
+                            floats: window.floating.iter().any(|float| float.pane == *pane),
+                            lone: window.panes.len() == 1,
+                            zoomed: window.zoomed_pane == Some(*pane),
+                        },
+                        folder: zz_client::navigation::pane_folder(snapshot),
                         flip: None,
                         keys: self.pane_action_keys(cx),
                         radii,
@@ -3588,9 +3590,6 @@ impl AppView {
                     }
                     if synchronized {
                         status_tags.push(pane_sync_badge(cx).into_any_element());
-                    }
-                    if window.zoomed_pane == Some(*pane) {
-                        status_tags.push(self.zoom_control(*pane).into_any_element());
                     }
                 }
                 let mut overlays: Vec<AnyElement> = Vec::with_capacity(3);
@@ -4016,7 +4015,7 @@ impl AppView {
             let dead = dead_label(snapshot);
             let synchronized = snapshot.is_some_and(|pane| pane.synchronized_input);
             terminal.update(cx, |terminal, cx| {
-                terminal.set_pane_status(dead, synchronized, false, cx);
+                terminal.set_pane_status(dead, synchronized, cx);
             });
         }
         let inactive_opacity = config::pane_inactive_opacity(cx);
@@ -4143,7 +4142,11 @@ impl AppView {
                 active,
                 title: label,
                 can_drag: connected,
-                floats: true,
+                place: zz_ui::pane::PaneState {
+                    floats: true,
+                    ..zz_ui::pane::PaneState::default()
+                },
+                folder: snapshot.and_then(zz_client::navigation::pane_folder),
                 flip: None,
                 keys: self.pane_action_keys(cx),
                 radii: Corners::default(),
@@ -4168,8 +4171,14 @@ impl AppView {
                 icon,
                 active,
                 label.clone(),
+                snapshot
+                    .and_then(zz_client::navigation::pane_folder)
+                    .map(Into::into),
                 PaneDragSource::new(pane, label, connected, |_, _, _| {}),
-                true,
+                zz_ui::pane::PaneState {
+                    floats: true,
+                    ..zz_ui::pane::PaneState::default()
+                },
                 None,
                 &self.pane_action_keys(cx),
                 move |action, _, cx| {
@@ -4363,22 +4372,6 @@ impl AppView {
                 ))
                 .into_any_element(),
         )
-    }
-
-    fn zoom_control(&self, pane: PaneId) -> impl IntoElement {
-        let mux = self.mux.clone();
-        div()
-            .id(("unzoom-pane", pane.0))
-            .cursor(CursorStyle::PointingHand)
-            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-            .on_mouse_up(MouseButton::Left, move |_, _, cx| {
-                mux.read(cx).execute(CommandInvocation::new(
-                    "resize-pane",
-                    ["-Z", "-t", &pane.to_string()],
-                ));
-                cx.stop_propagation();
-            })
-            .child(pane_unzoom_control())
     }
 }
 
@@ -7798,7 +7791,7 @@ mod tests {
             (canvas.size.width / cell.width).floor() as u16,
             (canvas.size.height / cell.height).floor() as u16,
         );
-        let mut snapshot = one_pane_snapshot(2);
+        let mut snapshot = two_pane_snapshot(PaneId(0));
         (
             snapshot.sessions[0].windows[0].sx,
             snapshot.sessions[0].windows[0].sy,
