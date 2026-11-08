@@ -15,6 +15,10 @@ tree-sitter = ["penna/tree-sitter", "dep:tree-sitter-tmux"]
 path-rank-fixtures = ["ala/test-support"]
 scene-fixtures = ["ala/test-support"]
 
+[[example]]
+name = "window_chooser_lifecycle_vectors"
+required-features = ["scene-fixtures"]
+
 [dependencies]
 chrono = { workspace = true, features = ["clock"] }
 image.workspace = true

@@ -6,6 +6,9 @@ mod palette_model;
 mod palette_places;
 mod palette_view;
 
+#[cfg(feature = "scene-fixtures")]
+pub use palette_view::window_chooser_fixture;
+
 pub use gui_level::GuiLevel;
 pub use level::{
     ActionContext, ActionKey, CopyAddress, LevelEffect, PaletteActionLevel, install_recents,

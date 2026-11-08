@@ -2232,6 +2232,10 @@ fn byte_index_for_char(value: &str, cursor: u32) -> Option<usize> {
 #[path = "palette_view_places.rs"]
 mod places;
 
+#[cfg(feature = "scene-fixtures")]
+#[path = "window_chooser_fixture.rs"]
+pub mod window_chooser_fixture;
+
 #[cfg(test)]
 #[path = "palette_view_tests.rs"]
 mod tests;
