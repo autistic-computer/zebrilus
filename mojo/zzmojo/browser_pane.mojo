@@ -1,5 +1,8 @@
 from std.os import makedirs
-from mjui.image import ImageCache
+from mjui.image import ImageCache, FIT_FILL
+from mjui.ui import Ui, Style
+from mjui.widgets.key import sub
+from mjui.widgets.penna import PennaTheme, button, label
 from mjui.input import KeyEvent
 from mjui.keys import Key
 from mjui.web import (
@@ -62,7 +65,12 @@ from .browser_input import (
     BROWSER_POINTER_UP,
     BROWSER_POINTER_UP_OUTSIDE,
 )
-from .browser_presentation import BrowserPresentation, browser_presentation
+from .browser_presentation import (
+    BrowserPresentation,
+    browser_presentation,
+    BROWSER_STATE_ERROR,
+    BROWSER_STATE_PAGE,
+)
 from .browser_state import (
     BrowserEffect,
     BrowserModel,
@@ -295,6 +303,41 @@ struct BrowserPane(Movable):
         if index < 0 or self.pages[index].page.frame_w == 0:
             return None
         return self.pages[index].page.img
+
+    def build(mut self, mut ui: Ui, th: PennaTheme, key: UInt64) raises:
+        var rect = ui.rect_of(key)
+        if rect.key != 0:
+            self.layout(
+                rect.x0, rect.y0, rect.x1 - rect.x0, rect.y1 - rect.y0, ui.scale
+            )
+        var view = self.presentation()
+        ui.open(Style.col().grow().grow_h().clipped().id(key))
+        if view.state == BROWSER_STATE_PAGE:
+            var index = self.active_page()
+            if index >= 0 and self.pages[index].page.frame_w > 0:
+                ref page = self.pages[index].page
+                ui.open(
+                    Style.col()
+                    .at(0, 0)
+                    .width(Float32(page.frame_w) / ui.scale)
+                    .height(Float32(page.frame_h) / ui.scale)
+                )
+                ui.paint_image(page.img, FIT_FILL, placeholder=0)
+                ui.close()
+        else:
+            ui.open(Style.col().grow().grow_h().center())
+            if view.state == BROWSER_STATE_ERROR:
+                label(ui, th, view.error, th.flat.fg)
+                if view.retry and button(ui, th, sub(key, 1), "Try again"):
+                    self.retry()
+            else:
+                label(ui, th, "New Tab", th.flat.dim)
+            ui.close()
+        if view.pick_status.byte_length() > 0:
+            ui.open(Style.row().at(8, 8))
+            label(ui, th, view.pick_status, th.flat.fg)
+            ui.close()
+        ui.close()
 
     def layout(
         mut self,

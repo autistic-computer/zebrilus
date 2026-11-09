@@ -4,6 +4,9 @@ from std.testing import assert_equal, assert_true
 from mjui.image import ImageCache
 from mjui.sys.clock import monotonic_seconds
 from mjui.web import WebRuntime, WebOptions, WebPage, web_subprocess_check
+from mjui.ui import Ui, Style, MOTION_REDUCED
+from mjui.widgets.key import sub
+from mjui.widgets.penna import PennaTheme
 from zzmojo.browser_pane import BrowserPane
 from zzmojo.browser_input import (
     BROWSER_BUTTON_LEFT,
@@ -68,6 +71,15 @@ def wait_error(
     raise Error("browser pane never presented the load error")
 
 
+def frame(mut ui: Ui, th: PennaTheme, mut pane: BrowserPane, time: Float64) raises:
+    ui.set_time(time)
+    ui.begin_frame(400, 200)
+    ui.open(Style.col().width(400).height(200))
+    pane.build(ui, th, 70)
+    ui.close()
+    ui.end_frame()
+
+
 def act(mut pane: BrowserPane, kind: UInt8, index: UInt8 = 0) raises -> Bool:
     return pane.action(DesktopNativeBinding(kind, index))
 
@@ -127,7 +139,29 @@ def main() raises:
     var error = wait_error(runtime, pane, images)
     assert_equal(error, missing + ": ERR_FILE_NOT_FOUND")
     assert_true(pane.presentation().retry)
-    pane.retry()
+    var ui = Ui(1)
+    ui.motion = MOTION_REDUCED
+    var th = PennaTheme(
+        0,
+        Int32(ui.add_font("bench/assets/fonts/Inter-Regular.ttf")),
+        Int32(ui.add_font("bench/assets/fonts/Inter-SemiBold.ttf")),
+        Int32(ui.add_font("bench/assets/fonts/JetBrainsMono-Regular.ttf")),
+        Int32(ui.add_font("bench/assets/fonts/lucide.ttf")),
+    )
+    var retry = sub(UInt64(70), 1)
+    frame(ui, th, pane, 1)
+    frame(ui, th, pane, 2)
+    var button = ui.rect_of(retry)
+    assert_true(button.key == retry)
+    assert_equal(pane.width, Float32(400))
+    var x = (button.x0 + button.x1) / 2
+    var y = (button.y0 + button.y1) / 2
+    ui.pointer_move(x, y)
+    frame(ui, th, pane, 3)
+    ui.pointer_down(x, y, 1)
+    frame(ui, th, pane, 4)
+    ui.pointer_up(x, y)
+    frame(ui, th, pane, 5)
     assert_true(pane.presentation().state != BROWSER_STATE_ERROR)
     error = wait_error(runtime, pane, images)
     assert_equal(error, missing + ": ERR_FILE_NOT_FOUND")
