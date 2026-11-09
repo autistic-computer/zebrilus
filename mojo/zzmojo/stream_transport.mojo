@@ -25,6 +25,7 @@ from .stream_protocol import (
     TREE_DELTA,
     CLIENT_VIEW,
     PING,
+    HostPlatform,
     interactive_hello,
     decode_stream_frame,
     request_full,
@@ -202,6 +203,7 @@ struct InteractiveConnection(Movable):
     var instance: UInt64
     var capabilities: UInt64
     var clock: UInt64
+    var platform: HostPlatform
     var tree_gate: Optional[TreeGate]
     var history_cache: TerminalHistoryCache
     var history_trickle: UInt64
@@ -225,6 +227,7 @@ struct InteractiveConnection(Movable):
         self.instance = 0
         self.capabilities = 0
         self.clock = 0
+        self.platform = HostPlatform(0, 0)
         self.tree_gate = None
         self.history_cache = TerminalHistoryCache()
         self.history_trickle = 2000
@@ -580,6 +583,7 @@ struct InteractiveConnection(Movable):
             self.instance = event.instance
             self.capabilities = event.capabilities
             self.clock = event.clock
+            self.platform = event.platform
             self.model.paths.connected(self.server_id, self.client_id)
             _ = self.model.key_tables.consume(event.raw.copy())
             self.request_key_tables()
