@@ -10,8 +10,8 @@ import sys
 import time
 
 
-LIMIT = 4 * 1024 ** 3
-RESERVE = 2 * 1024 ** 3
+LIMIT = 3 * 1024 ** 3
+RESERVE = 4 * 1024 ** 3
 
 
 def available_memory():
@@ -78,9 +78,9 @@ def main():
             available = available_memory()
             budget = min(LIMIT, available - RESERVE) if available is not None else LIMIT
             if budget < 512 * 1024 ** 2:
-                raise SystemExit("Build not started: preserving 2 GiB of available device memory")
+                raise SystemExit("Build not started: preserving 4 GiB of available device memory")
             high = budget * 7 // 8
-            invocation = ["systemd-run", "--user", "--scope", "--quiet", "--unit=" + unit, "-p", "MemoryHigh=" + str(high), "-p", "MemoryMax=" + str(budget), "-p", "MemorySwapMax=256M", "-p", "TasksMax=128", *command]
+            invocation = ["systemd-run", "--user", "--scope", "--quiet", "--nice=19", "--unit=" + unit, "-p", "CPUWeight=10", "-p", "IOWeight=10", "-p", "MemoryHigh=" + str(high), "-p", "MemoryMax=" + str(budget), "-p", "MemorySwapMax=256M", "-p", "TasksMax=128", *command]
         else:
             unit = None
             budget = LIMIT
@@ -114,7 +114,7 @@ def main():
                     peak = max(peak, resident_tree(process.pid))
                     if peak > LIMIT:
                         os.killpg(process.pid, signal.SIGTERM)
-                        raise RuntimeError("Build exceeded its 4 GiB memory budget")
+                        raise RuntimeError("Build exceeded its 3 GiB memory budget")
                     time.sleep(0.2)
                 status = process.returncode
         except BaseException:
