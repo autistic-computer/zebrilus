@@ -4,7 +4,10 @@ from mjui.input import (
     TextInput,
     TextEvent,
     MouseEvent,
+    TEXT_INSERT,
     TEXT_COMMAND,
+    TEXT_PRIMARY,
+    TEXT_POINTER,
     CMD_PASTE,
 )
 from mjui.widgets.penna import PennaTheme
@@ -23,11 +26,10 @@ from .window_chooser_session import (
     WindowChooserSession,
     WindowChooserObservation,
 )
-from .window_chooser_admission import WindowChooserOwner
 from .window_chooser_editor import WindowChooserEditorCheckpoint
 from .search_clipboard import SearchClipboard
 from .chooser_presentation import CHOOSER_DISPLAY_BYTES
-from .editor_pointer import EditorPointerScope, editor_primary
+from .editor_pointer import EditorPointerScope, pointer_payload
 
 comptime WINDOW_CHOOSER_KEY: UInt64 = 0x7800000000000000
 
@@ -40,6 +42,7 @@ struct WindowChooserRuntime(Movable):
     var marked_seen: UInt64
     var marked_exhausted: Bool
     var returned: Bool
+    var unmark: Bool
 
     def __init__(out self):
         self.session = WindowChooserSession()
@@ -51,6 +54,7 @@ struct WindowChooserRuntime(Movable):
         self.marked_seen = 0
         self.marked_exhausted = False
         self.returned = False
+        self.unmark = False
 
     def opened(self) -> Bool:
         return self.session.active
@@ -76,14 +80,16 @@ struct WindowChooserRuntime(Movable):
         self.session.reset()
         self.host_scope = None
 
+    def local_opened(mut self, revision: UInt64):
+        self.session.local_opened(revision)
+
     def record_input_owner(mut self, mut ui: Ui):
         if self.owns_input(ui):
             self.host_scope = self.session.owner.scope
             self.host_source = self.session.owner.source
         else:
             self.host_scope = None
-            self.component.field.marked.clear()
-            self.component.field.disp.clear()
+            self.component.unmark()
 
     def observe(
         mut self,
@@ -115,59 +121,96 @@ struct WindowChooserRuntime(Movable):
             NATIVE_PASSIVE,
         )
         self.returned = False
+        self.unmark = False
         if observed.owner_changed:
             self.component.close(ui)
             self.component.open(ui, self.session.owner.scope)
             self.marked_seen = input.marked_revision
             self.host_scope = None
+            self.unmark = True
         elif observed.closed:
             self.component.close(ui)
             self.marked_seen = input.marked_revision
             self.host_scope = None
+            self.unmark = True
         if self.opened():
             self.component.synchronize(
                 self.session.controller.data, observed.effects
             )
         return observed^
 
-    def prepare(mut self, mut ui: Ui, input: TextInput) raises -> Bool:
+    def prepare(mut self, mut ui: Ui, input: TextInput):
+        if not self.opened():
+            return
+        var clip = SearchClipboard()
+        self.component.prepare(
+            ui, clip, len(input.primaries) == 0 and len(input.pointers) == 0
+        )
+
+    def compose(
+        mut self,
+        mut ui: Ui,
+        mut backend: AsyncBackend,
+        input: TextInput,
+        epoch: UInt64,
+    ) raises -> Bool:
         if not self.opened():
             self.marked_seen = input.marked_revision
             return True
-        if input.marked_exhausted:
+        if input.marked_exhausted and not self.marked_exhausted:
             self.marked_exhausted = True
+            self.component.unmark()
+        if self.marked_exhausted or input.marked_revision == self.marked_seen:
             self.marked_seen = input.marked_revision
-            self.component.field.marked.clear()
-        var owned = (
+            return True
+        self.marked_seen = input.marked_revision
+        if not (
             self.host_scope == Optional[UInt64](self.session.owner.scope)
             and self.host_source.matches(self.session.owner.source)
             and self.owns_input(ui)
-        )
-        var composition = TextInput()
-        if (
-            not self.marked_exhausted
-            and input.marked_revision != self.marked_seen
+            and self.current(backend)
         ):
-            self.marked_seen = input.marked_revision
-            if owned:
-                composition.marked = input.marked.copy()
-                composition.marked_sel_a = input.marked_sel_a
-                composition.marked_sel_b = input.marked_sel_b
-            else:
-                composition.marked = self.component.field.marked.copy()
-                composition.marked_sel_a = self.component.field.marked_a
-                composition.marked_sel_b = self.component.field.marked_b
-        else:
-            composition.marked = self.component.field.marked.copy()
-            composition.marked_sel_a = self.component.field.marked_a
-            composition.marked_sel_b = self.component.field.marked_b
-        var clip = SearchClipboard()
-        return self.component.prepare(
-            ui,
-            composition,
-            clip,
-            len(input.primaries) == 0 and len(input.pointers) == 0,
-        )
+            return True
+        var checkpoint = WindowChooserEditorCheckpoint(self.component.field)
+        try:
+            if not self.component.compose(
+                Span(input.marked), input.marked_sel_a, input.marked_sel_b
+            ):
+                return False
+            var edited = self.component.edited(self.session.controller.data)
+            if edited and not self.operation(ui, backend, edited.value(), epoch):
+                raise Error(
+                    "window chooser composition belongs to a retired source or"
+                    " owner"
+                )
+        except error:
+            checkpoint^.restore(self.component.field)
+            raise Error(String(error))
+        return True
+
+    def ordered[
+        Host: Clipboard
+    ](
+        mut self,
+        mut ui: Ui,
+        mut backend: AsyncBackend,
+        input: TextInput,
+        event: TextEvent,
+        mut host: Host,
+        epoch: UInt64,
+    ) raises -> Bool:
+        if not self.opened():
+            return False
+        if event.kind == TEXT_INSERT or event.kind == TEXT_COMMAND:
+            return self.event(ui, backend, input, event, host, epoch).consumed
+        if event.kind == TEXT_PRIMARY:
+            return self.primary(
+                ui, backend, pointer_payload(input, event), host, epoch
+            )
+        if event.kind == TEXT_POINTER:
+            self.pointer(ui, backend, pointer_payload(input, event), epoch)
+            return True
+        return False
 
     def operation(
         mut self,
@@ -175,41 +218,53 @@ struct WindowChooserRuntime(Movable):
         mut backend: AsyncBackend,
         operation: WindowChooserOperation,
         epoch: UInt64,
-        expected: Optional[WindowChooserOwner] = None,
     ) raises -> Bool:
-        if (
-            not self.current(backend)
-            or expected
-            and not self.session.owner.matches(expected.value())
-        ):
+        if not self.current(backend):
             return False
+        var owner = self.session.owner
         var effects = self.session.apply(
-            backend.queue, operation, self.session.owner, epoch, NATIVE_PASSIVE
+            backend.queue, operation, owner, epoch, NATIVE_PASSIVE
         )
+        self.settle(ui, backend, effects^, epoch)
+        return True
+
+    def operations(
+        mut self,
+        mut ui: Ui,
+        mut backend: AsyncBackend,
+        operations: Span[WindowChooserOperation, _],
+        epoch: UInt64,
+    ) raises -> Bool:
+        if len(operations) == 0:
+            return True
+        if not self.current(backend):
+            return False
+        var owner = self.session.owner
+        var effects = self.session.apply(
+            backend.queue, operations, owner, epoch, NATIVE_PASSIVE
+        )
+        self.settle(ui, backend, effects^, epoch)
+        return True
+
+    def settle(
+        mut self,
+        mut ui: Ui,
+        mut backend: AsyncBackend,
+        var effects: WindowChooserEffects,
+        epoch: UInt64,
+    ) raises:
         if effects.returned and not self.session.controller.data.finishing:
-            effects = self.session.return_default(
-                backend.queue, self.session.owner, epoch, NATIVE_PASSIVE
+            var owner = self.session.owner
+            _ = self.session.return_default(
+                backend.queue, owner, epoch, NATIVE_PASSIVE
             )
             self.component.close(ui)
             self.host_scope = None
             self.returned = True
+            self.unmark = True
         else:
             self.component.synchronize(self.session.controller.data, effects)
         ui.request_wake(ui.time)
-        return True
-
-    def apply_editor(
-        mut self,
-        mut ui: Ui,
-        mut backend: AsyncBackend,
-        result: WindowChooserComponentResult,
-        epoch: UInt64,
-    ) raises:
-        for operation in result.operations:
-            if not self.operation(ui, backend, operation, epoch):
-                raise Error(
-                    "window chooser editor belongs to a retired source or owner"
-                )
 
     def event[
         Host: Clipboard
@@ -243,10 +298,15 @@ struct WindowChooserRuntime(Movable):
             result = self.component.event(
                 ui, input, event, clip, self.session.controller.data
             )
-            self.apply_editor(ui, backend, result, epoch)
+            if not self.operations(
+                ui, backend, Span(result.operations), epoch
+            ):
+                raise Error(
+                    "window chooser editor belongs to a retired source or owner"
+                )
             clip.deliver(host)
         except error:
-            checkpoint.restore(self.component.field)
+            checkpoint^.restore(self.component.field)
             raise Error(String(error))
         return result^
 
@@ -262,25 +322,32 @@ struct WindowChooserRuntime(Movable):
     ) raises -> Bool:
         if not self.opened() or not self.current(backend):
             return False
+        if ui.hit_test(event.x, event.y) != self.component.field.key:
+            return False
+        if not host.supports_primary():
+            return True
+        var position = ui.text_hit(self.component.field.key, event.x, event.y)
+        if position.byte < 0:
+            return True
         var checkpoint = WindowChooserEditorCheckpoint(self.component.field)
         try:
-            var result = editor_primary(
-                self.component.field, ui, event, host, CHOOSER_DISPLAY_BYTES
-            )
-            if result.limited:
+            var text = host.get_primary_selection_bounded(CHOOSER_DISPLAY_BYTES)
+            self.component.unmark()
+            ui.focus = self.component.field.key
+            ui.text_input = True
+            self.component.field.focused = True
+            self.component.field.select(position.byte, position.byte)
+            if not self.component.insert(text.as_bytes()):
                 raise Error("window chooser PRIMARY exceeds 64 KiB")
-            if result.inserted:
-                var operation = WindowChooserOperation(1)
-                operation.text = self.component.field.text()
-                operation.cursor = self.component.field.caret
-                if not self.operation(ui, backend, operation, epoch):
-                    raise Error(
-                        "window chooser PRIMARY belongs to a retired source or"
-                        " owner"
-                    )
-            return result.consumed
+            self.component.field.blink_t0 = ui.time
+            var edited = self.component.edited(self.session.controller.data)
+            if edited and not self.operation(ui, backend, edited.value(), epoch):
+                raise Error(
+                    "window chooser PRIMARY belongs to a retired source or owner"
+                )
+            return True
         except error:
-            checkpoint.restore(self.component.field)
+            checkpoint^.restore(self.component.field)
             raise Error(String(error))
 
     def pointer(
@@ -305,15 +372,34 @@ struct WindowChooserRuntime(Movable):
             self.component.field.update(ui, input, clip)
             ui.retained_input_end()
         state.restore(ui)
-        for operation in self.component.pointer(
+        var operations = self.component.pointer(
             ui, event, self.session.controller.data
-        ):
-            _ = self.operation(ui, backend, operation, epoch)
-        if self.component.field.caret != self.session.controller.data.cursor:
-            var operation = WindowChooserOperation(1)
-            operation.text = self.component.field.text()
-            operation.cursor = self.component.field.caret
-            _ = self.operation(ui, backend, operation, epoch)
+        )
+        var edited = self.component.edited(self.session.controller.data)
+        if edited:
+            operations.insert(0, edited.take())
+        _ = self.operations(ui, backend, Span(operations), epoch)
+
+    def wheel(
+        mut self,
+        ui: Ui,
+        x: Float32,
+        y: Float32,
+        dx: Float32,
+        dy: Float32,
+        precise: Bool,
+    ) raises -> Bool:
+        if not self.opened():
+            return False
+        return self.component.wheel(
+            ui,
+            x,
+            y,
+            dx,
+            dy,
+            precise,
+            len(self.session.controller.data.rows[].rows),
+        )
 
     def paint(mut self, mut ui: Ui, theme: PennaTheme) raises:
         if self.opened():

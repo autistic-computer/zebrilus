@@ -27,7 +27,7 @@ struct WindowChooserEditorCheckpoint(Movable):
         self.marked_a = field.marked_a
         self.marked_b = field.marked_b
 
-    def restore(var self, mut field: TextEdit):
+    def restore(deinit self, mut field: TextEdit):
         field.buf = self.bytes^
         field.caret = self.caret
         field.anchor = self.anchor
