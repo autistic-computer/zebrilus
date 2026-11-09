@@ -177,8 +177,9 @@ pub fn about(platform: &str) -> String {
     .to_string()
 }
 
-const SECTIONS: [SettingsSection; 7] = [
+const SECTIONS: [SettingsSection; 8] = [
     SettingsSection::Appearance,
+    SettingsSection::Interface,
     SettingsSection::Panes,
     SettingsSection::Terminal,
     SettingsSection::Hosts,

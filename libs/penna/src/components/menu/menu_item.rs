@@ -136,10 +136,11 @@ impl RenderOnce for MenuItemElement {
                     this.hover(move |style| restyle(style, &hover))
                 })
                 .when_some(self.on_click, |this, on_click| {
-                    this.on_mouse_down(MouseButton::Left, move |_, _, cx| {
-                        cx.stop_propagation();
-                    })
-                    .on_click(on_click)
+                    this.click_cursor()
+                        .on_mouse_down(MouseButton::Left, move |_, _, cx| {
+                            cx.stop_propagation();
+                        })
+                        .on_click(on_click)
                 })
             })
             .when(self.disabled, |this| {

@@ -4,7 +4,10 @@ use ala::{
 };
 use penna::{ActiveTheme as _, Colorize as _, Elevation, IconName};
 use zz_client::new_chat::{ChatPicker, ChatStage, FolderChoice, MachineChoice};
-use zz_protocol::{AgentProvider, DisplayPanesState, PaneId, PaneIndicator, TmuxColour, WindowId};
+use zz_protocol::{
+    AgentProvider, DisplayPanesState, HostPlatform, LinuxDistro, PaneId, PaneIndicator, TmuxColour,
+    WindowId,
+};
 use zz_ui::{
     pane::{
         ChatPickerRow, FlipTo, FloatingSurface, PaneDragOverlayState, PaneFlip, PaneOverlayCorner,
@@ -1090,19 +1093,28 @@ pub(crate) fn chat_folders() -> Vec<FolderChoice> {
 
 pub(crate) fn chat_machines() -> Vec<MachineChoice> {
     [
-        ("macbook", false, true, true),
-        ("ubuntu", true, true, false),
-        ("build-box", true, false, false),
+        ("macbook", false, HostPlatform::Macos, true, true),
+        (
+            "ubuntu",
+            true,
+            HostPlatform::Linux(LinuxDistro::Ubuntu),
+            true,
+            false,
+        ),
+        ("build-box", true, HostPlatform::Unknown, false, false),
     ]
     .into_iter()
     .enumerate()
-    .map(|(host, (name, remote, live, current))| MachineChoice {
-        host: host as u64,
-        name: name.to_owned(),
-        remote,
-        live,
-        current,
-    })
+    .map(
+        |(host, (name, remote, platform, live, current))| MachineChoice {
+            host: host as u64,
+            name: name.to_owned(),
+            remote,
+            platform,
+            live,
+            current,
+        },
+    )
     .collect()
 }
 
@@ -1157,12 +1169,10 @@ fn chat_picker(_: &mut Window, cx: &mut App) -> AnyElement {
             ),
         )
         .state(
-            "m lists the machines: picking another moves the new chat there",
+            "every machine inline: a click or m moves the new chat to another",
             chat_picker_pane(
                 "chat-picker-machines",
                 &ChatPicker {
-                    stage: ChatStage::Machines,
-                    selected: 1,
                     machines: 3,
                     ..ChatPicker::default()
                 },

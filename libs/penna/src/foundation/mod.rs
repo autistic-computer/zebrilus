@@ -37,8 +37,8 @@ pub use index_path::IndexPath;
 pub use layout::{center, inline, inset, split, stack, tiles};
 pub use space::Space;
 pub use styled::{
-    Density, Disableable, FOCUS_RING_WIDTH, RULE_WIDTH, RuleLook, Selectable, Sizable, Size,
-    StyledExt, h_flex, knob_shadow, list_row, muted_on, row_state, v_flex,
+    Density, Disableable, FOCUS_RING_WIDTH, PointerCursor, RULE_WIDTH, RuleLook, Selectable,
+    Sizable, Size, StyledExt, h_flex, knob_shadow, list_row, muted_on, row_state, v_flex,
 };
 pub(crate) use styled::{RoleRuleExt, nested_radius, row_corners, row_radius, shared_corners};
 pub use surface::{

@@ -237,7 +237,7 @@ pub fn workspace_status_window(
         .on(workspace_status_tab_ground(state.alone, cx))
         .state(state.paint_state())
         .interactive(state.connected)
-        .when(state.connected, ala::Styled::cursor_pointer)
+        .when(state.connected, penna::StyledExt::click_cursor)
         .relative()
         .flex()
         .flex_shrink_1()
@@ -482,7 +482,7 @@ pub fn workspace_tree_row(
         .when(connected, |row| {
             row.hover(move |row| row.text_color(ink.text))
         })
-        .when(clickable, ala::Styled::cursor_pointer)
+        .when(clickable, penna::StyledExt::click_cursor)
         .child(marker)
         .child(workspace_tree_row_label(label))
         .child(trailing)
@@ -630,7 +630,7 @@ pub fn workspace_tree_disclosure(
         .flex_none()
         .items_center()
         .justify_center()
-        .cursor_pointer()
+        .click_cursor()
         .text_color(ink.muted)
         .hover(move |this| this.text_color(ink.text))
         .child(

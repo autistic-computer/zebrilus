@@ -568,7 +568,7 @@ impl ColorPicker {
                     .px(size.input_px())
                     .gap(Space::S10)
                     .justify_between()
-                    .cursor_pointer(),
+                    .when(!self.disabled, crate::StyledExt::click_cursor),
                 size,
                 cx,
             ),

@@ -44,6 +44,7 @@ pub const DEFAULT_PANE_MARGIN: f32 = 6.0;
 pub const DEFAULT_WIDGET_CORNER_RADIUS: f32 = 12.0;
 pub const DEFAULT_CHROME_CONTRAST: f32 = 1.0;
 pub const DEFAULT_REDUCE_TRANSPARENCY: bool = false;
+pub const DEFAULT_POINTING_HAND: bool = true;
 pub const DEFAULT_CHROME_TINT: f32 = 0.15;
 pub const DEFAULT_WINDOW_BACKGROUND_BLUR: bool = false;
 pub const DEFAULT_TRAY: bool = true;
@@ -95,6 +96,7 @@ pub enum ConfigKey {
     WidgetCornerRadius,
     ChromeContrast,
     ReduceTransparency,
+    PointingHand,
     ChromeAccent,
     ChromeTint,
     ChromeTintHue,
@@ -142,6 +144,7 @@ impl ConfigKey {
             Self::WidgetCornerRadius => "widget-corner-radius",
             Self::ChromeContrast => "chrome-contrast",
             Self::ReduceTransparency => "reduce-transparency",
+            Self::PointingHand => "pointing-hand",
             Self::ChromeAccent => "chrome-accent",
             Self::ChromeTint => "chrome-tint",
             Self::ChromeTintHue => "chrome-tint-hue",
@@ -189,6 +192,7 @@ impl ConfigKey {
             "widget-corner-radius" => Some(Self::WidgetCornerRadius),
             "chrome-contrast" => Some(Self::ChromeContrast),
             "reduce-transparency" => Some(Self::ReduceTransparency),
+            "pointing-hand" => Some(Self::PointingHand),
             "chrome-accent" => Some(Self::ChromeAccent),
             "chrome-tint" => Some(Self::ChromeTint),
             "chrome-tint-hue" => Some(Self::ChromeTintHue),
@@ -250,6 +254,7 @@ impl ConfigKey {
             | Self::BrowserSearchProvider
             | Self::BrowserEgress
             | Self::ReduceTransparency
+            | Self::PointingHand
             | Self::ThemeMode
             | Self::ControlShape
             | Self::InterfaceGlass
@@ -378,6 +383,7 @@ pub struct AppConfig {
     pub widget_corner_radius: ConfigValue<f32>,
     pub chrome_contrast: ConfigValue<f32>,
     pub reduce_transparency: ConfigValue<bool>,
+    pub pointing_hand: ConfigValue<bool>,
     pub chrome_accent: ConfigValue<AccentSetting>,
     pub chrome_tint: ConfigValue<f32>,
     pub chrome_tint_hue: ConfigValue<f32>,
@@ -419,6 +425,7 @@ impl Default for AppConfig {
             widget_corner_radius: ConfigValue::from_default(DEFAULT_WIDGET_CORNER_RADIUS),
             chrome_contrast: ConfigValue::from_default(DEFAULT_CHROME_CONTRAST),
             reduce_transparency: ConfigValue::from_default(DEFAULT_REDUCE_TRANSPARENCY),
+            pointing_hand: ConfigValue::from_default(DEFAULT_POINTING_HAND),
             chrome_accent: ConfigValue::from_default(AccentSetting::Theme),
             chrome_tint: ConfigValue::from_default(DEFAULT_CHROME_TINT),
             chrome_tint_hue: ConfigValue::from_default(DEFAULT_TINT_HUE),
@@ -460,6 +467,7 @@ impl AppConfig {
             ConfigKey::EditorVimMode => Some(&mut self.editor_vim_mode),
             ConfigKey::BrowserEgress => Some(&mut self.browser_egress),
             ConfigKey::ReduceTransparency => Some(&mut self.reduce_transparency),
+            ConfigKey::PointingHand => Some(&mut self.pointing_hand),
             ConfigKey::WindowCornerRadius
             | ConfigKey::WhichKeyDelay
             | ConfigKey::PaletteWindowLayout
@@ -1138,6 +1146,7 @@ pub fn parse_config(source: &str, system_font_family: &str) -> ParsedConfig {
             | ConfigKey::BrowserSearchProvider
             | ConfigKey::BrowserEgress
             | ConfigKey::ReduceTransparency
+            | ConfigKey::PointingHand
             | ConfigKey::FlatSidebar
             | ConfigKey::ProgramColors
             | ConfigKey::ChromeTerminalColors

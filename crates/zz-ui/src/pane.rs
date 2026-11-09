@@ -1469,7 +1469,7 @@ pub fn pane_indicator(
         .min_w(px(40.0))
         .px_0()
         .when(!caption.is_empty(), |chip| chip.pl(px(14.0)).pr(px(16.0)))
-        .cursor(CursorStyle::PointingHand)
+        .click_cursor()
         .font_family(theme.font_family.clone())
         .child(
             Label::new(TextStyle::Title, glyph)
@@ -1642,7 +1642,6 @@ pub fn pane_picker_label(text: impl Into<SharedString>, cx: &App) -> Label {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ChatPickerTarget {
-    MachineLine,
     Machine(usize),
     FolderLine,
     Agent(usize, zz_client::new_chat::AgentChoice),
@@ -1650,12 +1649,12 @@ pub enum ChatPickerTarget {
     Browser,
 }
 
-const fn machine_icon(remote: bool) -> crate::IconName {
-    if remote {
+fn machine_icon(machine: &zz_client::new_chat::MachineChoice) -> crate::IconName {
+    crate::program::platform_icon(machine.platform).unwrap_or(if machine.remote {
         crate::IconName::Server
     } else {
         crate::IconName::Laptop
-    }
+    })
 }
 
 pub enum ChatPickerRow {
@@ -1671,50 +1670,33 @@ pub fn chat_picker_rows(
     enabled: bool,
     cx: &App,
 ) -> Vec<ChatPickerRow> {
-    use zz_client::new_chat::{AGENT_CHOICES, ChatStage, MachineChoice};
-    let machine_label = || ChatPickerRow::Label(Box::new(pane_picker_label("Machine", cx)));
-    if picker.stage == ChatStage::Machines {
-        let mut rows = vec![machine_label()];
-        rows.extend(machines.iter().enumerate().map(|(index, machine)| {
-            let note = if machine.current {
-                Some("here".into())
-            } else if machine.live {
-                None
-            } else {
-                Some("offline".into())
-            };
-            ChatPickerRow::Item(
-                ChatPickerTarget::Machine(index),
-                Box::new(picker_item(
-                    ElementId::NamedInteger(format!("chat-picker-machine-{index}").into(), pane),
-                    machine.name.clone().into(),
-                    machine_icon(machine.remote),
-                    note,
-                    None,
-                    picker.selected == index,
-                    enabled && machine.live,
-                    cx,
-                )),
-            )
-        }));
-        return rows;
-    }
+    use zz_client::new_chat::{AGENT_CHOICES, MachineChoice};
     let mut rows = Vec::new();
-    if let Some(machine) = MachineChoice::current(machines) {
-        rows.push(machine_label());
-        rows.push(ChatPickerRow::Item(
-            ChatPickerTarget::MachineLine,
-            Box::new(picker_item(
-                ElementId::NamedInteger("chat-picker-machine".into(), pane),
+    if !machines.is_empty() {
+        rows.push(ChatPickerRow::Label(Box::new(pane_picker_label(
+            "Machine", cx,
+        ))));
+        let next = MachineChoice::next(machines);
+        rows.extend(machines.iter().enumerate().map(|(index, machine)| {
+            let row = picker_item(
+                ElementId::NamedInteger(format!("chat-picker-machine-{index}").into(), pane),
                 machine.name.clone().into(),
-                machine_icon(machine.remote),
-                None,
-                (machines.len() > 1).then_some("m"),
+                machine_icon(machine),
+                (!machine.live).then(|| "offline".into()),
+                (next == Some(index)).then_some("m"),
                 false,
-                enabled,
+                enabled && machine.live,
                 cx,
-            )),
-        ));
+            )
+            .when(machine.current, |row| {
+                row.child(
+                    crate::Icon::new(crate::IconName::Check)
+                        .with_size(px(14.0))
+                        .text_color(cx.theme().foreground.muted()),
+                )
+            });
+            ChatPickerRow::Item(ChatPickerTarget::Machine(index), Box::new(row))
+        }));
     }
     rows.extend([
         ChatPickerRow::Label(Box::new(pane_picker_label("Folder", cx))),
@@ -1807,7 +1789,7 @@ fn picker_item(
         .w_full()
         .gap(px(10.0))
         .px(px(12.0))
-        .when(enabled, ala::Styled::cursor_pointer)
+        .when(enabled, penna::StyledExt::click_cursor)
         .child(
             crate::Icon::new(icon)
                 .with_size(px(16.0))

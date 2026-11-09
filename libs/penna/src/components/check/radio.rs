@@ -1,3 +1,4 @@
+use crate::StyledExt as _;
 use std::rc::Rc;
 
 use ala::{
@@ -135,7 +136,8 @@ impl RenderOnce for RadioGroup {
                     .aria_disabled(self.disabled)
                     .when_some(pick, |this, pick| {
                         let tap = Rc::clone(&pick);
-                        this.on_click(move |event, window, cx| pick(event, window, cx))
+                        this.click_cursor()
+                            .on_click(move |event, window, cx| pick(event, window, cx))
                             .when(coarse, |this| {
                                 this.child(
                                     hit_area("touch", slop_x, slop_y)

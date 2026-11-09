@@ -89,7 +89,7 @@ pub fn task_tray(
         .overflow_hidden()
         .type_style(TextStyle::Small, cx)
         .when_some(tool_call, |row, tool_call| {
-            row.cursor_pointer().on_click(move |_, window, cx| {
+            row.click_cursor().on_click(move |_, window, cx| {
                 reveal(TaskTrayAction::Reveal(tool_call.clone()), window, cx);
                 cx.stop_propagation();
             })
@@ -159,7 +159,7 @@ pub fn task_tray(
             .h(px(24.0))
             .px_2()
             .gap_1p5()
-            .cursor_pointer()
+            .click_cursor()
             .type_style(TextStyle::Small, cx)
             .child(
                 div()

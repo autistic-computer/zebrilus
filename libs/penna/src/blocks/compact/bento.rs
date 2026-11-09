@@ -103,7 +103,7 @@ pub fn bento_tile(
         .relative()
         .size_full()
         .overflow_hidden()
-        .cursor_pointer()
+        .click_cursor()
         .layer(&Layer {
             glass: None,
             ..frame
@@ -127,7 +127,7 @@ pub fn bento_add_tile(
         .items_center()
         .justify_center()
         .gap(Space::S6)
-        .cursor_pointer()
+        .click_cursor()
         .layer(&Layer {
             glass: None,
             ..frame

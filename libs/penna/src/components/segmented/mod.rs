@@ -251,6 +251,7 @@ impl RenderOnce for SegmentedControl {
                     .when_some(click, |segment, click| {
                         let tap = Rc::clone(&click);
                         segment
+                            .when(!disabled, crate::StyledExt::click_cursor)
                             .on_click(move |event, window, cx| click(event, window, cx))
                             .when(coarse && slop > 0.0, |segment| {
                                 segment.child(

@@ -323,6 +323,7 @@ impl RenderOnce for KeyField {
                 .key_context(CONTEXT)
                 .when(!disabled, |this| {
                     this.track_focus(&focus_handle.tab_stop(true))
+                        .click_cursor()
                         .on_action(window.listener_for(&self.state, KeyFieldState::on_record))
                         .on_mouse_down(MouseButton::Left, move |_, window, cx| {
                             cx.stop_propagation();

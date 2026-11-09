@@ -302,6 +302,7 @@ impl RenderOnce for Switch {
                         });
                     let tap = Rc::clone(&toggle);
                     this.track_focus(&focus_handle.tab_stop(true))
+                        .click_cursor()
                         .on_mouse_down(MouseButton::Left, hold)
                         .on_click(move |event, window, cx| toggle(event, window, cx))
                         .when(coarse, |this| {

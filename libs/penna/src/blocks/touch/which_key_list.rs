@@ -107,6 +107,7 @@ impl WhichKeyList {
                 .text_ellipsis()
                 .child(row.label.clone()),
         )
+        .click_cursor()
         .on_click(move |_, window, cx| {
             if let Some(on_pick) = &on_pick {
                 on_pick(&id, window, cx);

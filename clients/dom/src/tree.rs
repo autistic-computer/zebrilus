@@ -774,7 +774,7 @@ impl Client {
 fn chat_json(picker: &ChatPicker, folders: &[FolderChoice]) -> String {
     json!({
         "stage": match picker.stage {
-            ChatStage::Agents | ChatStage::Machines => "agents",
+            ChatStage::Agents => "agents",
             ChatStage::Folders => "folders",
         },
         "selected": picker.selected,
@@ -847,6 +847,7 @@ impl Client {
             ChatKey::Changed => true,
             ChatKey::Start(_)
             | ChatKey::ChooseMachine(_)
+            | ChatKey::NextMachine
             | ChatKey::Terminal
             | ChatKey::Browser
             | ChatKey::Ignored => false,
@@ -886,11 +887,10 @@ impl Client {
             ChatKey::Changed => true,
             ChatKey::Start(_)
             | ChatKey::ChooseMachine(_)
+            | ChatKey::NextMachine
             | ChatKey::Terminal
             | ChatKey::Browser
-            | ChatKey::Ignored => {
-                false
-            }
+            | ChatKey::Ignored => false,
         }
     }
 }

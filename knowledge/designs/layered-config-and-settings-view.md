@@ -110,8 +110,9 @@ the 2026-09-05 decision to read tmux candidates in place.
 
 `crates/zz/src/config/settings.rs` renders the `WorkspaceRoute::Settings` route in the main window
 (`Cmd+,` / `Ctrl+,`) from zz-ui form widgets, per [UI conventions](/configuration/ui-conventions.md).
-`SettingsSection::ALL` has eleven pages: Interface, Status bar, Editor, Panes, Multiplexer, Browser,
-Terminal, Hosts, Providers, System, About, listed in the sidebar in three unlabeled groups set apart by a gap.
+`SettingsSection::ALL` has eleven pages: Appearance (colors: theme, terminal, sidebar, contrast),
+Interface (material, text, behavior, window), Editor, Panes, Multiplexer, Browser, Terminal, Hosts,
+Agents, System, About, listed in the sidebar in three unlabeled groups set apart by a gap.
 About sets nothing: it shows the mark, the version, the platform and ala revision this build carries
 (copyable as one line for a bug report), and links to the repository, releases, and a new issue. See
 [app-config](/configuration/app-config.md) for the page map.

@@ -84,7 +84,7 @@ impl ChatHooks<'_> {
     ) -> E {
         match self.click.clone() {
             Some(click) => element
-                .cursor_pointer()
+                .click_cursor()
                 .on_click(move |_, window, cx| click(&target, window, cx)),
             None => element,
         }

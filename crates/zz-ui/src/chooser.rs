@@ -3,8 +3,8 @@ use crate::{
     StyledExt as _, Tone, badge::Badge, kbd::Kbd, list::ListItem,
 };
 use ala::{
-    AnyElement, App, CursorStyle, IntoElement, Keystroke, ParentElement as _, RenderOnce,
-    SharedString, Styled as _, div, prelude::*, px, relative,
+    AnyElement, App, IntoElement, Keystroke, ParentElement as _, RenderOnce, SharedString,
+    Styled as _, div, prelude::*, px, relative,
 };
 use penna::{Bar, BarLook, Label, Panel, PanelLook, RowLook, RuleLook, TextStyle};
 use zz_client::chooser::SEARCH_HINTS;
@@ -254,7 +254,7 @@ pub fn chooser_row(id: &'static str, index: usize, selected: bool) -> ListItem {
     ListItem::new((id, index))
         .h(px(CHOOSER_ROW_HEIGHT))
         .w_full()
-        .cursor(CursorStyle::PointingHand)
+        .click_cursor()
         .selected(selected)
 }
 

@@ -65,6 +65,7 @@ pub enum AppearancePageItem<T = Infallible> {
     IncreaseContrast,
     ReduceTransparency,
     Motion,
+    Pointer,
     App(T),
 }
 
@@ -89,6 +90,7 @@ impl<T: Copy> AppearancePageItem<T> {
             Self::TextSize => "Text size",
             Self::Density => "Density",
             Self::Motion => "Motion",
+            Self::Pointer => "Pointing hand",
             Self::Title | Self::Group { .. } | Self::App(_) => return None,
         })
     }
@@ -120,6 +122,7 @@ pub fn appearance_page_items<T>() -> Vec<AppearancePageItem<T>> {
         AppearancePageItem::IncreaseContrast,
         AppearancePageItem::ReduceTransparency,
         AppearancePageItem::Motion,
+        AppearancePageItem::Pointer,
     ]
 }
 
@@ -236,7 +239,7 @@ pub fn accent_swatches(
                 .size(px(size))
                 .rounded(radius)
                 .bg(color)
-                .cursor_pointer()
+                .click_cursor()
                 .tooltip(move |window, cx| {
                     crate::components::tooltip::Tooltip::new(name.clone()).build(window, cx)
                 })
@@ -837,6 +840,20 @@ pub fn kit_row<T: Copy>(
             move |motion, window, cx| on_change(AppearanceChange::Motion(motion), window, cx),
             cx,
         )),
+        AppearancePageItem::Pointer => entry
+            .description("Turn the pointer into a hand over anything you can click")
+            .control(
+                Switch::new("settings-pointer")
+                    .checked(appearance.pointer == crate::PointerCursor::Hand)
+                    .on_click(move |hand, window, cx| {
+                        let pointer = if *hand {
+                            crate::PointerCursor::Hand
+                        } else {
+                            crate::PointerCursor::Arrow
+                        };
+                        on_change(AppearanceChange::Pointer(pointer), window, cx);
+                    }),
+            ),
         AppearancePageItem::Title
         | AppearancePageItem::Group { .. }
         | AppearancePageItem::App(_) => {
@@ -883,7 +900,7 @@ fn tile(
         .flex_none()
         .items_center()
         .gap(Space::S6)
-        .cursor_pointer()
+        .click_cursor()
         .child(
             div()
                 .p(px(TILE_HALO - 1.0))

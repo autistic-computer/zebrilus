@@ -5,7 +5,7 @@ use ala::{
     prelude::*, px,
 };
 
-use crate::{Card, CardLook, Ground, IconName, components::button::Button};
+use crate::{Card, CardLook, Ground, IconName, StyledExt as _, components::button::Button};
 
 pub const TRANSCRIPT_ATTACHMENT: Pixels = px(140.0);
 pub const COMPOSER_ATTACHMENT: Pixels = px(56.0);
@@ -24,7 +24,7 @@ pub fn attachment_tile(
         .size(side)
         .flex_none()
         .overflow_hidden()
-        .cursor_pointer()
+        .click_cursor()
         .child(
             img(ImageSource::Image(image))
                 .size_full()

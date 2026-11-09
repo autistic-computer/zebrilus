@@ -184,17 +184,20 @@ impl RenderOnce for ListItem {
             .map(|this| row_corners(this, &layer, row_height))
             .refine_style(&style)
             .when(!disabled, |this| {
-                this.when_some(on_click, |this, on_click| this.on_click(on_click))
-                    .when_some(on_mouse_enter, |this, on_mouse_enter| {
-                        this.on_mouse_move(on_mouse_enter)
-                    })
-                    .map(|this| {
-                        on_mouse_down
-                            .into_iter()
-                            .fold(this, |this, (button, handler)| {
-                                this.on_mouse_down(button, handler)
-                            })
-                    })
+                this.when(on_click.is_some() || !on_mouse_down.is_empty(), |this| {
+                    this.click_cursor()
+                })
+                .when_some(on_click, |this, on_click| this.on_click(on_click))
+                .when_some(on_mouse_enter, |this, on_mouse_enter| {
+                    this.on_mouse_move(on_mouse_enter)
+                })
+                .map(|this| {
+                    on_mouse_down
+                        .into_iter()
+                        .fold(this, |this, (button, handler)| {
+                            this.on_mouse_down(button, handler)
+                        })
+                })
             })
             .when(lively, |this| {
                 let hover = theme.layer(surface, PaintState::Hover);

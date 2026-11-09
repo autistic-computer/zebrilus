@@ -192,7 +192,7 @@ pub fn empty_workspace_action(
     let ground = cx.theme().ground_at(RowLook::Menu, state);
     crate::list_row(id, crate::picker::list_row_height(cx), selected, true, cx)
         .px(px(12.0))
-        .cursor_pointer()
+        .click_cursor()
         .child(key_hint(keys, label, strong, ground).flex_1().min_w_0())
 }
 

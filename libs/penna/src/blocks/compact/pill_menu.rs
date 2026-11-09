@@ -203,6 +203,7 @@ pub fn compact_pill_menu(
             div()
                 .id("pill-menu-close")
                 .debug_selector(|| "pill-menu-close".to_owned())
+                .click_cursor()
                 .absolute()
                 .left(center.x - diameter / 2.0)
                 .top(center.y - diameter / 2.0)
@@ -271,6 +272,7 @@ fn chip(
             format!("pill-menu-item-{}", item.id).into(),
         ))
         .debug_selector(move || selector)
+        .click_cursor()
         .relative()
         .top(px(RISE * (1.0 - shown)))
         .opacity(shown)

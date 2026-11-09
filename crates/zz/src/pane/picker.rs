@@ -169,6 +169,7 @@ fn machines(mux: &MuxClient) -> Vec<MachineChoice> {
                 name.to_owned()
             },
             remote: host != HostId::LOCAL,
+            platform: mux.host_platform(host),
             live: snapshot.is_some(),
             current: host == attached,
         })
@@ -293,20 +294,7 @@ impl PanePickerView {
                 pane: self.pane,
             });
         }
-        self.chat.open(ChatStage::Agents);
         cx.notify();
-    }
-
-    fn open_machines(&mut self, chat: &Chat, cx: &mut Context<Self>) {
-        if chat.machines.len() > 1 {
-            self.chat.open(ChatStage::Machines);
-            self.chat.selected = chat
-                .machines
-                .iter()
-                .position(|machine| machine.current)
-                .unwrap_or_default();
-            cx.notify();
-        }
     }
 
     fn start(&self, chat: &Chat, agent: AgentChoice, cx: &mut Context<Self>) {
@@ -330,6 +318,11 @@ impl PanePickerView {
             ChatKey::Start(agent) => self.start(chat, agent, cx),
             ChatKey::ChooseFolder => self.choose_folder(chat, cx),
             ChatKey::ChooseMachine(index) => self.choose_machine(chat, index, cx),
+            ChatKey::NextMachine => {
+                if let Some(index) = MachineChoice::next(&chat.machines) {
+                    self.choose_machine(chat, index, cx);
+                }
+            }
             ChatKey::Terminal => self.activate(PaneChoice::Terminal, cx),
             ChatKey::Browser => self.activate(PaneChoice::Browser, cx),
             ChatKey::Close => self.close(cx),
@@ -383,13 +376,12 @@ impl PanePickerView {
                 row.on_mouse_move(move |_, _, cx| {
                     hover_view.update(cx, |picker, cx| {
                         let index = match target {
-                            ChatPickerTarget::Agent(index, _)
-                            | ChatPickerTarget::Machine(index) => index,
+                            ChatPickerTarget::Agent(index, _) => index,
                             ChatPickerTarget::Terminal => AGENT_CHOICES.len(),
                             ChatPickerTarget::Browser => {
                                 AGENT_CHOICES.len() + usize::from(picker.chat.terminal)
                             }
-                            ChatPickerTarget::MachineLine | ChatPickerTarget::FolderLine => return,
+                            ChatPickerTarget::Machine(_) | ChatPickerTarget::FolderLine => return,
                         };
                         if picker.chat.selected != index {
                             picker.chat.selected = index;
@@ -403,7 +395,6 @@ impl PanePickerView {
                             return;
                         };
                         match target {
-                            ChatPickerTarget::MachineLine => picker.open_machines(&chat, cx),
                             ChatPickerTarget::Machine(index) => {
                                 picker.choose_machine(&chat, index, cx);
                             }
@@ -430,13 +421,9 @@ impl PanePickerView {
             let modified = modifiers.control || modifiers.alt || modifiers.platform;
             self.chat.machines = chat.machines.len();
             self.sync_offers(cx);
-            let opening = self.chat.stage != ChatStage::Machines;
             let outcome =
                 self.chat
                     .key(&keystroke.key, keystroke.key_char.as_deref(), modified, &[]);
-            if opening && self.chat.stage == ChatStage::Machines {
-                self.open_machines(&chat, cx);
-            }
             if self.settle(outcome, &chat, cx) {
                 cx.stop_propagation();
             }

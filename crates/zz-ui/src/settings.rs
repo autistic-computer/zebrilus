@@ -14,6 +14,7 @@ use penna::{Label, TextStyle};
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SettingsSection {
     Appearance,
+    Interface,
     Browser,
     Terminal,
     Editor,
@@ -33,8 +34,9 @@ pub enum SettingsNavigationGroup {
 }
 
 impl SettingsSection {
-    pub const ALL: [Self; 10] = [
+    pub const ALL: [Self; 11] = [
         Self::Appearance,
+        Self::Interface,
         Self::Editor,
         Self::Panes,
         Self::Multiplexer,
@@ -49,7 +51,8 @@ impl SettingsSection {
     #[must_use]
     pub const fn title(self) -> &'static str {
         match self {
-            Self::Appearance => "Interface",
+            Self::Appearance => "Appearance",
+            Self::Interface => "Interface",
             Self::Browser => "Browser",
             Self::Terminal => "Terminal",
             Self::Editor => "Editor",
@@ -66,6 +69,7 @@ impl SettingsSection {
     pub const fn icon(self) -> crate::IconName {
         match self {
             Self::Appearance => crate::IconName::Palette,
+            Self::Interface => crate::IconName::AppWindow,
             Self::Browser => crate::IconName::Globe,
             Self::Terminal => crate::IconName::SquareTerminal,
             Self::Editor => crate::IconName::File,
@@ -81,7 +85,9 @@ impl SettingsSection {
     #[must_use]
     pub const fn navigation_group(self) -> SettingsNavigationGroup {
         match self {
-            Self::Appearance | Self::Editor | Self::Panes => SettingsNavigationGroup::Appearance,
+            Self::Appearance | Self::Interface | Self::Editor | Self::Panes => {
+                SettingsNavigationGroup::Appearance
+            }
             Self::Multiplexer | Self::Browser | Self::Terminal => SettingsNavigationGroup::Tools,
             Self::Hosts | Self::Agents | Self::Advanced | Self::About => {
                 SettingsNavigationGroup::Advanced
@@ -203,6 +209,7 @@ mod tests {
         assert_eq!(
             SettingsSection::ALL.map(SettingsSection::title),
             [
+                "Appearance",
                 "Interface",
                 "Editor",
                 "Panes",
@@ -223,6 +230,7 @@ mod tests {
             SettingsSection::ALL,
             [
                 SettingsSection::Appearance,
+                SettingsSection::Interface,
                 SettingsSection::Editor,
                 SettingsSection::Panes,
                 SettingsSection::Multiplexer,
@@ -237,6 +245,7 @@ mod tests {
         assert_eq!(
             SettingsSection::ALL.map(SettingsSection::navigation_group),
             [
+                SettingsNavigationGroup::Appearance,
                 SettingsNavigationGroup::Appearance,
                 SettingsNavigationGroup::Appearance,
                 SettingsNavigationGroup::Appearance,

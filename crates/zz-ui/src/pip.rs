@@ -520,7 +520,7 @@ impl RenderOnce for PipSurface {
                 .absolute()
                 .inset_0()
                 .occlude()
-                .cursor_pointer()
+                .click_cursor()
                 .on_click(move |event, window, cx| {
                     cx.stop_propagation();
                     restore(event, window, cx);

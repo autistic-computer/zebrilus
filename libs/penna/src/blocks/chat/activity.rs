@@ -167,7 +167,7 @@ pub fn activity_row(
         .text_color(activity_color(cx))
         .when(clickable, |row| {
             let foreground = cx.theme().foreground;
-            row.cursor_pointer()
+            row.click_cursor()
                 .hover(move |row| row.text_color(foreground))
         })
         .when_some(glyph, |this, glyph| {

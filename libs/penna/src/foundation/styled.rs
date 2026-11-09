@@ -152,6 +152,10 @@ pub trait StyledExt: Styled + Sized {
         self.rule_on(look.role(), edge, cx)
     }
 
+    fn click_cursor(self) -> Self {
+        self.cursor(PointerCursor::style())
+    }
+
     font_weight!(font_thin, THIN);
     font_weight!(font_extralight, EXTRA_LIGHT);
     font_weight!(font_light, LIGHT);
@@ -341,6 +345,32 @@ impl Density {
 
 thread_local! {
     static DENSITY: Cell<Density> = const { Cell::new(Density::Regular) };
+    static POINTER_CURSOR: Cell<PointerCursor> = const { Cell::new(PointerCursor::Hand) };
+}
+
+#[derive(Clone, Default, Copy, PartialEq, Eq, Debug, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum PointerCursor {
+    #[default]
+    Hand,
+    Arrow,
+}
+
+impl PointerCursor {
+    pub fn get() -> Self {
+        POINTER_CURSOR.get()
+    }
+
+    pub fn set(self) {
+        POINTER_CURSOR.set(self);
+    }
+
+    pub fn style() -> ala::CursorStyle {
+        match Self::get() {
+            Self::Hand => ala::CursorStyle::PointingHand,
+            Self::Arrow => ala::CursorStyle::Arrow,
+        }
+    }
 }
 
 #[derive(Clone, Default, Copy, PartialEq, Eq, Debug)]

@@ -110,7 +110,7 @@ impl Plate {
             active: caller_active,
             role,
             focused,
-            clickable: _,
+            clickable,
             id,
         } = self;
         let theme = cx.theme();
@@ -174,6 +174,13 @@ impl Plate {
         };
         let plate = plate
             .when(ringed, Styled::relative)
+            .when(clickable, |plate| {
+                if state == PaintState::Disabled {
+                    plate.cursor_default()
+                } else {
+                    plate.click_cursor()
+                }
+            })
             .refine_style(&style)
             .children(press)
             .children(children);

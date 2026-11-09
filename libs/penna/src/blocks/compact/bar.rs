@@ -238,6 +238,7 @@ pub fn compact_floating_pill(
     div()
         .id(id)
         .debug_selector(|| "compact-bar-pill".to_owned())
+        .click_cursor()
         .relative()
         .flex()
         .flex_1()

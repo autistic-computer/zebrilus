@@ -468,7 +468,7 @@ pub fn flat_window_row(
         .pl(theme.row_inset + px(ROW_PADDING))
         .pr(row_trailing_inset(cx))
         .text_color(ink.dim(ink.text))
-        .cursor_pointer()
+        .click_cursor()
         .on_hover(move |hovered, window, cx| hover(FlatEvent::Hover(target, *hovered), window, cx))
         .on_click(move |_, window, cx| click(FlatEvent::Open(host, id), window, cx))
         .child(fill)
@@ -732,7 +732,7 @@ pub fn flat_host_header(
         })
         .type_style(HOST_NAME, cx)
         .line_height(px(HOST_LINE))
-        .cursor_pointer()
+        .click_cursor()
         .on_hover(move |hovered, window, cx| hover(FlatEvent::Hover(target, *hovered), window, cx))
         .on_click(move |_, window, cx| click(FlatEvent::FoldHost(id), window, cx))
         .child(glyph(
@@ -804,7 +804,7 @@ pub fn flat_action_row(
         .hover(move |row| row.text_color(foreground))
         .type_style(HOST_NAME, cx)
         .line_height(px(HOST_LINE))
-        .cursor_pointer()
+        .click_cursor()
         .child(fill)
         .child(
             div()

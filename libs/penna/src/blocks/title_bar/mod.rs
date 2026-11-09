@@ -238,24 +238,25 @@ impl RenderOnce for WindowControl {
                 this.window_control_area(control.window_control_area())
             })
             .when(is_linux, |this| {
-                this.on_mouse_down(MouseButton::Left, move |_, window, cx| {
-                    window.prevent_default();
-                    cx.stop_propagation();
-                })
-                .on_click(move |_, window, cx| {
-                    cx.stop_propagation();
-                    match icon {
-                        ControlIcon::Minimize => window.minimize_window(),
-                        ControlIcon::Restore | ControlIcon::Maximize => window.zoom_window(),
-                        ControlIcon::Close { .. } => {
-                            if let Some(f) = on_close_window.clone() {
-                                f(&ClickEvent::default(), window, cx);
-                            } else {
-                                window.remove_window();
+                this.click_cursor()
+                    .on_mouse_down(MouseButton::Left, move |_, window, cx| {
+                        window.prevent_default();
+                        cx.stop_propagation();
+                    })
+                    .on_click(move |_, window, cx| {
+                        cx.stop_propagation();
+                        match icon {
+                            ControlIcon::Minimize => window.minimize_window(),
+                            ControlIcon::Restore | ControlIcon::Maximize => window.zoom_window(),
+                            ControlIcon::Close { .. } => {
+                                if let Some(f) = on_close_window.clone() {
+                                    f(&ClickEvent::default(), window, cx);
+                                } else {
+                                    window.remove_window();
+                                }
                             }
                         }
-                    }
-                })
+                    })
             })
             .child(Icon::new(control.icon()).small())
     }

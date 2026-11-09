@@ -730,6 +730,7 @@ pub struct Appearance {
     pub zoom: f32,
     pub motion: crate::foundation::motion::Motion,
     pub density: crate::Density,
+    pub pointer: crate::PointerCursor,
 }
 
 impl Default for Appearance {
@@ -744,6 +745,7 @@ impl Default for Appearance {
             zoom: 1.0,
             motion: crate::foundation::motion::Motion::Default,
             density: crate::Density::Regular,
+            pointer: crate::PointerCursor::Hand,
         }
     }
 }
@@ -766,6 +768,7 @@ pub enum AppearanceChange {
     Zoom(f32),
     Motion(crate::foundation::motion::Motion),
     Density(crate::Density),
+    Pointer(crate::PointerCursor),
 }
 
 impl Appearance {
@@ -862,6 +865,7 @@ impl Appearance {
             AppearanceChange::Zoom(zoom) => self.zoom = zoom,
             AppearanceChange::Motion(motion) => self.motion = motion,
             AppearanceChange::Density(density) => self.density = density,
+            AppearanceChange::Pointer(pointer) => self.pointer = pointer,
         }
     }
 
@@ -890,6 +894,7 @@ impl Appearance {
             theme.glass = None;
         }
         self.density.set();
+        self.pointer.set();
         cx.set_global(crate::UiZoom(self.zoom));
         if let Some(window) = window {
             window.set_zoom(self.zoom);
@@ -1138,7 +1143,7 @@ mod tests {
             serde_json::from_str::<Appearance>("{}").unwrap(),
             Appearance::default()
         );
-        let source = r#"{"mode":"dark","theme":"macos","radius":12,"accent":"green","tint":0.25,"tint-hue":145,"controls":"pill","glass":"none","contrast":1.5,"reduce_transparency":true,"ui_font_family":"Inter","mono_font_family":"Lilex","zoom":1.25,"motion":"fast","density":"comfortable","sidebar":true}"#;
+        let source = r#"{"mode":"dark","theme":"macos","radius":12,"accent":"green","tint":0.25,"tint-hue":145,"controls":"pill","glass":"none","contrast":1.5,"reduce_transparency":true,"ui_font_family":"Inter","mono_font_family":"Lilex","zoom":1.25,"motion":"fast","density":"comfortable","pointer":"arrow","sidebar":true}"#;
         let appearance = serde_json::from_str::<Appearance>(source).unwrap();
         assert_eq!(
             appearance,
@@ -1159,6 +1164,7 @@ mod tests {
                 zoom: 1.25,
                 motion: crate::foundation::motion::Motion::Fast,
                 density: crate::Density::Comfortable,
+                pointer: crate::PointerCursor::Arrow,
             }
         );
         let written = serde_json::to_value(&appearance).unwrap();

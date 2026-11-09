@@ -37,7 +37,7 @@ pub fn suggestion_row(
         .h(px(ROW_HEIGHT))
         .gap_3()
         .px_3()
-        .cursor_pointer()
+        .click_cursor()
         .child(
             v_flex()
                 .flex_1()

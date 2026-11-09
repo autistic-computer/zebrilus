@@ -2,7 +2,7 @@
 type: Design Plan
 title: "Chat mode: the sidebar lists agents, not windows"
 description: "The flat sidebar became chat mode: each machine lists one row per window running Claude Code or Codex, the agent's tile leads the pane stack with the panes it split behind it, sessions, agentless windows and machines without a chat stay in the session tree, and New chat opens the agent picker with no window behind it, which starts the agent in a chosen folder inside that folder's session. The sidebar view decides what a new pane offers: agents in chat view, pane kinds in the session tree. Desktop, web, iPad and the HTML client share the zz-client model."
-status: Built (2026-10-28; picker by sidebar view 2026-11-01; New chat row and machine choice 2026-11-06; another machine keeps the New chat screen 2026-11-08; browser in a split 2026-11-07; only chats listed and a New chat screen 2026-11-08; the HTML client has no file picker yet)
+status: Built (2026-10-28; picker by sidebar view 2026-11-01; New chat row and machine choice 2026-11-06; machines inline 2026-11-09; another machine keeps the New chat screen 2026-11-08; browser in a split 2026-11-07; only chats listed and a New chat screen 2026-11-08; the HTML client has no file picker yet)
 resource: crates/zz-client/src/new_chat.rs
 tags:
 - sidebar
@@ -71,9 +71,12 @@ with its own view: the desktop's `flat-sidebar` setting, zz-app's `flat_sidebar`
 iPad and iPhone, and the HTML client's preference passed in with `set_chat_view`):
 
 - **Chat view.** Every picker pane offers the agents (`ChatPicker`, drawn by
-  `zz_ui::pane::chat_picker_rows`): the machine line (desktop only), the folder line, and Claude
-  Code (`c`) or Codex (`x`). `m` or a click on the machine lists every host (`ChatStage::Machines`,
-  `MachineChoice`); picking another closes this picker and shows the New chat screen on that host, so the folders and the chat are that machine's. An offline host is listed dimmed. A
+  `zz_ui::pane::chat_picker_rows`): every machine (desktop only), the folder line, and Claude
+  Code (`c`) or Codex (`x`). Each machine is a row with its system's mark (`platform_icon`, a
+  laptop or server when the host has not said), the attached one checked and an offline one dimmed
+  (`MachineChoice`). A click on another, or `m` for the next live one (`ChatKey::NextMachine`,
+  `MachineChoice::next`, whose row shows the `m` key), closes this picker and shows the New chat
+  screen on that host, so the folders and the chat are that machine's. A
   picker that is a split (its window holds another pane, `picker_in_split`) on the desktop also
   offers Terminal (`t`, `ChatKey::Terminal`) and Browser (`b`, `ChatKey::Browser`) under Pane,
   which turn the pane into one as the session tree's picker does, so a chat keeps its terminals and

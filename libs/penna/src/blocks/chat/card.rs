@@ -160,7 +160,7 @@ impl CardTile {
             .px(px(CARD_TILE_PADDING_X))
             .py(px(CARD_TILE_PADDING_Y))
             .type_style(TextStyle::Small, cx)
-            .when(enabled, ala::Styled::cursor_pointer)
+            .when(enabled, crate::StyledExt::click_cursor)
     }
 
     pub fn detail(self, text: impl Into<SharedString>) -> Label {

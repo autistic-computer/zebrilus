@@ -21,7 +21,7 @@ use zz_ui::{
         SettingEntry, SettingsFold, SettingsScrollColumn, SettingsSection, SettingsSelectItem,
         SettingsStack, StackPosition,
         about::{ABOUT_LOGO_SIZE, ZZ_ABOUT},
-        appearance::{AppearancePageItem, ZzRow, appearance_page_items},
+        appearance::{AppearancePageItem, ZzRow, appearance_page_items, interface_page_items},
         settings_card_ground, settings_page_heading, settings_preview, settings_scroll_column,
         settings_title_bar,
     },
@@ -45,8 +45,9 @@ fn palette_layout_value(preferences: &Preferences) -> &'static str {
     }
 }
 
-pub(super) const SECTIONS: [SettingsSection; 7] = [
+pub(super) const SECTIONS: [SettingsSection; 8] = [
     SettingsSection::Appearance,
+    SettingsSection::Interface,
     SettingsSection::Panes,
     SettingsSection::Terminal,
     SettingsSection::Hosts,
@@ -556,12 +557,18 @@ impl AppShell {
         };
         let phone = phone();
         match section {
-            SettingsSection::Appearance => {
-                let mut items = appearance_page_items(false, false)
+            SettingsSection::Appearance | SettingsSection::Interface => {
+                let items = if section == SettingsSection::Interface {
+                    interface_page_items(false, false)
+                } else {
+                    appearance_page_items()
+                };
+                let mut items = items
                     .into_iter()
                     .filter(|item| {
                         !matches!(item, AppearancePageItem::App(row) if *row != ZzRow::ProgramColors)
                     })
+                    .filter(|item| !phone || !matches!(item, AppearancePageItem::Pointer))
                     .filter(|item| !narrow || !matches!(item, AppearancePageItem::Title))
                     .collect::<Vec<_>>();
                 let empty = |at: usize, items: &[AppearancePageItem]| {
@@ -1227,6 +1234,7 @@ mod tests {
             visible(true),
             [
                 SettingsSection::Appearance,
+                SettingsSection::Interface,
                 SettingsSection::Terminal,
                 SettingsSection::Hosts,
                 SettingsSection::Agents,

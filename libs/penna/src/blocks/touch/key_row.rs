@@ -258,6 +258,7 @@ impl KeyRow {
         let pressed = key_layer(key_look(look, theme).0, PaintState::Active, theme);
         Self::slot(ElementId::named_usize("key-row-key", index))
             .group(KEY_GROUP)
+            .click_cursor()
             .on_mouse_down(MouseButton::Left, |_, window, _| window.prevent_default())
             .child(
                 key_surface(div().id("cap"), look, cx)
@@ -402,6 +403,7 @@ impl RenderOnce for KeyRow {
                 ))
                 .text_color(chevron)
                 .block_mouse_except_scroll()
+                .click_cursor()
                 .on_mouse_down(MouseButton::Left, |_, window, _| window.prevent_default())
                 .on_click(move |_, window, _| {
                     let x = if ahead {

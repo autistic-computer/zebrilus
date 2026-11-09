@@ -179,8 +179,7 @@ impl PanePicker {
                                 ChatPickerTarget::Agent(_, agent) => {
                                     this.start(agent, &folders, cx);
                                 }
-                                ChatPickerTarget::MachineLine
-                                | ChatPickerTarget::Machine(_)
+                                ChatPickerTarget::Machine(_)
                                 | ChatPickerTarget::Terminal
                                 | ChatPickerTarget::Browser => {}
                             }
@@ -336,6 +335,7 @@ impl PanePicker {
                 ChatKey::Close => self.close(cx),
                 ChatKey::Changed => cx.notify(),
                 ChatKey::ChooseMachine(_)
+                | ChatKey::NextMachine
                 | ChatKey::Terminal
                 | ChatKey::Browser
                 | ChatKey::Ignored => return,

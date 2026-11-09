@@ -337,7 +337,7 @@ impl PaneStack {
                     .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
                     .when_some(select, |element, select| {
                         let pointer = pointer.clone();
-                        element.cursor_pointer().on_click(move |_, window, cx| {
+                        element.click_cursor().on_click(move |_, window, cx| {
                             cx.stop_propagation();
                             update(&pointer, view, cx, |pointer| *pointer = Pointer::default());
                             select(window, cx);
@@ -446,7 +446,7 @@ impl RenderOnce for PaneStack {
             .h(px(size.tile()))
             .when(openable, |stack| {
                 stack
-                    .cursor_pointer()
+                    .click_cursor()
                     .on_hover(move |hovered, _, cx| {
                         let hovered = *hovered;
                         update(&hover, view, cx, |pointer| pointer.stack = hovered);

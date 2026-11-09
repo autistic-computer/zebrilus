@@ -553,7 +553,6 @@ impl RenderOnce for SettingsDisclosure {
             .flex()
             .items_start()
             .gap(Space::S2)
-            .cursor_pointer()
             .when(coarse, |this| {
                 this.child(
                     crate::blocks::touch::press_highlight(
@@ -592,7 +591,8 @@ impl RenderOnce for SettingsDisclosure {
             )
             .child(settings_group_header(self.title.into(), cx))
             .when_some(self.on_click, |this, on_click| {
-                this.on_click(move |event, window, cx| on_click(event, window, cx))
+                this.click_cursor()
+                    .on_click(move |event, window, cx| on_click(event, window, cx))
             });
         div().flex().flex_col().pt(Space::S8).child(hit)
     }
@@ -1016,7 +1016,7 @@ impl RenderOnce for SettingEntry {
                 .aria_disabled(disabled)
                 .when_some(handler, |entry, handler| {
                     entry
-                        .cursor_pointer()
+                        .click_cursor()
                         .on_click(move |event, window, cx| handler(event, window, cx))
                 })
                 .into_any_element(),

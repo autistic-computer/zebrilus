@@ -202,7 +202,7 @@ impl RenderOnce for DiscreteSlider {
                         cx,
                     ))
                     .when(!disabled, |pill| {
-                        pill.cursor_pointer().on_click(move |_, window, cx| {
+                        pill.click_cursor().on_click(move |_, window, cx| {
                             focus.focus(window, cx);
                             change(index, window, cx);
                         })
@@ -569,7 +569,7 @@ impl Slider {
                     .px(size.input_px())
                     .gap(Space::S10)
                     .justify_between()
-                    .when(!self.disabled, Styled::cursor_pointer),
+                    .when(!self.disabled, crate::StyledExt::click_cursor),
                 size,
                 cx,
             ),
@@ -769,7 +769,7 @@ impl Slider {
             .child(rail)
             .when(!disabled, |this| {
                 this.track_focus(&focus)
-                    .cursor_pointer()
+                    .click_cursor()
                     .on_key_down(move |event, window, cx| {
                         let steps = if event.keystroke.modifiers.shift {
                             10.0

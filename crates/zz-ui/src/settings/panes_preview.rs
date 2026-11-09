@@ -15,6 +15,7 @@ use crate::{
 use ala::{
     AnyElement, App, Corners, Hsla, IntoElement, Pixels, RenderOnce, Window, div, prelude::*, px,
 };
+use penna::StyledExt as _;
 use zz_protocol::{AgentProvider, PaneId};
 
 #[derive(Clone, Copy, IntoElement)]
@@ -86,7 +87,7 @@ impl RenderOnce for PanesPreview {
                     .absolute()
                     .inset_0()
                     .occlude()
-                    .cursor_pointer()
+                    .click_cursor()
                     .on_click(window.listener_for(&selection, move |selected, _, _, cx| {
                         if *selected != index {
                             *selected = index;

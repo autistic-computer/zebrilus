@@ -641,12 +641,17 @@ impl RenderOnce for Button {
                         .tab_stop(self.tab_stop),
                 )
             })
-            .cursor_default()
+            .map(|this| {
+                if is_disabled {
+                    this.cursor_default()
+                } else {
+                    this.click_cursor()
+                }
+            })
             .flex()
             .flex_shrink_0()
             .items_center()
             .justify_center()
-            .when(self.variant.is_link(), |this| this.cursor_pointer())
             .when(!variant.no_padding(), |this| {
                 let height = self.size.control_h();
                 if icon_only {

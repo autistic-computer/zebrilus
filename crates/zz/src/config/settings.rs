@@ -86,8 +86,8 @@ struct HostsSectionState {
 
 use zz_ui::settings::appearance::{AppearancePageItem, ZzRow};
 
-fn appearance_page_items(has_window_blur: bool) -> Vec<AppearancePageItem> {
-    zz_ui::settings::appearance::appearance_page_items(cfg!(target_os = "macos"), has_window_blur)
+fn interface_page_items(has_window_blur: bool) -> Vec<AppearancePageItem> {
+    zz_ui::settings::appearance::interface_page_items(cfg!(target_os = "macos"), has_window_blur)
 }
 
 pub(crate) struct SettingsView {
@@ -694,12 +694,17 @@ impl SettingsView {
     }
 
     fn appearance_section(&self, resolved: &AppConfig, cx: &Context<Self>) -> AnyElement {
-        let items = appearance_page_items(crate::profile::profile(cx).has_window_blur);
+        let items = match self.section {
+            SettingsSection::Interface => {
+                interface_page_items(crate::profile::profile(cx).has_window_blur)
+            }
+            _ => zz_ui::settings::appearance::appearance_page_items(),
+        };
         let view = cx.entity();
         let resolved = *resolved;
         let appearance = config::appearance(cx);
         penna::blocks::appearance::appearance_page(
-            SettingsSection::Appearance.title(),
+            self.section.title(),
             items,
             move |item, position, window, cx| {
                 view.update(cx, |this, cx| {
@@ -1530,7 +1535,9 @@ impl Render for SettingsView {
         self.synchronize_terminal_preview(cx);
 
         let content = match self.section {
-            SettingsSection::Appearance => self.appearance_section(&resolved, cx),
+            SettingsSection::Appearance | SettingsSection::Interface => {
+                self.appearance_section(&resolved, cx)
+            }
             SettingsSection::Browser => self.browser_section(&browser, &resolved, cx),
             SettingsSection::Editor => self.editor_section(&resolved, cx),
             SettingsSection::Panes => self.panes_section(&resolved, cx),
@@ -1905,6 +1912,14 @@ fn appearance_changed(change: AppearanceChange, cx: &mut App) {
                 set_config_key(key, if reduce { "true" } else { "false" }),
             )
         }
+        AppearanceChange::Pointer(pointer) => {
+            let key = ConfigKey::PointingHand;
+            let hand = pointer == penna::PointerCursor::Hand;
+            (
+                key,
+                set_config_key(key, if hand { "true" } else { "false" }),
+            )
+        }
         AppearanceChange::UiFont(family) => (
             ConfigKey::UiFontFamily,
             config::set_ui_font_family((!family.is_empty()).then_some(family.as_str())),
@@ -2046,6 +2061,7 @@ fn refresh_settings_preview(key: ConfigKey, cx: &mut App) {
             ConfigKey::WidgetCornerRadius
                 | ConfigKey::ChromeContrast
                 | ConfigKey::ReduceTransparency
+                | ConfigKey::PointingHand
                 | ConfigKey::ControlShape
                 | ConfigKey::InterfaceGlass
                 | ConfigKey::ChromeAccent
@@ -2169,6 +2185,7 @@ fn numeric_config_value(config: &AppConfig, key: ConfigKey) -> ConfigValue<f32> 
         | ConfigKey::BrowserSearchProvider
         | ConfigKey::BrowserEgress
         | ConfigKey::ReduceTransparency
+        | ConfigKey::PointingHand
         | ConfigKey::ThemeMode
         | ConfigKey::ControlShape
         | ConfigKey::InterfaceGlass

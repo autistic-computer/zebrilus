@@ -615,7 +615,7 @@ fn browser_tab_pill(
                     })
             }
         })
-        .cursor_pointer()
+        .click_cursor()
         .when(!detail.is_empty(), |this| {
             this.tooltip(move |window, cx| Tooltip::new(detail.clone()).build(window, cx))
         })
@@ -794,7 +794,7 @@ pub fn browser_recent_row(
         .items_center()
         .gap(px(8.0))
         .px(px(12.0))
-        .cursor_pointer()
+        .click_cursor()
         .type_style(TextStyle::Small, cx)
         .child(browser_favicon(favicon, cx.theme().foreground.muted()))
         .child(
@@ -860,7 +860,7 @@ pub fn browser_omnibox_row(
     .overflow_hidden()
     .type_style(TextStyle::Body, cx)
     .line_height(px(16.0))
-    .cursor_pointer()
+    .click_cursor()
     .child(
         div()
             .flex_none()

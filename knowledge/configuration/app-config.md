@@ -131,7 +131,7 @@ The client-local schema includes these scalar settings and chrome colors.
 | --- | ---: | --- | --- |
 | `window-corner-radius` | `13.5` | `0..=32` | The app-drawn window frame's corner, visible only under Linux client-side decorations |
 | `window-background-blur` | `false` | `true` or `false` | Whether the desktop shows through the window chrome, blurred: on fills the chrome at 93% over the blur, off makes it opaque |
-| `motion` | `default` | `off`, `default` or `fast` | Interface motion. `off` stops transitions, loading indicators, scrollbar fades, and animated UI images; `fast` runs them at twice their designed speed, through the process-wide `ala::animation_speed` that scales ala `with_animation` timings, every spring step, and the hand-timed fades (chevrons, pane arrivals, the sidebar slide, press highlights, streaming text, the agent pulse). Scroll physics, cursor blink and timers stay as they are. Settings > Interface shows it as Motion |
+| `motion` | `default` | `off`, `default` or `fast` | Interface motion. `off` stops transitions, loading indicators, scrollbar fades, and animated UI images; `fast` runs them at twice their designed speed, through the process-wide `ala::animation_speed` that scales ala `with_animation` timings, every spring step, and the hand-timed fades (chevrons, pane arrivals, the sidebar slide, press highlights, streaming text, the agent pulse). Scroll physics, cursor blink and timers stay as they are. Settings > Interface > Behavior shows it as Motion |
 | `tray` | `true` | `true` or `false` | Shows a native tray icon while the GUI runs. Closing the window or quitting hides zz when the icon is available, `quit-daemon-on-exit` is false, and the local daemon has sessions; otherwise the usual close or quit behavior applies. Applies live from Settings → System or file edits. Quit and Stop Sessions in the tray menu stops the daemon |
 | `notifications` | `true` | `true` or `false` | Whether the desktop app posts a system notification when a pane needs input, fails or finishes while no zz window is active. Clicking it raises the window and selects the pane. macOS asks for permission on the first one. Chimes are separate (`ZZ_AGENT_SOUND=0`) |
 | `quit-daemon-on-exit` | `false` | `true` or `false` | Whether quitting the app stops the daemon even while sessions are live |
@@ -166,8 +166,9 @@ The client-local schema includes these scalar settings and chrome colors.
 | `theme-mode` | `system` | `system`, `light`, `dark` | Follow the OS appearance, or pin one mode |
 | `app-icon` | `automatic` | `automatic`, `light`, `dark` | Which render of `assets/zz.icon` the macOS Dock tile wears; `automatic` defers to the bundle's compiled icon when packaged (so tinted/clear dock styles work) and follows the OS appearance in bare builds, independently of `theme-mode` |
 | `chrome-contrast` | `1.0` | `1.0`–`2.0` | Raises the chrome derivations (surface steps, fills, dividers and muted text) and adds no edges; out-of-range or invalid values are reported and fall back to `1.0`. Settings shows it as Increase contrast, a slider from 0% (1.0) to 100% (2.0), written with two decimals. |
-| `reduce-transparency` | `false` | `true` or `false` | Draws glass as the solid `popover` fill. Settings shows it as Reduce transparency under Advanced; Paste and Reset keep it. The thin clients keep it in their preferences as `reduce_transparency`, and the HTML client shows the same row |
-| `chrome-density` | `regular` | `compact`, `regular`, `comfortable` | The default control and row height in the chrome: 24, 28 or 32px for buttons, fields, selects and list, menu and picker rows; text, gaps and the other control sizes stay. Invalid values are reported and fall back to `regular`. Settings shows it as Density under UI zoom. |
+| `reduce-transparency` | `false` | `true` or `false` | Draws glass as the solid `popover` fill. Settings shows it as Reduce transparency under Interface › Material; Paste and Reset keep it. The thin clients keep it in their preferences as `reduce_transparency`, and the HTML client shows the same row |
+| `pointing-hand` | `true` | `true` or `false` | The pointer over anything you can click in the chrome: a hand when on, the arrow when off. Pages in a browser pane and links in a terminal keep their own pointer. Settings shows it as Pointing hand under Interface › Behavior; the thin clients keep it in their preferences as `pointer` (`hand` or `arrow`) and leave it off the phone |
+| `chrome-density` | `regular` | `compact`, `regular`, `comfortable` | The default control and row height in the chrome: 24, 28 or 32px for buttons, fields, selects and list, menu and picker rows; text, gaps and the other control sizes stay. Invalid values are reported and fall back to `regular`. Settings shows it as Density under Interface › Text. |
 
 `chrome-preset`, `chrome-preset-light`, `chrome-preset-dark`, `chrome-background`,
 `chrome-foreground`, `chrome-success`, `chrome-warning` and `chrome-danger` are
@@ -289,8 +290,9 @@ named accent takes its light or its dark color, `zz_ui::interface_theme::accent_
 primary fills in the foreground), sets the neutral's amount and hue, makes controls pills or
 rounded, and sets the glass.
 
-There are no presets to pick and no saved themes. Settings > Interface > Look's Theme file menu
-(penna's) copies the shown look as a theme file, pastes one (`AppearanceChange::Import`: zz writes
+There are no presets to pick and no saved themes, and no Settings row reads or writes a theme
+file. The settings handler still takes penna's two theme file changes: pasting one
+(`AppearanceChange::Import`: zz writes
 every look key from `ThemeOverrides::from_theme` and the file's `face` in one edit,
 `config::look_edits` through `zz_config::set_config_keys`) and resets the look
 (`AppearanceChange::ResetLook`: every look key removed from the file, duplicates included).
@@ -537,7 +539,7 @@ daemon still resolves cells with the host's colors but tags where each came from
 so the client repaints default and palette 0-15 colors (`LocalColors::recolor`) and leaves 256-color
 and RGB picks alone; an inverted cell, whose source isn't tagged, is matched by value.
 
-`minimum-contrast` (a WCAG ratio from 1 to 21, default 4.5; Settings › Interface's Terminal text
+`minimum-contrast` (a WCAG ratio from 1 to 21, default 4.5; Settings › Appearance's Terminal text
 contrast writes 4.5 or 1) keeps terminal text readable whatever the theme or the application picked: any text color below the floor against its cell background gets
 lighter or darker until it reaches it, keeping its hue. Faint text is dimmed against its cell background
 before correction, so dim placeholders and input text retain the same contrast floor. Lower values
@@ -559,7 +561,7 @@ zz's mode picks the theme (`theme-mode`, else the system's). `light:A,dark:B` na
 mode, and either side may be left out (`dark:B`), so that mode draws zz's built-in colors. A lone
 `theme = NAME` counts as light or dark by its background (lighter than its foreground is light,
 `TerminalAppearance::background_scheme`) and paints only that mode; the other one draws the built-in
-colors. Settings › Interface writes the key with Light theme and Dark theme, two searchable lists of
+colors. Settings › Appearance writes the key with Light theme and Dark theme, two searchable lists of
 the installed themes that open on themes of their own kind (Light or Dark, with All themes beside
 it); picking either one writes the pair and removes custom terminal colors, and Built-in leaves
 that side out.
@@ -707,7 +709,8 @@ always-live inactive-opacity factor and the selected pane's edge strength, which
 
 | Page | Groups |
 | --- | --- |
-| Interface | **Look** (`theme-mode` as Mode, a System, Light and Dark segmented control, `chrome-accent` as Accent swatches with a custom color picker, `chrome-tint-hue` as Tint and `chrome-tint` as Tint strength, `widget-corner-radius` as Corner radius in percent, three sliders, `control-shape` as Controls, a segmented control, `interface-glass` as Glass, a switch, `UI font`, and Mono font) · **Terminal** (a live preview, Light theme and Dark theme, searchable lists of the installed themes that open on their own kind and write `theme = light:A,dark:B`, `chrome-terminal-colors` as Window follows the theme, and `background-opacity` as Background opacity) · **Sidebar** (`program-colors`) · **Size** (transient `UI zoom` as Text size, `chrome-density` as Density) · **Accessibility** (`chrome-contrast` as Increase contrast, a slider, `minimum-contrast` as Terminal text contrast, a switch for 4.5 or 1, `reduce-transparency` as Reduce transparency, `motion` as Motion, an Off, Default and Fast segmented control) · **Window**, where it has rows (macOS `app-icon` as three icon tiles, `window-background-blur` as "Window blur" where the platform profile has it, Linux `window-corner-radius`) |
+| Appearance | **Theme** (`theme-mode` as Mode, a System, Light and Dark segmented control, `chrome-accent` as Accent swatches with a custom color picker, `chrome-tint-hue` as Tint and `chrome-tint` as Tint strength) · **Terminal** (a live preview, Light theme and Dark theme, searchable lists of the installed themes that open on their own kind and write `theme = light:A,dark:B`, `chrome-terminal-colors` as Window follows the theme, and `background-opacity` as Background opacity) · **Sidebar** (`program-colors`) · **Contrast** (`chrome-contrast` as Increase contrast, a slider, `minimum-contrast` as Terminal text contrast, a switch for 4.5 or 1) |
+| Interface | **Material** (`interface-glass` as Glass, a switch, `reduce-transparency` as Reduce transparency, `control-shape` as Controls, a segmented control, `widget-corner-radius` as Corner radius in percent) · **Text** (`UI font`, Mono font, transient `UI zoom` as Text size, `chrome-density` as Density) · **Behavior** (`pointing-hand` as Pointing hand, a switch, `motion` as Motion, an Off, Default and Fast segmented control) · **Window**, where it has rows (macOS `app-icon` as three icon tiles, `window-background-blur` as "Window blur" where the platform profile has it, Linux `window-corner-radius`) |
 | Browser | **Network** (`browser-egress`) · **Agents** (`browser-remote-debugging-port` as an on/off switch that writes `9222`) · **Search** (`browser-search-provider`) · **Shortcuts** (`browser-element-selector-hotkey`) |
 | Editor | **Typography** (`editor-font-size`) · **Display** (`editor-line-numbers`, `editor-relative-line-numbers`, `editor-soft-wrap`, `editor-vim-mode`) |
 | Panes | **Layout** (`pane-gaps`) · **Focus** (`pane-inactive-opacity`, `pane-glow-strength` as Selected pane edge) · **Frame** (`pane-margin`, disabled without gaps) |

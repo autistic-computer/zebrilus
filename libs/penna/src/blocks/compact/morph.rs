@@ -249,6 +249,7 @@ pub fn compact_pill_collapse(
     div()
         .id(id)
         .debug_selector(|| "compact-bar-pill".to_owned())
+        .click_cursor()
         .absolute()
         .left(bounds.origin.x)
         .top(bounds.origin.y)

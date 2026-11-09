@@ -5,6 +5,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
+use crate::StyledExt as _;
 use ala::{
     AbsoluteLength, AnyElement, App, AvailableSpace, Bounds, DefiniteLength, Element, ElementId,
     GlobalElementId, HighlightStyle, InspectorElementId, InteractiveElement as _, IntoElement,
@@ -142,7 +143,7 @@ impl InlineFlow {
             .h(size.height)
             .when_some(link.clone(), |this, link| {
                 let title = title.to_string();
-                this.cursor_pointer()
+                this.click_cursor()
                     .tooltip(move |window, cx| Tooltip::new(title.clone()).build(window, cx))
                     .on_click(move |event, window, cx| {
                         window.end_text_selection(cx);

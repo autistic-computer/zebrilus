@@ -304,7 +304,7 @@ fn row_shell(
     .w_full()
     .gap(Space::S12)
     .px(Space::S12)
-    .cursor_pointer()
+    .click_cursor()
     .child(crate::blocks::touch::instant_press_highlight(
         id,
         pressed,

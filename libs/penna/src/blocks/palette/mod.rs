@@ -344,7 +344,6 @@ fn palette_entry(
                             .top(px(0.5))
                             .when_some(row.expanded, |element, expanded| {
                                 element
-                                    .cursor_pointer()
                                     .child(
                                         Icon::new(if expanded {
                                             IconName::ChevronDown
@@ -355,6 +354,7 @@ fn palette_entry(
                                     )
                                     .when_some(on_toggle, |element, on_toggle| {
                                         element
+                                            .click_cursor()
                                             .on_mouse_down(MouseButton::Left, |_, window, cx| {
                                                 window.prevent_default();
                                                 cx.stop_propagation();

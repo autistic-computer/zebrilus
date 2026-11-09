@@ -475,7 +475,6 @@ pub enum ChatStage {
     #[default]
     Agents,
     Folders,
-    Machines,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -483,6 +482,7 @@ pub enum ChatKey {
     Start(AgentChoice),
     ChooseFolder,
     ChooseMachine(usize),
+    NextMachine,
     Terminal,
     Browser,
     Close,
@@ -495,14 +495,18 @@ pub struct MachineChoice {
     pub host: u64,
     pub name: String,
     pub remote: bool,
+    pub platform: zz_protocol::HostPlatform,
     pub live: bool,
     pub current: bool,
 }
 
 impl MachineChoice {
     #[must_use]
-    pub fn current(machines: &[Self]) -> Option<&Self> {
-        machines.iter().find(|machine| machine.current)
+    pub fn next(machines: &[Self]) -> Option<usize> {
+        let current = machines.iter().position(|machine| machine.current)?;
+        (1..machines.len())
+            .map(|step| (current + step) % machines.len())
+            .find(|index| machines[*index].live)
     }
 }
 
@@ -665,10 +669,7 @@ impl ChatPicker {
                         })
                         .unwrap_or(ChatKey::Ignored),
                     "tab" => ChatKey::ChooseFolder,
-                    "m" if self.machines > 1 => {
-                        self.open(ChatStage::Machines);
-                        ChatKey::Changed
-                    }
+                    "m" if self.machines > 1 => ChatKey::NextMachine,
                     "escape" => ChatKey::Close,
                     _ => match text {
                         Some(start @ ("/" | "~")) => {
@@ -680,20 +681,6 @@ impl ChatPicker {
                     },
                 }
             }
-            ChatStage::Machines => match key {
-                "j" | "down" => self.step(1, self.machines),
-                "k" | "up" => self.step(-1, self.machines),
-                "enter" if self.selected < self.machines => {
-                    let machine = self.selected;
-                    self.open(ChatStage::Agents);
-                    ChatKey::ChooseMachine(machine)
-                }
-                "escape" | "m" => {
-                    self.open(ChatStage::Agents);
-                    ChatKey::Changed
-                }
-                _ => ChatKey::Ignored,
-            },
             ChatStage::Folders => match key {
                 "down" => self.step(1, rows.len()),
                 "up" => self.step(-1, rows.len()),
@@ -1211,22 +1198,30 @@ mod tests {
     }
 
     #[test]
-    fn m_lists_the_machines_and_enter_picks_one_when_there_is_more_than_one() {
+    fn m_moves_to_the_next_live_machine_when_there_is_more_than_one() {
         let mut picker = ChatPicker::default();
         assert_eq!(picker.key("m", Some("m"), false, &[]), ChatKey::Ignored);
-        picker.machines = 3;
-        assert_eq!(picker.key("m", Some("m"), false, &[]), ChatKey::Changed);
-        assert_eq!(picker.stage, ChatStage::Machines);
-        assert_eq!(picker.key("x", Some("x"), false, &[]), ChatKey::Ignored);
-        assert_eq!(picker.key("k", Some("k"), false, &[]), ChatKey::Changed);
-        assert_eq!(
-            picker.key("enter", None, false, &[]),
-            ChatKey::ChooseMachine(2)
-        );
+        picker.machines = 4;
+        assert_eq!(picker.key("m", Some("m"), false, &[]), ChatKey::NextMachine);
         assert_eq!(picker.stage, ChatStage::Agents);
-        picker.key("m", Some("m"), false, &[]);
-        assert_eq!(picker.key("escape", None, false, &[]), ChatKey::Changed);
-        assert_eq!(picker.stage, ChatStage::Agents);
+        let machine = |live, current| MachineChoice {
+            host: 0,
+            name: String::new(),
+            remote: true,
+            platform: zz_protocol::HostPlatform::Unknown,
+            live,
+            current,
+        };
+        let machines = [
+            machine(true, false),
+            machine(true, false),
+            machine(true, true),
+            machine(false, false),
+        ];
+        assert_eq!(MachineChoice::next(&machines), Some(0));
+        assert_eq!(MachineChoice::next(&machines[1..]), Some(0));
+        assert_eq!(MachineChoice::next(&machines[2..]), None);
+        assert_eq!(MachineChoice::next(&machines[..2]), None);
     }
 
     #[test]

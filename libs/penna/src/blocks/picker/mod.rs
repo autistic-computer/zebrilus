@@ -126,7 +126,7 @@ pub fn picker_row(id: impl Into<ElementId>, selected: bool, cx: &App) -> Statefu
         .gap(Space::S8)
         .px(Space::S10)
         .type_style(crate::TextStyle::Small, cx)
-        .cursor_pointer()
+        .click_cursor()
 }
 
 pub fn path_row(

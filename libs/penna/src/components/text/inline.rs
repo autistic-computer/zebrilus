@@ -548,7 +548,7 @@ impl Element for Inline {
 
         let mouse_position = window.mouse_position();
         if let Some(_) = Self::link_for_position(&text_layout, &self.links, mouse_position) {
-            window.set_cursor_style(CursorStyle::PointingHand, &hitbox);
+            window.set_cursor_style(crate::PointerCursor::style(), &hitbox);
         }
 
         if let Some(selection) = &state.selection {

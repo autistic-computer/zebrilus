@@ -312,6 +312,7 @@ impl PopoverKey {
                 .absolute()
                 .inset_0(),
             )
+            .click_cursor()
             .on_mouse_down(MouseButton::Left, |_, window, _| window.prevent_default())
             .on_click(cx.listener(move |this, _, _, cx| this.pick(index, cx)))
             .into_any_element()

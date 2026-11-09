@@ -1,3 +1,4 @@
+use penna::StyledExt as _;
 use std::{
     rc::Rc,
     sync::{Arc, LazyLock},
@@ -74,7 +75,7 @@ pub fn tree_host_indicator(
         .flex_none()
         .when_some(detail, |this, detail| {
             let toast_detail = detail.clone();
-            this.cursor_pointer()
+            this.click_cursor()
                 .tooltip(move |window, cx| Tooltip::new(detail.clone()).build(window, cx))
                 .on_click(move |_, window, cx| {
                     cx.stop_propagation();

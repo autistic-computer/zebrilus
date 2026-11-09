@@ -421,6 +421,7 @@ pub(crate) fn appearance(cx: &App) -> Appearance {
         zoom: penna::UiZoom::get(cx),
         motion: interface_theme::kit_motion(resolved.motion.value),
         density: interface_theme::kit_density(resolved.chrome_density.value),
+        pointer: pointer_cursor(resolved.pointing_hand.value),
     }
 }
 
@@ -517,6 +518,15 @@ fn apply_program_colors(cx: &mut App) {
 
 fn apply_density(cx: &App) {
     interface_theme::kit_density(resolved_config(cx).chrome_density.value).set();
+    pointer_cursor(resolved_config(cx).pointing_hand.value).set();
+}
+
+const fn pointer_cursor(hand: bool) -> penna::PointerCursor {
+    if hand {
+        penna::PointerCursor::Hand
+    } else {
+        penna::PointerCursor::Arrow
+    }
 }
 
 fn apply_animations(cx: &mut App) {
@@ -2928,6 +2938,7 @@ mod tests {
             "widget-corner-radius",
             "chrome-contrast",
             "reduce-transparency",
+            "pointing-hand",
             "chrome-accent",
             "chrome-tint",
             "chrome-tint-hue",

@@ -31,47 +31,55 @@ impl ZzRow {
 
 pub type AppearancePageItem = penna::blocks::appearance::AppearancePageItem<ZzRow>;
 
-pub fn appearance_page_items(macos: bool, has_window_blur: bool) -> Vec<AppearancePageItem> {
-    let mut items = penna::blocks::appearance::appearance_page_items();
-    let size = items
-        .iter()
-        .position(|item| {
-            *item
-                == AppearancePageItem::Group {
-                    title: penna::blocks::appearance::SIZE,
-                }
-        })
-        .unwrap_or(items.len());
-    items.splice(
-        size..size,
-        [
-            AppearancePageItem::Group { title: "Terminal" },
-            AppearancePageItem::App(ZzRow::TerminalPreview),
-            AppearancePageItem::App(ZzRow::LightTheme),
-            AppearancePageItem::App(ZzRow::DarkTheme),
-            AppearancePageItem::App(ZzRow::TerminalColors),
-            AppearancePageItem::App(ZzRow::BackgroundOpacity),
-            AppearancePageItem::Group { title: "Sidebar" },
-            AppearancePageItem::App(ZzRow::ProgramColors),
-        ],
-    );
-    if let Some(contrast) = items
-        .iter()
-        .position(|item| *item == AppearancePageItem::IncreaseContrast)
-    {
-        items.insert(
-            contrast + 1,
-            AppearancePageItem::App(ZzRow::TerminalContrast),
-        );
-    }
+pub fn appearance_page_items() -> Vec<AppearancePageItem> {
+    use AppearancePageItem as Item;
+    vec![
+        Item::Title,
+        Item::Group { title: "Theme" },
+        Item::ThemeMode,
+        Item::Accent,
+        Item::TintHue,
+        Item::Tint,
+        Item::Group { title: "Terminal" },
+        Item::App(ZzRow::TerminalPreview),
+        Item::App(ZzRow::LightTheme),
+        Item::App(ZzRow::DarkTheme),
+        Item::App(ZzRow::TerminalColors),
+        Item::App(ZzRow::BackgroundOpacity),
+        Item::Group { title: "Sidebar" },
+        Item::App(ZzRow::ProgramColors),
+        Item::Group { title: "Contrast" },
+        Item::IncreaseContrast,
+        Item::App(ZzRow::TerminalContrast),
+    ]
+}
+
+pub fn interface_page_items(macos: bool, has_window_blur: bool) -> Vec<AppearancePageItem> {
+    use AppearancePageItem as Item;
+    let mut items = vec![
+        Item::Title,
+        Item::Group { title: "Material" },
+        Item::Glass,
+        Item::ReduceTransparency,
+        Item::Controls,
+        Item::CornerRadius,
+        Item::Group { title: "Text" },
+        Item::UiFontFamily,
+        Item::MonoFontFamily,
+        Item::TextSize,
+        Item::Density,
+        Item::Group { title: "Behavior" },
+        Item::Pointer,
+        Item::Motion,
+    ];
     let window = [
         macos.then_some(ZzRow::AppIcon),
         has_window_blur.then_some(ZzRow::WindowBackgroundBlur),
         cfg!(target_os = "linux").then_some(ZzRow::WindowCornerRadius),
     ];
     if window.iter().any(Option::is_some) {
-        items.push(AppearancePageItem::Group { title: "Window" });
-        items.extend(window.into_iter().flatten().map(AppearancePageItem::App));
+        items.push(Item::Group { title: "Window" });
+        items.extend(window.into_iter().flatten().map(Item::App));
     }
     items
 }
@@ -81,54 +89,36 @@ mod tests {
     use super::*;
 
     #[test]
-    fn zz_adds_sidebar_and_window_groups_around_the_kit_groups() {
+    fn the_two_pages_hold_every_kit_row_once() {
         use AppearancePageItem as Item;
-        let mut expected = vec![
-            Item::Title,
-            Item::Group { title: "Look" },
-            Item::ThemeMode,
-            Item::Accent,
-            Item::TintHue,
-            Item::Tint,
-            Item::CornerRadius,
-            Item::Controls,
-            Item::Glass,
-            Item::UiFontFamily,
-            Item::MonoFontFamily,
-            Item::Group { title: "Terminal" },
-            Item::App(ZzRow::TerminalPreview),
-            Item::App(ZzRow::LightTheme),
-            Item::App(ZzRow::DarkTheme),
-            Item::App(ZzRow::TerminalColors),
-            Item::App(ZzRow::BackgroundOpacity),
-            Item::Group { title: "Sidebar" },
-            Item::App(ZzRow::ProgramColors),
-            Item::Group { title: "Size" },
-            Item::TextSize,
-            Item::Density,
-            Item::Group {
-                title: "Accessibility",
-            },
-            Item::IncreaseContrast,
-            Item::App(ZzRow::TerminalContrast),
-            Item::ReduceTransparency,
-            Item::Motion,
+        let kit = penna::blocks::appearance::appearance_page_items::<ZzRow>()
+            .into_iter()
+            .filter(|item| item.is_entry())
+            .collect::<Vec<_>>();
+        let pages = [appearance_page_items(), interface_page_items(true, true)].concat();
+        for item in &kit {
+            assert_eq!(
+                pages.iter().filter(|shown| *shown == item).count(),
+                1,
+                "{item:?}"
+            );
+        }
+        let mut window = vec![
             Item::Group { title: "Window" },
             Item::App(ZzRow::AppIcon),
             Item::App(ZzRow::WindowBackgroundBlur),
         ];
         if cfg!(target_os = "linux") {
-            expected.push(Item::App(ZzRow::WindowCornerRadius));
+            window.push(Item::App(ZzRow::WindowCornerRadius));
         }
-        assert_eq!(appearance_page_items(true, true), expected);
-
-        expected.retain(|item| *item != Item::App(ZzRow::AppIcon));
-        assert_eq!(appearance_page_items(false, true), expected);
-
+        assert!(interface_page_items(true, true).ends_with(&window));
+        window.retain(|item| *item != Item::App(ZzRow::AppIcon));
+        assert!(interface_page_items(false, true).ends_with(&window));
         if !cfg!(target_os = "linux") {
-            let window = expected.len() - 2;
-            expected.truncate(window);
-            assert_eq!(appearance_page_items(false, false), expected);
+            assert_eq!(
+                interface_page_items(false, false).last(),
+                Some(&Item::Motion)
+            );
         }
     }
 }

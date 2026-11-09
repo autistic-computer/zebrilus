@@ -236,6 +236,15 @@ Omnibox suggestions use 32px single-line rows with title and muted URL text. The
 hover and selection fills sit inside the dropdown's 4px padding. Tabs and history rows use
 stored page favicons, with a globe fallback.
 
+# Pointer
+
+Everything in the chrome that acts on a click sets its pointer with penna's `click_cursor()`
+(`StyledExt`), never `cursor_pointer()`: a hand when `pointing-hand` is on (the default), the arrow
+when it is off, so every row, chip, tab and button agrees. That includes rows that act on a press
+(`on_mouse_down`), such as the pane picker's. Drag handles, scrollbars, resize edges and surfaces
+that only take focus keep the arrow, and text keeps the I-beam. A browser pane's page and a
+terminal's hyperlinks set their own pointer from the content and ignore the setting.
+
 # Control density
 
 Menus and select dropdowns draw as `popover` (a floating group), the command palette and path picker as

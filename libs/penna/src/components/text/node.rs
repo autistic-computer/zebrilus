@@ -1089,7 +1089,7 @@ impl Paragraph {
                         .when_some(image.link.clone(), |this, link| {
                             let title = image.title();
                             let links = node_cx.links.clone();
-                            this.cursor_pointer()
+                            this.click_cursor()
                                 .tooltip(move |window, cx| {
                                     Tooltip::new(title.clone()).build(window, cx)
                                 })

@@ -110,6 +110,7 @@ fn a_preferences_file_written_before_appearance_moved_into_the_kit_loads_the_sam
             zoom: 1.35,
             motion: penna::foundation::motion::Motion::Default,
             density: penna::Density::Regular,
+            pointer: penna::PointerCursor::Hand,
         }
     );
     assert_eq!(preferences.theme_mode(), ThemeModeSetting::Light);
@@ -123,6 +124,7 @@ fn a_preferences_file_written_before_appearance_moved_into_the_kit_loads_the_sam
     let parsed = |json: &str| serde_json::from_str::<serde_json::Value>(json).unwrap();
     let mut expected = parsed(source);
     expected["density"] = "regular".into();
+    expected["pointer"] = "hand".into();
     expected["reduce_transparency"] = false.into();
     expected["motion"] = "default".into();
     expected["mono_font_family"] = "".into();

@@ -519,7 +519,7 @@ fn agent_code_block_body(
                     .min_w_0()
                     .overflow_hidden()
                     .when(live.is_some() || opener.is_some(), |this| {
-                        this.cursor_pointer().tooltip(move |window, cx| {
+                        this.click_cursor().tooltip(move |window, cx| {
                             crate::tooltip::Tooltip::new(tooltip).build(window, cx)
                         })
                     })

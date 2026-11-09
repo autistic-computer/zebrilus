@@ -1,3 +1,4 @@
+use crate::StyledExt as _;
 use std::rc::Rc;
 
 use ala::{
@@ -127,6 +128,7 @@ impl RenderOnce for Checkbox {
                 });
                 let tap = Rc::clone(&click);
                 this.track_focus(&focus.tab_stop(true))
+                    .click_cursor()
                     .on_mouse_down(MouseButton::Left, hold)
                     .on_click(move |event, window, cx| click(event, window, cx))
                     .when(coarse, |this| {

@@ -392,7 +392,7 @@ function swatches(picks) {
 function appearancePage() {
   const p = prefs();
   const picks = preferences.picks();
-  if (!picks) return [heading("Interface"), h("div", { class: "setting-note", text: "The theme engine did not load." })];
+  if (!picks) return [heading("Appearance"), h("div", { class: "setting-note", text: "The theme engine did not load." })];
   const modes = h(
     "div",
     { class: "settings-tiles" },
@@ -411,8 +411,8 @@ function appearancePage() {
     h("div", { class: "trailing" }, h("div", { class: "dot", style: { background: picks.tint.dot } })),
   );
   const rows = [
-    heading("Interface"),
-    group("Look"),
+    heading("Appearance"),
+    group("Theme"),
     card([
       entry({ title: "Mode", control: modes }),
       entry({ title: "Accent", control: swatches(picks) }),
@@ -421,18 +421,53 @@ function appearancePage() {
         title: "Tint strength",
         control: valueSlider({ label: "Tint strength", value: picks.tint.strength, min: 0, max: 1, step: 0.01, display: percent, onchange: (value) => set({ tint: value }) }),
       }),
+    ]),
+    group("Sidebar"),
+    card([
       entry({
-        title: "Corner radius",
-        control: valueSlider({ label: "Corner radius", value: picks.radius, min: 0, max: 1, step: 0.01, display: percent, onchange: (value) => set({ radius: picks.limits.radius * value * value }) }),
+        title: "Program colors",
+        description: "Fill sidebar tiles with the running program's colors",
+        control: toggle(p.program_colors, "Program colors", (value) => set({ program_colors: value })),
+      }),
+    ]),
+    group("Contrast"),
+    card([
+      entry({
+        title: "Increase contrast",
+        control: valueSlider({ label: "Increase contrast", value: p.contrast - 1, min: 0, max: 1, step: 0.01, display: percent, onchange: (value) => set({ contrast: 1 + value }) }),
+      }),
+    ]),
+  ];
+  return rows.map((row) => h("div", { class: "ends" }, row));
+}
+
+function interfacePage() {
+  const p = prefs();
+  const picks = preferences.picks();
+  if (!picks) return [heading("Interface"), h("div", { class: "setting-note", text: "The theme engine did not load." })];
+  const rows = [
+    heading("Interface"),
+    group("Material"),
+    card([
+      entry({
+        title: "Glass",
+        control: toggle(picks.glass !== "none", "Glass", (value) => set({ glass: value ? "liquid" : "none" })),
+      }),
+      entry({
+        title: "Reduce transparency",
+        control: toggle(p.reduce_transparency, "Reduce transparency", (value) => set({ reduce_transparency: value })),
       }),
       entry({
         title: "Controls",
         control: choose({ value: picks.controls, items: CONTROL_SHAPES.map(([value, title]) => ({ value, title })), onpick: (value) => set({ controls: value }) }),
       }),
       entry({
-        title: "Glass",
-        control: toggle(picks.glass !== "none", "Glass", (value) => set({ glass: value ? "liquid" : "none" })),
+        title: "Corner radius",
+        control: valueSlider({ label: "Corner radius", value: picks.radius, min: 0, max: 1, step: 0.01, display: percent, onchange: (value) => set({ radius: picks.limits.radius * value * value }) }),
       }),
+    ]),
+    group("Text"),
+    card([
       entry({
         title: "UI font",
         control: choose({
@@ -451,17 +486,6 @@ function appearancePage() {
           onpick: (value) => set({ mono_font_family: value }),
         }),
       }),
-    ]),
-    group("Sidebar"),
-    card([
-      entry({
-        title: "Program colors",
-        description: "Fill sidebar tiles with the running program's colors",
-        control: toggle(p.program_colors, "Program colors", (value) => set({ program_colors: value })),
-      }),
-    ]),
-    group("Size"),
-    card([
       entry({
         title: "Text size",
         control: valueSlider({ label: "Text size", value: p.zoom, min: 0.5, max: 3, step: 0.05, display: percent, commitOnRelease: true, onchange: (value) => set({ zoom: value }) }),
@@ -475,16 +499,8 @@ function appearancePage() {
         }),
       }),
     ]),
-    group("Accessibility"),
+    group("Behavior"),
     card([
-      entry({
-        title: "Increase contrast",
-        control: valueSlider({ label: "Increase contrast", value: p.contrast - 1, min: 0, max: 1, step: 0.01, display: percent, onchange: (value) => set({ contrast: 1 + value }) }),
-      }),
-      entry({
-        title: "Reduce transparency",
-        control: toggle(p.reduce_transparency, "Reduce transparency", (value) => set({ reduce_transparency: value })),
-      }),
       entry({
         title: "Motion",
         control: choose({
@@ -904,6 +920,7 @@ function aboutPage() {
 
 const PAGES = {
   appearance: appearancePage,
+  interface: interfacePage,
   panes: panesPage,
   terminal: terminalPage,
   hosts: hostsPage,
@@ -936,7 +953,7 @@ function render() {
   const scroller = page.querySelector(".settings-scroll");
   const offset = scroller?.dataset.section === view.section ? scroller.scrollTop : 0;
   renderNav();
-  const list = view.section === "appearance";
+  const list = view.section === "appearance" || view.section === "interface";
   const content = h("div", { class: `settings-content${list ? " list" : ""}` }, PAGES[view.section]());
   const next = h("div", { class: "settings-scroll", "data-section": view.section }, content);
   page.replaceChildren(next);
