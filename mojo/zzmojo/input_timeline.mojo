@@ -309,6 +309,7 @@ struct InputTimeline(Movable):
         view.prepare_palette_input(ui, input, host)
         view.prepare_search_input(ui, input, host)
         view.prepare_chooser_input(ui, input)
+        view.prepare_windows_input(ui, input)
         self.merge(input, consumed_prefix)
         var deferred = False
         for captured in self.pending:
@@ -319,7 +320,11 @@ struct InputTimeline(Movable):
         swap(pending, self.pending)
         self.pending_bytes = 0
         var remaining = List[TextEvent]()
-        var unmark = view.palette_closed_frame or view.chooser_unmark
+        var unmark = (
+            view.palette_closed_frame
+            or view.chooser_unmark
+            or view.windows_unmark
+        )
         var composed = len(input.marked) > 0
         var ordered = List[TextEvent]()
         swap(ordered, input.events)
@@ -384,6 +389,8 @@ struct InputTimeline(Movable):
                         composed = False
                 continue
             if event.kind == TEXT_PRIMARY or event.kind == TEXT_POINTER:
+                if view.windows_event(ui, input, event, host):
+                    continue
                 if view.ordered_pointer(ui, input, event, host):
                     unmark = True
                     composed = False
@@ -395,6 +402,8 @@ struct InputTimeline(Movable):
             else:
                 filtered.append(event)
             for piece in filtered:
+                if view.windows_event(ui, input, piece, host):
+                    continue
                 if view.chooser_event(ui, input, piece):
                     continue
                 if view.palette_event(ui, input, piece, host):
@@ -430,6 +439,8 @@ struct InputTimeline(Movable):
                             continue
                 remaining.append(piece)
         input.events = remaining^
+        view.compose_windows(ui, input)
+        unmark = unmark or view.windows_unmark
         self.pending.clear()
         self.pending_bytes = 0
         keyboard.clear_text_claims()

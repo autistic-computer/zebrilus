@@ -83,7 +83,9 @@ struct Workspace(App, Movable):
             var palette_input = (
                 self.view.palette.owns_input(ui) and ui.text_input
             )
-            var chooser_input = self.view.chooser.input_scope(ui)
+            var chooser_input = self.view.chooser.input_scope(
+                ui
+            ) or self.view.windows.owns_input(ui)
             var text_key = (
                 ui.focus if search_input
                 or palette_input
@@ -164,6 +166,7 @@ struct Workspace(App, Movable):
                 return True
             if (
                 self.view.chooser.opened()
+                or self.view.windows.opened()
                 or len(win.text.primaries) > 0
                 or len(win.text.pointers) > 0
             ):
@@ -191,6 +194,7 @@ def main() raises:
     var args = argv()
     var path = getenv("ZZ_SOCKET", "")
     var frames = 0
+    var native_chooser = False
     var offset = 1
     var descriptors: Optional[Tuple[Int32, Int32, Int32]] = None
     while offset < len(args):
@@ -216,18 +220,24 @@ def main() raises:
                 raise Error("invalid application resume descriptors")
             descriptors = (Int32(socket), Int32(payload), Int32(reply))
             offset += 4
+        elif args[offset] == "--native-chooser":
+            native_chooser = True
+            offset += 1
         elif args[offset] == "--frames" and offset + 1 < len(args):
             frames = Int(args[offset + 1])
             offset += 2
         else:
-            raise Error("usage: zz-mojo-app --socket PATH [--frames N]")
+            raise Error(
+                "usage: zz-mojo-app --socket PATH [--frames N]"
+                " [--native-chooser]"
+            )
     if path.byte_length() == 0:
         raise Error("set ZZ_SOCKET or pass --socket PATH")
     var startup: Optional[ResumeStartup] = None
     if descriptors:
         var socket, payload, reply = descriptors.value()
         startup = ResumeStartup(socket, payload, reply)
-    var app = Workspace(path, startup^)
+    var app = Workspace(path, startup^, native_chooser)
     run_app(
         app,
         AppOptions(frames=frames, quit_keys=False),

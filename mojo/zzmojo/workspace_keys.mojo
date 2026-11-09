@@ -178,6 +178,23 @@ def route_workspace_key(
             view.dispatch_chooser(ui, choice.value())
         result.after = ui.focus
         return result^
+    if view.windows.opened() and not view.palette.opened():
+        result.claimed = True
+        if key.release:
+            result.key = keyboard.route(
+                view.model,
+                False,
+                key,
+                Span(input.bytes),
+                view.focus_epoch,
+                view.input_pane(),
+            )
+            return result^
+        if not view.windows.owns_input(ui) or not view.active:
+            keyboard.claim_text(key, Span(input.bytes))
+            keyboard.claim_text_command(key)
+        result.after = ui.focus
+        return result^
     var palette = view.plan_palette(
         ui, keyboard, key, Span(input.bytes), raw.cancel
     )

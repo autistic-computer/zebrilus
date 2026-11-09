@@ -1,6 +1,6 @@
 # Windows chooser
 
-The Windows chooser is a distinct command-palette mode. It uses `UnifiedPalette.rebuild_window_chooser`, rather than the generic Panes/Clients modal. The native capability remains disabled by default while the Buffer frontend is being completed. `WindowChooserRuntime` in `zzmojo/window_chooser_runtime.mojo` is the one entry point the workspace needs; it is not wired into `WorkspaceView` yet, and the wiring steps are at the end of this page.
+The Windows chooser is a distinct command-palette mode. It uses `UnifiedPalette.rebuild_window_chooser`, rather than the generic Panes/Clients modal. The native capability remains disabled by default while the Buffer frontend is being completed. `WindowChooserRuntime` in `zzmojo/window_chooser_runtime.mojo` is the one entry point the workspace needs; `WorkspaceView` runs it when the client is started with the experimental chooser capability (`zz-mojo-app --native-chooser`), as described at the end of this page.
 
 ## Rows and search
 
@@ -48,17 +48,16 @@ mjui reports an empty composition after any unmark, including focus changes. An 
 
 Large-row navigation sampling keeps the reference harness bounded; the independent palette-navigation differential covers the full navigation policy. Scoped clippy of the `zz-ui` fixture and the three reference examples passes with warnings denied at 1,267 MiB under the shared 4 GiB guard.
 
-## Wiring WindowChooserRuntime into the workspace
+## In the workspace
 
-The integrator owns `view.mojo`, `backend.mojo`, `workspace_keys.mojo`, `input_timeline.mojo` and `stream_transport.mojo`. Steps:
+`WorkspaceView.windows` is the one `WindowChooserRuntime`. It is active only while `backend.job[].native_chooser` is on, the backend is online and `model.dialogs.chooser` has kind 0; the Panes/Clients chooser keeps the other kinds. The app turns the capability on with `--native-chooser`; it stays off by default.
 
-1. State. Keep one `WindowChooserRuntime` in `WorkspaceView` next to `chooser`. It runs only while `backend.job[].native_chooser` is on, the backend is online and `model.dialogs.chooser` has kind 0; the Panes/Clients chooser keeps the other kinds.
-2. Frame start. Where `prepare_chooser_input` runs, call `observe(ui, backend, model.dialogs, chooser_source(), palette.opened(), focus_epoch, input)`, then `prepare(ui, input)`. When the result has `replaced_local`, close the local palette. When it has `closed` and the local palette is not open, give focus back to the terminal as the Panes chooser does.
-3. Ordered input. In `InputTimeline.process`, offer every event to `ordered(ui, backend, input, event, host, focus_epoch)` before `view.chooser_event`, `view.palette_event` and `view.ordered_pointer`. True means the chooser consumed it. It handles typed and committed text, editing commands, PRIMARY paste on the field and pointer events on the field and rows, in their timeline order. Only the middle press pastes PRIMARY; the release and drag markers of the same click return false and go on to `view.ordered_pointer`. Routed key markers stay with the timeline.
-4. Frame end. After the event loop call `compose(ui, backend, input, focus_epoch)` so the composition that is current at the end of the frame lands after the frame's commits. False means the composition was over 64 KiB; show a notice. When `unmark` is set the chooser opened, closed or handed input away this frame: drop the platform composition the way `chooser_unmark` does.
-5. Wheel. In `view.scroll`, offer wheel events to `wheel(ui, x, y, dx, dy, precise)` first while the chooser is open.
-6. Drawing. Call `paint(ui, theme)` once per frame after the workspace is built. It opens the modal layer, draws the field, rows, disclosures and hints, applies the pending list scroll and records whether the chooser owns input for the next frame's composition.
-7. Local palette. When `returned` is set (Backspace on an empty query), open the local palette and call `local_opened(model.dialogs.chooser_revision)`. Call `local_opened` whenever the user opens the local palette too, so a chooser revision that is already behind it does not reopen over it, while a newer revision replaces it.
-8. Errors. Every raising method leaves the field, the controller and the queue as they were. Show the error as a notice, as the workspace does for the Panes chooser.
+- Frame start: `prepare_windows_input` runs next to `prepare_chooser_input` (from `InputTimeline.process`, or from `build` when no timeline ran): `observe` with the chooser source, the local palette state and the focus epoch, then `prepare`. An owner change drops the terminal composition and blurs the pointer; `replaced_local` closes the local palette and gives the field focus back; `closed` with no local palette returns focus to the terminal.
+- Ordered input: `InputTimeline.process` offers each pointer, PRIMARY, text and command event to `windows_event` before the Panes chooser, the palette, search and `ordered_pointer`. A PRIMARY release or drag returns false and goes on to `ordered_pointer`. While the chooser is open, `window.mojo` sends keys through the raw timeline path, `route_workspace_key` claims them without routing them anywhere (a release still reaches the pane that took its press) so their text and editing commands reach the field, and the field gets the platform text input.
+- Frame end: `compose_windows` runs after the event loop, a composition over 64 KiB shows a notice, and the `unmark` flag joins the timeline's unmark the way `chooser_unmark` does.
+- `returned` (Backspace on an empty query) opens the local palette at once, so the rest of the frame's input goes there, and calls `local_opened(model.dialogs.chooser_revision)`. Every user open of the local palette calls `local_opened` too.
+- The wheel goes to `wheel` first while the chooser is open, `mouse` ignores pointer events under it, and `paint` runs once per build after the workspace and the Panes chooser. Any refusal shows as a notice and leaves the field, controller and queue as they were.
+
+`python3 mojo/scripts/window_chooser_workspace.py` (pixi task `window-chooser-workspace-smoke`) drives a private daemon's `choose-tree -w` through the live workspace: the field takes focus, a disclosure click on a two-pane window selects and expands it, typed text plus a middle-click PRIMARY paste at the end of the field build the query `second`, and Enter selects that window, closes the chooser and returns focus to the terminal.
 
 Turn `native_chooser` on by default only after the Buffer frontend is complete.

@@ -106,6 +106,7 @@ from .editor_pointer import (
 from .actions import MAX_PENDING_INPUT_BYTES, MAX_PENDING_ACTIONS
 from .palette_controller import PALETTE_INPUT_BYTES
 from .chooser_live import LiveChooser
+from .window_chooser_runtime import WindowChooserRuntime
 from .chooser_session import ChooserSource, ChooserPlan
 from .which_key_live import LiveWhichKey, WhichKeyIntent, WhichKeyContext
 from .prefix_bindings import PrefixTable
@@ -209,6 +210,9 @@ struct WorkspaceView(Movable):
     var chooser_closed_frame: Bool
     var chooser_unmark: Bool
     var chooser_restore_output: Optional[Tuple[UInt64, UInt64, UInt64]]
+    var windows: WindowChooserRuntime
+    var windows_prepared: Bool
+    var windows_unmark: Bool
     var which_key: LiveWhichKey
     var which_key_delay: UInt64
     var which_key_changes: UInt64
@@ -270,6 +274,9 @@ struct WorkspaceView(Movable):
         self.chooser_closed_frame = False
         self.chooser_unmark = False
         self.chooser_restore_output = None
+        self.windows = WindowChooserRuntime()
+        self.windows_prepared = False
+        self.windows_unmark = False
         self.which_key = LiveWhichKey()
         var macos = CompilationTarget.is_macos()
         var config = DesktopKeyConfig(macos)
@@ -418,6 +425,87 @@ struct WorkspaceView(Movable):
                 was_open or ui.focus == self.chooser.field
             ):
                 ui.focus = TERMINAL_KEY
+            self.primary_notice(ui, String(error))
+
+    def modal_open(self) -> Bool:
+        return self.chooser.opened() or self.windows.opened()
+
+    def prepare_windows_input(mut self, mut ui: Ui, input: TextInput):
+        self.windows_prepared = True
+        self.windows_unmark = False
+        try:
+            var observed = self.windows.observe(
+                ui,
+                self.backend,
+                self.model.dialogs,
+                self.chooser_source(),
+                self.palette.opened(),
+                self.focus_epoch,
+                input,
+            )
+            if observed.owner_changed:
+                self.marked = None
+                self.blur_pointer(True)
+            if observed.replaced_local and self.palette.opened():
+                self.close_palette(ui)
+                ui.focus = self.windows.component.field.key
+                ui.text_input = True
+            if observed.closed and not self.palette.opened():
+                ui.focus = TERMINAL_KEY
+                self.observe_output(ui)
+            self.windows_unmark = self.windows.unmark
+            self.windows.prepare(ui, input)
+        except error:
+            self.windows.reset(ui)
+            self.windows_unmark = True
+            if not self.palette.opened():
+                ui.focus = TERMINAL_KEY
+            self.primary_notice(ui, String(error))
+
+    def windows_returned(mut self, mut ui: Ui) raises:
+        if self.windows.unmark:
+            self.windows_unmark = True
+        if not self.windows.returned:
+            return
+        self.windows.returned = False
+        self.open_local_palette(ui)
+
+    def open_local_palette(mut self, mut ui: Ui) raises:
+        self.blur_pointer(True)
+        self.marked = None
+        self.palette.open(ui, self.model, self.backend.online)
+        if self.palette.component.opened():
+            self.windows.local_opened(self.model.dialogs.chooser_revision)
+            ui.focus = self.palette.component.field_key
+            ui.text_input = True
+        else:
+            self.close_palette(ui)
+
+    def windows_event[
+        Host: Clipboard
+    ](
+        mut self, mut ui: Ui, input: TextInput, event: TextEvent, mut host: Host
+    ) raises -> Bool:
+        if not self.windows.opened() or self.palette.opened():
+            return False
+        var consumed = True
+        try:
+            consumed = self.windows.ordered(
+                ui, self.backend, input, event, host, self.focus_epoch
+            )
+        except error:
+            self.primary_notice(ui, String(error))
+        self.windows_returned(ui)
+        return consumed
+
+    def compose_windows(mut self, mut ui: Ui, input: TextInput):
+        try:
+            if not self.windows.compose(
+                ui, self.backend, input, self.focus_epoch
+            ):
+                self.primary_notice(ui, "Chooser composition exceeds 64 KiB")
+            self.windows_returned(ui)
+        except error:
             self.primary_notice(ui, String(error))
 
     def chooser_event(
@@ -601,6 +689,7 @@ struct WorkspaceView(Movable):
         self.marked = None
         self.palette.open(ui, self.model, self.backend.online)
         if self.palette.component.opened():
+            self.windows.local_opened(self.model.dialogs.chooser_revision)
             var clip = SearchClipboard()
             _ = self.palette.component.prepare(
                 ui,
@@ -780,6 +869,7 @@ struct WorkspaceView(Movable):
                 self.blur_pointer(True)
                 self.marked = None
                 self.palette.open(ui, self.model, self.backend.online)
+                self.windows.local_opened(self.model.dialogs.chooser_revision)
                 self.palette.insert_pane = pane
                 var body = String()
                 if delivery.message.dir:
@@ -1454,12 +1544,12 @@ struct WorkspaceView(Movable):
         if focused:
             self.marked = None
         if transition.kind == 2 and focused:
-            if not self.palette.opened() and not self.chooser.opened():
+            if not self.palette.opened() and not self.modal_open():
                 ui.focus = TERMINAL_KEY
             self.focus_epoch += 1
 
     def focus_output(mut self, mut ui: Ui) raises:
-        if self.palette.opened() or self.chooser.opened():
+        if self.palette.opened() or self.modal_open():
             return
         if not self.output.id or not self.output.pane:
             return
@@ -1755,7 +1845,7 @@ struct WorkspaceView(Movable):
                         and previous_focus != self.palette.component.field_key
                     )
                 return False
-            if self.chooser.opened():
+            if self.modal_open():
                 return False
             var hit = ui.hit_test(pointer.x, pointer.y)
             var target = self.search.target_for_field(hit)
@@ -1857,6 +1947,12 @@ struct WorkspaceView(Movable):
             event.kind == MOUSE_MIDDLE_UP and UInt8(1) in self.pointer.captures
         )
         if (
+            self.windows.opened()
+            and not self.palette.opened()
+            and not captured_middle_release
+        ):
+            return
+        if (
             self.chooser.opened()
             and not self.palette.opened()
             and not captured_middle_release
@@ -1920,6 +2016,10 @@ struct WorkspaceView(Movable):
         mut self, mut ui: Ui, event: ScrollEvent, x: Float32, y: Float32
     ) raises:
         if self.palette.opened():
+            return
+        if self.windows.opened():
+            if self.windows.wheel(ui, x, y, event.dx, event.dy, event.precise):
+                ui.request_wake(ui.time)
             return
         if self.chooser.opened():
             if self.chooser.wheel(ui, x, y, event.dx, event.dy, event.precise):
@@ -1989,7 +2089,7 @@ struct WorkspaceView(Movable):
             self.forward_pointer(ui, routed.value())
 
     def modifiers(mut self, mut ui: Ui) raises:
-        if self.palette.opened() or self.chooser.opened():
+        if self.palette.opened() or self.modal_open():
             return
         if not ui.pointer_in:
             return
@@ -2616,7 +2716,7 @@ struct WorkspaceView(Movable):
             self.model.routing.repeat,
             prefix^,
             self.palette.opened()
-            or self.chooser.opened()
+            or self.modal_open()
             or Bool(self.output.id),
             TOOLBAR_HEIGHT,
             STATUS_HEIGHT,
@@ -2662,6 +2762,15 @@ struct WorkspaceView(Movable):
                     break
                 search_skip += 1
         self.chooser_prepared = False
+        if not self.windows_prepared:
+            self.prepare_windows_input(ui, input)
+            var host = SearchClipboard()
+            for index in range(search_skip, len(input.events)):
+                if not self.windows_event(ui, input, input.events[index], host):
+                    break
+                search_skip += 1
+            self.compose_windows(ui, input)
+        self.windows_prepared = False
         self.poll(ui.time)
         if self.config_notice:
             self.primary_notice(ui, self.config_notice.take())
@@ -2736,7 +2845,7 @@ struct WorkspaceView(Movable):
             self.blur_pointer(
                 self.search_preserves_output(ui)
                 or self.palette.opened()
-                or self.chooser.opened()
+                or self.modal_open()
             )
         if self.pointer.selection_lines != 0:
             if ui.time >= self.next_autoscroll:
@@ -2853,7 +2962,7 @@ struct WorkspaceView(Movable):
             self.blur_pointer(
                 self.search_preserves_output(ui)
                 or self.palette.opened()
-                or self.chooser.opened()
+                or self.modal_open()
             )
         self.pointer_focus_pane = (
             self.input_pane() if ui.focus == TERMINAL_KEY
@@ -2878,6 +2987,13 @@ struct WorkspaceView(Movable):
                 self.chooser.reset(ui)
                 ui.focus = TERMINAL_KEY
                 self.primary_notice(ui, String(error))
+        try:
+            self.windows.paint(ui, self.theme)
+        except error:
+            self.windows.reset(ui)
+            if not self.palette.opened():
+                ui.focus = TERMINAL_KEY
+            self.primary_notice(ui, String(error))
         if self.palette.component.opened():
             ui.focus = self.palette.component.field_key
             var result = self.palette.component.build(
