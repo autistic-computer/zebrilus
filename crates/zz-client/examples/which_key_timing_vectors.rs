@@ -96,7 +96,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             let arguments = match operation {
                 0 => vec![],
                 1 => vec![1, index & 1, seed & 1],
-                2 => vec![index & 1, (index + seed) >> 1 & 1],
+                2 => vec![index & 1, index.midpoint(seed) & 1],
                 3 => vec![
                     state.generation.wrapping_sub(index & 1),
                     1,
