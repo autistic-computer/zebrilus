@@ -248,7 +248,28 @@ def bounds(programs: PalettePrograms) raises:
     hosts[0].platform = HostPlatform(4, 0)
     with assert_raises(contains="platform is invalid"):
         _ = FleetModel(0, None, Span(hosts), programs)
+    hosts[0].platform = HostPlatform(1, 2)
+    with assert_raises(contains="platform is invalid"):
+        _ = FleetModel(0, None, Span(hosts), programs)
     hosts[0].platform = HostPlatform(3, 3)
+    var reason = List[UInt8](capacity=64 * 1024)
+    for _ in range(64 * 1024):
+        reason.append(121)
+    var failing = List[FleetHostInput]()
+    for id in range(255):
+        failing.append(
+            FleetHostInput(
+                UInt32(id),
+                String(),
+                HostState.unreachable(String(from_utf8=Span(reason))),
+                HostPlatform(0, 0),
+                None,
+            )
+        )
+    assert_equal(len(FleetModel(0, None, Span(failing), programs).hosts), 255)
+    failing.append(failing[0].copy())
+    with assert_raises(contains="byte limit"):
+        _ = FleetModel(0, None, Span(failing), programs)
     var snapshot = MuxSnapshot()
     var session = SessionSnapshot()
     session.id = 1

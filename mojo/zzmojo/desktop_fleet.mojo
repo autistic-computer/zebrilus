@@ -349,9 +349,16 @@ struct FleetModel(Copyable, Equatable, Movable):
         var budget = _Budget()
         for host in hosts:
             host.state.validate()
-            if host.platform.kind > 3 or host.platform.distro > 4:
+            if (
+                host.platform.kind > 3
+                or host.platform.distro > 4
+                or host.platform.kind != 3
+                and host.platform.distro != 0
+            ):
                 raise Error("desktop host platform is invalid")
-            budget.take(1, host.name.byte_length())
+            budget.take(
+                1, host.name.byte_length() + host.state.reason.byte_length()
+            )
             var sessions = List[FleetSession]()
             if host.snapshot:
                 sessions = _fleet_sessions(
