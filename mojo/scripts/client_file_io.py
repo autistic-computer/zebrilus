@@ -32,7 +32,7 @@ def request(operation, path=b"-", data=b"", append=False, binary=False):
         payload += bytes([append]) + blob(data)
     if operation == 2:
         payload += bytes([binary])
-    return struct.pack("<I", len(payload) + 4) + b"\0\0\x76\0" + payload
+    return struct.pack("<I", len(payload) + 4) + b"\0\0\x78\0" + payload
 
 
 def responses(data):
