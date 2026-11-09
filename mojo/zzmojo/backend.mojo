@@ -309,7 +309,6 @@ struct AsyncBackend(Movable):
     var path_source: Optional[PathSource]
     var platform: HostPlatform
     var capabilities: UInt64
-    var connected_once: Bool
     var browser_commands: List[BrowserCommandEvent]
 
     def __init__(
@@ -330,7 +329,6 @@ struct AsyncBackend(Movable):
         self.path_source = None
         self.platform = HostPlatform(0, 0)
         self.capabilities = 0
-        self.connected_once = False
         self.browser_commands = List[BrowserCommandEvent]()
 
     def __deinit__(deinit self):
@@ -571,7 +569,6 @@ struct AsyncBackend(Movable):
                 self.path_source = source
                 self.platform = self.job[].connection.value().platform
                 self.capabilities = self.job[].connection.value().capabilities
-                self.connected_once = True
                 var commands = List[BrowserCommandEvent]()
                 swap(
                     commands,

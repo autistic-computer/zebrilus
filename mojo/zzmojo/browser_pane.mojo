@@ -526,7 +526,8 @@ struct BrowserPane(Movable):
     def wheel(
         mut self, x: Float32, y: Float32, dx: Float32, dy: Float32, mods: UInt32
     ) -> Bool:
-        var route = BrowserInput().pointer(
+        var probe = BrowserInput()
+        var route = probe.pointer(
             BROWSER_POINTER_LEAVE,
             0,
             0,

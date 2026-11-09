@@ -4,7 +4,7 @@ from mjui.ui import Ui, Style
 from mjui.image import ImageCache
 from mjui.input import KeyEvent
 from mjui.sys.dispatch import MainQueue
-from mjui.web import WebRuntime, WebOptions, web_flags
+from mjui.web import WebRuntime, WebOptions
 from mjui.widgets.key import sub
 from mjui.widgets.penna import PennaTheme, label, button
 from .tree_model import MuxSnapshot
@@ -12,12 +12,7 @@ from .browser_pane import BrowserPane
 from .browser_wire import BrowserCommand
 from .browser_state import BrowserEffect
 from .browser_presentation import BrowserPresentation
-from .browser_input import (
-    BrowserInput,
-    BrowserKeyRoute,
-    BROWSER_KEY_PASS,
-    BROWSER_POINTER_LEAVE,
-)
+from .browser_input import BrowserKeyRoute, BROWSER_KEY_PASS
 from .desktop_native_bindings import DesktopNativeBinding
 
 comptime BROWSER_HOST = is_defined["ZZ_BROWSER"]()
@@ -454,26 +449,7 @@ struct BrowserDeck(WorkspaceBrowser):
         var index = self._index(pane)
         if index < 0:
             return False
-        var probe = BrowserInput()
-        ref target = self.panes[index]
-        var route = probe.pointer(
-            BROWSER_POINTER_LEAVE,
-            0,
-            0,
-            target.left,
-            target.top,
-            target.width,
-            target.height,
-            x,
-            y,
-        )
-        var page = target.active_page()
-        if not route.forward or page < 0:
-            return False
-        target.pages[page].page.wheel(
-            Float32(route.x), Float32(route.y), web_flags(mods), dx, dy
-        )
-        return True
+        return self.panes[index].wheel(x, y, dx, dy, mods)
 
     def action(
         mut self, pane: UInt64, binding: DesktopNativeBinding
