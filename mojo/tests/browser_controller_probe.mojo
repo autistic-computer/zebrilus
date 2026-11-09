@@ -155,7 +155,7 @@ def main() raises:
     var expected_effects = len(model.effects)
     with assert_raises():
         _ = prepare_browser_event(
-            3, model, host, host.source(12).value(), event(8)
+            3, model, host, host.source(12).value(), event(14)
         )
     assert_equal(model.generation, expected_generation)
     assert_equal(len(model.effects), expected_effects)

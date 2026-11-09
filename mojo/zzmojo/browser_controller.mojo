@@ -12,12 +12,33 @@ from .browser_state import (
     BrowserTab,
     MAX_BROWSER_TABS,
     MAX_BROWSER_RETAINED_BYTES,
+    browser_effect_native,
+    BROWSER_CLIPBOARD,
+    BROWSER_NOTIFY,
+    BROWSER_FOCUS_PAGE,
 )
 from .browser_host import BrowserHost, BrowserSource
 from .palette_text import palette_trim
 
 
-@fieldwise_init
+comptime BROWSER_EVENT_CREATED: UInt8 = 0
+comptime BROWSER_EVENT_ADDRESS: UInt8 = 1
+comptime BROWSER_EVENT_TITLE: UInt8 = 2
+comptime BROWSER_EVENT_LOADING: UInt8 = 3
+comptime BROWSER_EVENT_LOAD_FAILED: UInt8 = 4
+comptime BROWSER_EVENT_RENDERER_STOPPED: UInt8 = 5
+comptime BROWSER_EVENT_CLOSED: UInt8 = 6
+comptime BROWSER_EVENT_FAVICON: UInt8 = 7
+comptime BROWSER_EVENT_POPUP_REQUESTED: UInt8 = 8
+comptime BROWSER_EVENT_POPUP_CREATED: UInt8 = 9
+comptime BROWSER_EVENT_TAB_CLOSED: UInt8 = 10
+comptime BROWSER_EVENT_ELEMENT_PICKED: UInt8 = 11
+comptime BROWSER_EVENT_PICK_FAILED: UInt8 = 12
+comptime BROWSER_EVENT_PICK_CANCELLED: UInt8 = 13
+comptime MAX_BROWSER_FAVICON_BYTES = 8192
+comptime MAX_BROWSER_PICK_BYTES = 2 * 1024 * 1024
+
+
 struct BrowserMetadataEvent(Copyable, Movable):
     var kind: UInt8
     var text: String
@@ -26,6 +47,30 @@ struct BrowserMetadataEvent(Copyable, Movable):
     var back: Bool
     var forward: Bool
     var payload: List[UInt8]
+    var session: UInt64
+    var foreground: Bool
+
+    def __init__(
+        out self,
+        kind: UInt8,
+        text: String = String(),
+        url: String = String(),
+        loading: Bool = False,
+        back: Bool = False,
+        forward: Bool = False,
+        payload: List[UInt8] = List[UInt8](),
+        session: UInt64 = 0,
+        foreground: Bool = False,
+    ):
+        self.kind = kind
+        self.text = text
+        self.url = url
+        self.loading = loading
+        self.back = back
+        self.forward = forward
+        self.payload = payload.copy()
+        self.session = session
+        self.foreground = foreground
 
 
 @fieldwise_init
@@ -58,7 +103,7 @@ struct BrowserPlan(Movable):
 
 
 def browser_metadata_supported(kind: UInt8) -> Bool:
-    return kind <= 7
+    return kind <= BROWSER_EVENT_PICK_CANCELLED
 
 
 @inline(.never)
@@ -80,7 +125,11 @@ def prepare_browser_event(
     if (
         event.text.byte_length() > MAX_BROWSER_URL_BYTES
         or event.url.byte_length() > MAX_BROWSER_URL_BYTES
-        or len(event.payload) > 8192
+        or len(event.payload)
+        > (
+            MAX_BROWSER_PICK_BYTES if event.kind
+            == BROWSER_EVENT_ELEMENT_PICKED else MAX_BROWSER_FAVICON_BYTES
+        )
     ):
         raise Error("browser event exceeds retained input admission")
     var next = model.copy()
@@ -90,6 +139,11 @@ def prepare_browser_event(
         next.drop_history(source.tab)
         if active:
             next.element_pick_active = False
+    elif event.kind == BROWSER_EVENT_TAB_CLOSED:
+        if index >= 0 and next.tabs[index].popup:
+            if len(next.tabs) == 1:
+                _ = next.open_tab(None, True)
+            next.close_tab(source.tab)
     elif index < 0:
         raise Error("browser event targets a removed tab")
     elif event.kind == 0:
@@ -158,8 +212,46 @@ def prepare_browser_event(
                 event.payload,
             )
         )
+    elif event.kind == BROWSER_EVENT_POPUP_REQUESTED:
+        _ = next.open_tab(Optional(event.url), event.foreground)
+    elif event.kind == BROWSER_EVENT_POPUP_CREATED:
+        _adopt_popup(pane, next, host, index, event)
+    elif active and event.kind == BROWSER_EVENT_ELEMENT_PICKED:
+        next.element_pick_active = False
+        next.effects.append(
+            BrowserEffect(
+                BROWSER_CLIPBOARD,
+                source.tab,
+                event.text,
+                0,
+                payload=event.payload,
+            )
+        )
+        next.effects.append(
+            BrowserEffect(
+                BROWSER_NOTIFY,
+                source.tab,
+                String(
+                    "Element context + screenshot copied"
+                ) if len(event.payload) else String("Element context copied"),
+                0,
+            )
+        )
+    elif active and event.kind == BROWSER_EVENT_PICK_FAILED:
+        next.element_pick_active = False
+        next.effects.append(
+            BrowserEffect(
+                BROWSER_NOTIFY,
+                source.tab,
+                String("Could not inspect that element"),
+                0,
+                flag=True,
+            )
+        )
+    elif active and event.kind == BROWSER_EVENT_PICK_CANCELLED:
+        next.element_pick_active = False
     next.validate()
-    _freeze_host_effects(pane, len(model.effects), next, host)
+    bind_browser_effects(pane, len(model.effects), next, host)
     return BrowserPlan(
         model.generation,
         model.identity(),
@@ -168,6 +260,38 @@ def prepare_browser_event(
         host.actor.copy(),
         next^,
     )
+
+
+def _adopt_popup(
+    pane: UInt64,
+    mut next: BrowserModel,
+    host: BrowserHost,
+    opener: Int,
+    event: BrowserMetadataEvent,
+) raises:
+    var popup = host.source(event.session)
+    if (
+        not popup
+        or popup.value().pane != pane
+        or popup.value().tab != next.next_tab_id
+    ):
+        raise Error("browser popup was not adopted by the native host")
+    if len(next.tabs) >= MAX_BROWSER_TABS or next.next_tab_id == UInt64.MAX:
+        raise Error("browser tab identity or count exhausted")
+    var source = next.current.copy() if next.tabs[
+        opener
+    ].id == next.active_tab else next.tabs[opener].content.copy()
+    var id = next.next_tab_id
+    next.next_tab_id += 1
+    var tab = BrowserTab(id, event.url)
+    tab.popup = True
+    tab.content.page_zoom_factor = source.page_zoom_factor
+    tab.content.page_zoom_percent = source.page_zoom_percent
+    next.tabs.append(tab^)
+    if event.foreground:
+        next._activate(id)
+        next.effects.append(BrowserEffect(BROWSER_FOCUS_PAGE, id, String(), 0))
+    next.publish()
 
 
 @inline(.never)
@@ -316,11 +440,11 @@ def accept_browser_address(
 
 
 @inline(.never)
-def _freeze_host_effects(
+def bind_browser_effects(
     pane: UInt64, start: Int, mut model: BrowserModel, host: BrowserHost
 ):
     for i in range(start, len(model.effects)):
-        if model.effects[i].kind == 4 or model.effects[i].kind == 6:
+        if browser_effect_native(model.effects[i].kind):
             for entry in host.sessions:
                 if entry.pane == pane and entry.tab == model.effects[i].tab:
                     model.effects[i].source = host.source(entry.session)
@@ -372,7 +496,7 @@ def prepare_browser_transition(
             next.activate(target.value())
     else:
         raise Error("unknown browser transition")
-    _freeze_host_effects(pane, len(model.effects), next, host)
+    bind_browser_effects(pane, len(model.effects), next, host)
     next.validate()
     return BrowserPlan(
         model.generation,

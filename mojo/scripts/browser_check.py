@@ -8,7 +8,7 @@ ROOT = Path(__file__).resolve().parents[2]
 
 def main():
     runpy.run_path(str(ROOT / 'scripts/port/guard.py'))['ensure']()
-    for name in ['browser_state_vectors.py', 'browser_host_vectors.py', 'browser_controller_check.py', 'browser_wire_vectors.py']:
+    for name in ['browser_state_vectors.py', 'browser_host_vectors.py', 'browser_controller_check.py', 'browser_actions_check.py', 'browser_wire_vectors.py']:
         subprocess.run(['python3', str(ROOT / 'mojo/scripts' / name)], cwd=ROOT, check=True)
     commands = [
         ['cargo', 'clippy', '--locked', '--offline', '-p', 'zz-client', '--example', 'browser_state_vectors', '--example', 'browser_host_vectors', '--', '-D', 'warnings'],

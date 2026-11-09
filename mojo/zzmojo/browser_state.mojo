@@ -6,6 +6,40 @@ from .browser_url import browser_url, browser_profile, MAX_BROWSER_URL_BYTES
 comptime MAX_BROWSER_TABS = 4096
 comptime MAX_BROWSER_RETAINED_BYTES = 4 * 1024 * 1024
 
+comptime BROWSER_SHOW: UInt8 = 0
+comptime BROWSER_REQUEST: UInt8 = 1
+comptime BROWSER_CLOSE: UInt8 = 2
+comptime BROWSER_PUBLISH: UInt8 = 3
+comptime BROWSER_CANCEL_PICK: UInt8 = 4
+comptime BROWSER_FOCUS_ADDRESS: UInt8 = 5
+comptime BROWSER_NAVIGATE: UInt8 = 6
+comptime BROWSER_PROFILE: UInt8 = 7
+comptime BROWSER_RECREATE: UInt8 = 8
+comptime BROWSER_VISIT: UInt8 = 9
+comptime BROWSER_TITLE: UInt8 = 10
+comptime BROWSER_FAVICON: UInt8 = 11
+comptime BROWSER_HISTORY_USE: UInt8 = 12
+comptime BROWSER_ZOOM: UInt8 = 13
+comptime BROWSER_BACK: UInt8 = 14
+comptime BROWSER_FORWARD: UInt8 = 15
+comptime BROWSER_RELOAD: UInt8 = 16
+comptime BROWSER_DEVTOOLS: UInt8 = 17
+comptime BROWSER_EDIT: UInt8 = 18
+comptime BROWSER_START_PICK: UInt8 = 19
+comptime BROWSER_FOCUS_PAGE: UInt8 = 20
+comptime BROWSER_NOTIFY: UInt8 = 21
+comptime BROWSER_CLIPBOARD: UInt8 = 22
+comptime BROWSER_LAST_EFFECT = BROWSER_CLIPBOARD
+
+
+def browser_effect_native(kind: UInt8) -> Bool:
+    return (
+        kind == BROWSER_CANCEL_PICK
+        or kind == BROWSER_NAVIGATE
+        or kind >= BROWSER_ZOOM
+        and kind <= BROWSER_START_PICK
+    )
+
 
 struct BrowserContent(Copyable, Movable):
     var url: String

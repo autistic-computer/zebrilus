@@ -1,6 +1,11 @@
 from std.memory import ArcPointer
 from .browser_host import BrowserHost, BrowserSource
-from .browser_state import BrowserModel, BrowserEffect
+from .browser_state import (
+    BrowserModel,
+    BrowserEffect,
+    BROWSER_LAST_EFFECT,
+    browser_effect_native,
+)
 
 
 @fieldwise_init
@@ -51,16 +56,16 @@ def prepare_browser_delivery(
         raise Error("browser delivery belongs to another pane")
     var items = List[BrowserDeliveryItem]()
     for effect in model.effects:
-        if effect.kind > 12:
+        if effect.kind > BROWSER_LAST_EFFECT:
             raise Error("browser delivery has no consumer for this effect")
-        if (effect.kind == 4 or effect.kind == 6) and not effect.source_bound:
+        if browser_effect_native(effect.kind) and not effect.source_bound:
             raise Error(
                 "browser native effect has no event-time source admission"
             )
         var source = effect.source.copy()
         if source and source.value().pane != pane:
             raise Error("browser native effect belongs to another pane")
-        var dispatch = effect.kind != 4 and effect.kind != 6 or Bool(source)
+        var dispatch = not browser_effect_native(effect.kind) or Bool(source)
         items.append(BrowserDeliveryItem(effect.copy(), source^, dispatch))
     return BrowserDeliveryPlan(
         model.generation,
