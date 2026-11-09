@@ -4,6 +4,7 @@ from mjui.input import (
     TextInput,
     TextEvent,
     MouseEvent,
+    MOUSE_DOWN,
     TEXT_INSERT,
     TEXT_COMMAND,
     TEXT_PRIMARY,
@@ -322,7 +323,10 @@ struct WindowChooserRuntime(Movable):
     ) raises -> Bool:
         if not self.opened() or not self.current(backend):
             return False
-        if ui.hit_test(event.x, event.y) != self.component.field.key:
+        if (
+            event.kind != MOUSE_DOWN
+            or ui.hit_test(event.x, event.y) != self.component.field.key
+        ):
             return False
         if not host.supports_primary():
             return True

@@ -1,6 +1,16 @@
 from std.testing import assert_equal, assert_true, assert_false
 from mjui.ui import Ui, Style, MOTION_REDUCED
-from mjui.input import Clipboard, TextInput, TextEvent, TEXT_COMMAND, CMD_PASTE
+from mjui.input import (
+    Clipboard,
+    TextInput,
+    TextEvent,
+    MouseEvent,
+    TEXT_COMMAND,
+    CMD_PASTE,
+    MOUSE_DOWN,
+    MOUSE_MIDDLE_UP,
+    MOUSE_MIDDLE_DRAGGED,
+)
 from mjui.widgets.penna import PennaTheme
 from zzmojo.backend import AsyncBackend
 from zzmojo.actions import MAX_PENDING_ACTIONS
@@ -13,9 +23,11 @@ from zzmojo.window_chooser_runtime import WindowChooserRuntime
 
 struct WindowHost(Clipboard, Movable):
     var text: String
+    var primary: String
 
     def __init__(out self):
         self.text = String()
+        self.primary = String()
 
     def get_clipboard(self) -> String:
         return self.text
@@ -29,7 +41,10 @@ struct WindowHost(Clipboard, Movable):
         self.text = text.copy()
 
     def supports_primary(self) -> Bool:
-        return False
+        return True
+
+    def get_primary_selection(self) -> String:
+        return self.primary
 
 
 def main() raises:
@@ -116,11 +131,29 @@ def main() raises:
     assert_equal(runtime.component.field.text(), "devか")
     assert_equal(runtime.session.controller.data.query, "devか")
     assert_equal(runtime.session.controller.data.cursor, 6)
+    ui.begin_frame(1000, 700)
+    ui.open(Style.col().width(1000).height(700))
+    ui.close()
+    runtime.paint(ui, theme)
+    ui.end_frame()
+    host.primary = String("ab")
+    var field = ui.rect_of(runtime.component.field.key)
+    var middle = MouseEvent(
+        MOUSE_DOWN, field.x1 - 1, (field.y0 + field.y1) / 2, 1, 2, 0
+    )
+    assert_true(runtime.primary(ui, backend, middle, host, 0))
+    middle.kind = MOUSE_MIDDLE_DRAGGED
+    assert_false(runtime.primary(ui, backend, middle, host, 0))
+    middle.kind = MOUSE_MIDDLE_UP
+    assert_false(runtime.primary(ui, backend, middle, host, 0))
+    assert_equal(runtime.component.field.text(), "devかab")
+    assert_equal(runtime.session.controller.data.query, "devかab")
+    assert_equal(runtime.session.controller.data.cursor, 8)
     var count = len(runtime.component.field.undo)
     backend.path_source = PathSource(11, 12, 14)
     _ = runtime.event(ui, backend, input, input.events[0], host, 0)
-    assert_equal(runtime.component.field.text(), "devか")
+    assert_equal(runtime.component.field.text(), "devかab")
     assert_equal(len(runtime.component.field.undo), count)
     runtime.reset(ui)
     assert_false(runtime.opened())
-    print("Windows runtime source ownership, queue refusal, editor rollback, composition and ordered commit passed")
+    print("Windows runtime source ownership, queue refusal, editor rollback, composition, ordered commit and one PRIMARY paste per middle click passed")
