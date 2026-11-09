@@ -1,0 +1,13 @@
+{
+  "story": "key-field",
+  "page": "index.html",
+  "steps": [
+    { "name": "hover-key", "section": "key-field", "hover": "key-control" },
+    { "name": "click-key", "section": "key-field", "click": "key-control" },
+    { "name": "click-disabled", "section": "key-field", "click": "key-disabled", "still": true },
+    { "name": "click-resting", "section": "key-field-recording", "click": "key-resting" },
+    { "name": "record-x", "section": "key-field-recording", "key": "x" },
+    { "name": "record-again", "section": "key-field-recording", "key": "Enter" },
+    { "name": "cancel-recording", "section": "key-field-recording", "key": "Escape" }
+  ]
+}

@@ -33,6 +33,7 @@ pub(super) fn render(
         .position(|window| window.active)
         .unwrap_or(0);
     let visible = visible_window_range(model.windows.len(), active, MAX_VISIBLE_WINDOWS);
+    let alone = model.windows.len() == 1;
     let mut windows = model.windows[visible]
         .iter()
         .map(|window| {
@@ -56,6 +57,7 @@ pub(super) fn render(
                 WorkspaceStatusWindowState {
                     connected,
                     active: window.active,
+                    alone,
                 },
                 window
                     .panes

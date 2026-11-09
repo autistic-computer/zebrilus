@@ -1,5 +1,6 @@
 use crate::blocks::color_picker::{ColorPicker, ColorPickerEvent, ColorPickerState};
 use crate::blocks::settings::{SettingEntry, SettingsSelectItem, StackPosition};
+use crate::components::menu::MenuScope;
 use crate::components::segmented::SegmentedControl;
 use crate::components::select::{Select, SelectEvent, SelectItem as _, SelectState};
 use crate::components::slider::Slider;
@@ -16,7 +17,7 @@ use ala::{
     AnyElement, App, Entity, FocusHandle, IntoElement, SharedString, Subscription, Window, div,
     prelude::*, px,
 };
-use std::{cell::RefCell, convert::Infallible, rc::Rc, sync::Arc};
+use std::{cell::RefCell, collections::HashSet, convert::Infallible, rc::Rc, sync::Arc};
 
 const THEME_PREVIEW_WIDTH: f32 = 84.0;
 const THEME_PREVIEW_HEIGHT: f32 = 56.0;
@@ -58,6 +59,7 @@ pub enum AppearancePageItem<T = Infallible> {
     Controls,
     Glass,
     UiFontFamily,
+    MonoFontFamily,
     TextSize,
     Density,
     IncreaseContrast,
@@ -83,6 +85,7 @@ impl<T: Copy> AppearancePageItem<T> {
             Self::IncreaseContrast => "Increase contrast",
             Self::ReduceTransparency => "Reduce transparency",
             Self::UiFontFamily => "UI font",
+            Self::MonoFontFamily => "Mono font",
             Self::TextSize => "Text size",
             Self::Density => "Density",
             Self::Motion => "Motion",
@@ -107,6 +110,7 @@ pub fn appearance_page_items<T>() -> Vec<AppearancePageItem<T>> {
         AppearancePageItem::Controls,
         AppearancePageItem::Glass,
         AppearancePageItem::UiFontFamily,
+        AppearancePageItem::MonoFontFamily,
         AppearancePageItem::Group { title: SIZE },
         AppearancePageItem::TextSize,
         AppearancePageItem::Density,
@@ -214,7 +218,6 @@ pub fn accent_swatches(
     on_pick: impl Fn(Option<&'static str>, &mut Window, &mut App) + 'static,
     cx: &App,
 ) -> ala::Div {
-    let ink = ThemeColor::for_mode(mode).foreground;
     let on_pick = Rc::new(on_pick);
     let ring = cx.theme().foreground;
     let radius = cx.theme().swatch_radius();
@@ -251,18 +254,18 @@ pub fn accent_swatches(
         .items_center()
         .when(coarse, |row| row.w_full().justify_between())
         .gap(Space::S4)
-        .child(swatch("ink", "Ink".into(), ink))
         .children(named);
     if coarse {
-        let chosen = match selected {
-            "ink" => "Ink".into(),
-            name if ACCENTS.contains(&name) => accent_title(name),
-            hex => hex.to_uppercase().into(),
+        let chosen = if ACCENTS.contains(&selected) {
+            accent_title(selected)
+        } else {
+            selected.to_uppercase().into()
         };
-        let color = crate::foundation::interface_theme::accent_color(selected, mode).unwrap_or(ink);
+        let color = crate::foundation::interface_theme::accent_color(selected, mode)
+            .unwrap_or_else(|| ThemeColor::for_mode(mode).accent);
         return div().w_full().child(custom.presets(chosen, color, row));
     }
-    let custom_selected = selected != "ink" && !ACCENTS.contains(&selected);
+    let custom_selected = !ACCENTS.contains(&selected);
     row.child(ringed(custom_selected, ring, radius, custom))
 }
 
@@ -479,7 +482,47 @@ pub struct AvailableFonts(pub Arc<dyn ala::PlatformTextSystem>);
 
 impl ala::Global for AvailableFonts {}
 
+pub const SYSTEM_DEFAULT_FONT: &str = "System default";
+
 pub fn ui_font_select(
+    selected: Option<&str>,
+    window: &mut Window,
+    cx: &mut App,
+) -> Entity<SelectState<Vec<SettingsSelectItem>>> {
+    font_select(SYSTEM_DEFAULT_FONT.into(), selected, window, cx)
+}
+
+pub fn mono_font_select(
+    default_title: impl Into<SharedString>,
+    selected: Option<&str>,
+    window: &mut Window,
+    cx: &mut App,
+) -> (Entity<SelectState<Vec<SettingsSelectItem>>>, Vec<MenuScope>) {
+    let default_title = default_title.into();
+    let scopes = monospaced_scopes(default_title.clone(), cx);
+    (font_select(default_title, selected, window, cx), scopes)
+}
+
+pub fn monospaced_scopes(default_title: impl Into<SharedString>, cx: &App) -> Vec<MenuScope> {
+    let monospaced = cx.try_global::<AvailableFonts>().map_or_else(
+        || cx.text_system().monospaced_font_names(),
+        |fonts| fonts.0.monospaced_font_names(),
+    );
+    if monospaced.is_empty() {
+        return Vec::new();
+    }
+    let monospaced = monospaced.into_iter().collect::<HashSet<_>>();
+    let default_title = default_title.into();
+    vec![
+        MenuScope::new("Monospaced", move |family| {
+            family == default_title.as_ref() || monospaced.contains(family)
+        }),
+        MenuScope::all("All fonts"),
+    ]
+}
+
+fn font_select(
+    default_title: SharedString,
     selected: Option<&str>,
     window: &mut Window,
     cx: &mut App,
@@ -491,7 +534,7 @@ pub fn ui_font_select(
     families.retain(|family| !family.starts_with('.') && !family.trim().is_empty());
     families.sort_by_cached_key(|family| family.to_lowercase());
     families.dedup();
-    let items: Vec<_> = std::iter::once(SettingsSelectItem::new("System default", ""))
+    let items: Vec<_> = std::iter::once(SettingsSelectItem::new(default_title, ""))
         .chain(
             families
                 .into_iter()
@@ -504,10 +547,13 @@ pub fn ui_font_select(
 }
 
 type OnChange = Rc<dyn Fn(AppearanceChange, &mut Window, &mut App)>;
+type FontSelect = Entity<SelectState<Vec<SettingsSelectItem>>>;
 
 pub struct AppearanceControls {
     accent: Entity<ColorPickerState>,
-    ui_font: RefCell<Option<(Entity<SelectState<Vec<SettingsSelectItem>>>, Subscription)>>,
+    ui_font: RefCell<Option<(FontSelect, Subscription)>>,
+    mono_font: RefCell<Option<(FontSelect, Vec<MenuScope>, Subscription)>>,
+    mono_default: SharedString,
     zoom: FocusHandle,
     on_change: OnChange,
     _accent: Subscription,
@@ -535,10 +581,18 @@ impl AppearanceControls {
         Self {
             accent,
             ui_font: RefCell::default(),
+            mono_font: RefCell::default(),
+            mono_default: SYSTEM_DEFAULT_FONT.into(),
             zoom: cx.focus_handle(),
             on_change,
             _accent: subscription,
         }
+    }
+
+    #[must_use]
+    pub fn mono_default(mut self, title: impl Into<SharedString>) -> Self {
+        self.mono_default = title.into();
+        self
     }
 
     pub fn zoom_focus(&self) -> &FocusHandle {
@@ -551,6 +605,12 @@ impl AppearanceControls {
             .update(cx, |picker, cx| picker.set_color(accent, window, cx));
         if let Some((select, _)) = &*self.ui_font.borrow() {
             let font = appearance.ui_font().to_owned();
+            select.update(cx, |select, cx| {
+                select.set_selected_value(&font, window, cx);
+            });
+        }
+        if let Some((select, _, _)) = &*self.mono_font.borrow() {
+            let font = appearance.mono_font().to_owned();
             select.update(cx, |select, cx| {
                 select.set_selected_value(&font, window, cx);
             });
@@ -579,6 +639,35 @@ impl AppearanceControls {
         );
         *self.ui_font.borrow_mut() = Some((select.clone(), subscription));
         select
+    }
+
+    fn mono_font_select(
+        &self,
+        appearance: &Appearance,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> (FontSelect, Vec<MenuScope>) {
+        if let Some((select, scopes, _)) = &*self.mono_font.borrow() {
+            return (select.clone(), scopes.clone());
+        }
+        let (select, scopes) = mono_font_select(
+            self.mono_default.clone(),
+            Some(appearance.mono_font()),
+            window,
+            cx,
+        );
+        let changed = Rc::clone(&self.on_change);
+        let subscription = window.subscribe(
+            &select,
+            cx,
+            move |_, event: &SelectEvent<Vec<SettingsSelectItem>>, window, cx| {
+                if let SelectEvent::Confirm(Some(family)) = event {
+                    changed(AppearanceChange::MonoFont(family.clone()), window, cx);
+                }
+            },
+        );
+        *self.mono_font.borrow_mut() = Some((select.clone(), scopes.clone(), subscription));
+        (select, scopes)
     }
 
     fn change(
@@ -701,7 +790,21 @@ pub fn kit_row<T: Copy>(
                 div().w(px(200.0)).max_w_full().flex_none().child(
                     Select::new(&select)
                         .title(title)
-                        .placeholder("System default")
+                        .placeholder(SYSTEM_DEFAULT_FONT)
+                        .search_placeholder("Search fonts")
+                        .on(crate::blocks::settings::settings_card_ground(cx)),
+                ),
+            )
+        }
+        AppearancePageItem::MonoFontFamily => {
+            let (select, scopes) = controls.mono_font_select(appearance, window, cx);
+            entry.control(
+                div().w(px(200.0)).max_w_full().flex_none().child(
+                    Select::new(&select)
+                        .title(title)
+                        .placeholder(controls.mono_default.clone())
+                        .search_placeholder("Search fonts")
+                        .scopes(scopes)
                         .on(crate::blocks::settings::settings_card_ground(cx)),
                 ),
             )

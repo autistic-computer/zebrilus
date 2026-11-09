@@ -40,7 +40,7 @@ pub use styled::{
     Density, Disableable, FOCUS_RING_WIDTH, RULE_WIDTH, RuleLook, Selectable, Sizable, Size,
     StyledExt, h_flex, knob_shadow, list_row, muted_on, row_state, v_flex,
 };
-pub(crate) use styled::{ROW_CORNER_SMOOTHING, RoleRuleExt, row_corners, row_radius};
+pub(crate) use styled::{RoleRuleExt, nested_radius, row_corners, row_radius, shared_corners};
 pub use surface::{
     Edge, Fill, Highlight, Ink, Kind, Layer, Shadow, ShadowMaterial, Shape, Smoothing, Style,
     StylePatch, Surface, SurfaceRole, drawn_roles, note_drawn_roles,
@@ -50,12 +50,12 @@ pub use text_style::TextStyle;
 pub use theme::{
     ADAPTIVE_CORNER_FRACTION, ActiveTheme, CHROME_GAP, CORNER_SMOOTHING,
     PANE_HEADER_CONTROL_HEIGHT, PANE_HEADER_HEIGHT, ScrollbarShow, Theme, ThemeMode,
+    platform_mono_font_family,
 };
 pub use theme_color::ThemeColor;
 pub use units::{BASE_UI_FONT_SIZE, UiZoom, rems_from_px};
 pub use variant::{
-    Elevation, Emphasis, Ground, InteractivePaintExt, Paint, PaintExt, PaintState, PrimaryStyle,
-    Tone,
+    Elevation, Emphasis, Ground, InteractivePaintExt, Paint, PaintExt, PaintState, Tone,
 };
 pub use window_border::{window_border, window_paddings};
 

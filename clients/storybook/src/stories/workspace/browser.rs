@@ -267,10 +267,12 @@ pub fn header(
 ) -> BrowserHeader {
     BrowserHeader::new(
         active,
-        BrowserTabStrip::new(tab_infos(tabs), active_tab).title(
-            PaneDragSource::new(PaneId(1), "zed.dev", true, |_, _, _| {}),
-            |_, _| {},
-        ),
+        BrowserTabStrip::new(tab_infos(tabs), active_tab).title(PaneDragSource::new(
+            PaneId(1),
+            "zed.dev",
+            true,
+            |_, _, _| {},
+        )),
         pane_actions(cx),
         toolbar(
             browser_address(address, site_controls(cx), window, cx).into_any_element(),

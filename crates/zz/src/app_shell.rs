@@ -5,9 +5,9 @@ use ala::{
     AnyElement, AnyView, App, Context, DragMoveEvent, Entity, IntoElement, KeyUpEvent,
     ModifiersChangedEvent, Render, StyleRefinement, Window, div, prelude::*, px,
 };
-use penna::{ActiveTheme as _, Bar, BarLook, Root, WindowControls, draws_window_controls};
+use penna::{ActiveTheme as _, Root, WINDOW_CONTROLS_INSET, WindowControls, draws_window_controls};
 use zz_ui::navigation::{workspace_chrome_controls_width_for, workspace_sidebar_slideover};
-use zz_ui::shell::{app_shell_surface, app_titlebar_strip, titlebar_over_panes};
+use zz_ui::shell::{app_shell_surface, titlebar_over_panes};
 
 #[cfg(target_os = "macos")]
 use crate::macos_app::{CloseWindow, Minimize, Zoom};
@@ -232,30 +232,26 @@ impl AppShell {
         })
     }
 
-    fn render_control_strip(&self, window: &mut Window, cx: &mut App) -> Option<AnyElement> {
+    fn render_floating_window_controls(&self, window: &Window, cx: &App) -> Option<AnyElement> {
         draws_window_controls(window).then(|| {
-            let title_corners = WindowCorners::for_window(window).top();
-            let strip = app_titlebar_strip("app-titlebar", div(), self.window_controls(), cx);
-            let strip = if crate::profile::profile(cx).fixed_window {
-                strip
-            } else {
-                window_drag_handle("app-titlebar-drag", strip, window, cx)
-            };
-            Bar::new("app-titlebar-bar", BarLook::Window)
-                .px_0()
-                .flex_none()
-                .w_full()
-                .when(title_corners.top_right(), |bar| {
-                    bar.rounded_tr(frame_content_corner_radius(cx))
-                })
-                .child(strip)
+            let theme = cx.theme();
+            div()
+                .absolute()
+                .top(theme.pane_margin)
+                .right(theme.pane_margin + WINDOW_CONTROLS_INSET)
+                .h(theme.pane_header_height())
+                .flex()
+                .items_center()
+                .child(self.window_controls())
                 .into_any_element()
         })
     }
 
     fn render_status_bar(&self, window: &mut Window, cx: &mut App) -> AnyElement {
         let width = workspace_chrome_controls_width_for(1, window);
-        let controls = WorkspaceSidebar::render_controls(&self.sidebar, cx.theme().ground(), cx);
+        let open = self.sidebar.read(cx).mode() == ChromeMode::Sidebar;
+        let controls =
+            WorkspaceSidebar::render_controls(&self.sidebar, open, cx.theme().ground(), cx);
         let bar = render_gui_status_bar(
             &self.mux,
             controls.map(|controls| (controls, width)),
@@ -321,10 +317,9 @@ impl Render for AppShell {
                 workspace.hold_terminal_resizes(sliding, cx);
             });
         }
-        let strip_grows = sliding && !draws_window_controls(window);
         let over_panes_shown = match (route, mode) {
-            (WorkspaceRoute::App, ChromeMode::Sidebar) if strip_grows => 1.0 - slide,
-            (WorkspaceRoute::App, ChromeMode::Titlebar) if strip_grows => slide,
+            (WorkspaceRoute::App, ChromeMode::Sidebar) if sliding => 1.0 - slide,
+            (WorkspaceRoute::App, ChromeMode::Titlebar) if sliding => slide,
             (WorkspaceRoute::App, ChromeMode::Titlebar) => 1.0,
             (WorkspaceRoute::Settings, _) | (WorkspaceRoute::App, ChromeMode::Sidebar) => 0.0,
         };
@@ -334,19 +329,13 @@ impl Render for AppShell {
             titlebar_over_panes(titlebar, gap * shown).into_any_element()
         };
         let (sidebar, titlebar) = match (route, mode) {
-            (WorkspaceRoute::Settings, _) => (
-                self.sidebar.clone().into_any_element(),
-                self.render_control_strip(window, cx),
-            ),
+            (WorkspaceRoute::Settings, _) => (self.sidebar.clone().into_any_element(), None),
             (WorkspaceRoute::App, ChromeMode::Sidebar) => (
                 self.docked_sidebar(sidebar_width, slide),
-                if strip_grows {
+                sliding.then(|| {
                     let bar = self.render_status_bar(window, cx);
-                    Some(over_panes(growing_strip(bar, 1.0 - slide, cx), 1.0 - slide))
-                } else {
-                    self.render_control_strip(window, cx)
-                        .map(|strip| over_panes(strip, 1.0))
-                },
+                    over_panes(growing_strip(bar, 1.0 - slide, cx), 1.0 - slide)
+                }),
             ),
             (WorkspaceRoute::App, ChromeMode::Titlebar) => (
                 if sliding {
@@ -354,7 +343,7 @@ impl Render for AppShell {
                 } else {
                     div().into_any_element()
                 },
-                Some(if strip_grows {
+                Some(if sliding {
                     let bar = self.render_status_bar(window, cx);
                     over_panes(growing_strip(bar, slide, cx), slide)
                 } else {
@@ -362,6 +351,11 @@ impl Render for AppShell {
                 }),
             ),
         };
+        let status_bar_shown =
+            route == WorkspaceRoute::App && (mode == ChromeMode::Titlebar || sliding);
+        let floating_window_controls = (!status_bar_shown)
+            .then(|| self.render_floating_window_controls(window, cx))
+            .flatten();
         let dialog_layer = Root::render_dialog_layer(window, cx);
         let notification_layer = Root::render_notification_layer(window, cx);
 
@@ -369,6 +363,7 @@ impl Render for AppShell {
             .then(|| self.render_slideover(cx));
         let overlays = slideover
             .into_iter()
+            .chain(floating_window_controls)
             .chain(dialog_layer.into_iter().map(IntoElement::into_any_element))
             .chain(
                 notification_layer

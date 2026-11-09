@@ -203,8 +203,16 @@ fn program_chain(
 }
 
 pub fn is_shell_name(name: &str) -> bool {
+    shell_name(name).is_some()
+}
+
+#[must_use]
+pub fn shell_name(name: &str) -> Option<&str> {
     let stem = command_stem(name);
-    SHELLS.iter().any(|shell| shell.eq_ignore_ascii_case(stem))
+    SHELLS
+        .iter()
+        .any(|shell| shell.eq_ignore_ascii_case(stem))
+        .then_some(stem)
 }
 
 fn is_interpreter_name(name: &str) -> bool {

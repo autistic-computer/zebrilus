@@ -216,6 +216,7 @@ fn malformed_frames() -> Result<(Vec<Value>, Vec<Value>), Box<dyn Error>> {
         client_instance_id: ClientInstanceId(1),
         caps: (1 << CAPABILITY_NAMES.len()) - 1,
         clock: 0,
+        platform: zz_protocol::HostPlatform::default(),
     };
     let welcome_frame = encode_protocol_message(&ProtocolMessage::Welcome(welcome))?;
     let (_, remaining) = postcard::take_from_bytes::<u32>(&welcome_frame[8..])?;
@@ -634,6 +635,7 @@ fn pane(index: usize) -> PaneSnapshot {
             branch: "main".to_owned(),
             process: vec!["shell".to_owned(), "editor 世界".to_owned()],
             flip_armed: true,
+            shell: String::new(),
         },
     }
 }
@@ -928,6 +930,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             client_instance_id: ClientInstanceId(u64::MAX),
             caps: (1 << CAPABILITY_NAMES.len()) - 1,
             clock: u64::MAX,
+            platform: zz_protocol::HostPlatform::default(),
         }),
     )?);
     let base = snapshot();

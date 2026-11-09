@@ -230,7 +230,7 @@ impl TerminalPane {
             self.active,
             self.title,
             PaneDragSource::new(PaneId(self.id), self.title, true, |_, _, _| {}),
-            false,
+            zz_ui::pane::PaneState::default(),
             self.flip,
             |_, _, _| {},
             cx,
@@ -304,6 +304,7 @@ pub fn status_pane(id: u64, label: &str, kind: PaneKindSnapshot, active: bool) -
         &StatusBarPane {
             id: PaneId(id),
             label: label.into(),
+            program: zz_client::program::resolve([label]),
             kind,
             active,
         },

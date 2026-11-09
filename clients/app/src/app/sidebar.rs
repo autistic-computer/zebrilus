@@ -5,7 +5,6 @@ use ala::{
     ScrollHandle, ScrollStrategy, UniformListScrollHandle, Window, div, prelude::*, px,
     uniform_list,
 };
-use penna::blocks::sidebar::SIDEBAR_CONTENT_INSET;
 use penna::{
     ActiveTheme as _, Colorize as _, Ground, Icon, IconName,
     components::menu::PopupMenuItem,
@@ -17,7 +16,7 @@ use penna::{
 use std::{collections::BTreeSet, rc::Rc};
 use zz_client::{
     ChromeAction,
-    new_chat::open_picker_commands,
+    new_chat::{ChatViewPlace, leave_picker_command},
     sidebar::{
         SidebarBadge, SidebarNode, SidebarRow as TreeRow, navigation_rows, sidebar_activation,
         sidebar_active, sidebar_add_command, sidebar_close_command, sidebar_rename_command,
@@ -29,8 +28,8 @@ use zz_protocol::{CommandInvocation, MuxSnapshot, PaneId};
 use zz_ui::{
     command::PaletteHostId,
     navigation::{
-        WORKSPACE_SIDEBAR_FADE_HEIGHT, WORKSPACE_TREE_INDENT_WIDTH,
-        WORKSPACE_TREE_MARKER_SLOT_WIDTH, WORKSPACE_TREE_NODE_ICON_SIZE, WorkspaceTreeInk,
+        WORKSPACE_SIDEBAR_FADE_HEIGHT, WORKSPACE_TREE_INDENT_WIDTH, WORKSPACE_TREE_NODE_ICON_SIZE,
+        WorkspaceTreeInk,
         flat::{
             FlatEvent, FlatHandler, FlatHost, FlatMenu, FlatState, HostConnection, flat_sidebar,
         },
@@ -58,7 +57,7 @@ fn target_id(target: Target) -> String {
 
 fn badge_color(badge: SidebarBadge, cx: &App) -> Hsla {
     match badge {
-        SidebarBadge::NeedsInput => cx.theme().warning,
+        SidebarBadge::NeedsInput => cx.theme().accent,
         SidebarBadge::Failed => cx.theme().danger,
         SidebarBadge::Working => cx.theme().foreground.muted(),
         SidebarBadge::Finished => cx.theme().success,
@@ -278,7 +277,7 @@ pub(super) fn session_tree(
         depths,
         active_row,
         px(WORKSPACE_TREE_INDENT_WIDTH),
-        px(SIDEBAR_CONTENT_INSET + WORKSPACE_TREE_MARKER_SLOT_WIDTH / 2.0),
+        zz_ui::navigation::workspace_tree_guide_origin(cx),
         px(4.0),
         IndentGuideColors::tree(cx),
     );
@@ -329,6 +328,7 @@ pub(super) struct Flat {
     state: FlatState,
     folded_host: bool,
     scroll: ScrollHandle,
+    pub place: ChatViewPlace,
 }
 
 fn host_connection(connection: &Connection) -> HostConnection {
@@ -363,6 +363,7 @@ pub(super) fn flat_tree(
         |changed_at| age_label(changed_at, now),
     );
     host.folded = view.flat.folded_host;
+    host.platform = core.host_platform();
     let current = snapshot
         .sessions
         .iter()
@@ -421,6 +422,41 @@ pub(super) fn flat_tree(
         .into_any_element()
 }
 
+pub(super) fn new_chat(view: &mut AppShell, cx: &mut Context<AppShell>) {
+    let connection = view.connection.read(cx);
+    if writable(connection) {
+        view.flat.place.new_chat(
+            connection.core.snapshot(),
+            connection.core.attached_session(),
+        );
+        cx.notify();
+    }
+}
+
+pub(super) fn follow_chat_view(view: &mut AppShell, cx: &mut Context<AppShell>) {
+    if !view.preferences.flat_sidebar {
+        return;
+    }
+    let connection = view.connection.clone();
+    let landing = view.flat.place.landing();
+    let open = {
+        let connection = connection.read(cx);
+        view.flat
+            .place
+            .follow(
+                connection.core.snapshot(),
+                connection.core.attached_session(),
+            )
+            .filter(|_| writable(connection))
+    };
+    if landing != view.flat.place.landing() {
+        cx.notify();
+    }
+    if let Some(window) = open {
+        activate(&connection, Target::Window(window), cx);
+    }
+}
+
 fn flat_event(
     view: &mut AppShell,
     event: FlatEvent,
@@ -434,20 +470,6 @@ fn flat_event(
         FlatEvent::FoldHost(_) => {
             view.flat.folded_host = !view.flat.folded_host;
             cx.notify();
-            return;
-        }
-        FlatEvent::NewChat(_) => {
-            if writable(connection.read(cx)) {
-                connection.update(cx, |connection, cx| {
-                    let commands = open_picker_commands(
-                        connection.core.snapshot(),
-                        connection.core.attached_session(),
-                    );
-                    for command in commands {
-                        connection.invoke(command, cx);
-                    }
-                });
-            }
             return;
         }
         FlatEvent::Connect(_) | FlatEvent::Upgrade(_) => {
@@ -464,7 +486,53 @@ fn flat_event(
     if view.slideover && connection.read(cx).connected {
         view.release_sidebar_focus(window, cx);
     }
+    view.flat.place.close_landing();
+    leave_abandoned_picker(&connection, target, cx);
     activate(&connection, target, cx);
+}
+
+fn leave_abandoned_picker(connection: &Entity<Connection>, target: Target, cx: &mut App) {
+    connection.update(cx, |connection, cx| {
+        if !writable(connection) {
+            return;
+        }
+        let command = leave_picker_command(
+            connection.core.snapshot(),
+            connection.core.attached_session(),
+            target,
+        );
+        if let Some(command) = command {
+            connection.invoke(command, cx);
+        }
+    });
+}
+
+pub(super) fn set_chat_view(view: &mut AppShell, on: bool, cx: &mut Context<AppShell>) {
+    if view.preferences.flat_sidebar == on {
+        return;
+    }
+    view.preferences.flat_sidebar = on;
+    view.preferences.save();
+    let connection = view.connection.clone();
+    let open = {
+        let connection = connection.read(cx);
+        let (snapshot, attached) = (
+            connection.core.snapshot(),
+            connection.core.attached_session(),
+        );
+        if on {
+            view.flat
+                .place
+                .enter(snapshot, attached)
+                .filter(|_| writable(connection))
+        } else {
+            view.flat.place.leave(snapshot, attached);
+            None
+        }
+    };
+    if let Some(window) = open {
+        activate(&connection, Target::Window(window), cx);
+    }
 }
 
 fn disclosure_id(target: Target) -> String {
@@ -562,7 +630,14 @@ fn render_row(
     let actions = tree_action_strip(format!("web-tree-actions-{id}"), actions, cx);
     let badge_color = entry.badge.map(|badge| badge_color(badge, cx));
     let marker = if is_host {
-        tree_host_marker(entry.bell, badge_color, ink.ground, cx)
+        tree_host_marker(
+            connection.read(cx).core.host_platform(),
+            color,
+            entry.bell,
+            badge_color,
+            ink.ground,
+            cx,
+        )
     } else {
         tree_node_marker(
             entry

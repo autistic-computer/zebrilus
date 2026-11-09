@@ -90,6 +90,7 @@ pub(crate) fn with_focus_ring<T: ParentElement + Styled + Sized>(
     .map(|v| *v + inset);
 
     let mut inner_style = StyleRefinement::default();
+    inner_style.corner_share = style.corner_share;
     inner_style.corner_radii.top_left = Some(radius.top_left.into());
     inner_style.corner_radii.top_right = Some(radius.top_right.into());
     inner_style.corner_radii.bottom_left = Some(radius.bottom_left.into());

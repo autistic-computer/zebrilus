@@ -1,11 +1,20 @@
 use super::*;
+use penna::components::menu::MenuScope;
+use std::{collections::HashSet, path::Path};
 use zz_protocol::{CommandInvocation, MuxOptionKey, MuxOptions};
-use zz_terminal::{AppearanceConfigKey, TerminalAppearance};
+use zz_terminal::{
+    AppearanceConfigKey, GhosttyTheme, TerminalAppearance, TerminalColorScheme, ThemeChoice,
+};
+
+const BUILT_IN_THEME: &str = "Built-in";
+const CONTRAST_ON: &str = "4.5";
 
 #[derive(Clone, Copy)]
 enum FileKey {
     Mux(MuxOptionKey),
     Appearance(AppearanceConfigKey),
+    ThemeSlot(TerminalColorScheme),
+    Contrast,
 }
 
 impl FileKey {
@@ -13,6 +22,9 @@ impl FileKey {
         match self {
             Self::Mux(key) => key.as_str(),
             Self::Appearance(key) => key.as_str(),
+            Self::ThemeSlot(TerminalColorScheme::Light) => "light-theme",
+            Self::ThemeSlot(TerminalColorScheme::Dark) => "dark-theme",
+            Self::Contrast => AppearanceConfigKey::MinimumContrast.as_str(),
         }
     }
 
@@ -20,13 +32,33 @@ impl FileKey {
         match self {
             Self::Mux(key) => config::file_options::mux_option_value(source, key),
             Self::Appearance(key) => config::file_options::appearance_value(source, key),
+            Self::ThemeSlot(scheme) => {
+                let (light, dark) = theme_slots(source);
+                match scheme {
+                    TerminalColorScheme::Light => light,
+                    TerminalColorScheme::Dark => dark,
+                }
+            }
+            Self::Contrast => {
+                config::file_options::appearance_value(source, AppearanceConfigKey::MinimumContrast)
+            }
         }
+    }
+
+    const fn on_interface(self) -> bool {
+        matches!(
+            self,
+            Self::ThemeSlot(_)
+                | Self::Contrast
+                | Self::Appearance(AppearanceConfigKey::BackgroundOpacity)
+        )
     }
 
     fn default_value(self) -> String {
         match self {
             Self::Mux(key) => MuxOptions::default().get(key).unwrap().value.clone(),
-            Self::Appearance(AppearanceConfigKey::Theme) => String::new(),
+            Self::Appearance(AppearanceConfigKey::Theme) | Self::ThemeSlot(_) => String::new(),
+            Self::Contrast => TerminalAppearance::default().minimum_contrast.to_string(),
             Self::Appearance(AppearanceConfigKey::WindowPaddingX) => {
                 TerminalAppearance::default().padding_left.to_string()
             }
@@ -49,13 +81,14 @@ struct OptionRow {
     value: Option<String>,
     input: Entity<InputState>,
     select: Option<Entity<SelectState<Vec<SettingsSelectItem>>>>,
+    key_field: Option<Entity<KeyFieldState>>,
+    scopes: Vec<MenuScope>,
     numeric: bool,
 }
 
 pub(super) struct FileOptions {
     rows: Vec<OptionRow>,
     source: String,
-    donor: Entity<InputState>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -63,7 +96,7 @@ impl SettingsView {
     pub(super) fn synchronize_file_options(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let kind = match self.section {
             SettingsSection::Multiplexer => ConfigFileKind::Mux,
-            SettingsSection::Terminal => ConfigFileKind::Terminal,
+            SettingsSection::Terminal | SettingsSection::Appearance => ConfigFileKind::Terminal,
             _ => return,
         };
         let source = self.config_file_editor(kind).saved.clone();
@@ -97,10 +130,16 @@ impl SettingsView {
                         true,
                     ),
                     (
-                        FileKey::Appearance(AppearanceConfigKey::Theme),
-                        "Theme",
+                        FileKey::ThemeSlot(TerminalColorScheme::Light),
+                        "Light theme",
                         false,
                     ),
+                    (
+                        FileKey::ThemeSlot(TerminalColorScheme::Dark),
+                        "Dark theme",
+                        false,
+                    ),
+                    (FileKey::Contrast, "Terminal text contrast", false),
                     (
                         FileKey::Appearance(AppearanceConfigKey::CursorStyle),
                         "Cursor style",
@@ -146,18 +185,15 @@ impl SettingsView {
                     ),
                 );
             }
-            let donor_path = match kind {
-                ConfigFileKind::Mux => zz_daemon_client::discover_tmux_config(),
-                ConfigFileKind::Terminal => discover_ghostty_config(),
+            let themes = if kind == ConfigFileKind::Terminal {
+                zz_terminal::enumerate_ghostty_themes_for(
+                    import_color_scheme(cx),
+                    config::import_target_path().ok().as_deref(),
+                )
+            } else {
+                Vec::new()
             };
-            let donor = text_value_input(
-                &donor_path
-                    .map(|path| path.display().to_string())
-                    .unwrap_or_default(),
-                window,
-                cx,
-            );
-            let mut subscriptions = vec![cx.observe(&donor, |_, _, cx| cx.notify())];
+            let mut subscriptions = Vec::new();
             let mut rows = Vec::new();
             for (index, (key, title, numeric)) in definitions.into_iter().enumerate() {
                 let value = key.value(&source);
@@ -208,22 +244,40 @@ impl SettingsView {
                         }
                     },
                 ));
-                let choices = option_choices(key, import_color_scheme(cx));
-                let select = if choices.is_empty() {
+                let selected = select_value(key, value.as_deref().unwrap_or(&key.default_value()));
+                let choices = option_choices(key);
+                let mut scopes = Vec::new();
+                let select = if matches!(key, FileKey::Appearance(AppearanceConfigKey::FontFamily))
+                {
+                    let (select, font_scopes) = terminal_font_select(
+                        &display_value(key, value.as_deref().unwrap_or_default()),
+                        window,
+                        cx,
+                    );
+                    scopes = font_scopes;
+                    Some(select)
+                } else if let FileKey::ThemeSlot(scheme) = key {
+                    let (select, theme_scopes) = theme_select(
+                        scheme,
+                        value.as_deref().unwrap_or_default(),
+                        &themes,
+                        window,
+                        cx,
+                    );
+                    scopes = theme_scopes;
+                    Some(select)
+                } else if choices.is_empty() {
                     None
                 } else {
                     let refs = choices
                         .iter()
                         .map(|(label, value)| (label.as_str(), value.as_str()))
                         .collect::<Vec<_>>();
-                    let select = settings_select_state(
-                        &refs,
-                        &select_value(key, value.as_deref().unwrap_or(&key.default_value())),
-                        window,
-                        cx,
-                    );
+                    Some(settings_select_state(&refs, &selected, window, cx))
+                };
+                if let Some(select) = &select {
                     subscriptions.push(cx.subscribe_in(
-                        &select,
+                        select,
                         window,
                         move |this, _, event, window, cx| {
                             if let SelectEvent::Confirm(Some(value)) = event {
@@ -237,21 +291,51 @@ impl SettingsView {
                             }
                         },
                     ));
-                    Some(select)
-                };
+                }
+                let key_field = matches!(key, FileKey::Mux(MuxOptionKey::Prefix)).then(|| {
+                    let spelling = value.clone().unwrap_or_else(|| key.default_value());
+                    let field = key_field_state(&spelling, window, cx);
+                    subscriptions.push(cx.subscribe_in(
+                        &field,
+                        window,
+                        move |this, field, event: &KeyFieldEvent, window, cx| {
+                            let KeyFieldEvent::Record(keystroke) = event;
+                            match recorded_tmux_key(keystroke) {
+                                Some(spelling) => {
+                                    this.commit_file_option(
+                                        kind,
+                                        index,
+                                        Some(&spelling),
+                                        window,
+                                        cx,
+                                    );
+                                }
+                                None => reject_recorded_key(cx),
+                            }
+                            let row = &this.file_options[&kind].rows[index];
+                            let saved =
+                                row.value.clone().unwrap_or_else(|| row.key.default_value());
+                            field.update(cx, |field, cx| {
+                                field.set_value(zz_ui::command::tmux_keystroke(&saved), cx);
+                            });
+                        },
+                    ));
+                    field
+                });
                 rows.push(OptionRow {
                     key,
                     title,
                     value,
                     input,
                     select,
+                    key_field,
+                    scopes,
                     numeric,
                 });
             }
             vacant.insert(FileOptions {
                 rows,
                 source: source.clone(),
-                donor,
                 _subscriptions: subscriptions,
             });
         }
@@ -264,9 +348,19 @@ impl SettingsView {
                 row.input.update(cx, |input, cx| {
                     input.set_value(display_value(row.key, &value), window, cx);
                 });
+                if let Some(field) = &row.key_field {
+                    field.update(cx, |field, cx| {
+                        field.set_value(zz_ui::command::tmux_keystroke(&value), cx);
+                    });
+                }
                 if let Some(select) = &row.select {
+                    let selected = if row.key.name() == "font-family" {
+                        display_value(row.key, row.value.as_deref().unwrap_or_default())
+                    } else {
+                        select_value(row.key, &value)
+                    };
                     select.update(cx, |select, cx| {
-                        select.set_selected_value(&select_value(row.key, &value), window, cx);
+                        select.set_selected_value(&selected, window, cx);
                     });
                 }
             }
@@ -276,7 +370,6 @@ impl SettingsView {
     fn file_controls_disabled(&self, kind: ConfigFileKind, cx: &App) -> bool {
         let file = self.config_file_editor(kind);
         file.error.is_some()
-            || file.editor.read(cx).value().as_ref() != file.saved
             || self.pending_file_command.is_some()
             || (kind == ConfigFileKind::Mux
                 && (!self.mux.read(cx).is_connected()
@@ -284,11 +377,10 @@ impl SettingsView {
     }
 
     pub(super) fn terminal_preview_source(&self, cx: &App) -> String {
-        let file = self.config_file_editor(ConfigFileKind::Terminal);
-        let mut source = file.editor.read(cx).value().to_string();
-        if source != file.saved {
-            return source;
-        }
+        let mut source = self
+            .config_file_editor(ConfigFileKind::Terminal)
+            .saved
+            .clone();
         let Some(controls) = self.file_options.get(&ConfigFileKind::Terminal) else {
             return source;
         };
@@ -336,73 +428,144 @@ impl SettingsView {
             return div().into_any_element();
         };
         let disabled = self.file_controls_disabled(kind, cx);
+        let mut stack = SettingsStack::titled(if kind == ConfigFileKind::Mux {
+            "Options"
+        } else {
+            "Display"
+        })
+        .when(disabled && kind == ConfigFileKind::Mux, |stack| {
+            stack.note("Connect to a local session to edit these")
+        });
+        for (index, row) in controls.rows.iter().enumerate() {
+            if kind == ConfigFileKind::Terminal && row.key.on_interface() {
+                continue;
+            }
+            stack = stack.child(self.file_option_entry(kind, index, cx));
+        }
+        div().flex_none().child(stack).into_any_element()
+    }
+
+    pub(super) fn terminal_look_entry(
+        &self,
+        row: ZzRow,
+        cx: &Context<Self>,
+    ) -> Option<SettingEntry> {
+        let key = match row {
+            ZzRow::LightTheme => FileKey::ThemeSlot(TerminalColorScheme::Light),
+            ZzRow::DarkTheme => FileKey::ThemeSlot(TerminalColorScheme::Dark),
+            ZzRow::BackgroundOpacity => FileKey::Appearance(AppearanceConfigKey::BackgroundOpacity),
+            ZzRow::TerminalContrast => FileKey::Contrast,
+            _ => return None,
+        };
+        let index = self
+            .file_options
+            .get(&ConfigFileKind::Terminal)?
+            .rows
+            .iter()
+            .position(|option| option.key.name() == key.name())?;
+        Some(self.file_option_entry(ConfigFileKind::Terminal, index, cx))
+    }
+
+    fn file_option_entry(
+        &self,
+        kind: ConfigFileKind,
+        index: usize,
+        cx: &Context<Self>,
+    ) -> SettingEntry {
+        let controls = &self.file_options[&kind];
+        let row = &controls.rows[index];
+        let disabled = self.file_controls_disabled(kind, cx);
         let smoothing_enabled = controls.rows.iter().any(|row| {
             row.key.name() == "font-thicken"
                 && matches!(row.value.as_deref(), Some("true" | "yes" | "on" | "1"))
         });
-        let mut stack = SettingsStack::titled(if kind == ConfigFileKind::Mux {
-            "Options"
-        } else {
-            "Appearance"
-        })
-        .when(disabled, |stack| {
-            stack.note("Save your editor changes and connect locally to edit these")
-        });
-        for (index, row) in controls.rows.iter().enumerate() {
-            let description = match row.key.name() {
-                "theme" => Some("Replaces custom terminal colors"),
-                "font-thicken-strength" if !smoothing_enabled => Some("Needs font smoothing"),
-                "font-thicken-strength" => Some("0 to 255"),
-                _ => None,
-            };
-            let entry = SettingEntry::new(row.title)
-                .when_some(description, SettingEntry::description)
-                .disabled(
-                    disabled || row.key.name() == "font-thicken-strength" && !smoothing_enabled,
-                );
-            let control = if matches!(row.key.name(), "mouse" | "font-thicken") {
-                let default = row.key.default_value();
-                let enabled = matches!(
-                    row.value.as_deref().unwrap_or(&default),
-                    "on" | "true" | "yes" | "1"
-                );
-                let is_appearance = matches!(row.key, FileKey::Appearance(_));
-                boolean_control(
-                    row.key.name(),
-                    enabled,
-                    cx.listener(move |this, enabled: &bool, window, cx| {
-                        this.commit_file_option(
-                            kind,
-                            index,
-                            Some(match (*enabled, is_appearance) {
-                                (true, true) => "true",
-                                (false, true) => "false",
-                                (true, false) => "on",
-                                (false, false) => "off",
-                            }),
-                            window,
-                            cx,
-                        );
-                    }),
-                )
-                .into_any_element()
-            } else if let Some(select) = &row.select {
-                select_control(select, cx).into_any_element()
-            } else if row.numeric {
-                numeric_control(&row.input, cx).into_any_element()
-            } else {
+        let description = match row.key.name() {
+            "light-theme" | "dark-theme" => Some("Replaces custom terminal colors"),
+            "minimum-contrast" => Some("Lifts terminal text under 4.5:1 against its background"),
+            "prefix" => Some("The key you press before each shortcut"),
+            "font-thicken-strength" if !smoothing_enabled => Some("Needs font smoothing"),
+            "font-thicken-strength" => Some("0 to 255"),
+            _ => None,
+        };
+        let entry = SettingEntry::new(row.title)
+            .when_some(description, SettingEntry::description)
+            .disabled(disabled || row.key.name() == "font-thicken-strength" && !smoothing_enabled);
+        let control = if matches!(row.key.name(), "mouse" | "font-thicken") {
+            let default = row.key.default_value();
+            let enabled = matches!(
+                row.value.as_deref().unwrap_or(&default),
+                "on" | "true" | "yes" | "1"
+            );
+            let is_appearance = matches!(row.key, FileKey::Appearance(_));
+            boolean_control(
+                row.key.name(),
+                enabled,
+                cx.listener(move |this, enabled: &bool, window, cx| {
+                    this.commit_file_option(
+                        kind,
+                        index,
+                        Some(match (*enabled, is_appearance) {
+                            (true, true) => "true",
+                            (false, true) => "false",
+                            (true, false) => "on",
+                            (false, false) => "off",
+                        }),
+                        window,
+                        cx,
+                    );
+                }),
+            )
+            .into_any_element()
+        } else if matches!(row.key, FileKey::Contrast) {
+            let enabled = row
+                .value
+                .as_deref()
+                .unwrap_or(&row.key.default_value())
+                .parse::<f32>()
+                .is_ok_and(|minimum| minimum > 1.0);
+            boolean_control(
+                row.key.name(),
+                enabled,
+                cx.listener(move |this, enabled: &bool, window, cx| {
+                    this.commit_file_option(
+                        kind,
+                        index,
+                        Some(if *enabled { CONTRAST_ON } else { "1" }),
+                        window,
+                        cx,
+                    );
+                }),
+            )
+            .into_any_element()
+        } else if let Some(select) = &row.select {
+            if !row.scopes.is_empty() || row.key.name() == "font-family" {
                 div()
-                    .w(px(200.0))
-                    .when(
-                        matches!(row.key, FileKey::Mux(MuxOptionKey::Prefix)),
-                        |this| this.w(px(KEY_INPUT_WIDTH)),
+                    .flex_none()
+                    .child(
+                        Select::new(select)
+                            .search_placeholder(if row.key.name() == "font-family" {
+                                "Search fonts"
+                            } else {
+                                "Search themes"
+                            })
+                            .scopes(row.scopes.clone())
+                            .on(settings_card_ground(cx)),
                     )
-                    .child(Input::new(&row.input).on(settings_card_ground(cx)))
                     .into_any_element()
-            };
-            stack = stack.child(entry.control(control));
-        }
-        div().flex_none().child(stack).into_any_element()
+            } else {
+                select_control(select, cx).into_any_element()
+            }
+        } else if let Some(field) = &row.key_field {
+            key_field_control(field, disabled, cx).into_any_element()
+        } else if row.numeric {
+            numeric_control(&row.input, cx).into_any_element()
+        } else {
+            div()
+                .w(px(200.0))
+                .child(Input::new(&row.input).on(settings_card_ground(cx)))
+                .into_any_element()
+        };
+        entry.control(control)
     }
 
     pub(super) fn file_import_section(
@@ -413,59 +576,35 @@ impl SettingsView {
         if !crate::profile::profile(cx).has_config_import {
             return div().into_any_element();
         }
-        let Some(controls) = self.file_options.get(&kind) else {
-            return div().into_any_element();
+        let (title, description) = match kind {
+            ConfigFileKind::Mux => ("Import from tmux", "Copies a tmux config into zz/mux.conf"),
+            ConfigFileKind::Terminal => (
+                "Import from Ghostty",
+                "Copies a Ghostty config into zz/config",
+            ),
         };
-        let disabled = self.file_controls_disabled(kind, cx);
         SettingsStack::titled("Import")
             .child(
-                SettingEntry::new("Source file").control(
+                SettingEntry::new(title).description(description).control(
                     h_flex()
                         .gap_2()
+                        .flex_none()
                         .child(
-                            div()
-                                .w(px(230.0))
-                                .child(Input::new(&controls.donor).on(settings_card_ground(cx))),
-                        )
-                        .child(
-                            Button::new("choose-config-donor")
-                                .label("Choose…")
+                            Button::new("open-config-file")
+                                .label("Open")
                                 .on(settings_card_ground(cx))
-                                .on_click(cx.listener(move |this, _, window, cx| {
-                                    let selected = cx.prompt_for_paths(ala::PathPromptOptions {
-                                        files: true,
-                                        directories: false,
-                                        multiple: false,
-                                        prompt: Some("Choose configuration".into()),
-                                    });
-                                    let input = this.file_options[&kind].donor.clone();
-                                    cx.spawn_in(window, async move |_, window| {
-                                        let path =
-                                            selected.await.ok()?.ok()??.into_iter().next()?;
-                                        window
-                                            .update(|window, cx| {
-                                                input.update(cx, |input, cx| {
-                                                    input.set_value(
-                                                        path.display().to_string(),
-                                                        window,
-                                                        cx,
-                                                    );
-                                                });
-                                            })
-                                            .ok()
-                                    })
-                                    .detach();
+                                .tooltip(format!("Open {} in your text editor", kind.file_name()))
+                                .on_click(cx.listener(move |this, _, _, cx| {
+                                    this.open_config_file(kind, cx);
                                 })),
                         )
                         .child(
-                            Button::new("import-config-donor")
-                                .label("Import")
+                            Button::new("import-config-file")
+                                .label("Import…")
                                 .on(settings_card_ground(cx))
-                                .disabled(
-                                    disabled || controls.donor.read(cx).value().trim().is_empty(),
-                                )
+                                .disabled(self.file_controls_disabled(kind, cx))
                                 .on_click(cx.listener(move |this, _, window, cx| {
-                                    this.confirm_file_import(kind, window, cx);
+                                    this.choose_file_import(kind, window, cx);
                                 })),
                         ),
                 ),
@@ -491,7 +630,10 @@ impl SettingsView {
                 display_value(key, value)
                     == display_value(key, saved.unwrap_or(&key.default_value()))
             }))
-            && !(matches!(key, FileKey::Appearance(AppearanceConfigKey::Theme)) && value.is_some())
+            && !(matches!(
+                key,
+                FileKey::Appearance(AppearanceConfigKey::Theme) | FileKey::ThemeSlot(_)
+            ) && value.is_some())
         {
             return;
         }
@@ -515,6 +657,26 @@ impl SettingsView {
                 FileKey::Appearance(key) => {
                     config::file_options::write_appearance_option(&path, key, value)?;
                 }
+                FileKey::ThemeSlot(scheme) => {
+                    let (light, dark) = theme_slots(&source);
+                    let picked = value.map(str::to_owned);
+                    let (light, dark) = match scheme {
+                        TerminalColorScheme::Light => (picked, dark),
+                        TerminalColorScheme::Dark => (light, picked),
+                    };
+                    config::file_options::write_appearance_option(
+                        &path,
+                        AppearanceConfigKey::Theme,
+                        ThemeChoice::spelled(light.as_deref(), dark.as_deref()).as_deref(),
+                    )?;
+                }
+                FileKey::Contrast => {
+                    config::file_options::write_appearance_option(
+                        &path,
+                        AppearanceConfigKey::MinimumContrast,
+                        value,
+                    )?;
+                }
             }
             Ok(())
         })();
@@ -522,7 +684,7 @@ impl SettingsView {
             report_write_error("set", key.name(), &error, cx);
             return;
         }
-        self.reload_config_editor(kind, window, cx);
+        self.reload_config_editor(kind, cx);
         if let FileKey::Mux(option) = key {
             let expected = key
                 .value(&self.config_file_editor(kind).saved)
@@ -539,7 +701,52 @@ impl SettingsView {
         }
     }
 
-    fn confirm_file_import(
+    fn open_config_file(&mut self, kind: ConfigFileKind, cx: &mut Context<Self>) {
+        let opened = self
+            .config_file_editor(kind)
+            .path
+            .clone()
+            .map_or_else(|| config_file_path(kind), Ok)
+            .and_then(|path| {
+                if let Some(parent) = path.parent() {
+                    std::fs::create_dir_all(parent)?;
+                }
+                std::fs::OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(&path)?;
+                Ok(path)
+            });
+        match opened {
+            Ok(path) => open_in_text_editor(&path, cx),
+            Err(error) => report_write_error("open", kind.file_name(), &error, cx),
+        }
+    }
+
+    pub(super) fn pick_up_outside_edits(&mut self, cx: &mut Context<Self>) {
+        let mut changed = false;
+        for kind in [ConfigFileKind::Mux, ConfigFileKind::Terminal] {
+            let editor = match kind {
+                ConfigFileKind::Mux => self.mux_config_editor.as_ref(),
+                ConfigFileKind::Terminal => self.terminal_config_editor.as_ref(),
+            };
+            let Some(path) = editor.and_then(|editor| editor.path.clone()) else {
+                continue;
+            };
+            let Ok(source) = config::read_config_editor_source(&path, kind.max_bytes()) else {
+                continue;
+            };
+            if kind.editor_view(source) != self.config_file_editor(kind).saved {
+                self.reload_config_editor(kind, cx);
+                changed = true;
+            }
+        }
+        if changed && self.pending_file_command.is_none() {
+            self.reload_mux_configuration(cx);
+        }
+    }
+
+    fn choose_file_import(
         &mut self,
         kind: ConfigFileKind,
         window: &mut Window,
@@ -548,69 +755,54 @@ impl SettingsView {
         if self.file_controls_disabled(kind, cx) {
             return;
         }
-        let source = self.file_options[&kind].donor.read(cx).value().to_string();
-        if source.trim().is_empty() {
+        let selected = cx.prompt_for_paths(ala::PathPromptOptions {
+            files: true,
+            directories: false,
+            multiple: false,
+            prompt: Some("Import".into()),
+        });
+        cx.spawn_in(window, async move |this, window| {
+            let path = selected.await.ok()?.ok()??.into_iter().next()?;
+            window
+                .update(|window, cx| {
+                    this.update(cx, |this, cx| this.import_file(kind, &path, window, cx))
+                })
+                .ok()?
+                .ok()
+        })
+        .detach();
+    }
+
+    fn import_file(
+        &mut self,
+        kind: ConfigFileKind,
+        path: &Path,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.file_controls_disabled(kind, cx) {
             return;
         }
-        let target = match config_file_path(kind) {
-            Ok(path) => path,
-            Err(error) => {
-                report_write_error("import", kind.file_name(), &error, cx);
-                return;
+        if kind == ConfigFileKind::Mux {
+            self.run_file_command(
+                kind,
+                CommandInvocation::new(
+                    "import-tmux-config",
+                    ["--".to_owned(), path.display().to_string()],
+                ),
+                None,
+                window,
+                cx,
+            );
+        } else {
+            match config::import::import_ghostty_config_from(path, import_color_scheme(cx)) {
+                Ok(_) => {
+                    self.reload_config_editor(kind, cx);
+                    config::request_daemon_reload(cx);
+                }
+                Err(error) => report_write_error("import", kind.file_name(), &error, cx),
             }
-        };
-        let description = format!(
-            "Import {} into {}? You can choose other paths in Settings.",
-            source,
-            target.display()
-        );
-        let settings = cx.entity();
-        window.open_alert_dialog(cx, move |alert, _, _| {
-            let settings = settings.clone();
-            let source = source.clone();
-            import_configuration_file_alert(
-                alert,
-                if kind == ConfigFileKind::Mux {
-                    "Import from tmux?"
-                } else {
-                    "Import from Ghostty?"
-                },
-                description.clone(),
-            )
-            .on_ok(move |_, window, cx| {
-                settings.update(cx, |this, cx| {
-                    if this.file_controls_disabled(kind, cx) {
-                        return;
-                    }
-                    if kind == ConfigFileKind::Mux {
-                        this.run_file_command(
-                            kind,
-                            CommandInvocation::new(
-                                "import-tmux-config",
-                                ["--".to_owned(), source.clone()],
-                            ),
-                            None,
-                            window,
-                            cx,
-                        );
-                    } else {
-                        match config::import::import_ghostty_config_from(
-                            &PathBuf::from(&source),
-                            import_color_scheme(cx),
-                        ) {
-                            Ok(_) => {
-                                this.reload_config_editor(kind, window, cx);
-                                config::request_daemon_reload(cx);
-                            }
-                            Err(error) => {
-                                report_write_error("import", kind.file_name(), &error, cx);
-                            }
-                        }
-                    }
-                });
-                true
-            })
-        });
+        }
     }
 
     fn run_file_command(
@@ -631,13 +823,13 @@ impl SettingsView {
             .spawn(async move { execute_file_command(command, expected, server_id) });
         cx.spawn_in(window, async move |this, window| {
             let result = job.await;
-            let _ = window.update(|window, cx| {
+            let _ = window.update(|_, cx| {
                 let _ = this.update(cx, |this, cx| {
                     if this.pending_file_command != Some((sequence, kind)) {
                         return;
                     }
                     this.pending_file_command = None;
-                    this.reload_config_editor_if_clean(kind.section(), window, cx);
+                    this.reload_config_editor(kind, cx);
                     match result {
                         Ok(output) if !output.trim().is_empty() => {
                             toast::push(Notification::success(output), cx);
@@ -652,11 +844,11 @@ impl SettingsView {
         .detach();
         cx.spawn_in(window, async move |this, window| {
             window.background_executor().timer(std::time::Duration::from_secs(5)).await;
-            let _ = window.update(|window, cx| { let _ = this.update(cx, |this, cx| {
+            let _ = window.update(|_, cx| { let _ = this.update(cx, |this, cx| {
                 if this.pending_file_command == Some((sequence, kind)) {
                     this.pending_file_command = None;
-                    this.reload_config_editor_if_clean(kind.section(), window, cx);
-                    toast::push(Notification::info("The daemon has not confirmed the configuration. Review the file and retry Reload."), cx);
+                    this.reload_config_editor(kind, cx);
+                    toast::push(Notification::info("The daemon has not confirmed the configuration. Open the file to review it."), cx);
                     cx.notify();
                 }
             }); });
@@ -686,7 +878,7 @@ fn execute_file_command(
             .map_err(|error| error.to_string())?;
         if !mux_confirmation_matches(key, &expected, actual.trim()) {
             return Err(format!(
-                "Saved {} = {}, but the daemon reports {}. Review the configuration and retry Reload.",
+                "Saved {} = {}, but the daemon reports {}. Open the file to review it.",
                 key.as_str(),
                 expected,
                 actual.trim()
@@ -694,6 +886,55 @@ fn execute_file_command(
         }
     }
     Ok(output)
+}
+
+fn terminal_font_select(
+    selected: &str,
+    window: &mut Window,
+    cx: &mut Context<SettingsView>,
+) -> (Entity<SelectState<Vec<SettingsSelectItem>>>, Vec<MenuScope>) {
+    let scopes = penna::blocks::appearance::monospaced_scopes("Default", cx);
+    let mut families = cx.text_system().all_font_names();
+    families.retain(|family| !family.starts_with('.') && !family.trim().is_empty());
+    if !selected.is_empty() {
+        families.push(selected.to_owned());
+    }
+    families.sort_by_cached_key(|family| family.to_lowercase());
+    families.dedup();
+    let index = (!selected.is_empty())
+        .then(|| families.iter().position(|family| family == selected))
+        .flatten()
+        .map_or(0, |index| index + 1);
+    let items = std::iter::once(SettingsSelectItem::new("Default", ""))
+        .chain(
+            families
+                .into_iter()
+                .map(|family| SettingsSelectItem::new(family.clone(), family).preview_font()),
+        )
+        .collect();
+    let select = cx.new(|cx| SelectState::new(items, Some(IndexPath::new(index)), window, cx));
+    (select, scopes)
+}
+
+fn open_in_text_editor(path: &Path, cx: &App) {
+    #[cfg(target_os = "macos")]
+    {
+        use zz_daemon_client::unmasked::SpawnUnmasked as _;
+        if let Ok(mut child) = std::process::Command::new("open")
+            .args(["-t", "--"])
+            .arg(path)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn_unmasked()
+        {
+            cx.background_executor()
+                .spawn(async move { child.wait() })
+                .detach();
+            return;
+        }
+    }
+    cx.open_with_system(path);
 }
 
 fn mux_confirmation_matches(key: MuxOptionKey, expected: &str, actual: &str) -> bool {
@@ -752,26 +993,64 @@ fn display_value(key: FileKey, value: &str) -> String {
     }
 }
 
-fn option_choices(key: FileKey, scheme: TerminalColorScheme) -> Vec<(String, String)> {
+fn theme_slots(source: &str) -> (Option<String>, Option<String>) {
+    config::file_options::appearance_value(source, AppearanceConfigKey::Theme)
+        .and_then(|value| ThemeChoice::parse(&value).ok())
+        .map(|choice| choice.slots(&config::import_target_path().unwrap_or_default()))
+        .unwrap_or_default()
+}
+
+fn theme_select(
+    scheme: TerminalColorScheme,
+    selected: &str,
+    themes: &[GhosttyTheme],
+    window: &mut Window,
+    cx: &mut Context<SettingsView>,
+) -> (Entity<SelectState<Vec<SettingsSelectItem>>>, Vec<MenuScope>) {
+    let mut choices = vec![(BUILT_IN_THEME, "")];
+    choices.extend(
+        themes
+            .iter()
+            .map(|theme| (theme.name.as_str(), theme.name.as_str())),
+    );
+    if !selected.is_empty() && !themes.iter().any(|theme| theme.name == selected) {
+        choices.push((selected, selected));
+    }
+    let select = settings_select_state(&choices, selected, window, cx);
+    let own = themes
+        .iter()
+        .filter(|theme| theme.appearance.background_scheme() == scheme)
+        .map(|theme| theme.name.clone())
+        .collect::<HashSet<_>>();
+    let label = match scheme {
+        TerminalColorScheme::Light => "Light",
+        TerminalColorScheme::Dark => "Dark",
+    };
+    let scopes = vec![
+        MenuScope::new(label, move |name| {
+            name == BUILT_IN_THEME || own.contains(name)
+        }),
+        MenuScope::all("All themes"),
+    ];
+    (select, scopes)
+}
+
+fn option_choices(key: FileKey) -> Vec<(String, String)> {
     let choices = match key.name() {
-        "mode-keys" => vec!["vi", "emacs"],
-        "set-clipboard" => vec!["on", "external", "off"],
-        "cursor-style" => vec!["block", "bar", "underline", "block_hollow"],
-        "cursor-style-blink" => vec!["on", "off", "terminal"],
-        "theme" => {
-            let mut choices = vec![("None".to_owned(), String::new())];
-            choices.extend(
-                zz_terminal::enumerate_ghostty_themes_for(scheme)
-                    .into_iter()
-                    .map(|theme| (theme.name.clone(), theme.name)),
-            );
-            return choices;
-        }
+        "mode-keys" => vec![("Vi", "vi"), ("Emacs", "emacs")],
+        "set-clipboard" => vec![("On", "on"), ("External", "external"), ("Off", "off")],
+        "cursor-style" => vec![
+            ("Block", "block"),
+            ("Bar", "bar"),
+            ("Underline", "underline"),
+            ("Hollow block", "block_hollow"),
+        ],
+        "cursor-style-blink" => vec![("On", "on"), ("Off", "off"), ("Terminal", "terminal")],
         _ => Vec::new(),
     };
     choices
         .into_iter()
-        .map(|value| (value.to_owned(), value.to_owned()))
+        .map(|(label, value)| (label.to_owned(), value.to_owned()))
         .collect()
 }
 
@@ -812,8 +1091,6 @@ mod tests {
                 file.path = Some(path.clone());
                 file.saved = source.to_owned();
                 file.error = None;
-                file.editor
-                    .update(cx, |editor, cx| editor.set_value(source, window, cx));
                 settings.synchronize_file_options(window, cx);
                 for (key, value) in [
                     (AppearanceConfigKey::FontThicken, Some("true")),
@@ -869,15 +1146,9 @@ mod tests {
                 let saved = "font-size = 12\nbackground-opacity = 1\n";
                 let file = settings.config_file_editor_mut(ConfigFileKind::Terminal);
                 file.saved = saved.to_owned();
-                file.editor
-                    .update(cx, |editor, cx| editor.set_value(saved, window, cx));
                 settings.synchronize_file_options(window, cx);
                 let rows = &settings.file_options[&ConfigFileKind::Terminal].rows;
-                for (key, draft) in [
-                    ("font-family", "JetBrains Mono"),
-                    ("font-size", "18"),
-                    ("background-opacity", "65"),
-                ] {
+                for (key, draft) in [("font-size", "18"), ("background-opacity", "65")] {
                     rows.iter()
                         .find(|row| row.key.name() == key)
                         .unwrap()
@@ -889,14 +1160,6 @@ mod tests {
                         });
                 }
                 let source = settings.terminal_preview_source(cx);
-                assert_eq!(
-                    config::file_options::appearance_value(
-                        &source,
-                        AppearanceConfigKey::FontFamily
-                    )
-                    .as_deref(),
-                    Some("JetBrains Mono")
-                );
                 assert_eq!(
                     config::file_options::appearance_value(&source, AppearanceConfigKey::FontSize)
                         .as_deref(),
@@ -914,15 +1177,11 @@ mod tests {
                     settings.config_file_editor(ConfigFileKind::Terminal).saved,
                     saved
                 );
-                let editor_draft = "font-size = 22\n";
-                settings
-                    .config_file_editor(ConfigFileKind::Terminal)
-                    .editor
-                    .update(cx, |editor, cx| editor.set_value(editor_draft, window, cx));
-                assert_eq!(settings.terminal_preview_source(cx), editor_draft);
                 settings.synchronize_terminal_preview(cx);
                 let preview = settings.terminal_preview.as_ref().unwrap().downgrade();
                 settings.set_section(SettingsSection::Appearance, window, cx);
+                assert!(settings.terminal_preview.is_some());
+                settings.set_section(SettingsSection::Browser, window, cx);
                 assert!(settings.terminal_preview.is_none());
                 preview
             })

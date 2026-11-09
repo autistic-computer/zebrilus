@@ -175,7 +175,13 @@ impl Preferences {
         });
         let terminal =
             localized_font_appearance(&connection.read(cx).core, &available_fonts, "Lilex", cx);
-        Theme::global_mut(cx).mono_font_family = terminal.font_families[0].clone().into();
+        let mono = self.appearance.mono_font();
+        if !available_fonts
+            .iter()
+            .any(|family| !mono.is_empty() && family.eq_ignore_ascii_case(mono))
+        {
+            Theme::global_mut(cx).mono_font_family = terminal.font_families[0].clone().into();
+        }
         connection.update(cx, Connection::set_color_scheme);
         cx.refresh_windows();
     }
@@ -228,7 +234,8 @@ impl Controls {
             },
             window,
             cx,
-        );
+        )
+        .mono_default("Terminal font");
         let pane_values = [
             preferences.pane_inactive_opacity,
             preferences.pane_glow_strength,
@@ -674,6 +681,12 @@ impl AppShell {
                             )
                         },
                     )
+                    .when(shown(Setting::CommandPalette, phone), |page| {
+                        page.child(
+                            SettingsStack::titled("Experimental")
+                                .child(self.palette_vim_setting(cx)),
+                        )
+                    })
                     .into_any_element();
             }
             SettingsSection::About => return large(about_page(cx)).into_any_element(),
@@ -805,32 +818,40 @@ impl AppShell {
 impl AppShell {
     fn palette_settings(&self, cx: &Context<Self>) -> Vec<SettingEntry> {
         vec![
-            SettingEntry::new("Navigation layout").control(choice_select(
-                &self.settings_controls.palette_layout,
-                "Navigation layout",
-                cx,
-            )),
-            SettingEntry::new("Command shortcuts").control(
-                Switch::new("settings-palette-show-keys")
-                    .checked(self.preferences.palette_show_keys)
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        this.preferences.palette_show_keys = !this.preferences.palette_show_keys;
-                        this.preferences.save();
-                        cx.notify();
-                    })),
-            ),
-            SettingEntry::new("Vim mode")
-                .description("Esc for normal mode: j k move, l into, h up")
+            SettingEntry::new("Window chooser")
+                .description("Sessions and windows before you type")
+                .control(choice_select(
+                    &self.settings_controls.palette_layout,
+                    "Window chooser",
+                    cx,
+                )),
+            SettingEntry::new("Show shortcuts")
+                .description("Each command's keys beside it")
                 .control(
-                    Switch::new("settings-palette-vim-mode")
-                        .checked(self.preferences.palette_vim_mode)
+                    Switch::new("settings-palette-show-keys")
+                        .checked(self.preferences.palette_show_keys)
                         .on_click(cx.listener(|this, _, _, cx| {
-                            this.preferences.palette_vim_mode = !this.preferences.palette_vim_mode;
+                            this.preferences.palette_show_keys =
+                                !this.preferences.palette_show_keys;
                             this.preferences.save();
                             cx.notify();
                         })),
                 ),
         ]
+    }
+
+    fn palette_vim_setting(&self, cx: &Context<Self>) -> SettingEntry {
+        SettingEntry::new("Command palette Vim mode")
+            .description("Esc for normal mode: j k move, l into, h up")
+            .control(
+                Switch::new("settings-palette-vim-mode")
+                    .checked(self.preferences.palette_vim_mode)
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.preferences.palette_vim_mode = !this.preferences.palette_vim_mode;
+                        this.preferences.save();
+                        cx.notify();
+                    })),
+            )
     }
 }
 
@@ -1293,7 +1314,6 @@ mod tests {
             assert_eq!(theme.accent, expected);
             assert_eq!(theme.radius, px(3.0));
             assert!(theme.pill_controls());
-            assert!(theme.tinted());
         });
         preferences.appearance.overrides.radius = Some(5.0);
         preferences.appearance.overrides.accent = Some("green".into());

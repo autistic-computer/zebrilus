@@ -1,7 +1,6 @@
 use std::collections::BTreeSet;
 
 use ala::{App, Entity, SharedString};
-
 use zz_protocol::{
     Axis, CommandInvocation, MuxSnapshot, PaneId,
     SessionId, WindowId,
@@ -53,7 +52,6 @@ impl TreeTarget {
     }
 }
 
-#[cfg(test)]
 pub use zz_client::desktop_fleet::FleetPane as MuxTreePane;
 pub use zz_client::desktop_fleet::{FleetPaneKind as MuxTreePaneKind, FleetSession as MuxTreeSession, FleetWindow as MuxTreeWindow};
 

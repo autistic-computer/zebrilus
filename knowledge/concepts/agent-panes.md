@@ -273,7 +273,11 @@ markdown carries them as `zzref:` links; the user's bubble draws them as clickab
   newest run of tools is still going, the line is that run's header and opens to its steps. It
   hides while the chat waits on you. The transcript only gets a reply once it is whole, so a reply
   that lands while you watch types itself in over 220 to 900 ms (`ChatPane::sync` notes when it
-  arrived; replies already there on the first look show at once).
+  arrived; replies already there on the first look show at once). While a reply streams or types
+  itself in it is drawn repaired (`mend`): an unclosed bold, code span or fence is closed and a
+  link whose URL has not arrived is inert, so the text does not jump when the rest lands.
+- **Long replies.** A reply over 32 KB or 512 lines shows its start in a 420 px scroll box with
+  Copy full message under it (`ChatOpen::previews`); Copy under the turn still takes all of it.
 - **Batches.** Claude Code sends a sentence for each finished batch of tool calls
   (`tool_use_summary`, with the ids it covers), and the run's header shows it instead of zz's count
   ("Counted lines in a.txt" for "Ran 2 commands"), with failures and denials still counted after
@@ -290,9 +294,10 @@ markdown carries them as `zzref:` links; the user's bubble draws them as clickab
   keeps its text (`chat_rows::reasoning_body`). The opened text is selectable and scrolls inside
   260 px. Claude's thinking reads the same way.
 - **Subagents.** One row each: the CLI's mark, the name, a status glyph (spinning, Needs you, done,
-  failed, stopped) and the time it took. Clicking one opens its chat in a PiP over the thread
-  (`chat_agent_pip`): the prompt it was given, its own rows, its answer and a footer; its close
-  button or a second click closes it. An approval it waits on sits under its row.
+  failed, stopped) and the time it took. Clicking one opens its chat in a PiP docked beside the
+  thread (`chat_agent_pip`, `chat_pip_frame`; on touch it covers the thread): the prompt it was
+  given, its own rows, its answer and a footer; its close button or a second click closes it. An
+  approval it waits on sits under its row, or in the PiP while that agent's PiP is open.
 - **Answered questions.** The question, with the answer under it.
 - **Codex's async questions.** Codex can ask without stopping its turn
   (`request_user_input_async`); the app server sends that as an `agentMessage` with

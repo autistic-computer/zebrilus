@@ -5,7 +5,7 @@ use ala::{
 };
 use penna::{
     ActiveTheme as _, BarLook, Chip, Disableable as _, IconName, Label, PaintState, Row, RowLook,
-    Sizable as _, Size, Space, Surface, Tab, TabLook, TextStyle, Tone,
+    Sizable as _, Size, Space, Surface, Tab, TabLook, TabStrip, TextStyle, Tone,
     components::button::{Button, ButtonLook},
     components::icon::Icon,
     components::list::ListItem,
@@ -119,6 +119,7 @@ fn tabs(_: &mut Window, cx: &mut App) -> AnyElement {
                 tab(TabLook::Window, "size", PaintState::Selected, label, cx).with_size(*size)
             })),
         )
+        .state("in a strip", row().child(strip(cx)))
         .state(
             "not interactive",
             row()
@@ -153,6 +154,33 @@ fn tabs(_: &mut Window, cx: &mut App) -> AnyElement {
             ),
         )
         .into_any_element()
+}
+
+const STRIP_TABS: [(PaintState, &str); 3] = [
+    (PaintState::Selected, "zz"),
+    (PaintState::Rest, "notes"),
+    (PaintState::Rest, "build"),
+];
+
+fn strip(cx: &App) -> TabStrip {
+    let on = TabStrip::ground(cx.theme().ground(), STRIP_TABS.len(), cx);
+    TabStrip::new("tab-strip", TabLook::Window)
+        .with_size(px(28.0))
+        .children(STRIP_TABS.iter().map(|(state, label)| {
+            Tab::new(
+                SharedString::from(format!("tab-strip-{label}")),
+                TabLook::Window,
+            )
+            .on(on)
+            .state(*state)
+            .with_size(px(28.0))
+            .px(Space::S10)
+            .flex()
+            .items_center()
+            .gap(Space::S6)
+            .child(Icon::new(IconName::Terminal).small())
+            .child(Label::new(TextStyle::Small, *label))
+        }))
 }
 
 const ROW_LOOKS: [(RowLook, &str); 6] = [

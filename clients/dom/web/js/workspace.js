@@ -91,27 +91,24 @@ function iconButton(role, action, icon, label) {
   return button;
 }
 
-function headerActions(floats) {
-  return floats
-    ? [
-        ["tile", "layout-columns", "Tile back"],
-        ["zoom", "window-maximize", "Zoom"],
-      ]
+function headerActions(floats, lone, zoomed) {
+  const zoom = zoomed ? ["zoom", "shrink", "Unzoom"] : ["zoom", "expand", "Zoom"];
+  const actions = floats
+    ? [["tile", "layout-columns", "Tile back"], zoom]
     : [
         ["split-bottom", "panel-bottom", "Split bottom"],
         ["split-right", "panel-right", "Split right"],
-        ["float", "picture-in-picture", "Float"],
+        ...(lone || zoomed ? [] : [["float", "picture-in-picture", "Float"]]),
+        ...(lone ? [] : [zoom]),
       ];
+  return [...actions, ["close", "xmark", "Close pane"]];
 }
 
 function header(pane) {
   const element = el("div", { "data-penna": "bar.pane" });
   const slot = el("div", { class: "title-slot" });
   const title = el("div", { "data-penna": "button.title", class: "pane-title" });
-  title.innerHTML = `<span class="title-icon"><i data-icon="square-terminal" class="kind"></i><i data-icon="arrows-move" class="move"></i></span><span class="title" data-text></span>`;
-  const close = iconButton("icon-button.bar", "close", "xmark", "Close pane");
-  close.classList.add("title-close");
-  title.append(close);
+  title.innerHTML = `<span class="title-icon"><i data-icon="square-terminal" class="kind"></i><i data-icon="arrows-move" class="move"></i></span><span class="title" data-text></span><span class="folder" data-text></span>`;
   slot.append(title);
   const extras = el("div", { class: "header-extras" });
   const actions = el("div", { class: "header-actions" });
@@ -130,7 +127,7 @@ function header(pane) {
     if (pane.floating) beginPip(pane, event);
     else beginPaneDrag(pane.id, event, false);
   });
-  return { element, title, extras, actions, floats: null };
+  return { element, title, extras, actions, place: null };
 }
 
 function runAction(id, action) {
@@ -180,10 +177,6 @@ function paneElement(id) {
   });
   badges.addEventListener("pointerdown", (event) => event.stopPropagation());
   badges.addEventListener("click", (event) => {
-    if (event.target.closest("[data-action='unzoom']") && writable()) {
-      state.client.pane_action(id, "zoom", 0);
-      flush();
-    }
     const choice = event.target.closest("[data-flip]")?.dataset.flip;
     if (choice) globalThis.zzAgent?.chooseFlip(id, choice);
   });
@@ -257,9 +250,6 @@ function chrome(pane, info, window, floating) {
   if (terminal && info.waiting) tags.push(badge("clock", `Waiting for %${pane.id}`));
   if (info.deadLabel) tags.push(badge("circle-x", info.deadLabel));
   if (info.synchronized) tags.push(badge("layers", "Sync"));
-  if (window.zoomedPane === pane.id) {
-    tags.push(`<button data-penna="chip.floating" class="unzoom" data-action="unzoom" aria-label="Unzoom"><i data-icon="window-restore"></i><span data-text>Unzoom</span></button>`);
-  }
   const html = tags.join("");
   if (pane.badges.dataset.html !== html) {
     pane.badges.dataset.html = html;
@@ -274,12 +264,16 @@ function renderHeader(parts, pane, info, window, floats, label) {
   parts.element.parentElement?.toggleAttribute("data-inactive", !active);
   parts.element.toggleAttribute("data-active", active);
   parts.title.querySelector(".title").textContent = label ?? info.label ?? "";
+  parts.title.querySelector(".folder").textContent = info.folder ?? "";
   parts.title.querySelector(".kind").dataset.icon = paneIcon(info.kind);
   parts.title.toggleAttribute("data-movable", floats ? writable() : canDrag(window));
-  if (parts.floats !== floats) {
-    parts.floats = floats;
+  const lone = window.panes.length === 1;
+  const zoomed = window.zoomedPane === pane.id;
+  const place = `${floats} ${lone} ${zoomed}`;
+  if (parts.place !== place) {
+    parts.place = place;
     parts.actions.replaceChildren(
-      ...headerActions(floats).map(([action, icon, title]) => iconButton("icon-button.bar", action, icon, title)),
+      ...headerActions(floats, lone, zoomed).map(([action, icon, title]) => iconButton("icon-button.bar", action, icon, title)),
     );
   }
   const extras = headerButtons.map((factory) => factory(pane, info)).filter(Boolean);
@@ -671,7 +665,7 @@ function windowTab(entry) {
   deck.style.width = `${20 + (Math.min(entry.panes.length, 3) - 1) * 5}px`;
   const name = el("span", { class: "tab-name", "aria-label": entry.label });
   name.textContent = entry.label;
-  const close = el("button", { "data-penna": "icon-button.row", class: "tab-close", title: "Close window" }, `<i data-icon="xmark"></i>`);
+  const close = el("button", { "data-penna": "icon-button.row", "data-inside": "", class: "tab-close", title: "Close window" }, `<i data-icon="xmark"></i>`);
   close.disabled = !writable();
   close.addEventListener("click", (event) => {
     event.stopPropagation();
@@ -741,7 +735,9 @@ function renderTitlebar() {
   if (inline || !state.client) return;
   const model = JSON.parse(state.client.status_bar());
   const strip = el("div", { class: "window-strip" });
-  strip.append(...model.windows.map(windowTab));
+  const tabs = el("div", { class: "window-tabs", "data-penna": "tab.strip", role: "tablist" });
+  tabs.append(...model.windows.map(windowTab));
+  if (model.windows.length) strip.append(tabs);
   if (model.overflow) {
     const more = el("button", { "data-penna": "chrome.button", class: "overflow", title: "All windows" }, `<i data-icon="ellipsis"></i>`);
     more.disabled = !state.connected;
@@ -754,7 +750,7 @@ function renderTitlebar() {
         model.overflow.map((entry) => [entry.label, () => state.client.window_command(entry.id, "select"), entry.active ? "check" : "app-window"]),
       );
     });
-    strip.append(more);
+    tabs.append(more);
   }
   const toggle = el("button", { "data-penna": "chrome.button", class: "titlebar-toggle", title: "Toggle sidebar" }, `<i data-icon="panel-left"></i>`);
   toggle.addEventListener("click", () => emit("toggleSidebar"));
@@ -819,6 +815,10 @@ function render() {
   prefixArmed = Boolean(tree?.prefix);
   if (pipDrag?.landing !== undefined && (tree?.generation ?? 0) > pipDrag.landing) pipDrag = null;
   if (paneDrag && (!window || paneDrag.window !== window.id || layoutKey(window.layout) !== paneDrag.layout || window.zoomedPane || !writable() || (paneDrag.requiresPrefix && !prefixArmed))) cancelDrags();
+  if (tree?.landing) {
+    renderLanding();
+    return;
+  }
   if (!window) {
     content.replaceChildren();
     renderEmpty();
@@ -853,7 +853,7 @@ phase("panes", (ids) => {
   for (const id of ids) panes.get(id)?.view?.update?.();
 });
 function fades() {
-  for (const label of document.querySelectorAll(".pane-title > .title, .tab-name")) {
+  for (const label of document.querySelectorAll(".tab-name")) {
     label.toggleAttribute("data-fade", label.scrollWidth > label.clientWidth + 0.5);
   }
 }
@@ -924,7 +924,7 @@ on("focus", () => {
 
 const AGENT_ICONS = { claude: "asterisk", codex: "braces" };
 
-function chatRows(pane, list, chat, view) {
+function chatRows(click, list, chat, view) {
   const row = (target, index, icon, title, note, shortcut, selected) => {
     const element = el("div", { class: "picker-row", "data-penna": "menu-item.card" });
     if (selected) element.dataset.state = "current";
@@ -934,14 +934,14 @@ function chatRows(pane, list, chat, view) {
     if (shortcut) element.querySelector("[data-penna='keycap'] > span").textContent = shortcut;
     element.addEventListener("mousemove", () => {
       if (target !== "folder-line" && !selected) {
-        state.client.chat_picker_click(pane.id, "hover", index);
+        click("hover", index);
         view.update();
       }
     });
     element.addEventListener("pointerdown", (event) => {
       event.stopPropagation();
       if (!writable()) return;
-      state.client.chat_picker_click(pane.id, target, index);
+      click(target, index);
       flush();
       view.update();
     });
@@ -971,7 +971,7 @@ function picker(pane) {
     update() {
       const chat = JSON.parse(state.client.chat_picker(pane.id));
       if (chat) {
-        chatRows(pane, list, chat, view);
+        chatRows((target, index) => state.client.chat_picker_click(pane.id, target, index), list, chat, view);
         return;
       }
       list.replaceChildren(
@@ -1015,9 +1015,40 @@ function picker(pane) {
 
 paneRenderer("picker", picker);
 
+const landing = el("div", { class: "pane-picker" }, `<div class="picker-choices"></div>`);
+const landingView = {
+  update() {
+    const chat = JSON.parse(state.client.landing_picker());
+    if (!chat) {
+      markTree();
+      return;
+    }
+    chatRows((target, index) => state.client.landing_picker_click(target, index), landing.querySelector(".picker-choices"), chat, landingView);
+  },
+};
+
+function renderLanding() {
+  empty.hidden = true;
+  if (content.firstChild !== landing || content.childElementCount !== 1) {
+    content.replaceChildren(landing);
+    $(".ime")?.focus({ preventScroll: true });
+  }
+  landingView.update();
+}
+
 onKey((event) => {
+  if (event.isComposing) return false;
+  if (state.tree?.landing) {
+    if (event.target.closest?.("input, textarea, select, [contenteditable]") && !event.target.classList.contains("ime")) return false;
+    if (!state.client.landing_picker_key(event.key, event.shiftKey, event.ctrlKey, event.altKey, event.metaKey)) return false;
+    event.preventDefault();
+    flush();
+    landingView.update();
+    return true;
+  }
+  if (event.target.closest?.("input, textarea, select, [contenteditable]")) return false;
   const window = activeWindow();
-  if (!window || event.isComposing || event.target.closest?.("input, textarea, select, [contenteditable]")) return false;
+  if (!window) return false;
   const view = pickers.get(window.activePane);
   if (!view) return false;
   if (JSON.parse(state.client.chat_picker(window.activePane))) {

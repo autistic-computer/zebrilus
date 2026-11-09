@@ -38,7 +38,7 @@ fn palette(mode: ThemeMode) -> ThemeColor {
     ThemeColor {
         background: hex("#f6f6f3", "#1a1a19"),
         foreground: hex("#1c1c1a", "#e9e7e3"),
-        accent: hex("#2f62d8", "#7f9fff"),
+        accent: hex("#0a64dd", "#3183ff"),
         success: hex("#007b3e", "#3fbf74"),
         warning: hex("#a75400", "#f0a14a"),
         danger: hex("#cc2737", "#f2555f"),

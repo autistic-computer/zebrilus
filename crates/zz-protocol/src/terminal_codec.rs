@@ -1007,6 +1007,7 @@ mod tests {
             status: crate::StatusLine::default(),
             key_tables: Vec::new(),
             clock: 0,
+            platform: crate::HostPlatform::default(),
         }));
 
         let frame = encode_protocol_message(&message).expect("encode ServerHello");
@@ -1145,6 +1146,7 @@ mod tests {
             status: crate::StatusLine::default(),
             key_tables: Vec::new(),
             clock: 0,
+            platform: crate::HostPlatform::default(),
         }));
         let hello_frame = encode_protocol_message(&hello).expect("encode mux options in hello");
         assert_eq!(decode_protocol_frame(&hello_frame).unwrap(), hello);
@@ -1188,6 +1190,7 @@ mod tests {
             },
             key_tables: Vec::new(),
             clock: 0,
+            platform: crate::HostPlatform::default(),
         };
         assert!(matches!(
             encode_protocol_message(&ProtocolMessage::ServerHello(Box::new(oversized))),
@@ -1233,6 +1236,7 @@ mod tests {
             status: crate::StatusLine::default(),
             key_tables: Vec::new(),
             clock: 0,
+            platform: crate::HostPlatform::default(),
         }));
         assert!(matches!(
             encode_protocol_message(&oversized_hello),
@@ -1265,6 +1269,7 @@ mod tests {
             status: crate::StatusLine::default(),
             key_tables: Vec::new(),
             clock: 0,
+            platform: crate::HostPlatform::default(),
         }));
 
         assert!(matches!(
@@ -1298,6 +1303,7 @@ mod tests {
             status: crate::StatusLine::default(),
             key_tables: Vec::new(),
             clock: 0,
+            platform: crate::HostPlatform::default(),
         }));
 
         assert!(matches!(
@@ -1327,6 +1333,7 @@ mod tests {
             status: crate::StatusLine::default(),
             key_tables: Vec::new(),
             clock: 0,
+            platform: crate::HostPlatform::default(),
         }));
 
         assert!(matches!(
@@ -1376,6 +1383,7 @@ mod tests {
                 status: crate::StatusLine::default(),
                 key_tables: Vec::new(),
                 clock: 0,
+                platform: crate::HostPlatform::default(),
             }));
             let payload = postcard::to_stdvec(&message).expect("serialize malformed fixture");
             let frame = crate::framing::encode_enveloped(Lane::Control, &payload)
@@ -1405,6 +1413,7 @@ mod tests {
                 status: crate::StatusLine::default(),
                 key_tables: Vec::new(),
                 clock: 0,
+                platform: crate::HostPlatform::default(),
             }));
             assert!(matches!(
                 encode_protocol_message(&message),
@@ -1607,6 +1616,7 @@ mod tests {
             status: crate::StatusLine::default(),
             key_tables: Vec::new(),
             clock: 0,
+            platform: crate::HostPlatform::default(),
         }));
         let mut changed = message.clone();
         let ProtocolMessage::ServerHello(hello) = &mut changed else {

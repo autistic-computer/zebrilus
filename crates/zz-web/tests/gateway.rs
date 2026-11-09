@@ -13,6 +13,8 @@ use zz_web::{Gateway, GatewayConfig};
 
 struct RunningGateway {
     address: SocketAddr,
+    open_path: String,
+    cookie: String,
     task: JoinHandle<std::io::Result<()>>,
 }
 
@@ -25,10 +27,41 @@ impl RunningGateway {
         })
         .await
         .unwrap();
-        Self {
-            address: gateway.local_addr(),
+        let address = gateway.local_addr();
+        let open_url = gateway.open_url();
+        let mut server = Self {
+            address,
+            open_path: open_url
+                .strip_prefix(&format!("http://{address}"))
+                .unwrap()
+                .to_owned(),
+            cookie: String::new(),
             task: tokio::spawn(gateway.serve()),
-        }
+        };
+        let opened = server
+            .http_with(&server.open_path, &address.to_string(), None)
+            .await;
+        assert!(opened.starts_with("HTTP/1.1 303"), "{opened}");
+        assert!(opened.contains("location: /\r\n"), "{opened}");
+        let cookie = opened
+            .lines()
+            .find_map(|line| line.strip_prefix("set-cookie: "))
+            .unwrap();
+        assert!(
+            cookie.ends_with("; Path=/; Max-Age=2592000; HttpOnly; SameSite=Strict"),
+            "{cookie}"
+        );
+        let cookie: String = cookie.split(';').next().unwrap().into();
+        server.cookie = cookie;
+        assert_eq!(
+            server.cookie,
+            format!(
+                "zz-web-{}={}",
+                address.port(),
+                server.open_path.strip_prefix("/?token=").unwrap()
+            )
+        );
+        server
     }
 
     fn websocket_request(&self) -> Request<()> {
@@ -40,13 +73,21 @@ impl RunningGateway {
             HeaderValue::from_str(&format!("http://{}", self.address)).unwrap(),
         );
         request
+            .headers_mut()
+            .insert("Cookie", HeaderValue::from_str(&self.cookie).unwrap());
+        request
     }
 
     async fn http(&self, path: &str, host: &str) -> String {
+        self.http_with(path, host, Some(&self.cookie)).await
+    }
+
+    async fn http_with(&self, path: &str, host: &str, cookie: Option<&str>) -> String {
+        let cookie = cookie.map_or_else(String::new, |cookie| format!("Cookie: {cookie}\r\n"));
         let mut stream = TcpStream::connect(self.address).await.unwrap();
         stream
             .write_all(
-                format!("GET {path} HTTP/1.1\r\nHost: {host}\r\nConnection: close\r\n\r\n")
+                format!("GET {path} HTTP/1.1\r\nHost: {host}\r\n{cookie}Connection: close\r\n\r\n")
                     .as_bytes(),
             )
             .await
@@ -94,6 +135,35 @@ async fn gateway_serves_assets_and_rejects_foreign_hosts_and_path_escape() {
             "accepted {path}"
         );
     }
+    let kept = server
+        .http_with(
+            &format!("{}&theme=dark&bare=", server.open_path),
+            &host,
+            None,
+        )
+        .await;
+    assert!(kept.contains("location: /?theme=dark&bare=\r\n"), "{kept}");
+    let stranger = format!("zz-web-{}={}", server.address.port(), "0".repeat(64));
+    for (path, cookie) in [
+        ("/", None),
+        ("/", Some(stranger.as_str())),
+        ("/?token=0", None),
+        (&format!("/?token={}", "0".repeat(64)), None),
+        (
+            &format!("{}&{}", server.open_path, &server.open_path[2..]),
+            None,
+        ),
+    ] {
+        let response = server.http_with(path, &host, cookie).await;
+        assert!(
+            response.starts_with("HTTP/1.1 403"),
+            "served {path} to {cookie:?}"
+        );
+        assert!(
+            response.ends_with("Open the link zz-web printed when it started.\n"),
+            "{response}"
+        );
+    }
 
     assert!(
         Gateway::bind(GatewayConfig {
@@ -128,6 +198,24 @@ async fn websocket_requires_an_exact_same_origin_before_connecting_the_daemon() 
             result,
             Err(tokio_tungstenite::tungstenite::Error::Http(response)) if response.status() == 403
         ));
+    }
+    let stranger = format!("zz-web-{}={}", server.address.port(), "0".repeat(64));
+    for cookie in [None, Some(stranger.as_str())] {
+        let mut request = server.websocket_request();
+        request.headers_mut().remove("Cookie");
+        if let Some(cookie) = cookie {
+            request
+                .headers_mut()
+                .insert("Cookie", HeaderValue::from_str(cookie).unwrap());
+        }
+        let result = tokio_tungstenite::connect_async(request).await;
+        assert!(
+            matches!(
+                result,
+                Err(tokio_tungstenite::tungstenite::Error::Http(ref response)) if response.status() == 403
+            ),
+            "upgraded with {cookie:?}"
+        );
     }
     let result = tokio_tungstenite::connect_async(server.websocket_request()).await;
     assert!(matches!(

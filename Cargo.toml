@@ -126,6 +126,7 @@ postcard = { version = "1.1.3", default-features = false, features = ["use-std"]
 proc-macro2 = "1.0.93"
 profiling = "1"
 proptest = { git = "https://github.com/proptest-rs/proptest", rev = "3dca198a8fef1b32e3a66f1e1897c955b4dc5b5b", features = ["attr-macro"] }
+qrcodegen = "1.8.0"
 quote = "1.0.9"
 rand = "0.10.3"
 raw-window-handle = "0.6.2"
@@ -191,6 +192,7 @@ zz-config = { path = "crates/zz-config" }
 zz-machine = { path = "crates/zz-machine" }
 zz-daemon = { path = "crates/zz-daemon", default-features = false }
 zz-daemon-client = { path = "crates/zz-daemon-client" }
+zz-tailnet = { path = "crates/zz-tailnet" }
 zz-mux = { path = "crates/zz-mux" }
 zz-protocol = { path = "crates/zz-protocol" }
 zz-terminal = { path = "crates/zz-terminal", default-features = false }

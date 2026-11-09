@@ -87,6 +87,7 @@ fn compact_welcome_round_trip_is_bounded_and_caps_recover_names() {
         client_instance_id: ClientInstanceId(u64::MAX),
         caps: Welcome::caps_from_strings(&capabilities),
         clock: 0,
+        platform: crate::HostPlatform::default(),
     };
     let message = ProtocolMessage::Welcome(welcome);
     let encoded = encode_protocol_message(&message).unwrap();
@@ -110,6 +111,7 @@ fn compact_welcome_rejects_missing_required_capabilities_on_encode_and_decode() 
             client_instance_id: ClientInstanceId(3),
             caps: Welcome::caps_from_strings(&capabilities),
             clock: 0,
+            platform: crate::HostPlatform::default(),
         };
         assert!(!welcome.has_capability(missing));
         let message = ProtocolMessage::Welcome(welcome);
@@ -395,4 +397,30 @@ fn direct_control_guard_keeps_non_utf8_output_bytes() {
     });
     let frame = encode_protocol_message(&message).unwrap();
     assert_eq!(decode_protocol_frame(&frame).unwrap(), message);
+}
+
+#[test]
+fn os_release_maps_a_distro_to_the_family_whose_packages_it_uses() {
+    use crate::LinuxDistro;
+    let cases = [
+        ("ID=ubuntu\nID_LIKE=debian\n", LinuxDistro::Ubuntu),
+        (
+            "ID=linuxmint\nID_LIKE=\"ubuntu debian\"\n",
+            LinuxDistro::Ubuntu,
+        ),
+        ("ID=debian\n", LinuxDistro::Debian),
+        ("ID=raspbian\nID_LIKE=debian\n", LinuxDistro::Debian),
+        ("ID=arch\n", LinuxDistro::Arch),
+        ("ID=endeavouros\nID_LIKE=arch\n", LinuxDistro::Arch),
+        ("ID=fedora\n", LinuxDistro::Fedora),
+        (
+            "ID=\"rocky\"\nID_LIKE=\"rhel centos fedora\"\n",
+            LinuxDistro::Fedora,
+        ),
+        ("ID='nixos'\n", LinuxDistro::Other),
+        ("", LinuxDistro::Other),
+    ];
+    for (text, family) in cases {
+        assert_eq!(LinuxDistro::from_os_release(text), family, "{text:?}");
+    }
 }

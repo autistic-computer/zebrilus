@@ -60,6 +60,8 @@ pub struct Connection {
     #[cfg(any(target_os = "ios", target_os = "android"))]
     pending_session: Option<String>,
     #[cfg(any(target_os = "ios", target_os = "android"))]
+    tailnet_offers: Option<u64>,
+    #[cfg(any(target_os = "ios", target_os = "android"))]
     retry: Option<ala::Task<()>>,
     pub core: ClientCore,
     history: HistoryPacer,
@@ -95,6 +97,10 @@ pub struct Connection {
 
 impl EventEmitter<CoreEvent> for Connection {}
 
+pub struct FoundHosts(pub Vec<String>);
+
+impl EventEmitter<FoundHosts> for Connection {}
+
 impl Connection {
     #[must_use]
     pub fn new(_: &mut Context<Self>) -> Self {
@@ -113,6 +119,8 @@ impl Connection {
             resume: false,
             #[cfg(any(target_os = "ios", target_os = "android"))]
             pending_session: None,
+            #[cfg(any(target_os = "ios", target_os = "android"))]
+            tailnet_offers: None,
             #[cfg(any(target_os = "ios", target_os = "android"))]
             retry: None,
             core: history_core(),
@@ -776,6 +784,41 @@ impl Connection {
     }
 
     #[cfg(any(target_os = "ios", target_os = "android"))]
+    fn ask_for_tailnet_hosts(&mut self, cx: &mut Context<Self>) {
+        self.tailnet_offers = None;
+        if self
+            .endpoint
+            .as_deref()
+            .is_some_and(|endpoint| endpoint.starts_with("tailnet://"))
+        {
+            self.tailnet_offers =
+                Some(self.invoke(CommandInvocation::new("tailnet", ["hosts"]), cx));
+        }
+    }
+
+    #[cfg(any(target_os = "ios", target_os = "android"))]
+    fn probe_tailnet_hosts(&mut self, output: &str, cx: &mut Context<Self>) {
+        let offers = zz_daemon_client::tailnet_offer::parse_offers(output);
+        if offers.is_empty() {
+            return;
+        }
+        cx.spawn(async move |this, cx| {
+            let found = cx
+                .background_executor()
+                .spawn(async move { zz_daemon_client::tailnet_offer::reachable(offers) })
+                .await;
+            let endpoints = found
+                .iter()
+                .map(|offer| zz_daemon_client::Endpoint::Tailnet(offer.endpoint()).to_string())
+                .collect::<Vec<_>>();
+            if !endpoints.is_empty() {
+                this.update(cx, |_, cx| cx.emit(FoundHosts(endpoints))).ok();
+            }
+        })
+        .detach();
+    }
+
+    #[cfg(any(target_os = "ios", target_os = "android"))]
     pub fn open_session(&mut self, session: String, cx: &mut Context<Self>) {
         if self.connected {
             self.attach_target(session, cx);
@@ -863,6 +906,8 @@ impl Connection {
                     self.connected = true;
                     self.providers_requested = false;
                     self.commands.clear();
+                    #[cfg(any(target_os = "ios", target_os = "android"))]
+                    self.ask_for_tailnet_hosts(cx);
                     #[cfg(target_family = "wasm")]
                     {
                         self.retry = None;
@@ -921,6 +966,13 @@ impl Connection {
                     }
                     cx.notify();
                 }
+                #[cfg(any(target_os = "ios", target_os = "android"))]
+                CoreEvent::CommandResponse(CommandResponse::Error { request_id, .. })
+                    if self.tailnet_offers == Some(*request_id) =>
+                {
+                    self.commands.remove(request_id);
+                    self.tailnet_offers = None;
+                }
                 CoreEvent::CommandResponse(CommandResponse::Error {
                     request_id, error, ..
                 }) => {
@@ -945,6 +997,14 @@ impl Connection {
                         Some(name) => self.notify_error(format!("{name}: {error}"), cx),
                         None => {}
                     }
+                }
+                #[cfg(any(target_os = "ios", target_os = "android"))]
+                CoreEvent::CommandResponse(CommandResponse::Success {
+                    request_id, output, ..
+                }) if self.tailnet_offers == Some(*request_id) => {
+                    self.commands.remove(request_id);
+                    self.tailnet_offers = None;
+                    self.probe_tailnet_hosts(output.as_ref(), cx);
                 }
                 CoreEvent::CommandResponse(CommandResponse::Success { request_id, .. }) => {
                     self.commands.remove(request_id);
@@ -1689,6 +1749,7 @@ mod tests {
                 status: zz_protocol::StatusLine::default(),
                 key_tables: Vec::new(),
                 clock: 0,
+                platform: zz_protocol::HostPlatform::default(),
             }));
             let encoded = zz_protocol::encode_protocol_message(&hello).unwrap();
             let decoded = zz_protocol::decode_protocol_frame(&encoded).unwrap();

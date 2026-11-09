@@ -157,7 +157,7 @@ The shared field chrome in penna's `input/field.rs` does three things:
 Kit widgets on the model:
 - **`Badge`**: tone, emphasis, size, optional icon, any children after the label, and `.on(ground)`. `.opaque()` for a badge floating over content. One widget for chips, pills, status and counts.
 - **`Keycap`**: a key as a cap, drawn as the `keycap` kind (a tint with the outline), with `.on(ground)` inside another paint and its label muted on the cap, or at full ink on an accent or other colored fill, where muting would wash it into the color.
-- **`Kbd`**: a `Keystroke` drawn as that same `Keycap`, with the same `.on(ground)`, so every key hint is one cap. Inside the cap the keys are `KeyGlyphs`: each key's icon where the platform has one (`key_icon`: Apple's ⌃ ⌥ ⇧ ⌘ ⎋ ⇥ on macOS and iOS, ISO 9995's ✲ and ↹ elsewhere, ↵ ⌫ and the arrows on both) and its name otherwise. The palette's footer keys are bare `KeyGlyphs` without a cap, and its rows' tmux shortcuts (`C-b c`) one small cap per key (`tmux_shortcut`). Menus and tooltips show a binding as text (`Kbd::text`) in the row's ink instead of a cap.
+- **`Kbd`**: a `Keystroke` drawn as that same `Keycap`, with the same `.on(ground)`, so every key hint is one cap. Inside the cap the keys are `KeyGlyphs`: each key's icon where the platform has one (`key_icon`: Apple's ⌃ ⌥ ⇧ ⌘ ⎋ ⇥ on macOS and iOS, ISO 9995's ✲ and ↹ elsewhere, ↵ ⌫ and the arrows on both) and its name otherwise. The palette's footer keys are bare `KeyGlyphs` without a cap, and its rows' tmux shortcuts (`C-b c`) one small cap per key (`tmux_shortcut`). Menus show a binding as text (`Kbd::text`) in the row's ink instead of a cap. Tooltips show one small cap per keystroke, so a pane button's tooltip reads ⌃A | for the prefix and then the key.
 - **`Check`**: `Check::checkbox(checked)` and `Check::radio(checked)`.
   - Off: a neutral outline.
   - On: the tone solid (primary by default), with `.on(ground)`.
@@ -200,7 +200,7 @@ Kit widgets on the model:
 | Option tile in a question or permission card | neutral · soft, selectable |
 | Menu, list and chooser rows | neutral · ghost, selectable (`picker::list_row`) |
 | Digit keycap on a tile | neutral · outline, on the tile's ground |
-| Shortcut hint (`Kbd`) | neutral · soft; text in menus and tooltips |
+| Shortcut hint (`Kbd`) | neutral · soft; text in menus |
 | Phone key | neutral · soft opaque; current when latched; neutral · solid when held |
 | Count or kind chip (`2/3`, `Base`) | neutral · soft |
 | Reject, delete | danger · soft, or danger · solid when it is the main action |

@@ -41,6 +41,24 @@ Tab::new(("tab", ix), TabLook::Window)
 
 Inset and content are yours; the stories use 10 at the sides. A tab is as wide as its content; give tabs one width to make them equal.
 
+## Strip
+
+```figure uses=tab
+<div class="docs-show" data-gap="wide">
+  <div class="docs-cell"><div class="penna-tab-strip" data-penna="tab.strip" role="tablist" style="--penna-around-rows: 28px"><div class="penna-tab" role="tab" data-penna="tab.window" data-size="medium" data-state="selected" aria-selected="true" data-still><span class="penna-tab-label"><span class="penna-text" data-penna-text>main</span></span></div><div class="penna-tab" role="tab" data-penna="tab.window" data-size="medium" data-still><span class="penna-tab-label"><span class="penna-text" data-penna-text>notes</span></span></div><div class="penna-tab" role="tab" data-penna="tab.window" data-size="medium" data-still><span class="penna-tab-label"><span class="penna-text" data-penna-text>build</span></span></div></div></div>
+</div>
+```
+
+Window tabs sit in one strip: a wash with no edge, 2 inside and 2 between tabs. Its corner is the tabs' corner plus 2, so the open tab sits concentric in it. With one tab there is no strip, just the tab.
+
+```rust
+let on = TabStrip::ground(bar, windows.len(), cx);
+TabStrip::new("windows", TabLook::Window)
+    .on(bar)
+    .with_size(px(28.0))
+    .children(windows.iter().map(|w| Tab::new(w.id, TabLook::Window).on(on).with_size(px(28.0))))
+```
+
 ## Sizes
 
 ```figure uses=tab

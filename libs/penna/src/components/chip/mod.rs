@@ -251,7 +251,8 @@ impl RenderOnce for Chip {
         let theme = cx.theme();
         let ground = theme.ground_at(surface, plate.state);
         let accent = theme.accent.opaque();
-        let radius = theme.radius;
+        let line_corner =
+            theme.control_corner(rems_from_px(size.control_px()).to_pixels(window.rem_size()));
         let (padding, gap, _) = metrics(size);
         let text = size.control_text();
         plate.surface = surface;
@@ -291,8 +292,9 @@ impl RenderOnce for Chip {
         .chain(children)
         .collect();
         plate.paint_with(window, cx, move |layer| {
-            if multiline {
-                layer.radius = layer.radius.min(radius);
+            if multiline && layer.radius < ala::FULL_CORNER_RADIUS {
+                layer.share = None;
+                layer.radius = layer.radius.min(line_corner);
             }
             if let Some(ring) = ring {
                 for shadow in &mut layer.shadow {

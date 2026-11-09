@@ -4,6 +4,7 @@ use ala::{
 };
 use penna::{ActiveTheme as _, Colorize as _, Icon, IconName, Label, TextStyle, h_flex};
 use zz_client::program::Program;
+use zz_protocol::{HostPlatform, LinuxDistro};
 use zz_ui::{
     navigation::{
         WORKSPACE_TREE_NODE_ICON_SIZE, WorkspaceStatusWindowState, WorkspaceTreeInk,
@@ -32,7 +33,7 @@ pub const STORY: Story = Story {
         Section {
             id: "sidebar",
             name: "Sidebar",
-            summary: "workspace_sidebar_surface around the tree the thin client builds from a mux snapshot. Unfocused, the active pane is bold; with keyboard focus it fills and the cursor gets its own fill; disconnected, the host warns and every row goes muted. Holding the window shortcuts' modifier puts each window's key at the right of its row (workspace_tree_shortcut), outside the actions that show on hover, collapsed windows included.",
+            summary: "workspace_sidebar_surface around the tree the thin client builds from a mux snapshot. Unfocused, the active pane is bold; with keyboard focus it fills and the cursor gets its own fill; disconnected, the host warns and every row goes muted. Holding the window shortcuts' modifier puts each window's key at the right of its row (workspace_tree_shortcut), outside the actions that show on hover, collapsed windows included. Add host heads the tree and Settings spans the foot.",
             build: |window, cx| stateful(window, cx, |_, _| sidebar_scrolls(), sidebars),
         },
         Section {
@@ -319,20 +320,75 @@ fn markers(_: &mut Window, cx: &mut App) -> AnyElement {
             row()
                 .child(labeled(
                     "rest",
-                    tree_host_marker(false, None, cx.theme().ground(), cx),
+                    tree_host_marker(
+                        HostPlatform::Unknown,
+                        cx.theme().foreground,
+                        false,
+                        None,
+                        cx.theme().ground(),
+                        cx,
+                    ),
                 ))
                 .child(labeled(
                     "bell",
-                    tree_host_marker(true, None, cx.theme().ground(), cx),
+                    tree_host_marker(
+                        HostPlatform::Unknown,
+                        cx.theme().foreground,
+                        true,
+                        None,
+                        cx.theme().ground(),
+                        cx,
+                    ),
                 ))
                 .child(labeled(
                     "needs input",
-                    tree_host_marker(false, badge(Badge::NeedsInput), cx.theme().ground(), cx),
+                    tree_host_marker(
+                        HostPlatform::Unknown,
+                        cx.theme().foreground,
+                        false,
+                        badge(Badge::NeedsInput),
+                        cx.theme().ground(),
+                        cx,
+                    ),
                 ))
                 .child(labeled(
                     "both",
-                    tree_host_marker(true, badge(Badge::NeedsInput), cx.theme().ground(), cx),
+                    tree_host_marker(
+                        HostPlatform::Unknown,
+                        cx.theme().foreground,
+                        true,
+                        badge(Badge::NeedsInput),
+                        cx.theme().ground(),
+                        cx,
+                    ),
                 )),
+        )
+        .state(
+            "host platforms",
+            row().children(
+                [
+                    ("macOS", HostPlatform::Macos),
+                    ("Windows", HostPlatform::Windows),
+                    ("Linux", HostPlatform::Linux(LinuxDistro::Other)),
+                    ("Ubuntu", HostPlatform::Linux(LinuxDistro::Ubuntu)),
+                    ("Debian", HostPlatform::Linux(LinuxDistro::Debian)),
+                    ("Arch", HostPlatform::Linux(LinuxDistro::Arch)),
+                    ("Fedora", HostPlatform::Linux(LinuxDistro::Fedora)),
+                ]
+                .map(|(label, platform)| {
+                    labeled(
+                        label,
+                        tree_host_marker(
+                            platform,
+                            cx.theme().foreground,
+                            false,
+                            None,
+                            cx.theme().ground(),
+                            cx,
+                        ),
+                    )
+                }),
+            ),
         )
         .state(
             "nodes",
@@ -601,6 +657,7 @@ fn pill(
 fn window_pills(_: &mut Window, cx: &mut App) -> AnyElement {
     let connected = WorkspaceStatusWindowState {
         connected: true,
+        alone: true,
         ..Default::default()
     };
     states()

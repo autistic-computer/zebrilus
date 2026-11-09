@@ -10,7 +10,8 @@ use penna::{
 use zz_client::{
     new_chat::{
         AGENT_CHOICES, AgentChoice, ChatKey, ChatPicker, FolderChoice, agent_picker_place,
-        close_picker_command, folder_start, picker_folders, start_agent_commands,
+        close_picker_command, folder_start, landing_chat_commands, picker_folders, recent_folders,
+        start_agent_commands,
     },
     pane_picker::{PaneChoice, PanePickerKey, pane_choices, pane_kind_command, pane_picker_key},
 };
@@ -36,8 +37,10 @@ pub(super) struct ChooseFolder {
     pub(super) start: String,
 }
 
+pub(super) struct LeaveLanding;
+
 pub(super) struct PanePicker {
-    pane: PaneId,
+    pane: Option<PaneId>,
     connection: Entity<Connection>,
     focus: FocusHandle,
     selected: usize,
@@ -54,6 +57,16 @@ impl PanePicker {
         connection: Entity<Connection>,
         cx: &mut Context<Self>,
     ) -> Self {
+        Self::build(Some(pane), connection, cx)
+    }
+
+    pub(super) fn landing(connection: Entity<Connection>, cx: &mut Context<Self>) -> Self {
+        let mut picker = Self::build(None, connection, cx);
+        picker.chat_view = true;
+        picker
+    }
+
+    fn build(pane: Option<PaneId>, connection: Entity<Connection>, cx: &mut Context<Self>) -> Self {
         Self {
             pane,
             connection,
@@ -75,14 +88,24 @@ impl PanePicker {
         }
     }
 
+    fn id(&self) -> u64 {
+        self.pane.map_or(u64::MAX, |pane| pane.0)
+    }
+
     fn folders(&self, cx: &App) -> Option<Vec<FolderChoice>> {
         let snapshot = self.connection.read(cx).core.snapshot();
-        agent_picker_place(snapshot, self.pane, self.chat_view)
-            .map(|_| picker_folders(snapshot, self.pane))
+        let Some(pane) = self.pane else {
+            return Some(recent_folders(snapshot));
+        };
+        agent_picker_place(snapshot, pane, self.chat_view).map(|_| picker_folders(snapshot, pane))
     }
 
     fn close(&self, cx: &mut Context<Self>) {
-        let command = close_picker_command(self.connection.read(cx).core.snapshot(), self.pane);
+        let Some(pane) = self.pane else {
+            cx.emit(LeaveLanding);
+            return;
+        };
+        let command = close_picker_command(self.connection.read(cx).core.snapshot(), pane);
         if let Some(command) = command {
             self.connection
                 .update(cx, |connection, cx| connection.invoke(command, cx));
@@ -94,13 +117,13 @@ impl PanePicker {
         if !connection.connected || connection.core.attached_read_only() {
             return;
         }
-        let commands = start_agent_commands(
-            connection.core.snapshot(),
-            self.pane,
-            self.chat.folder(folders),
-            agent,
-            &zz_client::agent_launch::AgentLaunches::default(),
-        );
+        let folder = self.chat.folder(folders);
+        let launches = zz_client::agent_launch::AgentLaunches::default();
+        let snapshot = connection.core.snapshot();
+        let commands = match self.pane {
+            Some(pane) => start_agent_commands(snapshot, pane, folder, agent, &launches),
+            None => landing_chat_commands(snapshot, folder, agent, &launches),
+        };
         self.connection.update(cx, |connection, cx| {
             for command in commands {
                 connection.invoke(command, cx);
@@ -131,7 +154,7 @@ impl PanePicker {
         writable: bool,
         cx: &mut Context<Self>,
     ) -> Vec<AnyElement> {
-        chat_picker_rows(self.pane.0, &self.chat, folders, writable, cx)
+        chat_picker_rows(self.id(), &self.chat, folders, &[], writable, cx)
             .into_iter()
             .map(|row| match row {
                 ChatPickerRow::Label(label) => label.into_any_element(),
@@ -156,6 +179,10 @@ impl PanePicker {
                                 ChatPickerTarget::Agent(_, agent) => {
                                     this.start(agent, &folders, cx);
                                 }
+                                ChatPickerTarget::MachineLine
+                                | ChatPickerTarget::Machine(_)
+                                | ChatPickerTarget::Terminal
+                                | ChatPickerTarget::Browser => {}
                             }
                             cx.notify();
                             cx.stop_propagation();
@@ -167,7 +194,7 @@ impl PanePicker {
     }
 
     fn sheet_id(&self) -> ElementId {
-        ("pane-picker-sheet", self.pane.0).into()
+        ("pane-picker-sheet", self.id()).into()
     }
 
     pub(super) fn sheet(&self, bottom_inset: Pixels, cx: &mut Context<Self>) -> Option<AnyElement> {
@@ -255,10 +282,10 @@ impl PanePicker {
             }
             return;
         }
-        let Some(choice) = choices().get(index) else {
+        let (Some(pane), Some(choice)) = (self.pane, choices().get(index)) else {
             return;
         };
-        let command = pane_kind_command(self.pane, choice);
+        let command = pane_kind_command(pane, choice);
         self.connection
             .update(cx, |connection, cx| connection.invoke(command, cx));
     }
@@ -308,7 +335,10 @@ impl PanePicker {
                 ChatKey::ChooseFolder => self.choose_folder(&folders, cx),
                 ChatKey::Close => self.close(cx),
                 ChatKey::Changed => cx.notify(),
-                ChatKey::Ignored => return,
+                ChatKey::ChooseMachine(_)
+                | ChatKey::Terminal
+                | ChatKey::Browser
+                | ChatKey::Ignored => return,
             }
             cx.stop_propagation();
             return;
@@ -333,6 +363,8 @@ impl PanePicker {
 
 impl ala::EventEmitter<ChooseFolder> for PanePicker {}
 
+impl ala::EventEmitter<LeaveLanding> for PanePicker {}
+
 impl Focusable for PanePicker {
     fn focus_handle(&self, _: &App) -> FocusHandle {
         self.focus.clone()
@@ -350,28 +382,25 @@ impl Render for PanePicker {
         } else {
             self.choice_rows(writable, phone, cx)
         };
-        pane_picker_surface(
-            ("web-pane-picker", self.pane.0),
-            self.corner_radii,
-            rows,
-            cx,
-        )
-        .key_context("PanePicker")
-        .track_focus(&self.focus)
-        .on_key_down(cx.listener(Self::key_down))
-        .on_mouse_down(
-            MouseButton::Left,
-            cx.listener(|this, _, window, cx| {
-                this.sheet_closed = false;
-                this.connection.update(cx, |connection, cx| {
-                    connection.command(
-                        "select-pane",
-                        vec!["-Z".into(), "-t".into(), this.pane.to_string()],
-                        cx,
-                    );
-                });
-                this.focus.focus(window, cx);
-            }),
-        )
+        pane_picker_surface(("web-pane-picker", self.id()), self.corner_radii, rows, cx)
+            .key_context("PanePicker")
+            .track_focus(&self.focus)
+            .on_key_down(cx.listener(Self::key_down))
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(|this, _, window, cx| {
+                    this.sheet_closed = false;
+                    if let Some(pane) = this.pane {
+                        this.connection.update(cx, |connection, cx| {
+                            connection.command(
+                                "select-pane",
+                                vec!["-Z".into(), "-t".into(), pane.to_string()],
+                                cx,
+                            );
+                        });
+                    }
+                    this.focus.focus(window, cx);
+                }),
+            )
     }
 }

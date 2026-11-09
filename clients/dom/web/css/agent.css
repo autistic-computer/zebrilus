@@ -687,10 +687,6 @@
   background: var(--penna-bg);
 }
 
-.agent-chat [data-penna="field.composer"] {
-  border-radius: 20px;
-}
-
 .agent-field {
   display: flex;
   flex: 1;

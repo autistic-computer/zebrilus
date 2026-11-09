@@ -118,7 +118,7 @@ animations off and freezes spinners). Two more keys only steer the page: `step` 
 on the Roles step. The tint and pane knobs are app config, not theme, so Copy JSON leaves them out;
 they stay in the URL. penna's Appearance story (`#/appearance/page` on penna's page) draws the
 Interface page's kit rows with the builders the app uses: Mode, the accent swatches, the tint
-sliders (which follow the tint knobs), Corner radius, Controls, Glass, UI font and the Theme file
+sliders (which follow the tint knobs), Corner radius, Controls, Glass, UI font, Mono font and the Theme file
 menu, then the Advanced rows. zz's Settings
 story keeps only the rows zz adds (`#/settings/appearance`): Program colors and window blur
 opacity.
@@ -192,8 +192,9 @@ authoring rules; the short version:
 - Sections holding entities (`InputState`, `SelectState`, `QuestionCardState`) build a view once
   in `build`; stateless ones use `stateless(fn, cx)`.
 - Agent chat states are a `Script` of chat events (`stories/agent/fixtures.rs`) drawn by the
-  agent story's `Thread`, which calls `chat_column`, `chat_thread` and `chat_agent_pip` and draws
-  asks the way the desktop does. A new chat state is a new script, not a new drawing.
+  agent story's `Thread`, which draws still states with `chat_column`, `chat_thread` and
+  `chat_agent_pip`, and a scrolling pane with `chat_surface` (it is a `ChatHost`, like both apps),
+  and draws asks the way the desktop does. A new chat state is a new script, not a new drawing.
 - Open dialogs deferred: `Root` does not exist yet while `build` runs.
 
 # Check a change

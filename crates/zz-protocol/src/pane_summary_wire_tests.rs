@@ -31,6 +31,7 @@ fn filled() -> PaneSummary {
         branch: "main".to_owned(),
         process: vec!["codex".to_owned(), "sleep".to_owned()],
         flip_armed: true,
+        shell: "fish".to_owned(),
     }
 }
 
@@ -84,9 +85,9 @@ fn status(app: String, title: String, message: String) -> PaneStatus {
     }
 }
 
-const SUMMARY_TAIL: [u8; 33] = [
+const SUMMARY_TAIL: [u8; 38] = [
     0, 172, 2, 1, 1, 1, 2, 2, b'r', b'v', 1, b'~', 1, b'~', 4, b'm', b'a', b'i', b'n', 2, 5, b'c',
-    b'o', b'd', b'e', b'x', 5, b's', b'l', b'e', b'e', b'p', 1,
+    b'o', b'd', b'e', b'x', 5, b's', b'l', b'e', b'e', b'p', 1, 4, b'f', b'i', b's', b'h',
 ];
 
 #[test]
@@ -153,11 +154,12 @@ fn a_summary_change_alone_sends_one_pane_summary_op() {
 
 #[test]
 fn pane_summary_text_decode_is_bounded() {
-    let cases: [(usize, fn(&mut PaneSummary, String)); 4] = [
+    let cases: [(usize, fn(&mut PaneSummary, String)); 5] = [
         (MAX_PANE_NAME_BYTES, |summary, text| summary.name = text),
         (MAX_PANE_CWD_BYTES, |summary, text| summary.cwd = text),
         (MAX_PANE_CWD_BYTES, |summary, text| summary.repo = text),
         (MAX_PANE_BRANCH_BYTES, |summary, text| summary.branch = text),
+        (MAX_PANE_NAME_BYTES, |summary, text| summary.shell = text),
     ];
     for (limit, set) in cases {
         let mut boundary = filled();
@@ -256,6 +258,7 @@ fn welcome_carries_the_daemon_clock() {
         client_instance_id: ClientInstanceId(u64::MAX),
         caps: Welcome::caps_from_strings(&capabilities),
         clock: 1_760_000_000,
+        platform: crate::HostPlatform::default(),
     };
     let message = ProtocolMessage::Welcome(welcome);
     let encoded = encode_protocol_message(&message).unwrap();

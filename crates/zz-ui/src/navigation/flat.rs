@@ -26,16 +26,15 @@ use crate::{
     muted_on,
     navigation::{
         pane_stack::{PaneStack, StackAction, StackSize, StackTile},
-        workspace_row_action, workspace_row_fill,
+        workspace_row_fill,
     },
     spinner::Spinner,
     tooltip::Tooltip,
-    touch::{CoarsePointer, TOUCH_TARGET},
+    touch::CoarsePointer,
     v_flex,
 };
 
 const ROW_HEIGHT: f32 = 48.0;
-const ROW_RADIUS: f32 = 24.0;
 const ROW_PADDING: f32 = 10.0;
 const TILE_GAP: f32 = 10.0;
 const TITLE_LINE: f32 = 17.0;
@@ -46,12 +45,11 @@ const DETAIL_AGE_GAP: f32 = 8.0;
 const SPINNER_SIZE: f32 = 12.0;
 const DIMMED: f32 = 0.45;
 const HOST_HEIGHT: f32 = 30.0;
+const ACTION_HEIGHT: f32 = 32.0;
 const HOST_GAP: f32 = 18.0;
 const HOST_GLYPH: f32 = 16.0;
 const HOST_LINE: f32 = 16.0;
 const HOST_SPACING: f32 = 8.0;
-const ADD_BUTTON_SIZE: f32 = 18.0;
-const ADD_BUTTON_ICON: f32 = 14.0;
 const CHEVRON_SIZE: f32 = 10.0;
 const NOTE_LINE: f32 = 15.0;
 const HEADER_BUTTON_HEIGHT: f32 = 20.0;
@@ -101,6 +99,7 @@ pub struct FlatHost {
     pub id: PaletteHostId,
     pub name: SharedString,
     pub remote: bool,
+    pub platform: zz_protocol::HostPlatform,
     pub connection: HostConnection,
     pub folded: bool,
     pub rollup: AttentionRollup,
@@ -120,6 +119,7 @@ impl FlatHost {
             id,
             name: name.into(),
             remote,
+            platform: zz_protocol::HostPlatform::Unknown,
             connection,
             folded: false,
             rollup,
@@ -146,7 +146,6 @@ pub enum FlatEvent {
     Open(PaletteHostId, WindowId),
     OpenPane(PaletteHostId, WindowId, PaneId),
     FoldHost(PaletteHostId),
-    NewChat(PaletteHostId),
     Connect(PaletteHostId),
     Upgrade(PaletteHostId),
     Hover(FlatTarget, bool),
@@ -291,6 +290,10 @@ fn header_inset(cx: &App) -> Pixels {
     cx.theme().row_inset + px(ROW_PADDING)
 }
 
+pub(crate) fn action_glyph_center(cx: &App) -> Pixels {
+    header_inset(cx) + px(HOST_GLYPH / 2.0)
+}
+
 fn row_height() -> Pixels {
     px(ROW_HEIGHT)
 }
@@ -303,7 +306,7 @@ fn tile_radius(size: StackSize, cx: &App) -> Pixels {
     match cx.theme().style_of(ContentLook::TileStack).shape {
         Shape::Square => Pixels::ZERO,
         Shape::Pill => FULL_CORNER_RADIUS,
-        Shape::Round => px(ROW_RADIUS) - (row_height() - px(size.tile())) / 2.0,
+        Shape::Round => cx.theme().control_corner(px(size.tile())),
     }
 }
 
@@ -422,12 +425,6 @@ fn row_description(window: &FlatWindow) -> String {
     .join(", ")
 }
 
-fn icon_button(id: impl Into<ElementId>, icon: IconName, icon_size: f32) -> Button {
-    Button::new(id)
-        .child(Icon::new(icon).size(px(icon_size)))
-        .px_0()
-}
-
 pub fn flat_window_row(
     host: PaletteHostId,
     window: &FlatWindow,
@@ -449,8 +446,7 @@ pub fn flat_window_row(
     let row_id = ElementId::NamedInteger(format!("flat-window-{}", host.0).into(), id.0);
     let (look, paint_state) = state.look();
     let ground = state.ground.unwrap_or_else(|| theme.ground());
-    let fill =
-        workspace_row_fill(&row_id, look, paint_state, None, ground, cx).radius(px(ROW_RADIUS));
+    let fill = workspace_row_fill(&row_id, look, paint_state, None, ground, cx);
     let hover = handler.clone();
     let click = handler.clone();
     div()
@@ -563,7 +559,7 @@ pub fn flat_rollup(rollup: &AttentionRollup, live: bool, cx: &App) -> Div {
     let muted = theme.foreground.muted();
     let count = |value: u32| div().child(SharedString::from(value.to_string()));
     let dots = [
-        (rollup.needs_you.saturating_add(rollup.bell), theme.warning),
+        (rollup.needs_you.saturating_add(rollup.bell), theme.accent),
         (rollup.failed, theme.danger),
         (rollup.done, theme.success),
     ];
@@ -715,16 +711,6 @@ pub fn flat_host_header(
                 None => spinner(STATUS_ICON, HOST_NAME.design_px(), note.color, cx),
             })
     });
-    let new_chat = (host.live() && (hovered || coarse)).then(|| {
-        add_button(
-            ElementId::from(("flat-new-chat", id.0)),
-            IconName::ChatPlus,
-            "New agent",
-            FlatEvent::NewChat(id),
-            handler,
-            cx,
-        )
-    });
     let hover = handler.clone();
     let click = handler.clone();
     h_flex()
@@ -750,11 +736,11 @@ pub fn flat_host_header(
         .on_hover(move |hovered, window, cx| hover(FlatEvent::Hover(target, *hovered), window, cx))
         .on_click(move |_, window, cx| click(FlatEvent::FoldHost(id), window, cx))
         .child(glyph(
-            if host.remote {
+            crate::program::platform_icon(host.platform).unwrap_or(if host.remote {
                 IconName::Server
             } else {
                 IconName::Laptop
-            },
+            }),
             HOST_GLYPH,
             HOST_NAME.design_px(),
             muted,
@@ -784,36 +770,61 @@ pub fn flat_host_header(
                 header_button(("flat-host-action", id.0), label, event, handler)
             }),
         )
-        .children(new_chat)
 }
 
-fn add_button(
-    id: ElementId,
+pub fn flat_action_row(
+    id: &'static str,
     icon: IconName,
-    tooltip: &'static str,
-    event: FlatEvent,
-    handler: &FlatHandler,
+    label: &'static str,
+    ground: Ground,
     cx: &App,
-) -> impl IntoElement + use<> {
-    let handler = handler.clone();
-    let button = workspace_row_action(
-        icon_button(id.clone(), icon, ADD_BUTTON_ICON),
-        cx.theme().ground(),
-        false,
+) -> Stateful<Div> {
+    let theme = cx.theme();
+    let element = ElementId::from(id);
+    let fill = workspace_row_fill(
+        &element,
+        RowLook::Sidebar,
+        PaintState::Rest,
+        Some(SharedString::from(id)),
+        ground,
         cx,
-    )
-    .size(px(ADD_BUTTON_SIZE))
-    .debug_selector(|| "flat-new-chat".into())
-    .hit_slop(
-        (TOUCH_TARGET - ADD_BUTTON_SIZE) / 2.0,
-        (TOUCH_TARGET - ADD_BUTTON_SIZE) / 2.0,
-    )
-    .tooltip(tooltip)
-    .on_click(move |_: &ClickEvent, window, cx| {
-        cx.stop_propagation();
-        handler(event, window, cx);
-    });
-    motion::appear(ElementId::from((id, "appear")), button)
+    );
+    let foreground = theme.foreground;
+    h_flex()
+        .id(element)
+        .role(Role::Button)
+        .aria_label(label)
+        .group(id)
+        .relative()
+        .flex_none()
+        .h(px(ACTION_HEIGHT))
+        .px(header_inset(cx))
+        .gap(px(HOST_SPACING))
+        .text_color(theme.foreground.rest())
+        .hover(move |row| row.text_color(foreground))
+        .type_style(HOST_NAME, cx)
+        .line_height(px(HOST_LINE))
+        .cursor_pointer()
+        .child(fill)
+        .child(
+            div()
+                .flex_none()
+                .relative()
+                .top(cap_center_drop(
+                    px(HOST_NAME.design_px()),
+                    px(HOST_GLYPH),
+                    cx,
+                ))
+                .child(Icon::new(icon).size(px(HOST_GLYPH))),
+        )
+        .child(
+            Label::new(HOST_NAME, label)
+                .line_height(px(HOST_LINE))
+                .min_w_0()
+                .overflow_hidden()
+                .whitespace_nowrap()
+                .text_fade(crate::LABEL_FADE),
+        )
 }
 
 pub fn flat_sidebar(
@@ -835,7 +846,11 @@ pub fn flat_sidebar(
         .w_full()
         .flex_none()
         .pr(crate::sidebar::SIDEBAR_SCROLLBAR_GUTTER);
-    for (index, host) in hosts.iter().enumerate() {
+    for (index, host) in hosts
+        .iter()
+        .filter(|host| !host.chats.is_empty())
+        .enumerate()
+    {
         list = list.child(motion::enter(
             ("flat-host-enter", host.id.0),
             flat_host_header(
@@ -884,8 +899,7 @@ pub fn flat_sidebar(
 mod tests {
     use super::*;
     use crate::sidebar::{
-        CHROME_BUTTON_SIZE, SIDEBAR_DEFAULT_WIDTH, SIDEBAR_SCROLLBAR_GUTTER, sidebar_footer,
-        sidebar_titlebar,
+        CHROME_BUTTON_SIZE, SIDEBAR_DEFAULT_WIDTH, SIDEBAR_SCROLLBAR_GUTTER, sidebar_titlebar,
     };
 
     struct Sidebar;
@@ -902,6 +916,7 @@ mod tests {
                 id: host,
                 name: "macbook".into(),
                 remote: false,
+                platform: zz_protocol::HostPlatform::Macos,
                 connection: HostConnection::Connected,
                 folded: false,
                 rollup: AttentionRollup::default(),
@@ -915,7 +930,14 @@ mod tests {
             let menu: FlatMenu = Rc::new(|_, _, menu, _, _| menu);
             v_flex()
                 .w(px(SIDEBAR_DEFAULT_WIDTH))
-                .child(sidebar_titlebar("titlebar", chrome("toggle"), cx))
+                .child(sidebar_titlebar(
+                    "titlebar",
+                    super::super::workspace_sidebar_titlebar_controls(
+                        chrome("view"),
+                        chrome("toggle"),
+                    ),
+                    cx,
+                ))
                 .child(
                     div()
                         .debug_selector(|| "rows".to_owned())
@@ -928,35 +950,30 @@ mod tests {
                             cx,
                         )),
                 )
-                .child(sidebar_footer(
+                .child(super::super::workspace_sidebar_footer(
                     "footer",
-                    div(),
-                    Some(chrome("eye").into_any_element()),
+                    super::super::workspace_sidebar_action(
+                        super::super::SidebarAction::Settings,
+                        cx.theme().ground(),
+                        cx,
+                    )
+                    .debug_selector(|| "settings".to_owned()),
                     cx,
                 ))
         }
     }
 
     #[ala::test]
-    fn trailing_buttons_share_the_row_actions_column_beside_the_scrollbar(
-        cx: &mut ala::TestAppContext,
-    ) {
+    fn settings_spans_the_rows(cx: &mut ala::TestAppContext) {
         cx.update(crate::init);
         let (_, cx) = cx.add_window_view(|_, _| Sidebar);
         cx.update(|window, cx| {
             _ = window.draw(cx);
         });
-        let new_chat = cx.debug_bounds("flat-new-chat").unwrap();
-        let toggle = cx.debug_bounds("toggle").unwrap();
-        let eye = cx.debug_bounds("eye").unwrap();
-        assert_eq!(toggle.center().x, new_chat.center().x);
-        assert_eq!(eye.center().x, new_chat.center().x);
         let rows = cx.debug_bounds("rows").unwrap();
-        let inset = cx.update(|_, cx| header_inset(cx));
-        assert_eq!(
-            new_chat.right(),
-            rows.right() - SIDEBAR_SCROLLBAR_GUTTER - inset
-        );
+        let settings = cx.debug_bounds("settings").unwrap();
+        assert_eq!(settings.right(), rows.right() - SIDEBAR_SCROLLBAR_GUTTER);
+        assert_eq!(settings.left(), rows.left());
     }
 
     #[test]

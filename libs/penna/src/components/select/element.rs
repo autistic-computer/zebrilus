@@ -4,7 +4,7 @@ use ala::{
     prelude::FluentBuilder as _,
 };
 
-use crate::{Ground, Sizable, Size, Tone};
+use crate::{Ground, Sizable, Size, Tone, components::menu::MenuScope};
 
 use super::{
     CONTEXT,
@@ -46,6 +46,24 @@ impl<D: SelectDelegate> Select<D> {
     #[must_use]
     pub fn menu_max_h(mut self, max_h: impl Into<Length>) -> Self {
         self.options.menu_max_h = Some(max_h.into());
+        self
+    }
+
+    #[must_use]
+    pub fn searchable(mut self, searchable: bool) -> Self {
+        self.options.searchable = Some(searchable);
+        self
+    }
+
+    #[must_use]
+    pub fn search_placeholder(mut self, placeholder: impl Into<SharedString>) -> Self {
+        self.options.search_placeholder = Some(placeholder.into());
+        self
+    }
+
+    #[must_use]
+    pub fn scopes(mut self, scopes: impl IntoIterator<Item = MenuScope>) -> Self {
+        self.options.scopes = scopes.into_iter().collect();
         self
     }
 

@@ -5,7 +5,7 @@
   height: 220px;
   background: var(--penna-bg);
   border: 1px solid var(--penna-border);
-  border-radius: var(--penna-radius);
+  border-radius: calc(var(--penna-radius) * var(--penna-corner-grow, 1));
   corner-shape: superellipse(var(--penna-window-k));
 }
 

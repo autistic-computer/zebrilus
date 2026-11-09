@@ -9,5 +9,13 @@ pub struct Confirm {
 
 actions!(
     penna_menu,
-    [Cancel, SelectUp, SelectDown, SelectLeft, SelectRight]
+    [
+        Cancel,
+        SelectUp,
+        SelectDown,
+        SelectLeft,
+        SelectRight,
+        NextScope,
+        PrevScope
+    ]
 );

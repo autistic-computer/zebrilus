@@ -8,30 +8,35 @@ use std::{
 };
 
 use ala::{
-    AnyElement, App, ClipboardItem, Context, Div, Global, Image, ImageFormat, IntoElement,
-    ScrollHandle, ScrollWheelEvent, SharedString, Stateful, Subscription, Window, div, prelude::*,
-    px, relative,
+    AnyElement, App, ClipboardItem, Context, Div, Entity, FollowMode, Global, Image, ImageFormat,
+    IntoElement, ListAlignment, ListSizingBehavior, ListState, SharedString, Stateful,
+    Subscription, Window, div, list, prelude::*, px, relative,
 };
-use penna::{Card, CardLook, Label, Panel, PanelLook, TextStyle, components::button::ButtonLook};
+use penna::{
+    Card, CardLook, Label, Panel, PanelLook, TextStyle,
+    components::{button::ButtonLook, scroll::Scrollbar},
+};
 use zz_client::chat_rows::{self, AgentState, Fold, RunLabel, Unit};
 use zz_protocol::{
     agent_stream::AgentImage,
     chat::{
-        Answer, Ask, ChatView, ItemId, ItemKind, ItemStatus, OptionKind, RequestClose, RequestView,
-        SessionView, StepStatus, TurnId, TurnView,
+        Answer, Ask, ChatView, ItemId, ItemKind, ItemStatus, OptionKind, RequestClose, RequestId,
+        RequestView, SessionView, StepStatus, TurnId, TurnView,
     },
 };
 
 use super::refs::{ChatRefs, RefLinks, linkify_markdown, ref_text};
-use super::{agent_text_view, assistant_markdown_extensions, attachment_tile};
+use super::{
+    agent_jump_to_bottom_button, agent_text_view, assistant_markdown_extensions, attachment_tile,
+};
 use crate::{
     ActiveTheme as _, Colorize as _, Disableable as _, Emphasis, Icon, IconName, StyledExt as _,
     Tone, WindowExt as _, button::Button, h_flex, notification::Notification, pip::PipSurface,
     text::TextView, v_flex,
 };
 use penna::blocks::chat::{
-    ActivityEnd, ActivityMark, CHAT_CONTENT_MAX_WIDTH, TRANSCRIPT_ATTACHMENT, activity_row,
-    transcript_text,
+    ActivityEnd, ActivityMark, CHAT_CONTENT_MAX_WIDTH, COMPOSER_OUTER_PADDING,
+    TRANSCRIPT_ATTACHMENT, activity_row, spinner_phase, transcript_text,
 };
 use penna::blocks::chat::{
     card_chip, card_glyph, card_header, card_surface, card_tiles, card_title, permission_card,
@@ -46,6 +51,8 @@ pub struct ChatOpen {
     pub highlighted: usize,
     pub arrivals: HashMap<ItemId, u64>,
     pub images: HashMap<ItemId, Arc<[Arc<Image>]>>,
+    pub texts: HashMap<ItemId, SharedString>,
+    pub previews: HashMap<ItemId, SharedString>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -92,24 +99,150 @@ impl ChatHooks<'_> {
     }
 }
 
-const FOLLOW_SLACK: f32 = 24.0;
 const REVEAL_MAX_MS: u64 = 900;
 const REVEAL_MIN_MS: u64 = 220;
 const REVEAL_MS_PER_CHAR: u64 = 2;
 const USER_MAX_HEIGHT: f32 = 260.0;
 const THOUGHT_MAX_HEIGHT: f32 = 260.0;
+const PIP_GAP: f32 = 10.0;
+const PREVIEW_MAX_BYTES: usize = 32 * 1024;
+const PREVIEW_MAX_LINES: usize = 512;
+const PREVIEW_HEIGHT: f32 = 420.0;
+const PREVIEW_MARKER: &str = "\n\n… [long message cut here; copy the full message below]";
+const PIP_MIN_WIDTH: f32 = 280.0;
+const PIP_MAX_WIDTH: f32 = 520.0;
 
-#[derive(Default)]
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum Row {
+    Background(Unit),
+    Turn(usize),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum RowKey {
+    Turn(TurnId),
+    Item(ItemId),
+    Request(RequestId),
+    Empty,
+}
+
+impl Row {
+    fn key(&self, view: &ChatView) -> RowKey {
+        match self {
+            Self::Turn(index) => view
+                .turns
+                .get(*index)
+                .map_or(RowKey::Empty, |turn| RowKey::Turn(turn.id)),
+            Self::Background(unit) => match unit {
+                Unit::User(id)
+                | Unit::Text(id)
+                | Unit::Subagent(id)
+                | Unit::Plan(id)
+                | Unit::Notice(id) => RowKey::Item(id.clone()),
+                Unit::Run(run) => run
+                    .items
+                    .first()
+                    .map_or(RowKey::Empty, |id| RowKey::Item(id.clone())),
+                Unit::Agents(ids) => ids
+                    .first()
+                    .map_or(RowKey::Empty, |id| RowKey::Item(id.clone())),
+                Unit::Ask(request) | Unit::Record(request) => RowKey::Request(*request),
+            },
+        }
+    }
+}
+
+fn holds(unit: &Unit, id: &ItemId) -> bool {
+    match unit {
+        Unit::User(held)
+        | Unit::Text(held)
+        | Unit::Subagent(held)
+        | Unit::Plan(held)
+        | Unit::Notice(held) => held == id,
+        Unit::Run(run) => run.items.contains(id),
+        Unit::Agents(ids) => ids.contains(id),
+        Unit::Ask(_) | Unit::Record(_) => false,
+    }
+}
+
+fn thread_rows(view: &ChatView) -> Vec<Row> {
+    let mut pending = chat_rows::background_rows(view).into_iter().peekable();
+    let mut rows = Vec::new();
+    for (index, turn) in view.turns.iter().enumerate() {
+        while let Some(unit) = pending
+            .next_if(|unit| chat_rows::unit_at(view, unit).is_some_and(|at| at < turn.started_at))
+        {
+            rows.push(Row::Background(unit));
+        }
+        rows.push(Row::Turn(index));
+    }
+    rows.extend(pending.map(Row::Background));
+    rows
+}
+
+#[derive(Clone, Default)]
+pub struct ChatFrame {
+    pub now: u64,
+    pub phase: f32,
+    pub click: Option<ChatClicks>,
+    pub fork: bool,
+    pub refs: Option<Rc<ChatRefs>>,
+    pub vendor: Option<IconName>,
+    pub owner: Option<u64>,
+}
+
+impl ChatFrame {
+    fn hooks<'a>(
+        &'a self,
+        ask: Option<&'a dyn Fn(&RequestView, &App) -> Option<AnyElement>>,
+    ) -> ChatHooks<'a> {
+        ChatHooks {
+            click: self.click.clone(),
+            ask,
+            fork: self.fork,
+            refs: self.refs.as_deref(),
+            vendor: self.vendor.clone(),
+            owner: self.owner,
+        }
+    }
+}
+
 pub struct ChatPane {
     pub open: ChatOpen,
-    pub scroll: ScrollHandle,
-    pub away: bool,
+    list: ListState,
+    rows: Vec<Row>,
+    keys: Vec<RowKey>,
+    background_live: bool,
+    frame: ChatFrame,
+    jump: bool,
     session: Option<String>,
     known: HashSet<ItemId>,
     primed: bool,
     retired: Vec<Arc<Image>>,
     shown: Rc<RefCell<HashSet<u64>>>,
     listed: bool,
+}
+
+impl Default for ChatPane {
+    fn default() -> Self {
+        let list = ListState::new(0, ListAlignment::Top, px(1_200.0));
+        list.set_follow_mode(FollowMode::Tail);
+        Self {
+            open: ChatOpen::default(),
+            list,
+            rows: Vec::new(),
+            keys: Vec::new(),
+            background_live: false,
+            frame: ChatFrame::default(),
+            jump: false,
+            session: None,
+            known: HashSet::new(),
+            primed: false,
+            retired: Vec::new(),
+            shown: Rc::default(),
+            listed: false,
+        }
+    }
 }
 
 #[derive(Default)]
@@ -132,7 +265,7 @@ impl ChatPane {
             }
             ChatClick::Fork(_) => return,
         }
-        self.away = true;
+        self.list.pause_following_tail();
     }
 
     #[must_use]
@@ -155,6 +288,10 @@ impl ChatPane {
             self.session = session;
             self.known.clear();
             self.primed = false;
+            self.rows.clear();
+            self.keys.clear();
+            self.list.reset(0);
+            self.follow();
         }
         self.open
             .turns
@@ -193,6 +330,53 @@ impl ChatPane {
         self.open
             .arrivals
             .retain(|_, at| now.saturating_sub(*at) < REVEAL_MAX_MS);
+        self.sync_texts(view);
+        self.sync_rows(view);
+    }
+
+    fn sync_texts(&mut self, view: &ChatView) {
+        let texts = &mut self.open.texts;
+        let previews = &mut self.open.previews;
+        texts.retain(|id, _| view.item(id).is_some());
+        previews.retain(|id, _| texts.contains_key(id));
+        for item in view.items.values() {
+            if !matches!(item.kind, ItemKind::User | ItemKind::Agent) {
+                continue;
+            }
+            let fresh = texts.get(&item.id).is_some_and(|held| {
+                held.len() == item.body.text.len()
+                    && (!item.status.is_open() || held.as_ref() == item.body.text)
+            });
+            if fresh {
+                continue;
+            }
+            texts.insert(item.id.clone(), item.body.text.clone().into());
+            match preview(&item.body.text).filter(|_| item.kind == ItemKind::Agent) {
+                Some(cut) => {
+                    previews.insert(item.id.clone(), cut.into());
+                }
+                None => {
+                    previews.remove(&item.id);
+                }
+            }
+        }
+    }
+
+    fn sync_rows(&mut self, view: &ChatView) {
+        let rows = thread_rows(view);
+        let keys = rows.iter().map(|row| row.key(view)).collect::<Vec<_>>();
+        let kept = self
+            .keys
+            .iter()
+            .zip(&keys)
+            .take_while(|(held, key)| held == key)
+            .count();
+        if kept < self.keys.len() || kept < keys.len() {
+            self.list.splice(kept..self.keys.len(), keys.len() - kept);
+        }
+        self.rows = rows;
+        self.keys = keys;
+        self.background_live = chat_rows::background_live(view);
     }
 
     pub fn release(&mut self, window: &mut Window, cx: &mut App) {
@@ -259,41 +443,259 @@ impl ChatPane {
         }
     }
 
-    fn distance(&self) -> f32 {
-        let offset = self.scroll.offset().y;
-        let max = self.scroll.max_offset().y;
-        f32::from(max + offset).max(0.0)
-    }
-
-    pub fn wheel(&mut self, event: &ScrollWheelEvent) -> bool {
-        if event.delta.pixel_delta(px(16.0)).y > px(0.0) {
-            self.away = true;
-            return false;
-        }
-        true
-    }
-
-    pub fn settle(&mut self) -> bool {
-        let away = self.distance() > FOLLOW_SLACK;
-        let changed = self.away != away;
-        self.away = away;
-        changed
-    }
-
     pub fn follow(&mut self) {
-        self.away = false;
-        self.scroll.scroll_to_bottom();
+        self.list.set_follow_mode(FollowMode::Tail);
     }
 
-    pub fn pin(&self) {
-        if !self.away {
-            self.scroll.scroll_to_bottom();
+    pub fn scroll_to_top(&mut self) {
+        self.list.scroll_to(ala::ListOffset::default());
+    }
+
+    pub fn reveal(&mut self, view: &ChatView, item: &ItemId) {
+        let mut root = item.clone();
+        while let Some(parent) = view.item(&root).and_then(|found| found.parent.clone()) {
+            root = parent;
+        }
+        let Some(found) = view.item(&root) else {
+            return;
+        };
+        let Some(index) = self.rows.iter().position(|row| match row {
+            Row::Turn(index) => view
+                .turns
+                .get(*index)
+                .is_some_and(|turn| Some(turn.id) == found.turn),
+            Row::Background(unit) => holds(unit, &root),
+        }) else {
+            return;
+        };
+        if let Some(Row::Turn(index)) = self.rows.get(index)
+            && let Some(turn) = view.turns.get(*index)
+        {
+            let rows = chat_rows::turn_rows(view, turn, chat_rows::now_ms());
+            if rows.folded.iter().any(|unit| holds(unit, &root))
+                && !self.open.turns.contains(&turn.id)
+            {
+                self.open.turns.push(turn.id);
+            }
+            let run = rows
+                .shown
+                .iter()
+                .chain(&rows.folded)
+                .find_map(|unit| match unit {
+                    Unit::Run(run) if run.items.contains(&root) => run.items.first().cloned(),
+                    _ => None,
+                });
+            if let Some(run) = run
+                && !self.open.runs.contains(&run)
+            {
+                self.open.runs.push(run);
+            }
+        }
+        if root != *item && found.kind == ItemKind::Subagent {
+            self.open.agent = Some(root);
+        }
+        self.list.pause_following_tail();
+        self.list.scroll_to_reveal_item(index);
+    }
+
+    #[must_use]
+    pub fn away(&self) -> bool {
+        !self.list.is_following_tail()
+    }
+
+    #[must_use]
+    pub fn shows_jump(&self) -> bool {
+        self.away() && self.list.is_scrolled_to_end() == Some(false)
+    }
+
+    fn draw<'a, 'h>(
+        &'a self,
+        view: &'a ChatView,
+        hooks: &'a ChatHooks<'h>,
+        cx: &'a App,
+    ) -> Draw<'a, 'h> {
+        Draw {
+            view,
+            now: self.frame.now,
+            open: &self.open,
+            phase: self.frame.phase,
+            hooks,
+            cx,
         }
     }
 
-    pub fn shows_jump(&self) -> bool {
-        self.away && self.distance() > FOLLOW_SLACK
+    fn row(&self, index: usize, view: &ChatView, hooks: &ChatHooks<'_>, cx: &App) -> AnyElement {
+        let draw = self.draw(view, hooks, cx);
+        let body = match self.rows.get(index) {
+            Some(Row::Turn(turn)) => view.turns.get(*turn).map(|turn| draw.turn(turn)),
+            Some(Row::Background(unit)) => Some(draw.unit(unit, self.background_live)),
+            None => None,
+        };
+        div()
+            .w_full()
+            .px_3()
+            .pb_3()
+            .child(
+                div()
+                    .w_full()
+                    .max_w(px(CHAT_CONTENT_MAX_WIDTH))
+                    .mx_auto()
+                    .children(body),
+            )
+            .into_any_element()
     }
+}
+
+pub trait ChatHost: Sized + 'static {
+    fn chat_pane(&mut self) -> &mut ChatPane;
+    fn chat_parts<'a>(&'a mut self, cx: &'a App) -> (&'a mut ChatPane, Option<&'a ChatView>);
+    fn chat_read<'a>(&'a self, cx: &'a App) -> (&'a ChatPane, Option<&'a ChatView>);
+    fn chat_ask(&self, request: &RequestView, host: &Entity<Self>, cx: &App) -> Option<AnyElement>;
+    fn chat_fork(&mut self, item: &ItemId, cx: &mut Context<Self>);
+}
+
+pub struct ChatLook {
+    pub pane: u64,
+    pub fork: bool,
+    pub refs: Option<ChatRefs>,
+    pub vendor: Option<IconName>,
+}
+
+pub fn chat_surface<T: ChatHost>(
+    host: &mut T,
+    look: ChatLook,
+    window: &mut Window,
+    cx: &mut Context<T>,
+) -> AnyElement {
+    let entity = cx.entity();
+    let now = chat_rows::now_ms();
+    let live = {
+        let (pane, view) = host.chat_parts(cx);
+        let Some(view) = view else {
+            return div().into_any_element();
+        };
+        pane.sync(view);
+        chat_live(view) || pane.revealing(now)
+    };
+    let phase = if live {
+        spinner_phase(cx.entity_id(), cx)
+    } else {
+        0.0
+    };
+    let click: ChatClicks = {
+        let entity = entity.clone();
+        Rc::new(move |click, _, cx| {
+            entity.update(cx, |host, cx| {
+                if let ChatClick::Fork(item) = click {
+                    host.chat_fork(item, cx);
+                }
+                host.chat_pane().click(click);
+                cx.notify();
+            });
+        })
+    };
+    let pane = host.chat_pane();
+    pane.frame = ChatFrame {
+        now,
+        phase,
+        click: Some(click),
+        fork: look.fork,
+        refs: look.refs.map(Rc::new),
+        vendor: look.vendor,
+        owner: Some(look.pane),
+    };
+    pane.jump = pane.shows_jump();
+    pane.release(window, cx);
+    let list_state = pane.list.clone();
+    let show_jump = pane.jump;
+    let watched = entity.downgrade();
+    list_state.set_scroll_handler(move |_, _, cx| {
+        let watched = watched.clone();
+        cx.defer(move |cx| {
+            watched
+                .update(cx, |host, cx| {
+                    let pane = host.chat_pane();
+                    if pane.jump != pane.shows_jump() {
+                        cx.notify();
+                    }
+                })
+                .ok();
+        });
+    });
+    let docked = !crate::touch::CoarsePointer::get(cx);
+    let pip = {
+        let (pane, view) = host.chat_read(cx);
+        view.and_then(|view| {
+            let ask = |request: &RequestView, cx: &App| host.chat_ask(request, &entity, cx);
+            let hooks = pane.frame.hooks(Some(&ask));
+            chat_agent_pip(view, now, &pane.open, phase, &hooks, cx)
+        })
+    };
+    let rows = entity.clone();
+    let thread = list(list_state.clone(), move |index, _, cx| {
+        let host = rows.read(cx);
+        let (pane, view) = host.chat_read(cx);
+        let Some(view) = view else {
+            return div().into_any_element();
+        };
+        let ask = |request: &RequestView, cx: &App| host.chat_ask(request, &rows, cx);
+        let hooks = pane.frame.hooks(Some(&ask));
+        pane.row(index, view, &hooks, cx)
+    })
+    .with_sizing_behavior(ListSizingBehavior::Auto)
+    .size_full()
+    .pt_3()
+    .pb(px(COMPOSER_OUTER_PADDING));
+    let jump = {
+        let entity = entity.clone();
+        move |_: &ala::ClickEvent, _: &mut Window, cx: &mut App| {
+            entity.update(cx, |host, cx| {
+                host.chat_pane().follow();
+                cx.notify();
+            });
+            cx.stop_propagation();
+        }
+    };
+    let column = div()
+        .relative()
+        .flex_1()
+        .min_w_0()
+        .h_full()
+        .text_color(cx.theme().foreground)
+        .child(thread)
+        .child(
+            div()
+                .absolute()
+                .top_0()
+                .left_0()
+                .right_0()
+                .bottom(px(COMPOSER_OUTER_PADDING))
+                .child(Scrollbar::vertical(&list_state)),
+        )
+        .when(show_jump, |column| {
+            column.child(
+                div()
+                    .absolute()
+                    .left_0()
+                    .right_0()
+                    .bottom(px(2.0 * COMPOSER_OUTER_PADDING))
+                    .flex()
+                    .justify_center()
+                    .child(
+                        agent_jump_to_bottom_button(("agent-chat-jump", look.pane), cx)
+                            .on_click(jump),
+                    ),
+            )
+        });
+    let pip = pip.map(|pip| chat_pip_frame(pip, docked));
+    h_flex()
+        .id(("agent-chat", look.pane))
+        .relative()
+        .size_full()
+        .items_start()
+        .child(column)
+        .children(pip)
+        .into_any_element()
 }
 
 fn decode_images(images: &[AgentImage]) -> Arc<[Arc<Image>]> {
@@ -334,6 +736,29 @@ pub fn chat_column(body: impl IntoElement) -> Div {
     )
 }
 
+pub fn chat_pip_frame(pip: AnyElement, docked: bool) -> AnyElement {
+    if docked {
+        div()
+            .flex_none()
+            .h_full()
+            .w(relative(0.45))
+            .min_w(px(PIP_MIN_WIDTH))
+            .max_w(px(PIP_MAX_WIDTH))
+            .pt(px(PIP_GAP))
+            .pr(px(PIP_GAP))
+            .pb(px(COMPOSER_OUTER_PADDING))
+            .child(pip)
+            .into_any_element()
+    } else {
+        div()
+            .absolute()
+            .inset_0()
+            .p(px(PIP_GAP))
+            .child(pip)
+            .into_any_element()
+    }
+}
+
 pub fn chat_thread(
     view: &ChatView,
     now: u64,
@@ -351,19 +776,13 @@ pub fn chat_thread(
         cx,
     };
     let live = chat_rows::background_live(view);
-    let background = chat_rows::background_rows(view);
-    let mut pending = background.iter().peekable();
-    let mut children = Vec::new();
-    for turn in &view.turns {
-        while let Some(unit) = pending
-            .next_if(|unit| chat_rows::unit_at(view, unit).is_some_and(|at| at < turn.started_at))
-        {
-            children.push(draw.unit(unit, live));
-        }
-        children.push(draw.turn(turn));
-    }
-    children.extend(pending.map(|unit| draw.unit(unit, live)));
-    v_flex().w_full().gap_3().children(children)
+    v_flex()
+        .w_full()
+        .gap_3()
+        .children(thread_rows(view).iter().filter_map(|row| match row {
+            Row::Turn(index) => view.turns.get(*index).map(|turn| draw.turn(turn)),
+            Row::Background(unit) => Some(draw.unit(unit, live)),
+        }))
 }
 
 struct Draw<'a, 'h> {
@@ -424,12 +843,11 @@ impl Draw<'_, '_> {
                 let reply = ordered
                     .clone()
                     .filter_map(|unit| match unit {
-                        Unit::Text(id) => Some(text_of(self.view, id)),
+                        Unit::Text(id) => Some(self.text(id)),
                         _ => None,
                     })
                     .filter(|text| !text.trim().is_empty())
-                    .collect::<Vec<_>>()
-                    .join("\n\n");
+                    .collect::<Vec<_>>();
                 let fork = ordered
                     .clone()
                     .find_map(|unit| match unit {
@@ -450,7 +868,7 @@ impl Draw<'_, '_> {
                     column.child(message_actions(
                         &format!("turn-{}", turn.id.0),
                         stamp,
-                        (!reply.is_empty()).then(|| reply.into()),
+                        reply,
                         fork,
                         REPLY_GROUP,
                         self.cx,
@@ -471,14 +889,14 @@ impl Draw<'_, '_> {
         match unit {
             Unit::User(id) => user_bubble(
                 id,
-                text_of(self.view, id),
+                &self.text(id),
                 self.images(id).as_deref().unwrap_or_default(),
                 self.view.item(id).map(|item| item.started_at),
                 self.hooks.fork_from(id),
                 self.hooks.refs,
                 cx,
             ),
-            Unit::Text(id) => markdown(id, self.shown_text(id), self.hooks, cx),
+            Unit::Text(id) => self.reply(id),
             Unit::Run(run) => self.run(run, live),
             Unit::Subagent(id) => self.agents(std::slice::from_ref(id)),
             Unit::Agents(ids) => self.agents(ids),
@@ -552,8 +970,35 @@ impl Draw<'_, '_> {
         (!item.body.images.is_empty()).then(|| decode_images(&item.body.images))
     }
 
+    fn text(&self, id: &ItemId) -> SharedString {
+        self.open
+            .texts
+            .get(id)
+            .cloned()
+            .unwrap_or_else(|| text_of(self.view, id))
+    }
+
+    fn reply(&self, id: &ItemId) -> AnyElement {
+        if let Some(cut) = self.open.previews.get(id) {
+            return long_reply(id, cut.clone(), self.text(id), self.hooks, self.cx);
+        }
+        let streams = self.streams(id);
+        let text = self.shown_text(id);
+        let text = if streams && text.len() <= super::MAX_STREAMING_MEND_BYTES {
+            crate::mend::mend(&text).map_or(text, SharedString::from)
+        } else {
+            text
+        };
+        markdown(id, text, streams, false, self.hooks, self.cx)
+    }
+
+    fn streams(&self, id: &ItemId) -> bool {
+        self.open.arrivals.contains_key(id)
+            || self.view.item(id).is_some_and(|item| item.status.is_open())
+    }
+
     fn shown_text(&self, id: &ItemId) -> SharedString {
-        let text = text_of(self.view, id);
+        let text = self.text(id);
         let Some(at) = self.open.arrivals.get(id) else {
             return text;
         };
@@ -674,12 +1119,16 @@ impl Draw<'_, '_> {
                 .size(px(13.0))
                 .text_color(cx.theme().foreground.faint()),
         );
+        let asks = if open {
+            Vec::new()
+        } else {
+            asks_under(self.view, id)
+        };
         v_flex()
             .w_full()
             .child(self.hooks.clickable(row, ChatClick::Agent(id.clone())))
             .children(
-                asks_under(self.view, id)
-                    .into_iter()
+                asks.into_iter()
                     .map(|request| div().w_full().pt_1().pb_2().child(self.ask(request))),
             )
             .into_any_element()
@@ -716,7 +1165,7 @@ impl Draw<'_, '_> {
             .when_some(prompt, |body, prompt| {
                 body.child(user_bubble(
                     &ItemId::new(format!("prompt-{}", id.as_str())),
-                    prompt.into(),
+                    &prompt.into(),
                     self.images(id).as_deref().unwrap_or_default(),
                     None,
                     None,
@@ -729,6 +1178,8 @@ impl Draw<'_, '_> {
                 body.child(markdown(
                     &ItemId::new(format!("result-{}", id.as_str())),
                     result.into(),
+                    false,
+                    false,
                     self.hooks,
                     cx,
                 ))
@@ -851,13 +1302,7 @@ pub fn chat_agent_pip(
         .child(draw.agent_body(id, state.as_ref(), ms));
     Some(
         div()
-            .absolute()
-            .top(px(10.0))
-            .right(px(10.0))
-            .w(relative(0.62))
-            .min_w(px(300.0))
-            .max_w(px(560.0))
-            .h(relative(0.72))
+            .size_full()
             .child(PipSurface::new(
                 SharedString::from(format!("chat-agent-pip-surface-{}", id.as_str())),
                 v_flex().size_full().child(header).child(body),
@@ -916,12 +1361,13 @@ fn stamp_label(at: u64) -> Option<String> {
 fn message_actions(
     key: &str,
     stamp: Option<u64>,
-    copy: Option<SharedString>,
+    copy: Vec<SharedString>,
     fork: Option<(ChatClicks, ItemId)>,
     group: &'static str,
     cx: &App,
 ) -> AnyElement {
     let stamp = stamp.filter(|at| *at > 0).and_then(stamp_label);
+    let copy = (!copy.is_empty()).then_some(copy);
     h_flex()
         .flex_none()
         .gap_0p5()
@@ -936,7 +1382,7 @@ fn message_actions(
                     .text_color(cx.theme().foreground.faint()),
             )
         })
-        .when_some(copy, |row, text| {
+        .when_some(copy, |row, parts| {
             row.child(
                 penna::blocks::chat::message_action(
                     Button::compact_icon(
@@ -948,7 +1394,12 @@ fn message_actions(
                 .tooltip("Copy")
                 .on_click(move |_, window, cx| {
                     cx.stop_propagation();
-                    cx.write_to_clipboard(ClipboardItem::new_string(text.to_string()));
+                    let text = parts
+                        .iter()
+                        .map(SharedString::as_ref)
+                        .collect::<Vec<_>>()
+                        .join("\n\n");
+                    cx.write_to_clipboard(ClipboardItem::new_string(text));
                     window.push_notification(
                         Notification::new()
                             .message("Copied")
@@ -980,7 +1431,7 @@ fn message_actions(
 
 fn user_bubble(
     id: &ItemId,
-    text: SharedString,
+    text: &SharedString,
     images: &[Arc<Image>],
     stamp: Option<u64>,
     fork: Option<(ChatClicks, ItemId)>,
@@ -993,66 +1444,91 @@ fn user_bubble(
         .and_then(|refs| {
             ref_text(
                 SharedString::from(format!("chat-user-text-{key}")),
-                &text,
+                text,
                 refs,
                 cx,
             )
         })
         .unwrap_or_else(|| text.clone().into_any_element());
+    let actions = message_actions(
+        &format!("user-{key}"),
+        stamp,
+        if text.is_empty() {
+            Vec::new()
+        } else {
+            vec![text.clone()]
+        },
+        fork,
+        USER_GROUP,
+        cx,
+    );
     v_flex()
         .id(SharedString::from(format!("chat-user-{key}")))
         .group(USER_GROUP)
         .w_full()
         .items_end()
-        .gap_1()
         .child(
-            transcript_text(
-                Card::new("chat-user-bubble", CardLook::Bubble)
-                    .v_flex()
-                    .max_w(relative(0.8))
-                    .gap_2()
-                    .px_3()
-                    .py_2(),
-                cx,
-            )
-            .when(!images.is_empty(), |bubble| {
-                bubble.child(
-                    h_flex()
-                        .flex_wrap()
-                        .gap_1()
-                        .children(images.iter().enumerate().map(|(index, image)| {
-                            attachment_tile(
-                                (
-                                    SharedString::from(format!("chat-user-attachment-{key}")),
-                                    index,
-                                ),
-                                Arc::clone(image),
-                                TRANSCRIPT_ATTACHMENT,
-                                ground,
-                            )
-                            .debug_selector(|| "chat-user-attachment".to_owned())
-                        })),
-                )
-            })
-            .when(!text.is_empty(), |bubble| {
-                bubble.child(
+            div()
+                .relative()
+                .max_w(relative(0.8))
+                .child(
                     div()
-                        .id(SharedString::from(format!("chat-user-scroll-{key}")))
-                        .max_h(px(USER_MAX_HEIGHT))
-                        .overflow_y_scroll()
-                        .child(body),
+                        .absolute()
+                        .right(relative(1.0))
+                        .bottom_0()
+                        .pr_1()
+                        .child(actions),
                 )
-            }),
+                .child(user_card(&key, text, body, images, ground, cx)),
         )
-        .child(message_actions(
-            &format!("user-{key}"),
-            stamp,
-            (!text.is_empty()).then_some(text),
-            fork,
-            USER_GROUP,
-            cx,
-        ))
         .into_any_element()
+}
+
+fn user_card(
+    key: &str,
+    text: &SharedString,
+    body: AnyElement,
+    images: &[Arc<Image>],
+    ground: penna::Ground,
+    cx: &App,
+) -> AnyElement {
+    transcript_text(
+        Card::new("chat-user-bubble", CardLook::Bubble)
+            .v_flex()
+            .gap_2()
+            .px_3()
+            .py_2(),
+        cx,
+    )
+    .when(!images.is_empty(), |bubble| {
+        bubble.child(
+            h_flex()
+                .flex_wrap()
+                .gap_1()
+                .children(images.iter().enumerate().map(|(index, image)| {
+                    attachment_tile(
+                        (
+                            SharedString::from(format!("chat-user-attachment-{key}")),
+                            index,
+                        ),
+                        Arc::clone(image),
+                        TRANSCRIPT_ATTACHMENT,
+                        ground,
+                    )
+                    .debug_selector(|| "chat-user-attachment".to_owned())
+                })),
+        )
+    })
+    .when(!text.is_empty(), |bubble| {
+        bubble.child(
+            div()
+                .id(SharedString::from(format!("chat-user-scroll-{key}")))
+                .max_h(px(USER_MAX_HEIGHT))
+                .overflow_y_scroll()
+                .child(body),
+        )
+    })
+    .into_any_element()
 }
 
 fn block_scope(owner: Option<u64>, id: &str) -> u64 {
@@ -1062,7 +1538,64 @@ fn block_scope(owner: Option<u64>, id: &str) -> u64 {
     hasher.finish()
 }
 
-fn markdown(id: &ItemId, text: SharedString, hooks: &ChatHooks<'_>, cx: &App) -> AnyElement {
+fn preview(text: &str) -> Option<String> {
+    let mut end = text.len().min(PREVIEW_MAX_BYTES);
+    while !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    if let Some((newline, _)) = text[..end].match_indices('\n').nth(PREVIEW_MAX_LINES - 1) {
+        end = newline + 1;
+    }
+    if end >= text.len() {
+        return None;
+    }
+    let prefix = &text[..end];
+    let mut cut = crate::mend::mend(prefix).unwrap_or_else(|| prefix.to_owned());
+    cut.push_str(PREVIEW_MARKER);
+    Some(cut)
+}
+
+fn long_reply(
+    id: &ItemId,
+    cut: SharedString,
+    full: SharedString,
+    hooks: &ChatHooks<'_>,
+    cx: &App,
+) -> AnyElement {
+    v_flex()
+        .w_full()
+        .gap_2()
+        .child(markdown(id, cut, false, true, hooks, cx))
+        .child(
+            h_flex().w_full().justify_end().child(
+                Button::new(SharedString::from(format!(
+                    "chat-copy-full-{}",
+                    id.as_str()
+                )))
+                .icon(IconName::Copy)
+                .label("Copy full message")
+                .on_click(move |_, window, cx| {
+                    cx.write_to_clipboard(ClipboardItem::new_string(full.to_string()));
+                    window.push_notification(
+                        Notification::new()
+                            .message("Copied")
+                            .autohide_after(Duration::from_millis(1600)),
+                        cx,
+                    );
+                }),
+            ),
+        )
+        .into_any_element()
+}
+
+fn markdown(
+    id: &ItemId,
+    text: SharedString,
+    streaming: bool,
+    scrolls: bool,
+    hooks: &ChatHooks<'_>,
+    cx: &App,
+) -> AnyElement {
     let id = SharedString::from(format!("chat-text-{}", id.as_str()));
     let scope = block_scope(hooks.owner, &id);
     let view = match hooks.refs {
@@ -1080,7 +1613,10 @@ fn markdown(id: &ItemId, text: SharedString, hooks: &ChatHooks<'_>, cx: &App) ->
     transcript_text(div().w_full(), cx)
         .child(
             agent_text_view(view, scope, hooks.owner, cx)
-                .markdown_extensions(assistant_markdown_extensions()),
+                .selectable(true)
+                .streaming(streaming)
+                .markdown_extensions(assistant_markdown_extensions())
+                .when(scrolls, |text| text.scrollable(true).h(px(PREVIEW_HEIGHT))),
         )
         .into_any_element()
 }
@@ -1794,10 +2330,11 @@ mod tests {
         pane.click(&ChatClick::Turn(TurnId(1)));
         pane.sync(&first);
         assert_eq!(pane.open.agent, Some(ItemId::new("a")));
-        assert!(pane.away);
+        assert!(pane.away());
         pane.sync(&ready("s2"));
         assert_eq!(pane.open.agent, None);
         assert!(pane.open.turns.is_empty());
+        assert!(!pane.away(), "a new session lands on its latest message");
     }
 
     #[test]
@@ -1811,7 +2348,7 @@ mod tests {
         pane.click(&ChatClick::Agent(ItemId::new("a")));
         pane.click(&ChatClick::CloseAgent);
         assert_eq!(pane.open.agent, None);
-        assert!(!pane.away);
+        assert!(!pane.away());
     }
 
     #[test]
@@ -1847,5 +2384,87 @@ mod tests {
         assert!(pane.open.arrivals.contains_key(&ItemId::new("new")));
         assert!(!pane.open.arrivals.contains_key(&ItemId::new("old")));
         assert!(pane.revealing(zz_client::chat_rows::now_ms()));
+    }
+
+    fn finished(view: &mut ChatView, item: &str, parent: Option<&str>, kind: ItemKind, at: u64) {
+        let body = if kind == ItemKind::Agent {
+            ItemBody::text("done")
+        } else {
+            ItemBody::titled(item)
+        };
+        view.apply(&ChatEvent::ItemStarted {
+            item: ItemId::new(item),
+            turn: Some(TurnId(1)),
+            parent: parent.map(ItemId::new),
+            kind,
+            body,
+            at,
+        })
+        .expect("start");
+        view.apply(&ChatEvent::ItemEnded {
+            item: ItemId::new(item),
+            status: ItemStatus::Completed,
+            at,
+        })
+        .expect("end");
+    }
+
+    #[test]
+    fn a_long_reply_shows_its_first_512_lines_and_copies_whole() {
+        let mut view = ready("s1");
+        let long = "line\n".repeat(600);
+        view.apply(&ChatEvent::ItemStarted {
+            item: ItemId::new("long"),
+            turn: Some(TurnId(1)),
+            parent: None,
+            kind: ItemKind::Agent,
+            body: ItemBody::text(long.clone()),
+            at: 3,
+        })
+        .expect("reply");
+        finished(&mut view, "short", None, ItemKind::Agent, 4);
+        let mut pane = ChatPane::default();
+        pane.sync(&view);
+        assert_eq!(
+            pane.open.previews[&ItemId::new("long")].as_ref(),
+            format!("{}{}", "line\n".repeat(512), super::PREVIEW_MARKER)
+        );
+        assert_eq!(pane.open.texts[&ItemId::new("long")].as_ref(), long);
+        assert!(!pane.open.previews.contains_key(&ItemId::new("short")));
+    }
+
+    #[test]
+    fn revealing_a_folded_tool_opens_its_turn_and_run_or_its_agent() {
+        let mut view = ready("s1");
+        finished(&mut view, "step", Some("a"), ItemKind::Read, 3);
+        view.apply(&ChatEvent::ItemEnded {
+            item: ItemId::new("a"),
+            status: ItemStatus::Completed,
+            at: 3,
+        })
+        .expect("agent ends");
+        finished(&mut view, "read", None, ItemKind::Read, 4);
+        finished(&mut view, "reply", None, ItemKind::Agent, 5);
+        view.apply(&ChatEvent::TurnEnded {
+            turn: TurnId(1),
+            outcome: zz_protocol::chat::TurnOutcome::Completed {
+                stop_reason: "end_turn".to_owned(),
+            },
+            at: 6,
+        })
+        .expect("turn ends");
+        let mut pane = ChatPane::default();
+        pane.sync(&view);
+        assert!(!pane.away());
+
+        pane.reveal(&view, &ItemId::new("read"));
+        assert_eq!(pane.open.turns, [TurnId(1)]);
+        assert_eq!(pane.open.runs, [ItemId::new("read")]);
+        assert_eq!(pane.open.agent, None);
+        assert!(pane.away(), "a revealed row stays put");
+
+        pane.reveal(&view, &ItemId::new("step"));
+        assert_eq!(pane.open.turns, [TurnId(1)]);
+        assert_eq!(pane.open.agent, Some(ItemId::new("a")));
     }
 }

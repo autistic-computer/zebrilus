@@ -17,9 +17,7 @@ mod settings;
 mod sidebar;
 mod status_bar;
 
-use penna::blocks::sidebar::{
-    sidebar_footer, sidebar_panel, sidebar_resize_handle, sidebar_titlebar,
-};
+use penna::blocks::sidebar::{sidebar_panel, sidebar_resize_handle, sidebar_titlebar};
 use std::{
     cell::{Cell, RefCell},
     collections::{BTreeSet, HashMap},
@@ -54,8 +52,10 @@ use zz_ui::{
         buffer_chooser_row, chooser_has_key_gutter, chooser_subtitle, tree_chooser_row,
     },
     navigation::{
-        workspace_layout_button, workspace_settings_button, workspace_sidebar_fade,
-        workspace_sidebar_ground, workspace_sidebar_slideover, workspace_sidebar_view_button,
+        SidebarAction, workspace_layout_button, workspace_sidebar_action,
+        workspace_sidebar_actions, workspace_sidebar_fade, workspace_sidebar_footer,
+        workspace_sidebar_ground, workspace_sidebar_slideover, workspace_sidebar_titlebar_controls,
+        workspace_sidebar_view_button,
     },
     pane::{
         DropPreview, DropPreviewFrame, PaneArrivals, PaneChrome, PaneDrag, PaneDragOverlayState,
@@ -86,6 +86,19 @@ pub struct OpenSession {
 }
 
 #[cfg(any(target_os = "ios", target_os = "android"))]
+#[derive(Clone, PartialEq, ala::Action)]
+#[action(namespace = zz, no_json)]
+pub struct OpenHost {
+    pub endpoint: String,
+}
+
+#[cfg(any(target_os = "ios", target_os = "android"))]
+#[must_use]
+pub fn host_from_url(url: &str) -> Option<String> {
+    zz_daemon_client::tailnet_offer::endpoint_from_link(url)
+}
+
+#[cfg(any(target_os = "ios", target_os = "android"))]
 #[must_use]
 pub fn session_from_url(url: &str) -> Option<String> {
     let (_, rest) = url.split_once("://")?;
@@ -98,9 +111,11 @@ pub fn session_from_url(url: &str) -> Option<String> {
 
 pub struct AppShell {
     connection: Entity<Connection>,
-    _connection_subscriptions: [Subscription; 2],
+    _connection_subscriptions: [Subscription; 3],
     #[cfg(any(target_os = "ios", target_os = "android"))]
     fleet: Vec<(Entity<Connection>, Subscription)>,
+    #[cfg(any(target_os = "ios", target_os = "android"))]
+    fleet_found: Vec<Subscription>,
     connection_status: String,
     connected: bool,
     idle_guard: Option<ala::Task<()>>,
@@ -114,6 +129,7 @@ pub struct AppShell {
     #[cfg(any(target_os = "ios", target_os = "android"))]
     browsers: HashMap<PaneId, Entity<browser_pane::BrowserPane>>,
     pickers: HashMap<PaneId, Entity<picker::PanePicker>>,
+    landing_picker: Option<Entity<picker::PanePicker>>,
     folder_pick: Option<(ala::WeakEntity<picker::PanePicker>, String)>,
     sidebar: bool,
     slideover: bool,
@@ -167,7 +183,7 @@ fn watch_connection(
     connection: &Entity<Connection>,
     window: &mut Window,
     cx: &mut Context<AppShell>,
-) -> [Subscription; 2] {
+) -> [Subscription; 3] {
     let observer = cx.observe(connection, |this, connection, cx| {
         let connection = connection.read(cx);
         if this.connected != connection.connected || this.connection_status != connection.status {
@@ -223,8 +239,13 @@ fn watch_connection(
                     this.set_split_drag(None);
                     this.pane_drag = None;
                     this.pane_layout_override = None;
+                    if matches!(event, zz_client::CoreEvent::HelloReceived) {
+                        this.flat.place = zz_client::new_chat::ChatViewPlace::default();
+                    }
+                    sidebar::follow_chat_view(this, cx);
                 }
                 zz_client::CoreEvent::SnapshotChanged => {
+                    sidebar::follow_chat_view(this, cx);
                     if this.split_drag.is_some_and(|state| {
                         state.committed_generation.is_some_and(|generation| {
                             generation < connection.read(cx).core.snapshot().generation
@@ -297,7 +318,17 @@ fn watch_connection(
             cx.notify();
         },
     );
-    [observer, events]
+    let found = cx.subscribe_in(
+        connection,
+        window,
+        |this, _, event: &crate::connection::FoundHosts, window, cx| {
+            #[cfg(any(target_os = "ios", target_os = "android"))]
+            this.add_found_hosts(&event.0, window, cx);
+            #[cfg(not(any(target_os = "ios", target_os = "android")))]
+            let _ = (this, event, window, cx);
+        },
+    );
+    [observer, events, found]
 }
 
 impl AppShell {
@@ -346,6 +377,8 @@ impl AppShell {
             _connection_subscriptions: connection_subscriptions,
             #[cfg(any(target_os = "ios", target_os = "android"))]
             fleet: Vec::new(),
+            #[cfg(any(target_os = "ios", target_os = "android"))]
+            fleet_found: Vec::new(),
             connection_status: String::new(),
             connected: false,
             idle_guard: None,
@@ -359,6 +392,7 @@ impl AppShell {
             #[cfg(any(target_os = "ios", target_os = "android"))]
             browsers: HashMap::new(),
             pickers: HashMap::new(),
+            landing_picker: None,
             folder_pick: None,
             sidebar: preferences.sidebar,
             slideover: false,
@@ -968,7 +1002,7 @@ impl AppShell {
             .items_center()
             .gap_1()
             .child(
-                workspace_layout_button("web-sidebar")
+                workspace_layout_button("web-sidebar", true)
                     .on(ground)
                     .on_click(cx.listener(|this, _, window, cx| this.toggle_sidebar(window, cx))),
             )
@@ -1043,9 +1077,9 @@ impl AppShell {
             .into_any_element()
         } else if self.preferences.flat_sidebar {
             let fade = workspace_sidebar_fade(ground, cx);
-            sidebar::flat_tree(self, fade, ground, cx)
+            self.with_sidebar_actions(sidebar::flat_tree(self, fade, ground, cx), ground, cx)
         } else {
-            sidebar::session_tree(
+            let tree = sidebar::session_tree(
                 sidebar::Runtime {
                     connection: self.connection.clone(),
                     focus: self.sidebar_focus.clone(),
@@ -1061,39 +1095,36 @@ impl AppShell {
                 &self.sidebar_scroll,
                 workspace_sidebar_fade(ground, cx),
                 cx,
-            )
+            );
+            self.with_sidebar_actions(tree, ground, cx)
         };
         let footer = self.settings.is_none().then(|| {
-            sidebar_footer(
+            workspace_sidebar_footer(
                 "web-sidebar-footer",
-                workspace_settings_button("web-settings")
-                    .on(ground)
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        this.settings = Some(SettingsSection::Appearance);
-                        this.focused_pane = None;
-                        cx.notify();
-                    })),
-                Some(
-                    workspace_sidebar_view_button(
-                        "web-sidebar-view",
-                        self.preferences.flat_sidebar,
-                    )
-                    .on(ground)
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        this.preferences.flat_sidebar = !this.preferences.flat_sidebar;
-                        this.preferences.save();
-                        cx.notify();
-                    }))
-                    .into_any_element(),
-                ),
+                self.sidebar_action(SidebarAction::Settings, ground, cx),
                 cx,
             )
         });
+        let controls = if self.settings.is_none() {
+            workspace_sidebar_titlebar_controls(
+                workspace_sidebar_view_button("web-sidebar-view", self.preferences.flat_sidebar)
+                    .on(ground)
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        let on = !this.preferences.flat_sidebar;
+                        sidebar::set_chat_view(this, on, cx);
+                        cx.notify();
+                    })),
+                self.controls(ground, cx),
+            )
+            .into_any_element()
+        } else {
+            self.controls(ground, cx)
+        };
         let divider = !(self.preferences.gaps && self.inline_sidebar(window));
         sidebar_panel(
             "web-sidebar-surface",
             self.sidebar_width(window),
-            sidebar_titlebar("web-sidebar-titlebar", self.controls(ground, cx), cx),
+            sidebar_titlebar("web-sidebar-titlebar", controls, cx),
             navigation,
             ground,
             divider,
@@ -1128,6 +1159,45 @@ impl AppShell {
                 }),
         )
         .into_any_element()
+    }
+
+    fn sidebar_action(
+        &self,
+        action: SidebarAction,
+        ground: Ground,
+        cx: &Context<Self>,
+    ) -> ala::Stateful<ala::Div> {
+        workspace_sidebar_action(action, ground, cx).on_click(cx.listener(move |this, _, _, cx| {
+            match action {
+                SidebarAction::NewChat => sidebar::new_chat(this, cx),
+                SidebarAction::AddHost => this.settings = Some(SettingsSection::Hosts),
+                SidebarAction::Settings => this.settings = Some(SettingsSection::Appearance),
+            }
+            if action != SidebarAction::NewChat {
+                this.focused_pane = None;
+            }
+            cx.notify();
+        }))
+    }
+
+    fn with_sidebar_actions(
+        &self,
+        navigation: AnyElement,
+        ground: Ground,
+        cx: &Context<Self>,
+    ) -> AnyElement {
+        div()
+            .flex()
+            .flex_col()
+            .size_full()
+            .min_h_0()
+            .child(workspace_sidebar_actions(
+                SidebarAction::above(self.preferences.flat_sidebar)
+                    .iter()
+                    .map(|action| self.sidebar_action(*action, ground, cx)),
+            ))
+            .child(div().flex_1().min_h_0().child(navigation))
+            .into_any_element()
     }
 
     fn status_bar(&self, window: &Window, cx: &mut Context<Self>) -> AnyElement {
@@ -1380,6 +1450,41 @@ impl AppShell {
         picker
     }
 
+    fn landing(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Option<AnyElement> {
+        if !self.preferences.flat_sidebar
+            || !self.flat.place.landing()
+            || !self.connection.read(cx).connected
+        {
+            return None;
+        }
+        let picker = if let Some(picker) = &self.landing_picker {
+            picker.clone()
+        } else {
+            let connection = self.connection.clone();
+            let picker = cx.new(|cx| picker::PanePicker::landing(connection, cx));
+            cx.subscribe(
+                &picker,
+                |shell, picker, choose: &picker::ChooseFolder, cx| {
+                    shell.folder_pick = Some((picker.downgrade(), choose.start.clone()));
+                    cx.notify();
+                },
+            )
+            .detach();
+            cx.subscribe(&picker, |shell, _, _: &picker::LeaveLanding, cx| {
+                shell.flat.place.close_landing();
+                cx.notify();
+            })
+            .detach();
+            self.landing_picker = Some(picker.clone());
+            picker
+        };
+        let focus = picker.read(cx).focus_handle(cx);
+        if !focus.contains_focused(window, cx) && !self.sidebar_focus.contains_focused(window, cx) {
+            focus.focus(window, cx);
+        }
+        Some(div().size_full().child(picker).into_any_element())
+    }
+
     fn agent_picker_shown(&self, pane: PaneId, cx: &App) -> bool {
         agent_picker_place(
             self.connection.read(cx).core.snapshot(),
@@ -1421,7 +1526,7 @@ impl AppShell {
     pub(super) fn pane_header(
         &self,
         pane_id: PaneId,
-        icon: IconName,
+        icon: penna::Icon,
         title: String,
         active: bool,
         can_drag: bool,
@@ -1432,12 +1537,24 @@ impl AppShell {
         let touch_view = cx.weak_entity();
         let flip_view = cx.weak_entity();
         let connection = self.connection.clone();
-        let flip = self.pane_flip(pane_id, cx);
         let float_rows = self.pip_fill_rows(cx);
+        let (place, folder) = {
+            let snapshot = connection.read(cx).core.snapshot();
+            let mut place = zz_client::floating::pane_state(snapshot, pane_id);
+            place.floats |= floats;
+            let folder = snapshot
+                .sessions
+                .iter()
+                .flat_map(|session| &session.windows)
+                .find_map(|window| window.panes.get(&pane_id))
+                .and_then(zz_client::navigation::pane_folder);
+            (place, folder)
+        };
         zz_ui::pane::pane_header(
             icon,
             active,
             title.clone(),
+            folder.map(Into::into),
             PaneDragSource::new(pane_id, title, can_drag, move |drag, _, cx| {
                 view.update(cx, |this, cx| this.on_pane_drag_start(*drag, cx));
             })
@@ -1446,8 +1563,10 @@ impl AppShell {
                     this.touch_pane_drag(pane_id, event, window, cx);
                 });
             })),
-            floats,
-            flip,
+            place,
+            None,
+            &zz_ui::pane::PaneActionKeys::default(),
+            ala::px(0.0),
             move |action, _, cx| {
                 if action == zz_ui::pane::TerminalPaneAction::Flip {
                     let _ = flip_view.update(cx, |this, cx| this.flip_pane(pane_id, cx));
@@ -1749,6 +1868,10 @@ impl AppShell {
             self.pane_layout_override = None;
             return self.render_settings(section, window, cx);
         }
+        if let Some(landing) = self.landing(window, cx) {
+            self.pane_layout_override = None;
+            return landing;
+        }
         let Some(active_window) = self.active_window(cx) else {
             if self.pane_drag.take().is_some() {
                 cx.stop_active_drag(window);
@@ -1947,12 +2070,7 @@ impl AppShell {
                             self.preferences.pane_inactive_opacity,
                             cx,
                         );
-                        terminal.set_pane_status(
-                            dead_label.clone(),
-                            pane.synchronized_input,
-                            active_window.zoomed_pane == Some(pane_id),
-                            cx,
-                        );
+                        terminal.set_pane_status(dead_label.clone(), pane.synchronized_input, cx);
                         terminal.set_corner_radii(
                             Corners {
                                 top_left: px(0.0),
@@ -2020,11 +2138,14 @@ impl AppShell {
                 }
             };
             let content = if frame.header {
-                let title = zz_client::navigation::pane_label(pane);
+                let heading = zz_client::window_summary::pane_heading(pane);
                 let header = self.pane_header(
                     pane_id,
-                    zz_ui::pane::pane_kind_icon(&pane.kind),
-                    title,
+                    zz_ui::pane::pane_heading_icon(
+                        zz_ui::pane::pane_kind_icon(&pane.kind),
+                        heading.program,
+                    ),
+                    heading.title,
                     active_window.active_pane == pane_id,
                     can_drag,
                     false,
@@ -2079,27 +2200,6 @@ impl AppShell {
             if !terminal_pane && pane.synchronized_input {
                 status_tags.push(zz_ui::pane::pane_sync_badge(cx).into_any_element());
             }
-            if !terminal_pane && active_window.zoomed_pane == Some(pane_id) {
-                let connection = self.connection.clone();
-                let control = div()
-                    .id(("web-unzoom-pane", pane_id.0))
-                    .cursor_pointer()
-                    .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-                    .on_mouse_up(MouseButton::Left, move |_, _, cx| {
-                        connection.update(cx, |connection, cx| {
-                            if !connection.core.attached_read_only() {
-                                connection.command(
-                                    "resize-pane",
-                                    vec!["-Z".into(), "-t".into(), pane_id.to_string()],
-                                    cx,
-                                );
-                            }
-                        });
-                        cx.stop_propagation();
-                    })
-                    .child(zz_ui::pane::pane_unzoom_control());
-                status_tags.push(control.into_any_element());
-            }
             let mut status_overlays = if status_tags.is_empty() {
                 Vec::new()
             } else {
@@ -2122,7 +2222,7 @@ impl AppShell {
                     None => PaneDragOverlayState::Armed,
                 };
                 let view = cx.entity();
-                let title = zz_client::navigation::pane_label(pane);
+                let title = zz_client::window_summary::pane_heading(pane).title;
                 status_overlays.push(
                     pane_drag_overlay(("web-pane-drag-overlay", pane_id.0), state, radii, cx)
                         .on_click(cx.listener(move |this, _, window, cx| {
@@ -3057,6 +3157,10 @@ impl Render for AppShell {
             .map(|shell| {
                 #[cfg(target_os = "ios")]
                 let shell = shell.on_action(cx.listener(Self::menu_command));
+                #[cfg(any(target_os = "ios", target_os = "android"))]
+                let shell = shell.on_action(cx.listener(|this, action: &OpenHost, window, cx| {
+                    this.open_host(action.endpoint.clone(), window, cx);
+                }));
                 #[cfg(any(target_os = "ios", target_os = "android"))]
                 let shell = shell.on_action(cx.listener(|this, action: &OpenSession, _, cx| {
                     this.connection.update(cx, |connection, cx| {

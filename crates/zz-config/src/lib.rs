@@ -45,7 +45,6 @@ pub const DEFAULT_WIDGET_CORNER_RADIUS: f32 = 12.0;
 pub const DEFAULT_CHROME_CONTRAST: f32 = 1.0;
 pub const DEFAULT_REDUCE_TRANSPARENCY: bool = false;
 pub const DEFAULT_CHROME_TINT: f32 = 0.15;
-pub const DEFAULT_USE_SYSTEM_TITLEBAR: bool = false;
 pub const DEFAULT_WINDOW_BACKGROUND_BLUR: bool = false;
 pub const DEFAULT_TRAY: bool = true;
 pub const DEFAULT_NOTIFICATIONS: bool = true;
@@ -76,9 +75,7 @@ pub enum ConfigKey {
     PaletteWindowLayout,
     PaletteShowKeys,
     PaletteVimMode,
-    PickerFocusSidebar,
     WhichKeyDelay,
-    UseSystemTitlebar,
     WindowCornerRadius,
     WindowBackgroundBlur,
     Motion,
@@ -89,6 +86,7 @@ pub enum ConfigKey {
     CheckForUpdates,
     FlatSidebar,
     ProgramColors,
+    ChromeTerminalColors,
     ExperimentalEditorPane,
     PaneGaps,
     PaneGlowStrength,
@@ -114,6 +112,7 @@ pub enum ConfigKey {
     ControlShape,
     InterfaceGlass,
     UiFontFamily,
+    UiMonoFontFamily,
     AppIcon,
 }
 
@@ -123,9 +122,7 @@ impl ConfigKey {
             Self::PaletteWindowLayout => "palette-window-layout",
             Self::PaletteShowKeys => "palette-show-keys",
             Self::PaletteVimMode => "palette-vim-mode",
-            Self::PickerFocusSidebar => "picker-focus-sidebar",
             Self::WhichKeyDelay => "which-key-delay",
-            Self::UseSystemTitlebar => "use-system-titlebar",
             Self::WindowCornerRadius => "window-corner-radius",
             Self::WindowBackgroundBlur => "window-background-blur",
             Self::Motion => "motion",
@@ -136,6 +133,7 @@ impl ConfigKey {
             Self::CheckForUpdates => "check-for-updates",
             Self::FlatSidebar => "flat-sidebar",
             Self::ProgramColors => "program-colors",
+            Self::ChromeTerminalColors => "chrome-terminal-colors",
             Self::ExperimentalEditorPane => "experimental-editor-pane",
             Self::PaneGaps => "pane-gaps",
             Self::PaneGlowStrength => "pane-glow-strength",
@@ -161,6 +159,7 @@ impl ConfigKey {
             Self::ControlShape => "control-shape",
             Self::InterfaceGlass => "interface-glass",
             Self::UiFontFamily => "ui-font-family",
+            Self::UiMonoFontFamily => "ui-mono-font-family",
             Self::AppIcon => "app-icon",
         }
     }
@@ -170,9 +169,7 @@ impl ConfigKey {
             "palette-window-layout" => Some(Self::PaletteWindowLayout),
             "palette-show-keys" => Some(Self::PaletteShowKeys),
             "palette-vim-mode" => Some(Self::PaletteVimMode),
-            "picker-focus-sidebar" => Some(Self::PickerFocusSidebar),
             "which-key-delay" => Some(Self::WhichKeyDelay),
-            "use-system-titlebar" => Some(Self::UseSystemTitlebar),
             "window-corner-radius" => Some(Self::WindowCornerRadius),
             "window-background-blur" => Some(Self::WindowBackgroundBlur),
             "motion" => Some(Self::Motion),
@@ -183,6 +180,7 @@ impl ConfigKey {
             "check-for-updates" => Some(Self::CheckForUpdates),
             "flat-sidebar" => Some(Self::FlatSidebar),
             "program-colors" => Some(Self::ProgramColors),
+            "chrome-terminal-colors" => Some(Self::ChromeTerminalColors),
             "experimental-editor-pane" => Some(Self::ExperimentalEditorPane),
             "pane-gaps" => Some(Self::PaneGaps),
             "pane-glow-strength" => Some(Self::PaneGlowStrength),
@@ -208,6 +206,7 @@ impl ConfigKey {
             "control-shape" => Some(Self::ControlShape),
             "interface-glass" => Some(Self::InterfaceGlass),
             "ui-font-family" => Some(Self::UiFontFamily),
+            "ui-mono-font-family" => Some(Self::UiMonoFontFamily),
             "app-icon" => Some(Self::AppIcon),
             _ => None,
         }
@@ -227,11 +226,9 @@ impl ConfigKey {
             Self::WindowCornerRadius => Some((0.0, MAX_WINDOW_CORNER_RADIUS)),
             Self::EditorFontSize => Some((MIN_EDITOR_FONT_SIZE, MAX_EDITOR_FONT_SIZE)),
             Self::WhichKeyDelay => Some((0.0, MAX_WHICH_KEY_DELAY)),
-            Self::UseSystemTitlebar
-            | Self::PaletteWindowLayout
+            Self::PaletteWindowLayout
             | Self::PaletteShowKeys
             | Self::PaletteVimMode
-            | Self::PickerFocusSidebar
             | Self::WindowBackgroundBlur
             | Self::Motion
             | Self::Tray
@@ -241,6 +238,7 @@ impl ConfigKey {
             | Self::CheckForUpdates
             | Self::FlatSidebar
             | Self::ProgramColors
+            | Self::ChromeTerminalColors
             | Self::ExperimentalEditorPane
             | Self::PaneGaps
             | Self::EditorLineNumbers
@@ -258,11 +256,12 @@ impl ConfigKey {
             | Self::ChromeAccent
             | Self::ChromeDensity
             | Self::UiFontFamily
+            | Self::UiMonoFontFamily
             | Self::AppIcon => None,
         }
     }
 
-    pub const LOOK: [Self; 7] = [
+    pub const LOOK: [Self; 8] = [
         Self::ChromeAccent,
         Self::ChromeTint,
         Self::ChromeTintHue,
@@ -270,6 +269,7 @@ impl ConfigKey {
         Self::ControlShape,
         Self::InterfaceGlass,
         Self::UiFontFamily,
+        Self::UiMonoFontFamily,
     ];
 }
 
@@ -317,12 +317,14 @@ impl Default for BrowserConfig {
 #[derive(Clone, Debug, PartialEq)]
 pub struct UiFontConfig {
     pub family: ConfigValue<Option<String>>,
+    pub mono_family: ConfigValue<Option<String>>,
 }
 
 impl Default for UiFontConfig {
     fn default() -> Self {
         Self {
             family: ConfigValue::from_default(None),
+            mono_family: ConfigValue::from_default(None),
         }
     }
 }
@@ -356,9 +358,7 @@ pub struct AppConfig {
     pub palette_window_layout: ConfigValue<PaletteWindowLayout>,
     pub palette_show_keys: ConfigValue<bool>,
     pub palette_vim_mode: ConfigValue<bool>,
-    pub picker_focus_sidebar: ConfigValue<bool>,
     pub which_key_delay: ConfigValue<f32>,
-    pub use_system_titlebar: ConfigValue<bool>,
     pub window_corner_radius: ConfigValue<f32>,
     pub window_background_blur: ConfigValue<bool>,
     pub motion: ConfigValue<MotionSetting>,
@@ -369,6 +369,7 @@ pub struct AppConfig {
     pub check_for_updates: ConfigValue<bool>,
     pub flat_sidebar: ConfigValue<bool>,
     pub program_colors: ConfigValue<bool>,
+    pub chrome_terminal_colors: ConfigValue<bool>,
     pub experimental_editor_pane: ConfigValue<bool>,
     pub pane_gaps: ConfigValue<bool>,
     pub pane_glow_strength: ConfigValue<f32>,
@@ -398,9 +399,7 @@ impl Default for AppConfig {
             palette_window_layout: ConfigValue::from_default(PaletteWindowLayout::Grouped),
             palette_show_keys: ConfigValue::from_default(true),
             palette_vim_mode: ConfigValue::from_default(false),
-            picker_focus_sidebar: ConfigValue::from_default(false),
             which_key_delay: ConfigValue::from_default(DEFAULT_WHICH_KEY_DELAY),
-            use_system_titlebar: ConfigValue::from_default(DEFAULT_USE_SYSTEM_TITLEBAR),
             window_corner_radius: ConfigValue::from_default(DEFAULT_WINDOW_CORNER_RADIUS),
             window_background_blur: ConfigValue::from_default(DEFAULT_WINDOW_BACKGROUND_BLUR),
             motion: ConfigValue::from_default(MotionSetting::Default),
@@ -411,6 +410,7 @@ impl Default for AppConfig {
             check_for_updates: ConfigValue::from_default(DEFAULT_CHECK_FOR_UPDATES),
             flat_sidebar: ConfigValue::from_default(false),
             program_colors: ConfigValue::from_default(true),
+            chrome_terminal_colors: ConfigValue::from_default(true),
             experimental_editor_pane: ConfigValue::from_default(DEFAULT_EXPERIMENTAL_EDITOR_PANE),
             pane_gaps: ConfigValue::from_default(DEFAULT_PANE_GAPS),
             pane_glow_strength: ConfigValue::from_default(DEFAULT_PANE_GLOW_STRENGTH),
@@ -443,8 +443,6 @@ impl AppConfig {
         match key {
             ConfigKey::PaletteShowKeys => Some(&mut self.palette_show_keys),
             ConfigKey::PaletteVimMode => Some(&mut self.palette_vim_mode),
-            ConfigKey::PickerFocusSidebar => Some(&mut self.picker_focus_sidebar),
-            ConfigKey::UseSystemTitlebar => Some(&mut self.use_system_titlebar),
             ConfigKey::WindowBackgroundBlur => Some(&mut self.window_background_blur),
             ConfigKey::Tray => Some(&mut self.tray),
             ConfigKey::Notifications => Some(&mut self.notifications),
@@ -453,6 +451,7 @@ impl AppConfig {
             ConfigKey::CheckForUpdates => Some(&mut self.check_for_updates),
             ConfigKey::FlatSidebar => Some(&mut self.flat_sidebar),
             ConfigKey::ProgramColors => Some(&mut self.program_colors),
+            ConfigKey::ChromeTerminalColors => Some(&mut self.chrome_terminal_colors),
             ConfigKey::ExperimentalEditorPane => Some(&mut self.experimental_editor_pane),
             ConfigKey::PaneGaps => Some(&mut self.pane_gaps),
             ConfigKey::EditorLineNumbers => Some(&mut self.editor_line_numbers),
@@ -482,6 +481,7 @@ impl AppConfig {
             | ConfigKey::ControlShape
             | ConfigKey::InterfaceGlass
             | ConfigKey::UiFontFamily
+            | ConfigKey::UiMonoFontFamily
             | ConfigKey::AppIcon => None,
         }
     }
@@ -782,6 +782,16 @@ pub fn parse_config(source: &str, system_font_family: &str) -> ParsedConfig {
             continue;
         }
 
+        if zz_daemon_client::tailnet::Settings::is_key(key) {
+            if let Err(message) = zz_daemon_client::tailnet::Settings::default().apply(key, value) {
+                parsed.diagnostics.push(ConfigDiagnostic {
+                    line: line_number,
+                    message: format!("invalid `{key}`: {message}"),
+                });
+            }
+            continue;
+        }
+
         if matches!(key, CHROME_KEYBIND_KEY | CHROME_UNBIND_KEY) {
             let entry = if key == CHROME_KEYBIND_KEY {
                 keymap::parse_bind(value)
@@ -815,6 +825,16 @@ pub fn parse_config(source: &str, system_font_family: &str) -> ParsedConfig {
             parsed.diagnostics.push(ConfigDiagnostic {
                 line: line_number,
                 message: format!("`{key}` was removed: {instead}"),
+            });
+            continue;
+        }
+
+        if RETIRED_NAVIGATION_KEYS.contains(&key) {
+            parsed.diagnostics.push(ConfigDiagnostic {
+                line: line_number,
+                message: format!(
+                    "`{key}` was removed: Prefix + s and Prefix + w open their pickers in the pane"
+                ),
             });
             continue;
         }
@@ -859,6 +879,14 @@ pub fn parse_config(source: &str, system_font_family: &str) -> ParsedConfig {
             parsed.diagnostics.push(ConfigDiagnostic {
                 line: line_number,
                 message: format!("`{key}` was removed: {instead}"),
+            });
+            continue;
+        }
+
+        if RETIRED_WINDOW_KEYS.contains(&key) {
+            parsed.diagnostics.push(ConfigDiagnostic {
+                line: line_number,
+                message: format!("`{key}` was removed: zz draws its own window controls"),
             });
             continue;
         }
@@ -952,6 +980,22 @@ pub fn parse_config(source: &str, system_font_family: &str) -> ParsedConfig {
             continue;
         }
 
+        if key == ConfigKey::UiMonoFontFamily {
+            let target = &mut parsed.ui_font.mono_family;
+            target.provenance = ConfigProvenance::Override;
+            match parse_config_string(value).and_then(|family| {
+                validate_ui_font_family(&family).map_err(str::to_owned)?;
+                Ok(family)
+            }) {
+                Ok(family) => target.value = Some(family),
+                Err(message) => parsed.diagnostics.push(ConfigDiagnostic {
+                    line: line_number,
+                    message: format!("invalid `{}`: {message}", key.as_str()),
+                }),
+            }
+            continue;
+        }
+
         if key == ConfigKey::UiFontFamily {
             let target = &mut parsed.ui_font.family;
             target.provenance = ConfigProvenance::Override;
@@ -1039,7 +1083,7 @@ pub fn parse_config(source: &str, system_font_family: &str) -> ParsedConfig {
                 None => parsed.diagnostics.push(ConfigDiagnostic {
                     line: line_number,
                     message: format!(
-                        "invalid `chrome-accent`: expected theme, ink, {} or a #rrggbb color",
+                        "invalid `chrome-accent`: expected theme, {} or a #rrggbb color",
                         ACCENTS.join(", ")
                     ),
                 }),
@@ -1073,11 +1117,9 @@ pub fn parse_config(source: &str, system_font_family: &str) -> ParsedConfig {
             ConfigKey::ChromeTintHue => &mut parsed.config.chrome_tint_hue,
             ConfigKey::EditorFontSize => &mut parsed.config.editor_font_size,
             ConfigKey::WhichKeyDelay => &mut parsed.config.which_key_delay,
-            ConfigKey::UseSystemTitlebar
-            | ConfigKey::PaletteWindowLayout
+            ConfigKey::PaletteWindowLayout
             | ConfigKey::PaletteShowKeys
             | ConfigKey::PaletteVimMode
-            | ConfigKey::PickerFocusSidebar
             | ConfigKey::WindowBackgroundBlur
             | ConfigKey::Motion
             | ConfigKey::Tray
@@ -1098,12 +1140,14 @@ pub fn parse_config(source: &str, system_font_family: &str) -> ParsedConfig {
             | ConfigKey::ReduceTransparency
             | ConfigKey::FlatSidebar
             | ConfigKey::ProgramColors
+            | ConfigKey::ChromeTerminalColors
             | ConfigKey::ThemeMode
             | ConfigKey::ControlShape
             | ConfigKey::InterfaceGlass
             | ConfigKey::ChromeAccent
             | ConfigKey::ChromeDensity
             | ConfigKey::UiFontFamily
+            | ConfigKey::UiMonoFontFamily
             | ConfigKey::AppIcon => {
                 unreachable!("handled above")
             }
@@ -1450,6 +1494,10 @@ pub const RETIRED_STATUS_KEYS: [&str; 5] = [
 
 pub const RETIRED_THEME_KEYS: [&str; 1] = ["interface-theme"];
 
+pub const RETIRED_WINDOW_KEYS: [&str; 1] = ["use-system-titlebar"];
+
+pub const RETIRED_NAVIGATION_KEYS: [&str; 1] = ["picker-focus-sidebar"];
+
 pub const RETIRED_MOTION_KEYS: [&str; 3] =
     ["animations", "animation-speed", "window-background-opacity"];
 
@@ -1463,8 +1511,11 @@ pub fn is_app_config_key(key: &str) -> bool {
         || RETIRED_MATERIAL_KEYS.contains(&key)
         || RETIRED_AGENT_KEYS.contains(&key)
         || RETIRED_THEME_KEYS.contains(&key)
+        || RETIRED_NAVIGATION_KEYS.contains(&key)
+        || RETIRED_WINDOW_KEYS.contains(&key)
         || MuxOptionKey::from_config_key(key).is_some()
         || key.starts_with("host-")
+        || zz_daemon_client::tailnet::Settings::is_key(key)
 }
 
 pub fn appearance_editor_view(source: &str) -> String {
@@ -1709,6 +1760,23 @@ pub fn write_ui_font_family_at(
         path,
         ConfigKey::UiFontFamily.as_str(),
         Some(&quoted_config_string(family)),
+    )
+}
+
+pub fn set_ui_mono_font_family(family: Option<&str>) -> io::Result<()> {
+    let path = config_path_for_write()?;
+    write_ui_mono_font_family_at(&path, family).map(drop)
+}
+
+pub fn write_ui_mono_font_family_at(path: &Path, family: Option<&str>) -> io::Result<bool> {
+    if let Some(family) = family {
+        validate_ui_font_family(family)
+            .map_err(|message| io::Error::new(ErrorKind::InvalidInput, message))?;
+    }
+    write_config_edit_at(
+        path,
+        ConfigKey::UiMonoFontFamily.as_str(),
+        family.map(quoted_config_string).as_deref(),
     )
 }
 
@@ -2016,11 +2084,11 @@ mod tests {
                     .join(CONFIG_DIRECTORY_NAME)
                     .join(CONFIG_FILE_NAME)
             );
-            write_config_edit_at(&path, "picker-focus-sidebar", Some("true")).unwrap();
-            write_config_edit_at(&path, "picker-focus-sidebar", Some("false")).unwrap();
+            write_config_edit_at(&path, "palette-vim-mode", Some("true")).unwrap();
+            write_config_edit_at(&path, "palette-vim-mode", Some("false")).unwrap();
             assert_eq!(
                 read_config_source(&path).unwrap(),
-                "picker-focus-sidebar = false\n"
+                "palette-vim-mode = false\n"
             );
             assert_eq!(discover_config_path(&candidates), Some(path));
         }
@@ -2041,13 +2109,13 @@ mod tests {
         );
         let existing = &candidates[1];
         fs::create_dir_all(existing.parent().unwrap()).unwrap();
-        fs::write(existing, "# keep this\npicker-focus-sidebar = true\n").unwrap();
+        fs::write(existing, "# keep this\npalette-vim-mode = true\n").unwrap();
         let path = config_write_path(&candidates).unwrap();
         assert_eq!(&path, existing);
-        write_config_edit_at(&path, "picker-focus-sidebar", Some("false")).unwrap();
+        write_config_edit_at(&path, "palette-vim-mode", Some("false")).unwrap();
         assert_eq!(
             read_config_source(existing).unwrap(),
-            "# keep this\npicker-focus-sidebar = false\n"
+            "# keep this\npalette-vim-mode = false\n"
         );
         assert!(!candidates[0].exists());
     }
@@ -2274,7 +2342,7 @@ mod tests {
             &[
                 (ConfigKey::ControlShape, Some("pill".to_owned())),
                 (ConfigKey::InterfaceGlass, Some(material.to_owned())),
-                (ConfigKey::ChromeAccent, Some("ink".to_owned())),
+                (ConfigKey::ChromeAccent, Some("blue".to_owned())),
             ],
         )
         .expect("write look keys");
@@ -2283,7 +2351,7 @@ mod tests {
             source,
             format!(
                 "interface-theme = macos\ncontrol-shape = pill\ninterface-glass = {material}\n\
-                 chrome-accent = ink\ntray = false\n"
+                 chrome-accent = blue\ntray = false\n"
             )
         );
         let parsed = parse_config(&source, "monospace");
@@ -2302,7 +2370,10 @@ mod tests {
         }
         assert_eq!(parsed.config.control_shape, set(ControlShapeSetting::Pill));
         assert_eq!(parsed.glass, set(Some(material.to_owned())));
-        assert_eq!(parsed.config.chrome_accent, set(AccentSetting::Ink));
+        assert_eq!(
+            parsed.config.chrome_accent,
+            set(AccentSetting::Named("blue"))
+        );
         assert_eq!(appearance_editor_view(&source), "");
 
         write_config_keys_at(&path, &ConfigKey::LOOK.map(|key| (key, None))).expect("reset");
@@ -2342,7 +2413,7 @@ mod tests {
             messages[0],
             "`interface-style` was removed: set the look in Settings > Interface"
         );
-        assert!(messages[1].contains("expected theme, ink, blue"));
+        assert!(messages[1].contains("expected theme, blue"));
         assert!(messages[2].contains("between 0 and 360"));
         assert_eq!(
             messages[3],

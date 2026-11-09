@@ -12,6 +12,8 @@
     { "name": "press-row", "section": "popup-menu", "press": "2" },
     { "name": "hover-submenu-row", "section": "submenu-open", "hover": { "id": "2", "nth": 2 } },
     { "name": "click-submenu-row", "section": "submenu-open", "click": { "id": "2", "nth": 2 } },
+    { "name": "hover-scope", "section": "scopes", "hover": "button:All fonts" },
+    { "name": "click-scope", "section": "scopes", "click": "button:All fonts" },
     { "name": "hover-trigger", "section": "triggers", "hover": "layout-trigger" },
     { "name": "hover-dropdown-row", "section": "dropdown-open", "hover": "2" },
     { "name": "click-dropdown-row", "section": "dropdown-open", "click": "2" },

@@ -246,7 +246,9 @@ On iPad and web a preview applies a copy of `Preferences` without saving it.
 
 # Settings
 
-Settings > Advanced > Command palette exposes three preferences:
+Settings > System > Command palette holds the first two, as Window chooser (Tree or Flat) and
+Show shortcuts; `palette-vim-mode` is Command palette Vim
+mode under System > Experimental:
 
 | Config key | Values | Default |
 | --- | --- | --- |

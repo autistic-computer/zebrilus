@@ -345,8 +345,8 @@ any live block may use it: the text lands in the composer of the Agent pane that
 as `agent-send -t %N` drafts it, and is not sent. Codex's own app asks before sending a follow-up;
 here the composer is that question, so a page can never start a turn by itself, and plain `html`
 blocks follow the same rule as `html preview` ones (nothing to choose between when the user sends
-it either way). The pane comes from the timeline: the desktop `AgentView` makes its store with
-`AgentTimelineStore::owned_by(pane)`, the markdown view hands the owner to the body hook, and
+it either way). The pane comes from the chat: each client passes its pane to `chat_surface`
+(`ChatLook.pane`), the chat's markdown hands that owner to the body hook, and
 `AgentHtmlLive.activate` gets it in `HtmlLiveBlock`. The live page is hosted with reply rights
 (`host_local_page(html, true)`; pictures stay without), and the workspace sends replies whose token
 is a local page to `InlineBrowser::take_reply`, which answers only for the live page, at most once a

@@ -4,8 +4,8 @@ use std::{
 };
 
 use zz_terminal::{
-    AppearanceConfigKey, AppearanceSource, TerminalColorScheme, discover_ghostty_config,
-    load_ghostty_appearance_from_for,
+    AppearanceConfigKey, AppearanceLoad, AppearanceSource, TerminalColorScheme, ThemeChoice,
+    discover_ghostty_config, load_ghostty_appearance_from_for,
 };
 
 use crate as config;
@@ -52,6 +52,7 @@ pub fn import_ghostty_config_from(
     let mut report = ImportReport::default();
     if !values.is_empty() {
         let target = config::import_target_path()?;
+        copy_theme_files(&load, path, &target)?;
         config::import_appearance_values_at(&target, &values)?;
         report.ghostty_keys = values.len();
         report.config_path = Some(target);
@@ -59,13 +60,52 @@ pub fn import_ghostty_config_from(
     Ok(report)
 }
 
+pub fn copy_theme_files(
+    load: &AppearanceLoad,
+    ghostty_root: &Path,
+    target: &Path,
+) -> io::Result<()> {
+    let Some(choice) = load
+        .theme
+        .as_deref()
+        .and_then(|value| ThemeChoice::parse(value).ok())
+    else {
+        return Ok(());
+    };
+    let Some(directory) = target.parent().map(|parent| parent.join("themes")) else {
+        return Ok(());
+    };
+    for name in choice.names() {
+        if name.contains(['/', '\\']) {
+            continue;
+        }
+        let Some(file) = zz_terminal::resolve_theme(name, ghostty_root) else {
+            continue;
+        };
+        std::fs::create_dir_all(&directory)?;
+        let copy = directory.join(name);
+        if copy != file {
+            std::fs::copy(&file, &copy)?;
+        }
+    }
+    Ok(())
+}
+
 pub fn ghostty_import_values(
     load: &zz_terminal::AppearanceLoad,
 ) -> io::Result<Vec<(AppearanceConfigKey, Vec<String>)>> {
     let mut values = Vec::new();
     for key in AppearanceConfigKey::ALL {
+        if key == AppearanceConfigKey::Theme {
+            continue;
+        }
+        let source = load.provenance.source(key);
+        if load.theme.is_some() && source == AppearanceSource::ThemeFile {
+            values.push((key, Vec::new()));
+            continue;
+        }
         if !matches!(
-            load.provenance.source(key),
+            source,
             AppearanceSource::Ghostty | AppearanceSource::ThemeFile
         ) {
             continue;
@@ -77,12 +117,43 @@ pub fn ghostty_import_values(
         }
         values.push((key, group));
     }
+    if let Some(theme) = &load.theme {
+        values.push((AppearanceConfigKey::Theme, vec![theme.clone()]));
+    }
     Ok(values)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn ghostty_import_keeps_the_theme_line_instead_of_one_modes_colors() {
+        let directory = tempfile::tempdir().unwrap();
+        let themes = directory.path().join("themes");
+        std::fs::create_dir(&themes).unwrap();
+        std::fs::write(themes.join("day"), "background = #f0f1f2\n").unwrap();
+        std::fs::write(themes.join("night"), "background = #101112\n").unwrap();
+        let root = directory.path().join("config");
+        std::fs::write(&root, "theme = light:day,dark:night\nfont-size = 15\n").unwrap();
+        let load = zz_terminal::load_ghostty_appearance_from_for(&root, TerminalColorScheme::Light);
+        let values = ghostty_import_values(&load).unwrap();
+        let value = |key| {
+            values
+                .iter()
+                .find(|(written, _)| *written == key)
+                .map(|(_, value)| value.clone())
+        };
+        assert_eq!(
+            value(AppearanceConfigKey::Theme),
+            Some(vec!["light:day,dark:night".to_owned()])
+        );
+        assert_eq!(value(AppearanceConfigKey::Background), Some(Vec::new()));
+        assert_eq!(
+            value(AppearanceConfigKey::FontSize),
+            Some(vec!["15".to_owned()])
+        );
+    }
 
     #[test]
     fn ghostty_import_missing_donor_names_the_path() {

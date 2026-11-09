@@ -2,8 +2,8 @@ use std::cell::Cell;
 
 use ala::{
     Anchor, AnyElement, AnyView, App, AppContext as _, Context, DismissEvent, Entity, EntityId,
-    IntoElement, KeyBinding, MouseButton, ParentElement as _, Render, Styled as _, Subscription,
-    Window, actions, div, prelude::FluentBuilder as _, px,
+    IntoElement, KeyBinding, Keystroke, MouseButton, ParentElement as _, Render, Styled as _,
+    Subscription, Window, actions, div, prelude::FluentBuilder as _, px,
 };
 use penna::{
     ActiveTheme as _, Colorize as _, IconName, Space, StyledExt as _, TextStyle, WindowExt as _,
@@ -225,6 +225,7 @@ struct Tooltips {
     plain: Entity<Tooltip>,
     keyed: Entity<Tooltip>,
     keyed_copy: Entity<Tooltip>,
+    prefixed: Entity<Tooltip>,
     long: Entity<Tooltip>,
 }
 
@@ -234,6 +235,13 @@ impl Tooltips {
             plain: cx.new(|_| Tooltip::new("Notifications")),
             keyed: cx.new(|_| Tooltip::new("Split right").action(&SplitRight, None)),
             keyed_copy: cx.new(|_| Tooltip::new("Copy path").action(&CopyPath, None)),
+            prefixed: cx.new(|_| {
+                Tooltip::new("Split right").keys(
+                    ["ctrl-a", "|"]
+                        .into_iter()
+                        .filter_map(|key| Keystroke::parse(key).ok()),
+                )
+            }),
             long: cx.new(|_| {
                 Tooltip::new("Detach from the session. The server keeps every pane running until you attach again.")
             }),
@@ -250,7 +258,8 @@ impl Render for Tooltips {
                 "label and key",
                 row()
                     .child(self.keyed.clone())
-                    .child(self.keyed_copy.clone()),
+                    .child(self.keyed_copy.clone())
+                    .child(self.prefixed.clone()),
             )
             .state("long label, one line", row().child(self.long.clone()))
     }

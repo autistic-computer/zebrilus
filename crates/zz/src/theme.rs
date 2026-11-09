@@ -50,28 +50,32 @@ pub fn chrome_background(cx: &App) -> Hsla {
 pub(crate) fn report_terminal_color_scheme(mux: &Entity<MuxClient>, cx: &mut App) {
     let mux = mux.downgrade();
     cx.observe_global::<Theme>(move |cx| {
-        let color_scheme = crate::terminal_color_scheme(Theme::global(cx).mode);
+        let color_scheme = crate::terminal_color_scheme(asked_mode(cx));
         mux.update(cx, |mux, _| mux.set_color_scheme(color_scheme))
             .ok();
     })
     .detach();
 }
 
+pub(crate) fn asked_mode(cx: &App) -> ThemeMode {
+    zz_ui::interface_theme::pinned_theme_mode(config::theme_mode(cx)).unwrap_or_else(|| {
+        cx.try_global::<SystemThemeMode>()
+            .map_or_else(|| Theme::global(cx).mode, |mode| mode.0)
+    })
+}
+
 pub(crate) fn refresh_current_theme(cx: &mut App) {
     if !cx.has_global::<Theme>() {
         return;
     }
-    let mode =
-        zz_ui::interface_theme::pinned_theme_mode(config::theme_mode(cx)).unwrap_or_else(|| {
-            cx.try_global::<SystemThemeMode>()
-                .map_or_else(|| Theme::global(cx).mode, |mode| mode.0)
-        });
+    let mode = asked_mode(cx);
     config::shown_theme(cx).activate(Some(mode), None, cx);
     apply_zz_overrides(cx);
     for window in cx.windows() {
         window
             .update(cx, |_, window, cx| {
                 window.set_adaptive_corner_fraction(Some(penna::ADAPTIVE_CORNER_FRACTION));
+                window.set_apparent_corners(true);
                 crate::ui_scale::place_traffic_lights(window, cx);
             })
             .ok();
@@ -87,6 +91,7 @@ pub fn sync_system_appearance(mut window: Option<&mut Window>, cx: &mut App) {
     cx.set_global(SystemThemeMode(system_mode));
     if let Some(window) = window.as_deref_mut() {
         window.set_adaptive_corner_fraction(Some(penna::ADAPTIVE_CORNER_FRACTION));
+        window.set_apparent_corners(true);
     }
     config::shown_theme(cx).activate(
         zz_ui::interface_theme::pinned_theme_mode(config::theme_mode(cx)),
@@ -109,6 +114,12 @@ fn apply_zz_overrides(cx: &mut App) {
     let ui_font_family = Some(ui_font)
         .filter(|family| !family.is_empty() && cx.text_system().has_font(family))
         .map_or_else(|| ala::Font::default().family, SharedString::from);
+    let mono_font_family = config::ui_mono_font_family(cx)
+        .value
+        .filter(|family| cx.text_system().has_font(family))
+        .map(SharedString::from)
+        .or(terminal_mono_font_family)
+        .unwrap_or_else(penna::foundation::platform_mono_font_family);
     let chrome_contrast = config::chrome_contrast(cx);
     let reduce_transparency = config::resolved_config(cx).reduce_transparency.value;
     let pane_look = PaneLook {
@@ -121,9 +132,7 @@ fn apply_zz_overrides(cx: &mut App) {
     let theme = Theme::global_mut(cx);
 
     theme.font_family = ui_font_family;
-    if let Some(font_family) = terminal_mono_font_family {
-        theme.mono_font_family = font_family;
-    }
+    theme.mono_font_family = mono_font_family;
 
     theme.set_contrast(chrome_contrast);
     if reduce_transparency {

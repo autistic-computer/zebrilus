@@ -363,6 +363,7 @@ fn prefix_vectors() -> Result<Packet, Box<dyn Error>> {
             client_instance_id: ClientInstanceId(3),
             caps: (1 << 29) | (1 << 30),
             clock: u64::MAX,
+            platform: zz_protocol::HostPlatform::default(),
         }),
     ]);
     let mut core = ClientCore::new();

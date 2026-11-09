@@ -4,7 +4,7 @@ use std::{
     sync::{Arc, Weak},
 };
 
-use ala::{App, Corners, Global, Pixels, WindowBackgroundAppearance, WindowDecorations, px};
+use ala::{App, Corners, Global, Pixels, WindowBackgroundAppearance, px};
 use zz_client::url_input::SearchProvider;
 use zz_daemon_client::{Endpoint, InteractiveClient};
 pub(crate) use zz_daemon_client::{HostEntry, validate_fleet_host};
@@ -99,6 +99,9 @@ fn parse_config(source: &str) -> ParsedConfig {
 pub(crate) fn set_ui_font_family(family: Option<&str>) -> io::Result<()> {
     zz_config::set_ui_font_family(family, ala::Font::default().family.as_ref())
 }
+pub(crate) fn set_ui_mono_font_family(family: Option<&str>) -> io::Result<()> {
+    zz_config::set_ui_mono_font_family(family)
+}
 #[cfg(test)]
 fn write_ui_font_family_at(path: &Path, family: Option<&str>) -> io::Result<bool> {
     zz_config::write_ui_font_family_at(path, family, ala::Font::default().family.as_ref())
@@ -121,6 +124,20 @@ pub(crate) struct FleetHosts {
 }
 
 impl Global for FleetHosts {}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub(crate) struct DiscoveredHosts {
+    pub(crate) entries: Vec<HostEntry>,
+    pub(crate) summary: String,
+    pub(crate) searching: bool,
+    pub(crate) enabled: bool,
+    pub(crate) hidden: Vec<String>,
+    pub(crate) link: Option<String>,
+    pub(crate) own: bool,
+    pub(crate) login: Option<String>,
+}
+
+impl Global for DiscoveredHosts {}
 
 #[derive(Default)]
 struct ConfigOverrideTransport {
@@ -181,7 +198,6 @@ fn install_config(path: Option<&Path>, parsed: Option<io::Result<ParsedConfig>>,
         apply_density(cx);
         apply_program_colors(cx);
         apply_window_background_appearance(cx);
-        apply_window_decorations(cx);
         crate::app_icon::apply(cx);
         cx.set_global(FleetHosts::default());
         cx.set_global(DaemonConfigOverrides::default());
@@ -213,7 +229,7 @@ fn install_config(path: Option<&Path>, parsed: Option<io::Result<ParsedConfig>>,
 
     log::info!(
         target: "zz::config",
-        "application configuration path={} pane_gaps={} pane_inactive_opacity={} pane_margin={} widget_corner_radius={} chrome_contrast={} window_corner_radius={} editor_font_size={} editor_line_numbers={} editor_relative_line_numbers={} editor_soft_wrap={} editor_vim_mode={} browser_element_selector_hotkey={} browser_search_provider={} browser_egress={} use_system_titlebar={} window_background_blur={} motion={} tray={} quit_daemon_on_exit={} auto_restart_stale_daemon={} check_for_updates={} daemon_override_entries={}",
+        "application configuration path={} pane_gaps={} pane_inactive_opacity={} pane_margin={} widget_corner_radius={} chrome_contrast={} window_corner_radius={} editor_font_size={} editor_line_numbers={} editor_relative_line_numbers={} editor_soft_wrap={} editor_vim_mode={} browser_element_selector_hotkey={} browser_search_provider={} browser_egress={} window_background_blur={} motion={} tray={} quit_daemon_on_exit={} auto_restart_stale_daemon={} check_for_updates={} daemon_override_entries={}",
         path.display(),
         parsed.config.pane_gaps.value,
         parsed.config.pane_inactive_opacity.value,
@@ -229,7 +245,6 @@ fn install_config(path: Option<&Path>, parsed: Option<io::Result<ParsedConfig>>,
         parsed.browser.element_selector_hotkey.value,
         parsed.browser.search_provider.value.as_str(),
         parsed.config.browser_egress.value,
-        parsed.config.use_system_titlebar.value,
         parsed.config.window_background_blur.value,
         parsed.config.motion.value.as_str(),
         parsed.config.tray.value,
@@ -264,7 +279,6 @@ fn install_config(path: Option<&Path>, parsed: Option<io::Result<ParsedConfig>>,
     apply_density(cx);
     apply_program_colors(cx);
     apply_window_background_appearance(cx);
-    apply_window_decorations(cx);
     crate::app_icon::apply(cx);
     cx.set_global(DaemonConfigOverrides {
         entries: parsed.daemon_entries,
@@ -362,7 +376,37 @@ pub(crate) fn pane_margin(cx: &App) -> Pixels {
 }
 
 pub(crate) fn shown_theme(cx: &App) -> InterfaceTheme {
-    appearance(cx).shown_theme()
+    let appearance = appearance(cx);
+    let mut theme = appearance.shown_theme();
+    if resolved_config(cx).chrome_terminal_colors.value
+        && let Some(look) = crate::theme::terminal_appearance(cx)
+            .as_deref()
+            .and_then(zz_ui::terminal::terminal_look)
+        && look.mode == crate::theme::asked_mode(cx)
+    {
+        wear_terminal_look(&mut theme, look, appearance.overrides.accent.is_some());
+    }
+    theme
+}
+
+fn wear_terminal_look(
+    theme: &mut InterfaceTheme,
+    look: zz_ui::terminal::TerminalLook,
+    accent_picked: bool,
+) {
+    use penna::foundation::interface_theme::{ModeLock, Tint};
+    theme.colors.set(look.mode, look.colors);
+    theme.mode = if look.mode.is_dark() {
+        ModeLock::Dark
+    } else {
+        ModeLock::Light
+    };
+    if !accent_picked && let Some(accent) = look.accent {
+        theme.tint = Tint {
+            light: accent,
+            dark: accent,
+        };
+    }
 }
 
 pub(crate) fn appearance(cx: &App) -> Appearance {
@@ -373,6 +417,7 @@ pub(crate) fn appearance(cx: &App) -> Appearance {
         contrast: resolved.chrome_contrast.value,
         reduce_transparency: resolved.reduce_transparency.value,
         ui_font_family: ui_font_family(cx).value.unwrap_or_default(),
+        mono_font_family: ui_mono_font_family(cx).value.unwrap_or_default(),
         zoom: penna::UiZoom::get(cx),
         motion: interface_theme::kit_motion(resolved.motion.value),
         density: interface_theme::kit_density(resolved.chrome_density.value),
@@ -465,14 +510,6 @@ pub(crate) fn window_background_appearance(cx: &App) -> WindowBackgroundAppearan
     crate::window::background::native_appearance(requested_window_background_appearance(cx))
 }
 
-pub(crate) fn window_decorations(cx: &App) -> WindowDecorations {
-    if cfg!(target_os = "linux") && resolved_config(cx).use_system_titlebar.value {
-        WindowDecorations::Server
-    } else {
-        WindowDecorations::Client
-    }
-}
-
 fn apply_program_colors(cx: &mut App) {
     let colors = resolved_config(cx).program_colors.value;
     cx.set_global(zz_ui::program::ProgramColors(colors));
@@ -494,20 +531,6 @@ fn apply_animations(cx: &mut App) {
 
 pub(crate) fn titlebar_options(cx: &App) -> ala::TitlebarOptions {
     penna::TitleBar::title_bar_options(penna::Theme::global(cx).title_bar_height())
-}
-
-fn apply_window_decorations(cx: &mut App) {
-    let decorations = window_decorations(cx);
-    for window in cx.windows() {
-        window
-            .update(cx, |_, window, _| {
-                if decorations == WindowDecorations::Server {
-                    window.set_client_inset(px(0.0));
-                }
-                window.request_decorations(decorations);
-            })
-            .ok();
-    }
 }
 
 fn requested_window_background_appearance(cx: &App) -> WindowBackgroundAppearance {
@@ -605,6 +628,14 @@ pub(crate) fn ui_font_family(cx: &App) -> ConfigValue<Option<String>> {
         .family
 }
 
+pub(crate) fn ui_mono_font_family(cx: &App) -> ConfigValue<Option<String>> {
+    cx.try_global::<UiFontConfig>()
+        .cloned()
+        .unwrap_or_default()
+        .0
+        .mono_family
+}
+
 pub(crate) fn browser_config(cx: &App) -> BrowserConfig {
     cx.try_global::<BrowserConfig>()
         .cloned()
@@ -619,6 +650,72 @@ pub(crate) fn fleet_hosts(cx: &App) -> Vec<HostEntry> {
     cx.try_global::<FleetHosts>()
         .map(|hosts| hosts.entries.clone())
         .unwrap_or_default()
+}
+
+pub(crate) fn discovered(cx: &App) -> DiscoveredHosts {
+    cx.try_global::<DiscoveredHosts>()
+        .cloned()
+        .unwrap_or_default()
+}
+
+pub(crate) fn set_discovered(discovered: DiscoveredHosts, cx: &mut App) {
+    if cx.try_global::<DiscoveredHosts>() != Some(&discovered) {
+        cx.set_global(discovered);
+    }
+}
+
+pub(crate) fn known_hosts(cx: &App) -> Vec<HostEntry> {
+    let mut hosts = fleet_hosts(cx);
+    for host in discovered(cx).entries {
+        if !hosts
+            .iter()
+            .any(|known| known.name == host.name || same_machine(&known.endpoint, &host.endpoint))
+        {
+            hosts.push(host);
+        }
+    }
+    hosts
+}
+
+fn same_machine(left: &Endpoint, right: &Endpoint) -> bool {
+    let (Endpoint::Tailnet(left), Endpoint::Tailnet(right)) = (left, right) else {
+        return false;
+    };
+    let machine = |peer: &str| {
+        if peer.parse::<std::net::IpAddr>().is_ok() {
+            peer.to_owned()
+        } else {
+            peer.split('.').next().unwrap_or(peer).to_ascii_lowercase()
+        }
+    };
+    machine(&left.peer) == machine(&right.peer)
+}
+
+pub(crate) fn is_discovered(name: &str, cx: &App) -> bool {
+    !fleet_hosts(cx).iter().any(|host| host.name == name)
+        && discovered(cx).entries.iter().any(|host| host.name == name)
+}
+
+pub(crate) fn hide_discovered_host(name: &str, cx: &mut App) -> io::Result<()> {
+    let mut current = discovered(cx);
+    if !current.hidden.iter().any(|hidden| hidden == name) {
+        current.hidden.push(name.to_owned());
+    }
+    set_config_key_name(
+        zz_daemon_client::tailnet::HIDE_KEY,
+        &current.hidden.join(", "),
+    )?;
+    current.entries.retain(|host| host.name != name);
+    set_discovered(current, cx);
+    Ok(())
+}
+
+pub(crate) fn show_hidden_hosts(cx: &mut App) -> io::Result<()> {
+    remove_config_key_name(zz_daemon_client::tailnet::HIDE_KEY)?;
+    let mut current = discovered(cx);
+    current.hidden.clear();
+    set_discovered(current, cx);
+    Ok(())
 }
 
 #[cfg(test)]
@@ -861,6 +958,32 @@ mod tests {
     }
 
     #[test]
+    fn a_found_machine_matches_a_configured_tailnet_host_by_its_first_label() {
+        let tailnet = |peer: &str| {
+            Endpoint::Tailnet(zz_daemon_client::TailnetEndpoint {
+                peer: peer.to_owned(),
+                port: None,
+            })
+        };
+        assert!(same_machine(
+            &tailnet("Alienware"),
+            &tailnet("alienware.example.ts.net")
+        ));
+        assert!(!same_machine(
+            &tailnet("xps"),
+            &tailnet("alienware.example.ts.net")
+        ));
+        assert!(!same_machine(
+            &tailnet("100.64.0.1"),
+            &tailnet("100.64.0.3")
+        ));
+        assert!(!same_machine(
+            &Endpoint::parse("ssh://alienware").unwrap(),
+            &tailnet("alienware.example.ts.net")
+        ));
+    }
+
+    #[test]
     fn config_defaults_match_the_default_theme() {
         let defaults = zz_config::AppConfig::default();
         let theme = interface_theme::default_theme();
@@ -1077,7 +1200,6 @@ mod tests {
              pane-inactive-opacity = 0.85\n\
              pane-margin = 6 # inline comments are allowed\n\
              window-corner-radius = 10\n\
-             use-system-titlebar = true\n\
              window-background-blur = true\n\
              motion = off\n\
              notifications = false\n\
@@ -1137,11 +1259,6 @@ mod tests {
         assert_f32_eq(parsed.config.window_corner_radius.value, 10.0);
         assert_eq!(
             parsed.config.window_corner_radius.provenance,
-            ConfigProvenance::Override
-        );
-        assert!(parsed.config.use_system_titlebar.value);
-        assert_eq!(
-            parsed.config.use_system_titlebar.provenance,
             ConfigProvenance::Override
         );
         assert!(parsed.config.window_background_blur.value);
@@ -1811,7 +1928,6 @@ mod tests {
              chrome-tint = -1\n\
              pane-margin = NaN\n\
              window-corner-radius = 300\n\
-             use-system-titlebar = sometimes\n\
              window-background-blur = perhaps\n\
              future-setting = 12\n\
              malformed\n",
@@ -1830,11 +1946,6 @@ mod tests {
             parsed.config.window_corner_radius.provenance,
             ConfigProvenance::Override
         );
-        assert!(!parsed.config.use_system_titlebar.value);
-        assert_eq!(
-            parsed.config.use_system_titlebar.provenance,
-            ConfigProvenance::Override
-        );
         assert!(!parsed.config.window_background_blur.value);
         assert_eq!(
             parsed.config.window_background_blur.provenance,
@@ -1848,14 +1959,13 @@ mod tests {
             parsed.config.pane_margin.provenance,
             ConfigProvenance::Override
         );
-        assert_eq!(parsed.diagnostics.len(), 7);
+        assert_eq!(parsed.diagnostics.len(), 6);
         assert!(parsed.diagnostics[0].message.contains("between 0 and 1"));
         assert!(parsed.diagnostics[1].message.contains("finite"));
         assert!(parsed.diagnostics[2].message.contains("between 0 and 32"));
         assert!(parsed.diagnostics[3].message.contains("expected a boolean"));
-        assert!(parsed.diagnostics[4].message.contains("expected a boolean"));
-        assert!(parsed.diagnostics[5].message.contains("unsupported key"));
-        assert_eq!(parsed.diagnostics[6].message, "expected `key = value`");
+        assert!(parsed.diagnostics[4].message.contains("unsupported key"));
+        assert_eq!(parsed.diagnostics[5].message, "expected `key = value`");
     }
 
     #[test]
@@ -2082,6 +2192,17 @@ mod tests {
             });
         }
 
+        for family in [Some("Arial"), None] {
+            zz_config::write_ui_mono_font_family_at(&path, family).expect("write mono font");
+            cx.update(|cx| {
+                install_config(Some(&path), Some(load_config(&path)), cx);
+                crate::theme::refresh_current_theme(cx);
+                let expected = family.map_or_else(|| mono.clone(), ala::SharedString::from);
+                assert_eq!(penna::Theme::global(cx).mono_font_family, expected);
+                assert_eq!(appearance(cx).mono_font(), family.unwrap_or_default());
+            });
+        }
+
         write_ui_font_family_at(&path, Some("Arial")).expect("write another override");
         write_config_edit_at(&path, ConfigKey::UiFontFamily.as_str(), None)
             .expect("reset override");
@@ -2114,7 +2235,7 @@ mod tests {
         for (accent, tint, controls, glass) in [
             (Some("green"), Some("1"), Some("pill"), Some("none")),
             (Some("#ff8800"), None, Some("rounded"), Some("liquid")),
-            (Some("ink"), None, None, None),
+            (Some("purple"), None, None, None),
             (None, None, None, None),
         ] {
             for (key, value) in [
@@ -2355,6 +2476,8 @@ mod tests {
             load_ghostty_appearance_from_for(&ghostty_root, TerminalColorScheme::Dark);
         let values = crate::config::import::ghostty_import_values(&donor_appearance)
             .expect("serialize donor values");
+        crate::config::import::copy_theme_files(&donor_appearance, &ghostty_root, &zz_config)
+            .expect("copy the theme next to zz config");
         import_appearance_values_at(&zz_config, &values).expect("write imported zz config");
 
         fs::remove_file(&ghostty_root).expect("delete Ghostty donor");
@@ -2369,10 +2492,9 @@ mod tests {
              future-key = byte-identical\n"
         ));
         let parsed = parse_config(&imported);
-        let resolved = apply_appearance_overrides(
-            AppearanceLoad::defaults_for(TerminalColorScheme::Dark),
-            &parsed_appearance_entries(&parsed),
-        );
+        let mut load = AppearanceLoad::defaults_for(TerminalColorScheme::Dark);
+        load.root = Some(zz_config.clone());
+        let resolved = apply_appearance_overrides(load, &parsed_appearance_entries(&parsed));
         assert_eq!(resolved.appearance, donor_appearance.appearance);
     }
 
@@ -2455,23 +2577,6 @@ mod tests {
         assert!(cx.update(|cx| fleet_hosts(cx)).is_empty());
     }
 
-    #[cfg(target_os = "linux")]
-    #[ala::test]
-    fn system_titlebar_selects_server_side_decorations(cx: &mut ala::TestAppContext) {
-        assert_eq!(
-            cx.update(|cx| window_decorations(cx)),
-            WindowDecorations::Client
-        );
-
-        let config = parse_config("use-system-titlebar = true\n").config;
-        cx.update(|cx| cx.set_global(AppConfig::from(config)));
-
-        assert_eq!(
-            cx.update(|cx| window_decorations(cx)),
-            WindowDecorations::Server
-        );
-    }
-
     #[ala::test]
     fn window_background_blur_selects_the_platform_blur_request(cx: &mut ala::TestAppContext) {
         assert_eq!(
@@ -2524,11 +2629,9 @@ mod tests {
             penna::Theme::global_mut(cx).radius = px(5.5);
         });
 
-        let radius = cx.update(|cx| penna::Theme::global(cx).pane_radius());
-        assert!(radius > px(5.5));
         assert_eq!(
             cx.update(|cx| pane_content_radii(cx, WindowCorners::NONE)),
-            Corners::all(radius)
+            Corners::all(px(5.5))
         );
     }
 
@@ -2809,7 +2912,6 @@ mod tests {
     #[test]
     fn named_config_keys_round_trip_and_retired_ones_do_not() {
         let named = [
-            "use-system-titlebar",
             "window-corner-radius",
             "window-background-blur",
             "motion",
@@ -2842,6 +2944,7 @@ mod tests {
             "control-shape",
             "interface-glass",
             "ui-font-family",
+            "ui-mono-font-family",
             "app-icon",
         ];
         for key in named {
@@ -2855,6 +2958,8 @@ mod tests {
             .chain(zz_config::RETIRED_MATERIAL_KEYS)
             .chain(zz_config::RETIRED_AGENT_KEYS)
             .chain(zz_config::RETIRED_THEME_KEYS)
+            .chain(zz_config::RETIRED_NAVIGATION_KEYS)
+            .chain(zz_config::RETIRED_WINDOW_KEYS)
         {
             assert_eq!(ConfigKey::parse(key), None, "{key}");
         }

@@ -129,11 +129,11 @@ Theme tweaks: D default, M macos, Y yaru. A dash means none.
 | sidebar.entry | row | ink rest | D hover/selected tint; M smoothing 2.5, hover tint, selected glass; Y hover/selected tint | `RowLook::Nav` | `row.nav`, drawn by `Row`, `RowLook::Nav` |
 | sidebar.cursor | row | outline, contact shadow, hover tint, selected accent | - | `RowLook::Cursor` | `row.cursor`, drawn by `Row`, `RowLook::Cursor` |
 | sidebar.host-action | button | no outline, no shadow | - | `ButtonLook::Row` | `button.row`, drawn by `Button`, `ButtonLook::Row` |
-| sidebar.row-action | icon-button | hover/selected none | - | `ButtonLook::RowIcon` | `icon-button.row`, drawn by `Button`, `ButtonLook::RowIcon` |
+| sidebar.row-action | icon-button | selected none | - | `ButtonLook::RowIcon` | `icon-button.row`, drawn by `Button`, `ButtonLook::RowIcon` |
 | pane.header.button | icon-button | hover/selected none | M, Y hover/selected tint | `ButtonLook::Bar` | `icon-button.bar`, drawn by `Button`, `ButtonLook::Bar` |
 | pane.header.flip | pane.header.button | selected tint | - | `ButtonLook::Toggle` | `icon-button.toggle`, drawn by `Button`, `ButtonLook::Toggle` |
 | browser.button | icon-button | - | - | `ButtonLook::Icon` | `icon-button`, drawn by `Button`, `ButtonLook::Icon` |
-| agent.action | icon-button | hover/selected none | - | `ButtonLook::RowIcon` | `icon-button.row`, drawn by `Button`, `ButtonLook::RowIcon` |
+| agent.action | icon-button | selected none | - | `ButtonLook::RowIcon` | `icon-button.row`, drawn by `Button`, `ButtonLook::RowIcon` |
 | agent.jump | icon-button | solid, outline, contact shadow, hover tint | M solid | `ButtonLook::Floating` | `icon-button.floating`, drawn by `Button`, `ButtonLook::Floating` |
 | agent.send | button | solid, outline, contact shadow, hover/selected tint | D tint, no outline, no shadow, pill, hover lift; M round, smoothing 2; Y pill | `ButtonLook::Send` | `button.send`, drawn by `Button`, `ButtonLook::Send` |
 | pane.float | floating | selected ring | - | content: tmux panes paint their own material | `floating.pane`, content: `FloatingSurface` paints `ContentLook::FloatingPane` in tmux's popup colours |

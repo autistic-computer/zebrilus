@@ -164,6 +164,9 @@ Copy SSH key. Settings › Agents lists each connected host's agents and gathers
 connected. Hosts are saved in `Library/Application Support/ala/hosts.json`; a
 successful connection moves its host to the top. `ZZ_ALA_ENDPOINT` (or `ZZ_SOCKET`) connects
 for that launch only, and opening a `zz://attach/<session>` link connects to the most recent host.
+A `zz://host/<machine>:<port>` link (the QR code in desktop Settings › Hosts) adds that tailnet
+machine and connects it, and a `tailnet://` host tells the app about your other machines that run zz,
+which it saves and connects.
 SSH endpoints show host-key confirmation and authentication dialogs. The terminal example shares
 the native transport, key translation, and UIKit backend.
 

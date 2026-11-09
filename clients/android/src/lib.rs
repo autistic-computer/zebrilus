@@ -67,6 +67,9 @@ fn main() {
         cx.spawn(async move |cx| {
             use futures::StreamExt as _;
             while let Some(urls) = url_receiver.next().await {
+                for endpoint in urls.iter().filter_map(|url| app::host_from_url(url)) {
+                    cx.update(|cx| cx.dispatch_action(&app::OpenHost { endpoint }));
+                }
                 for name in urls.iter().filter_map(|url| app::session_from_url(url)) {
                     cx.update(|cx| cx.dispatch_action(&app::OpenSession { name }));
                 }

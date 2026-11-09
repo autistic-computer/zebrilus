@@ -37,7 +37,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             Some("--help" | "-h") => {
                 println!(
-                    "Usage: zz-web [--assets DIR] [--bind ADDRESS:PORT] [--socket PATH]\n\nDefaults: assets={}, bind={bind}, socket={}\nServe the zz browser client and connect each browser to the existing daemon.\nOnly loopback addresses are supported. Use SSH forwarding for remote hosts.",
+                    "Usage: zz-web [--assets DIR] [--bind ADDRESS:PORT] [--socket PATH]\n\nDefaults: assets={}, bind={bind}, socket={}\nServe the zz browser client and connect each browser to the existing daemon.\nOnly loopback addresses are supported. Use SSH forwarding for remote hosts.\nOpen the printed link: its token is required, and each start makes a new one.",
                     assets.display(),
                     socket.display()
                 );
@@ -53,9 +53,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     })
     .await?;
     println!(
-        "{} browser client: http://{}",
+        "{} browser client: {}",
         zz_protocol::app_identity::DISPLAY_NAME,
-        gateway.local_addr()
+        gateway.open_url()
     );
     gateway.serve().await?;
     Ok(())

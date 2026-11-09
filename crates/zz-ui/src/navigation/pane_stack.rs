@@ -77,13 +77,13 @@ pub struct StackTile {
     pub select: Option<StackAction>,
 }
 
-pub fn stack_radius(tile: Pixels, around: Pixels, cx: &App) -> Pixels {
+pub fn stack_radius(tile: Pixels, cx: &App) -> Pixels {
     let theme = cx.theme();
     let radius = theme.radius_of(ContentLook::TileStack);
     if radius == FULL_CORNER_RADIUS || radius == Pixels::ZERO {
         return radius;
     }
-    (radius - (around - tile) / 2.0).max(theme.radius * 0.25)
+    theme.control_corner(tile)
 }
 
 #[allow(

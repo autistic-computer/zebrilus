@@ -12,7 +12,7 @@ use crate::{
     ActiveTheme as _, Edge, Icon, IconName, InteractiveElementExt as _, Layer, PaintState,
     RuleLook, StyledExt as _, Surface, SurfaceRole, Tone, foundation::restyle, h_flex,
 };
-use crate::{Space, TextStyle, UiZoom};
+use crate::{Sizable as _, Space, TextStyle, UiZoom};
 
 pub const TITLE_BAR_HEIGHT: Pixels = crate::PANE_HEADER_HEIGHT;
 
@@ -37,10 +37,18 @@ pub fn draws_window_controls(window: &Window) -> bool {
             && matches!(window.window_decorations(), Decorations::Client { .. }))
 }
 
+const WINDOW_CONTROL_SIZE_PX: f32 = 22.0;
+const WINDOW_CONTROL_GAP_PX: f32 = 4.0;
+pub const WINDOW_CONTROL_SIZE: Pixels = px(WINDOW_CONTROL_SIZE_PX);
+pub const WINDOW_CONTROL_GAP: Pixels = px(WINDOW_CONTROL_GAP_PX);
+pub const WINDOW_CONTROLS_SPAN: Pixels =
+    px(WINDOW_CONTROL_SIZE_PX * 3.0 + WINDOW_CONTROL_GAP_PX * 2.0);
+pub const WINDOW_CONTROLS_INSET: Pixels = px(crate::CHROME_GAP);
+
 #[must_use]
 pub fn window_controls_width(window: &Window) -> Pixels {
     if draws_window_controls(window) {
-        px(f32::from(CONTROL_ICON_WIDTH) * 3.0)
+        WINDOW_CONTROLS_SPAN
     } else {
         px(0.0)
     }
@@ -119,11 +127,6 @@ impl ParentElement for TitleBar {
         self.children.extend(elements);
     }
 }
-
-#[cfg(not(target_os = "windows"))]
-const CONTROL_ICON_WIDTH: Pixels = TITLE_BAR_HEIGHT;
-#[cfg(target_os = "windows")]
-const CONTROL_ICON_WIDTH: Pixels = px(46.);
 
 #[derive(IntoElement)]
 struct WindowControl {
@@ -223,8 +226,7 @@ impl RenderOnce for WindowControl {
         div()
             .id(control.id())
             .flex()
-            .w(CONTROL_ICON_WIDTH)
-            .h_full()
+            .size(WINDOW_CONTROL_SIZE)
             .flex_shrink_0()
             .justify_center()
             .content_center()
@@ -255,7 +257,7 @@ impl RenderOnce for WindowControl {
                     }
                 })
             })
-            .child(Icon::new(control.icon()).medium())
+            .child(Icon::new(control.icon()).small())
     }
 }
 
@@ -292,7 +294,9 @@ impl RenderOnce for WindowControls {
         let control = move |icon| WindowControl { icon, role };
         h_flex()
             .id("window-controls")
+            .occlude()
             .items_center()
+            .gap(WINDOW_CONTROL_GAP)
             .flex_shrink_0()
             .h_full()
             .child(control(ControlIcon::minimize()))
@@ -394,9 +398,14 @@ impl RenderOnce for TitleBar {
                         })
                         .children(self.children),
                 )
-                .child(WindowControls {
-                    on_close_window: self.on_close_window,
-                }),
+                .child(
+                    div()
+                        .h_full()
+                        .pr(WINDOW_CONTROLS_INSET)
+                        .child(WindowControls {
+                            on_close_window: self.on_close_window,
+                        }),
+                ),
         )
     }
 }

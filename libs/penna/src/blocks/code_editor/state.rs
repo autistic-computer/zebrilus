@@ -408,10 +408,15 @@ impl CodeEditorState {
             viewport.width + frame.edge * 2.0,
             viewport.height + frame.edge * 2.0,
         );
-        let radii = window
-            .resolve_corner_radii(Corners::all(frame.radius), outer)
-            .map(|radius| (*radius - frame.edge).max(Pixels::ZERO));
-        (radii, Some(frame.smoothing))
+        let (radii, smoothing) = window.drawn_corners(
+            window.resolve_corner_radii(Corners::all(frame.radius), outer),
+            outer,
+            Some(frame.smoothing),
+        );
+        (
+            radii.map(|radius| (*radius - frame.edge).max(Pixels::ZERO)),
+            smoothing,
+        )
     }
 
     pub fn set_relative_line_numbers(&mut self, enabled: bool, cx: &mut Context<Self>) {

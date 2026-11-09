@@ -8,7 +8,9 @@ use ala::{
 use penna::{
     ActiveTheme as _, Colorize as _, Icon, IconName, Space, StyledExt as _, TextStyle,
     components::button::Button,
-    components::menu::{ContextMenuExt as _, DropdownMenu as _, PopupMenu, PopupMenuItem},
+    components::menu::{
+        ContextMenuExt as _, DropdownMenu as _, MenuScope, PopupMenu, PopupMenuItem,
+    },
     h_flex,
 };
 
@@ -63,6 +65,18 @@ pub const STORY: Story = Story {
             name: "Submenu open",
             summary: "Highlighting a submenu row opens it beside the parent; Right moves the highlight into it.",
             build: |window, cx| Menus::view(Highlight::Submenu, window, cx),
+        },
+        Section {
+            id: "search",
+            name: "Searchable menu",
+            summary: "A search field sits on top and the rows scroll under it. With nothing typed the checked row is highlighted; typing keeps the rows whose label holds the text, in any case, and highlights the first; when nothing matches a faint row says so.",
+            build: |window, cx| SearchMenus::view(window, cx),
+        },
+        Section {
+            id: "scopes",
+            name: "Scoped menu",
+            summary: "A segmented control under the search field narrows the rows to a scope, here the monospaced fonts or all of them. Tab and Shift-Tab switch scope from the field, and the query applies inside the scope.",
+            build: |window, cx| ScopedMenus::view(window, cx),
         },
         Section {
             id: "triggers",
@@ -232,6 +246,122 @@ impl Render for Menus {
             Highlight::Submenu => "submenu open, first row highlighted",
         };
         states().state(caption, div().min_h(px(380.0)).child(menus))
+    }
+}
+
+const FONTS: [&str; 20] = [
+    "Andale Mono",
+    "Arial",
+    "Avenir",
+    "Berkeley Mono",
+    "Courier New",
+    "Fira Code",
+    "Georgia",
+    "Helvetica",
+    "Inter",
+    "Iosevka",
+    "Lilex",
+    "Menlo",
+    "Monaco",
+    "PT Mono",
+    "SF Mono",
+    "Times",
+    "Trebuchet MS",
+    "Verdana",
+    "Victor Mono",
+    "Zapfino",
+];
+
+struct SearchMenus {
+    menus: [Entity<PopupMenu>; 3],
+}
+
+impl SearchMenus {
+    fn view(window: &mut Window, cx: &mut App) -> AnyView {
+        let menus = ["", "mono", "zz"].map(|query| {
+            let menu = PopupMenu::build(window, cx, |menu, window, cx| {
+                FONTS.iter().fold(
+                    menu.search("Search fonts", window, cx)
+                        .min_w(px(200.0))
+                        .max_h(px(260.0)),
+                    |menu, font| menu.item(PopupMenuItem::new(*font).checked(*font == "Menlo")),
+                )
+            });
+            menu.update(cx, |menu, cx| menu.set_query(query, window, cx));
+            menu
+        });
+        cx.new(|_| Self { menus }).into()
+    }
+}
+
+impl Render for SearchMenus {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        states().state(
+            "nothing typed, \"mono\", \"zz\"",
+            div().min_h(px(280.0)).child(
+                h_flex()
+                    .items_start()
+                    .gap(Space::S24)
+                    .children(self.menus.iter().cloned()),
+            ),
+        )
+    }
+}
+
+const MONOSPACED: [&str; 11] = [
+    "Andale Mono",
+    "Berkeley Mono",
+    "Courier New",
+    "Fira Code",
+    "Iosevka",
+    "Lilex",
+    "Menlo",
+    "Monaco",
+    "PT Mono",
+    "SF Mono",
+    "Victor Mono",
+];
+
+struct ScopedMenus {
+    menus: [Entity<PopupMenu>; 3],
+}
+
+impl ScopedMenus {
+    fn view(window: &mut Window, cx: &mut App) -> AnyView {
+        let menus = [(0, ""), (1, ""), (0, "co")].map(|(scope, query)| {
+            let menu = PopupMenu::build(window, cx, |menu, window, cx| {
+                FONTS.iter().fold(
+                    menu.search("Search fonts", window, cx)
+                        .scopes(
+                            [
+                                MenuScope::new("Monospaced", |font| MONOSPACED.contains(&font)),
+                                MenuScope::all("All fonts"),
+                            ],
+                            scope,
+                        )
+                        .min_w(px(200.0))
+                        .max_h(px(300.0)),
+                    |menu, font| menu.item(PopupMenuItem::new(*font).checked(*font == "Menlo")),
+                )
+            });
+            menu.update(cx, |menu, cx| menu.set_query(query, window, cx));
+            menu
+        });
+        cx.new(|_| Self { menus }).into()
+    }
+}
+
+impl Render for ScopedMenus {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        states().state(
+            "Monospaced, All fonts, Monospaced with \"co\"",
+            div().min_h(px(320.0)).child(
+                h_flex()
+                    .items_start()
+                    .gap(Space::S24)
+                    .children(self.menus.iter().cloned()),
+            ),
+        )
     }
 }
 

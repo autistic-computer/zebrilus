@@ -583,11 +583,17 @@ mod tests {
         clippy::disallowed_methods,
         reason = "the test checks the floating.pip look itself"
     )]
-    fn a_pip_casts_the_float_shadow() {
-        let theme = penna::Theme::from(&*penna::ThemeColor::dark());
+    fn a_pip_casts_the_float_shadow_drawn_tight_without_glass() {
+        let mut theme = penna::Theme::from(&*penna::ThemeColor::dark());
+        theme.glass = Some(penna::foundation::interface_theme::liquid(
+            penna::ThemeMode::Dark,
+        ));
         let pip = theme.layer(ContentLook::Pip, PaintState::Rest);
         assert_eq!(pip.shadow, theme.float_shadows());
         assert!(!pip.shadow.is_empty());
+        theme.glass = None;
+        let pip = theme.layer(ContentLook::Pip, PaintState::Rest);
+        assert_eq!(pip.shadow, theme.tight_float_shadows());
     }
 
     #[ala::test]

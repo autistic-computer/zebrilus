@@ -485,6 +485,8 @@ pub struct PaneSummary {
     #[serde(deserialize_with = "deserialize_pane_process")]
     pub process: Vec<String>,
     pub flip_armed: bool,
+    #[serde(deserialize_with = "deserialize_pane_name")]
+    pub shell: String,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]

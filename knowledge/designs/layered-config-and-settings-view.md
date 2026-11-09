@@ -1,7 +1,7 @@
 ---
 type: Design Plan
 title: Layered configuration & native settings view
-description: The decision record behind zz/config, daemon-owned keys crossing the wire, and native settings with split shortcut controls and a mux.conf editor.
+description: The decision record behind zz/config, daemon-owned keys crossing the wire, and native settings with split shortcut controls and one-button config import.
 status: Complete
 tags:
 - configuration
@@ -19,8 +19,8 @@ last_updated: 2026-09-11
 `zz/config` holds application settings and terminal appearance. `zz/mux.conf` holds tmux commands
 and the global options edited by Multiplexer Settings. The native
 settings view keeps structured controls for app-level and terminal-appearance choices; Multiplexer
-exposes Options and split shortcut controls above the zz-owned `mux.conf` editor. Users import
-Ghostty appearance and tmux commands on request, from any path.
+exposes Options and split shortcut controls over the zz-owned `mux.conf`. Users import
+Ghostty appearance and tmux commands on request, from any file the system picker returns.
 
 This document records the shape and the reasoning. Current grammar and key tables live in
 [Application configuration](/configuration/app-config.md),
@@ -30,7 +30,7 @@ This document records the shape and the reasoning. Current grammar and key table
 
 One resolver per domain produces `(effective value, provenance)`. The app consumes both where
 needed. Structured client-local and Terminal Settings rows display provenance. Multiplexer's split
-rows read the effective prefix table; its full-file editor covers the remaining commands and options.
+rows read the effective prefix table; the remaining commands and options are edited in the file.
 
 | Domain | Ladder | Provenance tiers |
 |--------|--------|------------------|
@@ -55,7 +55,7 @@ place that already owns each grammar.
 
 | Group | Owner | Where the grammar lives |
 |-------|-------|-------------------------|
-| Window chrome, pane geometry, theme mode, and the look's knobs over the platform's theme file (`chrome-accent`, `chrome-tint`, `chrome-tint-hue`, `widget-corner-radius`, `control-shape`, `interface-glass`, `ui-font-family`) | GUI client | `crates/zz/src/config/mod.rs` |
+| Window chrome, pane geometry, theme mode, and the look's knobs over the platform's theme file (`chrome-accent`, `chrome-tint`, `chrome-tint-hue`, `widget-corner-radius`, `control-shape`, `interface-glass`, `ui-font-family`, `ui-mono-font-family`) | GUI client | `crates/zz/src/config/mod.rs` |
 | Browser-local element-selector hotkey | GUI client | `crates/zz/src/config/mod.rs` |
 | Repeatable `chrome-keybind` / `chrome-unbind` overrides for `ui`, `sidebar`, `browser`, and `terminal` actions | GUI client | `crates/zz/src/config/mod.rs` + `crates/zz-client/src/chrome.rs` |
 | Agent launch keys (`agent-command`, `agent-claude-code-command`, `agent-auto-approve`) | daemon (mux options since the runtime moved there) | `crates/zz-mux/src/command.rs`; no settings row. `agent-working-directory` was removed on 2026-10-23 with the Agent pane and now reports a "was removed" diagnostic ([agent lens](/designs/agent-lens.md)) |
@@ -64,7 +64,7 @@ place that already owns each grammar.
 
 Daemon-owned pane key tables use zz-owned `zz/mux.conf` or explicit `-f` files. Settings
 offers shortcut and pane-type controls for Split below and Split right, with custom commands left
-in the text editor. See [Application configuration](/configuration/app-config.md) for the current behavior.
+in the file. See [Application configuration](/configuration/app-config.md) for the current behavior.
 Client-owned chrome gained repeatable file-only overrides through `chrome-keybind` and
 `chrome-unbind`, resolved by `ChromeKeymap`. The browser element-selector shortcut remains a
 dedicated validated scalar because Settings exposes that one action directly.
@@ -124,15 +124,15 @@ Three rules hold the design together:
   there is no parallel in-memory apply channel to drift.
 - **The writer edits the last occurrence**, matching the parser's later-entry precedence. Cumulative
   appearance keys are replaced as whole reset-led groups during Ghostty import.
-- **Whole-file mux edits are explicit.** Multiplexer keeps its buffer local until Save, enforces the
-  1 MiB editor bound, and replaces the target atomically.
+- **Mux writes are bounded.** Multiplexer's rows enforce the 1 MiB file bound and replace the
+  target atomically. Settings no longer shows the raw file (removed 2026-11-07).
 
 Terminal's Appearance rows edit the saved `zz/config`, including one font-family value, font
 size, theme, cursor style and blink, opacity, and padding. Multiplexer's Options rows edit global
 set-option lines in `zz/mux.conf`. Reset removes the last scalar override; font-family edits
-replace its whole stack. Both pages keep an Import group above their editor. Multiplexer
-controls require a local connection and a clean editor, wait for daemon confirmation, and
-allow retry after five seconds.
+replace its whole stack. Both pages keep an Import group with one button that opens the system
+file picker and imports the picked file at once. Multiplexer controls require a local
+connection, wait for daemon confirmation, and allow retry after five seconds.
 
 Choosing a terminal theme replaces the background, foreground, cursor, selection, and palette
 overrides left by an import, so those colors no longer hide the chosen theme. Fonts, padding,
@@ -158,7 +158,7 @@ flush against the window edge while the scrolled pages stay inset.
 
 The Settings view also defers section-owned state. Its initial Appearance page does not construct
 the Terminal input/select/color-picker graph or subscribe all of those controls, and it does not
-mount the `mux.conf` editor. Each is initialized once, immediately before its section is first
+read `zz/mux.conf`. Each is initialized once, immediately before its section is first
 shown, and then retained so edits and focus survive navigation.
 
 # Hard parts & risks

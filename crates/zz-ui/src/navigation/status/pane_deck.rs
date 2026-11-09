@@ -1,14 +1,12 @@
 use std::sync::Arc;
 
 use ala::{App, ElementId, SharedString, px};
+use zz_client::program::Program;
 use zz_protocol::PaneKindSnapshot;
 
 use crate::{
     Ground, IconName,
-    navigation::{
-        WORKSPACE_STATUS_PILL_HEIGHT,
-        pane_stack::{PaneStack, StackSize, StackTile, stack_radius},
-    },
+    navigation::pane_stack::{PaneStack, StackSize, StackTile, stack_radius},
 };
 
 use super::StatusAction;
@@ -19,6 +17,7 @@ pub struct StatusPaneEntry {
     pub detail: SharedString,
     pub icon: IconName,
     pub favicon: Option<Arc<[u8]>>,
+    pub program: Option<&'static Program>,
     pub active: bool,
     pub select: StatusAction,
 }
@@ -59,6 +58,7 @@ impl StatusPaneEntry {
             detail: detail.into(),
             icon,
             favicon: None,
+            program: pane.program,
             active: pane.active,
             select,
         }
@@ -88,14 +88,14 @@ pub fn status_pane_deck(
                     .into(),
                     icon: pane.icon,
                     favicon: pane.favicon,
-                    program: None,
+                    program: pane.program,
                     label: pane.label,
                     select: connected.then_some(pane.select),
                 })
                 .collect(),
             size,
             ground,
-            stack_radius(px(size.tile()), WORKSPACE_STATUS_PILL_HEIGHT, cx),
+            stack_radius(px(size.tile()), cx),
         )
     })
 }
@@ -131,6 +131,7 @@ mod tests {
             detail: "Terminal".into(),
             icon: IconName::SquareTerminal,
             favicon: None,
+            program: None,
             active,
             select: Rc::new(move |_, _| selected.set(Some(index))),
         }

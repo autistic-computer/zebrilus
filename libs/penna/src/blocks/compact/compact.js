@@ -24,7 +24,10 @@
     document.querySelectorAll(".penna-phone, .penna-key-slot").forEach((frame) => {
       const radius = parseFloat(getComputedStyle(frame).getPropertyValue("--penna-radius")) || 0;
       const cap = Math.min(frame.offsetWidth, frame.offsetHeight) * 0.45;
-      frame.style.borderRadius = cap > 0 ? `${(cap * Math.tanh(radius / cap)).toFixed(2)}px` : "0px";
+      const corner = cap > 0 ? cap * Math.tanh(radius / cap) : 0;
+      const [box, k] = window.pennaKit?.drawnCorner(corner, frame.offsetWidth, frame.offsetHeight) ?? [corner, 1];
+      frame.style.borderRadius = `${box.toFixed(2)}px`;
+      frame.style.setProperty("corner-shape", `superellipse(${k.toFixed(3)})`);
     });
   }
 

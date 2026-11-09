@@ -4,7 +4,7 @@ title: UI design conventions
 description: The component, palette, and styling rules that keep zz application chrome consistent and theme-aware.
 resource: crates/zz-ui/src/command/palette_view.rs
 tags: [ui, ala, zz-ui, theme, chrome, clippy]
-timestamp: 2026-10-31T00:00:00Z
+timestamp: 2026-11-08T00:00:00Z
 ---
 
 # Overview
@@ -85,10 +85,11 @@ defines roles: zz has none of its own, and no widget takes a role from outside p
 5. **Menu, picker, and list highlights use the same control treatment.** A selected row is its
    row role's `selected` highlight: the `row` kind fills with the accent and the theme's text on
    it, a theme can make it a tint instead (Glass does), and it casts no shadow. Secondary text
-   takes the row's muted ink (`muted_on(ground, cx)`). Rows round from their look's shape: `round` is
-   the theme radius minus 4px while rows are inset, and square at a 0 row inset. `Row::row_height`
-   and `ListItem::row_height` hold that radius to 40% of the row's height with fixed smoothing 2.5,
-   and leave a `pill` row a pill; `ListItem`, popup menu, select and model picker rows and the
+   takes the row's muted ink (`muted_on(ground, cx)`). Rows round from their look's shape: a `round`
+   row is a control, so its corner is the theme's control roundness times its height
+   (`Theme::control_roundness()`, 31% at the default Corner radius), square at a 0 row inset, and a
+   `pill` row a pill; menu rows take the popover's corner less the row inset when that is smaller.
+   Every row takes the theme's smoothing; `ListItem`, popup menu, select and model picker rows and the
    directory, session, file and history picker rows all draw that way. `Row` draws a row in a
    `RowLook` with its hover and press, and `list_row` builds a menu row of a given height.
    Directory and session rows share
@@ -141,8 +142,9 @@ defines roles: zz has none of its own, and no widget takes a role from outside p
    Gapped panes cast the `pane` role's shadow (the contact shadow in every built-in) and draw their frame
    only in glass: no border, the glass edge (glint, fresnel, thin contour) is the frame, tinted
    with the pane's own color, its rim the theme's glass as the theme defines it (glint width,
-   specular, fresnel, edge, noise) and its corners the theme radius plus 3.5
-   (`Theme::pane_radius()`). A theme without glass (Default) draws a hairline the outline's width
+   specular, fresnel, edge, noise) and its corners `Theme::pane_radius()`: the theme radius up to
+   10.24, then a parabola from there to 16 at 100% Corner radius, whatever the control shape (11.8
+   at the default 12). A theme without glass (Default) draws a hairline the outline's width
    instead (`zz_ui::pane_look::PaneLook::edge_width`), none when the outline is 0. The
    continuous app background sits beneath both pane and shadow. Flush panes have no
    outer shadow. Only shared divider segments touching the active flush pane use the accent
@@ -175,8 +177,8 @@ inert; clicking a sample changes only the preview selection and moves the accent
 sample keeps its page opaque. Desktop pane edits and resets refresh the saved configuration
 immediately, including valid numeric input while typing; the file watcher still handles external edits.
 
-The titlebar holds only the sidebar toggle and the window pills, with no divider; settings lives in the sidebar footer. With the sidebar open the toggle
-sits at the top-right corner of the sidebar, and the navigation fades into the footer through the kit's
+The titlebar holds only the sidebar toggle and the window pills, with no divider; settings is a full-width row at the foot of the sidebar. With the sidebar open the toggle
+sits at the top-right corner of the sidebar with the chat button (chats or session tree) beside it. Neither fills when on: each draws its duotone glyph instead (`panel-left-duotone` while the sidebar is pinned open, `chat-duotone` while chats show), and the outline glyph when off. New chat and Add host rows head the chat view (Add host alone heads the session tree), and the navigation fades into the footer through the kit's
 `bottom_fade` (40px toward the sidebar's ground, solid for its last 12px) while rows remain below. The agent button shares the active window pill’s background,
 theme border, shadow, and 32px height (a step up from the sidebar's 28px buttons), with widths sized to their contents. The titlebar lies across the top of the panes and is a pane header tall (34px) plus one pane margin, 40px at the default margin as with flush panes, so a pill sits 4px from the window's top and 4px from the panes. Window pills always align left, and nothing sits at the
 right edge: no window badges, host, update, agent or clock items, and no alignment controls. Window pills share the
@@ -199,15 +201,29 @@ after the last tab, then the split buttons at the row's end; under it the naviga
 never scrolling: each up to 180px, shrinking evenly, and below 84px a tab shows only its favicon,
 which turns into its X on hover.
 Every header's title is the drag handle: `pane::PaneTitle`, a 22px button
-(a `Tab` in `TabLook::Title`, `button.title`) holding the kind icon and the title, the provider name and session title
-for an agent, and a globe with "Browser" for a browser (`BrowserTabStrip::title`). Dragging it splits or swaps under the existing availability rules
-(`pane::PaneDragSource`). Pointed at, it tints, its icon turns into the four-way move arrows, and
-an X at its right end closes the pane; a coarse pointer (touch, iPad) never hovers, so there the X
-always shows and the icon stays. The title keeps one width, 180px (as wide as a browser tab;
-less only when the header is narrower), whatever its label, so the X sits in the same place; a label too long for it fades out
-over its last 28px under the X (`text_fade`) instead of ending in an ellipsis. Only "Browser",
-which never changes, sizes to its label (`PaneTitle::fit`). Split bottom and Split right stay on
-the right.
+(a `Tab` in `TabLook::Title`, `button.title`) holding the kind icon, the title and the pane's
+folder (`navigation::pane_folder`, home as `~`, one ink step under the title). A terminal is
+headed by the program in its foreground, never by the title the program writes: a program in
+the catalog shows its mark and name (`nvim`, also through a `vim` alias, is the Neovim mark and
+"Neovim"), another program its command name under the terminal icon, and a shell at its prompt
+its name, "bash", "fish" or "pwsh", which the daemon reads from the process and not from a title
+(`PaneSummary.shell`; the title stands in only before a shell is seen). The session tree's pane
+rows read the same (`window_summary::pane_heading`, `pane::pane_heading_icon`). The title is the session title
+for an agent, or the provider's name, "Claude Code" or "Codex", while it has none
+(`navigation::pane_label`); a browser shows a globe and "Browser" (`BrowserTabStrip::title`).
+Dragging it splits or swaps under the existing availability rules (`pane::PaneDragSource`).
+Pointed at, it tints and its icon turns into the four-way move arrows; a coarse pointer (touch,
+iPad) never hovers, so there the icon stays. A terminal or agent title fills the header up to its
+buttons (`PaneTitle::fill`): the title keeps its width and the folder takes what is left, each
+ending in an ellipsis when it runs out of room. Only "Browser", which shares its row with the
+tabs, sizes to its label.
+
+The buttons on the right come from `pane::pane_header_actions`, in the title's ink, and depend on
+where the pane sits (`floating::pane_state`): Split bottom and Split right; then Float and Zoom
+when the window holds another pane, since floating or zooming a lone pane does nothing, with no
+Float on a zoomed pane, which the daemon refuses to float; and Close pane last. A floating pane has Tile back, Zoom and Close pane. Zoom is the arrows-out glyph
+(`IconName::Expand`); on a zoomed pane it reads Unzoom with the arrows-in glyph
+(`IconName::Shrink`), and no pill sits over the pane.
 The URL field contains a 24px site-controls button at its left edge. Its popup reads Chromium connection
 status and tab sound state when opened, and offers the existing site-data clearing confirmation.
 The URL field is a neutral ghost field: no resting background, the ghost hover fill, and a
@@ -364,6 +380,8 @@ Native entrypoints set `penna::blocks::appearance::AvailableFonts` from their al
 (`crates/zz/src/lib.rs` builds it before the platform moves into the application). The picker
 (`ui_font_select`, which the kit's UI font row uses) queries that catalog directly to avoid offering ala
 fallback names that are not installed; without it, as in the thin clients, it lists the text system's names.
+Mono font (`ui-mono-font-family`) sits under it and uses the same catalog (`mono_font_select`), with
+`monospaced_scopes` opening its list on Monospaced; its default item is Terminal font.
 
 # UI zoom and scalable metrics
 
@@ -425,8 +443,9 @@ Corner smoothing is not a material: every window draws `CORNER_SMOOTHING` (4), w
 
 - `font_family` from `ui-font-family` when present, else the platform file's face
   (`Appearance::ui_font()`), else the system UI font;
-- `mono_font_family` from the terminal's resolved primary family, so Agent Markdown and code blocks
-  match the terminal typeface;
+- `mono_font_family` from `ui-mono-font-family` when installed, else the terminal's resolved primary
+  family, so Agent Markdown and code blocks match the terminal typeface until Mono font picks
+  another, else the platform's code face;
 - the contrast (`Theme::set_contrast`) from `chrome-contrast`, preserved across the same refreshes;
 - no glass under `reduce-transparency`;
 - the pane glow and gaps (the `zz_ui::pane_look::PaneLook` global) from `pane-glow-strength` and
@@ -467,10 +486,12 @@ toggle, Settings, the view switch (eye) and the iOS palette button are 28px butt
 glyphs, a step under the 32px titlebar pills (`WORKSPACE_CHROME_BUTTON_SIZE` in `navigation.rs`).
 The sidebar's rows stop 8px short of its trailing edge past the row inset
 (`WORKSPACE_SIDEBAR_SCROLLBAR_GUTTER`, on the flat list and the tree's `uniform_list`), so the
-scrollbar thumb runs in a lane of its own beside them. Every row action (the flat rows'
-… and +, the tree's 24px buttons) centers 19px in from the row fill's trailing edge
-(`WORKSPACE_ROW_ACTION_CENTER`), and the toggle and the view switch center on the same line. A
-titlebar window pill's hover close sits 10px from the pill's edge (`workspace_row_action_gap`).
+scrollbar thumb runs in a lane of its own beside them. The flat rows' … and + center 19px in
+from the row fill's trailing edge (`SIDEBAR_ROW_ACTION_CENTER`), and the toggle and the view
+switch center on the same line. A tree row's actions and every tab's close sit inside what holds
+them instead (penna's `Button::inside`): 4px from its top, bottom and end, with its corner less 4,
+so a tree row's are 22px and a titlebar window pill's close 20px. Tree rows start so their marker
+centers under the Add host and Settings glyphs (`workspace_tree_guide_origin`).
 Sidebar titles, descriptions and session and host labels fade out over their last 28px
 (`LABEL_FADE`) instead of ending in an ellipsis.
 
@@ -496,7 +517,11 @@ round to the same device pixel grid. Rows that wrap give the icon a first-line s
 first line's pixel line height. The agent timeline's activity rows, cards, alerts, task tray and composer
 footer, the workspace status pills, markdown task lists and the settings disclosure heading all
 use it. The glyph's own ink has to be centred in its 24-unit box too; the ala notes are in
-the `ala-interface` skill (`skills/ala-interface` in autistic-computer/agents).
+the `ala-interface` skill (`skills/ala-interface` in autistic-computer/agents). Brand marks in
+`crates/zz-ui/assets/icons` (the host OS marks, the Chrome mark) fit their ink's longer side to the
+20-unit live area the Solar strokes are drawn on, 2 to 22, with the ink centred at 12; the Apple
+mark sits 0.55 units higher, where SF Pro places its own (its box centre 2.8% of its height above
+the cap centre). `program::tests` checks the host marks.
 
 A radius is a *request*, not the final corner. ala caps one at half the shorter side . the point a
 rounded rectangle stops existing . so one global setting applied to components of different sizes

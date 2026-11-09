@@ -156,6 +156,7 @@ moves on an event, never on output bytes:
 | `repo` | The root of the git repository holding `cwd` (the folder with the `.git` directory or `gitdir:` file, so a linked worktree's own folder), written like `cwd`; empty outside a repository. Clients name a numbered session after it |
 | `branch` | The branch checked out at `cwd`, the ref as written when HEAD names something outside `refs/heads/`, or a 7-character commit id when HEAD is detached; empty outside a repository; cut to `MAX_PANE_BRANCH_BYTES` (256) |
 | `process` | What runs in a Terminal pane, as names a client matches against its program icons: the foreground process first, then its parents up to the pane's shell. Empty for an idle shell and for every other pane kind. At most `MAX_PANE_PROCESS_ENTRIES` (32) entries of `MAX_PANE_PROCESS_BYTES` (1024) bytes |
+| `shell` | The shell a Terminal pane last sat at its prompt in, as its command name without path, leading `-` or `.exe` (`bash`, `fish`, `pwsh`), seen once a known shell has been the foreground process for 250 ms (v120). Clients head an idle pane with it, so a shell that writes no title or a path still reads as itself. Empty until one is seen; at most `MAX_PANE_NAME_BYTES` (256) bytes |
 
 `changed_at` is stamped by a status state or kind change, a shell command start (the `C` mark's
 start time) or finish (the `D` mark's end time), a bell latch going from false to true, and pane

@@ -339,7 +339,7 @@ recipes; penna's `knowledge/designs/kit.md` maps each to the recipe and look tha
 | Role | Group | Covers | Where | Drift found |
 |---|---|---|---|---|
 | `window` | panel | window plane (solid or blurred), Linux frame shadow and edge | `ui/shell.rs:36`, `zz/window/frame.rs:113` | desktop 93% under blur, thin client opaque; nothing draws through the role yet |
-| `titlebar` | bar | title bar strip, the control strip above panes | `ui/shell.rs:137` | |
+| `titlebar` | bar | title bar strip | `ui/shell.rs:137` | |
 | `chrome.button` | icon-button | sidebar toggle, settings gear, tree/flat eye, iPad search, window overflow | `ui/navigation.rs:101` | already one function |
 | `titlebar.window-tab` | tab | window pills with hover close and bell/activity dots | `ui/navigation.rs:162` | active looks the same as hover; Default still lifts both, a theme can tell them apart (`selected: glass` turns the active pill to glass) |
 | `titlebar.status-chip` | badge | update "v1.2", host name (the agents chip, "2 running", went on 2026-10-24) | `ui/navigation/status.rs:54`, `zz/status_bar.rs:139` | three treatments, hand-made dot; fixed, one chip |
@@ -426,7 +426,7 @@ list (`penna::foundation::roles::is_retired`), and a theme file that still names
 |---|---|---|---|---|
 | `settings.card` | card | grouped setting cards | `ui/settings.rs:1343` | stitched per row with hand-clipped shadows; still rounded only at a run's ends with the shadow clipped per row, now from the role's layer |
 | `settings.tile` | tile | theme, mode and app icon tiles with the chosen ring | `kit/settings/appearance.rs:672` | 1px hand ring, 2px `chosen_ring` elsewhere; fixed, the role's 2px selected ring |
-| `settings.preview` | card | preview wells: panes, terminal, config editor (the status bar's went with its page on 2026-11-06) | `ui/settings/panes_preview.rs:186`, `zz/config/settings.rs:1761` | four recipes; fixed, one `settings_preview` well |
+| `settings.preview` | card | preview wells: panes and terminal (the status bar's went with its page on 2026-11-06, the config editor's on 2026-11-07) | `ui/settings/panes_preview.rs:186`, `zz/config/settings/terminal_preview.rs:163` | four recipes; fixed, one `settings_preview` well |
 
 Text fields, number fields, selects, switches and buttons on setting rows are plain kinds, and the rows themselves draw nothing of their own: every control on a card sits on `settings_card_ground`. `settings.row` (a whole row as a button, pressed on touch) was dropped on 2026-10-15 because no app made a row clickable.
 
@@ -466,7 +466,7 @@ What the inventory found on the kinds themselves:
 | `sheet` | which-key, phone bottom sheets | `kit/which_key.rs:419`, `kit/sheet.rs:355` | |
 | `toast` | notifications, update offer, disconnected banner, pinch HUD | `kit/overlay/notification.rs:69`, `app/app.rs:2238`, `kit/compact/hud.rs:18` | banner and HUD used the popover look; fixed, both draw as toasts |
 | `tooltip` | floating | `kit/tooltip/mod.rs:53` | |
-| `keycap` | key hints everywhere | `kit/kbd.rs:189`, `:253` | Soft, Outline and plain text versions; fixed, `Kbd` and `Keycap` draw one cap (menus and tooltips still show bindings as text) |
+| `keycap` | key hints everywhere | `kit/kbd.rs:189`, `:253` | Soft, Outline and plain text versions; fixed, `Kbd` and `Keycap` draw one cap (menus still show bindings as text) |
 
 Scrims (dimming behind dialogs, pickers, sheets, the slideover and modal floats) are not a role:
 they fill with `theme.scrim`.

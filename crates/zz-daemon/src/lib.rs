@@ -38,6 +38,8 @@ mod bounded_command;
 mod daemon;
 mod keys;
 mod status;
+#[cfg(all(any(unix, windows), not(any(target_os = "ios", target_os = "android"))))]
+mod tailnet;
 mod wake;
 
 #[cfg(feature = "agent")]
@@ -61,6 +63,24 @@ pub(crate) fn pid_alive(pid: u32) -> bool {
     pid > 0
         && (unsafe { libc::kill(pid, 0) } == 0
             || std::io::Error::last_os_error().raw_os_error() == Some(libc::EPERM))
+}
+
+#[cfg(windows)]
+#[allow(unsafe_code, clippy::undocumented_unsafe_blocks)]
+pub(crate) fn pid_alive(pid: u32) -> bool {
+    use windows_sys::Win32::{
+        Foundation::{CloseHandle, STILL_ACTIVE},
+        System::Threading::{GetExitCodeProcess, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION},
+    };
+    let process = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid) };
+    if process.is_null() {
+        // Access denied means it exists, like EPERM above.
+        return std::io::Error::last_os_error().kind() == std::io::ErrorKind::PermissionDenied;
+    }
+    let mut code = 0;
+    let read = unsafe { GetExitCodeProcess(process, &mut code) } != 0;
+    unsafe { CloseHandle(process) };
+    read && code == STILL_ACTIVE.cast_unsigned()
 }
 
 fn tmux_shim_environment(

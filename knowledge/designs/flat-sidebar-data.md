@@ -29,15 +29,16 @@ the mux tree, so a client that subscribes to all sessions can draw every row wit
 `AgentPaneWire`, without attaching, and without keeping its own "seen" state.
 
 This plan covers the daemon producers, the wire fields, and the view model. The row, header and
-sidebar builders live in `zz_ui::navigation::flat` with a storybook story (`flat-sidebar`). The eye
-button at the bottom right of the sidebar footer switches between the session tree and this list:
+sidebar builders live in `zz_ui::navigation::flat` with a storybook story (`flat-sidebar`). The chat
+button beside the sidebar toggle at the top switches between the session tree and this list:
 the desktop draws every fleet host from `MuxClient::fleet_hosts` and remembers the choice as
 `flat-sidebar` in `zz/config` (`crates/zz/src/workspace/sidebar/flat.rs`); the web and iPad clients
 draw their one host and keep it in their saved preferences. Row actions open a rename and close menu
 (`FlatMenu`) from a right click or a long press. A window row draws its highlight with
-`navigation::workspace_row_fill`, the same fill as the tree rows (outline, inset and press), but
-gives a round shape a 24px corner whatever the theme's radius (square and pill stay), and round tiles stay concentric with
-it, so the two-line rows never turn into pills.
+`navigation::workspace_row_fill`, the same fill as the tree rows (outline, inset and press), and
+rounds like every row: the theme's control roundness times its height (14.3px on the 46px fill at
+the default Corner radius, 20.7px at 100%), so it reads as round as the controls around it and never
+turns into a pill unless Controls is Pill. Its program tiles are controls of their own height.
 
 # What every client receives
 
@@ -182,10 +183,27 @@ the script before it. `pane_program` resolves terminal panes only; Agent panes k
 provider's icon until the kind was removed on 2026-10-23, and `pane_agent` now maps a terminal whose
 program is `claude` or `codex` to its provider, which is what gets the lens button.
 
+**Every pane stack shows it.** The window tabs' stacks in the title bar take the same faces as the
+flat sidebar's: `StatusBarPane.program` carries `pane_program`, and a stack tile draws the
+program's colors unless `program-colors` is off.
+
 **The tree draws the mark alone.** The session tree on desktop, web and iPad puts the program's
 mark, without its tile, in the row's ink where the kind icon was (`zz_ui::program::program_mark`):
 on a pane row, and on a folded window row for its active pane. A logo with more than one color has
 no single-ink mark, so its row keeps the kind icon.
+
+# Host marks
+
+A host row shows the machine's mark: macOS, Windows, or on Linux its distro family (Ubuntu,
+Debian, Arch, Fedora, or Tux for any other), so the row says which package manager the host uses.
+The daemon sends it in its welcome (`Welcome.platform`, wire v119): its build's OS, and on Linux the
+first of `ID` and `ID_LIKE` in `/etc/os-release` that names a family, so Mint and Pop show Ubuntu
+and Rocky shows Fedora. The client keeps it on the host's connection across reconnects
+(`MuxClient::host_platform`). The session tree draws the mark in the row's ink where the zz logo
+was, and chat view in place of the laptop or server glyph; a host that has not connected yet keeps
+those. The HTML client draws the same files: `build-dom.sh` copies them to `img/icons/`, the page
+gets the host's `HostPlatform::slug()` in its sidebar JSON, and `[data-icon="host-<slug>"]` masks
+the file.
 
 # What the source changed in the first draft
 

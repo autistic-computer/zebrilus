@@ -1,3 +1,7 @@
+@property --penna-around { syntax: "*"; inherits: false; }
+@property --penna-around-rows { syntax: "*"; inherits: false; }
+@property --penna-nest-inset { syntax: "*"; inherits: false; }
+
 *,
 *::before,
 *::after {
@@ -491,7 +495,7 @@ button[data-penna] {
 
 .penna-switch[data-on] {
   justify-content: flex-end;
-  background: var(--penna-primary);
+  background: var(--penna-accent);
 }
 
 .penna-switch[data-on]::after {
@@ -548,7 +552,7 @@ button[data-penna] {
   grid-template-columns: var(--penna-sidebar-width, 256px) 1fr;
   grid-template-rows: var(--penna-titlebar-height, 40px) 1fr;
   overflow: hidden;
-  border-radius: 12px;
+  border-radius: calc(12px * var(--penna-corner-grow, 1));
   corner-shape: superellipse(var(--penna-window-k, 2));
   box-shadow: 0 0 0 0.5px #0006, 0 24px 64px #0005;
 }

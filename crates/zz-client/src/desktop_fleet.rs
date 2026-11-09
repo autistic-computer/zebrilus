@@ -1,5 +1,5 @@
 use zz_protocol::{MuxSnapshot, PaneId, PaneKindSnapshot, PaneSnapshot, PaneStatusState, SessionId, WindowId};
-use crate::{navigation::{SessionLabel, session_label, ordered_panes, pane_index, pane_label}, program::Program, window_summary::pane_program, desktop_nav_tree::{NavNode, active_for_session}};
+use crate::{navigation::{SessionLabel, session_label, ordered_panes, pane_index}, program::Program, window_summary::{pane_heading, pane_program}, desktop_nav_tree::{NavNode, active_for_session}};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum FleetPaneKind {
@@ -79,7 +79,7 @@ impl FleetPane {
         Self {
             id: pane.id,
             index: 0,
-            label: pane_label(pane),
+            label: pane_heading(pane).title,
             cwd: pane.summary.cwd.clone(),
             kind,
             bell: pane.bell,

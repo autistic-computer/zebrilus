@@ -28,9 +28,9 @@
       "click": "settings-accent-green"
     },
     {
-      "name": "pick-ink",
+      "name": "pick-blue",
       "section": "page",
-      "click": "settings-accent-ink",
+      "click": "settings-accent-blue",
       "keep": true
     },
     {

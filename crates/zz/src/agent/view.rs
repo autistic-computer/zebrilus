@@ -1,12 +1,9 @@
 use penna::blocks::chat::{
-    CHAT_CONTENT_MAX_WIDTH, COMPOSER_OUTER_PADDING, ChatComposer, Composer, TaskTrayAction,
-    TrayPanel, composer_add_button, empty_state, permission_card, permission_option, queue_chip,
-    spinner_phase, suggestion_list, suggestion_list_height, suggestion_row,
+    CHAT_CONTENT_MAX_WIDTH, ChatComposer, Composer, TaskTrayAction, TrayPanel, composer_add_button,
+    empty_state, permission_card, permission_option, queue_chip, spinner_phase, suggestion_list,
+    suggestion_list_height, suggestion_row,
 };
-use std::{
-    collections::{BTreeSet, HashMap},
-    sync::Arc,
-};
+use std::{collections::BTreeSet, sync::Arc};
 use zz_ui::agent::controls::{
     ComposerAction, composer_action, composer_action_button, context_usage_meter,
     git_summary_footer,
@@ -23,15 +20,14 @@ use zz_ui::agent::tasks::task_tray;
 
 use ala::{
     AnyElement, Context, Entity, EntityId, FocusHandle, Focusable, Image, IntoElement,
-    KeyDownEvent, ListAlignment, ListState, MouseButton, MouseDownEvent, Render, ScrollStrategy,
-    SharedString, Subscription, UniformListScrollHandle, Window, div, prelude::*, px, uniform_list,
+    KeyDownEvent, MouseButton, MouseDownEvent, Render, ScrollStrategy, SharedString, Subscription,
+    UniformListScrollHandle, Window, div, prelude::*, px, uniform_list,
 };
 use zz_client::agent_completion::{
     CommandCompletion, active_command_hint, command_label, composer_completions,
     meaningful_command_description, pane_commands,
 };
 use zz_client::agent_settings::{ComposerSetter, composer_setter};
-use zz_client::agent_transcript::rewind_command;
 use zz_ui::{
     command::target_picker,
     target::{TargetPicker, mention_at_caret, mention_keys},
@@ -41,25 +37,16 @@ use crate::command::palette::palette_backend;
 use penna::{
     components::button::Button,
     components::input::{IndentInline, InputEvent, InputState, MoveDown, MoveUp},
-    components::scroll::Scrollbar,
     h_flex,
 };
 use zz_protocol::{AgentProvider, CommandInvocation, PaneId};
-use zz_ui::agent::DisclosureKind;
-use zz_ui::agent::{
-    AgentAside, AgentEntry, AgentMarkdown, AgentTimeline, AgentTimelineStore, AgentToolEntry,
-    AgentToolKind, AgentToolPayload, AgentToolStatus, AgentToolText, FoldedTimelineRows,
-    MarkdownSlot, TimelineRow, TimelineStick, agent_jump_to_bottom_button, append_timeline_row,
-    composer_attachment, fold_timeline_rows, plan_progress, timeline_group_kind, timeline_parent,
-    tool_output_text,
-};
+use zz_ui::agent::{composer_attachment, plan_progress};
 
 use crate::{
     agent::attachment as agent_attachment,
     agent::controller::{
         AgentCommand, AgentConnectionState, AgentController, AgentPaneState, AgentPermissionKind,
-        AgentPermissionRequest, AgentSessionCapabilities, AgentThreadEntry, AgentToolKindModel,
-        AgentToolStatusModel, ToolPayload,
+        AgentPermissionRequest, AgentSessionCapabilities, AgentThreadEntry,
     },
     config::pane_content_radii,
     mux::client::MuxClient,
@@ -70,7 +57,6 @@ mod chat;
 mod harness;
 
 const AGENT_KEY_CONTEXT: &str = "Agent";
-const STICK_FRAME_INTERVAL: std::time::Duration = std::time::Duration::from_micros(16_667);
 
 const fn pane_is_busy(connection: AgentConnectionState) -> bool {
     matches!(
@@ -80,238 +66,6 @@ const fn pane_is_busy(connection: AgentConnectionState) -> bool {
             | AgentConnectionState::Running
             | AgentConnectionState::Cancelling
     )
-}
-
-enum TimelineStoreUpdate {
-    None,
-    Clear,
-    Synchronize(Vec<AgentEntry>),
-}
-
-enum TimelineModelUpdate {
-    None,
-    Rebuild,
-    Incremental {
-        store_entries: Vec<AgentEntry>,
-        remeasure_rows: Vec<usize>,
-        splice_start: usize,
-        added_rows: usize,
-    },
-}
-
-#[derive(Clone, Default)]
-struct TimelineModel {
-    rows: Arc<Vec<TimelineRow>>,
-    entry_ids: Vec<u64>,
-    entry_revisions: Vec<u64>,
-    entry_to_row: Vec<usize>,
-    markdown: HashMap<u64, AgentMarkdown>,
-    tool_payloads: HashMap<u64, Vec<Option<AgentToolPayload>>>,
-    plan: Option<u64>,
-}
-
-fn plan_entry_id(entries: &[AgentThreadEntry]) -> Option<u64> {
-    entries.iter().rev().find_map(|entry| match entry {
-        AgentThreadEntry::Plan { id, .. } => Some(*id),
-        _ => None,
-    })
-}
-
-impl TimelineModel {
-    fn new(entries: &[AgentThreadEntry], revisions: &[u64], parents: ToolParents<'_>) -> Self {
-        debug_assert_eq!(entries.len(), revisions.len());
-        let mut markdown = HashMap::new();
-        let mut tool_payloads = HashMap::new();
-        let ui_entries = entries
-            .iter()
-            .map(|entry| {
-                parented(
-                    ui_entry_with_markdown(entry, &mut markdown, &mut tool_payloads),
-                    parents,
-                )
-            })
-            .collect::<Vec<_>>();
-        let FoldedTimelineRows { rows, entry_to_row } = fold_timeline_rows(&ui_entries);
-        Self {
-            rows,
-            entry_ids: entries.iter().map(AgentThreadEntry::id).collect(),
-            entry_revisions: revisions.to_vec(),
-            entry_to_row,
-            markdown,
-            tool_payloads,
-            plan: plan_entry_id(entries),
-        }
-    }
-
-    fn clear(&mut self) {
-        self.rows = Arc::new(Vec::new());
-        self.entry_ids.clear();
-        self.entry_revisions.clear();
-        self.entry_to_row.clear();
-        self.markdown.clear();
-        self.tool_payloads.clear();
-        self.plan = None;
-    }
-
-    fn rebuild(
-        &mut self,
-        entries: &[AgentThreadEntry],
-        revisions: &[u64],
-        parents: ToolParents<'_>,
-    ) {
-        *self = Self::new(entries, revisions, parents);
-    }
-
-    fn synchronize(
-        &mut self,
-        entries: &[AgentThreadEntry],
-        revisions: &[u64],
-        changed_entries: Option<&[usize]>,
-        parents: ToolParents<'_>,
-    ) -> TimelineModelUpdate {
-        debug_assert_eq!(entries.len(), revisions.len());
-        if entries.len() != revisions.len() {
-            return TimelineModelUpdate::None;
-        }
-
-        let old_entry_count = self.entry_ids.len();
-        let append_only = old_entry_count <= entries.len()
-            && if changed_entries.is_some() {
-                old_entry_count == 0
-                    || self.entry_ids.last().copied()
-                        == entries.get(old_entry_count - 1).map(AgentThreadEntry::id)
-            } else {
-                self.entry_ids
-                    .iter()
-                    .zip(entries)
-                    .all(|(id, entry)| *id == entry.id())
-            };
-        if !append_only {
-            self.rebuild(entries, revisions, parents);
-            return TimelineModelUpdate::Rebuild;
-        }
-
-        let changed_existing = changed_entries.map_or_else(
-            || {
-                (0..old_entry_count)
-                    .filter(|index| self.entry_revisions[*index] != revisions[*index])
-                    .collect::<Vec<_>>()
-            },
-            |changes| {
-                changes
-                    .iter()
-                    .copied()
-                    .filter(|index| {
-                        *index < old_entry_count
-                            && self.entry_revisions[*index] != revisions[*index]
-                    })
-                    .collect::<Vec<_>>()
-            },
-        );
-        if changed_existing.is_empty() && old_entry_count == entries.len() {
-            return TimelineModelUpdate::None;
-        }
-
-        let mut replacements = Vec::with_capacity(changed_existing.len());
-        for &entry_index in &changed_existing {
-            let id = self.entry_ids[entry_index];
-            let Some(&row_index) = self.entry_to_row.get(entry_index) else {
-                self.rebuild(entries, revisions, parents);
-                return TimelineModelUpdate::Rebuild;
-            };
-            let next = parented(
-                ui_entry_with_markdown(
-                    &entries[entry_index],
-                    &mut self.markdown,
-                    &mut self.tool_payloads,
-                ),
-                parents,
-            );
-            let Some(previous) = self.rows.get(row_index).and_then(|row| row.entry(id)) else {
-                self.rebuild(entries, revisions, parents);
-                return TimelineModelUpdate::Rebuild;
-            };
-            if !replacement_preserves_folding(previous, &next) {
-                self.rebuild(entries, revisions, parents);
-                return TimelineModelUpdate::Rebuild;
-            }
-            replacements.push((entry_index, row_index, id, next));
-        }
-
-        let appended = entries
-            .iter()
-            .skip(old_entry_count)
-            .map(|entry| {
-                parented(
-                    ui_entry_with_markdown(entry, &mut self.markdown, &mut self.tool_payloads),
-                    parents,
-                )
-            })
-            .collect::<Vec<_>>();
-        let parent_arrives_later = appended.iter().enumerate().any(|(index, entry)| {
-            timeline_parent(entry).is_some_and(|parent| {
-                !self.entry_ids.contains(&parent)
-                    && !appended[..index]
-                        .iter()
-                        .any(|earlier| earlier.id() == parent)
-            })
-        });
-        if parent_arrives_later {
-            self.rebuild(entries, revisions, parents);
-            return TimelineModelUpdate::Rebuild;
-        }
-        let old_row_count = self.rows.len();
-        let mut store_entries = Vec::with_capacity(replacements.len());
-        let mut remeasure_rows = replacements
-            .iter()
-            .map(|(_, row_index, _, _)| *row_index)
-            .collect::<Vec<_>>();
-        let rows = Arc::make_mut(&mut self.rows);
-        for (entry_index, row_index, id, entry) in replacements {
-            store_entries.push(entry.clone());
-            let replaced = rows[row_index].replace_entry(id, entry);
-            debug_assert!(replaced);
-            self.entry_revisions[entry_index] = revisions[entry_index];
-        }
-
-        for entry in appended {
-            let (row_index, row_added) = append_timeline_row(rows, entry);
-            self.entry_to_row.push(row_index);
-            if !row_added && row_index < old_row_count {
-                remeasure_rows.push(row_index);
-            }
-        }
-        if let Some(plan) = plan_entry_id(&entries[old_entry_count..]) {
-            self.plan = Some(plan);
-        }
-        self.entry_ids
-            .extend(entries[old_entry_count..].iter().map(AgentThreadEntry::id));
-        self.entry_revisions
-            .extend_from_slice(&revisions[old_entry_count..]);
-
-        remeasure_rows.sort_unstable();
-        remeasure_rows.dedup();
-        TimelineModelUpdate::Incremental {
-            store_entries,
-            remeasure_rows,
-            splice_start: old_row_count,
-            added_rows: rows.len() - old_row_count,
-        }
-    }
-}
-
-fn replacement_preserves_folding(previous: &AgentEntry, next: &AgentEntry) -> bool {
-    timeline_group_kind(previous) == timeline_group_kind(next)
-        && timeline_parent(previous) == timeline_parent(next)
-}
-
-type ToolParents<'a> = &'a dyn Fn(u64) -> Option<u64>;
-
-fn parented(mut entry: AgentEntry, parents: ToolParents<'_>) -> AgentEntry {
-    if let AgentEntry::Tool(tool) = &mut entry {
-        tool.parent = parents(tool.id);
-    }
-    entry
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -455,12 +209,7 @@ pub(crate) struct AgentView {
     input: Entity<InputState>,
     visible: bool,
     pane_state: AgentPaneState,
-    timeline: TimelineModel,
-    timeline_store: Entity<AgentTimelineStore>,
-    timeline_next_revision: u64,
-    conversation_epoch: u64,
-    timeline_scroll: ListState,
-    stick: TimelineStick,
+    chat_revision: u64,
     completion_scroll: UniformListScrollHandle,
     submission_error: Option<Arc<str>>,
     permission_wizard: PermissionWizard,
@@ -496,8 +245,6 @@ impl AgentView {
                 .placeholder(format!("Message {}…", provider.label()))
                 .context_menu(true)
         });
-        let timeline_store = cx.new(|_| AgentTimelineStore::owned_by(pane.0));
-        let timeline_store_observer = cx.observe(&timeline_store, |_, _, cx| cx.notify());
         let input_observer = cx.observe(&input, |view, input, cx| {
             view.synchronize_input(&input, cx);
         });
@@ -530,33 +277,15 @@ impl AgentView {
         controller.update(cx, |controller, _| {
             controller.ensure_pane(pane, provider, cwd);
         });
-        let (pane_state, timeline, timeline_next_revision, conversation_epoch) = {
+        let (pane_state, chat_revision) = {
             let controller = controller.read(cx);
-            let pane_state = controller
-                .pane_state(pane)
-                .unwrap_or_else(disconnected_pane_state);
-            let (entries, revisions, next_revision) =
-                controller.pane_entries(pane).unwrap_or((&[], &[], 0));
             (
-                pane_state,
-                TimelineModel::new(entries, revisions, &|id| {
-                    controller.tool_parent_entry(pane, id)
-                }),
-                next_revision,
-                controller.conversation_epoch(pane),
+                controller
+                    .pane_state(pane)
+                    .unwrap_or_else(disconnected_pane_state),
+                controller.pane_chat_revision(pane),
             )
         };
-        let timeline_scroll = ListState::new(0, ListAlignment::Top, px(1_200.0));
-        timeline_scroll.splice(0..0, timeline.rows.len());
-        let stick = TimelineStick::new(&timeline_scroll, cx.reduce_motion());
-        let scroll_view = cx.weak_entity();
-        timeline_scroll.set_scroll_handler(move |_, _, cx| {
-            let view = scroll_view.clone();
-            cx.defer(move |cx| {
-                view.update(cx, |view: &mut Self, cx| view.on_timeline_scroll(cx))
-                    .ok();
-            });
-        });
         let controller_observer = cx.observe(&controller, |view, controller, cx| {
             if view.visible && view.synchronize_controller(&controller, cx) {
                 cx.notify();
@@ -583,12 +312,7 @@ impl AgentView {
             input,
             visible: false,
             pane_state,
-            timeline,
-            timeline_store,
-            timeline_next_revision,
-            conversation_epoch,
-            timeline_scroll,
-            stick,
+            chat_revision,
             completion_scroll: UniformListScrollHandle::new(),
             submission_error: None,
             permission_wizard: PermissionWizard::default(),
@@ -607,7 +331,6 @@ impl AgentView {
             chat_inline: false,
             _subscriptions: vec![
                 input_observer,
-                timeline_store_observer,
                 input_subscription,
                 controller_observer,
                 mux_observer,
@@ -677,61 +400,17 @@ impl AgentView {
         controller: &Entity<AgentController>,
         cx: &mut Context<Self>,
     ) -> bool {
-        let reduce_motion = cx.reduce_motion();
-        let (changed, store_update) = {
-            let controller = controller.read(cx);
-            self.synchronize_controller_state(controller, reduce_motion)
-        };
-        let streaming = self
-            .pane_state
-            .connection
-            .has_active_turn()
-            .then(|| self.timeline.entry_ids.last().copied())
-            .flatten();
-        self.timeline_store
-            .update(cx, |store, cx| store.set_streaming(streaming, cx));
-        let store_changed = self.update_timeline_store(store_update, cx);
-        let cwd = self.pane_state.cwd.clone();
-        self.timeline_store
-            .update(cx, |store, cx| store.set_cwd(Some(cwd), cx));
-        changed || store_changed
-    }
-
-    fn update_timeline_store(
-        &mut self,
-        store_update: TimelineStoreUpdate,
-        cx: &mut Context<Self>,
-    ) -> bool {
-        match store_update {
-            TimelineStoreUpdate::None => false,
-            TimelineStoreUpdate::Clear => self.timeline_store.update(cx, AgentTimelineStore::clear),
-            TimelineStoreUpdate::Synchronize(entries) => {
-                for entry in &entries {
-                    synchronize_entry_store(&self.timeline_store, entry, cx);
-                }
-                false
-            }
-        }
-    }
-
-    fn synchronize_controller_state(
-        &mut self,
-        controller: &AgentController,
-        reduce_motion: bool,
-    ) -> (bool, TimelineStoreUpdate) {
+        let controller = controller.read(cx);
         let next_state = controller
             .pane_state(self.pane)
             .unwrap_or_else(disconnected_pane_state);
+        let chat_revision = controller.pane_chat_revision(self.pane);
         let state_changed = self.pane_state != next_state;
-        let provider_changed = self.pane_state.provider != next_state.provider;
-        let next_conversation_epoch = controller.conversation_epoch(self.pane);
-        let conversation_changed = self.conversation_epoch != next_conversation_epoch
-            || provider_changed
-            || self.pane_state.session_id != next_state.session_id;
-        self.conversation_epoch = next_conversation_epoch;
-        let commands_changed = provider_changed
+        let commands_changed = self.pane_state.provider != next_state.provider
             || self.pane_state.available_commands.as_ref()
                 != next_state.available_commands.as_ref();
+        let chat_changed = self.chat_revision != chat_revision;
+        self.chat_revision = chat_revision;
         if state_changed {
             self.pane_state = next_state;
         }
@@ -742,94 +421,7 @@ impl AgentView {
             );
             self.recompute_completions(&commands);
         }
-
-        let pane = self.pane;
-        let parents = |id| controller.tool_parent_entry(pane, id);
-        let Some((entries, revisions, next_revision)) = controller.pane_entries(self.pane) else {
-            if !self.timeline.rows.is_empty() {
-                self.timeline.clear();
-                self.timeline_next_revision = 0;
-                self.timeline_scroll.reset(0);
-                self.stick.engage_now(&self.timeline_scroll, reduce_motion);
-                return (true, TimelineStoreUpdate::Clear);
-            }
-            return (state_changed, TimelineStoreUpdate::Clear);
-        };
-        if conversation_changed {
-            self.timeline.rebuild(entries, revisions, &parents);
-            self.timeline_next_revision = next_revision;
-            self.timeline_scroll.reset(self.timeline.rows.len());
-            self.stick.engage_now(&self.timeline_scroll, reduce_motion);
-            return (true, TimelineStoreUpdate::Clear);
-        }
-        if self.timeline.entry_ids.len() == entries.len()
-            && self.timeline_next_revision == next_revision
-        {
-            return (state_changed, TimelineStoreUpdate::None);
-        }
-        let Some(changed_entries) =
-            controller.pane_entry_changes(self.pane, self.timeline_next_revision)
-        else {
-            self.timeline.rebuild(entries, revisions, &parents);
-            self.timeline_next_revision = next_revision;
-            self.timeline_scroll.reset(self.timeline.rows.len());
-            self.stick.engage_now(&self.timeline_scroll, reduce_motion);
-            return (true, TimelineStoreUpdate::Clear);
-        };
-        self.timeline_next_revision = next_revision;
-        let (timeline_changed, store_update) = self.synchronize_timeline(
-            entries,
-            revisions,
-            &changed_entries,
-            &parents,
-            reduce_motion,
-        );
-        (timeline_changed || state_changed, store_update)
-    }
-
-    fn synchronize_timeline(
-        &mut self,
-        entries: &[AgentThreadEntry],
-        revisions: &[u64],
-        changed_entries: &[usize],
-        parents: ToolParents<'_>,
-        reduce_motion: bool,
-    ) -> (bool, TimelineStoreUpdate) {
-        match self
-            .timeline
-            .synchronize(entries, revisions, Some(changed_entries), parents)
-        {
-            TimelineModelUpdate::None => (false, TimelineStoreUpdate::None),
-            TimelineModelUpdate::Rebuild => {
-                self.timeline_scroll.reset(self.timeline.rows.len());
-                self.stick.engage_now(&self.timeline_scroll, reduce_motion);
-                (true, TimelineStoreUpdate::Clear)
-            }
-            TimelineModelUpdate::Incremental {
-                store_entries,
-                remeasure_rows,
-                splice_start,
-                added_rows,
-            } => {
-                for row_index in remeasure_rows {
-                    self.timeline_scroll
-                        .remeasure_items(row_index..row_index + 1);
-                }
-                if added_rows > 0 {
-                    self.timeline_scroll
-                        .splice(splice_start..splice_start, added_rows);
-                }
-                if self.stick.is_pinned() {
-                    self.stick.wake();
-                }
-                let store_update = if store_entries.is_empty() {
-                    TimelineStoreUpdate::None
-                } else {
-                    TimelineStoreUpdate::Synchronize(store_entries)
-                };
-                (true, store_update)
-            }
-        }
+        state_changed || chat_changed
     }
 
     fn recompute_completions(&mut self, commands: &[AgentCommand]) {
@@ -1086,7 +678,7 @@ impl AgentView {
                 self.submission_error = None;
                 self.completions = Arc::from([]);
                 self.completion_selected = None;
-                self.stick.engage(&self.timeline_scroll, cx.reduce_motion());
+                self.chat.follow();
             }
             Err(error) => self.submission_error = Some(error),
         }
@@ -1130,15 +722,6 @@ impl AgentView {
             self.pane_state.session_capabilities.verbs,
         );
         self.recompute_completions(&commands);
-        cx.notify();
-    }
-
-    fn rewind_to(&mut self, message_id: &str, cx: &mut Context<Self>) {
-        let pane = self.pane;
-        let result = self.controller.update(cx, |controller, cx| {
-            controller.prompt(pane, &rewind_command(message_id), Vec::new(), cx)
-        });
-        self.submission_error = result.err();
         cx.notify();
     }
 
@@ -1499,49 +1082,21 @@ impl AgentView {
     }
 
     fn reveal_tool(&mut self, tool_call_id: &str, cx: &mut Context<Self>) {
-        let Some(entry) = self.controller.read(cx).tool_entry(self.pane, tool_call_id) else {
+        let Some(chat) = self.controller.read(cx).pane_chat(self.pane) else {
             return;
         };
-        let Some(row) = self
-            .timeline
-            .entry_ids
-            .iter()
-            .position(|id| *id == entry)
-            .and_then(|index| self.timeline.entry_to_row.get(index).copied())
-        else {
-            return;
-        };
-        if let Some(turn) = self.timeline.rows.get(row).map(TimelineRow::id) {
-            self.timeline_store.update(cx, |store, cx| {
-                store.set_expanded(turn, DisclosureKind::Turn, true, cx);
-            });
-        }
-        self.stick.reveal(&self.timeline_scroll, row);
+        self.chat
+            .reveal(chat, &zz_protocol::chat::ItemId::new(tool_call_id));
     }
 
-    fn current_plan(&self, state: &AgentPaneState) -> Option<String> {
-        let source = self
-            .timeline
-            .markdown
-            .get(&self.timeline.plan?)?
-            .full_text();
+    fn current_plan(&self, state: &AgentPaneState, cx: &ala::App) -> Option<String> {
+        let (entries, _, _) = self.controller.read(cx).pane_entries(self.pane)?;
+        let source = entries.iter().rev().find_map(|entry| match entry {
+            AgentThreadEntry::Plan { markdown, .. } => Some(markdown.clone()),
+            _ => None,
+        })?;
         let (done, total, _) = plan_progress(&source);
         (total > 0 && (done < total || state.connection.has_active_turn())).then_some(source)
-    }
-
-    fn open_output(&self, tool: &AgentToolEntry, cx: &mut Context<Self>) {
-        let Some(args) = zz_client::agent_output::output_pane_args(
-            self.pane,
-            &self.pane_state.cwd,
-            &tool.label,
-            tool.exit_code,
-            &tool_output_text(tool),
-        ) else {
-            return;
-        };
-        self.mux
-            .read(cx)
-            .execute(CommandInvocation::new("split-window", args));
     }
 
     fn render_task_tray(
@@ -1555,7 +1110,7 @@ impl AgentView {
         } else {
             spinner_phase(view.entity_id(), cx)
         };
-        let plan = self.current_plan(state);
+        let plan = self.current_plan(state, cx);
         let view = view.clone();
         task_tray(
             &format!("agent-{}", self.pane.0),
@@ -1578,25 +1133,6 @@ impl AgentView {
             .or_else(|| self.submission_error.clone())?;
         let stopped = runtime_error.is_some() && state.connection == AgentConnectionState::Failed;
         Some(error_card(&error, stopped, cx))
-    }
-
-    fn render_jump_to_end(&self, view: &Entity<Self>, cx: &ala::App) -> impl IntoElement {
-        let view = view.clone();
-        div()
-            .absolute()
-            .left_0()
-            .right_0()
-            .bottom(px(2.0 * COMPOSER_OUTER_PADDING))
-            .flex()
-            .justify_center()
-            .child(
-                agent_jump_to_bottom_button(("agent-jump-to-end", self.pane.0), cx).on_click(
-                    move |_, _, cx| {
-                        view.update(cx, AgentView::jump_to_timeline_end);
-                        cx.stop_propagation();
-                    },
-                ),
-            )
     }
 
     fn render_completions(&self, view: &Entity<Self>, cx: &ala::App) -> Option<ala::AnyElement> {
@@ -1791,40 +1327,7 @@ impl AgentView {
             });
         }
         self.submission_error = None;
-        self.stick.engage(&self.timeline_scroll, cx.reduce_motion());
-    }
-
-    fn on_timeline_scroll(&mut self, cx: &mut Context<Self>) {
-        let reduce_motion = cx.reduce_motion();
-        if self
-            .stick
-            .on_user_scroll(&self.timeline_scroll, reduce_motion)
-        {
-            cx.notify();
-        }
-    }
-
-    fn jump_to_timeline_end(&mut self, cx: &mut Context<Self>) {
-        self.stick.engage(&self.timeline_scroll, cx.reduce_motion());
-        cx.notify();
-    }
-
-    fn drive_stick(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if cx.reduce_motion() || !self.stick.wants_frame(&self.timeline_scroll) {
-            return;
-        }
-        self.stick.arm();
-        cx.spawn_in(window, async move |view, cx| {
-            cx.background_executor().timer(STICK_FRAME_INTERVAL).await;
-            view.update(cx, |view: &mut Self, cx| {
-                let list = view.timeline_scroll.clone();
-                if view.stick.step(&list) {
-                    cx.notify();
-                }
-            })
-            .ok();
-        })
-        .detach();
+        self.chat.follow();
     }
 }
 
@@ -1849,37 +1352,10 @@ impl Render for AgentView {
                     )
                 });
         self.chat_inline = inline;
-        let rows = self.timeline.rows.clone();
-        let has_timeline = !rows.is_empty() && !use_chat;
-        let show_jump = has_timeline && self.stick.shows_jump_button();
-        self.stick.set_bottom_padding(COMPOSER_OUTER_PADDING);
-        self.drive_stick(window, cx);
         let floats = self.floats;
         let view = cx.entity();
         let input_focus = self.focus(cx);
-        let chat_body = use_chat.then(|| self.render_chat(&state, &view, window, cx));
-        let timeline = AgentTimeline::new(
-            rows,
-            self.timeline_scroll.clone(),
-            self.timeline_store.clone(),
-        )
-        .active_turn(state.connection.has_active_turn())
-        .bottom_padding(COMPOSER_OUTER_PADDING)
-        .open_output({
-            let view = view.clone();
-            move |tool, _, cx| view.update(cx, |view, cx| view.open_output(tool, cx))
-        });
-        let timeline = if state.session_capabilities.verbs {
-            let rewind_view = view.clone();
-            timeline.rewind(
-                state.connection.accepts_prompt() && state.pending_permissions.is_empty(),
-                move |message_id, _, cx| {
-                    rewind_view.update(cx, |view, cx| view.rewind_to(message_id, cx));
-                },
-            )
-        } else {
-            timeline
-        };
+        let chat_body = use_chat.then(|| self.render_chat(window, cx));
         let root = div()
             .id(("agent-pane", self.pane.0))
             .key_context(AGENT_KEY_CONTEXT)
@@ -1903,7 +1379,7 @@ impl Render for AgentView {
                     .min_h_0()
                     .overflow_hidden()
                     .when_some(chat_body, ParentElement::child)
-                    .when(!has_timeline && !use_chat, |this| {
+                    .when(!use_chat, |this| {
                         this.child(
                             div().size_full().px_3().child(
                                 div()
@@ -1913,20 +1389,6 @@ impl Render for AgentView {
                                     .child(Self::render_empty_state(&state, cx.entity_id(), cx)),
                             ),
                         )
-                    })
-                    .when(has_timeline, |this| {
-                        this.child(timeline).child(
-                            div()
-                                .absolute()
-                                .top_0()
-                                .left_0()
-                                .right_0()
-                                .bottom(px(COMPOSER_OUTER_PADDING))
-                                .child(Scrollbar::vertical(&self.timeline_scroll)),
-                        )
-                    })
-                    .when(show_jump, |this| {
-                        this.child(self.render_jump_to_end(&view, cx))
                     }),
             )
             .child(self.render_composer(&state, &view, cx));
@@ -1953,218 +1415,6 @@ fn disconnected_pane_state() -> AgentPaneState {
         queued_prompts: 0,
         settings: None,
     }
-}
-
-#[cfg(test)]
-fn ui_entries(entries: &[AgentThreadEntry]) -> Arc<[AgentEntry]> {
-    let mut markdown = HashMap::new();
-    let mut tool_payloads = HashMap::new();
-    entries
-        .iter()
-        .map(|entry| ui_entry_with_markdown(entry, &mut markdown, &mut tool_payloads))
-        .collect::<Vec<_>>()
-        .into()
-}
-
-#[cfg(test)]
-fn ui_entry(entry: &AgentThreadEntry) -> AgentEntry {
-    ui_entry_with_markdown(entry, &mut HashMap::new(), &mut HashMap::new())
-}
-
-fn streaming_markdown(
-    markdown: &mut HashMap<u64, AgentMarkdown>,
-    id: u64,
-    source: &str,
-) -> AgentMarkdown {
-    let markdown = markdown
-        .entry(id)
-        .or_insert_with(|| AgentMarkdown::new(source));
-    markdown.synchronize_append(source);
-    markdown.clone()
-}
-
-fn replaced_markdown(
-    markdown: &mut HashMap<u64, AgentMarkdown>,
-    id: u64,
-    source: &str,
-) -> AgentMarkdown {
-    let markdown = markdown
-        .entry(id)
-        .or_insert_with(|| AgentMarkdown::new(source));
-    markdown.replace(source);
-    markdown.clone()
-}
-
-fn ui_entry_with_markdown(
-    entry: &AgentThreadEntry,
-    markdown_sources: &mut HashMap<u64, AgentMarkdown>,
-    tool_payloads: &mut HashMap<u64, Vec<Option<AgentToolPayload>>>,
-) -> AgentEntry {
-    match entry {
-        AgentThreadEntry::User {
-            id,
-            markdown,
-            images,
-            ..
-        } => AgentEntry::User {
-            id: *id,
-            markdown: streaming_markdown(markdown_sources, *id, markdown),
-            images: images.clone().into(),
-            rewind_id: entry.rewind_id().map(SharedString::from),
-        },
-        AgentThreadEntry::Assistant {
-            id,
-            markdown,
-            aside,
-            ..
-        } => AgentEntry::Assistant {
-            id: *id,
-            markdown: streaming_markdown(markdown_sources, *id, markdown),
-            aside: aside.map(|aside| AgentAside {
-                side: aside.side,
-                reply_to: aside.reply_to,
-            }),
-        },
-        AgentThreadEntry::Reasoning {
-            id,
-            label,
-            markdown,
-            default_expanded,
-        } => AgentEntry::Reasoning {
-            id: *id,
-            label: SharedString::from(label.clone()),
-            markdown: streaming_markdown(markdown_sources, *id, markdown),
-            default_expanded: *default_expanded,
-        },
-        AgentThreadEntry::Tool {
-            id,
-            kind,
-            status,
-            label,
-            location,
-            input,
-            output,
-            default_expanded,
-            exit_code,
-            ..
-        } => {
-            let payloads = tool_payloads.entry(*id).or_default();
-            payloads.resize_with(output.len() + 1, || None);
-            if input.is_none() {
-                payloads[0] = None;
-            }
-            AgentEntry::Tool(AgentToolEntry {
-                id: *id,
-                kind: match kind {
-                    AgentToolKindModel::Read => AgentToolKind::Read,
-                    AgentToolKindModel::Search => AgentToolKind::Search,
-                    AgentToolKindModel::Edit
-                    | AgentToolKindModel::Delete
-                    | AgentToolKindModel::Move => AgentToolKind::Edit,
-                    AgentToolKindModel::Execute => AgentToolKind::Execute,
-                    AgentToolKindModel::Fetch => AgentToolKind::Fetch,
-                    AgentToolKindModel::Think => AgentToolKind::Think,
-                    AgentToolKindModel::SwitchMode | AgentToolKindModel::Other => {
-                        AgentToolKind::Other
-                    }
-                },
-                status: match status {
-                    AgentToolStatusModel::Pending => AgentToolStatus::Pending,
-                    AgentToolStatusModel::Running => AgentToolStatus::Running,
-                    AgentToolStatusModel::NeedsApproval => AgentToolStatus::NeedsApproval,
-                    AgentToolStatusModel::Completed => AgentToolStatus::Completed,
-                    AgentToolStatusModel::Failed => AgentToolStatus::Failed,
-                    AgentToolStatusModel::Canceled => AgentToolStatus::Canceled,
-                },
-                label: SharedString::from(label.clone()),
-                location: location.clone().map(SharedString::from),
-                input: input
-                    .as_ref()
-                    .map(|payload| retained_tool_payload(&mut payloads[0], payload)),
-                output: output
-                    .iter()
-                    .enumerate()
-                    .map(|(index, payload)| {
-                        retained_tool_payload(&mut payloads[index + 1], payload)
-                    })
-                    .collect::<Vec<_>>()
-                    .into(),
-                default_expanded: *default_expanded,
-                parent: None,
-                exit_code: *exit_code,
-            })
-        }
-        AgentThreadEntry::Plan { id, markdown } => AgentEntry::Plan {
-            id: *id,
-            markdown: replaced_markdown(markdown_sources, *id, markdown),
-        },
-    }
-}
-
-fn synchronize_entry_store(
-    store: &Entity<AgentTimelineStore>,
-    entry: &AgentEntry,
-    cx: &mut Context<AgentView>,
-) {
-    match entry {
-        AgentEntry::User { id, markdown, .. }
-        | AgentEntry::Assistant { id, markdown, .. }
-        | AgentEntry::Reasoning { id, markdown, .. }
-        | AgentEntry::Plan { id, markdown } => {
-            store.update(cx, |store, cx| {
-                store.synchronize_markdown(*id, MarkdownSlot::Body, markdown.clone(), cx);
-            });
-        }
-        AgentEntry::Tool(_) => {}
-    }
-}
-
-fn retained_tool_payload(
-    retained: &mut Option<AgentToolPayload>,
-    payload: &ToolPayload,
-) -> AgentToolPayload {
-    let next = match (retained.as_ref(), payload) {
-        (
-            Some(AgentToolPayload::Diff {
-                old: retained_old,
-                new: retained_new,
-                ..
-            }),
-            ToolPayload::Diff { path, old, new },
-        ) if retained_old.is_some() == old.is_some() => {
-            if let (Some(retained_old), Some(old)) = (retained_old, old) {
-                retained_old.synchronize(old);
-            }
-            retained_new.synchronize(new);
-            AgentToolPayload::Diff {
-                path: path.clone().into(),
-                old: retained_old.clone(),
-                new: retained_new.clone(),
-            }
-        }
-        (Some(AgentToolPayload::Text(retained)), ToolPayload::Text(text)) => {
-            retained.synchronize(text);
-            AgentToolPayload::Text(retained.clone())
-        }
-        (Some(AgentToolPayload::Json(retained)), ToolPayload::Json(text)) => {
-            retained.synchronize(text);
-            AgentToolPayload::Json(retained.clone())
-        }
-        (Some(AgentToolPayload::Terminal(retained)), ToolPayload::Terminal(text)) => {
-            retained.synchronize(text);
-            AgentToolPayload::Terminal(retained.clone())
-        }
-        (_, ToolPayload::Diff { path, old, new }) => AgentToolPayload::Diff {
-            path: path.clone().into(),
-            old: old.as_deref().map(AgentToolText::new),
-            new: AgentToolText::new(new),
-        },
-        (_, ToolPayload::Text(text)) => AgentToolPayload::Text(AgentToolText::new(text)),
-        (_, ToolPayload::Json(text)) => AgentToolPayload::Json(AgentToolText::new(text)),
-        (_, ToolPayload::Terminal(text)) => AgentToolPayload::Terminal(AgentToolText::new(text)),
-    };
-    *retained = Some(next.clone());
-    next
 }
 
 #[cfg(test)]
@@ -2357,99 +1607,6 @@ mod completion_tests {
 
     #[cfg(not(target_os = "macos"))]
     #[ala::test]
-    fn non_append_timeline_rebuild_clears_retained_store(cx: &mut TestAppContext) {
-        cx.update(zz_ui::init);
-        let (view, cx) = cx.add_window_view(|window, cx| {
-            let input = cx.new(|cx| InputState::new(window, cx));
-            let mux = cx.new(|cx| {
-                MuxClient::new(
-                    Err(DaemonError::Thread("test client".to_owned())),
-                    zz_daemon_client::default_socket_path(),
-                    cx,
-                )
-            });
-            let controller = cx.new(|_| AgentController::new());
-            let timeline_store = cx.new(|_| AgentTimelineStore::default());
-            timeline_store.update(cx, |store, cx| {
-                assert!(!store.expanded(1, DisclosureKind::Turn, false));
-                store.toggle_expanded(1, DisclosureKind::Turn, false, cx);
-                store.markdown(1, MarkdownSlot::Body, "old session".into(), cx);
-            });
-            let timeline_entries = [
-                AgentThreadEntry::User {
-                    id: 1,
-                    markdown: "old session".to_owned(),
-                    images: Vec::new(),
-                    message_id: None,
-                },
-                AgentThreadEntry::Assistant {
-                    id: 2,
-                    markdown: "old response".to_owned(),
-                    aside: None,
-                },
-            ];
-
-            let timeline_scroll = ListState::new(2, ListAlignment::Top, px(1_200.0));
-            let mention = target_picker(&palette_backend(mux.clone()), Some(input.clone()), cx);
-            AgentView {
-                pane: PaneId(7),
-                mux,
-                controller,
-                input,
-                visible: false,
-                pane_state: disconnected_pane_state(),
-                timeline: TimelineModel::new(&timeline_entries, &[1, 2], &|_| None),
-                timeline_store,
-                timeline_next_revision: 2,
-                conversation_epoch: 0,
-                stick: TimelineStick::new(&timeline_scroll, false),
-                timeline_scroll,
-                completion_scroll: UniformListScrollHandle::new(),
-                submission_error: None,
-                permission_wizard: PermissionWizard::default(),
-                question: None,
-                tray_open: None,
-                attachments: Vec::new(),
-                mention,
-                completions: Arc::from([]),
-                completion_selected: None,
-                completion_dismissed: false,
-                last_input: String::new(),
-                last_cursor: 0,
-                window_corners: WindowCorners::NONE,
-                floats: false,
-                chat: zz_ui::agent::chat::ChatPane::default(),
-                chat_inline: false,
-                _subscriptions: Vec::new(),
-            }
-        });
-        let replacement = [AgentThreadEntry::User {
-            id: 1,
-            markdown: "new session".to_owned(),
-            images: Vec::new(),
-            message_id: None,
-        }];
-        let (changed, cleared) = cx.update(|_, cx| {
-            view.update(cx, |view, cx| {
-                let (changed, store_update) =
-                    view.synchronize_timeline(&replacement, &[3], &[], &|_| None, false);
-                let cleared = view.update_timeline_store(store_update, cx);
-                (changed, cleared)
-            })
-        });
-
-        assert!(changed);
-        assert!(cleared);
-        let timeline_store = cx.update(|_, cx| view.read(cx).timeline_store.clone());
-        assert!(!cx.update(|_, cx| {
-            timeline_store.update(cx, |store, _| {
-                store.expanded(1, DisclosureKind::Turn, false)
-            })
-        }));
-    }
-
-    #[cfg(not(target_os = "macos"))]
-    #[ala::test]
     fn arrow_actions_navigate_completions_before_the_multiline_input(cx: &mut TestAppContext) {
         cx.update(zz_ui::init);
         let view_slot = Rc::new(RefCell::new(None));
@@ -2468,21 +1625,15 @@ mod completion_tests {
                 )
             });
             let controller = cx.new(|_| AgentController::new());
-            let timeline_scroll = ListState::new(0, ListAlignment::Top, px(1_200.0));
             let mention = target_picker(&palette_backend(mux.clone()), Some(input.clone()), cx);
-            let view = cx.new(|view_cx| AgentView {
+            let view = cx.new(|_| AgentView {
                 pane: PaneId(7),
                 mux,
                 controller,
                 input,
                 visible: false,
                 pane_state: disconnected_pane_state(),
-                timeline: TimelineModel::default(),
-                timeline_store: view_cx.new(|_| AgentTimelineStore::default()),
-                timeline_next_revision: 0,
-                conversation_epoch: 0,
-                stick: TimelineStick::new(&timeline_scroll, false),
-                timeline_scroll,
+                chat_revision: 0,
                 completion_scroll: UniformListScrollHandle::new(),
                 submission_error: None,
                 permission_wizard: PermissionWizard::default(),
@@ -2798,58 +1949,6 @@ mod completion_tests {
     }
 
     #[cfg(not(target_os = "macos"))]
-    #[ala::test]
-    fn subagent_steps_nest_from_the_controllers_parent_links(cx: &mut TestAppContext) {
-        let pane = PaneId(44);
-        let (view, controller, _sink, cx) = wired_view(cx, pane);
-        let tool = |seq: u64, id: &str, meta: serde_json::Value| zz_daemon::AgentStreamItem {
-            seq,
-            payload: zz_daemon::AgentStreamPayload::Update {
-                update: serde_json::json!({
-                    "sessionUpdate": "tool_call",
-                    "toolCallId": id,
-                    "title": id,
-                    "kind": "read",
-                    "_meta": meta,
-                }),
-            },
-        };
-        cx.update(|_, cx| {
-            controller.update(cx, |controller, cx| {
-                controller.apply_stream_items(
-                    pane,
-                    vec![
-                        tool(1, "agent-1", serde_json::json!({})),
-                        tool(
-                            2,
-                            "read-1",
-                            serde_json::json!({"zz": {"parent": "agent-1"}}),
-                        ),
-                        tool(
-                            3,
-                            "read-2",
-                            serde_json::json!({"zz": {"parent": "agent-1"}}),
-                        ),
-                    ],
-                    cx,
-                );
-            });
-        });
-        cx.run_until_parked();
-
-        let rows = cx.update(|_, cx| view.read(cx).timeline.rows.clone());
-        let [TimelineRow::Group { entries, .. }] = rows.as_slice() else {
-            panic!("the steps join their agent's row: {rows:?}");
-        };
-        let parents = entries
-            .iter()
-            .map(zz_ui::agent::timeline_parent)
-            .collect::<Vec<_>>();
-        let agent = entries[0].id();
-        assert_eq!(parents, [None, Some(agent), Some(agent)]);
-    }
-
-    #[cfg(not(target_os = "macos"))]
     fn stream(
         cx: &mut VisualTestContext,
         controller: &Entity<AgentController>,
@@ -3054,257 +2153,6 @@ mod completion_tests {
         assert!(cx.update(|_, cx| view.read(cx).question.is_none()));
         assert!(cx.update(|window, cx| view.read(cx).focus(cx).is_focused(window)));
     }
-
-    #[cfg(not(target_os = "macos"))]
-    #[ala::test]
-    fn a_step_that_arrives_before_its_agent_nests_once_the_agent_shows_up(cx: &mut TestAppContext) {
-        let pane = PaneId(47);
-        let (view, controller, _sink, cx) = wired_view(cx, pane);
-        let tool = |id: &str, meta: serde_json::Value| zz_daemon::AgentStreamPayload::Update {
-            update: serde_json::json!({
-                "sessionUpdate": "tool_call",
-                "toolCallId": id,
-                "title": id,
-                "kind": "read",
-                "_meta": meta,
-            }),
-        };
-        stream(
-            cx,
-            &controller,
-            pane,
-            vec![(
-                1,
-                tool("read-1", serde_json::json!({"zz": {"parent": "agent-1"}})),
-            )],
-        );
-        stream(
-            cx,
-            &controller,
-            pane,
-            vec![(
-                2,
-                zz_daemon::AgentStreamPayload::Update {
-                    update: serde_json::json!({
-                        "sessionUpdate": "agent_message_chunk",
-                        "content": {"type": "text", "text": "meanwhile"},
-                    }),
-                },
-            )],
-        );
-        stream(
-            cx,
-            &controller,
-            pane,
-            vec![(3, tool("agent-1", serde_json::json!({})))],
-        );
-
-        let rows = cx.update(|_, cx| view.read(cx).timeline.rows.clone());
-        let [TimelineRow::Group { entries, .. }] = rows.as_slice() else {
-            panic!("the step lands in its agent's turn row: {rows:?}");
-        };
-        let [AgentEntry::Assistant { .. }, agent, step] = entries.as_slice() else {
-            panic!("the step follows its agent in the turn: {entries:?}");
-        };
-        assert_eq!(zz_ui::agent::timeline_parent(step), Some(agent.id()));
-    }
-
-    #[cfg(not(target_os = "macos"))]
-    #[ala::test]
-    fn a_step_that_lands_in_the_same_batch_before_its_agent_still_nests(cx: &mut TestAppContext) {
-        let pane = PaneId(49);
-        let (view, controller, _sink, cx) = wired_view(cx, pane);
-        let tool = |id: &str, meta: serde_json::Value| zz_daemon::AgentStreamPayload::Update {
-            update: serde_json::json!({
-                "sessionUpdate": "tool_call",
-                "toolCallId": id,
-                "title": id,
-                "kind": "read",
-                "_meta": meta,
-            }),
-        };
-        stream(
-            cx,
-            &controller,
-            pane,
-            vec![(
-                1,
-                zz_daemon::AgentStreamPayload::Update {
-                    update: serde_json::json!({
-                        "sessionUpdate": "agent_message_chunk",
-                        "content": {"type": "text", "text": "starting"},
-                    }),
-                },
-            )],
-        );
-        stream(
-            cx,
-            &controller,
-            pane,
-            vec![
-                (
-                    2,
-                    tool("read-1", serde_json::json!({"zz": {"parent": "agent-1"}})),
-                ),
-                (
-                    3,
-                    zz_daemon::AgentStreamPayload::Update {
-                        update: serde_json::json!({
-                            "sessionUpdate": "agent_message_chunk",
-                            "messageId": "m-2",
-                            "content": {"type": "text", "text": "meanwhile"},
-                        }),
-                    },
-                ),
-                (4, tool("agent-1", serde_json::json!({}))),
-            ],
-        );
-
-        let rows = cx.update(|_, cx| view.read(cx).timeline.rows.clone());
-        let [TimelineRow::Group { entries, .. }] = rows.as_slice() else {
-            panic!("the step joins its agent's turn row: {rows:?}");
-        };
-        let [
-            AgentEntry::Assistant { .. },
-            AgentEntry::Assistant { .. },
-            agent,
-            step,
-        ] = entries.as_slice()
-        else {
-            panic!("the step follows its agent in the turn: {entries:?}");
-        };
-        assert_eq!(zz_ui::agent::timeline_parent(step), Some(agent.id()));
-    }
-
-    #[cfg(not(target_os = "macos"))]
-    fn ready_with_a_prompt(
-        cx: &mut VisualTestContext,
-        controller: &Entity<AgentController>,
-        pane: PaneId,
-        verbs: bool,
-        text: &str,
-    ) {
-        stream(
-            cx,
-            controller,
-            pane,
-            vec![
-                (
-                    1,
-                    zz_daemon::AgentStreamPayload::Ready {
-                        agent_name: "Claude Code".to_owned(),
-                        agent_key: "claude".to_owned(),
-                        auth_methods: Vec::new(),
-                        capabilities: zz_protocol::agent_stream::AgentSessionCapabilities {
-                            verbs,
-                            ..Default::default()
-                        },
-                    },
-                ),
-                (
-                    2,
-                    zz_daemon::AgentStreamPayload::SessionReady {
-                        session_id: "s-1".to_owned(),
-                        modes: None,
-                        config_options: None,
-                    },
-                ),
-                (
-                    3,
-                    zz_daemon::AgentStreamPayload::Update {
-                        update: serde_json::json!({
-                            "sessionUpdate": "user_message_chunk",
-                            "messageId": "u-1",
-                            "content": {"type": "text", "text": text},
-                        }),
-                    },
-                ),
-            ],
-        );
-    }
-
-    #[cfg(not(target_os = "macos"))]
-    fn hover_prompt(cx: &mut VisualTestContext) -> Option<ala::Bounds<ala::Pixels>> {
-        let bubble = cx
-            .debug_bounds("chat-user-bubble")
-            .expect("the prompt row is painted");
-        cx.simulate_mouse_move(bubble.center(), None, ala::Modifiers::none());
-        cx.update(|window, cx| {
-            _ = window.draw(cx);
-        });
-        cx.debug_bounds("agent-user-rewind")
-    }
-
-    #[cfg(not(target_os = "macos"))]
-    #[ala::test]
-    fn rewind_to_here_sends_the_rows_id_the_way_the_composer_sends(cx: &mut TestAppContext) {
-        let pane = PaneId(50);
-        let (view, controller, sink, cx) = wired_view(cx, pane);
-        ready_with_a_prompt(cx, &controller, pane, true, "fix the flaky test");
-
-        let rewind = hover_prompt(cx).expect("an idle pane offers the rewind");
-        cx.simulate_click(rewind.center(), ala::Modifiers::none());
-        cx.run_until_parked();
-
-        assert_eq!(
-            sent_answers(&sink),
-            [crate::mux::client::AgentRequest::Prompt {
-                text: "/rewind u-1".to_owned(),
-                images: Vec::new(),
-            }]
-        );
-        let (rows, connection) = cx.update(|_, cx| {
-            let view = view.read(cx);
-            (view.timeline.rows.len(), view.pane_state.connection)
-        });
-        assert_eq!(rows, 1, "the command adds no prompt row of its own");
-        assert_eq!(connection, AgentConnectionState::Ready, "nor a turn");
-    }
-
-    #[cfg(not(target_os = "macos"))]
-    #[ala::test]
-    fn rewind_to_here_waits_for_the_turn_to_end(cx: &mut TestAppContext) {
-        let pane = PaneId(51);
-        let (_view, controller, sink, cx) = wired_view(cx, pane);
-        ready_with_a_prompt(cx, &controller, pane, true, "fix the flaky test");
-        cx.update(|_, cx| {
-            controller.update(cx, |controller, cx| {
-                controller.apply_pane_state(
-                    pane,
-                    &zz_protocol::AgentPaneWire {
-                        phase: zz_protocol::AgentConnectionPhase::Running,
-                        ..Default::default()
-                    },
-                    cx,
-                );
-            });
-        });
-        cx.run_until_parked();
-        cx.update(|window, cx| {
-            _ = window.draw(cx);
-        });
-
-        assert!(hover_prompt(cx).is_none());
-        assert!(sent_answers(&sink).is_empty());
-    }
-
-    #[cfg(not(target_os = "macos"))]
-    #[ala::test]
-    fn a_slash_command_row_is_not_a_rewind_point(cx: &mut TestAppContext) {
-        let pane = PaneId(52);
-        let (_view, controller, _sink, cx) = wired_view(cx, pane);
-        ready_with_a_prompt(cx, &controller, pane, true, "/compact");
-        assert!(hover_prompt(cx).is_none());
-    }
-
-    #[cfg(not(target_os = "macos"))]
-    #[ala::test]
-    fn an_agent_without_zz_commands_offers_no_rewind(cx: &mut TestAppContext) {
-        let pane = PaneId(53);
-        let (_view, controller, _sink, cx) = wired_view(cx, pane);
-        ready_with_a_prompt(cx, &controller, pane, false, "fix the flaky test");
-        assert!(hover_prompt(cx).is_none());
-    }
 }
 
 #[cfg(test)]
@@ -3363,428 +2211,5 @@ mod tests {
         assert!(rendered.starts_with("bad�"));
         assert!(rendered.ends_with('…'));
         assert!(!rendered.contains('\0'));
-    }
-
-    fn no_parent(_: u64) -> Option<u64> {
-        None
-    }
-
-    #[test]
-    fn subagent_steps_join_their_agents_row_across_appends() {
-        let parents = |id: u64| matches!(id, 2 | 4).then_some(1);
-        let mut entries = vec![
-            thread_tool(1, "Survey", AgentToolStatusModel::Running),
-            thread_tool(2, "Read a.rs", AgentToolStatusModel::Completed),
-            AgentThreadEntry::Assistant {
-                id: 3,
-                markdown: "meanwhile".to_owned(),
-                aside: None,
-            },
-        ];
-        let mut revisions = vec![1, 1, 1];
-        let mut timeline = TimelineModel::new(&entries, &revisions, &parents);
-        assert_eq!(
-            timeline.entry_to_row,
-            [0, 0, 0],
-            "the message joins the turn"
-        );
-
-        entries.push(thread_tool(4, "Read b.rs", AgentToolStatusModel::Running));
-        revisions.push(1);
-        let TimelineModelUpdate::Incremental {
-            remeasure_rows,
-            added_rows,
-            ..
-        } = timeline.synchronize(&entries, &revisions, None, &parents)
-        else {
-            panic!("a late step should grow its agent's row in place");
-        };
-        assert_eq!(remeasure_rows, [0]);
-        assert_eq!(added_rows, 0);
-        assert_eq!(timeline.entry_to_row, [0, 0, 0, 0]);
-        assert!(matches!(
-            &timeline.rows[0],
-            TimelineRow::Group { entries, .. }
-                if entries.iter().map(AgentEntry::id).eq([1, 3, 2, 4])
-        ));
-        assert!(matches!(
-            timeline.rows[0].entry(4),
-            Some(AgentEntry::Tool(AgentToolEntry {
-                parent: Some(1),
-                ..
-            }))
-        ));
-
-        entries[3] = thread_tool(4, "Read b.rs", AgentToolStatusModel::Completed);
-        revisions[3] = 2;
-        assert!(matches!(
-            timeline.synchronize(&entries, &revisions, None, &no_parent),
-            TimelineModelUpdate::Rebuild
-        ));
-        assert_eq!(timeline.entry_to_row, [0, 0, 0, 0]);
-    }
-
-    fn thread_tool(id: u64, label: &str, status: AgentToolStatusModel) -> AgentThreadEntry {
-        AgentThreadEntry::Tool {
-            id,
-            protocol_id: format!("tool-{id}"),
-            kind: AgentToolKindModel::Edit,
-            status,
-            label: label.to_owned(),
-            location: None,
-            input: None,
-            output: Vec::new(),
-            default_expanded: false,
-            exit_code: None,
-        }
-    }
-
-    fn thread_reasoning(id: u64, markdown: &str) -> AgentThreadEntry {
-        AgentThreadEntry::Reasoning {
-            id,
-            label: "Reasoning".to_owned(),
-            markdown: markdown.to_owned(),
-            default_expanded: false,
-        }
-    }
-
-    #[test]
-    fn reasoning_and_tools_fold_into_one_row() {
-        let mut entries = vec![
-            thread_reasoning(1, "first"),
-            thread_reasoning(2, "second"),
-            thread_tool(3, "Editing files", AgentToolStatusModel::Completed),
-        ];
-        let mut revisions = vec![1, 1, 1];
-        let mut timeline = TimelineModel::new(&entries, &revisions, &no_parent);
-        assert_eq!(timeline.entry_to_row, [0, 0, 0]);
-        assert!(matches!(
-            &timeline.rows[0],
-            TimelineRow::Group { entries, .. } if entries.len() == 3
-        ));
-
-        entries.push(thread_reasoning(4, "third"));
-        entries.push(thread_reasoning(5, "fourth"));
-        revisions.extend([1, 1]);
-        let TimelineModelUpdate::Incremental {
-            remeasure_rows,
-            splice_start,
-            added_rows,
-            ..
-        } = timeline.synchronize(&entries, &revisions, None, &no_parent)
-        else {
-            panic!("appending reasoning after a tool should update the trailing group");
-        };
-        assert_eq!(remeasure_rows, [0]);
-        assert_eq!(splice_start, 1);
-        assert_eq!(added_rows, 0);
-        assert_eq!(timeline.entry_to_row, [0, 0, 0, 0, 0]);
-
-        entries[3] = thread_reasoning(4, "third, continued");
-        revisions[3] = 2;
-        let TimelineModelUpdate::Incremental {
-            remeasure_rows,
-            added_rows,
-            ..
-        } = timeline.synchronize(&entries, &revisions, None, &no_parent)
-        else {
-            panic!("a member revision should update its owning group row");
-        };
-        assert_eq!(remeasure_rows, [0]);
-        assert_eq!(added_rows, 0);
-    }
-
-    #[test]
-    fn timeline_model_updates_trailing_groups_and_maps_member_revisions() {
-        let mut entries = vec![
-            thread_tool(1, "Editing files", AgentToolStatusModel::Completed),
-            thread_tool(2, "Editing files", AgentToolStatusModel::Running),
-            thread_tool(3, "Editing files", AgentToolStatusModel::Completed),
-        ];
-        let mut revisions = vec![1, 1, 1];
-        let mut timeline = TimelineModel::new(&entries, &revisions, &no_parent);
-        assert_eq!(timeline.rows.len(), 1);
-        assert_eq!(timeline.entry_to_row, [0, 0, 0]);
-
-        entries.push(thread_tool(
-            4,
-            "Editing files",
-            AgentToolStatusModel::Pending,
-        ));
-        revisions.push(1);
-        let TimelineModelUpdate::Incremental {
-            store_entries,
-            remeasure_rows,
-            splice_start,
-            added_rows,
-        } = timeline.synchronize(&entries, &revisions, None, &no_parent)
-        else {
-            panic!("tool append should update the trailing group");
-        };
-        assert!(store_entries.is_empty());
-        assert_eq!(remeasure_rows, [0]);
-        assert_eq!(splice_start, 1);
-        assert_eq!(added_rows, 0);
-        assert_eq!(timeline.rows.len(), 1);
-        assert_eq!(timeline.entry_to_row, [0, 0, 0, 0]);
-        assert!(matches!(
-            &timeline.rows[0],
-            TimelineRow::Group { entries, .. } if entries.len() == 4
-        ));
-
-        entries.push(thread_tool(
-            5,
-            "Running command",
-            AgentToolStatusModel::Completed,
-        ));
-        revisions.push(1);
-        let TimelineModelUpdate::Incremental {
-            remeasure_rows,
-            splice_start,
-            added_rows,
-            ..
-        } = timeline.synchronize(&entries, &revisions, None, &no_parent)
-        else {
-            panic!("different-label tool append should update the trailing group");
-        };
-        assert_eq!(remeasure_rows, [0]);
-        assert_eq!(splice_start, 1);
-        assert_eq!(added_rows, 0);
-        assert_eq!(timeline.rows.len(), 1);
-        assert_eq!(timeline.entry_to_row, [0, 0, 0, 0, 0]);
-
-        entries[1] = thread_tool(2, "Editing files", AgentToolStatusModel::Failed);
-        revisions[1] = 2;
-        let TimelineModelUpdate::Incremental {
-            store_entries,
-            remeasure_rows,
-            added_rows,
-            ..
-        } = timeline.synchronize(&entries, &revisions, None, &no_parent)
-        else {
-            panic!("member revision should update its owning row");
-        };
-        assert_eq!(remeasure_rows, [0]);
-        assert_eq!(added_rows, 0);
-        assert_eq!(store_entries.len(), 1);
-        assert_eq!(store_entries[0].id(), 2);
-        assert!(matches!(
-            timeline.rows[0].entry(2),
-            Some(AgentEntry::Tool(AgentToolEntry {
-                status: AgentToolStatus::Failed,
-                ..
-            }))
-        ));
-
-        entries[1] = thread_tool(2, "Renamed tool", AgentToolStatusModel::Failed);
-        revisions[1] = 3;
-        let TimelineModelUpdate::Incremental {
-            store_entries,
-            remeasure_rows,
-            added_rows,
-            ..
-        } = timeline.synchronize(&entries, &revisions, None, &no_parent)
-        else {
-            panic!("tool label changes should preserve contiguous grouping");
-        };
-        assert_eq!(remeasure_rows, [0]);
-        assert_eq!(added_rows, 0);
-        assert_eq!(store_entries.len(), 1);
-        assert_eq!(timeline.entry_to_row, [0, 0, 0, 0, 0]);
-    }
-
-    #[test]
-    fn tool_entry_adapter_preserves_typed_payloads() {
-        let entry = ui_entry(&AgentThreadEntry::Tool {
-            id: 1,
-            protocol_id: "tool".to_owned(),
-            kind: AgentToolKindModel::Execute,
-            status: AgentToolStatusModel::Completed,
-            label: "run".to_owned(),
-            location: Some("/workspace/src/lib.rs:9".to_owned()),
-            input: Some(ToolPayload::Json("{\n  \"check\": true\n}".to_owned())),
-            output: vec![
-                ToolPayload::Diff {
-                    path: "/workspace/src/lib.rs".to_owned(),
-                    old: Some("old".to_owned()),
-                    new: "new".to_owned(),
-                },
-                ToolPayload::Text("done".to_owned()),
-                ToolPayload::Terminal("$ cargo check\nok\n[exit status: 0]".to_owned()),
-            ],
-            default_expanded: false,
-            exit_code: None,
-        });
-        let AgentEntry::Tool(AgentToolEntry {
-            location,
-            input,
-            output,
-            ..
-        }) = entry
-        else {
-            panic!("tool output should be present");
-        };
-
-        assert_eq!(location.as_deref(), Some("/workspace/src/lib.rs:9"));
-        assert!(matches!(input, Some(AgentToolPayload::Json(json)) if json.contains("check")));
-        assert!(matches!(
-            output.as_ref(),
-            [
-                AgentToolPayload::Diff { path, old: Some(old), new },
-                AgentToolPayload::Text(text),
-                AgentToolPayload::Terminal(terminal),
-            ]
-                if path == "/workspace/src/lib.rs"
-                    && old == "old"
-                    && new == "new"
-                    && text == "done"
-                    && terminal.contains("exit status")
-        ));
-    }
-
-    #[test]
-    fn tool_entry_adapter_releases_replaced_payload_slots() {
-        let mut entry = AgentThreadEntry::Tool {
-            id: 7,
-            protocol_id: "tool".to_owned(),
-            kind: AgentToolKindModel::Execute,
-            status: AgentToolStatusModel::Running,
-            label: "run".to_owned(),
-            location: None,
-            input: Some(ToolPayload::Text("input".to_owned())),
-            output: vec![
-                ToolPayload::Text("one".to_owned()),
-                ToolPayload::Text("two".to_owned()),
-                ToolPayload::Text("three".to_owned()),
-            ],
-            default_expanded: false,
-            exit_code: None,
-        };
-        let mut markdown = HashMap::new();
-        let mut tool_payloads = HashMap::new();
-
-        ui_entry_with_markdown(&entry, &mut markdown, &mut tool_payloads);
-        assert_eq!(tool_payloads[&7].len(), 4);
-
-        let AgentThreadEntry::Tool { input, output, .. } = &mut entry else {
-            unreachable!();
-        };
-        *input = None;
-        output.truncate(1);
-        ui_entry_with_markdown(&entry, &mut markdown, &mut tool_payloads);
-
-        assert_eq!(tool_payloads[&7].len(), 2);
-        assert!(tool_payloads[&7][0].is_none());
-        assert!(matches!(
-            &tool_payloads[&7][1],
-            Some(AgentToolPayload::Text(text)) if text == "one"
-        ));
-    }
-
-    #[test]
-    fn tool_payload_updates_preserve_live_handles_and_other_tools() {
-        let mut markdown = HashMap::new();
-        let mut tool_payloads = HashMap::new();
-        let mut first = thread_tool(7, "first", AgentToolStatusModel::Running);
-        let mut second = thread_tool(8, "second", AgentToolStatusModel::Running);
-        for entry in [&mut first, &mut second] {
-            let AgentThreadEntry::Tool { input, output, .. } = entry else {
-                unreachable!();
-            };
-            *input = Some(ToolPayload::Json("input".to_owned()));
-            output.push(ToolPayload::Text("initial".to_owned()));
-            ui_entry_with_markdown(entry, &mut markdown, &mut tool_payloads);
-        }
-        let Some(AgentToolPayload::Text(retained_first)) = tool_payloads[&7][1].clone() else {
-            panic!("first text handle");
-        };
-        let Some(AgentToolPayload::Text(retained_second)) = tool_payloads[&8][1].clone() else {
-            panic!("second text handle");
-        };
-        let AgentThreadEntry::Tool { input, output, .. } = &mut first else {
-            unreachable!();
-        };
-        *input = None;
-        output[0] = ToolPayload::Text("initial, continued".to_owned());
-        output.push(ToolPayload::Terminal("another output".to_owned()));
-        ui_entry_with_markdown(&first, &mut markdown, &mut tool_payloads);
-        assert_eq!(retained_first, *"initial, continued");
-        assert_eq!(retained_second, *"initial");
-        assert_eq!(tool_payloads[&8].len(), 2);
-        assert!(tool_payloads[&8][0].is_some());
-        assert!(tool_payloads[&7][0].is_none());
-        let AgentThreadEntry::Tool { output, .. } = &mut first else {
-            unreachable!();
-        };
-        output.clear();
-        ui_entry_with_markdown(&first, &mut markdown, &mut tool_payloads);
-        assert_eq!(tool_payloads[&7].len(), 1);
-        assert_eq!(retained_second, *"initial");
-    }
-
-    #[test]
-    fn flat_entry_adapter_covers_exactly_five_acp_shapes() {
-        let entries = ui_entries(&[
-            AgentThreadEntry::User {
-                id: 1,
-                markdown: "user".to_owned(),
-                images: Vec::new(),
-                message_id: None,
-            },
-            AgentThreadEntry::Assistant {
-                id: 2,
-                markdown: "assistant".to_owned(),
-                aside: None,
-            },
-            AgentThreadEntry::Reasoning {
-                id: 3,
-                label: "reasoning".to_owned(),
-                markdown: "thought".to_owned(),
-                default_expanded: false,
-            },
-            AgentThreadEntry::Tool {
-                id: 4,
-                protocol_id: "tool".to_owned(),
-                kind: AgentToolKindModel::Execute,
-                status: AgentToolStatusModel::Running,
-                label: "run".to_owned(),
-                location: None,
-                input: None,
-                output: Vec::new(),
-                default_expanded: false,
-                exit_code: None,
-            },
-            AgentThreadEntry::Plan {
-                id: 5,
-                markdown: "- [ ] plan".to_owned(),
-            },
-        ]);
-
-        assert_eq!(entries.len(), 5);
-        assert!(matches!(entries[0], AgentEntry::User { .. }));
-        assert!(matches!(entries[1], AgentEntry::Assistant { .. }));
-        assert!(matches!(entries[2], AgentEntry::Reasoning { .. }));
-        assert!(matches!(entries[3], AgentEntry::Tool(_)));
-        assert!(matches!(entries[4], AgentEntry::Plan { .. }));
-    }
-
-    #[test]
-    fn user_attachments_reach_the_timeline_without_a_second_copy() {
-        let image = Arc::new(Image::from_bytes(ala::ImageFormat::Png, vec![0x89, 0x50]));
-        let entries = ui_entries(&[AgentThreadEntry::User {
-            id: 1,
-            markdown: String::new(),
-            images: vec![Arc::clone(&image)],
-            message_id: None,
-        }]);
-
-        let AgentEntry::User { images, .. } = &entries[0] else {
-            panic!("the adapter should keep this a user entry");
-        };
-        assert_eq!(images.len(), 1);
-        assert!(
-            Arc::ptr_eq(&images[0], &image),
-            "the bytes should travel by handle, not by clone, so ala decodes them once"
-        );
     }
 }

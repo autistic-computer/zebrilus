@@ -177,6 +177,66 @@ impl Hello {
     }
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum HostPlatform {
+    #[default]
+    Unknown,
+    Macos,
+    Windows,
+    Linux(LinuxDistro),
+}
+
+impl HostPlatform {
+    #[must_use]
+    pub const fn slug(self) -> Option<&'static str> {
+        Some(match self {
+            Self::Unknown => return None,
+            Self::Macos => "macos",
+            Self::Windows => "windows",
+            Self::Linux(LinuxDistro::Ubuntu) => "ubuntu",
+            Self::Linux(LinuxDistro::Debian) => "debian",
+            Self::Linux(LinuxDistro::Arch) => "arch",
+            Self::Linux(LinuxDistro::Fedora) => "fedora",
+            Self::Linux(LinuxDistro::Other) => "linux",
+        })
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum LinuxDistro {
+    #[default]
+    Other,
+    Ubuntu,
+    Debian,
+    Arch,
+    Fedora,
+}
+
+impl LinuxDistro {
+    #[must_use]
+    pub fn from_os_release(text: &str) -> Self {
+        let field = |key: &str| {
+            text.lines()
+                .filter_map(|line| line.trim().split_once('='))
+                .find(|(name, _)| *name == key)
+                .map(|(_, value)| value.trim().trim_matches(['"', '\'']).to_ascii_lowercase())
+                .unwrap_or_default()
+        };
+        let id = field("ID");
+        let like = field("ID_LIKE");
+        std::iter::once(id.as_str())
+            .chain(like.split_whitespace())
+            .find_map(|name| match name {
+                "ubuntu" => Some(Self::Ubuntu),
+                "debian" => Some(Self::Debian),
+                "arch" => Some(Self::Arch),
+                "fedora" | "rhel" | "centos" => Some(Self::Fedora),
+                _ => None,
+            })
+            .unwrap_or_default()
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Welcome {
     pub protocol_version: u16,
@@ -186,6 +246,8 @@ pub struct Welcome {
     pub caps: u64,
     #[serde(default)]
     pub clock: u64,
+    #[serde(default)]
+    pub platform: HostPlatform,
 }
 
 impl Welcome {

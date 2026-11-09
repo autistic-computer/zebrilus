@@ -1,5 +1,5 @@
 import { emit, flush, markTree, on, phase, schedule, state } from "./core.js";
-import { paneHeaderButton, paneRenderer, panes } from "./workspace.js";
+import { paneRenderer } from "./workspace.js";
 
 const TOOL_ICONS = {
   read: "file",
@@ -833,14 +833,12 @@ paneRenderer("agent", chat);
 export function flip(pane) {
   if (!state.client?.agent_flip(pane)) return;
   flush();
-  syncHeaders();
   markTree();
 }
 
 export function chooseFlip(pane, choice) {
   if (!state.client?.agent_flip_choose(pane, choice)) return;
   flush();
-  syncHeaders();
   markTree();
 }
 
@@ -848,45 +846,9 @@ export function flipState(pane) {
   return state.client ? JSON.parse(state.client.agent_flip_state(pane)) : null;
 }
 
-const flipButtons = new WeakMap();
-
-paneHeaderButton((pane) => {
-  let flipButton = flipButtons.get(pane);
-  if (!flipButton) {
-    flipButton = button("icon-button.toggle", "Switch to chat", "chat", (event) => {
-      event.stopPropagation();
-      flip(pane.id);
-    });
-    flipButtons.set(pane, flipButton);
-  }
-  paintFlip(flipButton, flipState(pane.id));
-  return flipButton;
-});
-
-function paintFlip(flipButton, flip) {
-  flipButton.hidden = !flip;
-  if (!flip) return;
-  flipButton.title = flip.title;
-  flipButton.setAttribute("aria-label", flip.title);
-  const glyph = flipButton.querySelector("[data-icon]");
-  if (glyph) glyph.dataset.icon = flip.icon;
-  flipButton.toggleAttribute("data-armed", flip.armed);
-  flipButton.disabled = flip.pending || null;
-  if (flip.armed) flipButton.dataset.state = "selected";
-  else delete flipButton.dataset.state;
-}
-
-function syncHeaders() {
-  for (const [id, pane] of panes) {
-    const flipButton = pane.element.querySelector("[data-penna='icon-button.toggle']");
-    if (flipButton) paintFlip(flipButton, flipState(id));
-  }
-}
-
 phase("tree", () => {
   if (!state.client) return;
   state.client.agent_prune();
-  syncHeaders();
   markAll();
 });
 
@@ -931,7 +893,6 @@ on("paneRemoved", (event) => {
 });
 on("flip", (event) => {
   if (event.error) emit("status", { text: event.error });
-  syncHeaders();
   markTree();
 });
 on("theme", markAll);

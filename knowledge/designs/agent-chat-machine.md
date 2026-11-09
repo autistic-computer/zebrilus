@@ -36,8 +36,8 @@ reducer, lens runner), from untyped ACP `session/update` values. That is where t
   their requests and end on their own.
 
 In `chat_rows` and `zz_ui::agent::chat`: each subagent is its own row (the CLI's mark, its name,
-a status glyph and how long it took), and clicking one opens its chat in a PiP over the thread
-(`chat_agent_pip`): its prompt, its own rows, its answer and a footer line. An answered question
+a status glyph and how long it took), and clicking one opens its chat in a PiP docked beside the
+thread (`chat_agent_pip`): its prompt, its own rows, its answer and a footer line. An answered question
 shows the question and the answer under it. Mermaid and code-block actions are a separate piece of
 the markdown view.
 
@@ -225,9 +225,11 @@ could tie to real Claude Code or Codex behavior.
 
 1. The lens draws the chat on desktop, web and iPad. The desktop controller folds `Chat` events
    into a `ChatView` per pane (`AgentController::pane_chat`); the thin client already folds them
-   in `LensTranscript::chat`. Once that view has a turn, both draw `zz_ui::agent::chat::chat_body`
-   in place of the old timeline, holding folds, the opened subagent and follow-scroll in the
-   shared `ChatPane`. Pending approvals and questions sit inline where the chat puts them, built by
+   in `LensTranscript::chat`. Once that view has a turn, both draw it with
+   `zz_ui::agent::chat::chat_surface`, a list that lays out only the turns on screen and follows the
+   bottom until you scroll up, holding folds, the opened subagent and the list in the shared
+   `ChatPane`; each app is a `ChatHost` that hands the surface its chat and its ask cards. Sending
+   a prompt or switching sessions follows the bottom again. Pending approvals and questions sit inline where the chat puts them, built by
    the same permission and question cards the composer used to dock (`ChatHooks::ask`); a request
    the chat does not know still docks above the composer. Subagents started together share one
    card with a row each (status glyph, name, a one-line preview, how long it took); a row opens and

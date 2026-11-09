@@ -77,7 +77,8 @@ pub fn pane_index(window: &WindowSnapshot, pane: PaneId) -> u32 {
 #[must_use]
 pub fn pane_label(pane: &PaneSnapshot) -> String {
     let title = pane.title.trim();
-    if !title.is_empty() {
+    let untitled_agent = matches!(pane.kind, PaneKindSnapshot::Agent(_)) && title == "agent";
+    if !title.is_empty() && !untitled_agent {
         return title.to_owned();
     }
     match &pane.kind {
@@ -88,8 +89,19 @@ pub fn pane_label(pane: &PaneSnapshot) -> String {
         }
         PaneKindSnapshot::Browser(_) => "browser".to_owned(),
         PaneKindSnapshot::Editor(_) => "editor".to_owned(),
-        PaneKindSnapshot::Agent(_) => "agent".to_owned(),
+        PaneKindSnapshot::Agent(agent) => agent.provider.label().to_owned(),
     }
+}
+
+#[must_use]
+pub fn pane_folder(pane: &PaneSnapshot) -> Option<String> {
+    let cwd = match &pane.kind {
+        _ if !pane.summary.cwd.is_empty() => pane.summary.cwd.clone(),
+        PaneKindSnapshot::Agent(agent) => agent.cwd.as_deref()?.to_string_lossy().into_owned(),
+        PaneKindSnapshot::Editor(editor) if !editor.cwd.is_empty() => editor.cwd.clone(),
+        _ => return None,
+    };
+    Some(crate::providers::home_relative(&cwd))
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]

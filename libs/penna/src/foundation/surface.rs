@@ -8,8 +8,7 @@ use ala::{
 use serde::{Deserialize, Serialize};
 
 use super::{
-    ActiveTheme as _, Colorize as _, Elevation, Emphasis, Ground, PaintState, PrimaryStyle, Theme,
-    Tone,
+    ActiveTheme as _, Colorize as _, Elevation, Emphasis, Ground, PaintState, Theme, Tone,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -804,6 +803,7 @@ impl Default for ShadowMaterial {
 }
 
 const CONTACT_ALPHA: f32 = 0.2;
+const TIGHT_SHADOW: f32 = 0.4;
 const RING_WIDTH: Pixels = px(2.0);
 const BAR_WIDTH: Pixels = px(3.0);
 const BAR_LENGTH: Pixels = px(16.0);
@@ -880,6 +880,7 @@ pub struct Layer {
     pub mark: Option<EdgeMark>,
     pub text: Hsla,
     pub radius: Pixels,
+    pub share: Option<f32>,
     pub smoothing: f32,
     pub ground: Ground,
 }
@@ -929,8 +930,7 @@ impl Theme {
             Shape::Pill => FULL_CORNER_RADIUS,
             Shape::Round if role.row && !self.inset_rows() => px(0.0),
             Shape::Round if role.capsules() && self.pill_controls() => FULL_CORNER_RADIUS,
-            Shape::Round if role.row => self.menu_radius(),
-            Shape::Round if role.kind.is_control() => self
+            Shape::Round if role.row || role.kind.is_control() => self
                 .control_radius()
                 .min(px(super::interface_theme::MAX_CORNER_RADIUS)),
             Shape::Round => self.radius,
@@ -981,6 +981,23 @@ impl Theme {
         let ink = self.shadow_color;
         vec![shadow_of(
             material,
+            ink.alpha((ink.a * material.strength).min(1.0)),
+        )]
+    }
+
+    pub fn tight_float_shadows(&self) -> Vec<BoxShadow> {
+        let material = self.float_shadow;
+        if material.strength <= 0.0 {
+            return Vec::new();
+        }
+        let ink = self.shadow_color;
+        vec![shadow_of(
+            ShadowMaterial {
+                y: material.y * TIGHT_SHADOW,
+                blur: material.blur * TIGHT_SHADOW,
+                spread: material.spread * TIGHT_SHADOW,
+                ..material
+            },
             ink.alpha((ink.a * material.strength).min(1.0)),
         )]
     }
@@ -1045,8 +1062,7 @@ impl Theme {
             Elevation::Popover => 2,
             _ => 1,
         };
-        let toned = !(tone == Tone::Neutral
-            || (tone == Tone::Primary && self.primary == PrimaryStyle::Foreground));
+        let toned = !matches!(tone, Tone::Neutral | Tone::Primary);
         let glass_fill = soft.opaque().fill;
         let paint = if surface.prominent && fill != Fill::Glass {
             solid
@@ -1098,14 +1114,15 @@ impl Theme {
             PaintState::Focused if kind == Kind::Field => style.selected,
             _ => Highlight::None,
         };
-        let highlight = match highlight {
-            Highlight::Glass if glass.is_some() || ground.glass || self.drawn_glass().is_none() => {
-                Highlight::Accent
-            }
-            highlight => highlight,
+        let unglassed = highlight == Highlight::Glass
+            && (glass.is_some() || ground.glass || self.drawn_glass().is_none());
+        let highlight = if unglassed {
+            Highlight::Accent
+        } else {
+            highlight
         };
         let highlight = match highlight {
-            Highlight::Accent if tone == Tone::Neutral && !self.tinted() => Highlight::Tint,
+            Highlight::Accent if tone == Tone::Neutral => Highlight::Tint,
             highlight => highlight,
         };
         if highlight == Highlight::Glass {
@@ -1161,9 +1178,9 @@ impl Theme {
             text = text.rest();
         }
 
-        let pip = surface.role.id == super::roles::FLOATING_PIP.id;
-        let rimless =
-            (pane && self.pane_margin > px(0.0) || pip) && !glass.as_ref().is_some_and(draws_rim);
+        let floating = kind.floats() && style.fill == Fill::Glass && !opaque && !ground.glass;
+        let rimless = (pane && self.pane_margin > px(0.0) || floating)
+            && !glass.as_ref().is_some_and(draws_rim);
         let edge = if kind.is_control() {
             if soft.border_width > px(0.0) && tone != Tone::Neutral {
                 soft.border
@@ -1175,7 +1192,11 @@ impl Theme {
         } else {
             self.border()
         };
-        let edged = rimless;
+        let rimmed = unglassed
+            && super::roles::RIMMED_PICKS
+                .iter()
+                .any(|role| role.id == surface.role.id);
+        let edged = rimless || rimmed;
         let border_width = if style.outline || edged {
             self.outline
         } else {
@@ -1205,10 +1226,12 @@ impl Theme {
             (border, border_width)
         };
         let casts = !kind.is_control() || ground.elevation == Elevation::Window;
-        let mut shadow = if casts && state != PaintState::Disabled {
-            self.shadows_of(style.shadow)
-        } else {
+        let mut shadow = if !casts || state == PaintState::Disabled {
             Vec::new()
+        } else if floating && glass.is_none() && style.shadow == Shadow::Float {
+            self.tight_float_shadows()
+        } else {
+            self.shadows_of(style.shadow)
         };
         let lit = self.tone(Tone::Primary).opaque();
         match highlight {
@@ -1298,6 +1321,29 @@ impl Theme {
         let solid_fill =
             highlight == Highlight::Accent || (surface.prominent && fill != Fill::Glass);
         let radius = self.shape_radius(surface, style.shape);
+        let tall = surface
+            .role
+            .lineage()
+            .any(|node| node.id == SurfaceRole::TEXT_AREA.id);
+        let radius = if tall && radius > px(0.0) && radius < FULL_CORNER_RADIUS {
+            self.control_corner(px(crate::Size::Medium.control_px()))
+        } else {
+            radius
+        };
+        let descends = |id: &str| surface.role.lineage().any(|node| node.id == id);
+        let icon_tile =
+            descends(super::roles::TILE_STACK.id) || descends(super::roles::TILE_MINI.id);
+        let thumbnail = descends(SurfaceRole::TILE.id);
+        let controlled = !tall
+            && (icon_tile
+                || !thumbnail
+                    && (kind.is_control()
+                        || surface.role.row
+                        || super::roles::FLOATING_CHIPS
+                            .iter()
+                            .any(|chip| chip.id == surface.role.id)));
+        let share = (controlled && radius > px(0.0) && radius < FULL_CORNER_RADIUS)
+            .then(|| self.control_roundness());
         Layer {
             fill: fill_color,
             mark,
@@ -1306,10 +1352,9 @@ impl Theme {
             shadow,
             text,
             radius,
+            share,
             smoothing: if radius >= FULL_CORNER_RADIUS {
                 Smoothing::CIRCLE.exponent()
-            } else if surface.role.row {
-                style.smoothing.exponent().min(super::ROW_CORNER_SMOOTHING)
             } else {
                 style.smoothing.exponent()
             },
@@ -1513,7 +1558,6 @@ mod tests {
     #[test]
     fn chrome_items_select_as_glass_and_gapped_panes_take_the_rim() {
         let mut theme = theme();
-        theme.primary = PrimaryStyle::Accent;
         theme.glass = Some(liquid());
         let chrome = [
             super::super::roles::SIDEBAR_ROW,
@@ -1529,6 +1573,7 @@ mod tests {
                 "{}",
                 role.id
             );
+            assert_eq!(selected.border_width, px(0.0), "{}", role.id);
         }
         let pane = Surface::new(Kind::Pane.role());
         assert!(theme.layer(pane, PaintState::Rest).glass.is_none());
@@ -1542,18 +1587,35 @@ mod tests {
         assert!(!gapped.ground.glass);
 
         theme.glass = None;
-        let lit = theme.paint_on(theme.ground(), Tone::Primary, Emphasis::Solid);
         for role in chrome {
             let selected = theme.layer(Surface::new(role), PaintState::Selected);
             assert!(selected.glass.is_none(), "{}", role.id);
-            assert_eq!(selected.fill, lit.fill, "{}", role.id);
-            assert!(selected.ground.solid, "{}", role.id);
+            assert!(!selected.ground.solid, "{}", role.id);
+            let edge = if super::super::roles::RIMMED_PICKS
+                .iter()
+                .any(|rimmed| rimmed.id == role.id)
+            {
+                (
+                    theme.ground().ink.opacity(CONTROL_EDGE_ALPHA),
+                    theme.outline,
+                )
+            } else {
+                (theme.transparent, px(0.0))
+            };
+            assert_eq!(
+                (selected.border, selected.border_width),
+                edge,
+                "{}",
+                role.id
+            );
         }
+        let tab = Surface::new(super::super::roles::TAB_WINDOW);
+        assert_eq!(theme.layer(tab, PaintState::Rest).border_width, px(0.0));
         assert!(theme.layer(pane, PaintState::Rest).glass.is_none());
     }
 
     #[test]
-    fn a_chrome_selection_reads_as_its_highlight_and_a_rimless_pane_or_pip_takes_a_hairline() {
+    fn a_chrome_selection_reads_as_its_highlight_and_a_rimless_pane_or_float_takes_a_hairline() {
         let mut theme = theme();
         let row = Surface::new(super::super::roles::SIDEBAR_ROW);
         theme.glass = Some(liquid());
@@ -1581,7 +1643,9 @@ mod tests {
 
         let pane = Surface::new(Kind::Pane.role());
         let pip = Surface::new(super::super::roles::FLOATING_PIP);
-        for (surface, margin) in [(pane, 8.0), (pip, 0.0)] {
+        let tooltip = Surface::new(SurfaceRole::TOOLTIP);
+        let menu = Surface::new(SurfaceRole::POPOVER);
+        for (surface, margin) in [(pane, 8.0), (pip, 0.0), (tooltip, 0.0), (menu, 0.0)] {
             theme.pane_margin = px(margin);
             for (glass, hairline) in [
                 (None, true),
@@ -1602,6 +1666,45 @@ mod tests {
                 );
             }
         }
+
+        theme.glass = None;
+        let shadow = &theme.layer(tooltip, PaintState::Rest).shadow[0];
+        assert_eq!(
+            (shadow.offset.y, shadow.blur_radius, shadow.spread_radius),
+            (px(4.0), px(12.0), px(-2.4))
+        );
+    }
+
+    #[test]
+    fn controls_and_rows_round_by_height_while_text_areas_and_thumbnails_keep_pixels() {
+        let mut theme = theme();
+        theme.smoothing = Smoothing::clamped(4.0);
+        let roundness = Some(theme.control_roundness());
+        for role in [
+            Kind::Button.role(),
+            SurfaceRole::MENU_ITEM,
+            super::super::roles::SIDEBAR_ROW,
+            super::super::roles::TILE_STACK,
+        ] {
+            let layer = theme.layer(Surface::new(role), PaintState::Rest);
+            assert_eq!(layer.share, roundness, "{}", role.id);
+            assert_eq!(layer.smoothing, 4.0, "{}", role.id);
+        }
+        let area = theme.layer(Surface::new(SurfaceRole::TEXT_AREA), PaintState::Rest);
+        assert_eq!(
+            (area.share, area.radius),
+            (
+                None,
+                theme.control_corner(px(crate::Size::Medium.control_px()))
+            )
+        );
+        let tile = theme.layer(
+            Surface::new(super::super::roles::SETTINGS_TILE),
+            PaintState::Rest,
+        );
+        assert_eq!((tile.share, tile.radius), (None, theme.radius));
+        let card = theme.layer(Surface::new(Kind::Card.role()), PaintState::Rest);
+        assert_eq!((card.share, card.radius), (None, theme.radius));
     }
 
     #[test]
@@ -1876,94 +1979,29 @@ mod tests {
     }
 
     #[test]
-    fn content_on_a_tinted_selection_takes_its_ink() {
+    fn a_picked_row_washes_in_the_ink_whatever_the_accent() {
         let mut theme = theme();
-        let chip = |theme: &Theme, tone, ground| {
-            theme.layer(
-                Surface::new(SurfaceRole::CHIP).tone(tone).on(ground),
-                PaintState::Rest,
-            )
-        };
-        let washed = theme.ground_at(Surface::new(SurfaceRole::MENU_ITEM), PaintState::Selected);
-        assert_eq!(
-            chip(&theme, Tone::Success, washed).fill,
-            theme.success.opacity(0.12)
-        );
-
-        theme.accent = crate::parse_hex("#ad4f00").unwrap();
-        theme.primary = PrimaryStyle::Accent;
-        let picked = theme.ground_at(Surface::new(SurfaceRole::MENU_ITEM), PaintState::Selected);
-        let toned = chip(&theme, Tone::Success, picked);
-        let neutral = chip(&theme, Tone::Neutral, picked);
-        assert_eq!(toned.fill, neutral.fill);
-        assert_eq!(crate::to_hex(toned.text), "#ebebeb");
-        let label = theme.paint_on(picked, Tone::Danger, Emphasis::Ghost);
-        assert_eq!(crate::to_hex(label.text), "#ebebeb");
-        assert_eq!(crate::to_hex(label.muted_at(PaintState::Rest)), "#ebebeb");
-    }
-
-    #[test]
-    fn a_graphite_selection_gives_its_content_the_row_ink() {
-        let mut theme = theme();
-        theme.accent = crate::parse_hex("#aaaaaa").unwrap();
-        theme.primary = PrimaryStyle::Accent;
-        let picked = theme.ground_at(Surface::new(SurfaceRole::MENU_ITEM), PaintState::Selected);
-        assert_eq!(crate::to_hex(picked.fill), "#aaaaaa");
-        let chip = |tone| {
-            theme.layer(
-                Surface::new(SurfaceRole::CHIP).tone(tone).on(picked),
-                PaintState::Rest,
-            )
-        };
-        assert_eq!(chip(Tone::Success).fill, chip(Tone::Neutral).fill);
-        assert_eq!(crate::to_hex(chip(Tone::Success).text), "#010101");
-        let label = theme.paint_on(picked, Tone::Danger, Emphasis::Ghost);
-        assert_eq!(crate::to_hex(label.text), "#010101");
-        assert_eq!(crate::to_hex(label.muted_at(PaintState::Rest)), "#010101");
-        let listed = theme
-            .paint(Tone::Neutral, Emphasis::Ghost)
-            .ground_at(PaintState::Selected);
-        let label = theme.paint_on(listed, Tone::Danger, Emphasis::Ghost);
-        assert_eq!(crate::to_hex(label.muted_at(PaintState::Rest)), "#010101");
-    }
-
-    #[test]
-    fn a_picked_row_washes_in_the_ink_until_a_tint_fills_it() {
-        let mut theme = theme();
-        let menu = theme.ground_of(Surface::new(SurfaceRole::POPOVER));
         let washed = SurfaceRole::under(&SurfaceRole::MENU_ITEM, "test.row", "Test", "")
             .with(StylePatch::EMPTY.selected(Highlight::Tint));
-        for (role, ground) in [
-            (SurfaceRole::MENU_ITEM, menu),
-            (SurfaceRole::ROW, theme.ground()),
-        ] {
-            let picked = theme.layer(Surface::new(role).on(ground), PaintState::Selected);
-            let wash = theme.layer(Surface::new(washed).on(ground), PaintState::Selected);
-            assert_eq!(
-                (picked.fill, picked.text),
-                (wash.fill, wash.text),
-                "{}",
-                role.id
-            );
-        }
-
-        let tint = crate::parse_hex("#ad4f00").unwrap();
-        theme.accent = tint;
-        theme.primary = PrimaryStyle::Accent;
-        let on_tint = crate::parse_hex("#ebebeb").unwrap();
-        for (role, ground) in [
-            (SurfaceRole::MENU_ITEM, menu),
-            (SurfaceRole::ROW, theme.ground()),
-            (SurfaceRole::TAB, theme.ground()),
-        ] {
-            let picked = theme.layer(Surface::new(role).on(ground), PaintState::Selected);
-            assert_eq!(crate::to_hex(picked.fill), "#ad4f00", "{}", role.id);
-            assert_eq!(
-                crate::to_hex(picked.text),
-                crate::to_hex(on_tint),
-                "{}",
-                role.id
-            );
-        }
+        let check = |theme: &Theme| {
+            let menu = theme.ground_of(Surface::new(SurfaceRole::POPOVER));
+            for (role, ground) in [
+                (SurfaceRole::MENU_ITEM, menu),
+                (SurfaceRole::ROW, theme.ground()),
+            ] {
+                let picked = theme.layer(Surface::new(role).on(ground), PaintState::Selected);
+                let wash = theme.layer(Surface::new(washed).on(ground), PaintState::Selected);
+                assert_eq!(
+                    (picked.fill, picked.text),
+                    (wash.fill, wash.text),
+                    "{}",
+                    role.id
+                );
+                assert!(!picked.ground.solid, "{}", role.id);
+            }
+        };
+        check(&theme);
+        theme.accent = crate::parse_hex("#ad4f00").unwrap();
+        check(&theme);
     }
 }

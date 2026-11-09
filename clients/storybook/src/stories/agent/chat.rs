@@ -2,29 +2,25 @@ use std::{rc::Rc, sync::Arc};
 
 use ala::{
     AnyElement, AnyView, App, AppContext as _, Context, Div, Entity, Image, IntoElement,
-    ParentElement as _, Render, ScrollWheelEvent, SharedString, Styled as _, Window, div,
-    prelude::*, px,
+    ParentElement as _, Render, SharedString, Styled as _, Window, div, prelude::*, px,
 };
 use penna::{
     ActiveTheme as _, IconName, WindowExt as _,
-    blocks::chat::{
-        CHAT_CONTENT_MAX_WIDTH, COMPOSER_OUTER_PADDING, permission_card, permission_option,
-    },
+    blocks::chat::{CHAT_CONTENT_MAX_WIDTH, permission_card, permission_option},
     blocks::notification::Notification,
     components::button::Button,
     components::input::InputEvent,
     v_flex,
 };
 use zz_protocol::chat::{
-    Answer, Ask, ItemBody, ItemId, ItemKind, ItemStatus, OptionKind, QuestionAnswer, RequestClose,
-    RequestId, RequestView, StepStatus, TurnId, TurnOutcome,
+    Answer, Ask, ChatView, ItemBody, ItemId, ItemKind, ItemStatus, OptionKind, QuestionAnswer,
+    RequestClose, RequestId, RequestView, StepStatus, TurnId, TurnOutcome,
 };
 use zz_protocol::{MAX_AGENT_OPTION_BYTES, agent_stream::AgentQuestion};
 use zz_ui::agent::{
-    agent_jump_to_bottom_button,
     chat::{
-        ChatClick, ChatClicks, ChatHooks, ChatOpen, ChatPane, chat_agent_pip, chat_column,
-        chat_thread, shows_chat,
+        ChatClick, ChatClicks, ChatHooks, ChatHost, ChatLook, ChatOpen, ChatPane, chat_agent_pip,
+        chat_column, chat_pip_frame, chat_surface, chat_thread, shows_chat,
     },
     question::{QuestionCardAction, QuestionCardState, QuestionCardStep},
     refs::ChatRefs,
@@ -39,6 +35,7 @@ use super::fixtures::{
 use crate::story::states;
 
 const PHASE: f32 = 0.25;
+const PIP_FRAME_HEIGHT: f32 = 520.0;
 
 #[derive(Clone, Copy)]
 pub enum Frame {
@@ -78,7 +75,7 @@ pub struct Thread {
     vendor: IconName,
     frame: Frame,
     width: Option<f32>,
-    measured: bool,
+    leave: bool,
 }
 
 impl Thread {
@@ -94,7 +91,7 @@ impl Thread {
             vendor: zz_ui::program::CLAUDE_ICON,
             frame: Frame::Grow(0.0),
             width: None,
-            measured: false,
+            leave: false,
         }
     }
 
@@ -124,7 +121,7 @@ impl Thread {
     }
 
     pub fn away(mut self) -> Self {
-        self.pane.away = true;
+        self.leave = true;
         self
     }
 
@@ -375,48 +372,32 @@ impl Thread {
             .into_any_element(),
         )
     }
+}
 
-    fn on_wheel(&mut self, event: &ScrollWheelEvent, window: &mut Window, cx: &mut Context<Self>) {
-        if self.pane.wheel(event) {
-            cx.defer_in(window, |thread, _, cx| {
-                if thread.pane.settle() {
-                    cx.notify();
-                }
-            });
-        } else {
-            cx.notify();
-        }
+impl ChatHost for Thread {
+    fn chat_pane(&mut self) -> &mut ChatPane {
+        &mut self.pane
     }
+
+    fn chat_parts<'a>(&'a mut self, _: &'a App) -> (&'a mut ChatPane, Option<&'a ChatView>) {
+        (&mut self.pane, Some(&self.script.view))
+    }
+
+    fn chat_read<'a>(&'a self, _: &'a App) -> (&'a ChatPane, Option<&'a ChatView>) {
+        (&self.pane, Some(&self.script.view))
+    }
+
+    fn chat_ask(&self, request: &RequestView, host: &Entity<Self>, cx: &App) -> Option<AnyElement> {
+        self.ask(host, request, cx)
+    }
+
+    fn chat_fork(&mut self, _: &ItemId, _: &mut Context<Self>) {}
 }
 
 impl Render for Thread {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.sync_cards(window, cx);
-        let scrolls = matches!(self.frame, Frame::Scroll(_));
-        if scrolls {
-            self.pane.pin();
-            if !self.measured {
-                self.measured = true;
-                cx.on_next_frame(window, |_, _, cx| cx.notify());
-            }
-        }
         let me = cx.entity();
-        let click: ChatClicks = {
-            let me = me.clone();
-            Rc::new(move |click, window, cx| {
-                if let ChatClick::Fork(_) = click {
-                    window.push_notification(
-                        Notification::new().message("Fork opens a new chat from this message"),
-                        cx,
-                    );
-                }
-                me.update(cx, |thread, cx| {
-                    thread.pane.click(click);
-                    cx.notify();
-                });
-            })
-        };
-        let wheel = cx.listener(Self::on_wheel);
         let reset = self.remake.map(|_| {
             let me = me.clone();
             Button::new("story-chat-reset")
@@ -428,63 +409,72 @@ impl Render for Thread {
                     });
                 })
         });
-        let show_jump = scrolls && self.pane.shows_jump();
-        let follow = {
-            let me = me.clone();
-            move |_: &ala::ClickEvent, _: &mut Window, cx: &mut App| {
-                me.update(cx, |thread, cx| {
-                    thread.pane.follow();
-                    cx.notify();
-                });
-                cx.stop_propagation();
-            }
-        };
-        let app: &App = cx;
-        let ask = |request: &RequestView, cx: &App| self.ask(&me, request, cx);
-        let hooks = ChatHooks {
-            click: Some(click),
-            ask: Some(&ask),
-            fork: true,
-            refs: self.refs.as_ref(),
-            vendor: Some(self.vendor.clone()),
-            owner: None,
-        };
-        let view = &self.script.view;
-        let now = self.script.at;
-        let body = chat_column(chat_thread(view, now, &self.pane.open, PHASE, &hooks, app));
-        let pip = chat_agent_pip(view, now, &self.pane.open, PHASE, &hooks, app);
-        let fill = pane_fill(app).when_some(self.width, |fill, width| fill.w(px(width)));
+        let fill = pane_fill(cx).when_some(self.width, |fill, width| fill.w(px(width)));
         let frame = match self.frame {
-            Frame::Grow(min) => fill.min_h(px(min)).child(body),
-            Frame::Fixed(height) => fill.h(px(height)).overflow_hidden().child(body),
-            Frame::Scroll(height) => fill
-                .map(|fill| match height {
+            Frame::Scroll(height) => {
+                self.pane.sync(&self.script.view);
+                if std::mem::take(&mut self.leave) {
+                    self.pane.scroll_to_top();
+                }
+                let look = ChatLook {
+                    pane: 0,
+                    fork: true,
+                    refs: self.refs.clone(),
+                    vendor: Some(self.vendor.clone()),
+                };
+                fill.map(|fill| match height {
                     Some(height) => fill.h(px(height)),
                     None => fill.size_full(),
                 })
-                .child(
-                    div()
-                        .id("story-chat-scroll")
-                        .size_full()
-                        .overflow_y_scroll()
-                        .track_scroll(&self.pane.scroll)
-                        .on_scroll_wheel(wheel)
-                        .child(body),
-                ),
-        }
-        .children(pip)
-        .when(show_jump, |frame| {
-            frame.child(
-                div()
-                    .absolute()
-                    .left_0()
-                    .right_0()
-                    .bottom(px(2.0 * COMPOSER_OUTER_PADDING))
+                .child(chat_surface(self, look, window, cx))
+            }
+            Frame::Grow(_) | Frame::Fixed(_) => {
+                let click: ChatClicks = {
+                    let me = me.clone();
+                    Rc::new(move |click, window, cx| {
+                        if let ChatClick::Fork(_) = click {
+                            window.push_notification(
+                                Notification::new()
+                                    .message("Fork opens a new chat from this message"),
+                                cx,
+                            );
+                        }
+                        me.update(cx, |thread, cx| {
+                            thread.pane.click(click);
+                            cx.notify();
+                        });
+                    })
+                };
+                let app: &App = cx;
+                let ask = |request: &RequestView, cx: &App| self.ask(&me, request, cx);
+                let hooks = ChatHooks {
+                    click: Some(click),
+                    ask: Some(&ask),
+                    fork: true,
+                    refs: self.refs.as_ref(),
+                    vendor: Some(self.vendor.clone()),
+                    owner: None,
+                };
+                let view = &self.script.view;
+                let now = self.script.at;
+                let body = chat_column(chat_thread(view, now, &self.pane.open, PHASE, &hooks, app));
+                let pip = chat_agent_pip(view, now, &self.pane.open, PHASE, &hooks, app)
+                    .map(|pip| chat_pip_frame(pip, true));
+                let row = ala::div()
                     .flex()
-                    .justify_center()
-                    .child(agent_jump_to_bottom_button("story-chat-jump", app).on_click(follow)),
-            )
-        });
+                    .flex_row()
+                    .items_start()
+                    .w_full()
+                    .when(pip.is_some(), |row| row.h(px(PIP_FRAME_HEIGHT)))
+                    .child(div().flex_1().min_w_0().child(body))
+                    .children(pip);
+                match self.frame {
+                    Frame::Fixed(height) => fill.h(px(height)).overflow_hidden().child(row),
+                    Frame::Grow(min) => fill.min_h(px(min)).child(row),
+                    Frame::Scroll(_) => fill.child(row),
+                }
+            }
+        };
         match reset {
             Some(reset) => v_flex()
                 .w_full()
@@ -971,6 +961,11 @@ fn said(prompt: &str, reply: &str) -> Script {
 }
 
 pub fn messages(window: &mut Window, cx: &mut App) -> AnyView {
+    let lines = (1..=600)
+        .map(|line| format!("test browser::tab_strip::case_{line:03} ... ok"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let log = format!("Here is the whole run:\n\n```\n{lines}\n```");
     let pasted = (1..=40)
         .map(|line| format!("{line}. a pasted line of the brief, long enough to wrap once or twice in the bubble"))
         .collect::<Vec<_>>()
@@ -1043,6 +1038,11 @@ pub fn messages(window: &mut Window, cx: &mut App) -> AnyView {
             (
                 "a screenshot with no text",
                 Thread::new(shown("", &[tab_strip_screenshot()])),
+            ),
+            (
+                "a 600-line log: the first 512 lines scroll in a 420px box, Copy takes all of it",
+                Thread::new(said("Paste the whole test run.", &log))
+                    .framed(Frame::Scroll(Some(600.0))),
             ),
         ],
         window,
@@ -1228,11 +1228,6 @@ const SVG: &str = "The p99 per build:\n\n\
 ```";
 
 pub fn markdown(window: &mut Window, cx: &mut App) -> AnyView {
-    let lines = (1..=600)
-        .map(|line| format!("test browser::tab_strip::case_{line:03} ... ok"))
-        .collect::<Vec<_>>()
-        .join("\n");
-    let log = format!("Here is the whole run:\n\n```\n{lines}\n```");
     threads(
         vec![
             (
@@ -1292,11 +1287,6 @@ pub fn markdown(window: &mut Window, cx: &mut App) -> AnyView {
                 Thread::new(said("Draw the prompt flow.", BROKEN_MERMAID)),
             ),
             ("an SVG", Thread::new(said("Chart the p99s.", SVG))),
-            (
-                "a 600-line log, in a pane 480px tall",
-                Thread::new(said("Paste the whole test run.", &log))
-                    .framed(Frame::Scroll(Some(480.0))),
-            ),
         ],
         window,
         cx,

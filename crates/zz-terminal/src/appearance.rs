@@ -766,7 +766,28 @@ impl Default for TerminalAppearance {
     }
 }
 
+fn relative_luminance(color: Color) -> f32 {
+    let linear = |channel: u8| {
+        let channel = f32::from(channel) / 255.0;
+        if channel <= 0.04045 {
+            channel / 12.92
+        } else {
+            ((channel + 0.055) / 1.055).powf(2.4)
+        }
+    };
+    0.2126 * linear(color.r) + 0.7152 * linear(color.g) + 0.0722 * linear(color.b)
+}
+
 impl TerminalAppearance {
+    #[must_use]
+    pub fn background_scheme(&self) -> TerminalColorScheme {
+        if relative_luminance(self.background) < relative_luminance(self.foreground) {
+            TerminalColorScheme::Dark
+        } else {
+            TerminalColorScheme::Light
+        }
+    }
+
     #[must_use]
     pub fn default_for(color_scheme: TerminalColorScheme) -> Self {
         match color_scheme {
@@ -944,6 +965,7 @@ pub struct AppearanceLoad {
     pub bytes_read: usize,
     pub fatal: bool,
     pub theme_path: Option<PathBuf>,
+    pub theme: Option<String>,
 }
 
 impl AppearanceLoad {
@@ -962,6 +984,7 @@ impl AppearanceLoad {
             bytes_read: 0,
             fatal: false,
             theme_path: None,
+            theme: None,
         }
     }
 }
@@ -995,6 +1018,7 @@ pub fn load_ghostty_appearance_from_for(
     let defaults = TerminalAppearance::default();
 
     if let Some(theme) = theme {
+        load.theme = Some(theme.value.clone());
         let invalid_before = load.invalid;
         {
             let mut loader = ConfigLoader::new(
@@ -1004,21 +1028,7 @@ pub fn load_ghostty_appearance_from_for(
                 IncludePolicy::Follow,
                 AppearanceSource::ThemeFile,
             );
-            match select_theme_name(&theme.value, color_scheme) {
-                Ok(name) => match resolve_theme_path(&name, path) {
-                    Some(theme_path) => {
-                        loader.load.theme_path = Some(theme_path.clone());
-                        loader.load_tree(&theme_path);
-                    }
-                    None => loader.invalid(
-                        &theme.path,
-                        theme.line,
-                        "theme",
-                        format!("cannot resolve Ghostty theme `{name}`"),
-                    ),
-                },
-                Err(message) => loader.invalid(&theme.path, theme.line, "theme", message),
-            }
+            loader.load_theme(&theme, path, color_scheme);
         }
         load.fatal = load.invalid > invalid_before;
     }
@@ -1104,26 +1114,7 @@ pub fn apply_appearance_overrides(
                 IncludePolicy::Follow,
                 AppearanceSource::ThemeFile,
             );
-            match select_theme_name(&theme.value, color_scheme) {
-                Ok(name) => match resolve_theme_path(&name, &theme_root) {
-                    Some(theme_path) => {
-                        loader.load.theme_path = Some(theme_path.clone());
-                        loader.load_tree(&theme_path);
-                    }
-                    None => loader.invalid(
-                        &theme.path,
-                        theme.line,
-                        AppearanceConfigKey::Theme.as_str(),
-                        format!("cannot resolve Ghostty theme `{name}`"),
-                    ),
-                },
-                Err(message) => loader.invalid(
-                    &theme.path,
-                    theme.line,
-                    AppearanceConfigKey::Theme.as_str(),
-                    message,
-                ),
-            }
+            loader.load_theme(&theme, &theme_root, color_scheme);
         }
         load.fatal |= load.invalid > invalid_before;
     }
@@ -1180,41 +1171,89 @@ fn discover_theme_directive(path: &Path) -> Option<ThemeDirective> {
     loader.theme
 }
 
-fn select_theme_name(value: &str, color_scheme: TerminalColorScheme) -> Result<String, String> {
-    let value = value.trim();
-    if value.is_empty() {
-        return Err("theme name cannot be empty".to_owned());
-    }
-    let parts = value.split(',').map(str::trim).collect::<Vec<_>>();
-    let adaptive = parts.len() > 1 || value.starts_with("light:") || value.starts_with("dark:");
-    if !adaptive {
-        return Ok(value.to_owned());
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ThemeChoice {
+    Lone(String),
+    Paired {
+        light: Option<String>,
+        dark: Option<String>,
+    },
+}
+
+impl ThemeChoice {
+    pub fn parse(value: &str) -> Result<Self, String> {
+        let value = value.trim();
+        if value.is_empty() {
+            return Err("theme name cannot be empty".to_owned());
+        }
+        let parts = value.split(',').map(str::trim).collect::<Vec<_>>();
+        let adaptive = parts.len() > 1 || value.starts_with("light:") || value.starts_with("dark:");
+        if !adaptive {
+            return Ok(Self::Lone(value.to_owned()));
+        }
+        let mut light = None;
+        let mut dark = None;
+        for part in parts {
+            let Some((variant, name)) = part.split_once(':') else {
+                return Err("adaptive theme expects `light:name,dark:name`".to_owned());
+            };
+            let name = name.trim();
+            if name.is_empty() {
+                return Err(format!("adaptive theme `{variant}` name cannot be empty"));
+            }
+            let slot = match variant.trim() {
+                "light" => &mut light,
+                "dark" => &mut dark,
+                _ => return Err(format!("unknown adaptive theme variant `{variant}`")),
+            };
+            if slot.replace(name.to_owned()).is_some() {
+                return Err(format!("duplicate adaptive theme variant `{variant}`"));
+            }
+        }
+        Ok(Self::Paired { light, dark })
     }
 
-    let mut light = None;
-    let mut dark = None;
-    for part in parts {
-        let Some((variant, name)) = part.split_once(':') else {
-            return Err("adaptive theme expects `light:name,dark:name`".to_owned());
-        };
-        let name = name.trim();
-        if name.is_empty() {
-            return Err(format!("adaptive theme `{variant}` name cannot be empty"));
-        }
-        let slot = match variant.trim() {
-            "light" => &mut light,
-            "dark" => &mut dark,
-            _ => return Err(format!("unknown adaptive theme variant `{variant}`")),
-        };
-        if slot.replace(name.to_owned()).is_some() {
-            return Err(format!("duplicate adaptive theme variant `{variant}`"));
+    #[must_use]
+    pub fn spelled(light: Option<&str>, dark: Option<&str>) -> Option<String> {
+        match (light, dark) {
+            (None, None) => None,
+            (Some(light), None) => Some(format!("light:{light}")),
+            (None, Some(dark)) => Some(format!("dark:{dark}")),
+            (Some(light), Some(dark)) => Some(format!("light:{light},dark:{dark}")),
         }
     }
-    match color_scheme {
-        TerminalColorScheme::Light => light,
-        TerminalColorScheme::Dark => dark,
+
+    #[must_use]
+    pub fn names(&self) -> Vec<&str> {
+        match self {
+            Self::Lone(name) => vec![name.as_str()],
+            Self::Paired { light, dark } => light.iter().chain(dark).map(String::as_str).collect(),
+        }
     }
-    .ok_or_else(|| "adaptive theme must define both `light` and `dark`".to_owned())
+
+    #[must_use]
+    pub fn slots(&self, config_root: &Path) -> (Option<String>, Option<String>) {
+        match self {
+            Self::Paired { light, dark } => (light.clone(), dark.clone()),
+            Self::Lone(name) => {
+                match resolve_theme(name, config_root).map(|path| theme_file_scheme(&path)) {
+                    Some(TerminalColorScheme::Light) => (Some(name.clone()), None),
+                    _ => (None, Some(name.clone())),
+                }
+            }
+        }
+    }
+}
+
+fn theme_file_scheme(path: &Path) -> TerminalColorScheme {
+    load_ghostty_theme_file_for(path, TerminalColorScheme::Dark)
+        .appearance
+        .background_scheme()
+}
+
+#[must_use]
+pub fn resolve_theme(name: &str, config_root: &Path) -> Option<PathBuf> {
+    resolve_theme_path(name, config_root)
 }
 
 fn resolve_theme_path(name: &str, config_root: &Path) -> Option<PathBuf> {
@@ -1298,10 +1337,20 @@ pub struct GhosttyTheme {
 }
 
 #[must_use]
-pub fn enumerate_ghostty_themes_for(color_scheme: TerminalColorScheme) -> Vec<GhosttyTheme> {
+pub fn enumerate_ghostty_themes_for(
+    color_scheme: TerminalColorScheme,
+    own_config: Option<&Path>,
+) -> Vec<GhosttyTheme> {
     let config_root = discover_ghostty_config();
-    let mut themes = BTreeMap::new();
+    let mut directories = own_config
+        .and_then(Path::parent)
+        .map(|directory| vec![directory.join("themes")])
+        .unwrap_or_default();
     for directory in ghostty_theme_directories(config_root.as_deref()) {
+        push_unique_path(&mut directories, directory);
+    }
+    let mut themes = BTreeMap::new();
+    for directory in directories {
         let Ok(entries) = fs::read_dir(&directory) else {
             continue;
         };
@@ -1890,6 +1939,41 @@ impl ConfigLoader<'_> {
         }
         self.load.appearance.palette[usize::from(index)] = parse_rgb(color.trim())?;
         Ok(())
+    }
+
+    fn load_theme(
+        &mut self,
+        theme: &ThemeDirective,
+        root: &Path,
+        color_scheme: TerminalColorScheme,
+    ) {
+        let key = AppearanceConfigKey::Theme.as_str();
+        let (name, lone) = match ThemeChoice::parse(&theme.value) {
+            Ok(ThemeChoice::Lone(name)) => (name, true),
+            Ok(ThemeChoice::Paired { light, dark }) => {
+                let Some(name) = (match color_scheme {
+                    TerminalColorScheme::Light => light,
+                    TerminalColorScheme::Dark => dark,
+                }) else {
+                    return;
+                };
+                (name, false)
+            }
+            Err(message) => return self.invalid(&theme.path, theme.line, key, message),
+        };
+        let Some(theme_path) = resolve_theme_path(&name, root) else {
+            return self.invalid(
+                &theme.path,
+                theme.line,
+                key,
+                format!("cannot resolve Ghostty theme `{name}`"),
+            );
+        };
+        if lone && theme_file_scheme(&theme_path) != color_scheme {
+            return;
+        }
+        self.load.theme_path = Some(theme_path.clone());
+        self.load_tree(&theme_path);
     }
 
     fn invalid(&mut self, path: &Path, line: u32, key: &str, message: impl Into<String>) {
@@ -2544,7 +2628,7 @@ zz-rounded-selection = false\n",
         let theme = themes.join("My Theme");
         fs::write(
             &theme,
-            "foreground = #112233\nbackground = #445566\nfont-family = Theme Mono\npalette = 4=#abcdef\n",
+            "foreground = #e0e8f0\nbackground = #445566\nfont-family = Theme Mono\npalette = 4=#abcdef\n",
         )
         .expect("write theme");
         fs::write(
@@ -2684,6 +2768,49 @@ zz-rounded-selection = false\n",
         assert_eq!(dark.appearance.color_scheme, TerminalColorScheme::Dark);
         assert_eq!(light.appearance.background, Color::rgb(0xf0, 0xf1, 0xf2));
         assert_eq!(dark.appearance.background, Color::rgb(0x10, 0x11, 0x12));
+    }
+
+    #[test]
+    fn a_lone_theme_paints_only_its_own_mode_and_a_pair_may_leave_one_built_in() {
+        let directory = tempfile::tempdir().expect("tempdir");
+        let root = directory.path().join("config");
+        let themes = directory.path().join("themes");
+        fs::create_dir(&themes).expect("create themes");
+        fs::write(themes.join("night"), "background = #101112\n").expect("write dark theme");
+        let built_in = TerminalAppearance::default_for(TerminalColorScheme::Light).background;
+        for (theme, light, dark) in [
+            ("night", built_in, Color::rgb(0x10, 0x11, 0x12)),
+            ("dark:night", built_in, Color::rgb(0x10, 0x11, 0x12)),
+            (
+                "light:night",
+                Color::rgb(0x10, 0x11, 0x12),
+                TerminalAppearance::default().background,
+            ),
+        ] {
+            fs::write(&root, format!("theme = {theme}\n")).expect("write config");
+            let shown = |scheme| load_ghostty_appearance_from_for(&root, scheme);
+            assert_eq!(
+                [
+                    shown(TerminalColorScheme::Light).appearance.background,
+                    shown(TerminalColorScheme::Dark).appearance.background,
+                ],
+                [light, dark],
+                "{theme}"
+            );
+            assert!(!shown(TerminalColorScheme::Light).fatal, "{theme}");
+        }
+        assert_eq!(
+            ThemeChoice::parse("night").map(|choice| choice.slots(&root)),
+            Ok((None, Some("night".to_owned())))
+        );
+        assert_eq!(
+            ThemeChoice::spelled(Some("day"), Some("night")).as_deref(),
+            Some("light:day,dark:night")
+        );
+        assert_eq!(
+            ThemeChoice::spelled(None, Some("night")).as_deref(),
+            Some("dark:night")
+        );
     }
 
     #[test]

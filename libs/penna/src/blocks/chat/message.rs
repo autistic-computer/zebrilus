@@ -170,8 +170,8 @@ pub fn plan_list(items: &[(PlanState, SharedString)], cx: &App) -> Div {
     const LINE: f32 = 19.0;
     let drop = cap_center_drop(px(FONT), px(MARKER), cx);
     let muted = cx.theme().foreground.muted();
-    let ring = cx.theme().paint(Tone::Primary, Emphasis::Outline);
-    let dot = cx.theme().paint(Tone::Primary, Emphasis::Solid).fill;
+    let ring = cx.theme().paint(Tone::Accent, Emphasis::Outline);
+    let dot = cx.theme().paint(Tone::Accent, Emphasis::Solid).fill;
     v_flex()
         .w_full()
         .children(items.iter().map(|(state, text)| {

@@ -40,7 +40,7 @@ Full ink for what people read, muted for what supports it, faint only for placeh
 
 ## Highlight
 
-One color marks on, picked and focused. With the default tint it is the ink; once an app sets a tint or someone picks an accent, it is that color.
+Picked and focused are marked in the ink, and the main action is a solid fill of it, whatever the tint. The accent is a detail: a switch that is on, a checked box, a slider's fill, the dot that asks for attention, links.
 
 ```figure uses=switch,input
 <div class="docs-show" data-gap="wide">

@@ -56,7 +56,7 @@ use zz_ui::{
         pane_border_color, pane_drag_overlay, pane_drag_preview, pane_drop_preview,
         pane_header_frame, pane_indicator, pane_indicator_overlay, pane_overlay_stack,
         pane_split_hit_target, pane_split_slot, pane_split_surface, pane_surface, pane_sync_badge,
-        pane_unzoom_control, pane_waiting_state,
+        pane_waiting_state,
     },
     pane_look::{PaneLook, pane_color},
     shell::{app_connection_state, app_workspace_surface},
@@ -95,11 +95,11 @@ use crate::{
         },
         hosts::HostId,
         nav::{TreeTarget, kill_target_command},
-        prefix::{binds_input, is_all_keys_input, is_sidebar_picker_input, terminal_key_input},
+        prefix::{binds_input, is_all_keys_input, terminal_key_input},
     },
     pane::display::DisplayPanesView,
     pane::layout::{SeparatorSide, pane_separator},
-    pane::picker::{AgentChosen, ChooseFolder, PanePickerView},
+    pane::picker::{AgentChosen, ChooseFolder, ChooseMachine, PanePickerView},
     terminal::view::TerminalView,
     window::corners::WindowCorners,
 };
@@ -248,6 +248,33 @@ fn browser_metadata_command(
             ],
         )),
         _ => None,
+    }
+}
+
+const WINDOW_CONTROLS_CLEARANCE: Pixels = px(8.0);
+
+fn window_controls_inset(holds_controls: bool) -> Pixels {
+    if holds_controls {
+        penna::WINDOW_CONTROLS_SPAN + WINDOW_CONTROLS_CLEARANCE
+    } else {
+        px(0.0)
+    }
+}
+
+fn top_right_pane(node: &LayoutNode) -> Option<PaneId> {
+    match node {
+        LayoutNode::Pane(pane) => Some(*pane),
+        LayoutNode::Empty => None,
+        LayoutNode::Split {
+            axis: Axis::Horizontal,
+            second,
+            ..
+        } => top_right_pane(second),
+        LayoutNode::Split {
+            axis: Axis::Vertical,
+            first,
+            ..
+        } => top_right_pane(first),
     }
 }
 
@@ -553,11 +580,15 @@ impl PaneContent {
 #[derive(Clone, Debug, PartialEq)]
 struct TerminalHeaderState {
     icon: penna::IconName,
+    program: Option<&'static zz_client::program::Program>,
     active: bool,
     title: String,
     can_drag: bool,
-    floats: bool,
+    place: zz_ui::pane::PaneState,
+    folder: Option<String>,
     flip: Option<PaneFlip>,
+    keys: zz_ui::pane::PaneActionKeys,
+    trailing_inset: Pixels,
     radii: Corners<Pixels>,
     opacity: f32,
 }
@@ -592,16 +623,19 @@ impl Render for TerminalHeaderView {
         let flip_app = self.app.clone();
         let title = state.title.clone();
         let header = zz_ui::pane::pane_header(
-            state.icon.clone(),
+            zz_ui::pane::pane_heading_icon(state.icon.clone(), state.program),
             state.active,
             title.clone(),
+            state.folder.clone().map(Into::into),
             PaneDragSource::new(pane, title, state.can_drag, move |drag, _, cx| {
                 if let Some(app) = drag_app.upgrade() {
                     app.update(cx, |view, cx| view.on_pane_drag_start(*drag, cx));
                 }
             }),
-            state.floats,
+            state.place,
             state.flip,
+            &state.keys,
+            state.trailing_inset,
             move |action, window, cx| {
                 if matches!(action, TerminalPaneAction::Flip) {
                     if let Some(app) = flip_app.upgrade() {
@@ -627,7 +661,7 @@ impl Render for TerminalHeaderView {
                 }
             });
         });
-        let header = if state.floats {
+        let header = if state.place.floats {
             header
         } else {
             window_drag_handle(("pane-header-window-drag", pane.0), header, window, cx)
@@ -709,6 +743,7 @@ struct SynchronizeSignature {
     sidebar_focused: bool,
     route: WorkspaceRoute,
     chat_mode: bool,
+    chat_landing: bool,
 }
 
 #[allow(clippy::struct_excessive_bools)]
@@ -760,6 +795,7 @@ pub struct AppView {
     pane_drag: Option<PaneDragState>,
     pane_drop_preview: Rc<Cell<DropPreviewFrame>>,
     pane_layout_override: Option<PaneLayoutOverride>,
+    window_controls_pane: Option<PaneId>,
     pane_canvas_bounds: Rc<Cell<Bounds<Pixels>>>,
     pane_arrivals: PaneArrivals,
     input_router: InputRouter,
@@ -1125,6 +1161,12 @@ impl AppView {
             },
         )
         .detach();
+        cx.subscribe_in(
+            &empty_picker,
+            window,
+            |this, _, choose: &ChooseMachine, _, cx| this.on_choose_machine(choose, cx),
+        )
+        .detach();
         Self {
             controller,
             agent_controller,
@@ -1173,6 +1215,7 @@ impl AppView {
             pane_drag: None,
             pane_drop_preview: Rc::new(Cell::new(DropPreviewFrame::default())),
             pane_layout_override: None,
+            window_controls_pane: None,
             pane_canvas_bounds: Rc::new(Cell::new(Bounds::default())),
             pane_arrivals: PaneArrivals::default(),
             input_router,
@@ -1352,25 +1395,6 @@ impl AppView {
                         );
                         self.which_key = WhichKeySheet::build(self.mux.read(cx), "prefix", true);
                         cx.notify();
-                    } else if armed
-                        && cx
-                            .try_global::<config::AppConfig>()
-                            .is_some_and(|config| config.picker_focus_sidebar.value)
-                        && is_sidebar_picker_input(self.mux.read(cx).prefix_bindings(), &input)
-                    {
-                        self.input_router.suppress_release(
-                            input
-                                .unshifted_codepoint
-                                .map_or(input.key, zz_terminal::KeyCode::Character),
-                        );
-                        self.mux.update(cx, |mux, _| {
-                            if mux.send_prefix_cancel().is_some() {
-                                mux.execute(CommandInvocation::new(
-                                    "focus-sidebar",
-                                    [] as [&str; 0],
-                                ));
-                            }
-                        });
                     } else if armed
                         && let Some(action) = self.prefix_chrome_action(keystroke, &input, cx)
                     {
@@ -1917,12 +1941,13 @@ impl AppView {
 
     fn synchronize_panes(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let revision = AppRevision::for_mux(self.mux.read(cx));
-        let (sidebar_focused, route, chat_mode) = {
+        let (sidebar_focused, route, chat_mode, chat_landing) = {
             let sidebar = self.sidebar.read(cx);
             (
                 sidebar.is_focused(window),
                 sidebar.route(),
                 sidebar.chat_mode(),
+                sidebar.chat_landing(),
             )
         };
         if let Some(last) = &self.synchronized_signature
@@ -1930,6 +1955,7 @@ impl AppView {
             && last.sidebar_focused == sidebar_focused
             && last.route == route
             && last.chat_mode == chat_mode
+            && last.chat_landing == chat_landing
         {
             return;
         }
@@ -1970,7 +1996,8 @@ impl AppView {
         let sidebar_focus_revision = mux.sidebar_focus_revision();
         let sidebar_focus_requested = sidebar_focus_revision != self.sidebar_focus_revision;
         let bell_revision = mux.bell_revision();
-        let empty_workspace_visible = !mux.has_hosts()
+        let empty_workspace_visible = chat_landing
+            || !mux.has_hosts()
             || empty_workspace_available(
                 snapshot.generation,
                 snapshot.sessions.len(),
@@ -1981,6 +2008,9 @@ impl AppView {
             self.empty_workspace_visible,
             self.empty_workspace_focus_pending,
         );
+        if self.empty_workspace_visible && !empty_workspace_visible {
+            self.pane_focus_owed = true;
+        }
         self.empty_workspace_visible = empty_workspace_visible;
         if bell_revision != self.bell_revision {
             self.bell_revision = bell_revision;
@@ -2564,6 +2594,7 @@ impl AppView {
             sidebar_focused: self.sidebar.read(cx).is_focused(window),
             route,
             chat_mode,
+            chat_landing,
         });
     }
 
@@ -2602,7 +2633,24 @@ impl AppView {
             },
         )
         .detach();
+        cx.subscribe_in(&view, window, |this, _, choose: &ChooseMachine, _, cx| {
+            this.on_choose_machine(choose, cx);
+        })
+        .detach();
         self.pickers.insert(pane, view);
+    }
+
+    fn on_choose_machine(&mut self, choose: &ChooseMachine, cx: &mut Context<Self>) {
+        let mux = self.mux.read(cx);
+        if let Some(command) = choose
+            .pane
+            .and_then(|pane| zz_client::new_chat::close_picker_command(&mux.snapshot(), pane))
+        {
+            mux.execute(command);
+        }
+        self.empty_picker.update(cx, PanePickerView::forget_folder);
+        self.sidebar
+            .update(cx, |sidebar, cx| sidebar.new_chat(choose.host, cx));
     }
 
     fn empty_focus(&self, cx: &App) -> FocusHandle {
@@ -2728,10 +2776,6 @@ impl AppView {
             }
         }
         cx.notify();
-    }
-
-    fn pane_flip(&self, snapshot: &zz_protocol::PaneSnapshot) -> Option<PaneFlip> {
-        PaneFlip::of(snapshot, self.flips.state(snapshot.id))
     }
 
     fn flip_overlay(&self, pane: PaneId, cx: &mut Context<Self>) -> Option<AnyElement> {
@@ -3514,12 +3558,7 @@ impl AppView {
                     });
                 if let Some(terminal) = terminal_overlay {
                     terminal.update(cx, |terminal, cx| {
-                        terminal.set_pane_status(
-                            dead_label.clone(),
-                            synchronized,
-                            window.zoomed_pane == Some(*pane),
-                            cx,
-                        );
+                        terminal.set_pane_status(dead_label.clone(), synchronized, cx);
                     });
                 }
                 let pane_content = self.pane_content(*pane, inactive, inactive_opacity, cx);
@@ -3540,15 +3579,26 @@ impl AppView {
                 let header_view = terminal_header
                     .and_then(|snapshot| Some((snapshot, self.terminal_headers.get(pane)?)));
                 let content = if let Some((snapshot, header_view)) = header_view {
+                    let heading = zz_client::window_summary::pane_heading(snapshot);
                     let state = TerminalHeaderState {
                         icon: zz_ui::pane::pane_kind_icon(&snapshot.kind),
+                        program: heading.program,
                         active,
-                        title: zz_client::navigation::pane_label(snapshot),
+                        title: heading.title,
                         can_drag: self.mux.read(cx).is_connected()
                             && window.zoomed_pane.is_none()
                             && window.panes.len() > 1,
-                        floats: window.floating.iter().any(|float| float.pane == *pane),
-                        flip: self.pane_flip(snapshot),
+                        place: zz_ui::pane::PaneState {
+                            floats: window.floating.iter().any(|float| float.pane == *pane),
+                            lone: window.panes.len() == 1,
+                            zoomed: window.zoomed_pane == Some(*pane),
+                        },
+                        folder: zz_client::navigation::pane_folder(snapshot),
+                        flip: None,
+                        keys: self.pane_action_keys(cx),
+                        trailing_inset: window_controls_inset(
+                            self.window_controls_pane == Some(*pane),
+                        ),
                         radii,
                         opacity: if inactive { inactive_opacity } else { 1.0 },
                     };
@@ -3587,9 +3637,6 @@ impl AppView {
                     }
                     if synchronized {
                         status_tags.push(pane_sync_badge(cx).into_any_element());
-                    }
-                    if window.zoomed_pane == Some(*pane) {
-                        status_tags.push(self.zoom_control(*pane).into_any_element());
                     }
                 }
                 let mut overlays: Vec<AnyElement> = Vec::with_capacity(3);
@@ -3820,6 +3867,16 @@ impl AppView {
         }
     }
 
+    fn synchronize_window_controls_pane(&mut self, pane: Option<PaneId>, cx: &mut Context<Self>) {
+        self.window_controls_pane = pane;
+        for (id, browser) in &self.browsers {
+            let inset = window_controls_inset(Some(*id) == pane);
+            browser.update(cx, |browser, cx| {
+                browser.set_header_trailing_inset(inset, cx);
+            });
+        }
+    }
+
     fn pane_indicator(&self, indicator: &PaneIndicator, cx: &Context<Self>) -> Option<ala::Div> {
         let state = self.mux.read(cx).display_panes()?;
         let mux = self.mux.clone();
@@ -4015,7 +4072,7 @@ impl AppView {
             let dead = dead_label(snapshot);
             let synchronized = snapshot.is_some_and(|pane| pane.synchronized_input);
             terminal.update(cx, |terminal, cx| {
-                terminal.set_pane_status(dead, synchronized, false, cx);
+                terminal.set_pane_status(dead, synchronized, cx);
             });
         }
         let inactive_opacity = config::pane_inactive_opacity(cx);
@@ -4074,7 +4131,7 @@ impl AppView {
             } else {
                 let label = if title.left.is_empty() {
                     snapshot
-                        .map(zz_client::navigation::pane_label)
+                        .map(|pane| zz_client::window_summary::pane_heading(pane).title)
                         .unwrap_or_default()
                 } else {
                     title.left
@@ -4116,6 +4173,14 @@ impl AppView {
         )
     }
 
+    fn pane_action_keys(&self, cx: &App) -> zz_ui::pane::PaneActionKeys {
+        let mux = self.mux.read(cx);
+        crate::mux::prefix::pane_action_keys(
+            mux.canonical_prefix().as_deref(),
+            mux.prefix_bindings(),
+        )
+    }
+
     fn pip_header(
         &self,
         pane: PaneId,
@@ -4126,16 +4191,25 @@ impl AppView {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let connected = self.mux.read(cx).is_connected();
+        let program =
+            snapshot.and_then(|pane| zz_client::window_summary::pane_heading(pane).program);
         if let Some(header_view) = self.terminal_headers.get(&pane) {
             let state = TerminalHeaderState {
                 icon: snapshot.map_or(penna::IconName::SquareTerminal, |pane| {
                     zz_ui::pane::pane_kind_icon(&pane.kind)
                 }),
+                program,
                 active,
                 title: label,
                 can_drag: connected,
-                floats: true,
-                flip: snapshot.and_then(|snapshot| self.pane_flip(snapshot)),
+                place: zz_ui::pane::PaneState {
+                    floats: true,
+                    ..zz_ui::pane::PaneState::default()
+                },
+                folder: snapshot.and_then(zz_client::navigation::pane_folder),
+                flip: None,
+                keys: self.pane_action_keys(cx),
+                trailing_inset: px(0.0),
                 radii: Corners::default(),
                 opacity,
             };
@@ -4155,12 +4229,20 @@ impl AppView {
         div()
             .opacity(opacity)
             .child(zz_ui::pane::pane_header(
-                icon,
+                zz_ui::pane::pane_heading_icon(icon, program),
                 active,
                 label.clone(),
+                snapshot
+                    .and_then(zz_client::navigation::pane_folder)
+                    .map(Into::into),
                 PaneDragSource::new(pane, label, connected, |_, _, _| {}),
-                true,
+                zz_ui::pane::PaneState {
+                    floats: true,
+                    ..zz_ui::pane::PaneState::default()
+                },
                 None,
+                &self.pane_action_keys(cx),
+                px(0.0),
                 move |action, _, cx| {
                     for command in action.commands(pane, None) {
                         mux.read(cx).execute(command);
@@ -4353,22 +4435,6 @@ impl AppView {
                 .into_any_element(),
         )
     }
-
-    fn zoom_control(&self, pane: PaneId) -> impl IntoElement {
-        let mux = self.mux.clone();
-        div()
-            .id(("unzoom-pane", pane.0))
-            .cursor(CursorStyle::PointingHand)
-            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-            .on_mouse_up(MouseButton::Left, move |_, _, cx| {
-                mux.read(cx).execute(CommandInvocation::new(
-                    "resize-pane",
-                    ["-Z", "-t", &pane.to_string()],
-                ));
-                cx.stop_propagation();
-            })
-            .child(pane_unzoom_control())
-    }
 }
 
 impl Render for AppView {
@@ -4393,7 +4459,8 @@ impl Render for AppView {
             .sessions
             .iter()
             .find(|session| Some(session.id) == attached);
-        let active_window = active_session.and_then(|session| {
+        let landing = self.sidebar.read(cx).chat_landing();
+        let active_window = active_session.filter(|_| !landing).and_then(|session| {
             let focused_window = snapshot.focused_window_for(session);
             session
                 .windows
@@ -4417,25 +4484,12 @@ impl Render for AppView {
         self.reconcile_float_drag(active_window, cx);
         self.reconcile_pane_drag(active_window, prefix_armed, window, cx);
         self.reconcile_pane_layout_override(active_window, snapshot.generation);
-        let chrome_above_panes =
-            matches!(chrome, ChromeMode::Titlebar) || draws_window_controls(window);
+        let chrome_above_panes = matches!(chrome, ChromeMode::Titlebar);
         let layout_corners = match chrome {
             ChromeMode::Sidebar if route == WorkspaceRoute::App => {
-                let corners = WindowCorners::for_window(window).right().top();
-                if chrome_above_panes {
-                    WindowCorners::NONE
-                } else {
-                    corners
-                }
+                WindowCorners::for_window(window).right().top()
             }
-            ChromeMode::Sidebar => {
-                let corners = WindowCorners::for_window(window).right();
-                if chrome_above_panes {
-                    corners.bottom()
-                } else {
-                    corners
-                }
-            }
+            ChromeMode::Sidebar => WindowCorners::for_window(window).right(),
             ChromeMode::Titlebar => WindowCorners::for_window(window).bottom(),
         };
         let predicted_layout = self
@@ -4445,6 +4499,18 @@ impl Render for AppView {
         let pane_layout =
             active_window.map(|window| predicted_layout.as_ref().unwrap_or(&window.layout));
         self.synchronize_pane_corners(active_window, pane_layout, layout_corners, cx);
+        let window_controls_pane = (route == WorkspaceRoute::App
+            && chrome == ChromeMode::Sidebar
+            && draws_window_controls(window))
+        .then(|| {
+            active_window.and_then(|active| {
+                active
+                    .zoomed_pane
+                    .or_else(|| pane_layout.and_then(top_right_pane))
+            })
+        })
+        .flatten();
+        self.synchronize_window_controls_pane(window_controls_pane, cx);
         let pane_drag_armed = prefix_armed
             && active_window
                 .is_some_and(|window| window.zoomed_pane.is_none() && window.panes.len() > 1);
@@ -4527,7 +4593,8 @@ impl Render for AppView {
                     cx,
                 )
             }
-        } else if !has_hosts
+        } else if landing
+            || !has_hosts
             || empty_workspace_available(
                 snapshot.generation,
                 snapshot.sessions.len(),
@@ -5424,6 +5491,7 @@ mod tests {
                     status: zz_protocol::StatusLine::default(),
                     key_tables: zz_protocol::KeyTables::default().snapshot(),
                     clock: 0,
+                    platform: zz_protocol::HostPlatform::default(),
                 })),
             )
             .unwrap();
@@ -7784,7 +7852,7 @@ mod tests {
             (canvas.size.width / cell.width).floor() as u16,
             (canvas.size.height / cell.height).floor() as u16,
         );
-        let mut snapshot = one_pane_snapshot(2);
+        let mut snapshot = two_pane_snapshot(PaneId(0));
         (
             snapshot.sessions[0].windows[0].sx,
             snapshot.sessions[0].windows[0].sy,

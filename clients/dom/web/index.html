@@ -23,14 +23,15 @@
     <div class="penna-strip">
       <span data-penna="badge" data-tone="primary" id="prefix" hidden>prefix</span>
       <span class="grow"></span>
-      <button data-penna="chrome.button" id="toggle-sidebar" title="Toggle sidebar"><i data-icon="panel-left"></i></button>
+      <button data-penna="chrome.button" id="flat-list" title="Show chats"><i data-icon="chat"></i></button>
+      <button data-penna="chrome.button" id="toggle-sidebar" title="Toggle sidebar"><i data-icon="panel-left-duotone"></i></button>
     </div>
+    <div class="sidebar-actions" id="sidebar-actions"></div>
     <div id="tree"></div>
     <span class="grow"></span>
     <div class="footer">
-      <button data-penna="chrome.button" id="open-settings" title="Settings"><i data-icon="settings"></i></button>
-      <span class="grow penna-muted" id="status">Connecting…</span>
-      <button data-penna="chrome.button" id="flat-list" title="Show the flat window list"><i data-icon="list"></i></button>
+      <span class="penna-muted" id="status">Connecting…</span>
+      <div class="sidebar-action" id="open-settings" role="button" aria-label="Settings"><span class="flat-fill" data-penna="row.nav"></span><i data-icon="settings" class="flat-glyph"></i><span>Settings</span></div>
     </div>
   </nav>
   <main id="workspace"></main>

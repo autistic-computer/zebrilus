@@ -340,6 +340,7 @@
         "native-command:set-browser-url",
         "native-command:set-editor-path",
         "native-command:show-last-output",
+        "native-command:tailnet",
         "native-command:tools",
         "native-command:wait-pane"
       ],

@@ -7,7 +7,8 @@ function shape(mark) {
   const side = mark.offsetWidth;
   if (!side) return;
   const filled = mark.hasAttribute("data-on") || mark.hasAttribute("data-mixed");
-  const reach = RING + (filled ? RING : 0);
+  const gap = mark.dataset.tone ? RING : parseFloat(getComputedStyle(mark).getPropertyValue("--penna-accent-ring-gap")) || 0;
+  const reach = RING + (filled ? gap : 0);
   const border = parseFloat(getComputedStyle(mark).borderTopWidth) || 0;
   mark.style.setProperty("--penna-ring-inset", `${-(reach + border)}px`);
   if (mark.dataset.kind === "radio") return;
@@ -15,8 +16,14 @@ function shape(mark) {
   const radius = Math.min(quarter, side / 4);
   const cap = side * CORNER;
   const ring = (side + 2 * reach) * CORNER;
-  mark.style.setProperty("--penna-check-r", `${(cap * Math.tanh(radius / cap)).toFixed(2)}px`);
-  mark.style.setProperty("--penna-ring-r", `${(ring * Math.tanh((radius + reach) / ring)).toFixed(2)}px`);
+  const k = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--penna-window-k")) || 1;
+  const drawn = (corner, shorter) => window.pennaKit?.apparentCorner(corner, shorter / 2, k) ?? [corner, k];
+  const [box, boxK] = drawn(cap * Math.tanh(radius / cap), side);
+  const [ringBox, ringK] = drawn(ring * Math.tanh((radius + reach) / ring), side + 2 * reach);
+  mark.style.setProperty("--penna-check-r", `${box.toFixed(2)}px`);
+  mark.style.setProperty("--penna-check-k", `superellipse(${boxK.toFixed(3)})`);
+  mark.style.setProperty("--penna-ring-r", `${ringBox.toFixed(2)}px`);
+  mark.style.setProperty("--penna-ring-k", `${ringK.toFixed(3)}`);
 }
 
 function markOf(control, kind) {

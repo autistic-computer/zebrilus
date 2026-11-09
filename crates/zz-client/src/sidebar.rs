@@ -4,9 +4,9 @@ use zz_protocol::{CommandInvocation, MuxSnapshot, PaneId, SessionId, WindowId};
 
 use crate::{
     AgentAttentionStatus, ClientCore, agent_attention_status,
-    navigation::{RenameTarget, ordered_panes, pane_label, rename_prompt_command, session_label},
+    navigation::{RenameTarget, ordered_panes, rename_prompt_command, session_label},
     program::Program,
-    window_summary::{PaneTag, pane_program, pane_tag},
+    window_summary::{PaneTag, pane_heading, pane_program, pane_tag},
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
@@ -170,7 +170,7 @@ pub fn sidebar_rows(
                 target: SidebarTarget::Pane(pane.id),
                 depth: 3,
                 node: SidebarNode::Pane(pane_tag(&pane.kind)),
-                label: pane_label(pane),
+                label: pane_heading(pane).title,
                 index: None,
                 on_active_path: active_window && window.active_pane == pane.id,
                 expanded: false,

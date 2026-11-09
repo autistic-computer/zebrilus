@@ -76,9 +76,9 @@
 
 .penna-key[data-penna]:is([data-armed], [data-pressed]) {
   background: var(--penna-primary);
-  color: var(--penna-on-accent);
+  color: var(--penna-on-primary);
   font-weight: 500;
-  --penna-ink: var(--penna-on-accent);
+  --penna-ink: var(--penna-on-primary);
 }
 
 .penna-key-hint {

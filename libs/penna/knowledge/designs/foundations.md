@@ -26,7 +26,7 @@ penna draws zz and nidus: tools people keep open all day, mostly driven from the
 
 1. **The keyboard comes first.** Every action has a keyboard path, and the interface shows it: shortcuts sit beside menu rows and in which-key, and a focus ring appears whenever the keyboard moves focus. Pointer and touch reach the same actions, sized for them. So: every control is focusable unless it is disabled, activates with Space and Enter, and shows its shortcut where it is offered.
 2. **Calm, dense screens.** Most text on a screen is one size (`body`); weight and a few larger steps carry the hierarchy, and color is kept for meaning. Spacing follows relationships, so a dense screen still groups clearly, and density is a setting, never a squeeze. So: two or three text styles in a view, gaps picked by relationship, nothing added for decoration.
-3. **One highlight.** One color marks what is on, picked or in focus. With the default tint it is the ink itself, so the interface stays black and white until an app sets a tint or someone picks an accent. Status colors mean status and always come with an icon or a word. So: at most one primary action in a view, and no color that only decorates.
+3. **One highlight, one accent.** What is picked or in focus is marked in the ink itself, whatever the tint: selection is a wash of the ink and a primary is a solid fill of it. The tint is the accent, always a color and only ever a detail: the track of a switch that is on, a slider's fill, a checked box, the dot that asks for attention, and links. Everything else stays black and white. Status colors mean status and always come with an icon or a word. So: at most one primary action in a view, and no color that only decorates.
 4. **The work leads, chrome recedes.** Bars, headers and toolbars use quiet controls (no fill at rest), muted labels and the smaller rungs, so the eye goes to the content. Text people read (documents, chat) is larger and more open than text people scan (`read-body` against `body`). So: chrome never competes with content for the strongest ink, size or color.
 5. **Every state shows.** A control always tells what it is doing: rest, hover, pressed, focused, selected, disabled, loading or in error. Feedback comes in the same frame as the input. Motion is short (120 to 220ms), shows where something came from or went, and turns off with reduced motion. So: no state without a look, and no animation that only decorates.
 6. **One kit everywhere.** The same components draw native windows on every desktop, the phone and the web, in one look, light and dark, that apps and people adjust with a few knobs (Look). A knob changes color, corners, glass or faces, never a component's fills, edges, sizes, spacing or behavior. So: a component that only works in one look, one mode or one platform has a bug.
@@ -90,7 +90,7 @@ An inset reaches the text's line box, not its letters. In `body` (13 on 18) capi
 
 ## Type
 
-Faces: the platform system face natively (`.SystemUIFont`), Inter Variable in the storybook and on the web. The code face is the platform's natively (`Theme::mono_font_family`: Menlo on macOS and iOS, Consolas on Windows, DejaVu Sans Mono elsewhere) and Lilex in the storybook and on the web. Weights: 400 text, 500 emphasis in the interface (`strong`), 600 headings. No other weights.
+Faces: the platform system face natively (`.SystemUIFont`), Inter Variable in the storybook and on the web. The code face is the platform's natively (`Theme::mono_font_family`: Menlo on macOS and iOS, Consolas on Windows, DejaVu Sans Mono elsewhere) and Lilex in the storybook and on the web, until Appearance's Mono font picks another. Weights: 400 text, 500 emphasis in the interface (`strong`), 600 headings. No other weights.
 
 Interface (`TextStyle`, built):
 
@@ -171,23 +171,27 @@ Roles (CSS root names, the look with the default knobs):
 | `muted` | #555553 | #a4a3a0 | muted labels and the ghost paint |
 | `fg-faint` | #90908e | #4d4c4b | placeholders and disabled text only |
 | `divider` | `fg` at 8% | `fg` at 8% | rules and hairlines; control and field edges take `fg` at 14% |
-| `accent` | #2f62d8 | #7f9fff | links of the interface and the accent people pick in Appearance; `primary` takes the tint or the picked accent. Text views draw links in the ink, underlined, and select with a wash of the ink |
-| `on-accent` | #ebebeb | #010101 | text on accent fills |
-| `primary` | #1c1c1a | #e9e7e3 | primary fills and the highlight; follows `fg` while the tint is the ink |
+| `accent` | #0a64dd | #3183ff | the tint or the accent people pick in Appearance (`blue` by default): the details (Principles 3) and the dot that asks for attention |
+| `on-accent` | #ebebeb | #ebebeb | the mark on an accent fill: a switch's knob, a check; near-white on every named accent |
+| `primary` | #1c1c1a | #e9e7e3 | primary fills; always `fg` |
 | `success`, `warning`, `danger` | #007b3e, #a75400, #cc2737 | #3fbf74, #f0a14a, #f2555f | status, always with an icon or a word |
 
 The kit's base colors are these values and the default `neutral` reproduces them exactly (Look). Muted is 0.30 of the way to the pole: `fg-muted` mixes `fg` 0.30 toward its contrast pole (white under dark ink, black under light), and `muted` mixes the ghost paint's ink 0.30 toward the ground under it (on a tint's solid fill it is the ink itself, Look).
 
+A theme can bring its own base colors instead (`colors`, Look): `bg`, `fg` and the status colors, for light, dark or both. An app uses this to draw its chrome in the colors of what it shows, as zz does with a terminal theme. Everything above them is worked out the same way from whatever they are: the surface steps, `divider`, the washes, `primary` (always `fg`), `on-accent` and the glass floor.
+
 Surfaces stack in this order, each layer a step away from the one under it (darker in light, lighter in dark): window `bg`, then `panel`, then cards (`settings.card`), then `popover` and floating panels.
 
-Highlight: what is on, picked or in focus uses `primary`, which is the ink while the tint is the ink, and the tint or the person's accent once either is set.
+Highlight: what is picked or in focus is a wash of the ink, and a primary action a solid fill of it, whatever the tint. What is on (a switch, a checked box, a slider's value) takes `accent`.
 
-Contrast (WCAG 2, built in step 8): in light and dark, for every tint, accent and `neutral` the knobs allow, muted text, accent, success, warning and danger as text reach 4.5:1 on `bg`, and so does the text on a solid fill of any of them. The muted mix is 0.30, as above. Light variants darken their accent and status colors until near-white text on them reads at 4.5:1, which also makes them read as text. Text on a solid fill takes whichever of near-white or near-black gives more contrast, so dark variants put near-black labels on their mid-tone accent and status fills. `interface_theme`'s tests assert all of it. `fg-faint` stays under 4.5 on purpose: placeholders and disabled text only.
+Contrast (WCAG 2, built in step 8): in light and dark, for every tint, accent and `neutral` the knobs allow, muted text, accent, success, warning and danger as text reach 4.5:1 on `bg`, and so does the text on a solid fill of `primary` and the status colors. The muted mix is 0.30, as above. Light variants darken their accent and status colors until near-white text on them reads at 4.5:1, which also makes them read as text. Text on a solid status fill takes whichever of near-white or near-black gives more contrast, so dark variants put near-black labels on their mid-tone status fills. An accent fill holds marks, not text (a knob, a check), so its mark is near-white whenever that reaches 3:1, the floor for marks, and near-black only on an accent too pale for it; the named accents are vivid and all hold near-white in both modes. `interface_theme`'s tests assert all of it. `fg-faint` stays under 4.5 on purpose: placeholders and disabled text only.
+
+Base colors from a theme (`colors`) and a person's own accent color are fitted to these rules, since nothing proves them in advance. An accent or status color that reads under 4.5:1 as text on `bg` moves in OKLCH lightness away from `bg`, keeping its hue and as much chroma as the screen can show, until it reaches 4.5:1; on the table's `bg` the table's colors and the named accents never move. `fg` that reads under 7:1 on `bg` moves the same way until it reaches 7:1, the floor the theme files meet: a theme brought from elsewhere (a terminal's colors) often sets its text for code at a size and weight where 5:1 reads, and interface text at 12 and 13 needs more; on the table's `bg` the table's `fg` never moves. The muted mix is the largest weight up to 0.30 that keeps `fg-muted` at 4.5:1 on `bg` (0.30 for the table's colors), so a dim `fg` gets a lighter mix.
 
 ## Corners, depth, focus, motion
 
-- Corners: the `radius`, `control-radius` and `smoothing` knobs (Look); 12, 12 and 3 by default. A control's corner stops at 45% of its height. A corner inside another is concentric.
-- Depth: steps of fill separate surfaces; controls, panes and cards draw no shadow. `shadow-float` (y 10, blur 30, spread -6) for menus, popovers, dialogs and the window, `shadow-lifted` for cards that move, and `shadow-contact` (0 1 4 #00000033) only for the knob of a switch or slider. Never let a shadow alone separate two surfaces.
+- Corners: the `radius`, `control-radius` and `smoothing` knobs (Look); 12, 12 and 3 by default. A control rounds to a share of its height, a container to `radius` in pixels, a corner inside another concentrically, and smoothing never changes how round a corner looks (Corners, under Look).
+- Depth: steps of fill separate surfaces; controls, panes and cards draw no shadow. `shadow-float` (y 10, blur 30, spread -6) for menus, popovers, dialogs and the window, drawn tight (0.4 of its offset, blur and spread: y 4, blur 12, spread -2.4) under a floating surface without glass, whose hairline already marks its edge, `shadow-lifted` for cards that move, and `shadow-contact` (0 1 4 #00000033) only for the knob of a switch or slider. Never let a shadow alone separate two surfaces.
 - Focus: a 1.5px ring (`FOCUS_RING_WIDTH`) drawn outside the border box with its own adaptive radius (`foundation::focus::with_focus_ring`), from the keyboard only; see Focus and keys. Only fields change their fill or edge on focus.
 - Motion: appear 120ms, enter 200ms, turn 220ms, at half those under Fast motion. Respect reduced motion.
 
@@ -203,7 +207,7 @@ How each kind draws, at rest and under the pointer:
 | Pane | the ground, no edge, no shadow; when panes have gaps, glass, or a hairline in `divider` where the glass draws no rim | | ring |
 | PiP (a pane floating over the others) | glass in the pane's own color, or the pane's ground opaque when glass is off; a hairline in `divider` where the glass draws no rim, gaps or not; `shadow-float` | | ring |
 | Card | one step of fill above its ground, no edge, no shadow | | ring |
-| Floating (menus, popovers, tooltips, dialogs, toasts, palettes, buttons over the content) | glass, or the `popover` fill when glass is off; `shadow-float`; no edge | | |
+| Floating (menus, popovers, tooltips, dialogs, toasts, palettes, buttons over the content) | glass and `shadow-float`; where glass is off or draws no rim, the `popover` fill under a hairline in `divider`, and without glass `shadow-float` drawn tight | | |
 | Button | a wash of the ink, no edge, no shadow; primary is a solid `primary` fill | a deeper wash | a deeper wash |
 | Quiet button, icon button, menu row | no fill | a wash | the highlight |
 | Item (list, menu and tree rows, tabs in content) | no fill | a wash | the highlight |
@@ -212,12 +216,13 @@ How each kind draws, at rest and under the pointer:
 | Label (badge, keycap) | a soft wash in its tone, no edge | | |
 | Rule | a hairline in `divider` | | |
 
-- The highlight on a selected row is a wash of the ink while the tint is the ink, and the tint's solid fill once a tint is set. A toned row's highlight is its tone's solid fill in every look.
+- The highlight on a selected row is a wash of the ink, whatever the tint. A toned row's highlight is its tone's solid fill.
+- A picker tile in Settings (`settings.tile`: the theme, mode and app icon tiles) has no fill and shows its pick as a menu row does, in the same wash around its preview; it rings only for keyboard focus.
 - On that solid fill everything in the row takes the selected ink: label, muted text, icons, and a toned chip or badge, which draws as a wash of the selected ink in place of its tone. The word still says the status (Content). Natively the row hands its fill to its children as their ground (`.on(ground)`, with `cx.theme().ground_at(look, state)`); in HTML a row with `data-state~="selected"` or `"current"` and a solid highlight sets the ground inside it.
-- A chrome item draws its selection as glass, a pill of the material over its bar or sidebar, under the material's rim and light. Its tint is the highlight it replaces, pushed away from the ground by the material's opacity, so over a flat bar or sidebar the pill reads exactly as strong as the highlight does where glass is off, and the blur adds only what lies behind; the highlight is its fallback. The chrome items are sidebar rows (`sidebar.row`, the Settings sections too), the flat sidebar's entries (`row.nav`), window tabs in the title bar (`tab.window`) and a browser's page tabs (`tab.page`). Glass is neutral, so the item keeps the window's ink and hands its children a glass ground, not a solid one. Where glass can't draw (glass `none`, Reduce transparency, or a glass ground under the item) it takes the highlight like any row.
-- The rule is one for every solid ground, whatever its color, so a graphite tint or a primary row in the ink counts as much as blue: the tint's or a tone's solid fill under a selected or current row, and a prominent surface (a solid button, chip or badge). Natively the ground says so (`Ground::solid`: a layer's when it sits on a solid ground, its highlight is the solid fill, or it is prominent and not glass; a paint's when its ground is solid or its fill in that state is more than half opaque). There every tone but a solid one reads as neutral, and muted ink is the ink itself; faint keeps its mix toward the fill. A solid chip or badge keeps its tone, since its own fill carries its label. A status dot turns to the muted ink with the rest, and a dot on a solid chip takes the chip's ink.
+- A chrome item draws its selection as glass, a pill of the material over its bar or sidebar, under the material's rim and light. Its tint is the highlight it replaces, pushed away from the ground by the material's opacity, so over a flat bar or sidebar the pill reads exactly as strong as the highlight does where glass is off, and the blur adds only what lies behind; the highlight is its fallback. The chrome items are sidebar rows (`sidebar.row`, the Settings sections too), the flat sidebar's entries (`row.nav`), window tabs in the title bar (`tab.window`) and a browser's page tabs (`tab.page`). Glass is neutral, so the item keeps the window's ink and hands its children a glass ground, not a solid one. Where glass can't draw (glass `none`, Reduce transparency, or a glass ground under the item) it takes the highlight like any row, and a picked window or page tab adds the control edge (its ground's ink at 10%, `outline` wide) in place of the rim, so it still stands apart from its strip or tab bar.
+- The rule is one for every solid ground, whatever its color, so a primary row in the ink counts as much as a danger one: a tone's solid fill under a selected or current row, and a prominent surface (a solid button, chip or badge). Natively the ground says so (`Ground::solid`: a layer's when it sits on a solid ground, its highlight is the solid fill, or it is prominent and not glass; a paint's when its ground is solid or its fill in that state is more than half opaque). There every tone but a solid one reads as neutral, and muted ink is the ink itself; faint keeps its mix toward the fill. A solid chip or badge keeps its tone, since its own fill carries its label. A status dot turns to the muted ink with the rest, and a dot on a solid chip takes the chip's ink.
 - In HTML the tokens write one scope per solid ground, listing every role whose selected or current highlight is that fill in the theme (rows, list items, menu and tree rows, tabs, toggled buttons, and the chrome items where glass is off). A role with toned rules lists its untoned rows (`:not([data-tone])`) in the neutral highlight's scope and each `[data-tone]` in its tone's. A scope carries the inks that differ and `--penna-dot` for dots. The looks painted on a solid fill are written once for every scope they fit: the labels (badges, chips, keycaps) and the buttons rows hold (quiet, icon, flat icon and row icon buttons, not prominent ones and none inside a field set in the row), each button with every value it sets and every other value at its initial, so a toned one loses its tone as it does natively. Soft and prominent buttons keep their window paint there, and rows hold neither. A button inside a field set in the row (a menu stepper's quiet buttons) paints on that field's ground natively, so the scopes leave it alone. The solid scopes come last in the tokens, after the reduced-transparency block, so they beat a ground scope around the row at equal specificity. A dot reads `--penna-dot` before its own color, and `data-solid` sets it to the tone's on-ink. Tree rows, like list items, switch their icons to the row's muted ink on selection.
-- Hairlines appear only where they mean something: rules, the outline variants (`button.outline`, `field.outline`, `badge.outline`, `chip.outline`), and a field being typed in. Increase contrast adds none. Outlines are 1 wide.
+- Hairlines appear only where they mean something: rules, the outline variants (`button.outline`, `field.outline`, `badge.outline`, `chip.outline`), a field being typed in, the edge of a gapped pane or a floating surface where glass draws no rim, and a picked window or page tab where glass draws none. Increase contrast adds none. Outlines are 1 wide.
 - The knob of a switch or a slider keeps `shadow-contact`, the one control shadow in the look, so a light knob reads on a light ground.
 - Variants (quiet, outline, solid, ghost) are drawn by the kit from their kind's style, so no knob can change one without the others.
 
@@ -225,39 +230,46 @@ The knobs, as a theme file spells them:
 
 | Knob | Values | Default |
 |---|---|---|
-| `tint` | `ink`, or a color for light and one for dark | `ink` |
+| `tint` | a named accent, or a color for light and one for dark | `blue` |
 | `neutral` | a hue (0 to 360) and an amount (0 to 1) that tint `bg`, `fg` and the surfaces above them | warm: hue 60, the amount that gives the values in Color |
 | `radius` | 0 to 25 | 12 |
 | `control-radius` | 0 to 25, or `full` for pills | `radius` |
 | `smoothing` | 2 (round arcs) to 5 (squircle) | 3 |
 | `glass` | `none`, `liquid`, or a material of its own | `liquid` |
-| `face` | the interface face; the code face stays the platform's | the platform's |
+| `face` | the interface face | the platform's |
 | `mode` | `follow`, `light` or `dark` | `follow` |
+| `colors` | `bg`, `fg`, `success`, `warning` and `danger`, for light and for dark | the Color table |
 
 There are no presets to pick. The look starts from the platform's knobs (the `macos` theme file on Apple platforms, `default` elsewhere), and a person sets every knob directly in Appearance, the same in every app:
 
 | Knob | Does |
 |---|---|
 | Mode | system, light or dark, unless a theme locks it |
-| Accent | `tint`: ink, one of the named accents, or a color |
+| Accent | `tint`: one of the named accents, or a color |
 | Tint, Tint strength | `neutral`'s hue and amount |
 | Corner radius | `radius`, a slider from 0 to 100% along a square curve, `radius` = 25 × share², so the default 12 sits at 69% and the steps near square corners stay small. 100% is a round corner, never a pill: Controls makes pills |
 | Controls | `control-radius`: Rounded follows `radius`, Pill is `full` |
 | Glass | `glass`, a switch: on draws `liquid`, or a theme file's own material once one is pasted in; off draws none |
 | UI font | `face` |
+| Mono font | the code face: code blocks, inline code and every other monospaced line in the interface. Not a theme knob, so a theme file leaves it alone. Its list opens on Monospaced, with All fonts beside it. Default is the platform's code face, or one the app names (zz: the terminal font) |
 | Text size | the root rem; everything scales with it |
 | Density | compact, regular or comfortable (Size) |
 | Increase contrast | a slider from 0 to 100%, contrast 1 to 2: surface steps, fills and the divider further from their ground, muted and faint text closer to `fg`; no edges |
 | Reduce transparency | glass draws as the `popover` fill |
 | Motion | Off (reduced motion), Default, or Fast (Motion's durations halved) |
 
-Appearance shows them in that order in three groups, none folded away: Look (Mode to UI font), Size (Text size and Density) and Accessibility (Increase contrast, Reduce transparency and Motion). An app's own rows go in groups of their own (zz's Sidebar after Look, and Window, with the app icon and window blur, last). `smoothing` and `mode` have no row: smoothing follows the platform's theme file. A theme file has no row either: an app that reads or writes theme files (the storybook's theme creator) does it itself, and `AppearanceChange::Import` sets every knob from one.
+Appearance shows them in that order in three groups, none folded away: Look (Mode to Mono font), Size (Text size and Density) and Accessibility (Increase contrast, Reduce transparency and Motion). An app's own rows go in groups of their own (zz's Terminal and Sidebar after Look, and Window, with the app icon and window blur, last), except an accessibility setting of its own, which joins Accessibility right after Increase contrast (zz's Terminal text contrast). Every setting about how the app looks lives on Appearance; another page keeps only what that part of the app does. `smoothing` and `mode` have no row: smoothing follows the platform's theme file. A theme file has no row either: an app that reads or writes theme files (the storybook's theme creator) does it itself, and `AppearanceChange::Import` sets every knob from one.
 
-What follows the platform with no knob: the system face and code face, when scrollbars show, the window controls, and how keys are spelled. Glass is the same everywhere: `liquid` unless a person turns it off.
+What follows the platform with no knob: the system face, when scrollbars show, the window controls, and how keys are spelled. Glass is the same everywhere: `liquid` unless a person turns it off.
 
-Everything else is the look and has no knob: each kind's fill, edge, shadow and shape, every state look, outline width, highlight strength, status colors, spacing, sizes, type and motion.
+Everything else is the look and has no knob: each kind's fill, edge, shadow and shape, every state look, outline width, highlight strength, status colors (a theme file's `colors` may bring its own, but no person sets them), spacing, sizes, type and motion.
 
-Corners: `radius` rounds containers and `control-radius` rounds controls. A control's corner stops at 45% of its height (`corner-fraction`), so a 12 corner on a 28 control reads as a pill only when `control-radius` is `full`. A corner inside another is concentric: inner radius = outer radius minus the inset between them. A pane rounds concentric with its header's controls (their corner plus `inset-chrome`), so it follows Corner radius; a PiP takes the same corner. `smoothing` is the corners' superellipse exponent; rows draw at most 2.5.
+Corners follow the Corner radius knob, a share from 0 to 100% (`radius` = 25 × share², Knobs below), by four rules, so at any setting every rounded thing reads equally round whatever its size:
+
+1. A control takes its corner from its height: `roundness` × its height, where `roundness` is 45% × the share of `control-radius` (`Theme::control_roundness()`; 31% at the default 12, 45% at 25). Buttons, fields, selects, tabs, chips, badges, keycaps, the segmented control's track and every row (sidebar rows and entries, menu, list and tree rows) are controls. Pill (`control-radius` `full`) makes the capsule controls half their height instead; the controls that are never capsules (menu rows, keycaps, text areas) keep `roundness` from `radius`. A 28 control at the default is 8.7, a 22 one 6.9, a 46 sidebar entry 14.3; at 100% they are 12.6, 9.9 and 20.7.
+2. A container keeps `radius` in pixels: cards, settings cards, panels, popovers, dialogs, toasts, tooltips, the window. A pane keeps it up to 10.24 (64%), then eases to 16 at 100% on a parabola that leaves `radius` at its own slope and lands flat, so the slider has no kink and a terminal's corners never eat its text: 16 × (1 − (1 − share)² / 0.36), 11.8 at the default 69%, 14.2 at 80%, 15.6 at 90% (`Theme::pane_radius()`), the same under Rounded and Pill controls. At 100% a pane under `smoothing` 4 is drawn 29.5 out from the corner and turns 4.7 in at 45°, and its 22 header buttons sit about concentric in it under Rounded (9.9 plus `inset-chrome` is 15.9). One shorter than its corner rounds no further than 45% of its shorter side, on a `tanh` curve (`corner-fraction`).
+3. A corner inside another is concentric, measured on the drawn corners: inner = outer minus the inset between them, and never rounder than a control of the inner one's height. The segmented control's pill is its track's corner less the border and inset; a picker's panel is its rows' corner plus its inset, and the chat composer its buttons' corner plus its inset (square at a `radius` of 0), and a tab strip its tabs' corner plus its inset; a PiP takes the pane's corner. A menu's rows are the exception: a popover keeps `radius` in pixels while its rows are controls, so at middle settings its corner less the row inset would leave the rows nearly square (1.3 at 54%); each row takes its own control corner instead, never rounder than the popover's.
+4. Smoothing changes how gradually a corner turns, never how round it looks. `smoothing` is a superellipse exponent, and a superellipse in the box of a circular arc reaches less far into the corner (at 4 it looks like an arc of 0.54 times the radius), so every corner is drawn in a box grown until its midpoint sits where the arc's would: 1.21 times the radius at 2.5, 1.42 at 3, 1.84 at 4. Where that box would pass half the side, it stops just short of it (the renderer draws a corner that reaches half the side as a plain round) and the exponent eases toward a circle until the midpoint matches. A capsule is a circle. Every role takes the theme's `smoothing`; nothing caps it.
 
 Glass is for what sits over something, since it reads only with something behind it:
 
@@ -265,7 +277,7 @@ Glass is for what sits over something, since it reads only with something behind
 - Panes over the window's frame, when panes have gaps (`Theme::pane_margin` above 0): the pane's ground is the tint, at the ground's own opacity, under the material's rim and light, with no blur or refraction, since the frame under a pane is one flat fill. A pane that sits flush has nothing under it and takes its ground.
 - The selection in chrome, over its bar or sidebar (chrome items, above).
 
-Never cards, fields, bars, panels, or the rows and controls inside content: they sit in their ground, not over it. Where glass is off each falls back: floating surfaces to the `popover` fill, panes to their ground with a hairline in `divider` when they have gaps, a PiP to its pane's ground, opaque, under that hairline, chrome selections to the highlight. A gapped pane takes the same hairline under a material of its own that draws no rim (no bezel and no edge shadow), so its edge always shows.
+Never cards, fields, bars, panels, or the rows and controls inside content: they sit in their ground, not over it. Where glass is off each falls back: floating surfaces to the `popover` fill under a hairline in `divider` and the tight `shadow-float`, panes to their ground with a hairline in `divider` when they have gaps, a PiP to its pane's ground, opaque, under that hairline, chrome selections to the highlight. A gapped pane takes the same hairline under a material of its own that draws no rim (no bezel and no edge shadow), so its edge always shows.
 
 A material is a full glass definition (blur, tint, saturation, bezel, refraction, specular, rim) for light and for dark:
 
@@ -274,17 +286,18 @@ A material is a full glass definition (blur, tint, saturation, bezel, refraction
 
 Natively the blur reads the backdrop up to 2.5 blur radii past a glass surface's edge; the web's backdrop filter reads only what is under the surface. Where the backdrop changes just outside a glass edge, as under a dialog stacked over another, the two blend it a little differently. That is a raster difference, like text, not a choice.
 
-The kit's theme files: `default` (the table's defaults), `macos` (tint blue, #0a64dd and #76abfd, since ala exposes no system accent; `control-radius` `full`; `smoothing` 4), the look on Apple platforms, and `yaru` (tint orange; `radius` 8; `smoothing` 2; `glass` `none`), which the storybook, the HTML tokens and the parity runs draw as a third look. None of them is a choice a person makes.
+The kit's theme files: `default` (the table's defaults), `macos` (tint `blue`, since ala exposes no system accent; `control-radius` `full`; `smoothing` 4), the look on Apple platforms, and `yaru` (tint orange; `radius` 8; `smoothing` 2; `glass` `none`), which the storybook, the HTML tokens and the parity runs draw as a third look. None of them is a choice a person makes.
 
 HTML: a theme file's knobs generate its tokens (`cargo run --example theme_css`), so the HTML twin follows the same look. A theme that leaves `glass` out gets `liquid` in its tokens. `--penna-control-radius` carries the control corner (9999px for `full`). Under `prefers-reduced-transparency: reduce` the tokens give every glass role the `popover` fill and no backdrop. A card inside a container marked `data-ground` rises one step from that container's fill.
 
 How the knobs are spelled and decided:
 
-- `tint` is `ink`, a named accent (`blue`, `orange`, ...), one hex color for both modes, or `{ "light": ..., "dark": ... }`. Any color sets `accent` and makes `primary` the tint; `ink` leaves `accent` at its default for links. A person's Accent replaces it.
+- `tint` is a named accent (`blue`, `orange`, ...), one hex color for both modes, or `{ "light": ..., "dark": ... }`, and sets `accent`; left out, it is `blue`. A person's Accent replaces it. The named accents, light then dark: blue #0a64dd #3183ff, purple #8549d1 #a366f7, pink #c02a82 #e648a0, red #cc252d #f44647, orange #ad4f00 #de6700, yellow #876400 #af8200, green #007b2c #009f3b, graphite #6a6a6a #868686. Each dark one is the most saturated color of its hue that reads at 4.5:1 as text on `bg` and holds a near-white mark at 3:1.
 - `neutral` is `{ "hue": 60, "amount": 0.15 }` by default, hue in OKLCH degrees. Amount 1 is 0.02 of OKLCH chroma on `bg` and 0.35 of that on `fg`. The base colors in code are the Color table; a neutral moves them by the difference between its tint and the default's, so the default reproduces the table exactly and other values tint like a person's tint did. A person's Tint and Tint strength override the hue and the amount.
 - `radius` and `control-radius` clamp to 0 to 25 and `smoothing` to 2 to 5, both where a file is parsed and where a person's override applies. `full` draws capsule controls (buttons, chips, tabs, badges, swatches) as pills and any other control at 25 with its 45% stop. A `radius` or `control-radius` of 25 is a round corner, never a pill.
 - `glass` as an object is a material: `light` and `dark` each name the fields that differ from `liquid` in that mode; an object with neither applies to both modes. Every material's tint rises to the lowest opacity that keeps `fg` at 4.5:1 over a black backdrop under dark text and a white one under light text, blended in sRGB and ignoring blur: 0.596 in light and 0.705 in dark with the default colors, so `liquid` keeps 0.60 in light and draws 0.705 in dark.
 - `mode` other than `follow` beats the person's Mode.
+- `colors` is `{ "light": { ... }, "dark": { ... } }`, each with any of `bg`, `fg`, `success`, `warning` and `danger` as hex colors: `{ "dark": { "bg": "#131313", "fg": "#dddddd", "danger": "#e7988a" } }`. A field left out, or a mode left out, takes the Color table's value. A neutral moves them the way it moves the table, so the default neutral leaves them exact. They are fitted (Color) after the neutral and the tint. A status color brought this way still means its status: whoever fills it keeps it red, green and amber.
 - Unknown keys are ignored, so a file from before step 10 loads as the default look under its own name.
 - Increase contrast (contrast 1 to 2) scales the surface steps, fills, washes and `divider` up by the contrast and the muted and faint mixes down by it, so surfaces stand further apart and secondary text reads closer to `fg`. It adds no edge to any kind.
 - Keyboard focus changes no fill but a field's; everything else shows the ring.
@@ -295,7 +308,7 @@ How the knobs are spelled and decided:
 - Muted, faint and tone ink are worked out for the ground under the text, natively and in HTML, where each ground scope (`data-ground`, `data-on`) carries the inks that differ from the window's: `--penna-muted`, `--penna-faint` and `--penna-<tone>-ink`, as values. Natively they mix the ink toward the ground's fill in OKLab rather than fade it, so the tokens write the mixed color. Cards, panels and floating grounds differ in muted and faint only; tone inks follow the ground's ink, which only a solid selection changes.
 - Row inset (6), outline width (1) and highlight strength (0.8 of the wash) are fixed.
 
-Status: built (steps 10, 12, 13, 14, 16, 17, 18 and 19). Theme files are knobs only, the kinds and the built-in role patches draw the table above, and a person sets the knobs themselves over the platform's. The storybook's theme creator edits these knobs and exports a theme file, the docs Look page shows their range live, and the parity baselines hold the one look. Step 12 closed the last differences between native and HTML but one: a soft or prominent button set straight on a solid selection keeps its window paint in HTML, and rows hold none that way. What else remains is raster: text, and glass blur at its edges.
+Status: built (steps 10, 12, 13, 14, 16, 17, 18, 19 and 20). Theme files are knobs only, the kinds and the built-in role patches draw the table above, and a person sets the knobs themselves over the platform's. The storybook's theme creator edits these knobs and exports a theme file, the docs Look page shows their range live, and the parity baselines hold the one look. Step 12 closed the last differences between native and HTML but one: a soft or prominent button set straight on a solid selection keeps its window paint in HTML, and rows hold none that way. What else remains is raster: text, and glass blur at its edges.
 
 ## Focus and keys
 
@@ -361,7 +374,7 @@ Anatomy, left to right, all from the button's rung of the control ladder (Size):
 - Caret (optional, `.dropdown_caret(true)`): a chevron at the end, `icon_gap` after the label, for a button that opens a menu. It is the same mark as a select's chevron at that size: a rung smaller than the button's icon from `md` up.
 - Focus ring: 1.5px, outside the container, its own radius, one ring width further out on a solid fill (Corners, depth, focus, motion).
 
-Icon only: the button is square (width = height) and must carry a tooltip that names the action, which is also its accessible name. A row's trailing actions use `Button::compact_icon` (24, ghost).
+Icon only: the button is square (width = height) and must carry a tooltip that names the action, which is also its accessible name. A row's trailing actions use `Button::compact_icon` (24, ghost). A button set inside a tab or a row's fill, such as a tab's close or a tree row's actions, takes `.inside(look, height)` with the container's look and height: it sits `INSIDE_GAP` (4) in from the container's top, bottom and trailing edge, so its side is the container's height less 8 and its corner is concentric with the container's (that corner less 4, a circle inside a capsule), and its icon is its side less 8, from 10 to 14. Like every ghost button it washes when pointed at, the row action look (`icon-button.row`) included.
 
 Sizes: `md` by default (follows density). `sm` and `xs` in toolbars, lists and rows that repeat; `lg` and `xl` for the one main action of a sparse screen (an empty state, a first run); `touch` under a coarse pointer. Every button in a row has the same size (Rules 6).
 
@@ -377,6 +390,8 @@ States:
 | disabled | faint label, no hover or press | leaves the focus order; its tooltip still shows |
 | loading | a spinner in the icon's place, or before the label when there is no icon | clicks are ignored; the label stays |
 
+A chrome toggle, a title bar button that turns a view on and off (the sidebar, the chat view), shows on with its duotone glyph instead of the selected fill, so the title bar has no fill at rest. Its paint, hover and press stay those of the chrome button.
+
 In a window that is not active, a glass button flattens and its label fades, like the rest of the window's chrome.
 
 Behavior: it fires on release of a click or tap inside it, and on Space or Enter while focused. A button with a caret opens its menu below it. A tooltip shows after the hover delay, and at once when the keyboard focuses the button.
@@ -385,7 +400,7 @@ Content: the label is a verb or a short verb phrase in sentence case, one to thr
 
 Placement: buttons in a group sit `gap-related` 8 apart. A dialog's or a form's actions sit at its end, aligned to the trailing edge, the primary last and its cancel just before it. A destructive dialog confirms with a danger button, not a primary one. Ghost buttons in a bar sit `inset-chrome` from its edges.
 
-HTML: `.penna-button` with `data-penna` (the recipe: `button`, `button.quiet` for ghost, `button.outline`), `data-tone`, `data-prominent` (solid), `data-size` (`xsmall` to `touch`), `data-state="current"` (selected), `data-variant` (`link`, `text`), `disabled`, `data-loading`; the label is `.penna-label`, the icon `<i data-icon>`, and a button with a caret takes `data-caret` and holds a `.penna-caret`.
+HTML: `.penna-button` with `data-penna` (the recipe: `button`, `button.quiet` for ghost, `button.outline`), `data-tone`, `data-prominent` (solid), `data-size` (`xsmall` to `touch`), `data-state="current"` (selected), `data-variant` (`link`, `text`), `disabled`, `data-loading`; the label is `.penna-label`, the icon `<i data-icon>`, and a button with a caret takes `data-caret` and holds a `.penna-caret`. A button set inside a tab or row takes `data-inside` with `--penna-inside-rows` set to the container's height, and `kit.js` rounds it concentric.
 
 Status: matches.
 
@@ -503,7 +518,7 @@ Kinds:
 
 Anatomy, left to right:
 
-- Box: 14 at `xs` and `sm`, 16 from `md` up; `Size(px)` takes that side, as a task list does to match its font. Off, it takes the tone's outline paint (an edge, no fill; neutral by default); on or mixed, the tone's solid fill (`primary` by default, `.tone()` to change it). A checkbox's corner is a quarter of the theme radius, at most a quarter of the side (3 in a 16 box with the default radius, 2 in Yaru). A radio is round.
+- Box: 14 at `xs` and `sm`, 16 from `md` up; `Size(px)` takes that side, as a task list does to match its font. Off, it takes the tone's outline paint (an edge, no fill; neutral by default); on or mixed, the tone's solid fill (`accent` by default, `.tone()` to change it). A checkbox's corner is a quarter of the theme radius, at most a quarter of the side (3 in a 16 box with the default radius, 2 in Yaru). A radio is round.
 - Mark: a checkbox's `check` icon at 70% of the side (11, or 10 in a 14 box); a mixed checkbox's `minus` at the same size; a radio's dot at 37.5% of the side (6, or 5). It takes the fill's ink.
 - Label (checkbox and radio group): the rung's text style (`caption`, `small`, then `body` from `md` up), `icon_gap` after the box (4, 4, then 6). The box is centered on the label's first line, on its capitals (`cap_center_drop`), and a long label wraps under itself, never under the box.
 - `.on(ground)` paints it for the surface it sits on, such as a picked tile.
@@ -521,7 +536,7 @@ States:
 | mixed | the tone's fill with the minus | a checkbox only |
 | hover | the box takes its paint's hover step | over the box or the label; not under a coarse pointer, not when disabled |
 | pressed | the box takes its paint's active step, while held | not under a coarse pointer |
-| focused | the focus ring, 1.5 outside the box, one ring width off it when filled, in the tone's focus ink | from the keyboard only, never from a click; a radio group rings its picked radio, or its first while none is picked |
+| focused | the focus ring, 1.5 outside the box, one ring width off it when its fill is the ring's ink (a toned box), in the tone's focus ink | from the keyboard only, never from a click; a radio group rings its picked radio, or its first while none is picked |
 | disabled | the paint's disabled step: fainter edge, fill and mark; the label in `fg-faint` | presses and keys are ignored, and it leaves the focus order |
 | error | `.tone(Tone::Danger)`: the edge, or the fill, in the danger tone | its Field shows the message with an icon (Field) |
 
@@ -625,10 +640,10 @@ Kinds:
 
 | Kind | Call | Draws |
 |---|---|---|
-| Glyph | `Icon::new(IconName::Bell)`, or an `IconName` wherever a component takes an icon | one of the set's 95 glyphs, drawn for the theme |
+| Glyph | `Icon::new(IconName::Bell)`, or an `IconName` wherever a component takes an icon | one of the set's 99 glyphs, drawn for the theme |
 | Asset | `IconName::Asset("icons/logo.svg")`, `Icon::empty().path(path)` | the app's own SVG, as it is |
 
-The set: 95 glyphs in eight groups (chrome and layout, actions, things, navigation, keys, status, people and agents, theme), each on a 24 grid with a 1.5 stroke, no fill, in the current color. Corners take half the theme radius in grid units with the kit's corner smoothing, capped at 0.45 of the shorter side like every corner the kit draws; at radius 0 corners are sharp, caps square and joins mitered. So the set changes with the theme, natively and in each theme's `-icons.css`.
+The set: 99 glyphs in eight groups (chrome and layout, actions, things, navigation, keys, status, people and agents, theme), each on a 24 grid with a 1.5 stroke, no fill, in the current color. The two duotone glyphs (`ChatDuotone`, `PanelLeftDuotone`) are their outline glyph with the inside filled at 35% of the same color, for a chrome toggle that is on (Button). Corners take half the theme radius in grid units with the kit's corner smoothing, capped at 0.45 of the shorter side like every corner the kit draws; at radius 0 corners are sharp, caps square and joins mitered. So the set changes with the theme, natively and in each theme's `-icons.css`.
 
 Anatomy: a square box the icon's size, the glyph scaled to fill it, in the color of the text around it unless `.text_color()` sets one.
 
@@ -696,19 +711,19 @@ A tone paints only the edge: the tone's outline ink at rest and hovered, its foc
 
 A selection stays painted while the field is not focused.
 
-Behavior: a click places the caret and a drag selects. The keyboard edits as the platform does: arrows, word jumps (Alt, or Ctrl), line ends (Cmd, Home, End), Shift to select, Cmd-Z and Shift-Cmd-Z, cut, copy and paste. Enter emits `PressEnter`; in a multi-line field it inserts a line break unless the state submits on Enter, and Shift-Enter always breaks the line. Escape closes the context menu or ends a composition, then passes up. `validate` rejects an edit that fails it. The clear button empties the field and focuses it, and is never a tab stop. A number input steps with Up and Down and with its buttons, clamps to `min` and `max`, and keeps the step's decimals.
+Behavior: a click places the caret and a drag selects. The keyboard edits as the platform does: arrows, word jumps (Alt, or Ctrl), line ends (Cmd, Home, End), Shift to select, Cmd-Z and Shift-Cmd-Z, cut, copy and paste. Enter emits `PressEnter`; in a multi-line field it inserts a line break unless the state submits on Enter, and Shift-Enter always breaks the line. Escape closes the context menu or ends a composition, then passes up. `validate` rejects an edit that fails it. The clear button empties the field and focuses it, and is never a tab stop. A number input steps with Up and Down and with its buttons, clamps to `min` and `max`, and keeps the step's decimals. Its value scrubs: while the field isn't being edited the pointer over the value is the left-right resize cursor, and pressing and sliding moves the value a step for every 4 points from where the press started, clamped the same way. A press focuses the field like its buttons, so it commits when it loses focus; one that doesn't move 3 points puts the caret where it pressed, as a click in a field does. A coarse pointer doesn't scrub.
 
 Content: the placeholder hints at what to type ("Search sessions", "Write a commit message"), in sentence case with no closing period. It is never the only label, since it disappears with the first key.
 
 Placement: in a form a field sits in a Field, which puts its label above it and its help or error under it, `gap-tight` 4 away; in settings it sits at the end of a row whose title names it. Fields sit `gap-group` 16 apart.
 
-HTML: `label.penna-input` with `data-penna="field"` (`field.outline` for outline; `field.multiline` with `data-multiline` around a `<textarea>` that takes `data-min-rows` and `data-max-rows`), holding an `<input>`; `data-size` (`xsmall` to `touch`), `data-tone="danger"` for an error, `data-disabled` with `aria-disabled="true"` and `disabled` on the input, `data-bare`, `data-borderless`, `data-align` (`center`, `right`), and `data-selection="start,end"` on the input for a resting selection. `.penna-input-prefix` and `.penna-input-suffix` sit around the input; the suffix holds `.penna-spinner` while loading and `.penna-input-clear` (a ghost icon button a rung smaller) when cleanable. A number input is `.penna-number` (`data-penna="field"`, `role="spinbutton"`, `data-step`, `data-min`, `data-max`) holding a bare centered field between two buttons with `data-step-by`. `input.js` paints the caret and the resting selection the way ala does, sets `data-state="focused"`, grows text areas and steps number inputs.
+HTML: `label.penna-input` with `data-penna="field"` (`field.outline` for outline; `field.multiline` with `data-multiline` around a `<textarea>` that takes `data-min-rows` and `data-max-rows`), holding an `<input>`; `data-size` (`xsmall` to `touch`), `data-tone="danger"` for an error, `data-disabled` with `aria-disabled="true"` and `disabled` on the input, `data-bare`, `data-borderless`, `data-align` (`center`, `right`), and `data-selection="start,end"` on the input for a resting selection. `.penna-input-prefix` and `.penna-input-suffix` sit around the input; the suffix holds `.penna-spinner` while loading and `.penna-input-clear` (a ghost icon button a rung smaller) when cleanable. A number input is `.penna-number` (`data-penna="field"`, `role="spinbutton"`, `data-step`, `data-min`, `data-max`) holding a bare centered field between two buttons with `data-step-by`. `input.js` paints the caret and the resting selection the way ala does, sets `data-state="focused"`, grows text areas, and steps and scrubs number inputs.
 
 Status: matches.
 
 ### Keycap
 
-A keycap shows a keystroke the way it is pressed: a field's shortcut hint, a shortcut in a settings row, the which-key prefix, the key inside a button that submits. Menus and tooltips show their shortcuts as plain text (`Kbd::text()`) instead; to tag something with a word, use a badge.
+A keycap shows a keystroke the way it is pressed: a field's shortcut hint, a shortcut in a settings row, the which-key prefix, a tooltip's key, the key inside a button that submits. Menus show their shortcuts as plain text (`Kbd::text()`) instead; to tag something with a word, use a badge.
 
 Kinds:
 
@@ -738,6 +753,42 @@ Content: one keystroke per cap. A sequence, such as a prefix and then a key, is 
 Placement: the caps of one sequence sit `gap-tight` (4) apart; a cap sits at the end of the row or field it belongs to.
 
 HTML: `<kbd class="penna-kbd" data-penna="keycap">` with `data-kbd`, the keystroke as the keymap spells it (`cmd-shift-p`), which `kbd.js` fills with glyphs and an `aria-label`; `data-kbd-lowercase`; `data-size` (`xsmall`, `small`). A fixed label holds its text in a `span` marked `data-penna-text`, as `kbd.js` writes it. `data-kbd-text` on any element fills it with the spelled-out keystroke.
+
+Status: matches.
+
+### Key field
+
+A key field records one keystroke the person presses: a shortcut, a prefix key. To show a keystroke that can't be changed, use a keycap; to type text, an input.
+
+Kinds: one. `KeyField::new(&state)` draws a `KeyFieldState`, which holds the keystroke (`.value()` when built, `set_value()` later, `keystroke()` to read it) and emits `KeyFieldEvent::Record(keystroke)` when one is recorded.
+
+Anatomy, all from the field's rung of the control ladder (Size):
+
+- Container: a field (the field role's fill, a hairline edge of at least 1px, radius the theme radius capped at 45% of the height), height `control_px`, the field inset at both sides (6, 6, 8, 10, 12, 12 from `xs` to `touch`). It is as wide as its container.
+- Value: the keystroke as a keycap, centered; `sm` caps at `xs` and `sm`, `md` caps from `md` up. On a ground (`.on(ground)`) the cap takes that ground too.
+- Placeholder: with no keystroke, the placeholder (`.placeholder()`, or "None") centered in the field's faint ink, in the rung's text style (`caption`, `small`, `body`, `body`, `lead`, `touch-body`).
+- Prompt: while recording, "Press a key" at the start of the field, in the faint ink, in place of the value.
+
+Sizes: `md` by default (follows density). Same rungs and uses as a field.
+
+States:
+
+| State | Look | Notes |
+|---|---|---|
+| rest | the field's fill and edge, the value centered | |
+| hover | the fill's hover step | not when disabled |
+| focused | the field's focus edge, the value centered | from Tab, or after a recording |
+| recording | the focused look with the prompt at the start | the field holds focus |
+| disabled | the field's disabled paint | leaves the focus order and never records |
+| error | `.tone(Tone::Danger)` paints the edge in the danger tone, like a field | |
+
+Behavior: a press focuses the field and starts recording, as a press in a text field focuses it; Tab only focuses it, and Enter or Space then starts recording. While recording, the next key that isn't a modifier alone is recorded: it is taken before any key binding (`App::intercept_keystrokes`), so a shortcut the app binds is recorded instead of run. Recording stops, focus stays, and the field emits `KeyFieldEvent::Record`. A held key's repeats are ignored. A symbol typed with Shift records as the symbol (`"`, not Shift-'), the way a keymap spells it; Shift stays on letters and named keys. Escape with no modifier cancels, and so does leaving the field.
+
+Content: the placeholder says what no keystroke means ("None", "Unbound"), in sentence case. The settings row's title names what the key does, and its description says when it is pressed.
+
+Placement: at the end of a settings row, on the card's ground, at a width the caller sets (96 fits a chord of three modifiers and a key at `md`); in a form, in a Field.
+
+HTML: `div.penna-key-field[data-penna="field"]` with `data-key`, the keystroke as the keymap spells it (`ctrl-b`, `cmd-shift-p`, `%`), `data-placeholder`, `data-size` (`xsmall` to `touch`), `data-tone="danger"`, `aria-disabled="true"`, and `data-state="recording"` (or `"focused"`) to show that state at load. `key_field.js` makes it a `role="button"` tab stop, writes a `<kbd class="penna-kbd" data-penna="keycap" data-kbd>` for the value (filled by `kbd.js`) or a `.penna-key-field-text` run for the placeholder and prompt, sets `data-state` (`focused`, `recording`, `disabled`) and `aria-label`, records on a press or on Enter and Space, captures the next keydown on the document while recording (default prevented, propagation stopped), and fires `change` with `{ key }`. A field marked `data-state="recording"` starts recording when the page loads.
 
 Status: matches.
 
@@ -786,7 +837,7 @@ Looks: a `ListItem` takes any row look (`.look(RowLook)`, see Row). The menu loo
 
 Anatomy:
 
-- Row: at least `row_height` tall, `control-md` by default (28, follows density); inset `space-12` at both sides; its children `space-4` apart, spread to both ends. Corners: the look's radius capped at 40% of the row height, smoothing at most 2.5. The look paints its fill, outline and highlight.
+- Row: at least `row_height` tall, `control-md` by default (28, follows density); inset `space-12` at both sides; its children `space-4` apart, spread to both ends. Corners: a control's, `roundness` × the row height (Corners, under Look). The look paints its fill, outline and highlight.
 - Icon (optional): 14, in muted ink (`fg-muted`), `space-8` before the label.
 - Label: `lead` (14 on 20), centered in the row height; it takes the width left.
 - Detail (optional): `small`, muted, at the end.
@@ -828,12 +879,16 @@ Kinds, by how it opens (`PopupMenu` is the one surface; the select opens it too)
 | Context | `.context_menu(build)` on any element | at the pointer, on a right press or a long press; at the element's top-left on Shift+F10 or the Menu key while focus is in it | actions on the thing under the pointer |
 | Submenu | `.submenu_with_icon(icon, label, window, cx, build)` | beside its row, when the row is highlighted | a group that would crowd the parent |
 
+Any menu can carry a search field: `.search(placeholder, window, cx)` in its builder, and `set_query` to fill it from code. A select turns it on past 12 options. Use it for a long list of names, such as fonts or themes.
+
+A menu can also carry scopes: `.scopes([MenuScope::new(label, keep), MenuScope::all(label)], picked)` in its builder, and `set_scope` to switch from code. Each scope is a segment; one built with `keep` shows only the rows whose label it keeps. Use two to five of them to narrow a long list to a kind, such as monospaced fonts. A select passes its `.scopes()` through.
+
 Row kinds (`PopupMenuItem`): an action (`new`, with `.icon()` and `.action()`), a checked row (`.checked(true)`), a link (`link(label, href)`), custom content (`element`), a stepper (`stepper`), a submenu row, a section label (`label`) and a separator (`separator`).
 
 Anatomy:
 
 - Surface: the `popover` look (popover fill, `shadow-float`), the theme radius capped at 45% of its height. Its rows sit the row inset (`theme.row_inset`, 6) from every edge, `space-2` apart. At least 128 wide (8 rem), at most 500 (`max_w`); a scrollable menu stops at half the window's height, 450 at most (`max_h`).
-- Row: `row` height, `control-md` (28, follows density), 44 under a coarse pointer; inset `space-8` at both sides; text `small`, `body` under a coarse pointer. Corners: the theme radius less 4, capped at 40% of the row height (11.2 at 28), smoothing 2.5.
+- Row: `row` height, `control-md` (28, follows density), 44 under a coarse pointer; inset `space-8` at both sides; text `small`, `body` under a coarse pointer. Corners: a 28 control's (8.7 at the default, 12.6 at 100%), never rounder than the popover's (4 at a `radius` of 4).
 - Icon slot: 12 (14 under a coarse pointer), `space-8` before the label, at 0.8 opacity. Every row keeps the slot when any row has an icon or a check, so labels line up; a checked row draws a check in it.
 - Label: `small`, one line.
 - Shortcut (optional): `small`, at the end, `space-12` after the label, in the row's ink at 0.8 opacity. It comes from the keymap binding of the row's action, never from the label.
@@ -841,6 +896,8 @@ Anatomy:
 - Section label: `caption`, muted, as tall as its line, with the icon slot before it.
 - Separator: a hairline rule, `space-2` above and below and the row inset at the sides. A separator first, doubled or last is not drawn.
 - Stepper: the label, then `space-10` later a field-ground group of three small flat ghost buttons (minus, the value at least 48 wide, plus).
+- Search field (optional): a `md` field on the popover's ground, the row inset from the top and sides, with a 14 search icon in the muted ink before the text and a clear button once there is text. It stays put and the rows scroll under it, so the rows' scroll area is the menu's height less the field and one row inset. The menu keeps the width it opened at while the rows filter. When nothing matches, one faint `small` row says "No matches", `space-8` in.
+- Scopes (optional): a `md` segmented control at full width (Segmented control) on the popover's ground, under the search field or on top without one, the row inset from the sides and from what is above it. It stays put like the field, so the rows' scroll area also loses its height and one row inset.
 
 Sizes: one. Rows follow density (24, 28, 32); under a coarse pointer they are 44 with `body` text and 14 icons.
 
@@ -859,6 +916,8 @@ Behavior:
 
 - Opening: a dropdown opens on a press of its trigger, or on Enter, Space or Down while the trigger has focus; a context menu opens on a right press or a long press, at the pointer, or on Shift+F10 or the Menu key while focus is in its region, at the region's top-left. `.context_menu` doesn't make the region focusable: give it `.track_focus` for the keys to reach it. Either way the menu opens focused, kept 8 from the window's edges; opened from the keyboard, its first enabled row is highlighted. A submenu opens when its row is highlighted, beside the row with 8 of overlap, on the left when the right has no room, kept 4 from the window's edges.
 - Keys while open: Up and Down move the highlight over enabled rows and wrap. Right opens a highlighted submenu and moves into it; Left steps back to the parent. On a stepper Left and Right step and Enter resets. Enter runs the highlighted row and closes the menu. Escape closes it and every parent, and gives focus back to where it was. No type-ahead.
+- Search: a menu with a search field opens with the field focused. Typing keeps the rows whose label holds the text, in any case, and hides section labels, separators and custom rows; the highlight goes to the first match, or to the checked row while the field is empty. Up, Down, Enter and Escape act on the menu as above; Left, Right and Space edit the text. Enter with no match does nothing.
+- Scopes: the menu opens on the scope it was given. A press on a segment, or Tab and Shift-Tab from the field or the menu, switches scope and wraps at the ends; focus stays where it was. A scope with `keep` filters the rows like the query, and both apply together; the highlight follows the search rules, going to the checked row only while it is shown, and "No matches" shows when nothing is left.
 - Pointer: pointing at a row highlights it; leaving clears it unless the last input was a key. A click runs the row on release and closes the whole chain; a press outside closes it. Stepper buttons step without closing.
 - A row runs its handler, or else dispatches its action to the menu's action context.
 - Motion: it fades in and rises 6 over 160ms, easing out; none under reduced motion.
@@ -867,7 +926,7 @@ Content: a row's label is a verb or a short verb phrase in sentence case with no
 
 Placement: a dropdown hangs `space-4` below its trigger, aligned to the trigger's start, and its trigger carries a caret. A context menu opens where the pointer is. Keep submenus to one level where you can.
 
-HTML: built at runtime by `menu.js`: `pennaMenu.dropdown(trigger, items)`, `pennaMenu.context(region, items)` or `new pennaMenu.Menu(items)`, where an item is `{ label, icon, key, checked, disabled, link }` or `{ kind: "label" | "separator" | "submenu" | "stepper" | "note", ... }`. The markup: `.penna-popup[data-penna="popover"]` holds `.penna-popup-items[role="menu"]`, whose rows are `.penna-popup-row[data-penna="menu-item"][role="menuitem"]` with `data-kind` (`item`, `label`, `submenu`, `stepper`, `note`), `data-disabled`, and `data-selected` with `data-state="selected"` (`"hover"` on a submenu row) while highlighted. A row holds `.penna-popup-icon`, then `.penna-popup-main` with the `.penna-label` and a `.penna-label.penna-popup-key`; labels and submenu rows wrap theirs in `.penna-popup-line`; marks are `i.penna-popup-detail`, a link's label `.penna-popup-link`, a stepper's group `.penna-popup-stepper`. Separators are `.penna-popup-separator[role="separator"]`; an open submenu is a `.penna-popup.penna-popup-sub` inside its row. `@media (pointer: coarse)` switches rows to 44, `body` and 14 icons. A dropdown also opens on Enter, Space and Down, a context menu on the Menu key or Shift+F10 at the region's top-left, each with its first enabled row highlighted.
+HTML: built at runtime by `menu.js`: `pennaMenu.dropdown(trigger, items)`, `pennaMenu.context(region, items)` or `new pennaMenu.Menu(items)`, where an item is `{ label, icon, key, checked, disabled, link }` or `{ kind: "label" | "separator" | "submenu" | "stepper" | "note", ... }`. The markup: `.penna-popup[data-penna="popover"]` holds `.penna-popup-items[role="menu"]`, whose rows are `.penna-popup-row[data-penna="menu-item"][role="menuitem"]` with `data-kind` (`item`, `label`, `submenu`, `stepper`, `note`), `data-disabled`, and `data-selected` with `data-state="selected"` (`"hover"` on a submenu row) while highlighted. A row holds `.penna-popup-icon`, then `.penna-popup-main` with the `.penna-label` and a `.penna-label.penna-popup-key`; labels and submenu rows wrap theirs in `.penna-popup-line`; marks are `i.penna-popup-detail`, a link's label `.penna-popup-link`, a stepper's group `.penna-popup-stepper`. Separators are `.penna-popup-separator[role="separator"]`; an open submenu is a `.penna-popup.penna-popup-sub` inside its row. `@media (pointer: coarse)` switches rows to 44, `body` and 14 icons. A dropdown also opens on Enter, Space and Down, a context menu on the Menu key or Shift+F10 at the region's top-left, each with its first enabled row highlighted. A search field comes from `{ search: "Search fonts" }` in the options of `new Menu(items, options)` or `dropdown(trigger, items, options)`: the popup takes `data-search` and starts with `.penna-popup-search`, which holds a `label.penna-input` (search icon in `.penna-input-prefix`, a clear button in `.penna-input-suffix`); filtered rows take `hidden`, `.penna-popup-none` says "No matches", `menu.filter(text)` filters from code, and `--penna-popup-max` sets the menu's height (half the viewport, 450 at most, by default). `input.js` exposes `pennaInput.wire(root)` for fields added after load. Scopes come from `{ scopes: [{ label, keep }], scope }` in the same options, where `keep(label)` says whether a row stays and a scope without it keeps every row: the popup takes `data-scopes` and holds `.penna-popup-scopes` after the search, with a full-width `.penna-segmented` (`data-width="full"`) whose segments are `button:<label>`; Tab and Shift-Tab switch scope, `menu.setScope(index)` switches from code, and the page loads `segmented.css` and `segmented.js`.
 
 Status: matches.
 
@@ -879,7 +938,7 @@ Looks (`PanelLook`, `Panel::new(id, look)`):
 
 | Look | Recipe | Paint | Use |
 |---|---|---|---|
-| Popover | `popover` | glass, or the `popover` fill (the window `bg` two steps up) when glass is off; no outline; `shadow-float`; the `radius` knob | menus, dropdowns, the find bar, the palette |
+| Popover | `popover` | glass and `shadow-float`, or the `popover` fill (the window `bg` two steps up) under a hairline in `divider` and the tight `shadow-float` when glass is off; the `radius` knob | menus, dropdowns, the find bar, the palette |
 | Inline | `inline-panel` | as Popover | panels raised inside a view: question cards, failure alerts |
 | Picker | `picker`, under `dialog` | as Popover | dialogs that search a list and pick from it |
 | Toast | `toast` | as Popover; announced as a status | notifications and banners |
@@ -910,7 +969,7 @@ A popover opens a small panel from a button for one short task: rename something
 Anatomy:
 
 - Trigger: any selectable element, usually a button. It shows selected (`data-state="current"`) while the popover is open.
-- Panel: the `popover` look (glass, or the `popover` fill; no outline; `shadow-float`; the `radius` knob, 12 by default). Inset `inset-card` 12 all round. Text `body`, set on the panel before the content's own style.
+- Panel: the `popover` look (glass, or the `popover` fill under a hairline where glass is off; `shadow-float`; the `radius` knob, 12 by default). Inset `inset-card` 12 all round. Text `body`, set on the panel before the content's own style.
 - Offset: `space-4` between the trigger and the panel.
 - Content: the caller's. Corners inside it are concentric with the panel's (12 for something at the inset in the default theme).
 
@@ -950,7 +1009,7 @@ Looks (`RowLook`):
 
 Anatomy:
 
-- Fill: the look's fill, outline, shadow and highlight. Corners: the look's radius, capped at 40% of `row_height` when it is given, smoothing at most 2.5; `.radius(px)` sets a round look's radius on the fill and its press highlight.
+- Fill: the look's fill, outline, shadow and highlight. Corners: a control's, `roundness` × the row's height; `.radius(px)` sets a round look's radius on the fill and its press highlight.
 - Content, the caller's: the stories use a 32 row, `space-12` inset, `space-8` gaps, a 12 icon, a `small` label and an optional `caption` aside in muted ink.
 - Fill row: with `.hover_group(group)` a Row is a fill set inside a taller row (2 from its top and bottom and `space-4` from its sides in the story) that lights when the whole row is pointed at.
 
@@ -997,6 +1056,7 @@ Axes (`ScrollbarAxis`): vertical, horizontal, or both. With both, the horizontal
 Anatomy:
 
 - Track: `space-16` (16) wide along the area's end edge (the right for vertical, the bottom for horizontal), no fill. It is the hit area.
+- Fade (`top_fade`, `bottom_fade`): a strip of the ground over the content at that edge, clear to solid at 70% of its height. It is as tall as the caller asks but never more than twice the content past the edge, so it grows in as the area leaves its end. The settings page fades both edges by 32 in the window's ground (`Theme::ground()`, so a see-through window stays see-through), the workspace sidebar its bottom by 40.
 - Thumb: `space-6` (6) wide at rest in Scrolling, `space-8` (8) otherwise, set `space-2` (2) in from the outer edge and the track's ends. Its length is the visible share of the track, at least three track widths (48). Fill `fg` at 28% (`fg.wash()`, `--penna-thumb`), 35% (`fg.glow()`) under the pointer or while dragged. Radius: the theme radius capped at half the thumb's width, so round in every shipped theme.
 
 The lengths are `Rems` (`GUTTER_WIDTH`, `THUMB_WIDTH`, `THUMB_INSET`, `MIN_THUMB_SIZE`), turned into pixels with the window's rem when the bar lays out, so paint, hit testing and drag all use the same scaled lengths. A caller that draws its own thumb (zz's terminal scrollback) converts them the same way. `scroll.js` reads `--penna-space-16` and `--penna-space-2` at layout and again when the tokens load.
@@ -1032,7 +1092,7 @@ Anatomy, all from the control's rung of the control ladder (Size):
 
 - Track: the field's paint (fill, a hairline edge of at least 1px, corners), with its hover and pressed fills while the pointer is on it, height `control_px` (28 at `md`, which follows density), `space-2` inside the edge.
 - Pill: behind the picked segment, in the quiet button's selected paint (`data-state="current"`). It is as tall as the segments and its radius is concentric with the track's: the track radius less its edge and `space-2`, and a full pill inside a full track.
-- Segments: one per option, side by side with no gap, each as wide as its label plus the rung's field inset and `space-2` at both sides (8, 8, 10, 12, 14, 14 from `xs` to `touch`), as tall as the track less `space-2` and the edge on each side.
+- Segments: one per option, side by side with no gap, each as wide as its label plus the rung's field inset and `space-2` at both sides (8, 8, 10, 12, 14, 14 from `xs` to `touch`), as tall as the track less `space-2` and the edge on each side. With `.full_width()` the track fills its container and the segments share its width equally, each growing from zero and never narrower than its label.
 - Labels: the rung's text style (`caption`, `small`, `body`, `body`, `lead`, `touch-body`). The picked one takes the selected ink, the others the quiet button's ink.
 
 Sizes: every rung through `.with_size()` (`Sizable`), `md` by default (follows density). `xs` and `sm` in toolbars and dense rows, `touch` under a coarse pointer. Every control in a row has the same size (Rules 6).
@@ -1052,9 +1112,9 @@ Behavior: a click on a segment picks it and calls `on_select` with its index; th
 
 Content: one or two words per segment, sentence case, no period ("System", "Light", "Dark"). Keep the labels about the same length, since each segment is as wide as its own.
 
-Placement: at the trailing end of a settings row (Appearance's mode and density), or above content to switch its view (the docs' Rust and HTML tabs).
+Placement: at the trailing end of a settings row (Appearance's mode and density), above content to switch its view (the docs' Rust and HTML tabs), or at full width under a menu's search field to scope its rows (Menu).
 
-HTML: `.penna-segmented` (`data-penna="field"`, `role="radiogroup"`, `data-value` the picked index, `data-size` (`xsmall` to `touch`), `aria-disabled="true"`) holding `.penna-segments` (`data-penna="button.quiet"`, `data-state="current"`), which holds a `.penna-segment-pill` and a `.penna-segment` (`role="button"`) per option with a `.penna-label` inside. `.penna-segment` takes `:hover` or `data-state="hover"` and `:active` or `data-state="active"`, drawn in the root `--penna-quiet-hover` and `--penna-quiet-pressed` (the quiet button's fills) with the pill's radius (`--penna-pill-r`, which `segmented.js` sets). `segmented.js` makes the track a tab stop, places the pill, sets `aria-selected`, moves the pick on click and on the keys above, fires `change` with `{ index }`, and sizes the ring (`--penna-ring-r`) that `:focus-visible` or `data-state="focused"` draws. With `aria-disabled="true"` it leaves the track out of the tab order, ignores clicks and keys, and marks `.penna-segments` disabled so the tokens give the labels their disabled ink.
+HTML: `.penna-segmented` (`data-penna="field"`, `role="radiogroup"`, `data-value` the picked index, `data-size` (`xsmall` to `touch`), `aria-disabled="true"`) holding `.penna-segments` (`data-penna="button.quiet"`, `data-state="current"`), which holds a `.penna-segment-pill` and a `.penna-segment` (`role="button"`) per option with a `.penna-label` inside. `.penna-segment` takes `:hover` or `data-state="hover"` and `:active` or `data-state="active"`, drawn in the root `--penna-quiet-hover` and `--penna-quiet-pressed` (the quiet button's fills) with the pill's radius (`--penna-pill-r`, which `segmented.js` sets). `segmented.js` makes the track a tab stop, places the pill, sets `aria-selected`, moves the pick on click and on the keys above, fires `change` with `{ index }`, and sizes the ring (`--penna-ring-r`) that `:focus-visible` or `data-state="focused"` draws. With `aria-disabled="true"` it leaves the track out of the tab order, ignores clicks and keys, and marks `.penna-segments` disabled so the tokens give the labels their disabled ink. `data-width="full"` fills the container with the segments sharing its width. `pennaSegmented.wire(root)` sets up controls added after load, and `pennaSegmented.set(control, index)` moves the pick from code without firing `change`.
 
 Status: matches.
 
@@ -1069,8 +1129,8 @@ Anatomy, left to right, all from the select's rung of the control ladder (Size):
 - Trigger: a field (the field role's fill, a hairline edge of at least 1px, radius the theme radius capped at 45% of the height), height `control_px`, the field inset at both sides (6, 6, 8, 10, 12, 12 from `xs` to `touch`). It is as wide as its value unless the caller sets a width.
 - Value: the rung's text style (`caption`, `small`, `body`, `body`, `lead`, `touch-body`), cut with an ellipsis when it doesn't fit. With nothing picked it shows the placeholder (or "Select") in the field's faint ink.
 - Chevron: `chevron-down` at the end, `icon_gap` after the value (4, 4, 6, 6, 8, 8), in the muted ink, a rung smaller than the trigger from `md` up: 12, 12, 12, 14, 16, 16.
-- Menu: a popover menu `space-4` under the trigger, its trailing edge on the trigger's, at least as wide as the trigger and scrolling past its height (`.menu_max_h()`). Its rows are menu rows (`small`, 12 icons) with a check before the picked one. An empty list shows a 28 inbox icon in the faint muted ink, `space-24` above and below, or the caller's `.empty()`.
-- Sheet (coarse pointer): a bottom sheet titled by `.title()` or the placeholder, with a row per option and a search field once there are more than 12.
+- Menu: a popover menu `space-4` under the trigger, its trailing edge on the trigger's, at least as wide as the trigger and scrolling past its height (`.menu_max_h()`). Its rows are menu rows (`small`, 12 icons) with a check before the picked one. An empty list shows a 28 inbox icon in the faint muted ink, `space-24` above and below, or the caller's `.empty()`. Past 12 options it carries the menu's search field (Menu), with the placeholder from `.search_placeholder()` ("Search" by default); `.searchable(bool)` forces it on or off. With `.scopes()` it carries the menu's scopes (Menu) and opens on the first scope that keeps the picked option's title, or the first scope.
+- Sheet (coarse pointer): a bottom sheet titled by `.title()` or the placeholder, with a row per option, a search field when the select is searchable, as above, and under it a full-width `touch` segmented control when it has scopes, which filters the rows the same way.
 
 Sizes: `md` by default (follows density). Same rungs and uses as a field. Every control in a row has the same size (Rules 6).
 
@@ -1085,13 +1145,13 @@ States:
 | disabled | the field's disabled paint, faint value | leaves the focus order and never opens |
 | error | `.tone(Tone::Danger)` paints the trigger in the danger tone, like a field: its edge only | its Field shows the message with an icon (Field) |
 
-Behavior: a press on the trigger opens the menu, and a second press closes it. While focused, Enter, Space, Up or Down open it. In the menu, Up and Down move, Enter picks, Escape closes it and returns focus to the trigger. Picking a row closes the menu and emits `SelectEvent::Confirm`. Under a coarse pointer the trigger's hit area grows to the touch slop.
+Behavior: a press on the trigger opens the menu, and a second press closes it. While focused, Enter, Space, Up or Down open it. In the menu, Up and Down move, Enter picks, Escape closes it and returns focus to the trigger. Picking a row closes the menu and emits `SelectEvent::Confirm`. A searchable menu opens with its field focused and the picked row highlighted, and filters as the menu's search does. Under a coarse pointer the trigger's hit area grows to the touch slop.
 
 Content: options are short nouns in sentence case ("Rust", "Floating"). The placeholder names what is picked ("Language"), with no closing period.
 
 Placement: like a field: in a Field in a form, or at the end of a settings row whose title names it.
 
-HTML: `div.penna-select` with `data-options` (a comma list), `data-value` (the picked index), `data-placeholder`, `data-size` (`xsmall` to `touch`), `data-tone="danger"` for an error, `aria-disabled="true"`, and `data-open` (with `data-pinned` to stay open without focus). `select.js` builds `.penna-select-trigger` (`data-penna="field"`, carrying the select's `data-tone`) holding `.penna-select-title` (`data-placeholder` while nothing is picked) and `<i data-icon="chevron-down">`, and the menu `.penna-menu.penna-select-menu` (`data-penna="popover"`) of `menu-item` rows, each with a `.penna-select-check`. It sets `role="combobox"`, answers the same keys (Tab also closes), closes on a press outside and fires `change` with `{ index, value }`.
+HTML: `div.penna-select` with `data-options` (a comma list), `data-value` (the picked index), `data-placeholder`, `data-size` (`xsmall` to `touch`), `data-tone="danger"` for an error, `aria-disabled="true"`, and `data-open` (with `data-pinned` to stay open without focus). `select.js` builds `.penna-select-trigger` (`data-penna="field"`, carrying the select's `data-tone`) holding `.penna-select-title` (`data-placeholder` while nothing is picked) and `<i data-icon="chevron-down">`, and the menu `.penna-menu.penna-select-menu` (`data-penna="popover"`) of `menu-item` rows, each with a `.penna-select-check`. It sets `role="combobox"`, answers the same keys (Tab also closes), closes on a press outside and fires `change` with `{ index, value }`. Past 12 options, or with `data-searchable` (`"false"` turns it off), the menu takes `data-searchable` and holds `.penna-select-search` (a `label.penna-input` with the search icon, its placeholder from `data-search-placeholder`) over `.penna-select-rows`; filtered rows take `hidden` and `.penna-select-none` says "No matches". `data-scopes` is a JSON list of `{ "label", "keep": [option names] }`, where a scope without `keep` keeps every option: the menu takes `data-scoped` and holds `.penna-select-scopes`, a full-width segmented control, after the search; it opens on the first scope that keeps the picked option, `data-scope` on the select holds the shown one, and Tab and Shift-Tab switch scope instead of closing. The page loads `segmented.css` and `segmented.js`.
 
 Status: matches.
 
@@ -1140,14 +1200,14 @@ Kinds:
 Anatomy, continuous:
 
 - Box: the rung's `control_px` tall (28 at `md`, which follows density; 44 under a coarse pointer at any size), half the knob inside at each side. The whole box takes the press.
-- Rail: a pill, 4 tall at `xs` and `sm` and 6 from `md` up. Up to the value it takes the primary fill, past it the neutral soft paint's pressed fill (`--penna-control`); `.track(colors)` paints a gradient instead, as on the hue slider.
+- Rail: a pill, 4 tall at `xs` and `sm` and 6 from `md` up. Up to the value it takes the `accent` fill, past it the neutral soft paint's pressed fill (`--penna-control`); `.track(colors)` paints a gradient instead, as on the hue slider.
 - Knob: a circle (Sizes; 28 under a coarse pointer) centered on the value, whichever of `bg` and `fg` is lighter (`--penna-knob`), with `shadow-contact`.
 - Under a coarse pointer, unless `.inline()`: a field at the slider's rung showing the value and a 72 wide preview rail (4 tall, 10 knob); a tap opens a bottom sheet titled by the label, with the value in `title` over a full slider.
 
 Anatomy, stepped (all text `small`, `caption` at `xs` and `sm`; the three parts `space-8` apart):
 
 - Label: before the pills, in the muted ink.
-- Pills: one per step, `space-4` apart, sharing the width, each at most 24 wide. Each is a bar as thick as the continuous rail (4 at `xs` and `sm`, 6 from `md` up) in a hit box the rung's `control_px` tall. Steps up to the picked one take the primary fill, the rest `--penna-control`.
+- Pills: one per step, `space-4` apart, sharing the width, each at most 24 wide. Each is a bar as thick as the continuous rail (4 at `xs` and `sm`, 6 from `md` up) in a hit box the rung's `control_px` tall. Steps up to the picked one take the `accent` fill, the rest `--penna-control`.
 - Value: the picked step's name in the ink, in a 52 wide column after the pills.
 
 Sizes: every rung through `.with_size()` (`Sizable`) on both kinds, `md` by default (follows density):
@@ -1223,8 +1283,8 @@ Kinds: one.
 
 Anatomy:
 
-- Track: a pill with a transparent `space-2` border between its edge and the thumb. Off, it takes the neutral soft paint's pressed fill (`--penna-control`); on, the primary fill.
-- Thumb: a circle as tall as the track less 4, with `shadow-contact`. Off, it is whichever of `bg` and `fg` is lighter (`--penna-knob`); on, the primary's ink. It sits at the start when off and at the end when on.
+- Track: a pill with a transparent `space-2` border between its edge and the thumb. Off, it takes the neutral soft paint's pressed fill (`--penna-control`); on, the `accent` fill.
+- Thumb: a circle as tall as the track less 4, with `shadow-contact`. Off, it is whichever of `bg` and `fg` is lighter (`--penna-knob`); on, the accent's mark (`--penna-on-accent`), near-white. It sits at the start when off and at the end when on.
 - Name: not drawn. The settings row title beside it names it; `.label()` gives it the same name for accessibility, and `.tooltip()` a tooltip that names it when there is no label.
 
 Sizes (the switch's own geometry; it does not follow density):
@@ -1244,12 +1304,12 @@ States:
 | State | Look | Notes |
 |---|---|---|
 | off | neutral track, thumb at the start | |
-| on | primary track, thumb at the end | |
-| hover | the track one fill step deeper (on: the primary's hover fill); the thumb doesn't change | while interactive |
-| pressed | the track one more step (on: the primary's active fill), while held | as hover |
+| on | `accent` track, thumb at the end | |
+| hover | the track one fill step deeper (on: the accent's hover fill); the thumb doesn't change | while interactive |
+| pressed | the track one more step (on: the accent's active fill), while held | as hover |
 
 Off, a fill step is the neutral soft paint's own step (its pressed fill less its hover fill), so hover and pressed sit one and two steps past `--penna-control`.
-| focused | the focus ring, 1.5 outside the track, one ring width off it when on | from the keyboard only, never from a click |
+| focused | the focus ring, 1.5 outside the track, touching it (the ring is the ink, the track the accent) | from the keyboard only, never from a click |
 | disabled | track and thumb at half strength | presses are ignored, and it leaves the focus order |
 
 Behavior: it flips on release of a click or tap inside it, and on Space or Enter while focused, and calls `on_click` with the new value; the caller sets `checked`. It is a tab stop when it has `on_click`. The thumb slides in 150ms and holds still with motion off.
@@ -1270,7 +1330,7 @@ Looks (`TabLook`):
 
 | Look | Recipe | Use |
 |---|---|---|
-| Window | `tab.window` | window pills in the title bar; selected as glass (Look) |
+| Window | `tab.window` | window pills in the title bar, in a strip; selected as glass (Look) |
 | Page | `tab.page` | a browser's page tabs; selected as glass |
 | Tray | `tab.tray` | chips in the tray over a composer |
 | Title | `button.title` | a pane's title in its header, quiet, with a muted path |
@@ -1278,8 +1338,9 @@ Looks (`TabLook`):
 Anatomy:
 
 - Container: the rung's height, `control-lg` 32 by default; the look's fill, outline and corners (its radius, capped at 45% of the height).
-- Inset, gap, icon and label are the caller's. The story and `tab.css` use `space-10` at the sides and `space-6` gaps, a 12 icon, a `small` label and an optional `caption` aside in muted ink; a title uses `space-8` and a `small` muted path.
+- Inset, gap, icon and label are the caller's. A close button sits inside the tab (`Button::inside`, Button), the tab's trailing inset `INSIDE_GAP` 4 so the button is as far from the end as from the top. The story and `tab.css` use `space-10` at the sides and `space-6` gaps, a 12 icon, a `small` label and an optional `caption` aside in muted ink; a title uses `space-8` and a `small` muted path.
 - Focus ring: 1.5px, outside the container, with its own radius.
+- Strip (`TabStrip::new(id, look)`, `tab.strip`): the window tabs sit in one track, a wash of its ground with no edge, `space-2` inside it and `space-2` apart. `.with_size()` sets its tabs' height (28 in the title bar), and the strip is that plus `space-2` above and below. Its corner is the tabs' corner plus `space-2`, so the picked tab's glass sits concentric in it: square at a `radius` of 0, a capsule when the tabs are. A strip holding one tab draws no track and no inset, and the tab fills it (`.h_full()`), so a lone window tab is 32 in the title bar, as tall as the buttons beside it, and the strip keeps its height when a second tab opens. `TabStrip::ground(on, tabs, cx)` is the ground the tabs inside paint on: the strip's, or `on` for a lone tab.
 
 Sizes: `.with_size()` (or `.xsmall()` to `.touch()`) moves only the height along the control ladder: 20, 24, 28 (follows density), 32 (the default), 40, 44. Text, inset and icons stay the caller's. Every tab in a bar has the same size (Rules 6).
 
@@ -1303,7 +1364,7 @@ Content: the label names what the tab shows, as people name it: a session, a pag
 
 Placement: tabs sit side by side in a bar, each as wide as its content; an app that wants them equal gives each the same width. One tab per bar is selected. A title sits in its pane's header.
 
-HTML: `.penna-tab[role="tab"][data-penna]` (`tab.window`, `tab.page`, `tab.tray`, `button.title`) inside a `[role="tablist"]`, with `data-size` (`xsmall` to `touch`; large when absent), `data-state`, `aria-selected`, `aria-disabled`, `data-still` and `tabindex`. It holds `<i data-icon>`, `.penna-tab-label`, `.penna-tab-aside` or `.penna-tab-path`, each text run in `.penna-text[data-penna-text]`. A title is `.penna-tab.penna-title-tab` in a `.penna-pane-header[data-penna="bar.pane"]`.
+HTML: `.penna-tab[role="tab"][data-penna]` (`tab.window`, `tab.page`, `tab.tray`, `button.title`) inside a `[role="tablist"]`, with `data-size` (`xsmall` to `touch`; large when absent), `data-state`, `aria-selected`, `aria-disabled`, `data-still` and `tabindex`. It holds `<i data-icon>`, `.penna-tab-label`, `.penna-tab-aside` or `.penna-tab-path`, each text run in `.penna-text[data-penna-text]`. A title is `.penna-tab.penna-title-tab` in a `.penna-pane-header[data-penna="bar.pane"]`. A strip is `.penna-tab-strip[data-penna="tab.strip"][role="tablist"]` around the tabs, its corner set by `kit.js` from `--penna-around`; with one tab (`:only-child`) it draws no fill and no inset, and the tab grows by `space-2` above and below to fill it.
 
 Status: matches.
 
@@ -1324,7 +1385,7 @@ Anatomy, top to bottom:
 - Container: `read-body` (14 on 22, 400) set on itself (`TextViewStyle::text`), at most 640 wide (`READING_MEASURE`, about 75 characters). No inset of its own; the page or pane gives one (`inset-page` 32 for a document page).
 - Headings: the reading ladder, all 600 and wrapping: h1 `read-h1` 26 on 32, h2 `read-h2` 20 on 28, h3 `read-h3` 16 on 24, h4 `read-h4` 14 on 22, h5 and h6 `read-h5` 13 on 20.
 - Paragraphs: `read-body`. Bold is 600, italic slants, a strikethrough is a 1px line.
-- Links: the text's ink with a 1px underline; a link's title shows in a tooltip.
+- Links: the accent with a 1px underline; a link's title shows in a tooltip.
 - Inline code: the code face at the size of the text around it, on the `card.code` fill, corners at most 6.
 - Lists: items touch, with no gap; markers `•`, `◦`, `▪` by depth, or `1.`; a nested list indents `space-16` (16). A task item's checkbox is as tall as the font, centered on the capitals in a box one line tall, `space-6` (6) before its text.
 - Quotes: a `space-4` (4) bar in the divider color at the start, `space-16` (16) inside it, text in `fg-muted`.
@@ -1401,15 +1462,16 @@ Kinds:
 | Kind | Call | Use |
 |---|---|---|
 | Label | `Tooltip::new(text)`; `.tooltip(text)` on a button, switch or slider | names the control |
-| Label and key | `Tooltip::new(text).action(&action, context)` | names it and shows the key bound to that action in that key context |
+| Label and key | `Tooltip::new(text).action(&action, context)` | names it and shows the keys bound to that action in that key context |
+| Label and keys | `Tooltip::new(text).keys(strokes)`; `.tooltip_keys(strokes)` on a button | names it and shows a sequence the app binds itself, such as a prefix and then a key |
 
 Any element takes one with ala's `.tooltip(|window, cx| Tooltip::new(..).build(window, cx))`; that one shows on hover only. A button's `.tooltip(text)` also shows on keyboard focus.
 
 Anatomy, left to right:
 
-- Box: the `tooltip` surface role, a floating surface with the popover fill, a hairline edge and `shadow-contact`; radius the theme radius capped at 45% of its height. Inset `space-2` (2) above and below and `space-8` (8) at the sides, so it is a `small` line (16) plus 4, and the edge.
+- Box: the `tooltip` surface role, a floating surface with the popover fill, a hairline edge and `shadow-contact`; radius the theme radius capped at 45% of its height. Inset `space-4` (4) above and below and `space-10` (10) at the sides, so it is a `small` line (16) plus 8, and the edge.
 - Label: `small` (12 on 16, 400) in the surface's ink, on one line. It never wraps.
-- Key (optional): `small` in `fg-muted`, `space-12` (12) after the label, the binding written as text (⌘D on macOS, Ctrl+D elsewhere).
+- Key (optional): one `sm` keycap (16, the `small` line) per keystroke, on the tooltip's ground, `gap-tight` (4) apart and `space-12` (12) after the label: ⌘D on macOS, Ctrl+D elsewhere, and a prefix then a key as two caps (⌃A |).
 
 States:
 
@@ -1420,11 +1482,11 @@ States:
 
 Behavior: it shows 500ms after the pointer comes to rest on its target. Its frame starts 1px right of and below the pointer and the box sits `space-12` inside that frame, so it clears the cursor by 13. Where it would cross the window's right or bottom edge it flips to the other side of the pointer. It hides when the pointer leaves the target or presses. When the keyboard focuses its target it shows at once, placed as if the pointer rested on the middle of the target's bottom edge, and hides when focus leaves, on Escape (which still reaches the rest of the window) or when the pointer moves; it comes back only on the next keyboard focus. Natively, a long press on touch shows it until the finger lifts. One tooltip shows at a time, and a disabled button's tooltip still shows.
 
-Content: a noun or a short verb phrase in sentence case that names the action or the thing ("Split right", "Notifications", "Copy path"), with no closing period. Never an instruction ("Click to split") or a sentence. On an icon-only button it is required and is the button's accessible name too. Don't repeat a label that is already visible; on a labeled control a tooltip adds the key or nothing. Give the key with `.action()` (`data-tooltip-key`), never typed into the text.
+Content: a noun or a short verb phrase in sentence case that names the action or the thing ("Split right", "Notifications", "Copy path"), with no closing period. Never an instruction ("Click to split") or a sentence. On an icon-only button it is required and is the button's accessible name too. Don't repeat a label that is already visible; on a labeled control a tooltip adds the key or nothing. Give the key with `.action()` or `.keys()` (`data-tooltip-key`), never typed into the text.
 
 Placement: it follows the pointer, not the target, so there is nothing to place. Give one to every icon-only button (Button) and to controls whose key is worth learning.
 
-HTML: any element with `data-tooltip="Label"` gets one from `tooltip.js`; `data-tooltip-key="cmd-d"` adds the key, written by `kbd.js` as a keycap's text. The script builds `.penna-tooltip[data-penna="tooltip"][role="tooltip"][data-floating]` with a `span[data-penna-text]` per run and `.penna-tooltip-key` for the key, sets `data-open` while shown, and places it with the same delay, offset and edge flip: on the window with `data-fixed`, or inside the nearest `[data-tooltip-host]` within a story section. A `[data-tooltip]` element that takes focus matching `:focus-visible` shows its tooltip at once from the middle of its bottom edge, until `focusout`, Escape or a pointer move. A touch press held 500ms on a `[data-tooltip]` element shows its tooltip from the press point until the finger lifts, as natively: moving more than 8 before then cancels it, and once shown the press neither scrolls nor clicks. `data-tooltip-pinned` keeps it open. A static box is the same markup without `data-floating`; the key run takes `data-kbd-text`.
+HTML: any element with `data-tooltip="Label"` gets one from `tooltip.js`; `data-tooltip-key="cmd-d"` adds the key, and a sequence is its strokes split by spaces (`"ctrl-a |"`). The script builds `.penna-tooltip[data-penna="tooltip"][role="tooltip"][data-floating]` with a `span[data-penna-text]` per run and `.penna-tooltip-key` holding a small `kbd.penna-kbd` per stroke, sets `data-open` while shown, and places it with the same delay, offset and edge flip: on the window with `data-fixed`, or inside the nearest `[data-tooltip-host]` within a story section. A `[data-tooltip]` element that takes focus matching `:focus-visible` shows its tooltip at once from the middle of its bottom edge, until `focusout`, Escape or a pointer move. A touch press held 500ms on a `[data-tooltip]` element shows its tooltip from the press point until the finger lifts, as natively: moving more than 8 before then cancels it, and once shown the press neither scrolls nor clicks. `data-tooltip-pinned` keeps it open. A static box is the same markup without `data-floating`, its `.penna-tooltip-key` holding the caps.
 
 Status: matches.
 
@@ -1559,5 +1621,6 @@ Status: matches.
 | 17 | Plain knobs: Corner radius in percent on a square curve with no pill at its top, Increase contrast a slider that adds no edges, Motion in three steps, no Theme file row, and the Advanced fold opened into Size and Accessibility | the radius slider reads 69% by default; controls lose their hairline under contrast; Reduce motion and Animation speed become one Motion row | built |
 | 18 | A see-through window reads like an opaque one: the theme carries the window's opacity, so cards and bars on it take their step as a wash and stay a step above it, and `divider` drops to 8% | settings cards under window blur read a step above the page instead of darker than it; every rule is lighter | built |
 | 19 | PiPs follow Glass: a PiP is glass when glass is on and its pane's ground, opaque, under the `divider` hairline when it is off | PiPs lose their frosted blur with glass off and gain the pane's hairline | built |
+| 20 | One corner rule: controls round to a share of their height, containers keep `radius`, nested corners are concentric on drawn corners, and smoothing no longer changes how round a corner looks | controls on macOS (`smoothing` 4) read as round as their radius says instead of about half; rows, sidebar entries, tabs and the segmented pill match at every Corner radius; zz's flat sidebar entries follow the knob instead of a fixed 24 | built |
 
 Each step lands in penna with its stories, scores parity, rebaselines only what the step meant to move, and is pulled into zz and nidus.

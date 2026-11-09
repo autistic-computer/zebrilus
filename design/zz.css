@@ -16,6 +16,18 @@
   --penna-icon-size: 12px;
 }
 
+[data-penna][data-inside] {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: calc(var(--penna-inside-rows, 28px) - 8px);
+  height: calc(var(--penna-inside-rows, 28px) - 8px);
+  padding: 0;
+  --penna-inside: 4px;
+  --penna-share: 0;
+  --penna-icon-size: clamp(10px, calc(var(--penna-inside-rows, 28px) - 16px), 14px);
+}
+
 [data-penna="row.nav"] {
   display: flex;
   flex-direction: column;
@@ -39,11 +51,28 @@
   gap: 5px;
   width: 240px;
   min-width: 36px;
-  height: 32px;
+  height: 28px;
   padding: 0 10px 0 9px;
   font-size: 14px;
+  --penna-inside-rows: 28px;
   line-height: 18px;
   white-space: nowrap;
+}
+
+[data-penna="tab.strip"] {
+  display: flex;
+  flex-shrink: 1;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  padding: 2px;
+  overflow: hidden;
+  --penna-around: 2px;
+  --penna-around-rows: 28px;
+}
+
+[data-penna="tab.strip"]:has(> :only-child) {
+  background: none;
 }
 
 [data-penna="tab.window"]:not([aria-selected="true"], [data-state~="selected"], [data-state~="current"]) {
@@ -88,6 +117,11 @@
   height: 22px;
   padding: 0 8px 0 6px;
   white-space: nowrap;
+  --penna-inside-rows: 22px;
+}
+
+[data-penna="button.title"]:has(> [data-inside]) {
+  padding-right: 4px;
 }
 
 .penna-gaps {

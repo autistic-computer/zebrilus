@@ -108,6 +108,7 @@ impl RenderOnce for ChooserModal {
         };
         let surface = Panel::new(self.id, PanelLook::Picker)
             .inset(px(8.0))
+            .rows(px(CHOOSER_ROW_HEIGHT))
             .relative()
             .flex()
             .flex_col()

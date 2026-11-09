@@ -86,16 +86,11 @@ app-icon = automatic
 # Corner radius of the window frame zz draws with client-side decorations on
 # Linux, in logical pixels (0..=32). Desktops agree on no radius and expose no
 # way to query one, so match your compositor's rounding here, or set 0 for
-# square. Ignored wherever the frame is native (macOS, system titlebar).
+# square. Ignored wherever the frame is native (macOS).
 window-corner-radius = 13.5
 
-# Linux only: use the system's window frame instead of zz's client-side
-# titlebar. Applies to open windows immediately. Elsewhere the frame is
-# always native and this key does nothing.
-use-system-titlebar = false
-
-# Show the desktop, blurred, through the workspace sidebar (the titlebar
-# strip when use-system-titlebar is on), where the platform supports it.
+# Show the desktop, blurred, through the workspace sidebar, where the
+# platform supports it.
 window-background-blur = false
 
 # Stop the zz daemon when the app quits, even if sessions are still open.

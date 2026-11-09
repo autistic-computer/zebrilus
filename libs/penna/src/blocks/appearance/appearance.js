@@ -1,6 +1,6 @@
 (() => {
 const LOOKS = {
-  default: { accent: "ink", controls: "0", glass: "true" },
+  default: { accent: "blue", controls: "0", glass: "true" },
   macos: { accent: "blue", controls: "1", glass: "true" },
   yaru: { accent: "orange", controls: "0", glass: "false" },
 };
@@ -51,19 +51,25 @@ function shapeRuns(root) {
     const width = run.offsetWidth;
     const first = entries[0].offsetHeight;
     const last = entries[entries.length - 1].offsetHeight;
-    run.style.setProperty("--appearance-r-top", `${adaptive(radius, width, first)}px`);
-    run.style.setProperty("--appearance-r-bottom", `${adaptive(radius, width, last)}px`);
+    const drawn = (height) => window.pennaKit?.drawnCorner(adaptive(radius, width, height), width, height) ?? [adaptive(radius, width, height), 1];
+    const [top, topK] = drawn(first);
+    const [bottom] = drawn(last);
+    run.style.setProperty("--appearance-r-top", `${top}px`);
+    run.style.setProperty("--appearance-r-bottom", `${bottom}px`);
+    run.style.setProperty("--appearance-run-k", `${topK}`);
   });
 }
 
 function shapeSwatches(root) {
   const radius = controlRadius();
-  const swatch = radius >= 9999 ? 9 : adaptive(radius, 18, 18);
+  const swatch = radius >= 9999 ? 9999 : adaptive(radius, 18, 18);
   const ring = radius > 0 ? (radius >= 9999 ? 9999 : adaptive(radius + RING, 25, 25)) : 0;
-  root.style.setProperty("--appearance-swatch-r", `${swatch}px`);
-  root.style.setProperty("--appearance-ring-r", `${ring}px`);
-  if (radius >= 9999) root.style.setProperty("--appearance-swatch-k", "1");
-  else root.style.removeProperty("--appearance-swatch-k");
+  const [swatchBox, swatchK] = window.pennaKit?.drawnCorner(swatch, 18, 18) ?? [swatch, 1];
+  const [ringBox, ringK] = window.pennaKit?.drawnCorner(ring, 25, 25) ?? [ring, 1];
+  root.style.setProperty("--appearance-swatch-r", `${swatchBox}px`);
+  root.style.setProperty("--appearance-ring-r", `${ringBox}px`);
+  root.style.setProperty("--appearance-swatch-k", `${swatchK}`);
+  root.style.setProperty("--appearance-ring-k", `${ringK}`);
   root.querySelectorAll(".appearance-swatch[data-light]").forEach((element) => {
     element.style.setProperty("--appearance-swatch", element.dataset[mode() === "dark" ? "dark" : "light"]);
   });
@@ -192,8 +198,8 @@ function wireCustom(frame) {
       picker.toggleAttribute("data-custom", custom);
       row.querySelectorAll(".appearance-ring").forEach((ring) => {
         const own = ring.contains(picker);
-        const ink = Boolean(ring.querySelector('[data-accent="ink"]'));
-        ring.toggleAttribute("data-selected", custom ? own : ink);
+        const theme = Boolean(ring.querySelector(`[data-accent="${look().accent}"]`));
+        ring.toggleAttribute("data-selected", custom ? own : theme);
       });
     });
   });

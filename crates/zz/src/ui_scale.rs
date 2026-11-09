@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use ala::{App, Global, KeyBinding, Pixels, Window, WindowId};
+use ala::{App, Global, KeyBinding, Window, WindowId};
 use penna::{ROOT_KEY_CONTEXT, UiZoom};
 use zz_client::UI_TABLE;
 
@@ -80,7 +80,8 @@ pub(crate) fn show_title_bar_over_panes(shown: f32, window: &Window, cx: &mut Ap
     place_traffic_lights(window, cx);
 }
 
-fn traffic_light_row(window: &Window, cx: &App) -> Pixels {
+#[cfg(target_os = "macos")]
+fn traffic_light_row(window: &Window, cx: &App) -> ala::Pixels {
     let theme = penna::Theme::global(cx);
     let shown = cx
         .try_global::<TitleBarOverPanes>()

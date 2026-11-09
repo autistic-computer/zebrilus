@@ -69,7 +69,7 @@
 }
 
 .penna-toggle[aria-checked="true"] > .penna-toggle-track {
-  background: var(--penna-primary);
+  background: var(--penna-accent);
 }
 
 .penna-toggle[aria-checked="true"] > .penna-toggle-track > .penna-toggle-thumb {
@@ -86,11 +86,11 @@
 }
 
 .penna-toggle[aria-checked="true"]:not(:disabled):is(:hover, [data-state~="hover"]) > .penna-toggle-track {
-  background: var(--penna-primary-hover);
+  background: var(--penna-accent-hover);
 }
 
 .penna-toggle[aria-checked="true"]:not(:disabled):is(:active, [data-state~="active"]) > .penna-toggle-track {
-  background: var(--penna-primary-pressed);
+  background: var(--penna-accent-pressed);
 }
 
 .penna-toggle:is(:focus-visible, [data-state~="focused"]) > .penna-toggle-track::after {
@@ -103,7 +103,7 @@
 }
 
 .penna-toggle[aria-checked="true"]:is(:focus-visible, [data-state~="focused"]) > .penna-toggle-track::after {
-  inset: calc(-3px - var(--penna-toggle-inset));
+  inset: calc(-1.5px - var(--penna-accent-ring-gap, 1.5px) - var(--penna-toggle-inset));
 }
 
 .penna-toggle:disabled > .penna-toggle-track {
@@ -118,7 +118,7 @@
 }
 
 .penna-toggle[aria-checked="true"]:disabled > .penna-toggle-track {
-  background: rgb(from var(--penna-primary) r g b / calc(alpha * 0.5));
+  background: rgb(from var(--penna-accent) r g b / calc(alpha * 0.5));
 }
 
 .penna-toggle[aria-checked="true"]:disabled > .penna-toggle-track > .penna-toggle-thumb {

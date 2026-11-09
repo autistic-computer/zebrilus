@@ -85,16 +85,71 @@ function apply() {
   document.dispatchEvent(new CustomEvent("penna-theme", { detail: { ...choice } }));
 }
 
+function apparentCorner(radius, half, k) {
+  const exponent = 2 ** k;
+  if (exponent <= 2 || radius <= 0 || half <= 0) return [radius, k];
+  const reach = (n) => 1 - 2 ** (-1 / n);
+  const circle = reach(2);
+  const limit = half - 0.05;
+  let grow = circle / reach(exponent);
+  let eased = exponent;
+  if (radius * grow > limit) {
+    grow = Math.max(limit / radius, 1);
+    eased = -1 / Math.log2(1 - circle / grow);
+  }
+  return [Math.min(radius * grow, half), Math.log2(eased)];
+}
+
+function cornerOf(style, width, height) {
+  const radius = parseFloat(style.getPropertyValue("--penna-r")) || 0;
+  if (radius <= 0 || radius >= 9999) return radius;
+  const share = parseFloat(style.getPropertyValue("--penna-share")) || 0;
+  const shorter = Math.min(width, height);
+  let corner;
+  if (share > 0) {
+    corner = Math.min(share, 0.5) * shorter;
+  } else {
+    const cap = shorter * 0.45;
+    corner = cap > 0 ? cap * Math.tanh(radius / cap) : 0;
+  }
+  const around = style.getPropertyValue("--penna-around").trim();
+  if (around) {
+    const rows = parseFloat(style.getPropertyValue("--penna-around-rows")) || 28;
+    const share = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--penna-control-share")) || 0;
+    const inset = parseFloat(around) || 0;
+    corner = Math.min(share * rows + inset, rows / 2 + inset);
+  }
+  const inside = style.getPropertyValue("--penna-inside").trim();
+  if (inside) {
+    const rows = parseFloat(style.getPropertyValue("--penna-inside-rows")) || 28;
+    const share = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--penna-control-share")) || 0;
+    corner = Math.max(Math.min(share * rows, rows / 2) - (parseFloat(inside) || 0), 0);
+  }
+  const nest = style.getPropertyValue("--penna-nest-inset").trim();
+  if (nest) {
+    const outer = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--penna-radius")) || 0;
+    corner = Math.max(Math.min(corner, outer - (parseFloat(nest) || 0)), 0);
+  }
+  return corner;
+}
+
 function focusRing(element, style = getComputedStyle(element)) {
   const radius = parseFloat(style.getPropertyValue("--penna-r")) || 0;
+  const share = parseFloat(style.getPropertyValue("--penna-share")) || 0;
   const box = element.getBoundingClientRect();
-  const row = style.getPropertyValue("--penna-row").trim() === "1";
-  const base = row ? Math.min(radius, box.height * 0.4) : radius;
   const reach = 1.5 + (parseFloat(style.getPropertyValue("--penna-ring-gap")) || 0);
-  const cap = (Math.min(box.width, box.height) + 2 * reach) * 0.45;
-  const ring = radius >= 9999 ? 9999 : cap > 0 ? cap * Math.tanh((base + reach) / cap) : 0;
+  const shorter = Math.min(box.width, box.height) + 2 * reach;
+  const cap = shorter * 0.45;
+  let ring;
+  if (radius >= 9999) ring = 9999;
+  else if (radius <= 0) ring = 0;
+  else if (share > 0) ring = Math.min(share, 0.5) * shorter;
+  else ring = cap > 0 ? cap * Math.tanh((radius + reach) / cap) : 0;
+  const k = ring >= 9999 ? 1 : parseFloat(style.getPropertyValue("--penna-k")) || 1;
+  const [ringBox, ringShape] = ring >= 9999 ? [ring, 1] : apparentCorner(ring, shorter / 2, k);
   element.style.setProperty("--penna-ring-inset", `${-(reach + (parseFloat(style.borderTopWidth) || 0))}px`);
-  element.style.setProperty("--penna-ring-r", `${ring}px`);
+  element.style.setProperty("--penna-ring-r", `${ringBox}px`);
+  element.style.setProperty("--penna-ring-k", `${ringShape}`);
 }
 
 function round(element) {
@@ -103,19 +158,19 @@ function round(element) {
   const radius = parseFloat(style.getPropertyValue("--penna-r")) || 0;
   if (radius <= 0 || radius >= 9999) {
     element.style.removeProperty("border-radius");
+    element.style.removeProperty("corner-shape");
+    element.style.removeProperty("--penna-corner");
     return;
   }
   const width = element.offsetWidth;
   const height = element.offsetHeight;
   if (!width || !height) return;
-  let resolved;
-  if (style.getPropertyValue("--penna-row").trim() === "1") {
-    resolved = Math.min(radius, height * 0.4);
-  } else {
-    const cap = Math.min(width, height) * 0.45;
-    resolved = cap * Math.tanh(radius / cap);
-  }
-  element.style.borderRadius = `${resolved.toFixed(2)}px`;
+  const corner = cornerOf(style, width, height);
+  const k = parseFloat(style.getPropertyValue("--penna-k")) || 1;
+  const [box, shape] = apparentCorner(corner, Math.min(width, height) / 2, k);
+  element.style.borderRadius = `${box.toFixed(2)}px`;
+  element.style.setProperty("corner-shape", `superellipse(${shape.toFixed(3)})`);
+  element.style.setProperty("--penna-corner", `${corner.toFixed(2)}px`);
 }
 
 const SVG = "http://www.w3.org/2000/svg";
@@ -299,4 +354,9 @@ addEventListener("DOMContentLoaded", () => {
   document.fonts?.ready.then(() => ceilTextRuns());
 });
 
-window.pennaKit = { choice, apply, roundAll, ceilText: ceilTextRuns, focusRing };
+function drawnCorner(corner, width, height, k = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--penna-window-k")) || 1) {
+  if (corner >= 9999) return [9999, 1];
+  return apparentCorner(corner, Math.min(width, height) / 2, k);
+}
+
+window.pennaKit = { choice, apply, roundAll, ceilText: ceilTextRuns, focusRing, apparentCorner, drawnCorner };

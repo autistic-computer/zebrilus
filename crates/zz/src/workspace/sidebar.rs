@@ -1,8 +1,7 @@
 mod flat;
 
 use penna::blocks::sidebar::{
-    SIDEBAR_CONTENT_INSET as TREE_CONTENT_INSET, SIDEBAR_DEFAULT_WIDTH, sidebar_footer,
-    sidebar_panel, sidebar_resize_handle, sidebar_titlebar,
+    SIDEBAR_DEFAULT_WIDTH, sidebar_panel, sidebar_resize_handle, sidebar_titlebar,
 };
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -26,18 +25,18 @@ use penna::{
 use zz_client::{ChromeAction, SIDEBAR_TABLE, UI_TABLE, program::Program};
 use zz_protocol::{CommandInvocation, MuxSnapshot, PaneId, PaneStatusState, SessionId, WindowId};
 use zz_ui::navigation::{
-    WORKSPACE_SIDEBAR_FADE_HEIGHT, WORKSPACE_TREE_INDENT_WIDTH as TREE_INDENT_WIDTH,
-    WORKSPACE_TREE_MARKER_SLOT_WIDTH as TREE_MARKER_SLOT_WIDTH,
+    SidebarAction, WORKSPACE_SIDEBAR_FADE_HEIGHT, WORKSPACE_TREE_INDENT_WIDTH as TREE_INDENT_WIDTH,
     WORKSPACE_TREE_NODE_ICON_SIZE as TREE_NODE_ICON_SIZE, WorkspaceTreeInk,
     sidebar::{
         TreeNavigation, TreeNavigationResult, TreeNavigationRow, TreeRowMenuItem,
         tree_action_strip, tree_host_indicator, tree_host_marker, tree_navigation,
         tree_node_marker, tree_row_menu,
     },
-    workspace_add_host_button, workspace_layout_button, workspace_settings_button,
-    workspace_sidebar_fade, workspace_sidebar_footer_controls, workspace_sidebar_ground,
-    workspace_sidebar_view_button, workspace_tree_action_button, workspace_tree_disclosure,
-    workspace_tree_opened, workspace_tree_row, workspace_tree_shortcut,
+    workspace_layout_button, workspace_sidebar_action, workspace_sidebar_actions,
+    workspace_sidebar_fade, workspace_sidebar_footer, workspace_sidebar_ground,
+    workspace_sidebar_titlebar_controls, workspace_sidebar_view_button,
+    workspace_tree_action_button, workspace_tree_disclosure, workspace_tree_opened,
+    workspace_tree_row, workspace_tree_shortcut,
 };
 use zz_ui::{program::program_mark, settings::settings_section_navigation};
 
@@ -72,7 +71,6 @@ use crate::mux::nav::{
 const SIDEBAR_MIN_WIDTH: f32 = 160.0;
 const SIDEBAR_MAX_WIDTH: f32 = 640.0;
 const SIDEBAR_SLIDE: Duration = Duration::from_millis(240);
-const TREE_INDENT_GUIDE_OFFSET: f32 = TREE_MARKER_SLOT_WIDTH / 2.0;
 const TREE_INDENT_GUIDE_PADDING: f32 = 4.0;
 const TREE_KEY_CONTEXT: &str = "WorkspaceTree";
 
@@ -795,12 +793,13 @@ impl WorkspaceSidebar {
 
     pub(crate) fn render_controls(
         sidebar: &Entity<Self>,
+        open: bool,
         ground: Ground,
         cx: &App,
     ) -> Option<AnyElement> {
         let sidebar = sidebar.clone();
         (!crate::profile::profile(cx).fixed_window).then(|| {
-            workspace_layout_button("workspace-layout")
+            workspace_layout_button("workspace-layout", open)
                 .on(ground)
                 .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
                 .on_click(move |_, _, cx| {
@@ -811,28 +810,52 @@ impl WorkspaceSidebar {
         })
     }
 
-    fn render_footer(&self, sidebar: &Entity<Self>, cx: &App) -> AnyElement {
-        let settings = sidebar.clone();
+    fn render_view_button(&self, sidebar: &Entity<Self>, cx: &App) -> AnyElement {
         let view = sidebar.clone();
-        let ground = self.content_ground(cx);
-        sidebar_footer(
-            "workspace-sidebar-footer",
-            workspace_settings_button("workspace-settings")
-                .on(ground)
-                .on_click(move |_, window, cx| {
-                    settings.update(cx, |sidebar, cx| sidebar.open_settings(window, cx));
+        workspace_sidebar_view_button("workspace-sidebar-view", self.flat)
+            .on(self.content_ground(cx))
+            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+            .on_click(move |_, _, cx| {
+                cx.stop_propagation();
+                view.update(cx, Self::toggle_flat);
+            })
+            .into_any_element()
+    }
+
+    fn render_action(
+        &self,
+        sidebar: &Entity<Self>,
+        action: SidebarAction,
+        cx: &App,
+    ) -> ala::Stateful<ala::Div> {
+        let sidebar = sidebar.clone();
+        workspace_sidebar_action(action, self.content_ground(cx), cx).on_click(
+            move |_, window, cx| match action {
+                SidebarAction::NewChat => sidebar.update(cx, |sidebar, cx| {
+                    let host = sidebar.mux.read(cx).attached_host();
+                    sidebar.new_chat(host, cx);
                 }),
-            Some(
-                workspace_sidebar_footer_controls(
-                    workspace_add_host_button("workspace-add-host")
-                        .on(ground)
-                        .on_click(|_, window, cx| crate::workspace::add_host::open(window, cx)),
-                    workspace_sidebar_view_button("workspace-sidebar-view", self.flat)
-                        .on(ground)
-                        .on_click(move |_, _, cx| view.update(cx, Self::toggle_flat)),
-                )
-                .into_any_element(),
-            ),
+                SidebarAction::AddHost => crate::workspace::add_host::open(window, cx),
+                SidebarAction::Settings => {
+                    sidebar.update(cx, |sidebar, cx| sidebar.open_settings(window, cx));
+                }
+            },
+        )
+    }
+
+    fn render_actions(&self, sidebar: &Entity<Self>, cx: &App) -> AnyElement {
+        workspace_sidebar_actions(
+            SidebarAction::above(self.flat)
+                .iter()
+                .map(|action| self.render_action(sidebar, *action, cx)),
+        )
+        .into_any_element()
+    }
+
+    fn render_footer(&self, sidebar: &Entity<Self>, cx: &App) -> AnyElement {
+        workspace_sidebar_footer(
+            "workspace-sidebar-footer",
+            self.render_action(sidebar, SidebarAction::Settings, cx),
             cx,
         )
         .into_any_element()
@@ -897,7 +920,7 @@ fn windows_agent_badge<'a>(
 
 fn agent_badge_color(badge: AgentBadge, cx: &App) -> Hsla {
     match badge {
-        AgentBadge::NeedsInput => cx.theme().warning,
+        AgentBadge::NeedsInput => cx.theme().accent,
         AgentBadge::Failed => cx.theme().danger,
         AgentBadge::Working => cx.theme().foreground.muted(),
         AgentBadge::Finished => cx.theme().success,
@@ -933,15 +956,36 @@ impl Render for WorkspaceSidebar {
         let settings_route = self.route == WorkspaceRoute::Settings;
         let navigation = if settings_route {
             self.render_settings_navigation(&sidebar, cx)
-        } else if self.flat {
-            self.render_flat_navigation(&sidebar, cx)
         } else {
-            self.render_navigation(&sidebar, attached_host, attached, window, cx)
+            let list = if self.flat {
+                self.render_flat_navigation(&sidebar, cx)
+            } else {
+                self.render_navigation(&sidebar, attached_host, attached, window, cx)
+            };
+            div()
+                .flex()
+                .flex_col()
+                .size_full()
+                .min_h_0()
+                .child(self.render_actions(&sidebar, cx))
+                .child(div().flex_1().min_h_0().child(list))
+                .into_any_element()
         };
         let controls = if settings_route {
             None
         } else {
-            Self::render_controls(&sidebar, self.content_ground(cx), cx)
+            Some(
+                workspace_sidebar_titlebar_controls(
+                    self.render_view_button(&sidebar, cx),
+                    div().children(Self::render_controls(
+                        &sidebar,
+                        self.mode == ChromeMode::Sidebar,
+                        self.content_ground(cx),
+                        cx,
+                    )),
+                )
+                .into_any_element(),
+            )
         };
         let footer = (!settings_route).then(|| self.render_footer(&sidebar, cx));
         let titlebar = sidebar_titlebar("workspace-sidebar-titlebar", div().children(controls), cx)
@@ -1223,7 +1267,7 @@ fn render_expanded_navigation(
         depths,
         active_row,
         px(TREE_INDENT_WIDTH),
-        px(TREE_CONTENT_INSET + TREE_INDENT_GUIDE_OFFSET),
+        zz_ui::navigation::workspace_tree_guide_origin(cx),
         px(TREE_INDENT_GUIDE_PADDING),
         IndentGuideColors::tree(cx),
     );
@@ -1373,8 +1417,13 @@ fn render_tree_row(
             this.child(render_host_indicator(index, indicator, cx))
         })
         .child(actions);
+    let platform = match entry.node {
+        TreeNode::Host(host) => runtime.mux.read(cx).host_platform(host),
+        TreeNode::Target(..) => zz_protocol::HostPlatform::Unknown,
+    };
     let marker = render_node_marker(
         entry,
+        platform,
         ink.node(connected && entry.on_active_path),
         runtime.tree_model.has_pending_bell(node),
         node_agent_badge(&runtime.tree_model, &runtime.badges, node),
@@ -1515,6 +1564,7 @@ const fn pane_kind_icon(kind: MuxTreePaneKind) -> IconName {
 
 fn render_node_marker(
     entry: &VisibleTreeEntry,
+    platform: zz_protocol::HostPlatform,
     color: Hsla,
     belled: bool,
     badge: Option<AgentBadge>,
@@ -1524,6 +1574,8 @@ fn render_node_marker(
     let icon = match &entry.kind {
         TreeNodeKind::Host => {
             return tree_host_marker(
+                platform,
+                color,
                 belled,
                 badge.map(|badge| agent_badge_color(badge, cx)),
                 ground,
@@ -1647,6 +1699,12 @@ fn render_new_session_action(
 
 pub(crate) fn close_host(mux: &Entity<MuxClient>, host: HostId, name: &str, cx: &mut App) {
     mux.update(cx, |mux, cx| mux.release_host(host, cx));
+    if crate::config::is_discovered(name, cx) {
+        if let Err(error) = crate::config::hide_discovered_host(name, cx) {
+            log::warn!("could not hide {name} in zz/config: {error}");
+        }
+        return;
+    }
     match crate::config::remove_fleet_host_live(name, cx) {
         Ok(removed) => {
             log::info!(target: "zz::config", "closed fleet host name={name} config_removed={removed}");

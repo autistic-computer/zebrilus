@@ -1,0 +1,9 @@
+.key-field-box {
+  width: 120px;
+}
+
+.key-field-control {
+  display: flex;
+  flex: none;
+  width: 96px;
+}

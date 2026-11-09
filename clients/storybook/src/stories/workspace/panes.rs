@@ -3,7 +3,7 @@ use ala::{
     prelude::*, px, relative,
 };
 use penna::{ActiveTheme as _, Colorize as _, Elevation, IconName};
-use zz_client::new_chat::{ChatPicker, FolderChoice};
+use zz_client::new_chat::{ChatPicker, ChatStage, FolderChoice, MachineChoice};
 use zz_protocol::{AgentProvider, DisplayPanesState, PaneId, PaneIndicator, TmuxColour, WindowId};
 use zz_ui::{
     pane::{
@@ -11,8 +11,8 @@ use zz_ui::{
         PaneSplitAxis, PaneSplitHighlight, PaneSplitSide, chat_picker_rows, pane_drag_chip,
         pane_drag_overlay, pane_drop_preview, pane_indicator, pane_indicator_overlay,
         pane_overlay_stack, pane_picker_choices, pane_picker_row, pane_picker_surface,
-        pane_split_surface, pane_status_badge, pane_sync_badge, pane_unzoom_control,
-        pane_waiting_state, terminal_link_popup, terminal_mode_indicator, terminal_search_prompt,
+        pane_split_surface, pane_status_badge, pane_sync_badge, pane_waiting_state,
+        terminal_link_popup, terminal_mode_indicator, terminal_search_prompt,
         terminal_status_popup,
     },
     pane_look::PaneLook,
@@ -91,7 +91,7 @@ pub const STORY: Story = Story {
         Section {
             id: "new-agent",
             name: "New agent picker",
-            summary: "With the sidebar on chats, every new pane opens this picker instead of the pane kinds, and so do an empty workspace and a window whose only pane is a terminal with nothing running (a fresh shell, a CLI that exited). chat_picker_rows offers Claude Code and Codex under the folder they will start in, and picking one turns the pane into a chat. The folder starts as that terminal's folder, or else the one this machine's agents worked in last; Tab or a click on it opens the file picker one folder up, which lists folders with no terminal open, and the folder picked there (or the folder of a file picked) is where the agent starts.",
+            summary: "With the sidebar on chats, every new pane opens this picker instead of the pane kinds, and so do an empty workspace and a window whose only pane is a terminal with nothing running (a fresh shell, a CLI that exited). chat_picker_rows offers Claude Code and Codex under the machine and folder they will start in, and picking one turns the pane into a chat. M or a click on the machine lists every host; picking another closes this picker and opens one there, so its folders are that machine's. The folder starts as that terminal's folder, or else the one this machine's agents worked in last; Tab or a click on it opens the file picker one folder up, which lists folders with no terminal open, and the folder picked there (or the folder of a file picked) is where the agent starts.",
             build: |_, cx| stateless(chat_picker, cx),
         },
         Section {
@@ -188,7 +188,7 @@ fn header(
         active,
         title,
         zz_ui::pane::PaneDragSource::new(zz_protocol::PaneId(id), title, draggable, |_, _, _| {}),
-        false,
+        zz_ui::pane::PaneState::default(),
         flip,
         |_, _, _| {},
         cx,
@@ -297,7 +297,6 @@ fn tags(_: &mut Window, cx: &mut App) -> AnyElement {
         terminal_mode_indicator("terminal-mode", Some("Copy mode"), "12 / 340", cx)
             .into_any_element(),
         pane_sync_badge(cx).into_any_element(),
-        pane_unzoom_control().into_any_element(),
     ];
     let bottom = vec![
         terminal_link_popup("https://zed.dev/docs/key-bindings", cx).into_any_element(),
@@ -322,8 +321,7 @@ fn tags(_: &mut Window, cx: &mut App) -> AnyElement {
             row()
                 .child(pane_status_badge(IconName::CircleX, "Dead · exit 1", cx))
                 .child(pane_waiting_state("Waiting for %3", cx))
-                .child(pane_sync_badge(cx))
-                .child(pane_unzoom_control()),
+                .child(pane_sync_badge(cx)),
         )
         .state(
             "terminal modes",
@@ -900,7 +898,10 @@ pub(crate) fn pip_header(title: &'static str, cx: &App) -> impl IntoElement {
         true,
         title,
         zz_ui::pane::PaneDragSource::new(zz_protocol::PaneId(4), title, true, |_, _, _| {}),
-        true,
+        zz_ui::pane::PaneState {
+            floats: true,
+            ..zz_ui::pane::PaneState::default()
+        },
         None,
         |_, _, _| {},
         cx,
@@ -1087,6 +1088,24 @@ pub(crate) fn chat_folders() -> Vec<FolderChoice> {
         .collect()
 }
 
+pub(crate) fn chat_machines() -> Vec<MachineChoice> {
+    [
+        ("macbook", false, true, true),
+        ("ubuntu", true, true, false),
+        ("build-box", true, false, false),
+    ]
+    .into_iter()
+    .enumerate()
+    .map(|(host, (name, remote, live, current))| MachineChoice {
+        host: host as u64,
+        name: name.to_owned(),
+        remote,
+        live,
+        current,
+    })
+    .collect()
+}
+
 fn folder_picker_surface(
     id: &'static str,
     picker: &ChatPicker,
@@ -1094,7 +1113,7 @@ fn folder_picker_surface(
     enabled: bool,
     cx: &App,
 ) -> ala::Stateful<ala::Div> {
-    let rows = chat_picker_rows(7, picker, folders, enabled, cx)
+    let rows = chat_picker_rows(7, picker, folders, &chat_machines(), enabled, cx)
         .into_iter()
         .map(|row| match row {
             ChatPickerRow::Label(label) => label.into_any_element(),
@@ -1132,6 +1151,21 @@ fn chat_picker(_: &mut Window, cx: &mut App) -> AnyElement {
             chat_picker_pane(
                 "chat-picker-claude",
                 &ChatPicker::default(),
+                &chat_folders(),
+                true,
+                cx,
+            ),
+        )
+        .state(
+            "m lists the machines: picking another moves the new chat there",
+            chat_picker_pane(
+                "chat-picker-machines",
+                &ChatPicker {
+                    stage: ChatStage::Machines,
+                    selected: 1,
+                    machines: 3,
+                    ..ChatPicker::default()
+                },
                 &chat_folders(),
                 true,
                 cx,

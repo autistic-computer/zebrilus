@@ -4,8 +4,7 @@ use ala::{App, GlassMaterial, Hsla, SharedString, Window, px};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{
-    Colorize as _, Elevation, PrimaryStyle, ShadowMaterial, Smoothing, Theme, ThemeColor,
-    ThemeMode,
+    Colorize as _, Elevation, ShadowMaterial, Smoothing, Theme, ThemeColor, ThemeMode,
     foundation::{color::contrast_ratio, theme::DEFAULT_RADIUS, theme_color},
 };
 
@@ -20,14 +19,14 @@ pub const ACCENTS: [&str; 8] = [
 ];
 
 const ACCENT_COLORS: [(&str, &str, &str); ACCENTS.len()] = [
-    ("blue", "#0a64dd", "#76abfd"),
-    ("purple", "#8549d1", "#bd97fe"),
-    ("pink", "#c02a82", "#f585bd"),
-    ("red", "#cc252d", "#ff877f"),
-    ("orange", "#ad4f00", "#f88e4f"),
-    ("yellow", "#876400", "#d3a229"),
-    ("green", "#007b2c", "#59be6d"),
-    ("graphite", "#6a6a6a", "#aaaaaa"),
+    ("blue", "#0a64dd", "#3183ff"),
+    ("purple", "#8549d1", "#a366f7"),
+    ("pink", "#c02a82", "#e648a0"),
+    ("red", "#cc252d", "#f44647"),
+    ("orange", "#ad4f00", "#de6700"),
+    ("yellow", "#876400", "#af8200"),
+    ("green", "#007b2c", "#009f3b"),
+    ("graphite", "#6a6a6a", "#868686"),
 ];
 
 const TEXT_ON_GLASS: f32 = 4.5;
@@ -40,47 +39,47 @@ pub fn accent_color(value: &str, mode: ThemeMode) -> Option<Hsla> {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
-pub enum Tint {
-    #[default]
-    Ink,
-    Color {
-        light: Hsla,
-        dark: Hsla,
-    },
+pub const DEFAULT_ACCENT: &str = "blue";
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Tint {
+    pub light: Hsla,
+    pub dark: Hsla,
+}
+
+impl Default for Tint {
+    fn default() -> Self {
+        Self {
+            light: accent_color(DEFAULT_ACCENT, ThemeMode::Light).unwrap_or_default(),
+            dark: accent_color(DEFAULT_ACCENT, ThemeMode::Dark).unwrap_or_default(),
+        }
+    }
 }
 
 impl Tint {
     pub fn named(value: &str) -> Option<Self> {
-        if value.trim() == "ink" {
-            return Some(Self::Ink);
-        }
-        Some(Self::Color {
+        Some(Self {
             light: accent_color(value, ThemeMode::Light)?,
             dark: accent_color(value, ThemeMode::Dark)?,
         })
     }
 
-    pub fn color(self, mode: ThemeMode) -> Option<Hsla> {
-        match self {
-            Self::Ink => None,
-            Self::Color { light, dark } => Some(if mode.is_dark() { dark } else { light }),
+    pub fn color(self, mode: ThemeMode) -> Hsla {
+        if mode.is_dark() {
+            self.dark
+        } else {
+            self.light
         }
     }
 }
 
 impl Serialize for Tint {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        match self {
-            Self::Ink => serializer.serialize_str("ink"),
-            Self::Color { light, dark } => {
-                let pair = [
-                    ("light", crate::to_hex(*light)),
-                    ("dark", crate::to_hex(*dark)),
-                ];
-                serializer.collect_map(pair)
-            }
-        }
+        let pair = [
+            ("light", crate::to_hex(self.light)),
+            ("dark", crate::to_hex(self.dark)),
+        ];
+        serializer.collect_map(pair)
     }
 }
 
@@ -96,11 +95,100 @@ impl<'de> Deserialize<'de> for Tint {
         let unknown = |value: &str| D::Error::custom(format!("`{value}` is no tint"));
         match Spelled::deserialize(deserializer)? {
             Spelled::One(value) => Self::named(&value).ok_or_else(|| unknown(&value)),
-            Spelled::Pair { light, dark } => Ok(Self::Color {
+            Spelled::Pair { light, dark } => Ok(Self {
                 light: accent_color(&light, ThemeMode::Light).ok_or_else(|| unknown(&light))?,
                 dark: accent_color(&dark, ThemeMode::Dark).ok_or_else(|| unknown(&dark))?,
             }),
         }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct BaseColors {
+    #[serde(skip_serializing_if = "Option::is_none", with = "hex_color")]
+    pub bg: Option<Hsla>,
+    #[serde(skip_serializing_if = "Option::is_none", with = "hex_color")]
+    pub fg: Option<Hsla>,
+    #[serde(skip_serializing_if = "Option::is_none", with = "hex_color")]
+    pub success: Option<Hsla>,
+    #[serde(skip_serializing_if = "Option::is_none", with = "hex_color")]
+    pub warning: Option<Hsla>,
+    #[serde(skip_serializing_if = "Option::is_none", with = "hex_color")]
+    pub danger: Option<Hsla>,
+}
+
+impl BaseColors {
+    fn lay_on(&self, colors: &mut ThemeColor) {
+        for (slot, color) in [
+            (&mut colors.background, self.bg),
+            (&mut colors.foreground, self.fg),
+            (&mut colors.success, self.success),
+            (&mut colors.warning, self.warning),
+            (&mut colors.danger, self.danger),
+        ] {
+            if let Some(color) = color {
+                *slot = color;
+            }
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ModeColors {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub light: Option<BaseColors>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub dark: Option<BaseColors>,
+}
+
+impl ModeColors {
+    pub fn get(&self, mode: ThemeMode) -> Option<&BaseColors> {
+        if mode.is_dark() {
+            self.dark.as_ref()
+        } else {
+            self.light.as_ref()
+        }
+    }
+
+    pub fn set(&mut self, mode: ThemeMode, colors: BaseColors) {
+        if mode.is_dark() {
+            self.dark = Some(colors);
+        } else {
+            self.light = Some(colors);
+        }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.light.is_none() && self.dark.is_none()
+    }
+}
+
+mod hex_color {
+    use ala::Hsla;
+    use serde::{Deserialize as _, Deserializer, Serializer, de::Error as _};
+
+    #[allow(
+        clippy::ref_option,
+        reason = "serde's `with` hands the field over by reference"
+    )]
+    pub fn serialize<S: Serializer>(
+        color: &Option<Hsla>,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error> {
+        match color {
+            Some(color) => serializer.serialize_str(&crate::to_hex(*color)),
+            None => serializer.serialize_none(),
+        }
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(
+        deserializer: D,
+    ) -> Result<Option<Hsla>, D::Error> {
+        Option::<String>::deserialize(deserializer)?
+            .map(|value| crate::parse_hex(&value).map_err(D::Error::custom))
+            .transpose()
     }
 }
 
@@ -390,13 +478,15 @@ pub struct InterfaceTheme {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub face: Option<SharedString>,
     pub mode: ModeLock,
+    #[serde(skip_serializing_if = "ModeColors::is_empty")]
+    pub colors: ModeColors,
 }
 
 impl Default for InterfaceTheme {
     fn default() -> Self {
         Self {
             name: String::new(),
-            tint: Tint::Ink,
+            tint: Tint::default(),
             neutral: Neutral::default(),
             radius: DEFAULT_RADIUS,
             control_radius: None,
@@ -404,6 +494,7 @@ impl Default for InterfaceTheme {
             glass: None,
             face: None,
             mode: ModeLock::Follow,
+            colors: ModeColors::default(),
         }
     }
 }
@@ -411,11 +502,13 @@ impl Default for InterfaceTheme {
 impl InterfaceTheme {
     pub fn colors(&self, mode: ThemeMode) -> ThemeColor {
         let neutral = self.neutral.clamped();
-        let mut colors = ThemeColor::for_mode(mode).neutral(neutral.hue, neutral.amount);
-        if let Some(tint) = self.tint.color(mode) {
-            colors.accent = tint;
+        let mut base = *ThemeColor::for_mode(mode);
+        if let Some(brought) = self.colors.get(mode) {
+            brought.lay_on(&mut base);
         }
-        colors
+        let mut colors = base.neutral(neutral.hue, neutral.amount);
+        colors.accent = self.tint.color(mode);
+        colors.fitted()
     }
 
     pub fn glass(&self, mode: ThemeMode) -> Option<GlassMaterial> {
@@ -427,11 +520,7 @@ impl InterfaceTheme {
 
     pub fn apply(&self, theme: &mut Theme) {
         let mode = theme.mode;
-        theme.colors = self.colors(mode);
-        theme.primary = match self.tint {
-            Tint::Ink => PrimaryStyle::Foreground,
-            Tint::Color { .. } => PrimaryStyle::Accent,
-        };
+        theme.set_colors(self.colors(mode));
         theme.radius = px(clamp_radius(self.radius));
         theme.control_radius = self.control_radius.map(ControlRadius::pixels);
         theme.smoothing = Smoothing::clamped(self.smoothing);
@@ -606,13 +695,13 @@ impl ThemeOverrides {
     }
 
     pub fn from_theme(theme: &InterfaceTheme) -> Self {
-        let accent = match theme.tint {
-            Tint::Ink => "ink".to_owned(),
-            Tint::Color { light, .. } => ACCENTS
-                .iter()
-                .find(|name| Tint::named(name) == Some(theme.tint))
-                .map_or_else(|| crate::to_hex(light), |name| (*name).to_owned()),
-        };
+        let accent = ACCENTS
+            .iter()
+            .find(|name| Tint::named(name) == Some(theme.tint))
+            .map_or_else(
+                || crate::to_hex(theme.tint.light),
+                |name| (*name).to_owned(),
+            );
         let neutral = theme.neutral.clamped();
         Self {
             radius: Some(clamp_radius(theme.radius)),
@@ -637,6 +726,7 @@ pub struct Appearance {
     pub contrast: f32,
     pub reduce_transparency: bool,
     pub ui_font_family: String,
+    pub mono_font_family: String,
     pub zoom: f32,
     pub motion: crate::foundation::motion::Motion,
     pub density: crate::Density,
@@ -650,6 +740,7 @@ impl Default for Appearance {
             contrast: 1.0,
             reduce_transparency: false,
             ui_font_family: String::new(),
+            mono_font_family: String::new(),
             zoom: 1.0,
             motion: crate::foundation::motion::Motion::Default,
             density: crate::Density::Regular,
@@ -671,6 +762,7 @@ pub enum AppearanceChange {
     Contrast(f32),
     ReduceTransparency(bool),
     UiFont(String),
+    MonoFont(String),
     Zoom(f32),
     Motion(crate::foundation::motion::Motion),
     Density(crate::Density),
@@ -735,6 +827,10 @@ impl Appearance {
         }
     }
 
+    pub fn mono_font(&self) -> &str {
+        &self.mono_font_family
+    }
+
     pub fn import(&mut self, theme: &InterfaceTheme) {
         self.overrides = ThemeOverrides::from_theme(theme);
         self.ui_font_family = theme.face.as_deref().unwrap_or("").to_owned();
@@ -743,6 +839,7 @@ impl Appearance {
     pub fn reset_look(&mut self) {
         self.overrides = ThemeOverrides::default();
         self.ui_font_family.clear();
+        self.mono_font_family.clear();
     }
 
     pub fn change(&mut self, change: AppearanceChange) {
@@ -761,6 +858,7 @@ impl Appearance {
             AppearanceChange::Contrast(contrast) => self.contrast = contrast,
             AppearanceChange::ReduceTransparency(reduce) => self.reduce_transparency = reduce,
             AppearanceChange::UiFont(family) => self.ui_font_family = family,
+            AppearanceChange::MonoFont(family) => self.mono_font_family = family,
             AppearanceChange::Zoom(zoom) => self.zoom = zoom,
             AppearanceChange::Motion(motion) => self.motion = motion,
             AppearanceChange::Density(density) => self.density = density,
@@ -778,8 +876,15 @@ impl Appearance {
         } else {
             ala::Font::default().family
         };
+        let mono = self.mono_font();
+        let mono = if !mono.is_empty() && cx.text_system().has_font(mono) {
+            SharedString::from(mono.to_owned())
+        } else {
+            crate::foundation::platform_mono_font_family()
+        };
         let theme = Theme::global_mut(cx);
         theme.font_family = family;
+        theme.mono_font_family = mono;
         theme.set_contrast(self.contrast);
         if self.reduce_transparency {
             theme.glass = None;
@@ -819,14 +924,14 @@ mod tests {
                 ThemeMode::Light,
                 [
                     "#f6f6f3", "#e9e9e6", "#dcdcda", "#1c1c1a", "#575756", "#555553", "#90908e",
-                    "#2f62d8", "#ebebeb", "#1c1c1a", "#007b3e", "#a75400", "#cc2737",
+                    "#0a64dd", "#ebebeb", "#1c1c1a", "#007b3e", "#a75400", "#cc2737",
                 ],
             ),
             (
                 ThemeMode::Dark,
                 [
                     "#1a1a19", "#212120", "#292928", "#e9e7e3", "#908f8c", "#a4a3a0", "#4d4c4b",
-                    "#7f9fff", "#010101", "#e9e7e3", "#3fbf74", "#f0a14a", "#f2555f",
+                    "#3183ff", "#010101", "#e9e7e3", "#3fbf74", "#f0a14a", "#f2555f",
                 ],
             ),
         ] {
@@ -891,9 +996,10 @@ mod tests {
             ] {
                 let solid = kit.paint(tone, Emphasis::Solid);
                 let ratio = contrast_ratio(solid.text, solid.fill);
+                let floor = if tone == Tone::Accent { 3.0 } else { 4.5 };
                 assert!(
-                    ratio >= 4.5,
-                    "{id} {mode:?} text on a solid {tone:?} fill is {ratio:.2}:1"
+                    ratio >= floor,
+                    "{id} {mode:?} ink on a solid {tone:?} fill is {ratio:.2}:1"
                 );
             }
         }
@@ -1010,14 +1116,7 @@ mod tests {
     #[test]
     fn presets_are_knobs_with_names() {
         let macos = builtin_theme("macos").unwrap();
-        assert_eq!(
-            macos.tint.color(ThemeMode::Light),
-            crate::parse_hex("#0a64dd").ok()
-        );
-        assert_eq!(
-            macos.tint.color(ThemeMode::Dark),
-            crate::parse_hex("#76abfd").ok()
-        );
+        assert_eq!(macos.tint, Tint::named("blue").unwrap());
         assert_eq!(
             (macos.control_radius, macos.smoothing, macos.glass.clone()),
             (Some(ControlRadius::Full), 4.0, None)
@@ -1039,7 +1138,7 @@ mod tests {
             serde_json::from_str::<Appearance>("{}").unwrap(),
             Appearance::default()
         );
-        let source = r#"{"mode":"dark","theme":"macos","radius":12,"accent":"green","tint":0.25,"tint-hue":145,"controls":"pill","glass":"none","contrast":1.5,"reduce_transparency":true,"ui_font_family":"Inter","zoom":1.25,"motion":"fast","density":"comfortable","sidebar":true}"#;
+        let source = r#"{"mode":"dark","theme":"macos","radius":12,"accent":"green","tint":0.25,"tint-hue":145,"controls":"pill","glass":"none","contrast":1.5,"reduce_transparency":true,"ui_font_family":"Inter","mono_font_family":"Lilex","zoom":1.25,"motion":"fast","density":"comfortable","sidebar":true}"#;
         let appearance = serde_json::from_str::<Appearance>(source).unwrap();
         assert_eq!(
             appearance,
@@ -1056,6 +1155,7 @@ mod tests {
                 contrast: 1.5,
                 reduce_transparency: true,
                 ui_font_family: "Inter".into(),
+                mono_font_family: "Lilex".into(),
                 zoom: 1.25,
                 motion: crate::foundation::motion::Motion::Fast,
                 density: crate::Density::Comfortable,
@@ -1072,6 +1172,7 @@ mod tests {
     fn a_persons_knobs_sit_over_the_platform_look_and_a_theme_file_sets_them_all() {
         let mut appearance = Appearance {
             ui_font_family: "Inter".into(),
+            mono_font_family: "Berkeley Mono".into(),
             ..Appearance::default()
         };
         assert_eq!(appearance.shown_theme(), *platform_theme());
@@ -1110,9 +1211,11 @@ mod tests {
         assert_eq!(appearance.accent(), "orange");
         assert_eq!(appearance.controls(), Controls::Rounded);
         assert_eq!(appearance.ui_font(), "Lilex");
+        assert_eq!(appearance.mono_font(), "Berkeley Mono");
 
         appearance.change(AppearanceChange::ResetLook);
         assert_eq!(appearance.overrides, ThemeOverrides::default());
+        assert_eq!(appearance.mono_font(), "");
         assert_eq!(appearance.shown_theme(), *platform_theme());
     }
 
@@ -1142,7 +1245,6 @@ mod tests {
             assert_eq!(theme.mode, ThemeMode::Dark);
             assert_eq!(theme.radius, px(5.0));
             assert_eq!(Some(theme.accent), accent_color("green", ThemeMode::Dark));
-            assert!(theme.tinted());
             assert_eq!(theme.contrast(), 1.5);
             assert_eq!(theme.glass, None);
             assert_eq!(crate::UiZoom::get(cx), 1.25);
@@ -1193,5 +1295,49 @@ mod tests {
         assert_eq!(theme.face.as_deref(), Some("Inter"));
         assert!(parse_layers(&[r#"{"name":"Base"}"#, "[]"]).is_err());
         assert_eq!(parse_layers(&[]).unwrap(), InterfaceTheme::default());
+    }
+
+    #[test]
+    fn brought_colors_move_only_until_they_read() {
+        let source = r##"{"tint":"#458588","colors":{"dark":{"bg":"#282828","fg":"#a89984","danger":"#cc241d"}}}"##;
+        let theme = parse_theme(source).unwrap();
+        assert_eq!(parse_theme(&theme.to_json()).unwrap(), theme);
+        let dark = kit(&theme, ThemeMode::Dark);
+        let drawn = [
+            dark.background,
+            dark.foreground,
+            dark.foreground.muted(),
+            dark.accent,
+            dark.success,
+            dark.danger,
+        ]
+        .map(crate::to_hex);
+        assert_eq!(
+            drawn,
+            [
+                "#282828", "#c0b19b", "#998c7b", "#58989b", "#3fbf74", "#f95546"
+            ]
+        );
+        for (color, from, floor) in [
+            (dark.foreground, "#a89984", 7.0),
+            (dark.accent, "#458588", 4.5),
+            (dark.danger, "#cc241d", 4.5),
+        ] {
+            let ratio = contrast_ratio(color, dark.background);
+            assert!(
+                (floor..floor + 0.03).contains(&ratio),
+                "{} is {ratio:.3}:1",
+                crate::to_hex(color)
+            );
+            let turn =
+                crate::to_oklch(color).2 - crate::to_oklch(crate::parse_hex(from).unwrap()).2;
+            assert!(turn.abs() < 1.0, "{from} turned {turn:.2} degrees");
+        }
+        assert!(contrast_ratio(dark.foreground.muted(), dark.background) >= 4.5);
+        let tinted = parse_theme(r##"{"tint":"#458588"}"##).unwrap();
+        assert_eq!(
+            kit(&theme, ThemeMode::Light).colors,
+            kit(&tinted, ThemeMode::Light).colors
+        );
     }
 }

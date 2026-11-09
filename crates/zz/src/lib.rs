@@ -28,6 +28,7 @@ mod profile;
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 mod quit_signal;
 mod status_bar;
+mod tailnet;
 mod terminal;
 mod theme;
 mod tray;
@@ -43,9 +44,11 @@ use std::{
 };
 
 use ala::Styled as _;
-use ala::{AnyView, App, AppContext, Context, Entity, Window, WindowOptions, px, size};
+use ala::{
+    AnyView, App, AppContext, Context, Entity, Window, WindowDecorations, WindowOptions, px, size,
+};
 use ala_cef::{BrowserBootstrap, BrowserError, BrowserRuntime};
-use penna::{Root, Theme, ThemeMode};
+use penna::{Root, ThemeMode};
 pub(crate) use zz_cli::application_arguments;
 use zz_cli::{CommandLineOrigin, Startup, StartupOptions};
 use zz_daemon_client::{DaemonError, InteractiveClient, default_socket_path};
@@ -256,6 +259,7 @@ fn run_app(
             #[cfg(target_os = "macos")]
             cx.activate(true);
             config::init(cx);
+            tailnet::start(cx);
             cx.set_global(tray::DesktopTray::default());
             window::background::detect_compositor_support(cx);
             browser::recent_pages::init(cx);
@@ -288,7 +292,6 @@ fn run_app(
                 size(px(1080.0), px(720.0)),
                 minimum_window_size,
             );
-            let window_decorations = config::window_decorations(cx);
             let mut titlebar = config::titlebar_options(cx);
             if cfg!(target_os = "linux") {
                 titlebar.title = Some(zz_protocol::app_identity::DISPLAY_NAME.into());
@@ -301,7 +304,7 @@ fn run_app(
                     window_background: config::window_background_appearance(cx),
                     display_id: restored_window.display_id,
                     window_min_size: Some(minimum_window_size),
-                    window_decorations: Some(window_decorations),
+                    window_decorations: Some(WindowDecorations::Client),
                     app_id: Some(zz_protocol::app_identity::DIRECTORY.into()),
                     #[cfg(target_os = "linux")]
                     icon: (cx.compositor_name() == "X11").then(app_icon::x11_window_icon),
@@ -310,7 +313,7 @@ fn run_app(
                 move |window, cx| {
                     ui_scale::apply_to_new_window(window, cx);
                     theme::sync_system_appearance(Some(window), cx);
-                    let color_scheme = terminal_color_scheme(Theme::global(cx).mode);
+                    let color_scheme = terminal_color_scheme(theme::asked_mode(cx));
                     let mux = cx.new(|cx| {
                         mux::client::MuxClient::new_connecting(
                             socket_path.clone(),

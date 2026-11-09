@@ -41,8 +41,7 @@ use zz_terminal::{
 use zz_ui::{
     pane::{
         PaneOverlayCorner, pane_overlay_stack, pane_status_badge, pane_sync_badge,
-        pane_unzoom_control, terminal_link_popup, terminal_mode_indicator as terminal_mode_tag,
-        terminal_status_popup,
+        terminal_link_popup, terminal_mode_indicator as terminal_mode_tag, terminal_status_popup,
     },
     pane_look::pane_color,
     terminal::FindBarAction,
@@ -410,7 +409,7 @@ pub(crate) struct TerminalView {
     search_query: Option<SearchQuery>,
     search_input: Entity<InputState>,
     search_focus: FocusHandle,
-    pane_status: (Option<String>, bool, bool),
+    pane_status: (Option<String>, bool),
     search_prompt_behavior: SearchPromptBehavior,
     swallowed_overlay_key: Option<KeyCode>,
     forwarded_keys: HashSet<String>,
@@ -694,10 +693,9 @@ impl TerminalView {
         &mut self,
         dead: Option<String>,
         synchronized: bool,
-        zoomed: bool,
         cx: &mut Context<Self>,
     ) {
-        let status = (dead, synchronized, zoomed);
+        let status = (dead, synchronized);
         if self.pane_status != status {
             self.pane_status = status;
             cx.notify();
@@ -989,7 +987,7 @@ impl TerminalView {
             search_query: None,
             search_input,
             search_focus,
-            pane_status: (None, false, false),
+            pane_status: (None, false),
             search_prompt_behavior: SearchPromptBehavior::default(),
             swallowed_overlay_key: None,
             forwarded_keys: HashSet::new(),
@@ -2422,19 +2420,6 @@ impl Render for TerminalView {
         }
         if self.pane_status.1 {
             top_right.push(pane_sync_badge(cx).into_any_element());
-        }
-        if self.pane_status.2 {
-            top_right.push(
-                pane_unzoom_control()
-                    .on_click(cx.listener(|view, _, _, cx| {
-                        view.mux.read(cx).execute(CommandInvocation::new(
-                            "resize-pane",
-                            ["-Z", "-t", &view.pane.to_string()],
-                        ));
-                        cx.stop_propagation();
-                    }))
-                    .into_any_element(),
-            );
         }
         if !top_right.is_empty() {
             root = root.child(

@@ -27,7 +27,7 @@ Panel::new("find", PanelLook::Popover)
 
 ## Anatomy
 
-1. **Container**: glass or the popover fill, no outline, the float shadow. The `radius` knob; Plain is square.
+1. **Container**: glass and the float shadow, or where glass is off the popover fill under a hairline and a tighter float shadow. The `radius` knob; Plain is square.
 2. **Inset**: none of its own. Pad with `inset-card` 12, or the row inset around rows.
 3. **Corner**: `.inset(px)` grows a rounded corner by the inset its rows sit at.
 

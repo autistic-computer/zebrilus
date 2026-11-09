@@ -30,22 +30,13 @@ Hairlines mean something: a rule, an outline variant, a field being typed in. In
 
 ## Tint
 
-`tint` colors what is on, picked or primary. `ink` keeps it all in the text color; a person's accent replaces it.
+`tint` colors the details: a switch that is on, a checked box, a slider's fill, the dot that asks for attention, links. Selection and the main action stay in the ink with any tint. It is `blue` unless an app sets another; a person's accent replaces it.
 
 ```figure uses=switch,check,list
 <div class="docs-show" data-gap="wide">
   <div class="docs-cell" data-look="default"><div class="docs-look"><button class="penna-button" data-penna="button" data-tone="primary" data-prominent><span class="penna-label" data-penna-text>Save</span></button><button class="penna-toggle" aria-checked="true" aria-label="Sync"></button><label class="penna-checkbox" aria-checked="true"><span class="penna-check"></span><span class="penna-label" data-penna-text>Restore</span></label><span class="penna-list" style="width: 132px"><span class="penna-list-item" data-penna="menu-item" role="option" data-state="selected" aria-selected="true"><span class="penna-list-content"><i class="penna-list-icon" data-icon="square-terminal"></i><span class="penna-list-label"><span class="penna-text" data-penna-text>work</span></span></span></span></span></div><span class="docs-note"><code>ink</code></span></div>
-  <div class="docs-cell" data-look="blue"><div class="docs-look"><button class="penna-button" data-penna="button" data-tone="primary" data-prominent><span class="penna-label" data-penna-text>Save</span></button><button class="penna-toggle" aria-checked="true" aria-label="Sync"></button><label class="penna-checkbox" aria-checked="true"><span class="penna-check"></span><span class="penna-label" data-penna-text>Restore</span></label><span class="penna-list" style="width: 132px"><span class="penna-list-item" data-penna="menu-item" role="option" data-state="selected" aria-selected="true"><span class="penna-list-content"><i class="penna-list-icon" data-icon="square-terminal"></i><span class="penna-list-label"><span class="penna-text" data-penna-text>work</span></span></span></span></span></div><span class="docs-note"><code>blue</code></span></div>
+  <div class="docs-cell" data-look="green"><div class="docs-look"><button class="penna-button" data-penna="button" data-tone="primary" data-prominent><span class="penna-label" data-penna-text>Save</span></button><button class="penna-toggle" aria-checked="true" aria-label="Sync"></button><label class="penna-checkbox" aria-checked="true"><span class="penna-check"></span><span class="penna-label" data-penna-text>Restore</span></label><span class="penna-list" style="width: 132px"><span class="penna-list-item" data-penna="menu-item" role="option" data-state="selected" aria-selected="true"><span class="penna-list-content"><i class="penna-list-icon" data-icon="square-terminal"></i><span class="penna-list-label"><span class="penna-text" data-penna-text>work</span></span></span></span></span></div><span class="docs-note"><code>blue</code></span></div>
   <div class="docs-cell" data-look="pink"><div class="docs-look"><button class="penna-button" data-penna="button" data-tone="primary" data-prominent><span class="penna-label" data-penna-text>Save</span></button><button class="penna-toggle" aria-checked="true" aria-label="Sync"></button><label class="penna-checkbox" aria-checked="true"><span class="penna-check"></span><span class="penna-label" data-penna-text>Restore</span></label><span class="penna-list" style="width: 132px"><span class="penna-list-item" data-penna="menu-item" role="option" data-state="selected" aria-selected="true"><span class="penna-list-content"><i class="penna-list-icon" data-icon="square-terminal"></i><span class="penna-list-label"><span class="penna-text" data-penna-text>work</span></span></span></span></span></div><span class="docs-note"><code>pink</code></span></div>
-</div>
-```
-
-On a tint's solid selection everything in the row takes its ink, and a toned chip turns to a wash of it. With the ink as tint the highlight is a wash and the chip keeps its tone.
-
-```figure uses=list,chip
-<div class="docs-show" data-gap="wide">
-  <div class="docs-cell" data-look="default"><span class="penna-list" style="width: 220px"><span class="penna-list-item" data-penna="menu-item" role="option" data-state="selected" aria-selected="true"><span class="penna-list-content"><i class="penna-list-icon" data-icon="square-terminal"></i><span class="penna-list-label"><span class="penna-text" data-penna-text>work</span></span><span class="penna-chip" data-penna="chip" data-tone="success" data-size="xsmall"><i class="penna-dot" data-tone="success"></i><span class="penna-text penna-chip-label" data-penna-text>Ready</span></span></span></span></span><span class="docs-note"><code>ink</code></span></div>
-  <div class="docs-cell" data-look="blue"><span class="penna-list" style="width: 220px"><span class="penna-list-item" data-penna="menu-item" role="option" data-state="selected" aria-selected="true"><span class="penna-list-content"><i class="penna-list-icon" data-icon="square-terminal"></i><span class="penna-list-label"><span class="penna-text" data-penna-text>work</span></span><span class="penna-chip" data-penna="chip" data-tone="success" data-size="xsmall"><i class="penna-dot" data-tone="success"></i><span class="penna-text penna-chip-label" data-penna-text>Ready</span></span></span></span></span><span class="docs-note"><code>blue</code></span></div>
 </div>
 ```
 
@@ -53,9 +44,13 @@ On a tint's solid selection everything in the row takes its ink, and a toned chi
 
 `neutral` tints the window, the text and every surface above them: a hue and an amount, warm 60 at 0.15 by default. Status colors and contrast hold at every value.
 
+## Colors
+
+`colors` swaps the window, the text and the status colors for a theme's own, per mode, so an app can wear the colors of what it shows. Surfaces, washes and hairlines follow from them; accent and status colors move in lightness until they read at 4.5:1.
+
 ## Corners
 
-`radius` rounds containers and `control-radius` rounds controls. A control's corner stops at 45% of its height, so only `full` makes pills.
+Every corner follows Corner radius. A control (a button, field, tab, chip, badge or row) rounds to a share of its own height, so a small badge and a tall sidebar entry read equally round: 31% of the height at the default, 45% at 100%. Containers (cards, panels, popovers, dialogs, panes) keep `radius` in pixels, a pane no rounder than 16. A corner inside another is concentric, like the segmented control's pill in its track; a menu's rows keep their control corner, never rounder than the menu, and only `full` makes pills.
 
 ```figure uses=input
 <div class="docs-show" data-gap="wide">
@@ -68,7 +63,7 @@ On a tint's solid selection everything in the row takes its ink, and a toned chi
 
 ## Smoothing
 
-`smoothing` shapes every corner, from round arcs at 2 to a squircle at 5. Rows draw at most 2.5.
+`smoothing` shapes every corner, from round arcs at 2 to a squircle at 5, without changing how round it looks: a smoother corner is drawn in a larger box, so its middle sits where a round arc of the same radius would.
 
 ```figure
 <div class="docs-show" data-gap="wide">
@@ -107,12 +102,13 @@ The same in every app, in Appearance, in three groups: Look, Size and Accessibil
 | Knob | Does |
 | --- | --- |
 | Mode | System, light or dark, unless a theme locks it |
-| Accent | The tint: ink, a named accent or a color |
+| Accent | The tint: a named accent or a color |
 | Tint, Tint strength | The neutral's hue and amount |
 | Corner radius | The radius, 0 to 100% on a square curve: 69% is the default 12, 100% is 25 and never a pill |
 | Controls | Rounded follows the radius; Pill makes controls pills |
 | Glass | A switch: on draws liquid glass, off draws none |
 | UI font | The face |
+| Mono font | The code face; its list opens on Monospaced |
 | Text size | The root size; everything scales with it |
 | Density | Compact, regular or comfortable rows and controls |
 | Increase contrast | 0 to 100%: surfaces and fills further apart, muted text closer to the ink; no edges |
@@ -125,7 +121,7 @@ The look starts from `macos` on Apple platforms and `default` elsewhere. `yaru` 
 
 | Theme file | Tint | Radius | Control radius | Smoothing | Glass |
 | --- | --- | --- | --- | --- | --- |
-| `default` | ink | 12 | 12 | 3 | liquid |
+| `default` | blue | 12 | 12 | 3 | liquid |
 | `macos` | blue | 12 | full | 4 | liquid |
 | `yaru` | orange | 8 | 8 | 2 | none |
 
@@ -155,7 +151,7 @@ studio.activate(None, Some(window), cx);
 | Theme file | Rust | Does |
 | --- | --- | --- |
 | `name` | `.name` | A label for the file |
-| `tint` | `.tint` | Ink, an accent, a hex color, or a light and dark pair |
+| `tint` | `.tint` | An accent, a hex color, or a light and dark pair |
 | `neutral` | `.neutral` | Hue 0 to 360, amount 0 to 1 |
 | `radius` | `.radius` | Container corners, 0 to 25; 25 is round, not a pill |
 | `control-radius` | `.control_radius` | Control corners, 0 to 25 or full; the radius when left out |
@@ -163,6 +159,7 @@ studio.activate(None, Some(window), cx);
 | `glass` | `.glass` | None, liquid or a material; liquid when left out |
 | `face` | `.face` | Interface face; the platform's when left out |
 | `mode` | `.mode` | Follow, light or dark; beats the person's Mode |
+| `colors` | `.colors` | `bg`, `fg`, `success`, `warning`, `danger` per mode; the Color table when left out |
 | | `parse_theme(json)` | Reads a theme file |
 | | `.activate(mode, window, cx)` | Draws the app in it |
 

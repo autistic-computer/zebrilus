@@ -414,19 +414,6 @@ function terminal(pane) {
       }
       if (status?.dead) top.append(chip("circle-x", status.dead));
       if (status?.synchronized) top.append(chip("layers", "Sync"));
-      if (status?.zoomed) {
-        const button = document.createElement("button");
-        button.dataset.penna = "chip.floating";
-        button.className = "unzoom";
-        button.title = "Unzoom";
-        button.innerHTML = `<i data-icon="window-restore"></i><span data-text>Unzoom</span>`;
-        button.addEventListener("click", (event) => {
-          event.stopPropagation();
-          state.client.unzoom(pane.id);
-          flush();
-        });
-        top.append(button);
-      }
       if (viewport.hovered && viewport.hovered.image == null) bottom.append(line(viewport.hovered.uri, false));
       if (viewport.status) bottom.append(line(viewport.status, true));
     },

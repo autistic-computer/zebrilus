@@ -20,11 +20,23 @@ use crate::{
 use super::workspace_tree_marker;
 
 pub fn tree_host_marker(
+    platform: zz_protocol::HostPlatform,
+    color: Hsla,
     bell: bool,
     badge_color: Option<Hsla>,
     ground: Ground,
     cx: &App,
 ) -> AnyElement {
+    let size = crate::rems_from_px(super::WORKSPACE_TREE_NODE_ICON_SIZE);
+    if let Some(icon) = crate::program::platform_icon(platform) {
+        return tree_node_marker(
+            Icon::new(icon).size(size).text_color(color),
+            bell,
+            badge_color,
+            ground,
+            cx,
+        );
+    }
     static LOGO: LazyLock<Arc<ala::Image>> = LazyLock::new(|| {
         Arc::new(ala::Image::from_bytes(
             ala::ImageFormat::Png,
@@ -36,7 +48,7 @@ pub fn tree_host_marker(
         ))
     });
     tree_node_marker(
-        ala::img(Arc::clone(&LOGO)).size(crate::rems_from_px(super::WORKSPACE_TREE_NODE_ICON_SIZE)),
+        ala::img(Arc::clone(&LOGO)).size(size),
         bell,
         badge_color,
         ground,
@@ -92,7 +104,7 @@ pub fn tree_node_marker(
             .child(icon)
             .when(bell, |this| {
                 this.child(
-                    crate::sidebar::status_dot(dot(cx.theme().warning))
+                    crate::sidebar::status_dot(dot(cx.theme().accent))
                         .absolute()
                         .top(px(-1.0))
                         .right(px(-1.0)),
@@ -157,9 +169,7 @@ pub fn tree_action_strip(
         .items_center()
         .justify_center()
         .when(CoarsePointer::get(cx), |this| {
-            this.gap(crate::rems_from_px(
-                TOUCH_TARGET - crate::button::COMPACT_ICON_BUTTON_SIZE,
-            ))
+            this.gap(px(TOUCH_TARGET) - super::workspace_tree_action_side(cx))
         })
         .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
         .on_click(|_, _, cx| cx.stop_propagation())
@@ -246,8 +256,9 @@ mod tests {
             let trailing = cx.update(|_, cx| super::super::workspace_tree_trailing_inset(cx));
             assert_eq!(close.right(), row.right() - trailing);
             assert_eq!(add.center().y, row.center().y);
-            let pitch = if coarse { 44.0 } else { 24.0 };
+            let pitch = if coarse { 44.0 } else { 22.0 };
             assert_eq!(close.left() - add.left(), px(pitch));
+            assert_eq!(close.size.height, px(if coarse { 34.0 } else { 22.0 }));
         }
     }
 

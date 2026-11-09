@@ -6,11 +6,11 @@ pub mod status;
 use crate::{
     ActiveTheme as _, Colorize as _, Disableable as _, Emphasis, Ground, IconName, PaintState,
     Sizable as _, StyledExt as _, Surface, Tone,
-    button::{Button, ButtonLook, ButtonVariants as _, COMPACT_ICON_BUTTON_SIZE},
+    button::{Button, ButtonLook, ButtonVariants as _, INSIDE_GAP},
     kbd::Kbd,
     rems_from_px,
     sidebar::{
-        CHROME_BUTTON_SIZE, SIDEBAR_CONTENT_INSET, SIDEBAR_ROW_ACTION_CENTER, chrome_button,
+        CHROME_BUTTON_SIZE, SIDEBAR_CONTENT_INSET, SIDEBAR_SCROLLBAR_GUTTER, chrome_button,
         sidebar_panel,
     },
     tooltip::Tooltip,
@@ -22,27 +22,37 @@ use ala::{
     prelude::*, px,
 };
 pub use penna::blocks::sidebar::sidebar_fade as workspace_sidebar_fade;
-use penna::{Panel, PanelLook, Row, RowLook, Tab, TabLook, TextStyle};
+use penna::{Panel, PanelLook, Row, RowLook, Space, Tab, TabLook, TabStrip, TextStyle};
 
 pub const WORKSPACE_TREE_ROW_HEIGHT: f32 = 32.0;
 pub const WORKSPACE_TREE_INDENT_WIDTH: f32 = 20.0;
 pub const WORKSPACE_TREE_MARKER_SLOT_WIDTH: f32 = 18.0;
 pub const WORKSPACE_TREE_NODE_ICON_SIZE: f32 = 14.0;
 pub const WORKSPACE_TREE_MARKER_LABEL_GAP: f32 = 6.0;
-const TREE_TOUCH_SLOP: f32 = (TOUCH_TARGET - COMPACT_ICON_BUTTON_SIZE) / 2.0;
 const WORKSPACE_TREE_FILL_VERTICAL_INSET: f32 = 1.0;
 const WORKSPACE_CHROME_CONTROL_GAP: f32 = 4.0;
-const WORKSPACE_ROW_ACTION_GAP: f32 = 10.0;
+const WORKSPACE_SIDEBAR_ACTIONS_GAP: f32 = 8.0;
 pub const WORKSPACE_SIDEBAR_FADE_HEIGHT: Pixels = px(40.0);
 pub const WORKSPACE_STATUS_PILL_HEIGHT: Pixels = px(32.0);
+pub const WORKSPACE_STATUS_TAB_HEIGHT: Pixels = px(28.0);
 const WORKSPACE_STATUS_LINE_HEIGHT: Pixels = px(18.0);
 const WORKSPACE_STATUS_WINDOW_DEFAULT_WIDTH: Pixels = px(240.0);
 const WORKSPACE_STATUS_WINDOW_MIN_WIDTH: Pixels = px(36.0);
+
+#[must_use]
+pub fn workspace_status_tab_height(alone: bool) -> Pixels {
+    if alone {
+        WORKSPACE_STATUS_TAB_HEIGHT + px(Space::S2.design_px() * 2.0)
+    } else {
+        WORKSPACE_STATUS_TAB_HEIGHT
+    }
+}
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct WorkspaceStatusWindowState {
     pub connected: bool,
     pub active: bool,
+    pub alone: bool,
 }
 
 impl WorkspaceStatusWindowState {
@@ -57,8 +67,13 @@ impl WorkspaceStatusWindowState {
 }
 
 #[must_use]
-pub fn workspace_layout_button(id: impl Into<ElementId>) -> Button {
-    chrome_button(id, IconName::PanelLeft, "Toggle sidebar")
+pub fn workspace_layout_button(id: impl Into<ElementId>, open: bool) -> Button {
+    let icon = if open {
+        IconName::PanelLeftDuotone
+    } else {
+        IconName::PanelLeft
+    };
+    chrome_button(id, icon, "Toggle sidebar")
 }
 
 #[must_use]
@@ -72,30 +87,110 @@ pub fn workspace_settings_button(id: impl Into<ElementId>) -> Button {
 }
 
 #[must_use]
-pub fn workspace_add_host_button(id: impl Into<ElementId>) -> Button {
-    chrome_button(id, IconName::ServerPlus, "Add host")
-}
-
-#[must_use]
 pub fn workspace_sidebar_view_button(id: impl Into<ElementId>, flat: bool) -> Button {
-    if flat {
-        chrome_button(id, IconName::List, "Show the session tree")
+    let (icon, tooltip) = if flat {
+        (IconName::ChatDuotone, "Show the session tree")
     } else {
-        chrome_button(id, IconName::ListTree, "Show chats")
-    }
+        (IconName::Chat, "Show chats")
+    };
+    chrome_button(id, icon, tooltip)
 }
 
 #[must_use]
-pub fn workspace_sidebar_footer_controls(
-    add_host: impl IntoElement,
+pub fn workspace_sidebar_titlebar_controls(
     view: impl IntoElement,
+    layout: impl IntoElement,
 ) -> ala::Div {
     div()
         .flex()
         .items_center()
         .gap(rems_from_px(WORKSPACE_CHROME_CONTROL_GAP))
-        .child(add_host)
         .child(view)
+        .child(layout)
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SidebarAction {
+    NewChat,
+    AddHost,
+    Settings,
+}
+
+impl SidebarAction {
+    #[must_use]
+    pub const fn icon(self) -> IconName {
+        match self {
+            Self::NewChat => IconName::ChatPlus,
+            Self::AddHost => IconName::ServerPlus,
+            Self::Settings => IconName::Settings,
+        }
+    }
+
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::NewChat => "New chat",
+            Self::AddHost => "Add host",
+            Self::Settings => "Settings",
+        }
+    }
+
+    #[must_use]
+    pub const fn id(self) -> &'static str {
+        match self {
+            Self::NewChat => "sidebar-new-chat",
+            Self::AddHost => "sidebar-add-host",
+            Self::Settings => "sidebar-settings",
+        }
+    }
+
+    #[must_use]
+    pub const fn above(flat: bool) -> &'static [Self] {
+        if flat {
+            &[Self::NewChat, Self::AddHost]
+        } else {
+            &[Self::AddHost]
+        }
+    }
+}
+
+#[must_use]
+pub fn workspace_sidebar_action(
+    action: SidebarAction,
+    ground: Ground,
+    cx: &App,
+) -> Stateful<ala::Div> {
+    flat::flat_action_row(action.id(), action.icon(), action.label(), ground, cx)
+}
+
+#[must_use]
+pub fn workspace_sidebar_actions(rows: impl IntoIterator<Item = Stateful<ala::Div>>) -> ala::Div {
+    div()
+        .flex()
+        .flex_col()
+        .flex_none()
+        .w_full()
+        .pr(SIDEBAR_SCROLLBAR_GUTTER)
+        .pb(px(WORKSPACE_SIDEBAR_ACTIONS_GAP))
+        .children(rows)
+}
+
+#[must_use]
+pub fn workspace_sidebar_footer(
+    id: impl Into<ElementId>,
+    row: impl IntoElement,
+    cx: &App,
+) -> Stateful<ala::Div> {
+    div()
+        .id(id)
+        .flex()
+        .flex_col()
+        .flex_none()
+        .w_full()
+        .pt(Space::S4)
+        .pr(SIDEBAR_SCROLLBAR_GUTTER)
+        .pb(cx.theme().row_inset)
+        .child(row)
 }
 
 #[must_use]
@@ -104,6 +199,20 @@ pub fn workspace_chrome_controls_width_for(count: usize, window: &Window) -> Pix
     CHROME_BUTTON_SIZE * count
         + rems_from_px(WORKSPACE_CHROME_CONTROL_GAP).to_pixels(window.rem_size())
             * (count - 1.0).max(0.0)
+}
+
+#[must_use]
+pub fn workspace_status_bar_ground(cx: &App) -> Ground {
+    cx.theme().ground_of(penna::BarLook::Window)
+}
+
+#[must_use]
+pub fn workspace_status_tab_ground(alone: bool, cx: &App) -> Ground {
+    TabStrip::ground(
+        workspace_status_bar_ground(cx),
+        if alone { 1 } else { 2 },
+        cx,
+    )
 }
 
 #[must_use]
@@ -125,6 +234,7 @@ pub fn workspace_status_window(
         .text_fade(crate::LABEL_FADE)
         .child(name);
     Tab::new(id, TabLook::Window)
+        .on(workspace_status_tab_ground(state.alone, cx))
         .state(state.paint_state())
         .interactive(state.connected)
         .when(state.connected, ala::Styled::cursor_pointer)
@@ -134,7 +244,13 @@ pub fn workspace_status_window(
         .w(WORKSPACE_STATUS_WINDOW_DEFAULT_WIDTH)
         .min_w(WORKSPACE_STATUS_WINDOW_MIN_WIDTH)
         .max_w(WORKSPACE_STATUS_WINDOW_DEFAULT_WIDTH)
-        .h(WORKSPACE_STATUS_PILL_HEIGHT)
+        .map(|item| {
+            if state.alone {
+                item.h_full()
+            } else {
+                item.h(WORKSPACE_STATUS_TAB_HEIGHT)
+            }
+        })
         .items_center()
         .gap(px(5.0))
         .px(px(9.0))
@@ -149,12 +265,27 @@ pub fn workspace_status_window(
         })
 }
 
-fn workspace_tree_trailing_inset(cx: &App) -> Pixels {
-    cx.theme().row_inset + SIDEBAR_ROW_ACTION_CENTER - px(COMPACT_ICON_BUTTON_SIZE / 2.0)
+#[must_use]
+pub fn workspace_tree_guide_origin(cx: &App) -> Pixels {
+    flat::action_glyph_center(cx)
 }
 
-fn workspace_row_action_gap() -> Pixels {
-    px(WORKSPACE_ROW_ACTION_GAP)
+fn workspace_tree_trailing_inset(cx: &App) -> Pixels {
+    cx.theme().row_inset + INSIDE_GAP
+}
+
+fn workspace_tree_fill_height(cx: &App) -> Pixels {
+    let inset = if cx.theme().inset_rows() {
+        px(WORKSPACE_TREE_FILL_VERTICAL_INSET)
+    } else {
+        px(0.)
+    };
+    px(workspace_tree_row_height(cx)) - inset * 2.0
+}
+
+#[must_use]
+pub fn workspace_tree_action_side(cx: &App) -> Pixels {
+    workspace_tree_fill_height(cx) - INSIDE_GAP * 2.0
 }
 
 #[must_use]
@@ -385,9 +516,14 @@ pub fn workspace_tree_action_button(
     ground: Ground,
     cx: &App,
 ) -> Button {
+    let slop = ((px(TOUCH_TARGET) - workspace_tree_action_side(cx)) / 2.0)
+        .max(px(0.))
+        .as_f32();
     workspace_row_action(
-        Button::compact_icon(id, icon)
-            .hit_slop(TREE_TOUCH_SLOP, TREE_TOUCH_SLOP)
+        Button::new(id)
+            .icon(icon)
+            .inside(RowLook::Sidebar, workspace_tree_fill_height(cx))
+            .hit_slop(slop, slop)
             .tooltip(tooltip),
         ground,
         disabled,
@@ -428,9 +564,10 @@ fn workspace_tree_row_frame(id: impl Into<ElementId>, depth: u8, cx: &App) -> St
         .relative()
         .flex()
         .items_center()
-        .pl(px(
-            SIDEBAR_CONTENT_INSET + f32::from(depth) * WORKSPACE_TREE_INDENT_WIDTH
-        ))
+        .pl(
+            workspace_tree_guide_origin(cx) - px(WORKSPACE_TREE_MARKER_SLOT_WIDTH / 2.0)
+                + px(f32::from(depth) * WORKSPACE_TREE_INDENT_WIDTH),
+        )
         .pr(px(SIDEBAR_CONTENT_INSET))
 }
 

@@ -40,7 +40,21 @@ host line, as does a remote row's **Close host** . which additionally republishe
 `ssh://...`), so the CLI can reach a machine before it has a line. There is no daemon-side setup:
 ssh owns transport, and zz adds only its own ed25519 key (`zz fleet key`), which the first
 login to a host listed here appends to that host's `authorized_keys`; a raw `--host` destination
-gets nothing written. These local schema entries retain `Default`/`Override` provenance. Daemon-owned value
+gets nothing written. A host line can also name a tailnet machine (`host-arch = tailnet://arch`).
+
+Five keys belong to [tailnet hosts](/designs/tailnet-node.md) and are read by both the daemon and
+the app from the file itself, so they work before any client connects: `tailnet` (`auto` by default,
+`on`, `off`, or `own` for zz's own Tailscale node), `tailnet-allow` (`owner` by default, or
+`members`), `tailnet-hide` (a comma-separated list of found machines to leave out), and, for `own`
+only, `tailnet-hostname` (letters, digits and dashes; `zz-<machine>` by default) and
+`tailnet-control-url` (an `http://` or `https://` control server). The app scans for machines every 30 seconds
+and publishes them through a `DiscoveredHosts` global; `config::known_hosts` merges them after the
+host lines, skipping any whose name or tailnet machine a line already has, and the host registry is
+built from that merged list. **Remove host** on a found machine adds its name to `tailnet-hide`
+instead of editing host lines, and **Settings › Hosts** has a Tailscale group with the on/off
+switch, the sign-in state, a Show button for hidden machines, and the own node's **Use**, **Sign in**
+and **Sign out** buttons. These local schema entries retain
+`Default`/`Override` provenance. Daemon-owned value
 grammar deliberately stays in the zz-terminal appearance loader or
 mux `set-option` engine.
 
@@ -60,7 +74,7 @@ after `reload-config` and color-scheme changes (the effective light/dark mode, p
 The daemon loads only `zz/mux.conf`, or explicit `-f` files that replace it in argument order.
 Reload repeats that selection. It never reads tmux donors implicitly. The first-run offer imports
 Ghostty appearance into `zz/config` and tmux commands into a marked `zz/mux.conf` block.
-Settings accepts any donor path and keeps structured rows above the editor for the same file.
+Settings imports from any file the system picker returns and edits the same files through structured rows.
 
 # Discovery and loading
 
@@ -115,7 +129,6 @@ The client-local schema includes these scalar settings and chrome colors.
 
 | Key | Default | Valid range | Consumer |
 | --- | ---: | --- | --- |
-| `use-system-titlebar` | `false` | `true` or `false` | On Linux, request a desktop-owned titlebar and window border instead of client-side window decorations |
 | `window-corner-radius` | `13.5` | `0..=32` | The app-drawn window frame's corner, visible only under Linux client-side decorations |
 | `window-background-blur` | `false` | `true` or `false` | Whether the desktop shows through the window chrome, blurred: on fills the chrome at 93% over the blur, off makes it opaque |
 | `motion` | `default` | `off`, `default` or `fast` | Interface motion. `off` stops transitions, loading indicators, scrollbar fades, and animated UI images; `fast` runs them at twice their designed speed, through the process-wide `ala::animation_speed` that scales ala `with_animation` timings, every spring step, and the hand-timed fades (chevrons, pane arrivals, the sidebar slide, press highlights, streaming text, the agent pulse). Scroll physics, cursor blink and timers stay as they are. Settings > Interface shows it as Motion |
@@ -135,6 +148,7 @@ The client-local schema includes these scalar settings and chrome colors.
 | `control-shape` | the platform's (`pill` on macOS, `rounded` elsewhere) | `rounded`, `pill` | Whether controls follow the corner radius or are pills (`control-radius` `full`). Settings shows it as Controls |
 | `interface-glass` | `liquid` | `none`, `liquid`, or a glass material as one line of JSON | The glass popovers, menus and glass roles draw. Pasting a theme file with its own material writes the material here; Settings shows it as the Glass switch, on for `liquid` or a material and off for `none` |
 | `chrome-accent` | `theme` | `theme`, `ink`, `blue`, `purple`, `pink`, `red`, `orange`, `yellow`, `green`, `graphite`, or `#rrggbb` | The accent, which becomes the highlight: primary fills, switches, selection. `theme` (or no line) keeps the platform's (blue on macOS, ink elsewhere); `ink` draws primary fills in the text color. Each name is a pair of colors tuned for light and for dark; a hex color is used in both modes |
+| `chrome-terminal-colors` | `true` | `true` or `false` | Whether the window takes its colors from the terminal theme: the background exactly, the text lifted to 7:1 when the theme's reads under that, the accent and status colors from the palette, fitted to read. Only a themed terminal counts; zz's built-in terminal colors leave the look alone. Settings › Appearance › Terminal sets it |
 | `chrome-tint` | the platform's (`0.15`) | `0..=1` | The amount of the look's `neutral`: how far the window's background leans toward `chrome-tint-hue`; everything drawn from the background leans with it, and the text leans about a third as far. Settings shows it as Tint strength, 0–100% |
 | `chrome-tint-hue` | the platform's (`60`) | `0..=360` | The hue of the look's `neutral`, in Oklch degrees; `60` is the warm default. Settings shows it as Tint |
 | `editor-font-size` | `13` | `8..=32` | Buffer text size in editor panes, in pixels |
@@ -148,6 +162,7 @@ The client-local schema includes these scalar settings and chrome colors.
 | `browser-search-provider` | `google` | `google`, `duckduckgo`, `brave` | Where a Browser pane's address bar sends an entry that is not an address |
 | `browser-egress` | `true` | `true` or `false` | Whether a Browser pane opened while attached to a remote ssh host routes its traffic through that host; panes already open keep the route they were created with |
 | `ui-font-family` | the platform's (the system font) | Installed font family, or `.SystemUIFont` | Interface text across desktop windows; applies live and stays separate from terminal and editor fonts. Pasting a theme file with a `face` writes it here |
+| `ui-mono-font-family` | the terminal font | Installed font family | Interface's Mono font: code blocks and inline code in Markdown, the editor, tool previews and every other monospaced line outside the terminal. Its list opens on Monospaced. Terminal font removes the line, and Reset look removes it too; a theme file never sets it |
 | `theme-mode` | `system` | `system`, `light`, `dark` | Follow the OS appearance, or pin one mode |
 | `app-icon` | `automatic` | `automatic`, `light`, `dark` | Which render of `assets/zz.icon` the macOS Dock tile wears; `automatic` defers to the bundle's compiled icon when packaged (so tinted/clear dock styles work) and follows the OS appearance in bare builds, independently of `theme-mode` |
 | `chrome-contrast` | `1.0` | `1.0`–`2.0` | Raises the chrome derivations (surface steps, fills, dividers and muted text) and adds no edges; out-of-range or invalid values are reported and fall back to `1.0`. Settings shows it as Increase contrast, a slider from 0% (1.0) to 100% (2.0), written with two decimals. |
@@ -157,16 +172,14 @@ The client-local schema includes these scalar settings and chrome colors.
 `chrome-preset`, `chrome-preset-light`, `chrome-preset-dark`, `chrome-background`,
 `chrome-foreground`, `chrome-success`, `chrome-warning` and `chrome-danger` are
 retired (`zz_config::RETIRED_APPEARANCE_KEYS`): a line with one of them is reported with
-`` `<key>` was removed: set the look in Settings > Interface ``, skipped and hidden from the
-Terminal page's editor. Chrome colors come from the look, the accent and the tint, never from
+`` `<key>` was removed: set the look in Settings > Interface `` and skipped. Chrome colors come from the look, the accent and the tint, never from
 per-color keys.
 `chrome-accent` was on that list from 2026-10-11 to 2026-10-15 and is live again as the accent
 above, so an old `chrome-accent = #rrggbb` sets the accent again.
 `interface-style`, `widget-outline-width`, `widget-shadow-strength`, `widget-row-inset`,
 `widget-primary` and `widget-glass` are retired too (`zz_config::RETIRED_MATERIAL_KEYS`): a line
 with one is reported with `` `<key>` was removed: set the look in Settings > Interface `` (`widget-glass`
-with `` set `interface-glass`, or Glass in Settings > Interface ``), ignored and hidden from the
-Terminal page's editor.
+with `` set `interface-glass`, or Glass in Settings > Interface ``) and ignored.
 `pane-glass`, `pane-corner-radius`, `pane-border-width`, `pane-background-opacity` and
 `pip-background-opacity` are retired pane keys (`zz_config::RETIRED_PANE_KEYS`), each reported with
 what replaced it: gapped panes always draw a glass frame, pane corners follow `widget-corner-radius`,
@@ -205,7 +218,7 @@ the next minute boundary, then requests one redraw per minute while the bar and 
 `time-date` renders `%H:%M · %b %d`.
 
 `widget-corner-radius`, `control-shape`, `interface-glass`, `chrome-accent`, `chrome-tint`,
-`chrome-tint-hue`, `ui-font-family`, `chrome-contrast`, `reduce-transparency`, and `theme-mode`
+`chrome-tint-hue`, `ui-font-family`, `ui-mono-font-family`, `chrome-contrast`, `reduce-transparency`, and `theme-mode`
 land on the **zz-ui theme** rather than being read per-frame by a renderer:
 `zz::theme` activates `config::shown_theme`, the platform's theme file with the keys the file sets
 applied over it (see Interface themes for the order), which puts its colors and knobs on the `Theme` global,
@@ -213,10 +226,9 @@ and `apply_zz_overrides` then sets the contrast, drops the glass under `reduce-t
 its role from there, so no component is plumbed individually. Because the theme and the overrides
 are reapplied on every theme rebuild, they survive a light/dark switch, the same treatment
 `mono_font_family` gets. A gapped pane's corner follows the same radius: `config::pane_content_radii` starts from
-`Theme::pane_radius()`, the radius a 22px header control rounds to plus the 6px (`CHROME_GAP`) it
-sits in from the pane's top and sides, so the pane stays concentric with the controls in its header
-(about 13.6 at Default's 10, 17 once the controls are capsules, 0 for a square theme), and resolves
-it per corner.
+`Theme::pane_radius()`, the theme radius up to 10.24 (64% on the slider), then a parabola that
+leaves the radius at its slope and lands flat on 16 at 100%, whatever the control shape (11.8 at
+the default 12, 0 for a square theme), and resolves it per corner.
 
 Every rounded surface is a **squircle** . iOS-style continuous corners, set as the ala window
 default (`penna::CORNER_SMOOTHING`, 4, from the kit's `foundation/theme.rs`) by `penna::Root::new`
@@ -230,7 +242,7 @@ its own right, and smoothing one turns it into a lozenge. The squircle therefore
 rectangles, and the larger `widget-corner-radius` is, the more visible it gets (the corner departs
 from a circular arc by roughly a fifth of the radius, so it is sub-pixel below about 4px).
 
-`ui-font-family` lives in `UiFontConfig`, and `interface-glass` in `GlassConfig`, both apart from
+`ui-font-family` and `ui-mono-font-family` live in `UiFontConfig`, and `interface-glass` in `GlassConfig`, both apart from
 `AppConfig` so it can remain `Copy`. Interface settings lists font families from ala's
 cross-platform text system. Selecting System default writes `.SystemUIFont`; Reset removes the
 current override. With no line, the font is `Appearance::ui_font()`: the platform theme file's
@@ -284,7 +296,7 @@ every look key from `ThemeOverrides::from_theme` and the file's `face` in one ed
 (`AppearanceChange::ResetLook`: every look key removed from the file, duplicates included).
 `interface-theme` is retired (`zz_config::RETIRED_THEME_KEYS`): a line with it is reported with
 `` `interface-theme` was removed: there are no theme presets now; set the look in Settings >
-Interface ``, ignored and hidden from the Terminal page's editor. zz no longer reads, stamps or
+Interface `` and ignored. zz no longer reads, stamps or
 watches a `themes/` folder beside the config; files left there are ignored.
 
 Run `just storybook macos` on macOS 27 with its SDK to compare the macOS theme file against native
@@ -312,8 +324,8 @@ the accent and status colors at least 3:1, and text on the accent at least 3:1. 
 `every_accent_reads_in_every_theme_at_any_neutral` holds each of the eight named accents to the same
 floors on every file at any tint, with the tint hue every 30 degrees.
 
-Chrome colors come from the theme and the keys above, never from the terminal's palette: there
-is no key that makes application chrome follow terminal colors.
+Chrome colors come from the theme and the keys above, and from the terminal's colors only through
+`chrome-terminal-colors`, while the terminal's theme is light in light mode or dark in dark mode.
 
 `chrome-contrast` adjusts derived surfaces, muted text, fills, and edges without storing colors.
 The default is 1.0; desktop and browser Settings show it as 0%. Reset removes the override.
@@ -346,14 +358,12 @@ rejects `select-pane-kind … editor` while the flag is off. To enable it again,
 gate directly; the picker row follows the `zz/config` entry, not the mux option. Panes that already
 exist keep rendering on reattach when the switch is off; flipping it never destroys pane state.
 
-`use-system-titlebar` maps to ala server-side decorations for the main window on
-Linux. It is applied at window creation and re-requested for every open window after a watched
-configuration change, so switching modes does not require a restart. KDE supports the request on
-both Wayland and X11 in the pinned ala backend. A Wayland compositor without server-decoration
-support keeps client-side decorations; ala reports the negotiated mode and the app-owned rounded
-frame follows that result. Returning to server decorations also clears the client frame inset.
-The in-app navigation/status strip remains available, but its Linux window controls disappear when
-the desktop owns them.
+The main window always asks for client-side decorations: zz draws its own minimize, maximize and
+close on Linux and Windows. `use-system-titlebar` went on 2026-11-08
+(`zz_config::RETIRED_WINDOW_KEYS`); a line with it is reported with
+`` `use-system-titlebar` was removed: zz draws its own window controls `` and skipped. A
+compositor that still insists on server-side decorations gets its own titlebar, ala reports
+`Decorations::Server`, and zz draws no controls.
 
 `window-background-blur` requests `WindowBackgroundAppearance::Blurred` for both newly created and
 already-open windows. `window/background.rs` maps that request to a transparent ala surface plus
@@ -527,8 +537,8 @@ daemon still resolves cells with the host's colors but tags where each came from
 so the client repaints default and palette 0-15 colors (`LocalColors::recolor`) and leaves 256-color
 and RGB picks alone; an inverted cell, whose source isn't tagged, is matched by value.
 
-`minimum-contrast` (a WCAG ratio from 1 to 21, default 4.5) keeps terminal text readable whatever the
-theme or the application picked: any text color below the floor against its cell background gets
+`minimum-contrast` (a WCAG ratio from 1 to 21, default 4.5; Settings › Interface's Terminal text
+contrast writes 4.5 or 1) keeps terminal text readable whatever the theme or the application picked: any text color below the floor against its cell background gets
 lighter or darker until it reaches it, keeping its hue. Faint text is dimmed against its cell background
 before correction, so dim placeholders and input text retain the same contrast floor. Lower values
 such as 2 preserve more application colors; 1 turns correction off. Box drawing, block and Powerline
@@ -537,14 +547,22 @@ glyphs skip correction.
 File order is preserved, including repeated `palette`, face-specific font-family, and `font-feature`
 entries. `config-file` is not part of the native override surface.
 
-`theme = NAME` is transported like every other daemon-owned key. The daemon resolves it first, ahead
-of the rest of the override set: it looks `NAME` up in the standard Ghostty theme directories
-(`$XDG_CONFIG_HOME/ghostty/themes`, `~/.config/ghostty/themes`, the macOS Application Support
-directory, `$XDG_DATA_DIRS/ghostty/themes`, and the installed Ghostty resources), loads that file,
-and tags every key it sets `theme-file`. The remaining override entries then apply on top, so an
-explicit `background = …` beside a `theme` line wins. Adaptive `light:name,dark:name` values select
-by the current color scheme. A name that cannot be resolved produces a daemon diagnostic and leaves
-the rest of the set applied. Settings has no theme picker . `theme` is a file-only key.
+`theme` is transported like every other daemon-owned key. The daemon resolves it first, ahead
+of the rest of the override set: it looks each name up in `themes/` beside `zz/config`, then in the
+standard Ghostty theme directories (`$XDG_CONFIG_HOME/ghostty/themes`, `~/.config/ghostty/themes`,
+the macOS Application Support directory, `$XDG_DATA_DIRS/ghostty/themes`, and the installed Ghostty
+resources), loads that file, and tags every key it sets `theme-file`. The remaining override entries
+then apply on top, so an explicit `background = …` beside a `theme` line wins. A name that cannot be
+resolved produces a daemon diagnostic and leaves the rest of the set applied.
+
+zz's mode picks the theme (`theme-mode`, else the system's). `light:A,dark:B` names one for each
+mode, and either side may be left out (`dark:B`), so that mode draws zz's built-in colors. A lone
+`theme = NAME` counts as light or dark by its background (lighter than its foreground is light,
+`TerminalAppearance::background_scheme`) and paints only that mode; the other one draws the built-in
+colors. Settings › Interface writes the key with Light theme and Dark theme, two searchable lists of
+the installed themes that open on themes of their own kind (Light or Dark, with All themes beside
+it); picking either one writes the pair and removes custom terminal colors, and Built-in leaves
+that side out.
 
 The `zz-*` extension keys are **zz/config-native** daemon-owned settings. The Ghostty parser also
 accepts their spellings, which is what makes a Ghostty file importable, but they are zz's keys.
@@ -651,11 +669,12 @@ mistaken for the line's preserved trailing comment.
 
 # Import
 
-`crates/zz/src/config/import.rs` owns the one-shot import. `import_ghostty_config_from(path, scheme)`
+`crates/zz-config/src/import.rs` owns the one-shot import. `import_ghostty_config_from(path, scheme)`
 reads a chosen donor (`import_ghostty_config` delegates with the discovered default), parses it client-side with the zz-terminal loader, and serializes every key the donor set, directly
-(`Ghostty` provenance) or through its `theme` directive (`ThemeFile`), into concrete
-`zz/config` values. Theme-derived values are flattened for the current color scheme; an import is a
-snapshot.
+(`Ghostty` provenance), into concrete `zz/config` values. A `theme` directive comes across as the
+same `theme` line, with both modes, and the theme files it names are copied into `themes/` beside
+`zz/config` (`copy_theme_files`), so the import keeps working once Ghostty is gone; the colors the
+theme set are cleared from `zz/config` instead of copied. Everything else is a snapshot.
 
 `config/mod.rs` `import_appearance_values_at` applies those values with **donor-wins replace
 semantics**: scalar keys edit the last occurrence in place (preserving spelling, spacing, inline
@@ -688,15 +707,15 @@ always-live inactive-opacity factor and the selected pane's edge strength, which
 
 | Page | Groups |
 | --- | --- |
-| Interface | **Look** (`theme-mode` as Mode, a System, Light and Dark segmented control, `chrome-accent` as Accent swatches with a custom color picker, `chrome-tint-hue` as Tint and `chrome-tint` as Tint strength, `widget-corner-radius` as Corner radius in percent, three sliders, `control-shape` as Controls, a segmented control, `interface-glass` as Glass, a switch, and `UI font`) · **Sidebar** (`program-colors`) · **Size** (transient `UI zoom` as Text size, `chrome-density` as Density) · **Accessibility** (`chrome-contrast` as Increase contrast, a slider, `reduce-transparency` as Reduce transparency, `motion` as Motion, an Off, Default and Fast segmented control) · **Window**, where it has rows (macOS `app-icon` as three icon tiles, `window-background-blur` as "Window blur" where the platform profile has it, Linux `window-corner-radius` and `use-system-titlebar`) |
+| Interface | **Look** (`theme-mode` as Mode, a System, Light and Dark segmented control, `chrome-accent` as Accent swatches with a custom color picker, `chrome-tint-hue` as Tint and `chrome-tint` as Tint strength, `widget-corner-radius` as Corner radius in percent, three sliders, `control-shape` as Controls, a segmented control, `interface-glass` as Glass, a switch, `UI font`, and Mono font) · **Terminal** (a live preview, Light theme and Dark theme, searchable lists of the installed themes that open on their own kind and write `theme = light:A,dark:B`, `chrome-terminal-colors` as Window follows the theme, and `background-opacity` as Background opacity) · **Sidebar** (`program-colors`) · **Size** (transient `UI zoom` as Text size, `chrome-density` as Density) · **Accessibility** (`chrome-contrast` as Increase contrast, a slider, `minimum-contrast` as Terminal text contrast, a switch for 4.5 or 1, `reduce-transparency` as Reduce transparency, `motion` as Motion, an Off, Default and Fast segmented control) · **Window**, where it has rows (macOS `app-icon` as three icon tiles, `window-background-blur` as "Window blur" where the platform profile has it, Linux `window-corner-radius`) |
 | Browser | **Network** (`browser-egress`) · **Agents** (`browser-remote-debugging-port` as an on/off switch that writes `9222`) · **Search** (`browser-search-provider`) · **Shortcuts** (`browser-element-selector-hotkey`) |
 | Editor | **Typography** (`editor-font-size`) · **Display** (`editor-line-numbers`, `editor-relative-line-numbers`, `editor-soft-wrap`, `editor-vim-mode`) |
 | Panes | **Layout** (`pane-gaps`) · **Focus** (`pane-inactive-opacity`, `pane-glow-strength` as Selected pane edge) · **Frame** (`pane-margin`, disabled without gaps) |
 | Hosts | **Machines** (configured hosts, live connection state, Remove) · **Add host** (an inline ssh destination field) |
-| Providers | One group per host (This Mac or the host's name): Claude Code and Codex with the path the host's daemon found, the installed version, the newest release, and Update or Install, which runs the vendor's updater on that host (`claude update`, `codex update`, `brew upgrade --cask` for Homebrew installs, the vendor install script when missing) with its latest output line and any error under the row; an install something else owns (a root-owned npm prefix, mise, Nix, Snap, winget, a system package) gets no Update button but says who owns it and offers its update command to copy; a disconnected host says so; **Check again** asks every connected host. Nothing is written to `zz/config`; the daemon answers the internal `providers` command ([wire protocol](/protocol/wire-protocol.md)) |
-| System | **Tray** (`tray`, only where the profile has one) · **Notifications** (`notifications`) · **Daemon** (`quit-daemon-on-exit`) · **Experimental** (`experimental-editor-pane`, present only with its cargo feature). `auto-restart-stale-daemon` is a file key with no Settings row |
-| Multiplexer | **Navigation** (`picker-focus-sidebar`, `which-key-delay`), **Split panes**, **Options** (Prefix, Mode keys, Mouse, History limit, Clipboard, Escape time), **Import** (path, Choose, Import), and `zz/mux.conf` editor with Reload and Save |
-| Terminal | **Appearance** (Font family, Font size, macOS Font smoothing and Smoothing strength, Theme, Cursor style, Cursor blink, Background opacity, Padding X/Y), **Import** (path, Choose, Import), and the `zz/config` appearance editor |
+| Agents | **Coding agents** (Set up, which installs the startup hook `zz tools --install-hooks` writes for Claude Code and Codex) · one group per host (This Mac or the host's name): Claude Code and Codex with the path the host's daemon found, the installed version, the newest release, and Update or Install, which runs the vendor's updater on that host (`claude update`, `codex update`, `brew upgrade --cask` for Homebrew installs, the vendor install script when missing) with its latest output line and any error under the row; an install something else owns (a root-owned npm prefix, mise, Nix, Snap, winget, a system package) gets no Update button but says who owns it and offers its update command to copy; a disconnected host says so; **Check again** asks every connected host. Nothing is written to `zz/config`; the daemon answers the internal `providers` command ([wire protocol](/protocol/wire-protocol.md)) |
+| System | **Command palette** (`palette-window-layout` as Window chooser, Tree or Flat, `palette-show-keys` as Show shortcuts) · **Tray** (`tray`, only where the profile has one) · **Notifications** (`notifications`) · **Daemon** (`quit-daemon-on-exit`) · **Experimental** (`palette-vim-mode` as Command palette Vim mode, and `experimental-editor-pane`, present only with its cargo feature). `auto-restart-stale-daemon` is a file key with no Settings row |
+| Multiplexer | **Navigation** (`which-key-delay`), **Split panes** (a key field per split), **Options** (Prefix as a key field, Mode keys, Mouse, History limit, Clipboard, Escape time), **Import** (Open, which opens `zz/mux.conf` in the default text editor, and Import from tmux). Edits made outside zz apply when the zz window is focused again |
+| Terminal | **Preview** · **Display** (Font family as a searchable list of installed fonts that opens on Monospaced, with All fonts one Tab or click away, Font size, macOS Font smoothing and Smoothing strength, Cursor style, Cursor blink, Padding X/Y); how the terminal looks (themes, window colors, background opacity, text contrast) is on Interface, **Import** (Open, which opens `zz/config` in the default text editor, and Import from Ghostty) |
 | About | Centered mark (the Dock render at 88pt), name, tagline and version badge · **Updates** (`check-for-updates`, plus a Latest release row whose description is the update state, such as "zz 0.23.0 is out, you have 0.22.0" or "The check failed: …", with Check now, or Update / What's new once a newer release is known; desktop only) · **Build** (`CARGO_PKG_VERSION`, OS · arch, the short `ZZ_ALA_SOURCE` revision, with a copy button on Version that puts all three on one line) · **Project** (repository, releases, new issue, license) |
 
 A row is its title and its control, with no provenance badge and no Reset button. A short
@@ -741,36 +760,33 @@ it follows Zed's per-run UI font-size adjustment and leaves browser page zoom an
 under their existing pane-local controls.
 
 Terminal reads saved appearance entries into its controls and writes edits back through the
-bounded, comment-preserving `zz/config` writer. Multiplexer mounts the native rope-backed
-`CodeEditor` for `zz/mux.conf` with line numbers disabled, 12px monospace text, tmux-grammar
-highlighting (`tree-sitter-tmux`, upstream's own `highlights.scm`, registered by `zz_ui::init`),
-and a deliberately square 2px-inset frame . a file surface, not a control. Save uses the
-1 MiB bounded atomic writer; a clean editor reloads when entered, while unsaved text is retained. A
-successful mux save asks the daemon to `reload-config`.
+bounded, comment-preserving `zz/config` writer. Neither page shows the raw file: each reads it
+again when entered and lists its path under the controls, with Reload on Multiplexer. Anything
+the rows do not cover is edited in the file itself.
 
 The **Split panes** rows in `crates/zz/src/config/settings/multiplexer.rs` read
 `MuxClient::prefix_bindings`, the daemon's effective table after its selected mux files, zz overrides, and runtime
 commands. Each direction selects one shortcut, preferring `-` / `|`, then `"` / `%`, then another
 binding that splits in that direction. A renamed shortcut stays selected while Settings remains open.
-Additional shortcuts stay in the text editor. Choosing a pane type or pressing Enter in the shortcut
+Additional shortcuts stay in the file. Choosing a pane type or pressing Enter in the shortcut
 field saves an ordinary `bind-key` override through the same atomic writer and reload request.
 Renaming also unbinds the previous key; an occupied destination key is rejected.
 
 `crates/zz/src/config/mux_bindings.rs` preserves unrelated source text and replaces matching overrides
 in the trailing generated split-binding group when users change selections again. Simple direction
 flags and `-c "#{pane_current_path}"` map to the dropdown only for the matching direction; opposite-direction bindings, other arguments, or command chains show
-**Custom** and remain editable in the text editor. Shortcut changes retain command arguments,
+**Custom** and stay editable in the file. Shortcut changes retain command arguments,
 repeat settings, and notes. Pane-type changes use `split-window --kind terminal|picker|browser`; terminal and picker
 commands inherit the source terminal directory.
-The controls require a connected local session and a clean editor. They check for external file edits
+The controls require a connected local session. They check for external file edits
 before saving and wait for the daemon to publish the changed binding before accepting another edit.
 If the daemon does not confirm within five seconds, Settings refreshes the rows from the effective
-bindings, permits another edit, and offers a reload retry. Saving a manual editor change or requesting
-a reload cancels the earlier pending shortcut expectation.
+bindings, permits another edit, and offers a reload retry. Requesting a reload cancels the earlier
+pending shortcut expectation.
 
 Multiplexer's Options rows read the last saved global `set-option` line for each option, or
 show its built-in default. Writes replace that line or append one; Reset removes it. The daemon
-owns value grammar. Controls require a clean editor and local connection, and wait for daemon
+owns value grammar. Controls require a local connection, and wait for daemon
 confirmation with a five-second retry fallback. The Reload button uses the daemon's retained
 file selection, including explicit `-f` files.
 
@@ -778,9 +794,10 @@ Terminal's Appearance rows read the saved parsed `zz/config` entries. Scalars re
 line; Font family replaces its whole stack with one line. The existing watcher applies these
 edits. macOS exposes `font-thicken` as Font smoothing and `font-thicken-strength` as Smoothing
 strength (0–255); the strength control is disabled while smoothing is off. Changes update the
-terminal preview and live panes through the existing reload path. Both pages offer a donor path
-prefilled from discovery, Choose, and a confirmed Import.
-Import requires a clean editor; tmux import also requires a local connection.
+terminal preview and live panes through the existing reload path. Both pages offer one
+**Import…** button that opens the system file picker and imports the picked file right away, with
+no confirmation: tmux through `import-tmux-config`, Ghostty through
+`config::import::import_ghostty_config_from`. tmux import requires a local connection.
 
 The first-run prompt (`crates/zz/src/config/import_prompt.rs`) uses marker
 `<data-dir>/zz/import-prompted-v2`. It names every discovered donor and explains that zz does not
@@ -812,9 +829,6 @@ provenance, and refreshes the open Settings route.
 # Examples
 
 ```ini
-# Let KDE (or another capable Linux desktop) own the titlebar and window border.
-use-system-titlebar = true
-
 # Blend the terminal color over its opaque pane base.
 background-opacity = 0.85
 

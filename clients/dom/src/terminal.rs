@@ -489,7 +489,6 @@ impl Client {
                     json!({
                         "dead": dead_label(snapshot.dead, snapshot.dead_status),
                         "synchronized": snapshot.synchronized_input,
-                        "zoomed": window.zoomed_pane == Some(id),
                     })
                 })
             })
@@ -1190,14 +1189,6 @@ impl Client {
         self.send_view(pane_id(pane), output, action);
     }
 
-    pub fn unzoom(&mut self, pane: f64) {
-        if !self.core.attached_read_only() {
-            self.invoke(CommandInvocation::new(
-                "resize-pane",
-                vec!["-Z".into(), "-t".into(), pane_id(pane).to_string()],
-            ));
-        }
-    }
 
     pub fn search_open(&mut self, pane: f64, output: bool) {
         self.begin_search(pane_id(pane), output, SearchQuery::default(), false);

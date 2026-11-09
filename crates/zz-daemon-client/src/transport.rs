@@ -74,6 +74,11 @@ pub trait TransportStream: Read + Write + Send + Sized + 'static {
 }
 
 #[must_use]
+pub fn platform_socket_path() -> PathBuf {
+    platform_default_socket_path()
+}
+
+#[must_use]
 pub fn default_socket_path() -> PathBuf {
     resolve_socket_path(std::env::var_os(SOCKET_ENVIRONMENT_VARIABLE))
 }

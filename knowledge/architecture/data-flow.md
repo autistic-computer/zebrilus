@@ -71,7 +71,7 @@ lens composer ──AgentPrompt──▶ lens runtime ──bracketed paste + En
    │                                │
    │  AgentUpdates (JSON items) + AgentState                              [agent lane]
    ▼                                ▼
-AgentController reducer ──────▶ AgentTimeline + composer                  [client]
+AgentController reducer ──────▶ chat_surface + composer                   [client]
 ```
 
 - The daemon runs one driver per agent `PaneId`, on its own thread. It translates the CLI's

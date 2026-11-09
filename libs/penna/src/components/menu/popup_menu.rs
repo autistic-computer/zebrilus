@@ -1,15 +1,19 @@
-use super::actions::{Cancel, Confirm, SelectDown, SelectLeft, SelectRight, SelectUp};
+use super::actions::{
+    Cancel, Confirm, NextScope, PrevScope, SelectDown, SelectLeft, SelectRight, SelectUp,
+};
 use super::menu_item::MenuItemElement;
 use crate::Space;
 use crate::components::button::{Button, ButtonVariants as _};
+use crate::components::input::{self, Input, InputEvent, InputState};
 use crate::components::scroll::ScrollableElement;
+use crate::components::segmented::SegmentedControl;
 use crate::{
-    ActiveTheme, Icon, IconName, Sizable as _, Size, StyledExt, TextStyle, components::kbd::Kbd,
-    h_flex, rems_from_px, v_flex,
+    ActiveTheme, Colorize as _, Icon, IconName, Label, Sizable as _, Size, StyledExt, TextStyle,
+    components::kbd::Kbd, h_flex, rems_from_px, v_flex,
 };
 use crate::{
     Edge, ElementExt, Kind, PaintState, RuleLook, Side, Surface, SurfaceRole,
-    foundation::{row_corners, row_radius},
+    foundation::{nested_radius, row_radius, shared_corners},
 };
 use ala::{
     Action, Anchor, AnyElement, App, AppContext, Bounds, Context, DismissEvent, Edges, Entity,
@@ -31,7 +35,39 @@ pub fn init(cx: &mut App) {
         KeyBinding::new("down", SelectDown, Some(CONTEXT)),
         KeyBinding::new("left", SelectLeft, Some(CONTEXT)),
         KeyBinding::new("right", SelectRight, Some(CONTEXT)),
+        KeyBinding::new("tab", NextScope, Some(CONTEXT)),
+        KeyBinding::new("shift-tab", PrevScope, Some(CONTEXT)),
     ]);
+}
+
+#[derive(Clone)]
+pub struct MenuScope {
+    label: SharedString,
+    keep: Option<Rc<dyn Fn(&str) -> bool>>,
+}
+
+impl MenuScope {
+    pub fn new(label: impl Into<SharedString>, keep: impl Fn(&str) -> bool + 'static) -> Self {
+        Self {
+            label: label.into(),
+            keep: Some(Rc::new(keep)),
+        }
+    }
+
+    pub fn all(label: impl Into<SharedString>) -> Self {
+        Self {
+            label: label.into(),
+            keep: None,
+        }
+    }
+
+    pub fn label(&self) -> SharedString {
+        self.label.clone()
+    }
+
+    pub fn keeps(&self, label: &str) -> bool {
+        self.keep.as_ref().is_none_or(|keep| keep(label))
+    }
 }
 
 pub enum PopupMenuItem {
@@ -258,6 +294,15 @@ impl PopupMenuItem {
         }
     }
 
+    fn searchable_label(&self) -> Option<&SharedString> {
+        match self {
+            PopupMenuItem::Item { label, .. }
+            | PopupMenuItem::Submenu { label, .. }
+            | PopupMenuItem::Stepper { label, .. } => Some(label),
+            _ => None,
+        }
+    }
+
     #[inline]
     fn is_checked(&self) -> bool {
         match self {
@@ -300,6 +345,11 @@ pub struct PopupMenu {
     scrollable: bool,
     scroll_handle: ScrollHandle,
     submenu_anchor: (Anchor, Pixels),
+    search: Option<(Entity<InputState>, Subscription)>,
+    query: String,
+    search_width: Option<Pixels>,
+    scopes: Vec<MenuScope>,
+    scope: usize,
 
     _subscriptions: Vec<Subscription>,
 }
@@ -320,6 +370,11 @@ impl PopupMenu {
             scrollable: false,
             scroll_handle: ScrollHandle::default(),
             submenu_anchor: (Anchor::TopLeft, Pixels::ZERO),
+            search: None,
+            query: String::new(),
+            search_width: None,
+            scopes: Vec::new(),
+            scope: 0,
             _subscriptions: vec![],
         }
     }
@@ -371,6 +426,120 @@ impl PopupMenu {
     pub fn scrollable(mut self, scrollable: bool) -> Self {
         self.scrollable = scrollable;
         self
+    }
+
+    pub fn search(
+        mut self,
+        placeholder: impl Into<SharedString>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
+        let placeholder = placeholder.into();
+        let input = cx.new(|cx| InputState::new(window, cx).placeholder(placeholder));
+        let subscription = cx.subscribe(&input, |this, input, event: &InputEvent, cx| {
+            if matches!(event, InputEvent::Change) {
+                this.query = input.read(cx).value().trim().to_lowercase();
+                this.highlight_query(cx);
+            }
+        });
+        self.search = Some((input, subscription));
+        self
+    }
+
+    pub fn scopes(mut self, scopes: impl IntoIterator<Item = MenuScope>, picked: usize) -> Self {
+        self.scopes = scopes.into_iter().collect();
+        self.scope = picked.min(self.scopes.len().saturating_sub(1));
+        self
+    }
+
+    pub fn set_scope(&mut self, scope: usize, cx: &mut Context<Self>) {
+        let scope = scope.min(self.scopes.len().saturating_sub(1));
+        if scope != self.scope {
+            self.scope = scope;
+            self.highlight_query(cx);
+        }
+    }
+
+    fn step_scope(&mut self, step: isize, cx: &mut Context<Self>) {
+        let count = self.scopes.len();
+        if count > 1 {
+            let scope = (self.scope as isize + step).rem_euclid(count as isize) as usize;
+            self.set_scope(scope, cx);
+        }
+    }
+
+    pub fn set_query(
+        &mut self,
+        query: impl Into<SharedString>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some((search, _)) = &self.search else {
+            return;
+        };
+        let query = query.into();
+        self.query = query.trim().to_lowercase();
+        search.update(cx, |search, cx| search.set_value(query, window, cx));
+        self.highlight_query(cx);
+    }
+
+    fn highlight_query(&mut self, cx: &mut Context<Self>) {
+        let checked = self
+            .query
+            .is_empty()
+            .then(|| {
+                self.menu_items
+                    .iter()
+                    .position(|item| item.is_checked() && self.matches(item))
+            })
+            .flatten();
+        self.selected_index =
+            checked.or_else(|| self.clickable_menu_items().next().map(|(ix, _)| ix));
+        if let Some(ix) = self.selected_index {
+            self.scroll_handle.scroll_to_item(self.shown_position(ix));
+        }
+        cx.notify();
+    }
+
+    fn scope_keep(&self) -> Option<&Rc<dyn Fn(&str) -> bool>> {
+        self.scopes
+            .get(self.scope)
+            .and_then(|scope| scope.keep.as_ref())
+    }
+
+    fn has_filters(&self) -> bool {
+        self.search.is_some() || !self.scopes.is_empty()
+    }
+
+    fn filtered(&self) -> bool {
+        !self.query.is_empty() || self.scope_keep().is_some()
+    }
+
+    fn matches(&self, item: &PopupMenuItem) -> bool {
+        if !self.filtered() {
+            return true;
+        }
+        item.searchable_label().is_some_and(|label| {
+            label.to_lowercase().contains(&self.query)
+                && self.scope_keep().is_none_or(|keep| keep(label))
+        })
+    }
+
+    fn shows(&self, ix: usize, item: &PopupMenuItem) -> bool {
+        !(ix + 1 == self.menu_items.len() && item.is_separator()) && self.matches(item)
+    }
+
+    fn shown_position(&self, ix: usize) -> usize {
+        self.menu_items
+            .iter()
+            .enumerate()
+            .take(ix)
+            .filter(|(at, item)| self.shows(*at, item))
+            .count()
+    }
+
+    fn navigable(&self, item: &PopupMenuItem) -> bool {
+        item.is_clickable() && self.matches(item)
     }
 
     pub fn menu(self, label: impl Into<SharedString>, action: Box<dyn Action>) -> Self {
@@ -486,7 +655,7 @@ impl PopupMenu {
         self.menu_items
             .iter()
             .enumerate()
-            .filter(|(_, item)| item.is_clickable())
+            .filter(|(_, item)| self.navigable(item))
     }
 
     fn on_click(&mut self, ix: usize, window: &mut Window, cx: &mut Context<Self>) {
@@ -575,7 +744,7 @@ impl PopupMenu {
     pub(crate) fn set_selected_index(&mut self, ix: usize, cx: &mut Context<Self>) {
         if self.selected_index != Some(ix) {
             self.selected_index = Some(ix);
-            self.scroll_handle.scroll_to_item(ix);
+            self.scroll_handle.scroll_to_item(self.shown_position(ix));
             cx.notify();
         }
     }
@@ -596,34 +765,36 @@ impl PopupMenu {
             .iter()
             .enumerate()
             .rev()
-            .find(|(i, item)| *i < ix && item.is_clickable())
+            .find(|(i, item)| *i < ix && self.navigable(item))
         {
             self.set_selected_index(prev_ix, cx);
             return;
         }
 
-        let last_clickable_ix = self.clickable_menu_items().last().map(|(ix, _)| ix);
-        self.set_selected_index(last_clickable_ix.unwrap_or(0), cx);
+        match self.clickable_menu_items().last() {
+            Some((last, _)) => self.set_selected_index(last, cx),
+            None if !self.has_filters() => self.set_selected_index(0, cx),
+            None => {}
+        }
     }
 
     fn select_down(&mut self, _: &SelectDown, _: &mut Window, cx: &mut Context<Self>) {
         cx.stop_propagation();
-        let Some(ix) = self.selected_index else {
-            self.set_selected_index(0, cx);
-            return;
+        let next = self.selected_index.and_then(|ix| {
+            self.menu_items
+                .iter()
+                .enumerate()
+                .find(|(i, item)| *i > ix && self.navigable(item))
+                .map(|(next, _)| next)
+        });
+        let first = if self.has_filters() {
+            self.clickable_menu_items().next().map(|(ix, _)| ix)
+        } else {
+            Some(0)
         };
-
-        if let Some((next_ix, _)) = self
-            .menu_items
-            .iter()
-            .enumerate()
-            .find(|(i, item)| *i > ix && item.is_clickable())
-        {
-            self.set_selected_index(next_ix, cx);
-            return;
+        if let Some(ix) = next.or(first) {
+            self.set_selected_index(ix, cx);
         }
-
-        self.set_selected_index(0, cx);
     }
 
     fn select_left(&mut self, _: &SelectLeft, window: &mut Window, cx: &mut Context<Self>) {
@@ -902,16 +1073,14 @@ impl PopupMenu {
             },
         );
         let pressed = press_wash(cx.theme(), selected);
+        let corner = nested_radius(cx.theme().radius, px(0.), row_radius(&row, item_height));
         let this = MenuItemElement::new(ix, &group_name)
             .relative()
             .when(coarse && item.is_clickable(), |this| {
                 this.child(crate::blocks::touch::press_highlight(
                     ala::ElementId::NamedInteger(group_name.clone().into(), 0),
                     pressed,
-                    crate::blocks::touch::PressCorners::Row(
-                        row_radius(&row, item_height),
-                        row.smoothing,
-                    ),
+                    crate::blocks::touch::PressCorners::Row(corner, row.smoothing),
                 ))
             })
             .type_style(
@@ -924,7 +1093,7 @@ impl PopupMenu {
             )
             .py_0()
             .px(Space::S8)
-            .map(|this| row_corners(this, &row, item_height))
+            .map(|this| shared_corners(this, corner, item_height, row.smoothing))
             .items_center()
             .selected(selected)
             .on_hover(cx.listener(move |this, hovered, window, cx| {
@@ -1176,11 +1345,18 @@ impl PopupMenu {
     }
 }
 
+fn popover_ground(cx: &App) -> crate::Ground {
+    cx.theme().ground_of(Surface::new(SurfaceRole::POPOVER))
+}
+
 impl FluentBuilder for PopupMenu {}
 impl EventEmitter<DismissEvent> for PopupMenu {}
 impl Focusable for PopupMenu {
-    fn focus_handle(&self, _: &App) -> FocusHandle {
-        self.focus_handle.clone()
+    fn focus_handle(&self, cx: &App) -> FocusHandle {
+        self.search.as_ref().map_or_else(
+            || self.focus_handle.clone(),
+            |(search, _)| search.focus_handle(cx),
+        )
     }
 }
 
@@ -1194,7 +1370,6 @@ impl Render for PopupMenu {
         self.update_submenu_menu_anchor(window);
 
         let view = cx.entity().clone();
-        let items_count = self.menu_items.len();
 
         let max_height = self.max_height.unwrap_or_else(|| {
             let window_half_height = window.window_bounds().get_bounds().size.height * 0.5;
@@ -1205,6 +1380,38 @@ impl Render for PopupMenu {
 
         let max_width = self.max_width();
         let options = RenderOptions { has_left_icon };
+        let scrollable = self.scrollable || self.has_filters();
+        let search = self.search.as_ref().map(|(search, _)| search.clone());
+        let header_row = rems_from_px(Size::Medium.control_px()).to_pixels(window.rem_size())
+            + cx.theme().row_inset;
+        let search_height = header_row
+            * (usize::from(search.is_some()) + usize::from(!self.scopes.is_empty())) as f32;
+        let scopes = (!self.scopes.is_empty()).then(|| {
+            let menu = cx.entity().downgrade();
+            SegmentedControl::new(
+                "menu-scopes",
+                self.scopes.iter().map(|scope| scope.label.clone()),
+            )
+            .selected(self.scope)
+            .full_width()
+            .on(popover_ground(cx))
+            .on_select(move |scope, _, cx| {
+                _ = menu.update(cx, |menu, cx| menu.set_scope(scope, cx));
+            })
+        });
+        let switches_scope = self.scopes.len() > 1;
+        let shown = self
+            .menu_items
+            .iter()
+            .enumerate()
+            .filter(|(ix, item)| self.shows(*ix, item))
+            .map(|(ix, item)| {
+                self.render_item(ix, item, options, window, cx)
+                    .into_any_element()
+            })
+            .collect::<Vec<_>>();
+        let no_matches = shown.is_empty() && self.filtered();
+        let popover = popover_ground(cx);
 
         let surface = v_flex()
             .id("popup-menu")
@@ -1217,11 +1424,64 @@ impl Render for PopupMenu {
             .on_action(cx.listener(Self::select_right))
             .on_action(cx.listener(Self::confirm))
             .on_action(cx.listener(Self::dismiss))
+            .when(search.is_some(), |this| {
+                this.capture_action(cx.listener(|this, _: &input::MoveUp, window, cx| {
+                    this.select_up(&SelectUp, window, cx);
+                }))
+                .capture_action(cx.listener(
+                    |this, _: &input::MoveDown, window, cx| {
+                        this.select_down(&SelectDown, window, cx);
+                    },
+                ))
+            })
+            .when(switches_scope, |this| {
+                this.capture_action(cx.listener(|this, _: &input::IndentInline, _, cx| {
+                    cx.stop_propagation();
+                    this.step_scope(1, cx);
+                }))
+                .capture_action(cx.listener(|this, _: &input::OutdentInline, _, cx| {
+                    cx.stop_propagation();
+                    this.step_scope(-1, cx);
+                }))
+                .on_action(cx.listener(|this, _: &NextScope, _, cx| {
+                    this.step_scope(1, cx);
+                }))
+                .on_action(cx.listener(|this, _: &PrevScope, _, cx| {
+                    this.step_scope(-1, cx);
+                }))
+            })
             .on_mouse_down_out(cx.listener(Self::on_mouse_down_out))
             .surface(Surface::new(SurfaceRole::POPOVER), cx)
             .text_color(cx.theme().foreground)
             .relative()
             .occlude()
+            .when_some(search, |this, search| {
+                this.child(
+                    div()
+                        .flex_none()
+                        .px(cx.theme().row_inset)
+                        .pt(cx.theme().row_inset)
+                        .child(
+                            Input::new(&search)
+                                .on(popover)
+                                .prefix(
+                                    Icon::new(IconName::Search)
+                                        .with_size(Size::Medium)
+                                        .text_color(cx.theme().foreground.muted()),
+                                )
+                                .cleanable(true),
+                        ),
+                )
+            })
+            .when_some(scopes, |this, scopes| {
+                this.child(
+                    div()
+                        .flex_none()
+                        .px(cx.theme().row_inset)
+                        .pt(cx.theme().row_inset)
+                        .child(scopes),
+                )
+            })
             .child(
                 v_flex()
                     .id("items")
@@ -1229,34 +1489,48 @@ impl Render for PopupMenu {
                     .list_inset(cx)
                     .min_w(rems(8.))
                     .when_some(self.min_width, |this, min_width| this.min_w(min_width))
+                    .when_some(self.search_width, |this, width| this.min_w(width))
                     .max_w(max_width)
-                    .when(self.scrollable, |this| {
-                        this.max_h(max_height)
+                    .when(scrollable, |this| {
+                        this.max_h(max_height - search_height)
                             .overflow_y_scroll()
                             .track_scroll(&self.scroll_handle)
                     })
-                    .children(
-                        self.menu_items
-                            .iter()
-                            .enumerate()
-                            .filter(|(ix, item)| !(*ix + 1 == items_count && item.is_separator()))
-                            .map(|(ix, item)| self.render_item(ix, item, options, window, cx)),
-                    )
+                    .children(shown)
+                    .when(no_matches, |this| {
+                        this.child(
+                            div()
+                                .debug_selector(|| "menu-no-matches".into())
+                                .flex()
+                                .items_center()
+                                .h(rems_from_px(Size::Medium.control_px()))
+                                .px(Space::S8)
+                                .child(
+                                    Label::new(TextStyle::Small, "No matches")
+                                        .faint()
+                                        .on(popover),
+                                ),
+                        )
+                    })
                     .on_prepaint(move |bounds, _, cx| {
                         view.update(cx, |menu, cx| {
                             let first_layout = menu.bounds.size.height == px(0.0);
+                            let resized = menu.bounds.size.height != bounds.size.height;
                             menu.bounds = bounds;
-                            if first_layout
-                                && menu.scrollable
+                            if first_layout && menu.has_filters() {
+                                menu.search_width = Some(bounds.size.width);
+                            }
+                            if resized
+                                && scrollable
                                 && let Some(ix) = menu.selected_index
                             {
-                                menu.scroll_handle.scroll_to_item(ix);
+                                menu.scroll_handle.scroll_to_item(menu.shown_position(ix));
                                 cx.notify();
                             }
                         })
                     }),
             )
-            .when(self.scrollable, |this| {
+            .when(scrollable, |this| {
                 this.vertical_scrollbar(&self.scroll_handle)
             });
         crate::foundation::surface_enter(surface, "menu-open", px(0.0))
@@ -1329,7 +1603,12 @@ mod tests {
                 v_flex().size_full().items_start().child(self.0.clone())
             }
         }
-        for (configured, expected) in [(12.0, Some(8.0)), (14.0, Some(10.0)), (25.0, None)] {
+        for (configured, expected) in [
+            (4.0, Some(4.0)),
+            (7.29, Some(6.804)),
+            (12.0, Some(8.7295)),
+            (25.0, Some(12.6)),
+        ] {
             cx.update(|cx| {
                 crate::init_tinted(cx);
                 cx.set_reduce_motion(true);
@@ -1360,10 +1639,10 @@ mod tests {
                 let highlight = quads
                     .iter()
                     .find(|quad| {
-                        quad.background == ala::solid_background(cx.theme().selection_background())
+                        quad.background == ala::solid_background(crate::picked_menu_fill(cx))
                     })
                     .expect("selected menu entry");
-                assert_eq!(highlight.corner_smoothing, 2.5);
+                assert_eq!(highlight.corner_smoothing, 3.0);
                 assert_eq!(surface.corner_smoothing, 3.0);
                 let pill = highlight.bounds.size.height.0 / 2.0;
                 let radius = highlight.corner_radii.top_left.0;
@@ -1422,7 +1701,7 @@ mod tests {
                 let child = quads
                     .iter()
                     .find(|quad| {
-                        quad.background == ala::solid_background(cx.theme().selection_background())
+                        quad.background == ala::solid_background(crate::picked_menu_fill(cx))
                     })
                     .expect("selected submenu leaf has an accent background");
                 let position = |quad: &ala::Quad| {
@@ -1574,9 +1853,7 @@ mod tests {
             let quad = window
                 .painted_quads()
                 .into_iter()
-                .find(|quad| {
-                    quad.background == ala::solid_background(cx.theme().selection_background())
-                })
+                .find(|quad| quad.background == ala::solid_background(crate::picked_menu_fill(cx)))
                 .expect("selected submenu leaf");
             let center = quad.bounds.center();
             ala::point(
@@ -1747,7 +2024,7 @@ mod tests {
     }
     #[test]
     fn a_press_on_a_selected_row_draws_one_pressed_wash() {
-        let mut theme = crate::Theme::from(&*crate::ThemeColor::light());
+        let theme = crate::Theme::from(&*crate::ThemeColor::light());
         let row = Surface::new(SurfaceRole::MENU_ITEM);
         let close = |drawn: Hsla, want: Hsla| {
             let (drawn, want) = (ala::Rgba::from(drawn), ala::Rgba::from(want));
@@ -1763,15 +2040,6 @@ mod tests {
                 .blend(selected)
                 .blend(press_wash(&theme, true)),
             theme.background.blend(pressed),
-        );
-
-        theme.accent = crate::parse_hex("#0a64dd").unwrap();
-        theme.primary = crate::PrimaryStyle::Accent;
-        let selected = theme.layer(row, PaintState::Selected).fill;
-        assert_eq!(selected.a, 1.0);
-        assert_eq!(
-            press_wash(&theme, true),
-            theme.layer(row, PaintState::Active).fill
         );
     }
 }

@@ -1,7 +1,8 @@
 use ala::{
-    App, Context, ElementId, Entity, InteractiveElement as _, IntoElement, KeyBinding,
-    ParentElement as _, RenderOnce, Role, SharedString, StatefulInteractiveElement,
-    StyleRefinement, Styled, Window, actions, prelude::FluentBuilder as _,
+    App, Context, CursorStyle, ElementId, Entity, InteractiveElement as _, IntoElement, KeyBinding,
+    MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement as _, RenderOnce,
+    Role, SharedString, StatefulInteractiveElement, StyleRefinement, Styled, Window, actions,
+    canvas, div, prelude::FluentBuilder as _,
 };
 
 use crate::{
@@ -22,6 +23,8 @@ use ala::TextAlign;
 actions!(penna_number_input, [Increment, Decrement]);
 
 const CONTEXT: &str = "PennaNumberInput";
+const SCRUB_STEP_PX: f32 = 4.0;
+const SCRUB_SLOP_PX: f32 = 3.0;
 
 pub(super) fn init(cx: &mut App) {
     cx.bind_keys([
@@ -91,6 +94,37 @@ pub(super) fn stepped(
     }
 
     Some(format!("{value:.digits$}"))
+}
+
+pub(super) fn scrubbed(
+    from: &str,
+    steps: f64,
+    step: f64,
+    min: Option<f64>,
+    max: Option<f64>,
+) -> String {
+    let from = from.trim();
+    let mut value = from.parse::<f64>().unwrap_or(0.0) + steps * step;
+    let mut digits = fraction_digits(from).max(fraction_digits(&step.to_string()));
+    if let Some(min) = min
+        && value < min
+    {
+        value = min;
+        digits = digits.max(fraction_digits(&min.to_string()));
+    }
+    if let Some(max) = max
+        && value > max
+    {
+        value = max;
+        digits = digits.max(fraction_digits(&max.to_string()));
+    }
+    format!("{value:.digits$}")
+}
+
+#[derive(Default)]
+struct Scrub {
+    from: Option<(MouseDownEvent, String)>,
+    moved: bool,
 }
 
 impl InputState {
@@ -205,6 +239,85 @@ impl Styled for NumberInput {
     }
 }
 
+fn scrub_area(state: &Entity<InputState>, scrub: &Entity<Scrub>) -> impl IntoElement {
+    let press_state = state.clone();
+    let press_scrub = scrub.clone();
+    let state = state.clone();
+    let scrub = scrub.clone();
+    div()
+        .absolute()
+        .inset_0()
+        .cursor_ew_resize()
+        .on_mouse_down(MouseButton::Left, move |event, window, cx| {
+            window.prevent_default();
+            cx.stop_propagation();
+            let from = press_state.update(cx, |state, cx| {
+                state.focus(window, cx);
+                state.value().to_string()
+            });
+            press_scrub.update(cx, |scrub, cx| {
+                scrub.from = Some((event.clone(), from));
+                scrub.moved = false;
+                cx.notify();
+            });
+        })
+        .child(
+            canvas(
+                |_, _, _| {},
+                move |_, (), window, cx| {
+                    if scrub.read(cx).from.is_some() {
+                        window.set_window_cursor_style(CursorStyle::ResizeLeftRight);
+                    }
+                    let moved_scrub = scrub.clone();
+                    let moved_state = state.clone();
+                    window.on_mouse_event(move |event: &MouseMoveEvent, phase, _, cx| {
+                        if !phase.bubble() {
+                            return;
+                        }
+                        let Some((start, from)) = moved_scrub.read(cx).from.clone() else {
+                            return;
+                        };
+                        if event.pressed_button != Some(MouseButton::Left) {
+                            moved_scrub.update(cx, |scrub, cx| {
+                                scrub.from = None;
+                                cx.notify();
+                            });
+                            return;
+                        }
+                        let dx = (event.position.x - start.position.x).as_f32();
+                        if !moved_scrub.read(cx).moved && dx.abs() < SCRUB_SLOP_PX {
+                            return;
+                        }
+                        moved_scrub.update(cx, |scrub, _| scrub.moved = true);
+                        let steps = (dx / SCRUB_STEP_PX).trunc();
+                        moved_state.update(cx, |state, cx| {
+                            state.scrub_to(&from, f64::from(steps), cx);
+                        });
+                    });
+                    let released_scrub = scrub.clone();
+                    let released_state = state.clone();
+                    window.on_mouse_event(move |_: &MouseUpEvent, phase, window, cx| {
+                        if !phase.bubble() || released_scrub.read(cx).from.is_none() {
+                            return;
+                        }
+                        let (press, moved) = released_scrub.update(cx, |scrub, cx| {
+                            cx.notify();
+                            (scrub.from.take(), scrub.moved)
+                        });
+                        if let Some((press, _)) = press.filter(|_| !moved) {
+                            released_state.update(cx, |state, cx| {
+                                state.on_mouse_down(&press, window, cx);
+                                state.end_drag();
+                            });
+                        }
+                    });
+                },
+            )
+            .absolute()
+            .inset_0(),
+        )
+}
+
 impl RenderOnce for NumberInput {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         self.state.update(cx, InputState::mark_numeric);
@@ -218,6 +331,14 @@ impl RenderOnce for NumberInput {
             (false, false) => PaintState::Rest,
         };
         let ground = cx.theme().layer(surface, state).ground;
+        let scrub = window.use_keyed_state(
+            ("penna-number-scrub", self.state.entity_id()),
+            cx,
+            |_, _| Scrub::default(),
+        );
+        let scrubs = !self.disabled
+            && !crate::blocks::touch::CoarsePointer::get(cx)
+            && (!focused || scrub.read(cx).from.is_some());
 
         h_flex()
             .id(("penna-number-input", self.state.entity_id()))
@@ -247,19 +368,28 @@ impl RenderOnce for NumberInput {
                 ground,
             ))
             .child(
-                Input::new(&self.state)
-                    .when_some(self.author.as_ref(), |input, author| {
-                        input.id(SharedString::from(format!("{author}-field")))
-                    })
-                    .with_size(self.size)
-                    .disabled(self.disabled)
-                    .tone(self.tone)
-                    .when_some(self.on, Input::on)
-                    .appearance(false)
-                    .text_align(TextAlign::Center)
+                div()
+                    .relative()
+                    .flex()
                     .h_full()
                     .flex_1()
-                    .min_w_0(),
+                    .min_w_0()
+                    .child(
+                        Input::new(&self.state)
+                            .when_some(self.author.as_ref(), |input, author| {
+                                input.id(SharedString::from(format!("{author}-field")))
+                            })
+                            .with_size(self.size)
+                            .disabled(self.disabled)
+                            .tone(self.tone)
+                            .when_some(self.on, Input::on)
+                            .appearance(false)
+                            .text_align(TextAlign::Center)
+                            .h_full()
+                            .flex_1()
+                            .min_w_0(),
+                    )
+                    .when(scrubs, |field| field.child(scrub_area(&self.state, &scrub))),
             )
             .child(Self::stepper(
                 &self.state,
@@ -313,6 +443,14 @@ mod tests {
             stepped("2", StepDirection::Decrement, 4.0, Some(0.0), Some(256.0)).as_deref(),
             Some("0")
         );
+    }
+
+    #[test]
+    fn scrubbing_moves_whole_steps_from_where_it_started_and_clamps() {
+        assert_eq!(scrubbed("0.7", 2.0, 0.1, Some(0.0), Some(1.0)), "0.9");
+        assert_eq!(scrubbed("0.7", 5.0, 0.1, Some(0.0), Some(1.0)), "1.0");
+        assert_eq!(scrubbed("100", -3.0, 1.0, None, None), "97");
+        assert_eq!(scrubbed("2", -4.0, 1.0, Some(0.0), None), "0");
     }
 
     #[test]
@@ -373,5 +511,41 @@ mod tests {
         assert_eq!(state.read_with(cx, |state, _| state.value()), "6");
         cx.simulate_keystrokes("down");
         assert_eq!(state.read_with(cx, |state, _| state.value()), "5");
+    }
+
+    #[ala::test]
+    fn sliding_on_the_value_scrubs_it_a_step_per_four_points(cx: &mut ala::TestAppContext) {
+        use ala::{AppContext as _, Modifiers, point, px};
+
+        cx.update(crate::init);
+        let (field, cx) = cx.add_window_view(|window, cx| Field {
+            state: cx.new(|cx| InputState::new(window, cx).default_value("4").min(0.0)),
+        });
+        let state = field.read_with(cx, |field, _| field.state.clone());
+        cx.update(|window, cx| {
+            window.draw(cx).clear(cx);
+        });
+
+        let start = point(px(80.0), px(10.0));
+        cx.simulate_mouse_down(start, MouseButton::Left, Modifiers::none());
+        cx.simulate_mouse_move(
+            point(px(92.0), px(10.0)),
+            MouseButton::Left,
+            Modifiers::none(),
+        );
+        assert_eq!(state.read_with(cx, |state, _| state.value()), "7");
+        cx.simulate_mouse_move(
+            point(px(40.0), px(10.0)),
+            MouseButton::Left,
+            Modifiers::none(),
+        );
+        assert_eq!(state.read_with(cx, |state, _| state.value()), "0");
+        cx.simulate_mouse_up(
+            point(px(40.0), px(10.0)),
+            MouseButton::Left,
+            Modifiers::none(),
+        );
+        cx.simulate_mouse_move(point(px(120.0), px(10.0)), None, Modifiers::none());
+        assert_eq!(state.read_with(cx, |state, _| state.value()), "0");
     }
 }

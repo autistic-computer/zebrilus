@@ -72,6 +72,14 @@ nav:not([data-divider]) > .sidebar-resize:hover {
   cursor: pointer;
 }
 
+#tree.tree > [data-penna="sidebar.row"] {
+  height: 30px;
+  margin: 1px var(--penna-row-inset);
+  padding-right: 4px;
+  padding-left: calc(9px + 20px * var(--depth, 0));
+  --penna-inside-rows: 30px;
+}
+
 [data-penna="sidebar.row"]:not([data-path]):not([data-host]) {
   --zz-label-ink: var(--penna-muted);
 }
@@ -157,6 +165,34 @@ nav:not([data-divider]) > .sidebar-resize:hover {
   background: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAADD0lEQVR4AeybQW7TQBRAxz5DVFCAFYdAZUN7BhALDgGCHiDJAQqCQ7BAcIbChopDsAIiWuUMdf+bxm4yteOxPLE9M67869gZe+a9/2diRUqqLP8m9x8eTe49ONNxMM0mQwzGdzCdy9jmlliqVkAOrK6uzlSWHemwvXvX7RifUjPpdiYSSFKtiEoBcgNMZoMGFtKarVZEqQCyLjfGpOyC2BAxLyO5I0DD35RSWXufz800m0GwJYCy97zkDTzjUBJrSigEaPibBcS4KrBDJMgnRU5VCJATIc15wdm5FaxawDr7O68I7c18KmgBAlcYkddxbDIVAE1jzD7gBE+3eQVwHF9k2SxVSfIsPvJb4jToz/1bzvJXsg6k5e/EczY6AWZqRwGmkdiOxwqILeMm71gByz+/lc/x7ctnM6mNjr2ugNMPn9Tzl68aAZuNvRUA/On7jyZP42MvBbiCx5Z3Al5IybvIPPCENwLOz38p4H/KnoG7inT66LHqMyjnOhjgWexcw9NvrxVw8u6NOnn7mnFUBoKAr2zQ8o3eBNjCu5zvZa56EcDDi03m9w2PkE4FPD18ooA/lD2dVwWLnSv4qj7y850JAP6rPLbugmexA34fi10ObO47EcB8B97sfPMYeBa7LuHpf+8CgLeZ78AzoK5jrwJs4bua72Vy9yaAxc4m833CI8S5ABY74HctdnRMIKjv7yKcCgCexc4GHgFDCGcCmO/ADwGqyRicCACecm7S8VDathbgMzxJaCWAxc7XzANPtBLAw0uf3yW46LuVAAz6HqMA3zPYdvzBVUBTIaOApsZCaz9WgEqS76Fl1ZpH2OOugCz7kUoFLKyNBdgwXf3/G+0UWF0u56lOqswFvY/rn658LWB18e84LnalyD7MWgAvJLQR2cewFayFAG0kjqmw0KzrNBcCONZTIWQJwrYJD/OWAE5oCUoVJcK5IAL4krXujgBg15ZCkrBYJxa8rSgVQAskSCTy2l8RZP1ymQhH6c9mha3+1+NcLJGLWCi5KRcOJbbGwdiIND1mzFVZ37zmGgAA//9YSZYzAAAABklEQVQDANX/FbDlpEOwAAAAAElFTkSuQmCC") center / contain no-repeat;
 }
 
+[data-icon="host-macos"] {
+  --penna-icon: url("../img/icons/macos.svg");
+}
+
+[data-icon="host-windows"] {
+  --penna-icon: url("../img/icons/windows.svg");
+}
+
+[data-icon="host-linux"] {
+  --penna-icon: url("../img/icons/linux.svg");
+}
+
+[data-icon="host-ubuntu"] {
+  --penna-icon: url("../img/icons/ubuntu.svg");
+}
+
+[data-icon="host-debian"] {
+  --penna-icon: url("../img/icons/debian.svg");
+}
+
+[data-icon="host-arch"] {
+  --penna-icon: url("../img/icons/arch.svg");
+}
+
+[data-icon="host-fedora"] {
+  --penna-icon: url("../img/icons/fedora.svg");
+}
+
 .marker-dot {
   position: absolute;
   right: 1px;
@@ -167,7 +203,7 @@ nav:not([data-divider]) > .sidebar-resize:hover {
 
 .marker-dot.bell {
   top: calc(50% - 8px);
-  background: var(--penna-warning);
+  background: var(--penna-accent);
 }
 
 .marker-dot.badge {
@@ -175,7 +211,7 @@ nav:not([data-divider]) > .sidebar-resize:hover {
 }
 
 .marker-dot[data-badge="warning"] {
-  background: var(--penna-warning);
+  background: var(--penna-accent);
 }
 
 .marker-dot[data-badge="danger"] {
@@ -234,11 +270,52 @@ nav:not([data-divider]) > .sidebar-resize:hover {
 .footer {
   display: flex;
   flex: none;
-  align-items: center;
-  justify-content: space-between;
-  gap: 4px;
-  padding: 4px 16px calc(var(--pane-margin, 0px) + (var(--zz-pane-header-height, 40px) - 32px) / 2) calc(var(--pane-margin, 0px) + (var(--zz-pane-header-height, 40px) - 32px) / 2);
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px 8px var(--penna-row-inset) 0;
   font-size: 12px;
+}
+
+.footer #status {
+  padding: 0 calc(var(--penna-row-inset) + 10px);
+}
+
+.footer #status:empty {
+  display: none;
+}
+
+.sidebar-actions {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  padding: 0 8px 8px 0;
+}
+
+.sidebar-actions:empty {
+  display: none;
+}
+
+.sidebar-action {
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 calc(var(--penna-row-inset) + 10px);
+  font-size: 13px;
+  line-height: 16px;
+  color: color-mix(in oklab, var(--penna-fg) 85%, transparent);
+  cursor: pointer;
+}
+
+.sidebar-action:hover {
+  color: var(--penna-fg);
+}
+
+.sidebar-action > .flat-glyph {
+  color: inherit;
 }
 
 #tree.flat {
@@ -354,7 +431,7 @@ nav:not([data-divider]) > .sidebar-resize:hover {
 }
 
 .flat-rollup .dot.warning {
-  background: var(--penna-warning);
+  background: var(--penna-accent);
 }
 
 .flat-rollup .dot.danger {
@@ -383,7 +460,6 @@ nav:not([data-divider]) > .sidebar-resize:hover {
   z-index: -1;
   height: auto;
   margin: 0;
-  --penna-r: 24px;
 }
 
 .flat-window > :not(.flat-fill) {
@@ -413,7 +489,6 @@ nav:not([data-divider]) > .sidebar-resize:hover {
   place-items: center;
   width: 28px;
   height: 28px;
-  --penna-r: 8px;
   --penna-icon-size: 16px;
 }
 

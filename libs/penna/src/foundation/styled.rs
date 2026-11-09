@@ -127,8 +127,12 @@ pub trait StyledExt: Styled + Sized {
     }
 
     fn layer(self, layer: &Layer) -> Self {
-        let this = self
-            .rounded(layer.radius)
+        let this = self.rounded(layer.radius);
+        let this = match layer.share {
+            Some(share) => this.corner_share(share),
+            None => this,
+        };
+        let this = this
             .corner_smoothing(layer.smoothing)
             .border(layer.border_width)
             .border_color(layer.border)
@@ -210,19 +214,37 @@ pub(crate) fn row_radius(layer: &Layer, height: Pixels) -> Pixels {
     if layer.radius >= FULL_CORNER_RADIUS {
         layer.radius
     } else {
-        layer.radius.min(height * ROW_RADIUS_SHARE)
+        layer
+            .share
+            .map_or(layer.radius, |share| height * share)
+            .min(height / 2.0)
     }
 }
 
 pub(crate) fn row_corners<E: Styled>(element: E, layer: &Layer, height: Pixels) -> E {
-    element
-        .rounded(row_radius(layer, height))
-        .corner_radius_mode(ala::CornerRadiusMode::Fixed)
-        .corner_smoothing(layer.smoothing)
+    shared_corners(element, row_radius(layer, height), height, layer.smoothing)
 }
 
-const ROW_RADIUS_SHARE: f32 = 0.40;
-pub(crate) const ROW_CORNER_SMOOTHING: f32 = 2.5;
+pub(crate) fn shared_corners<E: Styled>(
+    element: E,
+    radius: Pixels,
+    height: Pixels,
+    smoothing: f32,
+) -> E {
+    let share = if height > px(0.0) {
+        (radius / height).clamp(0.0, 0.5)
+    } else {
+        0.0
+    };
+    element
+        .rounded(radius)
+        .corner_share(share)
+        .corner_smoothing(smoothing)
+}
+
+pub(crate) fn nested_radius(outer: Pixels, inset: Pixels, own: Pixels) -> Pixels {
+    (outer - inset).min(own).max(px(0.0))
+}
 
 pub(crate) fn row_surface<E: StatefulInteractiveElement + Styled>(
     element: E,

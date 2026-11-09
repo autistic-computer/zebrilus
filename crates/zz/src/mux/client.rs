@@ -816,6 +816,7 @@ struct HostConnection {
     background_core: ClientCore,
     providers: Option<zz_protocol::ProvidersReport>,
     providers_requested: bool,
+    platform: zz_protocol::HostPlatform,
 }
 
 impl HostConnection {
@@ -848,6 +849,7 @@ impl HostConnection {
             background_core: ClientCore::new(),
             providers: None,
             providers_requested: false,
+            platform: zz_protocol::HostPlatform::Unknown,
         }
     }
 
@@ -868,6 +870,7 @@ impl HostConnection {
             client.server_hello().appearance.clone(),
             client.server_hello().appearance_provenance.clone(),
         ));
+        let platform = client.server_hello().platform;
         let receiver = Arc::clone(&client);
         let (messages, incoming) = decoded_message_channel();
         let reader_thread = thread::Builder::new()
@@ -929,6 +932,7 @@ impl HostConnection {
             background_core: ClientCore::new(),
             providers: None,
             providers_requested: false,
+            platform,
         })
     }
 
@@ -1170,10 +1174,14 @@ impl MuxClient {
             client.reconcile_hosts(cx);
         })
         .detach();
+        cx.observe_global::<crate::config::DiscoveredHosts>(|client, cx| {
+            client.reconcile_hosts(cx);
+        })
+        .detach();
         let local_host_policy = crate::profile::profile(cx).local_host;
         let registry = HostRegistry::new(
             local_socket_path,
-            &crate::config::fleet_hosts(cx),
+            &crate::config::known_hosts(cx),
             local_host_policy,
         );
         let has_local = registry.get(HostId::LOCAL).is_some();
@@ -1502,7 +1510,7 @@ impl MuxClient {
     }
 
     fn reconcile_hosts(&mut self, cx: &mut Context<Self>) {
-        let configured = crate::config::fleet_hosts(cx);
+        let configured = crate::config::known_hosts(cx);
         let has_retained = self
             .registry
             .iter()
@@ -1642,6 +1650,12 @@ impl MuxClient {
                 self.host_snapshot(host).map(Arc::as_ref),
             )
         })
+    }
+
+    pub fn host_platform(&self, host: HostId) -> zz_protocol::HostPlatform {
+        self.connections
+            .get(&host)
+            .map_or_default(|connection| connection.platform)
     }
 
     pub(crate) fn host_snapshot(&self, host: HostId) -> Option<&Arc<MuxSnapshot>> {
@@ -1972,7 +1986,9 @@ impl MuxClient {
             .connections
             .get(&host)
             .is_some_and(|connection| connection.ssh_auth_declined);
+        let platform = self.host_platform(host);
         let mut connection = HostConnection::disconnected_with_route(route);
+        connection.platform = platform;
         connection.last_attached_session = last_attached_session;
         connection.snapshot = snapshot;
         connection.reconnect_generation = reconnect_generation;
@@ -2238,6 +2254,7 @@ impl MuxClient {
         let mut disconnected = HostConnection::disconnected_with_route(route);
         disconnected.last_attached_session = last_attached_session;
         disconnected.reconnect_generation = reconnect_generation;
+        disconnected.platform = connection.platform;
 
         if self.shutting_down {
             disconnected.state = HostState::Unreachable {
@@ -2519,6 +2536,7 @@ impl MuxClient {
             status: StatusLine::default(),
             key_tables: Vec::new(),
             clock: 0,
+            platform: zz_protocol::HostPlatform::default(),
         })));
         connection.reader_thread = None;
         connection.state = HostState::Connected;
@@ -5070,6 +5088,7 @@ mod tests {
             status: StatusLine::default(),
             key_tables: Vec::new(),
             clock: 0,
+            platform: zz_protocol::HostPlatform::default(),
         }
     }
 
@@ -5391,6 +5410,51 @@ mod tests {
         )
         .expect("connect test client");
         Some((client, server))
+    }
+
+    #[ala::test]
+    fn found_machines_join_the_hosts_unless_one_is_already_configured(cx: &mut TestAppContext) {
+        cx.update(zz_ui::init);
+        let host = |name: &str, peer: &str| zz_daemon_client::HostEntry {
+            name: name.to_owned(),
+            endpoint: Endpoint::Tailnet(zz_daemon_client::TailnetEndpoint {
+                peer: peer.to_owned(),
+                port: None,
+            }),
+        };
+        let mux = cx.update(|cx| {
+            crate::config::set_fleet_hosts_for_test(vec![host("box", "192.0.2.1")], cx);
+            cx.new(|cx| {
+                MuxClient::new_inner(
+                    None,
+                    zz_daemon_client::default_socket_path(),
+                    TerminalColorScheme::Dark,
+                    cx,
+                )
+            })
+        });
+        cx.update(|cx| {
+            crate::config::set_discovered(
+                crate::config::DiscoveredHosts {
+                    entries: vec![
+                        host("box", "192.0.2.2"),
+                        host("desk", "192.0.2.1"),
+                        host("xps", "192.0.2.3"),
+                    ],
+                    enabled: true,
+                    ..crate::config::DiscoveredHosts::default()
+                },
+                cx,
+            );
+        });
+        cx.run_until_parked();
+        let remote = mux.read_with(cx, |mux, _| {
+            mux.fleet_hosts()
+                .filter(|(id, _, _, _)| *id != HostId::LOCAL)
+                .map(|(_, name, _, _)| name.to_owned())
+                .collect::<Vec<_>>()
+        });
+        assert_eq!(remote, ["box", "xps"]);
     }
 
     #[ala::test]

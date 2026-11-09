@@ -183,12 +183,11 @@ mod tests {
                     assert!(ratio >= 3.0, "{id} {mode:?} {name} is {ratio:.2}:1");
                 }
             }
-            let accent = kit.paint(crate::Tone::Primary, crate::Emphasis::Solid);
-            let ink = kit.on_accent.unwrap_or(accent.text);
-            let ratio = contrast(ink, kit.accent);
+            let accent = kit.paint(crate::Tone::Accent, crate::Emphasis::Solid);
+            let ratio = contrast(accent.text, accent.fill);
             assert!(
                 ratio >= 3.0,
-                "{id} {mode:?} text on the accent is {ratio:.2}:1"
+                "{id} {mode:?} a mark on the accent is {ratio:.2}:1"
             );
         }
     }

@@ -21,6 +21,35 @@ impl AppShell {
         }
     }
 
+    pub(super) fn add_found_hosts(
+        &mut self,
+        endpoints: &[String],
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        for endpoint in endpoints {
+            if self.hosts.saved.endpoints().contains(endpoint)
+                || self.host_connection(endpoint, cx).is_some()
+                || self.is_attached_host(endpoint, cx)
+            {
+                continue;
+            }
+            self.connect_host(endpoint.clone(), window, cx);
+        }
+    }
+
+    pub(super) fn open_host(
+        &mut self,
+        endpoint: String,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.is_attached_host(&endpoint, cx) {
+            return;
+        }
+        self.connect_host(endpoint, window, cx);
+    }
+
     pub(super) fn host_connection(
         &self,
         endpoint: &str,
@@ -74,6 +103,13 @@ impl AppShell {
             connection.connect_background(endpoint, cx);
         });
         let observer = cx.observe(&connection, |_, _, cx| cx.notify());
+        self.fleet_found.push(cx.subscribe_in(
+            &connection,
+            window,
+            |this, _, event: &crate::connection::FoundHosts, window, cx| {
+                this.add_found_hosts(&event.0, window, cx);
+            },
+        ));
         self.fleet.push((connection, observer));
     }
 

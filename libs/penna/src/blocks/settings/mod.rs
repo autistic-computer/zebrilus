@@ -140,6 +140,7 @@ impl RenderOnce for SettingsNavigation {
 }
 
 const SETTINGS_CONTENT_MAX_WIDTH: f32 = 760.0;
+const SETTINGS_FADE_HEIGHT: Pixels = px(32.0);
 pub const SETTINGS_PAGE_PADDING: f32 = Space::INSET_PANE.design_px();
 
 pub fn settings_page_content() -> ala::Div {
@@ -288,6 +289,7 @@ impl RenderOnce for SettingsScrollColumn {
             })
             .read(cx)
             .clone();
+        let fade = cx.theme().ground().fill;
         let title = self.large_title.map(|(title, fold)| {
             fold.0.set((-f32::from(handle.offset().y)).max(0.0));
             settings_large_title(title, cx)
@@ -325,6 +327,8 @@ impl RenderOnce for SettingsScrollColumn {
                     )
                     .child(div().flex_none().h(SettingsBottomInset::get(cx))),
             )
+            .top_fade(&handle, fade, SETTINGS_FADE_HEIGHT)
+            .bottom_fade(&handle, fade, SETTINGS_FADE_HEIGHT)
             .vertical_scrollbar(&handle)
     }
 }
@@ -436,6 +440,7 @@ impl RenderOnce for SettingsVirtualColumn {
             });
             title
         });
+        let fade = cx.theme().ground().fill;
         let mut render_item = self.render_item;
         let rows = list(list_state.clone(), move |index, window, cx| {
             let row = match (&title, index.checked_sub(lead)) {
@@ -462,6 +467,8 @@ impl RenderOnce for SettingsVirtualColumn {
             .h_full()
             .relative()
             .child(rows)
+            .top_fade(&list_state, fade, SETTINGS_FADE_HEIGHT)
+            .bottom_fade(&list_state, fade, SETTINGS_FADE_HEIGHT)
             .vertical_scrollbar(&list_state)
     }
 }

@@ -16,11 +16,10 @@ use ala::{
 };
 use penna::{
     ActiveTheme as _, Colorize as _, Disableable as _, Icon, IconName, IndexPath, Label, TextStyle,
-    WindowExt as _,
-    blocks::code_editor::{CodeEditor, CodeEditorEvent, CodeEditorState},
     blocks::notification::Notification,
     components::button::{Button, ButtonVariants as _},
     components::input::{Input, InputEvent, InputState, NumberInput},
+    components::key_field::{KeyField, KeyFieldEvent, KeyFieldState},
     components::menu::{DropdownMenu as _, PopupMenuItem},
     components::select::{Select, SelectEvent, SelectState},
     components::switch::Switch,
@@ -44,13 +43,12 @@ use crate::{
 use penna::blocks::appearance::{AppearanceControls, kit_row, picker_tile, ui_font_select};
 use zz_client::url_input::SearchProvider;
 use zz_protocol::ConfigOverrideEntry;
-use zz_terminal::{TerminalColorScheme, discover_ghostty_config};
-use zz_ui::dialogs::import_configuration_file_alert;
+use zz_terminal::TerminalColorScheme;
 use zz_ui::interface_theme::{self, Appearance, AppearanceChange};
 use zz_ui::settings::{
     SettingEntry, SettingsScrollColumn, SettingsSection, SettingsSelectItem, SettingsStack,
     settings_card_ground, settings_list_group_header, settings_page_content, settings_page_title,
-    settings_preview, settings_scroll_column,
+    settings_scroll_column,
 };
 
 ala::actions!(zz, [OpenSettings]);
@@ -65,20 +63,9 @@ pub(crate) const KEYBIND: &str = "cmd-,";
 #[cfg(not(target_os = "macos"))]
 pub(crate) const KEYBIND: &str = "ctrl-,";
 const CONTROL_WIDTH: f32 = 120.0;
-const KEY_INPUT_WIDTH: f32 = 65.0;
-const CONFIG_EDITOR_FONT_SIZE: f32 = 12.0;
-const CONFIG_EDITOR_PADDING: f32 = 2.0;
+const TERMINAL_FONT: &str = "Terminal font";
+const KEY_INPUT_WIDTH: f32 = 96.0;
 const APP_ICON_PREVIEW_SIZE: f32 = 48.0;
-
-#[allow(
-    clippy::disallowed_methods,
-    reason = "the config file is file content, shown in the code font at the editor's own size"
-)]
-fn config_file_text(editor: ala::Div, cx: &App) -> ala::Div {
-    editor
-        .font_family(cx.theme().mono_font_family.clone())
-        .text_size(px(CONFIG_EDITOR_FONT_SIZE))
-}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 enum ConfigFileKind {
@@ -88,7 +75,6 @@ enum ConfigFileKind {
 
 struct ConfigFileEditor {
     path: Option<PathBuf>,
-    editor: Entity<CodeEditorState>,
     saved: String,
     error: Option<String>,
 }
@@ -188,7 +174,8 @@ impl SettingsView {
             |change, _, cx| appearance_changed(change, cx),
             window,
             cx,
-        );
+        )
+        .mono_default(TERMINAL_FONT);
         let window_corner_radius = numeric_value_input(
             ConfigKey::WindowCornerRadius,
             observed.window_corner_radius.value,
@@ -199,7 +186,13 @@ impl SettingsView {
         let subscriptions = vec![
             cx.observe(&mux, |_, _, cx| cx.notify()),
             cx.observe_global::<config::FleetHosts>(|_, cx| cx.notify()),
+            cx.observe_global::<config::DiscoveredHosts>(|_, cx| cx.notify()),
             cx.observe_global::<crate::update::UpdateState>(|_, cx| cx.notify()),
+            cx.observe_window_activation(window, |this, window, cx| {
+                if window.is_window_active() {
+                    this.pick_up_outside_edits(cx);
+                }
+            }),
             browser_hotkey_subscription(&browser_element_selector_hotkey, window, cx),
             search_provider_subscription(&browser_search_provider, window, cx),
             ui_font_subscription(&ui_font_family, window, cx),
@@ -295,7 +288,9 @@ impl SettingsView {
             return true;
         }
         let (kind, slot) = match section {
-            SettingsSection::Terminal if self.terminal_config_editor.is_none() => {
+            SettingsSection::Terminal | SettingsSection::Appearance
+                if self.terminal_config_editor.is_none() =>
+            {
                 (ConfigFileKind::Terminal, &mut self.terminal_config_editor)
             }
             SettingsSection::Multiplexer if self.mux_config_editor.is_none() => {
@@ -304,14 +299,10 @@ impl SettingsView {
             _ => return false,
         };
         let started = diagnostics::timer(DIAGNOSTIC_TARGET);
-        let file = config_file_editor(kind, window, cx);
-        let editor = file.editor.clone();
-        *slot = Some(file);
-        self._subscriptions
-            .push(config_editor_subscription(&editor, window, cx));
+        *slot = Some(config_file_editor(kind));
         log::trace!(
             target: DIAGNOSTIC_TARGET,
-            "initialize_section section={section:?} subscriptions=1 elapsed_us={}",
+            "initialize_section section={section:?} subscriptions=0 elapsed_us={}",
             diagnostics::elapsed_us(started),
         );
         true
@@ -378,10 +369,16 @@ impl SettingsView {
     ) {
         let initialized = self.ensure_section_state(section, window, cx);
         if !initialized {
-            self.reload_config_editor_if_clean(section, window, cx);
+            match section {
+                SettingsSection::Multiplexer => self.reload_config_editor(ConfigFileKind::Mux, cx),
+                SettingsSection::Terminal | SettingsSection::Appearance => {
+                    self.reload_config_editor(ConfigFileKind::Terminal, cx);
+                }
+                _ => {}
+            }
         }
         self.section = section;
-        if section != SettingsSection::Terminal {
+        if !shows_terminal_preview(section) {
             self.release_terminal_preview();
         }
         cx.notify();
@@ -397,7 +394,7 @@ impl SettingsView {
     }
 
     fn synchronize_terminal_preview(&mut self, cx: &mut Context<Self>) {
-        if self.section != SettingsSection::Terminal {
+        if !shows_terminal_preview(self.section) {
             return;
         }
         let source = self.terminal_preview_source(cx);
@@ -549,14 +546,14 @@ impl SettingsView {
         }
     }
 
-    fn synchronize_terminal_editor(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    fn synchronize_terminal_editor(&mut self, cx: &mut Context<Self>) {
         let overrides = config::daemon_config_overrides(cx);
         if overrides == self.observed_appearance_overrides {
             return;
         }
         self.observed_appearance_overrides = overrides;
         if self.terminal_config_editor.is_some() {
-            self.reload_config_editor_if_clean(SettingsSection::Terminal, window, cx);
+            self.reload_config_editor(ConfigFileKind::Terminal, cx);
         }
     }
 
@@ -729,6 +726,22 @@ impl SettingsView {
             AppearancePageItem::UiFontFamily => self.ui_font_setting(cx),
             AppearancePageItem::TextSize => self.ui_zoom_setting(cx),
             AppearancePageItem::App(ZzRow::AppIcon) => Self::app_icon_setting(resolved, cx),
+            AppearancePageItem::App(row @ ZzRow::TerminalColors) => Self::boolean_setting(
+                ConfigKey::ChromeTerminalColors,
+                row.title(),
+                resolved.chrome_terminal_colors,
+            )
+            .description("Draw the window in the terminal theme's colors"),
+            AppearancePageItem::App(ZzRow::TerminalPreview) => {
+                SettingEntry::new(ZzRow::TerminalPreview.title())
+                    .children(self.terminal_preview.clone())
+            }
+            AppearancePageItem::App(
+                row @ (ZzRow::LightTheme
+                | ZzRow::DarkTheme
+                | ZzRow::BackgroundOpacity
+                | ZzRow::TerminalContrast),
+            ) => return self.terminal_look_entry(row, cx),
             AppearancePageItem::App(row @ ZzRow::ProgramColors) => Self::boolean_setting(
                 ConfigKey::ProgramColors,
                 row.title(),
@@ -742,13 +755,7 @@ impl SettingsView {
             ),
             AppearancePageItem::App(row @ ZzRow::WindowCornerRadius) => {
                 Self::numeric_setting(row.title(), &self.window_corner_radius, cx)
-                    .description("No effect with the system titlebar")
             }
-            AppearancePageItem::App(row @ ZzRow::UseSystemTitlebar) => Self::boolean_setting(
-                ConfigKey::UseSystemTitlebar,
-                row.title(),
-                resolved.use_system_titlebar,
-            ),
             item => {
                 return kit_row(
                     item,
@@ -857,7 +864,8 @@ impl SettingsView {
     fn hosts_section(&self, cx: &Context<Self>) -> AnyElement {
         const INPUT_WIDTH: f32 = 220.0;
 
-        let hosts = config::fleet_hosts(cx);
+        let hosts = config::known_hosts(cx);
+        let discovered = config::discovered(cx);
         let states = self
             .mux
             .read(cx)
@@ -890,14 +898,20 @@ impl SettingsView {
                 };
                 let remove_name = name.clone();
                 let remove_mux = self.mux.clone();
+                let found = config::is_discovered(&name, cx);
+                let (description, action) = if found {
+                    (format!("Found on Tailscale, {}", host.endpoint), "Hide")
+                } else {
+                    (host.endpoint.to_string(), "Remove host")
+                };
                 let entry = SettingEntry::new(name.clone())
-                    .description(host.endpoint.to_string())
+                    .description(description)
                     .title_icon(Icon::new(glyph).text_color(color))
                     .control(
                         Button::new(format!("settings-remove-host-{name}"))
                             .ghost()
                             .icon(IconName::Xmark)
-                            .tooltip(format!("Remove host ({})", state.label()))
+                            .tooltip(format!("{action} ({})", state.label()))
                             .on(settings_card_ground(cx))
                             .on_click(move |_, _, cx| {
                                 let host_id = remove_mux.read(cx).fleet_hosts().find_map(
@@ -965,9 +979,108 @@ impl SettingsView {
             );
         }
 
+        let mut tailscale_entries = vec![
+            SettingEntry::new("Find my machines on Tailscale")
+                .description(if discovered.searching {
+                    "Looking…".to_owned()
+                } else if discovered.summary.is_empty() {
+                    "Machines signed in to your tailnet that run zz show up here".to_owned()
+                } else {
+                    discovered.summary.clone()
+                })
+                .control(boolean_control(
+                    zz_daemon_client::tailnet::MODE_KEY,
+                    discovered.enabled,
+                    |enabled, _, cx| {
+                        let key = zz_daemon_client::tailnet::MODE_KEY;
+                        let value = if *enabled { "auto" } else { "off" };
+                        if let Err(error) = config::set_config_key_name(key, value) {
+                            report_write_error("set", key, &error, cx);
+                        }
+                        crate::tailnet::rescan(cx);
+                    },
+                )),
+        ];
+        if let Some(link) = discovered.link.clone()
+            && let Some(code) = qr_code(&link)
+        {
+            tailscale_entries.push(
+                SettingEntry::new("Add this machine to a phone")
+                    .description(format!(
+                        "With the Tailscale app on, scan this with the phone's camera to open {link} in zz"
+                    ))
+                    .child(code),
+            );
+        }
+        if let Some(url) = discovered.login.clone() {
+            tailscale_entries.push(
+                SettingEntry::new("Sign in")
+                    .description(format!("Open {url} to add this machine to your tailnet"))
+                    .control(
+                        Button::new("settings-tailnet-sign-in")
+                            .label("Sign in")
+                            .on(settings_card_ground(cx))
+                            .on_click(move |_, _, cx| cx.open_url(&url)),
+                    ),
+            );
+        }
+        if discovered.own {
+            tailscale_entries.push(
+                SettingEntry::new("zz's own connection")
+                    .description(
+                        "Signs this machine out of the tailnet, deletes its keys and goes back to the Tailscale app",
+                    )
+                    .control(
+                        Button::new("settings-tailnet-sign-out")
+                            .ghost()
+                            .label("Sign out")
+                            .on(settings_card_ground(cx))
+                            .on_click(|_, _, cx| crate::tailnet::sign_out(cx)),
+                    ),
+            );
+        } else if discovered.enabled && discovered.link.is_none() && !discovered.searching {
+            tailscale_entries.push(
+                SettingEntry::new("Use zz's own Tailscale connection")
+                    .description(
+                        "For a machine without the Tailscale app: zz joins your tailnet by itself after you sign in",
+                    )
+                    .control(
+                        Button::new("settings-tailnet-use-own")
+                            .ghost()
+                            .label("Use")
+                            .on(settings_card_ground(cx))
+                            .on_click(|_, _, cx| crate::tailnet::use_own(cx)),
+                    ),
+            );
+        }
+        if !discovered.hidden.is_empty() {
+            tailscale_entries.push(
+                SettingEntry::new("Hidden machines")
+                    .description(discovered.hidden.join(", "))
+                    .control(
+                        Button::new("settings-show-hidden-hosts")
+                            .ghost()
+                            .label("Show")
+                            .on(settings_card_ground(cx))
+                            .on_click(|_, _, cx| {
+                                if let Err(error) = config::show_hidden_hosts(cx) {
+                                    report_write_error(
+                                        "remove",
+                                        zz_daemon_client::tailnet::HIDE_KEY,
+                                        &error,
+                                        cx,
+                                    );
+                                }
+                                crate::tailnet::rescan(cx);
+                            }),
+                    ),
+            );
+        }
+
         Self::scroll_column("settings-hosts")
             .child(settings_page_title(SettingsSection::Hosts, cx))
             .child(SettingsStack::titled("Machines").children(machine_entries))
+            .child(SettingsStack::titled("Tailscale").children(tailscale_entries))
             .child(SettingsStack::titled("Add host").child(destination))
             .into_any_element()
     }
@@ -1017,6 +1130,22 @@ impl SettingsView {
         });
         Self::scroll_column("settings-agents")
             .child(settings_page_title(SettingsSection::Agents, cx))
+            .child(
+                SettingsStack::titled("Coding agents").child(
+                    SettingEntry::new("Claude Code and Codex")
+                        .description(
+                            "A startup hook so the ones in terminal panes know they run in zz",
+                        )
+                        .control(
+                            Button::new("settings-agent-setup")
+                                .label("Set up")
+                                .on(settings_card_ground(cx))
+                                .on_click(|_, window, cx| {
+                                    crate::config::agent_setup::set_up_agents(window, cx);
+                                }),
+                        ),
+                ),
+            )
             .children(stacks)
             .child(
                 h_flex().justify_end().child(
@@ -1037,25 +1166,23 @@ impl SettingsView {
             .child(settings_page_title(SettingsSection::Advanced, cx))
             .child(
                 SettingsStack::titled("Command palette")
-                    .child(Self::palette_choice_setting(
-                        ConfigKey::PaletteWindowLayout,
-                        "Navigation layout",
-                        resolved.palette_window_layout.value.as_str(),
-                        &[("grouped", "Tree"), ("flat", "Flat")],
-                        cx,
-                    ))
-                    .child(Self::boolean_setting(
-                        ConfigKey::PaletteShowKeys,
-                        "Command shortcuts",
-                        resolved.palette_show_keys,
-                    ))
+                    .child(
+                        Self::palette_choice_setting(
+                            ConfigKey::PaletteWindowLayout,
+                            "Window chooser",
+                            resolved.palette_window_layout.value.as_str(),
+                            &[("grouped", "Tree"), ("flat", "Flat")],
+                            cx,
+                        )
+                        .description("Sessions and windows before you type"),
+                    )
                     .child(
                         Self::boolean_setting(
-                            ConfigKey::PaletteVimMode,
-                            "Vim mode",
-                            resolved.palette_vim_mode,
+                            ConfigKey::PaletteShowKeys,
+                            "Show shortcuts",
+                            resolved.palette_show_keys,
                         )
-                        .description("Esc for normal mode: j k move, l into, h up"),
+                        .description("Each command's keys beside it"),
                     ),
             )
             .when(crate::profile::profile(cx).has_tray, |column| {
@@ -1066,22 +1193,6 @@ impl SettingsView {
                     ),
                 )
             })
-            .child(
-                SettingsStack::titled("Coding agents").child(
-                    SettingEntry::new("Claude Code and Codex")
-                        .description(
-                            "A startup hook so the ones in terminal panes know they run in zz",
-                        )
-                        .control(
-                            Button::new("settings-agent-setup")
-                                .label("Set up")
-                                .on(settings_card_ground(cx))
-                                .on_click(|_, window, cx| {
-                                    crate::config::agent_setup::set_up_agents(window, cx);
-                                }),
-                        ),
-                ),
-            )
             .child(
                 SettingsStack::titled("Notifications").child(
                     Self::boolean_setting(
@@ -1104,20 +1215,23 @@ impl SettingsView {
                     ),
                 )
             })
-            .when(
-                cfg!(any(feature = "agent-pane", feature = "editor-pane")),
-                |column| {
-                    column.child(SettingsStack::titled("Experimental").when(
-                        cfg!(feature = "editor-pane"),
-                        |group| {
-                            group.child(Self::boolean_setting(
-                                ConfigKey::ExperimentalEditorPane,
-                                "Editor pane",
-                                resolved.experimental_editor_pane,
-                            ))
-                        },
-                    ))
-                },
+            .child(
+                SettingsStack::titled("Experimental")
+                    .child(
+                        Self::boolean_setting(
+                            ConfigKey::PaletteVimMode,
+                            "Command palette Vim mode",
+                            resolved.palette_vim_mode,
+                        )
+                        .description("Esc for normal mode: j k move, l into, h up"),
+                    )
+                    .when(cfg!(feature = "editor-pane"), |group| {
+                        group.child(Self::boolean_setting(
+                            ConfigKey::ExperimentalEditorPane,
+                            "Editor pane",
+                            resolved.experimental_editor_pane,
+                        ))
+                    }),
             )
             .into_any_element()
     }
@@ -1251,18 +1365,7 @@ impl SettingsView {
     }
 
     fn config_file_section(&self, kind: ConfigFileKind, cx: &mut Context<Self>) -> AnyElement {
-        let file = self.config_file_editor(kind);
-        let editor = file.editor.clone();
-        let path = file.path.as_ref().map_or_else(
-            || kind.file_name().to_owned(),
-            |path| path.display().to_string(),
-        );
-        let dirty = file.editor.read(cx).value().as_ref() != file.saved;
-        let error = file.error.clone();
-        let local = {
-            let mux = self.mux.read(cx);
-            mux.is_connected() && mux.attached_host() == HostId::LOCAL
-        };
+        let error = self.config_file_editor(kind).error.clone();
 
         Self::scroll_column("settings-config-file")
             .child(
@@ -1275,84 +1378,22 @@ impl SettingsView {
                     })
                     .when(kind == ConfigFileKind::Mux, |page| {
                         page.child(
-                            SettingsStack::titled("Navigation")
-                                .child(
-                                    Self::boolean_setting(
-                                        ConfigKey::PickerFocusSidebar,
-                                        "Focus sidebar for session and window pickers",
-                                        config::resolved_config(cx).picker_focus_sidebar,
-                                    )
-                                    .description("Prefix + s and Prefix + w"),
-                                )
-                                .child(
-                                    Self::numeric_setting(
-                                        "Which-key delay",
-                                        &self.which_key_delay,
-                                        cx,
-                                    )
+                            SettingsStack::titled("Navigation").child(
+                                Self::numeric_setting("Which-key delay", &self.which_key_delay, cx)
                                     .description("Milliseconds after the prefix, 0 turns it off"),
-                                ),
+                            ),
                         )
                         .child(self.mux_splits_section(cx))
                     })
                     .child(self.file_options_section(kind, cx))
                     .child(self.file_import_section(kind, cx))
-                    .child(
-                        div()
-                            .flex()
-                            .flex_none()
-                            .items_center()
-                            .gap(px(10.0))
-                            .child(
-                                Label::new(TextStyle::Caption, path)
-                                    .muted()
-                                    .flex_1()
-                                    .min_w_0()
-                                    .text_ellipsis(),
-                            )
-                            .when(kind == ConfigFileKind::Mux, |row| {
-                                row.child(
-                                    Button::new("settings-reload-mux-config")
-                                        .label("Reload")
-                                        .disabled(
-                                            dirty || !local || self.pending_file_command.is_some(),
-                                        )
-                                        .tooltip(if dirty {
-                                            "Save your edits first"
-                                        } else if local {
-                                            "Reload zz/mux.conf"
-                                        } else {
-                                            "Connect to a local session to reload"
-                                        })
-                                        .on_click(cx.listener(|this, _, _, cx| {
-                                            this.reload_mux_configuration(cx);
-                                        })),
-                                )
-                            })
-                            .child(
-                                Button::new(kind.save_button_id())
-                                    .label("Save")
-                                    .disabled(!dirty || self.pending_file_command.is_some())
-                                    .on_click(cx.listener(move |this, _, _, cx| {
-                                        this.save_config_editor(kind, cx);
-                                    })),
-                            ),
-                    )
                     .when_some(error, |page, error| {
                         page.child(
                             Label::new(TextStyle::Caption, error)
                                 .flex_none()
                                 .text_color(cx.theme().warning),
                         )
-                    })
-                    .child(
-                        config_file_text(settings_preview(cx.theme().editor_background(), cx), cx)
-                            .flex()
-                            .flex_none()
-                            .h(px(320.0))
-                            .p(px(CONFIG_EDITOR_PADDING))
-                            .child(CodeEditor::new(&editor)),
-                    ),
+                    }),
             )
             .into_any_element()
     }
@@ -1437,29 +1478,7 @@ impl SettingsView {
         editor.expect("the editor is initialized before rendering or updating its section")
     }
 
-    fn reload_config_editor_if_clean(
-        &mut self,
-        section: SettingsSection,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        let kind = match section {
-            SettingsSection::Multiplexer => ConfigFileKind::Mux,
-            SettingsSection::Terminal => ConfigFileKind::Terminal,
-            _ => return,
-        };
-        let file = self.config_file_editor(kind);
-        if file.editor.read(cx).value().as_ref() == file.saved {
-            self.reload_config_editor(kind, window, cx);
-        }
-    }
-
-    fn reload_config_editor(
-        &mut self,
-        kind: ConfigFileKind,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
+    fn reload_config_editor(&mut self, kind: ConfigFileKind, cx: &mut Context<Self>) {
         let path = self
             .config_file_editor(kind)
             .path
@@ -1476,12 +1495,9 @@ impl SettingsView {
         };
         match config::read_config_editor_source(&path, kind.max_bytes()) {
             Ok(source) => {
-                let source = kind.editor_view(source);
-                let editor = self.config_file_editor(kind).editor.clone();
-                editor.update(cx, |editor, cx| editor.set_value(&source, window, cx));
                 let file = self.config_file_editor_mut(kind);
                 file.path = Some(path);
-                file.saved = source;
+                file.saved = kind.editor_view(source);
                 file.error = None;
             }
             Err(error) => {
@@ -1490,65 +1506,6 @@ impl SettingsView {
                 file.error = Some(format!("Could not read {}: {error}", kind.file_name()));
             }
         }
-        cx.notify();
-    }
-
-    fn save_config_editor(&mut self, kind: ConfigFileKind, cx: &mut Context<Self>) {
-        let source = self
-            .config_file_editor(kind)
-            .editor
-            .read(cx)
-            .value()
-            .to_string();
-        let path = self
-            .config_file_editor(kind)
-            .path
-            .clone()
-            .map_or_else(|| config_file_path(kind), Ok);
-        let path = match path {
-            Ok(path) => path,
-            Err(error) => {
-                self.config_file_editor_mut(kind).error =
-                    Some(format!("Could not locate {}: {error}", kind.file_name()));
-                toast::push(
-                    Notification::error(format!("Could not save {}: {error}", kind.file_name())),
-                    cx,
-                );
-                cx.notify();
-                return;
-            }
-        };
-        let written = match kind {
-            ConfigFileKind::Mux => {
-                config::write_config_editor_source(&path, &source, kind.max_bytes())
-            }
-            ConfigFileKind::Terminal => config::save_appearance_editor(&path, &source),
-        };
-        if let Err(error) = written {
-            let file = self.config_file_editor_mut(kind);
-            file.path = Some(path);
-            file.error = Some(format!("Could not save {}: {error}", kind.file_name()));
-            toast::push(
-                Notification::error(format!("Could not save {}: {error}", kind.file_name())),
-                cx,
-            );
-            cx.notify();
-            return;
-        }
-
-        let file = self.config_file_editor_mut(kind);
-        file.path = Some(path.clone());
-        file.saved = source;
-        file.error = None;
-        if kind == ConfigFileKind::Mux {
-            self.reload_mux_configuration(cx);
-        } else {
-            config::request_daemon_reload(cx);
-        }
-        toast::push(
-            Notification::success(format!("Saved {}", path.display())),
-            cx,
-        );
         cx.notify();
     }
 }
@@ -1567,7 +1524,7 @@ impl Render for SettingsView {
         let browser = self.synchronize_browser_input(window, cx);
         self.synchronize_ui_zoom_input(window, cx);
         self.synchronize_ui_font(window, cx);
-        self.synchronize_terminal_editor(window, cx);
+        self.synchronize_terminal_editor(cx);
         self.synchronize_mux_splits(window, cx);
         self.synchronize_file_options(window, cx);
         self.synchronize_terminal_preview(cx);
@@ -1595,9 +1552,7 @@ impl Render for SettingsView {
             .overflow_hidden()
             .text_color(cx.theme().foreground)
             .when(
-                !penna::draws_window_controls(window)
-                    && !window.is_fullscreen()
-                    && !crate::profile::profile(cx).fixed_window,
+                !window.is_fullscreen() && !crate::profile::profile(cx).fixed_window,
                 |this| {
                     this.child(window_drag_handle(
                         "settings-top-drag",
@@ -1622,6 +1577,38 @@ impl Focusable for SettingsView {
     fn focus_handle(&self, _: &App) -> FocusHandle {
         self.focus()
     }
+}
+
+fn qr_code(text: &str) -> Option<AnyElement> {
+    const MODULE: f32 = 4.0;
+    const QUIET: i32 = 4;
+    let code = qrcodegen::QrCode::encode_text(text, qrcodegen::QrCodeEcc::Medium).ok()?;
+    let width = code.size();
+    let unit = |count: i32| px(MODULE * f32::from(i16::try_from(count).unwrap_or(0)));
+    let dark = (0..width)
+        .flat_map(|y| (0..width).map(move |x| (x, y)))
+        .filter(|&(x, y)| code.get_module(x, y))
+        .collect::<Vec<_>>();
+    let side = unit(width + 2 * QUIET);
+    Some(
+        ala::canvas(
+            |_, _, _| (),
+            move |bounds, (), window, _| {
+                window.paint_quad(ala::fill(bounds, ala::white()));
+                for &(x, y) in &dark {
+                    let origin = bounds.origin + ala::point(unit(x + QUIET), unit(y + QUIET));
+                    window.paint_quad(ala::fill(
+                        ala::Bounds::new(origin, ala::size(unit(1), unit(1))),
+                        ala::black(),
+                    ));
+                }
+            },
+        )
+        .w(side)
+        .h(side)
+        .flex_none()
+        .into_any_element(),
+    )
 }
 
 fn boolean_control(
@@ -1679,27 +1666,6 @@ impl ConfigFileKind {
         }
     }
 
-    const fn save_button_id(self) -> &'static str {
-        match self {
-            Self::Mux => "settings-save-mux-config",
-            Self::Terminal => "settings-save-terminal-config",
-        }
-    }
-
-    const fn placeholder(self) -> &'static str {
-        match self {
-            Self::Mux => "# zz multiplexer configuration",
-            Self::Terminal => "# terminal appearance, in Ghostty's key = value dialect",
-        }
-    }
-
-    const fn language(self) -> &'static str {
-        match self {
-            Self::Mux => "tmux",
-            Self::Terminal => "text",
-        }
-    }
-
     const fn max_bytes(self) -> usize {
         match self {
             Self::Mux => 1024 * 1024,
@@ -1715,11 +1681,7 @@ impl ConfigFileKind {
     }
 }
 
-fn config_file_editor(
-    kind: ConfigFileKind,
-    window: &mut Window,
-    cx: &mut Context<SettingsView>,
-) -> ConfigFileEditor {
+fn config_file_editor(kind: ConfigFileKind) -> ConfigFileEditor {
     let (path, saved, error) = match config_file_path(kind) {
         Ok(path) => match config::read_config_editor_source(&path, kind.max_bytes()) {
             Ok(source) => (Some(path), kind.editor_view(source), None),
@@ -1735,36 +1697,13 @@ fn config_file_editor(
             Some(format!("Could not locate {}: {error}", kind.file_name())),
         ),
     };
-    let editor = cx.new(|cx| {
-        let mut editor = CodeEditorState::new(window, cx)
-            .language(kind.language())
-            .soft_wrap(false)
-            .placeholder(kind.placeholder())
-            .default_value(&saved);
-        editor.set_line_numbers(false, cx);
-        editor
-    });
-    ConfigFileEditor {
-        path,
-        editor,
-        saved,
-        error,
-    }
+    ConfigFileEditor { path, saved, error }
 }
 
-fn config_editor_subscription(
-    editor: &Entity<CodeEditorState>,
-    window: &mut Window,
-    cx: &mut Context<SettingsView>,
-) -> Subscription {
-    cx.subscribe_in(
-        editor,
-        window,
-        move |_, _, event: &CodeEditorEvent, _, cx| {
-            if matches!(event, CodeEditorEvent::Change) {
-                cx.notify();
-            }
-        },
+const fn shows_terminal_preview(section: SettingsSection) -> bool {
+    matches!(
+        section,
+        SettingsSection::Terminal | SettingsSection::Appearance
     )
 }
 
@@ -1778,6 +1717,62 @@ fn config_file_path(kind: ConfigFileKind) -> io::Result<PathBuf> {
         }),
         ConfigFileKind::Terminal => config::import_target_path(),
     }
+}
+
+fn key_field_state(
+    spelling: &str,
+    window: &mut Window,
+    cx: &mut Context<SettingsView>,
+) -> Entity<KeyFieldState> {
+    let keystroke = zz_ui::command::tmux_keystroke(spelling);
+    cx.new(|cx| KeyFieldState::new(window, cx).value(keystroke))
+}
+
+fn key_field_control(field: &Entity<KeyFieldState>, disabled: bool, cx: &App) -> ala::Div {
+    div().w(px(KEY_INPUT_WIDTH)).flex_none().child(
+        KeyField::new(field)
+            .disabled(disabled)
+            .on(settings_card_ground(cx)),
+    )
+}
+
+fn reject_recorded_key(cx: &mut App) {
+    toast::push(
+        Notification::info(if cfg!(target_os = "macos") {
+            "Multiplexer keys can't use Command or Fn"
+        } else {
+            "Multiplexer keys can't use Super or Fn"
+        }),
+        cx,
+    );
+}
+
+fn recorded_tmux_key(keystroke: &ala::Keystroke) -> Option<String> {
+    let modifiers = keystroke.modifiers;
+    if modifiers.platform || modifiers.function {
+        return None;
+    }
+    let commanded = modifiers.control || modifiers.alt;
+    let (base, shift) = match keystroke.key.as_str() {
+        "space" => ("Space".to_owned(), modifiers.shift),
+        key => match zz_config::keymap::tmux_key_name(key) {
+            Some(name) => (name.to_owned(), modifiers.shift),
+            None => match keystroke.key_char.as_deref() {
+                Some(text) if !commanded && text.chars().count() == 1 => (text.to_owned(), false),
+                _ => (key.to_owned(), modifiers.shift),
+            },
+        },
+    };
+    let key = zz_client::ChromeKey {
+        command: false,
+        control: modifiers.control,
+        alt: modifiers.alt,
+        shift,
+        base,
+    }
+    .normalized()
+    .to_string();
+    zz_mux::parse_tmux_key(&key).map(|_| key)
 }
 
 fn text_value_input(
@@ -1874,13 +1869,11 @@ fn appearance_changed(change: AppearanceChange, cx: &mut App) {
                 )),
             )
         }
-        AppearanceChange::ResetLook => (
-            ConfigKey::ChromeAccent,
-            config::set_config_keys(&config::look_edits(
-                &interface_theme::ThemeOverrides::default(),
-                None,
-            )),
-        ),
+        AppearanceChange::ResetLook => {
+            let mut edits = config::look_edits(&interface_theme::ThemeOverrides::default(), None);
+            edits.push((ConfigKey::UiMonoFontFamily, None));
+            (ConfigKey::ChromeAccent, config::set_config_keys(&edits))
+        }
         AppearanceChange::Accent(accent) => {
             let key = ConfigKey::ChromeAccent;
             let result = match accent {
@@ -1915,6 +1908,10 @@ fn appearance_changed(change: AppearanceChange, cx: &mut App) {
         AppearanceChange::UiFont(family) => (
             ConfigKey::UiFontFamily,
             config::set_ui_font_family((!family.is_empty()).then_some(family.as_str())),
+        ),
+        AppearanceChange::MonoFont(family) => (
+            ConfigKey::UiMonoFontFamily,
+            config::set_ui_mono_font_family((!family.is_empty()).then_some(family.as_str())),
         ),
         AppearanceChange::Zoom(zoom) => {
             crate::ui_scale::set_percent(zoom * 100.0, cx);
@@ -2058,9 +2055,9 @@ fn refresh_settings_preview(key: ConfigKey, cx: &mut App) {
                 | ConfigKey::PaletteWindowLayout
                 | ConfigKey::PaletteShowKeys
                 | ConfigKey::PaletteVimMode
-                | ConfigKey::PickerFocusSidebar
                 | ConfigKey::WhichKeyDelay
                 | ConfigKey::ProgramColors
+                | ConfigKey::ChromeTerminalColors
         )
     {
         return;
@@ -2148,11 +2145,9 @@ fn numeric_config_value(config: &AppConfig, key: ConfigKey) -> ConfigValue<f32> 
         ConfigKey::WindowCornerRadius => config.window_corner_radius,
         ConfigKey::EditorFontSize => config.editor_font_size,
         ConfigKey::WhichKeyDelay => config.which_key_delay,
-        ConfigKey::UseSystemTitlebar
-        | ConfigKey::PaletteWindowLayout
+        ConfigKey::PaletteWindowLayout
         | ConfigKey::PaletteShowKeys
         | ConfigKey::PaletteVimMode
-        | ConfigKey::PickerFocusSidebar
         | ConfigKey::WindowBackgroundBlur
         | ConfigKey::Motion
         | ConfigKey::Tray
@@ -2162,6 +2157,7 @@ fn numeric_config_value(config: &AppConfig, key: ConfigKey) -> ConfigValue<f32> 
         | ConfigKey::CheckForUpdates
         | ConfigKey::FlatSidebar
         | ConfigKey::ProgramColors
+        | ConfigKey::ChromeTerminalColors
         | ConfigKey::ExperimentalEditorPane
         | ConfigKey::PaneGaps
         | ConfigKey::EditorLineNumbers
@@ -2177,6 +2173,7 @@ fn numeric_config_value(config: &AppConfig, key: ConfigKey) -> ConfigValue<f32> 
         | ConfigKey::ControlShape
         | ConfigKey::InterfaceGlass
         | ConfigKey::UiFontFamily
+        | ConfigKey::UiMonoFontFamily
         | ConfigKey::AppIcon
         | ConfigKey::ChromeAccent
         | ConfigKey::ChromeDensity => {
@@ -2248,6 +2245,23 @@ mod tests {
     use super::*;
 
     #[test]
+    fn recorded_keys_save_as_tmux_spellings() {
+        let recorded = |source: &str, key_char: Option<&str>| {
+            let mut keystroke = ala::Keystroke::parse(source).unwrap();
+            keystroke.key_char = key_char.map(str::to_owned);
+            recorded_tmux_key(&keystroke)
+        };
+        assert_eq!(recorded("ctrl-b", None).as_deref(), Some("C-b"));
+        assert_eq!(recorded("\"", Some("\"")).as_deref(), Some("\""));
+        assert_eq!(recorded("shift-l", Some("L")).as_deref(), Some("L"));
+        assert_eq!(recorded("alt-a", Some("å")).as_deref(), Some("M-a"));
+        assert_eq!(recorded("ctrl-space", None).as_deref(), Some("C-Space"));
+        assert_eq!(recorded("alt-up", None).as_deref(), Some("M-Up"));
+        assert_eq!(recorded("f5", None).as_deref(), Some("F5"));
+        assert_eq!(recorded("cmd-b", None), None);
+    }
+
+    #[test]
     fn percentage_inputs_convert_and_reject_invalid_edits() {
         for (key, default, max) in [(ConfigKey::PaneGlowStrength, "100", 200.0)] {
             assert_eq!(numeric_range(key), (0.0, max));
@@ -2299,7 +2313,7 @@ mod tests {
         let settings = captured.borrow().clone().expect("captured settings view");
 
         settings.read_with(cx, |settings, _| {
-            assert!(settings.terminal_config_editor.is_none());
+            assert!(settings.terminal_config_editor.is_some());
             assert!(settings.mux_config_editor.is_none());
             assert!(settings.hosts_state.is_none());
         });
@@ -2312,7 +2326,6 @@ mod tests {
         assert!(initialized);
         settings.read_with(cx, |settings, _| {
             assert!(settings.hosts_state.is_some());
-            assert!(settings.terminal_config_editor.is_none());
             assert!(settings.mux_config_editor.is_none());
         });
 
@@ -2328,7 +2341,7 @@ mod tests {
                 settings.ensure_section_state(SettingsSection::Terminal, window, cx)
             })
         });
-        assert!(initialized);
+        assert!(!initialized);
         settings.read_with(cx, |settings, _| {
             assert!(settings.terminal_config_editor.is_some());
             assert!(settings.mux_config_editor.is_none());
@@ -2382,6 +2395,7 @@ mod tests {
                     value: Some(family.clone()),
                     provenance: ConfigProvenance::Override,
                 },
+                ..zz_config::UiFontConfig::default()
             }));
             settings.update(cx, |settings, cx| {
                 settings.ui_font_family.update(cx, |select, cx| {

@@ -30,7 +30,7 @@ just web build
 just web serve
 ```
 
-Open `http://127.0.0.1:8081`. `just web run` builds the assets, starts the gateway, and watches
+Open the link the gateway prints (`http://127.0.0.1:8081/?token=...`). `just web run` builds the assets, starts the gateway, and watches
 the client and shared crates for changes. Refresh the page after a rebuild.
 `just web build` produces dev assets under `clients/web/dist-dev`. Dev builds use a separate
 local-storage key for preferences. `just web build --release` produces optimized release assets
@@ -60,9 +60,16 @@ Run the gateway beside the daemon on the remote host, then forward its port:
 ssh -L 8080:127.0.0.1:8080 user@host
 ```
 
-Open the same loopback URL locally. Keep the forwarded local port equal to the gateway port.
-The gateway accepts only loopback bindings and matching HTTP Host and WebSocket Origin headers.
-It has no public listener, TLS termination, or account authentication.
+Open the link the remote gateway printed, locally. Keep the forwarded local port equal to the
+gateway port.
+
+The gateway accepts only loopback bindings and matching HTTP Host and WebSocket Origin headers,
+and it serves nothing without its token. Each start makes a random token and prints it in the
+link; opening the link sets an `HttpOnly`, `SameSite=Strict` cookie named after the port and
+redirects to the page, keeping any other query parameters. Every asset and the WebSocket upgrade
+then need that cookie, so another OS user on the same machine cannot reach the daemon through the
+gateway. After the gateway restarts, open its new link. It has no public listener or TLS
+termination.
 
 # Browser behavior
 
@@ -116,7 +123,7 @@ the busy choice and an armed flip show in the pane's corner, the armed one from 
 side chat a floating one. Composer actions share the desktop presentation. Appearance preferences for the
 browser live in local storage: system/light/dark mode, zoom, animations, contrast, reduce
 transparency, and the knobs Interface sets over the platform's look (the default theme file in the
-browser): the accent, the tint, the corner radius, the control shape, the glass and the UI font.
+browser): the accent, the tint, the corner radius, the control shape, the glass, the UI font and the Mono font.
 The Theme file menu copies the look, pastes a theme file over every knob, or resets them.
 The animation switch respects the platform’s reduced-motion preference. Terminal color schemes
 follow the effective light/dark mode after attachment and when that mode changes. Numeric fields,

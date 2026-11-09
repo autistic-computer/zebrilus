@@ -156,6 +156,21 @@ const ACCEPT_POLL_INTERVAL: Duration = Duration::from_millis(25);
 pub enum Endpoint {
     Local(PathBuf),
     Ssh(SshEndpoint),
+    Tailnet(TailnetEndpoint),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TailnetEndpoint {
+    pub peer: String,
+    pub port: Option<u16>,
+}
+
+impl TailnetEndpoint {
+    pub const DEFAULT_PORT: u16 = if zz_protocol::app_identity::DEVELOPMENT {
+        9923
+    } else {
+        9922
+    };
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -180,6 +195,8 @@ pub enum EndpointError {
     ProbeFailure { target: String, reason: String },
     #[error("ssh to {target} failed: {reason}")]
     SshFailed { target: String, reason: String },
+    #[error("{reason}")]
+    Tailnet { target: String, reason: String },
     #[error("the SSH host key for {target} was not trusted")]
     HostKeyRejected { target: String },
     #[error("SSH authentication to {target} failed: {reason}")]
@@ -277,6 +294,9 @@ impl EndpointError {
             }
             Self::ProbeFailure { target, reason } | Self::SshFailed { target, reason } => {
                 format!("Could not reach {target} over ssh: {reason}")
+            }
+            Self::Tailnet { target, reason } => {
+                format!("Could not reach {target} over the tailnet: {reason}")
             }
             Self::HostKeyRejected { target } => {
                 format!("The SSH host key for {target} was not trusted.")
@@ -385,6 +405,9 @@ impl Endpoint {
         if let Some(value) = input.strip_prefix("ssh://") {
             return parse_ssh_endpoint(input, value).map(Self::Ssh);
         }
+        if let Some(value) = input.strip_prefix("tailnet://") {
+            return parse_tailnet_endpoint(input, value).map(Self::Tailnet);
+        }
         if let Some(path) = input.strip_prefix("unix://") {
             if !path.starts_with('/') {
                 return Err(parse_error(input, "unix endpoint path must be absolute"));
@@ -417,7 +440,23 @@ impl fmt::Display for Endpoint {
         match self {
             Self::Local(path) => path.display().fmt(formatter),
             Self::Ssh(endpoint) => endpoint.fmt(formatter),
+            Self::Tailnet(endpoint) => endpoint.fmt(formatter),
         }
+    }
+}
+
+impl fmt::Display for TailnetEndpoint {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("tailnet://")?;
+        if self.peer.contains(':') {
+            write!(formatter, "[{}]", self.peer)?;
+        } else {
+            formatter.write_str(&self.peer)?;
+        }
+        if let Some(port) = self.port {
+            write!(formatter, ":{port}")?;
+        }
+        Ok(())
     }
 }
 
@@ -534,6 +573,54 @@ fn parse_port(input: &str, port: &str) -> Result<u16, EndpointError> {
         Ok(port) if port != 0 => Ok(port),
         _ => Err(parse_error(input, "ssh port must be between 1 and 65535")),
     }
+}
+
+fn parse_tailnet_endpoint(input: &str, value: &str) -> Result<TailnetEndpoint, EndpointError> {
+    let value = value.strip_suffix('/').unwrap_or(value);
+    let (peer, port) = if let Some(rest) = value.strip_prefix('[') {
+        let (address, rest) = rest
+            .split_once(']')
+            .ok_or_else(|| parse_error(input, "an IPv6 address needs a closing `]`"))?;
+        if address.parse::<std::net::Ipv6Addr>().is_err() {
+            return Err(parse_error(input, "brackets hold an IPv6 address"));
+        }
+        let port = match rest {
+            "" => None,
+            rest => Some(
+                rest.strip_prefix(':')
+                    .ok_or_else(|| parse_error(input, "expected `:port` after `]`"))?,
+            ),
+        };
+        (address, port)
+    } else {
+        match value.split_once(':') {
+            Some((peer, port)) => (peer, Some(port)),
+            None => (value, None),
+        }
+    };
+    let port = port
+        .map(|port| {
+            port.parse::<u16>()
+                .ok()
+                .filter(|port| *port != 0)
+                .ok_or_else(|| parse_error(input, "port must be a number from 1 to 65535"))
+        })
+        .transpose()?;
+    if peer.is_empty() {
+        return Err(parse_error(input, "name a tailnet machine or address"));
+    }
+    if !peer.chars().all(|character| {
+        character.is_ascii_alphanumeric() || matches!(character, '-' | '.' | '_' | ':')
+    }) {
+        return Err(parse_error(
+            input,
+            "a tailnet machine name uses letters, digits, `-`, `_` and `.`",
+        ));
+    }
+    Ok(TailnetEndpoint {
+        peer: peer.to_owned(),
+        port,
+    })
 }
 
 fn parse_error(input: &str, reason: impl Into<String>) -> EndpointError {

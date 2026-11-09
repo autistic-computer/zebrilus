@@ -192,12 +192,15 @@ hold. There is no theme to pick: the look starts from `platform_theme()` (the `m
 and iOS, `default` elsewhere) and each override is a knob over it.
 
 - `Appearance::change(AppearanceChange)` applies one edit from the page; `Import` sets every knob
-  from a theme file (`ThemeOverrides::from_theme` and its `face`), `ResetLook` clears them.
+  from a theme file (`ThemeOverrides::from_theme` and its `face`, leaving the mono font), `ResetLook`
+  clears them and the mono font.
 - `Appearance::shown_theme()`, `corner_radius()`, `neutral()`, `controls()`, `glass()`, `accent()`
   and `ui_font()` read the look with the platform's value wherever a knob is unset.
 - `Appearance::apply(window, cx)` puts it on screen: reduce motion and animation speed from `motion`, the
   platform's file with its overrides (`shown_theme`) activated in the mode, the UI font (when
-  installed, else ala's system UI font), contrast and zoom.
+  installed, else ala's system UI font), the mono font (when installed, else
+  `platform_mono_font_family()`; an app with a default of its own, like the terminal font, sets it
+  after), contrast and zoom.
 - `penna::blocks::appearance::appearance_page(title, appearance_page_items::<T>(), render)` lays
   the rows out in a virtual column, in the groups `LOOK`, `SIZE` and `ACCESSIBILITY`, and `render`
   draws each item with

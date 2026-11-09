@@ -88,6 +88,7 @@ impl Preferences {
         appearance.zoom = bounded(appearance.zoom, 0.5, 3.0, 1.0);
         appearance.contrast = bounded(appearance.contrast, 1.0, 2.0, 1.0);
         appearance.ui_font_family = appearance.ui_font_family.trim().into();
+        appearance.mono_font_family = appearance.mono_font_family.trim().into();
         self.terminal_font_scale = bounded(self.terminal_font_scale, 0.5, 3.0, 1.0);
         for (value, min, max, fallback) in [
             (&mut self.pane_inactive_opacity, 0., 1., 0.7),
@@ -424,7 +425,7 @@ mod tests {
                 (Some(expected.0), Some(expected.1), Some(expected.2))
             );
         }
-        for accent in ["ink", "green", "#ff8800"] {
+        for accent in ["green", "#ff8800"] {
             let valid = ThemeOverrides {
                 accent: Some(accent.into()),
                 ..ThemeOverrides::default()

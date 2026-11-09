@@ -3,8 +3,8 @@ use std::rc::Rc;
 
 use ala::{
     AnyElement, App, ClickEvent, Div, ElementId, FULL_CORNER_RADIUS, Hsla, InteractiveElement,
-    Interactivity, IntoElement, MouseButton, ParentElement, Pixels, RenderOnce, Role, SharedString,
-    Stateful, StatefulInteractiveElement as _, StyleRefinement, Styled, Window, div,
+    Interactivity, IntoElement, Keystroke, MouseButton, ParentElement, Pixels, RenderOnce, Role,
+    SharedString, Stateful, StatefulInteractiveElement as _, StyleRefinement, Styled, Window, div,
     prelude::FluentBuilder as _, px,
 };
 
@@ -22,12 +22,14 @@ use super::button_icon::ButtonIcon;
 
 pub const COMPACT_ICON_BUTTON_SIZE: f32 = 24.0;
 const COMPACT_ICON_DROP: Pixels = px(0.5);
+pub const INSIDE_GAP: Pixels = px(4.0);
 
 #[derive(Default, Clone, Copy)]
 pub enum ButtonRounded {
     #[default]
     Medium,
     Size(Pixels),
+    Inside(Surface, Pixels),
 }
 
 impl From<Pixels> for ButtonRounded {
@@ -218,6 +220,7 @@ fn text_layer(variant: ButtonVariant, state: PaintState, ground: Ground, cx: &Ap
             _ => foreground,
         },
         radius: px(0.0),
+        share: None,
         smoothing: crate::CORNER_SMOOTHING,
         ground,
     }
@@ -243,6 +246,7 @@ pub struct Button {
     size: Size,
     compact: bool,
     tooltip: Option<SharedString>,
+    tooltip_keys: Vec<Keystroke>,
     on_click: Option<Rc<dyn Fn(&ClickEvent, &mut Window, &mut App)>>,
     on_hover: Option<Rc<dyn Fn(&bool, &mut Window, &mut App)>>,
     loading: bool,
@@ -277,6 +281,7 @@ impl Button {
             rounded: ButtonRounded::Medium,
             size: Size::Medium,
             tooltip: None,
+            tooltip_keys: Vec::new(),
             on_click: None,
             on_hover: None,
             loading: false,
@@ -296,6 +301,15 @@ impl Button {
             .compact()
             .size(rems_from_px(COMPACT_ICON_BUTTON_SIZE))
             .icon(icon.into().relative().top(COMPACT_ICON_DROP))
+    }
+
+    #[must_use]
+    pub fn inside(self, around: impl Into<Surface>, height: Pixels) -> Self {
+        let side = height - INSIDE_GAP * 2.0;
+        let icon = (side - px(8.0)).clamp(px(10.0), px(14.0));
+        self.rounded(ButtonRounded::Inside(around.into(), height))
+            .with_size(Size::Size(icon / 0.75))
+            .size(side)
     }
 
     pub fn flat(mut self) -> Self {
@@ -326,6 +340,12 @@ impl Button {
 
     pub fn tooltip(mut self, tooltip: impl Into<SharedString>) -> Self {
         self.tooltip = Some(tooltip.into());
+        self
+    }
+
+    #[must_use]
+    pub fn tooltip_keys(mut self, keys: impl IntoIterator<Item = Keystroke>) -> Self {
+        self.tooltip_keys = keys.into_iter().collect();
         self
     }
 
@@ -551,6 +571,18 @@ impl RenderOnce for Button {
                     cx.theme().style_of(surface).smoothing.exponent()
                 }),
             ),
+            ButtonRounded::Inside(around, height) => {
+                let container = cx.theme().layer(around, PaintState::Rest);
+                let radius = crate::blocks::touch::concentric(
+                    crate::foundation::row_radius(&container, height),
+                    INSIDE_GAP,
+                );
+                if radius >= FULL_CORNER_RADIUS || radius * 2.0 >= height - INSIDE_GAP * 2.0 {
+                    (FULL_CORNER_RADIUS, Smoothing::CIRCLE.exponent())
+                } else {
+                    (radius, container.smoothing)
+                }
+            }
         };
         let coarse = crate::blocks::touch::CoarsePointer::get(cx);
         let slop = self.hit_slop.filter(|_| coarse);
@@ -632,6 +664,11 @@ impl RenderOnce for Button {
             .when(row, |this| {
                 this.corner_radius_mode(ala::CornerRadiusMode::Fixed)
             })
+            .when_some(
+                rest.share
+                    .filter(|_| !row && matches!(self.rounded, ButtonRounded::Medium)),
+                Styled::corner_share,
+            )
             .corner_smoothing(smoothing)
             .border(rest.border_width)
             .border_color(rest.border)
@@ -738,13 +775,19 @@ impl RenderOnce for Button {
                     .text_color(rest.text.opacity(0.8))
             })
             .when_some(self.tooltip.clone(), |this, tooltip| {
-                this.tooltip(move |window, cx| Tooltip::new(tooltip.clone()).build(window, cx))
+                let keys = self.tooltip_keys.clone();
+                this.tooltip(move |window, cx| {
+                    Tooltip::new(tooltip.clone())
+                        .keys(keys.clone())
+                        .build(window, cx)
+                })
             });
         let element = crate::components::tooltip::with_focus_tooltip(
             element,
             &self.id,
             is_focused,
             self.tooltip,
+            &self.tooltip_keys,
             window,
             cx,
         );

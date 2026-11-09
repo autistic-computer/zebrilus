@@ -66,6 +66,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             client_instance_id: ClientInstanceId(3),
             caps: (1 << 29) | (1 << 30),
             clock: 4,
+            platform: zz_protocol::HostPlatform::default(),
         },
     ))?);
     packet.uint(129);

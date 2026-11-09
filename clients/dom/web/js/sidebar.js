@@ -6,6 +6,7 @@ const nav = $("nav[data-penna='sidebar']");
 const list = $("#tree");
 const toggleButton = $("#toggle-sidebar");
 const viewButton = $("#flat-list");
+const actions = $("#sidebar-actions");
 const scrim = document.createElement("div");
 scrim.className = "sidebar-scrim";
 scrim.hidden = true;
@@ -21,6 +22,10 @@ let slideover = false;
 let flatFolds = { host: false };
 
 const NODE_ICONS = { host: "hard-drive", session: "layers", window: "app-window" };
+
+function hostMark(platform) {
+  return platform ? `<i data-icon="host-${platform}"></i>` : `<i class="host-logo"></i>`;
+}
 
 function writable() {
   return state.connected && !state.tree?.readOnly;
@@ -44,7 +49,34 @@ function applyLayout() {
   nav.toggleAttribute("data-divider", !(preferences.gaps && inline));
   scrim.hidden = inline || !slideover;
   viewButton.title = preferences.flat_sidebar ? "Show the session tree" : "Show chats";
-  viewButton.querySelector("[data-icon]").dataset.icon = preferences.flat_sidebar ? "list" : "list-tree";
+  viewButton.querySelector("[data-icon]").dataset.icon = preferences.flat_sidebar ? "chat-duotone" : "chat";
+}
+
+function hoverFill(row) {
+  const fill = row.querySelector(".flat-fill");
+  row.addEventListener("mouseenter", () => fill.setAttribute("data-state", "hover"));
+  row.addEventListener("mouseleave", () => fill.removeAttribute("data-state"));
+}
+
+function actionRow(icon, label, onClick) {
+  const row = document.createElement("div");
+  row.className = "sidebar-action";
+  row.setAttribute("role", "button");
+  row.setAttribute("aria-label", label);
+  row.innerHTML = `<span class="flat-fill" data-penna="row.nav"></span><i data-icon="${icon}" class="flat-glyph"></i><span data-text></span>`;
+  row.querySelector("[data-text]").textContent = label;
+  hoverFill(row);
+  row.addEventListener("click", onClick);
+  return row;
+}
+
+function renderActions() {
+  const rows = preferences.flat_sidebar && state.connected ? [actionRow("chat-plus", "New chat", () => {
+    if (!writable()) return;
+    state.client.new_chat();
+    markTree();
+  })] : [];
+  actions.replaceChildren(...rows);
 }
 
 export { paneIcon };
@@ -90,7 +122,7 @@ function release() {
 function marker(icon, row) {
   const element = document.createElement("span");
   element.className = "tree-marker";
-  element.innerHTML = row.node === "host" ? `<i class="host-logo"></i>` : `<i data-icon="${icon}"></i>`;
+  element.innerHTML = row.node === "host" ? hostMark(row.platform) : `<i data-icon="${icon}"></i>`;
   if (row.bell) element.insertAdjacentHTML("beforeend", `<i class="marker-dot bell"></i>`);
   if (row.badge) element.insertAdjacentHTML("beforeend", `<i class="marker-dot badge" data-badge="${row.badge}"></i>`);
   return element;
@@ -99,6 +131,7 @@ function marker(icon, row) {
 function action(icon, title, run) {
   const button = document.createElement("button");
   button.dataset.penna = "icon-button.row";
+  button.dataset.inside = "";
   button.className = "tree-action";
   button.title = title;
   button.disabled = !writable();
@@ -208,7 +241,7 @@ function drawGuides(rows) {
     ...runs.map((run) => {
       const line = document.createElement("i");
       line.className = run.active ? "guide active" : "guide";
-      line.style.left = `${run.level * 20 + 17}px`;
+      line.style.left = `${run.level * 20 + 24}px`;
       line.style.top = `${run.start * 32 + 4}px`;
       line.style.height = `${run.count * 32 - 8}px`;
       return line;
@@ -232,20 +265,6 @@ function rollup(counts, live) {
     if (counts[tone]) element.insertAdjacentHTML("beforeend", `<span><i class="dot ${tone}"></i>${counts[tone]}</span>`);
   }
   return element;
-}
-
-function addButton(icon, title, run) {
-  const button = document.createElement("button");
-  button.dataset.penna = "icon-button.row";
-  button.className = "flat-add";
-  button.title = title;
-  button.innerHTML = `<i data-icon="${icon}"></i>`;
-  button.addEventListener("click", (event) => {
-    event.stopPropagation();
-    if (writable()) run();
-    flush();
-  });
-  return button;
 }
 
 function tileStack(window) {
@@ -273,6 +292,11 @@ function tileStack(window) {
 
 function renderFlat() {
   const host = JSON.parse(state.client.flat_sidebar(Date.now() / 1000));
+  list.className = "flat";
+  if (!host.chats.length) {
+    list.replaceChildren();
+    return;
+  }
   const live = state.connected;
   const rows = [];
   const header = document.createElement("div");
@@ -280,11 +304,10 @@ function renderFlat() {
   header.setAttribute("role", "button");
   header.setAttribute("aria-label", host.name);
   header.setAttribute("aria-expanded", String(!flatFolds.host));
-  header.innerHTML = `<i data-icon="laptop" class="flat-glyph"></i><span class="flat-name" data-text></span><i data-icon="chevron-right" class="chevron"${flatFolds.host ? "" : " data-open"}></i><span class="grow"></span>`;
+  header.innerHTML = `<i data-icon="${host.platform ? `host-${host.platform}` : "laptop"}" class="flat-glyph"></i><span class="flat-name" data-text></span><i data-icon="chevron-right" class="chevron"${flatFolds.host ? "" : " data-open"}></i><span class="grow"></span>`;
   header.querySelector(".flat-name").textContent = host.name;
   if (flatFolds.host) header.append(rollup(host.rollup, live));
   if (!live) header.insertAdjacentHTML("beforeend", `<i data-icon="circle-x" class="flat-status"></i>`);
-  if (live) header.append(addButton("chat-plus", "New agent", () => state.client.new_chat()));
   header.addEventListener("click", () => {
     flatFolds.host = !flatFolds.host;
     markTree();
@@ -359,6 +382,7 @@ function fade() {
 function render() {
   applyLayout();
   if (!state.client) return;
+  renderActions();
   if (preferences.flat_sidebar) renderFlat();
   else renderTree();
   fade();
@@ -369,6 +393,7 @@ list.addEventListener("scroll", fade, { passive: true });
 phase("tree", render);
 
 toggleButton.addEventListener("click", toggleSidebar);
+hoverFill($("#open-settings"));
 viewButton.addEventListener("click", () => setPreferences({ flat_sidebar: !preferences.flat_sidebar }));
 scrim.addEventListener("pointerdown", (event) => {
   event.preventDefault();

@@ -10,7 +10,7 @@
 * [zz-protocol crate](zz-protocol.md) - The stable, versioned wire vocabulary (IDs, framing, control messages, packed terminal lanes, and mux snapshots) shared by every zz client and the daemon.
 * [zz-terminal crate](zz-terminal.md) - The per-pane terminal engine that owns a PTY child and every libghostty-vt object on a worker thread and publishes immutable renderer-neutral frames.
 * [zz-xtask crate](zz-xtask.md) - Workspace build task that assembles and validates desktop CEF bundles across Linux, macOS, and Windows.
-* [zz crate (the ala client)](zz.md) - The long-lived ala desktop client, linking zz-cli for CLI dispatch, daemon spawning, and terminal attach, and hosting terminal and Chromium browser panes plus the agent lens over terminals running Claude Code or Codex.
+* [zz crate (the ala client)](zz.md) - The long-lived ala desktop client, linking zz-cli for CLI dispatch, daemon spawning, and terminal attach, and hosting terminal, Chromium browser and agent chat panes, with the flip button that switches a pane between the Claude Code or Codex CLI and its chat.
 <!-- okf:listing:end -->
 
 Workspace members without a crate page here: `ala` and the `ala-*` crates (our ala, see

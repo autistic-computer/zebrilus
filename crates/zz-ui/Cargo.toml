@@ -48,6 +48,7 @@ url.workspace = true
 zz-config.workspace = true
 ala = { workspace = true, features = ["test-support"] }
 ala-platform = { workspace = true, features = ["test-support"] }
+usvg.workspace = true
 
 [lints]
 workspace = true

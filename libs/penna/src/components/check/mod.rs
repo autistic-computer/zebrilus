@@ -157,7 +157,7 @@ impl RenderOnce for Check {
         let ground = self.on.unwrap_or_else(|| theme.ground());
         let filled = self.checked || (self.mixed && self.kind == Kind::Checkbox);
         let paint = if filled {
-            theme.paint_on(ground, self.tone.unwrap_or(Tone::Primary), Emphasis::Solid)
+            theme.paint_on(ground, self.tone.unwrap_or(Tone::Accent), Emphasis::Solid)
         } else {
             theme.paint_on(
                 ground,

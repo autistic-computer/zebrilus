@@ -42,7 +42,7 @@ const SCRIPTS: [&str; 6] = [
 
 const LOOKS: [(&str, &str); 11] = [
     ("default", "{}"),
-    ("blue", r#"{ "tint": "blue" }"#),
+    ("green", r#"{ "tint": "green" }"#),
     ("pink", r#"{ "tint": "pink" }"#),
     ("radius-4", r#"{ "radius": 4 }"#),
     ("radius-20", r#"{ "radius": 20 }"#),

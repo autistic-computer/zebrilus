@@ -1,9 +1,6 @@
 {
   "name": "macOS",
-  "tint": {
-    "light": "#0a64dd",
-    "dark": "#76abfd"
-  },
+  "tint": "blue",
   "control-radius": "full",
   "smoothing": 4.0
 }

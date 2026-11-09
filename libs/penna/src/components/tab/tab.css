@@ -37,6 +37,27 @@
   height: var(--penna-control-touch);
 }
 
+.penna-tab-strip[data-penna] {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: var(--penna-space-2);
+  box-sizing: border-box;
+  padding: var(--penna-space-2);
+  --penna-around: var(--penna-space-2);
+  --penna-around-rows: var(--penna-control-lg);
+}
+
+.penna-tab-strip[data-penna]:has(> :only-child) {
+  padding: 0;
+  background: none;
+}
+
+.penna-tab-strip[data-penna] > .penna-tab:only-child {
+  box-sizing: content-box;
+  padding-block: var(--penna-space-2);
+}
+
 .penna-tab[data-still] {
   pointer-events: none;
 }

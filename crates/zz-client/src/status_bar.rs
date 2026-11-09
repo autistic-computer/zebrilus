@@ -2,7 +2,8 @@ use zz_protocol::{AgentProvider, MuxSnapshot, PaneId, PaneKindSnapshot, SessionI
 
 use crate::{
     navigation::{ordered_panes, pane_label},
-    window_summary::pane_agent,
+    program::Program,
+    window_summary::{pane_agent, pane_program},
 };
 
 pub const MAX_VISIBLE_WINDOWS: usize = 5;
@@ -21,6 +22,7 @@ pub struct StatusBarPane {
     pub id: PaneId,
     pub label: String,
     pub kind: PaneKindSnapshot,
+    pub program: Option<&'static Program>,
     pub active: bool,
 }
 
@@ -76,7 +78,17 @@ impl StatusBarModel {
                                 window.automatic_rename
                                     && matches!(pane.kind, PaneKindSnapshot::Browser(_))
                             })
-                            .map_or_else(|| window.name.clone(), pane_label),
+                            .map_or_else(
+                                || match agent_provider {
+                                    Some(provider)
+                                        if window.automatic_rename && window.name == "agent" =>
+                                    {
+                                        provider.label().to_owned()
+                                    }
+                                    _ => window.name.clone(),
+                                },
+                                pane_label,
+                            ),
                         active: focused_window == Some(window.id),
                         bell,
                         activity: window.activity,
@@ -96,6 +108,7 @@ impl StatusBarModel {
                                     _ => pane_label(pane),
                                 },
                                 kind: pane.kind.clone(),
+                                program: pane_program(pane),
                                 active: pane.id == window.active_pane,
                             })
                             .collect(),
@@ -308,7 +321,7 @@ mod tests {
     }
 
     #[test]
-    fn agent_terminals_keep_their_window_name_and_report_their_provider() {
+    fn untitled_agent_windows_show_their_provider_and_report_it() {
         let mut snapshot = snapshot();
         for provider in [AgentProvider::Codex, AgentProvider::ClaudeCode] {
             snapshot.sessions[0].windows[1]
@@ -317,7 +330,7 @@ mod tests {
             let model = StatusBarModel::from_snapshot(&snapshot, Some(SessionId(1)));
 
             assert_eq!(model.windows[1].name, "agent");
-            assert_eq!(model.windows[1].label, "agent");
+            assert_eq!(model.windows[1].label, provider.label());
             assert_eq!(model.windows[1].agent_provider, Some(provider));
         }
     }

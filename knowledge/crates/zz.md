@@ -4,7 +4,7 @@ title: zz crate (the ala client)
 description: The long-lived ala desktop client, linking zz-cli for CLI dispatch, daemon spawning, and terminal attach, and hosting terminal, Chromium browser and agent chat panes, with the flip button that switches a pane between the Claude Code or Codex CLI and its chat.
 resource: crates/zz/src/lib.rs
 tags: [ala, crate, client, terminal, browser, agent, ui]
-timestamp: 2026-11-01T20:00:00-03:00
+timestamp: 2026-11-08T00:00:00-03:00
 ---
 
 # Overview
@@ -203,19 +203,19 @@ empty vector that restores donor/default values.
 
 The settings view is a route in the main window opened with `Cmd+,` on macOS or `Ctrl+,`
 elsewhere. `SettingsSection::ALL` is ten pages, titled Interface, Editor, Panes, Multiplexer,
-Browser, Terminal, Hosts, Providers, System, About:
+Browser, Terminal, Hosts, Agents, System, About:
 
 | Section | Contents |
 |---------|----------|
-| Interface | Look (a Mode segmented control for `theme-mode`, the Accent swatches for `chrome-accent`, the Tint, Tint strength and Corner radius sliders for `chrome-tint-hue`, `chrome-tint` and `widget-corner-radius`, the Controls segmented control and the Glass switch for `control-shape` and `interface-glass`, and the system UI font picker), Sidebar (`program-colors`), Size (transient UI zoom, `chrome-density` as Density), Accessibility (`chrome-contrast` as Increase contrast, `reduce-transparency` as Reduce transparency, `motion` as Motion), Window (macOS app-icon pickers, window blur, Linux `window-corner-radius` and `use-system-titlebar`) |
+| Interface | Look (a Mode segmented control for `theme-mode`, the Accent swatches for `chrome-accent`, the Tint, Tint strength and Corner radius sliders for `chrome-tint-hue`, `chrome-tint` and `widget-corner-radius`, the Controls segmented control and the Glass switch for `control-shape` and `interface-glass`, the system UI font picker, and Mono font for `ui-mono-font-family`, opening on Monospaced), Terminal (a live preview, Light theme and Dark theme, Window follows the theme for `chrome-terminal-colors`, Background opacity), Sidebar (`program-colors`), Size (transient UI zoom, `chrome-density` as Density), Accessibility (`chrome-contrast` as Increase contrast, `minimum-contrast` as Terminal text contrast, `reduce-transparency` as Reduce transparency, `motion` as Motion), Window (macOS app-icon pickers, window blur, Linux `window-corner-radius`) |
 | Editor | Editor-pane typography and display controls, when compiled in |
-| Panes | Layout (`pane-gaps`), Focus (`pane-inactive-opacity`, `pane-glow-strength`), Frame (`pane-margin`); gapped panes draw their frame in glass, with corners concentric with their header's buttons so they follow Interface's Corner radius, and the rim from the theme's glass (a hairline the outline's width without glass). PiPs take the same corner and follow Glass like a menu |
-| Multiplexer | Full-file `zz/mux.conf` editor without line numbers, 12px text, Save, and tmux import |
+| Panes | Layout (`pane-gaps`), Focus (`pane-inactive-opacity`, `pane-glow-strength`), Frame (`pane-margin`); gapped panes draw their frame in glass, with corners that follow Interface's Corner radius up to 16 at 100% (`Theme::pane_radius()`), and the rim from the theme's glass (a hairline the outline's width without glass). PiPs take the same corner and follow Glass like a menu |
+| Multiplexer | Navigation, split shortcuts, Options rows, Import from tmux (one button over the system file picker), and the `zz/mux.conf` path with Reload |
 | Browser | Browser-local shortcuts, beginning with the element-selector hotkey |
-| Terminal | Full-file Ghostty-compatible configuration editor with Save and Import Ghostty |
+| Terminal | Preview, Display rows (font, smoothing, cursor, padding), Import from Ghostty (one button over the system file picker), and the `zz/config` path |
 | Hosts | Configured `host-<name>` machines, live connection state, Remove, and an inline Add host form |
-| Providers | Claude Code and Codex on each connected host: installed and newest version, Update or Install through the vendor's own updater, its progress line and error |
-| System | Daemon (`quit-daemon-on-exit`), Experimental pane gates |
+| Agents | Coding agents (Set up, the startup hook for Claude Code and Codex in terminal panes), then Claude Code and Codex on each connected host: installed and newest version, Update or Install through the vendor's own updater, its progress line and error |
+| System | Command palette (`palette-window-layout`, `palette-show-keys`), Tray, Notifications, Daemon (`quit-daemon-on-exit`), Experimental (`palette-vim-mode` and the pane gates) |
 | About | Version, build identity, and project links |
 
 A **Devices** pairing page sat in this list until 2026-08-01 and was deleted with QUIC pairing.
@@ -226,8 +226,8 @@ older zz share one dialog offering to update them and restart their daemons; see
 [installing zz on a remote](/crates/zz-daemon.md#installing-zz-on-a-remote).
 
 The ordinary controls, including Terminal, retain the typed comment-preserving writer.
-Multiplexer's code editor saves its bounded file atomically; a clean editor reloads on navigation,
-and its tmux import is donor-specific. No GUI callback changes effective state directly: a
+Multiplexer's rows save `zz/mux.conf` atomically and the page rereads it on navigation; neither
+page shows the raw file. No GUI callback changes effective state directly: a
 background task polls candidate paths every 500ms, swaps globals, sends daemon overrides, rebuilds
 the current theme, and refreshes windows, so hand edits and settings edits share one live-update
 path. Adding a host is the one write that does not wait for the poll: `config::add_fleet_host`
@@ -264,8 +264,8 @@ to desktop ownership clears ala's client-side shadow inset while retaining the a
 navigation/status strip.
 
 Terminal is again a structured mirror of daemon-resolved appearance, with provenance-aware Reset
-controls writing `zz/config`. Multiplexer remains a bounded `zz/mux.conf` editor and can replace it
-verbatim from tmux after confirming that a dirty buffer may be discarded.
+controls writing `zz/config`. Multiplexer edits `zz/mux.conf` through its rows and imports tmux
+files from the system file picker.
 
 # Application chrome (`theme.rs`)
 
@@ -296,8 +296,9 @@ per-component plumbing.
 `apply_zz_overrides` then writes what zz adds over the theme:
 
 - `font_family` from `Appearance::ui_font()`: `ui-font-family`, else the platform file's face, else the system UI font;
-- `mono_font_family` from the terminal's resolved primary family, so Agent Markdown, tool previews,
-  and code blocks match the terminal typeface;
+- `mono_font_family` from `ui-mono-font-family` when installed, else the terminal's resolved primary
+  family, so Agent Markdown, tool previews, and code blocks match the terminal typeface until Mono
+  font picks another;
 - `contrast` from `chrome-contrast`, which scales derived colors and survives mode changes;
 - no glass under `reduce-transparency`;
 - `pane_margin` from `pane-margin`, the `zz_ui::pane_look::PaneLook` global (`glow_strength` and
@@ -318,16 +319,20 @@ title-bar row**: the sidebar's titlebar-height strip is the window's title bar (
 traffic lights, the `WindowControlArea::Drag` region, and the double-click handler), so the
 workspace reaches the window's top edge and the panes occupy that height. `WindowCorners` therefore
 gives the workspace the whole right edge (`.right()`), not only the bottom-right corner. Platforms
-that draw their own minimize/maximize/close buttons have nowhere left to put them, so where
-`draws_window_controls` holds . Windows, and Linux under client-side decorations . `AppShell` gives
-that height back at the top of the content column as `shell::app_titlebar_strip`: a real 34px flex
-row filled with `theme::chrome_background`, so it and the sidebar's strip read as one bar across the
-window. It carries `zz_ui::WindowControls` at its right, is a `WindowControlArea::Drag` region left
-of them (the area sits beside the buttons, never around them, or it would answer their hit tests),
-and owns the exposed top-right corner . `AppView` drops to `.right().bottom()` while it is mounted.
-The gate is re-read every render, so toggling `use-system-titlebar` moves the corner and the height
-on the spot. macOS draws no buttons, mounts no strip, and keeps the panes at the top edge. On Linux it mounts them
-inside an app-owned client-side frame because the forked zz-ui frame fixes its corner
+that draw their own minimize/maximize/close buttons (where `draws_window_controls` holds: Windows,
+and Linux under client-side decorations) float them over the content instead of giving them a row:
+`AppShell::render_floating_window_controls` pins `penna::WindowControls` to the top-right, `pane_margin`
+from the top and `pane_margin + WINDOW_CONTROLS_INSET` from the right, centered on the pane header
+row. The controls are 22px rounded squares 4px apart (`WINDOW_CONTROLS_SPAN`, 74px), the size of the
+pane header buttons, and they `occlude` so a press never reaches the header under them. `AppView`
+finds the pane at the layout's top-right (`top_right_pane`, or the zoomed pane) and widens that
+pane's header right padding by the span plus 8px (`window_controls_inset`), so its buttons move
+left of the controls; terminal and agent headers take it through `pane_header`'s `trailing_inset`,
+browser headers through `BrowserHeader::trailing_inset`. Editor and picker panes have no header,
+so the controls sit over their content. Titlebar mode, and the slide between modes, show the status
+bar instead, which carries the controls at its right end. Pane headers are window drag handles on
+every platform (`window_drag_handle`; Windows moves through `WM_SYSCOMMAND` `SC_MOVE`). On Linux the
+shell sits inside an app-owned client-side frame because the forked zz-ui frame fixes its corner
 radius at zero. The frame uses a fixed 13.5px macOS 27-style window radius on every
 exposed corner, retains the existing shadow, border, and resize hit zones, and squares any corner
 touching a tiled edge; a fully maximized window is square. `lib.rs` disables `Root`'s built-in border
@@ -724,9 +729,9 @@ then paints whichever frame the view handed it: the Linux/Windows GPU texture th
   committed IME text for incremental search, and a keystroke-to-`InputMessage` mapping
   (`ChooseTreeAction`/`ChooseBufferAction`/`DisplayPanesAction`). `AppView` renders whichever is
   active as an absolute overlay and steals focus from the underlying pane while it is open.
-- `config/settings.rs` is the client-only zz-ui dialog over structured app and Terminal controls
-  plus the full-file `zz/mux.conf` editor. It confirms tmux imports, saves mux config atomically,
-  and relies on the existing poller to apply `zz/config` control changes.
+- `config/settings.rs` is the client-only zz-ui dialog over structured app, Terminal and
+  Multiplexer controls. It imports a picked tmux or Ghostty file at once, saves mux config
+  atomically, and relies on the existing poller to apply `zz/config` control changes.
 - The browser toolbar composes zz-ui widgets directly: `InputState`/`Input` provide native
   selection, IME, clipboard, loading, and submission behavior; `Button`, `PopupMenuItem`,
   `AlertDialog`, `Separator`, `Badge`, and themed icons provide the surrounding chrome and
@@ -798,7 +803,7 @@ in [running zz](/playbooks/running-zz.md) or the `zz::diagnostics::terminal_rend
 | `crates/zz/src/macos_app.rs` | macOS application/window actions, native app menu, and standard command-key bindings |
 | `crates/zz/src/config/mod.rs` | Platform-aware bounded `zz/config` discovery/parsing, `host-<name>` fleet entries and their add/remove/republish helpers, ordered daemon overrides (the three agent adapter keys among them), per-knob provenance, and comment-preserving atomic edits |
 | `crates/zz/src/keymap.rs` | Bridges `ChromeKeymap` defaults and `chrome-keybind`/`chrome-unbind` overrides into ala bindings and action resolution |
-| `crates/zz/src/config/settings.rs` | Root-managed native settings dialog with local and Terminal appearance controls, plus a compact full-file `zz/mux.conf` editor, explicit Save, and confirmed tmux import |
+| `crates/zz/src/config/settings.rs` | Root-managed native settings dialog with local, Terminal appearance and Multiplexer controls, and one-click tmux and Ghostty import from the system file picker |
 | `crates/zz/src/app_shell.rs` | `AppShell` . root application surface: floating window controls (non-macOS), dialog/notification layers, hosts `AppView` and the Linux client frame |
 | `crates/zz/src/theme.rs` | Centralized theme customization over zz-ui's own light/dark palettes: retains the daemon appearance, applies the terminal `mono_font_family` crossover, and owns the translucent chrome plus opaque app-pane fills |
 | `crates/zz/src/window/frame.rs` | Linux client-side shadow, fixed derived corner geometry, border, and resize hit zones |

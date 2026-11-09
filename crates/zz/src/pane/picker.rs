@@ -4,13 +4,15 @@ use ala::{
 };
 use penna::IconName;
 use zz_client::new_chat::{
-    AgentChoice, ChatKey, ChatPicker, FolderChoice, agent_picker_place, close_picker_command,
-    first_chat_commands, folder_start, picker_folders, recent_folders, start_agent_commands,
+    AGENT_CHOICES, AgentChoice, ChatKey, ChatPicker, ChatStage, FolderChoice, MachineChoice,
+    agent_picker_place, close_picker_command, folder_start, landing_chat_commands, picker_folders,
+    picker_in_split, recent_folders, start_agent_commands,
 };
 use zz_protocol::{CommandInvocation, MuxSnapshot, PaneId, SessionId, WindowId};
 use zz_ui::pane::{ChatPickerRow, ChatPickerTarget, chat_picker_rows, pane_picker_row};
 
 use crate::mux::client::MuxClient;
+use crate::mux::hosts::HostId;
 use crate::window::corners::WindowCorners;
 use crate::{browser, config};
 
@@ -130,9 +132,15 @@ pub(crate) struct AgentChosen {
     pub(crate) from: SessionId,
 }
 
+pub(crate) struct ChooseMachine {
+    pub(crate) host: HostId,
+    pub(crate) pane: Option<PaneId>,
+}
+
 struct Chat {
     place: Option<(SessionId, WindowId)>,
     folders: Vec<FolderChoice>,
+    machines: Vec<MachineChoice>,
 }
 
 fn chat_picker(snapshot: &MuxSnapshot, pane: Option<PaneId>, chat_view: bool) -> Option<Chat> {
@@ -140,12 +148,37 @@ fn chat_picker(snapshot: &MuxSnapshot, pane: Option<PaneId>, chat_view: bool) ->
         return Some(Chat {
             place: None,
             folders: recent_folders(snapshot),
+            machines: Vec::new(),
         });
     };
     agent_picker_place(snapshot, pane, chat_view).map(|place| Chat {
         place: Some(place),
         folders: picker_folders(snapshot, pane),
+        machines: Vec::new(),
     })
+}
+
+fn machines(mux: &MuxClient) -> Vec<MachineChoice> {
+    let attached = mux.attached_host();
+    mux.fleet_hosts()
+        .map(|(host, name, _, snapshot)| MachineChoice {
+            host: u64::from(zz_ui::command::PaletteHostId::from(host).0),
+            name: if host == HostId::LOCAL {
+                crate::workspace::sidebar::local_hostname().to_string()
+            } else {
+                name.to_owned()
+            },
+            remote: host != HostId::LOCAL,
+            live: snapshot.is_some(),
+            current: host == attached,
+        })
+        .collect()
+}
+
+fn machine_host(machine: &MachineChoice) -> HostId {
+    HostId::from(zz_ui::command::PaletteHostId(
+        u32::try_from(machine.host).expect("machine choices carry host ids"),
+    ))
 }
 
 fn materialize_command(pane: PaneId, choice: PaneChoice) -> CommandInvocation {
@@ -176,6 +209,8 @@ pub(crate) struct PanePickerView {
 impl EventEmitter<AgentChosen> for PanePickerView {}
 
 impl EventEmitter<ChooseFolder> for PanePickerView {}
+
+impl EventEmitter<ChooseMachine> for PanePickerView {}
 
 impl PanePickerView {
     pub(crate) fn new(pane: PaneId, mux: ala::Entity<MuxClient>, cx: &mut Context<Self>) -> Self {
@@ -241,7 +276,37 @@ impl PanePickerView {
     }
 
     fn chat(&self, cx: &App) -> Option<Chat> {
-        chat_picker(&self.mux.read(cx).snapshot(), self.pane, self.chat_view)
+        let mux = self.mux.read(cx);
+        chat_picker(&mux.snapshot(), self.pane, self.chat_view).map(|chat| Chat {
+            machines: machines(mux),
+            ..chat
+        })
+    }
+
+    fn choose_machine(&mut self, chat: &Chat, index: usize, cx: &mut Context<Self>) {
+        let Some(machine) = chat.machines.get(index) else {
+            return;
+        };
+        if !machine.current && machine.live {
+            cx.emit(ChooseMachine {
+                host: machine_host(machine),
+                pane: self.pane,
+            });
+        }
+        self.chat.open(ChatStage::Agents);
+        cx.notify();
+    }
+
+    fn open_machines(&mut self, chat: &Chat, cx: &mut Context<Self>) {
+        if chat.machines.len() > 1 {
+            self.chat.open(ChatStage::Machines);
+            self.chat.selected = chat
+                .machines
+                .iter()
+                .position(|machine| machine.current)
+                .unwrap_or_default();
+            cx.notify();
+        }
     }
 
     fn start(&self, chat: &Chat, agent: AgentChoice, cx: &mut Context<Self>) {
@@ -249,7 +314,7 @@ impl PanePickerView {
         let folder = self.chat.folder(&chat.folders);
         let launches = crate::agent::launch::load();
         let (Some(pane), Some((from, window))) = (self.pane, chat.place) else {
-            for command in first_chat_commands(folder, agent, &launches) {
+            for command in landing_chat_commands(&mux.snapshot(), folder, agent, &launches) {
                 mux.execute(command);
             }
             return;
@@ -264,11 +329,20 @@ impl PanePickerView {
         match outcome {
             ChatKey::Start(agent) => self.start(chat, agent, cx),
             ChatKey::ChooseFolder => self.choose_folder(chat, cx),
+            ChatKey::ChooseMachine(index) => self.choose_machine(chat, index, cx),
+            ChatKey::Terminal => self.activate(PaneChoice::Terminal, cx),
+            ChatKey::Browser => self.activate(PaneChoice::Browser, cx),
             ChatKey::Close => self.close(cx),
             ChatKey::Changed => cx.notify(),
             ChatKey::Ignored => return false,
         }
         true
+    }
+
+    pub(crate) fn forget_folder(&mut self, cx: &mut Context<Self>) {
+        self.chat.folder = None;
+        self.chat.open(ChatStage::Agents);
+        cx.notify();
     }
 
     pub(crate) fn pick_folder(&mut self, folder: &str, cx: &mut Context<Self>) {
@@ -282,41 +356,71 @@ impl PanePickerView {
         });
     }
 
-    fn chat_rows(&self, chat: &Chat, cx: &mut Context<Self>) -> Vec<AnyElement> {
-        chat_picker_rows(self.id(), &self.chat, &chat.folders, true, cx)
-            .into_iter()
-            .map(|row| match row {
-                ChatPickerRow::Label(label) => label.into_any_element(),
-                ChatPickerRow::Item(target, row) => {
-                    let view = cx.entity();
-                    let hover_view = view.clone();
-                    row.on_mouse_move(move |_, _, cx| {
-                        hover_view.update(cx, |picker, cx| {
-                            let ChatPickerTarget::Agent(index, _) = target else {
-                                return;
-                            };
-                            if picker.chat.selected != index {
-                                picker.chat.selected = index;
-                                cx.notify();
+    fn sync_offers(&mut self, cx: &App) {
+        let split = self
+            .pane
+            .is_some_and(|pane| picker_in_split(&self.mux.read(cx).snapshot(), pane));
+        self.chat.terminal = split;
+        self.chat.browser = split && browser::controller::is_available(cx);
+    }
+
+    fn chat_rows(&mut self, chat: &Chat, cx: &mut Context<Self>) -> Vec<AnyElement> {
+        self.sync_offers(cx);
+        chat_picker_rows(
+            self.id(),
+            &self.chat,
+            &chat.folders,
+            &chat.machines,
+            true,
+            cx,
+        )
+        .into_iter()
+        .map(|row| match row {
+            ChatPickerRow::Label(label) => label.into_any_element(),
+            ChatPickerRow::Item(target, row) => {
+                let view = cx.entity();
+                let hover_view = view.clone();
+                row.on_mouse_move(move |_, _, cx| {
+                    hover_view.update(cx, |picker, cx| {
+                        let index = match target {
+                            ChatPickerTarget::Agent(index, _)
+                            | ChatPickerTarget::Machine(index) => index,
+                            ChatPickerTarget::Terminal => AGENT_CHOICES.len(),
+                            ChatPickerTarget::Browser => {
+                                AGENT_CHOICES.len() + usize::from(picker.chat.terminal)
                             }
-                        });
-                    })
-                    .on_mouse_down(MouseButton::Left, move |_, _, cx| {
-                        view.update(cx, |picker, cx| {
-                            let Some(chat) = picker.chat(cx) else {
-                                return;
-                            };
-                            match target {
-                                ChatPickerTarget::FolderLine => picker.choose_folder(&chat, cx),
-                                ChatPickerTarget::Agent(_, agent) => picker.start(&chat, agent, cx),
+                            ChatPickerTarget::MachineLine | ChatPickerTarget::FolderLine => return,
+                        };
+                        if picker.chat.selected != index {
+                            picker.chat.selected = index;
+                            cx.notify();
+                        }
+                    });
+                })
+                .on_mouse_down(MouseButton::Left, move |_, _, cx| {
+                    view.update(cx, |picker, cx| {
+                        let Some(chat) = picker.chat(cx) else {
+                            return;
+                        };
+                        match target {
+                            ChatPickerTarget::MachineLine => picker.open_machines(&chat, cx),
+                            ChatPickerTarget::Machine(index) => {
+                                picker.choose_machine(&chat, index, cx);
                             }
-                        });
-                        cx.stop_propagation();
-                    })
-                    .into_any_element()
-                }
-            })
-            .collect()
+                            ChatPickerTarget::FolderLine => picker.choose_folder(&chat, cx),
+                            ChatPickerTarget::Agent(_, agent) => picker.start(&chat, agent, cx),
+                            ChatPickerTarget::Terminal => {
+                                picker.activate(PaneChoice::Terminal, cx);
+                            }
+                            ChatPickerTarget::Browser => picker.activate(PaneChoice::Browser, cx),
+                        }
+                    });
+                    cx.stop_propagation();
+                })
+                .into_any_element()
+            }
+        })
+        .collect()
     }
 
     fn on_key_down(&mut self, event: &KeyDownEvent, _: &mut Window, cx: &mut Context<Self>) {
@@ -324,9 +428,15 @@ impl PanePickerView {
             let keystroke = &event.keystroke;
             let modifiers = keystroke.modifiers;
             let modified = modifiers.control || modifiers.alt || modifiers.platform;
+            self.chat.machines = chat.machines.len();
+            self.sync_offers(cx);
+            let opening = self.chat.stage != ChatStage::Machines;
             let outcome =
                 self.chat
                     .key(&keystroke.key, keystroke.key_char.as_deref(), modified, &[]);
+            if opening && self.chat.stage == ChatStage::Machines {
+                self.open_machines(&chat, cx);
+            }
             if self.settle(outcome, &chat, cx) {
                 cx.stop_propagation();
             }

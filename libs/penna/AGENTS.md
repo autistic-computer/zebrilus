@@ -139,12 +139,16 @@ How parity drives the pages:
   along a row. The span must be a flex item or inline-block. Call `pennaKit.ceilText(root)` after adding or
   changing runs, or `pennaKit.ceilText(root, selector)` for runs a page marks its own way.
 - `--penna-k` is the smoothing penna draws the role with (`Layer::smoothing`, as `superellipse(log2)`): the
-  theme's, capped at 2.5 on rows, and 1 (a plain round) for a full radius. `penna.css` applies it; don't
-  hardcode a `corner-shape`. A radius set on one button drops the full-radius round and draws the role's own
-  smoothing, which every role exports as `--penna-style-k`: set `--penna-k: var(--penna-style-k)` next to it.
+  theme's, and 1 (a plain round) for a full radius. `--penna-share` is the role's corner as a share of its height
+  (`Layer::share`, 0 for containers), and `kit.js` grows each corner and eases its shape the way ala does, so a
+  smoother corner looks as round as its radius says. `penna.css` applies it; don't
+  hardcode a `corner-shape`. A radius set on one button drops the full-radius round and the role's corner share and draws the role's own
+  smoothing, which every role exports as `--penna-style-k`: set `--penna-share: 0; --penna-k: var(--penna-style-k)` next to it.
 - An element with no role draws with the window's smoothing, as ala draws a quad with no smoothing of its own:
-  give a rounded box with no role `corner-shape: superellipse(var(--penna-window-k))`. A circle or pill keeps
-  the plain `round`, since ala draws a full radius round whatever the smoothing.
+  give a rounded box with no role `corner-shape: superellipse(var(--penna-window-k))` and its radius times
+  `--penna-corner-grow`, which ala grows a corner by at the window's smoothing (exact for a box at least twice as
+  tall as the grown corner). A circle or pill keeps the plain `round`, since ala draws a corner that reaches half
+  the side round whatever the smoothing.
 - Focus is the tokens' `data-state="focused"`: on a button, row, tab, list item, chip or tile it leaves the
   fill alone and sets `--penna-focus`. ala draws the ring 1.5px outside the border box with its own adaptive
   radius, which a CSS outline can't follow, so each widget's CSS swaps `penna.css`'s outline for an `::after`

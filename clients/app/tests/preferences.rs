@@ -106,6 +106,7 @@ fn a_preferences_file_written_before_appearance_moved_into_the_kit_loads_the_sam
             contrast: 1.4,
             reduce_transparency: false,
             ui_font_family: "Inter Variable".into(),
+            mono_font_family: String::new(),
             zoom: 1.35,
             motion: penna::foundation::motion::Motion::Default,
             density: penna::Density::Regular,
@@ -124,6 +125,7 @@ fn a_preferences_file_written_before_appearance_moved_into_the_kit_loads_the_sam
     expected["density"] = "regular".into();
     expected["reduce_transparency"] = false.into();
     expected["motion"] = "default".into();
+    expected["mono_font_family"] = "".into();
     let fields = expected.as_object_mut().unwrap();
     for retired in [
         "theme",

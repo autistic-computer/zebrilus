@@ -12,6 +12,19 @@
   --penna-segment-ink: var(--penna-ink);
 }
 
+.penna-segmented[data-width="full"] {
+  display: flex;
+  width: 100%;
+}
+
+.penna-segmented[data-width="full"] > .penna-segments {
+  flex: 1 1 0%;
+}
+
+.penna-segmented[data-width="full"] .penna-segment {
+  flex: 1 1 0;
+}
+
 .penna-segmented[data-size] {
   padding: var(--penna-space-2);
 }
@@ -51,7 +64,7 @@
   inset: var(--penna-ring-inset, -2.5px);
   border: 1.5px solid var(--penna-focus-neutral);
   border-radius: var(--penna-ring-r, 14px);
-  corner-shape: inherit;
+  corner-shape: superellipse(var(--penna-ring-k, 1));
   pointer-events: none;
 }
 

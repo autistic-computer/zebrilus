@@ -2,7 +2,7 @@ use ala::Hsla;
 
 use super::{
     Colorize as _,
-    color::{edge_weight, oklab, tint_offset},
+    color::{FOREGROUND_CONTRAST, edge_weight, fit_contrast, oklab, read_as_text, tint_offset},
 };
 
 pub const NEUTRAL_HUE: f32 = 60.0;
@@ -35,6 +35,19 @@ impl ThemeColor {
             background: shift(self.background, hue, amount, 1.0),
             foreground: shift(self.foreground, hue, amount, TEXT_TINT),
             ..*self
+        }
+    }
+
+    #[must_use]
+    pub fn fitted(self) -> Self {
+        let read = |color| read_as_text(color, self.background);
+        Self {
+            foreground: fit_contrast(self.foreground, self.background, FOREGROUND_CONTRAST),
+            accent: read(self.accent),
+            success: read(self.success),
+            warning: read(self.warning),
+            danger: read(self.danger),
+            ..self
         }
     }
 }

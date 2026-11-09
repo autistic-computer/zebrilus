@@ -46,6 +46,7 @@ fn a_welcome_hands_its_clock_to_the_materialized_hello() {
             client_instance_id: zz_protocol::ClientInstanceId(3),
             caps: 0,
             clock: 1_760_000_000,
+            platform: zz_protocol::HostPlatform::default(),
         },
     )
     .unwrap();
@@ -272,6 +273,7 @@ fn legacy_command_attach_reconnects_with_the_original_route() {
                     status: zz_protocol::StatusLine::default(),
                     key_tables: Vec::new(),
                     clock: 0,
+                    platform: zz_protocol::HostPlatform::default(),
                 },
             )))
             .unwrap();
@@ -294,6 +296,7 @@ fn legacy_command_attach_reconnects_with_the_original_route() {
         },
         server_id: Some(37),
         _ssh_forward: None,
+        _tailnet_forward: None,
         unverified: None,
         read_only: false,
     };

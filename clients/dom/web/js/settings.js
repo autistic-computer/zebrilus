@@ -380,11 +380,10 @@ function swatches(picks) {
   const custom = accent.custom;
   const input = h("input", { type: "color", value: custom || "#000000", tabindex: -1 });
   input.addEventListener("change", () => set({ accent: preferences.accentHex(input.value) || input.value }));
-  const customSelected = accent.selected !== "ink" && !accent.named.some((named) => named.id === accent.selected);
+  const customSelected = !accent.named.some((named) => named.id === accent.selected);
   return h(
     "div",
     { class: "settings-swatches" },
-    swatch("ink", accent.ink),
     accent.named.map((named) => swatch(named.id, named.color)),
     ringed(customSelected, accent.radius, h("label", { class: "settings-swatch custom", style: { background: custom || "transparent", "border-radius": radius, position: "relative" } }, input)),
   );
@@ -441,6 +440,15 @@ function appearancePage() {
           placeholder: "System default",
           items: [{ title: "System default", value: "" }, ...availableFonts(UI_FONTS).map((font) => ({ title: font, value: font, font }))],
           onpick: (value) => set({ ui_font_family: value }),
+        }),
+      }),
+      entry({
+        title: "Mono font",
+        control: choose({
+          value: picks.mono,
+          placeholder: "Terminal font",
+          items: [{ title: "Terminal font", value: "" }, ...availableFonts(MONO_FONTS).map((font) => ({ title: font, value: font, font }))],
+          onpick: (value) => set({ mono_font_family: value }),
         }),
       }),
     ]),
@@ -524,7 +532,7 @@ function lines(sample) {
 }
 
 function headerTitle(glyph, title) {
-  return h("div", { "data-penna": "button.title" }, icon(glyph), text(title), h("button", { "data-penna": "icon-button.bar", "data-action": "close", title: "Close pane" }, icon("xmark")));
+  return h("div", { "data-penna": "button.title" }, icon(glyph), text(title), h("button", { "data-penna": "button.quiet", "data-inside": true, "data-action": "close", title: "Close pane" }, icon("xmark")));
 }
 
 function previewPane(index, body) {
@@ -831,7 +839,8 @@ function systemPage() {
     heading("System"),
     stack("Command palette", [
       entry({
-        title: "Navigation layout",
+        title: "Window chooser",
+        description: "Sessions and windows before you type",
         control: choose({
           value: p.palette_grouped ? "grouped" : "flat",
           className: "choice",
@@ -839,7 +848,7 @@ function systemPage() {
           onpick: (value) => set({ palette_grouped: value === "grouped" }),
         }),
       }),
-      entry({ title: "Command shortcuts", control: toggle(p.palette_show_keys, "Command shortcuts", (value) => set({ palette_show_keys: value })) }),
+      entry({ title: "Show shortcuts", description: "Each command's keys beside it", control: toggle(p.palette_show_keys, "Show shortcuts", (value) => set({ palette_show_keys: value })) }),
     ]),
   ];
 }

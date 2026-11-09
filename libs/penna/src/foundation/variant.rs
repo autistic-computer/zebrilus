@@ -1,5 +1,4 @@
 use ala::{Hsla, Pixels, StatefulInteractiveElement, Styled, px};
-use serde::{Deserialize, Serialize};
 
 use super::{
     Colorize as _, Theme,
@@ -59,14 +58,6 @@ impl Emphasis {
             Self::Ghost => "ghost",
         }
     }
-}
-
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum PrimaryStyle {
-    #[default]
-    Foreground,
-    Accent,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -223,11 +214,7 @@ const TONE_TEXT_WEIGHT: f32 = 0.7;
 impl Theme {
     pub fn tone(&self, tone: Tone) -> Hsla {
         match tone {
-            Tone::Neutral => self.foreground,
-            Tone::Primary => match self.primary {
-                PrimaryStyle::Foreground => self.foreground,
-                PrimaryStyle::Accent => self.accent,
-            },
+            Tone::Neutral | Tone::Primary => self.foreground,
             Tone::Danger => self.danger,
             Tone::Warning => self.warning,
             Tone::Success => self.success,
@@ -285,20 +272,11 @@ impl Theme {
         } else {
             tone
         };
-        let neutral = tone == Tone::Neutral
-            || (tone == Tone::Primary && self.primary == PrimaryStyle::Foreground);
+        let neutral = matches!(tone, Tone::Neutral | Tone::Primary);
         let ink = ground.ink;
         let color = if neutral { ink } else { self.tone(tone) };
-        let window = ground == self.ground();
         let clear = self.transparent;
-        let focus = match tone {
-            Tone::Danger | Tone::Warning | Tone::Success | Tone::Accent => color,
-            Tone::Neutral | Tone::Primary => match self.primary {
-                PrimaryStyle::Foreground => ink,
-                PrimaryStyle::Accent => self.accent,
-            },
-        }
-        .opacity(FOCUS_ALPHA);
+        let focus = color.opacity(FOCUS_ALPHA);
         let soft = |step: u8| {
             if neutral {
                 ground.fill.washed(step + 1)
@@ -306,19 +284,9 @@ impl Theme {
                 color.opacity(SOFT_ALPHA[usize::from(step)])
             }
         };
-        let selected = if neutral && window {
-            self.selection_background()
-        } else {
-            soft(2)
-        };
-        let on_accent = self
-            .on_accent
-            .unwrap_or_else(|| readable_on(self.accent.opaque()));
-        let accent_selection = neutral && window;
+        let selected = soft(2);
         let readable = |fill: Hsla, text: Hsla| {
-            if accent_selection {
-                on_accent
-            } else if fill.a > OPAQUE_ENOUGH {
+            if fill.a > OPAQUE_ENOUGH {
                 readable_on(fill)
             } else {
                 text
@@ -334,10 +302,8 @@ impl Theme {
         } else {
             color.opacity(TONE_OUTLINE_ALPHA)
         };
-        let solid_text = if tone == Tone::Accent
-            || (tone == Tone::Primary && self.primary == PrimaryStyle::Accent)
-        {
-            on_accent
+        let solid_text = if tone == Tone::Accent {
+            self.accent_ink()
         } else {
             readable_on(color)
         };
@@ -440,9 +406,9 @@ mod tests {
     use crate::ThemeColor;
     use ala::hsla;
 
-    fn accent_theme(on_accent: Option<Hsla>) -> Theme {
+    fn accent_theme(accent: &str, on_accent: Option<Hsla>) -> Theme {
         let mut theme = Theme::from(&*ThemeColor::dark());
-        theme.primary = PrimaryStyle::Accent;
+        theme.accent = crate::parse_hex(accent).unwrap();
         theme.colors.on_accent = on_accent;
         theme
     }
@@ -450,23 +416,27 @@ mod tests {
     #[test]
     fn accent_fills_take_the_themes_accent_text() {
         let ink = hsla(0.5, 0.5, 0.5, 1.0);
-        let theme = accent_theme(Some(ink));
-        assert_eq!(theme.paint(Tone::Primary, Emphasis::Solid).text, ink);
-        assert_eq!(
-            theme.paint(Tone::Neutral, Emphasis::Ghost).selected_text,
-            ink
-        );
+        let theme = accent_theme("#3183ff", Some(ink));
+        assert_eq!(theme.paint(Tone::Accent, Emphasis::Solid).text, ink);
         assert_ne!(theme.paint(Tone::Danger, Emphasis::Solid).text, ink);
     }
 
     #[test]
-    fn accent_text_reads_on_the_accent_when_the_theme_names_none() {
-        let theme = accent_theme(None);
-        let expected = readable_on(theme.accent.opaque());
-        assert_eq!(theme.paint(Tone::Primary, Emphasis::Solid).text, expected);
-        assert_eq!(
-            theme.paint(Tone::Neutral, Emphasis::Ghost).selected_text,
-            expected
-        );
+    fn a_vivid_accent_carries_the_light_ink_and_a_pale_one_the_dark() {
+        let light = readable_on(hsla(0., 0., 0., 1.));
+        let dark = readable_on(hsla(0., 0., 1., 1.));
+        let vivid = accent_theme("#3183ff", None);
+        assert_eq!(readable_on(vivid.accent), dark);
+        assert_eq!(vivid.paint(Tone::Accent, Emphasis::Solid).text, light);
+        let pale = accent_theme("#ffe680", None);
+        assert_eq!(pale.paint(Tone::Accent, Emphasis::Solid).text, dark);
+    }
+
+    #[test]
+    fn primary_is_the_ink_whatever_the_accent() {
+        let theme = accent_theme("#3183ff", None);
+        let primary = theme.paint(Tone::Primary, Emphasis::Solid);
+        assert_eq!(primary.fill, theme.foreground);
+        assert_eq!(primary.text, readable_on(theme.foreground));
     }
 }

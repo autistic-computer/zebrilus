@@ -35,6 +35,21 @@ pub const CLAUDE_ICON: IconName = IconName::Asset("icons/claude.svg");
 pub const OPENAI_ICON: IconName = IconName::Asset("icons/openai.svg");
 pub const CHROME_ICON: IconName = IconName::Asset("icons/brand-chrome.svg");
 
+#[must_use]
+pub const fn platform_icon(platform: zz_protocol::HostPlatform) -> Option<IconName> {
+    use zz_protocol::{HostPlatform, LinuxDistro};
+    Some(IconName::Asset(match platform {
+        HostPlatform::Unknown => return None,
+        HostPlatform::Macos => "icons/macos.svg",
+        HostPlatform::Windows => "icons/windows.svg",
+        HostPlatform::Linux(LinuxDistro::Ubuntu) => "icons/ubuntu.svg",
+        HostPlatform::Linux(LinuxDistro::Debian) => "icons/debian.svg",
+        HostPlatform::Linux(LinuxDistro::Arch) => "icons/arch.svg",
+        HostPlatform::Linux(LinuxDistro::Fedora) => "icons/fedora.svg",
+        HostPlatform::Linux(LinuxDistro::Other) => "icons/linux.svg",
+    }))
+}
+
 #[derive(rust_embed::RustEmbed)]
 #[folder = "assets"]
 #[include = "programs/*.svgz"]
@@ -225,18 +240,18 @@ pub fn program_glyph_path(program: &Program) -> SharedString {
     .into()
 }
 
-pub fn program_tile(
-    program: &'static Program,
-    size: Pixels,
-    around: Pixels,
-    dimmed: f32,
-    cx: &App,
-) -> ala::Div {
+#[must_use]
+pub fn program_icon(program: &Program) -> Option<Icon> {
+    matches!(program.look, Look::Mark { .. })
+        .then(|| Icon::empty().path(program_glyph_path(program)))
+}
+
+pub fn program_tile(program: &'static Program, size: Pixels, dimmed: f32, cx: &App) -> ala::Div {
     let theme = cx.theme();
     Face {
         program,
         size,
-        radius: stack_radius(size, around, cx),
+        radius: stack_radius(size, cx),
         smoothing: stack_look(None, PaintState::Rest, cx).smoothing,
         dark: theme.is_dark(),
         ground: theme.ground().fill,
@@ -287,20 +302,74 @@ pub fn program_mark(
 mod tests {
     use ala::AssetSource as _;
 
-    use super::{Assets, CHROME_ICON, CLAUDE_ICON, OPENAI_ICON, ZZ_LOGO};
+    use zz_protocol::{HostPlatform, LinuxDistro};
+
+    use super::{Assets, CHROME_ICON, CLAUDE_ICON, OPENAI_ICON, ZZ_LOGO, platform_icon};
 
     #[test]
     fn app_icons_load_from_the_app_assets() {
+        let platforms = [
+            HostPlatform::Macos,
+            HostPlatform::Windows,
+            HostPlatform::Linux(LinuxDistro::Other),
+            HostPlatform::Linux(LinuxDistro::Ubuntu),
+            HostPlatform::Linux(LinuxDistro::Debian),
+            HostPlatform::Linux(LinuxDistro::Arch),
+            HostPlatform::Linux(LinuxDistro::Fedora),
+        ]
+        .map(|platform| platform_icon(platform).expect("a known platform has an icon"));
         for path in [
             ZZ_LOGO,
             CLAUDE_ICON.path(),
             OPENAI_ICON.path(),
             CHROME_ICON.path(),
-        ] {
+        ]
+        .into_iter()
+        .chain(platforms.iter().map(crate::IconName::path))
+        {
             let loaded = Assets
                 .load(path)
                 .unwrap_or_else(|error| panic!("{path} failed to load: {error}"));
             assert!(loaded.is_some(), "{path} is not in crates/zz-ui/assets");
+        }
+    }
+
+    #[test]
+    fn host_marks_fill_the_icon_live_area_centred() {
+        for (platform, center_y) in [
+            (HostPlatform::Macos, 11.45),
+            (HostPlatform::Windows, 12.0),
+            (HostPlatform::Linux(LinuxDistro::Other), 12.0),
+            (HostPlatform::Linux(LinuxDistro::Ubuntu), 12.0),
+            (HostPlatform::Linux(LinuxDistro::Debian), 12.0),
+            (HostPlatform::Linux(LinuxDistro::Arch), 12.0),
+            (HostPlatform::Linux(LinuxDistro::Fedora), 12.0),
+        ] {
+            let path = platform_icon(platform)
+                .expect("a known platform has an icon")
+                .path();
+            let svg = Assets
+                .load(path)
+                .ok()
+                .flatten()
+                .expect("the mark is bundled");
+            let ink = usvg::Tree::from_data(&svg, &usvg::Options::default())
+                .expect("the mark parses")
+                .root()
+                .abs_bounding_box();
+            let measured = [
+                ink.width().max(ink.height()),
+                f32::midpoint(ink.left(), ink.right()),
+                f32::midpoint(ink.top(), ink.bottom()),
+            ];
+            let expected = [20.0, 12.0, center_y];
+            assert!(
+                measured
+                    .iter()
+                    .zip(expected)
+                    .all(|(measured, expected)| (measured - expected).abs() < 0.02),
+                "{path}: ink side and centre {measured:?}, want {expected:?}"
+            );
         }
     }
 }

@@ -223,7 +223,7 @@
   height: 12px;
   border-radius: calc(var(--penna-radius) / 2);
   corner-shape: superellipse(var(--penna-window-k));
-  border: 1px solid var(--penna-primary);
+  border: 1px solid var(--penna-accent);
 }
 
 .penna-chat-plan-current::after {
@@ -231,7 +231,7 @@
   width: 6px;
   height: 6px;
   border-radius: 1.5px;
-  background: var(--penna-primary);
+  background: var(--penna-accent);
 }
 
 .penna-chat-composer {
@@ -245,6 +245,8 @@
 }
 
 .penna-chat-field[data-penna] {
+  --penna-around: 6px;
+  --penna-around-rows: 28px;
   display: flex;
   align-items: flex-end;
   gap: 6px;

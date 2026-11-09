@@ -10,8 +10,8 @@ use web_time::{Duration, Instant};
 
 use crate::foundation::dismissal::{Dismissal, Overdrag, Tick, coast, coasting};
 use crate::{
-    ActiveTheme as _, Emphasis, Ground, Icon, IconName, Layer, PaintState, Shape, Space,
-    StyledExt as _, Surface, SurfaceRole, Tone,
+    ActiveTheme as _, Emphasis, Ground, Icon, IconName, Layer, PaintState, Space, StyledExt as _,
+    Surface, SurfaceRole, Tone,
     components::button::Button,
     foundation::roles,
     foundation::{InteractiveSurfaceExt as _, muted_on, row_corners, row_radius},
@@ -27,7 +27,6 @@ const OPTION_HEIGHT: f32 = 52.0;
 const DETAIL_HEIGHT: f32 = 64.0;
 const TILE: f32 = 40.0;
 const TILE_ROW_HEIGHT: f32 = 56.0;
-const TILE_ROUNDING: f32 = 0.28;
 const MAX_HEIGHT: f32 = 0.85;
 const FLOAT_MARGIN: f32 = Space::S8.design_px();
 const RISE: f32 = 0.3;
@@ -317,11 +316,6 @@ fn icon_tile(icon: Icon, size: f32, layer: &Layer, cx: &App) -> Div {
     let theme = cx.theme();
     let role = SurfaceRole::ICON_TILE;
     let tile = theme.layer(Surface::new(role).on(layer.ground), PaintState::Rest);
-    let radius = match theme.style(role).shape {
-        Shape::Square => px(0.0),
-        Shape::Round => px(size * TILE_ROUNDING),
-        Shape::Pill => px(size / 2.0),
-    };
     div()
         .flex()
         .flex_none()
@@ -329,7 +323,6 @@ fn icon_tile(icon: Icon, size: f32, layer: &Layer, cx: &App) -> Div {
         .justify_center()
         .size(px(size))
         .layer(&tile)
-        .rounded(radius)
         .child(icon.size(px(size / 2.0)))
 }
 

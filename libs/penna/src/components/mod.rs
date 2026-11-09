@@ -8,6 +8,7 @@ pub mod field;
 pub mod icon;
 pub mod input;
 pub mod kbd;
+pub mod key_field;
 pub mod label;
 pub mod list;
 pub mod menu;

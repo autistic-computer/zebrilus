@@ -46,6 +46,7 @@ pub struct Panel {
     plate: Plate,
     look: PanelLook,
     inset: Option<Pixels>,
+    rows: Option<Pixels>,
 }
 
 impl Panel {
@@ -55,12 +56,19 @@ impl Panel {
             plate: Plate::new(id, look.role()).announce(look.announced()),
             look,
             inset: None,
+            rows: None,
         }
     }
 
     #[must_use]
     pub fn inset(mut self, inset: Pixels) -> Self {
         self.inset = Some(inset);
+        self
+    }
+
+    #[must_use]
+    pub fn rows(mut self, height: Pixels) -> Self {
+        self.rows = Some(height);
         self
     }
 }
@@ -71,12 +79,16 @@ impl RenderOnce for Panel {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let opaque = self.look == PanelLook::Plain;
         let inset = self.inset;
+        let rows = self.rows.unwrap_or_else(|| {
+            crate::rems_from_px(crate::Size::Medium.control_px()).to_pixels(window.rem_size())
+        });
+        let row_corner = crate::ActiveTheme::theme(cx).control_corner(rows);
         self.plate.paint_with(window, cx, move |layer| {
             if opaque {
                 layer.fill = layer.ground.fill;
             }
             if let Some(inset) = inset {
-                layer.radius = outer_radius(layer, inset);
+                layer.radius = outer_radius(layer, row_corner, inset);
             }
         })
     }

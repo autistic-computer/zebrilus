@@ -6,8 +6,6 @@ disallowed-methods = [
     { path = "penna::StyledExt::chosen_ring", reason = "paint chrome with a kit component and its look so the theme reaches it; see penna's knowledge/designs/kit.md" },
     { path = "penna::knob_shadow", reason = "paint chrome with a kit component and its look so the theme reaches it; see penna's knowledge/designs/kit.md" },
     { path = "penna::Theme::control_radius", reason = "paint chrome with a kit component and its look so the theme reaches it; see penna's knowledge/designs/kit.md" },
-    { path = "penna::Theme::menu_radius", reason = "paint chrome with a kit component and its look so the theme reaches it; see penna's knowledge/designs/kit.md" },
-    { path = "penna::Theme::row_radius", reason = "paint chrome with a kit component and its look so the theme reaches it; see penna's knowledge/designs/kit.md" },
     { path = "ala::rgb", reason = "chrome colors must come from cx.theme()" },
     { path = "ala::rgba", reason = "chrome colors must come from cx.theme()" },
     { path = "ala::hsla", reason = "chrome colors must come from cx.theme()" },

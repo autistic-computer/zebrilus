@@ -1242,6 +1242,22 @@ impl InputState {
         };
         self.replace_all(&stepped, cx);
     }
+
+    pub(super) fn scrub_to(&mut self, from: &str, steps: f64, cx: &mut Context<Self>) {
+        if self.disabled {
+            return;
+        }
+        let next = number::scrubbed(
+            from,
+            steps,
+            self.step.unwrap_or(1.0),
+            self.minimum,
+            self.maximum,
+        );
+        if next != self.text.as_str() {
+            self.replace_all(&next, cx);
+        }
+    }
 }
 
 impl InputState {

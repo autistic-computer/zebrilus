@@ -28,11 +28,7 @@ pub const WINDOW_CONTROLS: SurfaceRole = SurfaceRole::under(
     "Window controls",
     "Minimize, maximize and close on Windows and Linux",
 )
-.with(
-    P.shape(Shape::Square)
-        .hover(Highlight::Tint)
-        .selected(Highlight::None),
-);
+.with(P.hover(Highlight::Tint).selected(Highlight::None));
 pub const SIDEBAR: SurfaceRole = SurfaceRole::new(
     "sidebar",
     Kind::Panel,
@@ -62,9 +58,9 @@ pub const SETTINGS_TILE: SurfaceRole = SurfaceRole::under(
     &SurfaceRole::TILE,
     "settings.tile",
     "Picker tiles",
-    "Pickable tiles in Settings, such as the theme and mode tiles",
+    "Pickable tiles in Settings, such as the theme, mode and app icon tiles",
 )
-.with(P.fill(Fill::None));
+.with(P.fill(Fill::None).selected(Highlight::Tint));
 pub const BAR_RULE: SurfaceRole = SurfaceRole::new(
     "rule.bar",
     Kind::Rule,
@@ -168,6 +164,17 @@ pub const TAB_WINDOW: SurfaceRole = SurfaceRole::under(
     "One pill per window in the title bar",
 )
 .with(P.ink(Ink::Rest).selected(Highlight::Glass));
+pub const TAB_STRIP: SurfaceRole = SurfaceRole::under(
+    &SurfaceRole::TAB,
+    "tab.strip",
+    "Tab strips",
+    "The track the window tabs sit in, in the title bar",
+)
+.with(
+    P.fill(Fill::Tint)
+        .hover(Highlight::None)
+        .selected(Highlight::None),
+);
 pub const TAB_PAGE: SurfaceRole = SurfaceRole::under(
     &SurfaceRole::TAB,
     "tab.page",
@@ -242,9 +249,9 @@ pub const ICON_BUTTON_ROW: SurfaceRole = SurfaceRole::under(
     &SurfaceRole::ICON_BUTTON,
     "icon-button.row",
     "Row actions",
-    "The + and × buttons that show on a hovered row",
+    "The + and × buttons that show on a hovered row, washed when pointed at",
 )
-.with(P.hover(Highlight::None).selected(Highlight::None));
+.with(P.selected(Highlight::None));
 pub const ICON_BUTTON_BAR: SurfaceRole = SurfaceRole::under(
     &SurfaceRole::ICON_BUTTON,
     "icon-button.bar",
@@ -364,9 +371,8 @@ pub const FIELD_COMPOSER: SurfaceRole = SurfaceRole::under(
     &SurfaceRole::TEXT_AREA,
     "field.composer",
     "Composer",
-    "The pill you write to an agent in",
-)
-.with(P.shape(Shape::Pill));
+    "The field you write to an agent in",
+);
 pub const FIELD_ADDRESS: SurfaceRole = SurfaceRole::new(
     "field.address",
     Kind::Field,
@@ -375,8 +381,11 @@ pub const FIELD_ADDRESS: SurfaceRole = SurfaceRole::new(
 )
 .with(P.fill(Fill::None));
 
-pub const RECIPES: [SurfaceRole; 31] = [
+pub(crate) const RIMMED_PICKS: [SurfaceRole; 2] = [TAB_WINDOW, TAB_PAGE];
+
+pub const RECIPES: [SurfaceRole; 32] = [
     TAB_WINDOW,
+    TAB_STRIP,
     TAB_PAGE,
     TAB_TRAY,
     CHIP_BAR,

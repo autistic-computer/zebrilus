@@ -11,8 +11,9 @@ pub use blocks::inspector::Inspector;
 pub use blocks::notice::Notice;
 pub use blocks::steps::Steps;
 pub use blocks::title_bar::{
-    MACOS_TRAFFIC_LIGHT_SPAN, TITLE_BAR_HEIGHT, TitleBar, WindowControls, draws_window_controls,
-    macos_traffic_light_clearance, window_controls_width,
+    MACOS_TRAFFIC_LIGHT_SPAN, TITLE_BAR_HEIGHT, TitleBar, WINDOW_CONTROLS_INSET,
+    WINDOW_CONTROLS_SPAN, WindowControls, draws_window_controls, macos_traffic_light_clearance,
+    window_controls_width,
 };
 pub use components::bar::{Bar, BarLook};
 pub use components::card::{Card, CardLook};
@@ -21,7 +22,7 @@ pub use components::icon::{Assets, Icon, IconName};
 pub use components::label::Label;
 pub use components::panel::{Panel, PanelLook};
 pub use components::row::{Row, RowLook};
-pub use components::tab::{Tab, TabLook};
+pub use components::tab::{Tab, TabLook, TabStrip};
 pub use components::tile::{Tile, TileVariant};
 pub use components::well::Well;
 pub use foundation::content::ContentLook;
@@ -31,12 +32,12 @@ pub use foundation::{
     CORNER_SMOOTHING, Colorize, Density, Disableable, Edge, ElementExt, Elevation, Emphasis,
     FOCUS_RING_WIDTH, Fill, Ground, Highlight, IndexPath, Ink, InteractiveElementExt,
     InteractivePaintExt, Kind, Layer, PANE_HEADER_CONTROL_HEIGHT, PANE_HEADER_HEIGHT, Paint,
-    PaintExt, PaintState, PrimaryStyle, RULE_WIDTH, RuleLook, ScrollbarShow, Selectable, Shadow,
-    ShadowMaterial, Shape, Side, Sizable, Size, Smoothing, Space, Style, StylePatch, StyledExt,
-    Surface, SurfaceRole, TextStyle, Theme, ThemeColor, ThemeMode, Tone, UiZoom, center,
-    cubic_ease, h_flex, inline, inset, knob_shadow, list_row, muted_on, oklab_lightness, oklch,
-    parse_hex, rems_from_px, row_state, split, stack, tiles, to_hex, to_oklch, v_flex,
-    window_border, window_paddings,
+    PaintExt, PaintState, RULE_WIDTH, RuleLook, ScrollbarShow, Selectable, Shadow, ShadowMaterial,
+    Shape, Side, Sizable, Size, Smoothing, Space, Style, StylePatch, StyledExt, Surface,
+    SurfaceRole, TextStyle, Theme, ThemeColor, ThemeMode, Tone, UiZoom, center, cubic_ease, h_flex,
+    inline, inset, knob_shadow, list_row, muted_on, oklab_lightness, oklch, parse_hex,
+    rems_from_px, row_state, split, stack, tiles, to_hex, to_oklch, v_flex, window_border,
+    window_paddings,
 };
 
 pub fn init(cx: &mut ala::App) {
@@ -44,6 +45,7 @@ pub fn init(cx: &mut ala::App) {
     #[cfg(feature = "editor")]
     blocks::code_editor::init(cx);
     components::input::init(cx);
+    components::key_field::init(cx);
     components::menu::init(cx);
     foundation::overlay::init(cx);
     components::popover::init(cx);
@@ -61,6 +63,18 @@ pub(crate) fn init_without_theme(cx: &mut ala::App) {
         ..InterfaceTheme::default()
     }
     .activate(Some(ThemeMode::Light), None, cx);
+}
+
+#[cfg(test)]
+pub(crate) fn picked_menu_fill(cx: &ala::App) -> ala::Hsla {
+    let theme = cx.theme();
+    let menu = theme.ground_of(Surface::new(SurfaceRole::POPOVER));
+    theme
+        .layer(
+            Surface::new(SurfaceRole::MENU_ITEM).on(menu),
+            PaintState::Selected,
+        )
+        .fill
 }
 
 #[cfg(test)]

@@ -167,6 +167,34 @@ pub fn pane_program(pane: &PaneSnapshot) -> Option<&'static Program> {
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PaneHeading {
+    pub title: String,
+    pub program: Option<&'static Program>,
+}
+
+#[must_use]
+pub fn pane_heading(pane: &PaneSnapshot) -> PaneHeading {
+    if !matches!(pane.kind, PaneKindSnapshot::Terminal) {
+        return PaneHeading {
+            title: pane_label(pane),
+            program: None,
+        };
+    }
+    let program = pane_program(pane);
+    let title = program
+        .map(|program| program.name.to_owned())
+        .or_else(|| {
+            pane.summary
+                .process
+                .first()
+                .map(|entry| last_component(entry).to_owned())
+        })
+        .or_else(|| (!pane.summary.shell.is_empty()).then(|| pane.summary.shell.clone()))
+        .unwrap_or_else(|| pane_label(pane));
+    PaneHeading { title, program }
+}
+
 #[must_use]
 pub fn pane_agent(pane: &PaneSnapshot) -> Option<AgentProvider> {
     match pane_program(pane)?.id {
@@ -243,28 +271,12 @@ pub fn summarize_chat(window: &WindowSnapshot) -> Option<WindowSummary> {
         .map(|pane| pane_attention(pane))
         .max()
         .unwrap_or_default();
-    let Some(agent) = panes
+    let agent = panes
         .iter()
         .copied()
         .filter(runs_agent)
         .find(|pane| pane.id == window.active_pane)
-        .or_else(|| panes.iter().copied().find(runs_agent))
-    else {
-        let picking = !panes.is_empty()
-            && panes
-                .iter()
-                .all(|pane| matches!(pane.kind, PaneKindSnapshot::Picker));
-        return picking.then(|| WindowSummary {
-            window: window.id,
-            index: window.index,
-            headline: window.active_pane,
-            title: "New agent".to_owned(),
-            detail: vec![part("Pick a CLI", Tone::Muted)],
-            changed_at: 0,
-            tiles: panes.iter().copied().map(pane_tile).collect(),
-            attention,
-        });
-    };
+        .or_else(|| panes.iter().copied().find(runs_agent))?;
     let title = window_title(window, Some(agent), Some(agent));
     let quiet = agent.status.is_none() && !agent.summary.unseen && !agent.dead;
     let detail = match (quiet, location(agent), pane_program(agent)) {
@@ -574,7 +586,8 @@ fn browser_host(url: &str) -> String {
 #[cfg(test)]
 mod tests {
     use zz_protocol::{
-        BrowserDescriptor, EditorDescriptor, LayoutNode, PaneStatus, PaneSummary, SplitId,
+        AgentDescriptor, BrowserDescriptor, EditorDescriptor, LayoutNode, PaneStatus, PaneSummary,
+        SplitId,
     };
 
     use super::*;
@@ -602,6 +615,31 @@ mod tests {
             title: title.to_owned(),
             ..pane(id, PaneKindSnapshot::Terminal)
         }
+    }
+
+    #[test]
+    fn a_terminal_is_headed_by_its_program_then_its_command_then_its_title() {
+        let heading = |title: &str, process: &[&str]| {
+            let mut pane = terminal(1, title);
+            pane.summary.process = process.iter().map(|entry| (*entry).to_owned()).collect();
+            let heading = pane_heading(&pane);
+            (heading.title, heading.program.map(|program| program.id))
+        };
+        assert_eq!(
+            heading("vim ~/dev/zz", &["/opt/homebrew/bin/nvim", "nvim"]),
+            ("Neovim".to_owned(), Some("neovim"))
+        );
+        assert_eq!(
+            heading("~/dev/zz", &["/usr/local/bin/frobnicate", "frobnicate"]),
+            ("frobnicate".to_owned(), None)
+        );
+        assert_eq!(heading("bash", &[]), ("bash".to_owned(), None));
+        let mut fish = terminal(3, "~/d/a/zebrilus");
+        fish.summary.shell = "fish".to_owned();
+        assert_eq!(pane_heading(&fish).title, "fish");
+        let mut chat = agent(2, "Fix the build");
+        chat.kind = PaneKindSnapshot::Agent(AgentDescriptor::default());
+        assert_eq!(pane_heading(&chat).title, "Fix the build");
     }
 
     fn agent(id: u64, title: &str) -> PaneSnapshot {
@@ -1279,18 +1317,22 @@ mod tests {
     }
 
     #[test]
-    fn only_agents_and_pickers_make_chats() {
+    fn only_windows_with_an_agent_are_chats() {
         assert_eq!(summarize_chat(&window(1, vec![terminal(1, "zsh")])), None);
-        let picking = summarize_chat(&window(2, vec![pane(5, PaneKindSnapshot::Picker)]))
-            .expect("a window of pickers is a chat being started");
-        assert_eq!(picking.title, "New agent");
-        assert_eq!(texts(&picking), [("Pick a CLI", Tone::Muted)]);
-        assert_eq!(picking.tiles[0].tag, PaneTag::Picker);
-        let split = window(
-            3,
-            vec![terminal(1, "zsh"), pane(2, PaneKindSnapshot::Picker)],
+        assert_eq!(
+            summarize_chat(&window(2, vec![pane(5, PaneKindSnapshot::Picker)])),
+            None
         );
-        assert_eq!(summarize_chat(&split), None);
+        let split = summarize_chat(&window(
+            3,
+            vec![
+                terminal(1, "zsh"),
+                pane(2, PaneKindSnapshot::Picker),
+                agent(3, "Docs"),
+            ],
+        ))
+        .expect("a window with an agent is a chat");
+        assert_eq!(split.headline, PaneId(3));
     }
 
     #[test]

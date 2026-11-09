@@ -223,7 +223,7 @@ fn install_targets<'a>(
 ) -> Result<Vec<(&'a str, &'a zz_daemon_client::SshEndpoint)>, String> {
     let ssh = |host: &'a HostEntry| match &host.endpoint {
         Endpoint::Ssh(endpoint) => Some((host.name.as_str(), endpoint)),
-        Endpoint::Local(_) => None,
+        Endpoint::Local(_) | Endpoint::Tailnet(_) => None,
     };
     let InstallHosts::Named(names) = selection else {
         let targets = hosts.iter().filter_map(ssh).collect::<Vec<_>>();

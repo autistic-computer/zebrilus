@@ -18,9 +18,9 @@ fn row_px(size: Size, cx: &App) -> Pixels {
     rems_from_px(size.control_px()).to_pixels(cx.theme().font_size)
 }
 
-pub(crate) fn outer_radius(layer: &Layer, inset: Pixels) -> Pixels {
+pub(crate) fn outer_radius(layer: &Layer, row_corner: Pixels, inset: Pixels) -> Pixels {
     if layer.radius > px(0.0) && layer.radius < FULL_CORNER_RADIUS {
-        layer.radius + inset
+        row_corner + inset
     } else {
         layer.radius
     }

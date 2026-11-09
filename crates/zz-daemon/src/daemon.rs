@@ -494,6 +494,27 @@ mod edge_facts_tests;
 
 const CLIPBOARD_QUERY_TIMEOUT: Duration = Duration::from_secs(5);
 
+fn host_platform() -> zz_protocol::HostPlatform {
+    static PLATFORM: std::sync::OnceLock<zz_protocol::HostPlatform> = std::sync::OnceLock::new();
+    *PLATFORM.get_or_init(|| {
+        if cfg!(target_os = "macos") {
+            zz_protocol::HostPlatform::Macos
+        } else if cfg!(target_os = "windows") {
+            zz_protocol::HostPlatform::Windows
+        } else if cfg!(target_os = "linux") {
+            zz_protocol::HostPlatform::Linux(
+                ["/etc/os-release", "/usr/lib/os-release"]
+                    .iter()
+                    .find_map(|path| std::fs::read_to_string(path).ok())
+                    .map(|text| zz_protocol::LinuxDistro::from_os_release(&text))
+                    .unwrap_or_default(),
+            )
+        } else {
+            zz_protocol::HostPlatform::Unknown
+        }
+    })
+}
+
 fn unix_timestamp() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -926,7 +947,9 @@ fn resolve_appearance(
     color_scheme: TerminalColorScheme,
     entries: &[ConfigOverrideEntry],
 ) -> AppearanceLoad {
-    apply_appearance_overrides(AppearanceLoad::defaults_for(color_scheme), entries)
+    let mut load = AppearanceLoad::defaults_for(color_scheme);
+    load.root = zz_config::config_path_for_write().ok();
+    apply_appearance_overrides(load, entries)
 }
 
 const CURSOR_STYLE_OVERRIDES: [(&str, Option<(CursorStyle, CursorBlinkPolicy)>); 7] = [
@@ -1825,6 +1848,16 @@ impl Daemon {
                 return Err(DaemonError::Thread(error.to_string()));
             }
         };
+        if self.load_user_config {
+            let tailnet_shared = Arc::clone(&shared);
+            if let Err(error) = crate::tailnet::spawn(
+                self.socket_path.clone(),
+                self.socket_path == zz_daemon_client::transport::platform_socket_path(),
+                move || tailnet_shared.stopping.load(Ordering::Acquire),
+            ) {
+                log::warn!("could not start the tailnet listener: {error}");
+            }
+        }
         let complete_startup = || {
             shared.log_diagnostic_snapshot("startup");
             log::info!("zz daemon listening at {endpoint}");
@@ -4536,6 +4569,7 @@ const INSPECT_EVENTS: &[&str] = &[
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum DaemonCommandDispatch {
+    Tailnet,
     Events,
     AgentCatalog,
     Providers,
@@ -4595,6 +4629,7 @@ const DAEMON_COMMAND_DISPATCHES: &[(&str, DaemonCommandDispatch)] = &[
     ("tools", DaemonCommandDispatch::Tools),
     ("fleet", DaemonCommandDispatch::LocalCli),
     ("list-hosts", DaemonCommandDispatch::LocalCli),
+    ("tailnet", DaemonCommandDispatch::Tailnet),
     ("set-buffer", DaemonCommandDispatch::Buffer),
     ("setb", DaemonCommandDispatch::Buffer),
     ("show-buffer", DaemonCommandDispatch::Buffer),
@@ -6730,6 +6765,7 @@ impl Shared {
             status: StatusLine::default(),
             key_tables: inner.engine.keys.snapshot(),
             clock: unix_timestamp(),
+            platform: host_platform(),
         };
         if kind == ClientKind::Interactive && client_has_terminal {
             return Some((client, hello));
@@ -7353,7 +7389,7 @@ impl Shared {
         if kind == ClientKind::Interactive
             && !self.read_client(client, |client| client.is_some_and(|c| c.ctrl_initializing))
             && !output.is_empty()
-            && canonical_command(&command.name) != "new-session"
+            && !matches!(canonical_command(&command.name), "new-session" | "tailnet")
             && let Err(error) =
                 self.open_command_output(client, context.pane, command.name.clone(), output)
         {
@@ -8458,6 +8494,18 @@ impl Shared {
                     DaemonCommandDispatch::Tools => {
                         workspace_tools_catalog(&command.args).map_err(Into::into)
                     }
+                    DaemonCommandDispatch::Tailnet => crate::tailnet::command(
+                        &command
+                            .args
+                            .iter()
+                            .map(ToString::to_string)
+                            .collect::<Vec<_>>(),
+                    )
+                    .map(|output| Execution {
+                        output: output.into(),
+                        effects: Vec::new(),
+                    })
+                    .map_err(|error| ServerError::InvalidCommand(error).into()),
                     DaemonCommandDispatch::LocalCli => Err(ServerError::InvalidCommand(format!(
                         "{canonical} reads this machine's zz/config; run it from a shell as `zz {canonical}`"
                     ))
@@ -28219,7 +28267,7 @@ impl Shared {
             .tty()
             .map(|path| path.to_string_lossy().into_owned())
             .unwrap_or_default();
-        let ((changed, events), relocated, program) = {
+        let ((changed, events), relocated, program, shell) = {
             let mut inner = self.inner.lock();
             if !inner
                 .terminals
@@ -28276,10 +28324,15 @@ impl Shared {
             self.schedule_window_renames(&mut inner);
             let program =
                 pane_summary::sight_program(&mut inner, pane, foreground, current_command, now);
-            (result, relocated, program)
+            let shell = pane_summary::sight_shell(&mut inner, pane, foreground, current_command);
+            (result, relocated, program, shell)
         };
+        if let pane_summary::ShellSighting::Young(wait) = shell {
+            self.settle_pane_program(pane, terminal, wait);
+        }
         let changed = if (relocated && self.locate_moved_pane(pane))
             || program == pane_summary::ProgramSighting::Cleared
+            || shell == pane_summary::ShellSighting::Named
         {
             Some(timers::PublishReason::Tree)
         } else {

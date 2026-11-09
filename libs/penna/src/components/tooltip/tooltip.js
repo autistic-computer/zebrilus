@@ -11,6 +11,26 @@
     return span;
   }
 
+  function keys(spelled) {
+    const run = document.createElement("span");
+    run.className = "penna-tooltip-key";
+    run.append(
+      ...spelled
+        .trim()
+        .split(/\s+/)
+        .map((stroke) => {
+          const cap = document.createElement("kbd");
+          cap.className = "penna-kbd";
+          cap.setAttribute("data-penna", "keycap");
+          cap.dataset.size = "small";
+          cap.dataset.kbd = stroke;
+          return cap;
+        }),
+    );
+    globalThis.pennaKbd?.fill(run);
+    return run;
+  }
+
   function tipFor(target) {
     const framed = target.closest("section[data-section]");
     const host = framed ? (target.closest("[data-tooltip-host]") ?? target.parentElement) : document.body;
@@ -27,7 +47,7 @@
       host.append(tip);
     }
     const key = target.dataset.tooltipKey;
-    tip.replaceChildren(run(label), ...(key ? [run(globalThis.pennaKbd?.text(key) ?? key, "penna-tooltip-key")] : []));
+    tip.replaceChildren(run(label), ...(key ? [keys(key)] : []));
     return tip;
   }
 

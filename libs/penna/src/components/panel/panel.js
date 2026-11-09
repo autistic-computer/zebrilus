@@ -7,7 +7,10 @@ function panelInset() {
     panel.style.removeProperty("--penna-r");
     const radius = parseFloat(getComputedStyle(panel).getPropertyValue("--penna-r")) || 0;
     if (radius > 0 && radius < PANEL_FULL) {
-      panel.style.setProperty("--penna-r", `${radius + inset}px`);
+      const root = getComputedStyle(document.documentElement);
+      const rows = Number(panel.dataset.rows) || parseFloat(root.getPropertyValue("--penna-control-md")) || 28;
+      const roundness = parseFloat(root.getPropertyValue("--penna-control-share")) || 0;
+      panel.style.setProperty("--penna-r", `${roundness * rows + inset}px`);
     }
   });
   window.pennaKit?.roundAll();

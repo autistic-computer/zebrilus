@@ -252,6 +252,13 @@ fn shells_and_interpreters_are_known_in_any_spelling() {
     for name in ["nvim", "bashtop", "zshrc", "node", ""] {
         assert!(!is_shell_name(name), "{name}");
     }
+    assert_eq!(shell_name("-zsh"), Some("zsh"));
+    assert_eq!(shell_name("/opt/homebrew/bin/fish"), Some("fish"));
+    assert_eq!(
+        shell_name(r"C:\Program Files\PowerShell\7\pwsh.exe"),
+        Some("pwsh")
+    );
+    assert_eq!(shell_name("nvim"), None);
     for name in [
         "python3.12",
         "Python",

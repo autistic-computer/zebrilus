@@ -30,7 +30,7 @@ One text size does most of the work. Weight sets the hierarchy; color is kept fo
 
 ## One highlight
 
-One color marks on, picked and focused. One main action per view.
+Picked and focused are marked in the ink; the accent only colors details. One main action per view.
 
 ```figure
 <div class="docs-dodont">
