@@ -259,7 +259,11 @@ def route_workspace_key(
         view.focus_epoch,
         view.input_pane(),
     )
-    if result.key:
+    if result.key and view.all_keys(result.key.value()):
+        result.key = None
+        if key.key in keyboard.forwarded:
+            _ = keyboard.forwarded.pop(key.key)
+    if result.key or keyboard.claimed:
         ui.request_wake(ui.time)
     result.claimed = keyboard.claimed
     if not result.claimed:

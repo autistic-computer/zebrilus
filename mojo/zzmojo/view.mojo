@@ -110,6 +110,8 @@ from .window_chooser_runtime import WindowChooserRuntime
 from .chooser_session import ChooserSource, ChooserPlan
 from .which_key_live import LiveWhichKey, WhichKeyIntent, WhichKeyContext
 from .prefix_bindings import PrefixTable
+from .desktop_router_delivery import DesktopUiEffect, DesktopEnvelope
+from .keyboard_controller import RoutedKey
 from .input_protocol import canonical_key
 from .desktop_key_config import DesktopKeyConfig
 from .desktop_key_config_io import (
@@ -2532,6 +2534,40 @@ struct WorkspaceView(Movable):
             self.primary_notice(ui, "Settings are not available in this client yet")
             return True
         return False
+
+    def all_keys(mut self, routed: RoutedKey) raises -> Bool:
+        if (
+            routed.release
+            or not self.model.routing.armed
+            or self.which_key_delay == 0
+            or not self.model.key_tables.snapshot
+        ):
+            return False
+        ref tables = self.model.key_tables.snapshot.value()[]
+        if not tables.prefix.query(routed.input).all_keys:
+            return False
+        var prefix: Optional[String] = None
+        if UInt8(0) in self.model.routing.options:
+            prefix = canonical_key(self.model.routing.options[UInt8(0)].value)
+        self.which_key.apply(
+            WhichKeyIntent.all_keys(
+                DesktopUiEffect(
+                    3,
+                    None,
+                    DesktopEnvelope(
+                        0,
+                        self.model.source_server,
+                        self.model.source_client,
+                        routed.epoch,
+                        None,
+                    ),
+                    routed.pane,
+                    tables.prefix.snapshot(),
+                    prefix^,
+                )
+            )
+        )
+        return True
 
     def modal_capture(self) -> Bool:
         for session in self.model.snapshot.sessions:
