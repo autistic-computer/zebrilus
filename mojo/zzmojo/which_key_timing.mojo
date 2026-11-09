@@ -24,14 +24,14 @@ def timer_decision(generation: UInt64, fired_generation: UInt64, table_matches: 
 
 
 @fieldwise_init
-struct WhichKeyChange(Copyable, Movable):
+struct WhichKeyChange(TrivialRegisterPassable):
     var state: WhichKeyTiming
     var notify: Bool
     var build: Bool
 
 
 @fieldwise_init
-struct WhichKeyTiming(Copyable, Movable):
+struct WhichKeyTiming(TrivialRegisterPassable):
     var generation: UInt64
     var timer: Bool
     var visible: Bool
@@ -45,7 +45,7 @@ struct WhichKeyTiming(Copyable, Movable):
     def table_changed(self, eligible_table: Bool, delay_enabled: Bool) -> WhichKeyChange:
         var next = self.hide()
         next.state.timer = eligible_table and delay_enabled
-        return next^
+        return next
 
     def fire(self, fired_generation: UInt64, table_matches: Bool, blocked: Bool, has_rows: Bool) -> WhichKeyChange:
         var decision = timer_decision(self.generation, fired_generation, table_matches, blocked)
