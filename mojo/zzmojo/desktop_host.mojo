@@ -112,7 +112,10 @@ struct HostState(Copyable, Equatable, Movable):
                 return String(
                     "That machine runs an older build of protocol v",
                     remote,
-                    ".\nUpgrade zz there, or restart its daemon, then reconnect.",
+                    (
+                        ".\nUpgrade zz there, or restart its daemon, then"
+                        " reconnect."
+                    ),
                 )
             return String(
                 "This zz speaks protocol v",

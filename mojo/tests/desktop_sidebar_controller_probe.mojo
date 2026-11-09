@@ -2,7 +2,12 @@ from std.testing import assert_equal, assert_true, assert_false, assert_raises
 from zzmojo.actions import ActionQueue
 from zzmojo.palette_protocol import palette_command_request
 from zzmojo.stream_protocol import HostPlatform, attach_session
-from zzmojo.tree_model import MuxSnapshot, SessionSnapshot, WindowSnapshot, PaneSnapshot
+from zzmojo.tree_model import (
+    MuxSnapshot,
+    SessionSnapshot,
+    WindowSnapshot,
+    PaneSnapshot,
+)
 from zzmojo.exec_protocol import Invocation
 from zzmojo.desktop_nav import NavActivation, nav_command
 from zzmojo.desktop_nav_tree import NavNode, NAV_TREE_NODES
@@ -17,7 +22,14 @@ from zzmojo.desktop_sidebar import (
 )
 
 
-def pane(id: UInt64, kind: UInt8, var title: String, var process: List[String], var shell: String, var cwd: String) -> PaneSnapshot:
+def pane(
+    id: UInt64,
+    kind: UInt8,
+    var title: String,
+    var process: List[String],
+    var shell: String,
+    var cwd: String,
+) -> PaneSnapshot:
     var result = PaneSnapshot()
     result.id = id
     result.title = title^
@@ -29,7 +41,9 @@ def pane(id: UInt64, kind: UInt8, var title: String, var process: List[String], 
     return result^
 
 
-def window(id: UInt64, var name: String, active: UInt64, var panes: List[PaneSnapshot]) -> WindowSnapshot:
+def window(
+    id: UInt64, var name: String, active: UInt64, var panes: List[PaneSnapshot]
+) -> WindowSnapshot:
     var result = WindowSnapshot()
     result.id = id
     result.index = UInt32(id)
@@ -40,7 +54,12 @@ def window(id: UInt64, var name: String, active: UInt64, var panes: List[PaneSna
     return result^
 
 
-def session(id: UInt64, var name: String, active: UInt64, var windows: List[WindowSnapshot]) -> SessionSnapshot:
+def session(
+    id: UInt64,
+    var name: String,
+    active: UInt64,
+    var windows: List[WindowSnapshot],
+) -> SessionSnapshot:
     var result = SessionSnapshot()
     result.id = id
     result.name = name^
@@ -51,19 +70,69 @@ def session(id: UInt64, var name: String, active: UInt64, var windows: List[Wind
 
 def fleet() -> List[FleetHostInput]:
     var local = MuxSnapshot()
-    local.sessions.append(session(1, "0", 10, [
-        window(10, "zsh", 100, [
-            pane(100, 1, "vim", ["/opt/homebrew/bin/nvim", "nvim"], "", "/home/me/dev/zz"),
-            pane(101, 4, "agent", List[String](), "", ""),
-        ]),
-        window(11, "w11", 110, [pane(110, 1, "", List[String](), "fish", "")]),
-    ]))
+    local.sessions.append(
+        session(
+            1,
+            "0",
+            10,
+            [
+                window(
+                    10,
+                    "zsh",
+                    100,
+                    [
+                        pane(
+                            100,
+                            1,
+                            "vim",
+                            ["/opt/homebrew/bin/nvim", "nvim"],
+                            "",
+                            "/home/me/dev/zz",
+                        ),
+                        pane(101, 4, "agent", List[String](), "", ""),
+                    ],
+                ),
+                window(
+                    11,
+                    "w11",
+                    110,
+                    [pane(110, 1, "", List[String](), "fish", "")],
+                ),
+            ],
+        )
+    )
     var remote = MuxSnapshot()
-    remote.sessions.append(session(3, "work", 30, [window(30, "build", 300, [pane(300, 1, "make", List[String](), "", "")])]))
+    remote.sessions.append(
+        session(
+            3,
+            "work",
+            30,
+            [
+                window(
+                    30,
+                    "build",
+                    300,
+                    [pane(300, 1, "make", List[String](), "", "")],
+                )
+            ],
+        )
+    )
     var hosts = List[FleetHostInput]()
-    hosts.append(FleetHostInput(0, "local", HostState(3), HostPlatform(3, 3), local^))
-    hosts.append(FleetHostInput(5, "box", HostState(3), HostPlatform(1, 0), remote^))
-    hosts.append(FleetHostInput(6, "old", HostState.incompatible(120, UInt16(118)), HostPlatform(0, 0), None))
+    hosts.append(
+        FleetHostInput(0, "local", HostState(3), HostPlatform(3, 3), local^)
+    )
+    hosts.append(
+        FleetHostInput(5, "box", HostState(3), HostPlatform(1, 0), remote^)
+    )
+    hosts.append(
+        FleetHostInput(
+            6,
+            "old",
+            HostState.incompatible(120, UInt16(118)),
+            HostPlatform(0, 0),
+            None,
+        )
+    )
     return hosts^
 
 
@@ -90,14 +159,22 @@ def main() raises:
     assert_equal(rows[2].label, String("zsh"))
     assert_false(Bool(rows[2].program))
     assert_equal(rows[3].label, String("Neovim"))
-    assert_equal(sidebar.programs.values[rows[3].program.value()].id, String("neovim"))
+    assert_equal(
+        sidebar.programs.values[rows[3].program.value()].id, String("neovim")
+    )
     assert_true(rows[3].active and rows[3].selected and rows[3].on_active_path)
     assert_equal(rows[4].label, String("Claude Code"))
     assert_equal(rows[5].label, String("w11"))
     assert_equal(rows[5].rename.value(), String("Rename Window…"))
     assert_equal(rows[6].label, String("box"))
     assert_true(rows[6].removable and not rows[6].expanded)
-    assert_equal(rows[7].indicator.value().detail.value(), String("This zz speaks protocol v120; that machine speaks v118.\nUpgrade whichever side is older, then reconnect."))
+    assert_equal(
+        rows[7].indicator.value().detail.value(),
+        String(
+            "This zz speaks protocol v120; that machine speaks v118.\nUpgrade"
+            " whichever side is older, then reconnect."
+        ),
+    )
     assert_equal(rows[7].install_offer.value(), UInt8(1))
     assert_equal(len(sidebar.rows(6, 9, True)), 2)
     assert_equal(len(sidebar.rows(9, 9, True)), 0)
@@ -113,20 +190,39 @@ def main() raises:
     var intent = sidebar.click(NavNode(0, 2, 11))
     assert_true(intent.release_focus)
     assert_equal(intent.activation.value().kind, UInt8(3))
-    assert_equal(frames(intent.activation.value())[0], command("select-window", [String("-t"), String("@11")]))
+    assert_equal(
+        frames(intent.activation.value())[0],
+        command("select-window", [String("-t"), String("@11")]),
+    )
     assert_true(sidebar.tree.selection_from_pointer)
     assert_false(Bool(sidebar.update(Span(hosts), 0, UInt64(1))))
     assert_true(sidebar.tree.selected == Optional[NavNode](NavNode(0, 2, 11)))
     assert_false(sidebar.rows(5, 1, True)[0].selected)
 
     var renamed = sidebar.rename()
-    assert_equal(frames(renamed.activation.value())[0], command("command-prompt", [String("-p"), String("rename-window: "), String("-I"), String("w11"), String("rename-window -t '@11' -- '%%'")]))
+    assert_equal(
+        frames(renamed.activation.value())[0],
+        command(
+            "command-prompt",
+            [
+                String("-p"),
+                String("rename-window: "),
+                String("-I"),
+                String("w11"),
+                String("rename-window -t '@11' -- '%%'"),
+            ],
+        ),
+    )
     assert_equal(sidebar.confirm().activation.value().kind, UInt8(3))
 
     _ = sidebar.click(NavNode(5, 0, 0))
     assert_equal(sidebar.row_count(), 8)
     assert_true(sidebar.toggle(NavNode(5, 0, 0)))
     assert_equal(sidebar.row_count(), 9)
+    sidebar.disclose(NavNode(5, 1, 3))
+    assert_equal(sidebar.row_count(), 10)
+    assert_true(sidebar.tree.selection_from_pointer)
+    assert_true(sidebar.tree.selected == Optional[NavNode](NavNode(5, 1, 3)))
     var host_click = sidebar.click(NavNode(5, 0, 0))
     assert_equal(host_click.activation.value().kind, UInt8(0))
     var old = sidebar.click(NavNode(6, 0, 0))
@@ -134,7 +230,10 @@ def main() raises:
 
     var first = sidebar.window_shortcut(0)
     assert_true(first.focus_pane)
-    assert_equal(frames(first.activation.value())[0], command("select-window", [String("-t"), String("@10")]))
+    assert_equal(
+        frames(first.activation.value())[0],
+        command("select-window", [String("-t"), String("@10")]),
+    )
     var remote = sidebar.window_shortcut(2)
     assert_equal(remote.activation.value().kind, UInt8(2))
     assert_equal(remote.activation.value().target, String("$3:@30"))
@@ -145,34 +244,103 @@ def main() raises:
     assert_equal(sidebar.rows(2, 1, True)[0].shortcut.value(), UInt8(0))
 
     var created = sidebar.new_session(List[String](), String("/tmp"))
-    assert_equal(frames(created.activation.value())[0], command("new-session", List[String]()))
-    assert_equal(frames(created.activation.value())[1], command("attach-session", List[String]()))
-    assert_equal(frames(sidebar.new_window().activation.value())[0], command("new-window", [String("-t"), String("$1")]))
-    assert_equal(frames(sidebar.split(0).activation.value())[0], command("split-window", [String("--kind"), String("picker"), String("-h"), String("-t"), String("%100")]))
-    assert_equal(frames(sidebar.detach().activation.value())[0], command("detach-client", List[String]()))
-    var down = sidebar.chrome_intent(DesktopChromeDispatch(5, 0), List[String](), None)
-    assert_equal(frames(down.value().activation.value())[0], command("split-window", [String("--kind"), String("picker"), String("-v"), String("-t"), String("%100")]))
-    assert_equal(sidebar.chrome_intent(DesktopChromeDispatch(3, 2), List[String](), None).value().activation.value().target, String("$3:@30"))
-    assert_false(Bool(sidebar.chrome_intent(DesktopChromeDispatch(7, 0), List[String](), None)))
+    assert_equal(
+        frames(created.activation.value())[0],
+        command("new-session", List[String]()),
+    )
+    assert_equal(
+        frames(created.activation.value())[1],
+        command("attach-session", List[String]()),
+    )
+    assert_equal(
+        frames(sidebar.new_window().activation.value())[0],
+        command("new-window", [String("-t"), String("$1")]),
+    )
+    assert_equal(
+        frames(sidebar.split(0).activation.value())[0],
+        command(
+            "split-window",
+            [
+                String("--kind"),
+                String("picker"),
+                String("-h"),
+                String("-t"),
+                String("%100"),
+            ],
+        ),
+    )
+    assert_equal(
+        frames(sidebar.detach().activation.value())[0],
+        command("detach-client", List[String]()),
+    )
+    var down = sidebar.chrome_intent(
+        DesktopChromeDispatch(5, 0), List[String](), None
+    )
+    assert_equal(
+        frames(down.value().activation.value())[0],
+        command(
+            "split-window",
+            [
+                String("--kind"),
+                String("picker"),
+                String("-v"),
+                String("-t"),
+                String("%100"),
+            ],
+        ),
+    )
+    assert_equal(
+        sidebar.chrome_intent(DesktopChromeDispatch(3, 2), List[String](), None)
+        .value()
+        .activation.value()
+        .target,
+        String("$3:@30"),
+    )
+    assert_false(
+        Bool(
+            sidebar.chrome_intent(
+                DesktopChromeDispatch(7, 0), List[String](), None
+            )
+        )
+    )
 
     var queue = ActionQueue()
     var source = DesktopNavSource(1, 2, 3, 4)
-    var staged = stage_navigation(queue, sidebar.new_session(List[String](), None).activation.value(), 0, source)
-    var stale = stage_navigation(queue, sidebar.detach().activation.value(), 0, source)
+    var staged = stage_navigation(
+        queue,
+        sidebar.new_session(List[String](), None).activation.value(),
+        0,
+        source,
+    )
+    var stale = stage_navigation(
+        queue, sidebar.detach().activation.value(), 0, source
+    )
     var retired = DesktopNavSource(1, 2, 3, 5)
     with assert_raises(contains="retired source"):
         commit_navigation(queue, staged^, retired)
     assert_equal(len(queue), 0)
-    staged = stage_navigation(queue, sidebar.new_session(List[String](), None).activation.value(), 0, source)
+    staged = stage_navigation(
+        queue,
+        sidebar.new_session(List[String](), None).activation.value(),
+        0,
+        source,
+    )
     commit_navigation(queue, staged^, source)
     assert_equal(len(queue), 2)
     assert_equal(queue.items[0].kind, 16)
-    assert_equal(queue.items[1].frame, command("attach-session", List[String]()))
+    assert_equal(
+        queue.items[1].frame, command("attach-session", List[String]())
+    )
     with assert_raises(contains="stale"):
         commit_navigation(queue, stale^, source)
     assert_equal(len(queue), 2)
 
-    var attach = stage_navigation(queue, NavActivation(1, 0, UInt64(1), String(), List[Invocation]()), 0, source)
+    var attach = stage_navigation(
+        queue,
+        NavActivation(1, 0, UInt64(1), String(), List[Invocation]()),
+        0,
+        source,
+    )
     var jump = stage_navigation(queue, remote.activation.value(), 0, source)
     assert_false(Bool(jump.batch))
     assert_equal(jump.host_request.value().host, UInt32(5))
@@ -180,9 +348,17 @@ def main() raises:
     assert_equal(len(queue), 3)
     assert_equal(queue.items[2].kind, 10)
     assert_equal(queue.items[2].frame, attach_session("$1"))
-    var at = stage_navigation(queue, NavActivation(2, 0, None, String("$1:@11"), List[Invocation]()), 0, source)
+    var at = stage_navigation(
+        queue,
+        NavActivation(2, 0, None, String("$1:@11"), List[Invocation]()),
+        0,
+        source,
+    )
     commit_navigation(queue, at^, source)
-    assert_equal(queue.items[3].frame, command("attach-session", [String("-t"), String("$1:@11")]))
+    assert_equal(
+        queue.items[3].frame,
+        command("attach-session", [String("-t"), String("$1:@11")]),
+    )
 
     var large = MuxSnapshot()
     var panes = List[PaneSnapshot](capacity=NAV_TREE_NODES - 3)
@@ -190,14 +366,18 @@ def main() raises:
         panes.append(pane(UInt64(id), 1, "", List[String](), "", ""))
     large.sessions.append(session(1, "", 2, [window(2, "big", 0, panes^)]))
     var full = List[FleetHostInput]()
-    full.append(FleetHostInput(0, "local", HostState(3), HostPlatform(3, 3), large^))
+    full.append(
+        FleetHostInput(0, "local", HostState(3), HostPlatform(3, 3), large^)
+    )
     var over = full.copy()
-    over.append(FleetHostInput(5, "box", HostState(0), HostPlatform(0, 0), None))
+    over.append(
+        FleetHostInput(5, "box", HostState(0), HostPlatform(0, 0), None)
+    )
     revision = sidebar.revision
     with assert_raises(contains="node limit"):
         _ = sidebar.update(Span(over), 0, UInt64(1))
     assert_equal(sidebar.revision, revision)
-    assert_equal(sidebar.row_count(), 9)
+    assert_equal(sidebar.row_count(), 10)
     assert_equal(sidebar.update(Span(full), 0, UInt64(1)).value(), 3)
     assert_equal(sidebar.row_count(), NAV_TREE_NODES)
     var last = sidebar.rows(NAV_TREE_NODES - 1, 4, True)

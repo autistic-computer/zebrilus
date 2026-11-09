@@ -244,7 +244,9 @@ struct DesktopSidebar(Movable):
         if self.shortcuts_shown:
             var windows = self.model.shortcut_windows()
             for position in range(len(windows)):
-                var key = NavNode(windows[position][0], 2, windows[position][1]).key()
+                var key = NavNode(
+                    windows[position][0], 2, windows[position][1]
+                ).key()
                 if key not in shortcuts:
                     shortcuts[key] = UInt8(position)
         var result = List[DesktopSidebarRow](capacity=max(end - first, 0))
@@ -276,9 +278,11 @@ struct DesktopSidebar(Movable):
                 if not entry.expanded:
                     program = window.program()
             else:
-                ref pane = host.sessions[entry.session_index].windows[
-                    entry.window_index
-                ].panes[entry.pane_index]
+                ref pane = (
+                    host.sessions[entry.session_index]
+                    .windows[entry.window_index]
+                    .panes[entry.pane_index]
+                )
                 label = pane.label.copy()
                 pane_kind = pane.kind
                 provider = pane.provider
@@ -325,19 +329,31 @@ struct DesktopSidebar(Movable):
         return result^
 
     def toggle(mut self, node: NavNode) raises -> Bool:
-        var changed = self.tree.toggle(Span(self.hosts), node)
+        var tree = self.tree.copy()
+        var changed = tree.toggle(Span(self.hosts), node)
         if changed:
             self._publish()
+            self.tree = tree^
         return changed
 
-    def navigate(mut self, direction: UInt8) raises -> Optional[Int]:
-        var scroll = self.tree.navigate(Span(self.hosts), direction)
+    def disclose(mut self, node: NavNode) raises:
+        var tree = self.tree.copy()
+        tree.select_or_toggle(Span(self.hosts), node)
         self._publish()
+        self.tree = tree^
+
+    def navigate(mut self, direction: UInt8) raises -> Optional[Int]:
+        var tree = self.tree.copy()
+        var scroll = tree.navigate(Span(self.hosts), direction)
+        self._publish()
+        self.tree = tree^
         return scroll
 
     def focus(mut self) raises -> Optional[Int]:
-        var scroll = self.tree.focus(Span(self.hosts))
+        var tree = self.tree.copy()
+        var scroll = tree.focus(Span(self.hosts))
         self._publish()
+        self.tree = tree^
         return scroll
 
     def click(mut self, node: NavNode) raises -> DesktopNavIntent:

@@ -3,7 +3,10 @@ from std.testing import assert_equal, assert_true, assert_raises
 from zzmojo.protocol import Decoder
 from zzmojo.tree_wire import read_optional_id
 from zzmojo.exec_protocol import Invocation
-from zzmojo.palette_protocol import palette_command_request, PALETTE_COMMAND_BYTES
+from zzmojo.palette_protocol import (
+    palette_command_request,
+    PALETTE_COMMAND_BYTES,
+)
 from zzmojo.desktop_nav import (
     NavTarget,
     activation_for_target,
@@ -65,7 +68,15 @@ def main() raises:
         var attached_host = UInt32(reader.uint())
         var attached_session = read_optional_id(reader)
         var connected = reader.byte() != 0
-        var actual = activation_for_target(host, NavTarget(kind, id), owner_session, owner_window, attached_host, attached_session, connected)
+        var actual = activation_for_target(
+            host,
+            NavTarget(kind, id),
+            owner_session,
+            owner_window,
+            attached_host,
+            attached_session,
+            connected,
+        )
         var present = reader.byte() != 0
         assert_equal(Bool(actual), present)
         if present:
@@ -86,7 +97,9 @@ def main() raises:
             var raw = reader.bytes()
             directory = String(from_utf8_lossy=Span(raw))
             assert_equal(directory.value(), reader.text())
-        check_commands(new_session_commands(local, capabilities, directory), reader)
+        check_commands(
+            new_session_commands(local, capabilities, directory), reader
+        )
     var standalone = Int(reader.uint())
     for _ in range(standalone):
         var kind = reader.byte()
@@ -109,4 +122,9 @@ def main() raises:
         check_commands(commands, reader)
     reader.finish()
     bounds()
-    print("desktop navigation actual activation and command bytes passed", activations, sessions, standalone)
+    print(
+        "desktop navigation actual activation and command bytes passed",
+        activations,
+        sessions,
+        standalone,
+    )

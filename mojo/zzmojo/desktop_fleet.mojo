@@ -407,7 +407,10 @@ struct FleetModel(Copyable, Equatable, Movable):
                     )
                 sessions.append(
                     NavTreeSession(
-                        session.id, session.active, session.name.copy(), windows^
+                        session.id,
+                        session.active,
+                        session.name.copy(),
+                        windows^,
                     )
                 )
             result.append(NavTreeHost(host.id, host.connected(), sessions^))
@@ -430,7 +433,9 @@ struct FleetModel(Copyable, Equatable, Movable):
         var target: Optional[NavTarget] = None
         if node.kind != 0:
             target = _target(node)
-        return fleet_pending_bell(Span(self.hosts[index.value()].sessions), target)
+        return fleet_pending_bell(
+            Span(self.hosts[index.value()].sessions), target
+        )
 
     def activation(
         self,
@@ -443,7 +448,11 @@ struct FleetModel(Copyable, Equatable, Movable):
             return None
         ref host = self.hosts[index.value()]
         return fleet_activation(
-            node, host.state, Span(host.sessions), attached_host, attached_session
+            node,
+            host.state,
+            Span(host.sessions),
+            attached_host,
+            attached_session,
         )
 
     def rename_activation(
@@ -588,7 +597,10 @@ def fleet_rename_activation(
     var commands = List[Invocation]()
     commands.append(prompt[1].copy())
     if host == attached_host:
-        return (prompt[0].copy(), NavActivation(3, host, None, String(), commands^))
+        return (
+            prompt[0].copy(),
+            NavActivation(3, host, None, String(), commands^),
+        )
     var session = fleet_session_for_target(sessions, renamed.value())
     if not session:
         return None

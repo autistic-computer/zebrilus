@@ -3,7 +3,7 @@ from .palette_protocol import validate_palette_command, PALETTE_COMMAND_BYTES
 
 
 @fieldwise_init
-struct NavTarget(TrivialRegisterPassable, Equatable):
+struct NavTarget(Equatable, TrivialRegisterPassable):
     var kind: UInt8
     var id: UInt64
 
@@ -21,7 +21,11 @@ struct NavActivation(Copyable, Movable):
 
 
 def nav_command(name: String, arguments: List[String]) raises -> Invocation:
-    if name.byte_length() == 0 or name.byte_length() > PALETTE_COMMAND_BYTES or len(arguments) > 4096:
+    if (
+        name.byte_length() == 0
+        or name.byte_length() > PALETTE_COMMAND_BYTES
+        or len(arguments) > 4096
+    ):
         raise Error("desktop navigation command exceeds its limits")
     var result = Invocation()
     result.name = name.copy()
@@ -54,20 +58,40 @@ def select_pane_commands(pane: UInt64) raises -> List[Invocation]:
 def kill_target_command(target: NavTarget) raises -> Invocation:
     if target.kind > 2:
         raise Error("desktop navigation target kind is invalid")
-    var name = String("kill-session" if target.kind == 0 else "kill-window" if target.kind == 1 else "kill-pane")
-    var label = String("$" if target.kind == 0 else "@" if target.kind == 1 else "%", target.id)
+    var name = String(
+        "kill-session" if target.kind
+        == 0 else "kill-window" if target.kind
+        == 1 else "kill-pane"
+    )
+    var label = String(
+        "$" if target.kind == 0 else "@" if target.kind == 1 else "%", target.id
+    )
     return nav_command(name, [String("-t"), label^])
 
 
-def activation_for_target(host: UInt32, target: NavTarget, owner_session: Optional[UInt64], owner_window: Optional[UInt64], attached_host: UInt32, attached_session: Optional[UInt64], connected: Bool) raises -> Optional[NavActivation]:
+def activation_for_target(
+    host: UInt32,
+    target: NavTarget,
+    owner_session: Optional[UInt64],
+    owner_window: Optional[UInt64],
+    attached_host: UInt32,
+    attached_session: Optional[UInt64],
+    connected: Bool,
+) raises -> Optional[NavActivation]:
     if target.kind > 2:
         raise Error("desktop navigation target kind is invalid")
     if not connected:
         return None
-    if target.kind != 0 and owner_session and (host != attached_host or owner_session != attached_session):
+    if (
+        target.kind != 0
+        and owner_session
+        and (host != attached_host or owner_session != attached_session)
+    ):
         if not owner_window:
             return None
-        var value = String("$", owner_session.value(), ":@", owner_window.value())
+        var value = String(
+            "$", owner_session.value(), ":@", owner_window.value()
+        )
         if target.kind == 2:
             value += String(".%", target.id)
         return NavActivation(2, host, None, value^, List[Invocation]())
@@ -81,7 +105,9 @@ def activation_for_target(host: UInt32, target: NavTarget, owner_session: Option
     return NavActivation(3, host, None, String(), commands^)
 
 
-def new_session_commands(local: Bool, capabilities: List[String], working_directory: Optional[String]) raises -> List[Invocation]:
+def new_session_commands(
+    local: Bool, capabilities: List[String], working_directory: Optional[String]
+) raises -> List[Invocation]:
     var result = List[Invocation]()
     if not local:
         result.append(nav_command("new-session", [String("-d")]))
@@ -93,7 +119,10 @@ def new_session_commands(local: Bool, capabilities: List[String], working_direct
         if capability.byte_length() > 65536 - capability_bytes:
             raise Error("desktop navigation capability list exceeds byte limit")
         capability_bytes += capability.byte_length()
-    if working_directory and working_directory.value().byte_length() > PALETTE_COMMAND_BYTES - 13:
+    if (
+        working_directory
+        and working_directory.value().byte_length() > PALETTE_COMMAND_BYTES - 13
+    ):
         raise Error("desktop navigation directory exceeds command byte limit")
     var arguments = List[String]()
     if working_directory:
@@ -115,7 +144,13 @@ def detach_command() raises -> Invocation:
 def picker_split_command(pane: UInt64, axis: UInt8) raises -> Invocation:
     if axis > 1:
         raise Error("desktop split axis is invalid")
-    var arguments: List[String] = [String("--kind"), String("picker"), String("-h" if axis == 0 else "-v"), String("-t"), String("%", pane)]
+    var arguments: List[String] = [
+        String("--kind"),
+        String("picker"),
+        String("-h" if axis == 0 else "-v"),
+        String("-t"),
+        String("%", pane),
+    ]
     return nav_command("split-window", arguments)
 
 

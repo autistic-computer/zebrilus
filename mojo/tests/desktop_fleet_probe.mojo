@@ -2,8 +2,17 @@ from std.sys import argv
 from std.testing import assert_equal, assert_true, assert_raises
 from zzmojo.protocol import Decoder, append_uint, append_text
 from zzmojo.tree_wire import read_optional_id
-from zzmojo.stream_protocol import decode_stream_frame, HostPlatform, attach_session
-from zzmojo.tree_model import MuxSnapshot, SessionSnapshot, WindowSnapshot, PaneSnapshot
+from zzmojo.stream_protocol import (
+    decode_stream_frame,
+    HostPlatform,
+    attach_session,
+)
+from zzmojo.tree_model import (
+    MuxSnapshot,
+    SessionSnapshot,
+    WindowSnapshot,
+    PaneSnapshot,
+)
 from zzmojo.palette_programs import PalettePrograms
 from zzmojo.palette_protocol import palette_command_request
 from zzmojo.desktop_nav import NavActivation, NavTarget
@@ -39,7 +48,9 @@ def write_node(mut output: List[UInt8], node: NavNode):
     append_uint(output, node.id)
 
 
-def write_activation(mut output: List[UInt8], value: Optional[NavActivation]) raises:
+def write_activation(
+    mut output: List[UInt8], value: Optional[NavActivation]
+) raises:
     write_flag(output, Bool(value))
     if not value:
         return
@@ -55,7 +66,9 @@ def write_activation(mut output: List[UInt8], value: Optional[NavActivation]) ra
         output.extend(frame^)
 
 
-def program_id(programs: PalettePrograms, value: Optional[Int]) -> Optional[String]:
+def program_id(
+    programs: PalettePrograms, value: Optional[Int]
+) -> Optional[String]:
     if value:
         return programs.values[value.value()].id.copy()
     return None
@@ -76,7 +89,12 @@ def read_state(mut reader: Decoder) raises -> HostState:
     return HostState(kind)
 
 
-def write_host(mut output: List[UInt8], model: FleetModel, index: Int, programs: PalettePrograms) raises:
+def write_host(
+    mut output: List[UInt8],
+    model: FleetModel,
+    index: Int,
+    programs: PalettePrograms,
+) raises:
     ref host = model.hosts[index]
     append_text(output, host.state.label())
     var offer = host.state.install_offer()
@@ -124,7 +142,13 @@ def write_host(mut output: List[UInt8], model: FleetModel, index: Int, programs:
                 write_text(output, program_id(programs, pane.program))
 
 
-def write_query(mut output: List[UInt8], model: FleetModel, node: NavNode, attached_host: UInt32, attached: Optional[UInt64]) raises:
+def write_query(
+    mut output: List[UInt8],
+    model: FleetModel,
+    node: NavNode,
+    attached_host: UInt32,
+    attached: Optional[UInt64],
+) raises:
     write_flag(output, model.expandable(node))
     write_flag(output, model.pending_bell(node))
     var index = model.host(node.host)
@@ -132,8 +156,12 @@ def write_query(mut output: List[UInt8], model: FleetModel, node: NavNode, attac
     var name: Optional[String] = None
     if index and node.kind != 0:
         var target = NavTarget(node.kind - 1, node.id)
-        session = fleet_session_for_target(Span(model.hosts[index.value()].sessions), target)
-        name = fleet_renameable_name(Span(model.hosts[index.value()].sessions), target)
+        session = fleet_session_for_target(
+            Span(model.hosts[index.value()].sessions), target
+        )
+        name = fleet_renameable_name(
+            Span(model.hosts[index.value()].sessions), target
+        )
     write_uint(output, session)
     write_text(output, name)
     write_activation(output, model.activation(node, attached_host, attached))
@@ -146,7 +174,12 @@ def write_query(mut output: List[UInt8], model: FleetModel, node: NavNode, attac
         write_activation(output, None)
 
 
-def write_rows(mut output: List[UInt8], model: FleetModel, expand_windows: Bool, programs: PalettePrograms) raises:
+def write_rows(
+    mut output: List[UInt8],
+    model: FleetModel,
+    expand_windows: Bool,
+    programs: PalettePrograms,
+) raises:
     var hosts = model.tree_hosts()
     var expanded = Dict[Tuple[UInt32, UInt8, UInt64], Bool]()
     for host in hosts:
@@ -176,7 +209,9 @@ def write_rows(mut output: List[UInt8], model: FleetModel, expand_windows: Bool,
             output.append(0)
             write_text(output, None)
         elif entry.node.kind == 2:
-            ref window = host.sessions[entry.session_index].windows[entry.window_index]
+            ref window = host.sessions[entry.session_index].windows[
+                entry.window_index
+            ]
             append_text(output, window.name)
             output.append(0)
             output.append(0)
@@ -185,7 +220,11 @@ def write_rows(mut output: List[UInt8], model: FleetModel, expand_windows: Bool,
                 program = window.program()
             write_text(output, program_id(programs, program))
         else:
-            ref pane = host.sessions[entry.session_index].windows[entry.window_index].panes[entry.pane_index]
+            ref pane = (
+                host.sessions[entry.session_index]
+                .windows[entry.window_index]
+                .panes[entry.pane_index]
+            )
             append_text(output, pane.label)
             output.append(pane.kind)
             output.append(pane.provider)
@@ -194,7 +233,11 @@ def write_rows(mut output: List[UInt8], model: FleetModel, expand_windows: Bool,
 
 def bounds(programs: PalettePrograms) raises:
     var hosts = List[FleetHostInput]()
-    hosts.append(FleetHostInput(0, String("local"), HostState(8), HostPlatform(0, 0), None))
+    hosts.append(
+        FleetHostInput(
+            0, String("local"), HostState(8), HostPlatform(0, 0), None
+        )
+    )
     with assert_raises(contains="host state is invalid"):
         _ = FleetModel(0, None, Span(hosts), programs)
     hosts[0].state = HostState(3)
@@ -221,17 +264,25 @@ def bounds(programs: PalettePrograms) raises:
     snapshot.sessions.append(session^)
     hosts[0].snapshot = snapshot.copy()
     var model = FleetModel(0, UInt64(1), Span(hosts), programs)
-    assert_equal(len(model.hosts[0].sessions[0].windows[0].panes), NAV_TREE_NODES - 3)
-    assert_equal(model.hosts[0].sessions[0].windows[0].panes[7].label, String("terminal"))
+    assert_equal(
+        len(model.hosts[0].sessions[0].windows[0].panes), NAV_TREE_NODES - 3
+    )
+    assert_equal(
+        model.hosts[0].sessions[0].windows[0].panes[7].label, String("terminal")
+    )
     assert_true(model.active_target == Optional[NavNode](NavNode(0, 3, 0)))
-    hosts.append(FleetHostInput(1, String(), HostState(0), HostPlatform(0, 0), None))
+    hosts.append(
+        FleetHostInput(1, String(), HostState(0), HostPlatform(0, 0), None)
+    )
     with assert_raises(contains="node limit"):
         _ = FleetModel(0, UInt64(1), Span(hosts), programs)
     _ = hosts.pop()
     var name = List[UInt8](capacity=8 * 1024 * 1024)
     for _ in range(8 * 1024 * 1024):
         name.append(120)
-    hosts[0].snapshot.value().sessions[0].windows[0].name = String(from_utf8=Span(name))
+    hosts[0].snapshot.value().sessions[0].windows[0].name = String(
+        from_utf8=Span(name)
+    )
     with assert_raises(contains="byte limit"):
         _ = FleetModel(0, UInt64(1), Span(hosts), programs)
 
@@ -259,7 +310,9 @@ def main() raises:
             if reader.byte() != 0:
                 var frame = decode_stream_frame(reader.bytes())
                 snapshot = frame.snapshot.take()
-            inputs.append(FleetHostInput(id, name^, state^, HostPlatform(0, 0), snapshot^))
+            inputs.append(
+                FleetHostInput(id, name^, state^, HostPlatform(0, 0), snapshot^)
+            )
         var model = FleetModel(attached_host, attached, Span(inputs), programs)
         for index in range(len(model.hosts)):
             write_host(output, model, index, programs)
@@ -276,7 +329,9 @@ def main() raises:
         for position in range(len(shortcuts)):
             append_uint(output, UInt64(shortcuts[position][0]))
             append_uint(output, shortcuts[position][1])
-            write_activation(output, model.window_shortcut(position, attached_host, attached))
+            write_activation(
+                output, model.window_shortcut(position, attached_host, attached)
+            )
         write_rows(output, model, True, programs)
         write_rows(output, model, False, programs)
     reader.finish()
