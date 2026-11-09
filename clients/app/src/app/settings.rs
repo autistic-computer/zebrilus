@@ -141,6 +141,22 @@ impl Preferences {
         #[cfg(not(any(target_os = "ios", target_os = "android")))]
         let mode = pinned;
         let mut shown = self.appearance.clone();
+        #[cfg(any(target_os = "ios", target_os = "android"))]
+        let reduce_transparency = system.reduce_transparency;
+        #[cfg(target_family = "wasm")]
+        let reduce_transparency = web_sys::window()
+            .and_then(|window| {
+                window
+                    .match_media("(prefers-reduced-transparency: reduce)")
+                    .ok()
+                    .flatten()
+            })
+            .is_some_and(|query| query.matches());
+        #[cfg(not(any(target_os = "ios", target_os = "android", target_family = "wasm")))]
+        let reduce_transparency = false;
+        if reduce_transparency {
+            shown.overrides.glass = Some(penna::foundation::interface_theme::Glass::None);
+        }
         shown.set_theme_mode(mode);
         shown.contrast = contrast;
         shown.zoom = interface_zoom(self, text_scale, phone());
@@ -559,7 +575,7 @@ impl AppShell {
         match section {
             SettingsSection::Appearance | SettingsSection::Interface => {
                 let items = if section == SettingsSection::Interface {
-                    interface_page_items(false, false)
+                    interface_page_items(false)
                 } else {
                     appearance_page_items()
                 };
@@ -569,6 +585,7 @@ impl AppShell {
                         !matches!(item, AppearancePageItem::App(row) if *row != ZzRow::ProgramColors)
                     })
                     .filter(|item| !phone || !matches!(item, AppearancePageItem::Pointer))
+                    .filter(|item| item.shown(&self.preferences.appearance))
                     .filter(|item| !narrow || !matches!(item, AppearancePageItem::Title))
                     .collect::<Vec<_>>();
                 let empty = |at: usize, items: &[AppearancePageItem]| {

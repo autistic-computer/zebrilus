@@ -1,7 +1,10 @@
 use std::sync::Arc;
 
 use ala::{App, Entity, Global, Hsla, SharedString, Window};
-use penna::{Theme, ThemeMode};
+use penna::{
+    Theme, ThemeMode,
+    foundation::interface_theme::{Frost, Glass},
+};
 use zz_terminal::TerminalAppearance;
 use zz_ui::pane_look::PaneLook;
 
@@ -30,8 +33,17 @@ pub(crate) fn terminal_appearance(cx: &App) -> Option<Arc<TerminalAppearance>> {
         .map(|appearance| Arc::clone(&appearance.0))
 }
 
+pub(crate) fn frost(cx: &App) -> Frost {
+    Frost::new(config::resolved_config(cx).interface_frost.value)
+}
+
+pub(crate) fn glass_on(cx: &App) -> bool {
+    !config::system_reduces_transparency(cx) && config::appearance(cx).glass() != Glass::None
+}
+
 pub(crate) fn chrome_blur(cx: &App) -> bool {
-    config::resolved_config(cx).window_background_blur.value
+    glass_on(cx)
+        && frost(cx).window_opacity() < 1.0
         && crate::window::background::compositor_supports_blur(cx)
 }
 
@@ -44,7 +56,8 @@ pub fn shell_frame(cx: &App) -> Option<Hsla> {
 }
 
 pub fn chrome_background(cx: &App) -> Hsla {
-    zz_ui::shell::chrome_background(Theme::global(cx).background, chrome_blur(cx))
+    let theme = Theme::global(cx);
+    zz_ui::shell::chrome_background(theme.background, theme.window_opacity)
 }
 
 pub(crate) fn report_terminal_color_scheme(mux: &Entity<MuxClient>, cx: &mut App) {
@@ -121,13 +134,18 @@ fn apply_zz_overrides(cx: &mut App) {
         .or(terminal_mono_font_family)
         .unwrap_or_else(penna::foundation::platform_mono_font_family);
     let chrome_contrast = config::chrome_contrast(cx);
-    let reduce_transparency = config::resolved_config(cx).reduce_transparency.value;
+    let frost = frost(cx);
+    let glass_on = glass_on(cx);
+    let window_opacity = if chrome_blur(cx) {
+        frost.window_opacity()
+    } else {
+        1.0
+    };
     let pane_look = PaneLook {
         frames: config::pane_gaps(cx),
         glow_strength: config::resolved_config(cx).pane_glow_strength.value,
     };
     let pane_margin = config::pane_margin(cx);
-    let window_opacity = chrome_background(cx).a;
     cx.set_global(pane_look);
     let theme = Theme::global_mut(cx);
 
@@ -135,9 +153,11 @@ fn apply_zz_overrides(cx: &mut App) {
     theme.mono_font_family = mono_font_family;
 
     theme.set_contrast(chrome_contrast);
-    if reduce_transparency {
-        theme.glass = None;
-    }
+    theme.glass = if glass_on {
+        theme.glass.map(|material| frost.material(material))
+    } else {
+        None
+    };
     theme.pane_margin = pane_margin;
     theme.window_opacity = window_opacity;
 }
@@ -190,8 +210,8 @@ mod tests {
             ] {
                 let mut config = config::AppConfig::default();
                 config.theme_mode.value = setting;
-                config.reduce_transparency.value = reduce;
                 cx.set_global(config);
+                cx.set_global(config::SystemReducesTransparency(reduce));
                 refresh_current_theme(cx);
                 let theme = Theme::global(cx);
                 assert_eq!(theme.colors, platform.colors(mode));
@@ -238,6 +258,7 @@ mod tests {
     fn terminal_opacity_never_reaches_the_chrome(cx: &mut ala::TestAppContext) {
         cx.update(zz_ui::init);
         cx.update(|cx| {
+            cx.set_global(glass("none"));
             set_terminal_appearance(
                 Arc::new(TerminalAppearance {
                     background_opacity: 0.25,
@@ -255,9 +276,7 @@ mod tests {
         });
 
         cx.update(|cx| {
-            let mut config = config::AppConfig::default();
-            config.window_background_blur.value = true;
-            cx.set_global(config);
+            cx.set_global(config::GlassConfig::default());
             refresh_current_theme(cx);
         });
 
@@ -270,15 +289,15 @@ mod tests {
 
         cx.update(|cx| {
             let mut config = config::AppConfig::default();
-            config.window_background_blur.value = true;
             cx.set_global(config);
             assert_eq!(shell_frame(cx), None);
 
             config.pane_gaps.value = true;
             config.pane_margin.value = 8.0;
             for blur in [true, false] {
-                config.window_background_blur.value = blur;
+                cx.set_global(glass(if blur { "liquid" } else { "none" }));
                 cx.set_global(config);
+                refresh_current_theme(cx);
                 let theme = Theme::global(cx);
                 let sidebar = theme.layer(
                     penna::Surface::new(penna::foundation::roles::SIDEBAR).on(penna::Ground {
@@ -294,6 +313,35 @@ mod tests {
     }
 
     #[ala::test]
+    fn frost_thickens_the_glass_and_the_window_together(cx: &mut ala::TestAppContext) {
+        cx.update(zz_ui::init);
+        for (frost, window, blur) in [(0.0, 0.86, 10.0), (1.0, 1.0, 30.0)] {
+            cx.update(|cx| {
+                let mut config = config::AppConfig::default();
+                config.interface_frost.value = frost;
+                cx.set_global(config);
+                cx.set_global(glass("liquid"));
+                refresh_current_theme(cx);
+                assert_eq!(chrome_blur(cx), frost < 1.0, "frost {frost}");
+                assert!(
+                    (chrome_background(cx).a - window).abs() < 1e-6,
+                    "frost {frost}: window {}",
+                    chrome_background(cx).a
+                );
+                let material = Theme::global(cx).glass.expect("liquid glass");
+                assert_eq!(material.blur, ala::px(blur), "frost {frost}");
+            });
+        }
+    }
+
+    fn glass(spelled: &str) -> config::GlassConfig {
+        config::GlassConfig(config::ConfigValue {
+            value: Some(spelled.to_owned()),
+            provenance: config::ConfigProvenance::Override,
+        })
+    }
+
+    #[ala::test]
     fn gapped_panes_draw_frames_with_and_without_glass(cx: &mut ala::TestAppContext) {
         cx.update(zz_ui::init);
         cx.update(|cx| {
@@ -303,10 +351,7 @@ mod tests {
                 ("none", "none", true),
                 ("none", "none", false),
             ] {
-                cx.set_global(config::GlassConfig(config::ConfigValue {
-                    value: Some(glass.to_owned()),
-                    provenance: config::ConfigProvenance::Override,
-                }));
+                cx.set_global(self::glass(glass));
                 let mut config = config::AppConfig::default();
                 config.pane_gaps.value = gaps;
                 cx.set_global(config);
@@ -345,10 +390,9 @@ mod tests {
     fn unsupported_compositor_keeps_the_chrome_opaque(cx: &mut ala::TestAppContext) {
         cx.update(zz_ui::init);
         cx.update(|cx| {
-            let mut config = config::AppConfig::default();
-            config.window_background_blur.value = true;
-            cx.set_global(config);
+            cx.set_global(glass("liquid"));
             crate::window::background::set_compositor_support_for_tests(false, cx);
+            refresh_current_theme(cx);
         });
 
         cx.update(|cx| {

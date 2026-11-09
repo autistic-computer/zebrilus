@@ -11534,6 +11534,7 @@ dependencies = [
  "wayland-client",
  "wgpu",
  "windows",
+ "windows-registry",
  "x11rb",
  "zz-cli",
  "zz-client",

@@ -5,15 +5,13 @@ use ala::{
     prelude::FluentBuilder,
 };
 
-const BLURRED_CHROME_OPACITY: f32 = 0.93;
-
 #[allow(
     clippy::disallowed_methods,
     reason = "blurred chrome lets the window material show through"
 )]
-pub fn chrome_background(background: Hsla, blurred: bool) -> Hsla {
-    if blurred {
-        background.opacity(BLURRED_CHROME_OPACITY)
+pub fn chrome_background(background: Hsla, window_opacity: f32) -> Hsla {
+    if window_opacity < 1.0 {
+        background.opacity(window_opacity)
     } else {
         background
     }

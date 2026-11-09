@@ -86,8 +86,8 @@ struct HostsSectionState {
 
 use zz_ui::settings::appearance::{AppearancePageItem, ZzRow};
 
-fn interface_page_items(has_window_blur: bool) -> Vec<AppearancePageItem> {
-    zz_ui::settings::appearance::interface_page_items(cfg!(target_os = "macos"), has_window_blur)
+fn interface_page_items() -> Vec<AppearancePageItem> {
+    zz_ui::settings::appearance::interface_page_items(cfg!(target_os = "macos"))
 }
 
 pub(crate) struct SettingsView {
@@ -694,15 +694,14 @@ impl SettingsView {
     }
 
     fn appearance_section(&self, resolved: &AppConfig, cx: &Context<Self>) -> AnyElement {
-        let items = match self.section {
-            SettingsSection::Interface => {
-                interface_page_items(crate::profile::profile(cx).has_window_blur)
-            }
+        let appearance = config::appearance(cx);
+        let mut items = match self.section {
+            SettingsSection::Interface => interface_page_items(),
             _ => zz_ui::settings::appearance::appearance_page_items(),
         };
+        items.retain(|item| item.shown(&appearance));
         let view = cx.entity();
         let resolved = *resolved;
-        let appearance = config::appearance(cx);
         penna::blocks::appearance::appearance_page(
             self.section.title(),
             items,
@@ -753,11 +752,6 @@ impl SettingsView {
                 resolved.program_colors,
             )
             .description("Fill sidebar tiles with the running program's colors"),
-            AppearancePageItem::App(row @ ZzRow::WindowBackgroundBlur) => Self::boolean_setting(
-                ConfigKey::WindowBackgroundBlur,
-                row.title(),
-                resolved.window_background_blur,
-            ),
             AppearancePageItem::App(row @ ZzRow::WindowCornerRadius) => {
                 Self::numeric_setting(row.title(), &self.window_corner_radius, cx)
             }
@@ -1905,12 +1899,9 @@ fn appearance_changed(change: AppearanceChange, cx: &mut App) {
             let key = ConfigKey::ChromeContrast;
             (key, set_config_key(key, &format!("{contrast:.2}")))
         }
-        AppearanceChange::ReduceTransparency(reduce) => {
-            let key = ConfigKey::ReduceTransparency;
-            (
-                key,
-                set_config_key(key, if reduce { "true" } else { "false" }),
-            )
+        AppearanceChange::Frost(frost) => {
+            let key = ConfigKey::InterfaceFrost;
+            (key, set_config_key(key, &format!("{:.2}", frost.get())))
         }
         AppearanceChange::Pointer(pointer) => {
             let key = ConfigKey::PointingHand;
@@ -2060,7 +2051,7 @@ fn refresh_settings_preview(key: ConfigKey, cx: &mut App) {
             key,
             ConfigKey::WidgetCornerRadius
                 | ConfigKey::ChromeContrast
-                | ConfigKey::ReduceTransparency
+                | ConfigKey::InterfaceFrost
                 | ConfigKey::PointingHand
                 | ConfigKey::ControlShape
                 | ConfigKey::InterfaceGlass
@@ -2156,6 +2147,7 @@ fn numeric_config_value(config: &AppConfig, key: ConfigKey) -> ConfigValue<f32> 
         ConfigKey::PaneMargin => config.pane_margin,
         ConfigKey::WidgetCornerRadius => config.widget_corner_radius,
         ConfigKey::ChromeContrast => config.chrome_contrast,
+        ConfigKey::InterfaceFrost => config.interface_frost,
         ConfigKey::ChromeTint => config.chrome_tint,
         ConfigKey::ChromeTintHue => config.chrome_tint_hue,
         ConfigKey::WindowCornerRadius => config.window_corner_radius,
@@ -2164,7 +2156,6 @@ fn numeric_config_value(config: &AppConfig, key: ConfigKey) -> ConfigValue<f32> 
         ConfigKey::PaletteWindowLayout
         | ConfigKey::PaletteShowKeys
         | ConfigKey::PaletteVimMode
-        | ConfigKey::WindowBackgroundBlur
         | ConfigKey::Motion
         | ConfigKey::Tray
         | ConfigKey::Notifications
@@ -2184,7 +2175,6 @@ fn numeric_config_value(config: &AppConfig, key: ConfigKey) -> ConfigValue<f32> 
         | ConfigKey::BrowserRemoteDebuggingPort
         | ConfigKey::BrowserSearchProvider
         | ConfigKey::BrowserEgress
-        | ConfigKey::ReduceTransparency
         | ConfigKey::PointingHand
         | ConfigKey::ThemeMode
         | ConfigKey::ControlShape

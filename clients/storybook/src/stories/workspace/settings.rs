@@ -36,7 +36,7 @@ pub const STORY: Story = Story {
         Section {
             id: "appearance",
             name: "Appearance rows",
-            summary: "The rows zz adds to penna's Appearance page: Program colors under Sidebar, and window blur opacity under Advanced. The kit's own rows are penna's, in its Appearance story.",
+            summary: "The row zz adds to penna's Appearance page: Program colors under Sidebar. The kit's own rows are penna's, in its Appearance story.",
             build: |_, cx| stateless(appearance, cx),
         },
         Section {

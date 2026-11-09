@@ -453,10 +453,14 @@ function interfacePage() {
         title: "Glass",
         control: toggle(picks.glass !== "none", "Glass", (value) => set({ glass: value ? "liquid" : "none" })),
       }),
-      entry({
-        title: "Reduce transparency",
-        control: toggle(p.reduce_transparency, "Reduce transparency", (value) => set({ reduce_transparency: value })),
-      }),
+      ...(picks.glass === "none"
+        ? []
+        : [
+            entry({
+              title: "Frost",
+              control: valueSlider({ label: "Frost", value: p.frost ?? 0.5, min: 0, max: 1, step: 0.01, display: percent, onchange: (value) => set({ frost: value }) }),
+            }),
+          ]),
       entry({
         title: "Controls",
         control: choose({ value: picks.controls, items: CONTROL_SHAPES.map(([value, title]) => ({ value, title })), onpick: (value) => set({ controls: value }) }),

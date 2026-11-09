@@ -6,7 +6,7 @@ use crate::components::select::{Select, SelectEvent, SelectItem as _, SelectStat
 use crate::components::slider::Slider;
 use crate::components::switch::Switch;
 use crate::foundation::interface_theme::{
-    ACCENTS, Appearance, AppearanceChange, Controls, Glass, corner_radius_at, corner_share,
+    ACCENTS, Appearance, AppearanceChange, Controls, Frost, Glass, corner_radius_at, corner_share,
 };
 use crate::foundation::motion::Motion;
 use crate::{
@@ -58,12 +58,12 @@ pub enum AppearancePageItem<T = Infallible> {
     CornerRadius,
     Controls,
     Glass,
+    Frost,
     UiFontFamily,
     MonoFontFamily,
     TextSize,
     Density,
     IncreaseContrast,
-    ReduceTransparency,
     Motion,
     Pointer,
     App(T),
@@ -74,6 +74,10 @@ impl<T: Copy> AppearancePageItem<T> {
         !matches!(self, Self::Title | Self::Group { .. })
     }
 
+    pub fn shown(self, appearance: &Appearance) -> bool {
+        !matches!(self, Self::Frost) || appearance.glass() != Glass::None
+    }
+
     pub const fn title(self) -> Option<&'static str> {
         Some(match self {
             Self::ThemeMode => "Mode",
@@ -82,9 +86,9 @@ impl<T: Copy> AppearancePageItem<T> {
             Self::Tint => "Tint strength",
             Self::Controls => "Controls",
             Self::Glass => "Glass",
+            Self::Frost => "Frost",
             Self::CornerRadius => "Corner radius",
             Self::IncreaseContrast => "Increase contrast",
-            Self::ReduceTransparency => "Reduce transparency",
             Self::UiFontFamily => "UI font",
             Self::MonoFontFamily => "Mono font",
             Self::TextSize => "Text size",
@@ -111,6 +115,7 @@ pub fn appearance_page_items<T>() -> Vec<AppearancePageItem<T>> {
         AppearancePageItem::CornerRadius,
         AppearancePageItem::Controls,
         AppearancePageItem::Glass,
+        AppearancePageItem::Frost,
         AppearancePageItem::UiFontFamily,
         AppearancePageItem::MonoFontFamily,
         AppearancePageItem::Group { title: SIZE },
@@ -120,7 +125,6 @@ pub fn appearance_page_items<T>() -> Vec<AppearancePageItem<T>> {
             title: ACCESSIBILITY,
         },
         AppearancePageItem::IncreaseContrast,
-        AppearancePageItem::ReduceTransparency,
         AppearancePageItem::Motion,
         AppearancePageItem::Pointer,
     ]
@@ -345,6 +349,19 @@ pub fn tint_slider(
         Slider::new("settings-tint", "Tint strength", tint, 0.0..=1.0, on_change)
             .step(0.01)
             .display(|tint| format!("{:.0}%", tint * 100.0).into()),
+        cx,
+    )
+}
+
+pub fn frost_slider(
+    frost: Frost,
+    on_change: impl Fn(f32, &mut Window, &mut App) + 'static,
+    cx: &App,
+) -> ala::Div {
+    value_slider(
+        Slider::new("settings-frost", "Frost", frost.get(), 0.0..=1.0, on_change)
+            .step(0.01)
+            .display(|frost| format!("{:.0}%", frost * 100.0).into()),
         cx,
     )
 }
@@ -780,13 +797,14 @@ pub fn kit_row<T: Copy>(
             );
             placed(entry, slider, stacked)
         }
-        AppearancePageItem::ReduceTransparency => entry.control(
-            Switch::new("settings-reduce-transparency")
-                .checked(appearance.reduce_transparency)
-                .on_click(move |reduce, window, cx| {
-                    on_change(AppearanceChange::ReduceTransparency(*reduce), window, cx);
-                }),
-        ),
+        AppearancePageItem::Frost => {
+            let slider = frost_slider(
+                appearance.frost,
+                controls.change(|frost| AppearanceChange::Frost(Frost::new(frost))),
+                cx,
+            );
+            placed(entry, slider, stacked)
+        }
         AppearancePageItem::UiFontFamily => {
             let select = controls.ui_font_select(appearance, window, cx);
             entry.control(

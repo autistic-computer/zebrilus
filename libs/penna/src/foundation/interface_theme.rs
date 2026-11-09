@@ -328,6 +328,74 @@ impl<'de> Deserialize<'de> for Glass {
     }
 }
 
+const THICK_GLASS_TINT: f32 = 0.92;
+const DEFAULT_WINDOW_OPACITY: f32 = 0.93;
+const WINDOW_OPACITY_SPAN: f32 = 0.14;
+
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(from = "f32", into = "f32")]
+pub struct Frost(f32);
+
+impl Frost {
+    pub const DEFAULT: Self = Self(0.5);
+
+    pub fn new(value: f32) -> Self {
+        if value.is_finite() {
+            Self(value.clamp(0.0, 1.0))
+        } else {
+            Self::DEFAULT
+        }
+    }
+
+    pub const fn get(self) -> f32 {
+        self.0
+    }
+
+    pub fn blur_scale(self) -> f32 {
+        0.5 + self.0
+    }
+
+    pub fn window_opacity(self) -> f32 {
+        if self.0 >= 1.0 {
+            return 1.0;
+        }
+        (DEFAULT_WINDOW_OPACITY + (self.0 - Self::DEFAULT.0) * WINDOW_OPACITY_SPAN).min(1.0)
+    }
+
+    pub fn material(self, material: GlassMaterial) -> GlassMaterial {
+        if self == Self::DEFAULT {
+            return material;
+        }
+        let thicken = (2.0 * self.0 - 1.0).max(0.0);
+        let tint = material.tint.a;
+        GlassMaterial {
+            blur: material.blur * self.blur_scale(),
+            tint: material
+                .tint
+                .alpha(tint + (THICK_GLASS_TINT - tint).max(0.0) * thicken),
+            ..material
+        }
+    }
+}
+
+impl Default for Frost {
+    fn default() -> Self {
+        Self::DEFAULT
+    }
+}
+
+impl From<f32> for Frost {
+    fn from(value: f32) -> Self {
+        Self::new(value)
+    }
+}
+
+impl From<Frost> for f32 {
+    fn from(frost: Frost) -> Self {
+        frost.0
+    }
+}
+
 pub fn liquid(mode: ThemeMode) -> GlassMaterial {
     let dark = GlassMaterial {
         blur: px(20.0),
@@ -724,7 +792,7 @@ pub struct Appearance {
     #[serde(flatten)]
     pub overrides: ThemeOverrides,
     pub contrast: f32,
-    pub reduce_transparency: bool,
+    pub frost: Frost,
     pub ui_font_family: String,
     pub mono_font_family: String,
     pub zoom: f32,
@@ -739,7 +807,7 @@ impl Default for Appearance {
             mode: None,
             overrides: ThemeOverrides::default(),
             contrast: 1.0,
-            reduce_transparency: false,
+            frost: Frost::DEFAULT,
             ui_font_family: String::new(),
             mono_font_family: String::new(),
             zoom: 1.0,
@@ -762,7 +830,7 @@ pub enum AppearanceChange {
     Import(Box<InterfaceTheme>),
     ResetLook,
     Contrast(f32),
-    ReduceTransparency(bool),
+    Frost(Frost),
     UiFont(String),
     MonoFont(String),
     Zoom(f32),
@@ -859,7 +927,7 @@ impl Appearance {
             AppearanceChange::Import(theme) => self.import(&theme),
             AppearanceChange::ResetLook => self.reset_look(),
             AppearanceChange::Contrast(contrast) => self.contrast = contrast,
-            AppearanceChange::ReduceTransparency(reduce) => self.reduce_transparency = reduce,
+            AppearanceChange::Frost(frost) => self.frost = frost,
             AppearanceChange::UiFont(family) => self.ui_font_family = family,
             AppearanceChange::MonoFont(family) => self.mono_font_family = family,
             AppearanceChange::Zoom(zoom) => self.zoom = zoom,
@@ -890,9 +958,7 @@ impl Appearance {
         theme.font_family = family;
         theme.mono_font_family = mono;
         theme.set_contrast(self.contrast);
-        if self.reduce_transparency {
-            theme.glass = None;
-        }
+        theme.glass = theme.glass.map(|material| self.frost.material(material));
         self.density.set();
         self.pointer.set();
         cx.set_global(crate::UiZoom(self.zoom));
@@ -1143,7 +1209,7 @@ mod tests {
             serde_json::from_str::<Appearance>("{}").unwrap(),
             Appearance::default()
         );
-        let source = r#"{"mode":"dark","theme":"macos","radius":12,"accent":"green","tint":0.25,"tint-hue":145,"controls":"pill","glass":"none","contrast":1.5,"reduce_transparency":true,"ui_font_family":"Inter","mono_font_family":"Lilex","zoom":1.25,"motion":"fast","density":"comfortable","pointer":"arrow","sidebar":true}"#;
+        let source = r#"{"mode":"dark","theme":"macos","radius":12,"accent":"green","tint":0.25,"tint-hue":145,"controls":"pill","glass":"none","contrast":1.5,"frost":0.75,"ui_font_family":"Inter","mono_font_family":"Lilex","zoom":1.25,"motion":"fast","density":"comfortable","pointer":"arrow","sidebar":true}"#;
         let appearance = serde_json::from_str::<Appearance>(source).unwrap();
         assert_eq!(
             appearance,
@@ -1158,7 +1224,7 @@ mod tests {
                     glass: Some(Glass::None),
                 },
                 contrast: 1.5,
-                reduce_transparency: true,
+                frost: Frost::new(0.75),
                 ui_font_family: "Inter".into(),
                 mono_font_family: "Lilex".into(),
                 zoom: 1.25,
@@ -1172,6 +1238,20 @@ mod tests {
             serde_json::from_value::<Appearance>(written).unwrap(),
             appearance
         );
+    }
+
+    #[test]
+    fn frost_leaves_the_default_look_at_half_and_never_thins_a_tint() {
+        let material = liquid(ThemeMode::Dark);
+        assert_eq!(Frost::DEFAULT.material(material), material);
+        assert_eq!(Frost::DEFAULT.window_opacity(), 0.93);
+
+        let thin = Frost::new(0.0);
+        assert_eq!(thin.material(material).blur, px(10.0));
+        assert_eq!(thin.material(material).tint, material.tint);
+        assert!((thin.window_opacity() - 0.86).abs() < 1e-6);
+
+        assert_eq!(Frost::new(1.0).window_opacity(), 1.0);
     }
 
     #[test]
@@ -1226,7 +1306,7 @@ mod tests {
     }
 
     #[ala::test]
-    fn applying_an_appearance_shows_its_theme_contrast_transparency_zoom_and_density(
+    fn applying_an_appearance_shows_its_theme_contrast_frost_zoom_and_density(
         cx: &mut ala::TestAppContext,
     ) {
         let appearance = Appearance {
@@ -1237,7 +1317,7 @@ mod tests {
                 ..ThemeOverrides::default()
             },
             contrast: 1.5,
-            reduce_transparency: true,
+            frost: Frost::new(1.0),
             zoom: 1.25,
             motion: crate::foundation::motion::Motion::Off,
             density: crate::Density::Compact,
@@ -1252,7 +1332,9 @@ mod tests {
             assert_eq!(theme.radius, px(5.0));
             assert_eq!(Some(theme.accent), accent_color("green", ThemeMode::Dark));
             assert_eq!(theme.contrast(), 1.5);
-            assert_eq!(theme.glass, None);
+            let glass = theme.glass.expect("liquid glass under full frost");
+            assert_eq!(glass.blur, px(30.0));
+            assert!((glass.tint.a - 0.92).abs() < 1e-6, "tint {}", glass.tint.a);
             assert_eq!(crate::UiZoom::get(cx), 1.25);
             assert!(cx.reduce_motion());
             assert_eq!(

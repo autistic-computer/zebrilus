@@ -430,6 +430,9 @@ fn run_app(
                         let root = build_root(shell, window, cx);
                         cx.observe_window_activation(window, |_, window, cx| {
                             tray::set_active(window.is_window_active(), cx);
+                            if window.is_window_active() {
+                                cx.defer(config::follow_system_transparency);
+                            }
                         }).detach();
                         window::state::observe(observed_window_state, window, cx);
                         root

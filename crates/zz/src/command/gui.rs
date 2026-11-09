@@ -1,6 +1,6 @@
 use ala::{App, Entity};
 use zz_client::gui_actions::{
-    ACCENT, GuiAction, GuiOffer, PANE_GAPS, SIDEBAR_LAYOUT, TITLEBAR_MODE, WINDOW_BLUR,
+    ACCENT, GLASS, GuiAction, GuiOffer, PANE_GAPS, SIDEBAR_LAYOUT, TITLEBAR_MODE,
 };
 
 use crate::{
@@ -17,15 +17,14 @@ pub(crate) fn offers(sidebar: &Entity<WorkspaceSidebar>, cx: &App) -> Vec<GuiOff
     [
         GuiOffer::fixed(TITLEBAR_MODE, titlebar),
         GuiOffer::toggle(PANE_GAPS, config::pane_gaps(cx)),
-        crate::profile::profile(cx)
-            .has_window_blur
-            .then(|| {
-                GuiOffer::toggle(
-                    WINDOW_BLUR,
-                    config::resolved_config(cx).window_background_blur.value,
-                )
-            })
-            .flatten(),
+        GuiOffer::fixed(
+            GLASS,
+            if config::appearance(cx).glass() == penna::foundation::interface_theme::Glass::None {
+                "none"
+            } else {
+                "liquid"
+            },
+        ),
         GuiOffer::fixed(ACCENT, &config::appearance(cx).accent()),
         GuiOffer::toggle(SIDEBAR_LAYOUT, sidebar.is_flat()),
     ]

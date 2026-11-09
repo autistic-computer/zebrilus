@@ -6,7 +6,6 @@ pub use zz_ui::settings::SettingsSection;
 pub struct AppProfile {
     pub settings_sections: Vec<SettingsSection>,
     pub has_tray: bool,
-    pub has_window_blur: bool,
     pub has_daemon_lifecycle: bool,
     pub has_config_import: bool,
     pub local_host: LocalHostPolicy,
@@ -23,7 +22,6 @@ impl AppProfile {
         Self {
             settings_sections,
             has_tray: true,
-            has_window_blur: true,
             has_daemon_lifecycle: true,
             has_config_import: true,
             local_host: LocalHostPolicy::Always,

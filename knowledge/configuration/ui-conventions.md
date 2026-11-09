@@ -459,19 +459,20 @@ Corner smoothing is not a material: every window draws `CORNER_SMOOTHING` (4), w
   family, so Agent Markdown and code blocks match the terminal typeface until Mono font picks
   another, else the platform's code face;
 - the contrast (`Theme::set_contrast`) from `chrome-contrast`, preserved across the same refreshes;
-- no glass under `reduce-transparency`;
+- glass thickened by `interface-frost`, or none while the system reduces transparency;
 - the pane glow and gaps (the `zz_ui::pane_look::PaneLook` global) from `pane-glow-strength` and
   `pane-gaps`, and the margin from `pane-margin`.
 
 The thin clients keep their knobs in their preferences as a
 `penna::foundation::interface_theme::Appearance`, and `Preferences::apply` adjusts its mode,
-contrast, zoom and animations for the platform and calls `Appearance::apply`, which activates the
-platform's theme file with the device's `ThemeOverrides` applied as on desktop and drops the glass
-under `reduce_transparency`; it then sets the UI font from the preference, else the platform
-file's face, else the bundled Inter. The HTML client's theme engine (`clients/dom/theme`) builds its kit theme from
-the same preferences, sets the contrast and drops the glass under `reduce_transparency` before
-`theme_css::stylesheet` writes the tokens, so every glass role gets the `popover` fill and no
-backdrop, the tokens penna otherwise keeps for `prefers-reduced-transparency: reduce`.
+contrast, zoom and animations for the platform, turns glass off while the system reduces
+transparency (iOS's Reduce transparency, the browser's `prefers-reduced-transparency`), and calls
+`Appearance::apply`, which activates the platform's theme file with the device's `ThemeOverrides`
+applied as on desktop and thickens the glass by `frost`; it then sets the UI font from the
+preference, else the platform file's face, else the bundled Inter. The HTML client's theme engine
+(`clients/dom/theme`) builds its kit theme from the same preferences, sets the contrast and applies
+`frost` to the glass before `theme_css::stylesheet` writes the tokens; the tokens' own
+`prefers-reduced-transparency: reduce` block gives every glass role the `popover` fill there.
 
 `chrome-contrast` defaults to 1.0 and accepts 1.0–2.0; other values are reported like any numeric
 key. The Interface page shows it as a slider from 100% to 200%, in steps of 5. It scales the elevation step in `raised()` and `washed()`, the amounts in `hover()` and

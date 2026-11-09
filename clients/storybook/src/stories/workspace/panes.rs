@@ -3,7 +3,7 @@ use ala::{
     prelude::*, px, relative,
 };
 use penna::{ActiveTheme as _, Colorize as _, Elevation, IconName};
-use zz_client::new_chat::{ChatPicker, ChatStage, FolderChoice, MachineChoice};
+use zz_client::new_chat::{ChatPicker, FolderChoice, MachineChoice};
 use zz_protocol::{
     AgentProvider, DisplayPanesState, HostPlatform, LinuxDistro, PaneId, PaneIndicator, TmuxColour,
     WindowId,

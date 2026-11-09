@@ -224,7 +224,7 @@ one the config reads.
 | --- | --- | --- | --- |
 | titlebar mode | Sidebar, Title bar | the sidebar's mode, as Toggle Sidebar flips it | `sidebar`, wide windows only |
 | pane gaps | On, Off | `pane-gaps` | `gaps` |
-| window blur | On, Off | `window-background-blur`, where the platform has blur | not offered |
+| glass | On, Off | `interface-glass` (`liquid` or `none`), which also blurs the window | `glass` |
 | select accent | Ink, Blue, Purple, Pink, Red, Orange, Yellow, Green, Graphite | `chrome-accent` | `accent` |
 | sidebar layout | List, Tree | `flat-sidebar` | `flat_sidebar` |
 

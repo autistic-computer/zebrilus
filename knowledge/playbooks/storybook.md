@@ -118,10 +118,9 @@ animations off and freezes spinners). Two more keys only steer the page: `step` 
 on the Roles step. The tint and pane knobs are app config, not theme, so Copy JSON leaves them out;
 they stay in the URL. penna's Appearance story (`#/appearance/page` on penna's page) draws the
 Interface page's kit rows with the builders the app uses: Mode, the accent swatches, the tint
-sliders (which follow the tint knobs), Corner radius, Controls, Glass, UI font, Mono font and the Theme file
-menu, then the Advanced rows. zz's Settings
-story keeps only the rows zz adds (`#/settings/appearance`): Program colors and window blur
-opacity.
+sliders (which follow the tint knobs), Corner radius, Controls, Glass, Frost while Glass is on, UI font,
+Mono font and the Theme file menu, then the Size and Accessibility rows. zz's Settings
+story keeps only the row zz adds (`#/settings/appearance`): Program colors.
 
 The Theme creator lives in `penna-storybook` (`penna_storybook::creator`) and opens penna's own
 page; a page whose catalog lists no plates, like zz's, has none. The knob panel, the role tree,

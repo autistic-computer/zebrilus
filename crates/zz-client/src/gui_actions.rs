@@ -28,7 +28,7 @@ const ON_OFF: &[GuiChoice] = &[
 
 pub const TITLEBAR_MODE: &str = "titlebar-mode";
 pub const PANE_GAPS: &str = "pane-gaps";
-pub const WINDOW_BLUR: &str = "window-background-blur";
+pub const GLASS: &str = "interface-glass";
 pub const ACCENT: &str = "chrome-accent";
 pub const SIDEBAR_LAYOUT: &str = "flat-sidebar";
 
@@ -61,12 +61,21 @@ pub const GUI_ACTIONS: [GuiAction; 5] = [
         preview: false,
     },
     GuiAction {
-        id: WINDOW_BLUR,
-        title: "Window blur",
-        verb: "window blur",
-        aliases: &["blur", "translucent"],
-        values: ON_OFF,
-        config_key: Some(WINDOW_BLUR),
+        id: GLASS,
+        title: "Glass",
+        verb: "glass",
+        aliases: &["blur", "translucent", "window blur", "frost"],
+        values: &[
+            GuiChoice {
+                value: "liquid",
+                title: "On",
+            },
+            GuiChoice {
+                value: "none",
+                title: "Off",
+            },
+        ],
+        config_key: Some(GLASS),
         preview: false,
     },
     GuiAction {

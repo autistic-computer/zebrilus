@@ -1,4 +1,5 @@
 use ala::{App, Global, Pixels, Window, WindowBackgroundAppearance};
+use penna::foundation::interface_theme::Frost;
 
 struct CompositorBlurSupport(bool);
 
@@ -14,7 +15,7 @@ pub fn detect_compositor_support(cx: &mut App) {
     if !supported {
         log::info!(
             target: "zz::window_background",
-            "compositor does not support background blur; window-background-blur will keep the chrome opaque"
+            "compositor does not support background blur; glass will keep the window opaque"
         );
     }
     cx.set_global(CompositorBlurSupport(supported));
@@ -23,6 +24,24 @@ pub fn detect_compositor_support(cx: &mut App) {
 #[cfg(test)]
 pub(crate) fn set_compositor_support_for_tests(supported: bool, cx: &mut App) {
     cx.set_global(CompositorBlurSupport(supported));
+}
+
+pub(crate) fn system_reduces_transparency() -> bool {
+    #[cfg(target_os = "macos")]
+    {
+        macos::reduces_transparency()
+    }
+    #[cfg(target_os = "windows")]
+    {
+        windows_registry::CURRENT_USER
+            .open(r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize")
+            .and_then(|key| key.get_u32("EnableTransparency"))
+            .is_ok_and(|enabled| enabled == 0)
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
+        false
+    }
 }
 
 fn probe_compositor() -> bool {
@@ -47,11 +66,16 @@ pub(crate) const fn native_appearance(
     requested
 }
 
-pub(crate) fn apply(window: &Window, requested: WindowBackgroundAppearance, corner_radius: Pixels) {
+pub(crate) fn apply(
+    window: &Window,
+    requested: WindowBackgroundAppearance,
+    corner_radius: Pixels,
+    frost: Frost,
+) {
     let enabled = requested == WindowBackgroundAppearance::Blurred;
 
     #[cfg(target_os = "macos")]
-    if let Err(error) = macos::set_blur(window, enabled) {
+    if let Err(error) = macos::set_blur(window, enabled.then(|| frost.blur_scale())) {
         log::warn!(target: "zz::window_background", "could not update macOS window blur: {error}");
     }
 
@@ -61,10 +85,13 @@ pub(crate) fn apply(window: &Window, requested: WindowBackgroundAppearance, corn
     }
 
     #[cfg(not(any(target_os = "macos", target_os = "linux")))]
-    let _ = (window, enabled, corner_radius);
+    let _ = (window, enabled, corner_radius, frost);
 
     #[cfg(target_os = "macos")]
     let _ = corner_radius;
+
+    #[cfg(target_os = "linux")]
+    let _ = frost;
 }
 
 #[cfg(any(target_os = "linux", test))]
@@ -211,7 +238,11 @@ mod macos {
         }
     }
 
-    pub(super) fn set_blur(window: &Window, enabled: bool) -> Result<(), BlurError> {
+    pub(super) fn reduces_transparency() -> bool {
+        objc2_app_kit::NSWorkspace::sharedWorkspace().accessibilityDisplayShouldReduceTransparency()
+    }
+
+    pub(super) fn set_blur(window: &Window, scale: Option<f32>) -> Result<(), BlurError> {
         MainThreadMarker::new().ok_or(BlurError::NotMainThread)?;
         let handle = raw_window_handle::HasWindowHandle::window_handle(window)
             .map_err(BlurError::WindowHandle)?;
@@ -225,7 +256,7 @@ mod macos {
             .ok()
             .filter(|id| *id != 0)
             .ok_or(BlurError::MissingWindow)?;
-        let radius = if enabled { BLUR_RADIUS } else { 0 };
+        let radius = scale.map_or(0, |scale| (BLUR_RADIUS as f32 * scale).round() as i32);
         let status =
             unsafe { CGSSetWindowBackgroundBlurRadius(CGSMainConnectionID(), window_id, radius) };
         if status == 0 {

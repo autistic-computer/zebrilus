@@ -24,7 +24,7 @@ const GLASS_KNOBS = [
 const GLASS_NAMES = GLASS_KNOBS.map(([name]) => name);
 const PLAIN_THEME_KNOBS = ["name", "neutral-hue", "neutral-amount", "radius", "smoothing", "glass", "face", "lock"];
 const TINT_KNOBS = ["tint-color", "light-tint-color", "dark-tint-color"];
-const PERSON_KNOBS = ["theme", "accent", "contrast", "reduce-transparency", "zoom", "motion", "backdrop"];
+const PERSON_KNOBS = ["theme", "accent", "contrast", "frost", "zoom", "motion", "backdrop"];
 const STEPS = ["look", "person", "export", "app"];
 const HASH_LIMIT = 2000;
 const KNOBS_MIN_WIDTH = 280;
@@ -33,7 +33,7 @@ const DEFAULTS = {
     theme: "system",
     accent: "",
     contrast: "1",
-    "reduce-transparency": "0",
+    frost: "0.5",
     zoom: "1",
     motion: "default",
     backdrop: "plain",

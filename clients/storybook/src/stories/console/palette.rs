@@ -1126,12 +1126,12 @@ fn target(window: &mut Window, cx: &mut App, body: &str) -> AnyView {
 
 fn gui(window: &mut Window, cx: &mut App, keys: &'static [&'static str]) -> AnyView {
     use zz_client::gui_actions::{
-        ACCENT, GuiOffer, PANE_GAPS, SIDEBAR_LAYOUT, TITLEBAR_MODE, WINDOW_BLUR,
+        ACCENT, GLASS, GuiOffer, PANE_GAPS, SIDEBAR_LAYOUT, TITLEBAR_MODE,
     };
     let gui = [
         GuiOffer::fixed(TITLEBAR_MODE, "sidebar"),
         GuiOffer::toggle(PANE_GAPS, true),
-        GuiOffer::toggle(WINDOW_BLUR, false),
+        GuiOffer::fixed(GLASS, "liquid"),
         GuiOffer::fixed(ACCENT, "blue"),
         GuiOffer::toggle(SIDEBAR_LAYOUT, false),
     ]

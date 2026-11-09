@@ -202,12 +202,13 @@ complete daemon-owned entry vector crosses the wire on connect and every poll ch
 empty vector that restores donor/default values.
 
 The settings view is a route in the main window opened with `Cmd+,` on macOS or `Ctrl+,`
-elsewhere. `SettingsSection::ALL` is ten pages, titled Interface, Editor, Panes, Multiplexer,
-Browser, Terminal, Hosts, Agents, System, About:
+elsewhere. `SettingsSection::ALL` is eleven pages, titled Appearance, Interface, Editor, Panes,
+Multiplexer, Browser, Terminal, Hosts, Agents, System, About:
 
 | Section | Contents |
 |---------|----------|
-| Interface | Look (a Mode segmented control for `theme-mode`, the Accent swatches for `chrome-accent`, the Tint, Tint strength and Corner radius sliders for `chrome-tint-hue`, `chrome-tint` and `widget-corner-radius`, the Controls segmented control and the Glass switch for `control-shape` and `interface-glass`, the system UI font picker, and Mono font for `ui-mono-font-family`, opening on Monospaced), Terminal (a live preview, Light theme and Dark theme, Window follows the theme for `chrome-terminal-colors`, Background opacity), Sidebar (`program-colors`), Size (transient UI zoom, `chrome-density` as Density), Accessibility (`chrome-contrast` as Increase contrast, `minimum-contrast` as Terminal text contrast, `reduce-transparency` as Reduce transparency, `motion` as Motion), Window (macOS app-icon pickers, window blur, Linux `window-corner-radius`) |
+| Appearance | Theme (a Mode segmented control for `theme-mode`, the Accent swatches for `chrome-accent`, the Tint and Tint strength sliders for `chrome-tint-hue` and `chrome-tint`), Terminal (a live preview, Light theme and Dark theme, Window follows the theme for `chrome-terminal-colors`, Background opacity), Sidebar (`program-colors`), Contrast (`chrome-contrast` as Increase contrast, `minimum-contrast` as Terminal text contrast) |
+| Interface | Material (the Glass switch for `interface-glass`, which also blurs the window, Frost for `interface-frost` while Glass is on, the Controls segmented control for `control-shape`, Corner radius for `widget-corner-radius`), Text (the system UI font picker, Mono font for `ui-mono-font-family`, opening on Monospaced, transient UI zoom as Text size, `chrome-density` as Density), Behavior (`pointing-hand` as Pointing hand, `motion` as Motion), Window (macOS app-icon pickers, Linux `window-corner-radius`) |
 | Editor | Editor-pane typography and display controls, when compiled in |
 | Panes | Layout (`pane-gaps`), Focus (`pane-inactive-opacity`, `pane-glow-strength`), Frame (`pane-margin`); gapped panes draw their frame in glass, with corners that follow Interface's Corner radius up to 16 at 100% (`Theme::pane_radius()`), and the rim from the theme's glass (a hairline the outline's width without glass). PiPs take the same corner and follow Glass like a menu |
 | Multiplexer | Navigation, split shortcuts, Options rows, Import from tmux (one button over the system file picker), and the `zz/mux.conf` path with Reload |
@@ -300,7 +301,8 @@ per-component plumbing.
   family, so Agent Markdown, tool previews, and code blocks match the terminal typeface until Mono
   font picks another;
 - `contrast` from `chrome-contrast`, which scales derived colors and survives mode changes;
-- no glass under `reduce-transparency`;
+- glass thickened by `interface-frost`, or none while the system reduces transparency, and the window
+  opacity from Frost while the window is blurred;
 - `pane_margin` from `pane-margin`, the `zz_ui::pane_look::PaneLook` global (`glow_strength` and
   `frames`) from `pane-glow-strength` and `pane-gaps`, and the `zz_ui::pip::PipOpacity` global from
   `pip-background-opacity`.

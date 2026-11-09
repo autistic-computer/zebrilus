@@ -8,7 +8,6 @@ pub enum ZzRow {
     TerminalContrast,
     ProgramColors,
     AppIcon,
-    WindowBackgroundBlur,
     WindowCornerRadius,
 }
 
@@ -23,7 +22,6 @@ impl ZzRow {
             Self::TerminalContrast => "Terminal text contrast",
             Self::ProgramColors => "Program colors",
             Self::AppIcon => "App Icon",
-            Self::WindowBackgroundBlur => "Window blur",
             Self::WindowCornerRadius => "Window corner radius",
         }
     }
@@ -54,13 +52,13 @@ pub fn appearance_page_items() -> Vec<AppearancePageItem> {
     ]
 }
 
-pub fn interface_page_items(macos: bool, has_window_blur: bool) -> Vec<AppearancePageItem> {
+pub fn interface_page_items(macos: bool) -> Vec<AppearancePageItem> {
     use AppearancePageItem as Item;
     let mut items = vec![
         Item::Title,
         Item::Group { title: "Material" },
         Item::Glass,
-        Item::ReduceTransparency,
+        Item::Frost,
         Item::Controls,
         Item::CornerRadius,
         Item::Group { title: "Text" },
@@ -74,7 +72,6 @@ pub fn interface_page_items(macos: bool, has_window_blur: bool) -> Vec<Appearanc
     ];
     let window = [
         macos.then_some(ZzRow::AppIcon),
-        has_window_blur.then_some(ZzRow::WindowBackgroundBlur),
         cfg!(target_os = "linux").then_some(ZzRow::WindowCornerRadius),
     ];
     if window.iter().any(Option::is_some) {
@@ -95,7 +92,7 @@ mod tests {
             .into_iter()
             .filter(|item| item.is_entry())
             .collect::<Vec<_>>();
-        let pages = [appearance_page_items(), interface_page_items(true, true)].concat();
+        let pages = [appearance_page_items(), interface_page_items(true)].concat();
         for item in &kit {
             assert_eq!(
                 pages.iter().filter(|shown| *shown == item).count(),
@@ -103,22 +100,13 @@ mod tests {
                 "{item:?}"
             );
         }
-        let mut window = vec![
-            Item::Group { title: "Window" },
-            Item::App(ZzRow::AppIcon),
-            Item::App(ZzRow::WindowBackgroundBlur),
-        ];
+        let mut window = vec![Item::Group { title: "Window" }, Item::App(ZzRow::AppIcon)];
         if cfg!(target_os = "linux") {
             window.push(Item::App(ZzRow::WindowCornerRadius));
         }
-        assert!(interface_page_items(true, true).ends_with(&window));
-        window.retain(|item| *item != Item::App(ZzRow::AppIcon));
-        assert!(interface_page_items(false, true).ends_with(&window));
+        assert!(interface_page_items(true).ends_with(&window));
         if !cfg!(target_os = "linux") {
-            assert_eq!(
-                interface_page_items(false, false).last(),
-                Some(&Item::Motion)
-            );
+            assert_eq!(interface_page_items(false).last(), Some(&Item::Motion));
         }
     }
 }

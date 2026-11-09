@@ -1,6 +1,9 @@
 use ala::{Context, Window};
-use zz_client::gui_actions::{ACCENT, GuiOffer, PANE_GAPS, SIDEBAR_LAYOUT, TITLEBAR_MODE};
-use zz_ui::{command::GuiEvent, interface_theme::AppearanceChange};
+use zz_client::gui_actions::{ACCENT, GLASS, GuiOffer, PANE_GAPS, SIDEBAR_LAYOUT, TITLEBAR_MODE};
+use zz_ui::{
+    command::GuiEvent,
+    interface_theme::{AppearanceChange, Glass},
+};
 
 use super::AppShell;
 
@@ -17,6 +20,14 @@ impl AppShell {
                 })
                 .flatten(),
             GuiOffer::toggle(PANE_GAPS, preferences.gaps),
+            GuiOffer::fixed(
+                GLASS,
+                if preferences.appearance.glass() == Glass::None {
+                    "none"
+                } else {
+                    "liquid"
+                },
+            ),
             GuiOffer::fixed(ACCENT, &preferences.appearance.accent()),
             GuiOffer::toggle(SIDEBAR_LAYOUT, preferences.flat_sidebar),
         ]
@@ -53,6 +64,16 @@ impl AppShell {
                         self.preferences.gaps = on;
                         self.preferences.save();
                         self.preferences.apply(&self.connection, window, cx);
+                    }
+                    GLASS => {
+                        let glass = if value == "none" {
+                            Glass::None
+                        } else {
+                            Glass::Liquid
+                        };
+                        self.preferences
+                            .change_appearance(AppearanceChange::Glass(glass));
+                        self.theme_changed(window, cx);
                     }
                     ACCENT => {
                         self.preferences
