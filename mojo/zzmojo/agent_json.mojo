@@ -79,6 +79,23 @@ struct Json(Movable):
             child = self.nodes[child].next
         return found
 
+    def last(self, node: Int, key: String) -> Int:
+        if node < 0 or self.nodes[node].kind != JSON_OBJECT:
+            return JSON_ABSENT
+        var found = JSON_ABSENT
+        var child = self.nodes[node].first
+        while child >= 0:
+            if self.nodes[child].key == key:
+                found = child
+            child = self.nodes[child].next
+        return found
+
+    def last_text(self, node: Int, key: String) -> Optional[String]:
+        var found = self.last(node, key)
+        if found < 0 or self.nodes[found].kind != JSON_STRING:
+            return None
+        return Optional[String](self.nodes[found].text.copy())
+
     def fail(mut self) -> Int:
         self.failed = True
         return JSON_ABSENT
