@@ -20,7 +20,10 @@ def main():
     TARGET.mkdir(parents=True, exist_ok=True)
     if not options.skip_reference:
         subprocess.run(['cargo', 'run', '--quiet', '--locked', '--offline', '-p', 'zz-client', '--example', 'which_key_vectors', '--', str(TARGET)], cwd=ROOT, check=True)
-    stock = (TARGET / 'stock.bin').read_bytes().hex()
+    frame = (TARGET / 'stock.bin').read_bytes()
+    if len(frame) < 8 or int.from_bytes(frame[:4], 'little') != len(frame) - 4:
+        raise AssertionError('stock which-key snapshot is not one framed message')
+    stock = frame[8:].hex()
     names = '\n'.join(json.loads((TARGET / 'implemented.json').read_text()))
     expected = 'comptime WHICH_KEY_STOCK = ' + json.dumps(stock) + '\n\ncomptime WHICH_KEY_IMPLEMENTED = ' + json.dumps(names) + '\n'
     data = ROOT / 'mojo/zzmojo/which_key_data.mojo'

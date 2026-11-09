@@ -1,5 +1,5 @@
 from std.collections import Dict
-from .protocol import Decoder, validate_envelope
+from .protocol import Decoder
 from .tree_wire import read_text
 from .exec_protocol import Invocation
 from .prefix_bindings import PrefixBinding, PrefixTable, PrefixBudget, read_prefix_tables, MAX_PREFIX_TABLES
@@ -239,8 +239,8 @@ struct WhichKeyModel(Movable):
                 var digit = data[index + part]
                 value = value * 16 + (digit - 48 if digit <= 57 else digit - 87)
             bytes.append(value)
-        _ = validate_envelope(Span(bytes))
         var reader = Decoder(bytes^)
+        reader.offset = 0
         if reader.uint() != 10 or reader.uint() != 0 or reader.uint() != 25:
             raise Error("invalid built-in which-key snapshot")
         var tables = read_prefix_tables(reader)
