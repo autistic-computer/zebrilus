@@ -361,6 +361,7 @@ struct BrowserPane(Movable):
 
     def set_focused(mut self, focused: Bool):
         self.focused = focused
+        self.input.page_focused = focused and not self.input.address_editing
         var index = self.active_page()
         if index >= 0:
             self.pages[index].page.focus(focused)

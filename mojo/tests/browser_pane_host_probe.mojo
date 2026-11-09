@@ -8,7 +8,10 @@ from mjui.ui import Ui, Style, MOTION_REDUCED
 from mjui.widgets.key import sub
 from mjui.widgets.penna import PennaTheme
 from zzmojo.browser_pane import BrowserPane
+from mjui.input import KeyEvent
+from mjui.keys import Key
 from zzmojo.browser_input import (
+    BROWSER_KEY_PAGE,
     BROWSER_BUTTON_LEFT,
     BROWSER_POINTER_DOWN,
     BROWSER_POINTER_UP,
@@ -120,6 +123,11 @@ def main() raises:
     assert_true(act(pane, 7))
     assert_equal(pane.presentation().page_zoom_percent, UInt16(110))
     pane.set_focused(True)
+    var typed = pane.key(
+        KeyEvent(0, Key.A, 0, 97, 97, 0, 0, False, False, False, False)
+    )
+    assert_equal(typed.kind, BROWSER_KEY_PAGE)
+    assert_true(typed.text_follows)
     _ = pane.pointer(
         BROWSER_POINTER_DOWN, BROWSER_BUTTON_LEFT, 0, 20, 20, 0
     )
