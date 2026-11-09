@@ -117,3 +117,27 @@ def picker_split_command(pane: UInt64, axis: UInt8) raises -> Invocation:
         raise Error("desktop split axis is invalid")
     var arguments: List[String] = [String("--kind"), String("picker"), String("-h" if axis == 0 else "-v"), String("-t"), String("%", pane)]
     return nav_command("split-window", arguments)
+
+
+def rename_prompt_command(
+    target: NavTarget, current_name: String
+) raises -> Tuple[String, Invocation]:
+    if target.kind > 1:
+        raise Error("desktop rename target kind is invalid")
+    var session = target.kind == 0
+    var template = String(
+        "rename-session -t '$" if session else "rename-window -t '@",
+        target.id,
+        "' -- '%%'",
+    )
+    var arguments: List[String] = [
+        String("-p"),
+        String("rename-session: " if session else "rename-window: "),
+        String("-I"),
+        current_name.copy(),
+        template^,
+    ]
+    return (
+        String("Rename Session…" if session else "Rename Window…"),
+        nav_command("command-prompt", arguments),
+    )

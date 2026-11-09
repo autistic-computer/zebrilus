@@ -77,25 +77,43 @@ impl HostState {
     }
 }
 
-
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub enum HostIndicator { Connecting, Failed { detail: Option<String> } }
+pub enum HostIndicator {
+    Connecting,
+    Failed { detail: Option<String> },
+}
 
 #[must_use]
 pub fn indicator(state: &HostState, loaded: bool) -> Option<HostIndicator> {
     match state {
         HostState::Connected if loaded => None,
-        HostState::Connected | HostState::Connecting | HostState::Reconnecting { .. } | HostState::Installing => Some(HostIndicator::Connecting),
-        HostState::Disconnected | HostState::Unreachable { .. } | HostState::Incompatible { .. } | HostState::Missing => Some(HostIndicator::Failed { detail: state.failure_detail() }),
+        HostState::Connected
+        | HostState::Connecting
+        | HostState::Reconnecting { .. }
+        | HostState::Installing => Some(HostIndicator::Connecting),
+        HostState::Disconnected
+        | HostState::Unreachable { .. }
+        | HostState::Incompatible { .. }
+        | HostState::Missing => Some(HostIndicator::Failed {
+            detail: state.failure_detail(),
+        }),
     }
 }
 
 #[must_use]
-pub fn activation<Host: Copy + Eq>(host: Host, attached: Host, state: &HostState) -> Option<crate::desktop_nav::NavActivation<Host>> {
+pub fn activation<Host: Copy + Eq>(
+    host: Host,
+    attached: Host,
+    state: &HostState,
+) -> Option<crate::desktop_nav::NavActivation<Host>> {
     use crate::desktop_nav::NavActivation;
     match state {
         HostState::Connected if host != attached => Some(NavActivation::AttachHost(host)),
-        HostState::Disconnected | HostState::Reconnecting { .. } | HostState::Unreachable { .. } | HostState::Incompatible { .. } | HostState::Missing => Some(NavActivation::Reconnect(host)),
+        HostState::Disconnected
+        | HostState::Reconnecting { .. }
+        | HostState::Unreachable { .. }
+        | HostState::Incompatible { .. }
+        | HostState::Missing => Some(NavActivation::Reconnect(host)),
         _ => None,
     }
 }

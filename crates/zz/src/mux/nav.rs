@@ -1,10 +1,7 @@
 use std::collections::BTreeSet;
 
 use ala::{App, Entity, SharedString};
-use zz_protocol::{
-    Axis, CommandInvocation, MuxSnapshot, PaneId,
-    SessionId, WindowId,
-};
+use zz_protocol::{Axis, CommandInvocation, MuxSnapshot, PaneId, SessionId, WindowId};
 
 use super::{
     client::MuxClient,
@@ -53,7 +50,9 @@ impl TreeTarget {
 }
 
 pub use zz_client::desktop_fleet::FleetPane as MuxTreePane;
-pub use zz_client::desktop_fleet::{FleetPaneKind as MuxTreePaneKind, FleetSession as MuxTreeSession, FleetWindow as MuxTreeWindow};
+pub use zz_client::desktop_fleet::{
+    FleetPaneKind as MuxTreePaneKind, FleetSession as MuxTreeSession, FleetWindow as MuxTreeWindow,
+};
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct MuxTreeModel {
@@ -82,7 +81,13 @@ impl MuxTreeModel {
             .into_iter()
             .map(|(host, name, state, snapshot)| {
                 let snapshot_loaded = snapshot.is_some();
-                let (sessions, next_active) = zz_client::desktop_fleet::sessions(active_target.map(to_desktop_nav_node), host, attached_host, attached, snapshot);
+                let (sessions, next_active) = zz_client::desktop_fleet::sessions(
+                    active_target.map(to_desktop_nav_node),
+                    host,
+                    attached_host,
+                    attached,
+                    snapshot,
+                );
                 active_target = next_active.map(from_desktop_nav_node);
                 MuxTreeHost {
                     id: host,
@@ -105,18 +110,7 @@ impl MuxTreeModel {
         match node {
             TreeNode::Host(host) => self.host(host).is_some(),
             TreeNode::Target(host, target) => self.host(host).is_some_and(|host| {
-                zz_client::desktop_nav_tree::target_expandable(
-                    desktop_nav_target(target),
-                    host.sessions.iter().map(|session| {
-                        (
-                            session.id,
-                            session
-                                .windows
-                                .iter()
-                                .map(|window| (window.id, window.panes.iter().map(|pane| pane.id))),
-                        )
-                    }),
-                )
+                zz_client::desktop_fleet::expandable(&host.sessions, desktop_nav_target(target))
             }),
         }
     }
@@ -136,59 +130,44 @@ impl MuxTreeModel {
         host: HostId,
         target: TreeTarget,
     ) -> Option<zz_client::desktop_nav_tree::NavOwner> {
-        zz_client::desktop_nav_tree::target_owner(
+        zz_client::desktop_fleet::target_owner(
+            &self.host(host)?.sessions,
             desktop_nav_target(target),
-            self.host(host)?.sessions.iter().flat_map(|session| {
-                session.windows.iter().map(move |window| {
-                    (
-                        session.id,
-                        window.id,
-                        window.panes.iter().map(|pane| pane.id),
-                    )
-                })
-            }),
         )
     }
 
+    #[cfg(test)]
     #[must_use]
     pub fn session_for_target(&self, host: HostId, target: TreeTarget) -> Option<SessionId> {
-        self.host(host)?;
-        match target {
-            TreeTarget::Session(session) => Some(session),
-            _ => self.target_owner(host, target).map(|owner| owner.session),
-        }
-    }
-
-    fn window_for_target(&self, host: HostId, target: TreeTarget) -> Option<WindowId> {
-        self.target_owner(host, target).map(|owner| owner.window)
-    }
-
-    #[must_use]
-    pub fn renameable_name(&self, host: HostId, target: TreeTarget) -> Option<&str> {
-        zz_client::desktop_nav_tree::renameable_name(
+        zz_client::desktop_fleet::session_for_target(
+            &self.host(host)?.sessions,
             desktop_nav_target(target),
-            self.host(host)?.sessions.iter().map(|session| {
-                (
-                    session.id,
-                    session.name.as_str(),
-                    session
-                        .windows
-                        .iter()
-                        .map(|window| (window.id, window.name.as_str())),
-                )
-            }),
         )
     }
 
+    #[cfg(test)]
+    #[must_use]
+    pub fn renameable_name(&self, host: HostId, target: TreeTarget) -> Option<&str> {
+        zz_client::desktop_fleet::renameable_name(
+            &self.host(host)?.sessions,
+            desktop_nav_target(target),
+        )
+    }
+
+    #[cfg(test)]
     #[must_use]
     pub fn rename_target_for_node(&self, node: TreeNode) -> Option<(HostId, TreeTarget)> {
         match node {
             TreeNode::Target(host, target @ (TreeTarget::Session(_) | TreeTarget::Window(_))) => {
                 Some((host, target))
             }
-            TreeNode::Target(host, target @ TreeTarget::Pane(_)) => self
-                .target_owner(host, target)
-                .map(|owner| (host, TreeTarget::Window(owner.window))),
+            TreeNode::Target(host, target @ TreeTarget::Pane(_)) => {
+                zz_client::desktop_fleet::rename_target(
+                    &self.host(host)?.sessions,
+                    desktop_nav_target(target),
+                )
+                .map(|target| (host, tree_target(target)))
+            }
             TreeNode::Host(_) => None,
         }
     }
@@ -199,52 +178,30 @@ impl MuxTreeModel {
         node: TreeNode,
         attached_host: HostId,
     ) -> Option<(&'static str, NavActivation)> {
-        let (host, target) = self.rename_target_for_node(node)?;
-        if !self.host(host)?.connected() {
+        let TreeNode::Target(id, target) = node else {
             return None;
-        }
-        let (label, command) = rename_prompt_command(target, self.renameable_name(host, target)?)?;
-        let activation = if host == attached_host {
-            NavActivation::Execute {
-                host,
-                commands: vec![command],
-            }
-        } else {
-            NavActivation::AttachThenExecute {
-                host,
-                session: self.session_for_target(host, target)?,
-                commands: vec![command],
-            }
         };
-        Some((label, activation))
+        let host = self.host(id)?;
+        zz_client::desktop_fleet::rename_activation(
+            id,
+            &host.state,
+            &host.sessions,
+            desktop_nav_target(target),
+            attached_host,
+        )
     }
 
     #[must_use]
     pub fn has_pending_bell(&self, node: TreeNode) -> bool {
-        let Some(host) = self.host(node.host()) else {
-            return false;
-        };
-        match node {
-            TreeNode::Host(_) => host.sessions.iter().any(MuxTreeSession::has_pending_bell),
-            TreeNode::Target(_, TreeTarget::Session(id)) => host
-                .sessions
-                .iter()
-                .find(|session| session.id == id)
-                .is_some_and(MuxTreeSession::has_pending_bell),
-            TreeNode::Target(_, TreeTarget::Window(id)) => host
-                .sessions
-                .iter()
-                .flat_map(|session| &session.windows)
-                .find(|window| window.id == id)
-                .is_some_and(MuxTreeWindow::has_pending_bell),
-            TreeNode::Target(_, TreeTarget::Pane(id)) => host
-                .sessions
-                .iter()
-                .flat_map(|session| &session.windows)
-                .flat_map(|window| &window.panes)
-                .find(|pane| pane.id == id)
-                .is_some_and(|pane| pane.bell),
-        }
+        self.host(node.host()).is_some_and(|host| {
+            zz_client::desktop_fleet::pending_bell(
+                &host.sessions,
+                match node {
+                    TreeNode::Host(_) => None,
+                    TreeNode::Target(_, target) => Some(desktop_nav_target(target)),
+                },
+            )
+        })
     }
 
     #[must_use]
@@ -255,18 +212,13 @@ impl MuxTreeModel {
         attached_session: Option<SessionId>,
     ) -> Option<NavActivation> {
         let host = self.host(node.host())?;
-        match node {
-            TreeNode::Host(id) => zz_client::desktop_host::activation(id, attached_host, &host.state),
-            TreeNode::Target(id, target) => activation_for_target(
-                id,
-                target,
-                self.session_for_target(id, target),
-                self.window_for_target(id, target),
-                attached_host,
-                attached_session,
-                host.connected(),
-            ),
-        }
+        zz_client::desktop_fleet::activation(
+            to_desktop_nav_node(node),
+            &host.state,
+            &host.sessions,
+            attached_host,
+            attached_session,
+        )
     }
 
     #[cfg(test)]
@@ -327,14 +279,18 @@ impl MuxTreeHost {
 
     #[must_use]
     pub fn indicator(&self) -> Option<HostIndicator> {
-        zz_client::desktop_host::indicator(&self.state, self.snapshot_loaded).map(|indicator| match indicator {
-            zz_client::desktop_host::HostIndicator::Connecting => HostIndicator::Connecting,
-            zz_client::desktop_host::HostIndicator::Failed { detail } => HostIndicator::Failed { detail: detail.map(SharedString::from) },
+        zz_client::desktop_host::indicator(&self.state, self.snapshot_loaded).map(|indicator| {
+            match indicator {
+                zz_client::desktop_host::HostIndicator::Connecting => HostIndicator::Connecting,
+                zz_client::desktop_host::HostIndicator::Failed { detail } => {
+                    HostIndicator::Failed {
+                        detail: detail.map(SharedString::from),
+                    }
+                }
+            }
         })
     }
 }
-
-
 
 #[derive(Clone, Debug)]
 pub enum TreeNodeKind {
@@ -368,8 +324,6 @@ pub fn active_tree_target(
     }
 }
 
-
-
 pub fn expand_path_to(expanded: &mut BTreeSet<TreeNode>, model: &MuxTreeModel, node: TreeNode) {
     let owner = match node {
         TreeNode::Target(host, target) => model.target_owner(host, target),
@@ -400,14 +354,17 @@ pub(crate) fn from_desktop_nav_node(
 ) -> TreeNode {
     match node {
         zz_client::desktop_nav_tree::NavNode::Host(host) => TreeNode::Host(host),
-        zz_client::desktop_nav_tree::NavNode::Target(host, target) => TreeNode::Target(
-            host,
-            match target {
-                zz_client::desktop_nav::NavTarget::Session(session) => TreeTarget::Session(session),
-                zz_client::desktop_nav::NavTarget::Window(window) => TreeTarget::Window(window),
-                zz_client::desktop_nav::NavTarget::Pane(pane) => TreeTarget::Pane(pane),
-            },
-        ),
+        zz_client::desktop_nav_tree::NavNode::Target(host, target) => {
+            TreeNode::Target(host, tree_target(target))
+        }
+    }
+}
+
+const fn tree_target(target: zz_client::desktop_nav::NavTarget) -> TreeTarget {
+    match target {
+        zz_client::desktop_nav::NavTarget::Session(session) => TreeTarget::Session(session),
+        zz_client::desktop_nav::NavTarget::Window(window) => TreeTarget::Window(window),
+        zz_client::desktop_nav::NavTarget::Pane(pane) => TreeTarget::Pane(pane),
     }
 }
 
