@@ -8,6 +8,7 @@ from zzmojo.desktop_nav import NavActivation, nav_command
 from zzmojo.desktop_nav_tree import NavNode, NAV_TREE_NODES
 from zzmojo.desktop_host import HostState
 from zzmojo.desktop_fleet import FleetHostInput
+from zzmojo.desktop_chrome_dispatch import DesktopChromeDispatch
 from zzmojo.desktop_sidebar import (
     DesktopSidebar,
     DesktopNavSource,
@@ -149,6 +150,10 @@ def main() raises:
     assert_equal(frames(sidebar.new_window().activation.value())[0], command("new-window", [String("-t"), String("$1")]))
     assert_equal(frames(sidebar.split(0).activation.value())[0], command("split-window", [String("--kind"), String("picker"), String("-h"), String("-t"), String("%100")]))
     assert_equal(frames(sidebar.detach().activation.value())[0], command("detach-client", List[String]()))
+    var down = sidebar.chrome_intent(DesktopChromeDispatch(5, 0), List[String](), None)
+    assert_equal(frames(down.value().activation.value())[0], command("split-window", [String("--kind"), String("picker"), String("-v"), String("-t"), String("%100")]))
+    assert_equal(sidebar.chrome_intent(DesktopChromeDispatch(3, 2), List[String](), None).value().activation.value().target, String("$3:@30"))
+    assert_false(Bool(sidebar.chrome_intent(DesktopChromeDispatch(7, 0), List[String](), None)))
 
     var queue = ActionQueue()
     var source = DesktopNavSource(1, 2, 3, 4)

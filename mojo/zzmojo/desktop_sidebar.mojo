@@ -4,6 +4,7 @@ from .palette_programs import PalettePrograms
 from .palette_protocol import palette_command_request
 from .stream_protocol import HostPlatform, attach_session
 from .desktop_snapshot_target import desktop_active_pane
+from .desktop_chrome_dispatch import DesktopChromeDispatch
 from .desktop_host import HostIndicator, host_indicator
 from .desktop_nav import (
     NavActivation,
@@ -45,7 +46,7 @@ struct DesktopSidebarRow(Copyable, Movable):
 
 
 @fieldwise_init
-struct DesktopNavIntent(Movable):
+struct DesktopNavIntent(Copyable, Movable):
     var activation: Optional[NavActivation]
     var release_focus: Bool
     var focus_pane: Bool
@@ -439,3 +440,21 @@ struct DesktopSidebar(Movable):
         var commands = List[Invocation]()
         commands.append(detach_command())
         return self._execute(commands^)
+
+    def chrome_intent(
+        self,
+        dispatch: DesktopChromeDispatch,
+        capabilities: List[String],
+        working_directory: Optional[String],
+    ) raises -> Optional[DesktopNavIntent]:
+        if dispatch.kind == 1:
+            return self.new_session(capabilities, working_directory)
+        if dispatch.kind == 2:
+            return self.new_window()
+        if dispatch.kind == 3:
+            return self.window_shortcut(dispatch.index)
+        if dispatch.kind == 4 or dispatch.kind == 5:
+            return self.split(dispatch.kind - 4)
+        if dispatch.kind == 6:
+            return self.detach()
+        return None
