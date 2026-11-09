@@ -1,7 +1,7 @@
 from std.math import floor, isfinite
 from mjui.ui import Ui, Style, TextStyle, START, CENTER, CURSOR_HAND
 from mjui.box import SIDE_TOP
-from mjui.native_color import NativeColor
+from mjui.native_color import NativeColor, color_float
 from mjui.native_quad import NativeSurface
 from mjui.text.paragraph import TextOpts
 from mjui.text.native_truncate import native_end_truncate
@@ -14,6 +14,7 @@ from mjui.widgets.penna_geometry import length, text_width
 from mjui.widgets.penna_icon_names import named_icon
 from mjui.widgets.penna_palette_shortcuts import PaletteKeystroke, PaletteKeyPart, key_parts, _packed
 from mjui.widgets.penna_palette_surface_data import surface_metric, surface_rule
+from mjui.widgets.penna_roots import colors as penna_root_values
 from mjui.widgets.controls import _input, _nav, _paint_state
 from mjui.widgets.key import sub
 from .chooser_presentation import ChooserPresentation, ChooserRow
@@ -47,6 +48,10 @@ struct ChooserGeometry(Copyable, Movable):
     var border: Float32
     var notices: List[String]
     var notice_heights: List[Float32]
+    var edge: Float32
+
+    def content_width(self) -> Float32:
+        return max(self.panel.width - 2 * self.edge, Float32(0))
 
 
 def _label(mut ui: Ui, text: StringSpan, font: Int32, size: Float32, line: Float32, color: NativeColor, ellipsis: Bool = False, width: Float32 = 0, fallback: Int32 = -1) raises:
@@ -147,7 +152,7 @@ def _notice_height(mut ui: Ui, text: StringSpan, font: Int32, width: Float32, bo
     return Float32(max(len(ui.paras.paras[paragraph].lines), 1)) * 16 + 2 * length(ui, 9) + border
 
 
-def measure_chooser_frame(mut ui: Ui, th: PennaTheme, requested_height: Float32, max_width: Float32, help: Bool, prompt: String) -> ChooserGeometry:
+def measure_chooser_frame(mut ui: Ui, th: PennaTheme, requested_height: Float32, max_width: Float32, help: Bool, prompt: String) raises -> ChooserGeometry:
     var width = min(length(ui, max_width), max(ui.width - 2 * length(ui, 24), Float32(0)))
     var height = min(length(ui, requested_height), max(ui.height - 44, Float32(0)))
     var x = (ui.width - width) / 2
@@ -158,19 +163,21 @@ def measure_chooser_frame(mut ui: Ui, th: PennaTheme, requested_height: Float32,
     if prompt.byte_length() != 0:
         notices.append(prompt.copy())
     var border = length(ui, surface_metric(th.theme, 1))
+    var edge = length(ui, th.paint("picker").border_width)
+    var inner = max(width - 2 * edge, Float32(0))
     var notice_heights = List[Float32]()
     var notice_height: Float32 = 0
     for notice in notices:
-        var measured = _notice_height(ui, notice, th.flat.mono, width, border)
+        var measured = _notice_height(ui, notice, th.flat.mono, inner, border)
         notice_heights.append(measured)
         notice_height += measured
-    var list_height = max(height - length(ui, 56) - length(ui, 34) - notice_height, Float32(0))
+    var list_height = max(height - 2 * edge - length(ui, 56) - length(ui, 34) - notice_height, 2 * length(ui, 8))
     var inset = length(ui, surface_metric(th.theme, 0))
     var content = max(list_height - 2 * length(ui, 8), Float32(0))
-    return ChooserGeometry(ChooserBounds(x, y, width, height), ChooserBounds(x + inset, y + length(ui, 56) + notice_height + length(ui, 8), max(width - 2 * inset, Float32(0)), content), length(ui, 40), 18, list_height, inset, border, notices^, notice_heights^)
+    return ChooserGeometry(ChooserBounds(x, y, width, height), ChooserBounds(x + edge + inset, y + edge + length(ui, 56) + notice_height + length(ui, 8), max(inner - 2 * inset, Float32(0)), content), length(ui, 40), 18, list_height, inset, border, notices^, notice_heights^, edge)
 
 
-def measure_chooser(mut ui: Ui, th: PennaTheme, model: ChooserPresentation) -> ChooserGeometry:
+def measure_chooser(mut ui: Ui, th: PennaTheme, model: ChooserPresentation) raises -> ChooserGeometry:
     return measure_chooser_frame(ui, th, model.height, 600, model.snapshot.help, model.snapshot.prompt)
 
 @inline(.never)
@@ -286,10 +293,11 @@ def _row(mut ui: Ui, th: PennaTheme, medium: Int32, key: UInt64, row: ChooserRow
 
 @inline(.never)
 def open_chooser_frame(mut ui: Ui, th: PennaTheme, key: UInt64, geometry: ChooserGeometry, title: String, subtitle: String, medium: Int32, overlay: Bool) raises -> ChooserResult:
-    var width = geometry.panel.width
+    var width = geometry.content_width()
     var height = geometry.panel.height
     var x = geometry.panel.x
     var y = geometry.panel.y
+    var edge = geometry.edge
     var notices = geometry.notices.copy()
     var rule = surface_rule(th.theme)
     var border = geometry.border
@@ -310,10 +318,12 @@ def open_chooser_frame(mut ui: Ui, th: PennaTheme, key: UInt64, geometry: Choose
     ui.native_surface(NativeSurface(scrim, NativeColor(), NativeColor(), 0, 0, 2, 0, False))
     ui.close()
     var panel = th.paint("picker")
+    var radius = Float32(-1)
     if panel.radius > 0 and panel.radius < 4096:
-        panel.radius += 8
-    ui.open(panel.style(Style.col().width(width).height(height).clipped().id(key).at(x, y)))
-    panel.decorations(ui)
+        radius = Float32(40) * color_float(penna_root_values(th.theme)[20]) + 8
+        panel.radius = radius
+    ui.open(panel.style(Style.col().width(geometry.panel.width).height(height).pad(edge, edge).clipped().id(key).at(x, y)))
+    panel.decorations(ui, radius=radius)
     ui.open(Style.row().width(width).height(length(ui, 56)).pad(length(ui, 12), 0).align(START, CENTER))
     ui.open(Style.col().grow().min_width(0).spacing(length(ui, 2)))
     _label(ui, title, medium, 13, 18, root_color(th.theme, 1))
@@ -351,7 +361,7 @@ def render_chooser(mut ui: Ui, th: PennaTheme, key: UInt64, model: ChooserPresen
     var medium = th.flat.font if medium_font < 0 else medium_font
     var search = model.search(marked)
     var geometry = measure_chooser(ui, th, model)
-    var width = geometry.panel.width
+    var width = geometry.content_width()
     var content = geometry.viewport.height
     var inset = geometry.inset
     var row_height = geometry.row_height

@@ -13,7 +13,7 @@ from .buffer_presentation import BufferPresentation, BufferRow
 from .chooser_component import ChooserGeometry, ChooserResult, measure_chooser_frame, open_chooser_frame, close_chooser_frame, _label, _width
 
 
-def measure_buffer_chooser(mut ui: Ui, th: PennaTheme, model: BufferPresentation) -> ChooserGeometry:
+def measure_buffer_chooser(mut ui: Ui, th: PennaTheme, model: BufferPresentation) raises -> ChooserGeometry:
     return measure_chooser_frame(ui, th, model.height, 640, model.snapshot.help, model.snapshot.prompt)
 
 
@@ -83,7 +83,7 @@ def render_buffer_chooser(mut ui: Ui, th: PennaTheme, key: UInt64, model: Buffer
         raise Error("buffer chooser scroll offset is not finite")
     var search = model.search(marked)
     var geometry = measure_buffer_chooser(ui, th, model)
-    var width = geometry.panel.width
+    var width = geometry.content_width()
     var row_height = geometry.row_height
     var count = len(model.snapshot.items[].values)
     var offset = min(max(scroll, Float32(0)), max(Float32(count) * row_height - geometry.viewport.height, Float32(0)))
