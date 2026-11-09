@@ -25,7 +25,8 @@ just design parity                  # diff the two, using the links compare wrot
   (`line-height: normal`) with the appearance's `cell_height_adjustment` applied and snapped
   (`Client::terminal_metrics`). The default appearance gives 8x17 css px. Text is pinned to that
   grid with `letter-spacing`, and wide cells get a two-cell box. `state.cell` holds the base size.
-- Everything is painted with penna's HTML kit (`libs/penna/web`) and zz's `design/zz.css`: elements
+- Everything is painted with penna's HTML kit (`libs/penna/web`, plus the slider's own
+  `src/components/slider/slider.css`) and zz's `design/zz.css`: elements
   name their role (`data-penna="menu-item"`) and never hard-code colors, so every theme, mode and
   role change reaches the page through `just design tokens`. Kit names are `data-penna`,
   `--penna-*` and `.penna-*`; this client's own classes and properties keep `zz-`.

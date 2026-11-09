@@ -29,7 +29,7 @@ wasm-bindgen "target/dom/wasm32-unknown-unknown/$PROFILE/zz_dom.wasm" \
 wasm-bindgen target/dom-theme/wasm32-unknown-unknown/release/zz_dom_theme.wasm \
     --target web --no-typescript --out-dir "$OUT/theme"
 cp -R clients/dom/web/. "$OUT/"
-cp libs/penna/web/penna.css libs/penna/web/kit.js design/zz.css "$OUT/kit/"
+cp libs/penna/web/penna.css libs/penna/web/kit.js libs/penna/src/components/slider/slider.css design/zz.css "$OUT/kit/"
 cp -R design/tokens "$OUT/kit/tokens"
 cp clients/web/assets/fonts/lilex/*.ttf clients/web/assets/fonts/inter/*.ttf "$OUT/fonts/"
 cp assets/zz-light-512.png assets/zz-dark-512.png assets/zz-dev-light-512.png assets/zz-dev-dark-512.png "$OUT/img/"
