@@ -8,6 +8,7 @@ from mjui.input import (
     MouseEvent,
     TEXT_INSERT,
     TEXT_COMMAND,
+    INSERT_COMPOSED,
     MOUSE_DOWN,
     MOUSE_UP,
     MOUSE_MOVED,
@@ -60,9 +61,11 @@ from .palette_navigation import parent_index
 from .palette_ui_keys import palette_ui_key
 from .palette_text import palette_words
 from .chooser_presentation import CHOOSER_DISPLAY_BYTES
-from .editor_pointer import editor_composition
 from .search_clipboard import SearchClipboard
-from .window_chooser_text import window_chooser_text
+from .window_chooser_text import (
+    window_chooser_text,
+    window_chooser_marked_offset,
+)
 
 
 struct WindowChooserComponentResult(Movable):
@@ -197,24 +200,50 @@ struct WindowChooserComponent(Movable):
     def synchronize(
         mut self, data: WindowChooserData, effects: WindowChooserEffects
     ):
-        if self.field.text() != data.query:
+        if self.state()[0] != data.query:
             self.field.set_text(data.query)
+            self.field.marked.clear()
+            self.field.disp.clear()
             self.field.select(data.cursor, data.cursor)
         if effects.scroll:
             self.pending_scroll = effects.scroll
 
-    def trim_undo(mut self):
-        var bytes = 0
-        for edit in self.field.undo:
-            bytes += edit.removed.capacity() + edit.inserted.capacity()
-        if bytes > 1024 * 1024 or len(self.field.undo) > 64:
-            self.field.undo = List[Edit]()
-            self.field.undo_top = 0
+    def state(self) -> Tuple[String, Int]:
+        if len(self.field.marked) == 0:
+            return (self.field.text(), self.field.caret)
+        var selection = self.field.selection()
+        var bytes = List[UInt8](
+            capacity=len(self.field.buf)
+            - selection[1]
+            + selection[0]
+            + len(self.field.marked)
+        )
+        bytes.extend(Span(self.field.buf)[: selection[0]])
+        bytes.extend(Span(self.field.marked))
+        bytes.extend(Span(self.field.buf)[selection[1] :])
+        return (
+            String(unsafe_from_utf8=Span(bytes)),
+            selection[0] + self.field.marked_b,
+        )
 
-    def insert(mut self, bytes: Span[UInt8, _]) raises -> Bool:
-        if len(bytes) > CHOOSER_DISPLAY_BYTES:
+    def edited(
+        self, data: WindowChooserData
+    ) raises -> Optional[WindowChooserOperation]:
+        var text, cursor = self.state()
+        if text == data.query and cursor == data.cursor:
+            return None
+        var operation = WindowChooserOperation(1)
+        operation.text = text^
+        operation.cursor = cursor
+        return operation^
+
+    def compose(
+        mut self, marked: Span[UInt8, _], start: Int, end: Int
+    ) raises -> Bool:
+        if len(marked) > CHOOSER_DISPLAY_BYTES:
             return False
-        var text = window_chooser_text(String(from_utf8=bytes))
+        var original = String(from_utf8=marked)
+        var text = window_chooser_text(original)
         var selection = self.field.selection()
         if (
             text.byte_length()
@@ -224,38 +253,82 @@ struct WindowChooserComponent(Movable):
             - selection[0]
         ):
             return False
+        if len(self.field.marked) == 0:
+            if len(marked) == 0:
+                return True
+            if selection[0] != selection[1]:
+                var empty = List[UInt8]()
+                self.field.insert(empty.unsafe_ptr(), 0)
+        self.field.marked.clear()
+        self.field.marked.extend(text.as_bytes())
+        self.field.marked_a = 0
+        self.field.marked_b = 0
+        if text.byte_length() > 0:
+            self.field.marked_a = window_chooser_marked_offset(
+                original, start, text
+            )
+            self.field.marked_b = window_chooser_marked_offset(
+                original, end, text
+            )
+        self.field.disp.clear()
+        self.field.follow = True
+        self.field.dirty = True
+        return True
+
+    def unmark(mut self):
+        if len(self.field.marked) == 0:
+            return
+        var marked = List[UInt8]()
+        swap(marked, self.field.marked)
+        self.field.disp.clear()
+        var start = self.field.selection()[0]
+        self.field.insert(marked.unsafe_ptr(), len(marked))
+        self.field.select(
+            start + self.field.marked_a, start + self.field.marked_b
+        )
+        self.field.marked_a = 0
+        self.field.marked_b = 0
+
+    def trim_undo(mut self):
+        var bytes = 0
+        for edit in self.field.undo:
+            bytes += edit.removed.capacity() + edit.inserted.capacity()
+        if bytes > 1024 * 1024 or len(self.field.undo) > 64:
+            self.field.undo = List[Edit]()
+            self.field.undo_top = 0
+
+    def insert(
+        mut self, bytes: Span[UInt8, _], composed: Bool = False
+    ) raises -> Bool:
+        var text = String()
+        if len(bytes) <= CHOOSER_DISPLAY_BYTES:
+            text = window_chooser_text(String(from_utf8=bytes))
+        var selection = self.field.selection()
+        if (
+            len(bytes) > CHOOSER_DISPLAY_BYTES
+            or text.byte_length()
+            > CHOOSER_DISPLAY_BYTES
+            - len(self.field.buf)
+            + selection[1]
+            - selection[0]
+        ):
+            if composed:
+                self.unmark()
+            return False
         self.field.marked.clear()
         self.field.disp.clear()
         self.field.insert(text.unsafe_ptr(), text.byte_length())
         return True
 
-    def prepare(
-        mut self,
-        mut ui: Ui,
-        input: TextInput,
-        mut clip: SearchClipboard,
-        pointer: Bool,
-    ) raises -> Bool:
-        var selection = self.field.selection()
-        var remaining = (
-            CHOOSER_DISPLAY_BYTES
-            - len(self.field.buf)
-            + selection[1]
-            - selection[0]
-        )
-        if len(input.marked) > remaining:
-            return False
+    def prepare(mut self, mut ui: Ui, mut clip: SearchClipboard, pointer: Bool):
         if pointer and ui.retained_input_begin(self.layer, self.field.key):
             var pointer_input = TextInput()
-            pointer_input.marked = input.marked.copy()
-            pointer_input.marked_sel_a = input.marked_sel_a
-            pointer_input.marked_sel_b = input.marked_sel_b
+            pointer_input.marked = self.field.marked.copy()
+            pointer_input.marked_sel_a = self.field.marked_a
+            pointer_input.marked_sel_b = self.field.marked_b
             self.field.update(ui, pointer_input, clip)
             ui.retained_input_end()
-        else:
-            editor_composition(self.field, ui, input)
         self.trim_undo()
-        return True
 
     def event(
         mut self,
@@ -277,7 +350,8 @@ struct WindowChooserComponent(Movable):
             ):
                 raise Error("window chooser committed text range is invalid")
             result.limited = not self.insert(
-                Span(input.bytes)[Int(event.start) : Int(event.end)]
+                Span(input.bytes)[Int(event.start) : Int(event.end)],
+                event.cmd == INSERT_COMPOSED,
             )
         else:
             var command = event.cmd & ~(CMD_EXTEND | CMD_LOGICAL)
@@ -311,11 +385,9 @@ struct WindowChooserComponent(Movable):
                 self.field.command(ui, event.cmd, event.mods, clip)
             if operation.kind != 11:
                 result.operations.append(operation^)
-        if self.field.text() != data.query or self.field.caret != data.cursor:
-            var operation = WindowChooserOperation(1)
-            operation.text = self.field.text()
-            operation.cursor = self.field.caret
-            result.operations.append(operation^)
+        var edited = self.edited(data)
+        if edited:
+            result.operations.append(edited.take())
         self.trim_undo()
         self.field.blink_t0 = ui.time
         return result^

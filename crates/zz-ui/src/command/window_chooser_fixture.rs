@@ -1,6 +1,6 @@
 use std::cell::RefCell;
 
-use ala::{TestAppContext, TestDispatcher, VisualTestContext};
+use ala::{EntityInputHandler as _, TestAppContext, TestDispatcher, VisualTestContext};
 use serde_json::{Value, json};
 
 use super::*;
@@ -195,6 +195,36 @@ pub fn trace(
                     });
                     let input = palette.input.clone();
                     palette.synchronize_local_input(&input, window, cx);
+                }
+                14 => {
+                    let value = operation[1].as_str().expect("marked text");
+                    let start = operation[2].as_u64().expect("marked selection start") as usize;
+                    let end = operation[3].as_u64().expect("marked selection end") as usize;
+                    palette.input.update(cx, |input, cx| {
+                        input.replace_and_mark_text_in_range(
+                            None,
+                            value,
+                            Some(start..end),
+                            window,
+                            cx,
+                        );
+                    });
+                }
+                15 => palette
+                    .input
+                    .update(cx, |input, cx| input.unmark_text(window, cx)),
+                16 => {
+                    let value = operation[1].as_str().expect("committed text");
+                    palette.input.update(cx, |input, cx| {
+                        input.replace_text_in_range(None, value, window, cx);
+                    });
+                }
+                17 => {
+                    let start = operation[1].as_u64().expect("selection start") as usize;
+                    let end = operation[2].as_u64().expect("selection end") as usize;
+                    palette.input.update(cx, |input, cx| {
+                        input.set_selected_range(start..end, cx);
+                    });
                 }
                 11 => {}
                 12 => palette.advance_chooser_search(cx),
