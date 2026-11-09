@@ -279,7 +279,7 @@ struct DesktopDelivery(Movable):
         _validate_held(router.state, held, context.scope)
         return DesktopDeliveryPlan(self._generation, prefix.generation, configured.version(), context.copy(), router^, queue.stage(actions), held^, ui^, native, None)
 
-    def prepare_key(self, session: InputRouterSession, mut gate: InputRouterGate, queue: ActionQueue, map: ChromeKeymap, configured: ChromeKeymap, prefix: PrefixBindings, routing: InputRoutingState, input: RouterInput, target: DesktopKeyTarget, context: DesktopEnvelope, which_key: Bool, picker_sidebar: Bool) raises -> DesktopDeliveryPlan:
+    def prepare_key(self, session: InputRouterSession, mut gate: InputRouterGate, queue: ActionQueue, map: ChromeKeymap, configured: ChromeKeymap, prefix: PrefixBindings, routing: InputRoutingState, input: RouterInput, target: DesktopKeyTarget, context: DesktopEnvelope, which_key: Bool) raises -> DesktopDeliveryPlan:
         var fingerprint = _routing_bytes(routing)
         if prefix.active_table != routing.table or prefix.repeat != routing.repeat:
             raise Error("desktop prefix table and routing snapshot differ")

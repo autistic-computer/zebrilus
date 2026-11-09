@@ -284,7 +284,6 @@ struct DesktopWorkspace(Movable):
         epoch: UInt64,
         output_owner: Optional[UInt64] = None,
         which_key: Bool = False,
-        picker_sidebar: Bool = False,
     ) raises -> DesktopPrepared:
         if (
             not self.source
@@ -337,7 +336,6 @@ struct DesktopWorkspace(Movable):
             target,
             context,
             which_key,
-            picker_sidebar,
         )
         var prepared = DesktopPrepared(
             self._generation,
@@ -357,7 +355,7 @@ struct DesktopWorkspace(Movable):
         )
         var cancel = False
         for effect in prepared.plan.value().ui:
-            cancel = cancel or effect.kind == 4 or effect.kind == 5
+            cancel = cancel or effect.kind == 5
         if cancel:
             var prefix = self.prefix.prepare_cancel(
                 queue, prepared.context, target.connected
