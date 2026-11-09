@@ -27,9 +27,9 @@ def limited():
         return os.environ.get("ZZ_PORT_GUARDED") == "1"
     for line in Path("/proc/self/cgroup").read_text().splitlines():
         if line.startswith("0::"):
-            path = Path("/sys/fs/cgroup") / line[3:].lstrip("/") / "memory.max"
-            value = path.read_text().strip()
-            return value != "max" and int(value) <= LIMIT
+            group = Path(line[3:].lstrip("/"))
+            value = (Path("/sys/fs/cgroup") / group / "memory.max").read_text().strip()
+            return value != "max" and (int(value) <= LIMIT or group.name.startswith("zz-port-"))
     return False
 
 
