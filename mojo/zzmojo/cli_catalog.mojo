@@ -113,6 +113,7 @@ swap-pane	swapp	0	0	0	[-dDUZ] [-s src-pane] [-t dst-pane]	-s:1,-t:1,-d:0,-D:0,-U
 swap-window	swapw	0	0	0	[-d] [-s src-window] [-t dst-window]	-d:0,-s:1,-t:1
 switch-client	switchc	0	0	0	[-ElnprZ] [-c target-client] [-t target-session] [-T key-table] [-O order]	-E:0,-l:0,-n:0,-p:0,-r:0,-Z:0,-c:1,-t:1,-T:1,-O:1,-F:0
 switch-mode		0	0	1	[-kswZ] [-F format] [-t target-pane] [command]	-F:1,-Z:0,-k:0,-s:0,-t:1,-w:0
+tailnet		1	0	-1	[status | hosts | login | logout | allow [NAME] | disallow NAME]	
 tools		1	0	1	[--skill] [--context] [--install-hooks] [--remove-hooks] [--fork-chat] [section]	--skill:0,--context:0,--install-hooks:0,--remove-hooks:0,--fork-chat:0
 unbind-key	unbind	0	0	1	[-anq] [-T key-table] key	-T:1,-a:0,-n:0,-q:0
 unlink-window	unlinkw	0	0	0	[-k] [-t target-window]	-k:0,-t:1
