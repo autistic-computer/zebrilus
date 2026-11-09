@@ -234,7 +234,7 @@
 }
 
 .agent-activity[data-clickable] {
-  cursor: pointer;
+  cursor: var(--penna-click-cursor);
 }
 
 .agent-activity[data-clickable]:hover {
@@ -853,7 +853,7 @@
   padding: 8px 12px;
   font-size: 12px;
   line-height: 16px;
-  cursor: pointer;
+  cursor: var(--penna-click-cursor);
 }
 
 .agent-option-label {
@@ -1030,7 +1030,7 @@
   padding: 0 8px;
   font-size: 12px;
   line-height: 16px;
-  cursor: pointer;
+  cursor: var(--penna-click-cursor);
   --penna-icon-size: 12px;
 }
 
@@ -1113,7 +1113,7 @@
   gap: 12px;
   height: 40px;
   padding: 0 12px;
-  cursor: pointer;
+  cursor: var(--penna-click-cursor);
 }
 
 .agent-completion-copy {

@@ -23,6 +23,18 @@ body {
   margin: 0;
 }
 
+:root {
+  --penna-click-cursor: pointer;
+}
+
+:root[data-pointer="arrow"],
+:disabled,
+[aria-disabled="true"],
+[data-disabled],
+[data-state~="disabled"] {
+  --penna-click-cursor: default;
+}
+
 :root[data-density="compact"] {
   --penna-control-md: 24px;
 }
@@ -54,8 +66,25 @@ select[data-penna] {
   outline: none;
 }
 
-button[data-penna] {
-  cursor: default;
+:where(
+    button,
+    a[href],
+    summary,
+    select,
+    label:has(> input:is([type="checkbox"], [type="radio"])),
+    input:is([type="checkbox"], [type="radio"], [type="range"], [type="color"]),
+    [role="button"],
+    [role="switch"],
+    [role="tab"],
+    [role="menuitem"],
+    [role="menuitemcheckbox"],
+    [role="menuitemradio"],
+    [role="option"],
+    [role="radio"],
+    [role="checkbox"],
+    [role="treeitem"]
+  ) {
+  cursor: var(--penna-click-cursor);
 }
 
 [data-penna]:is(:focus-visible, [data-state~="focused"]) {

@@ -69,7 +69,7 @@ nav:not([data-divider]) > .sidebar-resize:hover {
 .app [data-penna="sidebar.row"] {
   flex: none;
   padding-right: 7px;
-  cursor: pointer;
+  cursor: var(--penna-click-cursor);
 }
 
 #tree.tree > [data-penna="sidebar.row"] {
@@ -307,7 +307,7 @@ nav:not([data-divider]) > .sidebar-resize:hover {
   font-size: 13px;
   line-height: 16px;
   color: color-mix(in oklab, var(--penna-fg) 85%, transparent);
-  cursor: pointer;
+  cursor: var(--penna-click-cursor);
 }
 
 .sidebar-action:hover {
@@ -333,7 +333,7 @@ nav:not([data-divider]) > .sidebar-resize:hover {
   font-weight: 600;
   line-height: 16px;
   color: color-mix(in oklab, var(--penna-fg) 85%, transparent);
-  cursor: pointer;
+  cursor: var(--penna-click-cursor);
 }
 
 .flat-host:hover {
@@ -386,7 +386,7 @@ nav:not([data-divider]) > .sidebar-resize:hover {
 .flat-session {
   flex: none;
   padding: 6px calc(var(--penna-row-inset) + 10px) 2px;
-  cursor: pointer;
+  cursor: var(--penna-click-cursor);
 }
 
 .flat-session-line {
@@ -451,7 +451,7 @@ nav:not([data-divider]) > .sidebar-resize:hover {
   height: 48px;
   padding: 0 calc(var(--penna-row-inset) + 13px) 0 calc(var(--penna-row-inset) + 10px);
   font-size: 13px;
-  cursor: pointer;
+  cursor: var(--penna-click-cursor);
 }
 
 .flat-fill {

@@ -21,7 +21,7 @@
   font-weight: var(--penna-text-body-weight);
   line-height: var(--penna-text-body-line);
   white-space: nowrap;
-  cursor: pointer;
+  cursor: var(--penna-click-cursor);
   --penna-icon-size: 12px;
 }
 
@@ -113,7 +113,7 @@
 .penna-select-menu [data-penna="menu-item"] {
   flex: none;
   gap: var(--penna-space-8);
-  cursor: default;
+  cursor: var(--penna-click-cursor);
 }
 
 .penna-select-menu [data-penna="menu-item"] > [data-icon] {

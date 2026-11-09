@@ -136,6 +136,8 @@ function apply() {
   if (root.dataset.pennaMode !== mode) root.dataset.pennaMode = mode;
   const density = preferences.density || "regular";
   if (root.dataset.density !== density) root.dataset.density = density;
+  const pointer = preferences.pointer === "arrow" ? "arrow" : "hand";
+  if (root.dataset.pointer !== pointer) root.dataset.pointer = pointer;
   root.style.zoom = preferences.zoom === 1 ? "" : String(preferences.zoom);
   root.toggleAttribute("data-zz-still", preferences.motion === "off");
   root.style.setProperty("--zz-animation-speed", preferences.motion === "fast" ? "2" : "1");

@@ -12,6 +12,10 @@
   outline: none;
 }
 
+:is(button, a[href], [role="button"], [role="menuitem"], [role="option"], [role="tab"], [role="treeitem"]).penna-row[data-penna] {
+  cursor: var(--penna-click-cursor);
+}
+
 .penna-row .penna-text,
 .penna-fill-row .penna-text,
 .penna-item .penna-text {

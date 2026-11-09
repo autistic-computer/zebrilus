@@ -64,7 +64,7 @@
 }
 
 .window-tab:not([data-state~="current"]) {
-  cursor: pointer;
+  cursor: var(--penna-click-cursor);
 }
 
 .tab-name {
@@ -645,7 +645,7 @@
   height: 32px;
   padding: 0 12px;
   font-size: 12px;
-  cursor: pointer;
+  cursor: var(--penna-click-cursor);
   --penna-icon-size: 16px;
 }
 

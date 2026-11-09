@@ -73,7 +73,7 @@
   margin: 0;
   padding: 0;
   gap: 0;
-  cursor: pointer;
+  cursor: var(--penna-click-cursor);
 }
 
 .penna-steps-pills > .penna-step::before {
@@ -129,7 +129,7 @@
   width: 100%;
   height: var(--penna-control-md);
   padding: 0 calc(var(--penna-slider-knob) / 2);
-  cursor: pointer;
+  cursor: var(--penna-click-cursor);
   outline: none;
   touch-action: none;
   user-select: none;

@@ -96,7 +96,7 @@
   margin: 0 -8px;
   padding: 0 8px;
   outline: none;
-  cursor: pointer;
+  cursor: var(--penna-click-cursor);
   touch-action: none;
 }
 

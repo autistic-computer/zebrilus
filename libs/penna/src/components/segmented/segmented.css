@@ -159,7 +159,7 @@
   box-shadow: none;
   font: inherit;
   white-space: nowrap;
-  cursor: default;
+  cursor: var(--penna-click-cursor);
   appearance: none;
   outline: none;
 }

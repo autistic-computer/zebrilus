@@ -129,7 +129,7 @@
   border-radius: var(--appearance-swatch-r, 0px);
   corner-shape: superellipse(var(--appearance-swatch-k, var(--penna-window-k)));
   background: var(--appearance-swatch, var(--penna-accent));
-  cursor: pointer;
+  cursor: var(--penna-click-cursor);
   outline: none;
 }
 
@@ -157,7 +157,7 @@
   width: 180px;
   height: var(--penna-control-md);
   padding: 0 var(--penna-space-8);
-  cursor: pointer;
+  cursor: var(--penna-click-cursor);
   outline: none;
   touch-action: none;
   user-select: none;

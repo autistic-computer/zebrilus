@@ -162,7 +162,7 @@
   font-size: 12px;
   font-weight: 500;
   line-height: 16px;
-  cursor: default;
+  cursor: var(--penna-click-cursor);
 }
 
 .zz-palette-disclosure,
@@ -176,7 +176,7 @@
 }
 
 .zz-palette-disclosure:not(:empty) {
-  cursor: pointer;
+  cursor: var(--penna-click-cursor);
 }
 
 .zz-palette-label {

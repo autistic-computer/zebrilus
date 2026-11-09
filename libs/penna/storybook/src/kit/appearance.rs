@@ -20,7 +20,7 @@ pub const STORY: Story = Story {
         Section {
             id: "page",
             name: "Page",
-            summary: "Three groups, none folded away: Look (mode, accent, tint, corner radius in percent, controls, glass, UI font and Mono font, whose list opens on Monospaced), Size (text size and density) and Accessibility (increase contrast, reduce transparency and motion in three steps).",
+            summary: "Three groups, none folded away: Look (mode, accent, tint, corner radius in percent, controls, glass, UI font and Mono font, whose list opens on Monospaced), Size (text size and density) and Accessibility (increase contrast, reduce transparency, motion in three steps and the pointing hand).",
             build: |window, cx| page(false, window, cx),
         },
         Section {

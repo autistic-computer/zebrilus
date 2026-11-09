@@ -141,7 +141,7 @@
   height: 52px;
   padding: 0 var(--penna-space-12);
   white-space: nowrap;
-  cursor: pointer;
+  cursor: var(--penna-click-cursor);
   outline: none;
   user-select: none;
   font-size: var(--penna-text-touch-body-size);

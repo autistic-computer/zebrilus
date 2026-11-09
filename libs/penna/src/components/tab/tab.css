@@ -11,7 +11,7 @@
   font-weight: var(--penna-text-small-weight);
   line-height: var(--penna-text-small-line);
   white-space: nowrap;
-  cursor: default;
+  cursor: var(--penna-click-cursor);
   user-select: none;
   outline: none;
   --penna-icon-size: 12px;

@@ -12,7 +12,7 @@
   color: inherit;
   appearance: none;
   outline: none;
-  cursor: default;
+  cursor: var(--penna-click-cursor);
   --penna-toggle-w: 36px;
   --penna-toggle-h: 20px;
   --penna-toggle-thumb: 16px;

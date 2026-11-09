@@ -16,7 +16,7 @@
   line-height: var(--penna-text-body-line);
   white-space: nowrap;
   text-decoration: none;
-  cursor: default;
+  cursor: var(--penna-click-cursor);
   appearance: none;
   outline: none;
   user-select: none;
@@ -160,7 +160,7 @@
 }
 
 .penna-button[data-variant="link"] {
-  cursor: pointer;
+  cursor: var(--penna-click-cursor);
   text-decoration: underline;
   text-decoration-thickness: 1px;
   text-underline-offset: 2px;

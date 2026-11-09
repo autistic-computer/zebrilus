@@ -38,6 +38,7 @@ const choice = {
 
 const density = params.get("density");
 if (density === "compact" || density === "comfortable") document.documentElement.dataset.density = density;
+if (params.get("pointer") === "arrow") document.documentElement.dataset.pointer = "arrow";
 
 function sheet(id) {
   let link = document.getElementById(id);

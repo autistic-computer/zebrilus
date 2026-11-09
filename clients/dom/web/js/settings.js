@@ -502,6 +502,11 @@ function interfacePage() {
     group("Behavior"),
     card([
       entry({
+        title: "Pointing hand",
+        description: "Turn the pointer into a hand over anything you can click",
+        control: toggle((p.pointer || "hand") === "hand", "Pointing hand", (value) => set({ pointer: value ? "hand" : "arrow" })),
+      }),
+      entry({
         title: "Motion",
         control: choose({
           value: p.motion || "default",

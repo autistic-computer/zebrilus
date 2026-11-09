@@ -257,7 +257,7 @@
   overflow: hidden;
   font: inherit;
   text-align: left;
-  cursor: pointer;
+  cursor: var(--penna-click-cursor);
 }
 
 .penna-bento-copy {

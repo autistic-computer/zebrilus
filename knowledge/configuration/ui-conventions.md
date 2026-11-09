@@ -243,7 +243,10 @@ Everything in the chrome that acts on a click sets its pointer with penna's `cli
 when it is off, so every row, chip, tab and button agrees. That includes rows that act on a press
 (`on_mouse_down`), such as the pane picker's. Drag handles, scrollbars, resize edges and surfaces
 that only take focus keep the arrow, and text keeps the I-beam. A browser pane's page and a
-terminal's hyperlinks set their own pointer from the content and ignore the setting.
+terminal's hyperlinks set their own pointer from the content and ignore the setting. The HTML client
+and penna's HTML kit do the same with CSS: a clickable rule says `cursor: var(--penna-click-cursor)`,
+which `penna.css` sets to `pointer`, or to `default` under `data-pointer="arrow"` and on anything
+disabled.
 
 # Control density
 

@@ -103,7 +103,7 @@
   text-decoration: underline;
   text-decoration-thickness: 1px;
   text-underline-offset: 2.5px;
-  cursor: pointer;
+  cursor: var(--penna-click-cursor);
 }
 
 .penna-md code {

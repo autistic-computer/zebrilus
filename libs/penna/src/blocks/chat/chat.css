@@ -14,7 +14,7 @@
 }
 
 .penna-chat-activity[data-clickable] {
-  cursor: pointer;
+  cursor: var(--penna-click-cursor);
 }
 
 .penna-chat-activity[data-clickable]:hover,
@@ -362,7 +362,7 @@
   gap: 12px;
   height: 40px;
   padding: 0 12px;
-  cursor: pointer;
+  cursor: var(--penna-click-cursor);
 }
 
 .penna-chat-suggestion > div {
@@ -446,7 +446,7 @@
   padding: 8px 12px;
   font-size: var(--penna-text-small-size);
   line-height: var(--penna-text-small-line);
-  cursor: pointer;
+  cursor: var(--penna-click-cursor);
 }
 
 .penna-chat-tile > span:first-child {

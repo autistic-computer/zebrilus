@@ -19,6 +19,7 @@
 
 .penna-chip[data-interactive] {
   pointer-events: auto;
+  cursor: var(--penna-click-cursor);
 }
 
 .penna-chip[data-detail] {
