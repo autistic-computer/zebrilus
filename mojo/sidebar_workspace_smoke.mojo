@@ -299,6 +299,22 @@ def main() raises:
             break
     assert_equal(driver.active_pane().value()[1], UInt8(0))
     assert_equal(driver.active_pane().value()[2], panes + 2)
+    driver.key(Key.B, 98, MOD_CTRL)
+    for _ in range(300):
+        driver.settle()
+        if driver.view.model.routing.table:
+            break
+    assert_equal(driver.view.model.routing.table.value(), "prefix")
+    driver.key(Key.ESCAPE, 27, 0)
+    for _ in range(300):
+        driver.settle()
+        if not driver.view.model.routing.table:
+            break
+    assert_false(Bool(driver.view.model.routing.table))
+    for _ in range(10):
+        driver.settle()
+    assert_equal(driver.active_pane().value()[1], UInt8(0))
+    assert_equal(driver.active_pane().value()[2], panes + 2)
     driver.key(Key.ESCAPE, 0, 0)
     for _ in range(300):
         driver.settle()

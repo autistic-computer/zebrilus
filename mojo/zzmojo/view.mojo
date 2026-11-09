@@ -1671,6 +1671,8 @@ struct WorkspaceView(Movable):
         if not active:
             self.primary.reset()
             self.blur_pointer(True)
+            self.chrome_held.clear()
+            self.browser_keys.clear()
             self.active = False
             return
         self.active = True
@@ -2643,6 +2645,19 @@ struct WorkspaceView(Movable):
             return None
         return pane
 
+    def prune_pickers(mut self):
+        if len(self.picker_selected) == 0:
+            return
+        var gone = List[UInt64]()
+        for pane in self.picker_selected.keys():
+            if self.pane_kind(pane) != Optional[UInt8](0):
+                gone.append(pane)
+        for pane in gone:
+            try:
+                _ = self.picker_selected.pop(pane)
+            except:
+                pass
+
     def picker_command(
         mut self, mut ui: Ui, name: String, arguments: List[String]
     ) raises:
@@ -2671,6 +2686,12 @@ struct WorkspaceView(Movable):
         if not pane:
             return False
         if key.mods & (MOD_CTRL | MOD_ALT | MOD_CMD) != 0:
+            return False
+        if self.modal_capture() or self.model.routing.claims_prefix_input(
+            mjui_key_input(
+                key.key, key.ch, key.unshifted, key.mods, key.action()
+            )
+        ):
             return False
         var choices = self.picker_choices()
         var selected = min(
@@ -2967,6 +2988,8 @@ struct WorkspaceView(Movable):
         var input = mjui_key_input(
             key.key, key.ch, key.unshifted, key.mods, key.action(), text
         )
+        if self.modal_capture() or self.model.routing.claims_prefix_input(input):
+            return False
         var action = self.chrome.resolve("browser", input)
         if action:
             var binding = desktop_native_binding(2, action.value())
@@ -3073,6 +3096,7 @@ struct WorkspaceView(Movable):
         if self.config_notice:
             self.primary_notice(ui, self.config_notice.take())
         self.sync_sidebar(ui)
+        self.prune_pickers()
         self.sync_browser(ui)
         if self.model.key_table_changes != self.which_key_changes:
             self.which_key_changes = self.model.key_table_changes

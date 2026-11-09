@@ -41,7 +41,7 @@ def main():
             subprocess.run([str(binary), socket, str(TARGET / "sidebar-workspace.png")], cwd=root, env=environment, check=True, timeout=120)
         finally:
             subprocess.run([str(native), "-S", socket, "kill-server"], cwd=root, env=environment, capture_output=True, timeout=10)
-    report = {"passed": True, "checks": ["actual private daemon with two sessions and three windows", "sidebar rows from the fleet controller: host, sessions in source order", "Ctrl+1, Ctrl+2 and Ctrl+3 select windows across sessions through staged batches, releases swallowed", "session and window row clicks attach and select through the daemon", "New window, Split right, Split down and New session toolbar buttons send the staged command batches", "picker pane drawn for a picker split, t turns it into a terminal, Escape closes it"]}
+    report = {"passed": True, "checks": ["actual private daemon with two sessions and three windows", "sidebar rows from the fleet controller: host, sessions in source order", "Ctrl+1, Ctrl+2 and Ctrl+3 select windows across sessions through staged batches, releases swallowed", "session and window row clicks attach and select through the daemon", "New window, Split right, Split down and New session toolbar buttons send the staged command batches", "picker pane drawn for a picker split, t turns it into a terminal, the prefix key arms the prefix table on a picker pane and Escape cancels it while the picker stays, Escape closes it"]}
     report_path.write_text(json.dumps(report, indent=2) + "\n")
     print(json.dumps(report))
 

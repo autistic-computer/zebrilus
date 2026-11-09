@@ -89,10 +89,6 @@ def chrome_key(
         keyboard.claim_text(key, bytes)
         return True
     if key.key in view.chrome_held:
-        if key.repeat:
-            keyboard.claim_text(key, bytes)
-            keyboard.claim_text_command(key)
-            return True
         _ = view.chrome_held.pop(key.key)
     if key.consumed or not view.active or view.modal_capture():
         return False
