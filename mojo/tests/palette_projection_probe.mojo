@@ -148,5 +148,16 @@ def main() raises:
             )
         input.finish()
     reader.finish()
+    var agent = PaneSnapshot()
+    agent.kind.kind = 4
+    agent.title = " agent "
+    assert_equal(palette_pane_label(agent), "Codex")
+    agent.kind.provider = 1
+    assert_equal(palette_pane_label(agent), "Claude Code")
+    agent.title = "agents"
+    assert_equal(palette_pane_label(agent), "agents")
+    agent.kind.kind = 1
+    agent.title = "agent"
+    assert_equal(palette_pane_label(agent), "agent")
     with open(args[2], "w") as target:
         target.write_all(Span(bytes))

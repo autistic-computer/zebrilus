@@ -57,7 +57,7 @@ def palette_pane_index(window: WindowSnapshot, pane: UInt64) raises -> UInt32:
 
 def palette_pane_label(pane: PaneSnapshot) -> String:
     var title = palette_trim(pane.title)
-    if title.byte_length() > 0:
+    if title.byte_length() > 0 and (pane.kind.kind != 4 or title != "agent"):
         return title^
     if pane.kind.kind == 0:
         return String("new pane")
@@ -74,7 +74,9 @@ def palette_pane_label(pane: PaneSnapshot) -> String:
         var trimmed = palette_trim(url)
         url = trimmed^
         return url^ if url.byte_length() > 0 else String("browser")
-    return String("editor" if pane.kind.kind == 3 else "agent")
+    if pane.kind.kind == 3:
+        return String("editor")
+    return String("Claude Code" if pane.kind.provider == 1 else "Codex")
 
 
 def _pane_place(pane: PaneSnapshot) -> Optional[String]:
