@@ -4,6 +4,7 @@ from .tree_wire import read_count, read_text, read_bool, read_optional_text, rea
 from .exec_protocol import Invocation, CommandSource, append_invocation
 from .input_protocol import KeyInput, input_key_name, canonical_key, _control
 from .cli_preflight import CatalogEntry, CliPreflight, _catalog, _resolve
+from .stream_protocol import read_host_platform
 
 comptime MAX_PREFIX_BYTES = 16 * 1024 * 1024
 comptime MAX_PREFIX_BINDINGS = 4096
@@ -31,7 +32,6 @@ struct PrefixTable(Copyable, Movable):
 struct PrefixQuery(TrivialRegisterPassable):
     var index: Int
     var all_keys: Bool
-    var sidebar_picker: Bool
 
     def bound(self) -> Bool:
         return self.index >= 0
@@ -46,30 +46,6 @@ def _all_keys(commands: List[Invocation], catalog: List[CatalogEntry]) -> Bool:
     var result = CliPreflight()
     var index = _resolve(catalog, commands[0].name, result)
     return index >= 0 and catalog[index].name == "list-keys"
-
-
-def _sidebar_picker(commands: List[Invocation]) -> Bool:
-    if len(commands) != 1 or commands[0].name != "choose-tree":
-        return False
-    var sessions = False
-    var windows = False
-    var ended = False
-    for arg in commands[0].args:
-        if ended:
-            return False
-        if len(arg) == 2 and arg[0] == 45 and arg[1] == 45:
-            ended = True
-            continue
-        if len(arg) < 2 or arg[0] != 45:
-            return False
-        for index in range(1, len(arg)):
-            if arg[index] == 115:
-                sessions = True
-            elif arg[index] == 119:
-                windows = True
-            elif arg[index] != 90:
-                return False
-    return sessions != windows
 
 
 struct PrefixBudget:
@@ -209,7 +185,7 @@ struct PrefixBindings(Movable):
         var flags = List[UInt8]()
         for index in range(len(bindings)):
             keys[canonical_key(bindings[index].key)] = index
-            flags.append(UInt8(_all_keys(bindings[index].commands, self._catalog)) | UInt8(_sidebar_picker(bindings[index].commands)) << 1)
+            flags.append(UInt8(_all_keys(bindings[index].commands, self._catalog)))
         self._bindings = bindings.copy()
         self._keys = keys^
         self._flags = flags^
@@ -266,6 +242,7 @@ struct PrefixBindings(Movable):
             _ = read_uint(reader, 65535)
             for _ in range(5):
                 _ = reader.uint()
+            _ = read_host_platform(reader)
             if reader.offset != len(reader.data):
                 raise Error("trailing prefix welcome bytes")
             self.reset_connection(List[PrefixTable]())
@@ -317,7 +294,7 @@ struct PrefixBindings(Movable):
                 index = self._keys[named]
             elif "Any" in self._keys:
                 index = self._keys["Any"]
-        return PrefixQuery(index, index >= 0 and self._flags[index] & 1 != 0, index >= 0 and self._flags[index] & 2 != 0)
+        return PrefixQuery(index, index >= 0 and self._flags[index] & 1 != 0)
 
     def chrome_enabled(self, input: KeyInput) raises -> Bool:
         return Bool(self.active_table) and self.active_table.value() == "prefix" and not self.repeat and not self.query(input).bound()

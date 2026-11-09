@@ -7,7 +7,7 @@ use zz_client::{
         DesktopDrag, DesktopGuard, DesktopGuardContext, DesktopKeyContext, desktop_guard,
         desktop_intercepts, desktop_key_projection, desktop_router,
     },
-    prefix_binding::{binds_input, is_all_keys_input, is_sidebar_picker_input},
+    prefix_binding::{binds_input, is_all_keys_input},
 };
 use zz_protocol::{
     ClientId, ClientInstanceId, CommandInvocation, Event, EventPayload, InputMessage,
@@ -386,8 +386,7 @@ fn prefix_vectors() -> Result<Packet, Box<dyn Error>> {
             result.uint(
                 u64::from(bound)
                     | (u64::from(is_all_keys_input(core.prefix_bindings(), input)) << 1)
-                    | (u64::from(is_sidebar_picker_input(core.prefix_bindings(), input)) << 2)
-                    | (u64::from(core.key_table() == Some(("prefix", false)) && !bound) << 3),
+                    | (u64::from(core.key_table() == Some(("prefix", false)) && !bound) << 2),
             );
         }
     }

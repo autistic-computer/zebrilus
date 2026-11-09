@@ -10,7 +10,7 @@ const Core = (await import(pathToFileURL(path.join(artifacts, 'core.mjs')))).def
 const Edit = (await import(pathToFileURL(path.join(artifacts, 'layout_edit.mjs')))).default;
 const Replay = (await import(pathToFileURL(path.join(artifacts, 'replay.mjs')))).default;
 const oracle = JSON.parse(fs.readFileSync(path.join(artifacts, 'oracle.json'), 'utf8'));
-assert.equal(oracle.protocol_version, 118);
+assert.equal(oracle.protocol_version, 120);
 
 for (const vector of oracle.envelopes) {
   assert.equal(Core.status_code(Core.validate_envelope(...vector.args)), vector.status,

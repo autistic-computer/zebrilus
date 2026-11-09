@@ -101,6 +101,7 @@ def _summary(mut output: List[UInt8], value: PaneSummary):
     append_text(output, value.branch)
     _strings(output, value.process)
     _bool(output, value.flip_armed)
+    append_text(output, value.shell)
 
 
 def _status(mut output: List[UInt8], value: Optional[PaneStatus]):

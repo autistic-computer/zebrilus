@@ -163,7 +163,7 @@ struct DesktopDelivery(Movable):
     def pending_ui(self) -> Int:
         return len(self._ui)
 
-    def _prepare(self, session: InputRouterSession, mut gate: InputRouterGate, queue: ActionQueue, map: ChromeKeymap, configured: ChromeKeymap, prefix: PrefixBindings, operations: List[RouterOperation], context: DesktopEnvelope, armed: Bool, which_key: Bool, picker_sidebar: Bool, canonical_prefix: Optional[String] = None) raises -> DesktopDeliveryPlan:
+    def _prepare(self, session: InputRouterSession, mut gate: InputRouterGate, queue: ActionQueue, map: ChromeKeymap, configured: ChromeKeymap, prefix: PrefixBindings, operations: List[RouterOperation], context: DesktopEnvelope, armed: Bool, which_key: Bool, canonical_prefix: Optional[String] = None) raises -> DesktopDeliveryPlan:
         if self._receipt or self._generation == UInt64.MAX or context.scope != session._scope or map.version() != session._map.version():
             raise Error("desktop delivery requires an acknowledged matching source")
         if canonical_prefix and canonical_prefix.value().byte_length() > MAX_PREFIX_TEXT:
@@ -248,8 +248,6 @@ struct DesktopDelivery(Movable):
                 var action: Optional[ChromeAction] = None
                 if armed and which_key and query.all_keys:
                     route = 3
-                elif armed and picker_sidebar and query.sidebar_picker:
-                    route = 4
                 elif armed and prefix.chrome_enabled(raw):
                     action = configured.resolve("prefix", raw)
                     if action:
@@ -299,7 +297,7 @@ struct DesktopDelivery(Movable):
         var spelling: Optional[String] = None
         if target.connected and UInt8(0) in routing.options:
             spelling = canonical_key(routing.options[0].value)
-        var result = self._prepare(session, gate, queue, map, configured, prefix, operations, context, armed, which_key, picker_sidebar, spelling)
+        var result = self._prepare(session, gate, queue, map, configured, prefix, operations, context, armed, which_key, spelling)
         result.routing = fingerprint^
         return result^
 
@@ -314,7 +312,7 @@ struct DesktopDelivery(Movable):
             operation.event = event
             operations.append(operation^)
         operations.append(RouterOperation(4))
-        return self._prepare(session, gate, queue, map, configured, prefix, operations, context, False, False, False)
+        return self._prepare(session, gate, queue, map, configured, prefix, operations, context, False, False)
 
     def commit_key(mut self, mut session: InputRouterSession, mut queue: ActionQueue, configured: ChromeKeymap, prefix: PrefixBindings, routing: InputRoutingState, context: DesktopEnvelope, var plan: DesktopDeliveryPlan) raises -> UInt64:
         if not plan.routing:

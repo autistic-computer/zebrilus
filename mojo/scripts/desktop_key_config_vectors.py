@@ -48,7 +48,6 @@ def main():
     for case in data['configs']:
         text(output, case['source'])
         text(output, case['hotkey'])
-        output.append(case['picker'])
         uint(output, case['delay'])
         uint(output, len(case['overrides']))
         for value in case['overrides']:

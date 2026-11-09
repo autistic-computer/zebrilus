@@ -4,6 +4,7 @@ from .tree_wire import read_count, read_text, read_optional_text, read_bool, rea
 from .exec_protocol import append_invocation
 from .prefix_bindings import PrefixBindings, PrefixTable, PrefixBinding, PrefixBudget, read_prefix_tables, MAX_PREFIX_BYTES, MAX_PREFIX_TABLES
 from .key_table_hash import key_table_hash
+from .stream_protocol import read_host_platform
 
 comptime KEY_TABLES_FULL: UInt64 = 25
 comptime KEY_TABLES_PATCH: UInt64 = 56
@@ -176,6 +177,7 @@ struct DesktopKeyTables(Movable):
             _ = read_uint(reader, 65535)
             for _ in range(5):
                 _ = reader.uint()
+            _ = read_host_platform(reader)
             if reader.offset != len(reader.data):
                 raise Error("trailing key table welcome bytes")
             var fresh = Self()

@@ -3,7 +3,7 @@ from std.testing import assert_equal, assert_true, assert_raises
 from zzmojo.actions import ActionQueue, Action, MAX_PENDING_ACTIONS
 from zzmojo.desktop_workspace import DesktopWorkspace
 from zzmojo.desktop_router_delivery import DesktopKeyTarget
-from zzmojo.desktop_key_tables import RetainedKeyTables, encode_key_tables
+from zzmojo.desktop_key_tables import RetainedKeyTables
 from zzmojo.chrome_keymap import ChromeKeymap
 from zzmojo.input_protocol import (
     KeyInput,
@@ -20,7 +20,6 @@ from zzmojo.verified_input_router import (
 )
 from zzmojo.input_router_codec import encode_outcome
 from zzmojo.protocol import envelope, Decoder
-from zzmojo.prefix_bindings import PrefixTable, PrefixBinding
 from zzmojo.exec_protocol import Invocation
 from zzmojo.palette_protocol import palette_command_request
 from zzmojo.desktop_input import desktop_guard
@@ -246,27 +245,22 @@ def main() raises:
         workspace.observe(events)
     same(workspace.session.snapshot(), before)
     assert_equal(workspace.generation(), generation)
-    var choose = Invocation()
-    choose.name = "choose-tree"
-    choose.args = [List[UInt8](String("-s").as_bytes())]
-    var commands: List[Invocation] = [choose^]
-    var bindings: List[PrefixBinding] = [
-        PrefixBinding("x", commands^, False, None)
-    ]
-    var snapshots: List[PrefixTable] = [PrefixTable("prefix", bindings^)]
-    var update: List[UInt8] = [10, 0, 25]
-    update.extend(encode_key_tables(snapshots))
-    assert_true(tables.consume(envelope(Span(update))))
-    plan = workspace.prepare(
-        queue, tables, routing, raw(), target, 200, picker_sidebar=True
-    )
-    assert_equal(plan.plan.value().ui[0].kind, UInt8(4))
+    var active: List[UInt8] = [10, 0, 54, 1, 6]
+    active.extend(String("prefix").as_bytes())
+    active.append(0)
+    assert_true(tables.consume(envelope(Span(active))))
+    routing.table = String("prefix")
+    var chrome = ChromeKeymap(1, 100)
+    _ = chrome.bind("prefix", "x", "ui-zoom-in")
+    workspace.install_configured(chrome)
+    plan = workspace.prepare(queue, tables, routing, raw(), target, 200)
+    assert_equal(plan.plan.value().ui[0].kind, UInt8(5))
     assert_equal(plan.prefix.value().request, Optional[UInt64](1))
     assert_equal(Bool(plan.prefix.value().queue), False)
     assert_equal(workspace.prefix.next, UInt64(0))
     assert_equal(len(queue), 0)
-    var focus = Invocation()
-    focus.name = "focus-sidebar"
+    var command = Invocation()
+    command.name = "next-window"
     var additional: List[Action] = [
         Action(
             16,
@@ -274,7 +268,7 @@ def main() raises:
             None,
             200,
             None,
-            palette_command_request(0, focus),
+            palette_command_request(0, command),
             workspace.source.value(),
             None,
         )
@@ -291,15 +285,13 @@ def main() raises:
     assert_equal(queue.items[1].kind, 16)
     var ui_effects = workspace.acknowledge(receipt, 200)
     assert_equal(len(ui_effects), 1)
-    assert_equal(ui_effects[0].kind, UInt8(4))
+    assert_equal(ui_effects[0].kind, UInt8(5))
     _ = queue.take()
     plan = workspace.prepare(queue, tables, routing, raw(2), target, 201)
     receipt = workspace.commit(queue, tables, routing, target, 201, None, plan^)
     _ = workspace.acknowledge(receipt, 201)
     assert_equal(len(queue), 0)
-    plan = workspace.prepare(
-        queue, tables, routing, raw(), target, 202, picker_sidebar=True
-    )
+    plan = workspace.prepare(queue, tables, routing, raw(), target, 202)
     before = workspace.session.snapshot()
     workspace.prefix.reset_session()
     assert_equal(workspace.prefix.acknowledged, Optional[UInt64](1))
@@ -310,9 +302,7 @@ def main() raises:
     assert_equal(workspace.prefix.next, UInt64(1))
     for _ in range(MAX_PENDING_ACTIONS - 1):
         queue.append(10, "", UInt64(77))
-    plan = workspace.prepare(
-        queue, tables, routing, raw(), target, 203, picker_sidebar=True
-    )
+    plan = workspace.prepare(queue, tables, routing, raw(), target, 203)
     assert_equal(len(plan.plan.value().queue.items), MAX_PENDING_ACTIONS)
     assert_equal(plan.prefix.value().request, Optional[UInt64](2))
     with assert_raises():

@@ -12,7 +12,7 @@ from zzmojo.terminal_model import (
 def test_compiled_bend_persistent_verdicts() raises:
     var path = getenv("ZZ_BEND", "../target/port/zz-bend")
     var gate = BendGate(path)
-    var frame: List[UInt8] = [4, 0, 0, 0, 0, 0, 118, 0]
+    var frame: List[UInt8] = [4, 0, 0, 0, 0, 0, 120, 0]
     assert_equal(gate.validate(Span(frame)), UInt8(0))
     frame[4] = 2
     frame[5] = 1
@@ -20,7 +20,7 @@ def test_compiled_bend_persistent_verdicts() raises:
     assert_equal(gate.validate(Span(frame)), UInt8(4))
     frame[4] = 0
     assert_equal(gate.validate(Span(frame)), UInt8(5))
-    frame[6] = 118
+    frame[6] = 120
     assert_equal(gate.validate(Span(frame)), UInt8(6))
     frame[3] = 255
     assert_equal(gate.validate(Span(frame)), UInt8(2))
@@ -30,7 +30,7 @@ def test_compiled_bend_persistent_verdicts() raises:
 
 def test_dead_bend_worker_fails_closed() raises:
     var gate = BendGate("/usr/bin/false")
-    var frame: List[UInt8] = [4, 0, 0, 0, 0, 0, 118, 0]
+    var frame: List[UInt8] = [4, 0, 0, 0, 0, 0, 120, 0]
     with assert_raises():
         _ = gate.validate(Span(frame))
 

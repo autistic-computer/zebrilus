@@ -1,6 +1,6 @@
 from .client_context import ClientContext
 
-comptime PROTOCOL_VERSION: UInt16 = 118
+comptime PROTOCOL_VERSION: UInt16 = 120
 comptime MAX_FRAME_BYTES: Int = 64 * 1024 * 1024
 
 

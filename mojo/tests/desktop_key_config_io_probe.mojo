@@ -20,7 +20,15 @@ def main() raises:
     assert_equal(paths[1], root + "/home/.config/zz/config")
     var loaded = load_desktop_key_config(environment, False)
     assert_equal(loaded.path.value(), root + "/home/.config/zz/config")
-    assert_equal(loaded.value.picker_sidebar, True)
+    assert_equal(len(loaded.value.diagnostics), 1)
+    assert_equal(loaded.value.diagnostics[0][0], 2)
+    assert_equal(
+        loaded.value.diagnostics[0][1],
+        String(
+            "`picker-focus-sidebar` was removed: Prefix + s and Prefix + w"
+            " open their pickers in the pane"
+        ),
+    )
     assert_equal(loaded.value.which_key_delay, Float32(125))
     assert_equal(loaded.value.overrides[0].key, String("C-x"))
     assert_equal(read_desktop_config(root + "/exact").byte_length(), 65536)

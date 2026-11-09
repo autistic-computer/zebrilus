@@ -93,7 +93,7 @@ def main() raises:
         assert_equal(prefix.repeat, read_bool(source) if expected else False)
         for input in inputs:
             var query = prefix.query(input)
-            var flags = UInt64(query.bound()) | UInt64(query.all_keys) << 1 | UInt64(query.sidebar_picker) << 2 | UInt64(prefix.chrome_enabled(input)) << 3
+            var flags = UInt64(query.bound()) | UInt64(query.all_keys) << 1 | UInt64(prefix.chrome_enabled(input)) << 2
             assert_equal(flags, source.uint())
             queries += 1
     assert_equal(source.offset, len(source.data))

@@ -174,6 +174,7 @@ def read_summary(mut reader: Decoder) raises -> PaneSummary:
     result.branch = read_text(reader, 256)
     result.process = read_strings(reader, 32, 1024)
     result.flip_armed = read_bool(reader)
+    result.shell = read_text(reader, 256)
     return result^
 
 

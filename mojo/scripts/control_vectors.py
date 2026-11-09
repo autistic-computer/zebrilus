@@ -25,7 +25,7 @@ def main():
         reference.write_text(json.dumps(current, indent=2) + "\n")
     else:
         current = json.loads(reference.read_text())
-    if current["protocol_version"] != 118:
+    if current["protocol_version"] != 120:
         raise SystemExit("reference protocol version changed")
     probe = TARGET / "control-probe"
     if not args.skip_build:
@@ -87,7 +87,7 @@ def main():
             rejected_source.write_bytes(bytes(item["bytes"]))
             invoke("reject-frame", rejected_source)
             counts["malformed_frames"] += 1
-    report = {"protocol_version": 118, "reference": "actual zz-protocol encoder/decoder/tree reducer", "passed": True, **counts}
+    report = {"protocol_version": 120, "reference": "actual zz-protocol encoder/decoder/tree reducer", "passed": True, **counts}
     (TARGET / "control-differential.json").write_text(json.dumps(report, indent=2) + "\n")
     print(json.dumps(report))
 

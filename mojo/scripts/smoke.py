@@ -115,7 +115,7 @@ def main():
                         print(pane, repr(captured.stdout), flush=True)
                     raise SystemExit("native workspace exercise failed")
                 checked += 4
-            print(json.dumps({"status": "passed", "daemon_protocol": 118, "cases": checked}))
+            print(json.dumps({"status": "passed", "daemon_protocol": 120, "cases": checked}))
         finally:
             subprocess.run([str(rust), "-S", str(socket), "kill-server"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=10)
 

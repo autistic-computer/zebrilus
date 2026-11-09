@@ -390,14 +390,12 @@ def _float32(var text: String) raises -> Float32:
 struct DesktopKeyConfig(Copyable, Movable):
     var overrides: List[DesktopOverride]
     var hotkey: String
-    var picker_sidebar: Bool
     var which_key_delay: Float32
     var diagnostics: List[Tuple[Int, String]]
 
     def __init__(out self, macos: Bool):
         self.overrides = List[DesktopOverride]()
         self.hotkey = "cmd-shift-c" if macos else "ctrl-shift-c"
-        self.picker_sidebar = False
         self.which_key_delay = 400
         self.diagnostics = List[Tuple[Int, String]]()
 
@@ -466,26 +464,15 @@ def desktop_key_config(source: String, macos: Bool) raises -> DesktopKeyConfig:
             else:
                 result.hotkey = chord.value().spelling()
         elif key == "picker-focus-sidebar":
-            var lowered = _lower(value)
-            if (
-                lowered == "on"
-                or lowered == "yes"
-                or lowered == "1"
-                or lowered == "true"
-            ):
-                result.picker_sidebar = True
-            elif (
-                lowered == "off"
-                or lowered == "no"
-                or lowered == "0"
-                or lowered == "false"
-            ):
-                result.picker_sidebar = False
-            else:
-                error = (
-                    "expected a boolean (`true`/`on`/`yes`/`1` or"
-                    " `false`/`off`/`no`/`0`)"
+            result.diagnostics.append(
+                (
+                    number,
+                    String(
+                        "`picker-focus-sidebar` was removed: Prefix + s and"
+                        " Prefix + w open their pickers in the pane"
+                    ),
                 )
+            )
         else:
             if not _decimal_float(value):
                 error = "expected a number milliseconds"

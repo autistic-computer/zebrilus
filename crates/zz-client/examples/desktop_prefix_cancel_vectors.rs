@@ -3,7 +3,7 @@ use zz_client::desktop_input::{
     DesktopDialogPrefix, desktop_dialog_prefix, desktop_prefix_acknowledged, desktop_prefix_reset,
     next_prefix_cancel_request,
 };
-use zz_protocol::{Event, EventPayload, InputMessage, ProtocolMessage, encode_protocol_message};
+use zz_protocol::{InputMessage, ProtocolMessage, encode_protocol_message};
 
 fn optional(output: &mut Vec<u8>, value: Option<u64>) {
     output.push(u8::from(value.is_some()));
@@ -11,14 +11,6 @@ fn optional(output: &mut Vec<u8>, value: Option<u64>) {
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
-    if std::env::args().nth(2).as_deref() == Some("--focus-sidebar") {
-        let frame = encode_protocol_message(&ProtocolMessage::Event(Event {
-            sequence: 0,
-            payload: EventPayload::FocusSidebar,
-        }))?;
-        fs::write(std::env::args().nth(1).ok_or("missing output path")?, frame)?;
-        return Ok(());
-    }
     let mut output = Vec::new();
     let pending = [None, Some(0), Some(1), Some(2), Some(u64::MAX)];
     for previous in [0, 1, u64::MAX - 1, u64::MAX] {

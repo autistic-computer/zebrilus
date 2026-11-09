@@ -20,7 +20,7 @@ def main():
         timeout=180,
     )
     current = json.loads(result.stdout)
-    fixture = json.loads((port / "tests/fixtures/protocol-v118.json").read_text())
+    fixture = json.loads((port / "tests/fixtures/protocol-v120.json").read_text())
     if current != fixture:
         raise SystemExit("protocol fixtures differ from the current Rust implementation")
     lines = [

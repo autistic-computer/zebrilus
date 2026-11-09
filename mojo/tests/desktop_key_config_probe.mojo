@@ -82,7 +82,6 @@ def main() raises:
         assert_equal(
             actual.hotkey, reader.text(), String("config hotkey ", index)
         )
-        assert_equal(actual.picker_sidebar, reader.byte() != 0)
         var delay = actual.which_key_delay
         assert_equal(
             Pointer(to=delay).unsafe_bitcast[UInt32]()[],

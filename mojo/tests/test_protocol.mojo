@@ -5,11 +5,11 @@ from zzmojo.state import AppModel, Session, Window, Pane, format_rows
 
 def test_native_postcard_golden_vectors() raises:
     var hello = client_hello(300, 1234)
-    var expected: List[UInt8] = [40, 0, 0, 0, 0, 0, 118, 0, 0, 118, 172, 2, 1, 1, 7, 122, 122, 32, 77, 111, 106, 111, 1, 14, 99, 108, 105, 101, 110, 116, 45, 117, 116, 102, 56, 45, 118, 49, 0, 0, 0, 0, 210, 9]
+    var expected: List[UInt8] = [40, 0, 0, 0, 0, 0, 120, 0, 0, 120, 172, 2, 1, 1, 7, 122, 122, 32, 77, 111, 106, 111, 1, 14, 99, 108, 105, 101, 110, 116, 45, 117, 116, 102, 56, 45, 118, 49, 0, 0, 0, 0, 210, 9]
     assert_equal(hello, expected)
     var args: List[String] = ["-p", "héllo"]
     var command = command_request(300, "display-message", Span(args))
-    var expected_command: List[UInt8] = [40, 0, 0, 0, 0, 0, 118, 0, 2, 172, 2, 15, 100, 105, 115, 112, 108, 97, 121, 45, 109, 101, 115, 115, 97, 103, 101, 2, 2, 45, 112, 6, 104, 195, 169, 108, 108, 111, 0, 0, 0, 0, 0, 0]
+    var expected_command: List[UInt8] = [40, 0, 0, 0, 0, 0, 120, 0, 2, 172, 2, 15, 100, 105, 115, 112, 108, 97, 121, 45, 109, 101, 115, 115, 97, 103, 101, 2, 2, 45, 112, 6, 104, 195, 169, 108, 108, 111, 0, 0, 0, 0, 0, 0]
     assert_equal(command, expected_command)
     var payload: List[UInt8] = [3, 0, 172, 2, 3, 0, 255, 10, 7, 0, 2]
     var frame = envelope(Span(payload))
@@ -34,7 +34,7 @@ def test_frame_and_integer_rejections() raises:
     frame[6] = 117
     with assert_raises():
         _ = validate_envelope(Span(frame))
-    var overflow: List[UInt8] = [0, 0, 0, 0, 0, 0, 118, 0, 255, 255, 255, 255, 255, 255, 255, 255, 255, 2]
+    var overflow: List[UInt8] = [0, 0, 0, 0, 0, 0, 120, 0, 255, 255, 255, 255, 255, 255, 255, 255, 255, 2]
     var decoder = Decoder(overflow^)
     with assert_raises():
         _ = decoder.uint()

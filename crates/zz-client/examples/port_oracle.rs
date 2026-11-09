@@ -3,8 +3,8 @@ use std::error::Error;
 use serde_json::{Value, json};
 use zz_client::{AgentAttentionStatus, agent_attention_status};
 use zz_protocol::{
-    AgentConnectionPhase, AgentPaneWire, AgentPermissionWire, Axis, LayoutNode, PaneId,
-    ProtocolError, SplitId, decode_protocol_frame,
+    AgentConnectionPhase, AgentPaneWire, AgentPermissionWire, Axis, LayoutNode, PROTOCOL_VERSION,
+    PaneId, ProtocolError, SplitId, decode_protocol_frame,
     layout::{joined_layout, swapped_layout},
 };
 
@@ -250,7 +250,7 @@ fn envelope_vectors() -> Vec<Value> {
         for declared in [0, 1, 3, 4, 5, 12, 28, 123, 67_108_864, 67_108_865, u32::MAX] {
             for lane in [0, 1, 2, 255] {
                 for flags in [0, 1, 255] {
-                    for version in [0, 117, 118, u16::MAX] {
+                    for version in [0, PROTOCOL_VERSION - 1, PROTOCOL_VERSION, u16::MAX] {
                         result.push(json!({
                             "args": [total, usize::try_from(declared).expect("u32 fits usize"), usize::from(lane), usize::from(flags), usize::from(version)],
                             "status": envelope_status(total, declared, lane, flags, version)
@@ -266,8 +266,8 @@ fn envelope_vectors() -> Vec<Value> {
         (67_108_867, 67_108_864),
     ] {
         result.push(json!({
-            "args": [total, declared, 0, 0, 118],
-            "status": envelope_status(total, declared, 0, 0, 118)
+            "args": [total, declared, 0, 0, PROTOCOL_VERSION],
+            "status": envelope_status(total, declared, 0, 0, PROTOCOL_VERSION)
         }));
     }
 
@@ -390,7 +390,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     println!(
         "{}",
         serde_json::to_string(&json!({
-            "protocol_version": zz_protocol::PROTOCOL_VERSION,
+            "protocol_version": PROTOCOL_VERSION,
             "envelopes": envelope_vectors(), "layouts": layout_vectors(),
             "attention": attention_vectors(), "replay": replay_vectors(), "terminal": terminal_vectors()
         }))?

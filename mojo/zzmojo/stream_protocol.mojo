@@ -13,6 +13,7 @@ from .client_context import ClientContext
 from .tree_model import MuxSnapshot, TreeDelta, ClientView
 from .tree_wire import (
     read_uint,
+    read_enum,
     read_count,
     read_snapshot,
     read_delta,
@@ -31,6 +32,23 @@ comptime PONG: UInt64 = 69
 comptime REQUIRED_CAPABILITIES: UInt64 = (UInt64(1) << 29) | (UInt64(1) << 30)
 
 
+@fieldwise_init
+struct HostPlatform(TrivialRegisterPassable):
+    var kind: UInt8
+    var distro: UInt8
+
+
+def read_host_platform(mut reader: Decoder) raises -> HostPlatform:
+    var kind = read_enum(reader, 3)
+    return HostPlatform(kind, read_enum(reader, 4) if kind == 3 else UInt8(0))
+
+
+def append_host_platform(mut output: List[UInt8], platform: HostPlatform):
+    append_uint(output, UInt64(platform.kind))
+    if platform.kind == 3:
+        append_uint(output, UInt64(platform.distro))
+
+
 struct StreamFrame(Movable):
     var kind: UInt64
     var sequence: UInt64
@@ -41,6 +59,7 @@ struct StreamFrame(Movable):
     var instance: UInt64
     var capabilities: UInt64
     var clock: UInt64
+    var platform: HostPlatform
     var ping_token: UInt64
     var rtt_us: UInt32
     var batch: List[List[UInt8]]
@@ -59,6 +78,7 @@ struct StreamFrame(Movable):
         self.instance = 0
         self.capabilities = 0
         self.clock = 0
+        self.platform = HostPlatform(0, 0)
         self.ping_token = 0
         self.rtt_us = 0
         self.batch = List[List[UInt8]]()
@@ -162,6 +182,7 @@ def decode_stream_frame(var frame: List[UInt8]) raises -> StreamFrame:
                 "daemon lacks the control-plane or pane-frame capability"
             )
         result.clock = reader.uint()
+        result.platform = read_host_platform(reader)
     elif result.kind == BATCH:
         result.sequence = reader.uint()
         var count = read_count(reader, 4096)
@@ -275,6 +296,7 @@ def encode_stream_frame(frame: StreamFrame) raises -> List[UInt8]:
         append_uint(payload, frame.instance)
         append_uint(payload, frame.capabilities)
         append_uint(payload, frame.clock)
+        append_host_platform(payload, frame.platform)
     elif frame.kind == BATCH:
         append_uint(payload, frame.sequence)
         append_uint(payload, UInt64(len(frame.batch)))

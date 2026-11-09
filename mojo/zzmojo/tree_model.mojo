@@ -43,6 +43,7 @@ struct PaneSummary(Copyable, Movable):
     var branch: String
     var process: List[String]
     var flip_armed: Bool
+    var shell: String
 
     def __init__(out self):
         self.changed_at = 0
@@ -55,6 +56,7 @@ struct PaneSummary(Copyable, Movable):
         self.branch = String()
         self.process = List[String]()
         self.flip_armed = False
+        self.shell = String()
 
 
 struct PaneStatus(Copyable, Movable):

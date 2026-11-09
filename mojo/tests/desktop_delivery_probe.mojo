@@ -110,19 +110,19 @@ def authenticated_key(mut gate: InputRouterGate) raises:
     var operations: List[RouterOperation] = [forged^, RouterOperation(4)]
     var before = session.snapshot()
     with assert_raises():
-        _ = delivery._prepare(session, gate, queue, map, configured, prefix, operations, context, False, False, False)
+        _ = delivery._prepare(session, gate, queue, map, configured, prefix, operations, context, False, False)
     same(session.snapshot(), before)
     forged = press.copy()
     _ = forged.lookups.pop()
     operations = [forged^, RouterOperation(4)]
     with assert_raises():
-        _ = delivery._prepare(session, gate, queue, map, configured, prefix, operations, context, False, False, False)
+        _ = delivery._prepare(session, gate, queue, map, configured, prefix, operations, context, False, False)
     same(session.snapshot(), before)
     forged = press.copy()
     forged.armed = True
     operations = [forged^, RouterOperation(4)]
     with assert_raises():
-        _ = delivery._prepare(session, gate, queue, map, configured, prefix, operations, context, False, False, False)
+        _ = delivery._prepare(session, gate, queue, map, configured, prefix, operations, context, False, False)
     same(session.snapshot(), before)
     assert_equal(len(queue), 0)
     var plan = delivery.prepare_key(session, gate, queue, map, configured, prefix, routing, press.input, target, context, False, False)
@@ -175,10 +175,10 @@ def main() raises:
     var delivery = DesktopDelivery()
     var context = DesktopEnvelope(10, 1, 2, 7, None)
     var before = session.snapshot()
-    var plan = delivery._prepare(session, gate, queue, map, map, prefix, sequence(map, session, 0), context, False, False, False)
+    var plan = delivery._prepare(session, gate, queue, map, map, prefix, sequence(map, session, 0), context, False, False)
     same(session.snapshot(), before)
     assert_equal(len(queue), 0)
-    var stale = delivery._prepare(session, gate, queue, map, map, prefix, sequence(map, session, 0), context, False, False, False)
+    var stale = delivery._prepare(session, gate, queue, map, map, prefix, sequence(map, session, 0), context, False, False)
     var receipt = delivery.commit(session, queue, map, prefix, context, plan^)
     assert_equal(session.generation(), UInt64(1))
     assert_equal(len(queue), 1)
@@ -186,7 +186,7 @@ def main() raises:
     with assert_raises():
         _ = delivery.commit(session, queue, map, prefix, context, stale^)
     with assert_raises():
-        _ = delivery._prepare(session, gate, queue, map, map, prefix, sequence(map, session, 2), context, False, False, False)
+        _ = delivery._prepare(session, gate, queue, map, map, prefix, sequence(map, session, 2), context, False, False)
     with assert_raises():
         delivery.install_map(session, map.action_arena())
     with assert_raises():
@@ -203,13 +203,13 @@ def main() raises:
     assert_equal(delivery.held()[0].envelope.epoch, UInt64(7))
     _ = queue.take()
     var newer = DesktopEnvelope(10, 1, 2, 9, None)
-    plan = delivery._prepare(session, gate, queue, map, map, prefix, sequence(map, session, 1, True), newer, True, False, False)
+    plan = delivery._prepare(session, gate, queue, map, map, prefix, sequence(map, session, 1, True), newer, True, False)
     assert_equal(plan.native.value(), False)
     receipt = delivery.commit(session, queue, map, prefix, newer, plan^)
     assert_equal(len(queue), 0)
     assert_equal(delivery.held()[0].envelope.epoch, UInt64(7))
     _ = delivery.acknowledge(receipt, newer)
-    plan = delivery._prepare(session, gate, queue, map, map, prefix, sequence(map, session, 2), newer, False, False, False)
+    plan = delivery._prepare(session, gate, queue, map, map, prefix, sequence(map, session, 2), newer, False, False)
     assert_equal(plan.native.value(), False)
     receipt = delivery.commit(session, queue, map, prefix, newer, plan^)
     assert_equal(len(delivery.held()), 0)
@@ -224,7 +224,7 @@ def main() raises:
     assert_equal(release.pane, UInt64(77))
     assert_equal(release.text_follows, False)
     _ = delivery.acknowledge(receipt, newer)
-    plan = delivery._prepare(session, gate, queue, map, map, prefix, sequence(map, session, 0), context, False, False, False)
+    plan = delivery._prepare(session, gate, queue, map, map, prefix, sequence(map, session, 0), context, False, False)
     receipt = delivery.commit(session, queue, map, prefix, context, plan^)
     _ = delivery.acknowledge(receipt, context)
     _ = queue.take()
@@ -234,7 +234,7 @@ def main() raises:
     var repeat = sequence(map, session, 1, True)
     for operation in repeat:
         captured.append(operation.copy())
-    plan = delivery._prepare(session, gate, queue, map, map, prefix, captured, newer, True, False, False)
+    plan = delivery._prepare(session, gate, queue, map, map, prefix, captured, newer, True, False)
     receipt = delivery.commit(session, queue, map, prefix, newer, plan^)
     assert_equal(delivery.held()[0].pane, UInt64(88))
     assert_equal(delivery.held()[0].envelope.epoch, UInt64(9))
@@ -242,7 +242,7 @@ def main() raises:
     _ = delivery.acknowledge(receipt, newer)
     _ = queue.take()
     var changed = DesktopEnvelope(10, 1, 2, 11, None)
-    plan = delivery._prepare(session, gate, queue, map, map, prefix, sequence(map, session, 2), changed, False, False, False)
+    plan = delivery._prepare(session, gate, queue, map, map, prefix, sequence(map, session, 2), changed, False, False)
     receipt = delivery.commit(session, queue, map, prefix, changed, plan^)
     assert_equal(queue.items[0].pane.value(), UInt64(88))
     assert_equal(queue.items[0].selection_epoch, UInt64(9))
@@ -250,10 +250,10 @@ def main() raises:
     _ = queue.take()
     var reset_capture = RouterOperation(1)
     var reset_ops: List[RouterOperation] = [reset_capture^, RouterOperation(4)]
-    plan = delivery._prepare(session, gate, queue, map, map, prefix, reset_ops, newer, False, False, False)
+    plan = delivery._prepare(session, gate, queue, map, map, prefix, reset_ops, newer, False, False)
     receipt = delivery.commit(session, queue, map, prefix, newer, plan^)
     _ = delivery.acknowledge(receipt, newer)
-    plan = delivery._prepare(session, gate, queue, map, map, prefix, sequence(map, session, 0), newer, False, False, False)
+    plan = delivery._prepare(session, gate, queue, map, map, prefix, sequence(map, session, 0), newer, False, False)
     before = session.snapshot()
     var generation = session.generation()
     with assert_raises():
@@ -261,20 +261,20 @@ def main() raises:
     same(session.snapshot(), before)
     assert_equal(session.generation(), generation)
     assert_equal(len(queue), 0)
-    plan = delivery._prepare(session, gate, queue, map, map, prefix, sequence(map, session, 0), newer, False, False, False)
+    plan = delivery._prepare(session, gate, queue, map, map, prefix, sequence(map, session, 0), newer, False, False)
     prefix.full(List[PrefixTable]())
     with assert_raises():
         _ = delivery.commit(session, queue, map, prefix, newer, plan^)
     same(session.snapshot(), before)
     assert_equal(len(queue), 0)
     var configured = ChromeKeymap(0, 99)
-    plan = delivery._prepare(session, gate, queue, map, configured, prefix, sequence(map, session, 0), newer, False, False, False)
+    plan = delivery._prepare(session, gate, queue, map, configured, prefix, sequence(map, session, 0), newer, False, False)
     _ = configured.bind("prefix", "x", "new-window")
     with assert_raises():
         _ = delivery.commit(session, queue, configured, prefix, newer, plan^)
     same(session.snapshot(), before)
     assert_equal(len(queue), 0)
-    plan = delivery._prepare(session, gate, queue, map, map, prefix, sequence(map, session, 0), newer, False, False, False)
+    plan = delivery._prepare(session, gate, queue, map, map, prefix, sequence(map, session, 0), newer, False, False)
     queue.append(1, "a", None)
     with assert_raises():
         _ = delivery.commit(session, queue, map, prefix, newer, plan^)
@@ -306,14 +306,14 @@ def main() raises:
     two.append(map.key_operation(session.snapshot(), raw(0), RouterPayload(1), False, True))
     two.append(RouterOperation(4))
     with assert_raises():
-        _ = delivery._prepare(session, gate, queue, map, map, prefix, two, newer, False, False, False)
+        _ = delivery._prepare(session, gate, queue, map, map, prefix, two, newer, False, False)
     same(session.snapshot(), before)
     assert_equal(len(queue), MAX_PENDING_ACTIONS - 1)
     _ = queue.take()
     var packed = List[UInt8](length=MAX_PENDING_INPUT_BYTES, fill=0)
     queue.append(1, "", None, frame=packed)
     with assert_raises():
-        _ = delivery._prepare(session, gate, queue, map, map, prefix, sequence(map, session, 0), newer, False, False, False)
+        _ = delivery._prepare(session, gate, queue, map, map, prefix, sequence(map, session, 0), newer, False, False)
     same(session.snapshot(), before)
     assert_equal(queue.pending_bytes, MAX_PENDING_INPUT_BYTES)
     _ = queue.take()
@@ -324,7 +324,7 @@ def main() raises:
     var bindings: List[PrefixBinding] = [PrefixBinding("Any", commands^, False, None)]
     var tables: List[PrefixTable] = [PrefixTable("prefix", bindings^)]
     prefix.full(tables)
-    plan = delivery._prepare(session, gate, queue, map, map, prefix, sequence(map, session, 0, True), newer, True, True, True, String("C-λ"))
+    plan = delivery._prepare(session, gate, queue, map, map, prefix, sequence(map, session, 0, True), newer, True, True, String("C-λ"))
     receipt = delivery.commit(session, queue, map, prefix, newer, plan^)
     assert_equal(len(queue), 0)
     assert_equal(len(session.snapshot().local), 1)
@@ -336,7 +336,7 @@ def main() raises:
     assert_equal(ui[0].canonical_prefix.value(), "C-λ")
     assert_equal(len(ui[0].bindings), 1)
     assert_equal(ui[0].bindings[0].commands[0].name, "list-keys")
-    plan = delivery._prepare(session, gate, queue, map, map, prefix, sequence(map, session, 2), newer, False, False, False)
+    plan = delivery._prepare(session, gate, queue, map, map, prefix, sequence(map, session, 2), newer, False, False)
     receipt = delivery.commit(session, queue, map, prefix, newer, plan^)
     assert_equal(len(queue), 0)
     assert_equal(len(session.snapshot().local), 0)
@@ -359,7 +359,7 @@ def main() raises:
     var invalid_session = InputRouterSession(invalid_state^, map.action_arena(), invalid_payloads^)
     before = invalid_session.snapshot()
     with assert_raises():
-        _ = delivery._prepare(invalid_session, gate, queue, map, map, prefix, sequence(map, invalid_session, 0), newer, False, False, False)
+        _ = delivery._prepare(invalid_session, gate, queue, map, map, prefix, sequence(map, invalid_session, 0), newer, False, False)
     same(invalid_session.snapshot(), before)
     assert_equal(invalid_session.generation(), UInt64(0))
     assert_equal(len(queue), 0)

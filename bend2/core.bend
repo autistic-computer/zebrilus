@@ -136,7 +136,7 @@ def frame_gate(short_prefix: Bool, too_large: Bool, wrong_length: Bool, short_he
 def validate_envelope(+total: U32, +declared: U32, lane: U32, flags: U32, version: U32) -> FrameStatus:
   frame_gate((total < 4 : U32), (declared > 67108864 : U32),
     U32.is_ne((total - 4 : U32), declared), (declared < 4 : U32),
-    (lane > 1 : U32), U32.is_ne(version, 118), U32.is_ne(flags, 0))
+    (lane > 1 : U32), U32.is_ne(version, 120), U32.is_ne(flags, 0))
 
 def status_code(status: FrameStatus) -> U32:
   match status:

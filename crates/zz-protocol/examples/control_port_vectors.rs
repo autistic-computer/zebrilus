@@ -7,13 +7,13 @@ use zz_protocol::{
     ChooseTreeState, ChooseTreeTarget, ChooserPresentation, ChooserPreview, ChooserPreviewSize,
     ChooserPreviewTile, ChooserRow, ClientEnvironmentBlob, ClientHello, ClientId, ClientInstanceId,
     ClientKind, ClientView, ClientViewport, EditorDescriptor, Event, EventPayload,
-    FloatingPaneSnapshot, Hello, InputMessage, KeySubscription, LayoutNode, ModalPaneSnapshot,
-    MuxSnapshot, PROTOCOL_VERSION, PaneBorderIndicators, PaneBorderLines, PaneBorderStatus, PaneId,
-    PaneKindSnapshot, PaneMode, PaneSnapshot, PaneStatus, PaneStatusKind, PaneStatusState,
-    PaneSummary, PanesModeArea, PanesModeBorder, PanesModeClear, PromptCursor, ProtocolMessage,
-    SessionId, SessionSnapshot, SessionViewer, ShellCommand, SplitId, Subscriptions, TmuxColour,
-    TreeDelta, TreeOp, TreeSubscription, Welcome, WindowId, WindowSnapshot, decode_protocol_frame,
-    encode_protocol_message,
+    FloatingPaneSnapshot, Hello, HostPlatform, InputMessage, KeySubscription, LayoutNode,
+    LinuxDistro, ModalPaneSnapshot, MuxSnapshot, PROTOCOL_VERSION, PaneBorderIndicators,
+    PaneBorderLines, PaneBorderStatus, PaneId, PaneKindSnapshot, PaneMode, PaneSnapshot,
+    PaneStatus, PaneStatusKind, PaneStatusState, PaneSummary, PanesModeArea, PanesModeBorder,
+    PanesModeClear, PromptCursor, ProtocolMessage, SessionId, SessionSnapshot, SessionViewer,
+    ShellCommand, SplitId, Subscriptions, TmuxColour, TreeDelta, TreeOp, TreeSubscription, Welcome,
+    WindowId, WindowSnapshot, decode_protocol_frame, encode_protocol_message,
 };
 use zz_terminal::{SessionStatus, TerminalViewport};
 
@@ -216,7 +216,7 @@ fn malformed_frames() -> Result<(Vec<Value>, Vec<Value>), Box<dyn Error>> {
         client_instance_id: ClientInstanceId(1),
         caps: (1 << CAPABILITY_NAMES.len()) - 1,
         clock: 0,
-        platform: zz_protocol::HostPlatform::default(),
+        platform: HostPlatform::default(),
     };
     let welcome_frame = encode_protocol_message(&ProtocolMessage::Welcome(welcome))?;
     let (_, remaining) = postcard::take_from_bytes::<u32>(&welcome_frame[8..])?;
@@ -251,6 +251,21 @@ fn malformed_frames() -> Result<(Vec<Value>, Vec<Value>), Box<dyn Error>> {
             }))?,
         )?;
     }
+    let mut unplatformed = welcome_frame.clone();
+    unplatformed.pop();
+    add("welcome-missing-platform", repair_length(unplatformed)?)?;
+    add(
+        "welcome-platform-tag",
+        replace_field(&welcome_frame, welcome_frame.len() - 1, 1, &[4])?,
+    )?;
+    let linux_frame = encode_protocol_message(&ProtocolMessage::Welcome(Welcome {
+        platform: HostPlatform::Linux(LinuxDistro::Other),
+        ..welcome
+    }))?;
+    add(
+        "welcome-linux-distro-tag",
+        replace_field(&linux_frame, linux_frame.len() - 1, 1, &[5])?,
+    )?;
     let ping = encode_protocol_message(&ProtocolMessage::Ping {
         token: 1,
         rtt_us: 0,
@@ -266,7 +281,7 @@ fn malformed_frames() -> Result<(Vec<Value>, Vec<Value>), Box<dyn Error>> {
             &postcard::to_stdvec(&(u64::from(u32::MAX) + 1))?,
         )?,
     )?;
-    for index in 0..8 {
+    for index in 0..10 {
         let mut tree = minimal.clone();
         let mut item = pane.clone();
         let name = match index {
@@ -319,6 +334,14 @@ fn malformed_frames() -> Result<(Vec<Value>, Vec<Value>), Box<dyn Error>> {
                 } else {
                     "chooser-text-limit"
                 }
+            }
+            8 => {
+                item.summary.shell = "x".repeat(257);
+                "pane-shell-limit"
+            }
+            9 => {
+                item.summary.shell = "x".repeat(256);
+                "pane-shell-boundary"
             }
             _ => unreachable!(),
         };
@@ -635,7 +658,11 @@ fn pane(index: usize) -> PaneSnapshot {
             branch: "main".to_owned(),
             process: vec!["shell".to_owned(), "editor 世界".to_owned()],
             flip_armed: true,
-            shell: String::new(),
+            shell: if index.is_multiple_of(2) {
+                String::new()
+            } else {
+                "fish".to_owned()
+            },
         },
     }
 }
@@ -930,9 +957,31 @@ fn main() -> Result<(), Box<dyn Error>> {
             client_instance_id: ClientInstanceId(u64::MAX),
             caps: (1 << CAPABILITY_NAMES.len()) - 1,
             clock: u64::MAX,
-            platform: zz_protocol::HostPlatform::default(),
+            platform: HostPlatform::default(),
         }),
     )?);
+    for platform in [
+        HostPlatform::Macos,
+        HostPlatform::Windows,
+        HostPlatform::Linux(LinuxDistro::Other),
+        HostPlatform::Linux(LinuxDistro::Ubuntu),
+        HostPlatform::Linux(LinuxDistro::Debian),
+        HostPlatform::Linux(LinuxDistro::Arch),
+        HostPlatform::Linux(LinuxDistro::Fedora),
+    ] {
+        messages.push(fixture(
+            &format!("welcome-{}", platform.slug().unwrap_or("unknown")),
+            &ProtocolMessage::Welcome(Welcome {
+                protocol_version: PROTOCOL_VERSION,
+                server_id: 1,
+                client_id: ClientId(2),
+                client_instance_id: ClientInstanceId(3),
+                caps: (1 << CAPABILITY_NAMES.len()) - 1,
+                clock: 4,
+                platform,
+            }),
+        )?);
+    }
     let base = snapshot();
     let base_bytes = event_bytes(EventPayload::Snapshot(base.clone()))?;
     messages.push(fixture(

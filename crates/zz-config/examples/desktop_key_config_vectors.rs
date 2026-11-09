@@ -136,7 +136,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             source.push('\n');
         }
         let parsed = zz_config::parse_config(&source, "System");
-        configs.push(json!({"source": source, "hotkey": parsed.browser.element_selector_hotkey.value, "picker": false, "delay": parsed.config.which_key_delay.value.to_bits(), "overrides": parsed.chrome_overrides.iter().map(entry).collect::<Vec<_>>(), "diagnostics": parsed.diagnostics.iter().map(|value| json!([value.line, value.message])).collect::<Vec<_>>(), "bindings": map(&parsed.chrome_overrides, &parsed.browser.element_selector_hotkey.value)}));
+        configs.push(json!({"source": source, "hotkey": parsed.browser.element_selector_hotkey.value, "delay": parsed.config.which_key_delay.value.to_bits(), "overrides": parsed.chrome_overrides.iter().map(entry).collect::<Vec<_>>(), "diagnostics": parsed.diagnostics.iter().map(|value| json!([value.line, value.message])).collect::<Vec<_>>(), "bindings": map(&parsed.chrome_overrides, &parsed.browser.element_selector_hotkey.value)}));
     }
     let values = [
         None,

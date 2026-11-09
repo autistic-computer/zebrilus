@@ -4,13 +4,13 @@ use serde_json::{Value, json};
 use zz_protocol::{
     ClientEnvironmentBlob, ClientInstanceId, ClientMessageKind, ClientPath, CommandInvocation,
     Event, EventPayload, ExecExit, ExecFlags, ExecOutcome, ExecRequest, ExecResume, ExecResumeKind,
-    PaneId, PreparedCommand, PreparedCommandResult, ProtocolMessage, RawText, ServerError,
-    SourceSpan, decode_protocol_frame, encode_protocol_message, split_command_words,
+    PROTOCOL_VERSION, PaneId, PreparedCommand, PreparedCommandResult, ProtocolMessage, RawText,
+    ServerError, SourceSpan, decode_protocol_frame, encode_protocol_message, split_command_words,
 };
 
 fn request() -> ExecRequest {
     ExecRequest {
-        protocol_version: 118,
+        protocol_version: PROTOCOL_VERSION,
         flags: ExecFlags::default(),
         client_instance_id: ClientInstanceId(u64::MAX),
         origin: Some(PaneId(u64::MAX)),

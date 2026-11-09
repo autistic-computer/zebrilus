@@ -6,7 +6,7 @@ The source baseline is zebrilus `27b789d56`. The port keeps the existing Rust im
 
 | Bend source | Source contract | Ported behavior |
 |---|---|---|
-| `core.bend` | `crates/zz-protocol/src/framing.rs` | Protocol 118 envelope validation, reserved flags, both lanes, the 64 MiB limit, and exact error precedence |
+| `core.bend` | `crates/zz-protocol/src/framing.rs` | Protocol 120 envelope validation, reserved flags, both lanes, the 64 MiB limit, and exact error precedence |
 | `core.bend` | `crates/zz-protocol/src/layout.rs`, `snapshot.rs` | Stable 64-bit IDs, layout pane enumeration, membership, parallel swap, sibling promotion on removal, split metadata preservation |
 | `layout_edit.bend` | `crates/zz-protocol/src/layout.rs` `joined_layout` | Remove then insert, first matching branch, before/after ordering, axis and IEEE-f32 split ratio behavior |
 | `core.bend` | `crates/zz-client/src/core.rs` | Agent attention status and attention edges |
@@ -89,7 +89,7 @@ zz-bend validate TOTAL DECLARED LANE FLAGS VERSION
 | 2 | Declared length exceeds 64 MiB |
 | 3 | Declared and actual lengths differ |
 | 4 | Unsupported lane |
-| 5 | Protocol version differs from 118 |
+| 5 | Protocol version differs from 120 |
 | 6 | Reserved flags are nonzero |
 
 `zz-bend serve` reads the same `validate ...` command, one per line, from stdin and flushes one status per line to stdout. The Mojo transport keeps one worker alive and uses it for each incoming frame. It must connect stdin through a pipe: the Bend file effect opens `/dev/stdin`, which Linux cannot reopen when it is a socket. EOF closes the worker. Malformed commands exit 64; its structurally bounded loop permits 4,294,967,295 frames before exit 75. A fresh worker starts in approximately a millisecond on the development host; subsequent requests take tens to hundreds of microseconds.
