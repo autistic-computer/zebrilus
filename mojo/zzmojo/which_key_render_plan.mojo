@@ -31,6 +31,7 @@ struct WhichKeyGeometry(Copyable, Movable):
     var column_width: Float32
     var header_height: Float32
     var content_height: Float32
+    var inset: Float32
     var fit: WhichKeyFit
 
 
@@ -169,12 +170,12 @@ def prepare_which_key(mut ui: Ui, th: PennaTheme, sheet: WhichKeySheet, top: Flo
     var width_pixels = native_snap(min(available_width, fit.width) * ui.scale)
     var header_pixels = native_snap(18 * ui.scale) if sheet.prefix else ceil(16 * ui.scale)
     var content_pixels = _content_height_pixels(ui, fit)
-    var inset_pixels = native_snap(12 * ui.scale)
+    var inset_pixels = native_snap(12 * ui.scale) + native_snap(th.paint("sheet").border_width * ui.scale)
     var header_gap_pixels = native_snap(8 * ui.scale)
     var height_pixels = min(2 * inset_pixels + header_pixels + header_gap_pixels + content_pixels, max(native_snap((ui.height - 16) * ui.scale), Float32(0)))
     var x_pixels = (ui.width * ui.scale - width_pixels) / 2
     var y_pixels = ui.height * ui.scale - native_snap((bottom + 8) * ui.scale) - height_pixels
-    var geometry = WhichKeyGeometry(WhichKeyBounds(x_pixels / ui.scale, y_pixels / ui.scale, width_pixels / ui.scale, height_pixels / ui.scale), WhichKeyBounds((x_pixels + inset_pixels) / ui.scale, (y_pixels + inset_pixels + header_pixels + header_gap_pixels) / ui.scale, max(width_pixels - 2 * inset_pixels, Float32(0)) / ui.scale, max(height_pixels - 2 * inset_pixels - header_pixels - header_gap_pixels, Float32(0)) / ui.scale), length(ui, cap_width), length(ui, raw_column), header_pixels / ui.scale, content_pixels / ui.scale, fit^)
+    var geometry = WhichKeyGeometry(WhichKeyBounds(x_pixels / ui.scale, y_pixels / ui.scale, width_pixels / ui.scale, height_pixels / ui.scale), WhichKeyBounds((x_pixels + inset_pixels) / ui.scale, (y_pixels + inset_pixels + header_pixels + header_gap_pixels) / ui.scale, max(width_pixels - 2 * inset_pixels, Float32(0)) / ui.scale, max(height_pixels - 2 * inset_pixels - header_pixels - header_gap_pixels, Float32(0)) / ui.scale), length(ui, cap_width), length(ui, raw_column), header_pixels / ui.scale, content_pixels / ui.scale, inset_pixels / ui.scale, fit^)
     var rows = List[WhichKeyRowPaint]()
     var paint_requests = List[NativeTextRequest]()
     for index in range(len(sheet.rows)):

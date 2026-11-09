@@ -84,7 +84,7 @@ def paint_which_key(mut ui: Ui, th: PennaTheme, key: UInt64, plan: WhichKeyPlan,
     _ = ui.interact(key, focus_on_press=False)
     ui.open(paint.style(Style.col().width(geometry.panel.width).height(geometry.panel.height).id(key).at(geometry.panel.x, geometry.panel.y)))
     paint.decorations(ui, physical_layout=True)
-    ui.open(Style.row().width(geometry.viewport.width).height(geometry.header_height).spacing(length(ui, 8)).align(START, CENTER).at(length(ui, 12), length(ui, 12)))
+    ui.open(Style.row().width(geometry.viewport.width).height(geometry.header_height).spacing(length(ui, 8)).align(START, CENTER).at(geometry.inset, geometry.inset))
     if plan.prefix:
         _prefix(ui, th, plan)
     else:
@@ -106,7 +106,7 @@ def paint_which_key(mut ui: Ui, th: PennaTheme, key: UInt64, plan: WhichKeyPlan,
         ui.close()
         ui.close()
     ui.close()
-    _clip(ui, Style.col().width(geometry.viewport.width).height(geometry.viewport.height).at(length(ui, 12), length(ui, 12) + geometry.header_height + length(ui, 8)))
+    _clip(ui, Style.col().width(geometry.viewport.width).height(geometry.viewport.height).at(geometry.inset, geometry.inset + geometry.header_height + length(ui, 8)))
     var y_pixels: Float32 = 0
     var row_pixels = native_snap(22 * ui.scale)
     var title_pixels = native_snap(20 * ui.scale)
