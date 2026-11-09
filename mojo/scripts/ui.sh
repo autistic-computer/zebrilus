@@ -22,17 +22,17 @@ case "$action" in
     python3 "$port_dir/scripts/resources.py" "$zz_dir/target/port/zz-mojo-app"
     ;;
   build-output-smoke)
-    pixi run bash -c 'mojo build --fp-mode=contract=off -I src -I "$1" $MJ_LINK -o "$2.next" "$1/command_output_smoke.mojo"' _ "$port_dir" "$zz_dir/target/port/command-output-smoke"
+    pixi run bash -c 'mojo build -j 1 --fp-mode=contract=off -I src -I "$1" $MJ_LINK -o "$2.next" "$1/command_output_smoke.mojo"' _ "$port_dir" "$zz_dir/target/port/command-output-smoke"
     mv "$zz_dir/target/port/command-output-smoke.next" "$zz_dir/target/port/command-output-smoke"
     python3 "$port_dir/scripts/resources.py" "$zz_dir/target/port/command-output-smoke"
     ;;
   build-clipboard-smoke)
-    pixi run bash -c 'mojo build --fp-mode=contract=off -I src -I "$1" $MJ_LINK -D MJ_SDL=1 -Xlinker "$2/build/lib/libSDL3.a" -Xlinker -lm -Xlinker -ldl "$1/clipboard_workspace_smoke.mojo" -o "$3.next"' _ "$port_dir" "$mjui_dir" "$zz_dir/target/port/clipboard-workspace-smoke"
+    pixi run bash -c 'mojo build -j 1 --fp-mode=contract=off -I src -I "$1" $MJ_LINK -D MJ_SDL=1 -Xlinker "$2/build/lib/libSDL3.a" -Xlinker -lm -Xlinker -ldl "$1/clipboard_workspace_smoke.mojo" -o "$3.next"' _ "$port_dir" "$mjui_dir" "$zz_dir/target/port/clipboard-workspace-smoke"
     mv "$zz_dir/target/port/clipboard-workspace-smoke.next" "$zz_dir/target/port/clipboard-workspace-smoke"
     python3 "$port_dir/scripts/resources.py" "$zz_dir/target/port/clipboard-workspace-smoke"
     ;;
   build-history-smoke)
-    pixi run bash -c 'mojo build --fp-mode=contract=off -I src -I "$1" $MJ_LINK -o "$2.next" "$1/history_workspace_smoke.mojo"' _ "$port_dir" "$zz_dir/target/port/history-workspace-smoke"
+    pixi run bash -c 'mojo build -j 1 --fp-mode=contract=off -I src -I "$1" $MJ_LINK -o "$2.next" "$1/history_workspace_smoke.mojo"' _ "$port_dir" "$zz_dir/target/port/history-workspace-smoke"
     mv "$zz_dir/target/port/history-workspace-smoke.next" "$zz_dir/target/port/history-workspace-smoke"
     python3 "$port_dir/scripts/resources.py" "$zz_dir/target/port/history-workspace-smoke"
     ;;
@@ -42,7 +42,7 @@ case "$action" in
     exec env -u ZZ_PORT_GUARDED -u ZZ_PORT_BUILD_LOCK_FD "$zz_dir/target/port/zz-mojo-app" "$@"
     ;;
   build-shot|shot)
-    pixi run bash -c 'mojo build --fp-mode=contract=off -I src -I "$1" $MJ_LINK -o "$2.next" "$1/screenshot.mojo"' _ "$port_dir" "$zz_dir/target/port/zz-mojo-shot"
+    pixi run bash -c 'mojo build -j 1 --fp-mode=contract=off -I src -I "$1" $MJ_LINK -o "$2.next" "$1/screenshot.mojo"' _ "$port_dir" "$zz_dir/target/port/zz-mojo-shot"
     mv "$zz_dir/target/port/zz-mojo-shot.next" "$zz_dir/target/port/zz-mojo-shot"
     python3 "$port_dir/scripts/resources.py" "$zz_dir/target/port/zz-mojo-shot"
     if [ "$action" = build-shot ]; then
@@ -59,7 +59,7 @@ case "$action" in
     if [ "$action" = test-readiness ]; then probe=readiness; fi
     if [ "$action" = test-command-output ]; then probe=command_output; fi
     if [ "$action" = test-history-painter ]; then probe=terminal_history_painter; fi
-    pixi run bash -c 'mojo build --fp-mode=contract=off -I src -I "$1" $MJ_LINK -o "$2" "$1/tests/test_$3.mojo"' _ "$port_dir" "$zz_dir/target/port/$probe-probe" "$probe"
+    pixi run bash -c 'mojo build -j 1 --fp-mode=contract=off -I src -I "$1" $MJ_LINK -o "$2" "$1/tests/test_$3.mojo"' _ "$port_dir" "$zz_dir/target/port/$probe-probe" "$probe"
     exec "$zz_dir/target/port/$probe-probe"
     ;;
   *) exit 2 ;;

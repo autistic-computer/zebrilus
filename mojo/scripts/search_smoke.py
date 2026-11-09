@@ -20,7 +20,7 @@ def main():
         sdk = ROOT.parent / "mjui"
         subprocess.run([
             "pixi", "run", "--manifest-path", str(sdk / "pixi.toml"), "bash", "-c",
-            'mojo build --fp-mode=contract=off -I "$1/src" -I "$2/mojo" $MJ_LINK "$2/mojo/search_workspace_smoke.mojo" -o "$3"',
+            'mojo build -j 1 --fp-mode=contract=off -I "$1/src" -I "$2/mojo" $MJ_LINK "$2/mojo/search_workspace_smoke.mojo" -o "$3"',
             "_", str(sdk), str(ROOT), str(binary),
         ], cwd=sdk, check=True)
         subprocess.run(["python3", str(ROOT / "mojo/scripts/resources.py"), str(binary)], cwd=ROOT, check=True)
