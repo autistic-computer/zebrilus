@@ -21,6 +21,15 @@ case "$action" in
     mv "$zz_dir/target/port/zz-mojo-app.next" "$zz_dir/target/port/zz-mojo-app"
     python3 "$port_dir/scripts/resources.py" "$zz_dir/target/port/zz-mojo-app"
     ;;
+  build-browser-app)
+    MJ_CEF_DIR=${MJ_CEF_DIR:-$(python3 -c 'import runpy, sys; print(runpy.run_path(sys.argv[1])["engine"]())' "$mjui_dir/scripts/web/host_check.py")}
+    export MJ_CEF_DIR MJ_CC=${MJ_CC:-/usr/bin/clang} MJ_CXX=${MJ_CXX:-/usr/bin/clang++}
+    (cd "$zz_dir" && cargo build --release --locked --offline --manifest-path "$port_dir/native/browser-url/Cargo.toml")
+    for step in build_harfbuzz build_native build_runtime build_vg build_swash build_sdl build_shaders build_mjcef; do bash "scripts/$step.sh"; done
+    pixi run bash -c 'source scripts/runtime_env.sh; mojo build -j 1 --fp-mode=contract=off -I src -I "$1" -D ASSERT=none -D ZZ_BROWSER=1 -D MJ_RASTER=swash -D MJ_SDL=1 -Xlinker build/lib/libmjswash.a -Xlinker build/lib/libmjcef.a -Xlinker "$1/native/browser-url/target/release/libzzbrowserurl.a" $MJ_LINK -Xlinker build/lib/libSDL3.a -Xlinker -lgcc_s -Xlinker -ldl -Xlinker -lrt -Xlinker -lutil -Xlinker -lm -Xlinker -lpthread "$1/window.mojo" -o "$2.next"' _ "$port_dir" "$zz_dir/target/port/zz-mojo-browser-app"
+    mv "$zz_dir/target/port/zz-mojo-browser-app.next" "$zz_dir/target/port/zz-mojo-browser-app"
+    python3 "$port_dir/scripts/resources.py" "$zz_dir/target/port/zz-mojo-browser-app"
+    ;;
   build-output-smoke)
     pixi run bash -c 'mojo build -j 1 --fp-mode=contract=off -I src -I "$1" $MJ_LINK -o "$2.next" "$1/command_output_smoke.mojo"' _ "$port_dir" "$zz_dir/target/port/command-output-smoke"
     mv "$zz_dir/target/port/command-output-smoke.next" "$zz_dir/target/port/command-output-smoke"

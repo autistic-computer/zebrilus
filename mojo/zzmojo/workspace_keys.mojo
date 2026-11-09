@@ -225,6 +225,10 @@ def route_workspace_key(
         result.claimed = True
         result.after = ui.focus
         return result^
+    if view.browser_key(ui, keyboard, key, Span(input.bytes)):
+        result.claimed = True
+        result.after = ui.focus
+        return result^
     if view.picker_key(ui, key):
         keyboard.claim_text(key, Span(input.bytes))
         keyboard.claim_text_command(key)

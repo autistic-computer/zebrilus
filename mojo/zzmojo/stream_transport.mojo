@@ -1,3 +1,4 @@
+from .browser_wire import BrowserCommandEvent, browser_command_event
 from .exec_protocol import PreparedInvocation, Invocation
 from .palette_protocol import palette_command_request
 from .client_attachment import (
@@ -75,6 +76,7 @@ from .clipboard_protocol import (
 
 comptime TERMINAL_CACHE_BYTES = 128 * 1024 * 1024
 comptime UNHANDLED_BYTES = 4 * 1024 * 1024
+comptime BROWSER_COMMAND_LIMIT = 4096
 
 
 @fieldwise_init
@@ -132,6 +134,7 @@ struct StreamModel(Copyable, Movable):
     var bend_tree_updates: UInt64
     var unhandled: List[List[UInt8]]
     var unhandled_bytes: Int
+    var browser_commands: List[BrowserCommandEvent]
     var revision: UInt64
     var routing: InputRoutingState
     var key_table_changes: UInt64
@@ -171,6 +174,7 @@ struct StreamModel(Copyable, Movable):
         self.bend_tree_updates = 0
         self.unhandled = List[List[UInt8]]()
         self.unhandled_bytes = 0
+        self.browser_commands = List[BrowserCommandEvent]()
         self.revision = 0
         self.routing = InputRoutingState()
         self.key_table_changes = 0
@@ -793,7 +797,25 @@ struct InteractiveConnection(Movable):
                         else:
                             var retained = event.raw^
                             event.raw = List[UInt8]()
-                            self._retain(retained^)
+                            var browser: Optional[BrowserCommandEvent]
+                            try:
+                                browser = browser_command_event(retained)
+                            except:
+                                browser = None
+                            if browser:
+                                if (
+                                    len(self.model.browser_commands)
+                                    >= BROWSER_COMMAND_LIMIT
+                                ):
+                                    raise Error(
+                                        "browser commands exceed their queue"
+                                        " limit"
+                                    )
+                                self.model.browser_commands.append(
+                                    browser.take()
+                                )
+                            else:
+                                self._retain(retained^)
         if not nested:
             self.materialize()
         self.model.revision += 1

@@ -45,6 +45,7 @@ from .palette_protocol import (
 )
 from .prompt_protocol import PromptAction, prompt_request
 from .chooser_protocol import ChooseAction, choose_request
+from .browser_wire import BrowserCommandEvent
 
 comptime KEY = 1
 comptime TEXT = 2
@@ -309,6 +310,7 @@ struct AsyncBackend(Movable):
     var platform: HostPlatform
     var capabilities: UInt64
     var connected_once: Bool
+    var browser_commands: List[BrowserCommandEvent]
 
     def __init__(
         out self,
@@ -329,6 +331,7 @@ struct AsyncBackend(Movable):
         self.platform = HostPlatform(0, 0)
         self.capabilities = 0
         self.connected_once = False
+        self.browser_commands = List[BrowserCommandEvent]()
 
     def __deinit__(deinit self):
         if self.busy:
@@ -569,6 +572,15 @@ struct AsyncBackend(Movable):
                 self.platform = self.job[].connection.value().platform
                 self.capabilities = self.job[].connection.value().capabilities
                 self.connected_once = True
+                var commands = List[BrowserCommandEvent]()
+                swap(
+                    commands,
+                    self.job[].connection.value().model.browser_commands,
+                )
+                if len(self.browser_commands) + len(commands) > 4096:
+                    raise Error("browser commands exceed their queue limit")
+                for command in commands:
+                    self.browser_commands.append(command.copy())
             except error:
                 model.error = String(error)
                 self.job[].connection = None

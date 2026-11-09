@@ -2,9 +2,9 @@
 
 The browser port follows `crates/zz/src/browser/{view,controller}.rs` and the
 pure helpers they call in `zz-client::browser_state` and `ala-cef`'s page zoom.
-It is not wired into `WorkspaceView` yet. `BrowserPane` in
-`zzmojo/browser_pane.mojo` is the one entry point the workspace needs; the
-wiring steps are at the end of this page.
+`BrowserPane` in `zzmojo/browser_pane.mojo` is the one entry point the
+workspace needs; `WorkspaceView` drives it in a browser build, as described
+at the end of this page.
 
 ## Checks
 
@@ -86,51 +86,18 @@ with an error) have no mjui host consumer. History recording and omnibox
 ranking stay with the history store: `BROWSER_VISIT`, `BROWSER_TITLE`,
 `BROWSER_FAVICON` and `BROWSER_HISTORY_USE` reach the outbox only.
 
-## Wiring BrowserPane into the workspace
+## In the workspace
 
-The integrator owns `view.mojo`, `backend.mojo`, `workspace_keys.mojo`,
-`input_timeline.mojo` and `stream_transport.mojo`. Steps:
+`zzmojo/browser_workspace.mojo` holds the pane set the workspace drives. Its `WorkspaceBrowser` trait has two implementations, picked at compile time: `BrowserDeck` when the build defines `ZZ_BROWSER` and links `libmjcef.a` and `libzzbrowserurl.a`, and `NoBrowser` otherwise, which owns no pane and links no CEF symbol. `WorkspaceView.browser` is `ActiveBrowser`, so the default app and smokes build without the host. `bash mojo/scripts/ui.sh build-browser-app` builds `target/port/zz-mojo-browser-app` with it.
 
-1. Runtime. Call `web_subprocess_check()` first in `main`, start one
-   `WebRuntime` with `cache_dir` under the app's data directory, and watch its
-   fd on the main queue (`WebRuntime.watch`). The app's wake returns
-   `runtime.pending()`. Call `runtime.pump()` once per wake.
-2. Panes. Keep `Dict[UInt64, BrowserPane]` beside `self.model.terminals`. When
-   the tree reports a browser pane (`tree_model`'s browser descriptor: URLs,
-   active index, profile), create
-   `BrowserPane(pane, urls, active, profile, cache_dir, image_base)`, giving
-   each pane its own range of image ids (two per page, a few hundred per pane).
-   On later descriptor changes call `descriptor(urls, active, profile)`. When
-   the pane leaves the tree call `close()` and drop it after `poll` reports its
-   pages gone.
-3. Drawing. In the pane loop, before the "Connecting to terminal…" fallback,
-   add a branch for browser panes calling `pane.build(ui, theme, key)` inside
-   the pane's content box. Call `pane.poll(ui.image_cache)` once per frame or
-   wake before drawing, and `set_visible` when the pane is hidden or shown.
-4. Focus. When the workspace focuses or unfocuses the pane call
-   `set_focused`. Route the pane's pointer events through `pointer(phase,
-   button, pressed, x, y, mods, clicks)` with `BROWSER_POINTER_*` and
-   `BROWSER_BUTTON_*`, using `BROWSER_POINTER_UP_OUTSIDE` for releases outside
-   the pane, and wheel events through `wheel`.
-5. Keys. Resolve configured chrome keys first: a browser-table chord gives a
-   `ChromeAction`; `desktop_native_binding(2, action)` gives the binding and
-   `pane.action(binding)` runs it. A False result means the workspace handles
-   it (close pane with one tab). Other keys go to `pane.key(event)`:
-   `BROWSER_KEY_PAGE` sends `input_key(pane, mjui_key_input(...),
-   route.text_follows, browser=True)` to the daemon; typed text that follows
-   goes to the daemon as browser surface text once the protocol front encodes
-   it, or `pane.text(text)` until then; `BROWSER_KEY_ADDRESS` and the omnibox
-   kinds go to the address field; `BROWSER_KEY_PASS` continues normal routing.
-6. Daemon commands. Decode BrowserCommand events with `browser_command_event`
-   and call `pane.command(command, provider)` for the pane they name.
-7. Outbox. After each call drain `take_outbox()`: `BROWSER_PUBLISH` sends the
-   tab URLs and active index to the daemon, `BROWSER_FOCUS_PAGE` selects the
-   pane (`select-pane -t`) and moves focus to it, `BROWSER_FOCUS_ADDRESS`
-   focuses the address field, `BROWSER_NOTIFY` shows a toast (`flag` marks an
-   error), `BROWSER_CLIPBOARD` writes text and PNG, and the history kinds go to
-   the history store.
-8. Chrome. The tab strip and toolbar draw from `presentation()`: `tabs`
-   (label, detail), `active`, `address`, `loading`, `can_go_back`,
-   `can_go_forward`, `page_zoom_percent`. The address field submits through
-   `pane.navigate(text, provider)`; tab clicks call `select_tab`, close buttons
-   `close_tab`.
+- Runtime: `main` calls `web_subprocess_check()` first in a browser build. The first browser pane in a snapshot starts one `WebRuntime` with its cache under `$XDG_DATA_HOME/zz-mojo/browser` (else `~/.local/share`); a failure is kept and drawn in each browser pane. The app watches the runtime's fd on the main queue, and `wake` pumps it and wakes on pending page events.
+- Panes: after each poll, `sync_browser` reads every kind 2 pane's descriptor (tab URLs, active tab, profile) from the snapshot, creates a `BrowserPane` per new pane with its own 1,024 image ids, calls `descriptor` when one changed, and closes panes that left the tree, keeping them until their pages are gone. At most 64 browser panes are held; more are refused with a notice. It then polls every pane into `ui.image_cache`.
+- Drawing: a browser pane draws a header with one button per tab (a click calls `select_tab`) and the address, then `BrowserPane.build` in the rest of the pane's box. The panes drawn this frame are the visible ones; the input pane gets `set_focused` while the terminal focus is on it.
+- Pointer and wheel: `mouse` gives an event over a browser pane's content, or any event while that pane holds a button, to `BrowserPane.pointer` with the left, right and middle buttons and the held mask; a press selects the pane, a release outside the content goes as `BROWSER_POINTER_UP_OUTSIDE`. The wheel over the content goes to the page; the deck clamps it with `BrowserInput.pointer` itself, because `BrowserPane.wheel` calls that mutating method on a temporary and does not compile.
+- Keys: with the browser pane focused, `route_workspace_key` first lets the `ui` table run (as the router does), then resolves the `browser` table and runs `desktop_native_binding(2, action)` through `BrowserPane.action`; close-pane with one tab left runs `kill-pane`. Other keys go to `BrowserPane.key`: page keys go to the daemon as browser surface keys (`input_key(..., browser=True)`, then `input_browser_text` for their text) and their release follows; pass keys continue as usual.
+- Daemon commands: `stream_transport` keeps BrowserCommand events (event kind 7) in a 4,096-entry queue instead of the unhandled list; the backend moves them to the view, which calls `BrowserPane.command`. A refused command, such as the screenshot command, is a notice.
+- Outbox: `BROWSER_PUBLISH` runs `set-browser-tabs -t %pane -a <active> <urls>`, `BROWSER_FOCUS_PAGE` selects the pane and focuses the terminal slot, `BROWSER_NOTIFY` is a notice. Address focus, clipboard writes and the history kinds have no consumer yet.
+
+`python3 mojo/scripts/browser_workspace.py` (pixi task `browser-workspace-smoke`) builds the smoke with `ZZ_BROWSER` against the source CEF 156.0.15 and runs it on a private daemon with a browser pane: the page loads and draws, a click selects the pane, a typed key reaches the page through the daemon, Ctrl+T publishes a second tab, Ctrl+W closes it and then closes the pane.
+
+The address field and omnibox, the tab strip's close buttons, back/forward/reload buttons, the error panel's address focus and the remaining items under "Not native yet" stay open.

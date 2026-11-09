@@ -39,6 +39,7 @@ from mjui.widgets.penna import (
     label,
 )
 from .backend import AsyncBackend, KEY, RECONNECT
+from .browser_wire import BrowserCommandEvent
 from .state import AppModel
 from .terminal_painter import render_viewport_opts
 from .terminal_history_painter import render_retained_viewport_opts
@@ -107,6 +108,26 @@ from .actions import MAX_PENDING_INPUT_BYTES, MAX_PENDING_ACTIONS
 from .palette_controller import PALETTE_INPUT_BYTES
 from .chooser_live import LiveChooser
 from .window_chooser_runtime import WindowChooserRuntime
+from .browser_workspace import ActiveBrowser, BROWSER_HOST
+from .browser_input import (
+    BROWSER_POINTER_DOWN,
+    BROWSER_POINTER_UP,
+    BROWSER_POINTER_MOVE,
+    BROWSER_POINTER_LEAVE,
+    BROWSER_POINTER_UP_OUTSIDE,
+    BROWSER_BUTTON_LEFT,
+    BROWSER_BUTTON_RIGHT,
+    BROWSER_BUTTON_MIDDLE,
+    BROWSER_KEY_PASS,
+    BROWSER_KEY_PAGE,
+)
+from .browser_state import (
+    BROWSER_PUBLISH,
+    BROWSER_FOCUS_PAGE,
+    BROWSER_NOTIFY,
+)
+from .desktop_native_bindings import desktop_native_binding
+from .input_protocol import input_browser_text
 from .chooser_session import ChooserSource, ChooserPlan
 from .which_key_live import LiveWhichKey, WhichKeyIntent, WhichKeyContext
 from .prefix_bindings import PrefixTable
@@ -226,6 +247,11 @@ struct WorkspaceView(Movable):
     var chrome: ChromeKeymap
     var chrome_held: Dict[UInt16, Bool]
     var picker_selected: Dict[UInt64, Int]
+    var browser: ActiveBrowser
+    var browser_visible: List[UInt64]
+    var browser_capture: Optional[UInt64]
+    var browser_buttons: UInt8
+    var browser_keys: Dict[UInt16, UInt64]
 
     def __init__(
         out self,
@@ -304,6 +330,11 @@ struct WorkspaceView(Movable):
         self.sidebar_shown = True
         self.chrome_held = Dict[UInt16, Bool]()
         self.picker_selected = Dict[UInt64, Int]()
+        self.browser = ActiveBrowser()
+        self.browser_visible = List[UInt64]()
+        self.browser_capture = None
+        self.browser_buttons = 0
+        self.browser_keys = Dict[UInt16, UInt64]()
         self.backend.submit(self.model, self.focus_epoch)
 
     def widget_key(mut self, kind: Int, id: UInt64) raises -> UInt64:
@@ -1965,6 +1996,8 @@ struct WorkspaceView(Movable):
             return
         if self.palette.opened() and not captured_middle_release:
             return
+        if self.browser_mouse(ui, event):
+            return
         if (
             self.terminal_chrome_hit(ui, event.x, event.y)
             and not captured_middle_release
@@ -2030,6 +2063,8 @@ struct WorkspaceView(Movable):
         if self.sidebar_hit(ui, x, y):
             if self.sidebar_wheel(ui, event.dy, event.precise):
                 ui.request_wake(ui.time)
+            return
+        if self.browser_wheel(ui, event, x, y):
             return
         if self.terminal_chrome_hit(ui, x, y):
             return
@@ -2158,6 +2193,7 @@ struct WorkspaceView(Movable):
     @inline(.never)
     def terminals(mut self, mut ui: Ui) raises:
         self.visible_panes.clear()
+        self.browser_visible.clear()
         var flat = self.theme.flat
         var width = max(
             ui.width - (SIDEBAR_WIDTH if self.sidebar_shown else 0), Float32(0)
@@ -2387,10 +2423,14 @@ struct WorkspaceView(Movable):
                 )
             elif kinds.get(item.pane, UInt8(1)) == 0:
                 self.paint_picker(ui, item.pane)
+            elif kinds.get(item.pane, UInt8(1)) == 2:
+                self.paint_browser(ui, item.pane)
             else:
                 label(ui, self.theme, "Connecting to terminal…", flat.dim)
             ui.close()
         ui.close()
+        self.browser.show(self.browser_visible)
+        self.browser.focus(self.browser_pane(ui))
 
     def host_state(self) -> HostState:
         if self.backend.online:
@@ -2589,6 +2629,8 @@ struct WorkspaceView(Movable):
 
     def picker_choices(self) -> List[String]:
         var choices: List[String] = [String("terminal")]
+        comptime if BROWSER_HOST:
+            choices.append(String("browser"))
         return choices^
 
     def picker_pane(self, ui: Ui) -> Optional[UInt64]:
@@ -2636,6 +2678,8 @@ struct WorkspaceView(Movable):
         )
         if key.key == Key.T:
             self.picker_choose(ui, pane.value(), 0)
+        elif key.key == Key.B and len(choices) > 1:
+            self.picker_choose(ui, pane.value(), 1)
         elif key.key == Key.J or key.key == Key.DOWN:
             self.picker_selected[pane.value()] = (selected + 1) % len(choices)
         elif key.key == Key.K or key.key == Key.UP:
@@ -2660,7 +2704,9 @@ struct WorkspaceView(Movable):
         ui.open(Style.col().grow().grow_h().center().spacing(8))
         label(ui, self.theme, "New pane", flat.dim, strong=True)
         for index in range(len(choices)):
-            var title = String("Terminal  t")
+            var title = String(
+                "Terminal  t" if choices[index] == "terminal" else "Browser  b"
+            )
             var row_key = self.name_key(String("picker:", pane, ":", index))
             if row(
                 ui,
@@ -2740,6 +2786,222 @@ struct WorkspaceView(Movable):
         elif clicked:
             self.nav(ui, self.sidebar.click(clicked.value()))
 
+    def browser_key_name(self, pane: UInt64) -> String:
+        return String(10, ":", pane)
+
+    def browser_pane(self, ui: Ui) -> Optional[UInt64]:
+        if ui.focus != TERMINAL_KEY or not self.active or self.output_input:
+            return None
+        if not self.model.pane or not self.browser.owns(self.model.pane.value()):
+            return None
+        return self.model.pane
+
+    def sync_browser(mut self, mut ui: Ui):
+        try:
+            self.browser.sync(self.model.snapshot)
+            if self.browser.poll(ui.image_cache):
+                ui.request_wake(ui.time)
+            var commands = List[BrowserCommandEvent]()
+            swap(commands, self.backend.browser_commands)
+            for event in commands:
+                try:
+                    self.browser.command(event.pane, event.command, 0)
+                except error:
+                    self.primary_notice(ui, String(error))
+            self.browser_outbox(ui)
+            if self.browser.pending():
+                ui.request_wake(ui.time + 0.016)
+        except error:
+            self.primary_notice(ui, String(error))
+
+    def browser_outbox(mut self, mut ui: Ui) raises:
+        var outbound = self.browser.take_outbox()
+        for item in outbound:
+            ref effect = item.effect
+            var target = String("%", item.pane)
+            if effect.kind == BROWSER_PUBLISH:
+                var arguments: List[String] = [
+                    String("-t"),
+                    target,
+                    String("-a"),
+                    String(effect.active),
+                ]
+                for url in effect.urls:
+                    arguments.append(url.copy())
+                self.picker_command(ui, "set-browser-tabs", arguments)
+            elif effect.kind == BROWSER_FOCUS_PAGE:
+                if self.model.pane != Optional[UInt64](item.pane):
+                    self.picker_command(
+                        ui, "select-pane", [String("-t"), target]
+                    )
+                    try:
+                        self.blur_pointer()
+                        self.model.select_pane(item.pane)
+                        self.focus_epoch += 1
+                    except:
+                        pass
+                ui.focus = TERMINAL_KEY
+            elif effect.kind == BROWSER_NOTIFY:
+                self.primary_notice(ui, effect.text)
+
+    def paint_browser(mut self, mut ui: Ui, pane: UInt64) raises:
+        if self.browser.owns(pane):
+            var key = self.name_key(self.browser_key_name(pane))
+            _ = ui.interact(key, focusable=True, focus_on_press=False)
+            self.browser.build(ui, self.theme, pane, key)
+            self.browser_visible.append(pane)
+            return
+        var failure = self.browser.failure()
+        label(
+            ui,
+            self.theme,
+            failure.value() if failure else String("Starting the browser…"),
+            self.theme.flat.dim,
+        )
+
+    def browser_at(
+        mut self, ui: Ui, x: Float32, y: Float32
+    ) raises -> Optional[UInt64]:
+        for pane in self.browser_visible:
+            var rect = ui.rect_of(self.name_key(self.browser_key_name(pane)))
+            if x >= rect.x0 and x < rect.x1 and y >= rect.y0 and y < rect.y1:
+                return pane
+        return None
+
+    def browser_mouse(mut self, mut ui: Ui, event: MouseEvent) raises -> Bool:
+        var hit = self.browser_at(ui, event.x, event.y)
+        var target = self.browser_capture if self.browser_capture else hit
+        if not target:
+            return False
+        var pane = target.value()
+        var phase = BROWSER_POINTER_MOVE
+        var button = UInt8(0)
+        if event.kind == MOUSE_DOWN:
+            phase, button = BROWSER_POINTER_DOWN, BROWSER_BUTTON_LEFT
+        elif event.kind == MOUSE_RIGHT_DOWN:
+            phase, button = BROWSER_POINTER_DOWN, BROWSER_BUTTON_RIGHT
+        elif event.kind == MOUSE_MIDDLE_DOWN:
+            phase, button = BROWSER_POINTER_DOWN, BROWSER_BUTTON_MIDDLE
+        elif event.kind == MOUSE_UP:
+            phase, button = BROWSER_POINTER_UP, BROWSER_BUTTON_LEFT
+        elif event.kind == MOUSE_RIGHT_UP:
+            phase, button = BROWSER_POINTER_UP, BROWSER_BUTTON_RIGHT
+        elif event.kind == MOUSE_MIDDLE_UP:
+            phase, button = BROWSER_POINTER_UP, BROWSER_BUTTON_MIDDLE
+        elif event.kind == MOUSE_EXITED:
+            phase = BROWSER_POINTER_LEAVE
+        if phase == BROWSER_POINTER_DOWN:
+            if not hit:
+                return False
+            self.browser_buttons |= button
+            self.browser_capture = pane
+            if self.model.pane != Optional[UInt64](pane) or self.output_input:
+                self.blur_pointer()
+                self.model.select_pane(pane)
+                self.focus_epoch += 1
+                self.next_poll = 0
+            ui.focus = TERMINAL_KEY
+        elif phase == BROWSER_POINTER_UP:
+            if self.browser_buttons & button == 0:
+                return Bool(hit)
+            self.browser_buttons &= ~button
+            if self.browser_buttons == 0:
+                self.browser_capture = None
+            if not hit:
+                phase = BROWSER_POINTER_UP_OUTSIDE
+        _ = self.browser.pointer(
+            pane,
+            phase,
+            button,
+            self.browser_buttons,
+            event.x,
+            event.y,
+            event.mods,
+            event.clicks,
+        )
+        ui.request_wake(ui.time)
+        return True
+
+    def browser_wheel(
+        mut self, mut ui: Ui, event: ScrollEvent, x: Float32, y: Float32
+    ) raises -> Bool:
+        var hit = self.browser_at(ui, x, y)
+        if not hit:
+            return False
+        if self.browser.wheel(hit.value(), x, y, event.dx, event.dy, ui.mods):
+            ui.request_wake(ui.time)
+        return True
+
+    def browser_key(
+        mut self,
+        mut ui: Ui,
+        mut keyboard: KeyboardController,
+        key: KeyEvent,
+        bytes: Span[UInt8, _],
+    ) raises -> Bool:
+        if key.release:
+            if key.key not in self.browser_keys:
+                return False
+            var held = self.browser_keys.pop(key.key)
+            var released = mjui_key_input(
+                key.key, key.ch, key.unshifted, key.mods, key.action()
+            )
+            self.backend.input(
+                held, input_key(held, released, False, True), self.focus_epoch, True
+            )
+            keyboard.claim_text(key, bytes)
+            return True
+        if key.consumed:
+            return False
+        var target = self.browser_pane(ui)
+        if not target:
+            return False
+        var pane = target.value()
+        var text: Optional[String] = None
+        if (
+            key.text_lo >= 0
+            and key.text_hi > key.text_lo
+            and Int(key.text_hi) <= len(bytes)
+        ):
+            text = String(from_utf8=bytes[Int(key.text_lo) : Int(key.text_hi)])
+        var input = mjui_key_input(
+            key.key, key.ch, key.unshifted, key.mods, key.action(), text
+        )
+        var action = self.chrome.resolve("browser", input)
+        if action:
+            var binding = desktop_native_binding(2, action.value())
+            if binding.kind != 0:
+                if not self.browser.action(pane, binding) and binding.kind == 22:
+                    self.picker_command(
+                        ui, "kill-pane", [String("-t"), String("%", pane)]
+                    )
+                self.chrome_held[key.key] = True
+                keyboard.claim_text(key, bytes)
+                keyboard.claim_text_command(key)
+                ui.request_wake(ui.time)
+                return True
+        var route = self.browser.key(pane, key)
+        if route.kind == BROWSER_KEY_PASS:
+            return False
+        keyboard.claim_text(key, bytes)
+        keyboard.claim_text_command(key)
+        if route.kind == BROWSER_KEY_PAGE:
+            var bare = input.copy()
+            bare.text = None
+            self.backend.input(
+                pane,
+                input_key(pane, bare, route.text_follows and Bool(text), True),
+                self.focus_epoch,
+            )
+            self.browser_keys[key.key] = pane
+            if route.text_follows and text:
+                self.backend.input(
+                    pane, input_browser_text(pane, text.value()), self.focus_epoch
+                )
+            self.next_poll = 0
+        ui.request_wake(ui.time)
+        return True
+
     def paint_which_key(mut self, mut ui: Ui) raises:
         var attached = Bool(self.model.attached_session) and Bool(
             self.model.key_tables.snapshot
@@ -2811,6 +3073,7 @@ struct WorkspaceView(Movable):
         if self.config_notice:
             self.primary_notice(ui, self.config_notice.take())
         self.sync_sidebar(ui)
+        self.sync_browser(ui)
         if self.model.key_table_changes != self.which_key_changes:
             self.which_key_changes = self.model.key_table_changes
             try:

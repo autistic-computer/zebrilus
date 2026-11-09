@@ -22,6 +22,8 @@ from zzmojo.keyboard_controller import KeyboardController
 from zzmojo.clipboard_controller import ClipboardController
 from zzmojo.input_timeline import InputTimeline
 from zzmojo.workspace_keys import raw_workspace_key, route_workspace_key
+from zzmojo.browser_workspace import BROWSER_HOST
+from mjui.web import web_subprocess_check
 
 
 struct Workspace(App, Movable):
@@ -51,6 +53,8 @@ struct Workspace(App, Movable):
         self.scene_complete = True
 
     def wake(mut self, mut runner: Runner) -> Bool:
+        if self.view.browser.pump() or self.view.browser.pending():
+            return True
         if not self.source[].ready:
             return False
         self.source[].ready = False
@@ -116,6 +120,8 @@ struct Workspace(App, Movable):
                         stream_ready,
                         self.source.ptr().unsafe_bitcast[NoneType](),
                     )
+                if self.view.browser.available():
+                    self.view.browser.watch(win.runner().sdl().host[].queue)
         except error:
             self.view.model.error = String(error)
 
@@ -191,6 +197,8 @@ struct Workspace(App, Movable):
 
 
 def main() raises:
+    comptime if BROWSER_HOST:
+        web_subprocess_check()
     var args = argv()
     var path = getenv("ZZ_SOCKET", "")
     var frames = 0
