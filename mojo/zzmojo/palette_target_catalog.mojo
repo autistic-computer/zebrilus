@@ -94,6 +94,7 @@ capture-browser		5	0	0		.
 html		5	0	1		.
 debug-marker		0	0	0		.
 tools		0	0	1		.
+tailnet		0	0	0		.
 fleet		0	0	0		.
 list-hosts		0	0	0		.
 clear-prompt-history	clearphist	0	0	0		.
