@@ -208,6 +208,7 @@ struct AppModel(Copyable, Movable):
     var source_client: UInt64
     var layout_generation: UInt64
     var routing: InputRoutingState
+    var key_table_changes: UInt64
     var key_tables: RetainedKeyTables
     var status: StatusLine
     var command_output: CommandOutputState
@@ -241,6 +242,7 @@ struct AppModel(Copyable, Movable):
         self.source_client = 0
         self.layout_generation = 0
         self.routing = InputRoutingState()
+        self.key_table_changes = 0
         self.key_tables = RetainedKeyTables()
         self.status = StatusLine()
         self.command_output = CommandOutputState()
@@ -416,6 +418,7 @@ struct AppModel(Copyable, Movable):
         self.layout_generation = connection.model.view.layout_generation
         self.attached_session = connection.model.view.session
         self.routing = connection.model.routing.copy()
+        self.key_table_changes = connection.model.key_table_changes
         self.key_tables = connection.model.key_tables.copy()
         self.status = connection.model.events.status.copy()
         self.command_output = connection.model.events.output.copy()

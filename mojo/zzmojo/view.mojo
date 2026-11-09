@@ -113,6 +113,14 @@ from .actions import MAX_PENDING_INPUT_BYTES, MAX_PENDING_ACTIONS
 from .palette_controller import PALETTE_INPUT_BYTES
 from .chooser_live import LiveChooser
 from .chooser_session import ChooserSource, ChooserPlan
+from .which_key_live import LiveWhichKey, WhichKeyIntent, WhichKeyContext
+from .prefix_bindings import PrefixTable
+from .input_protocol import canonical_key
+from .desktop_key_config import DesktopKeyConfig
+from .desktop_key_config_io import (
+    load_desktop_key_config,
+    local_desktop_config_environment,
+)
 from std.sys.info import CompilationTarget
 
 comptime TERMINAL_KEY: UInt64 = 0x7000000000000000
@@ -162,6 +170,10 @@ struct WorkspaceView(Movable):
     var chooser_closed_frame: Bool
     var chooser_unmark: Bool
     var chooser_restore_output: Optional[Tuple[UInt64, UInt64, UInt64]]
+    var which_key: LiveWhichKey
+    var which_key_delay: UInt64
+    var which_key_changes: UInt64
+    var config_notice: Optional[String]
 
     def __init__(
         out self,
@@ -212,6 +224,19 @@ struct WorkspaceView(Movable):
         self.chooser_closed_frame = False
         self.chooser_unmark = False
         self.chooser_restore_output = None
+        self.which_key = LiveWhichKey()
+        self.which_key_delay = DesktopKeyConfig(
+            CompilationTarget.is_macos()
+        ).which_key_ms()
+        self.which_key_changes = 0
+        self.config_notice = None
+        try:
+            self.which_key_delay = load_desktop_key_config(
+                local_desktop_config_environment(),
+                CompilationTarget.is_macos(),
+            ).value.which_key_ms()
+        except error:
+            self.config_notice = String(error)
         self.backend.submit(self.model, self.focus_epoch)
 
     def widget_key(mut self, kind: Int, id: UInt64) raises -> UInt64:
@@ -2194,6 +2219,38 @@ struct WorkspaceView(Movable):
             ui.close()
         ui.close()
 
+    def paint_which_key(mut self, mut ui: Ui) raises:
+        var attached = Bool(self.model.attached_session) and Bool(
+            self.model.key_tables.snapshot
+        )
+        var prefix: Optional[String] = None
+        if attached and UInt8(0) in self.model.routing.options:
+            prefix = canonical_key(self.model.routing.options[UInt8(0)].value)
+        var context = WhichKeyContext(
+            self.model.routing.table.copy(),
+            self.model.routing.repeat,
+            prefix^,
+            self.palette.opened()
+            or self.chooser.opened()
+            or Bool(self.output.id),
+            42 + 40 + 36,
+            28,
+        )
+        var refusal: Optional[String]
+        if attached:
+            refusal = self.which_key.frame(
+                ui,
+                self.theme,
+                self.model.key_tables.snapshot.value()[].tables,
+                context,
+            ).refusal
+        else:
+            refusal = self.which_key.frame(
+                ui, self.theme, List[PrefixTable](), context
+            ).refusal
+        if refusal:
+            self.primary_notice(ui, refusal.value())
+
     def build(mut self, mut ui: Ui, input: TextInput) raises:
         var search_skip = 0
         if not self.palette_prepared:
@@ -2221,6 +2278,21 @@ struct WorkspaceView(Movable):
                 search_skip += 1
         self.chooser_prepared = False
         self.poll(ui.time)
+        if self.config_notice:
+            self.primary_notice(ui, self.config_notice.take())
+        if self.model.key_table_changes != self.which_key_changes:
+            self.which_key_changes = self.model.key_table_changes
+            try:
+                self.which_key.apply(
+                    WhichKeyIntent.table_changed(
+                        UInt64(max(ui.time, Float64(0)) * 1_000_000_000),
+                        self.model.routing.table,
+                        self.model.routing.repeat,
+                        self.which_key_delay,
+                    )
+                )
+            except error:
+                self.primary_notice(ui, String(error))
         var chooser_eligible = (
             self.backend.job[].native_chooser
             and self.backend.online
@@ -2466,6 +2538,7 @@ struct WorkspaceView(Movable):
             ui.focus
         ):
             self.search.reset_keys()
+        self.paint_which_key(ui)
         if self.chooser.opened():
             try:
                 var choices = self.chooser.paint(

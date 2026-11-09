@@ -1,11 +1,14 @@
 from mjui.ui import Ui
 from mjui.input import KeyEvent, TextInput, TEXT_COMMAND, CMD_CANCEL
+from mjui.keys import Key
 from .view import WorkspaceView, TERMINAL_KEY
 from .keyboard_controller import KeyboardController, RoutedKey
 from .clipboard_controller import ClipboardController, ClipboardPlan
 from .terminal_search_controller import SearchPlan
 from .palette_runtime import PalettePlan
 from .input_protocol import mjui_key_input
+from .desktop_input import desktop_intercepts
+from .which_key_live import WhichKeyIntent
 
 
 struct RawWorkspaceKey(Copyable, Movable):
@@ -57,6 +60,20 @@ def raw_workspace_key(
     return RawWorkspaceKey(key, cancel, chooser_scope)
 
 
+def _modifier_name(key: UInt16) -> String:
+    if key == Key.SHIFT_L or key == Key.SHIFT_R:
+        return "shift"
+    if key == Key.CTRL_L or key == Key.CTRL_R:
+        return "control"
+    if key == Key.ALT_L or key == Key.ALT_R:
+        return "alt"
+    if key == Key.CMD_L or key == Key.CMD_R:
+        return "platform"
+    if key == Key.FN:
+        return "function"
+    return String()
+
+
 def route_workspace_key(
     mut view: WorkspaceView,
     mut ui: Ui,
@@ -67,6 +84,14 @@ def route_workspace_key(
 ) raises -> WorkspaceKeyRoute:
     var key = raw.key
     var result = WorkspaceKeyRoute(ui.focus)
+    if not key.release:
+        view.which_key.apply(
+            WhichKeyIntent.input(
+                desktop_intercepts(True, _modifier_name(key.key)),
+                key.repeat,
+                view.model.routing.armed,
+            )
+        )
     if (
         not key.release
         and raw.chooser_scope

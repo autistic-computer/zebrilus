@@ -134,6 +134,7 @@ struct StreamModel(Copyable, Movable):
     var unhandled_bytes: Int
     var revision: UInt64
     var routing: InputRoutingState
+    var key_table_changes: UInt64
     var key_tables: RetainedKeyTables
     var appearance: Optional[TerminalAppearance]
     var appearance_provenance: Dict[UInt8, UInt8]
@@ -172,6 +173,7 @@ struct StreamModel(Copyable, Movable):
         self.unhandled_bytes = 0
         self.revision = 0
         self.routing = InputRoutingState()
+        self.key_table_changes = 0
         self.key_tables = RetainedKeyTables()
         self.appearance = None
         self.appearance_provenance = Dict[UInt8, UInt8]()
@@ -416,6 +418,8 @@ struct InteractiveConnection(Movable):
 
     @inline(.never)
     def clear_attachment_planes(mut self) raises:
+        if self.model.routing.table:
+            self.model.key_table_changes += 1
         self.model.routing.armed = False
         self.model.routing.table = None
         self.model.routing.repeat = False
@@ -688,6 +692,7 @@ struct InteractiveConnection(Movable):
                 ref prefix = self.model.key_tables.snapshot.value()[].prefix
                 self.model.routing.table = prefix.active_table.copy()
                 self.model.routing.repeat = prefix.repeat
+                self.model.key_table_changes += 1
             self.request_key_tables()
         elif event.event_kind == Optional[UInt64](9):
             var raw = List[UInt8]()
