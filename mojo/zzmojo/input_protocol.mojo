@@ -352,7 +352,7 @@ def encode_input_frame(frame: InputFrame) raises -> List[UInt8]:
     append_uint(output, UInt64(frame.kind))
     if frame.kind != 6 and frame.kind != 7:
         append_uint(output, frame.pane)
-    if frame.kind == 0:
+    if frame.kind == 0 or frame.kind == 2:
         append_text(output, frame.text)
     elif frame.kind == 1 or frame.kind == 3:
         if not frame.key:
@@ -415,7 +415,7 @@ def decode_input_frame(var bytes: List[UInt8]) raises -> InputFrame:
     frame.kind = read_enum(reader, 23)
     if frame.kind != 6 and frame.kind != 7:
         frame.pane = reader.uint()
-    if frame.kind == 0:
+    if frame.kind == 0 or frame.kind == 2:
         frame.text = reader.text()
     elif frame.kind == 1 or frame.kind == 3:
         frame.key = _read_key(reader)
@@ -469,6 +469,14 @@ def input_key(
     frame.pane = pane
     frame.key = input.copy()
     frame.text_follows = text_follows
+    return encode_input_frame(frame)
+
+
+def input_browser_text(pane: UInt64, text: String) raises -> List[UInt8]:
+    var frame = InputFrame()
+    frame.kind = 2
+    frame.pane = pane
+    frame.text = text
     return encode_input_frame(frame)
 
 

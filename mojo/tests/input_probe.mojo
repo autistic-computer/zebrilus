@@ -65,7 +65,9 @@ def build(mut reader: Decoder) raises -> List[UInt8]:
     var frame = InputFrame()
     frame.kind = UInt8(reader.uint())
     frame.pane = reader.uint()
-    if frame.kind == 1 or frame.kind == 3:
+    if frame.kind == 0 or frame.kind == 2:
+        frame.text = reader.text()
+    elif frame.kind == 1 or frame.kind == 3:
         var key = KeyInput()
         key.action = UInt8(reader.uint())
         key.key = UInt8(reader.uint())
