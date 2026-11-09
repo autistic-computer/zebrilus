@@ -8,6 +8,7 @@ from .terminal_search_controller import SearchPlan
 from .palette_runtime import PalettePlan
 from .input_protocol import mjui_key_input
 from .desktop_input import desktop_intercepts
+from .desktop_chrome_dispatch import desktop_chrome_dispatch
 from .which_key_live import WhichKeyIntent
 
 
@@ -72,6 +73,51 @@ def _modifier_name(key: UInt16) -> String:
     if key == Key.FN:
         return "function"
     return String()
+
+
+def chrome_key(
+    mut view: WorkspaceView,
+    mut ui: Ui,
+    mut keyboard: KeyboardController,
+    key: KeyEvent,
+    bytes: Span[UInt8, _],
+) raises -> Bool:
+    if key.release:
+        if key.key not in view.chrome_held:
+            return False
+        _ = view.chrome_held.pop(key.key)
+        keyboard.claim_text(key, bytes)
+        return True
+    if key.key in view.chrome_held:
+        if key.repeat:
+            keyboard.claim_text(key, bytes)
+            keyboard.claim_text_command(key)
+            return True
+        _ = view.chrome_held.pop(key.key)
+    if key.consumed or not view.active or view.modal_capture():
+        return False
+    var text: Optional[String] = None
+    if (
+        key.text_lo >= 0
+        and key.text_hi > key.text_lo
+        and Int(key.text_hi) <= len(bytes)
+    ):
+        text = String(from_utf8=bytes[Int(key.text_lo) : Int(key.text_hi)])
+    var input = mjui_key_input(
+        key.key, key.ch, key.unshifted, key.mods, key.action(), text
+    )
+    var action = view.chrome.resolve("ui", input)
+    if not action:
+        return False
+    if not view.chrome_dispatch(ui, desktop_chrome_dispatch(action.value())):
+        return False
+    view.chrome_held[key.key] = True
+    if key.key in keyboard.forwarded:
+        _ = keyboard.forwarded.pop(key.key)
+    keyboard.claim_text(key, bytes)
+    keyboard.claim_text_command(key)
+    ui.request_wake(ui.time)
+    return True
 
 
 def route_workspace_key(
@@ -156,6 +202,16 @@ def route_workspace_key(
                 result.claimed = True
                 return result^
         result.claimed = ui.key(key)
+        result.after = ui.focus
+        return result^
+    if chrome_key(view, ui, keyboard, key, Span(input.bytes)):
+        result.claimed = True
+        result.after = ui.focus
+        return result^
+    if view.picker_key(ui, key):
+        keyboard.claim_text(key, Span(input.bytes))
+        keyboard.claim_text_command(key)
+        result.claimed = True
         result.after = ui.focus
         return result^
     var search = view.plan_search(ui, keyboard, key, Span(input.bytes))

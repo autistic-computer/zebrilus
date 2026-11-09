@@ -25,6 +25,7 @@ from mjui.input import (
     CMD_PASTE,
     MOD_ALT,
     MOD_CMD,
+    MOD_CTRL,
 )
 from mjui.scroll import ScrollEvent
 from mjui.keys import Key
@@ -37,14 +38,7 @@ from mjui.widgets.penna import (
     button,
     label,
 )
-from .backend import (
-    AsyncBackend,
-    KEY,
-    CREATE_SESSION,
-    SPLIT_RIGHT,
-    SPLIT_DOWN,
-    RECONNECT,
-)
+from .backend import AsyncBackend, KEY, RECONNECT
 from .state import AppModel
 from .terminal_painter import render_viewport_opts
 from .terminal_history_painter import render_retained_viewport_opts
@@ -122,8 +116,53 @@ from .desktop_key_config_io import (
     local_desktop_config_environment,
 )
 from std.sys.info import CompilationTarget
+from std.ffi import external_call
+from std.os.path import isdir
+from mjui.widgets.penna_palette import PaletteRow, palette_tree_row
+from .desktop_sidebar import (
+    DesktopSidebar,
+    DesktopNavIntent,
+    DesktopNavSource,
+    stage_navigation,
+    commit_navigation,
+    LOCAL_HOST,
+)
+from .desktop_fleet import FleetHostInput
+from .desktop_host import (
+    HostState,
+    HOST_CONNECTED,
+    HOST_CONNECTING,
+    HOST_REASON_BYTES,
+)
+from .desktop_nav_tree import NavNode
+from .desktop_nav import nav_command
+from .desktop_input import desktop_router_map
+from .desktop_chrome_dispatch import DesktopChromeDispatch
+from .chrome_keymap import ChromeKeymap
+from .palette_host import palette_local_hostname
+from .tree_model import MuxSnapshot
 
 comptime TERMINAL_KEY: UInt64 = 0x7000000000000000
+comptime SIDEBAR_KEY: UInt64 = 0x7100000000000000
+comptime SIDEBAR_WIDTH: Float32 = 220
+comptime SIDEBAR_ROW: Float32 = 26
+comptime TOOLBAR_HEIGHT: Float32 = 42
+comptime STATUS_HEIGHT: Float32 = 28
+comptime NEW_SESSION_ATTACH_BIT: UInt64 = 1 << 27
+
+
+def current_directory() -> Optional[String]:
+    var buffer = List[UInt8](length=4097, fill=0)
+    var pointer = external_call["getcwd", Int](buffer.unsafe_ptr(), 4097)
+    if pointer == 0:
+        return None
+    var length = 0
+    while length < 4096 and buffer[length] != 0:
+        length += 1
+    var text = String(from_utf8_lossy=Span(buffer)[:length])
+    if not isdir(text):
+        return None
+    return text^
 
 
 struct WorkspaceView(Movable):
@@ -174,6 +213,13 @@ struct WorkspaceView(Movable):
     var which_key_delay: UInt64
     var which_key_changes: UInt64
     var config_notice: Optional[String]
+    var sidebar: DesktopSidebar
+    var sidebar_seen: String
+    var sidebar_first: Int
+    var sidebar_shown: Bool
+    var chrome: ChromeKeymap
+    var chrome_held: Dict[UInt16, Bool]
+    var picker_selected: Dict[UInt64, Int]
 
     def __init__(
         out self,
@@ -225,22 +271,36 @@ struct WorkspaceView(Movable):
         self.chooser_unmark = False
         self.chooser_restore_output = None
         self.which_key = LiveWhichKey()
-        self.which_key_delay = DesktopKeyConfig(
-            CompilationTarget.is_macos()
-        ).which_key_ms()
+        var macos = CompilationTarget.is_macos()
+        var config = DesktopKeyConfig(macos)
         self.which_key_changes = 0
         self.config_notice = None
         try:
-            self.which_key_delay = load_desktop_key_config(
-                local_desktop_config_environment(),
-                CompilationTarget.is_macos(),
-            ).value.which_key_ms()
+            config = load_desktop_key_config(
+                local_desktop_config_environment(), macos
+            ).value.copy()
         except error:
             self.config_notice = String(error)
+        self.which_key_delay = config.which_key_ms()
+        try:
+            self.chrome = desktop_router_map(config.map(macos, 1), 2)
+        except error:
+            self.config_notice = String(error)
+            self.chrome = desktop_router_map(
+                DesktopKeyConfig(macos).map(macos, 1), 2
+            )
+        self.sidebar = DesktopSidebar(palette_local_hostname())
+        self.sidebar_seen = String()
+        self.sidebar_first = 0
+        self.sidebar_shown = True
+        self.chrome_held = Dict[UInt16, Bool]()
+        self.picker_selected = Dict[UInt64, Int]()
         self.backend.submit(self.model, self.focus_epoch)
 
     def widget_key(mut self, kind: Int, id: UInt64) raises -> UInt64:
-        var name = String(kind, ":", id)
+        return self.name_key(String(kind, ":", id))
+
+    def name_key(mut self, name: String) raises -> UInt64:
         if name not in self.keys:
             if self.next_key == TERMINAL_KEY:
                 raise Error("widget identifiers exhausted")
@@ -1865,6 +1925,10 @@ struct WorkspaceView(Movable):
             if self.chooser.wheel(ui, x, y, event.dx, event.dy, event.precise):
                 ui.request_wake(ui.time)
             return
+        if self.sidebar_hit(ui, x, y):
+            if self.sidebar_wheel(ui, event.dy, event.precise):
+                ui.request_wake(ui.time)
+            return
         if self.terminal_chrome_hit(ui, x, y):
             return
         var surfaces = self.pointer_surfaces(ui)
@@ -1993,8 +2057,10 @@ struct WorkspaceView(Movable):
     def terminals(mut self, mut ui: Ui) raises:
         self.visible_panes.clear()
         var flat = self.theme.flat
-        var width = max(ui.width - 220, Float32(0))
-        var height = max(ui.height - 146, Float32(0))
+        var width = max(
+            ui.width - (SIDEBAR_WIDTH if self.sidebar_shown else 0), Float32(0)
+        )
+        var height = max(ui.height - TOOLBAR_HEIGHT - STATUS_HEIGHT, Float32(0))
         var options = self.appearance.options(
             ui, False, blink_epoch=self.cursor_epoch
         )
@@ -2002,12 +2068,15 @@ struct WorkspaceView(Movable):
             ui.shaper.fonts[Int(options.font)], options, ui.scale
         )
         var rects = List[PaneRect]()
+        var kinds = Dict[UInt64, UInt8]()
         for session in self.model.snapshot.sessions:
             for window in session.windows:
                 if self.model.window and self.model.window.value() == window.id:
                     rects = window_rects(
                         window, width, height, metrics.width(), metrics.height()
                     )
+                    for entry in window.panes.items():
+                        kinds[entry.key] = entry.value.kind.kind
         ui.open(
             Style.col()
             .grow()
@@ -2214,10 +2283,326 @@ struct WorkspaceView(Movable):
                     unseen,
                     max(inner_width, Float32(0)),
                 )
+            elif kinds.get(item.pane, UInt8(1)) == 0:
+                self.paint_picker(ui, item.pane)
             else:
                 label(ui, self.theme, "Connecting to terminal…", flat.dim)
             ui.close()
         ui.close()
+
+    def host_state(self) -> HostState:
+        if self.backend.online:
+            return HostState(HOST_CONNECTED)
+        var reason = self.model.error.copy()
+        if reason.byte_length() == 0:
+            return HostState(HOST_CONNECTING)
+        if reason.byte_length() > HOST_REASON_BYTES:
+            reason = String("the daemon connection failed")
+        return HostState.unreachable(reason^)
+
+    def sync_sidebar(mut self, mut ui: Ui):
+        var state = self.host_state()
+        var attached = self.model.attached_session
+        var seen = String(
+            self.model.generation,
+            ":",
+            self.model.source_server,
+            ":",
+            self.model.source_client,
+            ":",
+            state.kind,
+            ":",
+            self.backend.platform.kind,
+            ":",
+            self.backend.platform.distro,
+            ":",
+            attached.value() if attached else UInt64(0),
+            ":",
+            Int(Bool(attached)),
+            ":",
+            state.reason,
+        )
+        if seen == self.sidebar_seen:
+            return
+        self.sidebar_seen = seen^
+        var snapshot: Optional[MuxSnapshot] = None
+        if self.model.generation != 0:
+            snapshot = self.model.snapshot.copy()
+        var hosts: List[FleetHostInput] = [
+            FleetHostInput(
+                LOCAL_HOST,
+                self.sidebar.local_hostname.copy(),
+                state^,
+                self.backend.platform,
+                snapshot^,
+            )
+        ]
+        try:
+            var scroll = self.sidebar.update(Span(hosts), LOCAL_HOST, attached)
+            if scroll:
+                self.sidebar_reveal(scroll.value(), ui)
+        except error:
+            self.primary_notice(ui, String(error))
+
+    def sidebar_capacity(self, ui: Ui) -> Int:
+        var height = max(ui.height - TOOLBAR_HEIGHT - STATUS_HEIGHT - 16, 0)
+        return max(Int(height / SIDEBAR_ROW), 1)
+
+    def sidebar_reveal(mut self, row: Int, ui: Ui):
+        var capacity = self.sidebar_capacity(ui)
+        if row < self.sidebar_first:
+            self.sidebar_first = row
+        elif row >= self.sidebar_first + capacity:
+            self.sidebar_first = row - capacity + 1
+
+    def sidebar_hit(self, ui: Ui, x: Float32, y: Float32) -> Bool:
+        if not self.sidebar_shown:
+            return False
+        var rect = ui.rect_of(SIDEBAR_KEY)
+        return x >= rect.x0 and x < rect.x1 and y >= rect.y0 and y < rect.y1
+
+    def sidebar_wheel(mut self, ui: Ui, dy: Float32, precise: Bool) -> Bool:
+        var lines = Int(-dy / SIDEBAR_ROW) if precise else Int(-dy)
+        if lines == 0:
+            lines = -1 if dy > 0 else 1 if dy < 0 else 0
+        var last = max(self.sidebar.row_count() - self.sidebar_capacity(ui), 0)
+        var first = min(max(self.sidebar_first + lines, 0), last)
+        var moved = first != self.sidebar_first
+        self.sidebar_first = first
+        return moved
+
+    def nav_source(self) -> DesktopNavSource:
+        var scope = self.backend.path_source.value().epoch if self.backend.path_source else UInt64(
+            0
+        )
+        return DesktopNavSource(
+            scope,
+            self.model.source_server,
+            self.model.source_client,
+            self.focus_epoch,
+        )
+
+    def nav_capabilities(self) -> List[String]:
+        var capabilities = List[String]()
+        if self.backend.capabilities & NEW_SESSION_ATTACH_BIT != 0:
+            capabilities.append(String("new-session-attach-v1"))
+        return capabilities^
+
+    def apply_nav(mut self, mut ui: Ui, intent: DesktopNavIntent) raises:
+        if intent.scroll:
+            self.sidebar_reveal(intent.scroll.value(), ui)
+        if intent.activation:
+            var admission = stage_navigation(
+                self.backend.queue,
+                intent.activation.value(),
+                self.sidebar.attached_host,
+                self.nav_source(),
+            )
+            if admission.host_request:
+                self.primary_notice(
+                    ui, "This client is attached to one daemon at a time"
+                )
+            commit_navigation(self.backend.queue, admission^, self.nav_source())
+            self.next_poll = 0
+            ui.request_wake(ui.time)
+        if intent.release_focus or intent.focus_pane:
+            ui.focus = TERMINAL_KEY
+
+    def nav(mut self, mut ui: Ui, intent: DesktopNavIntent):
+        try:
+            self.apply_nav(ui, intent)
+        except error:
+            self.primary_notice(ui, String(error))
+
+    def chrome_dispatch(
+        mut self, mut ui: Ui, dispatch: DesktopChromeDispatch
+    ) raises -> Bool:
+        if dispatch.kind >= 1 and dispatch.kind <= 6:
+            var intent = self.sidebar.chrome_intent(
+                dispatch, self.nav_capabilities(), current_directory()
+            )
+            if intent:
+                self.apply_nav(ui, intent.value())
+            return True
+        if dispatch.kind == 7:
+            self.sidebar_shown = not self.sidebar_shown
+            ui.request_wake(ui.time)
+            return True
+        if dispatch.kind == 8:
+            self.primary_notice(ui, "Settings are not available in this client yet")
+            return True
+        return False
+
+    def modal_capture(self) -> Bool:
+        for session in self.model.snapshot.sessions:
+            if self.model.session == Optional[UInt64](session.id):
+                for window in session.windows:
+                    if self.model.window == Optional[UInt64](window.id):
+                        return Bool(window.modal)
+        return False
+
+    def pane_kind(self, pane: UInt64) -> Optional[UInt8]:
+        for session in self.model.snapshot.sessions:
+            for window in session.windows:
+                if pane in window.panes:
+                    try:
+                        return window.panes[pane].kind.kind
+                    except:
+                        return None
+        return None
+
+    def picker_choices(self) -> List[String]:
+        var choices: List[String] = [String("terminal")]
+        return choices^
+
+    def picker_pane(self, ui: Ui) -> Optional[UInt64]:
+        if ui.focus != TERMINAL_KEY or not self.active or self.output_input:
+            return None
+        if not self.model.pane:
+            return None
+        var pane = self.model.pane.value()
+        if self.pane_kind(pane) != Optional[UInt8](0):
+            return None
+        return pane
+
+    def picker_command(
+        mut self, mut ui: Ui, name: String, arguments: List[String]
+    ) raises:
+        self.backend.palette_command(
+            nav_command(name, arguments),
+            self.focus_epoch,
+            (self.model.source_server, self.model.source_client),
+        )
+        self.next_poll = 0
+        ui.request_wake(ui.time)
+
+    def picker_choose(mut self, mut ui: Ui, pane: UInt64, choice: Int) raises:
+        var choices = self.picker_choices()
+        if choice < 0 or choice >= len(choices):
+            return
+        self.picker_command(
+            ui,
+            "select-pane-kind",
+            [String("-t"), String("%", pane), choices[choice].copy()],
+        )
+
+    def picker_key(mut self, mut ui: Ui, key: KeyEvent) raises -> Bool:
+        if key.release or key.consumed:
+            return False
+        var pane = self.picker_pane(ui)
+        if not pane:
+            return False
+        if key.mods & (MOD_CTRL | MOD_ALT | MOD_CMD) != 0:
+            return False
+        var choices = self.picker_choices()
+        var selected = min(
+            self.picker_selected.get(pane.value(), 0), len(choices) - 1
+        )
+        if key.key == Key.T:
+            self.picker_choose(ui, pane.value(), 0)
+        elif key.key == Key.J or key.key == Key.DOWN:
+            self.picker_selected[pane.value()] = (selected + 1) % len(choices)
+        elif key.key == Key.K or key.key == Key.UP:
+            self.picker_selected[pane.value()] = (
+                selected + len(choices) - 1
+            ) % len(choices)
+        elif key.key == Key.ENTER or key.key == Key.KP_ENTER:
+            self.picker_choose(ui, pane.value(), selected)
+        elif key.key == Key.ESCAPE:
+            self.picker_command(
+                ui, "kill-pane", [String("-t"), String("%", pane.value())]
+            )
+        else:
+            return False
+        ui.request_wake(ui.time)
+        return True
+
+    def paint_picker(mut self, mut ui: Ui, pane: UInt64) raises:
+        var flat = self.theme.flat
+        var choices = self.picker_choices()
+        var selected = min(self.picker_selected.get(pane, 0), len(choices) - 1)
+        ui.open(Style.col().grow().grow_h().center().spacing(8))
+        label(ui, self.theme, "New pane", flat.dim, strong=True)
+        for index in range(len(choices)):
+            var title = String("Terminal  t")
+            var row_key = self.name_key(String("picker:", pane, ":", index))
+            if row(
+                ui,
+                self.theme,
+                row_key,
+                title,
+                selected=index == selected,
+                height=28,
+            ):
+                self.picker_selected[pane] = index
+                if self.model.pane != Optional[UInt64](pane):
+                    self.picker_command(
+                        ui, "select-pane", [String("-t"), String("%", pane)]
+                    )
+                self.picker_choose(ui, pane, index)
+        ui.close()
+
+    def paint_sidebar(mut self, mut ui: Ui) raises:
+        if not self.sidebar_shown:
+            return
+        var flat = self.theme.flat
+        panel_begin(ui, self.theme, width=SIDEBAR_WIDTH)
+        ui.open(
+            Style.col()
+            .grow()
+            .grow_h()
+            .pad(4, 8)
+            .clipped()
+            .id(SIDEBAR_KEY)
+        )
+        var capacity = self.sidebar_capacity(ui)
+        var last = max(self.sidebar.row_count() - capacity, 0)
+        self.sidebar_first = min(max(self.sidebar_first, 0), last)
+        var rows = self.sidebar.rows(self.sidebar_first, capacity, False)
+        var clicked: Optional[NavNode] = None
+        var toggled: Optional[NavNode] = None
+        for item in rows:
+            var shown = PaletteRow(item.label.copy())
+            shown.indent = Float32(item.depth) * 12
+            if item.expandable:
+                shown.expanded = item.expanded
+            if item.indicator:
+                if item.indicator.value().failed:
+                    shown.detail = self.host_state().label()
+                else:
+                    shown.running = True
+            elif item.bell:
+                shown.running = True
+            if item.shortcut:
+                shown.right = String(Int(item.shortcut.value()) + 1)
+            var name = String(
+                item.node.host, ":", item.node.kind, ":", item.node.id
+            )
+            var row_key = self.name_key(String("sidebar:", name))
+            var disclosure = self.name_key(String("sidebar-toggle:", name))
+            var response = palette_tree_row(
+                ui,
+                self.theme,
+                row_key,
+                shown,
+                item.active or item.selected,
+                SIDEBAR_WIDTH - 8,
+                disclosure,
+            )
+            if response.toggled:
+                toggled = item.node
+            elif response.clicked:
+                clicked = item.node
+        if len(rows) == 0:
+            ui.open(Style.row().height(28).pad(8, 0).center())
+            label(ui, self.theme, "Connecting to zz", flat.dim)
+            ui.close()
+        ui.close()
+        panel_end(ui)
+        if toggled:
+            self.sidebar.disclose(toggled.value())
+        elif clicked:
+            self.nav(ui, self.sidebar.click(clicked.value()))
 
     def paint_which_key(mut self, mut ui: Ui) raises:
         var attached = Bool(self.model.attached_session) and Bool(
@@ -2233,8 +2618,8 @@ struct WorkspaceView(Movable):
             self.palette.opened()
             or self.chooser.opened()
             or Bool(self.output.id),
-            42 + 40 + 36,
-            28,
+            TOOLBAR_HEIGHT,
+            STATUS_HEIGHT,
         )
         var refusal: Optional[String]
         if attached:
@@ -2280,6 +2665,7 @@ struct WorkspaceView(Movable):
         self.poll(ui.time)
         if self.config_notice:
             self.primary_notice(ui, self.config_notice.take())
+        self.sync_sidebar(ui)
         if self.model.key_table_changes != self.which_key_changes:
             self.which_key_changes = self.model.key_table_changes
             try:
@@ -2386,38 +2772,33 @@ struct WorkspaceView(Movable):
         label(ui, self.theme, "zz", flat.fg, strong=True)
         ui.open(Style.col().grow())
         ui.close()
+        var toolbar: Optional[DesktopChromeDispatch] = None
         if button(ui, self.theme, 1, "New session"):
-            try:
-                self.backend.enqueue(
-                    CREATE_SESSION, selection_epoch=self.focus_epoch
-                )
-                ui.focus = TERMINAL_KEY
-            except error:
-                self.model.error = String(error)
+            toolbar = DesktopChromeDispatch(1, 0)
         if button(
-            ui, self.theme, 2, "Split right", disabled=not self.model.pane
+            ui,
+            self.theme,
+            5,
+            "New window",
+            disabled=not self.sidebar.attached_session,
         ):
-            try:
-                self.backend.enqueue(
-                    SPLIT_RIGHT,
-                    self.model.pane,
-                    selection_epoch=self.focus_epoch,
-                )
-                ui.focus = TERMINAL_KEY
-            except error:
-                self.model.error = String(error)
+            toolbar = DesktopChromeDispatch(2, 0)
         if button(
-            ui, self.theme, 3, "Split down", disabled=not self.model.pane
+            ui,
+            self.theme,
+            2,
+            "Split right",
+            disabled=not self.sidebar.active_pane,
         ):
-            try:
-                self.backend.enqueue(
-                    SPLIT_DOWN,
-                    self.model.pane,
-                    selection_epoch=self.focus_epoch,
-                )
-                ui.focus = TERMINAL_KEY
-            except error:
-                self.model.error = String(error)
+            toolbar = DesktopChromeDispatch(4, 0)
+        if button(
+            ui,
+            self.theme,
+            3,
+            "Split down",
+            disabled=not self.sidebar.active_pane,
+        ):
+            toolbar = DesktopChromeDispatch(5, 0)
         if button(ui, self.theme, 4, "Reconnect"):
             try:
                 self.backend.enqueue(
@@ -2427,68 +2808,15 @@ struct WorkspaceView(Movable):
             except error:
                 self.model.error = String(error)
         ui.close()
+        if toolbar:
+            try:
+                _ = self.chrome_dispatch(ui, toolbar.value())
+                ui.focus = TERMINAL_KEY
+            except error:
+                self.primary_notice(ui, String(error))
         ui.open(Style.row().grow().grow_h())
-        panel_begin(ui, self.theme, width=220)
-        ui.open(Style.col().grow().pad(8, 8).spacing(4))
-        ui.open(Style.row().height(28).pad(8, 0).center())
-        label(ui, self.theme, "Sessions", flat.dim, strong=True)
-        ui.close()
-        var selected_session: Optional[UInt64] = None
-        for session in self.model.sessions:
-            var selected = (
-                self.model.session and session.id == self.model.session.value()
-            )
-            if row(
-                ui,
-                self.theme,
-                self.widget_key(1, session.id),
-                session.name,
-                selected=selected,
-            ):
-                selected_session = session.id
-        if selected_session:
-            self.blur_pointer()
-            self.model.select_session(selected_session.value())
-            self.focus_epoch += 1
-            self.next_poll = 0
-            ui.focus = TERMINAL_KEY
-        ui.close()
-        panel_end(ui)
+        self.paint_sidebar(ui)
         ui.open(Style.col().grow().grow_h())
-        ui.open(
-            Style.row().grow().height(40).pad(8, 6).spacing(4).fill(flat.panel)
-        )
-        var selected_window: Optional[UInt64] = None
-        for window in self.model.windows:
-            if (
-                self.model.session
-                and window.session == self.model.session.value()
-            ):
-                if button(
-                    ui, self.theme, self.widget_key(2, window.id), window.name
-                ):
-                    selected_window = window.id
-        if selected_window:
-            self.blur_pointer()
-            self.model.select_window(selected_window.value())
-            self.focus_epoch += 1
-            self.next_poll = 0
-            ui.focus = TERMINAL_KEY
-        ui.close()
-        ui.open(Style.row().grow().height(36).pad(8, 4).spacing(4))
-        var selected_pane: Optional[UInt64] = None
-        for pane in self.model.panes:
-            if self.model.window and pane.window == self.model.window.value():
-                var name = "%" + String(pane.id) + " " + pane.command
-                if button(ui, self.theme, self.widget_key(3, pane.id), name):
-                    selected_pane = pane.id
-        if selected_pane:
-            self.blur_pointer()
-            self.model.select_pane(selected_pane.value())
-            self.focus_epoch += 1
-            self.next_poll = 0
-            ui.focus = TERMINAL_KEY
-        ui.close()
         self.terminals(ui)
         ui.close()
         if self.backend.pending():

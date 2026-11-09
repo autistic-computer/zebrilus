@@ -19,7 +19,12 @@ from .stream_transport import (
 )
 from .actions import Action, ActionQueue
 from .geometry import GridSize
-from .stream_protocol import resize_terminal, client_terminal_size, input_text
+from .stream_protocol import (
+    resize_terminal,
+    client_terminal_size,
+    input_text,
+    HostPlatform,
+)
 from .input_protocol import input_paste
 from .terminal_commit import pasted_commit
 from .actions import MAX_PENDING_INPUT_BYTES
@@ -43,9 +48,6 @@ from .chooser_protocol import ChooseAction, choose_request
 
 comptime KEY = 1
 comptime TEXT = 2
-comptime CREATE_SESSION = 3
-comptime SPLIT_RIGHT = 4
-comptime SPLIT_DOWN = 5
 comptime RECONNECT = 6
 comptime RESIZE_TERMINAL = 7
 comptime RESIZE_WINDOW = 8
@@ -255,16 +257,6 @@ def run_job(context: MutOpaquePointer[MutUntrackedOrigin]) abi("C"):
                     native_chooser=job.native_chooser,
                     native_keys=True,
                 )
-            elif action.kind == CREATE_SESSION:
-                job.model.create_session(job.connection.value())
-            elif action.kind == SPLIT_RIGHT or action.kind == SPLIT_DOWN:
-                job.model.pane = action.pane
-                job.model.focus_dirty = True
-                job.model.sync_focus(job.connection.value())
-                job.model.split(
-                    job.connection.value(),
-                    horizontal=action.kind == SPLIT_RIGHT,
-                )
             elif (
                 action.kind == KEY
                 or action.kind == TEXT
@@ -314,6 +306,9 @@ struct AsyncBackend(Movable):
     var search_commands: SearchUiCommands
     var paths: PathInbox
     var path_source: Optional[PathSource]
+    var platform: HostPlatform
+    var capabilities: UInt64
+    var connected_once: Bool
 
     def __init__(
         out self,
@@ -331,6 +326,9 @@ struct AsyncBackend(Movable):
         self.search_commands = SearchUiCommands()
         self.paths = PathInbox()
         self.path_source = None
+        self.platform = HostPlatform(0, 0)
+        self.capabilities = 0
+        self.connected_once = False
 
     def __deinit__(deinit self):
         if self.busy:
@@ -568,6 +566,9 @@ struct AsyncBackend(Movable):
                     self.job[].connection.value().model.paths.inbox.take()
                 )
                 self.path_source = source
+                self.platform = self.job[].connection.value().platform
+                self.capabilities = self.job[].connection.value().capabilities
+                self.connected_once = True
             except error:
                 model.error = String(error)
                 self.job[].connection = None
