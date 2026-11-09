@@ -367,6 +367,24 @@ struct WindowChooserController(Movable):
             self.generation, self.actor.copy(), data^, effects^
         )
 
+    def prepare(
+        self, operations: Span[WindowChooserOperation, _]
+    ) raises -> WindowChooserChange:
+        if self.generation == UInt64.MAX:
+            raise Error("window chooser controller generation exhausted")
+        var data = self.data.copy()
+        var effects = WindowChooserEffects()
+        for operation in operations:
+            var step = WindowChooserEffects()
+            self.apply(data, step, operation)
+            effects.returned = effects.returned or step.returned
+            if step.scroll:
+                effects.scroll = step.scroll
+            effects.actions.extend(step.actions.copy())
+        return WindowChooserChange(
+            self.generation, self.actor.copy(), data^, effects^
+        )
+
     def validate(self, change: WindowChooserChange) raises:
         if Int(Pointer(to=self.actor[])) != Int(Pointer(to=change.actor[])):
             raise Error(

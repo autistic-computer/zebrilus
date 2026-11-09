@@ -32,7 +32,39 @@ def stage_window_chooser(
     selection_epoch: UInt64,
     passive_kind: Int,
 ) raises -> WindowChooserAdmission:
-    var change = controller.prepare(operation)
+    return stage_change(
+        controller.prepare(operation),
+        queue,
+        owner,
+        selection_epoch,
+        passive_kind,
+    )
+
+
+def stage_window_chooser(
+    controller: WindowChooserController,
+    queue: ActionQueue,
+    operations: Span[WindowChooserOperation, _],
+    owner: WindowChooserOwner,
+    selection_epoch: UInt64,
+    passive_kind: Int,
+) raises -> WindowChooserAdmission:
+    return stage_change(
+        controller.prepare(operations),
+        queue,
+        owner,
+        selection_epoch,
+        passive_kind,
+    )
+
+
+def stage_change(
+    var change: WindowChooserChange,
+    queue: ActionQueue,
+    owner: WindowChooserOwner,
+    selection_epoch: UInt64,
+    passive_kind: Int,
+) raises -> WindowChooserAdmission:
     var batch: Optional[ActionBatch] = None
     if len(change.effects.actions) > 0:
         var actions = List[Action](capacity=len(change.effects.actions))

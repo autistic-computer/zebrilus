@@ -91,7 +91,45 @@ def main() raises:
     var select = ChooseAction(9)
     assert_equal(queue.items[1].frame, choose_request(select))
     assert_equal(queue.items[2].frame, choose_request(ChooseAction(7)))
+    var pair = ChooseState()
+    for index in range(2):
+        var session = ChooseItem()
+        session.label = "session " + String(index)
+        session.target = UInt64(index + 1)
+        session.flags = 2
+        pair.items.append(session^)
+    var grouped = WindowChooserController()
+    operation = WindowChooserOperation(0)
+    operation.snapshot = ChooseSnapshot(pair^)
+    operation.revision = 1
+    grouped.commit(grouped.prepare(operation))
+    var gesture = List[WindowChooserOperation]()
+    gesture.append(WindowChooserOperation(5))
+    gesture[0].index = 1
+    gesture.append(WindowChooserOperation(3))
+    gesture[1].flag = True
+    queue = ActionQueue()
+    for _ in range(MAX_PENDING_ACTIONS - 1):
+        queue.append(10, "", None)
+    refused = False
+    try:
+        _ = stage_window_chooser(grouped, queue, Span(gesture), owner, 15, 10)
+    except:
+        refused = True
+    assert_true(refused)
+    assert_equal(grouped.data.selected, Optional[Int](0))
+    assert_false(Bool(grouped.data.search.pending))
+    _ = queue.take()
+    admission = stage_window_chooser(grouped, queue, Span(gesture), owner, 15, 10)
+    commit_window_chooser(grouped, queue, admission^, owner)
+    assert_equal(grouped.data.selected, Optional[Int](1))
+    assert_equal(grouped.data.search.pending.value()[0].id, UInt64(2))
+    assert_equal(len(queue), 2)
+    select = ChooseAction(9)
+    select.index = 1
+    assert_equal(queue.items[0].frame, choose_request(select))
+    assert_equal(queue.items[1].frame, choose_request(ChooseAction(7)))
     print(
-        "Window chooser batch capacity, stale queue, source retirement and"
-        " ordered admission passed"
+        "Window chooser batch capacity, stale queue, source retirement,"
+        " ordered admission and atomic select-plus-expand passed"
     )

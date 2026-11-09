@@ -8,6 +8,7 @@ from .window_chooser_controller import (
 )
 from .window_chooser_admission import (
     WindowChooserOwner,
+    WindowChooserAdmission,
     stage_window_chooser,
     commit_window_chooser,
 )
@@ -130,18 +131,49 @@ struct WindowChooserSession(Movable):
         selection_epoch: UInt64,
         passive_kind: Int,
     ) raises -> WindowChooserEffects:
+        self.check(owner)
+        return self.admit(
+            queue,
+            stage_window_chooser(
+                self.controller,
+                queue,
+                operation,
+                owner,
+                selection_epoch,
+                passive_kind,
+            ),
+        )
+
+    def apply(
+        mut self,
+        mut queue: ActionQueue,
+        operations: Span[WindowChooserOperation, _],
+        owner: WindowChooserOwner,
+        selection_epoch: UInt64,
+        passive_kind: Int,
+    ) raises -> WindowChooserEffects:
+        self.check(owner)
+        return self.admit(
+            queue,
+            stage_window_chooser(
+                self.controller,
+                queue,
+                operations,
+                owner,
+                selection_epoch,
+                passive_kind,
+            ),
+        )
+
+    def check(self, owner: WindowChooserOwner) raises:
         if not self.active or not self.owner.matches(owner):
             raise Error(
                 "window chooser action belongs to a retired source or owner"
             )
-        var admission = stage_window_chooser(
-            self.controller,
-            queue,
-            operation,
-            owner,
-            selection_epoch,
-            passive_kind,
-        )
+
+    def admit(
+        mut self, mut queue: ActionQueue, var admission: WindowChooserAdmission
+    ) raises -> WindowChooserEffects:
         var effects = admission.change.effects.copy()
         commit_window_chooser(self.controller, queue, admission^, self.owner)
         return effects^
