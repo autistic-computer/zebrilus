@@ -1,9 +1,4 @@
-use std::{
-    fs::{self, File},
-    io::Read as _,
-    path::{Path, PathBuf},
-    sync::Arc,
-};
+use std::path::{Path, PathBuf};
 
 use ala::{
     App, Context, Div, Entity, FocusHandle, Focusable, IntoElement, KeyBinding, MouseButton,
@@ -17,6 +12,10 @@ use penna::{
     blocks::feedback::{alert_actions, inline_alert},
     components::button::{Button, ButtonVariants as _},
 };
+use zz_client::editor_pane::{
+    EditorEffect, EditorError, EditorModel, OPEN_HINT, PICKER_PLACEHOLDER, RETRY_LABEL, Retry,
+    read_editor_file, save_error,
+};
 use zz_protocol::{CommandInvocation, EditorDescriptor, PaneId};
 
 use crate::{
@@ -27,7 +26,6 @@ use crate::{
 };
 
 const EDITOR_KEY_CONTEXT: &str = "Editor";
-const MAX_EDITOR_FILE_BYTES: u64 = 8 * 1024 * 1024;
 
 ala::actions!(editor_pane, [OpenFile, SaveFile]);
 
@@ -51,61 +49,11 @@ fn editor_key_bindings() -> [KeyBinding; 2] {
     ]
 }
 
-#[cfg(target_os = "macos")]
-const OPEN_HINT: &str = "⌘O to open a file";
-#[cfg(not(target_os = "macos"))]
-const OPEN_HINT: &str = "Ctrl+O to open a file";
-
-#[derive(Clone)]
-enum Retry {
-    Open(PathBuf),
-    Save(PathBuf),
-}
-
-#[derive(Debug, PartialEq, Eq)]
-enum SyncAction {
-    Ignore,
-    ClearPending,
-    Restore,
-}
-
-fn descriptor_sync_action(
-    pending: Option<&str>,
-    snapshot: Option<&str>,
-    local: Option<&Path>,
-) -> SyncAction {
-    if let Some(pending) = pending {
-        return if snapshot == Some(pending) {
-            SyncAction::ClearPending
-        } else {
-            SyncAction::Ignore
-        };
-    }
-    if snapshot.map(Path::new) == local {
-        SyncAction::Ignore
-    } else {
-        SyncAction::Restore
-    }
-}
-
-#[derive(Clone)]
-struct EditorError {
-    message: Arc<str>,
-    retry: Retry,
-}
-
 pub(crate) struct EditorView {
     pane: PaneId,
     mux: Entity<MuxClient>,
     editor: Entity<CodeEditorState>,
-    cwd: PathBuf,
-    path: Option<PathBuf>,
-    snapshot_path: Option<String>,
-    pending_path: Option<String>,
-    saved_contents: String,
-    dirty: bool,
-    last_title: String,
-    error: Option<EditorError>,
+    model: EditorModel,
     picker: Option<Entity<FilePickerView>>,
     window_corners: WindowCorners,
     _subscriptions: Vec<Subscription>,
@@ -127,30 +75,24 @@ impl EditorView {
         let subscription = cx.subscribe_in(
             &editor,
             window,
-            |view, editor, event: &CodeEditorEvent, _, cx| {
+            |view, editor, event: &CodeEditorEvent, window, cx| {
                 if matches!(event, CodeEditorEvent::Change) {
                     let contents = editor.read(cx).value();
-                    view.on_buffer_changed(contents.as_ref(), cx);
+                    view.on_buffer_changed(contents.as_ref(), window, cx);
                 }
             },
         );
+        let (model, effects) = EditorModel::new(descriptor);
         let mut view = Self {
             pane,
             mux,
             editor,
-            cwd: PathBuf::from(&descriptor.cwd),
-            path: None,
-            snapshot_path: descriptor.path.clone(),
-            pending_path: None,
-            saved_contents: String::new(),
-            dirty: false,
-            last_title: String::new(),
-            error: None,
+            model,
             picker: None,
             window_corners: WindowCorners::NONE,
             _subscriptions: vec![subscription],
         };
-        view.restore_descriptor(descriptor, window, cx);
+        view.apply(effects, window, cx);
         view
     }
 
@@ -171,45 +113,51 @@ impl EditorView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.cwd = PathBuf::from(&descriptor.cwd);
-        self.snapshot_path.clone_from(&descriptor.path);
-        match descriptor_sync_action(
-            self.pending_path.as_deref(),
-            descriptor.path.as_deref(),
-            self.path.as_deref(),
-        ) {
-            SyncAction::Ignore => {}
-            SyncAction::ClearPending => self.pending_path = None,
-            SyncAction::Restore => self.restore_descriptor(descriptor, window, cx),
-        }
+        let effects = self.model.synchronize(descriptor);
+        self.apply(effects, window, cx);
     }
 
-    fn restore_descriptor(
-        &mut self,
-        descriptor: &EditorDescriptor,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        self.cwd = PathBuf::from(&descriptor.cwd);
-        let Some(path) = descriptor.path.as_deref().map(PathBuf::from) else {
-            self.path = None;
-            self.saved_contents.clear();
-            self.dirty = false;
-            self.error = None;
-            self.editor.update(cx, |editor, cx| {
-                editor.set_value("", window, cx);
-                editor.set_language("text", window, cx);
-            });
-            self.publish_title(cx);
-            return;
-        };
-
-        self.path = Some(path.clone());
-        self.editor.update(cx, |editor, cx| {
-            editor.set_language(language_for_path(&path), window, cx);
-        });
-        self.publish_title(cx);
-        self.load_file(path, window, cx);
+    fn apply(&mut self, effects: Vec<EditorEffect>, window: &mut Window, cx: &mut Context<Self>) {
+        for effect in effects {
+            match effect {
+                EditorEffect::SetBuffer { contents, language } => {
+                    self.editor.update(cx, |editor, cx| {
+                        editor.set_value(&contents, window, cx);
+                        editor.set_language(language, window, cx);
+                    });
+                }
+                EditorEffect::SetLanguage(language) => {
+                    self.editor.update(cx, |editor, cx| {
+                        editor.set_language(language, window, cx);
+                    });
+                }
+                EditorEffect::Load(path) => self.load_file(path, window, cx),
+                EditorEffect::Write { path, contents } => {
+                    self.write_file(path, contents, window, cx);
+                }
+                EditorEffect::PromptNewPath {
+                    directory,
+                    suggested,
+                } => self.prompt_new_path(&directory, suggested, window, cx),
+                EditorEffect::PublishPath(path) => {
+                    self.mux.read(cx).execute(CommandInvocation::new(
+                        "set-editor-path",
+                        vec!["-t".to_owned(), self.pane.to_string(), path],
+                    ));
+                }
+                EditorEffect::PublishTitle(title) => {
+                    self.mux.read(cx).execute(CommandInvocation::new(
+                        "select-pane",
+                        vec![
+                            "-t".to_owned(),
+                            self.pane.to_string(),
+                            "-T".to_owned(),
+                            title,
+                        ],
+                    ));
+                }
+            }
+        }
     }
 
     #[allow(
@@ -235,25 +183,25 @@ impl EditorView {
         .detach();
     }
 
-    fn on_buffer_changed(&mut self, contents: &str, cx: &mut Context<Self>) {
-        let dirty = contents != self.saved_contents.as_str();
-        if self.dirty == dirty {
+    fn on_buffer_changed(&mut self, contents: &str, window: &mut Window, cx: &mut Context<Self>) {
+        let dirty = self.model.dirty();
+        let effects = self.model.buffer_changed(contents);
+        if self.model.dirty() == dirty {
             return;
         }
-        self.dirty = dirty;
-        self.publish_title(cx);
+        self.apply(effects, window, cx);
         cx.notify();
     }
 
     fn open_file(&mut self, _: &OpenFile, window: &mut Window, cx: &mut Context<Self>) {
-        if self.picker.is_some() {
+        if !self.model.open_picker() {
             return;
         }
         let picker = cx.new(|cx| {
             FilePickerView::new(
                 FilePickerMode::Files,
-                self.cwd.clone(),
-                "Open a file in the editor",
+                self.model.cwd().to_path_buf(),
+                PICKER_PLACEHOLDER,
                 window,
                 cx,
             )
@@ -263,15 +211,17 @@ impl EditorView {
             window,
             |view, _, event: &FilePickerEvent, window, cx| {
                 view.picker = None;
-                if let FilePickerEvent::Selected(path) = event {
-                    view.load_file(path.clone(), window, cx);
-                }
+                let selected = match event {
+                    FilePickerEvent::Selected(path) => Some(path.clone()),
+                    FilePickerEvent::Dismissed => None,
+                };
+                let effects = view.model.picker_closed(selected);
+                view.apply(effects, window, cx);
                 view.focus(cx).focus(window, cx);
                 cx.notify();
             },
         )
         .detach();
-        self.error = None;
         self.picker = Some(picker);
         cx.notify();
     }
@@ -283,53 +233,30 @@ impl EditorView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        match result {
-            Ok(contents) => self.apply_loaded_file(path, contents, window, cx),
-            Err(message) => {
-                self.error = Some(EditorError {
-                    message: message.into(),
-                    retry: Retry::Open(path),
-                });
-                cx.notify();
-            }
-        }
-    }
-
-    fn apply_loaded_file(
-        &mut self,
-        path: PathBuf,
-        contents: String,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        let Ok(path_string) = validated_descriptor_path(&path, &self.cwd) else {
-            self.error = Some(EditorError {
-                message: format!("{} cannot be stored as an editor path", path.display()).into(),
-                retry: Retry::Open(path),
-            });
-            cx.notify();
-            return;
-        };
-        self.editor.update(cx, |editor, cx| {
-            editor.set_value(&contents, window, cx);
-            editor.set_language(language_for_path(&path), window, cx);
-        });
-        self.path = Some(path);
-        self.saved_contents = contents;
-        self.dirty = false;
-        self.error = None;
-        self.publish_path(path_string, cx);
-        self.publish_title(cx);
+        let effects = self.model.finish_load(path, result);
+        self.apply(effects, window, cx);
         cx.notify();
     }
 
     fn save_file(&mut self, _: &SaveFile, window: &mut Window, cx: &mut Context<Self>) {
-        if let Some(path) = self.path.clone() {
-            self.begin_save(path, window, cx);
-            return;
-        }
+        let contents = self.editor.read(cx).value();
+        let effects = self.model.save(contents.as_ref());
+        self.apply(effects, window, cx);
+        cx.notify();
+    }
 
-        let selected = cx.prompt_for_new_path(&self.cwd, Some("untitled"));
+    #[allow(
+        clippy::unused_self,
+        reason = "kept as a method so every file effect shares one call shape"
+    )]
+    fn prompt_new_path(
+        &mut self,
+        directory: &Path,
+        suggested: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let selected = cx.prompt_for_new_path(directory, Some(suggested));
         let view = cx.entity();
         cx.spawn_in(window, async move |_, window| {
             let path = selected.await.ok()?.ok()??;
@@ -343,33 +270,38 @@ impl EditorView {
     }
 
     fn begin_save(&mut self, path: PathBuf, window: &mut Window, cx: &mut Context<Self>) {
-        if let Err(message) = validated_descriptor_path(&path, &self.cwd) {
-            self.error = Some(EditorError {
-                message: message.into(),
-                retry: Retry::Save(path),
-            });
-            cx.notify();
-            return;
-        }
-        let contents = self.editor.read(cx).value().to_string();
+        let contents = self.editor.read(cx).value();
+        let effects = self.model.begin_save(path, contents.as_ref());
+        self.apply(effects, window, cx);
+        cx.notify();
+    }
+
+    #[allow(
+        clippy::unused_self,
+        reason = "kept as a method so every file effect shares one call shape"
+    )]
+    fn write_file(
+        &mut self,
+        path: PathBuf,
+        contents: String,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let write_path = path.clone();
         let write_contents = contents.clone();
         let background = cx.background_executor().clone();
         let view = cx.entity();
-        self.error = None;
-        cx.notify();
         cx.spawn_in(window, async move |_, window| {
             let result = background
                 .spawn(async move {
-                    config::atomic_write(&write_path, write_contents.as_bytes()).map_err(|error| {
-                        format!("Could not save {}: {error}", write_path.display())
-                    })
+                    config::atomic_write(&write_path, write_contents.as_bytes())
+                        .map_err(|error| save_error(&write_path, &error))
                 })
                 .await;
             window
-                .update(|_, cx| {
+                .update(|window, cx| {
                     view.update(cx, |view, cx| {
-                        view.finish_save(path, contents, result, cx);
+                        view.finish_save(path, contents, result, window, cx);
                     });
                 })
                 .ok()
@@ -382,41 +314,22 @@ impl EditorView {
         path: PathBuf,
         saved_contents: String,
         result: Result<(), String>,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if let Err(message) = result {
-            self.error = Some(EditorError {
-                message: message.into(),
-                retry: Retry::Save(path),
-            });
-            cx.notify();
-            return;
-        }
-        let path_string = match validated_descriptor_path(&path, &self.cwd) {
-            Ok(path) => path,
-            Err(message) => {
-                self.error = Some(EditorError {
-                    message: message.into(),
-                    retry: Retry::Save(path),
-                });
-                cx.notify();
-                return;
-            }
-        };
-        self.path = Some(path);
-        self.saved_contents = saved_contents;
-        self.dirty = self.editor.read(cx).value().as_ref() != self.saved_contents.as_str();
-        self.error = None;
-        self.publish_path(path_string, cx);
-        self.publish_title(cx);
+        let contents = self.editor.read(cx).value();
+        let effects = self
+            .model
+            .finish_save(path, saved_contents, result, contents.as_ref());
+        self.apply(effects, window, cx);
         cx.notify();
     }
 
     fn retry(&mut self, retry: Retry, window: &mut Window, cx: &mut Context<Self>) {
-        match retry {
-            Retry::Open(path) => self.load_file(path, window, cx),
-            Retry::Save(path) => self.begin_save(path, window, cx),
-        }
+        let contents = self.editor.read(cx).value();
+        let effects = self.model.retry(retry, contents.as_ref());
+        self.apply(effects, window, cx);
+        cx.notify();
     }
 
     fn on_mouse_down(&mut self, _: &MouseDownEvent, window: &mut Window, cx: &mut Context<Self>) {
@@ -427,41 +340,9 @@ impl EditorView {
         ));
     }
 
-    fn publish_path(&mut self, path: String, cx: &App) {
-        if self.snapshot_path.as_deref() == Some(path.as_str()) {
-            self.pending_path = None;
-            return;
-        }
-        self.pending_path = Some(path.clone());
-        self.mux.read(cx).execute(CommandInvocation::new(
-            "set-editor-path",
-            vec!["-t".to_owned(), self.pane.to_string(), path],
-        ));
-    }
-
-    fn publish_title(&mut self, cx: &App) {
-        let title = editor_title(self.path.as_deref(), self.dirty);
-        if title == self.last_title {
-            return;
-        }
-        self.last_title.clone_from(&title);
-        self.mux.read(cx).execute(CommandInvocation::new(
-            "select-pane",
-            vec![
-                "-t".to_owned(),
-                self.pane.to_string(),
-                "-T".to_owned(),
-                title,
-            ],
-        ));
-    }
-
     fn render_error(&self, error: EditorError, cx: &Context<Self>) -> impl IntoElement {
         let view = cx.entity();
-        let title = match error.retry {
-            Retry::Open(_) => "Couldn’t open this file",
-            Retry::Save(_) => "Couldn’t save this file",
-        };
+        let title = error.retry.title();
         let retry = error.retry;
         Panel::new(("editor-error", self.pane.0), PanelLook::Plain)
             .absolute()
@@ -478,7 +359,7 @@ impl EditorView {
                             Button::new(format!("editor-retry-{}", self.pane.0))
                                 .primary()
                                 .on(penna::blocks::feedback::alert_ground(cx))
-                                .label("Try again")
+                                .label(RETRY_LABEL)
                                 .on_click(move |_, window, cx| {
                                     view.update(cx, |view, cx| {
                                         view.retry(retry.clone(), window, cx);
@@ -500,11 +381,10 @@ impl Focusable for EditorView {
 impl Render for EditorView {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let focus = self.focus(cx);
-        let scratch_hint = self.path.is_none()
-            && self.editor.read(cx).value().is_empty()
-            && self.error.is_none()
-            && self.picker.is_none();
-        let error = self.error.clone();
+        let scratch_hint = self
+            .model
+            .scratch_hint(self.editor.read(cx).value().is_empty());
+        let error = self.model.error().cloned();
         let line_numbers = config::editor_line_numbers(cx);
         let relative_line_numbers = config::editor_relative_line_numbers(cx);
         let soft_wrap = config::editor_soft_wrap(cx);
@@ -574,157 +454,4 @@ fn vim_mode_chip(pane: PaneId, mode: VimMode) -> Chip {
         .bottom(px(8.0))
         .h(px(18.0))
         .px(px(6.0))
-}
-
-fn validated_descriptor_path(path: &Path, cwd: &Path) -> Result<String, String> {
-    let path = path
-        .to_str()
-        .ok_or_else(|| "Editor paths must be valid UTF-8".to_owned())?
-        .to_owned();
-    let cwd = cwd
-        .to_str()
-        .ok_or_else(|| "The editor working directory must be valid UTF-8".to_owned())?
-        .to_owned();
-    EditorDescriptor {
-        path: Some(path.clone()),
-        cwd,
-    }
-    .validate()
-    .map_err(|error| error.to_string())?;
-    Ok(path)
-}
-
-fn read_editor_file(path: &Path) -> Result<String, String> {
-    let metadata = fs::metadata(path)
-        .map_err(|error| format!("Could not open {}: {error}", path.display()))?;
-    if metadata.len() > MAX_EDITOR_FILE_BYTES {
-        return Err(format!(
-            "{} is larger than the 8 MiB editor limit",
-            path.display()
-        ));
-    }
-    let mut file =
-        File::open(path).map_err(|error| format!("Could not open {}: {error}", path.display()))?;
-    let mut bytes = Vec::with_capacity(usize::try_from(metadata.len()).unwrap_or_default());
-    file.by_ref()
-        .take(MAX_EDITOR_FILE_BYTES + 1)
-        .read_to_end(&mut bytes)
-        .map_err(|error| format!("Could not read {}: {error}", path.display()))?;
-    if u64::try_from(bytes.len()).unwrap_or(u64::MAX) > MAX_EDITOR_FILE_BYTES {
-        return Err(format!(
-            "{} is larger than the 8 MiB editor limit",
-            path.display()
-        ));
-    }
-    if bytes.contains(&0) {
-        return Err(format!(
-            "{} contains NUL bytes and appears to be binary",
-            path.display()
-        ));
-    }
-    String::from_utf8(bytes).map_err(|_| format!("{} is not valid UTF-8", path.display()))
-}
-
-fn language_for_path(path: &Path) -> &'static str {
-    match path
-        .extension()
-        .and_then(|extension| extension.to_str())
-        .map(str::to_ascii_lowercase)
-        .as_deref()
-    {
-        Some("rs") => "rust",
-        Some("md" | "markdown" | "mdx") => "markdown",
-        Some("json" | "jsonc") => "json",
-        Some("toml") => "toml",
-        _ => "text",
-    }
-}
-
-fn editor_title(path: Option<&Path>, dirty: bool) -> String {
-    let mut title = path
-        .and_then(Path::file_name)
-        .and_then(|name| name.to_str())
-        .filter(|name| !name.is_empty())
-        .unwrap_or("editor")
-        .to_owned();
-    if dirty {
-        title.push_str(" •");
-    }
-    title
-}
-
-#[cfg(test)]
-mod tests {
-    use std::io::Write as _;
-
-    use super::*;
-
-    #[test]
-    fn language_and_dirty_titles_follow_the_file_name() {
-        assert_eq!(language_for_path(Path::new("/tmp/main.rs")), "rust");
-        assert_eq!(language_for_path(Path::new("/tmp/README.md")), "markdown");
-        assert_eq!(language_for_path(Path::new("/tmp/data.json")), "json");
-        assert_eq!(language_for_path(Path::new("/tmp/config.toml")), "toml");
-        assert_eq!(language_for_path(Path::new("/tmp/notes.txt")), "text");
-        assert_eq!(editor_title(None, false), "editor");
-        assert_eq!(
-            editor_title(Some(Path::new("/tmp/main.rs")), true),
-            "main.rs •"
-        );
-    }
-
-    #[test]
-    fn stale_snapshots_never_restore_while_a_publish_is_in_flight() {
-        let pending = Some("/workspace/new.rs");
-        let local = Some(Path::new("/workspace/new.rs"));
-
-        assert_eq!(
-            descriptor_sync_action(pending, None, local),
-            SyncAction::Ignore
-        );
-        assert_eq!(
-            descriptor_sync_action(pending, Some("/workspace/old.rs"), local),
-            SyncAction::Ignore
-        );
-        assert_eq!(
-            descriptor_sync_action(pending, Some("/workspace/new.rs"), local),
-            SyncAction::ClearPending
-        );
-        assert_eq!(
-            descriptor_sync_action(None, Some("/workspace/new.rs"), local),
-            SyncAction::Ignore
-        );
-        assert_eq!(
-            descriptor_sync_action(None, Some("/workspace/other.rs"), local),
-            SyncAction::Restore
-        );
-        assert_eq!(
-            descriptor_sync_action(None, None, local),
-            SyncAction::Restore
-        );
-    }
-
-    #[test]
-    fn bounded_reader_rejects_binary_invalid_utf8_and_oversized_files() {
-        let directory = tempfile::tempdir().expect("temporary directory");
-
-        let binary = directory.path().join("binary");
-        fs::write(&binary, b"a\0b").expect("binary fixture");
-        assert!(read_editor_file(&binary).unwrap_err().contains("NUL"));
-
-        let invalid = directory.path().join("invalid");
-        fs::write(&invalid, [0xff]).expect("invalid UTF-8 fixture");
-        assert!(
-            read_editor_file(&invalid)
-                .unwrap_err()
-                .contains("valid UTF-8")
-        );
-
-        let oversized = directory.path().join("oversized");
-        let mut file = File::create(&oversized).expect("oversized fixture");
-        file.write_all(b"x").expect("fixture byte");
-        file.set_len(MAX_EDITOR_FILE_BYTES + 1)
-            .expect("extend fixture");
-        assert!(read_editor_file(&oversized).unwrap_err().contains("8 MiB"));
-    }
 }

@@ -21,6 +21,8 @@ pub mod desktop_input;
 pub mod desktop_nav;
 pub mod desktop_nav_tree;
 pub mod desktop_surface;
+pub mod editor_pane;
+pub mod file_picker;
 pub mod floating;
 pub mod fuzzy;
 pub mod gui_actions;

@@ -21,37 +21,21 @@ use penna::{
     components::scroll::ScrollableElement as _,
     h_flex, v_flex,
 };
+pub(crate) use zz_client::file_picker::FilePickerMode;
+use zz_client::file_picker::{
+    AcceptTarget, LIMITED_NOTE, MAX_PICKER_ROWS, PickerFlow, SCANNING_NOTE, entry_prior,
+    preserved_selection, rank_directories, validate_selection,
+};
 
-const MAX_PICKER_ROWS: usize = 500;
-const WORKSPACE_PRIOR: u32 = 1 << 10;
 const DIRECTORY_SCAN_LIMIT: usize = 50_000;
 const DIRECTORY_SCAN_DEPTH: usize = 8;
 const DIRECTORY_SCAN_BUDGET: Duration = Duration::from_secs(5);
 const DIRECTORY_BATCH_SIZE: usize = 64;
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum FilePickerMode {
-    Files,
-    #[cfg_attr(
-        not(test),
-        allow(dead_code, reason = "only tests open a folder-mode picker")
-    )]
-    Directories,
-}
-
-impl FilePickerMode {
-    const fn icon(self) -> IconName {
-        match self {
-            Self::Files => IconName::File,
-            Self::Directories => IconName::Folder,
-        }
-    }
-
-    const fn empty_label(self) -> &'static str {
-        match self {
-            Self::Files => "No files under this folder.",
-            Self::Directories => "No folders under this folder.",
-        }
+const fn mode_icon(mode: FilePickerMode) -> IconName {
+    match mode {
+        FilePickerMode::Files => IconName::File,
+        FilePickerMode::Directories => IconName::Folder,
     }
 }
 
@@ -66,15 +50,6 @@ struct PickerEntry {
     relative: SharedString,
     absolute: Arc<Path>,
     prior: u32,
-}
-
-fn entry_prior(depth: usize, is_workspace: bool) -> u32 {
-    let shallowness = u32::try_from(depth).map_or(0, |depth| 64_u32.saturating_sub(depth));
-    if is_workspace {
-        WORKSPACE_PRIOR + shallowness
-    } else {
-        shallowness
-    }
 }
 
 fn scan_directories(
@@ -220,21 +195,15 @@ impl PickerIndex {
                 })
                 .collect();
         }
-        let query = query.trim().trim_end_matches(['/', '\\']);
         let labels = self
             .directories
             .iter()
             .map(|entry| entry.relative.as_ref())
             .collect::<Vec<_>>();
-        zz_client::path_rank::rank(
-            query,
-            &labels,
-            |index| self.directories[index].prior,
-            MAX_PICKER_ROWS,
-        )
-        .into_iter()
-        .map(|index| self.directories[index].clone())
-        .collect()
+        rank_directories(query, &labels, |index| self.directories[index].prior)
+            .into_iter()
+            .map(|index| self.directories[index].clone())
+            .collect()
     }
 }
 
@@ -244,34 +213,11 @@ enum ScanMessage {
     Finished(Result<bool, String>),
 }
 
-fn preserved_selection(entries: &[PickerEntry], preferred: Option<&Path>) -> Option<usize> {
-    preferred
-        .and_then(|path| {
-            entries
-                .iter()
-                .position(|entry| entry.absolute.as_ref() == path)
-        })
-        .or_else(|| (!entries.is_empty()).then_some(0))
-}
-
-fn validate_selection(path: &Path, mode: FilePickerMode) -> Result<(), String> {
-    let metadata = std::fs::metadata(path)
-        .map_err(|error| format!("Cannot open {}: {error}", path.display()))?;
-    if match mode {
-        FilePickerMode::Files => metadata.is_file(),
-        FilePickerMode::Directories => metadata.is_dir(),
-    } {
-        Ok(())
-    } else {
-        Err(format!(
-            "{} is not a {}.",
-            path.display(),
-            match mode {
-                FilePickerMode::Files => "file",
-                FilePickerMode::Directories => "folder",
-            }
-        ))
-    }
+fn preserved_entry(entries: &[PickerEntry], preferred: Option<&Path>) -> Option<usize> {
+    preserved_selection(
+        entries.iter().map(|entry| entry.absolute.as_ref()),
+        preferred,
+    )
 }
 
 pub(crate) struct FilePickerView {
@@ -280,14 +226,8 @@ pub(crate) struct FilePickerView {
     entries: Vec<PickerEntry>,
     index: Option<Arc<PickerIndex>>,
     rows: Arc<[SharedString]>,
-    selected: Option<usize>,
     scroll: UniformListScrollHandle,
-    query: String,
-    scanning: bool,
-    limited: bool,
-    error: Option<SharedString>,
-    rank_generation: u64,
-    accept_generation: u64,
+    flow: PickerFlow,
     _rank: Task<()>,
     _accept: Task<()>,
     _walk: Task<()>,
@@ -319,14 +259,8 @@ impl FilePickerView {
             entries: Vec::new(),
             index: None,
             rows: Arc::from([]),
-            selected: None,
             scroll: UniformListScrollHandle::new(),
-            query: String::new(),
-            scanning: true,
-            limited: false,
-            error: None,
-            rank_generation: 0,
-            accept_generation: 0,
+            flow: PickerFlow::new(),
             _rank: Task::ready(()),
             _accept: Task::ready(()),
             _walk: Self::spawn_walk(mode, root, cx),
@@ -389,7 +323,7 @@ impl FilePickerView {
                     picker: None,
                     directories,
                 }));
-                if self.rows.is_empty() && self.query.trim().is_empty() {
+                if self.flow.shows_first_batch(!self.rows.is_empty()) {
                     self.set_entries(self.index.as_ref().unwrap().search(""), None);
                 }
                 self.search(false, cx);
@@ -398,28 +332,16 @@ impl FilePickerView {
                 self.index = Some(index);
                 self.search(false, cx);
             }
-            ScanMessage::Finished(result) => {
-                self.scanning = false;
-                match result {
-                    Ok(limited) => self.limited = limited,
-                    Err(error) => self.error = Some(SharedString::from(error)),
-                }
-            }
+            ScanMessage::Finished(result) => self.flow.scan_finished(result),
         }
         cx.notify();
     }
 
     fn on_query_changed(&mut self, input: &Entity<InputState>, cx: &mut Context<Self>) {
         let query = input.read(cx).value().to_string();
-        if query == self.query {
-            return;
+        if self.flow.query_changed(query, self.index.is_some()) {
+            self.search(true, cx);
         }
-        self.query = query;
-        if self.scanning || self.index.is_some() {
-            self.error = None;
-        }
-        self.accept_generation = self.accept_generation.saturating_add(1);
-        self.search(true, cx);
     }
 
     fn search(&mut self, clear: bool, cx: &mut Context<Self>) {
@@ -430,11 +352,9 @@ impl FilePickerView {
         if clear {
             self.entries.clear();
             self.rows = Arc::from([]);
-            self.selected = None;
         }
-        self.rank_generation = self.rank_generation.saturating_add(1);
-        let generation = self.rank_generation;
-        let query = self.query.clone();
+        let generation = self.flow.begin_rank(clear);
+        let query = self.flow.query.clone();
         let ranking = cx
             .background_executor()
             .spawn(async move { index.search(&query) });
@@ -442,7 +362,7 @@ impl FilePickerView {
             let entries = ranking.await;
             picker
                 .update(cx, |picker, cx| {
-                    if picker.rank_generation != generation {
+                    if picker.flow.rank_generation != generation {
                         return;
                     }
                     let preferred = picker.selected_path().or(preferred);
@@ -456,9 +376,9 @@ impl FilePickerView {
 
     fn set_entries(&mut self, entries: Vec<PickerEntry>, preferred: Option<&Path>) {
         self.rows = entries.iter().map(|entry| entry.relative.clone()).collect();
-        self.selected = preserved_selection(&entries, preferred);
+        self.flow.selected = preserved_entry(&entries, preferred);
         self.entries = entries;
-        if let Some(selected) = self.selected {
+        if let Some(selected) = self.flow.selected {
             self.scroll
                 .scroll_to_item(selected, ScrollStrategy::Nearest);
         }
@@ -466,22 +386,14 @@ impl FilePickerView {
 
     fn selected_path(&self) -> Option<Arc<Path>> {
         self.entries
-            .get(self.selected?)
+            .get(self.flow.selected?)
             .map(|entry| entry.absolute.clone())
     }
 
     fn navigate(&mut self, direction: isize, cx: &mut Context<Self>) {
-        if self.entries.is_empty() {
+        let Some(selected) = self.flow.navigate(self.entries.len(), direction) else {
             return;
-        }
-        let count = self.entries.len();
-        let current = self.selected.unwrap_or_default();
-        let selected = if direction < 0 {
-            current.checked_sub(1).unwrap_or(count - 1)
-        } else {
-            (current + 1) % count
         };
-        self.selected = Some(selected);
         self.scroll
             .scroll_to_item(selected, ScrollStrategy::Nearest);
         cx.notify();
@@ -495,17 +407,15 @@ impl FilePickerView {
     }
 
     fn accept_selected(&mut self, cx: &mut Context<Self>) {
-        let typed = PathBuf::from(self.query.trim());
-        if typed.is_absolute() {
-            self.accept_path(typed, cx);
-        } else if let Some(index) = self.selected {
-            self.accept(index, cx);
+        match self.flow.accept_target() {
+            AcceptTarget::Typed(path) => self.accept_path(path, cx),
+            AcceptTarget::Row(index) => self.accept(index, cx),
+            AcceptTarget::Nothing => {}
         }
     }
 
     fn accept_path(&mut self, path: PathBuf, cx: &mut Context<Self>) {
-        self.accept_generation = self.accept_generation.saturating_add(1);
-        let generation = self.accept_generation;
+        let generation = self.flow.begin_accept();
         let mode = self.mode;
         let validation = cx.background_executor().spawn({
             let path = path.clone();
@@ -515,13 +425,13 @@ impl FilePickerView {
             let result = validation.await;
             picker
                 .update(cx, |picker, cx| {
-                    if picker.accept_generation != generation {
+                    if picker.flow.accept_generation != generation {
                         return;
                     }
                     match result {
                         Ok(()) => cx.emit(FilePickerEvent::Selected(path)),
                         Err(error) => {
-                            picker.error = Some(SharedString::from(error));
+                            picker.flow.error = Some(error);
                             cx.notify();
                         }
                     }
@@ -557,8 +467,8 @@ impl FilePickerView {
 
     fn render_rows(&self, cx: &Context<Self>) -> impl IntoElement {
         let rows = self.rows.clone();
-        let selected = self.selected;
-        let icon = self.mode.icon();
+        let selected = self.flow.selected;
+        let icon = mode_icon(self.mode);
         let view = cx.entity();
         let list = uniform_list("file-picker-rows", rows.len(), move |range, _, cx| {
             range
@@ -577,8 +487,7 @@ impl FilePickerView {
                         )
                         .on_mouse_move(move |_, _, cx| {
                             pointer_view.update(cx, |picker, cx| {
-                                if picker.selected != Some(index) {
-                                    picker.selected = Some(index);
+                                if picker.flow.hover(index) {
                                     cx.notify();
                                 }
                             });
@@ -609,28 +518,18 @@ impl FilePickerView {
             .flex_none()
             .gap(px(CHROME_GAP))
             .px_2p5()
-            .when(listed && self.scanning, |this| {
-                this.child(note("Scanning…"))
+            .when(self.flow.scanning_note(listed), |this| {
+                this.child(note(SCANNING_NOTE))
             })
-            .when(self.limited, |this| {
-                this.child(note(
-                    "Search limited. Enter a full path to open another folder.",
-                ))
-            })
+            .when(self.flow.limited, |this| this.child(note(LIMITED_NOTE)))
     }
 
     fn empty_message(&self, cx: &App) -> SharedString {
-        if self.scanning {
-            return SharedString::from("Scanning…");
-        }
-        if let Some(error) = &self.error {
-            return error.clone();
-        }
-        if self.input.read(cx).value().is_empty() {
-            SharedString::from(self.mode.empty_label())
-        } else {
-            SharedString::from("Nothing matches that search.")
-        }
+        SharedString::from(
+            self.flow
+                .empty_message(self.input.read(cx).value().is_empty(), self.mode)
+                .to_owned(),
+        )
     }
 }
 
@@ -695,7 +594,7 @@ impl Render for FilePickerView {
                             .child(palette_key_hint(["enter"], "open"))
                             .child(palette_key_hint(["escape"], "close"))
                             .child(div().flex_1())
-                            .when_some(self.error.clone(), |this, error| {
+                            .when_some(self.flow.error.clone(), |this, error| {
                                 this.child(
                                     div()
                                         .min_w_0()
@@ -898,9 +797,9 @@ mod tests {
         let selected = entries[1].absolute.clone();
         entries.swap(0, 1);
 
-        assert_eq!(preserved_selection(&entries, Some(&selected)), Some(0));
-        assert_eq!(preserved_selection(&entries, Some(root.path())), Some(0));
-        assert_eq!(preserved_selection(&[], Some(&selected)), None);
+        assert_eq!(preserved_entry(&entries, Some(&selected)), Some(0));
+        assert_eq!(preserved_entry(&entries, Some(root.path())), Some(0));
+        assert_eq!(preserved_entry(&[], Some(&selected)), None);
     }
 
     #[test]
@@ -1031,9 +930,9 @@ mod tests {
                     prior: 0,
                 };
                 picker.apply_scan(ScanMessage::Directories(vec![entry]), cx);
-                assert!(picker.scanning);
+                assert!(picker.flow.scanning);
                 assert_eq!(picker.rows.as_ref(), &[SharedString::from("workspace")]);
-                assert_eq!(picker.selected, Some(0));
+                assert_eq!(picker.flow.selected, Some(0));
                 let other = PickerEntry {
                     relative: "another".into(),
                     absolute: Arc::from(root.path().join("another")),
@@ -1041,10 +940,10 @@ mod tests {
                 };
                 picker.apply_scan(ScanMessage::Directories(vec![other]), cx);
                 assert_eq!(picker.rows.as_ref(), &[SharedString::from("workspace")]);
-                assert!(picker.scanning);
+                assert!(picker.flow.scanning);
                 picker.apply_scan(ScanMessage::Finished(Ok(true)), cx);
-                assert!(!picker.scanning);
-                assert!(picker.limited);
+                assert!(!picker.flow.scanning);
+                assert!(picker.flow.limited);
                 assert!(!picker.rows.is_empty());
             });
         });
