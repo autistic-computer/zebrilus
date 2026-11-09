@@ -5,7 +5,7 @@ from .prefix_bindings import PrefixBinding, PrefixTable, MAX_PREFIX_TEXT
 from .which_key import WhichKeyModel
 from .which_key_sheet import WhichKeySheet, which_key_sheet
 from .which_key_component import paint_which_key
-from .which_key_render_plan import prepare_which_key
+from .which_key_render_plan import WhichKeyGeometry, prepare_which_key
 from .which_key_timing import WhichKeyChange, WhichKeyTiming, arm_table, timer_decision, TIMER_SHOW
 
 comptime WHICH_KEY_KEY: UInt64 = 0x7600000000000000
@@ -63,6 +63,7 @@ struct WhichKeyFrame(Copyable, Movable):
     var visible: Bool
     var wake: Optional[UInt64]
     var refusal: Optional[String]
+    var geometry: Optional[WhichKeyGeometry]
 
 
 struct LiveWhichKey(Movable):
@@ -134,13 +135,14 @@ struct LiveWhichKey(Movable):
         return self.deadline if self.timing.timer else None
 
     def frame(mut self, mut ui: Ui, th: PennaTheme, tables: List[PrefixTable], context: WhichKeyContext) raises -> WhichKeyFrame:
-        self.advance(tables, context, UInt64(max(ui.time, Float64(0)) * 1_000_000_000))
+        self.advance(tables, context, UInt64(max(ui.time, Float64(0)) * 1_000_000_000 + 0.5))
+        var geometry: Optional[WhichKeyGeometry] = None
         if self.sheet:
             var painting = False
             try:
                 var plan = prepare_which_key(ui, th, self.sheet.value(), context.top, context.bottom)
                 painting = True
-                _ = paint_which_key(ui, th, self.key, plan)
+                geometry = paint_which_key(ui, th, self.key, plan)
             except error:
                 if painting:
                     raise error
@@ -149,5 +151,6 @@ struct LiveWhichKey(Movable):
         var wake = self.wake()
         if wake:
             ui.request_wake(Float64(wake.value()) / 1_000_000_000)
-        var refusal = self.refusal.take() if self.refusal else None
-        return WhichKeyFrame(self.timing.visible, wake, refusal^)
+        var refusal: Optional[String] = None
+        swap(refusal, self.refusal)
+        return WhichKeyFrame(self.timing.visible, wake, refusal^, geometry^)

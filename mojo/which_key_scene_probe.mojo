@@ -14,6 +14,9 @@ from zzmojo.which_key import WhichKeyModel
 from zzmojo.which_key_sheet import which_key_sheet
 from zzmojo.which_key_component import paint_which_key
 from zzmojo.which_key_render_plan import prepare_which_key
+from zzmojo.which_key_live import LiveWhichKey, WhichKeyIntent, WhichKeyContext
+from zzmojo.desktop_router_delivery import DesktopUiEffect, DesktopEnvelope
+from zzmojo.prefix_bindings import PrefixBinding
 from render import geometry
 
 
@@ -57,8 +60,8 @@ def main() raises:
     ui.begin_frame(width, height)
     ui.open(Style.col().width(width).height(height).fill(th.flat.bg).native_paint())
     ui.native_surface(NativeSurface(root_color(theme, 0), NativeColor(), NativeColor(), 0, 0, 2, 0, False))
-    var plan = prepare_which_key(ui, th, sheet.value(), 32, 40)
     if theme == 0 and scale == 1 and width == 720 and height == 600:
+        var plan = prepare_which_key(ui, th, sheet.value(), 32, 40)
         var boxes_before = len(ui.boxes)
         ui.width += 1
         with assert_raises():
@@ -73,7 +76,20 @@ def main() raises:
             _ = paint_which_key(ui, th, 9200, plan)
         th.theme = 0
         assert_equal(len(ui.boxes), boxes_before)
-    var measured = paint_which_key(ui, th, 9200, plan)
+    var live = LiveWhichKey(9200)
+    if all and table == "prefix":
+        var bindings = List[PrefixBinding]()
+        for item in tables:
+            if item.name == "prefix":
+                bindings = item.bindings.copy()
+                break
+        live.apply(WhichKeyIntent.all_keys(DesktopUiEffect(3, None, DesktopEnvelope(1, 1, 1, 1, None), UInt64(0), bindings^, prefix.copy())))
+    else:
+        live.apply(WhichKeyIntent.table_changed(600_000_000, table, False, 400))
+    var shown = live.frame(ui, th, tables, WhichKeyContext(table, False, prefix.copy(), False, 32, 40))
+    if not shown.visible or shown.refusal or shown.wake:
+        raise Error("which-key live frame did not paint the fixture sheet")
+    var measured = shown.geometry.value().copy()
     ui.close()
     ui.end_frame()
     if not ui.native_scene_complete:
