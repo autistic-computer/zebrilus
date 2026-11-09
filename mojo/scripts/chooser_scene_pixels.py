@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 import runpy
 import subprocess
+import sys
 
 from PIL import Image, ImageChops
 
@@ -20,7 +21,7 @@ def main():
     parser.add_argument('--variant', type=int, choices=range(7), action='append')
     args = parser.parse_args()
     if not args.skip_native:
-        subprocess.run(['python3', str(ROOT / 'mojo/scripts/chooser_scene_reference.py')], cwd=ROOT, check=True)
+        subprocess.run([sys.executable, str(ROOT / 'mojo/scripts/chooser_scene_reference.py')], cwd=ROOT, check=True)
     binary = ROOT / 'target/port/chooser-scene-probe'
     if not args.skip_build:
         subprocess.run(['pixi', 'run', 'bash', '-c', 'mojo build --fp-mode=contract=off -I src -I scripts/penna -I "$1/mojo" -D MJ_RASTER=swash -Xlinker build/lib/libmjswash.a $MJ_LINK -Xlinker build/lib/libSDL3.a -Xlinker -lgcc_s -Xlinker -ldl -Xlinker -lrt -Xlinker -lutil "$1/mojo/chooser_scene_probe.mojo" -o "$2"', '_', str(ROOT), str(binary)], cwd=MJUI, check=True)
