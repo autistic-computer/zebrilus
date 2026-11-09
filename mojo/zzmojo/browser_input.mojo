@@ -96,15 +96,21 @@ struct BrowserInput(Copyable, Movable):
         x: Float32,
         y: Float32,
     ) -> BrowserPointerRoute:
+        var right = left + width
+        var bottom = top + height
+        var inside = x >= left and x < right and y >= top and y < bottom
         var focus = False
         var clamp: Bool
         if phase == BROWSER_POINTER_DOWN:
             focus = True
             self.focus_page()
-            self.buttons |= button
+            if inside:
+                self.buttons |= button
             clamp = False
         elif phase == BROWSER_POINTER_UP or phase == BROWSER_POINTER_UP_OUTSIDE:
-            if phase == BROWSER_POINTER_UP_OUTSIDE and self.buttons == 0:
+            if (
+                phase == BROWSER_POINTER_UP_OUTSIDE or not inside
+            ) and self.buttons == 0:
                 return BrowserPointerRoute(False, 0, 0, False)
             self.buttons &= ~button
             clamp = True
@@ -114,9 +120,7 @@ struct BrowserInput(Copyable, Movable):
             clamp = pressed != 0
         else:
             clamp = False
-        var right = left + width
-        var bottom = top + height
-        if not clamp and not (x >= left and x < right and y >= top and y < bottom):
+        if not clamp and not inside:
             return BrowserPointerRoute(False, 0, 0, focus)
         return BrowserPointerRoute(
             True,

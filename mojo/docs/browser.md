@@ -62,9 +62,12 @@ session when prepared and are never redirected to a later session.
   drive suggestions while the address is edited. Page keys go to the daemon as
   browser surface keys; text follows only unmodified printable keys.
 - A pointer press focuses the page; moves reach the page only for buttons the
-  page took; releases outside the page reach it while it holds a button;
-  presses and leaves outside the content are dropped; dragged and released
-  points clamp to the content.
+  page took; releases outside the content, `BROWSER_POINTER_UP` or
+  `BROWSER_POINTER_UP_OUTSIDE`, reach it only while it holds a button;
+  presses and leaves outside the content are not forwarded and a press there
+  holds no button; dragged and released points clamp to the content.
+- Submitting the address (`navigate`) focuses the page, as accepting the
+  omnibox does; a daemon Navigate command does not.
 
 ## Limits
 

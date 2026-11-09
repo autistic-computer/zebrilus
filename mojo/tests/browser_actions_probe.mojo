@@ -42,6 +42,7 @@ from zzmojo.browser_input import (
     BROWSER_POINTER_DOWN,
     BROWSER_POINTER_LEAVE,
     BROWSER_POINTER_MOVE,
+    BROWSER_POINTER_UP,
     BROWSER_POINTER_UP_OUTSIDE,
 )
 from zzmojo.browser_presentation import (
@@ -239,6 +240,16 @@ def main() raises:
     assert_equal(browser_tab_label(String("localhost:3000/a")), String("localhost:3000"))
 
     var input = BrowserInput()
+    var away = input.pointer(
+        BROWSER_POINTER_DOWN, BROWSER_BUTTON_LEFT, 0, 100, 50, 400, 200, 40, 20
+    )
+    assert_false(away.forward)
+    assert_equal(input.buttons, UInt8(0))
+    assert_false(
+        input.pointer(
+            BROWSER_POINTER_UP, BROWSER_BUTTON_LEFT, 0, 100, 50, 400, 200, 40, 20
+        ).forward
+    )
     var down = input.pointer(
         BROWSER_POINTER_DOWN, BROWSER_BUTTON_LEFT, 0, 100, 50, 400, 200, 110.5, 70.49
     )

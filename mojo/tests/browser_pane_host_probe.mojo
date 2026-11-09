@@ -17,6 +17,7 @@ from zzmojo.browser_input import (
     BROWSER_POINTER_UP,
 )
 from zzmojo.browser_presentation import BROWSER_STATE_ERROR
+from zzmojo.browser_state import BROWSER_FOCUS_PAGE, BROWSER_PUBLISH
 from zzmojo.desktop_native_bindings import DesktopNativeBinding
 
 
@@ -139,11 +140,23 @@ def main() raises:
     assert_true(pane.model.tabs[2].popup)
     assert_equal(WebPage.live_views(), 3)
     var outbox = pane.take_outbox()
-    assert_true(len(outbox) > 0)
+    var published = -1
+    for i in range(len(outbox)):
+        if outbox[i].kind == BROWSER_PUBLISH and outbox[i].active == 2:
+            published = i
+            break
+    assert_true(published >= 0)
+    assert_equal(len(outbox[published].urls), 3)
+    assert_true(outbox[published].urls[2].endswith("/popup.html"))
+    assert_equal(outbox[published + 1].kind, BROWSER_FOCUS_PAGE)
+    assert_equal(outbox[published + 1].tab, UInt64(2))
     assert_true(act(pane, 22))
     wait_views(runtime, pane, images, 2)
     assert_equal(len(pane.presentation().tabs), 2)
     pane.navigate(missing)
+    var submitted = pane.take_outbox()
+    assert_equal(submitted[len(submitted) - 1].kind, BROWSER_FOCUS_PAGE)
+    assert_equal(submitted[len(submitted) - 1].tab, pane.model.active_tab)
     var error = wait_error(runtime, pane, images)
     assert_equal(error, missing + ": ERR_FILE_NOT_FOUND")
     assert_true(pane.presentation().retry)
@@ -187,11 +200,12 @@ def main() raises:
         var label = pane.presentation().tabs[pane.presentation().active].label
         if label.startswith("selected:") and label != "selected:0":
             break
-    assert_true(
-        pane.presentation().tabs[pane.presentation().active].label
-        != "selected:0"
+    assert_equal(
+        pane.presentation().tabs[pane.presentation().active].label,
+        String("selected:15"),
     )
-    assert_true(not act(pane, 22) or len(pane.presentation().tabs) == 1)
+    assert_true(act(pane, 22))
+    assert_equal(len(pane.presentation().tabs), 1)
     pane.close()
     wait_views(runtime, pane, images, 0)
     _ = pane^

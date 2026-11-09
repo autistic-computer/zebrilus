@@ -418,7 +418,7 @@ struct BrowserPane(Movable):
                 provider=provider,
             )
         )
-        self.input.focus_page()
+        self._focus_page()
 
     def select_tab(mut self, tab: UInt64) raises:
         self._commit(
