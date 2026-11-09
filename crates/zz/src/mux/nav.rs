@@ -1,9 +1,9 @@
 use std::collections::BTreeSet;
 
 use ala::{App, Entity, SharedString};
-use zz_client::{program::Program, window_summary::pane_program};
+
 use zz_protocol::{
-    Axis, CommandInvocation, MuxSnapshot, PaneId, PaneKindSnapshot, PaneSnapshot, PaneStatusState,
+    Axis, CommandInvocation, MuxSnapshot, PaneId,
     SessionId, WindowId,
 };
 
@@ -53,14 +53,9 @@ impl TreeTarget {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum MuxTreePaneKind {
-    Picker,
-    Terminal,
-    Browser,
-    Editor,
-    Agent(zz_protocol::AgentProvider),
-}
+#[cfg(test)]
+pub use zz_client::desktop_fleet::FleetPane as MuxTreePane;
+pub use zz_client::desktop_fleet::{FleetPaneKind as MuxTreePaneKind, FleetSession as MuxTreeSession, FleetWindow as MuxTreeWindow};
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct MuxTreeModel {
@@ -89,62 +84,8 @@ impl MuxTreeModel {
             .into_iter()
             .map(|(host, name, state, snapshot)| {
                 let snapshot_loaded = snapshot.is_some();
-                let sessions = snapshot
-                    .into_iter()
-                    .flat_map(|snapshot| &snapshot.sessions)
-                    .map(|session| {
-                        let active = host == attached_host && Some(session.id) == attached;
-                        let focused_window = snapshot.map_or(session.active_window, |snapshot| {
-                            snapshot.focused_window_for(session)
-                        });
-                        active_target = zz_client::desktop_nav_tree::active_for_session(
-                            active_target.map(to_desktop_nav_node),
-                            host,
-                            attached_host,
-                            session.id,
-                            attached,
-                            focused_window,
-                            session.windows.iter().map(|window| {
-                                (
-                                    window.id,
-                                    window.active_pane,
-                                    window.panes.values().map(|pane| pane.id),
-                                )
-                            }),
-                        )
-                        .map(from_desktop_nav_node);
-                        let windows = session
-                            .windows
-                            .iter()
-                            .map(|window| {
-                                let window_active = active && window.id == focused_window;
-                                let panes = ordered_panes(window)
-                                    .into_iter()
-                                    .map(|pane| MuxTreePane {
-                                        index: pane_index(window, pane.id),
-                                        ..MuxTreePane::from_snapshot(pane)
-                                    })
-                                    .collect();
-                                MuxTreeWindow {
-                                    id: window.id,
-                                    index: window.index,
-                                    name: window.name.clone(),
-                                    active_pane: window.active_pane,
-                                    active: window_active,
-                                    panes,
-                                }
-                            })
-                            .collect::<Vec<_>>();
-
-                        MuxTreeSession {
-                            id: session.id,
-                            name: session.name.clone(),
-                            label: session_label(session),
-                            active,
-                            windows,
-                        }
-                    })
-                    .collect();
+                let (sessions, next_active) = zz_client::desktop_fleet::sessions(active_target.map(to_desktop_nav_node), host, attached_host, attached, snapshot);
+                active_target = next_active.map(from_desktop_nav_node);
                 MuxTreeHost {
                     id: host,
                     name: name.to_owned(),
@@ -317,22 +258,7 @@ impl MuxTreeModel {
     ) -> Option<NavActivation> {
         let host = self.host(node.host())?;
         match node {
-            TreeNode::Host(id) if id != attached_host && host.connected() => {
-                Some(NavActivation::AttachHost(id))
-            }
-            TreeNode::Host(id)
-                if matches!(
-                    host.state,
-                    HostState::Disconnected
-                        | HostState::Reconnecting { .. }
-                        | HostState::Unreachable { .. }
-                        | HostState::Incompatible { .. }
-                        | HostState::Missing
-                ) =>
-            {
-                Some(NavActivation::Reconnect(id))
-            }
-            TreeNode::Host(_) => None,
+            TreeNode::Host(id) => zz_client::desktop_host::activation(id, attached_host, &host.state),
             TreeNode::Target(id, target) => activation_for_target(
                 id,
                 target,
@@ -403,102 +329,14 @@ impl MuxTreeHost {
 
     #[must_use]
     pub fn indicator(&self) -> Option<HostIndicator> {
-        match self.state {
-            HostState::Connected if self.snapshot_loaded => None,
-            HostState::Connected
-            | HostState::Connecting
-            | HostState::Reconnecting { .. }
-            | HostState::Installing => Some(HostIndicator::Connecting),
-            HostState::Disconnected
-            | HostState::Unreachable { .. }
-            | HostState::Incompatible { .. }
-            | HostState::Missing => Some(HostIndicator::Failed {
-                detail: self.state.failure_detail().map(SharedString::from),
-            }),
-        }
+        zz_client::desktop_host::indicator(&self.state, self.snapshot_loaded).map(|indicator| match indicator {
+            zz_client::desktop_host::HostIndicator::Connecting => HostIndicator::Connecting,
+            zz_client::desktop_host::HostIndicator::Failed { detail } => HostIndicator::Failed { detail: detail.map(SharedString::from) },
+        })
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct MuxTreeSession {
-    pub id: SessionId,
-    pub name: String,
-    pub label: SessionLabel,
-    pub active: bool,
-    pub windows: Vec<MuxTreeWindow>,
-}
 
-impl MuxTreeSession {
-    fn has_pending_bell(&self) -> bool {
-        self.windows.iter().any(MuxTreeWindow::has_pending_bell)
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct MuxTreeWindow {
-    pub id: WindowId,
-    pub index: u32,
-    pub name: String,
-    pub active_pane: PaneId,
-    pub active: bool,
-    pub panes: Vec<MuxTreePane>,
-}
-
-impl MuxTreeWindow {
-    #[must_use]
-    pub fn label(&self) -> String {
-        self.name.clone()
-    }
-
-    fn has_pending_bell(&self) -> bool {
-        self.panes.iter().any(|pane| pane.bell)
-    }
-
-    #[must_use]
-    pub fn program(&self) -> Option<&'static Program> {
-        self.panes
-            .iter()
-            .find(|pane| pane.id == self.active_pane)
-            .and_then(|pane| pane.program)
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct MuxTreePane {
-    pub id: PaneId,
-    pub index: u32,
-    pub label: String,
-    pub cwd: String,
-    pub kind: MuxTreePaneKind,
-    pub bell: bool,
-    pub status: Option<PaneStatusState>,
-    pub program: Option<&'static Program>,
-}
-
-impl MuxTreePane {
-    #[must_use]
-    pub fn from_snapshot(pane: &PaneSnapshot) -> Self {
-        let kind = match pane.kind {
-            PaneKindSnapshot::Picker => MuxTreePaneKind::Picker,
-            PaneKindSnapshot::Terminal => MuxTreePaneKind::Terminal,
-            PaneKindSnapshot::Browser(_) => MuxTreePaneKind::Browser,
-            PaneKindSnapshot::Editor(_) => MuxTreePaneKind::Editor,
-            PaneKindSnapshot::Agent(ref agent) => MuxTreePaneKind::Agent(agent.provider),
-        };
-        Self {
-            id: pane.id,
-            index: 0,
-            label: pane_label(pane),
-            cwd: pane.summary.cwd.clone(),
-            kind,
-            bell: pane.bell,
-            status: pane.status.as_ref().map(|status| status.state),
-            program: pane_program(pane),
-        }
-    }
-}
-
-pub use zz_client::navigation::{ordered_panes, pane_index, pane_label};
 
 #[derive(Clone, Debug)]
 pub enum TreeNodeKind {
@@ -532,7 +370,7 @@ pub fn active_tree_target(
     }
 }
 
-pub use zz_client::navigation::{SessionLabel, session_label};
+
 
 pub fn expand_path_to(expanded: &mut BTreeSet<TreeNode>, model: &MuxTreeModel, node: TreeNode) {
     let owner = match node {

@@ -1230,7 +1230,10 @@ impl AppView {
         ) {
             return;
         }
-        if !(event.is_held && self.mux.read(cx).prefix_armed()) {
+        if zz_client::which_key::timing::hide_for_input(
+            event.is_held,
+            self.mux.read(cx).prefix_armed(),
+        ) {
             self.hide_which_key(cx);
         }
         if !self.sidebar.read(cx).window_shortcuts_shown() {
@@ -1465,7 +1468,8 @@ impl AppView {
 
     fn hide_which_key(&mut self, cx: &mut Context<Self>) {
         self.which_key_timer = None;
-        self.which_key_generation = self.which_key_generation.wrapping_add(1);
+        self.which_key_generation =
+            zz_client::which_key::timing::hidden_generation(self.which_key_generation);
         if self.which_key.take().is_some() {
             cx.notify();
         }
@@ -1473,7 +1477,8 @@ impl AppView {
 
     fn key_table_changed(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.hide_which_key(cx);
-        let Some((table, false)) = self.mux.read(cx).key_table() else {
+        let Some(table) = zz_client::which_key::timing::arm_table(self.mux.read(cx).key_table())
+        else {
             return;
         };
         let table = table.to_owned();
@@ -1502,8 +1507,14 @@ impl AppView {
             return;
         }
         self.which_key_timer = None;
-        if self.mux.read(cx).key_table() != Some((table, false))
-            || self.which_key_blocked(window, cx)
+        let table_matches = self.mux.read(cx).key_table() == Some((table, false));
+        let blocked = table_matches && self.which_key_blocked(window, cx);
+        if zz_client::which_key::timing::timer_decision(
+            self.which_key_generation,
+            generation,
+            table_matches,
+            blocked,
+        ) != zz_client::which_key::timing::TimerDecision::Show
         {
             return;
         }

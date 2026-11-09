@@ -1,14 +1,15 @@
 use std::{error::Error, fs::File};
 
 use ala::{
-    Context, InteractiveElement as _, IntoElement, Modifiers, ParentElement as _, Render, ScrollDelta,
-    ScrollStrategy, ScrollWheelEvent, Styled as _, TestAppContext, TestDispatcher, TouchPhase,
-    UniformListScrollHandle, Window, div, point, px, uniform_list,
+    Context, InteractiveElement as _, IntoElement, Modifiers, ParentElement as _, Render,
+    ScrollDelta, ScrollStrategy, ScrollWheelEvent, Styled as _, TestAppContext, TestDispatcher,
+    TouchPhase, UniformListScrollHandle, Window, div, point, px, uniform_list,
 };
 use serde_json::{Value, json};
 
 struct ListView {
     count: usize,
+    row_height: f32,
     viewport: f32,
     requested_line: f32,
     measured_line: f32,
@@ -26,7 +27,9 @@ impl Render for ListView {
                     self.count,
                     cx.processor(|view, range: std::ops::Range<usize>, window, _| {
                         view.measured_line = f32::from(window.line_height());
-                        range.map(|index| div().id(index).h(px(40.0))).collect()
+                        range
+                            .map(|index| div().id(index).h(px(view.row_height)))
+                            .collect()
                     }),
                 )
                 .track_scroll(&self.handle)
@@ -43,6 +46,13 @@ fn positive_offset(handle: &UniformListScrollHandle) -> f32 {
 
 fn main() -> Result<(), Box<dyn Error>> {
     let mut records: Vec<Value> = Vec::new();
+    let window = std::env::args().any(|value| value == "--window");
+    let row_height = if window { 28.0_f32 } else { 40.0 };
+    let strategies: &[(u8, ScrollStrategy)] = if window {
+        &[(2, ScrollStrategy::Top), (3, ScrollStrategy::Nearest)]
+    } else {
+        &[(0, ScrollStrategy::Center)]
+    };
     let mut seed = 0;
     for count in [0_usize, 1, 10, 11, 47, 65_536] {
         for viewport in [40.0_f32, 80.0, 200.0, 400.5] {
@@ -51,6 +61,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                 let mut app = TestAppContext::build(TestDispatcher::new(seed), None);
                 let (entity, cx) = app.add_window_view(|_, _| ListView {
                     count,
+                    row_height,
                     viewport,
                     requested_line: if count.is_multiple_of(2) { 19.5 } else { 24.0 },
                     measured_line: 19.5,
@@ -64,28 +75,30 @@ fn main() -> Result<(), Box<dyn Error>> {
                         f32::from(view.handle.0.borrow().base_handle.bounds().size.height),
                     )
                 });
-                for fraction in [0.0_f32, 0.5, 1.0] {
-                    for selected in [0_u32, 1, 5, 9, 10, 46, u32::MAX] {
-                        let maximum = f32::from(handle.0.borrow().base_handle.max_offset().y);
-                        entity.update(cx, |view, cx| {
-                            view.handle
-                                .0
-                                .borrow()
-                                .base_handle
-                                .set_offset(point(px(0.0), px(-maximum * fraction)));
-                            cx.notify();
-                        });
-                        cx.run_until_parked();
-                        let before = positive_offset(&handle);
-                        entity.update(cx, |view, cx| {
-                            view.handle.scroll_to_item(
-                                usize::try_from(selected).unwrap_or(usize::MAX),
-                                ScrollStrategy::Center,
-                            );
-                            cx.notify();
-                        });
-                        cx.run_until_parked();
-                        records.push(json!({"kind":0,"before":before.to_bits(),"row":40_f32.to_bits(),"viewport":actual_viewport.to_bits(),"count":count,"selected":selected,"after":positive_offset(&handle).to_bits(),"scale":scale}));
+                for &(kind, strategy) in strategies {
+                    for fraction in [0.0_f32, 0.5, 1.0] {
+                        for selected in [0_u32, 1, 5, 9, 10, 46, u32::MAX] {
+                            let maximum = f32::from(handle.0.borrow().base_handle.max_offset().y);
+                            entity.update(cx, |view, cx| {
+                                view.handle
+                                    .0
+                                    .borrow()
+                                    .base_handle
+                                    .set_offset(point(px(0.0), px(-maximum * fraction)));
+                                cx.notify();
+                            });
+                            cx.run_until_parked();
+                            let before = positive_offset(&handle);
+                            entity.update(cx, |view, cx| {
+                                view.handle.scroll_to_item(
+                                    usize::try_from(selected).unwrap_or(usize::MAX),
+                                    strategy,
+                                );
+                                cx.notify();
+                            });
+                            cx.run_until_parked();
+                            records.push(json!({"kind":kind,"before":before.to_bits(),"row":row_height.to_bits(),"viewport":actual_viewport.to_bits(),"count":count,"selected":selected,"after":positive_offset(&handle).to_bits(),"scale":scale}));
+                        }
                     }
                 }
                 for fraction in [0.0_f32, 0.5, 1.0] {

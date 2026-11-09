@@ -15,6 +15,8 @@ pub mod chooser;
 mod chrome;
 pub mod completion;
 mod core;
+pub mod desktop_fleet;
+pub mod desktop_host;
 pub mod desktop_input;
 pub mod desktop_nav;
 pub mod desktop_nav_tree;

@@ -1,3 +1,5 @@
+pub mod timing;
+
 use zz_protocol::{
     CommandInvocation, KeyBindingSnapshot, KeyTableSnapshot, KeyTables, canonical_command,
     catalog_command_spec,

@@ -187,6 +187,15 @@ pub fn trace(
                     window,
                     cx,
                 ),
+                13 => {
+                    let value = operation[1].as_str().expect("inserted text");
+                    palette.input.update(cx, |input, cx| {
+                        input.set_selected_range(0..input.value().len(), cx);
+                        input.replace(value, window, cx);
+                    });
+                    let input = palette.input.clone();
+                    palette.synchronize_local_input(&input, window, cx);
+                }
                 11 => {}
                 12 => palette.advance_chooser_search(cx),
                 _ => panic!("unknown window chooser operation"),
