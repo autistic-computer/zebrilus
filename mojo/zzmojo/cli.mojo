@@ -149,6 +149,7 @@ def _run(var files: ClientFiles) raises -> UInt8:
         or command == "proxy"
         or command == "fleet"
         or command == "list-hosts"
+        or command == "tailnet"
         or command == "tools"
         or command == "events"
     ):
