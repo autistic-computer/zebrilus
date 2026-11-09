@@ -31,7 +31,7 @@ def main():
         root = Path(directory)
         env['XDG_DATA_HOME'] = str(root / 'data')
         page = root / 'one.html'
-        page.write_text("<!doctype html><title>one</title><body style='margin:0'><input autofocus onmousedown=\"if(document.title=='one')document.title='clicked'\" oninput=\"document.title='typed:'+this.value\" style='width:300px;height:60px'>")
+        page.write_text("<!doctype html><title>load</title><body style='margin:0'><input autofocus onmousedown=\"if(document.title=='one')document.title='clicked'\" oninput=\"document.title='typed:'+this.value\" style='width:300px;height:60px'><script>requestAnimationFrame(()=>requestAnimationFrame(()=>{document.title='one'}))</script>")
         socket = str(root / 's')
         try:
             subprocess.run([str(native), '-S', socket, '-f', '/dev/null', 'new-session', '-d', '-s', 'web', '-c', str(root), 'cat'], cwd=root, env=env, check=True, capture_output=True, timeout=15)
