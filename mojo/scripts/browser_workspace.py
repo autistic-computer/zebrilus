@@ -31,16 +31,17 @@ def main():
         root = Path(directory)
         env['XDG_DATA_HOME'] = str(root / 'data')
         page = root / 'one.html'
-        page.write_text("<!doctype html><title>one</title><body style='margin:0'><input autofocus oninput=\"document.title='typed:'+this.value\" style='width:300px;height:60px'>")
+        page.write_text("<!doctype html><title>one</title><body style='margin:0'><input autofocus onmousedown=\"if(document.title=='one')document.title='clicked'\" oninput=\"document.title='typed:'+this.value\" style='width:300px;height:60px'>")
         socket = str(root / 's')
         try:
             subprocess.run([str(native), '-S', socket, '-f', '/dev/null', 'new-session', '-d', '-s', 'web', '-c', str(root), 'cat'], cwd=root, env=env, check=True, capture_output=True, timeout=15)
             subprocess.run([str(native), '-S', socket, 'split-window', '-h', '-t', '%0', '--kind', 'browser', page.as_uri()], cwd=root, env=env, check=True, capture_output=True, timeout=15)
+            subprocess.run([str(native), '-S', socket, 'select-pane', '-t', '%0'], cwd=root, env=env, check=True, capture_output=True, timeout=15)
             stdout = host['run'](env, binary, [socket])
         finally:
             subprocess.run([str(native), '-S', socket, 'kill-server'], cwd=root, env=env, capture_output=True, timeout=10)
     print(stdout.strip(), flush=True)
-    report = {'passed': True, 'checks': ['actual private daemon with a browser pane on the source CEF 156.0.15 host', 'the pane descriptor starts a BrowserPane and draws its page in the workspace', 'a click selects the pane and focuses the page', 'a typed key goes to the daemon as a browser surface key and comes back as a browser command the page receives', 'Ctrl+T opens a tab and publishes two tabs to the daemon', 'Ctrl+W closes that tab, then closes the pane when one tab is left']}
+    report = {'passed': True, 'checks': ['actual private daemon with a browser pane on the source CEF 156.0.15 host', 'the pane descriptor starts a BrowserPane and draws its page in the workspace', 'with the terminal pane active, a click on the page selects the browser pane, focuses the page and reaches it', 'a typed key goes to the daemon as a browser surface key and comes back as a browser command the page receives', 'the prefix key arms the prefix table from the focused page, Escape cancels it and typing reaches the page again', 'Ctrl+T opens a tab and publishes two tabs to the daemon', 'Ctrl+W closes that tab, then closes the pane when one tab is left']}
     (TARGET / 'browser-workspace.json').write_text(json.dumps(report, indent=2) + '\n')
     print(json.dumps(report))
 

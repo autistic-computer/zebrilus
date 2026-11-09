@@ -173,7 +173,16 @@ struct Driver(Movable):
             if self.title(pane) == title:
                 return
         raise Error(
-            String("browser title did not reach ", title, "; saw ", self.title(pane))
+            String(
+                "browser title did not reach ",
+                title,
+                "; saw ",
+                self.title(pane),
+                " / ",
+                self.view.model.error,
+                " / ",
+                self.notices,
+            )
         )
 
 
@@ -203,28 +212,57 @@ def main() raises:
             )
         )
     driver.wait(pane, "one")
+    assert_true(Bool(driver.view.model.pane))
+    assert_true(driver.view.model.pane != Optional[UInt64](pane))
+    assert_false(Bool(driver.view.browser_pane(driver.ui)))
     var content = driver.ui.rect_of(
         driver.view.name_key(driver.view.browser_key_name(pane))
     )
     assert_true(content.x1 - content.x0 > 100)
     var x = content.x0 + 40
     var y = content.y0 + 40
-    _ = driver.native.record_pointer(
-        MouseEvent(MOUSE_DOWN, x, y, 1, driver.ui.time, 0)
-    )
-    driver.frame()
-    _ = driver.native.record_pointer(
-        MouseEvent(MOUSE_UP, x, y, 1, driver.ui.time, 0)
-    )
-    driver.frame()
+    var clicks = 0
+    deadline = monotonic_seconds() + 20
+    while monotonic_seconds() < deadline and driver.title(pane) != "clicked":
+        clicks += 1
+        _ = driver.native.record_pointer(
+            MouseEvent(MOUSE_DOWN, x, y, 1, driver.ui.time, 0)
+        )
+        driver.frame()
+        _ = driver.native.record_pointer(
+            MouseEvent(MOUSE_UP, x, y, 1, driver.ui.time, 0)
+        )
+        driver.frame()
+        for _ in range(40):
+            driver.settle()
+            if driver.title(pane) == "clicked":
+                break
+    assert_equal(driver.title(pane), "clicked")
     for _ in range(100):
         driver.settle()
         if driver.view.model.pane == Optional[UInt64](pane):
             break
     assert_equal(driver.view.model.pane, Optional[UInt64](pane))
     assert_equal(driver.ui.focus, TERMINAL_KEY)
+    assert_equal(driver.view.browser_pane(driver.ui), Optional[UInt64](pane))
     driver.key(Key.Z, 122, 0, String("z"))
     driver.wait(pane, "typed:z")
+    driver.key(Key.B, 98, MOD_CTRL, String())
+    deadline = monotonic_seconds() + 20
+    while monotonic_seconds() < deadline:
+        driver.settle()
+        if driver.view.model.routing.table:
+            break
+    assert_equal(driver.view.model.routing.table.value(), "prefix")
+    driver.key(Key.ESCAPE, 27, 0, String())
+    deadline = monotonic_seconds() + 20
+    while monotonic_seconds() < deadline:
+        driver.settle()
+        if not driver.view.model.routing.table:
+            break
+    assert_false(Bool(driver.view.model.routing.table))
+    driver.key(Key.Q, 113, 0, String("q"))
+    driver.wait(pane, "typed:zq")
     driver.key(Key.T, 116, MOD_CTRL, String())
     deadline = monotonic_seconds() + 20
     while monotonic_seconds() < deadline:
@@ -249,4 +287,4 @@ def main() raises:
     assert_false(Bool(driver.browser()))
     assert_equal(driver.view.browser.count(), 0)
     assert_equal(driver.view.model.error, String())
-    print("Browser workspace checks passed")
+    print("Browser workspace checks passed; page clicks", clicks)
