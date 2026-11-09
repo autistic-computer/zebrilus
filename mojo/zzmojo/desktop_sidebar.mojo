@@ -8,13 +8,20 @@ from .desktop_chrome_dispatch import DesktopChromeDispatch
 from .desktop_host import HostIndicator, host_indicator
 from .desktop_nav import (
     NavActivation,
+    NavTarget,
     nav_command,
     new_session_commands,
     new_window_command,
+    kill_target_command,
     picker_split_command,
     detach_command,
 )
-from .desktop_nav_tree import NavNode, NavTreeHost, SidebarTreeState
+from .desktop_nav_tree import (
+    NavNode,
+    NavTreeHost,
+    SidebarTreeState,
+    validate_node,
+)
 from .desktop_fleet import FleetModel, FleetHostInput
 
 comptime NAV_PASSIVE = 10
@@ -414,26 +421,79 @@ struct DesktopSidebar(Movable):
             None,
         )
 
+    def _new_session(
+        self,
+        host: UInt32,
+        capabilities: List[String],
+        working_directory: Optional[String],
+    ) raises -> DesktopNavIntent:
+        var index = self.model.host(host)
+        if not index:
+            return DesktopNavIntent.none()
+        ref fleet_host = self.model.hosts[index.value()]
+        var directory: Optional[String] = None
+        if (
+            host == LOCAL_HOST
+            and fleet_host.loaded
+            and len(fleet_host.sessions) == 0
+        ):
+            directory = working_directory.copy()
+        return DesktopNavIntent(
+            NavActivation(
+                3,
+                host,
+                None,
+                String(),
+                new_session_commands(
+                    host == LOCAL_HOST, capabilities, directory
+                ),
+            ),
+            False,
+            False,
+            None,
+        )
+
     def new_session(
         self,
         capabilities: List[String],
         working_directory: Optional[String],
     ) raises -> DesktopNavIntent:
-        var index = self.model.host(self.attached_host)
-        if not index:
-            return DesktopNavIntent.none()
-        ref host = self.model.hosts[index.value()]
-        var directory: Optional[String] = None
+        return self._new_session(
+            self.attached_host, capabilities, working_directory
+        )
+
+    def node_action(
+        self,
+        node: NavNode,
+        action: UInt8,
+        capabilities: List[String],
+        working_directory: Optional[String],
+    ) raises -> DesktopNavIntent:
+        validate_node(node)
         if (
-            self.attached_host == LOCAL_HOST
-            and host.loaded
-            and len(host.sessions) == 0
+            action > 2
+            or (action == 0) != (node.kind == 0)
+            or action == 1
+            and node.kind != 1
         ):
-            directory = working_directory.copy()
-        return self._execute(
-            new_session_commands(
-                self.attached_host == LOCAL_HOST, capabilities, directory
+            raise Error("desktop sidebar row action is invalid")
+        var index = self.model.host(node.host)
+        if not index or not self.model.hosts[index.value()].connected():
+            return DesktopNavIntent.none()
+        if action == 0:
+            return self._new_session(node.host, capabilities, working_directory)
+        var commands = List[Invocation]()
+        if action == 1:
+            commands.append(new_window_command(node.id))
+        else:
+            commands.append(
+                kill_target_command(NavTarget(node.kind - 1, node.id))
             )
+        return DesktopNavIntent(
+            NavActivation(3, node.host, None, String(), commands^),
+            False,
+            False,
+            None,
         )
 
     def new_window(self) raises -> DesktopNavIntent:

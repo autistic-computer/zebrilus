@@ -273,6 +273,41 @@ def main() raises:
         frames(sidebar.detach().activation.value())[0],
         command("detach-client", List[String]()),
     )
+    var remote_session = sidebar.node_action(
+        NavNode(5, 0, 0), 0, [String("new-session-attach-v1")], String("/tmp")
+    )
+    assert_equal(remote_session.activation.value().host, UInt32(5))
+    assert_equal(
+        frames(remote_session.activation.value())[0],
+        command("new-session", [String("-d")]),
+    )
+    assert_equal(
+        frames(
+            sidebar.node_action(
+                NavNode(0, 1, 1), 1, List[String](), None
+            ).activation.value()
+        )[0],
+        command("new-window", [String("-t"), String("$1")]),
+    )
+    assert_equal(
+        frames(
+            sidebar.node_action(
+                NavNode(0, 3, 101), 2, List[String](), None
+            ).activation.value()
+        )[0],
+        command("kill-pane", [String("-t"), String("%101")]),
+    )
+    assert_false(
+        Bool(
+            sidebar.node_action(
+                NavNode(6, 0, 0), 0, List[String](), None
+            ).activation
+        )
+    )
+    with assert_raises(contains="row action is invalid"):
+        _ = sidebar.node_action(NavNode(0, 2, 10), 1, List[String](), None)
+    with assert_raises(contains="row action is invalid"):
+        _ = sidebar.node_action(NavNode(5, 0, 0), 2, List[String](), None)
     var down = sidebar.chrome_intent(
         DesktopChromeDispatch(5, 0), List[String](), None
     )
