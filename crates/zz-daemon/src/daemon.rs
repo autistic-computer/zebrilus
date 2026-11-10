@@ -5554,6 +5554,10 @@ impl Shared {
             Some(executable) => TmuxShimGuard::install(PathBuf::from(executable), false)?,
             None => TmuxShimGuard::install(std::env::current_exe()?, true)?,
         };
+        #[cfg(target_os = "macos")]
+        if shim.executable.parent() == Some(shim.directory.as_path()) {
+            zz_terminal::pin_pty_exec_helper(&shim.executable);
+        }
         self.status
             .lock()
             .set_tmux_shim(shim.directory.clone(), shim.executable.clone());

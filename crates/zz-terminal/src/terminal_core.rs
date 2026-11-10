@@ -61,6 +61,8 @@ pub use program_status::{
 };
 #[cfg(all(feature = "session", target_os = "linux"))]
 pub use session::disable_transparent_huge_pages;
+#[cfg(all(feature = "session", target_os = "macos"))]
+pub use session::pin_pty_exec_helper;
 #[cfg(all(feature = "session", unix))]
 pub use session::release_held_wakes;
 #[cfg(feature = "session")]
