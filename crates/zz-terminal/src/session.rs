@@ -102,6 +102,11 @@ pub fn run_pty_exec_mode() -> Option<std::process::ExitCode> {
     }
 }
 
+#[cfg(target_os = "macos")]
+pub fn pin_pty_exec_helper(path: &std::path::Path) {
+    unix_pty::pin_pty_exec_helper(path);
+}
+
 #[cfg(target_os = "linux")]
 pub extern "C" fn disable_transparent_huge_pages() {
     unix_pty::disable_transparent_huge_pages();

@@ -189,18 +189,30 @@ fn exec_pty_program(arguments: &[CString]) -> ExitCode {
 }
 
 #[cfg(target_os = "macos")]
-fn pty_exec_helper() -> Option<&'static CString> {
-    static HELPER: OnceLock<Option<CString>> = OnceLock::new();
-    if !PTY_EXEC_HOST.load(Ordering::Acquire) {
-        return None;
+static PINNED_PTY_EXEC_HELPER: OnceLock<CString> = OnceLock::new();
+
+#[cfg(target_os = "macos")]
+pub(super) fn pin_pty_exec_helper(path: &Path) {
+    if let Ok(path) = CString::new(path.as_os_str().as_bytes()) {
+        let _ = PINNED_PTY_EXEC_HELPER.set(path);
     }
-    HELPER
-        .get_or_init(|| {
-            std::env::current_exe()
-                .ok()
-                .and_then(|path| CString::new(path.into_os_string().into_vec()).ok())
+}
+
+#[cfg(target_os = "macos")]
+fn pty_exec_helpers() -> impl Iterator<Item = &'static CString> {
+    static CURRENT: OnceLock<Option<CString>> = OnceLock::new();
+    PTY_EXEC_HOST
+        .load(Ordering::Acquire)
+        .then(|| {
+            let current = CURRENT.get_or_init(|| {
+                std::env::current_exe()
+                    .ok()
+                    .and_then(|path| CString::new(path.into_os_string().into_vec()).ok())
+            });
+            PINNED_PTY_EXEC_HELPER.get().into_iter().chain(current)
         })
-        .as_ref()
+        .into_iter()
+        .flatten()
 }
 
 pub(super) struct Spawned {
@@ -256,7 +268,7 @@ pub(super) fn spawn(
     }
     let (exec_fence, fence_write) = exec_fence()?;
     #[cfg(target_os = "macos")]
-    if let Some(helper) = pty_exec_helper() {
+    for helper in pty_exec_helpers() {
         match spawn_through_helper(helper, &plan, slave.as_raw_fd(), fence_write.as_raw_fd()) {
             Ok(pid) => {
                 return Ok(Spawned {
@@ -266,7 +278,7 @@ pub(super) fn spawn(
             }
             Err(error) => log::warn!(
                 target: "zz_terminal::spawn",
-                "pane helper {} failed, forking instead: {error}",
+                "pane helper {} failed: {error}",
                 helper.to_string_lossy()
             ),
         }
