@@ -36,26 +36,45 @@ Not in this plan: keeping sessions alive across a daemon restart. A daemon resta
 
 - Every frame carries `PROTOCOL_VERSION`, and `crates/zz-protocol/src/framing.rs` rejects any other
   value with `ProtocolError::VersionMismatch`. The daemon answers with
-  `ServerError::ProtocolMismatch` and the client offers `terminate_incompatible_daemon`
-  (`crates/zz-daemon-client/src/lifecycle.rs`). See [wire protocol](/protocol/wire-protocol.md) and
+  `ServerError::ProtocolMismatch`. The desktop then asks "Restart the zz daemon?"
+  (`prompt_stale_daemon` in `crates/zz/src/workspace/view.rs`) and the raw terminal asks on stderr;
+  both stop the daemon with `terminate_incompatible_daemon`
+  (`crates/zz-daemon-client/src/lifecycle.rs`), a signal, because a command cannot cross a
+  mismatch. The web, iOS and Android clients show a status line with no action. See
+  [wire protocol](/protocol/wire-protocol.md) and
   [session persistence](/concepts/session-persistence.md).
 - The version moves about once per release: 107 at v0.15.1, 112 at v0.22.0, 121 now.
 - Control payloads are postcard, which has no field tags and no struct boundaries. Terminal payloads
   are zz's own packing (`crates/zz-protocol/src/terminal_codec.rs`).
-- The daemon encodes a tree delta once and hands the same bytes to every client (`shared_tree` and
-  the `shared_delta` it feeds in `crates/zz-daemon/src/daemon/ctrl.rs`).
-- Both hellos already carry capabilities. `ClientHello.capabilities` is a list of names the daemon
-  reads at registration (`client_features_fact`). `Welcome.caps` is a 64-bit mask over
-  `CAPABILITY_NAMES` (`crates/zz-protocol/src/control.rs`), read with `Welcome::has_capability`.
+- The daemon encodes a tree delta once per group of clients with the same scope and hands them the
+  same bytes (`shared_tree` and the `shared_delta` it feeds in
+  `crates/zz-daemon/src/daemon/ctrl.rs`). Mux options are diffed and encoded per client.
+- Both hellos already carry capabilities, in two unrelated sets of names.
+  - Daemon to client: `Welcome.caps` is a 64-bit mask over `CAPABILITY_NAMES`
+    (`crates/zz-protocol/src/control.rs`, 33 names), and the daemon sets every bit. Rust clients
+    read them as strings on `ServerHello.capabilities`, which `materialize_welcome` builds; only
+    the web client calls `Welcome::has_capability`. A command client gets a second, hand-written
+    list from `Shared::register`.
+  - Client to daemon: `ClientHello.capabilities` carries `client-*` names. The daemon turns them
+    into fields on its `Client` record in two places (`handle_connection_message` and
+    `Session::register`) and keeps no list.
 - On a macOS bundle install the daemon runs from `cli` inside the app bundle
   ([process model](/architecture/process-model.md)). `scripts/install-macos.sh` replaces the bundle
   and leaves the running daemon on the previous build.
 - The desktop client checks GitHub releases for a newer version (`fetch_latest` in
   `crates/zz-config/src/update.rs`, behind the `update` feature). A release says nothing about its
   protocol version.
-- For an ssh host, `remote_install_script` (`crates/zz-daemon-client/src/endpoint.rs`) installs the
-  client's own version there and the probe demands an equal protocol version. The probe asks the
-  installed CLI (`zz protocol-version`), which can differ from the daemon that is running.
+- For an ssh host, the probe (`remote_probe_socket` in `crates/zz-daemon-client/src/endpoint.rs`)
+  demands an equal protocol version from the installed CLI (`zz protocol-version`), which can
+  differ from the daemon that is running; the handshake catches that case. `remote_install_script`
+  never runs on connect. It runs when the person accepts "Update zz on {host}?", when the binary is
+  missing, or from `zz fleet install`, and it reinstalls unless both the version string and the
+  protocol version already match.
+- What the daemon launches later mostly stays on its own build: `pinned_executable`
+  (`crates/zz-daemon/src/daemon.rs`) pins the `zz` and `tmux` that panes and status jobs run. The
+  macOS pty helper is the exception: `pty_exec_helper`
+  (`crates/zz-terminal/src/session/unix_pty.rs`) runs whatever binary now sits at the daemon's
+  path, and falls back to fork if that fails.
 
 # Decisions
 
@@ -76,19 +95,25 @@ A mismatch behaves as it does now: the client offers to restart the daemon.
 
 ## 2. Additive changes are gated by capability
 
-A message or variant added inside an epoch gets a capability name, appended to `CAPABILITY_NAMES`.
-The sender checks that the peer has it before sending.
+A message or variant added inside an epoch gets a capability name. The sender checks that the peer
+has it before sending.
 
-- Client to daemon: a new `ProtocolMessage` variant. The client checks `Welcome::has_capability` and
-  hides or disables the feature when it is missing.
-- Daemon to client: a new `EventPayload` variant, sent only to clients whose hello named the
-  capability.
+- Client to daemon: a new `ProtocolMessage` variant, with its name appended to `CAPABILITY_NAMES`.
+  The client hides or disables the feature when the daemon lacks the name, and the send path
+  refuses the message.
+- Daemon to client: a new `EventPayload` variant, with its name in the client's own table, which
+  the client sends in `ClientHello.capabilities`. The daemon keeps each client's names and drops a
+  gated event for a client without its name.
+
+Each enum says which capability a variant needs in one exhaustive match, so adding a variant does
+not compile until that question is answered.
 
 Appending a variant is safe with postcard as long as an older peer never receives it, which is what
 the check guarantees.
 
 Shapes inside state that every client receives (snapshots, tree deltas, the option set) are frozen
-for the epoch, because those bytes are encoded once and shared. New data for them travels as its own
+for the epoch. Snapshots and tree deltas are encoded once and shared, and the option set is one
+type for every client. New data for them travels as its own
 gated event, keyed by pane or window, and the client merges it. An epoch bump folds the gated data
 into the struct and retires the capability.
 
@@ -135,16 +160,21 @@ Delete a gate once the floor or the epoch passes it.
 
 - Inside an epoch and above the floors, a newer client attaches to the running daemon and says the
   daemon is behind.
-- The restart action states what it ends: "Restart the daemon to update it. This ends N sessions."
-  It is `kill-server` followed by a normal start.
+- While attached, the restart action states what it ends: "Restart the daemon to update it. This
+  ends N sessions." The count is the snapshot's, and the restart is `kill-server` followed by a
+  normal start.
+- Across an epoch mismatch or below a floor the client is not attached, so it has no count and
+  cannot send a command. The prompt says the restart ends every running session and stops the
+  daemon with `terminate_incompatible_daemon`, as it does now.
 - A client update that raises the floor or the epoch says so before it installs, so staying on the
-  older client to keep the sessions is a real choice. For that, each release publishes its epoch and
-  its `MIN_DAEMON_REVISION` where the update check can read them.
-- For ssh hosts, `remote_install_script` runs only when the epoch differs or the remote revision is
-  below the floor. Otherwise the client attaches and offers the update as the same action.
-- The daemon binary moves out of the app bundle into a directory named for its revision. A running
-  daemon keeps its directory until it exits, and the next start uses the newest one. This keeps
-  anything the daemon launches from its own path on the build it was started from.
+  older client to keep the sessions is a real choice. For that, each release states its epoch and
+  its `MIN_DAEMON_REVISION` on one line of the release body, which the update check already
+  downloads.
+- For ssh hosts, a daemon below the floor gets the same "Update zz on {host}?" offer an epoch
+  mismatch gets. A host that is only behind attaches, and the update stays an action in its menu.
+- The daemon keeps running the build it was started from. The macOS pty helper gets pinned the way
+  `pinned_executable` pins the `zz` that panes run, so a replaced bundle cannot hand an old daemon a
+  new helper.
 
 # What the last nine bumps would have been
 
@@ -181,14 +211,17 @@ in.
    `ClientHello` and `Welcome`, the too-old error, `PaneKindSnapshot::Other` and its placeholder in
    every client. Done when a client below `MIN_CLIENT_REVISION` is refused with the update message
    and a pane of kind `Other` draws the placeholder.
-2. **The capability rule.** A send-side check on the daemon for gated events, and the rule in the
-   wire protocol doc. Done when a client built with one gated request attaches to a daemon built
-   before it without a restart, and the request is never sent. One test: the exact frames the client
-   writes to a daemon that lacks the capability.
-3. **Client UI.** The "daemon is behind" hint, the restart action with its session count, and the
-   floor refusal screen.
-4. **Delivery.** The daemon directory per revision, and the ssh install that runs only on an epoch
-   or floor mismatch.
+2. **The capability rule.** One table of names per direction, the exhaustive match on
+   `ProtocolMessage` and `EventPayload` that names each variant's capability, the daemon's
+   per-client drop of gated events, the client's refusal to send a gated request, and one source
+   for the command client's capability list. The rule goes in the wire protocol doc and in
+   `CLAUDE.md`. No message is gated yet, so the first gated message brings the test: the exact
+   frames a client writes to a daemon that lacks the capability.
+3. **Client UI.** The floor errors on the prompts that exist (desktop dialog, raw terminal prompt,
+   CLI hints, thin client status line, the ssh host update offer). The "daemon is behind" state in
+   the tray, About and the host menu, with the session count and a `kill-server` restart. The
+   release body carries the epoch and the floor, and the update prompt reads them.
+4. **Delivery.** Pin the macOS pty helper to the daemon's own build.
 
 When step 2 lands, rewrite "the version is a gate, not a negotiation" in
 [wire protocol](/protocol/wire-protocol.md) and the Recover row in
@@ -202,9 +235,8 @@ When step 2 lands, rewrite "the version is a gate, not a negotiation" in
   between releases share a version, which is why this plan picks the counter.
 - Does the terminal lane ever need an additive change inside an epoch? Its packing has no capability
   story here; any change to it bumps the epoch.
-- Where a release publishes its epoch and floor: a small asset next to the builds, or a line the
-  update check parses from the release body.
-- Where the per-revision daemon directory lives on each platform, and when old ones are removed.
+- Floors do not cover one-shot commands, which open with `Exec` and carry no revision. If that is
+  ever needed, a gated request that reports the daemon's revision does it without an epoch bump.
 
 # Citations
 
