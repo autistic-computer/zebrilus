@@ -764,6 +764,24 @@ impl Connection {
         );
     }
 
+    pub fn request_agent_accounts(&mut self, cx: &mut Context<Self>) {
+        if self.connected {
+            self.command("agent-accounts", Vec::new(), cx);
+        }
+    }
+
+    pub fn add_agent_account(
+        &mut self,
+        provider: zz_protocol::AgentProvider,
+        cx: &mut Context<Self>,
+    ) {
+        self.command(
+            "agent-accounts",
+            vec!["--add".to_owned(), provider.as_str().to_owned()],
+            cx,
+        );
+    }
+
     pub fn invoke(&mut self, command: CommandInvocation, cx: &mut Context<Self>) -> u64 {
         let request_id = self.next_request_id();
         self.commands.insert(request_id, command.name.clone());

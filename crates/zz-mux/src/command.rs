@@ -19449,13 +19449,14 @@ fn agent_selection(options: &Options, args: &[RawText]) -> Result<AgentDescripto
     };
     let model = setting("--model")?;
     let effort = setting("--effort")?;
-    let account = setting("--account")?;
+    let account =
+        setting("--account")?.filter(|account| account != zz_protocol::DEFAULT_AGENT_ACCOUNT);
     if account
         .as_deref()
         .is_some_and(|account| !zz_protocol::valid_agent_account(account))
     {
         return Err(ServerError::InvalidCommand(
-            "select-pane-kind: --account takes an account id: a-z, 0-9, - and _, starting with a letter or digit, at most 32 bytes"
+            "select-pane-kind: --account takes an account id (a-z, 0-9, - and _, starting with a letter or digit, at most 32 bytes) or default"
                 .to_owned(),
         ));
     }
@@ -28721,7 +28722,8 @@ mod tests {
         .expect("agent with a trailing resume");
         let option_effect = select(&["-t", &option, "--resume", "thread-2", "agent", "codex"])
             .expect("agent with a resume option");
-        let bare_effect = select(&["-t", &bare, "agent", "claude-code"]).expect("bare agent");
+        let bare_effect = select(&["-t", &bare, "--account", "default", "agent", "claude-code"])
+            .expect("bare agent on the default account");
 
         let expected = [
             (
@@ -28856,7 +28858,7 @@ mod tests {
                 Err(if account == "-a" {
                     "invalid command: select-pane-kind: --account takes one word".to_owned()
                 } else {
-                    "invalid command: select-pane-kind: --account takes an account id: a-z, 0-9, - and _, starting with a letter or digit, at most 32 bytes".to_owned()
+                    "invalid command: select-pane-kind: --account takes an account id (a-z, 0-9, - and _, starting with a letter or digit, at most 32 bytes) or default".to_owned()
                 }),
                 "{account}"
             );

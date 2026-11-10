@@ -26,7 +26,7 @@ pub(super) fn parse_agent_account_args(args: &[RawText]) -> Result<AgentAccountA
         ));
     };
     let account = match account.as_str() {
-        "default" => None,
+        zz_protocol::DEFAULT_AGENT_ACCOUNT => None,
         id if zz_protocol::valid_agent_account(id) => Some(id.to_owned()),
         _ => {
             return Err(ServerError::CommandParse(

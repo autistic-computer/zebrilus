@@ -1068,7 +1068,15 @@ v122 appends `AgentDescriptor.account`, an `Option<String>` naming the account a
 on: a directory zz keeps per provider under its data directory, whose id is
 `[a-z0-9][a-z0-9_-]{0,31}` (`zz_protocol::valid_agent_account`). `None` is the CLI's own login.
 `select-pane-kind --account id` sets it and `agent-account [-t pane] id|default` changes it on a
-live chat ([agent panes](/concepts/agent-panes.md#accounts)). The account work stays on v122.
+live chat ([agent panes](/concepts/agent-panes.md#accounts)); `default` in both means no account and
+is never an id. v122 also appends `EventPayload::AgentAccounts(Vec<AgentAccount>)`, the answer to the
+internal `agent-accounts [--add provider]` command. `AgentAccount { provider, id, signed_in, email,
+organization, plan }` is one account of one CLI on the daemon's host: `id: None` is the CLI's own
+login and comes first for its provider, followed by the accounts that are signed in; an account that
+is not signed in is left out, and a CLI that is not installed has no rows. Each text field is at most
+`MAX_PROVIDER_TEXT_BYTES`. Every plain call sends the list the daemon already has, if it has one,
+asks the CLIs again, and sends the whole list to every client that asked when it changes. The
+account work stays on v122.
 
 v118 brings the agent pane kind back, for a chat over Claude Code or Codex that a pane flips to
 and from the CLI's own TUI. It appends `PaneKindSnapshot::Agent(AgentDescriptor)` after `Editor`
@@ -1086,7 +1094,7 @@ to go idle ([agent panes](/concepts/agent-panes.md)).
   `Hello` and `Welcome` (`validate_control_message` rejects an inner-version mismatch even if the envelope
   version passed).
 - v122 requires updated clients and daemon together, including the daemon on every ssh host.
-  v122 appends `AgentDescriptor.account`.
+  v122 appends `AgentDescriptor.account` and `EventPayload::AgentAccounts`.
 - v121 requires updated clients and daemon together, including the daemon on every ssh host.
   v121 appends `PaneKindSnapshot::View(ViewDescriptor)`.
 - v120 requires updated clients and daemon together, including the daemon on every ssh host.

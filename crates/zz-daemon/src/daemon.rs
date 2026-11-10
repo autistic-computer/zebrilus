@@ -22,6 +22,7 @@ use parking_lot::{Condvar, Mutex};
 #[cfg(windows)]
 use std::io::{Seek, SeekFrom};
 
+mod accounts;
 mod agent_account;
 mod agent_flip;
 #[cfg(feature = "agent")]
@@ -4588,6 +4589,7 @@ enum DaemonCommandDispatch {
     AgentRespond,
     FlipAgent,
     AgentAccount,
+    AgentAccounts,
     SendLastOutput,
     ShowLastOutput,
     Inspect,
@@ -4627,6 +4629,7 @@ const DAEMON_COMMAND_DISPATCHES: &[(&str, DaemonCommandDispatch)] = &[
     ("agent-respond", DaemonCommandDispatch::AgentRespond),
     ("flip-agent", DaemonCommandDispatch::FlipAgent),
     ("agent-account", DaemonCommandDispatch::AgentAccount),
+    ("agent-accounts", DaemonCommandDispatch::AgentAccounts),
     ("send-last-output", DaemonCommandDispatch::SendLastOutput),
     ("show-last-output", DaemonCommandDispatch::ShowLastOutput),
     ("inspect", DaemonCommandDispatch::Inspect),
@@ -4741,6 +4744,8 @@ struct SharedServer {
     #[cfg(feature = "agent")]
     agent_catalog_pending: Mutex<BTreeSet<(ClientId, PaneId, AgentProvider)>>,
     providers: Mutex<providers::Providers>,
+    #[cfg(all(feature = "agent", unix))]
+    agent_accounts: Mutex<accounts::Accounts>,
     #[cfg(feature = "agent")]
     agent_stopped: AtomicBool,
     #[cfg(all(feature = "agent", unix))]
@@ -5701,6 +5706,8 @@ impl Shared {
             #[cfg(feature = "agent")]
             agent_catalog_pending: Mutex::new(BTreeSet::new()),
             providers: Mutex::new(providers::Providers::default()),
+            #[cfg(all(feature = "agent", unix))]
+            agent_accounts: Mutex::new(accounts::Accounts::default()),
             #[cfg(feature = "agent")]
             agent_stopped: AtomicBool::new(false),
             #[cfg(all(feature = "agent", unix))]
@@ -8471,6 +8478,9 @@ impl Shared {
                     DaemonCommandDispatch::FlipAgent => self.flip_agent(context, &command.args),
                     DaemonCommandDispatch::AgentAccount => {
                         self.agent_account(context, &command.args)
+                    }
+                    DaemonCommandDispatch::AgentAccounts => {
+                        self.agent_accounts(client, context, &command.args)
                     }
                     DaemonCommandDispatch::SendLastOutput => {
                         self.send_last_output(client, context, &command.args)

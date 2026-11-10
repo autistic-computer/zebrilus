@@ -64,6 +64,16 @@ impl ProviderStatus {
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AgentAccount {
+    pub provider: AgentProvider,
+    pub id: Option<String>,
+    pub signed_in: bool,
+    pub email: Option<String>,
+    pub organization: Option<String>,
+    pub plan: Option<String>,
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ProviderTask {
     #[default]

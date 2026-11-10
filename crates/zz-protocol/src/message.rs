@@ -3430,6 +3430,7 @@ pub enum EventPayload {
         application_escape: Vec<String>,
     },
     Providers(crate::ProvidersReport),
+    AgentAccounts(Vec<crate::AgentAccount>),
 }
 
 impl EventPayload {

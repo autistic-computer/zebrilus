@@ -665,6 +665,7 @@ pub static DAEMON_COMMAND_NAMES: &[&str] = &[
     "agent-respond",
     "flip-agent",
     "agent-account",
+    "agent-accounts",
     "send-last-output",
     "show-last-output",
     "inspect",
@@ -802,6 +803,7 @@ pub static INTERNAL_COMMAND_NAMES: &[&str] = &[
     "select-pane-kind",
     "agent-catalog",
     "providers",
+    "agent-accounts",
 ];
 
 pub static NATIVE_COMMAND_NAMES: &[&str] = &[
@@ -817,6 +819,7 @@ pub static NATIVE_COMMAND_NAMES: &[&str] = &[
     "tailnet",
     "flip-agent",
     "agent-account",
+    "agent-accounts",
     "html",
     "focus-sidebar",
     "import-tmux-config",
@@ -1042,6 +1045,19 @@ pub static DAEMON_COMMAND_SPECS: &[CommandSpec] = &[
         usage: "[-t target-pane] account|default",
         options: &[CommandOptionSpec::value("-t", Pane, "agent pane")],
         positionals: &[FreeForm],
+        variadic: None,
+    },
+    CommandSpec {
+        name: "agent-accounts",
+        aliases: &[],
+        description: "List the agent CLI accounts on this host and who is signed in to each, or add one and open its login in a new window; the list arrives on the client event stream, not stdout",
+        usage: "[--add provider]",
+        options: &[CommandOptionSpec::value(
+            "--add",
+            FreeForm,
+            "add a claude or codex account and open its login",
+        )],
+        positionals: &[],
         variadic: None,
     },
     CommandSpec {
@@ -1920,7 +1936,11 @@ pub static COMMAND_SPECS: &[CommandSpec] = &[
             ),
             CommandOptionSpec::value("--model", FreeForm, "model the agent starts with"),
             CommandOptionSpec::value("--effort", FreeForm, "effort the agent starts with"),
-            CommandOptionSpec::value("--account", FreeForm, "account the agent runs on"),
+            CommandOptionSpec::value(
+                "--account",
+                FreeForm,
+                "account the agent runs on, or default for the CLI's own login",
+            ),
         ],
         positionals: &[PaneKind],
         variadic: Some(FreeForm),

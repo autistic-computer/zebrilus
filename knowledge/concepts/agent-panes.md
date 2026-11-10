@@ -1,7 +1,7 @@
 ---
 type: Concept
 title: Agent panes and the flip
-description: How a pane runs Claude Code or Codex as a chat (PaneKind::Agent over the vendor drivers), how a chat and its window are named after the CLI's session title, how flip-agent switches one pane between the CLI's own TUI and that chat on the same session (busy rules, --now, --when-idle and the armed flag, finding the TUI's session, waiting for the old process), forks and side chats, accounts (a CLI login per pane through CLAUDE_CONFIG_DIR or CODEX_HOME, and agent-account), Codex on its shared app server, the chat's slash list, agent-send and agent-respond, what the chat draws, the preview cards and the floating view pane they open, and how its stream reaches clients.
+description: How a pane runs Claude Code or Codex as a chat (PaneKind::Agent over the vendor drivers), how a chat and its window are named after the CLI's session title, how flip-agent switches one pane between the CLI's own TUI and that chat on the same session (busy rules, --now, --when-idle and the armed flag, finding the TUI's session, waiting for the old process), forks and side chats, accounts (a CLI login per pane through CLAUDE_CONFIG_DIR or CODEX_HOME, agent-account, and agent-accounts to list who is signed in and add one), Codex on its shared app server, the chat's slash list, agent-send and agent-respond, what the chat draws, the preview cards and the floating view pane they open, and how its stream reaches clients.
 resource: crates/zz-daemon/src/daemon/agent_flip.rs
 tags: [agent, agent-pane, flip, chat, claude-code, codex, driver, stream]
 timestamp: 2026-11-10T00:00:00-03:00
@@ -195,8 +195,52 @@ picks a different Keychain item than leaving it unset. zz never reads or writes 
   waits (`AgentRuntime::close_for_reopen`), sets the account (`MuxState::update_agent`), and opens
   the pane again on its session. The reopened stream carries on from the old one's sequence
   numbers, so a client keeps its cursor and takes the resume as a session reset.
-- **Not built yet.** Listing accounts with who is signed in, adding one (the add command will call
-  `accounts::create`), the composer's account chip, and removing an account.
+- **`default`** means no account everywhere: `agent-account default` and `select-pane-kind
+  --account default` both run the CLI's own login, and `valid_agent_account` refuses `default`, so
+  a directory of that name is never listed, created or flipped into.
+- **Not built yet.** The composer's account chip, and removing an account: a signed-out account
+  directory is reused by the next add instead.
+
+## Listing and adding accounts
+
+`agent-accounts [--add claude|codex]` (`crates/zz-daemon/src/daemon/accounts.rs`, internal, like
+`providers`) answers on the client event stream with `EventPayload::AgentAccounts(Vec<AgentAccount>)`
+(wire 122), never on stdout.
+
+- **The list.** One `AgentAccount { provider, id, signed_in, email, organization, plan }` per
+  account of each CLI installed on the daemon's host (found as `providers` finds it: the login-shell
+  PATH plus `~/.local/bin`). `id: None` is the CLI's own login and always comes first for its
+  provider, signed in or not; after it come the accounts under `accounts/<cli>/` that are signed in,
+  in id order (`accounts::ids`: a2 before a10). A signed-out account is left out, and a CLI that is
+  not installed has no rows.
+- **Who is signed in.** Each account is asked in its own thread with the account's variable set,
+  and the default with the variable left as the daemon has it; zz reads no token. Claude Code runs
+  `claude auth status --json` and reads its stdout only: `loggedIn`, `email`, `orgName`, and for
+  `plan` the `planTier` (`max_20x`) when present, else `subscriptionType` (`max`); it exits 1 when
+  signed out and still prints the JSON. Codex starts `codex app-server` on stdio, sends
+  `initialize`, `initialized` and `account/read` with `refreshToken: false`
+  (`agent_fork::codex_request`, the fork's handshake), and is signed in when `account` is not null:
+  `email`, `workspaceName` as the organization and `planType` as the plan; an API key login is
+  signed in with no email or plan. The server's stdin is closed, it gets 2 s to exit, and then its
+  process group is killed. Both probes drop the parent Claude Code session variables and `ZZ_PANE`,
+  `ZZ_SESSION`, `TMUX` and `TMUX_PANE`, give up after 10 s, and count as signed out when they fail.
+  An account directory is linked (`accounts::prepare`) before its probe, so a Codex home has its
+  state databases before its first app server.
+- **Watching.** A plain call adds the client to the watchers, sends the list the daemon already has
+  (nothing before the first probe ends), and refreshes in a worker thread; a call during a refresh
+  asks for one more pass. The whole list goes to every watcher still connected when it changes.
+  Every plain call refreshes, which is how a login that finished shows up: the daemon does not
+  follow the login window.
+- **Adding.** `--add` subscribes the caller too, then in a worker thread asks that CLI's accounts,
+  picks the first account that is not signed in, else the lowest `aN` not taken (`a1`, `a2`, ...),
+  creates or completes it (`accounts::create`: 0700, links, Claude seed), and opens a new window
+  named after the provider and id in the caller's session, running `claude auth login` or
+  `codex login` through the user's interactive shell with `CLAUDE_CONFIG_DIR` or `CODEX_HOME` set
+  (`cli_session::interactive_shell`). The login itself is the CLI's own; zz types nothing into it.
+- **Clients.** zz-client's core keeps the last list (`ClientCore::agent_accounts`) and emits
+  `CoreEvent::AgentAccountsChanged`. The desktop keeps one list per host beside the providers report
+  (`MuxClient::host_agent_accounts`, `request_agent_accounts`, `add_agent_account`); zz-app reads the
+  core (`Connection::request_agent_accounts`, `add_agent_account`).
 
 # Finding the TUI's session
 

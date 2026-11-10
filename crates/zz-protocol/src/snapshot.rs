@@ -284,10 +284,12 @@ pub struct AgentDescriptor {
 }
 
 pub const MAX_AGENT_ACCOUNT_BYTES: usize = 32;
+pub const DEFAULT_AGENT_ACCOUNT: &str = "default";
 
 #[must_use]
 pub fn valid_agent_account(id: &str) -> bool {
-    id.len() <= MAX_AGENT_ACCOUNT_BYTES
+    id != DEFAULT_AGENT_ACCOUNT
+        && id.len() <= MAX_AGENT_ACCOUNT_BYTES
         && id
             .bytes()
             .next()

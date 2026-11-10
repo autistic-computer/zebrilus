@@ -105,7 +105,10 @@ pub(crate) fn default_home(provider: AgentProvider) -> Option<PathBuf> {
     }
 }
 
-#[expect(dead_code, reason = "the accounts list reads it")]
+#[cfg_attr(
+    not(unix),
+    expect(dead_code, reason = "agent-accounts runs on macOS and Linux")
+)]
 pub(crate) fn ids(provider: AgentProvider) -> Vec<String> {
     let Ok(root) = root(provider) else {
         return Vec::new();
@@ -128,7 +131,10 @@ pub(crate) fn account_of(provider: AgentProvider, directory: &Path) -> Option<St
         .then(|| id.to_owned())
 }
 
-#[expect(dead_code, reason = "adding an account creates its directory")]
+#[cfg_attr(
+    not(unix),
+    expect(dead_code, reason = "agent-accounts runs on macOS and Linux")
+)]
 pub(crate) fn create(provider: AgentProvider, id: &str) -> io::Result<PathBuf> {
     let home = home(provider, id)?;
     fs::create_dir_all(&home)?;

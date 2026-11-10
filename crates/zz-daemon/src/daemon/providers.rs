@@ -129,7 +129,7 @@ impl Shared {
         }
     }
 
-    fn provider_search(&self) -> Option<OsString> {
+    pub(super) fn provider_search(&self) -> Option<OsString> {
         #[cfg(test)]
         if let Some(search) = self.providers.lock().search.clone() {
             return Some(search);
@@ -274,7 +274,7 @@ fn manual_message(manual: &ManualUpdate) -> String {
     }
 }
 
-const fn program(provider: AgentProvider) -> &'static str {
+pub(super) const fn program(provider: AgentProvider) -> &'static str {
     match provider {
         AgentProvider::ClaudeCode => "claude",
         AgentProvider::Codex => "codex",
@@ -307,7 +307,7 @@ fn search_path() -> Option<OsString> {
     std::env::join_paths(directories).ok()
 }
 
-fn locate(provider: AgentProvider, search: Option<&OsString>) -> Option<PathBuf> {
+pub(super) fn locate(provider: AgentProvider, search: Option<&OsString>) -> Option<PathBuf> {
     let names: &[String] = if cfg!(windows) {
         &[
             format!("{}.exe", program(provider)),
@@ -674,7 +674,7 @@ fn task_command(
     Ok(command)
 }
 
-fn prepare(command: &mut Command, search: Option<&OsString>, first: Option<&Path>) {
+pub(super) fn prepare(command: &mut Command, search: Option<&OsString>, first: Option<&Path>) {
     let mut directories = first.map(Path::to_path_buf).into_iter().collect::<Vec<_>>();
     if let Some(search) = search {
         directories.extend(std::env::split_paths(search));
@@ -785,7 +785,7 @@ fn run(
     }
 }
 
-fn kill_group(child: &mut std::process::Child) {
+pub(super) fn kill_group(child: &mut std::process::Child) {
     #[cfg(unix)]
     if let Some(pid) = i32::try_from(child.id())
         .ok()
@@ -830,7 +830,7 @@ fn plain(line: &str) -> String {
     output.trim().to_owned()
 }
 
-fn bounded(text: &str) -> String {
+pub(super) fn bounded(text: &str) -> String {
     if text.len() <= MAX_PROVIDER_TEXT_BYTES {
         return text.to_owned();
     }
