@@ -53,6 +53,14 @@ timestamp: 2026-11-10T00:00:00-03:00
 > `<!-- zz-wire: epoch=N min-daemon-revision=M -->` at the top of each release's notes, and the
 > update toast and About line say whether the update keeps the sessions running. Every revision is
 > still 1, so none of this shows in a normal run.
+>
+> **2026-11-10: step 4 is built.** On macOS the daemon starts each pane through a helper that runs
+> its own binary with `--zz-pty-exec`. That helper now runs from the pinned copy the daemon already
+> keeps under `$TMPDIR/zz-tmux-shim-<pid>-<seq>/` (`pin_pty_exec_helper` in
+> `crates/zz-terminal/src/session/unix_pty.rs`, set from `Shared::install_tmux_shim`), so an old
+> daemon keeps starting panes with its own build after an update replaces the app bundle. If the
+> copy disappears, the helper tries the bundle path and then forks, as before. Linux and Windows
+> are unchanged. All four steps are built; no message is gated yet and every revision is 1.
 
 The daemon holds every session, so restarting it ends them. Today a client update almost always
 forces that restart, because the client and the daemon must be built from the same protocol version.
