@@ -49,6 +49,7 @@ pub struct Theme {
     pub node_border: Option<String>,
     pub series: Vec<String>,
     pub radius: f64,
+    pub stroke_width: f64,
 }
 
 impl Theme {
@@ -82,6 +83,7 @@ impl Default for Theme {
             .map(String::from)
             .collect(),
             radius: 4.0,
+            stroke_width: 1.0,
         }
     }
 }
@@ -468,6 +470,8 @@ fn validate_options(options: &RenderOptions) -> Result<(), PeleError> {
         || options.direction_breakpoint <= 0.0
         || !options.theme.radius.is_finite()
         || !(0.0..=4096.0).contains(&options.theme.radius)
+        || !options.theme.stroke_width.is_finite()
+        || !(0.0..=16.0).contains(&options.theme.stroke_width)
         || options.theme.series.is_empty()
     {
         return Err(PeleError::semantic(

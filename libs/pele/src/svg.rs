@@ -114,8 +114,13 @@ pub fn document(
             esc(&options.theme.background)
         )
     };
+    let stroke = if (options.theme.stroke_width - 1.0).abs() < f64::EPSILON {
+        String::new()
+    } else {
+        format!(" stroke-width=\"{}\"", num(options.theme.stroke_width))
+    };
     format!(
-        "<svg xmlns=\"http://www.w3.org/2000/svg\" class=\"pele pele-{kind}\" viewBox=\"0 0 {width} {height}\" width=\"{width}\" height=\"{height}\" font-family=\"{}\" font-size=\"{}\" fill=\"{}\" color=\"{}\" role=\"graphics-document document\" aria-roledescription=\"{kind}\"{accessibility}{responsive}>{head}{canvas}{content}</svg>",
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" class=\"pele pele-{kind}\" viewBox=\"0 0 {width} {height}\" width=\"{width}\" height=\"{height}\" font-family=\"{}\" font-size=\"{}\" fill=\"{}\" color=\"{}\"{stroke} role=\"graphics-document document\" aria-roledescription=\"{kind}\"{accessibility}{responsive}>{head}{canvas}{content}</svg>",
         esc(&options.font_family),
         num(options.font_size),
         esc(&options.theme.foreground),
