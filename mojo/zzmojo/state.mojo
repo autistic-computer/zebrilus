@@ -1,6 +1,5 @@
 from std.memory import ArcPointer
 from .terminal_history import HistorySnapshot
-from .protocol import parse_id
 from .stream_transport import InteractiveConnection as Connection
 from .tree_model import MuxSnapshot, WindowSnapshot, _Order, _ordered
 from .terminal_model import TerminalViewport, GRAPHEME
@@ -510,27 +509,3 @@ struct AppModel(Copyable, Movable):
         args.append("--")
         args.append(key)
         _execute(connection, "send-keys", args)
-
-    def create_session(mut self, mut connection: Connection) raises:
-        var args: List[String] = ["-d", "-P", "-F", "#{session_id}"]
-        var response = connection.command("new-session", Span(args))
-        if response.exit_code != 0:
-            raise Error(response.error)
-        var output = String(from_utf8=Span(response.output))
-        self.session = parse_id(output.strip(), 36)
-        self.window = None
-        self.pane = None
-        self.focus_dirty = True
-        self.sync_focus(connection)
-
-    def split(mut self, mut connection: Connection, horizontal: Bool) raises:
-        if not self.pane:
-            return
-        var args: List[String] = [
-            "-h" if horizontal else "-v",
-            "-t",
-            "%" + String(self.pane.value()),
-        ]
-        _execute(connection, "split-window", args)
-        self.focus_dirty = False
-        self.refresh(connection)
