@@ -19,7 +19,7 @@ use async_channel::Sender;
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use parking_lot::Mutex;
 
-use crate::agent::chat_bridge::{Shadow, chat_answer, chat_answers, without_images};
+use crate::agent::chat_bridge::{Shadow, chat_answer, chat_answers, turn_mark, without_images};
 use serde_json::{Map, Value, json};
 use zz_protocol::agent_stream::agent_verb;
 use zz_protocol::chat::ChatEvent;
@@ -1037,6 +1037,7 @@ impl Runtime {
             .starting
             .take()
             .map_or((None, None), |starting| (starting.resume, starting.before));
+        let resumed = start != Start::Fork && source.is_some();
         self.ready().await?;
         self.translator = Translator::new(cwd.clone());
         self.translator.reopen(questions);
@@ -1097,6 +1098,13 @@ impl Runtime {
         if self.title.start(title.clone()) {
             self.emit(AgentStreamPayload::TitleChanged { title })
                 .await?;
+        }
+        if resumed && let Some(thread) = self.thread_id() {
+            self.request(
+                "thread/backgroundTerminals/list",
+                &json!({ "threadId": thread }),
+                Outgoing::Terminals,
+            );
         }
         if let (Start::Fork, Some(source)) = (start, source) {
             let text = if before.is_some() {
@@ -1211,16 +1219,12 @@ impl Runtime {
     ) -> (Vec<(Value, bool)>, Vec<Asked>) {
         let id = thread["id"].as_str().unwrap_or_default().to_owned();
         let mut translator = Translator::new(self.cwd());
-        let mut updates = Vec::new();
-        for item in thread_items(thread) {
-            updates.extend(translator.history_start(&item));
-            for child in spawned(&item) {
-                for step in children.get(&child).into_iter().flatten() {
-                    updates.extend(translator.child_history(&child, step));
-                }
-            }
-            updates.extend(translator.history_end(&item));
-        }
+        let updates = thread["turns"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .flat_map(|turn| turn_history(&mut translator, turn, children))
+            .collect::<Vec<_>>();
         if updates.is_empty()
             && let Some(journal) = self.journal.as_deref()
         {
@@ -2669,6 +2673,57 @@ fn thread_items(thread: &Value) -> Vec<Value> {
         .flatten()
         .flat_map(|turn| turn["items"].as_array().cloned().unwrap_or_default())
         .collect()
+}
+
+fn turn_history(
+    translator: &mut Translator,
+    turn: &Value,
+    children: &HashMap<String, Vec<Value>>,
+) -> Vec<Value> {
+    let mut updates = Vec::new();
+    for item in turn["items"].as_array().into_iter().flatten() {
+        updates.extend(stamped(translator.history_start(item), item));
+        for child in spawned(item) {
+            for step in children.get(&child).into_iter().flatten() {
+                updates.extend(stamped(translator.child_history(&child, step), step));
+            }
+        }
+        updates.extend(stamped(translator.history_end(item), item));
+    }
+    let seconds = |at: &Value| at.as_u64().map(|at| at.saturating_mul(1000));
+    let end = match turn["status"].as_str() {
+        Some("completed") => "completed",
+        Some("interrupted") => "cancelled",
+        Some("failed") => "failed",
+        _ => return updates,
+    };
+    if updates.is_empty() {
+        return updates;
+    }
+    let mut ended = turn_mark(end, seconds(&turn["completedAt"]));
+    if end == "failed" {
+        let error = turn["error"]["message"].as_str();
+        ended["_meta"]["zz"]["error"] = Value::from(error.unwrap_or("Codex turn failed"));
+    }
+    updates.insert(0, turn_mark("started", seconds(&turn["startedAt"])));
+    updates.push(ended);
+    updates
+}
+
+fn stamped(updates: Vec<Value>, item: &Value) -> impl Iterator<Item = Value> {
+    let started = item["startedAtMs"].as_u64();
+    let ended = item["completedAtMs"].as_u64();
+    updates.into_iter().map(move |mut update| {
+        let at = if update["sessionUpdate"] == "tool_call_update" {
+            ended.or(started)
+        } else {
+            started.or(ended)
+        };
+        if let Some(at) = at {
+            update["_meta"]["zz"]["at"] = Value::from(at);
+        }
+        update
+    })
 }
 
 fn spawned(item: &Value) -> Vec<String> {

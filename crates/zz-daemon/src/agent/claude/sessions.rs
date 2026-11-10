@@ -6,9 +6,10 @@ use std::{
     time::UNIX_EPOCH,
 };
 
-use serde_json::{Value, json};
+use serde_json::Value;
 
 use super::translate::{INTERRUPTED, Translator, interrupted, user_prompt};
+use crate::agent::chat_bridge::turn_mark;
 use crate::agent::stream::AgentSessionSummary;
 
 const MAX_SANITIZED_LENGTH: usize = 200;
@@ -446,17 +447,6 @@ impl Replay {
             self.updates.push(turn_mark(outcome, at.or(self.last)));
         }
     }
-}
-
-fn turn_mark(turn: &str, at: Option<u64>) -> Value {
-    let mut mark = json!({
-        "sessionUpdate": "session_info_update",
-        "_meta": { "zz": { "turn": turn } },
-    });
-    if let Some(at) = at {
-        mark["_meta"]["zz"]["at"] = Value::from(at);
-    }
-    mark
 }
 
 fn stamp(entry: &Value) -> Option<u64> {

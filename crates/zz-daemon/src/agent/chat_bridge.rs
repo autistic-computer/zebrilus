@@ -477,12 +477,12 @@ impl Shadow {
         });
     }
 
-    fn replayed_turn(&mut self, mark: &str) {
+    fn replayed_turn(&mut self, mark: &str, error: Option<&str>) {
         if mark != "started" {
-            let end = if mark == "cancelled" {
-                End::Cancelled
-            } else {
-                End::Completed
+            let end = match mark {
+                "cancelled" => End::Cancelled,
+                "failed" => End::Failed(error.unwrap_or("The turn failed").to_owned()),
+                _ => End::Completed,
             };
             self.end_replayed_turn(end);
             return;
@@ -516,7 +516,7 @@ impl Shadow {
         if self.replaying
             && let Some(mark) = zz["turn"].as_str()
         {
-            self.replayed_turn(mark);
+            self.replayed_turn(mark, zz["error"].as_str());
         }
         if let (Some(summary), Some(ids)) = (
             zz["summary"].as_str().map(str::trim),
@@ -679,6 +679,17 @@ impl Shadow {
         }
         effects
     }
+}
+
+pub(crate) fn turn_mark(turn: &str, at: Option<u64>) -> Value {
+    let mut mark = json!({
+        "sessionUpdate": "session_info_update",
+        "_meta": { "zz": { "turn": turn } },
+    });
+    if let Some(at) = at {
+        mark["_meta"]["zz"]["at"] = Value::from(at);
+    }
+    mark
 }
 
 pub(crate) fn attach_images(

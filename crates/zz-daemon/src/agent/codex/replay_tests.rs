@@ -1,6 +1,6 @@
 use async_channel::Receiver;
 use zz_protocol::chat::{
-    Answer, ItemId, ItemKind, ItemStatus, QuestionAnswer, RequestClose, RequestId,
+    Answer, ItemId, ItemKind, ItemStatus, QuestionAnswer, RequestClose, RequestId, TurnOutcome,
 };
 
 use super::*;
@@ -791,4 +791,109 @@ fn a_resumed_thread_shows_the_answered_question_and_reopens_the_open_one() {
     );
     answer_card(&mut runtime, asked[0].0, "B");
     assert_eq!(answer_out(&runtime).len(), 1);
+}
+
+#[test]
+fn a_resumed_thread_keeps_its_turns_and_the_time_of_every_row() {
+    const START: u64 = 1_794_240_000_000;
+    let thread = "thread-1";
+    let (mut runtime, _receiver) = setup(thread);
+    let said = |id: &str, text: &str, at: u64| {
+        json!({ "type": "userMessage", "id": id, "content": [{ "type": "text", "text": text }],
+            "startedAtMs": START + at, "completedAtMs": START + at })
+    };
+    let ran = |id: &str, command: &str, status: &str, code: i64, from: u64, to: u64| {
+        json!({ "type": "commandExecution", "id": id, "command": command, "commandActions": [],
+            "status": status, "exitCode": code, "aggregatedOutput": "a.rs",
+            "startedAtMs": START + from, "completedAtMs": START + to })
+    };
+    runtime.loading = Some(Loading {
+        start: Start::Open,
+        thread: json!({ "id": thread, "turns": [
+            { "id": "t1", "status": "completed",
+              "startedAt": START / 1000, "completedAt": START / 1000 + 9, "items": [
+                said("m1", "list it", 100),
+                ran("exec-1", "ls", "completed", 0, 2000, 5000),
+                { "type": "agentMessage", "id": "a1", "text": "one file",
+                  "startedAtMs": START + 6000, "completedAtMs": START + 8000 },
+            ] },
+            { "id": "t2", "status": "interrupted",
+              "startedAt": START / 1000 + 20, "completedAt": START / 1000 + 24, "items": [
+                said("m2", "now wait", 20_500),
+                ran("exec-2", "sleep 40", "failed", -1, 21_000, 23_000),
+            ] },
+            { "id": "t3", "status": "failed", "error": { "message": "usage limit" },
+              "startedAt": START / 1000 + 30, "completedAt": START / 1000 + 31, "items": [
+                said("m3", "again", 30_200),
+            ] },
+        ] }),
+        cwd: PathBuf::from("/work"),
+        children: HashMap::new(),
+    });
+    smol::block_on(runtime.apply(&Fact::SessionClosed)).expect("closed");
+    smol::block_on(runtime.load()).expect("load");
+    let (view, rejects) = chat_of(&runtime);
+    assert!(rejects.is_empty(), "{rejects:#?}");
+    assert!(view.background.is_empty(), "{:?}", view.background);
+    let turns = view
+        .turns
+        .iter()
+        .map(|turn| {
+            let rows = turn
+                .items
+                .iter()
+                .filter_map(|id| view.item(id))
+                .map(|item| {
+                    (
+                        item.id.as_str().to_owned(),
+                        item.kind,
+                        matches!(item.status, ItemStatus::Completed),
+                        item.started_at - START,
+                        item.ended_at.map(|at| at - START),
+                    )
+                })
+                .collect::<Vec<_>>();
+            (
+                turn.outcome.clone(),
+                turn.started_at - START,
+                turn.ended_at.map(|at| at - START),
+                rows,
+            )
+        })
+        .collect::<Vec<_>>();
+    let row = |id: &str, kind, done, from, to| (id.to_owned(), kind, done, from, Some(to));
+    assert_eq!(
+        turns,
+        [
+            (
+                Some(TurnOutcome::Completed {
+                    stop_reason: "end_turn".to_owned()
+                }),
+                0,
+                Some(9000),
+                vec![
+                    row("u:m1", ItemKind::User, true, 100, 100),
+                    row("exec-1", ItemKind::Execute, true, 2000, 5000),
+                    row("a:a1", ItemKind::Agent, true, 6000, 9000),
+                ],
+            ),
+            (
+                Some(TurnOutcome::Cancelled),
+                20_000,
+                Some(24_000),
+                vec![
+                    row("u:m2", ItemKind::User, true, 20_500, 20_500),
+                    row("exec-2", ItemKind::Execute, false, 21_000, 23_000),
+                ],
+            ),
+            (
+                Some(TurnOutcome::Failed {
+                    message: "usage limit".to_owned()
+                }),
+                30_000,
+                Some(31_000),
+                vec![row("u:m3", ItemKind::User, true, 30_200, 30_200)],
+            ),
+        ]
+    );
 }
