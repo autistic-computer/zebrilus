@@ -2113,7 +2113,7 @@ impl TerminalView {
                 Decision::Copy => self.copy_selection(cx, ClipboardTarget::Clipboard),
                 Decision::SelectAll => self.send_view_action(cx, TerminalViewAction::SelectAll),
                 Decision::ClearHistory => {
-                    self.send_view_action(cx, TerminalViewAction::ClearHistory)
+                    self.send_view_action(cx, TerminalViewAction::ClearHistory);
                 }
                 Decision::Paste => self.paste_clipboard(cx),
                 Decision::Native | Decision::Swallow | Decision::Consumed => {}

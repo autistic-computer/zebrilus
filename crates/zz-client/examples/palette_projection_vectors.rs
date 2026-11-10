@@ -72,10 +72,10 @@ fn pane(id: u64, kind: usize, phase: usize) -> PaneSnapshot {
     };
     PaneSnapshot {
         id: PaneId(id),
-        title: if phase.is_multiple_of(3) {
-            format!("  pane {id} λ  ")
-        } else {
-            " \u{2003}".to_owned()
+        title: match phase % 3 {
+            0 => format!("  pane {id} λ  "),
+            1 => " \u{2003}".to_owned(),
+            _ => " agent ".to_owned(),
         },
         kind,
         synchronized_input: false,

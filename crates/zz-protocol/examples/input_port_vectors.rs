@@ -65,6 +65,19 @@ fn lines(output: &mut Vec<u8>, value: i32) {
 fn request(message: &InputMessage) -> Vec<u8> {
     let mut output = Vec::new();
     match message {
+        InputMessage::Text { pane, text } | InputMessage::BrowserSurfaceText { pane, text } => {
+            uint(
+                &mut output,
+                if matches!(message, InputMessage::Text { .. }) {
+                    0
+                } else {
+                    2
+                },
+            );
+            uint(&mut output, pane.0);
+            uint(&mut output, text.len() as u64);
+            output.extend_from_slice(text.as_bytes());
+        }
         InputMessage::Key {
             pane,
             input,
@@ -178,7 +191,7 @@ fn request(message: &InputMessage) -> Vec<u8> {
                 _ => unreachable!("fixture only includes supported input actions"),
             }
         }
-        _ => unreachable!("fixture only includes key and terminal view inputs"),
+        _ => unreachable!("fixture only includes text, key and terminal view inputs"),
     }
     output
 }
@@ -325,6 +338,27 @@ fn main() -> Result<(), Box<dyn Error>> {
                 cases.push(case(&format!("key-{action:?}-{key:?}-{bits}"), message)?);
             }
         }
+    }
+    for (name, text) in [
+        ("empty", String::new()),
+        ("ascii", "hello".to_owned()),
+        ("scalars", "é🦀\n\u{1b}[200~".to_owned()),
+        ("two-byte-length", "zz ".repeat(100)),
+    ] {
+        cases.push(case(
+            &format!("text-{name}"),
+            InputMessage::Text {
+                pane: PaneId(u64::MAX),
+                text: text.clone(),
+            },
+        )?);
+        cases.push(case(
+            &format!("browser-text-{name}"),
+            InputMessage::BrowserSurfaceText {
+                pane: PaneId(128),
+                text,
+            },
+        )?);
     }
     let cell = PointerCellEvent {
         column: u16::MAX,
