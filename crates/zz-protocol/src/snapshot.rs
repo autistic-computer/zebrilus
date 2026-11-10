@@ -280,6 +280,21 @@ pub struct AgentDescriptor {
     pub session_id: Option<String>,
     pub model: Option<String>,
     pub effort: Option<String>,
+    pub account: Option<String>,
+}
+
+pub const MAX_AGENT_ACCOUNT_BYTES: usize = 32;
+
+#[must_use]
+pub fn valid_agent_account(id: &str) -> bool {
+    id.len() <= MAX_AGENT_ACCOUNT_BYTES
+        && id
+            .bytes()
+            .next()
+            .is_some_and(|first| first.is_ascii_lowercase() || first.is_ascii_digit())
+        && id.bytes().all(|byte| {
+            byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-' || byte == b'_'
+        })
 }
 
 pub const MAX_EDITOR_PATH_BYTES: usize = 16 * 1024;
@@ -981,6 +996,7 @@ mod tests {
             session_id: Some("session-1".to_owned()),
             model: Some("haiku".to_owned()),
             effort: Some("low".to_owned()),
+            account: Some("a1".to_owned()),
         };
         let encoded = postcard::to_stdvec(&PaneKindSnapshot::Agent(descriptor.clone()))
             .expect("encode agent");

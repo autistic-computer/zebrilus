@@ -210,6 +210,7 @@ impl AgentPane {
             &self.chat_cwd(cx),
             Some(message),
             self.transcript.lens.settings.as_ref(),
+            agent_settings::pane_account(self.connection.read(cx).core.snapshot(), self.pane),
         );
         self.connection.update(cx, |connection, cx| {
             connection.invoke(command, cx);

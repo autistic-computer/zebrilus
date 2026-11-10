@@ -1,5 +1,5 @@
 use serde_json::Value;
-use zz_protocol::{AgentProvider, CommandInvocation, PaneId};
+use zz_protocol::{AgentProvider, CommandInvocation, MuxSnapshot, PaneId, PaneKindSnapshot};
 
 pub const MODEL: &str = "model";
 pub const EFFORT: &str = "effort";
@@ -235,6 +235,19 @@ pub const fn agent_program(provider: AgentProvider) -> &'static str {
     }
 }
 
+#[must_use]
+pub fn pane_account(snapshot: &MuxSnapshot, pane: PaneId) -> Option<&str> {
+    snapshot
+        .sessions
+        .iter()
+        .flat_map(|session| &session.windows)
+        .find_map(|window| window.panes.get(&pane))
+        .and_then(|pane| match &pane.kind {
+            PaneKindSnapshot::Agent(agent) => agent.account.as_deref(),
+            _ => None,
+        })
+}
+
 pub const SIDE_CHAT_WIDTH: &str = "46%";
 pub const SIDE_CHAT_HEIGHT: &str = "72%";
 
@@ -252,6 +265,7 @@ fn forked_chat(
     session: &str,
     message: Option<&str>,
     settings: Option<&LensSettings>,
+    account: Option<&str>,
 ) -> CommandInvocation {
     let mut select = vec!["select-pane-kind", "--resume", session, "--fork"];
     if let Some(message) = message {
@@ -265,6 +279,9 @@ fn forked_chat(
             select.extend(["--effort", &settings.effort]);
         }
     }
+    if let Some(account) = account {
+        select.extend(["--account", account]);
+    }
     select.extend(["agent", agent_program(provider)]);
     let line = format!("{} ; {}", command_line(opener), command_line(&select));
     CommandInvocation::new("if-shell", ["-F", "1", &line])
@@ -277,6 +294,7 @@ pub fn fork_chat_command(
     cwd: &str,
     message: Option<&str>,
     settings: Option<&LensSettings>,
+    account: Option<&str>,
 ) -> CommandInvocation {
     forked_chat(
         &["new-window", "-c", cwd],
@@ -284,6 +302,7 @@ pub fn fork_chat_command(
         session,
         message,
         settings,
+        account,
     )
 }
 
@@ -294,6 +313,7 @@ pub fn side_chat_command(
     cwd: &str,
     from: PaneId,
     settings: Option<&LensSettings>,
+    account: Option<&str>,
 ) -> CommandInvocation {
     let from = from.to_string();
     forked_chat(
@@ -314,6 +334,7 @@ pub fn side_chat_command(
         session,
         None,
         settings,
+        account,
     )
 }
 
@@ -481,6 +502,7 @@ mod tests {
                 "t",
                 "/src/my app",
                 Some("i"),
+                None,
                 None
             )),
             "new-window -c '/src/my app' ; select-pane-kind --resume t --fork --at i agent codex"
@@ -490,6 +512,7 @@ mod tests {
                 AgentProvider::ClaudeCode,
                 "s",
                 "/a",
+                None,
                 None,
                 None
             )),
@@ -501,9 +524,10 @@ mod tests {
                 "s",
                 "/a/it's $HOME",
                 PaneId(4),
-                None
+                None,
+                Some("a2")
             )),
-            "new-pane -t %4 -c \"/a/it's \\$HOME\" -x 46% -y 72% -T 'Side chat' ; select-pane-kind --resume s --fork agent claude"
+            "new-pane -t %4 -c \"/a/it's \\$HOME\" -x 46% -y 72% -T 'Side chat' ; select-pane-kind --resume s --fork --account a2 agent claude"
         );
         let settings = LensSettings {
             model: "haiku".to_owned(),
@@ -516,9 +540,10 @@ mod tests {
                 "s",
                 "/a",
                 Some("m"),
-                Some(&settings)
+                Some(&settings),
+                Some("a1")
             )),
-            "new-window -c /a ; select-pane-kind --resume s --fork --at m --model haiku --effort low agent claude"
+            "new-window -c /a ; select-pane-kind --resume s --fork --at m --model haiku --effort low --account a1 agent claude"
         );
         assert!(!real_session("lens-%3"));
     }

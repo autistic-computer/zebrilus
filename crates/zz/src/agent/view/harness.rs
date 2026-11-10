@@ -113,12 +113,14 @@ impl AgentView {
         let (Some(message), Some(session)) = (source_message(item), self.session()) else {
             return;
         };
+        let snapshot = self.mux.read(cx).snapshot();
         let command = fork_chat_command(
             self.pane_state.provider,
             session,
             &self.chat_cwd(),
             Some(message),
             self.pane_state.settings.as_ref(),
+            agent_settings::pane_account(&snapshot, self.pane),
         );
         self.mux.read(cx).execute(command);
     }
