@@ -1,10 +1,10 @@
 ---
 type: Protocol
-title: zz wire protocol (v121)
+title: zz wire protocol (v122)
 description: The versioned, little-endian length-prefixed, postcard-encoded control protocol whose ProtocolMessage enum carries the entire client/daemon conversation over local IPC or an SSH tunnel.
 resource: crates/zz-protocol/src/framing.rs
 tags: [protocol, wire, framing, postcard, versioning]
-timestamp: 2026-11-09T00:00:00-03:00
+timestamp: 2026-11-10T00:00:00-03:00
 ---
 
 # Overview
@@ -15,7 +15,7 @@ daemon through an OpenSSH `ssh -L` Unix-socket forward. iOS instead carries the 
 through `zz proxy` over an in-process `russh` SSH channel.
 Every message is wrapped in a fixed envelope carrying a `u32` little-endian length prefix, a
 one-byte **lane** tag, a **flags** byte, and a `u16` **protocol version**. The current wire version is
-**`PROTOCOL_VERSION = 121`** (`crates/zz-protocol/src/message.rs`).
+**`PROTOCOL_VERSION = 122`** (`crates/zz-protocol/src/message.rs`).
 
 The version is a gate, not a negotiation: a frame whose envelope version differs from the running
 build's is rejected outright. Before disconnecting, a daemon makes a best-effort
@@ -64,7 +64,7 @@ Relevant constants (`framing.rs`): `MAX_FRAME_BYTES = 64 * 1024 * 1024`, `ENVELO
 | length | 0..4 | `u32` LE | Bytes following the prefix (`4 + payload`) |
 | lane | 4 | `u8` | `0` = Control, `1` = Terminal |
 | flags | 5 | `u8` | `0x00` only; every other value is rejected |
-| version | 6..8 | `u16` LE | `PROTOCOL_VERSION` (121) |
+| version | 6..8 | `u16` LE | `PROTOCOL_VERSION` (122) |
 | payload | 8.. | bytes | `postcard(ProtocolMessage)` (Control) or packed terminal sections |
 
 # Schema . `ProtocolMessage` (Control lane)
@@ -1064,6 +1064,12 @@ pane it belongs to and `content` is a `ViewContent`: `Diagram { language, source
 checked when a descriptor decodes, so the kind stays small in every snapshot and delta.
 `view-pane` joins the command catalog ([agent panes](/concepts/agent-panes.md#previews-and-the-view-pane)).
 
+v122 appends `AgentDescriptor.account`, an `Option<String>` naming the account an agent pane runs
+on: a directory zz keeps per provider under its data directory, whose id is
+`[a-z0-9][a-z0-9_-]{0,31}` (`zz_protocol::valid_agent_account`). `None` is the CLI's own login.
+`select-pane-kind --account id` sets it and `agent-account [-t pane] id|default` changes it on a
+live chat ([agent panes](/concepts/agent-panes.md#accounts)). The account work stays on v122.
+
 v118 brings the agent pane kind back, for a chat over Claude Code or Codex that a pane flips to
 and from the CLI's own TUI. It appends `PaneKindSnapshot::Agent(AgentDescriptor)` after `Editor`
 and `ChooseTreePaneKind::Agent` after `Editor`. `AgentDescriptor { provider, cwd, session_id,
@@ -1076,9 +1082,11 @@ to go idle ([agent panes](/concepts/agent-panes.md)).
 
 # Versioning & compatibility
 
-- **`PROTOCOL_VERSION: u16 = 121`** is stamped into every frame's envelope and re-checked inside
+- **`PROTOCOL_VERSION: u16 = 122`** is stamped into every frame's envelope and re-checked inside
   `Hello` and `Welcome` (`validate_control_message` rejects an inner-version mismatch even if the envelope
   version passed).
+- v122 requires updated clients and daemon together, including the daemon on every ssh host.
+  v122 appends `AgentDescriptor.account`.
 - v121 requires updated clients and daemon together, including the daemon on every ssh host.
   v121 appends `PaneKindSnapshot::View(ViewDescriptor)`.
 - v120 requires updated clients and daemon together, including the daemon on every ssh host.

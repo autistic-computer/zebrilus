@@ -4,7 +4,7 @@ title: Mux snapshots (snapshot.rs)
 description: The MuxSnapshot state tree (sessions, windows, recursive split layouts, pane descriptors, pane status and summary records, behavior flags, per-client focus, and viewer presence) that clients reconcile on attach and after a resync, plus the daemon clock that dates pane changes.
 resource: crates/zz-protocol/src/snapshot.rs
 tags: [protocol, snapshot, layout, state, presence, sidebar, pane-summary]
-timestamp: 2026-10-23T00:00:00-03:00
+timestamp: 2026-11-10T00:00:00-03:00
 ---
 
 # Overview
@@ -126,7 +126,8 @@ dirty state stay GUI-local. Both paths are validated on deserialization as absol
 become mux state.
 
 `PaneKindSnapshot::Agent(AgentDescriptor)` (v118) is an [agent pane](/concepts/agent-panes.md):
-provider, folder, session, model and effort. A client reads a terminal's `summary.process` to offer
+provider, folder, session, model and effort, and since v122 the `account` it runs on (`None` for
+the CLI's own login; [accounts](/concepts/agent-panes.md#accounts)). A client reads a terminal's `summary.process` to offer
 the flip on one running Claude Code or Codex, and `summary.flip_armed` says a flip waits for the
 pane to go idle. The chat itself, prompts and permissions travel on the agent lane, never in the
 mux snapshot.

@@ -134,10 +134,22 @@ impl AgentRuntime {
     }
 
     pub(crate) fn close_and_wait(&self, pane: PaneId) {
+        self.stop_and_wait(pane, false);
+    }
+
+    pub(crate) fn close_for_reopen(&self, pane: PaneId) {
+        self.stop_and_wait(pane, true);
+    }
+
+    fn stop_and_wait(&self, pane: PaneId, reopen: bool) {
         let thread = {
             let _lifecycle = self.lifecycle.lock();
             let thread = self.host.close(pane);
-            self.fanout.close_lane(pane);
+            if reopen {
+                self.fanout.park_lane(pane);
+            } else {
+                self.fanout.close_lane(pane);
+            }
             thread
         };
         if let Some(thread) = thread {
@@ -426,6 +438,7 @@ struct AgentFanout {
     journal: Option<Arc<AgentJournal>>,
     lifecycle: Arc<Mutex<()>>,
     lanes: Mutex<BTreeMap<PaneId, PaneLane>>,
+    parked: Mutex<BTreeMap<PaneId, u64>>,
     wake: Condvar,
     stopped: AtomicBool,
     flusher: Mutex<Option<JoinHandle<()>>>,
@@ -442,6 +455,7 @@ impl AgentFanout {
             journal,
             lifecycle,
             lanes: Mutex::new(BTreeMap::new()),
+            parked: Mutex::new(BTreeMap::new()),
             wake: Condvar::new(),
             stopped: AtomicBool::new(false),
             flusher: Mutex::new(None),
@@ -455,14 +469,30 @@ impl AgentFanout {
         provider: AgentProvider,
         session_id: Option<String>,
     ) {
-        self.lanes
-            .lock()
-            .insert(pane, PaneLane::new(generation, provider, session_id));
+        let mut lane = PaneLane::new(generation, provider, session_id);
+        if let Some(next_seq) = self.parked.lock().remove(&pane) {
+            lane.next_seq = next_seq;
+            lane.evicted_seq = next_seq.saturating_sub(1);
+        }
+        self.lanes.lock().insert(pane, lane);
         self.ensure_flusher();
     }
 
     fn close_lane(&self, pane: PaneId) {
+        self.parked.lock().remove(&pane);
         self.lanes.lock().remove(&pane);
+    }
+
+    fn park_lane(&self, pane: PaneId) {
+        let Some(mut lane) = self.lanes.lock().remove(&pane) else {
+            return;
+        };
+        if let Some(publisher) = self.publisher.upgrade() {
+            for (first_seq, items) in lane.take_batch() {
+                publisher.publish_agent_updates(lane.generation, pane, first_seq, items, None);
+            }
+        }
+        self.parked.lock().insert(pane, lane.next_seq);
     }
 
     fn published_state(&self, pane: PaneId) -> Option<AgentPaneWire> {

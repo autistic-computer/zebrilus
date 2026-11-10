@@ -1,7 +1,7 @@
 ---
 type: Concept
 title: Agent panes and the flip
-description: How a pane runs Claude Code or Codex as a chat (PaneKind::Agent over the vendor drivers), how a chat and its window are named after the CLI's session title, how flip-agent switches one pane between the CLI's own TUI and that chat on the same session (busy rules, --now, --when-idle and the armed flag, finding the TUI's session, waiting for the old process), forks and side chats, Codex on its shared app server, the chat's slash list, agent-send and agent-respond, what the chat draws, the preview cards and the floating view pane they open, and how its stream reaches clients.
+description: How a pane runs Claude Code or Codex as a chat (PaneKind::Agent over the vendor drivers), how a chat and its window are named after the CLI's session title, how flip-agent switches one pane between the CLI's own TUI and that chat on the same session (busy rules, --now, --when-idle and the armed flag, finding the TUI's session, waiting for the old process), forks and side chats, accounts (a CLI login per pane through CLAUDE_CONFIG_DIR or CODEX_HOME, and agent-account), Codex on its shared app server, the chat's slash list, agent-send and agent-respond, what the chat draws, the preview cards and the floating view pane they open, and how its stream reaches clients.
 resource: crates/zz-daemon/src/daemon/agent_flip.rs
 tags: [agent, agent-pane, flip, chat, claude-code, codex, driver, stream]
 timestamp: 2026-11-10T00:00:00-03:00
@@ -37,9 +37,10 @@ over.
 | `cwd` | the folder the driver runs in; filled from `-c`, else the terminal or donor pane's folder, else the daemon's |
 | `session_id` | the vendor session to resume; the driver's session goes back into it, so a `/clear` or a fork shows here |
 | `model`, `effort` | what the driver is set to once its session is ready (`SetConfigOption` after `SessionReady`) |
+| `account` | the [account](#accounts) the pane runs on (wire 122); `None` is the CLI's own login |
 
 **Opening one.** `select-pane-kind [-t pane] [-c dir] [--resume id] [--model m] [--effort e]
-agent <claude|codex>` (`--resume id` may also follow the provider) turns a picker, or a terminal,
+[--account id] agent <claude|codex>` (`--resume id` may also follow the provider) turns a picker, or a terminal,
 into an agent pane. A terminal keeps its pane id and place: its process is stopped and the driver
 starts once it has exited (`AGENT_CLI_EXIT_GRACE`, 5 s). `select-pane-kind [-c dir] terminal
 [command ...]` turns an agent pane back into a terminal (the mux emits `PaneRespawned`), closing
@@ -61,9 +62,12 @@ pane's session. Clients open a fork or side chat in a new pane with one command 
 window's or float's pane becomes the target of the next command:
 
 - Fork from a message: `new-window -c <dir> ; select-pane-kind --resume <session> --fork --at
-  <message> agent <claude|codex>`
-- Side chat in a PiP: `new-pane -c <dir> ; select-pane-kind --resume <session> --fork agent
-  <claude|codex>`
+  <message> [--account <id>] agent <claude|codex>`
+- Side chat in a PiP: `new-pane -c <dir> ; select-pane-kind --resume <session> --fork
+  [--account <id>] agent <claude|codex>`
+
+Both carry the source pane's account (`zz_client::agent_settings::pane_account`), so the copy runs
+on the same login.
 
 # Chat titles
 
@@ -132,6 +136,67 @@ A chat is named after its session, the name each CLI gives its own sessions.
   the CLI drops the flip.
 - The pane keeps its id and place. `inspect` lists `flip-agent` among the verbs of an agent pane
   and of a terminal running either CLI.
+- Both directions keep the pane's [account](#accounts).
+
+# Accounts
+
+A pane can run on an account: a directory zz keeps per provider,
+`<data>/zz/accounts/claude/<id>` or `<data>/zz/accounts/codex/<id>` (`zz-dev` for dev builds;
+`<data>` is `~/Library/Application Support` on macOS and `$XDG_DATA_HOME` or `~/.local/share` on
+Linux), created 0700 (`crates/zz-daemon/src/agent/accounts.rs`). Ids are
+`[a-z0-9][a-z0-9_-]{0,31}`. Everything the daemon runs for the pane gets `CLAUDE_CONFIG_DIR` or
+`CODEX_HOME` set to it, and the CLI keeps that account's login there. A pane with no account
+leaves both variables as the daemon has them, since `CLAUDE_CONFIG_DIR=~/.claude` set explicitly
+picks a different Keychain item than leaving it unset. zz never reads or writes tokens.
+
+- **Shared by link.** An account directory links everything but the login into the default
+  directory (`~/.claude`, or `$CODEX_HOME` or `~/.codex`, as `accounts::default_home` resolves
+  them), so sessions, settings, skills and the Codex state databases are one set for every
+  account, and the daemon's readers (session lists, titles, transcript replay, the Claude peer
+  registry, `agent_fork`) keep reading the default directory. Claude Code links `projects`,
+  `settings.json`, `settings.local.json`, `skills`, `agents`, `commands`, `output-styles`,
+  `plugins`, `history.jsonl`, `file-history`, `session-env`, `plans`, `paste-cache`, `uploads`,
+  `todos`, `tasks`, `sessions`, `teams`, `dev-mods`, `scripts`, `CLAUDE.md` and
+  `keybindings.json`. Codex links `sessions`, `archived_sessions`, `session_index.jsonl` and its
+  `.lock`, `thread-writer-locks`, `rollout-migrations`, `.sqlite-maintenance.lock`, `config.toml`,
+  `AGENTS.md`, `skills`, `agents`, `plugins`, `hooks.json`, `keybindings.json`, `history.jsonl`,
+  `attachments` and `worktrees`, and every `state_*`, `thread_history_*`, `goals_*` and `queue_*`
+  `.sqlite` file (never its `-wal`, `-shm` or `-journal`). Logins (`.credentials.json`,
+  `.claude.json`, `auth.json`), caches, logs, memories and the Codex daemon files stay per account.
+  `accounts::link` runs when an account is created and before every spawn on it, adds only the
+  links that are missing, and never replaces or removes an entry.
+- **Seed.** A new Claude Code account gets `.claude.json` from the global config
+  (`~/.claude.json`, or `.claude.json` in the daemon's `CLAUDE_CONFIG_DIR`): `hasCompletedOnboarding`,
+  `mcpServers` and each project's `hasTrustDialogAccepted`, nothing else, so the TUI skips
+  onboarding and the trust dialog. A missing or broken global config seeds
+  `{"hasCompletedOnboarding": true}`.
+- **Spawn.** `agent_pane_spec` puts the descriptor's account (`accounts::Account`: the id and its
+  resolved directory) on the pane's `AgentWorkspaceEnvironment`, outside `entries()`, which also
+  feeds Codex's `thread_config`. Before spawning, `accounts::prepare` checks the directory and
+  links it. The Claude Code driver sets `CLAUDE_CONFIG_DIR` beside the workspace entries, so a
+  configured command's own environment still wins. The Codex driver starts the app server daemon
+  for the account with `CODEX_HOME` set and connects to
+  `<dir>/app-server-control/app-server-control.sock`, one daemon per home; its per-pane
+  `codex app-server` fallback gets `CODEX_HOME` too. An ACP adapter gets the variable unless its
+  command sets it. A named account whose directory is missing fails the pane with
+  `Claude Code account a1 has no directory at <dir>; ...` and runs nothing on another login.
+- **Flips.** Chat to CLI runs the CLI as `CLAUDE_CONFIG_DIR=<dir> claude --resume ...` (or
+  `CODEX_HOME=<dir> codex resume ...`) inside the user's interactive shell
+  (`cli_session::interactive_shell`), so the variable reaches the TUI after the shell's startup
+  files. CLI to chat reads the variable from the TUI's process (`process_info::environment`:
+  `/proc/<pid>/environ` on Linux, the strings after argv in `KERN_PROCARGS2` on macOS) and, when it
+  names an account directory (`accounts::account_of`), adds `--account`. macOS shows no environment
+  for Apple-signed binaries, which the CLIs are not. A chat whose account directory is missing
+  refuses to flip to the CLI.
+- **Switching a live chat.** `agent-account [-t pane] <id|default>`
+  (`crates/zz-daemon/src/daemon/agent_account.rs`). Anything running fails it with an error that
+  starts with `busy:`, using the flip's `chat_running`, which for Codex also counts a running turn,
+  since that turn lives in the old home's app server. Otherwise the daemon closes the driver and
+  waits (`AgentRuntime::close_for_reopen`), sets the account (`MuxState::update_agent`), and opens
+  the pane again on its session. The reopened stream carries on from the old one's sequence
+  numbers, so a client keeps its cursor and takes the resume as a session reset.
+- **Not built yet.** Listing accounts with who is signed in, adding one (the add command will call
+  `accounts::create`), the composer's account chip, and removing an account.
 
 # Finding the TUI's session
 

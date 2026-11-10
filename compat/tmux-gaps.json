@@ -314,6 +314,7 @@
         "extension-flag:new-window:--profile",
         "extension-flag:split-window:--kind",
         "extension-flag:split-window:--profile",
+        "native-command:agent-account",
         "native-command:agent-catalog",
         "native-command:agent-respond",
         "native-command:agent-send",

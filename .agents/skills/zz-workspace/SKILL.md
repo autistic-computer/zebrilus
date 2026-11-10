@@ -108,11 +108,15 @@ Commands that set an explicit exit code keep that code.
 
 ## Agents
 
-Claude Code and Codex run two ways in a pane, and a pane flips between them on the same session. In a terminal pane the CLI runs as its own TUI, started like any program (`zz split-window -h claude`). In an agent pane the daemon runs the CLI headless and the clients draw the conversation as a chat: `zz select-pane-kind -t %N [-c DIR] [--resume ID] [--model M] [--effort E] agent claude|codex` turns a picker or a terminal into one.
+Claude Code and Codex run two ways in a pane, and a pane flips between them on the same session. In a terminal pane the CLI runs as its own TUI, started like any program (`zz split-window -h claude`). In an agent pane the daemon runs the CLI headless and the clients draw the conversation as a chat: `zz select-pane-kind -t %N [-c DIR] [--resume ID] [--model M] [--effort E] [--account ID] agent claude|codex` turns a picker or a terminal into one.
 
 ### `zz flip-agent [-t %N] [--now | --when-idle | --cancel]`
 
 Flip a terminal running Claude Code or Codex into a chat on the same session, or a chat into a terminal running the CLI with that session resumed, through the user's interactive shell. The pane keeps its id and place. When something runs (a turn, background shells or subagents, queued prompts) the flip fails with an error that starts with `busy:` and says what runs; `--now` flips anyway and stops it, `--when-idle` flips once nothing runs, and `--cancel` drops a waiting flip. Codex on its shared app server never refuses: the turn lives in the server and the other side picks it up.
+
+### `zz agent-account [-t %N] ID|default`
+
+Move a chat to another account and resume the same session there. An account is a directory in zz's data directory (`accounts/claude/ID` or `accounts/codex/ID`) that shares sessions, settings and skills with the CLI's own directory and keeps its own login; everything the daemon runs for the pane gets `CLAUDE_CONFIG_DIR` or `CODEX_HOME` pointing at it. `default` goes back to the CLI's own login. While anything runs, a Codex turn included, it fails with an error that starts with `busy:`. A chat whose account directory is gone fails instead of running on another login. Flips keep the account: the CLI starts with the variable set, and a CLI started with an account's directory flips into a chat on that account. Forks and side chats opened from a chat stay on its account.
 
 `zz select-pane-kind --resume ID --fork [--at MESSAGE] agent claude|codex` opens a chat on a copy of a session, through that message's turn when `--at` names one.
 
@@ -136,7 +140,7 @@ Terminal agents keep their own permission settings: Codex `approval_policy`, Cla
 ### `zz inspect [-a | -t %N] [--json]`
 
 Describe a pane's kind, process, geometry, exit status, progress, agent facts, and browser URL.
-Read one `key: value` line per field, or use `--json` for one object with string facts and string arrays for `verbs` and `events`. Text output lists use spaces and skip empty facts; JSON keeps every key, with empty strings for unavailable facts. `agent_pending_permission` is the pending request ID, or empty. `verbs` lists what applies to this pane's kind; agent panes list `agent-send`, `flip-agent` and `agent-respond`, a terminal running Claude Code or Codex lists `flip-agent`, and another terminal with a nonempty `agent_state` lists `agent-send`. `events` names what `zz events` can report for the pane. Use `-a` for every pane in every session, ordered by session ID, window index, and pane index, with a blank line between text blocks or one JSON object per line; `-a` and `-t` cannot be combined. With neither, inspect the current pane.
+Read one `key: value` line per field, or use `--json` for one object with string facts and string arrays for `verbs` and `events`. Text output lists use spaces and skip empty facts; JSON keeps every key, with empty strings for unavailable facts. `agent_pending_permission` is the pending request ID, or empty. `verbs` lists what applies to this pane's kind; agent panes list `agent-send`, `flip-agent`, `agent-account` and `agent-respond`, a terminal running Claude Code or Codex lists `flip-agent`, and another terminal with a nonempty `agent_state` lists `agent-send`. `events` names what `zz events` can report for the pane. Use `-a` for every pane in every session, ordered by session ID, window index, and pane index, with a blank line between text blocks or one JSON object per line; `-a` and `-t` cannot be combined. With neither, inspect the current pane.
 
 ```sh
 zz inspect -a --json | jq -c 'select(.agent_state!="") | {pane_id,agent_state}'
