@@ -1,0 +1,371 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Empty agent chat</title>
+<link rel="stylesheet" href="/penna/penna.css">
+<link rel="stylesheet" href="/zz.css">
+<script src="/penna/kit.js" data-tokens="/tokens/" data-themes="macos default yaru" data-theme="macos"></script>
+<style>
+  .zz-page { display: grid; gap: 56px; max-width: 1360px; margin: 0 auto; padding: 40px 32px 96px; }
+  .zz-page > section { display: grid; gap: 14px; min-width: 0; }
+  .zz-page h1 { margin: 0; font-size: var(--penna-text-title-size); line-height: var(--penna-text-title-line); font-weight: 600; }
+  .zz-page h2 { margin: 0; font-size: 15px; line-height: 20px; font-weight: 600; }
+  .zz-page p { margin: 0; max-width: 84ch; color: var(--penna-fg-muted, var(--penna-muted)); }
+  .zz-page p b { color: var(--penna-fg); font-weight: 600; }
+  .zz-page code { font: 12px/18px var(--penna-mono); }
+  .zz-intro { display: grid; gap: 6px; }
+
+  .zz-variants.penna-variants { padding: 0; }
+  .zz-variants > figure { min-width: 0; }
+  .zz-panes.penna-variants { --penna-variant-width: 520px; }
+  .zz-takes.penna-variants { --penna-variant-width: 380px; max-width: 440px; }
+
+  .zz-frame { display: flex; min-width: 0; }
+  .zz-frame > [data-penna="pane"] { flex: 1; height: 760px; }
+  .zz-frame [data-penna="button.title"] { flex: none; max-width: none; color: var(--penna-fg); }
+  .zz-cwd { color: var(--penna-muted); }
+
+  .zz-empty { display: flex; flex: 1; flex-direction: column; align-items: center; min-height: 0; padding: 36px 16px 12px; overflow: hidden; }
+  .zz-empty-col { display: flex; flex: 1; flex-direction: column; width: 100%; max-width: 440px; min-height: 0; }
+  .zz-hero { display: flex; flex: none; flex-direction: column; align-items: center; gap: 4px; padding-bottom: 18px; text-align: center; }
+  .zz-hero > [data-icon] { margin-bottom: 8px; color: var(--penna-fg-muted, var(--penna-muted)); --penna-icon-size: 34px; }
+  .zz-hero > b { font-size: 17px; line-height: 24px; font-weight: 600; }
+  .zz-hero > span { color: var(--penna-fg-muted, var(--penna-muted)); }
+
+  .zz-filter[data-penna] { flex: none; width: 100%; height: 32px; margin-bottom: 4px; padding: 0 10px; font-size: 13px; --penna-icon-size: 14px; }
+  .zz-filter > [data-icon="search"] { color: var(--penna-muted); }
+  .zz-filter > button { display: none; width: 20px; height: 20px; --penna-icon-size: 10px; }
+  .zz-filter[data-filled] > button { display: inline-flex; }
+  .zz-list { display: flex; flex: 1; flex-direction: column; gap: 2px; min-height: 0; overflow-y: auto; }
+
+  .zz-plabel { display: flex; flex: none; align-items: center; gap: 6px; padding: 8px 12px 2px; font-size: 11px; font-weight: 600; color: var(--penna-fg-muted, var(--penna-muted)); --penna-icon-size: 12px; }
+  .zz-hint { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; font-weight: 400; }
+  .zz-prow[data-penna] { display: flex; flex: none; align-items: center; gap: 10px; height: 34px; padding: 0 12px; font-size: 13px; cursor: var(--penna-click-cursor); --penna-icon-size: 16px; }
+  .zz-prow > [data-icon] { color: var(--penna-muted); }
+  .zz-prow[data-quiet] { color: var(--penna-muted); }
+  .zz-ptitle { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .zz-path { margin-left: 8px; font-size: 12px; color: var(--penna-muted); }
+  .zz-pnote { flex: none; font-size: 11px; color: var(--penna-muted); font-variant-numeric: tabular-nums; }
+  .zz-age { width: 26px; text-align: right; }
+  .zz-prow > [data-penna="keycap"] { flex: none; }
+
+  .zz-dock { flex: none; padding: 0 16px 14px; }
+  .zz-dock > * { max-width: 682px; margin-inline: auto; }
+  .zz-composer[data-penna="field.composer"] { flex-direction: row; align-items: center; gap: 6px; width: 100%; min-height: 44px; padding: 6px; }
+  .zz-composer > .zz-input { flex: 1; min-height: 0; padding: 0 4px; font-size: 14px; line-height: 22px; }
+  .zz-foot { display: flex; align-items: center; gap: 6px; width: 100%; padding: 6px 2px 0; }
+  .zz-grow { flex: 1; min-width: 0; }
+  .zz-plus[data-penna] { width: 28px; height: 28px; --penna-icon-size: 14px; }
+  .zz-chip { display: inline-flex; flex: none; align-items: center; gap: 6px; height: 26px; padding: 0 9px; font-size: 12px; line-height: 16px; white-space: nowrap; cursor: var(--penna-click-cursor); user-select: none; --penna-icon-size: 12px; }
+  .zz-chip .zz-dim { color: var(--penna-muted); }
+  .zz-chip > [data-icon="chevron-down"] { opacity: 0.6; --penna-icon-size: 10px; }
+
+  .zz-demo { display: grid; grid-template-columns: minmax(0, 1fr); align-content: end; justify-items: end; gap: 8px; min-width: 0; min-height: 640px; padding: 20px; border-radius: 14px; background: color-mix(in srgb, var(--penna-fg) 3%, transparent); }
+
+  .zz-pop[data-penna="popover"] { display: flex; flex-direction: column; width: 264px; max-width: 100%; padding: 6px; }
+  .zz-head { display: flex; flex: none; align-items: center; justify-content: space-between; height: 26px; padding: 0 10px; font-size: 11px; font-weight: 600; color: var(--penna-muted); }
+  .zz-head > b { font-size: 12px; font-weight: 400; color: var(--penna-fg); }
+  .zz-sep { flex: none; height: 1px; margin: 6px -6px; background: var(--penna-divider); }
+  .zz-pop [data-penna="menu-item"] { flex: none; height: 32px; gap: 8px; padding: 0 10px; font-size: 13px; font-weight: 400; --penna-icon-size: 12px; }
+  .zz-pop [data-penna="menu-item"] > span { flex: 1; min-width: 0; }
+  .zz-pop [data-model]:not([data-state]) > [data-icon] { visibility: hidden; }
+  .zz-more[data-penna] { color: var(--penna-muted); }
+  .zz-more > em { font-style: normal; font-size: 11px; font-variant-numeric: tabular-nums; }
+  .zz-more > [data-icon] { --penna-icon-size: 10px; }
+  .zz-models { display: flex; flex-direction: column; max-height: 256px; overflow-y: auto; }
+  .zz-pop [hidden] { display: none; }
+
+
+  .zz-slide { --h: 26px; --k: 30px; --n: 6; --at: 3; --pad: calc((var(--k) - 4px) / 2); --step: calc((100% - 2 * var(--pad)) / (var(--n) - 1)); position: relative; flex: none; height: var(--h); margin: 2px 10px 10px; border-radius: calc(var(--h) / 2); background: color-mix(in srgb, var(--penna-fg) 10%, transparent); cursor: var(--penna-click-cursor); user-select: none; touch-action: none; }
+  .zz-slide > .zz-fill { position: absolute; inset: 0 auto 0 0; width: calc(var(--at) * var(--step) + 2 * var(--pad)); overflow: hidden; border-radius: inherit; background: var(--penna-accent); transition: width 160ms cubic-bezier(0.22, 1, 0.36, 1); }
+  .zz-slide > b { position: absolute; top: 50%; left: calc(var(--pad) + var(--i) * var(--step)); width: 4px; height: 4px; margin: -2px 0 0 -2px; border-radius: 50%; background: color-mix(in srgb, var(--penna-fg) 34%, transparent); pointer-events: none; }
+  .zz-slide > b[data-on] { background: color-mix(in srgb, var(--penna-on-accent) 70%, transparent); }
+  .zz-slide > b:first-of-type { width: 6px; height: 6px; margin: -3px 0 0 -3px; background: none; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--penna-fg) 44%, transparent); }
+  .zz-slide > b[data-on]:first-of-type { background: none; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--penna-on-accent) 70%, transparent); }
+  .zz-slide > .zz-knob { font-style: normal; position: absolute; top: -2px; left: calc(var(--at) * var(--step) - 2px); display: flex; align-items: center; justify-content: center; width: var(--k); height: calc(var(--h) + 4px); border-radius: calc(var(--h) / 2 + 2px); background: var(--penna-knob, #fff); box-shadow: 0 1px 4px #0005, 0 0 0 0.5px #0003; transition: left 160ms cubic-bezier(0.22, 1, 0.36, 1); }
+</style>
+</head>
+<body>
+<main class="zz-page">
+  <div class="zz-intro">
+    <h1>Empty agent chat</h1>
+    <p>The New chat picker stays as it is. A chat with nothing in it is where you pick one up: it lists what this CLI already has, from the CLI's own store. This round adds a filter to the list, drops folders you cannot resume in, and tries a horizontal effort slider under a shorter model list.</p>
+  </div>
+
+  <section>
+    <h2>1. A filter, and only folders you can resume in</h2>
+    <p><b>Left out for good:</b> folders that no longer exist, since a chat cannot be resumed there. That covers temp dirs, deleted worktrees and chats that ran on another machine, which is where the repeated names came from. <b>Left out of the list, kept in the filter:</b> scratch folders, meaning anything under the temp dir, <code>~/Library</code> or a dot folder. Every folder row shows its parent path, so two folders with one name can be told apart. The list scrolls in its own space and never runs under the composer.</p>
+    <div class="penna-variants zz-variants zz-panes">
+      <figure>
+        <div class="penna-gaps zz-frame">
+          <section data-penna="pane">
+            <div data-penna="bar.pane">
+              <div data-penna="button.title"><i data-icon="asterisk"></i>Claude Code<span class="zz-cwd">~/dev/autistic-computer/zebrilus</span></div>
+              <span class="zz-grow"></span>
+              <button data-penna="icon-button.bar"><i data-icon="panel-bottom"></i></button>
+              <button data-penna="icon-button.bar"><i data-icon="layout-columns"></i></button>
+              <button data-penna="icon-button.bar"><i data-icon="xmark"></i></button>
+            </div>
+            <div class="zz-empty">
+              <div class="zz-empty-col" data-live>
+                <div class="zz-hero"><i data-icon="asterisk"></i><b>Claude Code is ready</b><span>Ask it anything, or pick up a chat.</span></div>
+                <label class="zz-filter" data-penna="field"><i data-icon="search"></i><input placeholder="Filter chats and folders" spellcheck="false" autocomplete="off"><button data-penna="icon-button" type="button"><i data-icon="xmark"></i></button></label>
+                <div class="zz-list"></div>
+              </div>
+            </div>
+            <div class="zz-dock">
+              <div class="zz-composer" data-penna="field.composer">
+                <button class="zz-plus" data-penna="icon-button"><i data-icon="plus"></i></button>
+                <div class="zz-input penna-muted">Message Claude Code...</div>
+                <button data-penna="button.send" data-prominent data-state="disabled"><i data-icon="arrow-up"></i></button>
+              </div>
+              <div class="zz-foot">
+                <span class="zz-grow"></span>
+                <span class="zz-chip" data-penna="chip"><i data-icon="circle-user"></i>Ask</span>
+                <span class="zz-chip" data-penna="chip">Opus 5.5<span class="zz-dim">High</span><i data-icon="chevron-down"></i></span>
+              </div>
+            </div>
+          </section>
+        </div>
+        <figcaption><b>At rest, live</b>Three chats from this folder, five other folders, newest first. Type in the filter to try it: <code>clair</code>, <code>ring</code>, <code>scratch</code>. Up or Down from the empty composer moves into the list; from there typing goes to the filter, Enter resumes, and Escape clears the filter, then returns to the composer.</figcaption>
+      </figure>
+
+      <figure>
+        <div class="penna-gaps zz-frame">
+          <section data-penna="pane">
+            <div data-penna="bar.pane">
+              <div data-penna="button.title"><i data-icon="asterisk"></i>Claude Code<span class="zz-cwd">~/dev/autistic-computer/zebrilus</span></div>
+              <span class="zz-grow"></span>
+              <button data-penna="icon-button.bar"><i data-icon="panel-bottom"></i></button>
+              <button data-penna="icon-button.bar"><i data-icon="layout-columns"></i></button>
+              <button data-penna="icon-button.bar"><i data-icon="xmark"></i></button>
+            </div>
+            <div class="zz-empty">
+              <div class="zz-empty-col">
+                <div class="zz-hero"><i data-icon="asterisk"></i><b>Claude Code is ready</b><span>Ask it anything, or pick up a chat.</span></div>
+                <label class="zz-filter" data-penna="field" data-state="focused" data-filled><i data-icon="search"></i><input value="clair" spellcheck="false" autocomplete="off" readonly><button data-penna="icon-button" type="button"><i data-icon="xmark"></i></button></label>
+                <div class="zz-list">
+                  <div class="zz-plabel">Folders<span class="zz-hint"><span data-penna="keycap">esc</span>clear</span></div>
+                  <div class="zz-prow" data-penna="menu-item.card" data-state="current"><i data-icon="folder"></i><span class="zz-ptitle">clairvo<span class="zz-path">~/dev</span></span><span class="zz-pnote zz-age">now</span><span data-penna="keycap">↵</span></div>
+                  <div class="zz-plabel">Chats</div>
+                  <div class="zz-prow" data-penna="menu-item.card"><span class="zz-ptitle">Clairvo invoice import fails on empty rows</span><span class="zz-pnote">clairvo</span><span class="zz-pnote zz-age">now</span></div>
+                  <div class="zz-prow" data-penna="menu-item.card"><span class="zz-ptitle">Queue retries for the mailer</span><span class="zz-pnote">clairvo</span><span class="zz-pnote zz-age">1d</span></div>
+                  <div class="zz-prow" data-penna="menu-item.card"><span class="zz-ptitle">Clairvo landing copy</span><span class="zz-pnote">landing-page</span><span class="zz-pnote zz-age">3d</span></div>
+                  <div class="zz-prow" data-penna="menu-item.card"><span class="zz-ptitle">Seed data for the demo tenant</span><span class="zz-pnote">clairvo</span><span class="zz-pnote zz-age">6d</span></div>
+                </div>
+              </div>
+            </div>
+            <div class="zz-dock">
+              <div class="zz-composer" data-penna="field.composer">
+                <button class="zz-plus" data-penna="icon-button"><i data-icon="plus"></i></button>
+                <div class="zz-input penna-muted">Message Claude Code...</div>
+                <button data-penna="button.send" data-prominent data-state="disabled"><i data-icon="arrow-up"></i></button>
+              </div>
+              <div class="zz-foot">
+                <span class="zz-grow"></span>
+                <span class="zz-chip" data-penna="chip"><i data-icon="circle-user"></i>Ask</span>
+                <span class="zz-chip" data-penna="chip">Opus 5.5<span class="zz-dim">High</span><i data-icon="chevron-down"></i></span>
+              </div>
+            </div>
+          </section>
+        </div>
+        <figcaption><b>Filtering</b>One flat result: folders whose name or path matches, then chats whose title or folder matches, each with its folder and age. The first row is picked, so Enter opens it. The filter looks through every chat the CLI has here, not only the newest page.</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section>
+    <h2>2. The model picker, effort along the bottom</h2>
+    <p>The list is the first five the CLI offers, which is its default plus the current generation. <b>More models</b> adds the rest to the same list, which then scrolls, and an older model you have picked stays as a sixth row when the list is short again. Effort is one fat horizontal slider with a dot per stop. <b>Default</b> is the first stop, drawn as a ring with no fill, because the CLI does not say which level it stands for. Live: click, drag, open More models.</p>
+    <div class="penna-variants zz-variants zz-takes">
+      <figure>
+        <div class="zz-demo" data-pick>
+          <div class="zz-pop" data-penna="popover">
+            <div class="zz-head">Model</div>
+            <div data-models></div>
+            <div class="zz-sep"></div>
+            <div class="zz-head"><span>Effort</span><b data-effort-name></b></div>
+            <div class="zz-slide" data-slide></div>
+          </div>
+          <div class="zz-composer" data-penna="field.composer">
+            <button class="zz-plus" data-penna="icon-button"><i data-icon="plus"></i></button>
+            <div class="zz-input penna-muted">Message Claude Code...</div>
+            <button data-penna="button.send" data-prominent><i data-icon="arrow-up"></i></button>
+          </div>
+          <div class="zz-foot">
+            <span class="zz-grow"></span>
+            <span class="zz-chip" data-penna="chip"><i data-icon="circle-user"></i>Ask</span>
+            <span class="zz-chip" data-penna="chip" data-state="current" data-model-chip><span></span><span class="zz-dim"></span><i data-icon="chevron-down"></i></span>
+          </div>
+        </div>
+        <figcaption><b>List over slider</b>Everything in view. The level's name sits on the Effort line, the slider under it has a 26 px track and a 30 px round knob.</figcaption>
+      </figure>
+
+    </div>
+  </section>
+</main>
+<script>
+(() => {
+  const tidy = () => window.pennaKit?.roundAll?.();
+  const make = (html) => {
+    const box = document.createElement("template");
+    box.innerHTML = html.trim();
+    return box.content.firstChild;
+  };
+
+  const here = [
+    ["Fix pane stack hit testing", "2h"],
+    ["Gantt bars in pele", "1d"],
+    ["Flip keeps the model and effort", "3d"],
+    ["Ask sheet keys", "4d"],
+    ["Focus ring on the pane picker", "6d"],
+  ];
+  const folders = [
+    ["clairvo", "~/dev", "now"],
+    ["autistic-computer", "~/dev", "now"],
+    ["ppweb", "~/dev/PsicoPilot", "15h"],
+    ["nidus", "~/dev/autistic-computer", "2d"],
+    ["landing-page", "~/dev/autistic-computer", "3d"],
+    ["penna", "~/dev/autistic-computer", "4d"],
+    ["ala-cef", "~/dev/autistic-computer", "1w"],
+    ["dev", "~", "2w"],
+  ];
+  const scratch = [
+    ["2026-11-09-this-is-a-ui-test", "~/.t3/scratch", "1d"],
+    ["Sample Project", "~/Library/Application Support/Elyx Preview", "3d"],
+    ["scratch-2026-11-04", "~/Library/Application Support/Claude/scratch-workspaces", "6d"],
+  ];
+  const elsewhere = [
+    ["Clairvo invoice import fails on empty rows", "clairvo", "now"],
+    ["Queue retries for the mailer", "clairvo", "1d"],
+    ["Segmented focus ring", "penna", "3h"],
+    ["Slider knob ring on yaru", "penna", "6d"],
+    ["Pointer warp on Wayland", "nidus", "2d"],
+    ["Clairvo landing copy", "landing-page", "3d"],
+    ["Seed data for the demo tenant", "clairvo", "6d"],
+    ["This is a UI test of the chat view", "2026-11-09-this-is-a-ui-test", "1d"],
+  ];
+  const label = (text, hint) => `<div class="zz-plabel">${text}${hint ? `<span class="zz-hint"><span data-penna="keycap">${hint[0]}</span>${hint[1]}</span>` : ""}</div>`;
+  const chat = (title, folder, age) => `<div class="zz-prow" data-penna="menu-item.card"><span class="zz-ptitle">${title}</span>${folder ? `<span class="zz-pnote">${folder}</span>` : ""}<span class="zz-pnote zz-age">${age}</span></div>`;
+  const folder = ([name, path, age]) => `<div class="zz-prow" data-penna="menu-item.card"><i data-icon="folder"></i><span class="zz-ptitle">${name}<span class="zz-path">${path}</span></span><span class="zz-pnote zz-age">${age}</span></div>`;
+  const quiet = (text) => `<div class="zz-prow" data-penna="menu-item.card" data-quiet><span class="zz-ptitle">${text}</span></div>`;
+
+  for (const live of document.querySelectorAll("[data-live]")) {
+    const field = live.querySelector(".zz-filter");
+    const input = field.querySelector("input");
+    const list = live.querySelector(".zz-list");
+    const draw = () => {
+      const query = input.value.trim().toLowerCase();
+      field.toggleAttribute("data-filled", query !== "");
+      const has = (...parts) => parts.some((part) => part.toLowerCase().includes(query));
+      let html;
+      if (!query) {
+        html = label("Recent here", ["↑", "to pick"]) + here.slice(0, 3).map(([title, age]) => chat(title, "", age)).join("") + quiet("More chats here")
+          + label("Projects") + folders.slice(0, 5).map(folder).join("") + quiet("More projects");
+      } else {
+        const found = [...folders, ...scratch].filter(([name, path]) => has(name, path));
+        const chats = [...here.map(([title, age]) => [title, "zebrilus", age]), ...elsewhere].filter(([title, place]) => has(title, place));
+        html = (found.length ? label("Folders", ["esc", "clear"]) + found.map(folder).join("") : "")
+          + (chats.length ? label("Chats", found.length ? null : ["esc", "clear"]) + chats.map(([title, place, age]) => chat(title, place, age)).join("") : "")
+          || quiet("Nothing matches");
+      }
+      list.innerHTML = html;
+      const first = query && list.querySelector(".zz-prow:not([data-quiet])");
+      if (first) {
+        first.dataset.state = "current";
+        first.append(make(`<span data-penna="keycap">↵</span>`));
+      }
+      tidy();
+    };
+    input.addEventListener("input", draw);
+    input.addEventListener("keydown", (event) => {
+      if (event.key !== "Escape") return;
+      input.value = "";
+      draw();
+    });
+    field.querySelector("button").addEventListener("click", () => {
+      input.value = "";
+      draw();
+      input.focus();
+    });
+    draw();
+  }
+
+  const efforts = ["Default", "Low", "Medium", "High", "Extra high", "Max"];
+  const short = ["Default", "Low", "Medium", "High", "XHigh", "Max"];
+  const latest = ["Default", "Opus 5.5", "Fable 5.2", "Sonnet 5.5", "Haiku 5.5"];
+  const older = ["Fable 5.1", "Haiku 4.5", "Sonnet 5", "Opus 5", "Fable 5", "Opus 4.8", "Opus 4.7", "Opus 4.6", "Sonnet 4.6", "Haiku 4"];
+  const row = (name) => `<div data-penna="menu-item" data-model="${name}"><span>${name}</span><i data-icon="check"></i></div>`;
+
+  for (const demo of document.querySelectorAll("[data-pick]")) {
+    const chip = demo.querySelector("[data-model-chip]");
+    const list = demo.querySelector("[data-models]");
+    const slide = demo.querySelector("[data-slide]");
+    let model = "Opus 5.5";
+    let level = 3;
+
+    list.innerHTML = `<div class="zz-models">${latest.map(row).join("")}<div data-pinned></div><div data-rest hidden>${older.map(row).join("")}</div></div>`
+      + `<div data-penna="menu-item" class="zz-more"><span>More models</span><em>${older.length}</em><i data-icon="chevron-down"></i></div>`;
+    const pinned = list.querySelector("[data-pinned]");
+    const more = list.querySelector(".zz-more");
+    const rest = list.querySelector("[data-rest]");
+
+    slide.innerHTML = `<i class="zz-fill"></i>` + efforts.map((_, at) => `<b style="--i: ${at}"></b>`).join("") + `<i class="zz-knob"></i>`;
+    const knob = slide.querySelector(".zz-knob");
+    const dots = [...slide.querySelectorAll("b")];
+
+    const paint = () => {
+      pinned.innerHTML = rest.hidden && older.includes(model) ? row(model) : "";
+      for (const item of list.querySelectorAll("[data-model]")) {
+        if (item.dataset.model === model) item.dataset.state = "selected";
+        else item.removeAttribute("data-state");
+      }
+      slide.style.setProperty("--at", level);
+      dots.forEach((dot, at) => dot.toggleAttribute("data-on", at < level));
+      for (const name of demo.querySelectorAll("[data-effort-name]")) name.textContent = efforts[level];
+      chip.children[0].textContent = model;
+      chip.children[1].textContent = short[level];
+      tidy();
+    };
+
+    const from = (event) => {
+      const box = slide.getBoundingClientRect();
+      const pad = (parseFloat(getComputedStyle(knob).width) - 4) / 2;
+      const at = Math.round((event.clientX - box.left - pad) / ((box.width - 2 * pad) / (efforts.length - 1)));
+      const next = Math.max(0, Math.min(efforts.length - 1, at));
+      if (next === level) return;
+      level = next;
+      paint();
+    };
+    slide.addEventListener("pointerdown", (event) => {
+      slide.setPointerCapture(event.pointerId);
+      from(event);
+    });
+    slide.addEventListener("pointermove", (event) => {
+      if (event.buttons) from(event);
+    });
+
+    const open = (show) => {
+      rest.hidden = !show;
+      more.querySelector("span").textContent = show ? "Fewer models" : "More models";
+      more.querySelector("em").hidden = show;
+      more.querySelector("[data-icon]").dataset.icon = show ? "chevron-up" : "chevron-down";
+    };
+    more.addEventListener("click", () => {
+      open(rest.hidden);
+      paint();
+    });
+    list.addEventListener("click", (event) => {
+      const item = event.target.closest("[data-model]");
+      if (!item) return;
+      model = item.dataset.model;
+      paint();
+    });
+    paint();
+  }
+})();
+</script>
+</body>
+</html>

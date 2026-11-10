@@ -1,0 +1,348 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Question sheet: header and multi-select</title>
+<link rel="stylesheet" href="/penna/penna.css">
+<link rel="stylesheet" href="/zz.css">
+<script src="/penna/kit.js" data-tokens="/tokens/" data-themes="default macos yaru" data-theme="default"></script>
+<style>
+  .zz-page { display: grid; gap: 56px; max-width: 1400px; margin: 0 auto; padding: 40px 32px 96px; }
+  .zz-page > section { display: grid; gap: 14px; min-width: 0; }
+  .zz-page h1 { margin: 0; font-size: var(--penna-text-title-size); line-height: var(--penna-text-title-line); font-weight: 600; }
+  .zz-page h2 { margin: 0; font-size: 15px; line-height: 20px; font-weight: 600; }
+  .zz-page p { margin: 0; max-width: 84ch; color: var(--penna-fg-muted); }
+  .zz-page p b { color: var(--penna-fg); font-weight: 600; }
+  .zz-intro { display: grid; gap: 6px; }
+
+  .zz-variants.penna-variants { padding: 0; --penna-variant-width: 560px; }
+  .zz-variants > figure { min-width: 0; }
+  .zz-wide.penna-variants { --penna-variant-width: 640px; }
+  .zz-pick { color: var(--penna-accent); font-weight: 600; margin-left: 6px; }
+
+  .zz-stage { display: grid; gap: 6px; min-width: 0; padding: 18px; border-radius: 14px; background: color-mix(in srgb, var(--penna-fg) 4%, var(--penna-bg)); }
+
+  .zz-sheet[data-penna="field.composer"] { --penna-r: 16px; display: flex; flex-direction: column; align-items: stretch; width: 100%; min-width: 0; padding: 0; }
+
+  .zz-head { display: flex; align-items: center; gap: 8px; min-height: 22px; margin-top: 8px; padding: 0 14px; font-size: var(--penna-text-small-size); line-height: var(--penna-text-small-line); color: var(--penna-fg-muted); --penna-icon-size: 14px; }
+  .zz-head[data-top] { align-items: flex-start; }
+  .zz-head-title { flex: 1; min-width: 0; overflow: hidden; font-weight: 500; color: var(--penna-fg); text-overflow: ellipsis; white-space: nowrap; }
+  .zz-head-question { flex: 1; min-width: 0; padding: 2px 0; font-size: var(--penna-text-body-size); line-height: var(--penna-text-body-line); font-weight: 500; color: var(--penna-fg); }
+  .zz-head[data-top] > [data-icon] { margin-top: 4px; }
+  .zz-eyebrow { flex: 1; min-width: 0; font-size: var(--penna-text-caption-size); line-height: var(--penna-text-caption-line); color: var(--penna-fg-muted); }
+  .zz-eyebrow > span + span::before { content: "·"; margin: 0 6px; }
+
+  .zz-pager { display: flex; flex: none; align-items: center; gap: 2px; font-variant-numeric: tabular-nums; }
+  .zz-pager > [data-penna="icon-button.row"] { width: 22px; height: 22px; }
+  .zz-pager > span { padding: 0 4px; }
+
+  .zz-steps { display: flex; flex: 1; align-items: center; gap: 6px; min-width: 0; overflow: hidden; --penna-icon-size: 10px; }
+  .zz-step { display: inline-flex; flex: none; align-items: center; gap: 5px; height: 22px; padding: 0 8px; border-radius: 7px; font-size: var(--penna-text-small-size); line-height: var(--penna-text-small-line); color: var(--penna-fg-muted); cursor: var(--penna-click-cursor); }
+  .zz-step:hover { color: var(--penna-fg); }
+  .zz-step[aria-current="true"] { background: color-mix(in srgb, var(--penna-fg) 9%, transparent); font-weight: 500; color: var(--penna-fg); }
+  .zz-step > [data-icon="check"] { --penna-icon-size: 11px; }
+  .zz-steps > [data-icon="chevron-right"] { opacity: 0.45; }
+
+  .zz-prompt { display: flex; flex-direction: column; padding: 6px 14px 8px; }
+  .zz-prompt[data-first] { padding-top: 12px; }
+  .zz-lead { display: flex; gap: 8px; font-size: var(--penna-text-caption-size); line-height: var(--penna-text-caption-line); color: var(--penna-fg-muted); }
+  .zz-question { font-size: var(--penna-text-body-size); line-height: var(--penna-text-body-line); font-weight: 500; }
+
+  .zz-options { display: flex; flex-direction: column; gap: 2px; padding: 0 14px 5px; }
+  .zz-options[data-after-head] { padding-top: 8px; }
+  .zz-opt[data-penna="menu-item"] { --penna-r: 0px; --penna-share: 0; gap: 10px; height: auto; min-height: 32px; padding: 6px 10px; border-radius: calc(10px * var(--penna-corner-grow, 1)); font-size: var(--penna-text-body-size); line-height: var(--penna-text-body-line); white-space: normal; cursor: var(--penna-click-cursor); }
+  .zz-opt-text { display: flex; flex: 1; flex-direction: column; min-width: 0; }
+  .zz-opt-label { font-weight: 500; }
+  .zz-opt-detail { font-size: var(--penna-text-small-size); line-height: var(--penna-text-small-line); color: var(--penna-muted); }
+  .zz-opt > kbd[data-penna="keycap"] { flex: none; }
+
+  .zz-box { display: grid; flex: none; place-items: center; width: 16px; height: 16px; border: 1px solid color-mix(in srgb, var(--penna-fg) 34%, transparent); border-radius: 4.5px; --penna-icon-size: 11px; }
+  .zz-box[aria-checked="true"] { border-color: transparent; background: var(--penna-primary); color: var(--penna-on-primary); }
+
+  .zz-tick { flex: none; color: var(--penna-accent); --penna-icon-size: 14px; }
+  .zz-opt[data-quiet] .zz-opt-label { font-weight: 400; }
+  .zz-opt:has(> .zz-tick[style]) .zz-opt-label { font-weight: 600; }
+
+  .zz-opt > kbd[data-penna="keycap"][data-lit] { background: var(--penna-accent); color: var(--penna-on-accent, #fff); border-color: transparent; }
+
+  .zz-opt[data-wash] { background: color-mix(in srgb, var(--penna-accent) 15%, transparent); }
+  .zz-opt[data-wash][data-state~="selected"] { background: color-mix(in srgb, var(--penna-accent) 26%, transparent); }
+
+  .zz-opt[data-bar] { --penna-mark: var(--penna-accent); }
+  .zz-opt[data-bar] { background: linear-gradient(var(--penna-accent), var(--penna-accent)) 0 50% / 3px calc(100% - 14px) no-repeat, var(--penna-fill); }
+
+  .zz-rule { flex: none; height: 1px; background: var(--penna-divider); }
+  .zz-input-row { display: flex; align-items: center; gap: 6px; padding: 6px; }
+  .zz-leading { display: grid; flex: none; place-items: center; width: 28px; height: 28px; }
+  .zz-input { flex: 1; min-width: 0; font-size: var(--penna-text-body-size); line-height: 16px; color: var(--penna-fg-faint); white-space: nowrap; overflow: hidden; }
+  .zz-input::before { content: ""; display: inline-block; width: 1px; height: 15px; margin-right: 1px; vertical-align: -3px; background: var(--penna-fg); }
+  .zz-skip[data-penna], .zz-send[data-penna] { --penna-share: 0; --penna-r: 0px; flex: none; height: 28px; border-radius: 9px; font-size: var(--penna-text-body-size); font-weight: 500; }
+  .zz-skip[data-penna] { padding: 0 10px; }
+  .zz-send[data-penna] { display: inline-flex; align-items: center; gap: 6px; padding: 0 8px 0 12px; color: var(--penna-on-primary); --penna-icon-size: 12px; }
+  .zz-stop[data-penna] { color: var(--penna-on-primary); }
+
+  .zz-hints { display: flex; gap: 14px; min-width: 0; padding: 4px 8px 0; overflow: hidden; font-size: var(--penna-text-caption-size); line-height: var(--penna-text-caption-line); white-space: nowrap; color: var(--penna-fg-muted); }
+  .zz-hints > b { font-weight: 500; color: var(--penna-fg); }
+</style>
+</head>
+<body>
+<main class="zz-page">
+  <div class="zz-intro">
+    <h1>Question sheet</h1>
+    <p>Two questions about the sheet a question grows out of the composer. <b>One:</b> what takes the place of the "Question" header. <b>Two:</b> how a multi-select answer shows it is picked without a checkbox. The first figure in each row is what ships today. The highlighted row is where the keyboard is.</p>
+  </div>
+
+  <section>
+    <h2>1. The header</h2>
+    <p>Today the sheet spends a row on an icon and the word "Question", then a caption with the question's short label, then the question. The short label is what the agent gives each question as a tab name ("Accent", "Scope"), 12 characters at most.</p>
+    <div class="penna-variants zz-variants">
+
+      <figure>
+        <figcaption><b>Now</b>Icon and "Question", pager, short label, question</figcaption>
+        <div class="zz-stage">
+          <div class="zz-sheet" data-penna="field.composer">
+            <div class="zz-head">
+              <i data-icon="chat"></i><span class="zz-head-title">Question</span>
+              <span class="zz-pager"><button data-penna="icon-button.row" data-emphasis="ghost"><i data-icon="chevron-left"></i></button><span>1 of 3</span><button data-penna="icon-button.row" data-emphasis="ghost"><i data-icon="chevron-right"></i></button></span>
+            </div>
+            <div class="zz-prompt"><div class="zz-lead"><span>Accent</span></div><span class="zz-question">Which accent should the composer use?</span></div>
+            <div class="zz-options">
+              <div class="zz-opt" data-penna="menu-item"><div class="zz-opt-text"><span class="zz-opt-label">Teal</span><span class="zz-opt-detail">Calm, reads well on both modes</span></div><kbd data-penna="keycap">1</kbd></div>
+              <div class="zz-opt" data-penna="menu-item" data-state="selected"><div class="zz-opt-text"><span class="zz-opt-label">Violet</span><span class="zz-opt-detail">Matches the current brand</span></div><kbd data-penna="keycap">2</kbd></div>
+              <div class="zz-opt" data-penna="menu-item"><div class="zz-opt-text"><span class="zz-opt-label">Amber</span><span class="zz-opt-detail">Warm, draws the eye</span></div><kbd data-penna="keycap">3</kbd></div>
+            </div>
+            <span class="zz-rule"></span>
+            <div class="zz-input-row"><span class="zz-leading"><kbd data-penna="keycap">4</kbd></span><span class="zz-input">Something else</span><button class="zz-skip" data-penna="button.quiet">Skip</button><button class="zz-send" data-penna="button" data-emphasis="solid" data-solid="primary">Next<i data-icon="key-return"></i></button><button class="zz-stop" data-penna="button.send" data-emphasis="solid" data-solid="primary"><i data-icon="stop"></i></button></div>
+          </div>
+          <div class="zz-hints"><span>1 to 4 pick</span><span>←→ page</span><span>↵ next</span><span>esc skip</span></div>
+        </div>
+      </figure>
+
+      <figure>
+        <figcaption><b>A</b>The question is the header: same place and icon as "Run this command?"</figcaption>
+        <div class="zz-stage">
+          <div class="zz-sheet" data-penna="field.composer">
+            <div class="zz-head" data-top>
+              <i data-icon="chat"></i><span class="zz-head-question">Which accent should the composer use?</span>
+              <span class="zz-pager"><button data-penna="icon-button.row" data-emphasis="ghost"><i data-icon="chevron-left"></i></button><span>1 of 3</span><button data-penna="icon-button.row" data-emphasis="ghost"><i data-icon="chevron-right"></i></button></span>
+            </div>
+            <div class="zz-options" data-after-head>
+              <div class="zz-opt" data-penna="menu-item"><div class="zz-opt-text"><span class="zz-opt-label">Teal</span><span class="zz-opt-detail">Calm, reads well on both modes</span></div><kbd data-penna="keycap">1</kbd></div>
+              <div class="zz-opt" data-penna="menu-item" data-state="selected"><div class="zz-opt-text"><span class="zz-opt-label">Violet</span><span class="zz-opt-detail">Matches the current brand</span></div><kbd data-penna="keycap">2</kbd></div>
+              <div class="zz-opt" data-penna="menu-item"><div class="zz-opt-text"><span class="zz-opt-label">Amber</span><span class="zz-opt-detail">Warm, draws the eye</span></div><kbd data-penna="keycap">3</kbd></div>
+            </div>
+            <span class="zz-rule"></span>
+            <div class="zz-input-row"><span class="zz-leading"><kbd data-penna="keycap">4</kbd></span><span class="zz-input">Something else</span><button class="zz-skip" data-penna="button.quiet">Skip</button><button class="zz-send" data-penna="button" data-emphasis="solid" data-solid="primary">Next<i data-icon="key-return"></i></button><button class="zz-stop" data-penna="button.send" data-emphasis="solid" data-solid="primary"><i data-icon="stop"></i></button></div>
+          </div>
+          <div class="zz-hints"><span>1 to 4 pick</span><span>←→ page</span><span>↵ next</span><span>esc skip</span></div>
+        </div>
+      </figure>
+
+      <figure>
+        <figcaption><b>B</b>No icon: the short label and the pager share one quiet row, the question under it</figcaption>
+        <div class="zz-stage">
+          <div class="zz-sheet" data-penna="field.composer">
+            <div class="zz-head">
+              <span class="zz-eyebrow"><span>Accent</span></span>
+              <span class="zz-pager"><button data-penna="icon-button.row" data-emphasis="ghost"><i data-icon="chevron-left"></i></button><span>1 of 3</span><button data-penna="icon-button.row" data-emphasis="ghost"><i data-icon="chevron-right"></i></button></span>
+            </div>
+            <div class="zz-prompt" style="padding-top: 2px"><span class="zz-question">Which accent should the composer use?</span></div>
+            <div class="zz-options">
+              <div class="zz-opt" data-penna="menu-item"><div class="zz-opt-text"><span class="zz-opt-label">Teal</span><span class="zz-opt-detail">Calm, reads well on both modes</span></div><kbd data-penna="keycap">1</kbd></div>
+              <div class="zz-opt" data-penna="menu-item" data-state="selected"><div class="zz-opt-text"><span class="zz-opt-label">Violet</span><span class="zz-opt-detail">Matches the current brand</span></div><kbd data-penna="keycap">2</kbd></div>
+              <div class="zz-opt" data-penna="menu-item"><div class="zz-opt-text"><span class="zz-opt-label">Amber</span><span class="zz-opt-detail">Warm, draws the eye</span></div><kbd data-penna="keycap">3</kbd></div>
+            </div>
+            <span class="zz-rule"></span>
+            <div class="zz-input-row"><span class="zz-leading"><kbd data-penna="keycap">4</kbd></span><span class="zz-input">Something else</span><button class="zz-skip" data-penna="button.quiet">Skip</button><button class="zz-send" data-penna="button" data-emphasis="solid" data-solid="primary">Next<i data-icon="key-return"></i></button><button class="zz-stop" data-penna="button.send" data-emphasis="solid" data-solid="primary"><i data-icon="stop"></i></button></div>
+          </div>
+          <div class="zz-hints"><span>1 to 4 pick</span><span>←→ page</span><span>↵ next</span><span>esc skip</span></div>
+        </div>
+      </figure>
+
+      <figure>
+        <figcaption><b>C</b>Steps: the short labels are the pager. Answered ones get a check, click one to go back<span class="zz-pick">my pick</span></figcaption>
+        <div class="zz-stage">
+          <div class="zz-sheet" data-penna="field.composer">
+            <div class="zz-head">
+              <span class="zz-steps"><span class="zz-step"><i data-icon="check"></i>Accent</span><i data-icon="chevron-right"></i><span class="zz-step" aria-current="true">Scope</span><i data-icon="chevron-right"></i><span class="zz-step">Rollout</span></span>
+            </div>
+            <div class="zz-prompt"><span class="zz-question">What should the morph cover?</span></div>
+            <div class="zz-options">
+              <div class="zz-opt" data-penna="menu-item"><div class="zz-opt-text"><span class="zz-opt-label">Questions</span><span class="zz-opt-detail">Single and multiple choice</span></div><kbd data-penna="keycap">1</kbd></div>
+              <div class="zz-opt" data-penna="menu-item" data-state="selected"><div class="zz-opt-text"><span class="zz-opt-label">Tool approvals</span><span class="zz-opt-detail">Commands, edits and fetches</span></div><kbd data-penna="keycap">2</kbd></div>
+              <div class="zz-opt" data-penna="menu-item"><div class="zz-opt-text"><span class="zz-opt-label">Plan approval</span><span class="zz-opt-detail">The plan the agent wants to build</span></div><kbd data-penna="keycap">3</kbd></div>
+            </div>
+            <span class="zz-rule"></span>
+            <div class="zz-input-row"><span class="zz-leading"><kbd data-penna="keycap">4</kbd></span><span class="zz-input">Something else</span><button class="zz-skip" data-penna="button.quiet">Skip</button><button class="zz-send" data-penna="button" data-emphasis="solid" data-solid="primary">Next<i data-icon="key-return"></i></button><button class="zz-stop" data-penna="button.send" data-emphasis="solid" data-solid="primary"><i data-icon="stop"></i></button></div>
+          </div>
+          <div class="zz-hints"><span>1 to 4 pick</span><span>←→ page</span><span>↵ next</span><span>esc skip</span></div>
+        </div>
+      </figure>
+
+    </div>
+  </section>
+
+  <section>
+    <h2>2. Picked, without a checkbox</h2>
+    <p>Each figure shows the same state: "Questions" and "Tool approvals" are picked, the keyboard is on "Tool approvals", "Plan approval" and "Subagent prompts" are not picked. The cue has to hold in all four combinations and must not move the text when it appears.</p>
+    <div class="penna-variants zz-variants">
+
+      <figure>
+        <figcaption><b>Now</b>A checkbox before every answer</figcaption>
+        <div class="zz-stage">
+          <div class="zz-sheet" data-penna="field.composer">
+            <div class="zz-prompt" data-first><div class="zz-lead"><span>Scope</span><span>Pick any</span></div><span class="zz-question">What should the morph cover?</span></div>
+            <div class="zz-options">
+              <div class="zz-opt" data-penna="menu-item"><span class="zz-box" aria-checked="true"><i data-icon="check"></i></span><div class="zz-opt-text"><span class="zz-opt-label">Questions</span><span class="zz-opt-detail">Single and multiple choice</span></div><kbd data-penna="keycap">1</kbd></div>
+              <div class="zz-opt" data-penna="menu-item" data-state="selected"><span class="zz-box" aria-checked="true"><i data-icon="check"></i></span><div class="zz-opt-text"><span class="zz-opt-label">Tool approvals</span><span class="zz-opt-detail">Commands, edits and fetches</span></div><kbd data-penna="keycap">2</kbd></div>
+              <div class="zz-opt" data-penna="menu-item"><span class="zz-box"></span><div class="zz-opt-text"><span class="zz-opt-label">Plan approval</span><span class="zz-opt-detail">The plan the agent wants to build</span></div><kbd data-penna="keycap">3</kbd></div>
+              <div class="zz-opt" data-penna="menu-item"><span class="zz-box"></span><div class="zz-opt-text"><span class="zz-opt-label">Subagent prompts</span><span class="zz-opt-detail">Asks that come from a subagent</span></div><kbd data-penna="keycap">4</kbd></div>
+            </div>
+            <span class="zz-rule"></span>
+            <div class="zz-input-row"><span class="zz-leading"><kbd data-penna="keycap">5</kbd></span><span class="zz-input">Something else</span><button class="zz-skip" data-penna="button.quiet">Skip</button><button class="zz-send" data-penna="button" data-emphasis="solid" data-solid="primary">Next<i data-icon="key-return"></i></button><button class="zz-stop" data-penna="button.send" data-emphasis="solid" data-solid="primary"><i data-icon="stop"></i></button></div>
+          </div>
+          <div class="zz-hints"><span>1 to 5 toggle</span><span>↑↓ move</span><span>↵ next</span><span>esc skip</span></div>
+        </div>
+      </figure>
+
+      <figure>
+        <figcaption><b>A</b>A check lands at the end of the row, beside the key. Nothing shows on an answer that is not picked<span class="zz-pick">my pick</span></figcaption>
+        <div class="zz-stage">
+          <div class="zz-sheet" data-penna="field.composer">
+            <div class="zz-prompt" data-first><div class="zz-lead"><span>Scope</span><span>Pick any</span></div><span class="zz-question">What should the morph cover?</span></div>
+            <div class="zz-options">
+              <div class="zz-opt" data-penna="menu-item"><div class="zz-opt-text"><span class="zz-opt-label">Questions</span><span class="zz-opt-detail">Single and multiple choice</span></div><i class="zz-tick" data-icon="check"></i><kbd data-penna="keycap">1</kbd></div>
+              <div class="zz-opt" data-penna="menu-item" data-state="selected"><div class="zz-opt-text"><span class="zz-opt-label">Tool approvals</span><span class="zz-opt-detail">Commands, edits and fetches</span></div><i class="zz-tick" data-icon="check"></i><kbd data-penna="keycap">2</kbd></div>
+              <div class="zz-opt" data-penna="menu-item"><div class="zz-opt-text"><span class="zz-opt-label">Plan approval</span><span class="zz-opt-detail">The plan the agent wants to build</span></div><kbd data-penna="keycap">3</kbd></div>
+              <div class="zz-opt" data-penna="menu-item"><div class="zz-opt-text"><span class="zz-opt-label">Subagent prompts</span><span class="zz-opt-detail">Asks that come from a subagent</span></div><kbd data-penna="keycap">4</kbd></div>
+            </div>
+            <span class="zz-rule"></span>
+            <div class="zz-input-row"><span class="zz-leading"><kbd data-penna="keycap">5</kbd></span><span class="zz-input">Something else</span><button class="zz-skip" data-penna="button.quiet">Skip</button><button class="zz-send" data-penna="button" data-emphasis="solid" data-solid="primary">Next<i data-icon="key-return"></i></button><button class="zz-stop" data-penna="button.send" data-emphasis="solid" data-solid="primary"><i data-icon="stop"></i></button></div>
+          </div>
+          <div class="zz-hints"><b>2 picked</b><span>1 to 5 toggle</span><span>↑↓ move</span><span>↵ next</span><span>esc skip</span></div>
+        </div>
+      </figure>
+
+      <figure>
+        <figcaption><b>B</b>The key lights up: a picked answer's number turns solid, and the same key takes it back</figcaption>
+        <div class="zz-stage">
+          <div class="zz-sheet" data-penna="field.composer">
+            <div class="zz-prompt" data-first><div class="zz-lead"><span>Scope</span><span>Pick any</span></div><span class="zz-question">What should the morph cover?</span></div>
+            <div class="zz-options">
+              <div class="zz-opt" data-penna="menu-item"><div class="zz-opt-text"><span class="zz-opt-label">Questions</span><span class="zz-opt-detail">Single and multiple choice</span></div><kbd data-penna="keycap" data-lit>1</kbd></div>
+              <div class="zz-opt" data-penna="menu-item" data-state="selected"><div class="zz-opt-text"><span class="zz-opt-label">Tool approvals</span><span class="zz-opt-detail">Commands, edits and fetches</span></div><kbd data-penna="keycap" data-lit>2</kbd></div>
+              <div class="zz-opt" data-penna="menu-item"><div class="zz-opt-text"><span class="zz-opt-label">Plan approval</span><span class="zz-opt-detail">The plan the agent wants to build</span></div><kbd data-penna="keycap">3</kbd></div>
+              <div class="zz-opt" data-penna="menu-item"><div class="zz-opt-text"><span class="zz-opt-label">Subagent prompts</span><span class="zz-opt-detail">Asks that come from a subagent</span></div><kbd data-penna="keycap">4</kbd></div>
+            </div>
+            <span class="zz-rule"></span>
+            <div class="zz-input-row"><span class="zz-leading"><kbd data-penna="keycap">5</kbd></span><span class="zz-input">Something else</span><button class="zz-skip" data-penna="button.quiet">Skip</button><button class="zz-send" data-penna="button" data-emphasis="solid" data-solid="primary">Next<i data-icon="key-return"></i></button><button class="zz-stop" data-penna="button.send" data-emphasis="solid" data-solid="primary"><i data-icon="stop"></i></button></div>
+          </div>
+          <div class="zz-hints"><b>2 picked</b><span>1 to 5 toggle</span><span>↑↓ move</span><span>↵ next</span><span>esc skip</span></div>
+        </div>
+      </figure>
+
+      <figure>
+        <figcaption><b>C</b>A wash: picked answers keep an accent tint, the keyboard's row is the deeper one</figcaption>
+        <div class="zz-stage">
+          <div class="zz-sheet" data-penna="field.composer">
+            <div class="zz-prompt" data-first><div class="zz-lead"><span>Scope</span><span>Pick any</span></div><span class="zz-question">What should the morph cover?</span></div>
+            <div class="zz-options">
+              <div class="zz-opt" data-penna="menu-item" data-wash><div class="zz-opt-text"><span class="zz-opt-label">Questions</span><span class="zz-opt-detail">Single and multiple choice</span></div><kbd data-penna="keycap">1</kbd></div>
+              <div class="zz-opt" data-penna="menu-item" data-wash data-state="selected"><div class="zz-opt-text"><span class="zz-opt-label">Tool approvals</span><span class="zz-opt-detail">Commands, edits and fetches</span></div><kbd data-penna="keycap">2</kbd></div>
+              <div class="zz-opt" data-penna="menu-item"><div class="zz-opt-text"><span class="zz-opt-label">Plan approval</span><span class="zz-opt-detail">The plan the agent wants to build</span></div><kbd data-penna="keycap">3</kbd></div>
+              <div class="zz-opt" data-penna="menu-item"><div class="zz-opt-text"><span class="zz-opt-label">Subagent prompts</span><span class="zz-opt-detail">Asks that come from a subagent</span></div><kbd data-penna="keycap">4</kbd></div>
+            </div>
+            <span class="zz-rule"></span>
+            <div class="zz-input-row"><span class="zz-leading"><kbd data-penna="keycap">5</kbd></span><span class="zz-input">Something else</span><button class="zz-skip" data-penna="button.quiet">Skip</button><button class="zz-send" data-penna="button" data-emphasis="solid" data-solid="primary">Next<i data-icon="key-return"></i></button><button class="zz-stop" data-penna="button.send" data-emphasis="solid" data-solid="primary"><i data-icon="stop"></i></button></div>
+          </div>
+          <div class="zz-hints"><b>2 picked</b><span>1 to 5 toggle</span><span>↑↓ move</span><span>↵ next</span><span>esc skip</span></div>
+        </div>
+      </figure>
+
+      <figure>
+        <figcaption><b>D</b>A bar: picked answers carry an accent bar on their leading edge, like the current row of a list</figcaption>
+        <div class="zz-stage">
+          <div class="zz-sheet" data-penna="field.composer">
+            <div class="zz-prompt" data-first><div class="zz-lead"><span>Scope</span><span>Pick any</span></div><span class="zz-question">What should the morph cover?</span></div>
+            <div class="zz-options">
+              <div class="zz-opt" data-penna="menu-item" data-bar><div class="zz-opt-text"><span class="zz-opt-label">Questions</span><span class="zz-opt-detail">Single and multiple choice</span></div><kbd data-penna="keycap">1</kbd></div>
+              <div class="zz-opt" data-penna="menu-item" data-bar data-state="selected"><div class="zz-opt-text"><span class="zz-opt-label">Tool approvals</span><span class="zz-opt-detail">Commands, edits and fetches</span></div><kbd data-penna="keycap">2</kbd></div>
+              <div class="zz-opt" data-penna="menu-item"><div class="zz-opt-text"><span class="zz-opt-label">Plan approval</span><span class="zz-opt-detail">The plan the agent wants to build</span></div><kbd data-penna="keycap">3</kbd></div>
+              <div class="zz-opt" data-penna="menu-item"><div class="zz-opt-text"><span class="zz-opt-label">Subagent prompts</span><span class="zz-opt-detail">Asks that come from a subagent</span></div><kbd data-penna="keycap">4</kbd></div>
+            </div>
+            <span class="zz-rule"></span>
+            <div class="zz-input-row"><span class="zz-leading"><kbd data-penna="keycap">5</kbd></span><span class="zz-input">Something else</span><button class="zz-skip" data-penna="button.quiet">Skip</button><button class="zz-send" data-penna="button" data-emphasis="solid" data-solid="primary">Next<i data-icon="key-return"></i></button><button class="zz-stop" data-penna="button.send" data-emphasis="solid" data-solid="primary"><i data-icon="stop"></i></button></div>
+          </div>
+          <div class="zz-hints"><b>2 picked</b><span>1 to 5 toggle</span><span>↑↓ move</span><span>↵ next</span><span>esc skip</span></div>
+        </div>
+      </figure>
+
+      <figure>
+        <figcaption><b>E</b>Weight: answers start in regular weight and a picked one turns bold with a check. The text reflows a little as it changes</figcaption>
+        <div class="zz-stage">
+          <div class="zz-sheet" data-penna="field.composer">
+            <div class="zz-prompt" data-first><div class="zz-lead"><span>Scope</span><span>Pick any</span></div><span class="zz-question">What should the morph cover?</span></div>
+            <div class="zz-options">
+              <div class="zz-opt" data-penna="menu-item"><div class="zz-opt-text"><span class="zz-opt-label">Questions</span><span class="zz-opt-detail">Single and multiple choice</span></div><i class="zz-tick" data-icon="check" style="color: var(--penna-fg)"></i><kbd data-penna="keycap">1</kbd></div>
+              <div class="zz-opt" data-penna="menu-item" data-state="selected"><div class="zz-opt-text"><span class="zz-opt-label">Tool approvals</span><span class="zz-opt-detail">Commands, edits and fetches</span></div><i class="zz-tick" data-icon="check" style="color: var(--penna-fg)"></i><kbd data-penna="keycap">2</kbd></div>
+              <div class="zz-opt" data-penna="menu-item" data-quiet><div class="zz-opt-text"><span class="zz-opt-label">Plan approval</span><span class="zz-opt-detail">The plan the agent wants to build</span></div><kbd data-penna="keycap">3</kbd></div>
+              <div class="zz-opt" data-penna="menu-item" data-quiet><div class="zz-opt-text"><span class="zz-opt-label">Subagent prompts</span><span class="zz-opt-detail">Asks that come from a subagent</span></div><kbd data-penna="keycap">4</kbd></div>
+            </div>
+            <span class="zz-rule"></span>
+            <div class="zz-input-row"><span class="zz-leading"><kbd data-penna="keycap">5</kbd></span><span class="zz-input">Something else</span><button class="zz-skip" data-penna="button.quiet">Skip</button><button class="zz-send" data-penna="button" data-emphasis="solid" data-solid="primary">Next<i data-icon="key-return"></i></button><button class="zz-stop" data-penna="button.send" data-emphasis="solid" data-solid="primary"><i data-icon="stop"></i></button></div>
+          </div>
+          <div class="zz-hints"><b>2 picked</b><span>1 to 5 toggle</span><span>↑↓ move</span><span>↵ next</span><span>esc skip</span></div>
+        </div>
+      </figure>
+
+    </div>
+  </section>
+
+  <section>
+    <h2>3. Together</h2>
+    <p>Header C with cue A, at the width the sheet has in a pane. Left: one question on its own, where there is nothing to step through, so the sheet opens straight on the question. Right: the second of three, a pick-any, with one answer already given.</p>
+    <div class="penna-variants zz-variants zz-wide">
+
+      <figure>
+        <figcaption><b>One question</b>No header row at all</figcaption>
+        <div class="zz-stage">
+          <div class="zz-sheet" data-penna="field.composer">
+            <div class="zz-prompt" data-first><span class="zz-question">Delete /tmp/zz-chat-stress?</span></div>
+            <div class="zz-options">
+              <div class="zz-opt" data-penna="menu-item" data-state="selected"><div class="zz-opt-text"><span class="zz-opt-label">Yes</span><span class="zz-opt-detail">Delete the folder and its three files.</span></div><kbd data-penna="keycap">1</kbd></div>
+              <div class="zz-opt" data-penna="menu-item"><div class="zz-opt-text"><span class="zz-opt-label">No</span><span class="zz-opt-detail">Keep everything where it is.</span></div><kbd data-penna="keycap">2</kbd></div>
+            </div>
+            <span class="zz-rule"></span>
+            <div class="zz-input-row"><span class="zz-leading"><kbd data-penna="keycap">3</kbd></span><span class="zz-input">Something else</span><button class="zz-skip" data-penna="button.quiet">Skip</button><button class="zz-send" data-penna="button" data-emphasis="solid" data-solid="primary">Send<i data-icon="key-return"></i></button><button class="zz-stop" data-penna="button.send" data-emphasis="solid" data-solid="primary"><i data-icon="stop"></i></button></div>
+          </div>
+          <div class="zz-hints"><span>1 to 3 pick</span><span>↑↓ move</span><span>↵ send</span><span>esc skip</span></div>
+        </div>
+      </figure>
+
+      <figure>
+        <figcaption><b>Second of three</b>Steps on top, checks at the end of picked rows, the count in the hint line</figcaption>
+        <div class="zz-stage">
+          <div class="zz-sheet" data-penna="field.composer">
+            <div class="zz-head">
+              <span class="zz-steps"><span class="zz-step"><i data-icon="check"></i>Accent</span><i data-icon="chevron-right"></i><span class="zz-step" aria-current="true">Scope</span><i data-icon="chevron-right"></i><span class="zz-step">Rollout</span></span>
+            </div>
+            <div class="zz-prompt"><span class="zz-question">What should the morph cover?</span></div>
+            <div class="zz-options">
+              <div class="zz-opt" data-penna="menu-item"><div class="zz-opt-text"><span class="zz-opt-label">Questions</span><span class="zz-opt-detail">Single and multiple choice</span></div><i class="zz-tick" data-icon="check"></i><kbd data-penna="keycap">1</kbd></div>
+              <div class="zz-opt" data-penna="menu-item" data-state="selected"><div class="zz-opt-text"><span class="zz-opt-label">Tool approvals</span><span class="zz-opt-detail">Commands, edits and fetches</span></div><i class="zz-tick" data-icon="check"></i><kbd data-penna="keycap">2</kbd></div>
+              <div class="zz-opt" data-penna="menu-item"><div class="zz-opt-text"><span class="zz-opt-label">Plan approval</span><span class="zz-opt-detail">The plan the agent wants to build</span></div><kbd data-penna="keycap">3</kbd></div>
+              <div class="zz-opt" data-penna="menu-item"><div class="zz-opt-text"><span class="zz-opt-label">Subagent prompts</span><span class="zz-opt-detail">Asks that come from a subagent</span></div><kbd data-penna="keycap">4</kbd></div>
+            </div>
+            <span class="zz-rule"></span>
+            <div class="zz-input-row"><span class="zz-leading"><kbd data-penna="keycap">5</kbd></span><span class="zz-input">Something else</span><button class="zz-skip" data-penna="button.quiet">Skip</button><button class="zz-send" data-penna="button" data-emphasis="solid" data-solid="primary">Next<i data-icon="key-return"></i></button><button class="zz-stop" data-penna="button.send" data-emphasis="solid" data-solid="primary"><i data-icon="stop"></i></button></div>
+          </div>
+          <div class="zz-hints"><b>2 picked</b><span>1 to 5 toggle</span><span>←→ page</span><span>↵ next</span><span>esc skip</span></div>
+        </div>
+      </figure>
+
+    </div>
+  </section>
+</main>
+</body>
+</html>

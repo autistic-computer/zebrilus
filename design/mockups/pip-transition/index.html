@@ -1,0 +1,472 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pip transitions</title>
+<script>
+  (() => {
+    const params = new URLSearchParams(location.search);
+    if (params.has("flat")) return;
+    const rest = params.toString();
+    location.replace(`${location.pathname}?flat${rest ? `&${rest}` : ""}`);
+  })();
+</script>
+<link rel="stylesheet" href="/penna/penna.css">
+<link rel="stylesheet" href="/zz.css">
+<script src="/penna/kit.js" data-tokens="/tokens/" data-themes="default macos yaru" data-theme="default"></script>
+<style>
+  .zz-page { display: grid; gap: 28px; max-width: 2100px; margin: 0 auto; padding: 40px 32px 96px; }
+  .zz-page h1 { margin: 0; font-size: var(--penna-text-title-size); line-height: var(--penna-text-title-line); font-weight: 600; }
+  .zz-page h2 { margin: 0; font-size: 15px; line-height: 20px; font-weight: 600; }
+  .zz-intro { display: grid; gap: 6px; }
+  .zz-intro p, .zz-notes li { margin: 0; max-width: 88ch; color: var(--penna-fg-muted); }
+  .zz-intro b, .zz-notes b { color: var(--penna-fg); font-weight: 600; }
+  .zz-notes { display: grid; gap: 10px; }
+  .zz-notes ul { display: grid; gap: 6px; margin: 0; padding-left: 18px; }
+
+  .zz-controls { position: sticky; top: 0; z-index: 10; display: flex; flex-wrap: wrap; align-items: center; gap: 20px; margin: 0 -32px; padding: 10px 32px; background: color-mix(in srgb, var(--penna-bg) 88%, transparent); backdrop-filter: blur(14px); font-size: var(--penna-text-small-size); line-height: var(--penna-text-small-line); color: var(--penna-fg-muted); }
+  .zz-control { display: flex; align-items: center; gap: 8px; }
+  .zz-seg { display: flex; gap: 2px; padding: 2px; border-radius: 10px; background: color-mix(in srgb, var(--penna-fg) 6%, transparent); }
+  .zz-seg > [data-penna] { --penna-share: 0; --penna-r: 0px; height: 24px; padding: 0 10px; border-radius: 8px; font-size: var(--penna-text-small-size); font-weight: 500; }
+
+  .zz-variants.penna-variants { padding: 0; --penna-variant-width: 600px; }
+  .zz-variants > figure { min-width: 0; }
+  .zz-stage { min-width: 0; padding: 14px; border-radius: 16px; background: color-mix(in srgb, var(--penna-fg) 4%, var(--penna-bg)); }
+
+  .zz-win[data-penna="pane"] { position: relative; height: 480px; border-radius: 12px; --zz-pane-header-height: 34px; }
+  .zz-chat { display: flex; flex: 1; flex-direction: column; gap: 12px; min-height: 0; padding: 4px 16px 150px; overflow-y: auto; scrollbar-width: thin; font-size: var(--penna-text-body-size); line-height: var(--penna-text-body-line); }
+  .zz-say { flex: none; max-width: 62ch; }
+  [data-src] { flex: none; cursor: var(--penna-click-cursor, pointer); }
+
+  .zz-agent[data-penna="card.activity"] { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 8px 12px 8px 8px; }
+  .zz-tile[data-penna="icon-tile"] { --penna-share: 0; --penna-r: 0px; display: grid; flex: none; place-items: center; width: 28px; height: 28px; border-radius: 9px; --penna-icon-size: 14px; }
+  .zz-tile > i { height: 14px; }
+  .zz-agent-text { display: flex; flex: 1; flex-direction: column; align-items: flex-start; min-width: 0; }
+  .zz-agent-title { font-weight: 500; white-space: nowrap; }
+  .zz-agent-detail { font-size: var(--penna-text-small-size); line-height: var(--penna-text-small-line); color: var(--penna-muted); }
+  .zz-agent > [data-icon] { color: var(--penna-muted); --penna-icon-size: 14px; }
+
+  .zz-code[data-penna="card.code"] { display: flex; flex-direction: column; overflow: hidden; }
+  .zz-code-head { display: flex; flex: none; align-items: center; gap: 4px; height: 30px; padding: 0 10px 0 12px; font-size: var(--penna-text-small-size); line-height: var(--penna-text-small-line); color: var(--penna-muted); --penna-icon-size: 13px; }
+  .zz-code-head > span { flex: 1; }
+  .zz-code > pre { max-height: 146px; }
+  .zz-win pre { margin: 0; padding: 0 12px 12px; overflow: hidden; font-family: var(--penna-mono); font-size: 12px; line-height: 18px; white-space: pre; color: var(--penna-fg); }
+  .zz-win pre .k { color: var(--penna-accent); }
+
+  .zz-fig[data-penna="card.figure"] { align-self: flex-start; padding: 8px; }
+  .zz-fig svg { display: block; width: 250px; height: auto; }
+  .zz-win svg text { font: 500 11px var(--penna-font); fill: currentColor; text-anchor: middle; dominant-baseline: central; }
+  .zz-win svg rect { fill: color-mix(in srgb, currentColor 7%, transparent); stroke: color-mix(in srgb, currentColor 38%, transparent); }
+  .zz-win svg path { fill: none; stroke: color-mix(in srgb, currentColor 55%, transparent); stroke-width: 1.25; }
+  .zz-win svg marker path { fill: color-mix(in srgb, currentColor 55%, transparent); stroke: none; }
+
+  .zz-pip[data-penna="floating.pip"] { position: absolute; z-index: 3; display: none; overflow: hidden; }
+  .zz-pip[data-open] { display: block; }
+  .zz-pip-inner { position: absolute; top: 0; left: 0; display: flex; flex-direction: column; }
+  .zz-pip-head[data-penna="bar.pane"] { padding: 0 6px 0 12px; gap: 7px; color: var(--penna-fg); --penna-icon-size: 14px; }
+  .zz-pip-head > i { height: 14px; color: var(--penna-muted); }
+  .zz-pip-title { flex: none; font-weight: 500; white-space: nowrap; }
+  .zz-pip-head > span:empty { flex: 1; }
+  .zz-pip-body { position: relative; flex: 1; align-self: flex-start; min-height: 0; overflow: hidden; }
+  [data-part] { display: inline-block; transform-origin: 0 0; will-change: transform, opacity; }
+  .zz-pip-body > [data-part] { display: block; }
+  .zz-pip-body > .zz-sub { display: flex; }
+
+  .zz-sub { display: flex; flex-direction: column; gap: 8px; padding: 2px 12px 12px; font-size: var(--penna-text-body-size); line-height: var(--penna-text-body-line); }
+  .zz-step { display: flex; align-items: center; gap: 7px; font-size: var(--penna-text-small-size); line-height: var(--penna-text-small-line); color: var(--penna-muted); --penna-icon-size: 13px; }
+  .zz-step > i { height: 13px; }
+  .zz-step > b { font-weight: 500; color: var(--penna-fg); }
+  .zz-zoom { margin: 4px 12px 12px; }
+  .zz-zoom > svg { display: block; width: 100%; height: auto; }
+</style>
+</head>
+<body>
+<main class="zz-page">
+  <div class="zz-intro">
+    <h1>Pip transitions</h1>
+    <p>What a pip does when it opens out of the thing you clicked. Click the <b>subagent row</b>, the <b>code block</b> or the <b>diagram</b> in any window. Click it again, or the pip's close button, to send it back. Scroll the source out of view before closing to see what happens when there is nowhere to return to.</p>
+  </div>
+
+  <div class="zz-controls">
+    <span class="zz-control"><span>Speed</span><span class="zz-seg" data-tune="speed"><button data-penna="button.quiet" data-value="1">1×</button><button data-penna="button.quiet" data-value="0.5">½×</button><button data-penna="button.quiet" data-value="0.2">⅕×</button></span></span>
+    <span class="zz-control"><span>Spring</span><span class="zz-seg" data-tune="spring"><button data-penna="button.quiet" data-value="firm">Firm, the pane spring</button><button data-penna="button.quiet" data-value="soft">Soft, a little overshoot</button></span></span>
+  </div>
+
+  <div class="penna-variants zz-variants">
+    <figure data-variant="now">
+      <figcaption><b>Now</b>The pip fades in where it lands, 140ms. Closing removes it at once.</figcaption>
+      <div class="zz-stage"></div>
+    </figure>
+    <figure data-variant="a">
+      <figcaption><b>A</b>The frame grows out of what you clicked. The pip's content is laid out once at full size, uncovered as the frame grows, and fades in over the back half. The source dims while its pip is open.</figcaption>
+      <div class="zz-stage"></div>
+    </figure>
+    <figure data-variant="b">
+      <figcaption><b>B</b>A, and what both sides share travels: the row's icon and title become the pip's header, the code lines move with the frame as they are and the rest is uncovered below them, the diagram scales up.</figcaption>
+      <div class="zz-stage"></div>
+    </figure>
+  </div>
+
+  <div class="zz-notes">
+    <h2>What the app can draw</h2>
+    <ul>
+      <li><b>Frame, corners, fade, clip:</b> all three sources, both directions. The frame already moves on four springs, one per edge.</li>
+      <li><b>Scaling:</b> only images and diagrams. Live text cannot zoom, so in B the title and the code lines travel at their own size.</li>
+      <li><b>Closing:</b> the pane is gone the moment it closes, so the way back is drawn with the pip's frame and header only, or with the picture for a diagram. A subagent's chat and a code view fade out first.</li>
+      <li><b>No way back:</b> when the source has scrolled away, the pip shrinks a little in place and fades, 160ms.</li>
+    </ul>
+  </div>
+</main>
+
+<template id="zz-window">
+  <div class="zz-win" data-penna="pane">
+    <div data-penna="bar.pane"><div data-penna="button.title"><i data-icon="sparkle"></i>claude</div></div>
+    <div class="zz-chat">
+      <div class="zz-say">The empty block comes from the table. I'll have a subagent scan both drivers while I fix the fade here.</div>
+      <div class="zz-agent" data-penna="card.activity" data-src="agent" role="button">
+        <span class="zz-tile" data-penna="icon-tile"><i data-icon="sparkle"></i></span>
+        <span class="zz-agent-text"><span class="zz-agent-title">Scan the rendering drivers</span><span class="zz-agent-detail">Explore · 14 steps</span></span>
+        <i data-icon="picture-in-picture"></i>
+      </div>
+      <div class="zz-say">Every cell shared the first paragraph's key, so the whole table faded as one block. Each cell gets its own span:</div>
+      <div class="zz-code" data-penna="card.code" data-src="code" role="button">
+        <div class="zz-code-head"><span>Rust</span><i data-icon="copy"></i><i data-icon="expand"></i></div>
+        <pre data-code></pre>
+      </div>
+      <div class="zz-say">And the path a reply takes to the screen:</div>
+      <div class="zz-fig" data-penna="card.figure" data-src="diagram" role="button" data-diagram></div>
+      <div class="zz-say">The driver only names the steps. Rows group them, and the markdown view draws the text between them.</div>
+      <div class="zz-say">Nothing else in the reply changes. The fade keys are per cell now, so a table streams in row by row the way paragraphs do.</div>
+      <div class="zz-say">I ran the kit's checks and the chat row tests. Both pass.</div>
+    </div>
+    <div class="zz-pip" data-penna="floating.pip">
+      <div class="zz-pip-inner">
+        <div class="zz-pip-head" data-penna="bar.pane"><i data-part="icon"></i><span class="zz-pip-title" data-part="title"></span><span></span><button data-penna="icon-button.bar" data-part="close"><i data-icon="xmark"></i></button></div>
+        <div class="zz-pip-body"></div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<template id="zz-diagram">
+  <svg viewBox="0 0 300 140" xmlns="http://www.w3.org/2000/svg">
+    <defs><marker id="zz-tip" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 8 4 0 8z"/></marker></defs>
+    <rect x="6" y="10" width="84" height="34" rx="9"/><text x="48" y="27">Driver</text>
+    <rect x="108" y="10" width="84" height="34" rx="9"/><text x="150" y="27">Chat rows</text>
+    <rect x="210" y="10" width="84" height="34" rx="9"/><text x="252" y="27">Markdown</text>
+    <rect x="108" y="96" width="84" height="34" rx="9"/><text x="150" y="113">Pane</text>
+    <rect x="210" y="96" width="84" height="34" rx="9"/><text x="252" y="113">Pip</text>
+    <path d="M90 27H106" marker-end="url(#zz-tip)"/>
+    <path d="M192 27H208" marker-end="url(#zz-tip)"/>
+    <path d="M150 44V94" marker-end="url(#zz-tip)"/>
+    <path d="M252 44V94" marker-end="url(#zz-tip)"/>
+  </svg>
+</template>
+
+<template id="zz-body-agent">
+  <div class="zz-sub" data-part="content">
+    <div>Reading both drivers for labels that leak raw tool names.</div>
+    <div class="zz-step"><i data-icon="file"></i><b>Read</b>claude/translate.rs</div>
+    <div class="zz-step"><i data-icon="search"></i><b>Search</b>ItemStatus::Failed</div>
+    <div class="zz-step"><i data-icon="file"></i><b>Read</b>codex/translate.rs</div>
+    <div>Three labels are raw tool names, and a denied call reports as failed. Fixing the labels first.</div>
+    <div class="zz-step"><i data-icon="pencil"></i><b>Edit</b>chat_bridge.rs</div>
+    <div class="zz-step"><i data-icon="terminal"></i><b>Run</b>cargo test -p zz-daemon replay</div>
+    <div>Both replays pass with the new labels.</div>
+  </div>
+</template>
+
+<template id="zz-body-code">
+  <pre data-part="content" data-code></pre>
+</template>
+
+<template id="zz-body-diagram">
+  <div class="zz-zoom" data-part="content" data-diagram></div>
+</template>
+
+<script>
+  const CODE = `fn cell_spans(row: &Row, source: &str) -> Vec<Span> {
+    let mut spans = Vec::with_capacity(row.cells.len());
+    let mut cursor = row.start;
+    for cell in &row.cells {
+        let start = cursor + leading_space(&source[cursor..]);
+        let end = start + cell.text.len();
+        spans.push(Span { start, end });
+        cursor = end + 1;
+    }
+    spans
+}
+
+fn fade_key(span: Span, index: usize) -> (usize, usize) {
+    (span.start, index)
+}
+
+fn reveal(cells: &[Cell], spans: &[Span], now: Instant) -> Vec<Fade> {
+    cells
+        .iter()
+        .zip(spans)
+        .enumerate()
+        .map(|(index, (cell, span))| Fade {
+            key: fade_key(*span, index),
+            since: cell.arrived.unwrap_or(now),
+        })
+        .collect()
+}`;
+
+  const KINDS = {
+    agent: { icon: "sparkle", title: "Scan the rendering drivers", rides: { icon: ".zz-tile > i", title: ".zz-agent-title" }, zoom: true },
+    code: { icon: "braces", title: "Rust · 26 lines", rides: { content: "pre" }, zoom: false },
+    diagram: { icon: "eye", title: "Reply flow", rides: { content: "svg" }, zoom: true },
+  };
+  const SPRINGS = { firm: [28, 1], soft: [22, 0.75] };
+  const tune = { speed: 1, spring: "firm" };
+  const query = new URLSearchParams(location.search);
+  const hold = query.has("hold") ? Number(query.get("hold")) : null;
+
+  const clamp = (value) => Math.min(1, Math.max(0, value));
+  const lerp = (from, to, p) => from + (to - from) * p;
+  const mix = (a, b, p) => ({ x: lerp(a.x, b.x, p), y: lerp(a.y, b.y, p), w: lerp(a.w, b.w, p), h: lerp(a.h, b.h, p) });
+  const quint = (t) => 1 - (1 - t) ** 5;
+  const overlaps = (a, b) => a.y + a.h > b.y + 8 && a.y < b.y + b.h - 8;
+
+  function remaining(t, [omega, zeta]) {
+    if (zeta >= 1) return (1 + omega * t) * Math.exp(-omega * t);
+    const damped = omega * Math.sqrt(1 - zeta * zeta);
+    return Math.exp(-zeta * omega * t) * (Math.cos(damped * t) + ((zeta * omega) / damped) * Math.sin(damped * t));
+  }
+
+  function envelope(t, [omega, zeta]) {
+    if (zeta >= 1) return (1 + omega * t) * Math.exp(-omega * t);
+    return Math.exp(-zeta * omega * t) / Math.sqrt(1 - zeta * zeta);
+  }
+
+  function natural(element, root) {
+    let x = 0;
+    let y = 0;
+    for (let node = element; node && node !== root; node = node.offsetParent) {
+      x += node.offsetLeft;
+      y += node.offsetTop;
+    }
+    return { x, y, w: element.offsetWidth, h: element.offsetHeight };
+  }
+
+  function dress(root) {
+    for (const slot of root.querySelectorAll("[data-code]")) {
+      slot.innerHTML = CODE.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/\b(fn|let|mut|for|in)\b/g, '<span class="k">$1</span>');
+    }
+    for (const slot of root.querySelectorAll("[data-diagram]")) {
+      slot.replaceChildren(document.getElementById("zz-diagram").content.cloneNode(true));
+    }
+  }
+
+  class Stage {
+    constructor(win, variant) {
+      this.win = win;
+      this.variant = variant;
+      this.chat = win.querySelector(".zz-chat");
+      this.bar = win.querySelector('[data-penna="bar.pane"]');
+      this.pip = win.querySelector(".zz-pip");
+      this.inner = win.querySelector(".zz-pip-inner");
+      this.body = win.querySelector(".zz-pip-body");
+      this.kind = null;
+      this.p = 0;
+      this.from = 0;
+      this.to = 0;
+      this.fade = 1;
+      this.dropped = 0;
+      this.mode = "spring";
+      this.started = 0;
+      this.frame = 0;
+      for (const source of win.querySelectorAll("[data-src]")) {
+        source.addEventListener("click", () => this.toggle(source.dataset.src));
+      }
+      this.pip.querySelector('[data-part="close"]').addEventListener("click", () => this.close());
+    }
+
+    source() {
+      return this.win.querySelector(`[data-src="${this.kind}"]`);
+    }
+
+    rect(element) {
+      const base = this.win.getBoundingClientRect();
+      const box = element.getBoundingClientRect();
+      return { x: box.left - base.left, y: box.top - base.top, w: box.width, h: box.height };
+    }
+
+    target() {
+      const width = Math.max(280, Math.min(340, this.win.clientWidth * 0.46));
+      const top = this.bar.offsetHeight + 4;
+      return { x: this.win.clientWidth - 12 - width, y: top, w: width, h: this.win.clientHeight - top - 12 };
+    }
+
+    toggle(kind) {
+      if (this.kind === kind && this.to === 1) this.close();
+      else this.open(kind);
+    }
+
+    show(kind) {
+      if (this.kind && this.kind !== kind) this.reset();
+      if (this.kind === kind) return;
+      const look = KINDS[kind];
+      this.kind = kind;
+      this.p = 0;
+      this.pip.querySelector('[data-part="icon"]').dataset.icon = look.icon;
+      this.pip.querySelector('[data-part="title"]').textContent = look.title;
+      this.body.replaceChildren(document.getElementById(`zz-body-${kind}`).content.cloneNode(true));
+      dress(this.body);
+      this.pip.dataset.open = "";
+      window.pennaKit?.roundAll?.();
+    }
+
+    open(kind) {
+      this.show(kind);
+      this.go(1, "spring");
+    }
+
+    close() {
+      if (!this.kind) return;
+      if (this.variant === "now") {
+        this.reset();
+        return;
+      }
+      const away = !overlaps(this.rect(this.source()), this.rect(this.chat));
+      this.go(0, away ? "drop" : "spring");
+    }
+
+    go(to, mode) {
+      this.from = this.p;
+      this.to = to;
+      this.mode = mode;
+      this.fade = 0;
+      this.dropped = 0;
+      this.started = performance.now();
+      cancelAnimationFrame(this.frame);
+      this.frame = requestAnimationFrame((now) => this.tick(now));
+    }
+
+    tick(now) {
+      const t = ((now - this.started) / 1000) * tune.speed;
+      let done;
+      if (this.variant === "now") {
+        this.fade = quint(Math.min(1, t / 0.14));
+        this.p = 1;
+        done = t >= 0.14;
+      } else if (this.mode === "drop") {
+        this.dropped = quint(Math.min(1, t / 0.16));
+        done = t >= 0.16;
+      } else {
+        const spring = SPRINGS[tune.spring];
+        done = t > 0.05 && envelope(t, spring) < 0.001;
+        this.p = done ? this.to : this.to + (this.from - this.to) * remaining(t, spring);
+      }
+      this.render();
+      if (!done) {
+        this.frame = requestAnimationFrame((next) => this.tick(next));
+      } else if (this.mode === "drop" || this.to === 0) {
+        this.reset();
+      }
+    }
+
+    render() {
+      if (!this.kind) return;
+      const look = KINDS[this.kind];
+      const source = this.source();
+      const from = this.rect(source);
+      const to = this.target();
+      const p = this.p;
+      const moves = this.variant !== "now";
+      let frame = to;
+      let alpha = this.fade;
+      if (moves && this.mode === "drop") {
+        const shrink = 0.04 * this.dropped;
+        frame = { x: to.x + to.w * shrink, y: to.y + to.h * shrink, w: to.w * (1 - 2 * shrink), h: to.h * (1 - 2 * shrink) };
+        alpha = 1 - this.dropped;
+      } else if (moves) {
+        frame = mix(from, to, p);
+        alpha = clamp(p / 0.1);
+      }
+      Object.assign(this.pip.style, {
+        left: `${frame.x}px`,
+        top: `${frame.y}px`,
+        width: `${Math.max(0, frame.w)}px`,
+        height: `${Math.max(0, frame.h)}px`,
+        opacity: alpha,
+      });
+      Object.assign(this.inner.style, { width: `${Math.max(0, frame.w)}px`, height: `${to.h}px` });
+      this.body.style.width = `${to.w}px`;
+      const lit = moves ? clamp((p - 0.35) / 0.5) : 1;
+      const rides = this.variant === "b" ? look.rides : {};
+      for (const part of this.pip.querySelectorAll("[data-part]")) {
+        const anchor = rides[part.dataset.part];
+        if (!anchor) {
+          part.style.opacity = lit;
+          part.style.transform = "";
+          continue;
+        }
+        const start = this.rect(source.querySelector(anchor));
+        const rest = natural(part, this.inner);
+        const scale = lerp(look.zoom ? start.h / rest.h : 1, 1, p);
+        const x = lerp(start.x, to.x + rest.x, p) - (frame.x + rest.x);
+        const y = lerp(start.y, to.y + rest.y, p) - (frame.y + rest.y);
+        part.style.opacity = 1;
+        part.style.transform = `translate(${x}px, ${y}px) scale(${scale})`;
+      }
+      source.style.opacity = moves ? 1 - 0.6 * clamp(p / 0.35) : 1;
+    }
+
+    reset() {
+      cancelAnimationFrame(this.frame);
+      if (this.kind) this.source().style.opacity = "";
+      delete this.pip.dataset.open;
+      this.kind = null;
+      this.p = 0;
+      this.to = 0;
+    }
+  }
+
+  const stages = [];
+  for (const figure of document.querySelectorAll("figure[data-variant]")) {
+    const stage = figure.querySelector(".zz-stage");
+    stage.append(document.getElementById("zz-window").content.cloneNode(true));
+    dress(stage);
+    stages.push(new Stage(stage.querySelector(".zz-win"), figure.dataset.variant));
+  }
+
+  for (const group of document.querySelectorAll("[data-tune]")) {
+    const name = group.dataset.tune;
+    const mark = () => {
+      for (const button of group.children) {
+        button.toggleAttribute("data-state", String(tune[name]) === button.dataset.value);
+        if (button.hasAttribute("data-state")) button.dataset.state = "selected";
+      }
+    };
+    group.addEventListener("click", (event) => {
+      const button = event.target.closest("[data-value]");
+      if (!button) return;
+      tune[name] = name === "speed" ? Number(button.dataset.value) : button.dataset.value;
+      mark();
+    });
+    mark();
+  }
+
+  function freeze() {
+    for (const stage of stages) {
+      if (hold !== null) {
+        stage.show(query.get("open") || "agent");
+        stage.p = hold;
+        stage.to = 1;
+        stage.fade = 1;
+      }
+      stage.render();
+    }
+  }
+
+  addEventListener("resize", freeze);
+  addEventListener("load", () => {
+    freeze();
+    setTimeout(freeze, 400);
+  });
+</script>
+</body>
+</html>
