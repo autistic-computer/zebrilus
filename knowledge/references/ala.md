@@ -4,7 +4,7 @@ title: ala
 description: ala, our GPUI fork (libs/ala/crates/ala, ala-macros, ala-platform) - where its code lives, how to change it or pull an upstream fix, and what zz changed. gpui-component is not a dependency.
 resource: libs/ala/crates/ala/Cargo.toml
 tags: [ala, gpui, reference, vendored]
-timestamp: 2026-10-31T00:00:00Z
+timestamp: 2026-11-10T00:00:00Z
 ---
 
 # Overview
@@ -377,6 +377,22 @@ glass group still render with the group. A reused view replays its accessibility
 ids, bounds and `on_a11y_action` listeners from the previous frame's tree. Tests live in
 `window/invalidation_tests.rs`; `libs/ala/crates/ala-platform/benches/invalidation.rs` measures a
 nine-pane window.
+
+`ala::flat` (2026-11-10, `window/flat.rs`) is a second way to draw a view. Its boxes, text and
+icons are plain records in one table (`flat::Ui`), laid out in four passes and painted straight
+into the scene under one layer, and `flat::surface` hosts the table as a single element. A box
+can be a hit target with a key: the layer tracks hover, press, focus and scroll, hands clicks
+back to `Flat::clicked`, and lists described nodes as accessibility children, which can press a
+target too. Text is kept per paragraph by key and version, so an unchanged paragraph is not
+reshaped and one that grew reshapes only the lines that changed. penna's Linux window controls
+are its first user: six fewer layout nodes a frame in zz, and a streaming pane that draws in
+493 µs where it took 526 (`bench/ala/frames.py`, 5 repeats). `libs/ala/crates/ala-platform/benches/flat.rs` redraws the same view on the
+element tree and on the flat layer and prints how many quads and glyphs each side painted. On a
+16-core Linux box, 36 sidebar rows draw in 372 µs on the tree and 43 µs flat, 24 wrapped
+paragraphs in 351 and 120, and a reply of 40 to 60 lines that grows a word a frame in 168 and
+64. Run it with `cargo bench --manifest-path libs/ala/Cargo.toml -p ala-platform --features
+bench-support,wayland --bench flat` (`font-kit` in place of `wayland` on macOS); without one of
+those the text system is a no-op, and the bench refuses to run.
 
 The web backend hosts several windows per page through `WindowOptions::mount`, mirrors each
 window's accessibility tree into ARIA elements, and installs a `globalThis.ala` automation API;

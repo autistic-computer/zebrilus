@@ -1,10 +1,14 @@
 use std::rc::Rc;
 
 use ala::{
-    AnyElement, App, ClickEvent, Decorations, DefiniteLength, Div, InteractiveElement, IntoElement,
-    MouseButton, ParentElement, Pixels, Point, RenderOnce, Stateful,
-    StatefulInteractiveElement as _, StyleRefinement, Styled, TitlebarOptions, Window,
-    WindowControlArea, div, point, prelude::FluentBuilder as _, px,
+    AnyElement, App, Bounds, ClickEvent, Context, Decorations, DefiniteLength, Div,
+    InteractiveElement, IntoElement, MouseButton, ParentElement, Pixels, Point, RenderOnce, Role,
+    SharedString, Stateful, StatefulInteractiveElement as _, StyleRefinement, Styled,
+    TitlebarOptions, Window, WindowControlArea, div,
+    flat::{self, Align, BoxStyle, BoxStyleId, Extent, Flat, Flow, Ui},
+    point,
+    prelude::FluentBuilder as _,
+    px,
 };
 use smallvec::SmallVec;
 
@@ -286,27 +290,216 @@ impl WindowControls {
 }
 
 impl RenderOnce for WindowControls {
-    fn render(self, window: &mut Window, _: &mut App) -> impl IntoElement {
+    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         if !draws_window_controls(window) {
-            return div().id("window-controls");
+            return div().id("window-controls").into_any_element();
         }
 
         let role = crate::foundation::roles::WINDOW_CONTROLS;
-        let control = move |icon| WindowControl { icon, role };
-        h_flex()
-            .id("window-controls")
-            .occlude()
-            .items_center()
-            .gap(WINDOW_CONTROL_GAP)
-            .flex_shrink_0()
-            .h_full()
-            .child(control(ControlIcon::minimize()))
-            .child(control(if window.is_maximized() {
-                ControlIcon::restore()
+        if cfg!(target_os = "linux")
+            && let Some(look) = ControlsLook::plain(role, window, cx)
+        {
+            return flat_controls(look, self.on_close_window, window, cx);
+        }
+        tree_controls(role, self.on_close_window, window)
+    }
+}
+
+fn tree_controls(role: SurfaceRole, close: Option<CloseHandler>, window: &Window) -> AnyElement {
+    let control = move |icon| WindowControl { icon, role };
+    h_flex()
+        .id("window-controls")
+        .occlude()
+        .items_center()
+        .gap(WINDOW_CONTROL_GAP)
+        .flex_shrink_0()
+        .h_full()
+        .child(control(ControlIcon::minimize()))
+        .child(control(if window.is_maximized() {
+            ControlIcon::restore()
+        } else {
+            ControlIcon::maximize()
+        }))
+        .child(control(ControlIcon::close(close)))
+        .into_any_element()
+}
+
+fn flat_controls(
+    look: ControlsLook,
+    close: Option<CloseHandler>,
+    window: &mut Window,
+    cx: &mut App,
+) -> AnyElement {
+    let controls = window.use_keyed_state("window-controls", cx, |window, _| FlatControls {
+        ui: Ui::new(window),
+        look: None,
+        styles: Vec::new(),
+        row: None,
+        close: None,
+    });
+    controls.update(cx, |controls, _| {
+        controls.close = close;
+        controls.restyle(look, window);
+    });
+    flat::surface("window-controls", &controls)
+        .occlude()
+        .flex_shrink_0()
+        .w(WINDOW_CONTROLS_SPAN)
+        .h_full()
+        .into_any_element()
+}
+
+const CONTROL_STATES: usize = 3;
+
+#[derive(Clone, PartialEq)]
+struct ControlsLook {
+    layers: [Layer; 5],
+    icons: [SharedString; 4],
+    icon_size: Pixels,
+    scale_factor: f32,
+}
+
+impl ControlsLook {
+    fn plain(role: SurfaceRole, window: &Window, cx: &App) -> Option<Self> {
+        let layer = |icon: ControlIcon, state| WindowControl { icon, role }.layer(state, cx);
+        let layers = [
+            layer(ControlIcon::minimize(), PaintState::Rest),
+            layer(ControlIcon::minimize(), PaintState::Hover),
+            layer(ControlIcon::minimize(), PaintState::Active),
+            layer(ControlIcon::close(None), PaintState::Hover),
+            layer(ControlIcon::close(None), PaintState::Active),
+        ];
+        let plain = layers
+            .iter()
+            .all(|layer| layer.glass.is_none() && layer.shadow.is_empty() && layer.mark.is_none());
+        let icon = |icon: ControlIcon| Icon::new(icon.icon()).drawn_path(cx);
+        plain.then(|| Self {
+            layers,
+            icons: [
+                icon(ControlIcon::minimize()),
+                icon(ControlIcon::maximize()),
+                icon(ControlIcon::restore()),
+                icon(ControlIcon::close(None)),
+            ],
+            icon_size: crate::rems_from_px(crate::Size::Small.icon_px())
+                .to_pixels(window.rem_size()),
+            scale_factor: window.scale_factor(),
+        })
+    }
+
+    fn layer(&self, close: bool, state: usize) -> &Layer {
+        match (close, state) {
+            (_, 0) => &self.layers[0],
+            (false, state) => &self.layers[state],
+            (true, state) => &self.layers[state + 2],
+        }
+    }
+}
+
+struct FlatControls {
+    ui: Ui,
+    look: Option<ControlsLook>,
+    styles: Vec<BoxStyleId>,
+    row: Option<BoxStyleId>,
+    close: Option<CloseHandler>,
+}
+
+impl FlatControls {
+    fn restyle(&mut self, look: ControlsLook, window: &Window) {
+        if self.look.as_ref() == Some(&look) {
+            return;
+        }
+        self.ui = Ui::new(window);
+        self.row = Some(self.ui.box_style(BoxStyle {
+            flow: Flow::Row,
+            width: Extent::Grow,
+            height: Extent::Grow,
+            gap: WINDOW_CONTROL_GAP,
+            align: Align::Center,
+            ..BoxStyle::default()
+        }));
+        self.styles.clear();
+        let rest = look.layer(false, 0).clone();
+        for close in [false, true] {
+            for state in 0..CONTROL_STATES {
+                let layer = look.layer(close, state);
+                self.styles.push(self.ui.box_style(BoxStyle {
+                    flow: Flow::Row,
+                    width: Extent::Fixed(WINDOW_CONTROL_SIZE),
+                    height: Extent::Fixed(WINDOW_CONTROL_SIZE),
+                    align: Align::Center,
+                    justify: Align::Center,
+                    fill: Some(layer.fill),
+                    border: rest.border_width,
+                    border_color: layer.border,
+                    radius: rest.radius,
+                    corner_share: rest.share,
+                    corner_smoothing: Some(rest.smoothing),
+                    ..BoxStyle::default()
+                }));
+            }
+        }
+        self.look = Some(look);
+    }
+}
+
+impl Flat for FlatControls {
+    fn ui(&mut self) -> &mut Ui {
+        &mut self.ui
+    }
+
+    fn build(&mut self, bounds: Bounds<Pixels>, window: &mut Window, _: &mut Context<Self>) {
+        let (Some(look), Some(row)) = (&self.look, self.row) else {
+            return;
+        };
+        let ui = &mut self.ui;
+        let hovered = ui.hovered();
+        let pressed = ui.pressed();
+        ui.begin();
+        ui.open(row);
+        let middle = if window.is_maximized() {
+            (2, "Restore")
+        } else {
+            (1, "Maximize")
+        };
+        for (key, (icon, name)) in [(0, "Minimize"), middle, (3, "Close")]
+            .into_iter()
+            .enumerate()
+        {
+            let key = key as u64;
+            let close = icon == 3;
+            let state = if pressed == Some(key) {
+                2
             } else {
-                ControlIcon::maximize()
-            }))
-            .child(control(ControlIcon::close(self.on_close_window)))
+                usize::from(hovered == Some(key))
+            };
+            let style = self.styles[usize::from(close) * CONTROL_STATES + state];
+            let control = ui.open(style);
+            ui.target(control, key, crate::PointerCursor::style());
+            ui.describe(control, key, Role::Button, &SharedString::new_static(name));
+            ui.icon(
+                &look.icons[icon],
+                look.icon_size,
+                look.layer(close, state).text,
+            );
+            ui.close();
+        }
+        ui.close();
+        ui.layout(bounds.size);
+    }
+
+    fn clicked(&mut self, click: flat::Click, window: &mut Window, cx: &mut Context<Self>) {
+        if click.button != MouseButton::Left {
+            return;
+        }
+        match click.key {
+            0 => window.minimize_window(),
+            1 => window.zoom_window(),
+            _ => match self.close.clone() {
+                Some(close) => close(&ClickEvent::default(), window, cx),
+                None => window.remove_window(),
+            },
+        }
     }
 }
 
@@ -408,5 +601,92 @@ impl RenderOnce for TitleBar {
                         }),
                 ),
         )
+    }
+}
+
+#[cfg(all(test, target_os = "linux"))]
+mod tests {
+    use std::cell::Cell;
+
+    use ala::{Modifiers, Render, TestAppContext, VisualTestContext};
+
+    use super::*;
+
+    struct Host {
+        flat: bool,
+        closed: Rc<Cell<usize>>,
+    }
+
+    impl Render for Host {
+        fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+            let role = crate::foundation::roles::WINDOW_CONTROLS;
+            let closed = self.closed.clone();
+            let close: CloseHandler = Rc::new(move |_, _, _| closed.set(closed.get() + 1));
+            let controls = if self.flat {
+                let look = ControlsLook::plain(role, window, cx).expect("the look is plain");
+                flat_controls(look, Some(close), window, cx)
+            } else {
+                tree_controls(role, Some(close), window)
+            };
+            div().flex().w_full().h(px(41.0)).child(controls)
+        }
+    }
+
+    fn drawn(cx: &mut VisualTestContext) -> Vec<String> {
+        cx.update(|window, cx| {
+            window.draw(cx).clear(cx);
+            window.draw(cx).clear(cx);
+            let scene = window.rendered_scene();
+            let quads = scene.quads.iter().map(|quad| {
+                format!(
+                    "quad {:?} {:?} {:?} {:?} {:?} {}",
+                    quad.bounds,
+                    quad.background,
+                    quad.border_color,
+                    quad.corner_radii,
+                    quad.border_widths,
+                    quad.corner_smoothing
+                )
+            });
+            let sprites = scene.monochrome_sprites.iter().map(|sprite| {
+                format!(
+                    "sprite {:?} {:?} {:?}",
+                    sprite.bounds, sprite.color, sprite.tile.bounds
+                )
+            });
+            let mut drawn = quads.chain(sprites).collect::<Vec<_>>();
+            drawn.sort();
+            drawn
+        })
+    }
+
+    fn states(flat: bool, cx: &mut TestAppContext) -> (Vec<Vec<String>>, usize) {
+        let closed = Rc::new(Cell::new(0));
+        let (_, cx) = cx.add_window_view(|_, _| Host {
+            flat,
+            closed: closed.clone(),
+        });
+        let close = point(px(63.0), px(20.0));
+        let mut states = vec![drawn(cx)];
+        cx.simulate_mouse_move(close, None, Modifiers::none());
+        states.push(drawn(cx));
+        cx.simulate_mouse_down(close, MouseButton::Left, Modifiers::none());
+        states.push(drawn(cx));
+        cx.simulate_mouse_up(close, MouseButton::Left, Modifiers::none());
+        cx.simulate_mouse_move(point(px(11.0), px(20.0)), None, Modifiers::none());
+        states.push(drawn(cx));
+        (states, closed.get())
+    }
+
+    #[ala::test]
+    fn flat_controls_draw_and_close_like_the_element_tree(cx: &mut TestAppContext) {
+        cx.update(crate::init);
+        let (tree, tree_closed) = states(false, cx);
+        let (flat, flat_closed) = states(true, cx);
+        assert_eq!(tree.iter().map(Vec::len).collect::<Vec<_>>(), [0, 1, 1, 1]);
+        assert_ne!(tree[0], tree[1]);
+        assert_ne!(tree[1], tree[2]);
+        assert_eq!(flat, tree);
+        assert_eq!((tree_closed, flat_closed), (1, 1));
     }
 }
