@@ -391,6 +391,7 @@ impl Translator {
         if item["tool"] == "spawnAgent" {
             self.spawned.insert(id.clone(), info.title.clone());
         }
+        let searching = item["type"] == "webSearch" && info.target.is_none();
         let mut call = json!({
             "sessionUpdate": "tool_call",
             "toolCallId": id,
@@ -398,7 +399,10 @@ impl Translator {
             "kind": info.kind,
             "status": "in_progress",
             "rawInput": info.input,
-            "_meta": { "codex": { "itemType": item["type"] } },
+            "_meta": {
+                "codex": { "itemType": item["type"] },
+                "zz": { "target": info.target },
+            },
         });
         if !info.content.is_empty() {
             call["content"] = Value::Array(info.content);
@@ -407,7 +411,10 @@ impl Translator {
             call["locations"] = Value::Array(info.locations);
         }
         if item["type"] == "collabAgentToolCall" && item["tool"] == "wait" {
-            call["_meta"]["zz"] = json!({ "activity": "Waiting for agents" });
+            call["_meta"]["zz"]["activity"] = Value::from("Waiting for agents");
+        }
+        if searching {
+            call["_meta"]["zz"]["activity"] = Value::from("Searching the web");
         }
         let mut updates = vec![call];
         for thread in adopted {
@@ -464,12 +471,10 @@ impl Translator {
                 self.whole(&id, "agent_thought_chunk", Some(&text))
             }
             Some(_) => {
-                let Some(mut status) = tool_status(item) else {
+                let mut status = tool_status(item);
+                let Some(info) = tool_info(item, &self.cwd) else {
                     return Vec::new();
                 };
-                if tool_info(item, &self.cwd).is_none() {
-                    return Vec::new();
-                }
                 if status == "completed"
                     && !self.restoring
                     && self.spawned.contains_key(&id)
@@ -483,8 +488,15 @@ impl Translator {
                     "toolCallId": id,
                     "status": status,
                 });
+                if item["type"] == "webSearch" {
+                    update["title"] = Value::from(info.title);
+                    update["_meta"]["zz"]["target"] = info.target.map_or(Value::Null, Value::from);
+                }
                 if let Some(code) = item["exitCode"].as_i64() {
-                    update["_meta"] = json!({ "zz": { "exitCode": code } });
+                    update["_meta"]["zz"]["exitCode"] = Value::from(code);
+                }
+                if item["status"] == "declined" {
+                    update["_meta"]["zz"]["declined"] = Value::from(true);
                 }
                 let streamed = self.commands.remove(&id);
                 if let Some(output) = tool_output(item)
@@ -803,14 +815,13 @@ fn tail(text: &str) -> String {
         .collect::<String>()
 }
 
-fn tool_status(item: &Value) -> Option<&'static str> {
-    let status = item["status"].as_str()?;
-    Some(match status {
-        "completed" if item["exitCode"].as_i64().is_some_and(|code| code != 0) => "failed",
-        "failed" | "declined" | "error" => "failed",
-        "inProgress" | "in_progress" => "in_progress",
+fn tool_status(item: &Value) -> &'static str {
+    match item["status"].as_str() {
+        Some("completed") if item["exitCode"].as_i64().is_some_and(|code| code != 0) => "failed",
+        Some("failed" | "declined" | "error") => "failed",
+        Some("inProgress" | "in_progress") => "in_progress",
         _ => "completed",
-    })
+    }
 }
 
 fn tool_output(item: &Value) -> Option<String> {
@@ -869,9 +880,11 @@ pub(crate) struct ToolInfo {
     pub(crate) input: Value,
     pub(crate) content: Vec<Value>,
     pub(crate) locations: Vec<Value>,
+    pub(crate) target: Option<String>,
 }
 
 pub(crate) fn tool_info(item: &Value, cwd: &Path) -> Option<ToolInfo> {
+    let mut target = None;
     let (title, kind, content, locations) = match item["type"].as_str()? {
         "commandExecution" => {
             let action = item["commandActions"]
@@ -880,13 +893,20 @@ pub(crate) fn tool_info(item: &Value, cwd: &Path) -> Option<ToolInfo> {
                 .and_then(|actions| actions.first());
             let command = action
                 .and_then(|action| action["command"].as_str())
-                .or_else(|| item["command"].as_str())
-                .unwrap_or("command");
+                .map(str::to_owned)
+                .or_else(|| item["command"].as_str().map(shell_script))
+                .unwrap_or_else(|| "command".to_owned());
+            let text = |key: &str| {
+                action
+                    .and_then(|action| action[key].as_str())
+                    .filter(|text| !text.is_empty())
+            };
             match action.and_then(|action| action["type"].as_str()) {
                 Some("read") => {
-                    let path = action.and_then(|action| action["path"].as_str());
+                    let path = text("path");
                     let shown =
-                        path.map_or_else(|| command.to_owned(), |path| display_path(path, cwd));
+                        path.map_or_else(|| command.clone(), |path| display_path(path, cwd));
+                    target = Some(shown.clone());
                     (
                         format!("Read {shown}"),
                         "read",
@@ -895,10 +915,18 @@ pub(crate) fn tool_info(item: &Value, cwd: &Path) -> Option<ToolInfo> {
                             .unwrap_or_default(),
                     )
                 }
-                Some("listFiles" | "search") => {
-                    (command.to_owned(), "search", Vec::new(), Vec::new())
+                Some("listFiles") => {
+                    target = Some(clip_title(&command));
+                    (command, "search", Vec::new(), Vec::new())
                 }
-                _ => (command.to_owned(), "execute", Vec::new(), Vec::new()),
+                Some("search") => {
+                    target = Some(text("query").map_or_else(|| clip_title(&command), clip_title));
+                    (command, "search", Vec::new(), Vec::new())
+                }
+                _ => {
+                    target = Some(clip_title(&command));
+                    (command, "execute", Vec::new(), Vec::new())
+                }
             }
         }
         "fileChange" => {
@@ -908,7 +936,12 @@ pub(crate) fn tool_info(item: &Value, cwd: &Path) -> Option<ToolInfo> {
                 .filter_map(|change| change["path"].as_str())
                 .collect::<Vec<_>>();
             let title = match paths.as_slice() {
-                [only] => format!("Edit {}", display_path(only, cwd)),
+                [only] => {
+                    let shown = display_path(only, cwd);
+                    let title = format!("Edit {shown}");
+                    target = Some(shown);
+                    title
+                }
                 [] => "Edit".to_owned(),
                 many => format!("Edit {} files", many.len()),
             };
@@ -945,8 +978,11 @@ pub(crate) fn tool_info(item: &Value, cwd: &Path) -> Option<ToolInfo> {
             Vec::new(),
             Vec::new(),
         ),
-        "webSearch" => (web_title(item), "fetch", Vec::new(), Vec::new()),
-        "extension" if item["kind"] == "clock.sleep" => (
+        "webSearch" => {
+            target = web_target(item);
+            (web_title(item), "fetch", Vec::new(), Vec::new())
+        }
+        "sleep" | "extension" if item["type"] == "sleep" || item["kind"] == "clock.sleep" => (
             item["durationMs"].as_u64().map_or_else(
                 || "Waited".to_owned(),
                 |ms| format!("Waited {}", wait_time(ms)),
@@ -961,10 +997,13 @@ pub(crate) fn tool_info(item: &Value, cwd: &Path) -> Option<ToolInfo> {
                 Some("wait") => ("Waited for agents".to_owned(), "other"),
                 Some("interruptAgent") => ("Stop agent".to_owned(), "other"),
                 Some("resumeAgent") => ("Resume agent".to_owned(), "other"),
-                None | Some("spawnAgent") => (
-                    item["prompt"].as_str().unwrap_or("Start agent").to_owned(),
-                    "think",
-                ),
+                None | Some("spawnAgent") => {
+                    target = item["prompt"].as_str().map(str::to_owned);
+                    (
+                        item["prompt"].as_str().unwrap_or("Start agent").to_owned(),
+                        "think",
+                    )
+                }
                 Some(_) => (
                     item["prompt"]
                         .as_str()
@@ -975,15 +1014,11 @@ pub(crate) fn tool_info(item: &Value, cwd: &Path) -> Option<ToolInfo> {
             };
             (title, kind, Vec::new(), Vec::new())
         }
-        "imageView" => (
-            format!(
-                "View {}",
-                display_path(item["path"].as_str().unwrap_or("image"), cwd)
-            ),
-            "read",
-            Vec::new(),
-            Vec::new(),
-        ),
+        "imageView" => {
+            target = item["path"].as_str().map(|path| display_path(path, cwd));
+            let shown = target.as_deref().unwrap_or("image");
+            (format!("View {shown}"), "read", Vec::new(), Vec::new())
+        }
         "imageGeneration" => ("Generate image".to_owned(), "other", Vec::new(), Vec::new()),
         "contextCompaction" => (
             "Compact context".to_owned(),
@@ -1015,7 +1050,83 @@ pub(crate) fn tool_info(item: &Value, cwd: &Path) -> Option<ToolInfo> {
         input,
         content,
         locations,
+        target,
     })
+}
+
+fn web_target(item: &Value) -> Option<String> {
+    let action = &item["action"];
+    let text = |value: &Value| {
+        value
+            .as_str()
+            .map(str::trim)
+            .filter(|text| !text.is_empty())
+            .map(clip_title)
+    };
+    match action["type"].as_str() {
+        Some("openPage") => text(&action["url"]),
+        Some("findInPage") => text(&action["url"]).or_else(|| text(&action["pattern"])),
+        _ => text(&item["query"]).or_else(|| text(&action["query"])),
+    }
+}
+
+pub(crate) fn shell_script(command: &str) -> String {
+    match shell_words(command).as_deref() {
+        Some([shell, flag, script])
+            if matches!(flag.as_str(), "-c" | "-lc")
+                && matches!(
+                    Path::new(shell).file_name().and_then(|name| name.to_str()),
+                    Some("bash" | "zsh" | "sh" | "dash")
+                ) =>
+        {
+            script.trim().to_owned()
+        }
+        _ => command.to_owned(),
+    }
+}
+
+fn shell_words(line: &str) -> Option<Vec<String>> {
+    let mut words = Vec::new();
+    let mut word: Option<String> = None;
+    let mut chars = line.chars();
+    while let Some(ch) = chars.next() {
+        match ch {
+            ' ' | '\t' | '\n' => words.extend(word.take()),
+            '\'' => {
+                let word = word.get_or_insert_with(String::new);
+                loop {
+                    match chars.next()? {
+                        '\'' => break,
+                        ch => word.push(ch),
+                    }
+                }
+            }
+            '"' => {
+                let word = word.get_or_insert_with(String::new);
+                loop {
+                    match chars.next()? {
+                        '"' => break,
+                        '\\' => match chars.next()? {
+                            '\n' => {}
+                            ch @ ('"' | '\\' | '$' | '`') => word.push(ch),
+                            ch => {
+                                word.push('\\');
+                                word.push(ch);
+                            }
+                        },
+                        ch => word.push(ch),
+                    }
+                }
+            }
+            '\\' => match chars.next()? {
+                '\n' => {}
+                ch => word.get_or_insert_with(String::new).push(ch),
+            },
+            ch => word.get_or_insert_with(String::new).push(ch),
+        }
+    }
+    words.extend(word);
+    Some(words)
 }
 
 fn web_title(item: &Value) -> String {
@@ -1515,6 +1626,14 @@ mod tests {
         );
         assert_eq!(sleep[0]["title"], "Waited 1m");
         assert_eq!(sleep[1]["status"], "completed");
+        let slept = history(
+            &mut translator,
+            &json!({"type": "sleep", "id": "z2", "durationMs": 90000}),
+        );
+        assert_eq!(
+            (&slept[0]["title"], &slept[1]["status"]),
+            (&json!("Waited 1m 30s"), &json!("completed"))
+        );
         assert!(
             history(
                 &mut translator,

@@ -524,6 +524,8 @@ pub fn agent_welcome_title(provider: AgentProvider) -> String {
 pub const AGENT_WELCOME_DETAIL: &str =
     "Ask it anything. To use the CLI's own screen, switch the pane to the CLI.";
 
+pub const AGENT_RESUME_DETAIL: &str = "Ask it anything, or pick up a chat.";
+
 #[must_use]
 pub fn agent_placeholder(provider: Option<AgentProvider>) -> String {
     format!(

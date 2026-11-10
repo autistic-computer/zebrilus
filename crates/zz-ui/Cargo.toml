@@ -17,7 +17,6 @@ tree-sitter = ["penna/tree-sitter", "dep:tree-sitter-tmux"]
 chrono = { workspace = true, features = ["clock"] }
 image.workspace = true
 log.workspace = true
-markdown = { version = "1.0", features = ["serde"] }
 parking_lot.workspace = true
 pele = { workspace = true, optional = true }
 rust-embed = { version = "8.12", features = ["include-exclude"] }

@@ -2,16 +2,12 @@ use ala::{
     AnyElement, AnyView, App, AppContext as _, Context, Div, Entity, IntoElement,
     ParentElement as _, Render, SharedString, Styled as _, Window, div, prelude::*, px,
 };
-use penna::{
-    ActiveTheme as _,
-    blocks::chat::{TaskTrayAction, TrayPanel, spinner_phase},
-    components::input::InputState,
-};
+use penna::{ActiveTheme as _, components::input::InputState};
 use zz_client::agent_flip::{AgentFlips, Flip, FlipMode};
 use zz_protocol::chat::{ItemKind, ItemStatus};
 use zz_protocol::{AgentProvider, PaneId};
 use zz_ui::{
-    agent::{presentation::agent_welcome, tasks::task_tray},
+    agent::{presentation::agent_welcome, tasks::plan_tray},
     pane::{
         FlipChoice, FlipTo, PaneDragSource, PaneFlip, PaneOverlayCorner, TerminalPaneAction,
         agent_provider_icon, pane_flip_overlay, pane_header, pane_overlay_stack,
@@ -23,7 +19,7 @@ use zz_ui::{
 use super::{
     chat::{Frame, Thread, Views, empty_column},
     composer::{Draft, claude_settings, codex_settings, composer, composer_input},
-    fixtures::{PLAN, PLAN_STEPS, Script, approval_of, completed, tasks},
+    fixtures::{PLAN, PLAN_STEPS, Script, approval_of, completed},
 };
 use crate::stories::workspace::fixtures::{CLAUDE, CODEX, Tone, terminal_body};
 use crate::story::{Framed as _, states};
@@ -110,13 +106,6 @@ impl Scene {
             Self::Claude => Some("a turn and 1 background task"),
             Self::ClaudeAsks => Some("a turn"),
             Self::Codex | Self::CodexFirst => None,
-        }
-    }
-
-    fn icon(self) -> penna::IconName {
-        match self.provider() {
-            AgentProvider::ClaudeCode => zz_ui::program::CLAUDE_ICON,
-            AgentProvider::Codex => zz_ui::program::OPENAI_ICON,
         }
     }
 
@@ -271,7 +260,7 @@ pub struct AgentPaneStory {
     armed: bool,
     thread: Entity<Thread>,
     input: Entity<InputState>,
-    tray: Option<TrayPanel>,
+    plan_open: bool,
 }
 
 fn build(scene: Scene, look: Look, side: Side, window: &mut Window, cx: &mut App) -> AnyView {
@@ -293,7 +282,10 @@ fn build_with(
     cx.new(|cx: &mut Context<AgentPaneStory>| {
         let thread = Thread::new(scene.script())
             .framed(Frame::Scroll(None))
-            .vendor(scene.icon())
+            .vendor(match scene.provider() {
+                AgentProvider::ClaudeCode => "claude",
+                AgentProvider::Codex => "codex",
+            })
             .view(window, cx);
         let mut story = AgentPaneStory {
             scene,
@@ -304,7 +296,7 @@ fn build_with(
             armed: false,
             thread,
             input,
-            tray: None,
+            plan_open: false,
         };
         if start != Start::Idle {
             story.flip();
@@ -428,6 +420,7 @@ impl AgentPaneStory {
                 armed: flip.armed(),
                 pending: flip.pending(),
             }),
+            &[],
             &zz_ui::pane::PaneActionKeys::default(),
             ala::px(0.0),
             move |action, _, cx| {
@@ -466,23 +459,16 @@ impl AgentPaneStory {
         if self.scene != Scene::Claude || self.side != Side::Chat {
             return Vec::new();
         }
-        let phase = spinner_phase(cx.entity_id(), cx);
         let entity = cx.entity();
-        let tasks = tasks().into_iter().take(1).collect::<Vec<_>>();
-        task_tray(
+        plan_tray(
             "agent-pane-tray",
-            Some(PLAN),
-            &tasks,
-            self.tray,
-            true,
-            phase,
-            move |action, _, cx| {
-                if let TaskTrayAction::Toggle(panel) = action {
-                    entity.update(cx, |view, cx| {
-                        view.tray = (view.tray != Some(panel)).then_some(panel);
-                        cx.notify();
-                    });
-                }
+            PLAN,
+            self.plan_open,
+            move |_, cx| {
+                entity.update(cx, |view, cx| {
+                    view.plan_open = !view.plan_open;
+                    cx.notify();
+                });
             },
             cx,
         )
@@ -746,6 +732,7 @@ fn render_flip_buttons(_: &mut Window, cx: &mut App) -> AnyElement {
                     armed: case.armed,
                     pending: case.pending,
                 }),
+                &[],
                 &zz_ui::pane::PaneActionKeys::default(),
                 ala::px(0.0),
                 |_, _, _| {},

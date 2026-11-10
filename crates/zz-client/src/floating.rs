@@ -159,8 +159,10 @@ impl PipGeometry {
         reason = "window cell offsets are far below f32's exact integer range"
     )]
     pub fn frame(&self, cells: FloatCells) -> PixelRect {
-        let size = self.size(cells);
         let area = self.area();
+        let fit = |extent: f32, room: f32| extent.min((room - PIP_MARGIN * 2.0).max(room / 2.0));
+        let size = self.size(cells);
+        let size = (fit(size.0, area.0), fit(size.1, area.1));
         let pad = i32::from(self.bordered());
         let axis = |offset: i32, extent: u16, window: u16, frame: f32, canvas: f32, cell: f32| {
             if window == 0 {
@@ -170,14 +172,8 @@ impl PipGeometry {
             if free <= 0.0 {
                 return 0.0;
             }
-            let room = f32::from(window) - f32::from(extent) - 2.0 * pad as f32;
-            let along = if room > 0.0 {
-                ((offset - pad) as f32 / room).clamp(0.0, 1.0)
-            } else {
-                0.5
-            };
             let margin = PIP_MARGIN.min(free / 2.0);
-            margin + (free - margin * 2.0) * along
+            margin + (free - margin * 2.0) * along(offset, extent, window, pad)
         };
         PixelRect {
             x: axis(
@@ -254,22 +250,60 @@ impl PipGeometry {
     }
 
     #[must_use]
-    pub fn place_at(&self, centre: (f32, f32)) -> FloatPlace {
+    pub fn place_at(&self, origin: (f32, f32), cells: FloatCells) -> FloatPlace {
         let area = self.area();
-        let fraction = |at: f32, extent: f32, cells: u16| {
-            if extent > 0.0 {
-                at / extent * f32::from(cells)
+        let frame = self.frame(cells);
+        let pad = i32::from(self.bordered());
+        let third = |at: f32, extent: f32, room: f32, cell: f32, held: f32| {
+            let free = room - extent;
+            let margin = PIP_MARGIN.min(free / 2.0);
+            let travel = free - margin * 2.0;
+            let along = if travel >= cell && travel > 0.0 {
+                (at - margin) / travel
             } else {
-                0.0
+                held
+            };
+            if along < 0.25 {
+                0
+            } else if along > 0.75 {
+                2
+            } else {
+                1
             }
         };
-        FloatPlace::zone(
-            (
-                fraction(centre.0, area.0, self.window.0),
-                fraction(centre.1, area.1, self.window.1),
-            ),
-            self.window,
-        )
+        let column = third(
+            origin.0,
+            frame.width,
+            area.0,
+            self.cell.0,
+            along(cells.xoff, cells.sx, self.window.0, pad),
+        );
+        let row = third(
+            origin.1,
+            frame.height,
+            area.1,
+            self.cell.1,
+            along(cells.yoff, cells.sy, self.window.1, pad),
+        );
+        FloatPlace::ALL[row * 3 + column]
+    }
+
+    #[must_use]
+    pub fn within(&self, target: FloatCells, grip: FloatGrip) -> FloatCells {
+        float_drag_within(target, grip, self.max_cells(), self.window, self.lines)
+    }
+}
+
+#[allow(
+    clippy::cast_precision_loss,
+    reason = "window cell offsets are far below f32's exact integer range"
+)]
+fn along(offset: i32, extent: u16, window: u16, pad: i32) -> f32 {
+    let room = f32::from(window) - f32::from(extent) - 2.0 * pad as f32;
+    if room > 0.0 {
+        ((offset - pad) as f32 / room).clamp(0.0, 1.0)
+    } else {
+        0.5
     }
 }
 
@@ -336,21 +370,32 @@ pub fn float_drag_preview(start: FloatCells, grip: FloatGrip, delta: (i32, i32))
 }
 
 #[must_use]
-pub fn float_drag_within(target: FloatCells, grip: FloatGrip, max: (u16, u16)) -> FloatCells {
+pub fn float_drag_within(
+    target: FloatCells,
+    grip: FloatGrip,
+    max: (u16, u16),
+    window: (u16, u16),
+    lines: PaneBorderLines,
+) -> FloatCells {
     if grip.is_move() {
         return target;
     }
-    let axis = |offset: i32, size: u16, near: bool, max: u16| {
-        let fitted = size.min(max.max(1));
-        let offset = if near {
-            offset + i32::from(size - fitted)
+    let pad = i32::from(lines != PaneBorderLines::None);
+    let axis = |offset: i32, size: u16, near: bool, max: u16, window: u16| {
+        let end = offset + i32::from(size);
+        let room = if window == 0 {
+            i32::MAX
+        } else if near {
+            end - pad
         } else {
-            offset
+            i32::from(window) - pad - offset
         };
-        (offset, fitted)
+        let fitted = i32::from(size.min(max.max(1))).min(room).max(1);
+        let offset = if near { end - fitted } else { offset };
+        (offset, u16::try_from(fitted).unwrap_or(1))
     };
-    let (xoff, sx) = axis(target.xoff, target.sx, grip.left, max.0);
-    let (yoff, sy) = axis(target.yoff, target.sy, grip.top, max.1);
+    let (xoff, sx) = axis(target.xoff, target.sx, grip.left, max.0, window.0);
+    let (yoff, sy) = axis(target.yoff, target.sy, grip.top, max.1, window.1);
     FloatCells { xoff, yoff, sx, sy }
 }
 
@@ -489,19 +534,6 @@ impl FloatPlace {
             yoff,
             ..float
         }
-    }
-
-    #[must_use]
-    #[allow(
-        clippy::cast_possible_truncation,
-        clippy::cast_sign_loss,
-        reason = "the third is clamped to 0..=2 before it indexes"
-    )]
-    pub fn zone(point: (f32, f32), window: (u16, u16)) -> Self {
-        let third = |at: f32, size: u16| {
-            (at / f32::from(size.max(1)) * 3.0).floor().clamp(0.0, 2.0) as usize
-        };
-        Self::ALL[third(point.1, window.1) * 3 + third(point.0, window.0)]
     }
 
     #[must_use]
@@ -946,23 +978,44 @@ mod tests {
     }
 
     #[test]
-    fn the_window_splits_into_nine_zones_and_a_place_lands_with_one_move_pane() {
-        let window = (90, 30);
+    fn a_let_go_card_lands_on_the_place_nearest_along_the_room_it_has_to_move() {
+        let layout = PipGeometry {
+            window: (80, 24),
+            cell: (8.0, 16.0),
+            canvas: (640.0, 384.0),
+            lines: PaneBorderLines::Single,
+            header: 28.0,
+        };
+        let wide = FloatCells {
+            xoff: 31,
+            yoff: 9,
+            sx: 48,
+            sy: 6,
+        };
+        let rest = layout.frame(wide);
+        assert_eq!((rest.x, rest.y, rest.width), (228.0, 122.0, 400.0));
         assert_eq!(
-            FloatPlace::zone((89.0, 29.0), window),
+            layout.place_at((228.0, 122.0), wide),
+            FloatPlace::CentreRight
+        );
+        assert_eq!(
+            layout.place_at((175.0, 122.0), wide),
+            FloatPlace::CentreRight
+        );
+        assert_eq!(layout.place_at((174.0, 122.0), wide), FloatPlace::Centre);
+        assert_eq!(layout.place_at((66.0, 122.0), wide), FloatPlace::Centre);
+        assert_eq!(layout.place_at((65.0, 60.0), wide), FloatPlace::TopLeft);
+        assert_eq!(
+            layout.place_at((900.0, 900.0), wide),
             FloatPlace::BottomRight
         );
-        assert_eq!(FloatPlace::zone((45.0, 15.0), window), FloatPlace::Centre);
-        assert_eq!(
-            FloatPlace::zone((29.9, 10.0), window),
-            FloatPlace::CentreLeft
-        );
-        assert_eq!(FloatPlace::zone((30.0, 9.9), window), FloatPlace::TopCentre);
-        assert_eq!(FloatPlace::zone((-200.0, 3.0), window), FloatPlace::TopLeft);
-        assert_eq!(
-            FloatPlace::zone((500.0, 500.0), window),
-            FloatPlace::BottomRight
-        );
+        let tall = FloatCells {
+            xoff: 31,
+            yoff: 4,
+            sx: 48,
+            sy: 19,
+        };
+        assert_eq!(layout.place_at((20.0, 0.0), tall), FloatPlace::BottomLeft);
         assert_eq!(
             words(&FloatPlace::TopCentre.command(PaneId(4))),
             "move-pane -t %4 -P top-centre"
@@ -979,6 +1032,30 @@ mod tests {
     }
 
     #[test]
+    fn a_float_taller_than_the_canvas_stays_inside_it_so_its_edges_can_be_grabbed() {
+        let layout = PipGeometry {
+            window: (100, 48),
+            cell: (8.0, 17.0),
+            canvas: (800.0, 816.0),
+            lines: PaneBorderLines::Single,
+            header: 34.0,
+        };
+        let full = FloatCells {
+            xoff: 40,
+            yoff: 1,
+            sx: 58,
+            sy: 46,
+        };
+        assert_eq!(layout.size(full).1, 833.0);
+        let frame = layout.frame(full);
+        assert_eq!(
+            (frame.y, frame.height),
+            (PIP_MARGIN, 816.0 - PIP_MARGIN * 2.0)
+        );
+        assert_eq!(frame.width, 480.0);
+    }
+
+    #[test]
     fn a_resize_never_collapses_the_content() {
         let target = float_drag_preview(FLOAT, grip("l"), (50, 0));
         assert_eq!(target.sx, 1);
@@ -986,17 +1063,33 @@ mod tests {
     }
 
     #[test]
-    fn a_resize_stops_at_the_largest_float_that_fits_and_keeps_the_far_edge() {
+    fn a_resize_stops_at_the_window_edge_and_at_the_largest_float_that_fits() {
+        let window = (80, 24);
+        let single = PaneBorderLines::Single;
         let grown = float_drag_preview(FLOAT, grip("lb"), (-30, 40));
-        let fitted = float_drag_within(grown, grip("lb"), (40, 16));
-        assert_eq!((fitted.sx, fitted.sy), (40, 16));
         assert_eq!(
-            fitted.xoff + i32::from(fitted.sx),
-            FLOAT.xoff + i32::from(FLOAT.sx)
+            float_drag_within(grown, grip("lb"), (78, 22), window, single),
+            FloatCells {
+                xoff: 1,
+                yoff: 4,
+                sx: 29,
+                sy: 19
+            }
         );
-        assert_eq!(fitted.yoff, FLOAT.yoff);
+        assert_eq!(
+            float_drag_within(grown, grip("lb"), (24, 16), window, single),
+            FloatCells {
+                xoff: 6,
+                yoff: 4,
+                sx: 24,
+                sy: 16
+            }
+        );
         let small = float_drag_preview(FLOAT, grip("r"), (2, 0));
-        assert_eq!(float_drag_within(small, grip("r"), (40, 16)), small);
+        assert_eq!(
+            float_drag_within(small, grip("r"), (78, 22), window, single),
+            small
+        );
     }
 
     #[test]

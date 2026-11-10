@@ -1,4 +1,4 @@
-use crate::{Fill, Highlight, Ink, Kind, Shadow, Shape, StylePatch, SurfaceRole};
+use crate::{Fill, Highlight, Ink, Kind, Shadow, Shape, StylePatch, SurfaceRole, Tone};
 
 const P: StylePatch = StylePatch::EMPTY;
 
@@ -350,17 +350,30 @@ pub const CARD_BUBBLE: SurfaceRole = SurfaceRole::new(
     "card.bubble",
     Kind::Card,
     "Message bubbles",
-    "Your messages in an agent chat",
-);
+    "Your messages in an agent chat, washed in the accent",
+)
+.with(P.fill(Fill::Tint))
+.toned(Tone::Accent);
 pub const CARD_CODE: SurfaceRole = SurfaceRole::new(
     "card.code",
     Kind::Card,
     "Code",
-    "Code blocks, diagrams and inline code in messages",
+    "Code blocks and inline code in messages",
 );
-pub const CARD_FIGURE: SurfaceRole =
-    SurfaceRole::new("card.figure", Kind::Card, "Tables", "Tables in messages")
-        .with(P.fill(Fill::None));
+pub const CARD_FIGURE: SurfaceRole = SurfaceRole::new(
+    "card.figure",
+    Kind::Card,
+    "Figures",
+    "Tables and diagrams in messages",
+)
+.with(P.fill(Fill::None));
+pub const CARD_ACTIVITY: SurfaceRole = SurfaceRole::new(
+    "card.activity",
+    Kind::Card,
+    "Activity",
+    "Subagents, background tasks, plans and answered questions in an agent chat",
+)
+.with(P.fill(Fill::Tint).hover(Highlight::Tint));
 pub const CARD_IMAGE: SurfaceRole = SurfaceRole::new(
     "card.image",
     Kind::Card,
@@ -371,8 +384,9 @@ pub const FIELD_COMPOSER: SurfaceRole = SurfaceRole::under(
     &SurfaceRole::TEXT_AREA,
     "field.composer",
     "Composer",
-    "The field you write to an agent in",
-);
+    "The field you write to an agent in, and the questions and approvals it grows",
+)
+.with(P.fill(Fill::Glass).selected(Highlight::None));
 pub const FIELD_ADDRESS: SurfaceRole = SurfaceRole::new(
     "field.address",
     Kind::Field,
@@ -383,7 +397,7 @@ pub const FIELD_ADDRESS: SurfaceRole = SurfaceRole::new(
 
 pub(crate) const RIMMED_PICKS: [SurfaceRole; 2] = [TAB_WINDOW, TAB_PAGE];
 
-pub const RECIPES: [SurfaceRole; 32] = [
+pub const RECIPES: [SurfaceRole; 33] = [
     TAB_WINDOW,
     TAB_STRIP,
     TAB_PAGE,
@@ -414,6 +428,7 @@ pub const RECIPES: [SurfaceRole; 32] = [
     CARD_CODE,
     CARD_FIGURE,
     CARD_IMAGE,
+    CARD_ACTIVITY,
     FIELD_COMPOSER,
     FIELD_ADDRESS,
 ];

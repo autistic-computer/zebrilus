@@ -797,6 +797,7 @@ static READ_ONLY_COMMAND_NAMES: &[&str] = &[
 pub static INTERNAL_COMMAND_NAMES: &[&str] = &[
     "set-browser-tabs",
     "set-editor-path",
+    "view-pane",
     "select-pane-kind",
     "agent-catalog",
     "providers",
@@ -831,6 +832,7 @@ pub static NATIVE_COMMAND_NAMES: &[&str] = &[
     "set-editor-path",
     "show-last-output",
     "tools",
+    "view-pane",
     "wait-pane",
 ];
 
@@ -2016,6 +2018,27 @@ pub static COMMAND_SPECS: &[CommandSpec] = &[
         description: "Persist or clear the absolute file path for an editor pane",
         usage: "[-t target-pane] [path]",
         options: &[CommandOptionSpec::value("-t", Pane, "target editor pane")],
+        positionals: &[FreeForm],
+        variadic: None,
+    },
+    CommandSpec {
+        name: "view-pane",
+        aliases: &[],
+        description: "Show content in the floating view pane of a pane, opening the view if it has none",
+        usage: "[-t target-pane] [-T title] [-k kind] [-l language] [-i item] [-n index] [-y rows] [content]",
+        options: &[
+            CommandOptionSpec::value("-t", Pane, "pane the view belongs to"),
+            CommandOptionSpec::value("-T", FreeForm, "title"),
+            CommandOptionSpec::value("-k", FreeForm, "diagram, code, markdown, image or subagent"),
+            CommandOptionSpec::value("-l", FreeForm, "language of a diagram or code"),
+            CommandOptionSpec::value("-i", FreeForm, "chat item an image or subagent comes from"),
+            CommandOptionSpec::value("-n", FreeForm, "which image of the item"),
+            CommandOptionSpec::value(
+                "-y",
+                FreeForm,
+                "rows a new view opens with, the window's by default",
+            ),
+        ],
         positionals: &[FreeForm],
         variadic: None,
     },
@@ -4564,6 +4587,7 @@ mod tests {
             "set-browser-tabs",
             "set-browser-profile",
             "set-editor-path",
+            "view-pane",
             "select-pane",
             "last-pane",
             "swap-pane",

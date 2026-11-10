@@ -18,6 +18,7 @@ mod snapshot;
 mod style;
 mod terminal_codec;
 mod tree_delta;
+mod view;
 
 #[cfg(test)]
 mod chat_tests;
@@ -29,6 +30,9 @@ mod float_wire_tests;
 mod pane_summary_wire_tests;
 
 pub use tree_delta::{TreeDelta, TreeDeltaError, TreeOp};
+pub use view::{
+    MAX_VIEW_LABEL_BYTES, MAX_VIEW_TEXT_BYTES, ViewContent, ViewDescriptor, ViewDescriptorError,
+};
 
 pub use catalog::{
     COMMAND_ARGS_PARSE_BEHAVES, COMMAND_ARGS_PARSE_SPECS, COMMAND_SPECS, CommandArgsParseRule,

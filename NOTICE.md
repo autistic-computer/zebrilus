@@ -93,6 +93,7 @@ The desktop clients ship no fonts; they render with the system text stack.
 | --- | --- | --- |
 | [Solar Icons Set](https://www.figma.com/community/file/1166831539721848736) by 480 Design | Every glyph in the app and the site except the brand marks: `libs/penna/src/components/icon/solar.json` and `site/src/icons`, adapted to follow the theme radius. Icons Solar lacks are zz's own, drawn in its style. | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). Credit and changes in `LICENSE-SOLAR` beside the set. |
 | [Tabler Icons](https://tabler.io/icons) | The Chrome brand mark, `crates/zz-ui/assets/icons/brand-chrome.svg`. | MIT, © 2020–2026 Paweł Kuna. Retained as `LICENSE-TABLER` beside it. |
+| [Devicon](https://devicon.dev) | The language marks on code cards in the agent chat: the 32 files in `crates/zz-ui/assets/programs` that `zz_client::program::language_marks` names (`javascript.svgz`, `kotlin.svgz`, `cplusplus.svgz` and the rest), taken from Devicon 2.18.0's plain variants (line or original where it has no plain one), with their inline styles removed and their size set to 64. | MIT, © 2015 konpa. Retained as `LICENSE-DEVICON` beside them. |
 | [Simple Icons](https://simpleicons.org) | The vendor brand marks `crates/zz-ui/assets/icons/openai.svg` and `claude.svg`, and the host marks `macos.svg`, `windows.svg`, `linux.svg`, `ubuntu.svg`, `debian.svg`, `arch.svg` and `fedora.svg` beside them, the host marks scaled into the icon set's 20-unit live area (Arch's trademark sign dropped). | CC0-1.0 |
 
 ## Interface themes

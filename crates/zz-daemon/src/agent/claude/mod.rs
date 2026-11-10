@@ -93,7 +93,7 @@ const SYSTEM_PROMPT_FLAGS: [&str; 4] = [
     "--append-system-prompt-file",
 ];
 const MODES: [(&str, &str, &str); 5] = [
-    ("default", "Default", "Ask before edits and commands"),
+    ("default", "Ask", "Ask before edits and commands"),
     ("acceptEdits", "Accept edits", "Edit files without asking"),
     ("plan", "Plan", "Plan before changing anything"),
     ("auto", "Auto", "Claude decides which actions need approval"),
@@ -1105,9 +1105,7 @@ impl Runtime {
             let at = at.map(str::to_owned);
             let mut updates =
                 smol::unblock(move || sessions::transcript(&file, cwd, at.as_deref())).await;
-            if updates.len() > MAX_REPLAY_UPDATES {
-                updates.drain(..updates.len() - MAX_REPLAY_UPDATES);
-            }
+            sessions::trim(&mut updates, MAX_REPLAY_UPDATES);
             if let Some(journal) = self.journal.as_deref()
                 && let Err(error) = journal.remove_for(self.provider, session_id)
             {

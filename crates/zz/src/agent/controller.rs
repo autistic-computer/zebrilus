@@ -66,10 +66,11 @@ impl AgentConnectionState {
     }
 }
 
-pub(crate) use zz_client::agent_transcript::{AgentPermissionKind, AgentPermissionRequest};
+pub(crate) use zz_client::agent_transcript::AgentPermissionRequest;
 #[cfg(test)]
 pub(crate) use zz_client::agent_transcript::{
-    AgentPermissionOption, AgentToolKindModel, AgentToolStatusModel, ToolPayload,
+    AgentPermissionKind, AgentPermissionOption, AgentToolKindModel, AgentToolStatusModel,
+    ToolPayload,
 };
 use zz_client::agent_transcript::{AgentTranscript, capped, is_zz_command};
 pub(crate) type AgentThreadEntry = zz_client::agent_transcript::AgentThreadEntry<Arc<Image>>;
@@ -77,6 +78,7 @@ pub(crate) type AgentThreadEntry = zz_client::agent_transcript::AgentThreadEntry
 pub(crate) use zz_client::agent_completion::AgentCommand;
 
 use zz_client::agent_completion::agent_command_model;
+use zz_client::agent_resume::Resume;
 use zz_client::agent_settings::{self, LensSettings};
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -134,6 +136,8 @@ struct AgentThread {
     session_reset: bool,
     unknown_updates: u64,
     settings: Option<LensSettings>,
+    resume: Resume,
+    resume_revision: u64,
 }
 
 impl AgentThread {
@@ -157,6 +161,8 @@ impl AgentThread {
             session_reset: false,
             unknown_updates: 0,
             settings: None,
+            resume: Resume::default(),
+            resume_revision: 0,
         }
     }
 
@@ -588,19 +594,6 @@ impl AgentController {
         true
     }
 
-    pub(crate) fn stop_task(
-        &mut self,
-        pane: PaneId,
-        task_id: String,
-        cx: &mut Context<Self>,
-    ) -> bool {
-        let known = self
-            .panes
-            .get(&pane)
-            .is_some_and(|thread| thread.tasks.iter().any(|task| task.id == task_id));
-        known && self.send(pane, AgentRequest::StopTask { task_id }, cx)
-    }
-
     pub(crate) fn is_shutting_down(&self) -> bool {
         self.shutting_down
     }
@@ -618,6 +611,57 @@ impl AgentController {
         self.mux
             .as_ref()
             .is_some_and(|mux| mux.read(cx).send_agent_request(pane, request))
+    }
+
+    pub(crate) fn pane_resume(&self, pane: PaneId) -> Option<(&Resume, u64)> {
+        self.panes
+            .get(&pane)
+            .map(|thread| (&thread.resume, thread.resume_revision))
+    }
+
+    pub(crate) fn request_resume(&mut self, pane: PaneId, cx: &mut Context<Self>) {
+        let Some(thread) = self.panes.get_mut(&pane) else {
+            return;
+        };
+        thread.resume = Resume::default();
+        thread.resume_revision += 1;
+        let cwd = thread.cwd.clone();
+        for op in Resume::start(&cwd) {
+            self.send(pane, AgentRequest::SessionOp(op), cx);
+        }
+        cx.notify();
+    }
+
+    pub(crate) fn apply_sessions(&mut self, pane: PaneId, reply: &str, cx: &mut Context<Self>) {
+        let Some(thread) = self.panes.get_mut(&pane) else {
+            return;
+        };
+        if !thread.resume.apply(&thread.cwd, reply) {
+            return;
+        }
+        thread.resume_revision += 1;
+        if let Some(op) = thread.resume.wanted(&thread.cwd) {
+            self.send(pane, AgentRequest::SessionOp(op), cx);
+        }
+        cx.notify();
+    }
+
+    pub(crate) fn update_resume(
+        &mut self,
+        pane: PaneId,
+        cx: &mut Context<Self>,
+        change: impl FnOnce(&mut Resume, &std::path::Path) -> Option<zz_protocol::AgentSessionOpKind>,
+    ) {
+        let Some(thread) = self.panes.get_mut(&pane) else {
+            return;
+        };
+        let op =
+            change(&mut thread.resume, &thread.cwd).or_else(|| thread.resume.wanted(&thread.cwd));
+        thread.resume_revision += 1;
+        if let Some(op) = op {
+            self.send(pane, AgentRequest::SessionOp(op), cx);
+        }
+        cx.notify();
     }
 
     fn apply_settings(&mut self, pane: PaneId, payload: &AgentStreamPayload) -> bool {
@@ -2689,7 +2733,7 @@ mod tests {
 
     #[ala::test]
     fn published_tasks_and_a_parked_card_reach_the_pane(cx: &mut TestAppContext) {
-        let (controller, sink) = proxy_controller(cx);
+        let (controller, _sink) = proxy_controller(cx);
         let pane = PaneId(9);
         cx.update(|cx| {
             controller.update(cx, |controller, cx| {
@@ -2723,20 +2767,6 @@ mod tests {
                     "a client that attaches mid-card still sees every question"
                 );
                 assert_eq!(pane_state.tasks.as_ref(), state.tasks.as_slice());
-                assert!(
-                    !controller.stop_task(pane, "gone".to_owned(), cx),
-                    "only a listed task stops"
-                );
-                assert!(controller.stop_task(pane, "b1".to_owned(), cx));
-                assert_eq!(
-                    sink.borrow().as_slice(),
-                    &[(
-                        pane,
-                        AgentRequest::StopTask {
-                            task_id: "b1".to_owned()
-                        }
-                    )]
-                );
 
                 controller.apply_pane_state(
                     pane,
@@ -2889,6 +2919,99 @@ mod tests {
                 }
             )],
             "the daemon receives bytes plus format, never a ala image"
+        );
+    }
+
+    #[ala::test]
+    fn an_empty_chat_lists_the_clis_chats_and_a_pick_switches_the_pane(cx: &mut TestAppContext) {
+        use zz_client::agent_resume::ResumeRow;
+        use zz_daemon::AgentSessionSummary;
+        use zz_protocol::AgentSessionOpKind;
+
+        let (controller, sink) = proxy_controller(cx);
+        let pane = PaneId(8);
+        let cwd = cx.update(|cx| {
+            controller.update(cx, |controller, cx| {
+                ready_pane(controller, pane);
+                controller.request_resume(pane, cx);
+                controller.panes[&pane].cwd.clone()
+            })
+        });
+        assert_eq!(
+            &*sink.borrow(),
+            &[
+                (
+                    pane,
+                    AgentRequest::SessionOp(AgentSessionOpKind::List {
+                        cwd: Some(cwd.clone()),
+                        cursor: None,
+                        replace: true,
+                    })
+                ),
+                (
+                    pane,
+                    AgentRequest::SessionOp(AgentSessionOpKind::List {
+                        cwd: None,
+                        cursor: None,
+                        replace: true,
+                    })
+                ),
+            ]
+        );
+        sink.borrow_mut().clear();
+
+        let chat = AgentSessionSummary {
+            session_id: "11111111-1111-4111-8111-111111111111".to_owned(),
+            cwd: PathBuf::from("/src/penna"),
+            additional_directories: Vec::new(),
+            title: Some("Focus ring".to_owned()),
+            updated_at: None,
+        };
+        let reply = serde_json::to_string(&AgentStreamPayload::SessionsListed {
+            client: zz_protocol::ClientId(1),
+            sessions: vec![chat.clone()],
+            next_cursor: None,
+            cwd_filter: Some(PathBuf::from("/src/penna")),
+            replace: true,
+        })
+        .expect("reply");
+        cx.update(|cx| {
+            controller.update(cx, |controller, cx| {
+                controller.update_resume(pane, cx, |resume, cwd| {
+                    resume.pick(
+                        &ResumeRow::Project {
+                            cwd: PathBuf::from("/src/penna"),
+                            name: "penna".to_owned(),
+                            path: "/src".to_owned(),
+                            age: None,
+                        },
+                        cwd,
+                    )
+                });
+                controller.apply_sessions(pane, &reply, cx);
+                let rows = controller.panes[&pane].resume.rows(&cwd, None, 0);
+                assert_eq!(
+                    rows[1],
+                    ResumeRow::Chat {
+                        chat: chat.clone(),
+                        title: "Focus ring".to_owned(),
+                        place: None,
+                        age: None,
+                    }
+                );
+                controller.update_resume(pane, cx, |resume, cwd| resume.pick(&rows[1], cwd));
+            });
+        });
+        assert_eq!(
+            sink.borrow().last(),
+            Some(&(
+                pane,
+                AgentRequest::SessionOp(AgentSessionOpKind::Switch {
+                    session_id: chat.session_id,
+                    cwd: chat.cwd,
+                    additional_directories: Vec::new(),
+                })
+            ))
         );
     }
 

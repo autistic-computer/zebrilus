@@ -16,6 +16,7 @@ mod providers;
 mod settings;
 mod sidebar;
 mod status_bar;
+mod view_pane;
 
 use penna::blocks::sidebar::{sidebar_panel, sidebar_resize_handle, sidebar_titlebar};
 use std::{
@@ -126,6 +127,7 @@ pub struct AppShell {
     terminals: HashMap<PaneId, Entity<TerminalPane>>,
     waiting_panes: BTreeSet<PaneId>,
     agents: HashMap<PaneId, Entity<AgentPane>>,
+    views: HashMap<PaneId, Entity<view_pane::ViewPane>>,
     #[cfg(any(target_os = "ios", target_os = "android"))]
     browsers: HashMap<PaneId, Entity<browser_pane::BrowserPane>>,
     pickers: HashMap<PaneId, Entity<picker::PanePicker>>,
@@ -389,6 +391,7 @@ impl AppShell {
             terminals: HashMap::new(),
             waiting_panes: BTreeSet::new(),
             agents: HashMap::new(),
+            views: HashMap::new(),
             #[cfg(any(target_os = "ios", target_os = "android"))]
             browsers: HashMap::new(),
             pickers: HashMap::new(),
@@ -1224,7 +1227,7 @@ impl AppShell {
         );
     }
 
-    fn prune_pane_entities(&mut self, cx: &App) {
+    fn prune_pane_entities(&mut self, cx: &mut App) {
         let existing: HashMap<_, _> = self
             .connection
             .read(cx)
@@ -1269,6 +1272,16 @@ impl AppShell {
         }
         self.agents
             .retain(|pane, _| matches!(existing.get(pane), Some(PaneKindSnapshot::Agent(_))));
+        let gone = self
+            .views
+            .iter()
+            .filter(|(pane, _)| !matches!(existing.get(pane), Some(PaneKindSnapshot::View(_))))
+            .map(|(pane, view)| (*pane, ala::AnyView::from(view.clone())))
+            .collect::<Vec<_>>();
+        for (pane, view) in gone {
+            self.pip.depart(pane, Some(view), &self.pane_motion, cx);
+            self.views.remove(&pane);
+        }
         #[cfg(any(target_os = "ios", target_os = "android"))]
         self.browsers
             .retain(|pane, _| matches!(existing.get(pane), Some(PaneKindSnapshot::Browser(_))));
@@ -1328,7 +1341,71 @@ impl AppShell {
             .entry(pane)
             .or_insert_with(|| {
                 let connection = self.connection.clone();
-                cx.new(|cx| AgentPane::new(pane, connection, window, cx))
+                let rows_view = cx.weak_entity();
+                cx.new(|cx| {
+                    let mut agent = AgentPane::new(pane, connection, window, cx);
+                    agent.set_float_rows_handler(move |cx| {
+                        rows_view
+                            .upgrade()
+                            .and_then(|view| view.read(cx).pip_fill_rows(cx))
+                    });
+                    agent
+                })
+            })
+            .clone()
+    }
+
+    fn view_element(
+        &mut self,
+        pane: PaneId,
+        descriptor: &zz_protocol::ViewDescriptor,
+        focus: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let vendor = descriptor.origin.and_then(|origin| {
+            self.connection
+                .read(cx)
+                .core
+                .snapshot()
+                .sessions
+                .iter()
+                .flat_map(|session| &session.windows)
+                .find_map(|window| window.panes.get(&origin))
+                .and_then(|origin| match &origin.kind {
+                    PaneKindSnapshot::Agent(agent) => {
+                        zz_client::window_summary::provider_program(agent.provider)
+                    }
+                    _ => None,
+                })
+        });
+        let origin = descriptor
+            .origin
+            .and_then(|origin| self.agents.get(&origin).cloned());
+        let view = self.view_entity(pane, descriptor, cx);
+        if view.update(cx, |view, cx| {
+            view.synchronize(descriptor, vendor, origin, cx)
+        }) {
+            self.pane_motion.relink(pane, window, cx);
+        }
+        if focus && self.focused_pane != Some(pane) {
+            view.read(cx).focus_handle().focus(window, cx);
+            self.focused_pane = Some(pane);
+        }
+        view.into_any_element()
+    }
+
+    fn view_entity(
+        &mut self,
+        pane: PaneId,
+        descriptor: &zz_protocol::ViewDescriptor,
+        cx: &mut Context<Self>,
+    ) -> Entity<view_pane::ViewPane> {
+        self.views
+            .entry(pane)
+            .or_insert_with(|| {
+                let connection = self.connection.clone();
+                cx.new(|cx| view_pane::ViewPane::new(pane, descriptor, connection, cx))
             })
             .clone()
     }
@@ -1536,8 +1613,14 @@ impl AppShell {
         let view = cx.entity();
         let touch_view = cx.weak_entity();
         let flip_view = cx.weak_entity();
+        let kind_view = cx.weak_entity();
         let connection = self.connection.clone();
         let float_rows = self.pip_fill_rows(cx);
+        let buttons = self
+            .views
+            .get(&pane_id)
+            .map(|view| view.read(cx).header_buttons())
+            .unwrap_or_default();
         let (place, folder) = {
             let snapshot = connection.read(cx).core.snapshot();
             let mut place = zz_client::floating::pane_state(snapshot, pane_id);
@@ -1565,11 +1648,21 @@ impl AppShell {
             })),
             place,
             None,
+            &buttons,
             &zz_ui::pane::PaneActionKeys::default(),
             ala::px(0.0),
             move |action, _, cx| {
                 if action == zz_ui::pane::TerminalPaneAction::Flip {
                     let _ = flip_view.update(cx, |this, cx| this.flip_pane(pane_id, cx));
+                    return;
+                }
+                if let zz_ui::pane::TerminalPaneAction::Kind(key) = action {
+                    let _ = kind_view.update(cx, |this, cx| {
+                        if let Some(view) = this.views.get(&pane_id) {
+                            view.update(cx, |view, cx| view.header_action(key, cx));
+                        }
+                        cx.notify();
+                    });
                     return;
                 }
                 connection.update(cx, |connection, cx| {
@@ -1975,6 +2068,7 @@ impl AppShell {
             && core.confirm().is_none()
             && core.command_output().is_none();
         self.prune_pane_entities(cx);
+        self.pip.settle_departures(&self.pane_motion);
         let mut panes = HashMap::new();
         self.pane_bounds
             .borrow_mut()
@@ -2008,7 +2102,9 @@ impl AppShell {
             let frame = floating::pane_frame(
                 matches!(
                     pane.kind,
-                    PaneKindSnapshot::Terminal | PaneKindSnapshot::Agent(_)
+                    PaneKindSnapshot::Terminal
+                        | PaneKindSnapshot::Agent(_)
+                        | PaneKindSnapshot::View(_)
                 ) && !agent_picker,
                 is_float,
                 &self.preferences,
@@ -2034,9 +2130,26 @@ impl AppShell {
                     picker.update(cx, |picker, cx| picker.set_corner_radii(radii, cx));
                     picker.into_any_element()
                 }
+                PaneKindSnapshot::View(descriptor) => self.view_element(
+                    pane_id,
+                    descriptor,
+                    can_focus && pane_id == active_window.active_pane,
+                    window,
+                    cx,
+                ),
                 PaneKindSnapshot::Agent(_) => {
                     let agent = self.agent_entity(pane_id, window, cx);
+                    let ground = if frame.framed {
+                        PaneLook::global(cx).ground(
+                            cx.theme(),
+                            cx.theme().background,
+                            pane_id == active_window.active_pane,
+                        )
+                    } else {
+                        cx.theme().ground()
+                    };
                     agent.update(cx, |agent, cx| {
+                        agent.set_ground(ground, cx);
                         agent.set_corner_radii(
                             Corners {
                                 top_left: px(0.0),
@@ -2288,9 +2401,10 @@ impl AppShell {
                     chrome,
                     cx,
                 )
-                .when(motion && self.pane_arrivals.fading(), |surface| {
-                    surface.opacity(self.pane_arrivals.shown(pane_id, now))
-                })
+                .when(
+                    motion && self.pane_arrivals.fading() && !self.pane_motion.launched(pane_id),
+                    |surface| surface.opacity(self.pane_arrivals.shown(pane_id, now)),
+                )
                 .when(
                     follows_pointer && active_window.active_pane != pane_id,
                     |surface| {

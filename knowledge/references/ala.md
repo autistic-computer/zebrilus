@@ -328,7 +328,9 @@ Each is upstream-able as a small PR; if upstream merges an equivalent, drop it. 
     is the same per-pixel result a mask would give (`Window::insert_glyph_sprite`, used by every
     glyph and emoji paint). `Window::with_text_fade` takes the span from opaque to gone in either
     direction, so text can also be hidden up to a point and fade in after it, as zz does under an
-    open pane stack.
+    open pane stack. `Window::with_text_fade_along(Axis::Vertical, …)` runs the same ramp down the
+    box in device pixel rows, so a folded block of text fades out at its bottom over any backdrop,
+    glass included, with nothing painted over it (zz's folded chat messages).
 38. Painting an element scaled without laying it out again: `PaintScaleExt::paint_scale(scale,
     offset)` on any element, over `Window::with_paint_scale(origin, scale, offset, f)`. The scene
     keeps a stack of scale-and-offset transforms (`PaintOperation::StartTransform`/`EndTransform`),

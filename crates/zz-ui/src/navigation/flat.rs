@@ -266,6 +266,7 @@ pub fn pane_glyph(tag: PaneTag) -> IconName {
         PaneTag::Terminal => IconName::Terminal,
         PaneTag::Browser => IconName::Globe,
         PaneTag::Editor => IconName::File,
+        PaneTag::View => IconName::Eye,
         PaneTag::Picker => IconName::Plus,
         PaneTag::Agent(provider) => crate::pane::agent_provider_icon(provider),
     }
@@ -325,6 +326,7 @@ fn tile_stack(
             icon: pane_glyph(tile.tag),
             favicon: None,
             program: tile.program,
+            attention: tile.attention,
             label: tile.label.clone().into(),
             tooltip: tile.label.clone().into(),
             select: handler.map(|handler| {

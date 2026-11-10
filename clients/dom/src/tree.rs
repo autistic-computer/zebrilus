@@ -296,16 +296,22 @@ impl Client {
         let pane = pane_id(pane);
         let Some(place) = self.window(window).and_then(|window| {
             let float = window.floating.iter().find(|float| float.pane == pane)?;
-            Some(
-                pip_geometry(
-                    window,
-                    (cell[0], cell[1]),
-                    (canvas[0], canvas[1]),
-                    float.border_lines,
-                    header,
-                )
-                .place_at((centre[0], centre[1])),
-            )
+            let geometry = pip_geometry(
+                window,
+                (cell[0], cell[1]),
+                (canvas[0], canvas[1]),
+                float.border_lines,
+                header,
+            );
+            let cells = FloatCells::from(float);
+            let frame = geometry.frame(cells);
+            Some(geometry.place_at(
+                (
+                    centre[0] - frame.width / 2.0,
+                    centre[1] - frame.height / 2.0,
+                ),
+                cells,
+            ))
         }) else {
             return false;
         };
@@ -1122,6 +1128,7 @@ const fn tag_name(tag: PaneTag) -> &'static str {
         PaneTag::Terminal => "terminal",
         PaneTag::Browser => "browser",
         PaneTag::Editor => "editor",
+        PaneTag::View => "view",
         PaneTag::Picker => "picker",
         PaneTag::Agent(_) => "agent",
     }
@@ -1176,6 +1183,7 @@ pub fn kind(kind: &PaneKindSnapshot) -> &'static str {
         PaneKindSnapshot::Browser(_) => "browser",
         PaneKindSnapshot::Editor(_) => "editor",
         PaneKindSnapshot::Agent(_) => "agent",
+        PaneKindSnapshot::View(_) => "view",
     }
 }
 

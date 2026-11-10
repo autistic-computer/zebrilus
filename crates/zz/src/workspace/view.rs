@@ -2,7 +2,7 @@ use zz_ui::command::floating::{FloatingFrame as PopupFrame, floating_frame};
 use zz_ui::shell::window_drag_handle;
 
 use std::{
-    cell::Cell,
+    cell::{Cell, RefCell},
     collections::{BTreeMap, BTreeSet},
     rc::Rc,
     sync::Arc,
@@ -14,7 +14,7 @@ use ala::{
     Bounds, Context, Corners, CursorStyle, DragMoveEvent, Entity, EntityId, FocusHandle,
     IntoElement, KeyUpEvent, Keystroke, Modifiers, MouseButton, MouseDownEvent, MouseExitEvent,
     MouseMoveEvent, MouseUpEvent, Pixels, Point, Render, Size, StyleRefinement, Task, WeakEntity,
-    Window, anchored, div, ease_out_quint, point, prelude::*, px,
+    Window, anchored, canvas, div, ease_out_quint, point, prelude::*, px,
 };
 use penna::blocks::dialog::DialogButtonProps;
 use penna::{
@@ -337,7 +337,7 @@ struct FloatDragState {
     committed_snapshot_revision: Option<u64>,
     request: Option<u64>,
     pip: Option<PipDrag>,
-    limit: Option<(u16, u16)>,
+    limit: Option<PipLayout>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -351,9 +351,8 @@ struct PipLandingState {
 impl FloatDragState {
     fn target(&self) -> FloatCells {
         let target = float_drag_preview(self.start, self.grip, self.delta);
-        self.limit.map_or(target, |limit| {
-            zz_client::floating::float_drag_within(target, self.grip, limit)
-        })
+        self.limit
+            .map_or(target, |layout| layout.within(target, self.grip))
     }
 
     fn preview(&self) -> Option<FloatCells> {
@@ -547,6 +546,18 @@ impl PaneLayoutOverride {
     }
 }
 
+#[derive(Clone, Debug)]
+struct PipFace {
+    label: String,
+    icon: penna::IconName,
+    inset: Size<Pixels>,
+}
+
+struct Departing {
+    view: AnyView,
+    face: PipFace,
+}
+
 struct PaneContent {
     view: AnyView,
     cached: bool,
@@ -584,6 +595,7 @@ struct TerminalHeaderState {
     folder: Option<String>,
     flip: Option<PaneFlip>,
     keys: zz_ui::pane::PaneActionKeys,
+    buttons: Vec<zz_ui::pane::PaneKindButton>,
     trailing_inset: Pixels,
     radii: Corners<Pixels>,
     opacity: f32,
@@ -630,12 +642,19 @@ impl Render for TerminalHeaderView {
             }),
             state.place,
             state.flip,
+            &state.buttons,
             &state.keys,
             state.trailing_inset,
             move |action, window, cx| {
                 if matches!(action, TerminalPaneAction::Flip) {
                     if let Some(app) = flip_app.upgrade() {
                         app.update(cx, |view, cx| view.flip_pane(pane, window, cx));
+                    }
+                    return;
+                }
+                if let TerminalPaneAction::Kind(key) = action {
+                    if let Some(app) = flip_app.upgrade() {
+                        app.update(cx, |view, cx| view.pane_kind_action(pane, key, cx));
                     }
                     return;
                 }
@@ -758,6 +777,8 @@ pub struct AppView {
     agents: BTreeMap<PaneId, Entity<AgentView>>,
     flips: zz_client::agent_flip::AgentFlips,
     editors: BTreeMap<PaneId, Entity<EditorView>>,
+    #[cfg(feature = "agent-pane")]
+    views: BTreeMap<PaneId, Entity<crate::view_pane::ViewPaneView>>,
     command_output: Option<(PaneId, Entity<TerminalView>)>,
     menu: Option<Entity<MenuView>>,
     confirm: Option<Entity<ConfirmView>>,
@@ -787,6 +808,7 @@ pub struct AppView {
     pane_motion: PaneMotion,
     terminal_resize_suppressed: Rc<Cell<bool>>,
     terminal_resizes_held: bool,
+    tile_reports: Rc<RefCell<BTreeMap<PaneId, (u16, u16, u64)>>>,
     snapshot_revision: u64,
     pane_drag: Option<PaneDragState>,
     pane_drop_preview: Rc<Cell<DropPreviewFrame>>,
@@ -794,6 +816,8 @@ pub struct AppView {
     window_controls_pane: Option<PaneId>,
     pane_canvas_bounds: Rc<Cell<Bounds<Pixels>>>,
     pane_arrivals: PaneArrivals,
+    pip_faces: RefCell<BTreeMap<PaneId, PipFace>>,
+    departing: BTreeMap<PaneId, Departing>,
     input_router: InputRouter,
     dialog_prefix_cancel_sent: bool,
     dialog_prefix_cancel_pending: Option<u64>,
@@ -1178,6 +1202,8 @@ impl AppView {
             agents: BTreeMap::new(),
             flips: zz_client::agent_flip::AgentFlips::default(),
             editors: BTreeMap::new(),
+            #[cfg(feature = "agent-pane")]
+            views: BTreeMap::new(),
             command_output: None,
             menu: None,
             confirm: None,
@@ -1207,6 +1233,7 @@ impl AppView {
             pane_motion: PaneMotion::default(),
             terminal_resize_suppressed: Rc::new(Cell::new(false)),
             terminal_resizes_held: false,
+            tile_reports: Rc::default(),
             snapshot_revision: 0,
             pane_drag: None,
             pane_drop_preview: Rc::new(Cell::new(DropPreviewFrame::default())),
@@ -1214,6 +1241,8 @@ impl AppView {
             window_controls_pane: None,
             pane_canvas_bounds: Rc::new(Cell::new(Bounds::default())),
             pane_arrivals: PaneArrivals::default(),
+            pip_faces: RefCell::default(),
+            departing: BTreeMap::new(),
             input_router,
             dialog_prefix_cancel_sent: false,
             dialog_prefix_cancel_pending: None,
@@ -1822,11 +1851,23 @@ impl AppView {
             Some((terminal.entity_id(), terminal.read(cx).focus()))
         } else if let Some(browser) = self.browsers.get(&pane) {
             Some((browser.entity_id(), browser.read(cx).pane_focus_handle(cx)))
+        } else if let Some(editor) = self.editors.get(&pane) {
+            Some((editor.entity_id(), editor.read(cx).focus(cx)))
         } else {
-            self.editors
-                .get(&pane)
-                .map(|editor| (editor.entity_id(), editor.read(cx).focus(cx)))
+            self.view_focus_target(pane, cx)
         }
+    }
+
+    #[cfg(feature = "agent-pane")]
+    fn view_focus_target(&self, pane: PaneId, cx: &App) -> Option<(EntityId, FocusHandle)> {
+        self.views
+            .get(&pane)
+            .map(|view| (view.entity_id(), view.read(cx).focus()))
+    }
+
+    #[cfg(not(feature = "agent-pane"))]
+    fn view_focus_target(&self, _: PaneId, _: &App) -> Option<(EntityId, FocusHandle)> {
+        None
     }
 
     fn inline_browser_holds(&self, pane: PaneId, window: &Window, cx: &App) -> bool {
@@ -2014,6 +2055,7 @@ impl AppView {
         let mut wanted_browsers = BTreeSet::new();
         let mut wanted_agents = BTreeSet::new();
         let mut wanted_editors = BTreeSet::new();
+        let mut wanted_views = BTreeSet::new();
         self.flips.observe(&snapshot);
         let active_window = snapshot
             .sessions
@@ -2116,6 +2158,20 @@ impl AppView {
                                     .new(|cx| EditorView::new(pane, &descriptor, mux, window, cx));
                                 self.editors.insert(pane, view);
                             }
+                        }
+                        PaneKindSnapshot::View(descriptor) => {
+                            wanted_views.insert(*pane);
+                            let vendor = descriptor
+                                .origin
+                                .and_then(|origin| mux_window.panes.get(&origin))
+                                .and_then(|origin| match &origin.kind {
+                                    PaneKindSnapshot::Agent(agent) => {
+                                        zz_client::window_summary::provider_program(agent.provider)
+                                    }
+                                    _ => None,
+                                });
+                            self.ensure_view(*pane, descriptor, vendor, window, cx);
+                            self.ensure_pane_header(*pane, cx);
                         }
                     }
                 }
@@ -2362,8 +2418,11 @@ impl AppView {
         }
         self.terminals
             .retain(|pane, _| wanted_terminals.contains(pane));
-        self.terminal_headers
-            .retain(|pane, _| wanted_terminals.contains(pane) || wanted_agents.contains(pane));
+        self.terminal_headers.retain(|pane, _| {
+            wanted_terminals.contains(pane)
+                || wanted_agents.contains(pane)
+                || wanted_views.contains(pane)
+        });
         #[cfg(feature = "agent-pane")]
         for pane in self
             .agents
@@ -2377,6 +2436,32 @@ impl AppView {
             controller.retain_panes(&wanted_agents, cx);
         });
         self.editors.retain(|pane, _| wanted_editors.contains(pane));
+        #[cfg(feature = "agent-pane")]
+        {
+            let gone = self
+                .views
+                .keys()
+                .filter(|pane| !wanted_views.contains(pane))
+                .copied()
+                .collect::<Vec<_>>();
+            for pane in gone {
+                let face = self.pip_faces.borrow_mut().remove(&pane);
+                if self.pane_motion.depart(pane, cx)
+                    && let (Some(view), Some(face)) = (self.views.get(&pane), face)
+                {
+                    self.departing.insert(
+                        pane,
+                        Departing {
+                            view: AnyView::from(view.clone()),
+                            face,
+                        },
+                    );
+                }
+            }
+            self.views.retain(|pane, _| wanted_views.contains(pane));
+        }
+        #[cfg(not(feature = "agent-pane"))]
+        let _ = wanted_views;
         let removed_browsers = self
             .browsers
             .keys()
@@ -2691,7 +2776,12 @@ impl AppView {
         let controller = self.agent_controller.clone();
         let mux = self.mux.clone();
         let provider = agent.provider;
-        let view = cx.new(|cx| AgentView::new(pane, provider, controller, mux, window, cx));
+        let pane_canvas = Rc::clone(&self.pane_canvas_bounds);
+        let view = cx.new(|cx| {
+            let mut view = AgentView::new(pane, provider, controller, mux, window, cx);
+            view.share_pane_canvas(pane_canvas);
+            view
+        });
         self.agents.insert(pane, view);
     }
 
@@ -2817,6 +2907,9 @@ impl AppView {
             for (pane, state) in events.states {
                 controller.apply_pane_state(pane, &state, cx);
             }
+            for (pane, reply) in events.sessions {
+                controller.apply_sessions(pane, &reply, cx);
+            }
         });
     }
 
@@ -2929,7 +3022,7 @@ impl AppView {
             committed_snapshot_revision: None,
             request: None,
             pip,
-            limit: (!modal).then(|| layout.max_cells()),
+            limit: (!modal).then_some(layout),
         });
     }
 
@@ -3510,14 +3603,91 @@ impl AppView {
                 inactive_style: PaneInactiveStyle::Content,
                 covers_frame: true,
             })
-        } else {
-            self.editors.get(&pane).map(|editor| PaneContent {
+        } else if let Some(editor) = self.editors.get(&pane) {
+            Some(PaneContent {
                 view: AnyView::from(editor.clone()),
                 cached: false,
                 inactive_style: PaneInactiveStyle::Surface,
                 covers_frame: false,
             })
+        } else {
+            self.view_content(pane)
         }
+    }
+
+    #[cfg(feature = "agent-pane")]
+    fn pane_kind_buttons(&self, pane: PaneId, cx: &App) -> Vec<zz_ui::pane::PaneKindButton> {
+        self.views
+            .get(&pane)
+            .map(|view| view.read(cx).header_buttons())
+            .unwrap_or_default()
+    }
+
+    #[cfg(not(feature = "agent-pane"))]
+    fn pane_kind_buttons(&self, _: PaneId, _: &App) -> Vec<zz_ui::pane::PaneKindButton> {
+        Vec::new()
+    }
+
+    #[cfg(feature = "agent-pane")]
+    fn pane_kind_action(&mut self, pane: PaneId, key: &'static str, cx: &mut Context<Self>) {
+        if let Some(view) = self.views.get(&pane) {
+            view.update(cx, |view, cx| view.header_action(key, cx));
+            cx.notify();
+        }
+    }
+
+    #[cfg(not(feature = "agent-pane"))]
+    fn pane_kind_action(&mut self, _: PaneId, _: &'static str, _: &mut Context<Self>) {}
+
+    #[cfg(feature = "agent-pane")]
+    fn view_content(&self, pane: PaneId) -> Option<PaneContent> {
+        self.views.get(&pane).map(|view| PaneContent {
+            view: AnyView::from(view.clone()),
+            cached: false,
+            inactive_style: PaneInactiveStyle::Surface,
+            covers_frame: false,
+        })
+    }
+
+    #[cfg(not(feature = "agent-pane"))]
+    fn view_content(&self, _: PaneId) -> Option<PaneContent> {
+        None
+    }
+
+    #[cfg(feature = "agent-pane")]
+    fn ensure_view(
+        &mut self,
+        pane: PaneId,
+        descriptor: &zz_protocol::ViewDescriptor,
+        vendor: Option<&'static zz_client::program::Program>,
+        window: &Window,
+        cx: &mut Context<Self>,
+    ) {
+        if let Some(view) = self.views.get(&pane) {
+            if view.update(cx, |view, cx| {
+                view.synchronize_descriptor(descriptor, vendor, cx)
+            }) {
+                self.pane_motion.relink(pane, window, cx);
+            }
+            return;
+        }
+        let mux = self.mux.clone();
+        let agents = self.agent_controller.clone();
+        let view = cx.new(|cx| {
+            crate::view_pane::ViewPaneView::new(pane, descriptor, vendor, mux, agents, cx)
+        });
+        self.views.insert(pane, view);
+    }
+
+    #[cfg(not(feature = "agent-pane"))]
+    fn ensure_view(
+        &mut self,
+        _: PaneId,
+        _: &zz_protocol::ViewDescriptor,
+        _: Option<&'static zz_client::program::Program>,
+        _: &Window,
+        _: &mut Context<Self>,
+    ) {
     }
 
     fn render_layout(
@@ -3533,6 +3703,11 @@ impl AppView {
                 let radii = config::pane_content_radii(cx, corners);
                 let active = *pane == window.active_pane;
                 let inactive = !active;
+                let behind_pip = window
+                    .floating
+                    .iter()
+                    .any(|float| float.visible && float.pane == window.active_pane);
+                let dimmed = inactive && !behind_pip;
                 let inactive_opacity = config::pane_inactive_opacity(cx);
                 let pane_snapshot = window.panes.get(pane);
                 let synchronized = pane_snapshot.is_some_and(|pane| pane.synchronized_input);
@@ -3552,7 +3727,7 @@ impl AppView {
                         terminal.set_pane_status(dead_label.clone(), synchronized, cx);
                     });
                 }
-                let pane_content = self.pane_content(*pane, inactive, inactive_opacity, cx);
+                let pane_content = self.pane_content(*pane, dimmed, inactive_opacity, cx);
                 let waiting = pane_content.is_none();
                 let content = pane_content.as_ref().map_or_else(
                     || {
@@ -3564,7 +3739,9 @@ impl AppView {
                 let terminal_header = pane_snapshot.filter(|held| {
                     matches!(
                         held.kind,
-                        PaneKindSnapshot::Terminal | PaneKindSnapshot::Agent(_)
+                        PaneKindSnapshot::Terminal
+                            | PaneKindSnapshot::Agent(_)
+                            | PaneKindSnapshot::View(_)
                     ) && !self.pickers.contains_key(pane)
                 });
                 let header_view = terminal_header
@@ -3587,11 +3764,12 @@ impl AppView {
                         folder: zz_client::navigation::pane_folder(snapshot),
                         flip: None,
                         keys: self.pane_action_keys(cx),
+                        buttons: self.pane_kind_buttons(*pane, cx),
                         trailing_inset: window_controls_inset(
                             self.window_controls_pane == Some(*pane),
                         ),
                         radii,
-                        opacity: if inactive { inactive_opacity } else { 1.0 },
+                        opacity: if dimmed { inactive_opacity } else { 1.0 },
                     };
                     header_view.update(cx, |header, cx| header.sync(state, cx));
                     div()
@@ -3606,7 +3784,22 @@ impl AppView {
                                     .flex_none(),
                             ),
                         )
-                        .child(div().flex_1().min_h_0().min_w_0().child(content))
+                        .child(
+                            div()
+                                .relative()
+                                .flex_1()
+                                .min_h_0()
+                                .min_w_0()
+                                .child(content)
+                                .children(self.tile_size_report(*pane, pane_snapshot)),
+                        )
+                        .into_any_element()
+                } else if let Some(report) = self.tile_size_report(*pane, pane_snapshot) {
+                    div()
+                        .relative()
+                        .size_full()
+                        .child(content)
+                        .child(report)
                         .into_any_element()
                 } else {
                     content
@@ -3665,7 +3858,7 @@ impl AppView {
                             .into_any_element(),
                     );
                 }
-                let surface_dimmed = inactive
+                let surface_dimmed = dimmed
                     && pane_content
                         .as_ref()
                         .is_none_or(|content| content.inactive_style == PaneInactiveStyle::Surface);
@@ -3888,6 +4081,61 @@ impl AppView {
         float_cell_size(self.mux.read(cx), window)
     }
 
+    fn tile_size_report(
+        &self,
+        pane: PaneId,
+        snapshot: Option<&zz_protocol::PaneSnapshot>,
+    ) -> Option<AnyElement> {
+        snapshot.filter(|snapshot| {
+            matches!(
+                snapshot.kind,
+                PaneKindSnapshot::Agent(_)
+                    | PaneKindSnapshot::View(_)
+                    | PaneKindSnapshot::Browser(_)
+                    | PaneKindSnapshot::Editor(_)
+            ) && !self.terminals.contains_key(&pane)
+        })?;
+        let mux = self.mux.clone();
+        let sent = Rc::clone(&self.tile_reports);
+        let held = Rc::clone(&self.terminal_resize_suppressed);
+        let moving = self.pane_motion.moving();
+        Some(
+            canvas(
+                move |bounds, window, cx| {
+                    if held.get() || moving {
+                        return;
+                    }
+                    let mux = mux.read(cx);
+                    let cell = float_cell_size(mux, window);
+                    let grid = zz_ui::terminal::terminal_grid_size(
+                        bounds.size,
+                        cell.width,
+                        cell.height,
+                        window.scale_factor(),
+                    );
+                    let generation = mux.layout_generation();
+                    let report = (grid.columns.max(1), grid.rows.max(1), generation);
+                    if sent.borrow().get(&pane) == Some(&report) {
+                        return;
+                    }
+                    sent.borrow_mut().insert(pane, report);
+                    mux.send_input(InputMessage::ResizeTerminalV2 {
+                        pane,
+                        columns: report.0,
+                        rows: report.1,
+                        cell_width_px: grid.cell_width_px,
+                        cell_height_px: grid.cell_height_px,
+                        layout_generation: generation,
+                    });
+                },
+                |_, (), _, _| {},
+            )
+            .absolute()
+            .inset_0()
+            .into_any_element(),
+        )
+    }
+
     fn floating_layer(
         &self,
         window_snapshot: &WindowSnapshot,
@@ -3938,6 +4186,29 @@ impl AppView {
                 placed.get(&float.pane).copied(),
                 cx,
             ));
+        }
+        for (pane, rest) in self.pane_motion.departures() {
+            let Some(departing) = self.departing.get(&pane) else {
+                continue;
+            };
+            let card = zz_ui::pip::departing_pip(
+                pane,
+                penna::Icon::new(departing.face.icon.clone()),
+                departing.face.label.clone().into(),
+                departing.view.clone(),
+                departing.face.inset,
+                cx,
+            );
+            layer.push(
+                div()
+                    .absolute()
+                    .left(rest.origin.x)
+                    .top(rest.origin.y)
+                    .w(rest.size.width)
+                    .h(rest.size.height)
+                    .child(moving_pane(pane, &self.pane_motion, card))
+                    .into_any_element(),
+            );
         }
         (!layer.is_empty()).then(|| {
             div()
@@ -4128,6 +4399,18 @@ impl AppView {
                     title.left
                 };
                 let opacity = if active { 1.0 } else { inactive_opacity };
+                if self.pane_motion.launched(pane) {
+                    self.pip_faces.borrow_mut().insert(
+                        pane,
+                        PipFace {
+                            label: label.clone(),
+                            icon: snapshot.map_or(penna::IconName::SquareTerminal, |pane| {
+                                zz_ui::pane::pane_kind_icon(&pane.kind)
+                            }),
+                            inset,
+                        },
+                    );
+                }
                 surface
                     .content_inset(inset.width, inset.height)
                     .header(self.pip_header(pane, snapshot, label, active, opacity, cx))
@@ -4157,7 +4440,11 @@ impl AppView {
                     if modal {
                         slot.child(card)
                     } else {
-                        slot.child(moving_pane(pane, &self.pane_motion, card).held(held))
+                        slot.child(
+                            moving_pane(pane, &self.pane_motion, card)
+                                .held(held)
+                                .launches(),
+                        )
                     }
                 })
                 .into_any_element(),
@@ -4200,6 +4487,7 @@ impl AppView {
                 folder: snapshot.and_then(zz_client::navigation::pane_folder),
                 flip: None,
                 keys: self.pane_action_keys(cx),
+                buttons: self.pane_kind_buttons(pane, cx),
                 trailing_inset: px(0.0),
                 radii: Corners::default(),
                 opacity,
@@ -4232,6 +4520,7 @@ impl AppView {
                     ..zz_ui::pane::PaneState::default()
                 },
                 None,
+                &[],
                 &self.pane_action_keys(cx),
                 px(0.0),
                 move |action, _, cx| {
@@ -4529,10 +4818,13 @@ impl Render for AppView {
                 self.split_drag.is_some(),
             );
         }
+        let motion = self.pane_motion.clone();
+        self.departing.retain(|pane, _| motion.departing(*pane));
         let floating_layer = active_window
             .filter(|active_window| {
                 route != WorkspaceRoute::Settings
-                    && active_window.floating.iter().any(|float| float.visible)
+                    && (active_window.floating.iter().any(|float| float.visible)
+                        || !self.departing.is_empty())
             })
             .and_then(|active_window| {
                 let cell = self.float_cell_size(window, cx);

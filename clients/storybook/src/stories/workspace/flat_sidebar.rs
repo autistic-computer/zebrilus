@@ -13,7 +13,7 @@ use penna::{
 use zz_client::{
     program::{Program, resolve},
     window_summary::{
-        AttentionRollup,
+        Attention, AttentionRollup,
         PaneTag::{self, Browser, Editor, Picker, Terminal},
         PaneTile, WindowSummary, age_label, summarize_chats, summarize_host,
     },
@@ -973,54 +973,76 @@ fn stacks(_: &mut Window, cx: &mut App) -> AnyElement {
             ..FlatRowState::default()
         },
     ];
-    let stack_cell = |id: u64, tiles: &[(PaneTag, Option<&str>)], state: FlatRowState| {
-        let tiles = tiles
-            .iter()
-            .enumerate()
-            .map(|(index, (tag, program))| PaneTile {
-                pane: PaneId(index as u64),
-                tag: *tag,
-                label: program.map_or_else(|| format!("{tag:?}"), str::to_owned),
-                program: program.and_then(Program::by_id),
-            })
-            .collect::<Vec<_>>();
-        div()
-            .flex()
-            .flex_none()
-            .items_center()
-            .justify_center()
-            .size(px(STACK_CELL))
-            .rounded(cx.theme().radius)
-            .bg(flat_row_ground(state, cx).fill)
-            .child(flat_tile_stack(MACBOOK, WindowId(id), &tiles, state, cx))
-    };
+    let stack_cell =
+        |id: u64, tiles: &[(PaneTag, Option<&str>)], state: FlatRowState, attention: Attention| {
+            let tiles = tiles
+                .iter()
+                .enumerate()
+                .map(|(index, (tag, program))| PaneTile {
+                    pane: PaneId(index as u64),
+                    tag: *tag,
+                    label: program.map_or_else(|| format!("{tag:?}"), str::to_owned),
+                    program: program.and_then(Program::by_id),
+                    attention: if index == 0 {
+                        attention
+                    } else {
+                        Attention::None
+                    },
+                })
+                .collect::<Vec<_>>();
+            div()
+                .flex()
+                .flex_none()
+                .items_center()
+                .justify_center()
+                .size(px(STACK_CELL))
+                .rounded(cx.theme().radius)
+                .bg(flat_row_ground(state, cx).fill)
+                .child(flat_tile_stack(MACBOOK, WindowId(id), &tiles, state, cx))
+        };
     let running = |id: u64, programs: &[&'static str], state: FlatRowState| {
         let tiles = programs
             .iter()
             .map(|program| (Terminal, Some(*program)))
             .collect::<Vec<_>>();
-        stack_cell(id, &tiles, state)
+        stack_cell(id, &tiles, state, Attention::None)
     };
     let claude = (Terminal, Some("claude"));
     let codex = (Terminal, Some("codex"));
     let (terminal, browser, editor) = ((Terminal, None), (Browser, None), (Editor, None));
     let kinds = [claude, codex, terminal, browser, editor, (Picker, None)];
     let on_every_ground = |id: u64, tiles: &[(PaneTag, Option<&str>)]| {
-        row().children(
-            grounds
-                .iter()
-                .enumerate()
-                .map(|(index, state)| stack_cell(id * 10 + index as u64, tiles, *state)),
-        )
+        row().children(grounds.iter().enumerate().map(|(index, state)| {
+            stack_cell(id * 10 + index as u64, tiles, *state, Attention::None)
+        }))
     };
     states()
         .state(
             "one pane: Claude Code and Codex in terminals, then every kind",
+            row().children(kinds.iter().enumerate().map(|(index, kind)| {
+                stack_cell(index as u64, &[*kind], grounds[0], Attention::None)
+            })),
+        )
+        .state(
+            "status dots: working, needs you, failed, done (unseen) and bell",
             row().children(
-                kinds
-                    .iter()
-                    .enumerate()
-                    .map(|(index, kind)| stack_cell(index as u64, &[*kind], grounds[0])),
+                [
+                    Attention::Working,
+                    Attention::NeedsYou,
+                    Attention::Failed,
+                    Attention::Done,
+                    Attention::Bell,
+                ]
+                .into_iter()
+                .enumerate()
+                .map(|(index, attention)| {
+                    stack_cell(
+                        40 + index as u64,
+                        &[claude, terminal],
+                        grounds[0],
+                        attention,
+                    )
+                }),
             ),
         )
         .state(
@@ -1087,6 +1109,7 @@ fn programs(_: &mut Window, cx: &mut App) -> AnyElement {
                 tag: Terminal,
                 label: program.name.to_owned(),
                 program: Some(program),
+                attention: Attention::None,
             };
             list.state(
                 program.name,

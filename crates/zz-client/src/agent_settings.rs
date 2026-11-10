@@ -3,6 +3,9 @@ use zz_protocol::{AgentProvider, CommandInvocation, PaneId};
 
 pub const MODEL: &str = "model";
 pub const EFFORT: &str = "effort";
+pub const LATEST_MODELS: usize = 5;
+const UNSET_EFFORT: &str = "default";
+pub const MODE: &str = "mode";
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct Choice {
@@ -17,6 +20,8 @@ pub struct LensSettings {
     pub models: Vec<Choice>,
     pub effort: String,
     pub efforts: Vec<Choice>,
+    pub mode: String,
+    pub modes: Vec<Choice>,
 }
 
 impl LensSettings {
@@ -26,6 +31,7 @@ impl LensSettings {
         let find = |id: &str| options.iter().find(|option| option["id"] == id);
         let model = find(MODEL)?;
         let effort = find(EFFORT);
+        let mode = find(MODE);
         let text = |value: &Value| value.as_str().unwrap_or_default().to_owned();
         let choices = |option: Option<&Value>| {
             option
@@ -53,6 +59,10 @@ impl LensSettings {
                 .map(|effort| text(&effort["currentValue"]))
                 .unwrap_or_default(),
             efforts: choices(effort),
+            mode: mode
+                .map(|mode| text(&mode["currentValue"]))
+                .unwrap_or_default(),
+            modes: choices(mode),
         })
     }
 
@@ -73,6 +83,33 @@ impl LensSettings {
     }
 
     #[must_use]
+    pub fn effort_starts_unset(&self) -> bool {
+        self.efforts
+            .first()
+            .is_some_and(|choice| choice.value == UNSET_EFFORT)
+    }
+
+    #[must_use]
+    pub fn listed_models(&self, all: bool) -> Vec<&Choice> {
+        if all {
+            return self.models.iter().collect();
+        }
+        let mut listed = self.models.iter().take(LATEST_MODELS).collect::<Vec<_>>();
+        listed.extend(
+            self.models
+                .iter()
+                .skip(LATEST_MODELS)
+                .find(|choice| choice.value == self.model),
+        );
+        listed
+    }
+
+    #[must_use]
+    pub fn older_models(&self) -> usize {
+        self.models.len().saturating_sub(LATEST_MODELS)
+    }
+
+    #[must_use]
     pub fn summary(&self) -> String {
         match (self.model_label.is_empty(), self.effort.is_empty()) {
             (false, false) => format!("{} · {}", self.model_label, self.effort_name()),
@@ -87,8 +124,45 @@ impl LensSettings {
         match option {
             MODEL => Some((&self.models, &self.model)),
             EFFORT => Some((&self.efforts, &self.effort)),
+            MODE => Some((&self.modes, &self.mode)),
             _ => None,
         }
+    }
+
+    #[must_use]
+    pub fn mode_name(&self) -> &str {
+        self.modes
+            .iter()
+            .find(|choice| choice.value == self.mode)
+            .map_or(self.mode.as_str(), |choice| choice.name.as_str())
+    }
+
+    #[must_use]
+    pub fn next_mode(&self) -> Option<&str> {
+        let at = self
+            .modes
+            .iter()
+            .position(|choice| choice.value == self.mode)?;
+        let next = &self.modes[(at + 1) % self.modes.len()];
+        (next.value != self.mode).then_some(next.value.as_str())
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ModeRisk {
+    Asks,
+    ReadOnly,
+    Unasked,
+    Unguarded,
+}
+
+#[must_use]
+pub fn mode_risk(provider: AgentProvider, mode: &str) -> ModeRisk {
+    match (provider, mode) {
+        (_, "plan" | "read-only") => ModeRisk::ReadOnly,
+        (_, "bypassPermissions" | "full-access") => ModeRisk::Unguarded,
+        (AgentProvider::ClaudeCode, "acceptEdits" | "auto") => ModeRisk::Unasked,
+        _ => ModeRisk::Asks,
     }
 }
 
@@ -283,6 +357,54 @@ mod tests {
         assert_eq!(codex.summary(), "GPT-6-Luna · High");
         assert_eq!(codex.models.len(), 1);
         assert_eq!(LensSettings::from_json(""), None);
+    }
+
+    #[test]
+    fn the_mode_steps_through_the_drivers_list_and_carries_a_risk() {
+        let settings = LensSettings::parse(&json!([
+            {"id":"model","currentValue":"opus","options":[]},
+            {"id":"mode","currentValue":"plan","options":[{"value":"default","name":"Ask"},{"value":"acceptEdits","name":"Accept edits"},{"value":"plan","name":"Plan"}]},
+        ]))
+        .expect("settings");
+        assert_eq!(settings.mode_name(), "Plan");
+        assert_eq!(settings.next_mode(), Some("default"));
+        assert_eq!(
+            [
+                mode_risk(AgentProvider::ClaudeCode, "default"),
+                mode_risk(AgentProvider::ClaudeCode, "plan"),
+                mode_risk(AgentProvider::ClaudeCode, "auto"),
+                mode_risk(AgentProvider::Codex, "auto"),
+                mode_risk(AgentProvider::Codex, "full-access"),
+            ],
+            [
+                ModeRisk::Asks,
+                ModeRisk::ReadOnly,
+                ModeRisk::Unasked,
+                ModeRisk::Asks,
+                ModeRisk::Unguarded,
+            ]
+        );
+    }
+
+    #[test]
+    fn the_model_list_is_the_first_five_and_keeps_an_older_pick() {
+        let options = (1..=7)
+            .map(|n| json!({"value": format!("m{n}"), "name": format!("M{n}")}))
+            .collect::<Vec<_>>();
+        let settings = LensSettings::parse(&json!([
+            {"id":"model","currentValue":"m7","options":options},
+        ]))
+        .expect("settings");
+        let listed = |all| {
+            settings
+                .listed_models(all)
+                .iter()
+                .map(|choice| choice.value.as_str())
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(listed(false), ["m1", "m2", "m3", "m4", "m5", "m7"]);
+        assert_eq!(listed(true), ["m1", "m2", "m3", "m4", "m5", "m6", "m7"]);
+        assert_eq!(settings.older_models(), 2);
     }
 
     #[test]

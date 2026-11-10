@@ -206,6 +206,8 @@ impl Theme {
     pub fn set_colors(&mut self, colors: ThemeColor) {
         color::set_muted_ceiling(colors.foreground, colors.background);
         self.colors = colors;
+        self.highlight_theme =
+            HighlightTheme::with_diff_inks(&self.highlight_theme, colors.success, colors.danger);
     }
 
     pub fn set_contrast(&mut self, value: f32) {
@@ -254,12 +256,12 @@ impl Theme {
         let colors = *ThemeColor::for_mode(mode);
         let theme = cx.global_mut::<Theme>();
         theme.mode = mode;
-        theme.set_colors(colors);
         theme.highlight_theme = if mode.is_dark() {
             HighlightTheme::default_dark()
         } else {
             HighlightTheme::default_light()
         };
+        theme.set_colors(colors);
 
         if let Some(window) = window {
             window.refresh();

@@ -8,51 +8,65 @@ use std::{
 };
 
 use ala::{
-    AnyElement, App, ClipboardItem, Context, Div, Entity, FollowMode, Global, Image, ImageFormat,
+    AnyElement, App, ClipboardItem, Context, Div, FollowMode, Global, Image, ImageFormat,
     IntoElement, ListAlignment, ListSizingBehavior, ListState, SharedString, Stateful,
     Subscription, Window, div, list, prelude::*, px, relative,
 };
 use penna::{
-    Card, CardLook, Label, Panel, PanelLook, TextStyle,
-    components::{button::ButtonLook, scroll::Scrollbar},
+    Card, CardLook, Label, Sizable as _, TextStyle,
+    components::{
+        button::{ButtonLook, ButtonVariants as _},
+        scroll::Scrollbar,
+    },
 };
-use zz_client::chat_rows::{self, AgentState, Fold, RunLabel, Unit};
+use zz_client::{
+    chat_rows::{self, AgentState, Fold, RunLabel, Unit},
+    program::Program,
+    window_summary::Attention,
+};
 use zz_protocol::{
+    ViewContent,
     agent_stream::AgentImage,
     chat::{
-        Answer, Ask, ChatView, ItemId, ItemKind, ItemStatus, OptionKind, RequestClose, RequestId,
-        RequestView, SessionView, StepStatus, TurnId, TurnView,
+        Ask, ChatView, ItemId, ItemKind, ItemStatus, RequestId, RequestView, SessionView,
+        StepStatus, TurnId, TurnView,
     },
 };
 
-use super::refs::{ChatRefs, RefLinks, linkify_markdown, ref_text};
+use super::preview::{ViewOpener, ViewRequest};
+use super::refs::{ChatRefs, RefLinks, ref_links, ref_text};
 use super::{
     agent_jump_to_bottom_button, agent_text_view, assistant_markdown_extensions, attachment_tile,
 };
+use crate::navigation::pane_stack::status_dot;
 use crate::{
-    ActiveTheme as _, Colorize as _, Disableable as _, Emphasis, Icon, IconName, StyledExt as _,
-    Tone, WindowExt as _, button::Button, h_flex, notification::Notification, pip::PipSurface,
-    text::TextView, v_flex,
+    ActiveTheme as _, Colorize as _, Emphasis, Icon, IconName, StyledExt as _, Tone,
+    WindowExt as _,
+    button::Button,
+    h_flex,
+    notification::Notification,
+    pane::{PipPart, PipSource, pip_part},
+    pip::PipSurface,
+    text::TextView,
+    v_flex,
 };
 use penna::blocks::chat::{
     ActivityEnd, ActivityMark, CHAT_CONTENT_MAX_WIDTH, COMPOSER_OUTER_PADDING,
     TRANSCRIPT_ATTACHMENT, activity_row, spinner_phase, transcript_text,
 };
-use penna::blocks::chat::{
-    card_chip, card_glyph, card_header, card_surface, card_tiles, card_title, permission_card,
-    permission_option,
-};
+use penna::blocks::chat::{card_chip, card_glyph, card_header, card_title};
 
 #[derive(Clone, Debug, Default)]
 pub struct ChatOpen {
     pub turns: Vec<TurnId>,
     pub runs: Vec<ItemId>,
     pub agent: Option<ItemId>,
-    pub highlighted: usize,
     pub arrivals: HashMap<ItemId, u64>,
     pub images: HashMap<ItemId, Arc<[Arc<Image>]>>,
     pub texts: HashMap<ItemId, SharedString>,
     pub previews: HashMap<ItemId, SharedString>,
+    pub tall: HashSet<ItemId>,
+    pub unfolded: HashSet<ItemId>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -62,6 +76,8 @@ pub enum ChatClick {
     Agent(ItemId),
     CloseAgent,
     Fork(ItemId),
+    Unfold(ItemId),
+    Tall(ItemId, bool),
 }
 
 pub type ChatClicks = Rc<dyn Fn(&ChatClick, &mut Window, &mut App)>;
@@ -69,14 +85,44 @@ pub type ChatClicks = Rc<dyn Fn(&ChatClick, &mut Window, &mut App)>;
 #[derive(Default)]
 pub struct ChatHooks<'a> {
     pub click: Option<ChatClicks>,
-    pub ask: Option<&'a dyn Fn(&RequestView, &App) -> Option<AnyElement>>,
     pub fork: bool,
-    pub refs: Option<&'a ChatRefs>,
-    pub vendor: Option<IconName>,
+    pub markdown: Option<&'a ChatMarkdown>,
+    pub vendor: Option<&'static Program>,
     pub owner: Option<u64>,
+    pub ground: Option<penna::Ground>,
+}
+
+pub struct ChatMarkdown {
+    refs: Arc<ChatRefs>,
+    extensions: crate::text::MarkdownExtensions,
+}
+
+impl ChatMarkdown {
+    #[must_use]
+    pub fn new(refs: ChatRefs) -> Self {
+        let refs = Arc::new(refs);
+        let links = Arc::clone(&refs);
+        let extensions = match refs.view.clone() {
+            Some(open) => crate::agent::previewing_markdown_extensions(open),
+            None => assistant_markdown_extensions(),
+        };
+        Self {
+            extensions: extensions
+                .inline_links(move |text, source| ref_links(&links, text, source)),
+            refs,
+        }
+    }
+
+    fn reads(&self, refs: &ChatRefs) -> bool {
+        self.refs.hosts == refs.hosts && self.refs.cwd == refs.cwd
+    }
 }
 
 impl ChatHooks<'_> {
+    fn refs(&self) -> Option<&ChatRefs> {
+        self.markdown.map(|markdown| &*markdown.refs)
+    }
+
     fn clickable<E: StatefulInteractiveElement + Styled>(
         &self,
         element: E,
@@ -102,7 +148,9 @@ impl ChatHooks<'_> {
 const REVEAL_MAX_MS: u64 = 900;
 const REVEAL_MIN_MS: u64 = 220;
 const REVEAL_MS_PER_CHAR: u64 = 2;
-const USER_MAX_HEIGHT: f32 = 260.0;
+const USER_FOLD_HEIGHT: f32 = 176.0;
+const USER_FOLD_SLACK: f32 = 48.0;
+const USER_FADE_HEIGHT: f32 = 64.0;
 const THOUGHT_MAX_HEIGHT: f32 = 260.0;
 const PIP_GAP: f32 = 10.0;
 const PREVIEW_MAX_BYTES: usize = 32 * 1024;
@@ -186,23 +234,21 @@ pub struct ChatFrame {
     pub phase: f32,
     pub click: Option<ChatClicks>,
     pub fork: bool,
-    pub refs: Option<Rc<ChatRefs>>,
-    pub vendor: Option<IconName>,
+    pub markdown: Option<Rc<ChatMarkdown>>,
+    pub vendor: Option<&'static Program>,
     pub owner: Option<u64>,
+    pub ground: Option<penna::Ground>,
 }
 
 impl ChatFrame {
-    fn hooks<'a>(
-        &'a self,
-        ask: Option<&'a dyn Fn(&RequestView, &App) -> Option<AnyElement>>,
-    ) -> ChatHooks<'a> {
+    fn hooks(&self) -> ChatHooks<'_> {
         ChatHooks {
             click: self.click.clone(),
-            ask,
             fork: self.fork,
-            refs: self.refs.as_deref(),
-            vendor: self.vendor.clone(),
+            markdown: self.markdown.as_deref(),
+            vendor: self.vendor,
             owner: self.owner,
+            ground: self.ground,
         }
     }
 }
@@ -220,6 +266,7 @@ pub struct ChatPane {
     primed: bool,
     retired: Vec<Arc<Image>>,
     shown: Rc<RefCell<HashSet<u64>>>,
+    markdown: Option<Rc<ChatMarkdown>>,
     listed: bool,
 }
 
@@ -240,6 +287,7 @@ impl Default for ChatPane {
             primed: false,
             retired: Vec::new(),
             shown: Rc::default(),
+            markdown: None,
             listed: false,
         }
     }
@@ -251,6 +299,17 @@ struct ShownImages(Vec<Weak<RefCell<HashSet<u64>>>>);
 impl Global for ShownImages {}
 
 impl ChatPane {
+    pub fn markdown(&mut self, refs: ChatRefs) -> Rc<ChatMarkdown> {
+        match &self.markdown {
+            Some(markdown) if markdown.reads(&refs) => Rc::clone(markdown),
+            _ => {
+                let markdown = Rc::new(ChatMarkdown::new(refs));
+                self.markdown = Some(Rc::clone(&markdown));
+                markdown
+            }
+        }
+    }
+
     pub fn click(&mut self, click: &ChatClick) {
         match click {
             ChatClick::Turn(turn) => toggle(&mut self.open.turns, *turn),
@@ -264,6 +323,19 @@ impl ChatPane {
                 return;
             }
             ChatClick::Fork(_) => return,
+            ChatClick::Unfold(item) => {
+                if !self.open.unfolded.remove(item) {
+                    self.open.unfolded.insert(item.clone());
+                }
+            }
+            ChatClick::Tall(item, tall) => {
+                if *tall {
+                    self.open.tall.insert(item.clone());
+                } else {
+                    self.open.tall.remove(item);
+                }
+                return;
+            }
         }
         self.list.pause_following_tail();
     }
@@ -550,7 +622,6 @@ pub trait ChatHost: Sized + 'static {
     fn chat_pane(&mut self) -> &mut ChatPane;
     fn chat_parts<'a>(&'a mut self, cx: &'a App) -> (&'a mut ChatPane, Option<&'a ChatView>);
     fn chat_read<'a>(&'a self, cx: &'a App) -> (&'a ChatPane, Option<&'a ChatView>);
-    fn chat_ask(&self, request: &RequestView, host: &Entity<Self>, cx: &App) -> Option<AnyElement>;
     fn chat_fork(&mut self, item: &ItemId, cx: &mut Context<Self>);
 }
 
@@ -558,7 +629,8 @@ pub struct ChatLook {
     pub pane: u64,
     pub fork: bool,
     pub refs: Option<ChatRefs>,
-    pub vendor: Option<IconName>,
+    pub vendor: Option<&'static Program>,
+    pub ground: Option<penna::Ground>,
 }
 
 pub fn chat_surface<T: ChatHost>(
@@ -582,9 +654,29 @@ pub fn chat_surface<T: ChatHost>(
     } else {
         0.0
     };
+    let shows_agents = look.refs.as_ref().and_then(|refs| refs.view.clone());
     let click: ChatClicks = {
         let entity = entity.clone();
-        Rc::new(move |click, _, cx| {
+        Rc::new(move |click, window, cx| {
+            if let (ChatClick::Agent(item), Some(open)) = (click, shows_agents.as_ref()) {
+                let title = entity
+                    .read(cx)
+                    .chat_read(cx)
+                    .1
+                    .and_then(|view| view.item(item))
+                    .map_or_else(|| "Subagent".to_owned(), agent_title);
+                open(
+                    ViewRequest {
+                        title,
+                        content: ViewContent::Subagent {
+                            item: item.as_str().to_owned(),
+                        },
+                    },
+                    window,
+                    cx,
+                );
+                return;
+            }
             entity.update(cx, |host, cx| {
                 if let ChatClick::Fork(item) = click {
                     host.chat_fork(item, cx);
@@ -595,14 +687,16 @@ pub fn chat_surface<T: ChatHost>(
         })
     };
     let pane = host.chat_pane();
+    let markdown = look.refs.map(|refs| pane.markdown(refs));
     pane.frame = ChatFrame {
         now,
         phase,
         click: Some(click),
         fork: look.fork,
-        refs: look.refs.map(Rc::new),
+        markdown,
         vendor: look.vendor,
         owner: Some(look.pane),
+        ground: look.ground,
     };
     pane.jump = pane.shows_jump();
     pane.release(window, cx);
@@ -626,8 +720,7 @@ pub fn chat_surface<T: ChatHost>(
     let pip = {
         let (pane, view) = host.chat_read(cx);
         view.and_then(|view| {
-            let ask = |request: &RequestView, cx: &App| host.chat_ask(request, &entity, cx);
-            let hooks = pane.frame.hooks(Some(&ask));
+            let hooks = pane.frame.hooks();
             chat_agent_pip(view, now, &pane.open, phase, &hooks, cx)
         })
     };
@@ -638,8 +731,7 @@ pub fn chat_surface<T: ChatHost>(
         let Some(view) = view else {
             return div().into_any_element();
         };
-        let ask = |request: &RequestView, cx: &App| host.chat_ask(request, &rows, cx);
-        let hooks = pane.frame.hooks(Some(&ask));
+        let hooks = pane.frame.hooks();
         pane.row(index, view, &hooks, cx)
     })
     .with_sizing_behavior(ListSizingBehavior::Auto)
@@ -893,7 +985,8 @@ impl Draw<'_, '_> {
                 self.images(id).as_deref().unwrap_or_default(),
                 self.view.item(id).map(|item| item.started_at),
                 self.hooks.fork_from(id),
-                self.hooks.refs,
+                self.fold(id),
+                self.hooks.refs(),
                 cx,
             ),
             Unit::Text(id) => self.reply(id),
@@ -902,21 +995,14 @@ impl Draw<'_, '_> {
             Unit::Agents(ids) => self.agents(ids),
             Unit::Plan(id) => plan_card(self.view, id, cx),
             Unit::Notice(id) => notice_row(self.view, id, cx),
-            Unit::Ask(request) => self
-                .view
-                .request(*request)
-                .map_or_else(|| div().into_any_element(), |request| self.ask(request)),
+            Unit::Ask(request) => self.view.request(*request).map_or_else(
+                || div().into_any_element(),
+                |request| ask_row(self.view, request, cx),
+            ),
             Unit::Record(request) => self.view.request(*request).map_or_else(
                 || div().into_any_element(),
-                |request| record_card(request, cx),
+                |request| record_rows(request, cx),
             ),
-        }
-    }
-
-    fn ask(&self, request: &RequestView) -> AnyElement {
-        match self.hooks.ask {
-            Some(ask) => ask(request, self.cx).unwrap_or_else(|| ask_card(request, None, self.cx)),
-            None => ask_card(request, Some(self.open.highlighted), self.cx),
         }
     }
 
@@ -1026,7 +1112,6 @@ impl Draw<'_, '_> {
     ) -> AnyElement {
         let seconds = self.now.saturating_sub(turn.started_at) / 1000;
         let mut mark = ActivityMark::plain(IconName::Sparkle);
-        mark.turn = Some(self.phase);
         mark.shimmer = Some(self.now);
         mark.detail =
             (seconds > 0 && seconds < 86_400).then(|| chat_rows::duration(seconds * 1000).into());
@@ -1066,12 +1151,20 @@ impl Draw<'_, '_> {
                 .filter_map(|id| self.view.item(id))
                 .filter_map(|item| {
                     if item.kind.is_tool() {
-                        Some(step_row(item, self.phase, self.cx))
+                        Some(step_row(self.view, item, self.phase, self.cx))
                     } else {
                         thought_row(item, self.hooks.owner, self.cx)
                     }
                 }),
         )
+    }
+
+    fn fold(&self, id: &ItemId) -> Option<UserFold> {
+        self.hooks.click.clone().map(|click| UserFold {
+            click,
+            tall: self.open.tall.contains(id),
+            unfolded: self.open.unfolded.contains(id),
+        })
     }
 
     fn agents(&self, ids: &[ItemId]) -> AnyElement {
@@ -1092,44 +1185,85 @@ impl Draw<'_, '_> {
             .filter(|ms| item.status.is_open() || *ms >= 1000);
         let open = self.open.agent.as_ref() == Some(id);
         let foreground = cx.theme().foreground;
-        let row = Panel::new(
+        let pane = self.hooks.ground.unwrap_or_else(|| cx.theme().ground());
+        let ground = cx
+            .theme()
+            .ground_of(penna::Surface::from(CardLook::Activity).on(pane));
+        let extras = h_flex()
+            .flex_none()
+            .gap_2()
+            .items_center()
+            .when(!crate::touch::CoarsePointer::get(cx), |extras| {
+                extras
+                    .invisible()
+                    .group_hover(AGENT_ROW_GROUP, ala::Styled::visible)
+            })
+            .when_some(ms, |extras, ms| {
+                extras.child(
+                    Label::new(TextStyle::Caption, chat_rows::duration(ms))
+                        .flex_none()
+                        .text_color(cx.theme().foreground.faint()),
+                )
+            })
+            .child(
+                Icon::new(IconName::PictureInPicture)
+                    .size(px(13.0))
+                    .text_color(cx.theme().foreground.faint()),
+            );
+        let row = Card::new(
             SharedString::from(format!("chat-agent-{}", id.as_str())),
-            PanelLook::Inline,
+            CardLook::Activity,
         )
+        .group(AGENT_ROW_GROUP)
+        .role(ala::Role::Button)
+        .aria_label(agent_title(item))
+        .when_some(agent_status(state.as_ref()), |row, status| {
+            row.aria_description(status)
+        })
         .h_flex()
         .w_full()
         .h(px(36.0))
+        .p_0()
         .px(px(8.0))
         .gap_2()
         .type_style(TextStyle::Body, cx)
         .text_color(if open { foreground } else { foreground.muted() })
         .hover(move |row| row.text_color(foreground))
-        .child(vendor_tile(self.hooks.vendor.clone(), cx))
-        .child(div().min_w_0().flex_1().truncate().child(agent_title(item)))
-        .children(agent_status(state.as_ref(), self.phase, cx))
-        .when_some(ms, |row, ms| {
-            row.child(
-                Label::new(TextStyle::Caption, chat_rows::duration(ms))
-                    .flex_none()
-                    .text_color(cx.theme().foreground.faint()),
-            )
-        })
-        .child(
-            Icon::new(IconName::PictureInPicture)
-                .size(px(13.0))
-                .text_color(cx.theme().foreground.faint()),
-        );
+        .child(pip_part(
+            PipPart::Icon,
+            vendor_tile(
+                SharedString::from(format!("chat-agent-tile-{}", id.as_str())),
+                self.hooks.vendor,
+                state.as_ref(),
+                ground,
+                cx,
+            ),
+        ))
+        .child(pip_part(
+            PipPart::Title,
+            div().min_w_0().flex_1().truncate().child(agent_title(item)),
+        ))
+        .child(extras);
         let asks = if open {
             Vec::new()
         } else {
             asks_under(self.view, id)
         };
+        let source = PipSource::new(
+            SharedString::from(format!("chat-agent-source-{}", id.as_str())),
+            cx.theme().radius_of(CardLook::Activity),
+        );
+        let opens_view = self.hooks.refs().is_some_and(|refs| refs.view.is_some());
+        let launch = source.clone();
+        let row = row.when(opens_view, |row| {
+            row.on_click(move |_, window, cx| launch.launch(window, cx))
+        });
         v_flex()
             .w_full()
-            .child(self.hooks.clickable(row, ChatClick::Agent(id.clone())))
+            .child(source.draw(self.hooks.clickable(row, ChatClick::Agent(id.clone()))))
             .children(
                 asks.into_iter()
-                    .map(|request| div().w_full().pt_1().pb_2().child(self.ask(request))),
+                    .map(|request| ask_row(self.view, request, cx)),
             )
             .into_any_element()
     }
@@ -1163,13 +1297,15 @@ impl Draw<'_, '_> {
             .w_full()
             .gap_3()
             .when_some(prompt, |body, prompt| {
+                let prompt_id = ItemId::new(format!("prompt-{}", id.as_str()));
                 body.child(user_bubble(
-                    &ItemId::new(format!("prompt-{}", id.as_str())),
+                    &prompt_id,
                     &prompt.into(),
                     self.images(id).as_deref().unwrap_or_default(),
                     None,
                     None,
-                    self.hooks.refs,
+                    self.fold(&prompt_id),
+                    self.hooks.refs(),
                     cx,
                 ))
             })
@@ -1201,39 +1337,90 @@ fn agent_title(item: &zz_protocol::chat::ItemView) -> String {
     }
 }
 
-fn vendor_tile(vendor: Option<IconName>, cx: &App) -> Div {
-    div()
-        .flex_none()
-        .size(px(22.0))
-        .flex()
-        .items_center()
-        .justify_center()
-        .rounded(px(6.0))
-        .bg(cx.theme().paint(Tone::Neutral, Emphasis::Soft).fill)
-        .child(Icon::new(vendor.unwrap_or(IconName::Bot)).size(px(13.0)))
+const AGENT_ROW_GROUP: &str = "chat-agent-row";
+const VENDOR_TILE: f32 = 22.0;
+
+fn agent_attention(state: Option<&AgentState>) -> Attention {
+    match state {
+        Some(AgentState::Working { .. }) => Attention::Working,
+        Some(AgentState::Waiting) => Attention::NeedsYou,
+        Some(AgentState::Done { .. }) => Attention::Done,
+        Some(AgentState::Failed { .. }) => Attention::Failed,
+        Some(AgentState::Stopped) | None => Attention::None,
+    }
 }
 
-fn agent_status(state: Option<&AgentState>, phase: f32, cx: &App) -> Option<AnyElement> {
-    let glyph = |icon: IconName, color| Icon::new(icon).size(px(13.0)).text_color(color);
+fn agent_status(state: Option<&AgentState>) -> Option<&'static str> {
     Some(match state? {
-        AgentState::Working { .. } => super::spinner(phase)
-            .size(px(13.0))
-            .text_color(cx.theme().foreground.muted())
-            .into_any_element(),
-        AgentState::Waiting => h_flex()
-            .flex_none()
-            .gap_1()
-            .type_style(TextStyle::Caption, cx)
-            .text_color(cx.theme().warning)
-            .child(glyph(IconName::TriangleAlert, cx.theme().warning))
-            .child("Needs you")
-            .into_any_element(),
-        AgentState::Done { .. } => glyph(IconName::Check, cx.theme().success).into_any_element(),
-        AgentState::Failed { .. } => glyph(IconName::CircleX, cx.theme().danger).into_any_element(),
-        AgentState::Stopped => {
-            glyph(IconName::Stop, cx.theme().foreground.faint()).into_any_element()
-        }
+        AgentState::Working { .. } => "Working",
+        AgentState::Waiting => "Waiting for you",
+        AgentState::Done { .. } => "Done",
+        AgentState::Failed { .. } => "Failed",
+        AgentState::Stopped => "Stopped",
     })
+}
+
+fn vendor_tile(
+    id: impl Into<ala::ElementId>,
+    vendor: Option<&'static Program>,
+    state: Option<&AgentState>,
+    ground: penna::Ground,
+    cx: &App,
+) -> Stateful<Div> {
+    let size = px(VENDOR_TILE);
+    let tile = match vendor.filter(|_| crate::program::program_colors(cx)) {
+        Some(program) => crate::program::program_tile(program, size, 0.0, cx),
+        None => div()
+            .flex_none()
+            .size(size)
+            .flex()
+            .items_center()
+            .justify_center()
+            .rounded(px(6.0))
+            .bg(cx.theme().paint(Tone::Neutral, Emphasis::Soft).fill)
+            .child(
+                vendor
+                    .and_then(|program| {
+                        crate::program::program_mark(program, px(13.0), cx.theme().foreground, None)
+                    })
+                    .unwrap_or_else(|| Icon::new(IconName::Bot).size(px(13.0)).into_any_element()),
+            ),
+    };
+    tile.relative()
+        .children(status_dot(agent_attention(state), size, ground.fill, cx))
+        .id(id)
+        .when_some(agent_status(state), |tile, status| {
+            tile.role(ala::Role::Image)
+                .aria_label(status)
+                .tooltip(move |window, cx| crate::tooltip::Tooltip::new(status).build(window, cx))
+        })
+}
+
+#[must_use]
+pub fn chat_agent_body(
+    view: &ChatView,
+    id: &ItemId,
+    now: u64,
+    open: &ChatOpen,
+    phase: f32,
+    hooks: &ChatHooks<'_>,
+    cx: &App,
+) -> Option<(SharedString, Div)> {
+    let item = view.item(id)?;
+    let draw = Draw {
+        view,
+        now,
+        open,
+        phase,
+        hooks,
+        cx,
+    };
+    let state = chat_rows::agent_state(view, id);
+    let ms = chat_rows::agent_ms(view, id, now).filter(|ms| item.status.is_open() || *ms >= 1000);
+    Some((
+        agent_title(item).into(),
+        draw.agent_body(id, state.as_ref(), ms),
+    ))
 }
 
 #[must_use]
@@ -1267,7 +1454,13 @@ pub fn chat_agent_pip(
         .gap_2()
         .items_center()
         .type_style(TextStyle::Small, cx)
-        .child(vendor_tile(hooks.vendor.clone(), cx))
+        .child(vendor_tile(
+            "chat-agent-pip-tile",
+            hooks.vendor,
+            state.as_ref(),
+            cx.theme().ground(),
+            cx,
+        ))
         .child(
             Label::new(TextStyle::Small, agent_title(item))
                 .strong()
@@ -1275,7 +1468,6 @@ pub fn chat_agent_pip(
                 .min_w_0()
                 .flex_1(),
         )
-        .children(agent_status(state.as_ref(), phase, cx))
         .child(
             Button::compact_icon("chat-agent-pip-close", IconName::Xmark)
                 .look(ButtonLook::RowIcon)
@@ -1379,7 +1571,7 @@ fn message_actions(
             row.child(
                 Label::new(TextStyle::Caption, stamp)
                     .px_1()
-                    .text_color(cx.theme().foreground.faint()),
+                    .text_color(penna::blocks::chat::activity_color(cx)),
             )
         })
         .when_some(copy, |row, parts| {
@@ -1429,12 +1621,20 @@ fn message_actions(
         .into_any_element()
 }
 
+struct UserFold {
+    click: ChatClicks,
+    tall: bool,
+    unfolded: bool,
+}
+
+#[allow(clippy::too_many_arguments)]
 fn user_bubble(
     id: &ItemId,
     text: &SharedString,
     images: &[Arc<Image>],
     stamp: Option<u64>,
     fork: Option<(ChatClicks, ItemId)>,
+    fold: Option<UserFold>,
     refs: Option<&ChatRefs>,
     cx: &App,
 ) -> AnyElement {
@@ -1479,19 +1679,32 @@ fn user_bubble(
                         .pr_1()
                         .child(actions),
                 )
-                .child(user_card(&key, text, body, images, ground, cx)),
+                .child(user_card(
+                    id,
+                    text,
+                    body,
+                    images,
+                    fold,
+                    refs.and_then(|refs| refs.view.as_ref()),
+                    ground,
+                    cx,
+                )),
         )
         .into_any_element()
 }
 
+#[allow(clippy::too_many_arguments)]
 fn user_card(
-    key: &str,
+    id: &ItemId,
     text: &SharedString,
     body: AnyElement,
     images: &[Arc<Image>],
+    fold: Option<UserFold>,
+    view: Option<&ViewOpener>,
     ground: penna::Ground,
     cx: &App,
 ) -> AnyElement {
+    let key = id.as_str();
     transcript_text(
         Card::new("chat-user-bubble", CardLook::Bubble)
             .v_flex()
@@ -1506,29 +1719,219 @@ fn user_card(
                 .flex_wrap()
                 .gap_1()
                 .children(images.iter().enumerate().map(|(index, image)| {
-                    attachment_tile(
-                        (
-                            SharedString::from(format!("chat-user-attachment-{key}")),
-                            index,
-                        ),
-                        Arc::clone(image),
-                        TRANSCRIPT_ATTACHMENT,
-                        ground,
-                    )
-                    .debug_selector(|| "chat-user-attachment".to_owned())
+                    let tile = (
+                        SharedString::from(format!("chat-user-attachment-{key}")),
+                        index,
+                    );
+                    match view {
+                        Some(open) => {
+                            let open = Arc::clone(open);
+                            let request = ViewRequest {
+                                title: image_title(index, images.len()),
+                                content: ViewContent::Image {
+                                    item: key.to_owned(),
+                                    index: u32::try_from(index).unwrap_or(u32::MAX),
+                                },
+                            };
+                            let source = PipSource::new(
+                                (
+                                    SharedString::from(format!(
+                                        "chat-user-attachment-source-{key}"
+                                    )),
+                                    index,
+                                ),
+                                cx.theme().radius_of(CardLook::Image),
+                            )
+                            .picture();
+                            let launch = source.clone();
+                            source
+                                .draw(
+                                    penna::blocks::chat::attachment_tile(
+                                        tile,
+                                        Arc::clone(image),
+                                        TRANSCRIPT_ATTACHMENT,
+                                        ground,
+                                        move |_, window, cx| {
+                                            launch.launch(window, cx);
+                                            open(request.clone(), window, cx);
+                                        },
+                                    )
+                                    .debug_selector(|| "chat-user-attachment".to_owned()),
+                                )
+                                .into_any_element()
+                        }
+                        None => {
+                            attachment_tile(tile, Arc::clone(image), TRANSCRIPT_ATTACHMENT, ground)
+                                .debug_selector(|| "chat-user-attachment".to_owned())
+                                .into_any_element()
+                        }
+                    }
                 })),
         )
     })
     .when(!text.is_empty(), |bubble| {
-        bubble.child(
-            div()
-                .id(SharedString::from(format!("chat-user-scroll-{key}")))
-                .max_h(px(USER_MAX_HEIGHT))
-                .overflow_y_scroll()
-                .child(body),
-        )
+        bubble.child(user_text(id, body, fold, ground, cx))
     })
     .into_any_element()
+}
+
+fn image_title(index: usize, count: usize) -> String {
+    if count > 1 {
+        format!("Image {} of {count}", index + 1)
+    } else {
+        "Image".to_owned()
+    }
+}
+
+struct FoldFade {
+    child: AnyElement,
+    fade: Option<ala::Pixels>,
+}
+
+impl FoldFade {
+    fn range(&self, bounds: ala::Bounds<ala::Pixels>) -> Option<(ala::Pixels, ala::Pixels)> {
+        self.fade
+            .map(|fade| (bounds.bottom() - fade, bounds.bottom()))
+    }
+}
+
+impl IntoElement for FoldFade {
+    type Element = Self;
+
+    fn into_element(self) -> Self::Element {
+        self
+    }
+}
+
+impl ala::Element for FoldFade {
+    type RequestLayoutState = ();
+    type PrepaintState = ();
+
+    fn id(&self) -> Option<ala::ElementId> {
+        None
+    }
+
+    fn source_location(&self) -> Option<&'static core::panic::Location<'static>> {
+        None
+    }
+
+    fn request_layout(
+        &mut self,
+        _: Option<&ala::GlobalElementId>,
+        _: Option<&ala::InspectorElementId>,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> (ala::LayoutId, Self::RequestLayoutState) {
+        (self.child.request_layout(window, cx), ())
+    }
+
+    fn prepaint(
+        &mut self,
+        _: Option<&ala::GlobalElementId>,
+        _: Option<&ala::InspectorElementId>,
+        bounds: ala::Bounds<ala::Pixels>,
+        (): &mut Self::RequestLayoutState,
+        window: &mut Window,
+        cx: &mut App,
+    ) {
+        let fade = self.range(bounds);
+        window.with_text_fade_along(ala::Axis::Vertical, fade, |window| {
+            self.child.prepaint(window, cx);
+        });
+    }
+
+    fn paint(
+        &mut self,
+        _: Option<&ala::GlobalElementId>,
+        _: Option<&ala::InspectorElementId>,
+        bounds: ala::Bounds<ala::Pixels>,
+        (): &mut Self::RequestLayoutState,
+        (): &mut Self::PrepaintState,
+        window: &mut Window,
+        cx: &mut App,
+    ) {
+        let fade = self.range(bounds);
+        window.with_text_fade_along(ala::Axis::Vertical, fade, |window| {
+            self.child.paint(window, cx);
+        });
+    }
+}
+
+fn user_text(
+    id: &ItemId,
+    body: AnyElement,
+    fold: Option<UserFold>,
+    ground: penna::Ground,
+    cx: &App,
+) -> AnyElement {
+    let Some(UserFold {
+        click,
+        tall,
+        unfolded,
+    }) = fold
+    else {
+        return body;
+    };
+    let folded = tall && !unfolded;
+    let measure = {
+        let click = Rc::clone(&click);
+        let id = id.clone();
+        move |bounds: Vec<ala::Bounds<ala::Pixels>>, window: &mut Window, cx: &mut App| {
+            let Some(height) = bounds.first().map(|bounds| bounds.size.height) else {
+                return;
+            };
+            let measured = height > px(USER_FOLD_HEIGHT + USER_FOLD_SLACK);
+            if measured != tall {
+                let click = Rc::clone(&click);
+                let id = id.clone();
+                window.defer(cx, move |window, cx| {
+                    click(&ChatClick::Tall(id, measured), window, cx);
+                });
+            }
+        }
+    };
+    let clip = div()
+        .relative()
+        .w_full()
+        .flex()
+        .flex_col()
+        .when(folded, |clip| {
+            clip.max_h(px(USER_FOLD_HEIGHT)).overflow_hidden()
+        })
+        .child(div().flex_none().w_full().child(body))
+        .on_children_prepainted(measure);
+    let clip = FoldFade {
+        child: clip.into_any_element(),
+        fade: folded.then_some(px(USER_FADE_HEIGHT)),
+    };
+    let target = ChatClick::Unfold(id.clone());
+    v_flex()
+        .w_full()
+        .child(clip)
+        .when(tall, |text| {
+            text.child(
+                h_flex().w_full().justify_end().child(
+                    Button::new(SharedString::from(format!(
+                        "chat-user-unfold-{}",
+                        id.as_str()
+                    )))
+                    .ghost()
+                    .small()
+                    .on(ground)
+                    .label(if unfolded {
+                        "Show less"
+                    } else {
+                        "Show full message"
+                    })
+                    .text_color(cx.theme().foreground.muted())
+                    .on_click(move |_, window, cx| {
+                        cx.stop_propagation();
+                        click(&target, window, cx);
+                    }),
+                ),
+            )
+        })
+        .into_any_element()
 }
 
 fn block_scope(owner: Option<u64>, id: &str) -> u64 {
@@ -1598,30 +2001,26 @@ fn markdown(
 ) -> AnyElement {
     let id = SharedString::from(format!("chat-text-{}", id.as_str()));
     let scope = block_scope(hooks.owner, &id);
-    let view = match hooks.refs {
-        Some(refs) => {
-            let (linked, targets) = linkify_markdown(&text, refs);
-            let view = TextView::markdown(id, linked);
-            if targets.is_empty() {
-                view
-            } else {
-                view.links(RefLinks::new(targets, refs.open.clone()))
-            }
-        }
-        None => TextView::markdown(id, text),
+    let view = TextView::markdown(id, text);
+    let (view, extensions) = match hooks.markdown {
+        Some(markdown) => (
+            view.links(RefLinks::new(Arc::clone(&markdown.refs))),
+            markdown.extensions.clone(),
+        ),
+        None => (view, assistant_markdown_extensions()),
     };
     transcript_text(div().w_full(), cx)
         .child(
             agent_text_view(view, scope, hooks.owner, cx)
                 .selectable(true)
                 .streaming(streaming)
-                .markdown_extensions(assistant_markdown_extensions())
+                .markdown_extensions(extensions)
                 .when(scrolls, |text| text.scrollable(true).h(px(PREVIEW_HEIGHT))),
         )
         .into_any_element()
 }
 
-fn kind_icon(kind: ItemKind) -> IconName {
+pub(super) fn kind_icon(kind: ItemKind) -> IconName {
     match kind {
         ItemKind::Read => IconName::File,
         ItemKind::Edit => IconName::Pencil,
@@ -1636,7 +2035,12 @@ fn kind_icon(kind: ItemKind) -> IconName {
     }
 }
 
-fn step_row(item: &zz_protocol::chat::ItemView, phase: f32, cx: &App) -> AnyElement {
+fn step_row(
+    view: &ChatView,
+    item: &zz_protocol::chat::ItemView,
+    phase: f32,
+    cx: &App,
+) -> AnyElement {
     let mut mark = ActivityMark::plain(kind_icon(item.kind));
     match &item.status {
         ItemStatus::Running => mark.spin = Some(phase),
@@ -1647,16 +2051,12 @@ fn step_row(item: &zz_protocol::chat::ItemView, phase: f32, cx: &App) -> AnyElem
     if matches!(item.status, ItemStatus::Failed { .. }) {
         mark.label_color = Some(cx.theme().danger);
     }
-    let label = item
-        .body
-        .target
-        .clone()
-        .filter(|target| !target.is_empty())
-        .unwrap_or_else(|| item.body.title.clone());
+    let step = chat_rows::step_label(view, item);
+    mark.detail = step.detail.map(SharedString::from);
     activity_row(
         SharedString::from(format!("chat-step-{}", item.id.as_str())),
         mark,
-        label.into(),
+        step.label.into(),
         ActivityEnd::None,
         cx,
     )
@@ -1720,34 +2120,42 @@ fn plan_card(view: &ChatView, id: &ItemId, cx: &App) -> AnyElement {
         .iter()
         .filter(|step| step.status == StepStatus::Done)
         .count();
-    card_surface(SharedString::from(format!("chat-plan-{}", id.as_str())))
-        .child(
-            card_header()
-                .child(card_glyph(Icon::new(IconName::List), cx))
-                .child(card_title("Plan"))
-                .child(card_chip(format!("{done} of {}", item.body.steps.len()))),
-        )
-        .child(
-            v_flex()
-                .w_full()
-                .px(px(12.0))
-                .pb(px(10.0))
-                .gap_1()
-                .type_style(TextStyle::Small, cx)
-                .children(item.body.steps.iter().map(|step| {
-                    let (icon, color) = match step.status {
-                        StepStatus::Done => (IconName::CircleCheck, cx.theme().success),
-                        StepStatus::Running => (IconName::Loader, cx.theme().accent),
-                        StepStatus::Cancelled => (IconName::CircleX, cx.theme().foreground.muted()),
-                        StepStatus::Pending => (IconName::Clock, cx.theme().foreground.muted()),
-                    };
-                    h_flex()
-                        .gap_2()
-                        .child(Icon::new(icon).size(px(12.0)).text_color(color))
-                        .child(step.text.clone())
-                })),
-        )
-        .into_any_element()
+    let ground = cx.theme().ground_of(CardLook::Activity);
+    Card::new(
+        SharedString::from(format!("chat-plan-{}", id.as_str())),
+        CardLook::Activity,
+    )
+    .p_0()
+    .v_flex()
+    .w_full()
+    .overflow_hidden()
+    .child(
+        card_header()
+            .child(card_glyph(Icon::new(IconName::List), cx))
+            .child(card_title("Plan"))
+            .child(card_chip(format!("{done} of {}", item.body.steps.len())).on(ground)),
+    )
+    .child(
+        v_flex()
+            .w_full()
+            .px(px(12.0))
+            .pb(px(10.0))
+            .gap_1()
+            .type_style(TextStyle::Small, cx)
+            .children(item.body.steps.iter().map(|step| {
+                let (icon, color) = match step.status {
+                    StepStatus::Done => (IconName::CircleCheck, cx.theme().success),
+                    StepStatus::Running => (IconName::Loader, cx.theme().accent),
+                    StepStatus::Cancelled => (IconName::CircleX, cx.theme().foreground.muted()),
+                    StepStatus::Pending => (IconName::Clock, cx.theme().foreground.muted()),
+                };
+                h_flex()
+                    .gap_2()
+                    .child(Icon::new(icon).size(px(12.0)).text_color(color))
+                    .child(step.text.clone())
+            })),
+    )
+    .into_any_element()
 }
 
 fn notice_row(view: &ChatView, id: &ItemId, cx: &App) -> AnyElement {
@@ -1772,129 +2180,88 @@ fn notice_row(view: &ChatView, id: &ItemId, cx: &App) -> AnyElement {
     .into_any_element()
 }
 
-fn ask_card(request: &RequestView, highlighted: Option<usize>, cx: &App) -> AnyElement {
-    let id = request.id.0;
-    let enabled = highlighted.is_some();
-    match &request.ask {
-        Ask::Approval { title, options, .. }
-        | Ask::Plan {
-            markdown: title,
-            options,
-        } => {
-            let options = options
-                .iter()
-                .enumerate()
-                .map(|(index, option)| {
-                    permission_option(
-                        (SharedString::from(format!("chat-ask-{id}")), index),
-                        index,
-                        option.label.clone(),
-                        option.kind == OptionKind::Deny,
-                        highlighted == Some(index),
-                        enabled,
-                        cx,
-                    )
-                    .into_any_element()
+fn ask_row(view: &ChatView, request: &RequestView, cx: &App) -> AnyElement {
+    let (icon, label) = match &request.ask {
+        Ask::Questions { questions } => (
+            IconName::Chat,
+            questions
+                .first()
+                .map(|question| {
+                    question
+                        .header
+                        .clone()
+                        .filter(|header| !header.is_empty())
+                        .unwrap_or_else(|| question.question.clone())
                 })
-                .collect();
-            permission_card(
-                title.clone(),
-                None,
-                options,
-                Button::new(SharedString::from(format!("chat-ask-close-{id}")))
-                    .tooltip("Dismiss")
-                    .disabled(!enabled),
-                cx,
-            )
-            .into_any_element()
-        }
-        Ask::Questions { questions } => {
-            let Some(question) = questions.first() else {
-                return div().into_any_element();
-            };
-            let counter = (questions.len() > 1).then(|| format!("1 of {}", questions.len()));
-            card_surface(SharedString::from(format!("chat-ask-card-{id}")))
-                .child(
-                    card_header()
-                        .child(card_glyph(Icon::new(IconName::Info), cx))
-                        .child(card_title(question.question.clone()))
-                        .when_some(counter, |header, counter| header.child(card_chip(counter))),
-                )
-                .child(
-                    card_tiles()
-                        .pb(px(10.0))
-                        .children(question.options.iter().enumerate().map(|(index, option)| {
-                            permission_option(
-                                (SharedString::from(format!("chat-question-{id}")), index),
-                                index,
-                                option.label.clone(),
-                                false,
-                                highlighted == Some(index),
-                                enabled,
-                                cx,
-                            )
-                            .into_any_element()
-                        })),
-                )
-                .into_any_element()
-        }
-    }
-}
-
-fn record_card(request: &RequestView, cx: &App) -> AnyElement {
-    let pairs = chat_rows::answered(request);
-    if pairs.is_empty() {
-        return record_row(request, cx);
-    }
-    Panel::new(
-        SharedString::from(format!("chat-record-{}", request.id.0)),
-        PanelLook::Inline,
-    )
-    .v_flex()
-    .w_full()
-    .gap_3()
-    .px(px(14.0))
-    .py(px(10.0))
-    .children(pairs.into_iter().map(|(question, answer)| {
-        v_flex()
-            .w_full()
-            .gap_1()
-            .child(Label::new(TextStyle::Body, question).w_full())
-            .child(
-                Label::new(TextStyle::Body, answer)
-                    .w_full()
-                    .text_color(cx.theme().foreground.muted()),
-            )
-    }))
-    .into_any_element()
-}
-
-fn record_row(request: &RequestView, cx: &App) -> AnyElement {
-    let count = match &request.ask {
-        Ask::Questions { questions } => questions.len().max(1),
-        _ => 1,
+                .unwrap_or_default(),
+        ),
+        Ask::Plan { .. } => (IconName::List, "Plan".to_owned()),
+        Ask::Approval { title, .. } => (
+            request
+                .item
+                .as_ref()
+                .and_then(|id| view.item(id))
+                .map_or(IconName::Info, |item| kind_icon(item.kind)),
+            title.clone(),
+        ),
     };
-    let answers = match &request.close {
-        Some(RequestClose::Answered {
-            answer: Answer::Questions { answers },
-        }) => answers
-            .iter()
-            .flat_map(|answer| answer.answers.iter().cloned())
-            .collect::<Vec<_>>()
-            .join(", "),
-        Some(RequestClose::Answered { .. }) => "answered".to_owned(),
-        Some(RequestClose::Withdrawn | RequestClose::Dismissed) => "no answer".to_owned(),
-        None => String::new(),
-    };
-    let noun = if count == 1 { "question" } else { "questions" };
+    let mut mark = ActivityMark::plain(icon);
+    mark.detail = Some("waiting for you".into());
     activity_row(
-        SharedString::from(format!("chat-record-{}", request.id.0)),
-        ActivityMark::plain(IconName::CheckRead),
-        format!("Asked {count} {noun} · {answers}").into(),
+        SharedString::from(format!("chat-ask-{}", request.id.0)),
+        mark,
+        label.into(),
         ActivityEnd::None,
         cx,
     )
     .into_any_element()
+}
+
+fn record_rows(request: &RequestView, cx: &App) -> AnyElement {
+    let headers = match &request.ask {
+        Ask::Questions { questions } => questions
+            .iter()
+            .map(|question| question.header.clone().filter(|header| !header.is_empty()))
+            .collect(),
+        _ => Vec::new(),
+    };
+    let pairs = chat_rows::answered(request);
+    if pairs.is_empty() {
+        let mut mark = ActivityMark::plain(IconName::Chat);
+        mark.detail = Some("skipped".into());
+        return activity_row(
+            SharedString::from(format!("chat-record-{}", request.id.0)),
+            mark,
+            "Question".into(),
+            ActivityEnd::None,
+            cx,
+        )
+        .into_any_element();
+    }
+    v_flex()
+        .w_full()
+        .children(
+            pairs
+                .into_iter()
+                .enumerate()
+                .map(|(index, (question, answer))| {
+                    let label = headers.get(index).cloned().flatten().unwrap_or(question);
+                    let mut mark = ActivityMark::plain(IconName::Chat);
+                    mark.detail = Some(answer.into());
+                    mark.detail_color = Some(cx.theme().foreground);
+                    activity_row(
+                        (
+                            SharedString::from(format!("chat-record-{}", request.id.0)),
+                            index,
+                        ),
+                        mark,
+                        label.into(),
+                        ActivityEnd::None,
+                        cx,
+                    )
+                }),
+        )
+        .into_any_element()
 }
 
 #[cfg(test)]

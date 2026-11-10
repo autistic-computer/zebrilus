@@ -8,17 +8,17 @@ use std::{
 };
 
 use ala::{
-    AnyElement, App, Bounds, DefiniteLength, Div, Element, ElementId, FontStyle, GlobalElementId,
-    HighlightStyle, Hsla, InspectorElementId, InteractiveElement as _, IntoElement, LayoutId,
-    Length, ObjectFit, Overflow, ParentElement, Pixels, ScrollHandle, SharedString, SharedUri,
-    StatefulInteractiveElement, Styled, StyledImage as _, Window, div, img,
-    prelude::FluentBuilder as _, px, relative, rems,
+    AnyElement, App, Bounds, DefiniteLength, Div, Element, ElementId, FontStyle, FontWeight,
+    GlobalElementId, HighlightStyle, Hsla, InspectorElementId, InteractiveElement as _,
+    IntoElement, LayoutId, Length, ObjectFit, Overflow, ParentElement, Pixels, ScrollHandle,
+    SharedString, SharedUri, StatefulInteractiveElement, Styled, StyledImage as _, Window, div,
+    img, prelude::FluentBuilder as _, px, relative, rems,
 };
-use markdown::mdast;
+use comrak::nodes::TableAlignment;
 
 use crate::{
-    ActiveTheme as _, Edge, PaintState, RuleLook, Sizable as _, Space, StyledExt, Surface,
-    TextStyle, WindowExt as _,
+    ActiveTheme as _, Card, CardLook, Edge, Icon, IconName, PaintState, RuleLook, Sizable as _,
+    Space, StyledExt, Surface, TextStyle, Tone, WindowExt as _,
     components::check::Check,
     components::tooltip::Tooltip,
     foundation::highlighter::{HighlightTheme, LanguageRegistry, SyntaxHighlighter},
@@ -63,6 +63,15 @@ pub(crate) enum BlockNode {
         children: Vec<BlockNode>,
         span: Option<Span>,
     },
+    Callout {
+        tone: Tone,
+        icon: IconName,
+        title: SharedString,
+        open: SharedString,
+        directive: bool,
+        children: Vec<BlockNode>,
+        span: Option<Span>,
+    },
     List {
         children: Vec<BlockNode>,
         ordered: bool,
@@ -85,6 +94,12 @@ pub(crate) enum BlockNode {
         span: Option<Span>,
     },
     HorizontalRule {
+        span: Option<Span>,
+    },
+    Footnote {
+        name: SharedString,
+        number: Option<u32>,
+        children: Paragraph,
         span: Option<Span>,
     },
     Definition {
@@ -250,6 +265,7 @@ impl BlockNode {
             BlockNode::Paragraph(paragraph) => paragraph.span,
             BlockNode::Heading { span, .. } => *span,
             BlockNode::Blockquote { span, .. } => *span,
+            BlockNode::Callout { span, .. } => *span,
             BlockNode::List { span, .. } => *span,
             BlockNode::ListItem { span, .. } => *span,
             BlockNode::CodeBlock(code_block) => code_block.span,
@@ -257,6 +273,7 @@ impl BlockNode {
             BlockNode::Table(table) => table.span,
             BlockNode::Break { span, .. } => *span,
             BlockNode::HorizontalRule { span, .. } => *span,
+            BlockNode::Footnote { span, .. } => *span,
             BlockNode::Definition { span, .. } => *span,
             BlockNode::Unknown { .. } => None,
         }
@@ -280,7 +297,11 @@ impl BlockNode {
                     text.push('\n');
                 }
             }
-            BlockNode::Paragraph(paragraph) => {
+            BlockNode::Paragraph(paragraph)
+            | BlockNode::Footnote {
+                children: paragraph,
+                ..
+            } => {
                 let block_text = match kind {
                     BlockTextKind::All => paragraph.text(),
                     BlockTextKind::Selected => paragraph.selected_text(),
@@ -306,6 +327,17 @@ impl BlockNode {
             BlockNode::Blockquote { children, .. } => {
                 let block_text = Self::children_text(children, kind);
 
+                if !block_text.is_empty() {
+                    text.push_str(&block_text);
+                    text.push('\n');
+                }
+            }
+            BlockNode::Callout {
+                title, children, ..
+            } => {
+                text.push_str(title);
+                text.push('\n');
+                let block_text = Self::children_text(children, kind);
                 if !block_text.is_empty() {
                     text.push_str(&block_text);
                     text.push('\n');
@@ -373,13 +405,18 @@ impl BlockNode {
         match self {
             BlockNode::Root { children, .. }
             | BlockNode::Blockquote { children, .. }
+            | BlockNode::Callout { children, .. }
             | BlockNode::List { children, .. }
             | BlockNode::ListItem { children, .. } => {
                 for child in children.iter() {
                     child.clear_selection();
                 }
             }
-            BlockNode::Paragraph(paragraph) => paragraph.clear_selection(),
+            BlockNode::Paragraph(paragraph)
+            | BlockNode::Footnote {
+                children: paragraph,
+                ..
+            } => paragraph.clear_selection(),
             BlockNode::Heading { children, .. } => children.clear_selection(),
             BlockNode::Table(table) => {
                 for row in table.children.iter() {
@@ -421,8 +458,14 @@ impl BlockNode {
                 | Self::Heading {
                     children: paragraph,
                     ..
+                }
+                | Self::Footnote {
+                    children: paragraph,
+                    ..
                 },
-                Self::Paragraph(old) | Self::Heading { children: old, .. },
+                Self::Paragraph(old)
+                | Self::Heading { children: old, .. }
+                | Self::Footnote { children: old, .. },
             ) => paragraph.preserve_selection_from(old),
             (Self::Table(table), Self::Table(old)) => {
                 for (row, old) in table.children.iter().zip(&old.children) {
@@ -719,13 +762,12 @@ pub(crate) enum ColumnumnAlign {
     Right,
 }
 
-impl From<mdast::AlignKind> for ColumnumnAlign {
-    fn from(value: mdast::AlignKind) -> Self {
+impl From<TableAlignment> for ColumnumnAlign {
+    fn from(value: TableAlignment) -> Self {
         match value {
-            mdast::AlignKind::None => ColumnumnAlign::Left,
-            mdast::AlignKind::Left => ColumnumnAlign::Left,
-            mdast::AlignKind::Center => ColumnumnAlign::Center,
-            mdast::AlignKind::Right => ColumnumnAlign::Right,
+            TableAlignment::None | TableAlignment::Left => ColumnumnAlign::Left,
+            TableAlignment::Center => ColumnumnAlign::Center,
+            TableAlignment::Right => ColumnumnAlign::Right,
         }
     }
 }
@@ -1382,6 +1424,26 @@ impl BlockNode {
                     .collect::<Vec<_>>()
                     .join("\n")
             }
+            BlockNode::Callout {
+                open,
+                directive,
+                children,
+                ..
+            } => {
+                let content = children
+                    .iter()
+                    .map(|child| child.to_markdown())
+                    .collect::<Vec<_>>()
+                    .join("\n\n");
+                if *directive {
+                    format!("{open}\n{content}\n:::")
+                } else {
+                    std::iter::once(format!("> {open}"))
+                        .chain(content.lines().map(|line| format!("> {line}")))
+                        .collect::<Vec<_>>()
+                        .join("\n")
+                }
+            }
             BlockNode::List {
                 children, ordered, ..
             } => children
@@ -1470,6 +1532,9 @@ impl BlockNode {
                 }
             }
             BlockNode::HorizontalRule { .. } => "---".to_string(),
+            BlockNode::Footnote { name, children, .. } => {
+                format!("[^{name}]: {}", children.to_markdown())
+            }
             BlockNode::Custom { node, .. } => node.to_markdown(),
             BlockNode::Definition {
                 identifier,
@@ -1607,6 +1672,7 @@ impl BlockNode {
                             BlockNode::Root { .. }
                             | BlockNode::Heading { .. }
                             | BlockNode::Blockquote { .. }
+                            | BlockNode::Callout { .. }
                             | BlockNode::CodeBlock(_)
                             | BlockNode::Custom { .. }
                             | BlockNode::Table(_)
@@ -1641,6 +1707,7 @@ impl BlockNode {
                             BlockNode::ListItem { .. }
                             | BlockNode::Break { .. }
                             | BlockNode::Definition { .. }
+                            | BlockNode::Footnote { .. }
                             | BlockNode::Unknown => {}
                         }
                     }
@@ -1887,6 +1954,64 @@ impl BlockNode {
                         }),
                 )
                 .into_any_element(),
+            BlockNode::Callout {
+                tone,
+                icon,
+                title,
+                children,
+                ..
+            } => {
+                let line_height = window.line_height();
+                let font_size = window.text_style().font_size.to_pixels(window.rem_size());
+                let drop = crate::components::icon::cap_center_drop(font_size, font_size, cx);
+                let ink = cx.theme().tone(*tone);
+                div()
+                    .w_full()
+                    .pb(mb)
+                    .child(
+                        Card::new(("callout", ix), CardLook::Activity)
+                            .tone(*tone)
+                            .w_full()
+                            .flex()
+                            .flex_col()
+                            .gap(Space::S4)
+                            .px(Space::S12)
+                            .py(Space::S8)
+                            .child(
+                                h_flex()
+                                    .gap(Space::S8)
+                                    .items_start()
+                                    .child(
+                                        div()
+                                            .flex_none()
+                                            .h(line_height)
+                                            .flex()
+                                            .items_center()
+                                            .child(
+                                                div().relative().top(drop).flex().child(
+                                                    Icon::new(icon.clone())
+                                                        .size(font_size)
+                                                        .text_color(ink),
+                                                ),
+                                            ),
+                                    )
+                                    .child(
+                                        div()
+                                            .min_w_0()
+                                            .font_weight(FontWeight::SEMIBOLD)
+                                            .child(title.clone()),
+                                    ),
+                            )
+                            .children({
+                                let children_len = children.len();
+                                children.iter().enumerate().map(move |(index, c)| {
+                                    let is_last = index == children_len - 1;
+                                    c.render_block(options.is_last(is_last), node_cx, window, cx)
+                                })
+                            }),
+                    )
+                    .into_any_element()
+            }
             BlockNode::List {
                 children, ordered, ..
             } => v_flex()
@@ -1950,7 +2075,9 @@ impl BlockNode {
                 )
                 .into_any_element(),
             BlockNode::Break { .. } => div().id("break").into_any_element(),
-            BlockNode::Unknown { .. } | BlockNode::Definition { .. } => div().into_any_element(),
+            BlockNode::Unknown { .. }
+            | BlockNode::Definition { .. }
+            | BlockNode::Footnote { .. } => div().into_any_element(),
             _ => {
                 if cfg!(debug_assertions) {
                     log::warn!("unknown implementation: {:?}", self);
@@ -1960,6 +2087,69 @@ impl BlockNode {
             }
         }
     }
+}
+
+pub(crate) fn render_footnotes(
+    blocks: &[BlockNode],
+    node_cx: &NodeContext,
+    window: &mut Window,
+    cx: &mut App,
+) -> Option<AnyElement> {
+    fn collect<'a>(
+        blocks: &'a [BlockNode],
+        notes: &mut Vec<(Option<u32>, &'a SharedString, &'a Paragraph)>,
+    ) {
+        for block in blocks {
+            match block {
+                BlockNode::Footnote {
+                    name,
+                    number,
+                    children,
+                    ..
+                } => notes.push((*number, name, children)),
+                BlockNode::Root { children, .. }
+                | BlockNode::Blockquote { children, .. }
+                | BlockNode::Callout { children, .. }
+                | BlockNode::List { children, .. }
+                | BlockNode::ListItem { children, .. } => collect(children, notes),
+                _ => {}
+            }
+        }
+    }
+    let mut notes = Vec::new();
+    collect(blocks, &mut notes);
+    if notes.is_empty() {
+        return None;
+    }
+    notes.sort_by_key(|(number, ..)| number.unwrap_or(u32::MAX));
+    let style = TextStyle::Caption;
+    Some(
+        v_flex()
+            .id("footnotes")
+            .w_full()
+            .pt(node_cx.style.paragraph_gap)
+            .gap(Space::S2)
+            .text_size(style.size())
+            .line_height(style.line_height())
+            .text_color(cx.theme().foreground.muted())
+            .children(notes.into_iter().map(|(number, name, children)| {
+                h_flex()
+                    .items_start()
+                    .gap(Space::S4)
+                    .child(
+                        div()
+                            .flex_none()
+                            .child(number.map_or_else(|| name.clone(), |n| format!("{n}.").into())),
+                    )
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .child(children.render(node_cx, window, cx)),
+                    )
+            }))
+            .into_any_element(),
+    )
 }
 
 fn cell_pad(window: &Window) -> f32 {
@@ -2152,7 +2342,11 @@ mod tests {
 
         let mut extensions = MarkdownExtensions::default();
         extensions.push_block_parser(|node, _| {
-            matches!(node, mdast::Node::Paragraph(_)).then(|| MarkdownNode::new("probe", ()))
+            matches!(
+                node.data.borrow().value,
+                comrak::nodes::NodeValue::Paragraph
+            )
+            .then(|| MarkdownNode::new("probe", ()))
         });
         extensions.push_block_renderer("probe", |_, _, _| div().debug_selector(|| "quoted".into()));
         cx.update(crate::init);
@@ -2247,15 +2441,10 @@ mod tests {
         }
 
         let extensions = MarkdownExtensions::default().block_parser(|node, cx| {
-            let mdast::Node::Paragraph(paragraph) = node else {
-                return None;
-            };
-            let [mdast::Node::Text(text)] = paragraph.children.as_slice() else {
-                return None;
-            };
-            text.value.starts_with('$').then(|| {
+            let text = crate::components::text::MarkdownParseContext::sole_text(node)?;
+            text.starts_with('$').then(|| {
                 MarkdownNode::new("ticker", ())
-                    .text(text.value.clone())
+                    .text(text.clone())
                     .markdown(cx.node_source(node).unwrap_or_default())
             })
         });

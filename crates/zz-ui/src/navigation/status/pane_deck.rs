@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use ala::{App, ElementId, SharedString, px};
-use zz_client::program::Program;
+use zz_client::{program::Program, window_summary::Attention};
 use zz_protocol::PaneKindSnapshot;
 
 use crate::{
@@ -19,6 +19,7 @@ pub struct StatusPaneEntry {
     pub favicon: Option<Arc<[u8]>>,
     pub program: Option<&'static Program>,
     pub active: bool,
+    pub attention: Attention,
     pub select: StatusAction,
 }
 
@@ -41,6 +42,7 @@ impl StatusPaneEntry {
                 editor.path.as_deref().unwrap_or(&editor.cwd),
             ),
             PaneKindSnapshot::Picker => format!("New pane · {}", pane.id),
+            PaneKindSnapshot::View(view) => format!("{} · {}", view.content.kind_name(), pane.id),
             PaneKindSnapshot::Agent(agent) => agent.cwd.as_ref().map_or_else(
                 || format!("{} · {}", agent.provider.label(), pane.id),
                 |cwd| {
@@ -60,6 +62,7 @@ impl StatusPaneEntry {
             favicon: None,
             program: pane.program,
             active: pane.active,
+            attention: pane.attention,
             select,
         }
     }
@@ -89,6 +92,7 @@ pub fn status_pane_deck(
                     icon: pane.icon,
                     favicon: pane.favicon,
                     program: pane.program,
+                    attention: pane.attention,
                     label: pane.label,
                     select: connected.then_some(pane.select),
                 })
@@ -133,6 +137,7 @@ mod tests {
             favicon: None,
             program: None,
             active,
+            attention: Attention::None,
             select: Rc::new(move |_, _| selected.set(Some(index))),
         }
     }

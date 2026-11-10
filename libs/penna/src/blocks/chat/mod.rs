@@ -1,22 +1,24 @@
 mod activity;
+mod ask;
 mod attachment;
 mod card;
 mod composer;
+mod figure;
 mod message;
 mod suggestions;
 mod tasks;
 
+use std::f32::consts::PI;
 use std::ops::Range;
 
 use ala::{
-    App, Div, EntityId, HighlightStyle, SharedString, StyledText, Transformation, ease_in_out,
-    percentage, prelude::*, px,
+    App, Div, EntityId, HighlightStyle, SharedString, StyledText, Transformation, percentage,
+    prelude::*, px,
 };
-use web_time::Duration;
 
 use crate::{
     ActiveTheme as _, Colorize as _, Icon, IconName, Label, StyledExt as _, TextStyle,
-    foundation::pulse::pulse_phase, v_flex,
+    foundation::motion::SPIN, foundation::pulse::pulse_phase, v_flex,
 };
 
 pub use activity::{
@@ -24,13 +26,17 @@ pub use activity::{
     ACTIVITY_ROW_LINE_HEIGHT, ActivityCount, ActivityEnd, ActivityMark, activity_color,
     activity_glyph, activity_row, disclosure_icon, single_line, transcript_ground, transcript_text,
 };
+pub use ask::{
+    ASK_GAP, ASK_GUTTER, ASK_RADIUS, AskDetail, AskHint, AskOption, ask_body, ask_count,
+    ask_divider, ask_header, ask_hints, ask_inset, ask_key, ask_leading, ask_note, ask_options,
+    ask_picked_key, ask_question, ask_send, ask_sheet, ask_skip, ask_step,
+};
 pub use attachment::{
     COMPOSER_ATTACHMENT, TRANSCRIPT_ATTACHMENT, attachment_tile, composer_attachment,
 };
 pub use card::{
-    CARD_GAP, CARD_GLYPH, CARD_GUTTER, CARD_TITLE_LINE, CardTile, card_button, card_chip,
-    card_close, card_divider, card_footer, card_glyph, card_header, card_surface, card_tiles,
-    card_title, card_trailing, permission_card, permission_option,
+    CARD_GAP, CARD_GLYPH, CARD_GUTTER, CARD_TITLE_LINE, card_button, card_chip, card_glyph,
+    card_header, card_title,
 };
 pub use composer::{
     COMPOSER_BUTTON, COMPOSER_FOOTER_HEIGHT, COMPOSER_HEIGHT, COMPOSER_INSET, COMPOSER_MAX_WIDTH,
@@ -38,17 +44,24 @@ pub use composer::{
     chrome_button, composer_action_button, composer_add_button, composer_ground, context_meter,
     queue_chip,
 };
+pub use figure::{DiagramPaint, diagram_paint};
 pub use message::{
     ASSISTANT_MESSAGE_GROUP, CHAT_CONTENT_MAX_WIDTH, PlanState, USER_MESSAGE_GROUP, UserMessage,
     message_action, notice_row, plan_list, reply_bubble, shown_on_hover,
 };
 pub use suggestions::{suggestion_list, suggestion_list_height, suggestion_row};
-pub use tasks::{TaskItem, TaskTrayAction, TrayPanel, TrayPlan, task_tray};
+pub use tasks::{TrayPlan, plan_tray};
 
-const SHIMMER_MS: u64 = 1600;
+const SWEEP_PASS_MS: u64 = 2000;
+const SWEEP_REST_MS: u64 = 600;
+const SWEEP_CYCLE_MS: u64 = SWEEP_PASS_MS + SWEEP_REST_MS;
+const SWEEP_CREST: f32 = 12.0;
+const SWEEP_STEPS: f32 = 32.0;
+const BREATH_OPACITY: f32 = 0.5;
+const BREATH_SCALE: f32 = 0.9;
 
 pub fn spinner_phase(view: EntityId, cx: &mut App) -> f32 {
-    ease_in_out(pulse_phase(Duration::from_millis(800), view, cx))
+    pulse_phase(SPIN, view, cx)
 }
 
 #[must_use]
@@ -56,36 +69,63 @@ pub fn spinner(phase: f32) -> Icon {
     Icon::new(IconName::Loader).transform(Transformation::rotate(percentage(phase)))
 }
 
+fn sweep_at(now: u64) -> f32 {
+    (now % SWEEP_CYCLE_MS) as f32 / SWEEP_CYCLE_MS as f32
+}
+
+fn crest_weights(count: usize, now: u64) -> impl Iterator<Item = u8> {
+    let half = SWEEP_CREST / 2.0;
+    let pass = (now % SWEEP_CYCLE_MS) as f32 / SWEEP_PASS_MS as f32;
+    let crest = -half + pass * (count as f32 + SWEEP_CREST);
+    (0..count).map(move |index| {
+        let distance = (index as f32 + 0.5 - crest).abs();
+        let weight = if distance < half {
+            f32::midpoint(1.0, (PI * distance / half).cos())
+        } else {
+            0.0
+        };
+        (weight * SWEEP_STEPS).round() as u8
+    })
+}
+
+fn breath(now: u64, cx: &App) -> (f32, f32) {
+    if cx.reduce_motion() {
+        return (1.0, 1.0);
+    }
+    let lift = f32::midpoint(1.0, (2.0 * PI * sweep_at(now)).cos());
+    (
+        BREATH_OPACITY + (1.0 - BREATH_OPACITY) * lift,
+        BREATH_SCALE + (1.0 - BREATH_SCALE) * lift,
+    )
+}
+
 #[must_use]
 pub fn shimmer(label: &str, now: u64, cx: &App) -> StyledText {
     let text = format!("{label}…");
-    let count = text.chars().count();
-    let span = u64::try_from(count + 8).unwrap_or(u64::MAX);
-    let head = usize::try_from((now % SHIMMER_MS) * span / SHIMMER_MS).unwrap_or_default();
     let theme = cx.theme();
-    let mut highlights: Vec<(Range<usize>, HighlightStyle)> = Vec::new();
-    for (index, (offset, character)) in text.char_indices().enumerate() {
-        let distance = (index + 4).abs_diff(head);
-        let color = match distance {
-            0 | 1 => theme.foreground,
-            2 | 3 => theme.foreground.muted(),
-            _ => theme.foreground.faint(),
-        };
+    let rest = theme.foreground.muted();
+    let still = cx.reduce_motion();
+    let weights = crest_weights(text.chars().count(), now).map(|step| if still { 0 } else { step });
+    let mut highlights: Vec<(Range<usize>, u8)> = Vec::new();
+    for ((offset, character), step) in text.char_indices().zip(weights) {
         let range = offset..offset + character.len_utf8();
         match highlights.last_mut() {
-            Some((last, style)) if style.color == Some(color) && last.end == range.start => {
-                last.end = range.end;
-            }
-            _ => highlights.push((
-                range,
-                HighlightStyle {
-                    color: Some(color),
-                    ..HighlightStyle::default()
-                },
-            )),
+            Some((last, seen)) if *seen == step => last.end = range.end,
+            _ => highlights.push((range, step)),
         }
     }
-    StyledText::new(text).with_highlights(highlights)
+    StyledText::new(text).with_highlights(highlights.into_iter().map(|(range, step)| {
+        let color = theme
+            .foreground
+            .mix_oklab(rest, f32::from(step) / SWEEP_STEPS);
+        (
+            range,
+            HighlightStyle {
+                color: Some(color),
+                ..HighlightStyle::default()
+            },
+        )
+    }))
 }
 
 pub fn welcome_state(
@@ -132,4 +172,23 @@ pub fn empty_state(
             )
         })
         .child(message.into())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::crest_weights;
+
+    #[test]
+    fn the_crest_sweeps_with_a_raised_cosine_and_rests_between_passes() {
+        assert_eq!(
+            crest_weights(8, 1000).collect::<Vec<_>>(),
+            [12, 20, 27, 31, 31, 27, 20, 12]
+        );
+        assert_eq!(crest_weights(8, 0).collect::<Vec<_>>(), [0; 8]);
+        assert_eq!(crest_weights(8, 2300).collect::<Vec<_>>(), [0; 8]);
+        assert_eq!(
+            crest_weights(8, 3600).collect::<Vec<_>>(),
+            [12, 20, 27, 31, 31, 27, 20, 12]
+        );
+    }
 }

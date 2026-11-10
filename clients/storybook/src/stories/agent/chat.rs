@@ -5,32 +5,39 @@ use ala::{
     ParentElement as _, Render, SharedString, Styled as _, Window, div, prelude::*, px,
 };
 use penna::{
-    ActiveTheme as _, IconName, WindowExt as _,
-    blocks::chat::{CHAT_CONTENT_MAX_WIDTH, permission_card, permission_option},
+    ActiveTheme as _, WindowExt as _,
+    blocks::chat::{
+        CHAT_CONTENT_MAX_WIDTH, ChatComposer, ComposerAction, composer_action_button,
+        composer_add_button, composer_ground,
+    },
     blocks::notification::Notification,
     components::button::Button,
-    components::input::InputEvent,
+    components::input::{InputEvent, InputState},
     v_flex,
 };
+use zz_client::program::Program;
 use zz_protocol::chat::{
     Answer, Ask, ChatView, ItemBody, ItemId, ItemKind, ItemStatus, OptionKind, QuestionAnswer,
     RequestClose, RequestId, RequestView, StepStatus, TurnId, TurnOutcome,
 };
-use zz_protocol::{MAX_AGENT_OPTION_BYTES, agent_stream::AgentQuestion};
+use zz_protocol::{MAX_AGENT_OPTION_BYTES, ViewDescriptor, agent_stream::AgentQuestion};
 use zz_ui::agent::{
+    ask::{Approval, ApprovalAction, AskChoice, PromptRow, approval_subject},
     chat::{
         ChatClick, ChatClicks, ChatHooks, ChatHost, ChatLook, ChatOpen, ChatPane, chat_agent_pip,
         chat_column, chat_pip_frame, chat_surface, chat_thread, shows_chat,
     },
+    preview::ViewRequest,
     question::{QuestionCardAction, QuestionCardState, QuestionCardStep},
     refs::ChatRefs,
+    view::view_body,
 };
 use zz_ui::pane_look::pane_color;
 
 use super::fixtures::{
-    Script, agent, agents_script, approval, approval_of, branch_question, chart_screenshot,
-    checks_question, completed, palettes, placement, question, rendering_question, story_hosts,
-    tab_strip_screenshot,
+    Script, agent, agents_script, allow_or_reject, approval, approval_of, branch_question,
+    chart_screenshot, checks_question, completed, long_label_question, long_question, palettes,
+    placement, plan_approval, question, rendering_question, story_hosts, tab_strip_screenshot,
 };
 use crate::story::states;
 
@@ -69,10 +76,12 @@ pub struct Thread {
     remake: Option<fn() -> Script>,
     pane: ChatPane,
     cards: Vec<(RequestId, QuestionCardState)>,
+    prompt: Option<Entity<InputState>>,
+    reply: Option<Entity<InputState>>,
     highlighted: usize,
     sent: Vec<RequestId>,
     refs: Option<ChatRefs>,
-    vendor: IconName,
+    vendor: Option<&'static Program>,
     frame: Frame,
     width: Option<f32>,
     leave: bool,
@@ -85,10 +94,12 @@ impl Thread {
             remake: None,
             pane: ChatPane::default(),
             cards: Vec::new(),
+            prompt: None,
+            reply: None,
             highlighted: 0,
             sent: Vec::new(),
             refs: None,
-            vendor: zz_ui::program::CLAUDE_ICON,
+            vendor: Program::by_id("claude"),
             frame: Frame::Grow(0.0),
             width: None,
             leave: false,
@@ -110,13 +121,13 @@ impl Thread {
         self
     }
 
-    fn refs(mut self, refs: ChatRefs) -> Self {
+    pub(super) fn refs(mut self, refs: ChatRefs) -> Self {
         self.refs = Some(refs);
         self
     }
 
-    pub fn vendor(mut self, vendor: IconName) -> Self {
-        self.vendor = vendor;
+    pub fn vendor(mut self, id: &str) -> Self {
+        self.vendor = Program::by_id(id);
         self
     }
 
@@ -135,9 +146,19 @@ impl Thread {
         self
     }
 
+    const fn highlight(mut self, option: usize) -> Self {
+        self.highlighted = option;
+        self
+    }
+
     pub fn view(self, window: &mut Window, cx: &mut App) -> Entity<Self> {
         cx.new(|cx| {
             let mut thread = self;
+            thread.prompt =
+                Some(cx.new(|cx| InputState::new(window, cx).placeholder("Message Claude…")));
+            thread.reply = Some(cx.new(|cx| {
+                InputState::new(window, cx).placeholder(zz_client::agent_ask::DENY_PLACEHOLDER)
+            }));
             thread.sync_cards(window, cx);
             thread
         })
@@ -219,24 +240,6 @@ impl Thread {
         self.highlighted = 0;
     }
 
-    fn cancel(&mut self, request: RequestId) {
-        let item = self
-            .script
-            .view
-            .request(request)
-            .and_then(|request| request.item.clone());
-        self.script.close(
-            request,
-            RequestClose::Answered {
-                answer: Answer::Cancel,
-            },
-        );
-        if let Some(item) = item {
-            self.script.end(item.as_str(), ItemStatus::Declined);
-        }
-        self.highlighted = 0;
-    }
-
     fn question_action(
         &mut self,
         request: RequestId,
@@ -270,105 +273,120 @@ impl Thread {
         cx.notify();
     }
 
-    fn ask(&self, me: &Entity<Self>, request: &RequestView, cx: &App) -> Option<AnyElement> {
-        let open = self.script.view.open_requests().collect::<Vec<_>>();
-        let current = open.first().is_some_and(|head| head.id == request.id);
-        let counter =
-            (current && open.len() > 1).then(|| SharedString::from(format!("1/{}", open.len())));
-        let id = request.id;
-        if let Some((_, card)) = self
-            .cards
-            .iter()
-            .find(|(held, _)| *held == id)
-            .filter(|_| current)
-        {
-            let me = me.clone();
-            return Some(
-                card.render(
-                    &format!("story-question-{}", id.0),
-                    counter,
-                    true,
-                    move |action, window, cx| {
-                        me.update(cx, |thread, cx| {
-                            thread.question_action(id, action, window, cx);
-                        });
-                    },
-                    cx,
-                )
-                .into_any_element(),
-            );
-        }
-        let (title, options) = match &request.ask {
-            Ask::Questions { .. } => return None,
-            Ask::Approval { title, options, .. }
-            | Ask::Plan {
-                markdown: title,
-                options,
-            } => (title, options),
+    fn approve(&mut self, request: RequestId, action: ApprovalAction) {
+        let picked = match action {
+            ApprovalAction::Pick(index) => index,
+            ApprovalAction::Send => self.highlighted,
+            ApprovalAction::Open => return,
         };
-        if options.is_empty() {
-            return None;
-        }
-        let enabled = !self.sent.contains(&id);
-        let highlighted = current.then_some(self.highlighted);
-        let tiles = options
-            .iter()
-            .enumerate()
-            .map(|(index, option)| {
-                let answer = me.clone();
-                let hover = me.clone();
-                let chosen = option.id.clone();
-                let deny = option.kind == OptionKind::Deny;
-                permission_option(
-                    (SharedString::from(format!("story-ask-{}", id.0)), index),
-                    index,
-                    option.label.clone(),
-                    deny,
-                    highlighted == Some(index),
-                    enabled,
-                    cx,
-                )
-                .when(enabled, |tile| {
-                    tile.on_click(move |_, _, cx| {
-                        answer.update(cx, |thread, cx| {
-                            thread.choose(id, chosen.clone(), deny);
-                            cx.notify();
-                        });
-                        cx.stop_propagation();
-                    })
-                })
-                .when(current, |tile| {
-                    tile.on_hover(move |hovered, _, cx| {
-                        if *hovered {
-                            hover.update(cx, |thread, cx| {
-                                if thread.highlighted != index {
-                                    thread.highlighted = index;
-                                    cx.notify();
-                                }
-                            });
-                        }
-                    })
-                })
-                .into_any_element()
+        let option = self
+            .script
+            .view
+            .request(request)
+            .and_then(|request| match &request.ask {
+                Ask::Approval { options, .. } | Ask::Plan { options, .. } => options.get(picked),
+                Ask::Questions { .. } => None,
             })
-            .collect();
-        let cancel = me.clone();
-        Some(
-            permission_card(
-                title.clone(),
+            .map(|option| (option.id.clone(), option.kind == OptionKind::Deny));
+        if let Some((option, deny)) = option {
+            self.choose(request, option, deny);
+        }
+    }
+
+    fn composer(&self, me: &Entity<Self>, cx: &App) -> Option<AnyElement> {
+        let (Some(prompt), Some(reply)) = (&self.prompt, &self.reply) else {
+            return None;
+        };
+        let open = self.script.view.open_requests().collect::<Vec<_>>();
+        let head = *open.first()?;
+        let id = head.id;
+        let counter = (open.len() > 1).then(|| SharedString::from(format!("1 of {}", open.len())));
+        let enabled = !self.sent.contains(&id);
+        let ground = cx.theme().ground();
+        let inside = composer_ground(ground, cx);
+        let parts = if let Some((_, card)) = self.cards.iter().find(|(held, _)| *held == id) {
+            let me = me.clone();
+            card.parts(
+                &format!("story-question-{}", id.0),
                 counter,
-                tiles,
-                Button::new(SharedString::from(format!("story-ask-cancel-{}", id.0)))
-                    .tooltip("Cancel request")
-                    .on_click(move |_, _, cx| {
-                        cancel.update(cx, |thread, cx| {
-                            thread.cancel(id);
-                            cx.notify();
-                        });
-                        cx.stop_propagation();
-                    }),
+                enabled,
+                move |action, window, cx| {
+                    me.update(cx, |thread, cx| {
+                        thread.question_action(id, action, window, cx);
+                    });
+                },
+                inside,
                 cx,
             )
+        } else {
+            let (title, options) = match &head.ask {
+                Ask::Questions { .. } => return None,
+                Ask::Approval { title, options, .. } => (title.as_str(), options),
+                Ask::Plan { options, .. } => ("", options),
+            };
+            if options.is_empty() {
+                return None;
+            }
+            let denies = options.iter().any(|option| option.kind == OptionKind::Deny);
+            let me = me.clone();
+            Approval {
+                id: &format!("story-ask-{}", id.0),
+                choices: options
+                    .iter()
+                    .map(|option| AskChoice {
+                        label: option.label.clone().into(),
+                        rejects: option.kind == OptionKind::Deny,
+                    })
+                    .collect(),
+                subject: approval_subject(Some(&self.script.view), id.0, title, Some("~/src/zz")),
+                counter,
+                highlighted: self.highlighted,
+                enabled,
+                reply: denies.then(|| reply.clone()),
+                replying: false,
+                owner: None,
+            }
+            .parts(
+                move |action, _, cx| {
+                    me.update(cx, |thread, cx| {
+                        thread.approve(id, action);
+                        cx.notify();
+                    });
+                },
+                inside,
+                cx,
+            )
+        };
+        let (composer, hints) = parts.composer(
+            SharedString::from(format!("story-ask-body-{}", id.0)),
+            px(PIP_FRAME_HEIGHT * 2.0),
+            PromptRow {
+                input: prompt.clone(),
+                add: composer_add_button(
+                    SharedString::from(format!("story-ask-add-{}", id.0)),
+                    "Mention a chat, host, session or file",
+                    inside,
+                )
+                .into_any_element(),
+                action: composer_action_button(
+                    SharedString::from(format!("story-ask-stop-{}", id.0)),
+                    ComposerAction::Stop,
+                    true,
+                    inside,
+                )
+                .into_any_element(),
+                attachments: None,
+                command_hint: None,
+            },
+            ground,
+        );
+        Some(
+            ChatComposer {
+                composer,
+                prefix: Vec::new(),
+                footer: vec![hints],
+                controls: Vec::new(),
+            }
             .into_any_element(),
         )
     }
@@ -385,10 +403,6 @@ impl ChatHost for Thread {
 
     fn chat_read<'a>(&'a self, _: &'a App) -> (&'a ChatPane, Option<&'a ChatView>) {
         (&self.pane, Some(&self.script.view))
-    }
-
-    fn chat_ask(&self, request: &RequestView, host: &Entity<Self>, cx: &App) -> Option<AnyElement> {
-        self.ask(host, request, cx)
     }
 
     fn chat_fork(&mut self, _: &ItemId, _: &mut Context<Self>) {}
@@ -409,6 +423,7 @@ impl Render for Thread {
                     });
                 })
         });
+        let composer = self.composer(&me, cx);
         let fill = pane_fill(cx).when_some(self.width, |fill, width| fill.w(px(width)));
         let frame = match self.frame {
             Frame::Scroll(height) => {
@@ -420,13 +435,23 @@ impl Render for Thread {
                     pane: 0,
                     fork: true,
                     refs: self.refs.clone(),
-                    vendor: Some(self.vendor.clone()),
+                    vendor: self.vendor,
+                    ground: None,
                 };
                 fill.map(|fill| match height {
                     Some(height) => fill.h(px(height)),
                     None => fill.size_full(),
                 })
-                .child(chat_surface(self, look, window, cx))
+                .flex()
+                .flex_col()
+                .child(
+                    div()
+                        .relative()
+                        .flex_1()
+                        .min_h_0()
+                        .child(chat_surface(self, look, window, cx)),
+                )
+                .children(composer)
             }
             Frame::Grow(_) | Frame::Fixed(_) => {
                 let click: ChatClicks = {
@@ -445,15 +470,15 @@ impl Render for Thread {
                         });
                     })
                 };
+                let markdown = self.refs.clone().map(|refs| self.pane.markdown(refs));
                 let app: &App = cx;
-                let ask = |request: &RequestView, cx: &App| self.ask(&me, request, cx);
                 let hooks = ChatHooks {
                     click: Some(click),
-                    ask: Some(&ask),
                     fork: true,
-                    refs: self.refs.as_ref(),
-                    vendor: Some(self.vendor.clone()),
+                    markdown: markdown.as_deref(),
+                    vendor: self.vendor,
                     owner: None,
+                    ground: None,
                 };
                 let view = &self.script.view;
                 let now = self.script.at;
@@ -469,9 +494,14 @@ impl Render for Thread {
                     .child(div().flex_1().min_w_0().child(body))
                     .children(pip);
                 match self.frame {
-                    Frame::Fixed(height) => fill.h(px(height)).overflow_hidden().child(row),
-                    Frame::Grow(min) => fill.min_h(px(min)).child(row),
-                    Frame::Scroll(_) => fill.child(row),
+                    Frame::Fixed(height) => fill
+                        .h(px(height))
+                        .flex()
+                        .flex_col()
+                        .child(div().flex_1().min_h_0().overflow_hidden().child(row))
+                        .children(composer),
+                    Frame::Grow(min) => fill.min_h(px(min)).child(row).children(composer),
+                    Frame::Scroll(_) => fill.child(row).children(composer),
                 }
             }
         };
@@ -627,6 +657,65 @@ fn repos_done() -> Script {
     script
 }
 
+fn one_by_one() -> Script {
+    let mut script = Script::new();
+    script.turn("Stress test the chat UI. Plan it first.");
+    let calls = [
+        (
+            "s1",
+            ItemKind::Tool,
+            ItemBody {
+                target: Some("select:EnterPlanMode,ExitPlanMode".to_owned()),
+                ..ItemBody::titled("ToolSearch")
+            },
+            "Loaded plan mode tools",
+        ),
+        (
+            "s2",
+            ItemKind::Tool,
+            ItemBody::titled("EnterPlanMode"),
+            "Entered plan mode",
+        ),
+        (
+            "s3",
+            ItemKind::Edit,
+            ItemBody {
+                target: Some("~/.claude/plans/iridescent-petting-dragonfly.md".to_owned()),
+                ..ItemBody::titled("Write")
+            },
+            "Wrote stress-test plan file",
+        ),
+        (
+            "s4",
+            ItemKind::Tool,
+            ItemBody::titled("Plan"),
+            "Planned chat UI stress test",
+        ),
+        (
+            "s5",
+            ItemKind::Tool,
+            ItemBody {
+                target: Some("select:TodoWrite".to_owned()),
+                ..ItemBody::titled("ToolSearch")
+            },
+            "Searched for TodoWrite tool",
+        ),
+    ];
+    for (id, kind, body, summary) in calls {
+        script
+            .start(id, None, kind, body)
+            .done(id)
+            .summarize(&[id], summary);
+    }
+    script
+        .reply(
+            "a1",
+            "The plan is approved. No todo tool is available here, so I track the list in my updates.",
+        )
+        .finish(completed());
+    script
+}
+
 fn codex_live() -> Script {
     let mut script = Script::new();
     script
@@ -686,13 +775,21 @@ pub fn batches(window: &mut Window, cx: &mut App) -> AnyView {
                 Thread::new(repos_done()).opened(opened(vec![TurnId(1)], &[])),
             ),
             (
+                "calls the CLI sums up one by one still share one line, which counts them",
+                Thread::new(one_by_one()).opened(opened(vec![TurnId(1)], &[])),
+            ),
+            (
+                "opened, each call reads its own sentence over what it ran",
+                Thread::new(one_by_one()).opened(opened(vec![TurnId(1)], &["s1"])),
+            ),
+            (
                 "Codex sends no sentences: its runs keep zz's own count, and the live line comes from the active item",
-                Thread::new(codex_live()).vendor(zz_ui::program::OPENAI_ICON),
+                Thread::new(codex_live()).vendor("codex"),
             ),
             (
                 "a finished Codex turn",
                 Thread::new(codex_done())
-                    .vendor(zz_ui::program::OPENAI_ICON)
+                    .vendor("codex")
                     .opened(opened(vec![TurnId(1)], &[])),
             ),
         ],
@@ -717,11 +814,23 @@ fn failed_step() -> Script {
     let mut script = Script::new();
     script
         .turn("Run the browser suite and fix whatever breaks.")
-        .tool("x1", None, ItemKind::Execute, "cargo test -p zz-ui browser")
+        .start(
+            "x1",
+            None,
+            ItemKind::Execute,
+            ItemBody {
+                target: Some("cargo test -p zz-ui browser".to_owned()),
+                exit_code: Some(101),
+                ..ItemBody::default()
+            },
+        )
         .end(
             "x1",
             ItemStatus::Failed {
-                message: Some("2 tests failed".to_owned()),
+                message: Some(
+                    "test result: FAILED. 2 failed; 46 passed\nbrowser::drag::drops_at_the_preview"
+                        .to_owned(),
+                ),
             },
         )
         .ran("r1", ItemKind::Read, "crates/zz-ui/src/browser/drag.rs")
@@ -854,7 +963,7 @@ pub fn finished(window: &mut Window, cx: &mut App) -> AnyView {
                 Thread::new(long_thought()).opened(first_run(1, "t1")),
             ),
             (
-                "a step failed: the run counts it and the step turns red",
+                "a step failed: the run counts it, and the step turns red and says why",
                 Thread::new(failed_step()).opened(first_run(1, "x1")),
             ),
             ("stopped by you", Thread::new(stopped())),
@@ -931,7 +1040,7 @@ pub fn steps(window: &mut Window, cx: &mut App) -> AnyView {
             case(
                 "failed",
                 Some(ItemStatus::Failed {
-                    message: Some("exit 101".to_owned()),
+                    message: Some("Permission denied (os error 13)".to_owned()),
                 }),
             ),
             case("declined", Some(ItemStatus::Declined)),
@@ -970,8 +1079,9 @@ pub fn messages(window: &mut Window, cx: &mut App) -> AnyView {
         .map(|line| format!("{line}. a pasted line of the brief, long enough to wrap once or twice in the bubble"))
         .collect::<Vec<_>>()
         .join("\n");
-    let mut long = Script::new();
-    long.turn(&pasted)
+    let mut capped = Script::new();
+    capped
+        .turn(&pasted)
         .reply(
             "a1",
             "Got the brief: forty steps, starting with the tab strip.",
@@ -1007,7 +1117,7 @@ pub fn messages(window: &mut Window, cx: &mut App) -> AnyView {
                     "Both come from the same split of the width; one fix covers them.",
                 )),
             ),
-            ("long pasted prompt, capped bubble", Thread::new(long)),
+            ("long pasted prompt, capped bubble", Thread::new(capped)),
             (
                 "unbroken URL",
                 Thread::new(said(
@@ -1076,6 +1186,8 @@ A fence without a language falls back to text:\n\n\
 ```\n\
 test result: ok. 14 passed; 0 failed\n\
 ```";
+
+const CALLOUTS: &str = "Two things before you ship:\n\n> [!WARNING]\n> The daemon outlives the app, so restart it after installing.\n\n:::tip Faster loop\nRun `just watch mac` and keep the daemon up.\n:::\n\n> [!NOTE]\n> Release builds need Zig 0.16.";
 
 const MARKDOWN_FENCE: &str = "Here is the changelog entry, ready to paste:\n\n\
 ```markdown\n\
@@ -1243,6 +1355,10 @@ pub fn markdown(window: &mut Window, cx: &mut App) -> AnyView {
                 Thread::new(said("Write the changelog entry.", MARKDOWN_FENCE)),
             ),
             (
+                "callouts from alerts and ::: blocks",
+                Thread::new(said("Anything to watch out for?", CALLOUTS)),
+            ),
+            (
                 "mermaid flowchart",
                 Thread::new(said("Where does a chat row come from?", FLOWCHART)),
             ),
@@ -1293,6 +1409,133 @@ pub fn markdown(window: &mut Window, cx: &mut App) -> AnyView {
     )
 }
 
+const BACK_TO_BACK: &str =
+    "The prompt takes two paths, the lens on the left and the daemon on the right:\n\n";
+
+const SESSION_RS: &str = r#"The refresh check now lives on the session, so callers only do this:
+
+```rust
+if session.expires_soon(now) {
+    session.refresh(&client).await?;
+}
+```
+
+The whole module:
+
+```rust src/session.rs
+use std::time::{Duration, Instant};
+
+const MARGIN: Duration = Duration::from_secs(60);
+
+pub struct Session {
+    token: String,
+    expires: Instant,
+}
+
+impl Session {
+    pub fn expires_soon(&self, now: Instant) -> bool {
+        now + MARGIN >= self.expires
+    }
+
+    pub async fn refresh(&mut self, client: &Client) -> Result<()> {
+        let reply = client.post("/token").send().await?;
+        self.token = reply.token;
+        self.expires = Instant::now() + reply.ttl;
+        Ok(())
+    }
+}
+```
+
+And the config and client it reads:
+
+```toml
+[session]
+margin = "60s"
+endpoint = "/token"
+retries = 2
+backoff = "250ms"
+jitter = true
+```
+```ts web/session.ts
+export async function refresh(session: Session): Promise<void> {
+  const reply = await post("/token");
+  session.token = reply.token;
+  session.expires = Date.now() + reply.ttl;
+  return;
+}
+```"#;
+
+const PLAN_FENCE: &str = r"Here is the plan as a file you can keep:
+
+```markdown
+# Session refresh plan
+
+Move the expiry check onto `Session` so every caller refreshes the same way.
+
+- Add `expires_soon` with a 60 s margin
+- Make `refresh` update token and expiry together
+- Delete the three copies of the check in `api/`
+```";
+
+fn view_refs() -> ChatRefs {
+    ChatRefs {
+        hosts: story_hosts(),
+        cwd: Some("/Users/me/dev/zebrilus".to_owned()),
+        open: Arc::new(|target, window, cx| {
+            window.push_notification(
+                Notification::new().message(format!("Open {}", target.label)),
+                cx,
+            );
+        }),
+        view: Some(Arc::new(open_story_view)),
+    }
+}
+
+fn open_story_view(request: ViewRequest, window: &mut Window, cx: &mut App) {
+    let descriptor = ViewDescriptor {
+        origin: None,
+        title: request.title,
+        content: request.content,
+    };
+    window.open_dialog(cx, move |dialog, window, cx| {
+        dialog
+            .width(px(760.0))
+            .title(descriptor.title.clone())
+            .child(
+                v_flex().h(px(520.0)).child(
+                    div()
+                        .id("story-view-body")
+                        .flex_1()
+                        .min_h_0()
+                        .overflow_y_scroll()
+                        .child(view_body(&descriptor.content, 1, false, window, cx)),
+                ),
+            )
+    });
+}
+
+pub fn previews(window: &mut Window, cx: &mut App) -> AnyView {
+    let both = format!("{BACK_TO_BACK}{FLOWCHART}\n{SEQUENCE}\n\nBoth read the same `ChatView`.");
+    threads(
+        vec![
+            (
+                "back-to-back diagrams share one row of cards",
+                Thread::new(said("How does a prompt travel?", &both)).refs(view_refs()),
+            ),
+            (
+                "a short code block stays, longer ones become cards with their language",
+                Thread::new(said("Refactor the session refresh.", SESSION_RS)).refs(view_refs()),
+            ),
+            (
+                "a long markdown fence becomes a card named by its heading",
+                Thread::new(said("Write the plan down.", PLAN_FENCE)).refs(view_refs()),
+            ),
+        ],
+        window,
+        cx,
+    )
+}
+
 pub fn references(window: &mut Window, cx: &mut App) -> AnyView {
     let mut script = Script::new();
     script
@@ -1311,6 +1554,7 @@ pub fn references(window: &mut Window, cx: &mut App) -> AnyView {
                 cx,
             );
         }),
+        view: None,
     };
     threads(
         vec![(
@@ -1456,22 +1700,18 @@ pub fn asks(window: &mut Window, cx: &mut App) -> AnyView {
     };
     add(
         "Codex asks without stopping: the turn waits for your answer",
-        &Thread::new(waiting)
-            .vendor(zz_ui::program::OPENAI_ICON)
-            .view(window, cx),
+        &Thread::new(waiting).vendor("codex").view(window, cx),
     );
     add(
-        "Codex asked and ended its turn: the card stays open",
-        &Thread::new(ended)
-            .vendor(zz_ui::program::OPENAI_ICON)
-            .view(window, cx),
+        "Codex asked and ended its turn: the composer keeps asking",
+        &Thread::new(ended).vendor("codex").view(window, cx),
     );
     add(
         "an approval on the tool that needs it, first option highlighted",
         &Thread::new(approve).view(window, cx),
     );
     add(
-        "a long title wraps over the tiles",
+        "a long command wraps in its inset",
         &Thread::new(long).view(window, cx),
     );
     add(
@@ -1479,15 +1719,15 @@ pub fn asks(window: &mut Window, cx: &mut App) -> AnyView {
         &Thread::new(many).view(window, cx),
     );
     add(
-        "answered: the tiles stay greyed until the CLI moves on",
+        "answered: options and send stay greyed until the CLI moves on",
         &Thread::new(sent).sent(1).view(window, cx),
     );
     add(
-        "two asks: the first is live, the question behind it waits greyed out",
+        "two asks: the first is live, the counter says 1 of 2",
         &Thread::new(queued).view(window, cx),
     );
     add(
-        "a question in the thread",
+        "a question: one row in the thread, the composer asks",
         &Thread::new(ask).view(window, cx),
     );
     let picks = Thread::new(asked(
@@ -1500,7 +1740,51 @@ pub fn asks(window: &mut Window, cx: &mut App) -> AnyView {
         state.card.pick(0, 0);
         state.card.pick(0, 1);
     });
-    add("pick any, two picked", &picks);
+    add(
+        "pick any, two picked, the highlight on a picked answer",
+        &picks,
+    );
+    let unpicked = Thread::new(asked(
+        "Get the branch ready to push.",
+        4,
+        vec![checks_question()],
+    ))
+    .view(window, cx);
+    edit_card(&unpicked, window, cx, |state, _, _| {
+        state.card.pick(0, 0);
+        state.card.pick(0, 1);
+        state.card.key("down", false);
+    });
+    add(
+        "pick any, two picked, the highlight on an answer not picked",
+        &unpicked,
+    );
+    let other = Thread::new(asked(
+        "Get the branch ready to push.",
+        4,
+        vec![checks_question()],
+    ))
+    .view(window, cx);
+    edit_card(&other, window, cx, |state, window, cx| {
+        state.card.pick(0, 0);
+        type_other(state, 0, "cargo deny check", window, cx);
+    });
+    add("pick any, something else typed and picked", &other);
+    let answering = Thread::new(asked(
+        "Get the branch ready to push.",
+        4,
+        vec![checks_question()],
+    ))
+    .sent(4)
+    .view(window, cx);
+    edit_card(&answering, window, cx, |state, _, _| {
+        state.card.pick(0, 0);
+        state.card.pick(0, 2);
+    });
+    add(
+        "pick any, answered: read-only, the picked keys stay lit",
+        &answering,
+    );
     let typed =
         Thread::new(asked("Open the pull request.", 5, vec![branch_question()])).view(window, cx);
     edit_card(&typed, window, cx, |state, window, cx| {
@@ -1536,6 +1820,68 @@ pub fn asks(window: &mut Window, cx: &mut App) -> AnyView {
         "answered: a record, the turn goes on",
         &Thread::new(answered).view(window, cx),
     );
+    cx.new(|_| Views(views)).into()
+}
+
+pub fn ask_sheets(window: &mut Window, cx: &mut App) -> AnyView {
+    const COMMAND: &str = "printf 'x%.0s' $(seq 1 10000); echo; printf '\\033[31mred\\033[0m \\033[1mbold\\033[0m\\n'; ls /etc/hosts:12 2>&1; echo \"https://example.com\"; cat /tmp/zz-stress/does-not-exist.txt";
+    let command = || {
+        let mut script = Script::new();
+        script
+            .turn("Run the shell stress case.")
+            .tool("x1", None, ItemKind::Execute, COMMAND)
+            .ask(1, Some("x1"), allow_or_reject(COMMAND));
+        script
+    };
+    let plan = || {
+        let mut script = Script::new();
+        script
+            .turn("Plan the chat UI stress test.")
+            .ask(1, None, plan_approval());
+        script
+    };
+    let wrapped = Thread::new(asked(
+        "Stress the question card.",
+        1,
+        vec![long_question(), rendering_question()],
+    ))
+    .view(window, cx);
+    edit_card(&wrapped, window, cx, |state, _, _| {
+        state.card.key("up", false);
+    });
+    let mut views: Vec<(SharedString, AnyView)> = vec![(
+        "a question that wraps to three lines, with the pager; the highlight on the last answer"
+            .into(),
+        wrapped.into(),
+    )];
+    for (label, thread) in [
+        (
+            "a question whose first answer wraps: three lines of label and three of description",
+            Thread::new(asked(
+                "Stress the question card.",
+                1,
+                vec![long_label_question()],
+            )),
+        ),
+        (
+            "a plan approval, the first answer highlighted",
+            Thread::new(plan()),
+        ),
+        (
+            "a plan approval, No highlighted",
+            Thread::new(plan()).highlight(2),
+        ),
+        (
+            "a command approval, Allow highlighted",
+            Thread::new(command()),
+        ),
+        (
+            "a command approval, Reject highlighted",
+            Thread::new(command()).highlight(1),
+        ),
+    ] {
+        views.push((label.into(), thread.view(window, cx).into()));
+    }
     cx.new(|_| Views(views)).into()
 }
 

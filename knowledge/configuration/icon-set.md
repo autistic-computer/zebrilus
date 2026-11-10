@@ -27,6 +27,12 @@ credit and the list of changes the license asks for, and `NOTICE.md` lists the s
 Program tiles in the flat sidebar draw the generic programs (a terminal, `log`, `sleep`, `top`,
 `caffeinate`, lazygit, an inspector, a browser) from this set too, through the `icon` field of
 `zz_client::program::Program`; brand programs use their own marks from `crates/zz-ui/assets/programs`.
+Code cards in the agent chat draw a language's tile the same way: `zz_client::program::code_language`
+maps a fence's language (`rs`, `tsx`, `sh`, `c++`) to a name and a program, either a program mark
+(rust, python, go, typescript, the terminal for shells) or one of 32 language marks from Devicon's
+plain variants (`language_marks`: javascript, kotlin, c, cplusplus, csharp, html5, css3, json, yaml,
+toml, markdown and the rest), kept beside the program marks with Devicon's license in
+`LICENSE-DEVICON`.
 
 History: Lucide, Phosphor, Iconoir and Tabler files came first; on 2026-10-10 zz drew its own
 Mac-school set from skeletons, and on 2026-10-24 it moved to Solar, kept on the same skeleton

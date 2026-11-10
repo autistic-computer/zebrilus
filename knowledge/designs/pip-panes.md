@@ -8,7 +8,7 @@ tags:
 - ui
 - floating-panes
 - design-plan
-timestamp: 2026-10-26T00:00:00-03:00
+timestamp: 2026-11-10T00:00:00-03:00
 ---
 
 # Rulings (fabrico, 2026-10-18)
@@ -78,8 +78,9 @@ first `DragMoveEvent<PipGrab>`.
 A bordered PiP on the desktop has a grip on every edge and corner for `resize-pane`, 8 px wide and
 straddling the card's edge, the top one over the header's first 4 px; they block the pointer so a
 press half outside the card does not reach the pane under it. A resize stops at `PipLayout::max_cells`, the largest PiP that sits a
-margin inside the canvas and inside the window (`float_drag_within` keeps the edge the grip did not
-move). `resize-pane` from the CLI can still make a float larger; the layout then pins it to the top
+margin inside the canvas and inside the window, and at the window's own edge on the side the grip
+moves (`float_drag_within` keeps the edge the grip did not move), so a PiP always keeps offsets to
+travel between. `resize-pane` from the CLI can still make a float larger; the layout then pins it to the top
 left so its header shows.
 
 # Throw
@@ -89,10 +90,13 @@ follows the pointer freely instead of stepping by cells. `PipThrow` keeps the la
 samples for the release speed.
 
 On release the landing point is the frame's origin plus its speed run out at iOS's scroll
-deceleration, 0.998 a millisecond, which is half a second of the speed (`projected`). The window
-splits into a 3x3 grid of zones, and the zone holding the PiP's centre at that point picks the place
-(`FloatPlace::zone` in `zz_client::floating`), so a flick from the middle reaches a corner and a slow
-release takes the zone it is in. Nothing is drawn for the zones.
+deceleration, 0.998 a millisecond, which is half a second of the speed (`projected`). On each axis
+the frame's origin there is read as a fraction of the room the PiP has to move in, margin to
+margin: under a quarter is the near place, over three quarters the far one, the centre between
+(`PipGeometry::place_at` in `zz_client::floating`). The room is what is left beside the PiP, so a
+PiP half the window wide changes column after the same share of its travel as a narrow one, and a
+flick from the middle reaches a corner. An axis with less than a cell of room keeps the row or
+column it had. Nothing is drawn for the places.
 
 The release sends one `move-pane -t %N -P <place>` at once, so the daemon and every other client get
 the final place immediately. The throwing client draws the PiP at that place from then on and hands
@@ -111,12 +115,12 @@ A PiP is drawn by `PipLayout::frame`, not at its raw cells. The pane canvas is l
 window's cell grid (headers, gaps, pixels left over), so cells alone left a PiP flush with one edge
 and far from the other. `PipLayout` maps the daemon's range of offsets on each axis onto the canvas
 inset by 12 px: the leftmost offset `move-pane -P` gives sits 12 px from the left, the rightmost
-12 px from the right, the centre in the middle, and the zones a throw picks from are thirds of the
-same canvas. With no canvas yet it uses the window's cells. A PiP never leaves the canvas: its place
+12 px from the right, the centre in the middle, and a throw picks its place along the same range. With no canvas yet it uses the window's cells. A PiP never leaves the canvas: its place
 along each axis is clamped to the range, the margin shrinks when there is less than two margins of
-slack, and one taller or wider than the canvas pins to the top or left so its header shows. A
-float taller than `move-pane -P` has room for gets a negative offset from the daemon, which is why
-the clamp matters.
+slack, and one taller or wider than the canvas is drawn the size of the canvas less its margins,
+so its header and every grip stay on it and it can still be resized; the content past that is cut
+off. A float taller than `move-pane -P` has room for gets a negative offset from the daemon, which
+is why the clamp matters.
 
 # Piles and stashing
 
@@ -128,6 +132,8 @@ somewhere else without telling tmux.
   behind the third. A pile that would leave the top of the canvas slides down into it. A taller PiP
   whose header already shows stays where it is. Selecting one raises it in tmux's z order, so the
   pile reorders.
+- **No dimming.** While a PiP has focus, the tiles behind it keep full strength: no inactive
+  scrim on a chat and no faded terminal text, so a PiP never reads as a modal over its window.
 - **Stashing.** When the window's active pane changes to a tiled pane, every PiP it had slides past
   the nearer side edge until 60 px of it show, content and all; a pile keeps its fan. Clicking that
   strip, or focusing the PiP any other way, brings it back. A new PiP, closing the focused pane, and
@@ -141,12 +147,62 @@ pointer. The stash lives in each client, so a reload or another client shows the
 `PaneMotion` (`crates/zz-ui/src/pane/motion.rs`) is how every pane gets from where it was drawn to
 where it belongs, tiled or floating. Each pane is wrapped in `moving_pane`, which takes the bounds
 layout gives it as a target and lays the pane out at a frame that springs toward it, one critically
-damped spring per edge (stiffness 324, the throw's spring). A split, a close, `resize-pane -Z`, a
+damped spring per edge (stiffness 784 and damping 56 on a unit mass, 28 rad/s, the throw's spring). A split, a close, `resize-pane -Z`, a
 pane drop, Float and Tile back all animate, because the same pane id moves between the tiled tree
 and the float layer. A new pane grows out of the edge it shares with the pane it split from, so the
 divider slides; one with no such pane appears in place. A window resize, a divider drag and reduced
 motion snap. A terminal that is moving holds its size report (`TerminalView::moving`) until it
 settles, so the daemon sees one resize, not one a frame.
+
+## Opening from what you clicked
+
+A PiP that a click in an agent chat opens grows out of what was clicked and flies back into it
+when it closes. The sources are every `view-pane` the chat sends: a subagent row, a diagram, code
+or markdown preview card, and an image tile in a message. `crates/zz-ui/src/pane/launch.rs` holds
+the sources and the flight; `PaneMotion` runs it.
+
+- **Launch.** A source (`PipSource`) records its bounds in window coordinates each time it is
+  drawn, with its corner radius and the bounds of the parts that ride (`PipPart`). A click leaves
+  one pending launch for the app: that record, the time and the window. The pane id is not known
+  yet, because the command goes to the daemon and the float arrives in a later snapshot, so the
+  next new PiP drawn in that window claims the launch and springs from the source's rect instead of
+  appearing in place. Tiled panes and modal floats never claim one. A launch nobody claims within
+  1 s is dropped and the PiP appears as before. The PiP remembers its source for as long as the
+  pane lives in that client.
+- **Flight.** Progress p is the spring's normalized response, 0 at the source and 1 at rest. The
+  four edge springs are linear and start together, so one scalar spring with the same constants
+  describes them all. The frame (fill, rim, shadow) is drawn at the animated rect, its corner radius
+  going from the source's to the pane radius. The header is laid out at the frame's width, so the
+  close button rides the frame's right edge. The content is laid out once at the PiP's resting size,
+  anchored at the frame's top left and clipped by its rounded shape, so it never reflows mid-flight.
+  The whole PiP fades in over the first 10% (opacity p / 0.1), so it does not pop over the source,
+  and what does not ride fades in with (p - 0.35) / 0.5, both clamped to 0..1. A launched PiP skips
+  the 140 ms arrival fade (`PaneArrivals`).
+- **What rides.** A part both sides share starts exactly on the source's part and ends at its place
+  in the PiP, at full opacity the whole way: it sits at `lerp(source, rest, p)`, where rest is its
+  place in the PiP measured from the frame's top left and moved to the resting frame. The icon and
+  title of a subagent row, or of a code or markdown card, become the header's icon and title; they
+  travel at their own size, an icon lined up by its centre and a title by its left edge and middle.
+  A code card's lines travel with the frame at their own size and the rest is uncovered below
+  them. A diagram's or an image's picture scales from the source's box to its box in the PiP, both
+  boxes fitted to the picture's aspect; pictures are the only parts drawn at another size. A
+  markdown card's text fades in like the rest.
+- **The source dims.** While a PiP opened from it lives, the source is drawn at 40% opacity,
+  reaching it over the first 35% of the flight (1 - 0.6 × p / 0.35, clamped), and comes back to
+  full when the PiP is gone. A chat has one view pane, so a click on another card while it is open
+  swaps the view's content in place: there is no flight, the new card becomes the source and dims,
+  and the old one comes back (`PaneMotion::relink`, called where each client sees the view's
+  descriptor change).
+- **Closing.** When a launched PiP leaves the snapshot, the client keeps the pane's view and draws
+  it inside the departing frame until the flight ends (`PaneMotion::depart`, `departing_pip`),
+  under a header whose buttons do nothing. The source is asked to draw again, and the departing
+  PiP decides on its second frame whether the source recorded itself since. If the source is still drawn,
+  the opening plays in reverse back to the source's current rect: the frame springs back, the riding
+  parts return, the rest fades out and the source comes back to full opacity as the PiP lands. If it
+  is not (scrolled away, another chat shown, its pane gone), the PiP shrinks, each edge moving in 4%
+  of its size toward the centre, and fades out over 160 ms, ease-out quint. A PiP that was not
+  launched from a source, or was reattached, closes as before.
+- **Reduced motion** opens and closes PiPs as before: no flight, no dimming.
 
 # Clients
 
@@ -168,8 +224,11 @@ still work.
   `grab_pip` for the mouse and `touch_pip` for a touch on the title (`touch_pane_drag` hands a
   floating pane to it). The landing ends when the snapshot shows the float at its place, or a
   second later.
-- **Storybook**: Workspace → Panes → PiP shows a terminal PiP, a borderless one, a stashed PiP and
-  a pile of two. The `pip-opacity` knob sets `zz_ui::pip::PipOpacity`. The theme creator's PiP section
+- **Storybook**: Agent → PiP flight plays the flight: a chat with a subagent row, a code card
+  and a diagram, a PiP that opens from each and closes back. The `pip-hold` and `pip-progress`
+  knobs hold every flight at one progress, opening or closing, so a frame can be inspected.
+  Workspace → Panes → PiP shows a terminal PiP, a borderless one, a stashed PiP and
+  a pile of two. The theme creator's PiP section
   puts a terminal PiP over tiled panes, so `floating.pip` can be tuned and inspected. As of 2026-10-23
   both stories still also draw the removed agent pane and subagent feed as PiPs; the storybook is
   due a lens story in their place ([agent lens](/designs/agent-lens.md)).

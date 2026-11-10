@@ -115,7 +115,11 @@ answer first. Surfaces without a PTY (output views) leave
 
 - Flat window list: on desktop, web and iPad, `zz_client::window_summary::pane_attention` turns
   the tree record into a row for any pane kind ([flat sidebar data](/designs/flat-sidebar-data.md)),
-  and a finish shows as Done while the daemon's `unseen` latch holds. That latch counts a pane as
+  and a finish shows as Done while the daemon's `unseen` latch holds. Pane stacks (the flat rows'
+  tiles and the status bar's pane deck) draw that attention as a dot on a tile's corner: accent
+  while working, warning when it needs you, danger when it failed, success while a finish is
+  unseen, and the primary ink for a bell (`pane_stack::status_dot`). A resting stack shows its
+  most urgent pane's dot on the front tile; an open one shows each pane's own. That latch counts a pane as
   seen only while a focused client shows its window, so a finish behind another app stays unseen
   until that client focuses back in ([snapshots](/protocol/snapshots.md#pane-status-summary-and-time)).
 

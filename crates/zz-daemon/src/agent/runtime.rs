@@ -1089,7 +1089,8 @@ pub(crate) async fn run_agent_connection(
                                                 )
                                             }),
                                         };
-                                        valid_session_summary(&summary).then_some(summary)
+                                        (valid_session_summary(&summary) && summary.cwd.is_dir())
+                                            .then_some(summary)
                                     })
                                     .collect();
                                 send_payload(

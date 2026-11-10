@@ -3,7 +3,7 @@ use zz_protocol::{AgentProvider, MuxSnapshot, PaneId, PaneKindSnapshot, SessionI
 use crate::{
     navigation::{ordered_panes, pane_label},
     program::Program,
-    window_summary::{pane_agent, pane_program},
+    window_summary::{Attention, pane_agent, pane_attention, pane_program},
 };
 
 pub const MAX_VISIBLE_WINDOWS: usize = 5;
@@ -24,6 +24,7 @@ pub struct StatusBarPane {
     pub kind: PaneKindSnapshot,
     pub program: Option<&'static Program>,
     pub active: bool,
+    pub attention: Attention,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -110,6 +111,7 @@ impl StatusBarModel {
                                 kind: pane.kind.clone(),
                                 program: pane_program(pane),
                                 active: pane.id == window.active_pane,
+                                attention: pane_attention(pane),
                             })
                             .collect(),
                     }

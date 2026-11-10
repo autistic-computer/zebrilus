@@ -15,9 +15,13 @@ use penna::{
 };
 
 mod drag;
+mod launch;
 mod motion;
 pub use drag::{
     DropPreview, DropPreviewFrame, PaneDrag, PaneDragSource, PipGrab, pane_drag_preview,
+};
+pub use launch::{
+    Flight, Lit, PipPart, PipSource, Riding, Sourced, flight, lit, pip_part, pip_picture,
 };
 pub use motion::{MovingPane, PaneMotion, moving_pane};
 
@@ -48,6 +52,7 @@ pub const fn pane_kind_icon(kind: &zz_protocol::PaneKindSnapshot) -> IconName {
         zz_protocol::PaneKindSnapshot::Editor(_) => IconName::File,
         zz_protocol::PaneKindSnapshot::Picker => IconName::Plus,
         zz_protocol::PaneKindSnapshot::Agent(agent) => agent_provider_icon(agent.provider),
+        zz_protocol::PaneKindSnapshot::View(_) => IconName::Eye,
     }
 }
 
@@ -135,10 +140,14 @@ impl RenderOnce for PaneTitle {
                 .text_ellipsis()
                 .child(child)
         };
+        let flight = flight(cx);
+        let lit = flight.map_or(1.0, |flight| flight.lit());
+        let faded = |part| flight.is_some_and(|flight| !flight.rides(part)) && lit < 1.0;
         let folder = self.folder.map(|folder| {
             text(folder.into_any_element())
                 .flex_1()
                 .text_color(cx.theme().foreground.muted())
+                .when(lit < 1.0, |folder| folder.opacity(lit))
         });
         let title = Tab::new(self.id, TabLook::Title)
             .on(ground)
@@ -158,8 +167,16 @@ impl RenderOnce for PaneTitle {
             .pl(px(6.0))
             .pr(px(8.0))
             .text_color(cx.theme().foreground.rest())
-            .child(icon)
-            .child(text(self.label).flex_initial())
+            .child(pip_part(
+                PipPart::Icon,
+                icon.when(faded(PipPart::Icon), |icon| icon.opacity(lit)),
+            ))
+            .child(pip_part(
+                PipPart::Title,
+                text(self.label)
+                    .flex_initial()
+                    .when(faded(PipPart::Title), |title| title.opacity(lit)),
+            ))
             .children(folder);
         self.drag.attach(title)
     }
@@ -192,6 +209,14 @@ pub enum TerminalPaneAction {
     Zoom,
     Close,
     Flip,
+    Kind(&'static str),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PaneKindButton {
+    pub key: &'static str,
+    pub icon: IconName,
+    pub label: &'static str,
 }
 
 pub use zz_client::agent_flip::FlipTo;
@@ -261,7 +286,7 @@ impl TerminalPaneAction {
                 "kill-pane",
                 ["-t".to_owned(), pane.to_string()],
             )],
-            Self::Flip => Vec::new(),
+            Self::Flip | Self::Kind(_) => Vec::new(),
         }
     }
 }
@@ -325,6 +350,7 @@ pub fn terminal_pane_header(
         drag,
         state,
         flip,
+        &[],
         &PaneActionKeys::default(),
         px(0.0),
         on_action,
@@ -519,6 +545,7 @@ pub fn pane_header(
     drag: PaneDragSource,
     state: PaneState,
     flip: Option<PaneFlip>,
+    buttons: &[PaneKindButton],
     keys: &PaneActionKeys,
     trailing_inset: Pixels,
     on_action: impl Fn(TerminalPaneAction, &mut Window, &mut App) + 'static,
@@ -526,6 +553,20 @@ pub fn pane_header(
 ) -> Stateful<ala::Div> {
     let on_action = std::rc::Rc::new(on_action);
     let toggle = std::rc::Rc::clone(&on_action);
+    let kind_buttons = buttons
+        .iter()
+        .map(|button| {
+            let on_action = std::rc::Rc::clone(&on_action);
+            let key = button.key;
+            pane_header_icon_button(button.label, button.icon.clone(), true, cx)
+                .debug_selector(move || format!("pane-kind-{key}"))
+                .tooltip(button.label)
+                .on_click(move |_, window, cx| {
+                    cx.stop_propagation();
+                    on_action(TerminalPaneAction::Kind(key), window, cx);
+                })
+        })
+        .collect::<Vec<_>>();
     let action = |action, icon, label: &'static str| {
         let on_action = std::rc::Rc::clone(&on_action);
         pane_header_icon_button(label, icon, true, cx)
@@ -560,7 +601,7 @@ pub fn pane_header(
             ),
         )
         .children(flip.map(|flip| {
-            div()
+            lit(div()
                 .flex()
                 .flex_none()
                 .when(!active && !flip.armed, |slot| {
@@ -571,25 +612,24 @@ pub fn pane_header(
                     flip,
                     move |window, cx| toggle(TerminalPaneAction::Flip, window, cx),
                     cx,
-                ))
+                )))
         }))
-        .child(
-            div()
-                .flex()
-                .flex_none()
-                .items_center()
-                .gap_1()
-                .when(!active, |actions| {
-                    actions
-                        .invisible()
-                        .group_hover("terminal-pane-header", ala::Styled::visible)
-                })
-                .children(
-                    pane_header_actions(state)
-                        .into_iter()
-                        .map(|(kind, icon, label)| action(kind, icon, label)),
-                ),
-        );
+        .child(lit(div()
+            .flex()
+            .flex_none()
+            .items_center()
+            .gap_1()
+            .when(!active, |actions| {
+                actions
+                    .invisible()
+                    .group_hover("terminal-pane-header", ala::Styled::visible)
+            })
+            .children(kind_buttons)
+            .children(
+                pane_header_actions(state)
+                    .into_iter()
+                    .map(|(kind, icon, label)| action(kind, icon, label)),
+            )));
     div()
         .id("terminal-pane-header")
         .group("terminal-pane-header")

@@ -9,7 +9,7 @@ tags:
 - penna
 - wasm
 - agents
-timestamp: 2026-11-05T12:00:00Z
+timestamp: 2026-11-10T12:00:00Z
 ---
 
 # What it is
@@ -49,8 +49,9 @@ process, and `catalog()` read before that gives `PENNA` without fixing it.
 zz's catalog is `zz_storybook::CATALOG` in `clients/storybook/src/lib.rs`: no plates, so zz's page
 has no theme creator and opens on its first story; zz's agent, workspace and console stories,
 without penna's Foundation and Kit, which stay on penna's page with the creator; the pane knobs
-(`pane-gaps`, `pane-margin`, `pip-opacity`, `pane-inactive-opacity`, `pane-glow`, read through
-`crate::pane()`) and `program-colors`; zz's floating sections alone (`&[FLOATING]`, since
+(`pane-gaps`, `pane-margin`, `pane-inactive-opacity`, `pane-glow`, read through
+`crate::pane()`), `program-colors`, and `pip-hold` and `pip-progress`, which hold the PiP flight
+story at one progress; zz's floating sections alone (`&[FLOATING]`, since
 `KIT_FLOATING` names Kit stories); `zz_ui::Assets` and `zz_ui::ZZ_LOGO`.
 Each page's cdylib defines its own `#[wasm_bindgen] run` that calls
 `penna_storybook::start(&CATALOG, assets)`; every other export comes from `penna-storybook`, and
@@ -108,11 +109,12 @@ presets and starts from the platform's), the theme's knobs (`name`,
 sliders), the person's settings over it (`accent`, `contrast`, the tint as `tint-hue` and `tint`,
 which set the neutral as `chrome-tint-hue` and `chrome-tint` do in the app,
 `reduce-transparency`), `zoom`, zz's pane knobs
-(`pane-gaps`, `pane-margin`, `pip-opacity`,
+(`pane-gaps`, `pane-margin`,
 `pane-inactive-opacity`, `pane-glow`, mirroring Settings → Panes, where pane corners follow the
 theme's radius and the pane edge its glass, or its outline in a theme without glass; `pane-gaps`
 makes the glass pane frame own the pane fill, as in the app, while stories show
-gaps on and off side by side, so look at gapped frames with `pane-gaps=1`), `motion` (`motion=0` turns
+gaps on and off side by side, so look at gapped frames with `pane-gaps=1`), `pip-hold=1` with
+`pip-progress=0.4` (Agent → PiP flight holds every flight it plays at that progress), `motion` (`motion=0` turns
 animations off and freezes spinners). Two more keys only steer the page: `step` (`colors`,
 `materials`, `roles`, `export`, `app`) opens a step of the knob panel, and `inspect=<role id>` picks a role
 on the Roles step. The tint and pane knobs are app config, not theme, so Copy JSON leaves them out;

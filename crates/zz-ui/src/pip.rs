@@ -2,12 +2,12 @@ use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 use ala::{
     AnyElement, App, Bounds, ClickEvent, Div, ElementId, GlassMaterial, Hsla, IntoElement,
-    ParentElement as _, Pixels, Point, Size, Stateful, Styled as _, Window, div, point, prelude::*,
-    px,
+    ParentElement as _, Pixels, Point, SharedString, Size, Stateful, Styled as _, Window, div,
+    point, prelude::*, px,
 };
 use penna::ContentLook;
 use web_time::{Duration, Instant};
-use zz_client::floating::{FloatCells, FloatPlace, PipGeometry};
+use zz_client::floating::{FloatCells, FloatGrip, FloatPlace, PipGeometry};
 use zz_protocol::{PaneBorderLines, PaneId, WindowId, WindowSnapshot};
 
 use crate::{
@@ -117,9 +117,14 @@ impl PipLayout {
         ala::size(px(width), px(height))
     }
 
-    fn place_at(&self, centre: Point<Pixels>) -> FloatPlace {
+    fn place_at(&self, origin: Point<Pixels>, cells: FloatCells) -> FloatPlace {
         self.geometry()
-            .place_at((f32::from(centre.x), f32::from(centre.y)))
+            .place_at((f32::from(origin.x), f32::from(origin.y)), cells)
+    }
+
+    #[must_use]
+    pub fn within(&self, target: FloatCells, grip: FloatGrip) -> FloatCells {
+        self.geometry().within(target, grip)
     }
 }
 
@@ -172,12 +177,8 @@ impl PipDrag {
 
     #[must_use]
     pub fn landing(&self, velocity: Point<f32>) -> FloatPlace {
-        let size = self.layout.size(self.start);
-        let landing = projected(self.drawn_origin(), velocity);
-        self.layout.place_at(point(
-            landing.x + size.width / 2.0,
-            landing.y + size.height / 2.0,
-        ))
+        self.layout
+            .place_at(projected(self.drawn_origin(), velocity), self.start)
     }
 
     #[must_use]
@@ -470,6 +471,37 @@ impl PipSurface {
     }
 }
 
+pub fn departing_pip(
+    pane: PaneId,
+    icon: crate::Icon,
+    title: SharedString,
+    content: impl IntoElement,
+    inset: Size<Pixels>,
+    cx: &App,
+) -> PipSurface {
+    let header = crate::pane::pane_header(
+        icon,
+        true,
+        title.clone(),
+        None,
+        crate::pane::PaneDragSource::new(pane, title, false, |_, _, _| {}),
+        crate::pane::PaneState {
+            floats: true,
+            ..crate::pane::PaneState::default()
+        },
+        None,
+        &[],
+        &crate::pane::PaneActionKeys::default(),
+        Pixels::ZERO,
+        |_, _, _| {},
+        cx,
+    );
+    PipSurface::new(("departing-pip", pane.0), content)
+        .bordered(inset != Size::default())
+        .content_inset(inset.width, inset.height)
+        .header(header)
+}
+
 #[must_use]
 pub fn pip_material(fill: Hsla, cx: &App) -> Option<GlassMaterial> {
     let fill = fill.opaque();
@@ -500,6 +532,11 @@ impl RenderOnce for PipSurface {
             .fill
             .unwrap_or_else(|| pane_color(cx.theme(), cx.theme().background));
         let material = pip_material(fill, cx);
+        let flight = crate::pane::flight(cx);
+        let radius = flight.map_or_else(
+            || cx.theme().pane_radius(),
+            |flight| flight.radius(cx.theme().pane_radius()),
+        );
         let header = self.header.map(|header| {
             div()
                 .debug_selector(|| "pip-header".into())
@@ -508,11 +545,27 @@ impl RenderOnce for PipSurface {
                 .left_0()
                 .right_0()
                 .h(header_height)
-                .when(!coarse && !docked && !stashed, |header| {
-                    header.invisible().group_hover(GROUP, ala::Styled::visible)
-                })
+                .when(
+                    !coarse && !docked && !stashed && flight.is_none(),
+                    |header| header.invisible().group_hover(GROUP, ala::Styled::visible),
+                )
                 .child(header)
         });
+        let content = div()
+            .absolute()
+            .left(inset_x)
+            .top(inset_top)
+            .overflow_hidden()
+            .child(self.content);
+        let content = match flight {
+            Some(flight) => content
+                .w(flight.rest.size.width - inset_x * 2.0)
+                .h(flight.rest.size.height - inset_top - inset_y)
+                .when(!flight.carries_content(), |content| {
+                    content.opacity(flight.lit())
+                }),
+            None => content.right(inset_x).bottom(inset_y),
+        };
         let stash = self.stashed.map(|restore| {
             div()
                 .id("pip-stash")
@@ -534,22 +587,13 @@ impl RenderOnce for PipSurface {
             .overflow_hidden()
             .occlude()
             .map(|surface| paint_pip(surface, &layer))
-            .rounded(cx.theme().pane_radius())
+            .rounded(radius)
             .map(|surface| match material {
                 Some(material) => surface.bg(cx.theme().transparent).glass(material),
                 None => surface.bg(fill.opaque()),
             })
             .on_mouse_down(ala::MouseButton::Left, |_, _, cx| cx.stop_propagation())
-            .child(
-                div()
-                    .absolute()
-                    .left(inset_x)
-                    .right(inset_x)
-                    .top(inset_top)
-                    .bottom(inset_y)
-                    .overflow_hidden()
-                    .child(self.content),
-            )
+            .child(content)
             .children(header)
             .children(stash)
     }

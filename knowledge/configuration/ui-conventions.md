@@ -347,7 +347,7 @@ already receive the workspace `Window` can call `window.push_notification` direc
 # Spacing
 
 Spacing comes from a 4px grid (2px half steps inside small controls) and four rules. The agent
-pane's cards (permission, question, error, task tray) follow them through one set of builders in
+pane's cards (permission, question, error, plan tray) follow them through one set of builders in
 `crates/zz-ui/src/agent/presentation.rs` (`card_surface`, `card_header`, `card_tiles`, `CardTile`,
 `card_close`, `card_footer`, `card_button`), so a new card inherits the spacing instead of
 restating it.
@@ -527,7 +527,7 @@ centred on the line, then moved down by `penna::components::icon::cap_center_dro
 cx)`: half of the theme font's ascent less descent less cap height, 0.31px for SF Pro at 12px and
 0.33px at 13px, nothing for Inter, nudged by up to a quarter point so the icon and the baseline
 round to the same device pixel grid. Rows that wrap give the icon a first-line strut as tall as the
-first line's pixel line height. The agent timeline's activity rows, cards, alerts, task tray and composer
+first line's pixel line height. The agent timeline's activity rows, cards, alerts, plan tray and composer
 footer, the workspace status pills, markdown task lists and the settings disclosure heading all
 use it. The glyph's own ink has to be centred in its 24-unit box too; the ala notes are in
 the `ala-interface` skill (`skills/ala-interface` in autistic-computer/agents). Brand marks in

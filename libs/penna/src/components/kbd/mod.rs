@@ -2,12 +2,13 @@ use crate::Space;
 use ala::{
     Action, AnyElement, App, AsKeystroke as _, ElementId, FocusHandle, IntoElement, KeyContext,
     Keystroke, ParentElement as _, RenderOnce, Role, SharedString, StatefulInteractiveElement as _,
-    StyleRefinement, Styled, Window,
+    StyleRefinement, Styled, Window, prelude::FluentBuilder as _,
 };
 
 use crate::{
-    ActiveTheme as _, AuthoredElement as _, Ground, Icon, IconName, Layer, PaintState, Sizable,
-    Size, StyledExt as _, Surface, SurfaceRole, TextStyle, Theme, h_flex,
+    ActiveTheme as _, AuthoredElement as _, Disableable, Emphasis, Fill, Ground, Icon, IconName,
+    Layer, PaintState, Sizable, Size, StyledExt as _, Surface, SurfaceRole, TextStyle, Theme, Tone,
+    h_flex,
 };
 
 const ICON_SCALE: f32 = 1.2;
@@ -92,6 +93,7 @@ impl Kbd {
             on: self.on,
             size: self.size,
             style: self.style.clone(),
+            ..Keycap::new(SharedString::default())
         }
     }
 
@@ -302,11 +304,25 @@ impl RenderOnce for Kbd {
 }
 
 #[derive(IntoElement)]
+struct CapIcon(IconName);
+
+impl RenderOnce for CapIcon {
+    fn render(self, window: &mut Window, _: &mut App) -> impl IntoElement {
+        let text = window.text_style().font_size.to_pixels(window.rem_size());
+        Icon::new(self.0).size((text * ICON_SCALE).round())
+    }
+}
+
+#[derive(IntoElement)]
 pub struct Keycap {
     label: AnyElement,
     name: SharedString,
+    square: bool,
     id: Option<ElementId>,
     on: Option<Ground>,
+    tone: Tone,
+    emphasis: Emphasis,
+    disabled: bool,
     size: Size,
     style: StyleRefinement,
 }
@@ -318,10 +334,23 @@ impl Keycap {
         Self {
             label: name.clone().into_any_element(),
             name,
+            square: false,
             id: None,
             on: None,
+            tone: Tone::default(),
+            emphasis: Emphasis::default(),
+            disabled: false,
             size: Size::default(),
             style: StyleRefinement::default(),
+        }
+    }
+
+    #[must_use]
+    pub fn icon(icon: IconName) -> Self {
+        Self {
+            label: CapIcon(icon).into_any_element(),
+            square: true,
+            ..Self::new(SharedString::default())
         }
     }
 
@@ -331,16 +360,47 @@ impl Keycap {
         self
     }
 
+    #[must_use]
+    pub const fn tone(mut self, tone: Tone) -> Self {
+        self.tone = tone;
+        self
+    }
+
+    #[must_use]
+    pub const fn emphasis(mut self, emphasis: Emphasis) -> Self {
+        self.emphasis = emphasis;
+        self
+    }
+
     fn surface_layer(&self, theme: &Theme) -> Layer {
-        theme.layer(
-            Surface::new(SurfaceRole::KEYCAP).on_maybe(self.on),
-            PaintState::Rest,
-        )
+        let role = SurfaceRole::KEYCAP;
+        let role = match self.emphasis {
+            Emphasis::Solid | Emphasis::Soft => role,
+            Emphasis::Outline => role.with(role.patch.fill(Fill::None).outline(true)),
+            Emphasis::Ghost => role.with(role.patch.fill(Fill::None).outline(false)),
+        };
+        let surface = Surface::new(role)
+            .tone(self.tone)
+            .prominent(self.emphasis == Emphasis::Solid)
+            .on_maybe(self.on);
+        let state = if self.disabled {
+            PaintState::Disabled
+        } else {
+            PaintState::Rest
+        };
+        theme.layer(surface, state)
     }
 
     #[must_use]
     pub fn on(mut self, ground: Ground) -> Self {
         self.on = Some(ground);
+        self
+    }
+}
+
+impl Disableable for Keycap {
+    fn disabled(mut self, disabled: bool) -> Self {
+        self.disabled = disabled;
         self
     }
 }
@@ -370,7 +430,7 @@ impl RenderOnce for Keycap {
             .justify_center()
             .h(line.line_height())
             .min_w(line.line_height())
-            .px(Space::S4)
+            .when(!self.square, |cap| cap.px(Space::S4))
             .layer(&layer)
             .text_color(layer.muted_text())
             .type_style(text, cx)

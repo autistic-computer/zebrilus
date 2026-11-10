@@ -1,17 +1,21 @@
 use std::rc::Rc;
 
-use ala::{AnyElement, App, ElementId, IntoElement, SharedString, Window, div, prelude::*, px};
+use ala::{
+    Anchor, AnyElement, App, ElementId, IntoElement, SharedString, Window, div, prelude::*, px,
+};
 
 use crate::{
-    ActiveTheme as _, Colorize as _, Disableable as _, Icon, IconName, Sizable as _,
-    StyledExt as _,
-    button::{Button, ButtonLook},
+    ActiveTheme as _, Colorize as _, Disableable as _, Emphasis, Ground, Icon, IconName,
+    Sizable as _, StyledExt as _, Tone,
+    button::{Button, ButtonVariant, ButtonVariants as _},
     h_flex,
-    menu::{DropdownMenu as _, PopupMenu, PopupMenuItem},
     tooltip::Tooltip,
 };
-use penna::TextStyle;
-use zz_client::agent_settings::{self, LensSettings};
+use penna::{
+    Label, Row, RowLook, TextStyle,
+    components::{popover::Popover, slider::StepRail},
+};
+use zz_client::agent_settings::{self, LensSettings, ModeRisk};
 
 use penna::blocks::chat::{self, COMPOSER_FOOTER_HEIGHT};
 
@@ -24,50 +28,46 @@ pub fn composer_action_button(
     id: impl Into<ElementId>,
     action: ComposerAction,
     enabled: bool,
-    cx: &App,
+    on: Ground,
 ) -> Button {
     let action = match action {
         ComposerAction::Send => chat::ComposerAction::Send,
         ComposerAction::Queue => chat::ComposerAction::Queue,
         ComposerAction::Stop => chat::ComposerAction::Stop,
     };
-    chat::composer_action_button(id, action, enabled, cx)
+    chat::composer_action_button(id, action, enabled, on)
 }
 
-pub fn agent_directory_chip(
-    id: impl Into<ElementId>,
-    label: impl Into<SharedString>,
-    enabled: bool,
-    cx: &App,
-) -> Button {
-    chat::chrome_button(id)
-        .min_w_0()
-        .flex_shrink_1()
-        .max_w(px(220.0))
-        .overflow_hidden()
-        .icon(IconName::Folder)
-        .text_color(cx.theme().foreground.muted())
-        .tooltip("Move this chat to another folder")
-        .disabled(!enabled)
-        .child(div().min_w_0().text_ellipsis().child(label.into()))
-}
+const STEP: f32 = 32.0;
+const HEAD: f32 = 26.0;
+const PANEL: f32 = 264.0;
+const LIST_ROWS: f32 = 8.0;
 
-pub fn agent_settings_menu(
+pub fn agent_model_picker(
     id: impl Into<ElementId>,
     settings: &LensSettings,
     enabled: bool,
     on_pick: impl Fn(&'static str, String, &mut Window, &mut App) + 'static,
     cx: &App,
 ) -> AnyElement {
-    let summary = settings.summary();
+    let id = id.into();
     let choices = !settings.models.is_empty() || !settings.efforts.is_empty();
-    let button = chat::chrome_button(id)
-        .text_color(cx.theme().foreground.muted())
+    let label = if settings.model_label.is_empty() {
+        "Model".to_owned()
+    } else {
+        settings.model_label.clone()
+    };
+    let trigger = chat::chrome_button(SharedString::from(format!("{id}-trigger")))
+        .text_color(cx.theme().foreground.rest())
         .disabled(!enabled || !choices)
-        .child(if summary.is_empty() {
-            "Model".to_owned()
-        } else {
-            summary
+        .tooltip("Choose the model and effort")
+        .child(label)
+        .when(!settings.effort.is_empty(), |button| {
+            button.child(
+                div()
+                    .text_color(cx.theme().foreground.muted())
+                    .child(settings.effort_name().to_owned()),
+            )
         })
         .child(
             Icon::new(IconName::ChevronDown)
@@ -75,61 +75,218 @@ pub fn agent_settings_menu(
                 .text_color(cx.theme().foreground.muted()),
         );
     let settings = settings.clone();
-    let on_pick = Rc::new(on_pick);
-    button
-        .tooltip("Choose the model and effort")
-        .dropdown_menu(move |menu, _, _| {
-            let menu = choice_items(menu, "Model", agent_settings::MODEL, &settings, &on_pick);
-            let menu = if settings.models.is_empty() || settings.efforts.is_empty() {
-                menu
-            } else {
-                menu.separator()
-            };
-            choice_items(menu, "Effort", agent_settings::EFFORT, &settings, &on_pick)
-        })
+    let on_pick: Pick = Rc::new(on_pick);
+    Popover::new(id)
+        .anchor(Anchor::BottomRight)
+        .p(px(0.0))
+        .trigger(trigger)
+        .content(move |_, window, cx| model_panel(&settings, &on_pick, window, cx))
         .into_any_element()
 }
 
-fn choice_items<F>(
-    menu: PopupMenu,
-    title: &'static str,
-    option: &'static str,
+type Pick = Rc<dyn Fn(&'static str, String, &mut Window, &mut App)>;
+
+fn model_panel(
     settings: &LensSettings,
-    on_pick: &Rc<F>,
-) -> PopupMenu
-where
-    F: Fn(&'static str, String, &mut Window, &mut App) + 'static,
-{
-    let Some((choices, current)) = settings
-        .choices(option)
-        .filter(|(choices, _)| !choices.is_empty())
-    else {
-        return menu;
-    };
-    choices
-        .iter()
-        .fold(menu.item(PopupMenuItem::label(title)), |menu, choice| {
-            let pick = on_pick.clone();
-            let value = choice.value.clone();
-            menu.item(
-                PopupMenuItem::new(choice.name.clone())
-                    .checked(choice.value == current)
-                    .on_click(move |_, window, cx| pick(option, value.clone(), window, cx)),
-            )
+    on_pick: &Pick,
+    window: &mut Window,
+    cx: &mut App,
+) -> AnyElement {
+    let all = window.use_keyed_state("agent-model-all", cx, |_, _| false);
+    let open = *all.read(cx);
+    let rows = settings.listed_models(open).into_iter().map(|choice| {
+        let pick = on_pick.clone();
+        let value = choice.value.clone();
+        let chosen = choice.value == settings.model;
+        step_row(
+            SharedString::from(format!("agent-model-{}", choice.value)),
+            choice.name.clone(),
+            chosen,
+        )
+        .on_click(move |_, window, cx| {
+            pick(agent_settings::MODEL, value.clone(), window, cx);
         })
+        .when(chosen, |row| {
+            row.child(Icon::new(IconName::Check).with_size(px(12.0)))
+        })
+    });
+    let list = crate::v_flex()
+        .id("agent-models")
+        .flex_none()
+        .max_h(px(STEP * LIST_ROWS))
+        .overflow_y_scroll()
+        .children(rows);
+    let older = settings.older_models();
+    let more = (older > 0).then(|| more_row(open, older, all, cx));
+    let panel = crate::v_flex()
+        .w(px(PANEL))
+        .p(px(6.0))
+        .child(head("Model", cx))
+        .child(list)
+        .children(more);
+    if settings.efforts.is_empty() {
+        return panel.into_any_element();
+    }
+    panel
+        .child(
+            div()
+                .flex_none()
+                .h(px(1.0))
+                .mx(px(-6.0))
+                .my(px(6.0))
+                .bg(cx.theme().border()),
+        )
+        .child(
+            div()
+                .px(px(10.0))
+                .pb(px(10.0))
+                .child(effort_rail(settings, on_pick)),
+        )
+        .into_any_element()
 }
 
-pub fn agent_side_chat_button(
+fn more_row(open: bool, older: usize, all: ala::Entity<bool>, cx: &App) -> Row {
+    let muted = cx.theme().foreground.muted();
+    Row::new("agent-model-more", RowLook::Menu)
+        .state(crate::row_state(false, true))
+        .row_height(px(STEP))
+        .h_flex()
+        .flex_none()
+        .h(px(STEP))
+        .w_full()
+        .gap(px(8.0))
+        .px(px(10.0))
+        .click_cursor()
+        .on_click(move |_, _, cx| {
+            all.update(cx, |all, cx| {
+                *all = !*all;
+                cx.notify();
+            });
+        })
+        .child(
+            Label::new(
+                TextStyle::Small,
+                if open { "Fewer models" } else { "More models" },
+            )
+            .flex_1()
+            .min_w_0()
+            .text_color(muted),
+        )
+        .children((!open).then(|| {
+            Label::new(TextStyle::Caption, older.to_string())
+                .flex_none()
+                .text_color(muted)
+        }))
+        .child(
+            Icon::new(if open {
+                IconName::ChevronUp
+            } else {
+                IconName::ChevronDown
+            })
+            .with_size(px(10.0))
+            .text_color(muted),
+        )
+}
+
+fn head(text: &'static str, cx: &App) -> Label {
+    Label::new(TextStyle::Caption, text)
+        .strong()
+        .flex_none()
+        .h(px(HEAD))
+        .px(px(10.0))
+        .text_color(cx.theme().foreground.muted())
+}
+
+fn step_row(id: impl Into<ElementId>, name: String, chosen: bool) -> Row {
+    Row::new(id, RowLook::Menu)
+        .state(crate::row_state(chosen, true))
+        .row_height(px(STEP))
+        .h_flex()
+        .flex_none()
+        .h(px(STEP))
+        .w_full()
+        .gap(px(8.0))
+        .px(px(10.0))
+        .click_cursor()
+        .child(
+            Label::new(TextStyle::Small, name)
+                .truncate()
+                .flex_1()
+                .min_w_0(),
+        )
+}
+
+fn effort_rail(settings: &LensSettings, on_pick: &Pick) -> StepRail {
+    let pick = on_pick.clone();
+    let values = settings
+        .efforts
+        .iter()
+        .map(|choice| choice.value.clone())
+        .collect::<Vec<_>>();
+    let rail = StepRail::new(
+        "agent-effort",
+        "Effort",
+        settings
+            .efforts
+            .iter()
+            .map(|choice| SharedString::from(choice.name.clone()))
+            .collect(),
+        values.iter().position(|value| *value == settings.effort),
+        move |index, window, cx| {
+            if let Some(value) = values.get(index) {
+                pick(agent_settings::EFFORT, value.clone(), window, cx);
+            }
+        },
+    );
+    if settings.effort_starts_unset() {
+        rail.open_start()
+    } else {
+        rail
+    }
+}
+
+#[must_use]
+pub const fn mode_tone(risk: ModeRisk) -> Option<Tone> {
+    match risk {
+        ModeRisk::Asks => None,
+        ModeRisk::ReadOnly => Some(Tone::Success),
+        ModeRisk::Unasked => Some(Tone::Warning),
+        ModeRisk::Unguarded => Some(Tone::Danger),
+    }
+}
+
+const fn mode_icon(risk: ModeRisk) -> IconName {
+    match risk {
+        ModeRisk::Asks => IconName::CircleUser,
+        ModeRisk::ReadOnly => IconName::Eye,
+        ModeRisk::Unasked => IconName::Pencil,
+        ModeRisk::Unguarded => IconName::TriangleAlert,
+    }
+}
+
+pub fn agent_mode_chip(
     id: impl Into<ElementId>,
+    provider: zz_protocol::AgentProvider,
+    settings: &LensSettings,
     enabled: bool,
-    on_click: impl Fn(&mut Window, &mut App) + 'static,
-) -> Button {
-    chat::chrome_button(id)
-        .look(ButtonLook::Quiet)
-        .icon(IconName::ChatPlus)
-        .tooltip("Side chat: a floating copy of this chat for a quick question")
+    on_pick: impl Fn(String, &mut Window, &mut App) + 'static,
+    cx: &App,
+) -> Option<AnyElement> {
+    let next = settings.next_mode()?.to_owned();
+    let risk = agent_settings::mode_risk(provider, &settings.mode);
+    let chip = chat::chrome_button(id)
+        .icon(mode_icon(risk))
+        .tooltip("Permissions: click or Shift-Tab for the next mode")
         .disabled(!enabled)
-        .on_click(move |_, window, cx| on_click(window, cx))
+        .child(settings.mode_name().to_owned())
+        .on_click(move |_, window, cx| on_pick(next.clone(), window, cx));
+    Some(
+        match mode_tone(risk) {
+            Some(tone) => chip.with_variant(ButtonVariant::Paint(tone, Emphasis::Soft)),
+            None => chip.text_color(cx.theme().foreground.muted()),
+        }
+        .into_any_element(),
+    )
 }
 
 pub fn git_summary_footer(

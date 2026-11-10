@@ -4,9 +4,13 @@ use ala::{
 };
 use penna::{
     ActiveTheme as _, Card, CardLook, Colorize as _, Disableable as _, Emphasis, Icon, IconName,
-    Label, Sizable as _, Space, StyledExt as _, TextStyle, Tone, components::badge::Badge,
-    components::kbd::Kbd, components::list::ListItem, components::separator::Separator,
-    components::spinner::Spinner, h_flex, v_flex,
+    Label, Sizable as _, Space, StyledExt as _, TextStyle, Tone,
+    components::badge::Badge,
+    components::kbd::{Kbd, Keycap},
+    components::list::ListItem,
+    components::separator::Separator,
+    components::spinner::Spinner,
+    h_flex, v_flex,
 };
 
 use super::support::{Probe, hover, when_visible};
@@ -21,7 +25,7 @@ pub const STORY: Story = Story {
         Section {
             id: "kbd",
             name: "Kbd",
-            summary: "One Keystroke as a pill. Mac platforms, including a web build in a Mac browser, draw glyphs; others spell modifiers out (Ctrl, Alt, Shift, Win).",
+            summary: "One Keystroke as a pill. Mac platforms, including a web build in a Mac browser, draw glyphs; others spell modifiers out (Ctrl, Alt, Shift, Win). Keycap takes .emphasis(..) and .tone(..): solid lights it, as a picked answer's key; Keycap::icon holds one glyph in a square cap; .disabled(true) dims it with its row.",
             build: |_, cx| stateless(kbds, cx),
         },
         Section {
@@ -105,7 +109,46 @@ fn kbds(_: &mut Window, _: &mut App) -> AnyElement {
                 .child(key("cmd-shift-p").lowercase())
                 .child(key("ctrl-a").lowercase()),
         )
+        .state(
+            "emphasis",
+            row().children(Emphasis::ALL.map(|emphasis| {
+                Keycap::new(emphasis.name())
+                    .emphasis(emphasis)
+                    .id(SharedString::from(format!("keycap-{}", emphasis.name())))
+            })),
+        )
+        .state(
+            "solid in each tone, a lit key",
+            row().children(Tone::ALL.map(|tone| {
+                Keycap::new(tone.name())
+                    .tone(tone)
+                    .emphasis(Emphasis::Solid)
+                    .id(SharedString::from(format!("keycap-solid-{}", tone.name())))
+            })),
+        )
+        .state(
+            "small: rest, lit, a glyph, disabled and lit disabled",
+            row()
+                .child(Keycap::new("1").small().id("keycap-small"))
+                .child(lit(Keycap::new("2")).id("keycap-small-lit"))
+                .child(lit(Keycap::icon(IconName::Check)).id("keycap-small-glyph"))
+                .child(
+                    Keycap::new("3")
+                        .small()
+                        .disabled(true)
+                        .id("keycap-small-disabled"),
+                )
+                .child(
+                    lit(Keycap::new("4"))
+                        .disabled(true)
+                        .id("keycap-small-lit-disabled"),
+                ),
+        )
         .into_any_element()
+}
+
+fn lit(cap: Keycap) -> Keycap {
+    cap.small().tone(Tone::Accent).emphasis(Emphasis::Solid)
 }
 
 fn badges(_: &mut Window, cx: &mut App) -> AnyElement {

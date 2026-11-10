@@ -1,12 +1,14 @@
 use penna::blocks::chat::{
-    CHAT_CONTENT_MAX_WIDTH, ChatComposer, Composer, TaskTrayAction, TrayPanel, composer_add_button,
-    empty_state, permission_card, permission_option, queue_chip, spinner_phase, suggestion_list,
-    suggestion_list_height, suggestion_row,
+    CHAT_CONTENT_MAX_WIDTH, ChatComposer, Composer, composer_add_button, composer_ground,
+    empty_state, queue_chip, suggestion_list, suggestion_list_height, suggestion_row,
 };
-use std::{collections::BTreeSet, sync::Arc};
+use std::{cell::Cell, collections::BTreeSet, rc::Rc, sync::Arc};
+use zz_ui::agent::ask::{
+    Approval, ApprovalAction, AskChoice, AskParts, AskSubject, PromptRow, approval_subject, rejects,
+};
 use zz_ui::agent::controls::{
     ComposerAction, composer_action, composer_action_button, context_usage_meter,
-    git_summary_footer,
+    git_summary_footer, mode_tone,
 };
 #[cfg(test)]
 use zz_ui::agent::controls::{context_usage_fraction, context_usage_tooltip, git_file_count_label};
@@ -14,20 +16,24 @@ use zz_ui::agent::controls::{context_usage_fraction, context_usage_tooltip, git_
 use zz_ui::agent::presentation::MAX_RENDERED_ERROR_BYTES;
 #[cfg(test)]
 use zz_ui::agent::presentation::rendered_error;
-use zz_ui::agent::presentation::{agent_welcome, error_card};
+use zz_ui::agent::presentation::{agent_resume_welcome, agent_welcome, error_card};
+use zz_ui::agent::preview::ViewRequest;
 use zz_ui::agent::question::{QuestionCardAction, QuestionCardState, QuestionCardStep};
-use zz_ui::agent::tasks::task_tray;
+use zz_ui::agent::resume::{RESUME_FILTER_PLACEHOLDER, RESUME_WIDTH, resume_filter, resume_rows};
+use zz_ui::agent::tasks::plan_tray;
 
 use ala::{
-    AnyElement, Context, Entity, EntityId, FocusHandle, Focusable, Image, IntoElement,
-    KeyDownEvent, MouseButton, MouseDownEvent, Render, ScrollStrategy, SharedString, Subscription,
+    Bounds, Context, Entity, EntityId, FocusHandle, Focusable, Image, IntoElement, KeyDownEvent,
+    MouseButton, MouseDownEvent, Pixels, Render, ScrollStrategy, SharedString, Subscription,
     UniformListScrollHandle, Window, div, prelude::*, px, uniform_list,
 };
+use zz_client::agent_ask::{DENY_PLACEHOLDER, REPLAN_PLACEHOLDER};
 use zz_client::agent_completion::{
     CommandCompletion, active_command_hint, command_label, composer_completions,
     meaningful_command_description, pane_commands,
 };
-use zz_client::agent_settings::{ComposerSetter, composer_setter};
+use zz_client::agent_resume::ResumeRow;
+use zz_client::agent_settings::{self, ComposerSetter, composer_setter, mode_risk};
 use zz_ui::{
     command::target_picker,
     target::{TargetPicker, mention_at_caret, mention_keys},
@@ -35,23 +41,28 @@ use zz_ui::{
 
 use crate::command::palette::palette_backend;
 use penna::{
-    components::button::Button,
-    components::input::{IndentInline, InputEvent, InputState, MoveDown, MoveUp},
-    h_flex,
+    ActiveTheme as _, Ground,
+    components::input::{
+        IndentInline, InputEvent, InputState, MoveDown, MoveLeft, MoveRight, MoveUp, OutdentInline,
+    },
+    h_flex, v_flex,
 };
-use zz_protocol::{AgentProvider, CommandInvocation, PaneId};
+use zz_protocol::{AgentProvider, CommandInvocation, PaneId, ViewContent};
 use zz_ui::agent::{composer_attachment, plan_progress};
 
 use crate::{
     agent::attachment as agent_attachment,
     agent::controller::{
-        AgentCommand, AgentConnectionState, AgentController, AgentPaneState, AgentPermissionKind,
+        AgentCommand, AgentConnectionState, AgentController, AgentPaneState,
         AgentPermissionRequest, AgentSessionCapabilities, AgentThreadEntry,
     },
     config::pane_content_radii,
     mux::client::MuxClient,
     window::corners::{WindowCorners, round_div_radii},
 };
+
+#[cfg(test)]
+use crate::agent::controller::AgentPermissionKind;
 
 mod chat;
 mod harness;
@@ -123,7 +134,7 @@ impl PermissionWizard {
 
     fn page_label(&self, requests: &[AgentPermissionRequest]) -> Option<String> {
         let count = self.pages(requests).len();
-        (count > 1).then(|| format!("{}/{count}", self.page + 1))
+        (count > 1).then(|| format!("{} of {count}", self.page + 1))
     }
 
     fn highlight(&mut self, option: usize) -> bool {
@@ -207,6 +218,8 @@ pub(crate) struct AgentView {
     mux: Entity<MuxClient>,
     controller: Entity<AgentController>,
     input: Entity<InputState>,
+    reply: Entity<InputState>,
+    filter: Entity<InputState>,
     visible: bool,
     pane_state: AgentPaneState,
     chat_revision: u64,
@@ -214,7 +227,7 @@ pub(crate) struct AgentView {
     submission_error: Option<Arc<str>>,
     permission_wizard: PermissionWizard,
     question: Option<QuestionCardState>,
-    tray_open: Option<TrayPanel>,
+    plan_open: bool,
     attachments: Vec<Arc<Image>>,
     mention: Entity<TargetPicker>,
     completions: Arc<[CommandCompletion]>,
@@ -224,8 +237,11 @@ pub(crate) struct AgentView {
     last_cursor: usize,
     window_corners: WindowCorners,
     floats: bool,
+    active: bool,
     chat: zz_ui::agent::chat::ChatPane,
-    chat_inline: bool,
+    pane_canvas: Rc<Cell<Bounds<Pixels>>>,
+    resume_for: Option<(Option<Arc<str>>, std::path::PathBuf)>,
+    resume_revision: u64,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -256,6 +272,35 @@ impl AgentView {
                 InputEvent::Change if view.submission_error.take().is_some() => cx.notify(),
                 InputEvent::PasteImages(images) => view.attach_images(images, cx),
                 _ => {}
+            },
+        );
+        let reply = cx.new(|cx| {
+            InputState::new(window, cx)
+                .auto_grow(1, 8)
+                .submit_on_enter(true)
+                .placeholder(DENY_PLACEHOLDER)
+        });
+        let reply_subscription = cx.subscribe_in(
+            &reply,
+            window,
+            |view, _, event: &InputEvent, window, cx| match event {
+                InputEvent::PressEnter { shift: false, .. } => view.send_approval(window, cx),
+                InputEvent::Change => cx.notify(),
+                _ => {}
+            },
+        );
+        let filter =
+            cx.new(|cx| InputState::new(window, cx).placeholder(RESUME_FILTER_PLACEHOLDER));
+        let filter_observer = cx.observe(&filter, |view, _, cx| view.synchronize_filter(cx));
+        let filter_subscription = cx.subscribe_in(
+            &filter,
+            window,
+            |view, _, event: &InputEvent, window, cx| {
+                if matches!(event, InputEvent::PressEnter { shift: false, .. })
+                    && let (_, Some(index)) = view.resume(cx)
+                {
+                    view.pick_resume(index, window, cx);
+                }
             },
         );
         let cwd = mux
@@ -292,10 +337,13 @@ impl AgentView {
             }
         });
         let floats = zz_client::floating::pane_floats(&mux.read(cx).snapshot(), pane);
+        let active = mux.read(cx).active_pane() == Some(pane);
         let mux_observer = cx.observe(&mux, |view, mux, cx| {
             let floats = zz_client::floating::pane_floats(&mux.read(cx).snapshot(), view.pane);
-            if view.floats != floats {
+            let active = mux.read(cx).active_pane() == Some(view.pane);
+            if view.floats != floats || view.active != active {
                 view.floats = floats;
+                view.active = active;
                 cx.notify();
             }
         });
@@ -310,6 +358,8 @@ impl AgentView {
             mux,
             controller,
             input,
+            reply,
+            filter,
             visible: false,
             pane_state,
             chat_revision,
@@ -317,7 +367,7 @@ impl AgentView {
             submission_error: None,
             permission_wizard: PermissionWizard::default(),
             question: None,
-            tray_open: None,
+            plan_open: false,
             attachments: Vec::new(),
             mention,
             completions: Arc::from([]),
@@ -327,11 +377,17 @@ impl AgentView {
             last_cursor: 0,
             window_corners: WindowCorners::NONE,
             floats,
+            active,
             chat: zz_ui::agent::chat::ChatPane::default(),
-            chat_inline: false,
+            pane_canvas: Rc::default(),
+            resume_for: None,
+            resume_revision: 0,
             _subscriptions: vec![
                 input_observer,
                 input_subscription,
+                reply_subscription,
+                filter_observer,
+                filter_subscription,
                 controller_observer,
                 mux_observer,
                 chat_release,
@@ -340,7 +396,46 @@ impl AgentView {
     }
 
     pub(crate) fn focus(&self, cx: &ala::App) -> FocusHandle {
-        self.input.read(cx).focus_handle(cx)
+        self.row_input().read(cx).focus_handle(cx)
+    }
+
+    fn asking_input(&self) -> Option<Entity<InputState>> {
+        let head = self
+            .permission_wizard
+            .current(&self.pane_state.pending_permissions)?;
+        if let Some(card) = self
+            .question
+            .as_ref()
+            .filter(|card| card.request_id() == head.request_id)
+        {
+            return card.other_input(card.card.focused()).cloned();
+        }
+        (head.questions.is_empty() && head.options.iter().any(|option| rejects(option.kind)))
+            .then(|| self.reply.clone())
+    }
+
+    fn row_input(&self) -> Entity<InputState> {
+        self.asking_input().unwrap_or_else(|| self.input.clone())
+    }
+
+    fn synchronize_row_focus(&self, window: &mut Window, cx: &mut Context<Self>) {
+        let row = self.row_input().read(cx).focus_handle(cx);
+        if row.is_focused(window) {
+            return;
+        }
+        let held = self.input.read(cx).focus_handle(cx).is_focused(window)
+            || self.reply.read(cx).focus_handle(cx).is_focused(window)
+            || self
+                .question
+                .as_ref()
+                .is_some_and(|card| card.editing(window, cx));
+        if held {
+            row.focus(window, cx);
+        }
+    }
+
+    pub(crate) fn share_pane_canvas(&mut self, canvas: Rc<Cell<Bounds<Pixels>>>) {
+        self.pane_canvas = canvas;
     }
 
     pub(crate) fn set_window_corners(&mut self, corners: WindowCorners, cx: &mut Context<Self>) {
@@ -411,6 +506,11 @@ impl AgentView {
                 != next_state.available_commands.as_ref();
         let chat_changed = self.chat_revision != chat_revision;
         self.chat_revision = chat_revision;
+        let resume_revision = controller
+            .pane_resume(self.pane)
+            .map_or(0, |(_, revision)| revision);
+        let resume_changed = self.resume_revision != resume_revision;
+        self.resume_revision = resume_revision;
         if state_changed {
             self.pane_state = next_state;
         }
@@ -421,7 +521,214 @@ impl AgentView {
             );
             self.recompute_completions(&commands);
         }
-        state_changed || chat_changed
+        state_changed || chat_changed || resume_changed
+    }
+
+    fn lists_chats(&self, cx: &ala::App) -> bool {
+        self.pane_state.connection == AgentConnectionState::Ready
+            && !self
+                .controller
+                .read(cx)
+                .pane_chat(self.pane)
+                .is_some_and(zz_ui::agent::chat::shows_chat)
+    }
+
+    fn synchronize_filter(&mut self, cx: &mut Context<Self>) {
+        let text = self.filter.read(cx).value();
+        let pane = self.pane;
+        let same = self
+            .controller
+            .read(cx)
+            .pane_resume(pane)
+            .is_none_or(|(resume, _)| resume.filter() == text.as_ref());
+        if same {
+            return;
+        }
+        self.controller.update(cx, |controller, cx| {
+            controller.update_resume(pane, cx, |resume, _| {
+                resume.set_filter(&text);
+                None
+            });
+        });
+    }
+
+    fn clear_filter(&self, window: &mut Window, cx: &mut Context<Self>) {
+        self.filter
+            .update(cx, |filter, cx| filter.set_value("", window, cx));
+    }
+
+    fn request_resume(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if !self.lists_chats(cx) {
+            return;
+        }
+        let key = (
+            self.pane_state.session_id.clone(),
+            self.pane_state.cwd.clone(),
+        );
+        if self.resume_for.as_ref() == Some(&key) {
+            return;
+        }
+        self.resume_for = Some(key);
+        self.clear_filter(window, cx);
+        let pane = self.pane;
+        self.controller
+            .update(cx, |controller, cx| controller.request_resume(pane, cx));
+    }
+
+    fn resume(&self, cx: &ala::App) -> (Vec<ResumeRow>, Option<usize>) {
+        if !self.lists_chats(cx) {
+            return (Vec::new(), None);
+        }
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |elapsed| elapsed.as_secs());
+        self.controller.read(cx).pane_resume(self.pane).map_or_else(
+            Default::default,
+            |(resume, _)| {
+                let rows = resume.rows(
+                    &self.pane_state.cwd,
+                    self.pane_state.session_id.as_deref(),
+                    now,
+                );
+                let selected = resume.selection(&rows);
+                (rows, selected)
+            },
+        )
+    }
+
+    fn step_resume(&mut self, down: bool, window: &mut Window, cx: &mut Context<Self>) -> bool {
+        if self.composer_has_content() {
+            return false;
+        }
+        let (rows, _) = self.resume(cx);
+        let listed = self.filter.read(cx).focus_handle(cx).is_focused(window);
+        if rows.is_empty() || (down && !listed) {
+            return false;
+        }
+        let pane = self.pane;
+        self.controller.update(cx, |controller, cx| {
+            controller.update_resume(pane, cx, |resume, _| {
+                resume.step(&rows, down);
+                None
+            });
+        });
+        if !listed {
+            self.filter
+                .update(cx, |filter, cx| filter.focus(window, cx));
+        } else if self.resume(cx).1.is_none() {
+            self.input.update(cx, |input, cx| input.focus(window, cx));
+        }
+        true
+    }
+
+    fn pick_resume(&mut self, index: usize, window: &mut Window, cx: &mut Context<Self>) {
+        let (rows, _) = self.resume(cx);
+        let Some(row) = rows.get(index).cloned() else {
+            return;
+        };
+        let pane = self.pane;
+        self.controller.update(cx, |controller, cx| {
+            controller.update_resume(pane, cx, |resume, cwd| resume.pick(&row, cwd));
+        });
+        if matches!(row, ResumeRow::Project { .. }) {
+            self.clear_filter(window, cx);
+        }
+    }
+
+    fn hover_resume(&mut self, index: usize, cx: &mut Context<Self>) {
+        let (rows, selected) = self.resume(cx);
+        if selected == Some(index) || !rows.get(index).is_some_and(ResumeRow::picks) {
+            return;
+        }
+        let pane = self.pane;
+        self.controller.update(cx, |controller, cx| {
+            controller.update_resume(pane, cx, |resume, _| {
+                resume.select(index);
+                None
+            });
+        });
+    }
+
+    fn leave_resume(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
+        if !self.filter.read(cx).value().is_empty() {
+            self.clear_filter(window, cx);
+            return true;
+        }
+        let (rows, selected) = self.resume(cx);
+        let opened = matches!(rows.first(), Some(ResumeRow::Heading { back: true, .. }));
+        let listed = self.filter.read(cx).focus_handle(cx).is_focused(window);
+        if selected.is_none() && !opened {
+            if listed {
+                self.input.update(cx, |input, cx| input.focus(window, cx));
+            }
+            return listed;
+        }
+        let pane = self.pane;
+        self.controller.update(cx, |controller, cx| {
+            controller.update_resume(pane, cx, |resume, _| {
+                if !resume.clear_selection() {
+                    resume.back();
+                }
+                None
+            });
+        });
+        true
+    }
+
+    fn next_mode(&mut self, _: &OutdentInline, _: &mut Window, cx: &mut Context<Self>) {
+        let Some(mode) = self
+            .pane_state
+            .settings
+            .as_ref()
+            .filter(|_| self.pane_state.connection.accepts_setting())
+            .and_then(|settings| settings.next_mode())
+            .map(str::to_owned)
+        else {
+            return;
+        };
+        let pane = self.pane;
+        self.controller.update(cx, |controller, cx| {
+            controller.set_option(pane, agent_settings::MODE, &mode, cx);
+        });
+        cx.stop_propagation();
+    }
+
+    fn render_resume(
+        &self,
+        rows: &[ResumeRow],
+        selected: Option<usize>,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement + use<> {
+        let pick = cx.entity();
+        let hover = pick.clone();
+        let items = resume_rows(
+            self.pane.0,
+            rows,
+            selected,
+            move |index, window, cx| {
+                pick.update(cx, |view, cx| view.pick_resume(index, window, cx));
+            },
+            move |index, _, cx| hover.update(cx, |view, cx| view.hover_resume(index, cx)),
+            cx,
+        );
+        div().size_full().px_3().child(
+            v_flex()
+                .size_full()
+                .max_w(px(RESUME_WIDTH))
+                .mx_auto()
+                .pt(px(36.0))
+                .pb_3()
+                .child(agent_resume_welcome(self.pane_state.provider, cx))
+                .child(resume_filter(&self.filter, cx))
+                .child(
+                    div()
+                        .id(("agent-resume", self.pane.0))
+                        .flex_1()
+                        .min_h_0()
+                        .overflow_y_scroll()
+                        .child(v_flex().w_full().gap(px(2.0)).children(items)),
+                ),
+        )
     }
 
     fn recompute_completions(&mut self, commands: &[AgentCommand]) {
@@ -452,6 +759,12 @@ impl AgentView {
             self.accept_selected_completion(window, cx);
             return;
         }
+        if !self.composer_has_content()
+            && let (_, Some(index)) = self.resume(cx)
+        {
+            self.pick_resume(index, window, cx);
+            return;
+        }
         if self.confirm_permission(window, cx) {
             return;
         }
@@ -459,12 +772,12 @@ impl AgentView {
     }
 
     fn confirm_permission(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
-        if !self.input.read(cx).value().trim().is_empty() || self.asks_out_of_view() {
+        if !self.input.read(cx).value().trim().is_empty() {
             return false;
         }
         self.synchronize_question_card(window, cx);
-        if let Some(card) = &self.question {
-            let step = card.card.submit();
+        if let Some(card) = self.question.as_mut() {
+            let step = card.card.enter();
             self.apply_question_step(step, window, cx);
             return true;
         }
@@ -494,11 +807,6 @@ impl AgentView {
         true
     }
 
-    fn composer_engaged(&self, window: &Window, cx: &ala::App) -> bool {
-        let input = self.input.read(cx);
-        !input.value().trim().is_empty() && input.focus_handle(cx).is_focused(window)
-    }
-
     fn composer_has_content(&self) -> bool {
         !self.last_input.trim().is_empty() || !self.attachments.is_empty()
     }
@@ -509,29 +817,71 @@ impl AgentView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> bool {
-        if self.pane_state.pending_permissions.is_empty() || self.asks_out_of_view() {
-            return false;
-        }
         let modifiers = event.keystroke.modifiers;
         if modifiers.platform || modifiers.alt || modifiers.control || modifiers.function {
             return false;
         }
-        let engaged = self.composer_engaged(window, cx);
+        self.ask_key(event.keystroke.key.as_str(), modifiers.shift, window, cx)
+    }
+
+    fn ask_key(
+        &mut self,
+        key: &str,
+        shift: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        if self.pane_state.pending_permissions.is_empty() {
+            return false;
+        }
         self.synchronize_question_card(window, cx);
-        if self.question.is_some() {
-            return self.handle_question_key(event, engaged, window, cx);
+        let typed = !self.row_input().read(cx).value().trim().is_empty();
+        if typed && key != "escape" {
+            return false;
+        }
+        if let Some(card) = self.question.as_mut() {
+            let step = card.key(key, shift, window, cx);
+            return self.apply_question_step(step, window, cx);
         }
         let requests = self.pane_state.pending_permissions.clone();
-        let step = match event.keystroke.key.as_str() {
-            "escape" if !engaged => self.permission_wizard.cancel(&requests),
-            key => match key.parse::<usize>() {
-                Ok(digit) if (1..=9).contains(&digit) => self
-                    .permission_wizard
-                    .press_digit(&requests, digit, engaged),
+        let Some(count) = self
+            .permission_wizard
+            .current(&requests)
+            .map(|head| head.options.len())
+        else {
+            return false;
+        };
+        let step = match key {
+            "escape" => self.permission_wizard.cancel(&requests),
+            "up" | "down" if count > 0 => {
+                let highlighted = self.permission_wizard.highlighted;
+                let next = if key == "up" {
+                    (highlighted + count - 1) % count
+                } else {
+                    (highlighted + 1) % count
+                };
+                if self.permission_wizard.highlight(next) {
+                    cx.notify();
+                }
+                return true;
+            }
+            _ => match key.parse::<usize>() {
+                Ok(digit) if (1..=count.min(9)).contains(&digit) => {
+                    self.permission_wizard.press_digit(&requests, digit, false)
+                }
+                Ok(digit) if digit == count + 1 && self.asking_input().is_some() => {
+                    return true;
+                }
                 _ => PermissionStep::Stay,
             },
         };
         self.apply_permission_step(step, cx)
+    }
+
+    fn ask_arrow(&mut self, key: &str, window: &mut Window, cx: &mut Context<Self>) {
+        if self.completions.is_empty() && self.ask_key(key, false, window, cx) {
+            cx.stop_propagation();
+        }
     }
 
     fn navigate_completion(&mut self, direction: isize, cx: &mut Context<Self>) {
@@ -582,24 +932,45 @@ impl AgentView {
 
     fn complete(&mut self, _: &IndentInline, window: &mut Window, cx: &mut Context<Self>) {
         if self.completions.is_empty() {
+            self.ask_arrow("tab", window, cx);
             return;
         }
         self.accept_selected_completion(window, cx);
         cx.stop_propagation();
     }
 
-    fn move_completion_up(&mut self, _: &MoveUp, _: &mut Window, cx: &mut Context<Self>) {
-        if !self.completions.is_empty() {
-            self.navigate_completion(-1, cx);
-            cx.stop_propagation();
+    fn move_completion_up(&mut self, _: &MoveUp, window: &mut Window, cx: &mut Context<Self>) {
+        if self.completions.is_empty() {
+            if self.step_resume(false, window, cx) {
+                cx.stop_propagation();
+                return;
+            }
+            self.ask_arrow("up", window, cx);
+            return;
         }
+        self.navigate_completion(-1, cx);
+        cx.stop_propagation();
     }
 
-    fn move_completion_down(&mut self, _: &MoveDown, _: &mut Window, cx: &mut Context<Self>) {
-        if !self.completions.is_empty() {
-            self.navigate_completion(1, cx);
-            cx.stop_propagation();
+    fn move_completion_down(&mut self, _: &MoveDown, window: &mut Window, cx: &mut Context<Self>) {
+        if self.completions.is_empty() {
+            if self.step_resume(true, window, cx) {
+                cx.stop_propagation();
+                return;
+            }
+            self.ask_arrow("down", window, cx);
+            return;
         }
+        self.navigate_completion(1, cx);
+        cx.stop_propagation();
+    }
+
+    fn move_ask_left(&mut self, _: &MoveLeft, window: &mut Window, cx: &mut Context<Self>) {
+        self.ask_arrow("left", window, cx);
+    }
+
+    fn move_ask_right(&mut self, _: &MoveRight, window: &mut Window, cx: &mut Context<Self>) {
+        self.ask_arrow("right", window, cx);
     }
 
     fn on_key_down(&mut self, event: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
@@ -608,6 +979,9 @@ impl AgentView {
             return;
         }
         if self.completions.is_empty() {
+            if event.keystroke.key == "escape" && self.leave_resume(window, cx) {
+                cx.stop_propagation();
+            }
             return;
         }
         let modifiers = event.keystroke.modifiers;
@@ -725,7 +1099,18 @@ impl AgentView {
         cx.notify();
     }
 
-    fn render_attachments(&self, view: &Entity<Self>, cx: &ala::App) -> Option<impl IntoElement> {
+    fn pane_ground(&self, cx: &ala::App) -> Ground {
+        if self.floats || !crate::config::pane_gaps(cx) {
+            return cx.theme().ground();
+        }
+        zz_ui::pane_look::PaneLook::global(cx).ground(
+            cx.theme(),
+            crate::theme::chrome_background(cx),
+            self.active,
+        )
+    }
+
+    fn render_attachments(&self, view: &Entity<Self>, ground: Ground) -> Option<impl IntoElement> {
         if self.attachments.is_empty() {
             return None;
         }
@@ -741,7 +1126,7 @@ impl AgentView {
                             view.remove_attachment(index, cx);
                         });
                     },
-                    cx,
+                    ground,
                 )
             }),
         ))
@@ -768,124 +1153,160 @@ impl AgentView {
         empty_state(message, pane_is_busy(state.connection), view, cx)
     }
 
-    fn render_permission_wizard(
+    fn ask_parts(
         &self,
         state: &AgentPaneState,
         view: &Entity<Self>,
-        cx: &ala::App,
-    ) -> Option<AnyElement> {
-        let permission = self.permission_wizard.current(&state.pending_permissions)?;
-        self.render_permission(permission, state, view, cx)
-    }
-
-    fn render_permission(
-        &self,
-        permission: &AgentPermissionRequest,
-        state: &AgentPaneState,
-        view: &Entity<Self>,
-        cx: &ala::App,
-    ) -> Option<AnyElement> {
-        let request_id = permission.request_id;
-        let current = self
+        inside: Ground,
+        cx: &mut ala::App,
+    ) -> Option<AskParts> {
+        let head = self.permission_wizard.current(&state.pending_permissions)?;
+        let request_id = head.request_id;
+        let counter = self
             .permission_wizard
-            .current(&state.pending_permissions)
-            .is_some_and(|head| head.request_id == request_id);
-        let counter = current
-            .then(|| {
-                self.permission_wizard
-                    .page_label(&state.pending_permissions)
-            })
-            .flatten();
+            .page_label(&state.pending_permissions)
+            .map(SharedString::from);
         if let Some(card) = self
             .question
             .as_ref()
-            .filter(|card| current && card.request_id() == request_id)
+            .filter(|card| card.request_id() == request_id)
         {
             let view = view.clone();
-            return Some(
-                card.render(
-                    &format!("agent-question-{}-{request_id}", self.pane.0),
-                    counter.map(Into::into),
-                    true,
-                    move |action, window, cx| {
-                        view.update(cx, |view, cx| view.question_action(action, window, cx));
-                    },
-                    cx,
-                )
-                .into_any_element(),
-            );
-        }
-        if !permission.questions.is_empty() {
-            return None;
-        }
-        if permission.options.is_empty() {
-            return None;
-        }
-        let enabled = !self.permission_wizard.answered.contains(&request_id);
-        let highlighted = current.then_some(self.permission_wizard.highlighted);
-        let options = permission
-            .options
-            .iter()
-            .enumerate()
-            .map(|(index, option)| {
-                let answer_view = view.clone();
-                let hover_view = view.clone();
-                permission_option(
-                    format!(
-                        "agent-permission-option-{}-{request_id}-{index}",
-                        self.pane.0
-                    ),
-                    index,
-                    option.name.clone(),
-                    matches!(
-                        option.kind,
-                        AgentPermissionKind::RejectOnce | AgentPermissionKind::RejectAlways
-                    ),
-                    highlighted == Some(index),
-                    enabled,
-                    cx,
-                )
-                .when(enabled, |tile| {
-                    tile.on_click(move |_, _, cx| {
-                        answer_view.update(cx, |view, cx| {
-                            view.answer_request(request_id, Some(index), cx);
-                        });
-                        cx.stop_propagation();
-                    })
-                })
-                .when(current, |tile| {
-                    tile.on_hover(move |hovered, _, cx| {
-                        if *hovered {
-                            hover_view.update(cx, |view, cx| {
-                                if view.permission_wizard.highlight(index) {
-                                    cx.notify();
-                                }
-                            });
-                        }
-                    })
-                })
-                .into_any_element()
-            })
-            .collect::<Vec<_>>();
-        let cancel_view = view.clone();
-        Some(
-            permission_card(
-                permission.title.clone(),
-                counter.map(Into::into),
-                options,
-                Button::new(format!(
-                    "agent-permission-cancel-{}-{request_id}",
-                    self.pane.0
-                ))
-                .tooltip("Cancel request")
-                .on_click(move |_, _, cx| {
-                    cancel_view.update(cx, |view, cx| view.answer_request(request_id, None, cx));
-                    cx.stop_propagation();
-                }),
+            return Some(card.parts(
+                &format!("agent-question-{}-{request_id}", self.pane.0),
+                counter,
+                true,
+                move |action, window, cx| {
+                    view.update(cx, |view, cx| view.question_action(action, window, cx));
+                },
+                inside,
                 cx,
-            )
-            .into_any_element(),
+            ));
+        }
+        if !head.questions.is_empty() || head.options.is_empty() {
+            return None;
+        }
+        let cwd = self.chat_cwd();
+        let cwd = if self.mux.read(cx).attached_is_local() {
+            zz_client::providers::home_relative(&cwd)
+        } else {
+            cwd
+        };
+        let subject = approval_subject(
+            self.controller.read(cx).pane_chat(self.pane),
+            request_id,
+            &head.title,
+            Some(&cwd),
+        );
+        let placeholder = match subject {
+            AskSubject::Plan { .. } => REPLAN_PLACEHOLDER,
+            AskSubject::Tool { .. } => DENY_PLACEHOLDER,
+        };
+        self.reply
+            .update(cx, |input, cx| input.set_placeholder(placeholder, cx));
+        let reply = self.asking_input();
+        let replying = reply
+            .as_ref()
+            .is_some_and(|reply| !reply.read(cx).value().trim().is_empty());
+        let view = view.clone();
+        Some(
+            Approval {
+                id: &format!("agent-permission-{}-{request_id}", self.pane.0),
+                choices: head
+                    .options
+                    .iter()
+                    .map(|option| AskChoice {
+                        label: option.name.clone().into(),
+                        rejects: rejects(option.kind),
+                    })
+                    .collect(),
+                subject,
+                counter,
+                highlighted: self.permission_wizard.highlighted,
+                enabled: true,
+                reply,
+                replying,
+                owner: Some(self.pane.0),
+            }
+            .parts(
+                move |action, window, cx| {
+                    view.update(cx, |view, cx| {
+                        view.approval_action(request_id, action, window, cx);
+                    });
+                },
+                inside,
+                cx,
+            ),
         )
+    }
+
+    fn approval_action(
+        &mut self,
+        request_id: u64,
+        action: ApprovalAction,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        match action {
+            ApprovalAction::Pick(index) => self.answer_request(request_id, Some(index), cx),
+            ApprovalAction::Send => self.send_approval(window, cx),
+            ApprovalAction::Open => self.open_plan(request_id, window, cx),
+        }
+    }
+
+    fn send_approval(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let requests = self.pane_state.pending_permissions.clone();
+        let text = self.reply.read(cx).value().trim().to_owned();
+        if text.is_empty() {
+            let step = self.permission_wizard.confirm(&requests);
+            self.apply_permission_step(step, cx);
+            return;
+        }
+        let Some((request_id, reject)) =
+            self.permission_wizard.current(&requests).and_then(|head| {
+                head.options
+                    .iter()
+                    .position(|option| rejects(option.kind))
+                    .map(|reject| (head.request_id, reject))
+            })
+        else {
+            return;
+        };
+        self.answer_request(request_id, Some(reject), cx);
+        let pane = self.pane;
+        let result = self.controller.update(cx, |controller, cx| {
+            controller.prompt(pane, &text, Vec::new(), cx)
+        });
+        match result {
+            Ok(()) => {
+                self.reply
+                    .update(cx, |input, cx| input.set_value("", window, cx));
+                self.submission_error = None;
+                self.chat.follow();
+            }
+            Err(error) => self.submission_error = Some(error),
+        }
+        cx.notify();
+    }
+
+    fn open_plan(&self, request_id: u64, window: &Window, cx: &mut Context<Self>) {
+        let Some(zz_protocol::chat::Ask::Plan { markdown, .. }) = self
+            .controller
+            .read(cx)
+            .pane_chat(self.pane)
+            .and_then(|chat| chat.request(zz_protocol::chat::RequestId(request_id)))
+            .map(|request| request.ask.clone())
+        else {
+            return;
+        };
+        self.open_view(
+            &ViewRequest {
+                title: "Plan".to_owned(),
+                content: ViewContent::Markdown { text: markdown },
+            },
+            window,
+            cx,
+        );
     }
 
     fn answer_request(&mut self, request_id: u64, option: Option<usize>, cx: &mut Context<Self>) {
@@ -977,38 +1398,12 @@ impl AgentView {
                     cx.notify();
                 }
             }
-            InputEvent::PressEnter { .. } => {
-                let step = card.card.submit();
+            InputEvent::PressEnter { shift: false, .. } => {
+                let step = card.card.enter();
                 self.apply_question_step(step, window, cx);
             }
             _ => {}
         }
-    }
-
-    fn handle_question_key(
-        &mut self,
-        event: &KeyDownEvent,
-        engaged: bool,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> bool {
-        let Some(card) = self.question.as_mut() else {
-            return false;
-        };
-        let key = event.keystroke.key.as_str();
-        if card.editing(window, cx) {
-            if key != "escape" {
-                return false;
-            }
-            self.input.read(cx).focus_handle(cx).focus(window, cx);
-            cx.notify();
-            return true;
-        }
-        if engaged {
-            return false;
-        }
-        let step = card.key(key, event.keystroke.modifiers.shift, window, cx);
-        self.apply_question_step(step, window, cx)
     }
 
     fn question_action(
@@ -1065,30 +1460,6 @@ impl AgentView {
         true
     }
 
-    fn task_action(&mut self, action: TaskTrayAction, cx: &mut Context<Self>) {
-        match action {
-            TaskTrayAction::Toggle(panel) => {
-                self.tray_open = (self.tray_open != Some(panel)).then_some(panel);
-            }
-            TaskTrayAction::Stop(task_id) => {
-                let pane = self.pane;
-                self.controller.update(cx, |controller, cx| {
-                    controller.stop_task(pane, task_id.to_string(), cx);
-                });
-            }
-            TaskTrayAction::Reveal(tool_call_id) => self.reveal_tool(&tool_call_id, cx),
-        }
-        cx.notify();
-    }
-
-    fn reveal_tool(&mut self, tool_call_id: &str, cx: &mut Context<Self>) {
-        let Some(chat) = self.controller.read(cx).pane_chat(self.pane) else {
-            return;
-        };
-        self.chat
-            .reveal(chat, &zz_protocol::chat::ItemId::new(tool_call_id));
-    }
-
     fn current_plan(&self, state: &AgentPaneState, cx: &ala::App) -> Option<String> {
         let (entries, _, _) = self.controller.read(cx).pane_entries(self.pane)?;
         let source = entries.iter().rev().find_map(|entry| match entry {
@@ -1099,28 +1470,23 @@ impl AgentView {
         (total > 0 && (done < total || state.connection.has_active_turn())).then_some(source)
     }
 
-    fn render_task_tray(
+    fn render_plan_tray(
         &self,
         state: &AgentPaneState,
         view: &Entity<Self>,
         cx: &mut ala::App,
     ) -> Option<impl IntoElement> {
-        let phase = if state.tasks.is_empty() {
-            0.0
-        } else {
-            spinner_phase(view.entity_id(), cx)
-        };
-        let plan = self.current_plan(state, cx);
+        let plan = self.current_plan(state, cx)?;
         let view = view.clone();
-        task_tray(
+        plan_tray(
             &format!("agent-{}", self.pane.0),
-            plan.as_deref(),
-            &state.tasks,
-            self.tray_open,
-            true,
-            phase,
-            move |action, _, cx| {
-                view.update(cx, |view, cx| view.task_action(action, cx));
+            &plan,
+            self.plan_open,
+            move |_, cx| {
+                view.update(cx, |view, cx| {
+                    view.plan_open = !view.plan_open;
+                    cx.notify();
+                });
             },
             cx,
         )
@@ -1199,17 +1565,29 @@ impl AgentView {
         view: &Entity<Self>,
         cx: &mut ala::App,
     ) -> impl IntoElement {
+        let ground = self.pane_ground(cx);
+        let inside = composer_ground(ground, cx);
+        let ask = self.ask_parts(state, view, inside, cx);
+        let asking = ask.is_some();
+        let prompting = ask.as_ref().is_none_or(|ask| ask.input.is_none());
         let can_submit = state.connection.accepts_prompt();
-        let action_kind = composer_action(
-            state.connection.has_active_turn(),
-            self.composer_has_content(),
-        );
+        let active = state.connection.has_active_turn();
+        let action_kind = composer_action(active, self.composer_has_content());
         let action = composer_action_button(
             format!("agent-action-{}", self.pane.0),
             action_kind,
             action_kind != ComposerAction::Send || (can_submit && self.composer_has_content()),
-            cx,
+            inside,
         );
+        let tone = state
+            .settings
+            .as_ref()
+            .and_then(|settings| mode_tone(mode_risk(state.provider, &settings.mode)))
+            .filter(|_| action_kind == ComposerAction::Send && can_submit);
+        let action = match tone {
+            Some(tone) if self.composer_has_content() => action.tone(tone),
+            _ => action,
+        };
         let action = if action_kind == ComposerAction::Stop {
             let controller = self.controller.clone();
             let pane = self.pane;
@@ -1221,6 +1599,11 @@ impl AgentView {
             action.on_click(move |_, window, cx| {
                 submit_view.update(cx, |view, cx| view.submit(window, cx));
             })
+        };
+        let action = if asking && action_kind != ComposerAction::Stop {
+            div().into_any_element()
+        } else {
+            action.into_any_element()
         };
         let usage = state.usage.map(|(used, size)| {
             context_usage_meter(("agent-context-usage", self.pane.0), used, size, cx)
@@ -1238,14 +1621,15 @@ impl AgentView {
         let command_hint = active_command_hint(
             &self.last_input,
             &pane_commands(&state.available_commands, state.session_capabilities.verbs),
-        );
-        let completions = self.render_completions(view, cx);
+        )
+        .filter(|_| prompting);
+        let completions = self.render_completions(view, cx).filter(|_| prompting);
         let add = {
             let input = self.input.clone();
             composer_add_button(
                 format!("agent-mention-{}", self.pane.0),
                 "Mention a chat, host, session or file",
-                cx,
+                inside,
             )
             .on_click(move |_, window, cx| mention_at_caret(&input, "@", window, cx))
         };
@@ -1253,36 +1637,54 @@ impl AgentView {
             .mention
             .read(cx)
             .is_open()
-            .then(|| self.mention.clone().into_any_element());
-        let (directory, controls) = self.render_harness_controls(state, view, cx);
+            .then(|| self.mention.clone().into_any_element())
+            .filter(|_| prompting);
+        let controls = self.render_harness_controls(state, cx);
+        let attachments = self
+            .render_attachments(view, inside)
+            .filter(|_| prompting)
+            .map(IntoElement::into_any_element);
+        let (composer, footer) = match ask {
+            Some(ask) => {
+                let (composer, hints) = ask.composer(
+                    ("agent-ask", self.pane.0),
+                    self.pane_canvas.get().size.height,
+                    PromptRow {
+                        input: self.input.clone(),
+                        add: add.into_any_element(),
+                        action,
+                        attachments,
+                        command_hint: command_hint.map(Into::into),
+                    },
+                    ground,
+                );
+                (composer, vec![hints])
+            }
+            None => (
+                Composer {
+                    input: self.input.clone(),
+                    leading: Some(add.into_any_element()),
+                    usage: usage.map(IntoElement::into_any_element),
+                    action,
+                    attachments,
+                    command_hint: command_hint.map(Into::into),
+                    ask: None,
+                    secret: false,
+                    ground,
+                },
+                git.map(IntoElement::into_any_element).into_iter().collect(),
+            ),
+        };
         ChatComposer {
             controls,
-            composer: Composer {
-                input: self.input.clone(),
-                leading: Some(add.into_any_element()),
-                usage: usage.map(IntoElement::into_any_element),
-                action: action.into_any_element(),
-                attachments: self
-                    .render_attachments(view, cx)
-                    .map(IntoElement::into_any_element),
-                command_hint: command_hint.map(Into::into),
-                ground: None,
-            },
-            footer: directory
-                .into_iter()
-                .chain(git.map(IntoElement::into_any_element))
-                .collect(),
+            composer,
+            footer,
             prefix: self
-                .render_permission_wizard(state, view, cx)
-                .filter(|_| !self.chat_inline)
-                .into_iter()
+                .render_queue_chip(state, cx)
                 .map(IntoElement::into_any_element)
+                .into_iter()
                 .chain(
-                    self.render_queue_chip(state, cx)
-                        .map(IntoElement::into_any_element),
-                )
-                .chain(
-                    self.render_task_tray(state, view, cx)
+                    self.render_plan_tray(state, view, cx)
                         .map(IntoElement::into_any_element),
                 )
                 .chain(
@@ -1337,25 +1739,22 @@ impl Render for AgentView {
         self.permission_wizard
             .sync(&self.pane_state.pending_permissions);
         self.synchronize_question_card(window, cx);
-        if self.pane_state.tasks.is_empty() && self.tray_open == Some(TrayPanel::Tasks) {
-            self.tray_open = None;
-        }
+        self.synchronize_row_focus(window, cx);
+        self.request_resume(window, cx);
         let state = self.pane_state.clone();
-        let (use_chat, inline) =
-            self.controller
-                .read(cx)
-                .pane_chat(self.pane)
-                .map_or((false, false), |chat| {
-                    (
-                        zz_ui::agent::chat::shows_chat(chat),
-                        self.asks_inline(chat, &state),
-                    )
-                });
-        self.chat_inline = inline;
+        let use_chat = self
+            .controller
+            .read(cx)
+            .pane_chat(self.pane)
+            .is_some_and(zz_ui::agent::chat::shows_chat);
         let floats = self.floats;
         let view = cx.entity();
         let input_focus = self.focus(cx);
         let chat_body = use_chat.then(|| self.render_chat(window, cx));
+        let resume = Some(self.resume(cx))
+            .filter(|(rows, _)| !rows.is_empty())
+            .map(|(rows, selected)| self.render_resume(&rows, selected, cx).into_any_element());
+        let listing = resume.is_some();
         let root = div()
             .id(("agent-pane", self.pane.0))
             .key_context(AGENT_KEY_CONTEXT)
@@ -1368,7 +1767,10 @@ impl Render for AgentView {
             .on_mouse_down(MouseButton::Left, cx.listener(Self::on_mouse_down))
             .capture_action(cx.listener(Self::move_completion_up))
             .capture_action(cx.listener(Self::move_completion_down))
+            .capture_action(cx.listener(Self::move_ask_left))
+            .capture_action(cx.listener(Self::move_ask_right))
             .capture_action(cx.listener(Self::complete))
+            .capture_action(cx.listener(Self::next_mode))
             .map(|root| mention_keys(root, &self.mention))
             .on_key_down(cx.listener(Self::on_key_down))
             .child(
@@ -1379,7 +1781,8 @@ impl Render for AgentView {
                     .min_h_0()
                     .overflow_hidden()
                     .when_some(chat_body, ParentElement::child)
-                    .when(!use_chat, |this| {
+                    .when_some(resume, ParentElement::child)
+                    .when(!use_chat && !listing, |this| {
                         this.child(
                             div().size_full().px_3().child(
                                 div()
@@ -1476,7 +1879,7 @@ mod completion_tests {
         );
         assert!(!wizard.take(&requests, 9));
         wizard.release(&requests, 2);
-        assert_eq!(wizard.page_label(&requests).as_deref(), Some("1/2"));
+        assert_eq!(wizard.page_label(&requests).as_deref(), Some("1 of 2"));
     }
 
     #[test]
@@ -1493,7 +1896,7 @@ mod completion_tests {
         let mut wizard = PermissionWizard::default();
         wizard.sync(&requests);
 
-        assert_eq!(wizard.page_label(&requests).as_deref(), Some("1/2"));
+        assert_eq!(wizard.page_label(&requests).as_deref(), Some("1 of 2"));
         assert_eq!(
             wizard.answer(&requests, Some(1)),
             PermissionStep::Answer {
@@ -1626,11 +2029,13 @@ mod completion_tests {
             });
             let controller = cx.new(|_| AgentController::new());
             let mention = target_picker(&palette_backend(mux.clone()), Some(input.clone()), cx);
+            let reply = cx.new(|cx| InputState::new(window, cx));
             let view = cx.new(|_| AgentView {
                 pane: PaneId(7),
                 mux,
                 controller,
                 input,
+                reply,
                 visible: false,
                 pane_state: disconnected_pane_state(),
                 chat_revision: 0,
@@ -1638,7 +2043,7 @@ mod completion_tests {
                 submission_error: None,
                 permission_wizard: PermissionWizard::default(),
                 question: None,
-                tray_open: None,
+                plan_open: false,
                 attachments: Vec::new(),
                 mention,
                 completions: vec![
@@ -1659,7 +2064,7 @@ mod completion_tests {
                 window_corners: WindowCorners::NONE,
                 floats: false,
                 chat: zz_ui::agent::chat::ChatPane::default(),
-                chat_inline: false,
+                pane_canvas: Rc::default(),
                 _subscriptions: Vec::new(),
             });
             view.read(cx).focus(cx).focus(window, cx);
@@ -1892,63 +2297,6 @@ mod completion_tests {
     }
 
     #[cfg(not(target_os = "macos"))]
-    #[ala::test]
-    fn the_task_tray_opens_and_stops_a_task(cx: &mut TestAppContext) {
-        let pane = PaneId(43);
-        let (view, controller, sink, cx) = wired_view(cx, pane);
-        cx.update(|_, cx| {
-            controller.update(cx, |controller, cx| {
-                controller.apply_pane_state(
-                    pane,
-                    &zz_protocol::AgentPaneWire {
-                        phase: zz_protocol::AgentConnectionPhase::Running,
-                        tasks: vec![zz_protocol::AgentTaskWire {
-                            id: "b1".to_owned(),
-                            kind: "shell".to_owned(),
-                            description: "cargo build".to_owned(),
-                            tool_call_id: None,
-                        }],
-                        ..Default::default()
-                    },
-                    cx,
-                );
-            });
-        });
-        cx.run_until_parked();
-        cx.update(|window, cx| {
-            _ = window.draw(cx);
-        });
-        assert!(cx.debug_bounds("chat-task-stop-0").is_none());
-        let chip = cx
-            .debug_bounds("chat-task-tray")
-            .expect("the tray chip should be painted");
-        cx.simulate_click(chip.center(), ala::Modifiers::none());
-        cx.run_until_parked();
-        cx.update(|window, cx| {
-            _ = window.draw(cx);
-        });
-        assert_eq!(
-            cx.update(|_, cx| view.read(cx).tray_open),
-            Some(TrayPanel::Tasks)
-        );
-        let stop = cx
-            .debug_bounds("chat-task-stop-0")
-            .expect("an open tray lists the task");
-        cx.simulate_click(stop.center(), ala::Modifiers::none());
-        cx.run_until_parked();
-
-        assert_eq!(
-            sink.borrow().as_slice(),
-            &[(
-                pane,
-                crate::mux::client::AgentRequest::StopTask {
-                    task_id: "b1".to_owned()
-                }
-            )]
-        );
-    }
-
-    #[cfg(not(target_os = "macos"))]
     fn stream(
         cx: &mut VisualTestContext,
         controller: &Entity<AgentController>,
@@ -2129,7 +2477,14 @@ mod completion_tests {
             vec![asked("fruit", &["apple", "pear"], false)],
         );
         cx.simulate_keystrokes("3");
-        assert!(cx.update(|window, cx| !view.read(cx).focus(cx).is_focused(window)));
+        assert!(cx.update(|window, cx| {
+            !view
+                .read(cx)
+                .input
+                .read(cx)
+                .focus_handle(cx)
+                .is_focused(window)
+        }));
         assert!(cx.update(|window, cx| {
             view.read(cx)
                 .question

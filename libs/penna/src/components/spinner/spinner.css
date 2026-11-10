@@ -22,7 +22,7 @@
 }
 
 .penna-spinner > [data-icon] {
-  animation: penna-spinner-turn 800ms ease-in-out infinite;
+  animation: penna-spinner-turn 900ms linear infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {

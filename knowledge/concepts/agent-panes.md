@@ -1,10 +1,10 @@
 ---
 type: Concept
 title: Agent panes and the flip
-description: How a pane runs Claude Code or Codex as a chat (PaneKind::Agent over the vendor drivers), how a chat and its window are named after the CLI's session title, how flip-agent switches one pane between the CLI's own TUI and that chat on the same session (busy rules, --now, --when-idle and the armed flag, finding the TUI's session, waiting for the old process), forks and side chats, Codex on its shared app server, the chat's slash list, agent-send and agent-respond, and what the chat draws and how its stream reaches clients.
+description: How a pane runs Claude Code or Codex as a chat (PaneKind::Agent over the vendor drivers), how a chat and its window are named after the CLI's session title, how flip-agent switches one pane between the CLI's own TUI and that chat on the same session (busy rules, --now, --when-idle and the armed flag, finding the TUI's session, waiting for the old process), forks and side chats, Codex on its shared app server, the chat's slash list, agent-send and agent-respond, what the chat draws, the preview cards and the floating view pane they open, and how its stream reaches clients.
 resource: crates/zz-daemon/src/daemon/agent_flip.rs
 tags: [agent, agent-pane, flip, chat, claude-code, codex, driver, stream]
-timestamp: 2026-11-01T23:00:00-03:00
+timestamp: 2026-11-10T00:00:00-03:00
 ---
 
 # Overview
@@ -209,11 +209,68 @@ end no turn.
   header (`ButtonLook::Toggle`, `zz_ui::pane::pane_flip_button`) that sends `flip-agent -t <pane>`.
   A `busy:` answer offers Switch when idle and Switch now; an armed flip shows with Cancel.
   `zz_client::agent_flip` (`AgentFlips`) keeps that state per pane for every client.
-- **The chat.** `crates/zz/src/agent` on the desktop, `clients/app/src/app/agent_pane.rs` on web,
-  iPad and iPhone, and `clients/dom/src/agent.rs` in the HTML client draw an agent pane with
-  `zz_ui::agent::chat`: the composer, the model and effort menu, inline questions and approvals,
-  subagent PiPs, images, references, Copy and Fork, and diagrams. The storybook's Agent story
-  draws them from fixed chat events.
+- **The chat.** `crates/zz/src/agent` on the desktop and `clients/app/src/app/agent_pane.rs` on
+  web, iPad and iPhone draw an agent pane with `zz_ui::agent::chat`: the composer, the model and
+  effort menu, questions and approvals asked in the composer, subagent rows, images, references,
+  Copy and Fork, and preview cards. Both open subagents, images and cards in the
+  [view pane](#previews-and-the-view-pane); a host that gives the chat no view opener (the
+  storybook) keeps the subagent PiP and draws diagrams and code inline. The storybook's Agent story
+  draws them from fixed chat events. The HTML client (`clients/dom/src/agent.rs` and
+  `web/js/agent.js`) draws its own timeline from `zz_client::agent_timeline` over the older
+  transcript model, not from `chat_rows`, so its runs, steps and subagents follow other rules.
+
+# The empty chat and the footer
+
+zz keeps no chats of its own. A chat with nothing in it lists what its CLI already has, and
+picking one resumes it in the same pane.
+
+- **The lists.** While the pane is ready and its chat is empty, the desktop asks the pane's driver
+  for two lists with `AgentSessionOp::List` (`zz_client::agent_resume::Resume::start`): the chats
+  in the pane's folder, and the newest chats in any folder. Claude Code's come from
+  `~/.claude/projects`, Codex's from `thread/list`. The reply is `EventPayload::AgentSessions`,
+  which `MuxClient` hands to `AgentController::apply_sessions`. `Resume::rows` turns them into
+  Recent here (three chats, then More chats here) and Projects (the other folders the newest chats
+  are in, five, then More projects, which also asks for the next page). The pane's own session is
+  left out. A folder row shows its parent path and its last chat's age; there is no chat count,
+  since the driver pages the list.
+- **What is left out.** The daemon drops a chat whose folder no longer exists on its host
+  (`zz-daemon/src/agent/runtime.rs`), since it cannot be resumed there: temp dirs, deleted
+  worktrees, chats that ran on another machine. Projects also leaves out scratch folders (under a
+  temp dir, `~/Library` or a dot folder; `scratch` in `agent_resume`), which the filter still
+  finds. Because a page of the newest chats can then hold few folders, `Resume::wanted` asks for
+  more pages, up to eight, until Projects has more than five.
+- **The filter.** A field over the lists (`resume_filter`, the view's own `InputState`). With text
+  in it `Resume::rows` returns one flat result instead: Folders whose path matches, then Chats
+  whose title or folder name matches, newest first, each chat with its folder's name; the first
+  row is picked. Inside an opened folder it narrows that folder's chats by title. While it has text
+  `Resume::wanted` pages through the rest of the list, up to forty pages, so the match is not only
+  the newest chats. Nothing matches is a row of its own.
+- **Picking.** A chat sends `AgentSessionOp::Switch` with its session and folder: the driver
+  restarts on that session, the pane moves to that folder and the transcript replays as it does on
+  a restart. A folder asks for that folder's chats and shows them in place of the lists, with a
+  back row; More chats asks for the next page. Up from an empty composer moves focus to the
+  filter with the last row picked; from there typing filters, Up and Down move, Down past the last
+  row returns to the composer, and Enter picks. Escape clears the filter, then drops the selection,
+  then leaves a folder, then returns to the composer. The pointer selects the row under it. `zz_ui::agent::resume::resume_rows` draws the rows under
+  `agent_resume_welcome`.
+- **The footer.** The folder chip and the side chat button are gone: the header pill shows the
+  folder, and `/side` opens a side chat. What is left is the branch summary on the left and two
+  controls on the right (`zz_ui::agent::controls`):
+  - `agent_mode_chip`: the driver's `mode` option, the permissions the CLI runs with. A click or
+    Shift-Tab steps to the next mode (`LensSettings::next_mode`). `agent_settings::mode_risk` gives
+    it a tone, and the send button takes the same one: none while the agent asks first (Claude's
+    Ask, Codex's Auto), success when it cannot write (Plan, Read only), warning when it acts
+    without asking (Accept edits, Claude's Auto), danger with nothing guarding it (Bypass
+    permissions, Full access).
+  - `agent_model_picker`: a popover over the footer. On top the models, a check on the current
+    one: the first five the driver lists (`LensSettings::listed_models`) plus the current one when
+    it is further down, and a More models row that adds the rest to the same list, which scrolls
+    past eight rows. Under a rule the efforts as penna's `StepRail`, one horizontal rail with a dot
+    per step that sets the effort when the knob is let go. Claude's first effort is `default`, so
+    its first step is a ring (`effort_starts_unset`).
+- **Where.** The desktop has all of it. Web, iPad and iPhone have the footer but not the lists yet,
+  and the HTML client has neither. The storybook's Agent story shows the lists (Empty chat) and the
+  controls (Composer controls).
 
 # References in the chat
 
@@ -232,15 +289,23 @@ blocks are left alone. Clicking a pane, window, session, chat or host switches t
 palette does; a file opens in a float running `$VISUAL` or `$EDITOR` at that line, started through
 the user's interactive shell like the CLIs below, and a folder opens a shell float there
 (`refs::open_path`). The assistant's
-markdown carries them as `zzref:` links; the user's bubble draws them as clickable ranges.
+markdown links them after parsing: `ChatMarkdown` hands penna `refs::ref_links` as its inline-link
+hook, which turns each token in a text run, or a code span that resolves, into a `zzref:<token>`
+link that `RefLinks` resolves again on click. The pane keeps one `ChatMarkdown` and builds a new
+one, so every reply parses again, only when the hosts or the working directory change. The user's
+bubble draws refs as clickable ranges.
 
 # How the chat reads
 
 `zz_ui::agent::chat` draws the folded chat (`chat_thread`):
 
 - **Your messages.** Claude Code wraps a paste as `<pasted_content id="…">…</pasted_content
-  id="…">` in its transcript; the runtime drops the wrapper (`claude::translate::prompt_text`). A
-  long message stays inside a bubble capped at 260 px that scrolls.
+  id="…">` in its transcript; the runtime drops the wrapper (`claude::translate::prompt_text`). The
+  bubble is `CardLook::Bubble` (`card.bubble`): a wash of the accent with the ground's ink. A
+  message whose text runs past 224 px folds to 176 px, its last 64 px of text fading out
+  (`FoldFade`, ala's vertical text fade, so it works on glass), and offers Show full message, then
+  Show less. The bubble measures its own text as it draws and reports it through
+  `ChatClick::Tall`; `ChatClick::Unfold` flips the fold (`ChatOpen::tall`, `ChatOpen::unfolded`).
 - **Pasted images.** The translators put a prompt's images on its `user_message_chunk` as
   `_meta.zz.images` (`{ format, data }`, base64): Claude's base64 image blocks, minus the
   `[Image #N]` placeholders, and Codex's data URLs and local image files. The bridge
@@ -262,8 +327,8 @@ markdown carries them as `zzref:` links; the user's bubble draws them as clickab
   shown images). The desktop agent view and the thin client's agent pane hook
   `ChatPane::close_on_release`, so closing the pane frees every image it held, through its window
   or, when the window closed with it, from the asset cache alone.
-- **Live turns.** The last line of a running turn says what the agent is doing now, with a shimmer,
-  a turning sparkle and the time since the prompt (`chat_rows::live_line`). It takes the newest of:
+- **Live turns.** The last line of a running turn says what the agent is doing now, with a soft sweep
+  of light across its text, a breathing sparkle and the time since the prompt (`chat_rows::live_line`). It takes the newest of:
   the CLI's own activity line (`ChatEvent::TurnActivity`, from Claude Code's `task_summary`), a
   running tool's own description (`ItemBody::activity`: Claude's Bash, PowerShell and Agent
   `description`, Codex's `wait` as Waiting for agents), else the running tool's verb and target
@@ -275,17 +340,30 @@ markdown carries them as `zzref:` links; the user's bubble draws them as clickab
   that lands while you watch types itself in over 220 to 900 ms (`ChatPane::sync` notes when it
   arrived; replies already there on the first look show at once). While a reply streams or types
   itself in it is drawn repaired (`mend`): an unclosed bold, code span or fence is closed and a
-  link whose URL has not arrived is inert, so the text does not jump when the rest lands.
+  link whose URL has not arrived is inert, so the text does not jump when the rest lands. Text that
+  arrives fades in, each paragraph, table cell and code block keyed by where it starts in the source
+  (penna's `StreamingVeil`); two that shared a key would restart each other's fade every frame and
+  never show, which is why table cells carry their own source spans.
 - **Long replies.** A reply over 32 KB or 512 lines shows its start in a 420 px scroll box with
   Copy full message under it (`ChatOpen::previews`); Copy under the turn still takes all of it.
+- **Runs.** Tool calls and thoughts in a row, with nothing else between them (no text, message,
+  subagent, plan, notice or ask), are one run with one header (`chat_rows::turn_rows`). In a
+  finished turn the fold joins runs that only a kept row (an answered question, your message, a
+  live agent) parted, since that row shows under the fold. Opening a run lists its steps flat, in
+  order, with its thoughts. A step reads its target, or its title when it has none
+  (`chat_rows::step_label`), and a failed one turns red and says why in
+  its faint detail: the first line of the tool's error, after `exit N` for a command with an exit
+  code.
 - **Batches.** Claude Code sends a sentence for each finished batch of tool calls
-  (`tool_use_summary`, with the ids it covers), and the run's header shows it instead of zz's count
-  ("Counted lines in a.txt" for "Ran 2 commands"), with failures and denials still counted after
-  it. The chat matches it by tool id (`ChatEvent::ItemsSummarized`), so a sentence that lands after
-  the reply, after the turn, or in a replay finds its rows, and a run that two sentences cover
-  splits in two. Codex, subagents and a session resumed from the CLI's transcript (which keeps no
-  sentences) show zz's count. Claude Code's `post_turn_summary`, a line about the whole turn sent
-  after it, is not drawn: the reply sits right under the fold and says the same thing.
+  (`tool_use_summary`, with the ids it covers). A run whose calls one sentence covers shows it
+  instead of zz's count ("Counted lines in a.txt" for "Ran 2 commands"), with failures and denials
+  still counted after it; a run that several sentences cover shows zz's count ("Edited plan.md, used
+  4 tools"), and each call a sentence covers alone reads that sentence over its target, as in
+  "Loaded plan mode tools  select:EnterPlanMode,ExitPlanMode". The chat matches a sentence by tool
+  id (`ChatEvent::ItemsSummarized`), so one that lands after the reply, after the turn, or in a
+  replay finds its rows. Codex, subagents and a session resumed from the CLI's transcript (which
+  keeps no sentences) show zz's count. Claude Code's `post_turn_summary`, a line about the whole
+  turn sent after it, is not drawn: the reply sits right under the fold and says the same thing.
 - **Thinking.** A finished run whose reasoning is only headings (Codex records the headings of its
   summaries; the reasoning itself is encrypted) leaves no row, while the running one still shows
   its heading. Opening a run lists its reasoning, heading removed and muted, in order with its
@@ -293,17 +371,38 @@ markdown carries them as `zzref:` links; the user's bubble draws them as clickab
   `#` heading (one to six `#` and a space), so a thought that opens with inline bold or `#42`
   keeps its text (`chat_rows::reasoning_body`). The opened text is selectable and scrolls inside
   260 px. Claude's thinking reads the same way.
-- **Subagents.** One row each: the CLI's mark, the name, a status glyph (spinning, Needs you, done,
-  failed, stopped) and the time it took. Clicking one opens its chat in a PiP docked beside the
-  thread (`chat_agent_pip`, `chat_pip_frame`; on touch it covers the thread): the prompt it was
-  given, its own rows, its answer and a footer; its close button or a second click closes it. An
-  approval it waits on sits under its row, or in the PiP while that agent's PiP is open.
-- **Answered questions.** The question, with the answer under it.
+- **Subagents.** One row each, a flat `CardLook::Activity` card (`card.activity`) that washes
+  deeper on hover; the plan card uses the same card. A row holds the CLI's tile in its program colors (`program_tile`, as pane
+  stacks draw it) with a status dot on its corner (working, needs you, done, failed; a stopped agent
+  has none) and the name; the time it took and the PiP mark show only while the pointer is on the
+  row (always on touch). The tile's tooltip names the state ("Waiting for you"), and so do the
+  tile and the row (a button named after the agent) to screen readers, so it does not rest on the
+  dot's color. Clicking one opens its chat in the
+  [view pane](#previews-and-the-view-pane): the prompt it was given, its own rows, its answer and a
+  footer, live (`chat_agent_body`). An approval it waits on stays under its row. Without a view
+  opener the chat opens it in a PiP docked beside the thread instead (`chat_agent_pip`,
+  `chat_pip_frame`; on touch it covers the thread), with the same tile in its header; its close
+  button or a second click closes it, and an approval shows in the PiP while it is open.
+- **Asks.** A question, a tool approval or a plan approval morphs the composer instead of opening
+  a card (`zz_ui::agent::ask`, penna's `Composer.ask`): an approval has a header with its glyph,
+  title and a count when more wait, then the command with its folder; a question is its own header,
+  the question wrapping beside the chat glyph with the pager or count on its first line (its short
+  label stays for the chat's row and the answered record). Then numbered options, and the input
+  row taking the answer's own field (a question's typed answer, or a reply that denies or keeps
+  planning and is sent as the next message). In a pick-any question a picked answer's key lights
+  (solid accent, no checkbox), and so does the typed answer's key once it is picked. Digits pick
+  while the field is empty, Up and Down move the highlight, Left and Right page between questions,
+  Enter sends, Escape skips or denies; hints in the footer say so, a pick-any question's leading
+  with "Pick any" or how many are picked. A plan approval (Claude's `switch_mode` request, sent as
+  `Ask::Plan`) shows the plan in a scrolling inset with a button that opens it in the view pane.
+  The rules for titles, send labels and hints live in `zz_client::agent_ask`, shared by every
+  client. The chat keeps one row per ask while it waits ("waiting for you"), and an answered
+  question as a row per question with its answer.
 - **Codex's async questions.** Codex can ask without stopping its turn
   (`request_user_input_async`); the app server sends that as an `agentMessage` with
   `delivery: "async"`, `questions` (`{ title, options? }`) and a markdown copy in `text`. The
-  driver shows the questions as the inline question card, each taking an option or typed text,
-  and drops the copy while keeping any other text (`codex::translate::async_questions`). The card
+  driver asks the questions in the composer, each taking an option or typed text,
+  and drops the copy while keeping any other text (`codex::translate::async_questions`). The ask
   is a background request: not blocking, kept past the end of its turn by the driver, the chat and
   the host (`AgentPendingPermission::outlives_turn`). An answer goes back as a user message in the
   CLI's own reply format, `<send_user_message_question_reply>` around
@@ -313,17 +412,36 @@ markdown carries them as `zzref:` links; the user's bubble draws them as clickab
   as a bubble, also when the TUI sent it. Any other message closes the card with no answer, Stop
   leaves it open, and a resumed thread shows the answered ones as records and reopens the one
   still waiting.
-- **Diagrams.** A mermaid or SVG block sits in a `CardLook::Code` card (`card.code`), like a code block, whose
-  header holds its label, Copy source and Open full diagram. pele (`libs/pele`) draws mermaid:
+- **Callouts.** `> [!NOTE]` style alerts and `:::name title` blocks draw as a flat card washed in
+  their tone with an icon and a title (penna's `BlockNode::Callout`).
+- **Preview cards.** With a view opener, mermaid and SVG blocks, code blocks of six lines or more
+  and markdown fences of six lines or more leave the reply as cards (`agent::preview`), flat
+  `CardLook::Activity` cards that wash deeper on hover. A diagram is a thumbnail of the drawn diagram
+  named by its kind (Flowchart, Sequence diagram, Gantt chart; the pop-out mark shows on hover). A
+  code block is its language's tile (the program tile when zz knows the language: rust, python,
+  go, typescript and the other program marks, plus 32 language marks from Devicon; a neutral tile
+  with braces otherwise), its file name when the fence names one (`rust src/main.rs`,
+  `rust:src/main.rs`, `title="..."`) or its language, and its length. A markdown fence is named by
+  its first heading. Fences that follow each other share one row: the card plugin claims the next
+  siblings with `MarkdownNode::absorbs`. Shorter code, `html preview` blocks, blocks over 64 KiB and
+  mermaid types pele does not draw stay inline. Clicking a card opens it in the view pane.
+- **Diagrams.** Without a view opener, or inside a markdown view, a mermaid or SVG block sits in a
+  `CardLook::Figure` card (`card.figure`), which has no fill and no header: Copy source and Open
+  full diagram sit over its top right corner while the pointer is on it (always on touch). pele
+  (`libs/pele`) draws mermaid:
   flowchart, sequence, class, state, ER, gantt, pie and quadrant. Any other type stays an ordinary
   code block of its source, and a supported source that does not parse shows the error with its
-  line and column. The diagram's canvas is transparent, so it shows the card through it. Nodes
-  take the accent's soft paint with an accent border (pele's `node` and `node_border`), edges and
-  arrows the muted foreground, and clusters, frames and notes stay neutral; text is the app font at
+  line and column. The diagram's canvas is transparent and its colors are worked out on the chat's
+  ground (`MermaidThemeColors::from_theme`). Nodes take the accent wash the bubble takes (pele's
+  `node`), clusters, frames and notes the `card.activity` wash (`penna::blocks::chat::diagram_paint`).
+  Lifelines, frames and box edges take the faint foreground; nodes take the accent's outline when
+  the theme's outline knob is on and a deeper accent wash when it is off. Every line is 1.25 px
+  (pele's `Theme::stroke_width`). Corners follow the control radius up to 8 px. Edges and arrows
+  take the muted foreground; text is the app font at
   13 px measured by the app's text system (ala's SVG renderer draws `system-ui` in the face that
   text system uses). Pie, gantt and quadrant series are the accent, success, warning and danger,
   then hues that fill the widest gaps between them, all at one Oklch lightness near the accent's
-  (0.5 to 0.58 on a light card, 0.68 to 0.78 on a dark one) so the card-colored labels on slices
+  (0.5 to 0.58 on a light chat, 0.68 to 0.78 on a dark one) so the ground-colored labels on slices
   and bars read on every fill (`MermaidThemeColors::series`). A flowchart, class, state or
   ER diagram that runs across and is wider than 640 px turns to run down when that fits. A figure
   draws at its own size, scaled down only to fit the transcript's width, so a diagram that turned or
@@ -333,6 +451,46 @@ markdown carries them as `zzref:` links; the user's bubble draws them as clickab
   markdown inside inherits it. The chat passes its pane as the owner
   (`ChatHooks::owner`), so on the desktop an HTML block's live page can reply to the agent, and two
   panes showing the same item keep their own preview toggles.
+
+# Previews and the view pane
+
+A chat opens what it previews in one floating `view` pane (`PaneKindSnapshot::View`), a pane with
+no process. The chat sends `view-pane -t <chat> -T <title> -k diagram|code|markdown|image|subagent
+[-l language] [-i item] [-n index] [-y rows] [-- text]` (`ViewRequest::command`). In the mux
+(`view_pane` in `crates/zz-mux/src/command.rs`), if the chat's window already has a view whose
+origin is that chat, the view takes the new content and is selected, so a chat has one view and
+cards are one click from swapping it; otherwise a float opens 55% of the chat wide
+(at least 48 columns, or the whole chat when narrower) on the bottom row of
+[PiP places](/designs/pip-panes.md), in the column nearest the chat's right side, `-y` rows tall.
+A client passes its `pip_fill_rows`, the tallest PiP its canvas holds; without `-y` the float is
+the window's height. It is an ordinary float:
+it moves and resizes, `join-pane` tiles it, it shows in the sidebar and the pane stacks with the
+eye glyph, every client on the window sees the same content, and it survives detach. `#{pane_kind}`
+is `view`, and `inspect` lists `view-pane`, `resize-pane` and `kill-pane` for it. It takes no input:
+Escape closes it.
+
+In the GUI clients the view grows out of what was clicked and flies back into it when it closes
+([opening from what you clicked](/designs/pip-panes.md#opening-from-what-you-clicked)). The row,
+card or tile is a `PipSource`: a subagent row's tile and name, and a code or markdown card's
+language tile and heading, become the view's header icon and title on the way; a code card's lines
+travel with the frame; a diagram's thumbnail and an image tile's picture scale up into the view's
+picture. The source dims to 40% while its view is open.
+
+Diagrams, code and markdown travel in the descriptor, at most 64 KiB. Images and subagents travel
+as the chat item they come from and are drawn from the client's own copy of the origin's chat
+(every GUI client holds every agent pane's chat): a user message's image (only its 8 newest kept,
+as in the chat), or a subagent's live rows. When the chat no longer has the item, or its chat is
+not open in this window, the view says so.
+
+The desktop (`crates/zz/src/view_pane.rs`) and zz-app (`clients/app/src/app/view_pane.rs`) draw it
+with `zz_ui::agent::view` right under the pane's own header: the diagram fit to the pane, the code
+highlighted in a code block with its own Copy (an `html` block keeps its Preview toggle), the
+markdown rendered with the chat's extensions, the image scaled down to fit, or the subagent's
+chat. The view has no bar of its own. Its header is the one every pane wears, floating, tiled or
+zoomed, so Tile, Zoom or Unzoom and Close are always there, and a pane kind can add its own
+buttons to it (`PaneKindButton`, `TerminalPaneAction::Kind`): a diagram adds Show the source,
+which turns into Show the diagram while the source shows (`view_buttons`). The terminal client
+draws the kind and title with a note to open it in the app; the HTML client draws a placeholder.
 
 # How the stream reaches a client
 

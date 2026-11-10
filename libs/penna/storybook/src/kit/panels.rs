@@ -137,6 +137,16 @@ fn cards(_: &mut Window, cx: &mut App) -> AnyElement {
                 .child(Label::new(TextStyle::Caption, "image")),
         )
         .state(
+            "activity",
+            Card::new("card-activity", CardLook::Activity)
+                .w(px(260.0))
+                .h(px(36.0))
+                .px(Space::S8)
+                .flex()
+                .items_center()
+                .child(Label::new(TextStyle::Body, "Count lines in files")),
+        )
+        .state(
             "on a panel",
             Panel::new("card-panel", PanelLook::Plain)
                 .w(px(260.0))

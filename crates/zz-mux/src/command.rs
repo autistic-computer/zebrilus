@@ -29,8 +29,8 @@ use zz_protocol::{
     EditorDescriptor, KeyToken, MAX_AGENT_COMMAND_BYTES, MAX_AGENT_OPTION_BYTES,
     MAX_AGENT_SESSION_ID_BYTES, MAX_GUI_TEXT_BYTES, MuxOptionKey, NATIVE_COMMAND_NAMES,
     PaneBorderIndicators, PaneBorderLines, PaneBorderStatus, PaneId, PaneKindSnapshot,
-    PopupBorderLines, RawText, ServerError, SessionId, SourceSpan, TerminalUiCommand, WindowId,
-    catalog_command_spec, command_specs, normalize_browser_profile_name,
+    PopupBorderLines, RawText, ServerError, SessionId, SourceSpan, TerminalUiCommand, ViewContent,
+    ViewDescriptor, WindowId, catalog_command_spec, command_specs, normalize_browser_profile_name,
     parse_tmux_command_options, parse_tmux_options, resolve_command,
     unimplemented_tmux_command_spec,
 };
@@ -2292,6 +2292,7 @@ fn pane_kind_name(kind: &PaneKind) -> &'static str {
         PaneKind::Browser(_) => "browser",
         PaneKind::Editor(_) => "editor",
         PaneKind::Agent(_) => "agent",
+        PaneKind::View(_) => "view",
     }
 }
 
@@ -6114,6 +6115,7 @@ impl MuxEngine {
             "set-browser-tabs" => self.set_browser_tabs(context, &command.args)?,
             "set-browser-profile" => self.set_browser_profile(context, &command.args)?,
             "set-editor-path" => self.set_editor_path(context, &command.args)?,
+            "view-pane" => self.view_pane(context, &command.args, hooks)?,
             "select-pane" => self.select_pane(context, &command.args, hooks)?,
             "last-pane" => self.last_pane(context, &command.args, hooks)?,
             "swap-pane" => self.swap_pane(context, &command.args)?,
@@ -8665,6 +8667,102 @@ impl MuxEngine {
         self.state
             .update_editor_path(pane, path.map(|path| path.to_string()))?;
         Ok(Execution::default())
+    }
+
+    fn view_pane(
+        &mut self,
+        context: &mut ExecutionContext,
+        args: &[RawText],
+        hooks: &mut impl StatusHooks,
+    ) -> Result<Execution, ServerError> {
+        let (options, positional) = parse_command_options("view-pane", args)?;
+        let origin = self.resolve_pane(options.value("-t"), context.window, context.pane)?;
+        let text = match positional.as_slice() {
+            [] => String::new(),
+            [text] => text.to_string(),
+            _ => {
+                return Err(ServerError::CommandParse(
+                    "view-pane takes its content as one argument".to_owned(),
+                ));
+            }
+        };
+        let shown = view_content(&options, text)?;
+        let descriptor = ViewDescriptor {
+            origin: Some(origin),
+            title: options
+                .value("-T")
+                .map_or_else(|| shown.kind_name().to_owned(), ToOwned::to_owned),
+            content: shown,
+        };
+        descriptor
+            .validate()
+            .map_err(|error| ServerError::InvalidCommand(error.to_string()))?;
+        let window = self
+            .state
+            .window_for_pane(origin)
+            .ok_or_else(|| ServerError::MissingTarget(origin.to_string()))?;
+        let open = self.state.windows[&window]
+            .panes
+            .iter()
+            .find_map(|(pane, entry)| {
+                matches!(&entry.kind, PaneKind::View(view) if view.origin == Some(origin))
+                    .then_some(*pane)
+            });
+        if let Some(pane) = open {
+            self.state.update_view(pane, descriptor)?;
+            let select = CommandInvocation::new("select-pane", ["-t", &pane.to_string()]);
+            return self.select_pane(context, &select.args, hooks);
+        }
+        let area = self.state.windows[&window]
+            .layout
+            .pane_geometry(origin)
+            .ok_or_else(|| ServerError::MissingTarget(origin.to_string()))?;
+        let (wide, tall) = self.state.windows[&window].layout.extent();
+        let (wide, tall) = (i64::from(wide), i64::from(tall));
+        let sx = i64::from(area.sx);
+        let width = (sx * 11 / 20).max(sx.min(48));
+        let height = match options.value("-y") {
+            Some(rows) => parse_strtonum(rows, 1, i64::from(PANE_MAXIMUM), "rows")?.min(tall),
+            None => tall,
+        };
+        let beside = i64::from(area.xoff) + sx - width;
+        let corner = [0, (wide - width) / 2, wide - width]
+            .into_iter()
+            .min_by_key(|column| (column - beside).abs())
+            .unwrap_or(0);
+        let place = CommandInvocation::new(
+            "new-pane",
+            [
+                "-t".to_owned(),
+                origin.to_string(),
+                "-x".to_owned(),
+                width.to_string(),
+                "-y".to_owned(),
+                height.to_string(),
+                "-X".to_owned(),
+                corner.to_string(),
+                "-Y".to_owned(),
+                (tall - height).to_string(),
+            ],
+        );
+        let (place, _) = parse_command_options("new-pane", &place.args)?;
+        let border = self.pane_border_lines(window) != PaneBorderLines::None;
+        let geometry = self
+            .float_geometry(window, &place, border, None)
+            .map_err(ServerError::InvalidCommand)?;
+        self.split_window_with_options(
+            context,
+            &place,
+            PaneKind::View(descriptor),
+            None,
+            None,
+            true,
+            Some(FloatSpawn {
+                geometry,
+                ..FloatSpawn::default()
+            }),
+            hooks,
+        )
     }
 
     fn split_window_with_options(
@@ -19248,6 +19346,37 @@ impl MuxEngine {
     }
 }
 
+fn view_content(options: &Options, text: String) -> Result<ViewContent, ServerError> {
+    let language = options.value("-l").map(ToOwned::to_owned);
+    let item = || {
+        options
+            .value("-i")
+            .map(ToOwned::to_owned)
+            .ok_or_else(|| ServerError::CommandParse("view-pane -k needs -i item".to_owned()))
+    };
+    Ok(match options.value("-k").unwrap_or("code") {
+        "diagram" => ViewContent::Diagram {
+            language: language.unwrap_or_else(|| "mermaid".to_owned()),
+            source: text,
+        },
+        "code" => ViewContent::Code { language, text },
+        "markdown" => ViewContent::Markdown { text },
+        "image" => ViewContent::Image {
+            item: item()?,
+            index: options
+                .value("-n")
+                .map_or(Ok(0), str::parse)
+                .map_err(|_| ServerError::CommandParse("view-pane -n takes a number".to_owned()))?,
+        },
+        "subagent" => ViewContent::Subagent { item: item()? },
+        other => {
+            return Err(ServerError::CommandParse(format!(
+                "view-pane cannot show {other}; use diagram, code, markdown, image or subagent"
+            )));
+        }
+    })
+}
+
 fn pane_kind_snapshot(kind: &PaneKind) -> PaneKindSnapshot {
     match kind {
         PaneKind::Picker { .. } => PaneKindSnapshot::Picker,
@@ -19255,6 +19384,7 @@ fn pane_kind_snapshot(kind: &PaneKind) -> PaneKindSnapshot {
         PaneKind::Browser(browser) => PaneKindSnapshot::Browser(browser.clone()),
         PaneKind::Editor(editor) => PaneKindSnapshot::Editor(editor.clone()),
         PaneKind::Agent(agent) => PaneKindSnapshot::Agent(agent.clone()),
+        PaneKind::View(view) => PaneKindSnapshot::View(view.clone()),
     }
 }
 
@@ -28099,6 +28229,77 @@ mod tests {
     }
 
     #[test]
+    fn view_pane_floats_over_the_right_of_its_chat_and_swaps_what_it_shows() {
+        let mut engine = MuxEngine::default();
+        let mut context = ExecutionContext::default();
+        engine
+            .execute(&mut context, &command("new-session", &[]))
+            .unwrap();
+        let chat = PaneId(0);
+        let window = engine.state.window_for_pane(chat).unwrap();
+        let opened = engine
+            .execute(
+                &mut context,
+                &command(
+                    "view-pane",
+                    &[
+                        "-t",
+                        "%0",
+                        "-k",
+                        "code",
+                        "-l",
+                        "rust",
+                        "-T",
+                        "main.rs",
+                        "fn main() {}",
+                    ],
+                ),
+            )
+            .unwrap();
+        let view = opened
+            .effects
+            .iter()
+            .find_map(|effect| match effect {
+                MuxEffect::PaneCreated { pane, .. } => Some(*pane),
+                _ => None,
+            })
+            .expect("the first view opens a pane");
+        let layout = &engine.state.windows[&window].layout;
+        assert!(layout.is_floating(view));
+        assert_eq!(
+            layout.pane_geometry(view),
+            Some(CellGeometry {
+                sx: 46,
+                sy: 22,
+                xoff: 33,
+                yoff: 1
+            })
+        );
+
+        engine
+            .execute(
+                &mut context,
+                &command("view-pane", &["-t", "%0", "-k", "markdown", "# Plan"]),
+            )
+            .unwrap();
+        assert_eq!(engine.state.windows[&window].panes.len(), 2);
+        assert_eq!(
+            engine.state.pane(view).map(|pane| pane.title.as_str()),
+            Some("Markdown")
+        );
+        assert_eq!(
+            engine.state.pane(view).map(|pane| &pane.kind),
+            Some(&PaneKind::View(ViewDescriptor {
+                origin: Some(chat),
+                title: "Markdown".to_owned(),
+                content: ViewContent::Markdown {
+                    text: "# Plan".to_owned()
+                },
+            }))
+        );
+    }
+
+    #[test]
     fn pane_kind_option_rejects_invalid_combinations_before_creation() {
         let mut engine = MuxEngine::default();
         let mut context = ExecutionContext::default();
@@ -35123,7 +35324,7 @@ mod tests {
         engine
             .execute(
                 &mut context,
-                &command("set-option", &["-g", "@myhook", "v"]),
+                &command("set-option", &["-g", "@myhook", "not-a-command"]),
             )
             .unwrap();
         assert_eq!(

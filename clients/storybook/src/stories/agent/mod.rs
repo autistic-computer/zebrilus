@@ -5,6 +5,7 @@ mod chat;
 mod chrome;
 mod composer;
 mod fixtures;
+mod flight;
 pub(super) mod pane;
 
 pub const STORIES: &[Story] = &[STORY];
@@ -13,7 +14,7 @@ const STORY: Story = Story {
     id: "agent",
     name: "Agent",
     group: "Agent",
-    summary: "An agent pane runs Claude Code or Codex for you and draws its session as a chat, with a composer that sends to it. The flip button in the header switches the same pane, on the same session, between the chat and the CLI's own screen in a terminal. Every chat here is folded from fixed chat events and drawn with the calls the apps make: chat_column, chat_thread, chat_agent_pip and an ask hook that draws asks the way the desktop does, on the pane's own fill.",
+    summary: "An agent pane runs Claude Code or Codex for you and draws its session as a chat, with a composer that sends to it. The flip button in the header switches the same pane, on the same session, between the chat and the CLI's own screen in a terminal. Every chat here is folded from fixed chat events and drawn with the calls the apps make: chat_column, chat_thread, chat_agent_pip and the composer that morphs to ask the way the desktop does, on the pane's own fill.",
     sections: &[
         Section {
             id: "flip-button",
@@ -36,8 +37,14 @@ const STORY: Story = Story {
         Section {
             id: "composer-controls",
             name: "Composer controls",
-            summary: "The pieces of the composer on their own: the action button, the + that starts a mention, the context meter, the git summary, and the footer's folder, model, effort and side chat controls.",
+            summary: "The pieces of the composer on their own: the action button, the + that starts a mention, the context meter, the git summary, and the footer's permissions chip and model picker. The picker lists the first five models, with the rest behind More models in the same list, over a horizontal effort slider with a dot per step.",
             build: composer::controls,
+        },
+        Section {
+            id: "empty-chat",
+            name: "Empty chat",
+            summary: "A chat with nothing in it lists what its CLI already has, read from the CLI's own store: the newest chats in this folder, then the other folders with chats. Picking a chat resumes it in this pane; picking a folder lists its chats. The filter narrows it to the folders and chats that match. Up from the empty composer moves into the list.",
+            build: composer::resume,
         },
         Section {
             id: "slash-menu",
@@ -48,38 +55,50 @@ const STORY: Story = Story {
         Section {
             id: "live",
             name: "Live turn",
-            summary: "The last line of a running turn says what the agent is doing now, with a turning sparkle, a shimmer and the time since the prompt. It takes the newest of three things: the CLI's own activity line, the running tool's own description (a command's own text when it has none), and the latest reasoning heading. It says Thinking only when nothing more specific is known. While the newest run of tools is still going, the line opens to its steps. A reply that lands while you watch types itself in over under a second.",
+            summary: "The last line of a running turn says what the agent is doing now, with a breathing sparkle, a soft sweep of light across the text and the time since the prompt. It takes the newest of three things: the CLI's own activity line, the running tool's own description (a command's own text when it has none), and the latest reasoning heading. It says Thinking only when nothing more specific is known. While the newest run of tools is still going, the line opens to its steps. A reply that lands while you watch types itself in over under a second.",
             build: chat::live,
         },
         Section {
             id: "batches",
             name: "Batch summaries",
-            summary: "Claude Code sends one plain sentence for each finished batch of tool calls and names the calls by id; zz puts it on that batch's line, which opens to the calls. A sentence that lands after the reply, or after a replay, still finds its calls. Codex and subagents send none, so their runs keep zz's own count of what ran, and Codex's live line comes from the active item: the command, the tool's title, Waiting for agents, or the reasoning heading.",
+            summary: "Claude Code sends one plain sentence for each finished batch of tool calls and names the calls by id. Calls in a row share one line however many sentences cover them: it reads the sentence when one covers every call, else zz's count of what ran, and opens to the calls, each named by its own sentence when that sentence covers it alone. A sentence that lands after the reply, or after a replay, still finds its calls. Codex and subagents send none, so their runs keep zz's own count of what ran, and Codex's live line comes from the active item: the command, the tool's title, Waiting for agents, or the reasoning heading.",
             build: chat::batches,
         },
         Section {
             id: "finished",
             name: "Finished turn",
-            summary: "When the reply lands, the work before it folds behind Worked for. Opening the fold lists each run; opening a run lists its steps and its thinking, which scrolls inside 260 px. A run counts its failed and denied steps. A turn you stopped folds behind You stopped after, and a failed one behind Failed after with a red mark.",
+            summary: "When the reply lands, the work before it folds behind Worked for. Opening the fold lists each run; opening a run lists its steps and its thinking, which scrolls inside 260 px. A run counts its failed and denied steps, and a failed step says why after its name, with a command's exit code. A turn you stopped folds behind You stopped after, and a failed one behind Failed after with a red mark.",
             build: chat::finished,
         },
         Section {
             id: "steps",
             name: "Steps",
-            summary: "Every kind of step in every status, as the steps of an opened run. A running step spins and the run's line names it; a failed step turns red, a declined one takes the warning color, and an interrupted one stays plain.",
+            summary: "Every kind of step in every status, as the steps of an opened run. A running step spins and the run's line names it; a failed step turns red and says why, a declined one takes the warning color, and an interrupted one stays plain.",
             build: chat::steps,
         },
         Section {
             id: "messages",
             name: "Messages",
-            summary: "Your messages sit right-aligned in a raised bubble that caps its height and scrolls; replies have no bubble. Hovering a message shows when it was sent, Copy and Fork, muted until the pointer is on them; on a reply, Copy takes every text of the turn.",
+            summary: "Your messages sit right-aligned in a bubble washed in the accent; a long one folds behind a fade with Show full message. Replies have no bubble. Hovering a message shows when it was sent, Copy and Fork, muted until the pointer is on them; on a reply, Copy takes every text of the turn.",
             build: chat::messages,
         },
         Section {
             id: "markdown",
             name: "Markdown",
-            summary: "Replies render as markdown with the agent's extensions: headings, lists, tables and quotes, code blocks, a markdown fence drawn rich, and Mermaid and SVG fences drawn as figures. Mermaid flowchart, sequence, class, state, ER, gantt, pie and quadrant diagrams draw in the theme's colors on a transparent canvas; any other Mermaid type stays a plain code block. A figure sits in a container with a header holding its label, Copy source and Open full diagram; a source that does not parse shows the error with its line.",
+            summary: "Replies render as markdown with the agent's extensions: headings, lists, tables and quotes, callouts from alerts and ::: blocks, code blocks, a markdown fence drawn rich, and Mermaid and SVG fences drawn as figures. Mermaid flowchart, sequence, class, state, ER, gantt, pie and quadrant diagrams draw in the theme's colors and wash their nodes in the accent, straight on the chat; any other Mermaid type stays a plain code block. A figure has no header: Copy source and Open full diagram show over its top right corner on hover; a source that does not parse shows the error with its line.",
             build: chat::markdown,
+        },
+        Section {
+            id: "previews",
+            name: "Previews",
+            summary: "Diagrams, code blocks of six lines or more and long markdown fences leave the reply as cards: a diagram as a thumbnail named by its kind, code by its language tile, file name and length. Fences that follow each other share one row. Clicking a card opens it in the chat's view pane; here a dialog stands in for the pane.",
+            build: chat::previews,
+        },
+        Section {
+            id: "pip-flight",
+            name: "PiP flight",
+            summary: "A view PiP grows out of what was clicked and flies back into it when it closes. Click the subagent row, the code card or the diagram: the frame springs from the row or card on the pane spring, its corners going from the card's to the pane's, while the row's tile and name become the header's icon and title, the code lines travel with the frame and the diagram scales into place; the rest fades in over the back half and the source dims to 40%. Closing plays it back into the source. Clicking another card while the PiP is open swaps its content in place and moves the dim to that card. The pip-hold and pip-progress knobs hold every flight, opening or closing, at one progress so a frame can be inspected; set them before the click.",
+            build: flight::flight,
         },
         Section {
             id: "references",
@@ -90,13 +109,19 @@ const STORY: Story = Story {
         Section {
             id: "asks",
             name: "Asks",
-            summary: "Approvals and questions sit in the thread, drawn the way the desktop draws them: an approval on the tool row that needs it, with its options as tiles (digits pick, Enter confirms, Esc cancels) that grey out once you answer, until the CLI moves on; the first open question as the question card; anything behind the first ask greyed out until its turn; and an answered question as a record. Click an option to answer it.",
+            summary: "Approvals and questions leave one row in the thread and morph the composer to ask, the way the desktop draws them: a tool approval shows the command and its options (digits pick, Enter confirms, Esc denies), with a field to deny and say what to do instead; a question shows its options and takes a typed answer in the composer's own field; a counter says how many asks wait. Options and send grey out once you answer, until the CLI moves on, and an answered question stays as a row with its answer. Click an option to answer it.",
             build: chat::asks,
+        },
+        Section {
+            id: "ask-sheets",
+            name: "Ask sheets",
+            summary: "The three sheets an ask grows, with long content: a question that wraps to three lines beside its glyph and pager, a question whose first answer wraps over three lines with three lines of description, a plan approval and a long command, the highlight on the first answer and on the one that says no. The wells, the option fills and the divider share the sheet's edges, the text inside them starts on one line, and a tall highlight keeps the corner of a short one.",
+            build: chat::ask_sheets,
         },
         Section {
             id: "subagents",
             name: "Subagents",
-            summary: "Each subagent is its own row: the CLI's mark, its name, a status glyph (spinning while it works, Needs you, done, failed) and how long it took. Clicking a row opens its chat in a PiP docked beside the thread: its prompt, its own rows, its answer and a footer; the PiP's close button or a second click closes it. An approval waits right under its agent, or in its PiP while that is open.",
+            summary: "Each subagent is its own flat row that washes deeper on hover: the CLI's tile in its program colors with a status dot (working, needs you, done, failed) that says the same in its tooltip and to screen readers, its name, and on hover how long it took and the PiP mark. Clicking a row opens its chat in a PiP docked beside the thread: its prompt, its own rows, its answer and a footer; the PiP's close button or a second click closes it. An approval waits right under its agent, or in its PiP while that is open.",
             build: chat::subagents,
         },
         Section {

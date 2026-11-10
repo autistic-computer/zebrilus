@@ -1199,7 +1199,7 @@ mod tests {
     fn languages_without_a_grammar_are_never_parsed() {
         let text = Rope::from("hello {\"a\": 1}\nworld");
 
-        for language in ["text", "bash", "no-such-language"] {
+        for language in ["text", "sql", "no-such-language"] {
             let mut highlighter = SyntaxHighlighter::new(language);
             assert!(highlighter.update(None, &text, None), "{language}");
             assert!(highlighter.tree().is_none(), "{language} built a tree");

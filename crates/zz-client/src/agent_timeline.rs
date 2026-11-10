@@ -673,11 +673,6 @@ pub fn plan_chip_label(source: &str) -> Option<(String, Option<String>)> {
     (total > 0).then(|| (format!("Plan {done}/{total}"), current.map(str::to_owned)))
 }
 
-#[must_use]
-pub fn task_tray_label(count: usize) -> String {
-    format!("{count} running")
-}
-
 #[derive(Clone, Copy, Debug, Eq, PartialEq, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub enum ComposerAction {

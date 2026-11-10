@@ -52,6 +52,14 @@ section[data-section] {
   height: 72px;
 }
 
+.demo-activity {
+  display: flex;
+  align-items: center;
+  width: 260px;
+  height: 36px;
+  padding: 0 8px;
+}
+
 .demo-bar {
   justify-content: space-between;
   width: 420px;

@@ -49,6 +49,41 @@ pub(super) struct PipState {
     throw: PipThrow,
     landing: Option<AppPipLanding>,
     pub(super) stage: PipStage,
+    faces: RefCell<std::collections::BTreeMap<PaneId, PipFace>>,
+    departing: std::collections::BTreeMap<PaneId, Departing>,
+}
+
+#[derive(Clone)]
+struct PipFace {
+    label: String,
+    icon: penna::Icon,
+    inset: Point<Pixels>,
+}
+
+struct Departing {
+    view: ala::AnyView,
+    face: PipFace,
+}
+
+impl PipState {
+    pub(super) fn depart(
+        &mut self,
+        pane: PaneId,
+        view: Option<ala::AnyView>,
+        motion: &zz_ui::pane::PaneMotion,
+        cx: &mut App,
+    ) {
+        let face = self.faces.borrow_mut().remove(&pane);
+        if motion.depart(pane, cx)
+            && let (Some(view), Some(face)) = (view, face)
+        {
+            self.departing.insert(pane, Departing { view, face });
+        }
+    }
+
+    pub(super) fn settle_departures(&mut self, motion: &zz_ui::pane::PaneMotion) {
+        self.departing.retain(|pane, _| motion.departing(*pane));
+    }
 }
 
 impl PipState {
@@ -469,6 +504,16 @@ impl AppShell {
         );
         let focused = active.active_pane == pane;
         let writable = !self.connection.read(cx).core.attached_read_only();
+        if self.pane_motion.launched(pane) {
+            self.pip.faces.borrow_mut().insert(
+                pane,
+                PipFace {
+                    label: label.clone(),
+                    icon: icon.clone(),
+                    inset,
+                },
+            );
+        }
         let header = self.pane_header(pane, icon, label, focused, writable, true, cx);
         surface.content_inset(inset.x, inset.y).header(
             div()
@@ -597,6 +642,7 @@ impl AppShell {
                 let surface = self.pip_surface(active, float, content, stashed, title, inset, cx);
                 moving_pane(float.pane, &self.pane_motion, surface)
                     .held(held)
+                    .launches()
                     .into_any_element()
             };
             layer.push(
@@ -607,6 +653,29 @@ impl AppShell {
                     .w(frame.size.width)
                     .h(frame.size.height)
                     .child(surface)
+                    .into_any_element(),
+            );
+        }
+        for (pane, rest) in self.pane_motion.departures() {
+            let Some(departing) = self.pip.departing.get(&pane) else {
+                continue;
+            };
+            let card = zz_ui::pip::departing_pip(
+                pane,
+                departing.face.icon.clone(),
+                departing.face.label.clone().into(),
+                departing.view.clone(),
+                size(departing.face.inset.x, departing.face.inset.y),
+                cx,
+            );
+            layer.push(
+                div()
+                    .absolute()
+                    .left(rest.origin.x)
+                    .top(rest.origin.y)
+                    .w(rest.size.width)
+                    .h(rest.size.height)
+                    .child(moving_pane(pane, &self.pane_motion, card))
                     .into_any_element(),
             );
         }

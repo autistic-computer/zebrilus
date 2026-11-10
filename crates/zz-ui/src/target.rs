@@ -39,7 +39,7 @@ pub trait TargetBackend {
     fn cancel(&self, host: &str, request_id: u64, cx: &mut App);
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct TargetHost {
     pub id: PaletteHostId,
     pub name: String,
@@ -48,14 +48,14 @@ pub struct TargetHost {
     pub sessions: Vec<TargetSession>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct TargetSession {
     pub id: SessionId,
     pub name: String,
     pub windows: Vec<TargetWindow>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct TargetWindow {
     pub id: WindowId,
     pub index: u32,
@@ -63,7 +63,7 @@ pub struct TargetWindow {
     pub panes: Vec<TargetPane>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct TargetPane {
     pub id: PaneId,
     pub title: String,
@@ -72,7 +72,7 @@ pub struct TargetPane {
     pub chat: Option<TargetChat>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct TargetChat {
     pub title: SharedString,
     pub icon: IconName,

@@ -90,6 +90,7 @@ pub fn pane_label(pane: &PaneSnapshot) -> String {
         PaneKindSnapshot::Browser(_) => "browser".to_owned(),
         PaneKindSnapshot::Editor(_) => "editor".to_owned(),
         PaneKindSnapshot::Agent(agent) => agent.provider.label().to_owned(),
+        PaneKindSnapshot::View(view) => view.title.clone(),
     }
 }
 

@@ -10,7 +10,7 @@ tags:
 - codex
 - acp
 - daemon
-timestamp: 2026-10-23T00:00:00-03:00
+timestamp: 2026-11-10T00:00:00-03:00
 ---
 
 **Status 2026-11-01.** Agent panes run these drivers again ([agent panes](/concepts/agent-panes.md)),
@@ -89,9 +89,10 @@ updates, `sessions.rs` reads Claude's own session files.
 - **Settings.** Model from `initialize.models`; mode from default, acceptEdits, plan, and auto when
   the model supports it; effort from the model's `supportedEffortLevels`. They apply through
   `set_model`, `set_permission_mode`, and `apply_flag_settings {effortLevel}`.
-- **Rows.** Titles and kinds follow claude-agent-acp. Edit, Write, and MultiEdit render diffs from
-  their input. TodoWrite and the Task tools become the plan. Subagent tool calls show inline with
-  `_meta.claudeCode.parentToolUseId`; subagent text stays out of the main thread.
+- **Rows.** Each tool call is one row with the kind, title and label in [tool rows](#tool-rows).
+  Edit, Write, and MultiEdit carry diffs from their input in the update. TodoWrite and the Task
+  tools become the plan. Subagent tool calls show inline with `_meta.claudeCode.parentToolUseId`;
+  subagent text stays out of the main thread.
 - **Peer bus.** The CLI registers its own session record, so the daemon no longer registers a
   `PeerInbox` for a native Claude pane.
 - **Tests.** The translator replays three scrubbed real recordings in `agent/claude/fixtures`
@@ -152,6 +153,67 @@ the daemon echoes the command itself and never queues it.
 - **Turns.** A prompt row that is not the first gets 16px more space above it.
 - The task tray chip's loader spins on the shared pulse clock, like the empty state's.
 
+# Tool rows
+
+The drivers emit ACP tool updates and the chat bridge (`agent/chat_bridge.rs`) turns each into a
+chat item: `ItemKind` from `tool_kind`, `body.title`, `body.target` (the row's label and the object
+of the live line's verb), `body.activity` (`_meta.zz.activity`), `body.exit_code`
+(`_meta.zz.exitCode`) and the end status.
+
+- **Label.** Both drivers send it as `_meta.zz.target`, null when the row has none and the title
+  stands in. Paths are relative to the session's folder when inside it. An update without the key,
+  from a journal written before 2026-11-10, falls back to the first location's path, then the raw
+  input's `command`, `pattern`, `url`, `query` or `prompt`. A `tool_call_update` may change the
+  title and the label.
+- **Failure.** A failed row ends `Failed { message }`. On an execute row the message is the last
+  non-empty line of the output, after Claude's `Exit code N` line; on any other row it is the error
+  text, up to 1000 characters, with Claude's `<tool_use_error>` wrapper taken off.
+- **Declined.** A row whose approval was denied or dismissed on zz's card, or that Codex reports
+  `declined` (`_meta.zz.declined`), ends `Declined`.
+- **Exit codes.** A failed foreground Bash takes the code from its `Exit code N` line, a background
+  command from its notification's summary (`failed with exit code 144`), and Codex from `exitCode`.
+
+| Claude Code tool | Kind | Title | Label |
+| --- | --- | --- | --- |
+| Bash, PowerShell | Execute | the command's first line | the same; `description` is the activity |
+| Monitor | Execute | `description` | the command's first line; `description` is the activity |
+| Read | Read | Read path (range) | path |
+| Write, Edit, MultiEdit, NotebookEdit | Edit | Write path, Edit path, Edit notebook path | path |
+| Glob, Grep | Search | Find `pattern`, the grep line | pattern |
+| WebFetch | Fetch | Fetch url | url |
+| WebSearch | Web | Search "query" | query |
+| Agent, Task | Subagent | `description` | the prompt, which the subagent view shows |
+| ToolSearch | Tool | Load tools | the names after `select:`, else the query |
+| EnterPlanMode, ExitPlanMode | Tool | Enter plan mode, Exit plan mode | none; the plan card asks, and keep planning ends the row Declined |
+| TaskStop, KillShell, KillBash | Tool | Stop and the stopped task's title | none |
+| AskUserQuestion | Tool | the question | none; the question card stands in for the row |
+| Skill | Tool | Load skill: name | none |
+| `mcp__server__tool` | Mcp | server: tool | none |
+| any other tool | Tool | its name in words (CronCreate is Cron create) | none |
+| TodoWrite, TaskCreate, TaskUpdate, TaskList, TaskGet | no row | they become the plan | |
+
+| Codex item | Kind | Title | Label |
+| --- | --- | --- | --- |
+| commandExecution with one read action | Read | Read path | path |
+| with one search action | Search | the action's command | its query |
+| with one listFiles action | Search | the action's command | the same |
+| any other command | Execute | the command, `bash -lc` taken off | the same |
+| fileChange | Edit | Edit path, or Edit N files | path when one file changed |
+| mcpToolCall | Mcp | server: tool | none |
+| dynamicToolCall | Tool | the tool | none |
+| webSearch | Web | Search "query", Open url, Find "pattern" | query or url; Searching the web is the activity until it completes |
+| imageView | Read | View path | path |
+| collabAgentToolCall spawnAgent | Subagent | the prompt's first line | the prompt |
+| subAgentActivity | Subagent | the agent path's last part in words | none |
+| collabAgentToolCall wait, interruptAgent, resumeAgent | Tool | Waited for agents, Stop agent, Resume agent | none |
+| collabAgentToolCall listAgents, closeAgent | no row | | |
+| sleep (or extension `clock.sleep`) | Tool | Waited 1m | none |
+| imageGeneration, contextCompaction | Tool | Generate image, Compact context | none |
+
+The ACP kinds map as read to Read, edit, delete and move to Edit, search to Search, execute to
+Execute, fetch to Fetch, and the rest to Tool. ACP runtime panes do not feed the chat bridge, so
+today only the two drivers' updates reach this mapping.
+
 # Minimal pane (2026-10-08)
 
 fabrico's direction: the agent pane does the conversation and nothing bigger. Anything larger than a
@@ -201,8 +263,8 @@ a `questions` list, answered by `AgentAnswerQuestion`. Subagent tool calls carry
 `_meta.zz.parent`, and the shared reducer exposes it as `tool_parent`. The wire details are in the
 v108 entry of the [wire protocol](/protocol/wire-protocol.md).
 
-Desktop and zz-app render these through shared zz-ui widgets: the question card
-(`agent/question.rs`), the task tray chip in the composer (`agent/tasks.rs`), and the step fold in
+Desktop and zz-app render these through shared zz-ui widgets: the question asked in the
+composer (`agent/question.rs`, `agent/ask.rs`), the task tray chip in the composer (`agent/tasks.rs`), and the step fold in
 `agent.rs`, which nests subagent steps under their agent row, collapsed. A step
 leaves its place in the timeline for its agent's row wherever it arrives, before the agent or after
 other rows, and steps keep their arrival order; a loop of parent links renders flat. FFI carries
@@ -239,7 +301,10 @@ Claude driver. One `codex app-server` child per pane over stdio, with
   execute rows (read and search actions get read and search rows) with streamed output and a
   failed status on a non-zero exit; file changes render their unified diffs as old and new text;
   MCP and dynamic tool calls, web searches, and collab agent calls get rows; `turn/plan/updated`
-  is the plan; `thread/tokenUsage/updated` is the usage meter.
+  is the plan; `thread/tokenUsage/updated` is the usage meter. [Tool rows](#tool-rows) has each
+  item's kind, title and label. Web search, image view, sleep and compaction items carry no
+  `status`, so their `item/completed` settles them as completed; a web search starts with an empty
+  query and gets its title and label from that completion.
 - **Subagents.** Codex streams a spawned agent's thread on the same connection. A
   `subAgentActivity` item (or a `spawnAgent` collab call's `receiverThreadIds`) opens an agent row
   and maps the child thread to it; the child's tool items become rows with `_meta.zz.parent`, so

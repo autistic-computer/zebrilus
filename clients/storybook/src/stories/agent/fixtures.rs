@@ -9,7 +9,7 @@ use zz_protocol::chat::{
     TurnOutcome,
 };
 use zz_protocol::{
-    AgentTaskWire, PaneId, SessionId, WindowId,
+    PaneId, SessionId, WindowId,
     agent_stream::{AgentImage, AgentQuestion, AgentQuestionOption},
 };
 use zz_ui::command::PaletteHostId;
@@ -311,6 +311,28 @@ pub fn approval_of(title: &str) -> Ask {
     }
 }
 
+pub fn allow_or_reject(title: &str) -> Ask {
+    Ask::Approval {
+        title: title.to_owned(),
+        detail: None,
+        options: vec![
+            ask_option("allow", "Allow", OptionKind::Allow),
+            ask_option("reject", "Reject", OptionKind::Deny),
+        ],
+    }
+}
+
+pub fn plan_approval() -> Ask {
+    Ask::Plan {
+        markdown: "# Plan: chat UI stress test\n\nContext: exercise the chat UI (markdown, tool calls, background tasks, subagents, interaction elements, long output). Nothing in the repo changes. Scratch files live in /tmp/zz-stress.\n\nRemaining steps:\n\n1. Leave plan mode.".to_owned(),
+        options: vec![
+            ask_option("auto", "Yes, and auto-accept edits", OptionKind::Allow),
+            ask_option("manual", "Yes, and manually approve edits", OptionKind::Allow),
+            ask_option("plan", "No, keep planning", OptionKind::Deny),
+        ],
+    }
+}
+
 pub fn palettes() -> Ask {
     let names = [
         "Tokyo Night",
@@ -494,29 +516,6 @@ pub const PLAN_STEPS: &[(&str, StepStatus)] = &[
     ),
 ];
 
-pub fn tasks() -> Vec<AgentTaskWire> {
-    vec![
-        AgentTaskWire {
-            id: "task-1".into(),
-            kind: "shell".into(),
-            description: "cargo watch -x 'test -p zz-ui browser'".into(),
-            tool_call_id: Some("call-1".into()),
-        },
-        AgentTaskWire {
-            id: "task-2".into(),
-            kind: "agent".into(),
-            description: "Survey every caller of TabStrip::layout".into(),
-            tool_call_id: Some("call-2".into()),
-        },
-        AgentTaskWire {
-            id: "task-3".into(),
-            kind: "monitor".into(),
-            description: "Watch target/storybook for a fresh wasm build".into(),
-            tool_call_id: None,
-        },
-    ]
-}
-
 pub fn option(label: &str, description: Option<&str>) -> AgentQuestionOption {
     AgentQuestionOption {
         label: label.to_owned(),
@@ -557,6 +556,39 @@ pub fn branch_question() -> AgentQuestion {
             option("release/0.16", Some("Backport to the current release")),
         ],
     )
+}
+
+pub fn long_label_question() -> AgentQuestion {
+    AgentQuestion {
+        header: Some("Long label".to_owned()),
+        ..question(
+            "q0",
+            "Which option label should the long-label stress case use?",
+            vec![
+                option(
+                    "Keep this option label deliberately very long so the chat UI has to wrap, truncate, or overflow it across several visual lines without breaking the layout of the question card or the option list beneath it, which is the whole point of this test",
+                    Some(
+                        "A very long description to test wrapping: Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.",
+                    ),
+                ),
+                option("Short", Some("Short control option")),
+            ],
+        )
+    }
+}
+
+pub fn long_question() -> AgentQuestion {
+    AgentQuestion {
+        header: Some("Coverage".to_owned()),
+        ..question(
+            "q0",
+            "The sheet's header is the question now, so a long one has to wrap: which part should the stress run cover first, given that each one touches the composer, the row an ask leaves in the transcript and the record of the answer?",
+            vec![
+                option("The composer", Some("The sheet and its input row")),
+                option("The transcript", Some("The row an ask leaves behind")),
+            ],
+        )
+    }
 }
 
 pub fn checks_question() -> AgentQuestion {

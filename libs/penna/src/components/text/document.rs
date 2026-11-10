@@ -7,7 +7,7 @@ use ala::{
     Styled as _, Window, div,
 };
 
-use super::node::{BlockNode, NodeContext};
+use super::node::{BlockNode, NodeContext, render_footnotes};
 
 #[derive(Debug, Clone, PartialEq, Default)]
 pub(crate) struct ParsedDocument {
@@ -73,9 +73,11 @@ impl ParsedDocument {
     ) -> impl IntoElement {
         let Some(list_state) = list_state else {
             let blocks_len = self.blocks.len();
-            return div()
-                .id("document")
-                .children(self.blocks.iter().enumerate().map(move |(ix, node)| {
+            let blocks = self
+                .blocks
+                .iter()
+                .enumerate()
+                .map(|(ix, node)| {
                     let is_last = ix + 1 == blocks_len;
                     node.render_block(
                         NodeRenderOptions {
@@ -87,7 +89,12 @@ impl ParsedDocument {
                         window,
                         cx,
                     )
-                }));
+                })
+                .collect::<Vec<_>>();
+            return div()
+                .id("document")
+                .children(blocks)
+                .children(render_footnotes(&self.blocks, node_cx, window, cx));
         };
 
         let options = NodeRenderOptions {
@@ -107,18 +114,23 @@ impl ParsedDocument {
                 let blocks = blocks.clone();
                 move |ix, window, cx| {
                     let is_last = ix + 1 == blocks.len();
-                    blocks[ix]
-                        .render_block(
-                            NodeRenderOptions {
-                                ix,
-                                is_last,
-                                ..options
-                            },
-                            &node_cx,
-                            window,
-                            cx,
-                        )
-                        .into_any_element()
+                    let block = blocks[ix].render_block(
+                        NodeRenderOptions {
+                            ix,
+                            is_last,
+                            ..options
+                        },
+                        &node_cx,
+                        window,
+                        cx,
+                    );
+                    match is_last
+                        .then(|| render_footnotes(&blocks, &node_cx, window, cx))
+                        .flatten()
+                    {
+                        Some(footnotes) => div().child(block).child(footnotes).into_any_element(),
+                        None => block,
+                    }
                 }
             })
             .size_full(),

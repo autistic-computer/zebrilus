@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::fmt::Write as _;
 use std::path::Path;
 
@@ -132,7 +133,7 @@ pub fn turn_rows(view: &ChatView, turn: &TurnView, now: u64) -> TurnRows {
         }
     }
     TurnRows {
-        folded,
+        folded: joined(view, folded),
         shown,
         fold: Some(fold),
         activity,
@@ -345,17 +346,25 @@ pub fn run_summary(view: &ChatView, items: &[ItemId]) -> String {
             .iter()
             .filter(|item| kinds.contains(&item.kind))
             .collect::<Vec<_>>();
-        if of_kind.is_empty() {
+        let Some(first) = of_kind.first() else {
             continue;
-        }
-        let part = match (of_kind.as_slice(), *one) {
-            ([only], Some(verb)) if only.body.target.is_some() => {
-                format!(
-                    "{verb} {}",
-                    short(only.body.target.as_deref().unwrap_or_default())
-                )
-            }
-            _ => many(of_kind.len()),
+        };
+        let count = if kinds.iter().any(|kind| FILE_KINDS.contains(kind)) {
+            let named = of_kind
+                .iter()
+                .filter_map(|item| item.body.target.as_deref())
+                .collect::<BTreeSet<_>>();
+            named.len()
+                + of_kind
+                    .iter()
+                    .filter(|item| item.body.target.is_none())
+                    .count()
+        } else {
+            of_kind.len()
+        };
+        let part = match (first.body.target.as_deref(), *one) {
+            (Some(target), Some(verb)) if count == 1 => format!("{verb} {}", short(target)),
+            _ => many(count),
         };
         parts.push(part);
     }
@@ -403,6 +412,8 @@ type Category = (
     Option<&'static str>,
     fn(usize) -> String,
 );
+
+const FILE_KINDS: [ItemKind; 2] = [ItemKind::Edit, ItemKind::Read];
 
 const CATEGORIES: &[Category] = &[
     (&[ItemKind::Edit], Some("edited"), |n| {
@@ -556,46 +567,32 @@ fn request_unit(request: &RequestView) -> Option<Unit> {
 }
 
 fn flush(view: &ChatView, run: &mut Vec<ItemId>, out: &mut Vec<Unit>, tail: bool) {
-    if run.is_empty() {
-        return;
-    }
-    let batches = batches(view, std::mem::take(run));
-    let last = batches.len().saturating_sub(1);
-    for (index, items) in batches.into_iter().enumerate() {
-        push_run(view, items, out, tail && index == last);
+    if !run.is_empty() {
+        push_run(view, std::mem::take(run), out, tail);
     }
 }
 
-fn batches(view: &ChatView, items: Vec<ItemId>) -> Vec<Vec<ItemId>> {
-    let batch_of = |id: &ItemId| {
-        view.item(id)
-            .filter(|item| item.kind.is_tool())
-            .map(|item| item.summary.as_ref().map(|summary| summary.batch))
-    };
-    let mut out = Vec::new();
-    let mut current = Vec::new();
-    let mut batch = None;
-    let mut thoughts = 0;
-    for id in items {
-        match batch_of(&id) {
-            Some(this) => {
-                if batch.is_some_and(|known| known != this) {
-                    let carried = current.split_off(current.len() - thoughts);
-                    out.push(std::mem::replace(&mut current, carried));
-                }
-                batch = Some(this);
-                thoughts = 0;
+fn joined(view: &ChatView, units: Vec<Unit>) -> Vec<Unit> {
+    let mut out: Vec<Unit> = Vec::with_capacity(units.len());
+    for unit in units {
+        match (out.last_mut(), unit) {
+            (Some(Unit::Run(held)), Unit::Run(next)) => {
+                held.items.extend(next.items);
+                held.label = done_label(view, &held.items);
             }
-            None => thoughts += 1,
+            (_, unit) => out.push(unit),
         }
-        current.push(id);
     }
-    if matches!(batch, Some(Some(_))) && thoughts > 0 {
-        let carried = current.split_off(current.len() - thoughts);
-        out.push(std::mem::replace(&mut current, carried));
-    }
-    out.push(current);
     out
+}
+
+fn done_label(view: &ChatView, items: &[ItemId]) -> RunLabel {
+    RunLabel::Done {
+        summary: match summarized(view, items) {
+            Some((summary, tools)) => format!("{summary}{}", outcomes(&tools)),
+            None => run_summary(view, items),
+        },
+    }
 }
 
 fn summarized<'a>(view: &'a ChatView, items: &[ItemId]) -> Option<(&'a str, Vec<&'a ItemView>)> {
@@ -620,12 +617,9 @@ fn push_run(view: &ChatView, items: Vec<ItemId>, out: &mut Vec<Unit>, tail: bool
         .rev()
         .filter_map(|id| view.item(id))
         .find(|item| item.kind.is_tool() && item.status.is_open());
-    let label = match (running, summarized(view, &items)) {
-        (Some(item), _) => live_label(item),
-        (None, Some((summary, tools))) => RunLabel::Done {
-            summary: format!("{summary}{}", outcomes(&tools)),
-        },
-        (None, None) if tail => RunLabel::Thinking {
+    let label = match running {
+        Some(item) => live_label(item),
+        None if tail && summarized(view, &items).is_none() => RunLabel::Thinking {
             heading: items
                 .iter()
                 .rev()
@@ -633,11 +627,75 @@ fn push_run(view: &ChatView, items: Vec<ItemId>, out: &mut Vec<Unit>, tail: bool
                 .find(|item| item.kind == ItemKind::Reasoning)
                 .and_then(|item| heading(&item.body.text)),
         },
-        (None, None) => RunLabel::Done {
-            summary: run_summary(view, &items),
-        },
+        None => done_label(view, &items),
     };
     out.push(Unit::Run(Run { items, label }));
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct StepLabel {
+    pub label: String,
+    pub detail: Option<String>,
+}
+
+pub fn step_label(view: &ChatView, item: &ItemView) -> StepLabel {
+    let named = item
+        .body
+        .target
+        .clone()
+        .filter(|target| !target.is_empty())
+        .unwrap_or_else(|| item.body.title.clone());
+    let own = item.summary.as_ref().filter(|summary| {
+        view.items
+            .values()
+            .filter(|other| {
+                other
+                    .summary
+                    .as_ref()
+                    .is_some_and(|held| held.batch == summary.batch)
+            })
+            .count()
+            == 1
+    });
+    let (label, detail) = match own {
+        Some(summary) => (
+            summary.text.clone(),
+            Some(named).filter(|named| !named.is_empty() && *named != summary.text),
+        ),
+        None => (named, None),
+    };
+    StepLabel {
+        label,
+        detail: failure(item).or(detail),
+    }
+}
+
+fn failure(item: &ItemView) -> Option<String> {
+    let ItemStatus::Failed { message } = &item.status else {
+        return None;
+    };
+    let exit = item
+        .body
+        .exit_code
+        .filter(|_| item.kind == ItemKind::Execute)
+        .map(|code| format!("exit {code}"));
+    let reason = message.as_deref().and_then(|message| {
+        message
+            .lines()
+            .map(str::trim)
+            .find(|line| !line.is_empty() && !restates_exit(line))
+            .map(str::to_owned)
+    });
+    match (exit, reason) {
+        (Some(exit), Some(reason)) => Some(format!("{exit} · {reason}")),
+        (exit, reason) => exit.or(reason),
+    }
+}
+
+fn restates_exit(line: &str) -> bool {
+    line.get(..9)
+        .filter(|head| head.eq_ignore_ascii_case("exit code"))
+        .is_some_and(|_| line[9..].trim().parse::<i64>().is_ok())
 }
 
 fn live_label(item: &ItemView) -> RunLabel {

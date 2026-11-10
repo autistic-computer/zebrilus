@@ -384,6 +384,7 @@ pub struct SurfaceRole {
     pub(crate) patch: StylePatch,
     pub(crate) row: bool,
     pub(crate) capsule: Option<bool>,
+    pub(crate) tone: Tone,
 }
 
 impl SurfaceRole {
@@ -402,6 +403,7 @@ impl SurfaceRole {
             patch: StylePatch::EMPTY,
             row: false,
             capsule: None,
+            tone: Tone::Neutral,
         }
     }
 
@@ -420,6 +422,10 @@ impl SurfaceRole {
 
     pub(crate) const fn with(self, patch: StylePatch) -> Self {
         Self { patch, ..self }
+    }
+
+    pub(crate) const fn toned(self, tone: Tone) -> Self {
+        Self { tone, ..self }
     }
 
     pub(crate) const fn rows(self) -> Self {
@@ -841,7 +847,7 @@ impl Surface {
     pub const fn new(role: SurfaceRole) -> Self {
         Self {
             role,
-            tone: Tone::Neutral,
+            tone: role.tone,
             prominent: false,
             ground: None,
         }
@@ -1090,12 +1096,17 @@ impl Theme {
                 Fill::Solid | Fill::Glass if see_through => base.washed(step + level),
                 Fill::Solid | Fill::Glass => rest.blend(base.washed(level)),
             };
+            let ink = if kind == Kind::Card {
+                Tone::Neutral
+            } else {
+                tone
+            };
             super::Paint {
                 fill: rest,
                 hover: over(1),
                 active: over(2),
                 current: over(2),
-                ..self.paint_on(ground, tone, Emphasis::Ghost)
+                ..self.paint_on(ground, ink, Emphasis::Ghost)
             }
         };
         let paint = if surface.prominent {

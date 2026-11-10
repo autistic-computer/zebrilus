@@ -74,7 +74,7 @@ pub struct LanguageRegistry {
 impl LanguageRegistry {
     pub fn singleton() -> &'static Self {
         static INSTANCE: LazyLock<LanguageRegistry> = LazyLock::new(|| LanguageRegistry {
-            languages: Mutex::new(bundled_languages()),
+            languages: Mutex::new(HashMap::new()),
         });
         &INSTANCE
     }
@@ -84,11 +84,12 @@ impl LanguageRegistry {
     }
 
     pub fn language(&self, name: &str) -> Option<LanguageConfig> {
-        let entries = self.entries();
-        entries
-            .get(name)
-            .cloned()
-            .or_else(|| bundled_name(name).and_then(|bundled| entries.get(bundled).cloned()))
+        let mut entries = self.entries();
+        if let Some(config) = entries.get(name) {
+            return Some(config.clone());
+        }
+        let (bundled, config) = bundled(name)?;
+        Some(entries.entry(bundled.into()).or_insert_with(config).clone())
     }
 
     fn entries(&self) -> MutexGuard<'_, HashMap<SharedString, LanguageConfig>> {
@@ -99,24 +100,13 @@ impl LanguageRegistry {
 }
 
 #[cfg(feature = "tree-sitter")]
-fn bundled_languages() -> HashMap<SharedString, LanguageConfig> {
-    Language::all()
-        .map(|language| (language.name().into(), language.config()))
-        .collect()
+fn bundled(name: &str) -> Option<(&'static str, impl FnOnce() -> LanguageConfig)> {
+    let language = Language::from_name(name)?;
+    Some((language.name(), move || language.config()))
 }
 
 #[cfg(not(feature = "tree-sitter"))]
-fn bundled_languages() -> HashMap<SharedString, LanguageConfig> {
-    HashMap::new()
-}
-
-#[cfg(feature = "tree-sitter")]
-fn bundled_name(name: &str) -> Option<&'static str> {
-    Language::from_name(name).map(Language::name)
-}
-
-#[cfg(not(feature = "tree-sitter"))]
-fn bundled_name(_name: &str) -> Option<&'static str> {
+fn bundled(_name: &str) -> Option<(&'static str, fn() -> LanguageConfig)> {
     None
 }
 
@@ -149,7 +139,7 @@ mod tests {
         for language in ["json", "markdown", "rust", "toml"] {
             assert!(registry.language(language).is_some(), "{language}");
         }
-        assert!(registry.language("javascript").is_none());
+        assert!(registry.language("sql").is_none());
     }
 
     #[cfg(feature = "tree-sitter")]

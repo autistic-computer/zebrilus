@@ -4,7 +4,7 @@
   "steps": [
     { "name": "hover-rewind", "section": "messages", "hover": "message-rewind" },
     { "name": "hover-suggestion", "section": "suggestions", "hover": "suggestion-compact" },
-    { "name": "hover-option", "section": "card", "hover": "card-option-1" },
+    { "name": "hover-option", "section": "ask", "hover": "ask-approval-1" },
     { "name": "hover-send", "section": "composer", "hover": { "id": "composer-typed-action" } },
     { "name": "hover-plan", "section": "tasks", "hover": "tray-plan-plan" }
   ]

@@ -5,9 +5,9 @@ use zz_protocol::chat::{
 };
 
 use crate::chat_rows::{
-    AgentState, Fold, RunLabel, Unit, agent_ms, agent_prompt, agent_rows, agent_state, answered,
-    background_live, background_rows, duration, live_line, reasoning_body, run_shows, run_summary,
-    turn_rows, unit_at,
+    AgentState, Fold, RunLabel, StepLabel, Unit, agent_ms, agent_prompt, agent_rows, agent_state,
+    answered, background_live, background_rows, duration, live_line, reasoning_body, run_shows,
+    run_summary, step_label, turn_rows, unit_at,
 };
 
 struct Thread {
@@ -138,10 +138,17 @@ fn a_run_of_tools_reads_as_one_sentence() {
     thread.done("s1");
     thread.tool("s2", ItemKind::Search, "finish_replay");
     thread.done("s2");
-    thread.tool("e1", ItemKind::Edit, "crates/zz-daemon/src/agent/fanout.rs");
-    thread.done("e1");
+    for id in ["e1", "e2", "e3"] {
+        thread.tool(id, ItemKind::Edit, "crates/zz-daemon/src/agent/fanout.rs");
+        thread.done(id);
+    }
+    thread.tool("r3", ItemKind::Read, "a.rs");
+    thread.done("r3");
     assert_eq!(
-        run_summary(&thread.view, &ids(&["r0", "r1", "r2", "s1", "s2", "e1"])),
+        run_summary(
+            &thread.view,
+            &ids(&["r0", "r1", "r2", "s1", "s2", "e1", "e2", "e3", "r3"])
+        ),
         "Edited fanout.rs, read 3 files, searched 2 times"
     );
     assert_eq!(
@@ -1088,7 +1095,7 @@ fn a_codex_turn_takes_its_live_line_from_the_active_item() {
 }
 
 #[test]
-fn a_summary_that_lands_after_its_rows_names_its_batch_by_tool_id() {
+fn a_summary_that_lands_after_its_rows_names_their_run_by_tool_id() {
     let mut thread = Thread::new();
     thread.tool("r1", ItemKind::Read, "a.txt");
     thread.done("r1");
@@ -1105,25 +1112,20 @@ fn a_summary_that_lands_after_its_rows_names_its_batch_by_tool_id() {
     thread.end("e1", ItemStatus::Failed { message: None });
     assert_eq!(thread.labels(), ["Planning the edit"]);
     thread.summarize(&["x1", "r1", "ghost"], "Counted lines in a.txt");
-    assert_eq!(
-        thread.labels(),
-        ["Counted lines in a.txt", "Planning the edit"]
-    );
-    let Unit::Run(second) = &thread.rows().shown[1] else {
-        panic!("a second run");
-    };
-    assert_eq!(second.items, ids(&["t1", "e1"]));
-    thread.summarize(&["e1"], "Tried to fix the count");
+    assert_eq!(thread.labels(), ["Planning the edit"]);
     thread.start("a1", None, ItemKind::Agent, ItemBody::text("Done."));
     thread.done("a1");
     thread.finish(completed());
     assert_eq!(
         thread.labels(),
-        [
-            "Counted lines in a.txt",
-            "Tried to fix the count · 1 failed"
-        ]
+        ["Edited a.txt, read a.txt, ran wc -l a.txt · 1 failed"]
     );
+    thread.summarize(&["r1", "x1", "e1"], "Fixed the count in a.txt");
+    assert_eq!(thread.labels(), ["Fixed the count in a.txt · 1 failed"]);
+    let Unit::Run(run) = &thread.rows().folded[0] else {
+        panic!("one run");
+    };
+    assert_eq!(run.items, ids(&["r1", "x1", "t1", "e1"]));
 
     let mut log = zz_protocol::chat::ChatLog::default();
     let mut live = Thread::new();
@@ -1203,5 +1205,189 @@ fn an_open_async_question_says_waiting_until_a_tool_runs() {
     assert_eq!(
         live_line(&thread.view, turn).as_deref(),
         Some("Running cargo test")
+    );
+}
+
+impl Thread {
+    fn step(&self, id: &str) -> StepLabel {
+        step_label(&self.view, self.view.item(&ItemId::new(id)).expect("step"))
+    }
+}
+
+fn step(label: &str, detail: &str) -> StepLabel {
+    StepLabel {
+        label: label.to_owned(),
+        detail: Some(detail.to_owned()),
+    }
+}
+
+#[test]
+fn tools_summarized_one_by_one_still_fold_into_one_run() {
+    let mut thread = Thread::new();
+    let plan = "/Users/me/.claude/plans/iridescent-petting-dragonfly.md";
+    let calls = [
+        (
+            "s1",
+            ItemKind::Tool,
+            ItemBody {
+                target: Some("select:EnterPlanMode,ExitPlanMode".to_owned()),
+                ..ItemBody::titled("ToolSearch")
+            },
+            "Loaded plan mode tools",
+        ),
+        (
+            "s2",
+            ItemKind::Tool,
+            ItemBody::titled("EnterPlanMode"),
+            "Entered plan mode",
+        ),
+        (
+            "s3",
+            ItemKind::Edit,
+            ItemBody {
+                target: Some(plan.to_owned()),
+                ..ItemBody::titled("Write")
+            },
+            "Wrote stress-test plan file",
+        ),
+        (
+            "s4",
+            ItemKind::Tool,
+            ItemBody::titled("Plan"),
+            "Planned chat UI stress test",
+        ),
+    ];
+    for (id, kind, body, summary) in calls {
+        thread.start(id, None, kind, body);
+        thread.done(id);
+        thread.summarize(&[id], summary);
+    }
+    thread.start(
+        "q1",
+        None,
+        ItemKind::Tool,
+        ItemBody::titled("AskUserQuestion"),
+    );
+    let at = thread.at;
+    thread.event(&ChatEvent::RequestOpened {
+        request: RequestId(1),
+        turn: Some(TurnId(1)),
+        item: Some(ItemId::new("q1")),
+        ask: Ask::Questions {
+            questions: Vec::new(),
+        },
+        blocking: true,
+        at,
+    });
+    close(
+        &mut thread,
+        1,
+        RequestClose::Answered {
+            answer: Answer::Questions {
+                answers: Vec::new(),
+            },
+        },
+    );
+    thread.done("q1");
+    thread.tool("s5", ItemKind::Tool, "select:TodoWrite");
+    thread.done("s5");
+    thread.summarize(&["s5"], "Searched for TodoWrite tool");
+    thread.start(
+        "a1",
+        None,
+        ItemKind::Agent,
+        ItemBody::text("Answers: Ember orange."),
+    );
+    thread.done("a1");
+    thread.finish(completed());
+    let rows = thread.rows();
+    assert_eq!(
+        rows.shown,
+        vec![Unit::Record(RequestId(1)), Unit::Text(ItemId::new("a1"))]
+    );
+    let [Unit::Run(run)] = &rows.folded[..] else {
+        panic!("one run: {:?}", rows.folded);
+    };
+    assert_eq!(run.items, ids(&["s1", "s2", "s3", "s4", "s5"]));
+    assert_eq!(
+        run.label,
+        RunLabel::Done {
+            summary: "Edited iridescent-petting-dragonfly.md, used 4 tools".to_owned()
+        }
+    );
+    assert_eq!(
+        run.items
+            .iter()
+            .map(|id| thread.step(id.as_str()))
+            .collect::<Vec<_>>(),
+        [
+            step(
+                "Loaded plan mode tools",
+                "select:EnterPlanMode,ExitPlanMode"
+            ),
+            step("Entered plan mode", "EnterPlanMode"),
+            step("Wrote stress-test plan file", plan),
+            step("Planned chat UI stress test", "Plan"),
+            step("Searched for TodoWrite tool", "select:TodoWrite"),
+        ]
+    );
+}
+
+#[test]
+fn a_failed_step_says_why() {
+    let mut thread = Thread::new();
+    thread.tool(
+        "r1",
+        ItemKind::Read,
+        "/Users/me/.agents/skills/tldr/SKILL.md",
+    );
+    thread.end(
+        "r1",
+        ItemStatus::Failed {
+            message: Some(
+                "File does not exist. Note: your current working directory is /Users/me/dev.\n\nMore"
+                    .to_owned(),
+            ),
+        },
+    );
+    thread.summarize(&["r1"], "Read SKILL.md");
+    for (id, code, message) in [
+        (
+            "x1",
+            101,
+            Some("Exit code 101\nerror: could not find `Cargo.toml` in `/private/tmp/zz`"),
+        ),
+        ("x2", 1, None),
+    ] {
+        thread.start(
+            id,
+            None,
+            ItemKind::Execute,
+            ItemBody {
+                target: Some("cargo build".to_owned()),
+                exit_code: Some(code),
+                ..ItemBody::default()
+            },
+        );
+        thread.end(
+            id,
+            ItemStatus::Failed {
+                message: message.map(str::to_owned),
+            },
+        );
+    }
+    assert_eq!(
+        [thread.step("r1"), thread.step("x1"), thread.step("x2")],
+        [
+            step(
+                "Read SKILL.md",
+                "File does not exist. Note: your current working directory is /Users/me/dev."
+            ),
+            step(
+                "cargo build",
+                "exit 101 · error: could not find `Cargo.toml` in `/private/tmp/zz`"
+            ),
+            step("cargo build", "exit 1"),
+        ]
     );
 }

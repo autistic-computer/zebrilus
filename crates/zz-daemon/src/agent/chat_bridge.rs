@@ -19,6 +19,8 @@ use super::turn::{self, End, Outcome, TurnMachine};
 
 const HISTORY_LIMIT: usize = 20_000;
 const TERMINAL_ANSWERS: u64 = 1 << 48;
+const REPLAYED_TURNS: u64 = 1 << 48;
+const MAX_FAILURE_CHARS: usize = 1000;
 pub(crate) const MAX_PROMPT_IMAGES_BASE64: usize = MAX_AGENT_PROMPT_BYTES;
 
 #[derive(Default)]
@@ -30,6 +32,8 @@ pub(crate) struct Shadow {
     splits: HashMap<ItemId, u32>,
     loose: Option<ItemId>,
     asked: HashMap<u64, ItemId>,
+    denials: HashMap<u64, (ItemId, Vec<String>)>,
+    declined: HashSet<ItemId>,
     answered_items: HashSet<ItemId>,
     answers: u64,
     history: Vec<AgentStreamPayload>,
@@ -41,6 +45,8 @@ pub(crate) struct Shadow {
     now: Option<Instant>,
     stamp: Option<u64>,
     replaying: bool,
+    replayed: u64,
+    replayed_command: Option<String>,
     session: Option<String>,
 }
 
@@ -66,6 +72,16 @@ impl Shadow {
     pub(crate) fn answered(&mut self, request: u64, answer: Answer) {
         if let Some(item) = self.asked.get(&request) {
             self.answered_items.insert(item.clone());
+        }
+        if let Some((item, denials)) = self.denials.remove(&request) {
+            let declined = match &answer {
+                Answer::Cancel => true,
+                Answer::Option { id } => denials.contains(id),
+                Answer::Questions { .. } => false,
+            };
+            if declined {
+                self.declined.insert(item);
+            }
         }
         self.step(Fact::RequestAnswered {
             request: RequestId(request),
@@ -98,6 +114,8 @@ impl Shadow {
             if self.session.is_some() {
                 self.splits.clear();
                 self.bodies.clear();
+                self.denials.clear();
+                self.declined.clear();
                 self.plan = None;
             }
             self.session = Some(session.to_owned());
@@ -159,14 +177,19 @@ impl Shadow {
                 if let Some(item) = item.clone().filter(|_| !questions.is_empty()) {
                     self.asked.insert(*request_id, item);
                 }
+                let ask = ask(tool_call, options, questions);
+                if let Some(item) = item.clone() {
+                    self.denials.insert(*request_id, (item, denials(&ask)));
+                }
                 self.step(Fact::RequestOpened {
                     request: RequestId(*request_id),
                     item,
-                    ask: ask(tool_call, options, questions),
+                    ask,
                     blocking: tool_call["_meta"]["zz"]["background"] != true,
                 });
             }
             AgentStreamPayload::PermissionResolved { request_id, .. } => {
+                self.denials.remove(request_id);
                 self.step(Fact::RequestWithdrawn {
                     request: RequestId(*request_id),
                 });
@@ -318,10 +341,10 @@ impl Shadow {
         });
         self.stamp = ended;
         if self.open(&item) {
-            self.bodies.insert(item.clone(), body);
+            self.bodies.insert(item.clone(), body.clone());
         }
         self.background_tool(&item, update);
-        self.settle_tool(&item, update);
+        self.settle_tool(&item, update, &body);
     }
 
     fn background_tool(&mut self, item: &ItemId, update: &Value) {
@@ -339,6 +362,20 @@ impl Shadow {
         let item = ItemId::new(id);
         let mut body = self.bodies.get(&item).cloned().unwrap_or_default();
         let mut changed = false;
+        if let Some(title) = update["title"]
+            .as_str()
+            .filter(|title| *title != body.title)
+        {
+            title.clone_into(&mut body.title);
+            changed = true;
+        }
+        if update["_meta"]["zz"].get("target").is_some() {
+            let target = target(update);
+            if target != body.target {
+                body.target = target;
+                changed = true;
+            }
+        }
         if let Some(text) = content_text(&update["content"]) {
             body.text = text;
             changed = true;
@@ -356,21 +393,29 @@ impl Shadow {
             }
             self.step(Fact::ItemChanged {
                 item: item.clone(),
-                body,
+                body: body.clone(),
             });
         }
         self.background_tool(&item, update);
         self.answered_in_terminal(&item, update);
-        self.settle_tool(&item, update);
+        self.settle_tool(&item, update, &body);
     }
 
     fn answered_in_terminal(&mut self, item: &ItemId, update: &Value) {
-        let Some(answered) = update["_meta"]["zz"]["answered"].as_array() else {
-            return;
-        };
         if self.answered_items.contains(item) || !self.open(item) {
             return;
         }
+        let zz = &update["_meta"]["zz"];
+        let declined = Vec::<AgentQuestion>::deserialize(&zz["questions"])
+            .ok()
+            .filter(|questions| zz["declined"] == true && !questions.is_empty());
+        if let Some(questions) = declined {
+            self.asked_in_terminal(item, questions, Answer::Cancel);
+            return;
+        }
+        let Some(answered) = zz["answered"].as_array() else {
+            return;
+        };
         let (questions, answers) = answered
             .iter()
             .enumerate()
@@ -389,6 +434,10 @@ impl Shadow {
                 (question, answer)
             })
             .unzip();
+        self.asked_in_terminal(item, questions, Answer::Questions { answers });
+    }
+
+    fn asked_in_terminal(&mut self, item: &ItemId, questions: Vec<AgentQuestion>, answer: Answer) {
         self.answers += 1;
         let request = RequestId(TERMINAL_ANSWERS + self.answers);
         self.step(Fact::RequestOpened {
@@ -397,15 +446,30 @@ impl Shadow {
             ask: Ask::Questions { questions },
             blocking: false,
         });
-        self.answered(request.0, Answer::Questions { answers });
+        self.answered(request.0, answer);
     }
 
-    fn settle_tool(&mut self, item: &ItemId, update: &Value) {
+    fn settle_tool(&mut self, item: &ItemId, update: &Value, body: &ItemBody) {
         let status = match update["status"].as_str() {
             Some("completed") => ItemStatus::Completed,
-            Some("failed") => ItemStatus::Failed { message: None },
+            Some("failed")
+                if self.declined.contains(item) || update["_meta"]["zz"]["declined"] == true =>
+            {
+                ItemStatus::Declined
+            }
+            Some("failed") => {
+                let command = body.exit_code.is_some()
+                    || self
+                        .state
+                        .open_kinds()
+                        .any(|(id, kind, _)| id == item && kind == ItemKind::Execute);
+                ItemStatus::Failed {
+                    message: failure(&body.text, command),
+                }
+            }
             _ => return,
         };
+        self.declined.remove(item);
         self.bodies.remove(item);
         self.step(Fact::ItemEnded {
             item: item.clone(),
@@ -413,8 +477,47 @@ impl Shadow {
         });
     }
 
+    fn replayed_turn(&mut self, mark: &str) {
+        if mark != "started" {
+            let end = if mark == "cancelled" {
+                End::Cancelled
+            } else {
+                End::Completed
+            };
+            self.end_replayed_turn(end);
+            return;
+        }
+        self.end_replayed_turn(End::Completed);
+        self.replayed += 1;
+        let turn = REPLAYED_TURNS + self.replayed;
+        let command = format!("replay-{}", self.replayed);
+        self.step(Fact::Turn(turn::Fact::Prompt {
+            turn,
+            command: Some(command.clone()),
+        }));
+        let owned = self
+            .state
+            .turn
+            .turn()
+            .is_some_and(|running| running.owner == Some(turn));
+        if owned {
+            self.replayed_command = Some(command);
+        }
+    }
+
+    fn end_replayed_turn(&mut self, end: End) {
+        if let Some(command) = self.replayed_command.take() {
+            self.step(Fact::Turn(turn::Fact::Ended { command, end }));
+        }
+    }
+
     fn session_info(&mut self, update: &Value) {
         let zz = &update["_meta"]["zz"];
+        if self.replaying
+            && let Some(mark) = zz["turn"].as_str()
+        {
+            self.replayed_turn(mark);
+        }
         if let (Some(summary), Some(ids)) = (
             zz["summary"].as_str().map(str::trim),
             zz["toolCallIds"].as_array(),
@@ -510,6 +613,7 @@ impl Shadow {
         for payload in std::mem::take(&mut self.history) {
             self.payload(&payload);
         }
+        self.end_replayed_turn(End::Completed);
         self.replaying = false;
         let leftover = self
             .state
@@ -670,11 +774,68 @@ fn ask(tool_call: &Value, options: &Value, questions: &[AgentQuestion]) -> Ask {
             },
         })
         .collect();
+    if tool_call["kind"] == "switch_mode" {
+        let markdown = tool_call["content"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|block| block["content"]["text"].as_str())
+            .collect::<Vec<_>>()
+            .join("\n\n");
+        if !markdown.trim().is_empty() {
+            return Ask::Plan { markdown, options };
+        }
+    }
     Ask::Approval {
         title: tool_call["title"].as_str().unwrap_or_default().to_owned(),
         detail: None,
         options,
     }
+}
+
+fn denials(ask: &Ask) -> Vec<String> {
+    match ask {
+        Ask::Approval { options, .. } | Ask::Plan { options, .. } => options
+            .iter()
+            .filter(|option| option.kind == OptionKind::Deny)
+            .map(|option| option.id.clone())
+            .collect(),
+        Ask::Questions { .. } => Vec::new(),
+    }
+}
+
+fn failure(text: &str, command: bool) -> Option<String> {
+    let mut lines = text
+        .lines()
+        .skip_while(|line| line.trim().is_empty())
+        .peekable();
+    if command
+        && lines.peek().is_some_and(|line| {
+            line.trim()
+                .strip_prefix("Exit code ")
+                .is_some_and(|code| code.parse::<i64>().is_ok())
+        })
+    {
+        lines.next();
+    }
+    let message = if command {
+        lines
+            .filter(|line| !line.trim().is_empty())
+            .last()?
+            .trim()
+            .to_owned()
+    } else {
+        lines.collect::<Vec<_>>().join("\n").trim().to_owned()
+    };
+    if message.is_empty() {
+        return None;
+    }
+    if message.chars().count() <= MAX_FAILURE_CHARS {
+        return Some(message);
+    }
+    let mut clipped = message.chars().take(MAX_FAILURE_CHARS).collect::<String>();
+    clipped.push('…');
+    Some(clipped)
 }
 
 fn tool_kind(update: &Value) -> ItemKind {
@@ -691,18 +852,26 @@ fn tool_kind(update: &Value) -> ItemKind {
     if name.is_some_and(|name| name.starts_with("mcp__")) || codex == Some("mcpToolCall") {
         return ItemKind::Mcp;
     }
+    if name == Some("WebSearch") || codex == Some("webSearch") {
+        return ItemKind::Web;
+    }
     match update["kind"].as_str() {
         Some("read") => ItemKind::Read,
         Some("edit" | "delete" | "move") => ItemKind::Edit,
         Some("search") => ItemKind::Search,
         Some("execute") => ItemKind::Execute,
         Some("fetch") => ItemKind::Fetch,
-        _ if matches!(name, Some("WebSearch")) || codex == Some("webSearch") => ItemKind::Web,
         _ => ItemKind::Tool,
     }
 }
 
 fn target(update: &Value) -> Option<String> {
+    if let Some(target) = update["_meta"]["zz"].get("target") {
+        return target
+            .as_str()
+            .filter(|target| !target.trim().is_empty())
+            .map(str::to_owned);
+    }
     update["locations"][0]["path"]
         .as_str()
         .or_else(|| update["rawInput"]["command"].as_str())

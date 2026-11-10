@@ -18,6 +18,7 @@ const COUNT_RING: f32 = 1.5;
 const COUNT_BADGE_LEFT: f32 = 7.5;
 const COUNT_BADGE_OVERHANG: f32 = COUNT_BADGE_LEFT + COUNT_BADGE - ACTIVITY_ROW_FONT_SIZE;
 const COUNT_GAP: f32 = COUNT_BADGE_OVERHANG + 6.0;
+const DETAIL_YIELD: f32 = 1000.0;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ActivityCount {
@@ -31,11 +32,11 @@ pub struct ActivityCount {
 pub struct ActivityMark {
     pub icon: Option<IconName>,
     pub spin: Option<f32>,
-    pub turn: Option<f32>,
     pub shimmer: Option<u64>,
     pub tint: Option<Hsla>,
     pub label_color: Option<Hsla>,
     pub detail: Option<SharedString>,
+    pub detail_color: Option<Hsla>,
     pub counts: Vec<ActivityCount>,
     pub tag: Option<(SharedString, Tone)>,
     pub spread: bool,
@@ -47,11 +48,11 @@ impl ActivityMark {
         Self {
             icon: None,
             spin: None,
-            turn: None,
             shimmer: None,
             tint: None,
             label_color: None,
             detail: None,
+            detail_color: None,
             counts: Vec::new(),
             tag: None,
             spread: false,
@@ -130,11 +131,15 @@ pub fn activity_row(
     cx: &App,
 ) -> Stateful<Div> {
     let drop = cap_center_drop(px(ACTIVITY_ROW_FONT_SIZE), px(ACTIVITY_ROW_FONT_SIZE), cx);
+    let breath = mark
+        .shimmer
+        .filter(|_| mark.spin.is_none())
+        .map(|now| super::breath(now, cx));
     let glyph = match (mark.spin, mark.icon) {
         (Some(phase), _) => Some(super::spinner(phase)),
-        (None, Some(icon)) => Some(match mark.turn {
-            Some(phase) => {
-                Icon::new(icon).transform(ala::Transformation::rotate(ala::percentage(phase)))
+        (None, Some(icon)) => Some(match breath {
+            Some((_, scale)) => {
+                Icon::new(icon).transform(ala::Transformation::scale(ala::size(scale, scale)))
             }
             None => Icon::new(icon),
         }),
@@ -148,6 +153,9 @@ pub fn activity_row(
         }
     });
     let spread = mark.spread;
+    let detail_color = mark
+        .detail_color
+        .unwrap_or_else(|| cx.theme().foreground.faint());
     let live = mark.shimmer.is_some();
     let end_icon = match end {
         ActivityEnd::None => None,
@@ -177,6 +185,7 @@ pub fn activity_row(
                     .flex_none()
                     .relative()
                     .top(drop)
+                    .when_some(breath, |glyph, (opacity, _)| glyph.opacity(opacity))
                     .child(glyph),
             )
         })
@@ -184,18 +193,14 @@ pub fn activity_row(
             div()
                 .debug_selector(|| "chat-activity-label".to_owned())
                 .min_w_0()
-                .flex_shrink_0()
+                .flex_shrink_1()
                 .when(spread, |label| label.max_w(relative(0.6)))
-                .max_w_full()
                 .overflow_hidden()
                 .text_ellipsis()
                 .whitespace_nowrap()
                 .when_some(mark.label_color, Styled::text_color)
                 .map(|this| match mark.shimmer {
-                    Some(now) => {
-                        this.flex_shrink(1.0)
-                            .child(super::shimmer(&single_line(label), now, cx))
-                    }
+                    Some(now) => this.child(super::shimmer(&single_line(label), now, cx)),
                     None => this.child(single_line(label)),
                 }),
         )
@@ -203,12 +208,13 @@ pub fn activity_row(
             this.child(
                 div()
                     .debug_selector(|| "chat-activity-detail".to_owned())
+                    .flex_shrink(DETAIL_YIELD)
                     .when(live, Styled::flex_none)
                     .min_w_0()
                     .overflow_hidden()
                     .text_ellipsis()
                     .whitespace_nowrap()
-                    .text_color(cx.theme().foreground.faint())
+                    .text_color(detail_color)
                     .child(detail),
             )
         })

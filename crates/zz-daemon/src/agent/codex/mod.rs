@@ -2555,7 +2555,7 @@ pub(crate) fn approval(method: &str, params: &Value) -> Option<(Reply, Value)> {
         "item/commandExecution/requestApproval" | "execCommandApproval" => {
             let command = params["command"]
                 .as_str()
-                .map(str::to_owned)
+                .map(translate::shell_script)
                 .or_else(|| {
                     params["command"].as_array().map(|parts| {
                         parts

@@ -79,6 +79,8 @@ pub struct SyntaxColors {
     pub comment_doc: Option<ThemeStyle>,
     pub constant: Option<ThemeStyle>,
     pub constructor: Option<ThemeStyle>,
+    pub diff_minus: Option<ThemeStyle>,
+    pub diff_plus: Option<ThemeStyle>,
     pub embedded: Option<ThemeStyle>,
     pub emphasis: Option<ThemeStyle>,
     pub emphasis_strong: Option<ThemeStyle>,
@@ -129,10 +131,14 @@ impl SyntaxColors {
             "comment.doc" => self.comment_doc,
             "constant" => self.constant,
             "constructor" => self.constructor,
+            "delimiter" => self.punctuation_delimiter,
+            "diff.minus" => self.diff_minus,
+            "diff.plus" => self.diff_plus,
             "embedded" => self.embedded,
             "emphasis" => self.emphasis,
             "emphasis.strong" => self.emphasis_strong,
             "enum" => self.enum_,
+            "escape" => self.string_escape,
             "function" => self.function,
             "hint" => self.hint,
             "keyword" => self.keyword,
@@ -212,5 +218,23 @@ impl HighlightTheme {
 
     pub fn default_light() -> Arc<Self> {
         palette::light()
+    }
+
+    pub fn with_diff_inks(theme: &Arc<Self>, added: Hsla, removed: Hsla) -> Arc<Self> {
+        let ink = |color| {
+            Some(ThemeStyle {
+                color: Some(color),
+                font_style: None,
+                font_weight: None,
+            })
+        };
+        let (plus, minus) = (ink(added), ink(removed));
+        if theme.diff_plus == plus && theme.diff_minus == minus {
+            return Arc::clone(theme);
+        }
+        let mut inked = HighlightTheme::clone(theme);
+        inked.style.syntax.diff_plus = plus;
+        inked.style.syntax.diff_minus = minus;
+        Arc::new(inked)
     }
 }

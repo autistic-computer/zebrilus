@@ -307,6 +307,7 @@ pub fn status_pane(id: u64, label: &str, kind: PaneKindSnapshot, active: bool) -
             program: zz_client::program::resolve([label]),
             kind,
             active,
+            attention: zz_client::window_summary::Attention::None,
         },
         noop(),
     )

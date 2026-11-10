@@ -16,7 +16,7 @@ export function paneHeaderButton(factory) {
 }
 
 export function paneIcon(kind) {
-  return { browser: "globe", editor: "file", picker: "plus", agent: "bot" }[kind] || "square-terminal";
+  return { browser: "globe", editor: "file", picker: "plus", agent: "bot", view: "eye" }[kind] || "square-terminal";
 }
 
 export function metrics() {
@@ -1077,3 +1077,4 @@ function unsupported(title, icon, reason) {
 }
 
 paneRenderer("editor", unsupported("Editor", "file", "The daemon does not share editor file contents with browser clients yet."));
+paneRenderer("view", unsupported("View", "eye", "Diagrams, code and images from a chat open in the zz app."));

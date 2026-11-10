@@ -517,19 +517,23 @@ mod tests {
             ("**outer *", "outer *"),
         ] {
             let mended = mend(source).unwrap_or_else(|| panic!("{source:?} needs a repair"));
-            let ast = markdown::to_mdast(&mended, &markdown::ParseOptions::gfm())
-                .unwrap_or_else(|e| panic!("{mended:?}: {e}"));
+            let mut options = comrak::Options::default();
+            options.extension.strikethrough = true;
+            options.extension.table = true;
+            options.extension.autolink = true;
+            let arena = comrak::Arena::new();
+            let ast = comrak::parse_document(&arena, &mended, &options);
             let mut text = String::new();
-            plain_text(&ast, &mut text);
+            plain_text(ast, &mut text);
             assert_eq!(text, plain, "{source:?} -> {mended:?}");
         }
     }
 
-    fn plain_text(node: &markdown::mdast::Node, out: &mut String) {
-        if let markdown::mdast::Node::Text(text) = node {
-            out.push_str(&text.value);
+    fn plain_text<'a>(node: &'a comrak::nodes::AstNode<'a>, out: &mut String) {
+        if let comrak::nodes::NodeValue::Text(text) = &node.data.borrow().value {
+            out.push_str(text);
         }
-        for child in node.children().into_iter().flatten() {
+        for child in node.children() {
             plain_text(child, out);
         }
     }

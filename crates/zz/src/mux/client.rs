@@ -74,13 +74,11 @@ pub(crate) enum AgentRequest {
         request_id: u64,
         answers: Vec<zz_protocol::AgentQuestionAnswer>,
     },
-    StopTask {
-        task_id: String,
-    },
     SetConfigOption {
         option_id: String,
         value: String,
     },
+    SessionOp(zz_protocol::AgentSessionOpKind),
 }
 
 #[cfg(feature = "agent-pane")]
@@ -88,12 +86,13 @@ pub(crate) enum AgentRequest {
 pub(crate) struct AgentEvents {
     pub(crate) items: Vec<(PaneId, Vec<zz_daemon::AgentStreamItem>)>,
     pub(crate) states: Vec<(PaneId, zz_protocol::AgentPaneWire)>,
+    pub(crate) sessions: Vec<(PaneId, String)>,
 }
 
 #[cfg(feature = "agent-pane")]
 impl AgentEvents {
     fn is_empty(&self) -> bool {
-        self.items.is_empty() && self.states.is_empty()
+        self.items.is_empty() && self.states.is_empty() && self.sessions.is_empty()
     }
 }
 
@@ -3923,6 +3922,9 @@ impl MuxClient {
         self.agent_events
             .states
             .retain(|(target, _)| *target != pane);
+        self.agent_events
+            .sessions
+            .retain(|(target, _)| *target != pane);
     }
 
     #[cfg(feature = "agent-pane")]
@@ -3953,6 +3955,11 @@ impl MuxClient {
                 self.agent_events.states.push((pane, state));
             }
         }
+        ready.sessions = pending
+            .sessions
+            .into_iter()
+            .filter(|(pane, _)| panes.contains(pane))
+            .collect();
         ready
     }
 
@@ -4004,9 +4011,7 @@ impl MuxClient {
                 request_id,
                 answers,
             }),
-            AgentRequest::StopTask { task_id } => {
-                client.send(&zz_protocol::ProtocolMessage::AgentStopTask { pane, task_id })
-            }
+            AgentRequest::SessionOp(op) => client.agent_session_op(pane, op),
         };
         if let Err(error) = sent {
             log::warn!("failed to send an agent request for {pane}: {error}");
@@ -4612,8 +4617,15 @@ impl MuxClient {
             | CoreEvent::ViewportChanged { .. }
             | CoreEvent::StatusChanged
             | CoreEvent::CommandOutputChanged
-            | CoreEvent::AgentSessions { .. }
             | CoreEvent::ProvidersChanged => {}
+            CoreEvent::AgentSessions { pane, result, .. } => {
+                #[cfg(feature = "agent-pane")]
+                if self.watched_agents.contains(&pane) {
+                    self.agent_events.sessions.push((pane, result));
+                }
+                #[cfg(not(feature = "agent-pane"))]
+                let _ = (pane, result);
+            }
             CoreEvent::OpenPathPicker { pane, start_dir } => {
                 cx.emit(PathPickerUpdate::Open { pane, start_dir });
             }

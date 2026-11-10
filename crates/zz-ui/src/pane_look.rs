@@ -1,7 +1,7 @@
 use ala::{App, GlassMaterial, Global, Hsla, Pixels, px};
 use penna::{ContentLook, Theme};
 
-use crate::{Colorize as _, Highlight};
+use crate::{Colorize as _, Ground, Highlight};
 
 const VEIL: [f32; 2] = [0.05, 0.18];
 const WASH: [f32; 2] = [0.3, 0.05];
@@ -79,6 +79,13 @@ impl PaneLook {
             .tint(tint)
             .fallback(tint);
         frame.specular(frame.specular * self.rim(theme, active))
+    }
+
+    pub fn ground(self, theme: &Theme, plane: Hsla, active: bool) -> Ground {
+        Ground {
+            fill: self.focus(theme, plane, active),
+            ..theme.ground()
+        }
     }
 
     pub fn edge_color(self, theme: &Theme, active: bool) -> Hsla {
@@ -186,6 +193,33 @@ mod tests {
             theme.mode = mode;
             assert_eq!(look.frame(&theme, plane, true).tint, active, "{mode:?}");
             assert_eq!(look.frame(&theme, plane, false).tint, inactive, "{mode:?}");
+        }
+    }
+
+    #[test]
+    fn the_composer_rests_on_the_activity_card_color_over_the_lit_pane() {
+        use penna::{CardLook, Surface, ThemeColor, components::input::FieldLook, to_hex};
+        let mode = ThemeMode::Dark;
+        let mut theme = Theme::from(&*ThemeColor::for_mode(mode));
+        theme.mode = mode;
+        crate::interface_theme::builtin_theme("default")
+            .expect("the default theme")
+            .apply(&mut theme);
+        theme.glass = None;
+        let look = PaneLook::default();
+        for (active, pane, card) in [(true, "#252525", "#2e2e2d"), (false, "#151515", "#1f1f1e")] {
+            let lit = look.ground(&theme, theme.background, active);
+            let activity = theme
+                .ground_of(Surface::from(CardLook::Activity).on(lit))
+                .fill;
+            let composer = theme
+                .ground_of(Surface::from(FieldLook::Composer).on(lit))
+                .fill;
+            assert_eq!(
+                (to_hex(lit.fill), to_hex(activity), to_hex(composer)),
+                (pane.to_owned(), card.to_owned(), card.to_owned()),
+                "active {active}"
+            );
         }
     }
 

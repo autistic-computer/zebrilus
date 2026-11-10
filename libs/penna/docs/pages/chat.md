@@ -4,7 +4,7 @@ The pieces of an agent chat. Each takes plain data and callbacks, so an app keep
 
 ## Activity rows
 
-One row per tool call, thought or summary: an icon or a running spinner, the label, a faint detail, a tag, per-kind counts and a chevron that opens it.
+One row per tool call, thought or summary: an icon or a running spinner, the label, a faint detail, a tag, per-kind counts and a chevron that opens it. While the agent works, the live line sweeps a soft crest across its muted label and its glyph breathes on the same 2.6s cycle.
 
 ```rust example story=chat/activity
 let mut mark = ActivityMark::plain(IconName::SquareTerminal);
@@ -28,7 +28,7 @@ plan_list(&[(PlanState::Current, "Give pinned tabs a 28px floor".into())], cx)
 
 ## Composer
 
-The field with a leading button, the context meter and the action button, which sends, queues behind a running turn or stops it. ChatComposer adds a prefix above and a footer below.
+The field with a leading button, the context meter and the action button, which sends, queues behind a running turn or stops it. ChatComposer adds a prefix above and a footer below. It is glass when glass is on; otherwise it rests on the activity cards' wash, opaque and with no edge.
 
 ```rust example story=chat/composer
 ChatComposer {
@@ -39,6 +39,8 @@ ChatComposer {
         action: composer_action_button("send", ComposerAction::Send, true, cx).into_any_element(),
         attachments: None,
         command_hint: None,
+        ask: None,
+        secret: false,
         ground: None,
     },
     prefix: vec![queue_chip("queued", 2, true, on_return, cx).into_any_element()],
@@ -56,21 +58,41 @@ suggestion_list("suggestions", rows, cx)
 suggestion_row("review", "/review", Some("Review the current changes".into()), Some("skill".into()), true, cx)
 ```
 
-## Action card
+## Ask
 
-A question the agent asks before it acts, with numbered options.
+A question, a tool approval or a plan approval grows out of the top of the composer, with numbered options and an input row that says what typing does. A question is its own header; an approval names itself and shows what it wants to run. The chat keeps one row per ask.
 
-```rust example story=chat/card
-permission_card("Run cargo test?", Some("1 of 2".into()), options, close, cx)
-permission_option(("option", 0), 0, "Allow once", false, true, true, cx)
+```rust example story=chat/ask
+Composer {
+    input,
+    leading: Some(ask_leading(ask_picked_key(Some("4".into()), on)).into_any_element()),
+    usage: Some(ask_send("send", "Next", on).into_any_element()),
+    action: composer_action_button("stop", ComposerAction::Stop, true, on).into_any_element(),
+    attachments: None,
+    command_hint: None,
+    ask: Some(
+        v_flex()
+            .child(ask_question("What should the morph cover?", on, cx).child(ask_count("2 of 3", on)))
+            .child(
+                ask_options()
+                    .child(AskOption::new(("option", 0), "Questions", on).key("1").picked(true))
+                    .child(AskOption::new(("option", 1), "Tool approvals", on).key("2").picked(false)),
+            )
+            .into_any_element(),
+    ),
+    secret: false,
+    ground,
+}
 ```
 
-## Task tray
+When several answers can be picked, a picked answer lights its key: no checkbox, and the same key takes it back. The hints lead with how many are picked.
 
-The plan and the background tasks above the composer, each opening its panel.
+## Plan tray
+
+The plan's chip above the composer, opening its steps.
 
 ```rust example story=chat/tasks
-task_tray("tray", Some(plan), &tasks, "2 running".into(), open, true, phase, on_action, cx)
+plan_tray("tray", plan, open, on_toggle, cx)
 ```
 
 ## Empty states
@@ -91,5 +113,5 @@ empty_state("No messages yet", false, view, cx)
 | `Composer`, `ChatComposer` | `.penna-chat-composer`, `.penna-chat-field` | The message field and its frame |
 | `composer_action_button`, `context_meter`, `queue_chip` | `button.send`, `.penna-chat-meter` | The composer's controls |
 | `suggestion_list`, `suggestion_row` | `.penna-chat-list`, `.penna-chat-suggestion` | Slash and mention suggestions |
-| `permission_card`, `permission_option`, `CardTile` | `.penna-chat-card`, `.penna-chat-tile` | Questions with options |
-| `task_tray` | `.penna-chat-tray` | Plan and background tasks |
+| `ask_question`, `ask_header`, `ask_body`, `ask_inset`, `ask_sheet`, `ask_options`, `AskOption`, `ask_key`, `ask_picked_key`, `ask_send`, `ask_skip`, `ask_hints`, `AskHint` | `.penna-chat-ask`, `.penna-chat-ask-option` | Questions and approvals inside the composer |
+| `plan_tray` | `.penna-chat-tray` | The plan over the composer |

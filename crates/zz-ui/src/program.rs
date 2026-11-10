@@ -318,7 +318,11 @@ mod tests {
             HostPlatform::Linux(LinuxDistro::Fedora),
         ]
         .map(|platform| platform_icon(platform).expect("a known platform has an icon"));
-        for path in [
+        let languages = zz_client::program::language_marks()
+            .iter()
+            .map(super::program_glyph_path)
+            .collect::<Vec<_>>();
+        let paths = [
             ZZ_LOGO,
             CLAUDE_ICON.path(),
             OPENAI_ICON.path(),
@@ -326,7 +330,10 @@ mod tests {
         ]
         .into_iter()
         .chain(platforms.iter().map(crate::IconName::path))
-        {
+        .map(str::to_owned)
+        .chain(languages.iter().map(ToString::to_string));
+        for path in paths {
+            let path = path.as_str();
             let loaded = Assets
                 .load(path)
                 .unwrap_or_else(|error| panic!("{path} failed to load: {error}"));

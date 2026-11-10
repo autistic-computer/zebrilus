@@ -11,7 +11,7 @@ use zz_protocol::{CommandInvocation, PaneId};
 use crate::{
     ActiveTheme as _, Emphasis, Tone,
     target::{RefTarget, ResolvedTarget, TargetHost, resolve_target},
-    text::{LinkClick, TextLinks},
+    text::{InlineLink, InlineSource, LinkClick, TextLinks},
 };
 
 pub const REF_SCHEME: &str = "zzref:";
@@ -23,6 +23,7 @@ pub struct ChatRefs {
     pub hosts: Vec<TargetHost>,
     pub cwd: Option<String>,
     pub open: RefOpener,
+    pub view: Option<super::preview::ViewOpener>,
 }
 
 impl ChatRefs {
@@ -111,89 +112,32 @@ pub fn ref_spans(text: &str) -> Vec<Range<usize>> {
     spans
 }
 
-fn escape_label(label: &str) -> String {
-    let mut escaped = String::with_capacity(label.len());
-    for character in label.chars() {
-        if "\\`*_[]<>#|~".contains(character) {
-            escaped.push('\\');
-        }
-        escaped.push(character);
-    }
-    escaped
-}
-
-fn link(target: ResolvedTarget, targets: &mut Vec<ResolvedTarget>) -> String {
-    let label = escape_label(&target.label);
-    targets.push(target);
-    format!("[{label}]({REF_SCHEME}{})", targets.len() - 1)
-}
-
-fn fence(line: &str) -> Option<&str> {
-    let trimmed = line.trim_start_matches(' ');
-    if line.len() - trimmed.len() > 3 {
-        return None;
-    }
-    ["```", "~~~"]
-        .into_iter()
-        .find(|marker| trimmed.starts_with(marker))
-}
-
-fn linkify_prose(text: &str, refs: &ChatRefs, targets: &mut Vec<ResolvedTarget>, out: &mut String) {
-    let mut last = 0;
-    for span in ref_spans(text) {
-        let Some(target) = refs.resolve(&text[span.start + 1..span.end]) else {
-            continue;
-        };
-        out.push_str(&text[last..span.start]);
-        out.push_str(&link(target, targets));
-        last = span.end;
-    }
-    out.push_str(&text[last..]);
-}
-
-fn linkify_line(line: &str, refs: &ChatRefs, targets: &mut Vec<ResolvedTarget>, out: &mut String) {
-    let mut rest = line;
-    while let Some(open) = rest.find('`') {
-        let ticks = rest[open..].len() - rest[open..].trim_start_matches('`').len();
-        let marker = &rest[open..open + ticks];
-        let Some(close) = rest[open + ticks..]
-            .find(marker)
-            .map(|at| open + ticks + at)
-        else {
-            break;
-        };
-        linkify_prose(&rest[..open], refs, targets, out);
-        let code = &rest[open + ticks..close];
-        match refs.resolve_code(code.trim()) {
-            Some(target) => out.push_str(&link(target, targets)),
-            None => out.push_str(&rest[open..close + ticks]),
-        }
-        rest = &rest[close + ticks..];
-    }
-    linkify_prose(rest, refs, targets, out);
-}
-
 #[must_use]
-pub fn linkify_markdown(text: &str, refs: &ChatRefs) -> (String, Vec<ResolvedTarget>) {
-    let mut out = String::with_capacity(text.len());
-    let mut targets = Vec::new();
-    let mut open_fence: Option<&str> = None;
-    for line in text.split_inclusive('\n') {
-        if let Some(marker) = open_fence {
-            if fence(line).is_some_and(|closing| closing == marker) {
-                open_fence = None;
-            }
-            out.push_str(line);
-            continue;
+pub fn ref_links(refs: &ChatRefs, text: &str, source: InlineSource) -> Vec<InlineLink> {
+    match source {
+        InlineSource::Text => ref_spans(text)
+            .into_iter()
+            .filter_map(|span| {
+                let target = refs.resolve(&text[span.start + 1..span.end])?;
+                Some(InlineLink {
+                    url: format!("{REF_SCHEME}{}", &text[span.clone()]),
+                    label: target.label,
+                    range: span,
+                })
+            })
+            .collect(),
+        InlineSource::Code => {
+            let code = text.trim();
+            refs.resolve_code(code)
+                .map(|target| InlineLink {
+                    range: 0..text.len(),
+                    label: target.label,
+                    url: format!("{REF_SCHEME}{code}"),
+                })
+                .into_iter()
+                .collect()
         }
-        if let Some(marker) = fence(line) {
-            open_fence = Some(marker);
-            out.push_str(line);
-            continue;
-        }
-        linkify_line(line, refs, &mut targets, &mut out);
     }
-    (out, targets)
 }
 
 fn ref_highlight(cx: &App) -> HighlightStyle {
@@ -207,32 +151,30 @@ fn ref_highlight(cx: &App) -> HighlightStyle {
 }
 
 pub struct RefLinks {
-    targets: Vec<ResolvedTarget>,
-    open: RefOpener,
+    refs: Arc<ChatRefs>,
 }
 
 impl RefLinks {
     #[must_use]
-    pub fn new(targets: Vec<ResolvedTarget>, open: RefOpener) -> Self {
-        Self { targets, open }
-    }
-
-    fn target(&self, url: &str) -> Option<&ResolvedTarget> {
-        let index = url.strip_prefix(REF_SCHEME)?.parse::<usize>().ok()?;
-        self.targets.get(index)
+    pub fn new(refs: Arc<ChatRefs>) -> Self {
+        Self { refs }
     }
 }
 
 impl TextLinks for RefLinks {
     fn style(&self, url: &str, cx: &App) -> Option<HighlightStyle> {
-        self.target(url).map(|_| ref_highlight(cx))
+        url.starts_with(REF_SCHEME).then(|| ref_highlight(cx))
     }
 
     fn click(&self, click: &LinkClick, window: &mut Window, cx: &mut App) -> bool {
-        let Some(target) = self.target(&click.url) else {
+        let Some(target) = click
+            .url
+            .strip_prefix(REF_SCHEME)
+            .and_then(|token| self.refs.resolve_code(token))
+        else {
             return false;
         };
-        (self.open)(target, window, cx);
+        (self.refs.open)(&target, window, cx);
         true
     }
 }
@@ -340,7 +282,8 @@ mod tests {
 
     use super::open_path;
 
-    use super::{ChatRefs, linkify_markdown, ref_spans};
+    use super::{ChatRefs, ref_links, ref_spans};
+    use crate::text::{InlineLink, InlineSource};
     use penna::blocks::palette::PaletteStatus;
 
     use crate::{
@@ -375,6 +318,7 @@ mod tests {
             }],
             cwd: Some("/repo".to_owned()),
             open: Arc::new(|_, _, _| {}),
+            view: None,
         }
     }
 
@@ -389,27 +333,73 @@ mod tests {
     }
 
     #[test]
-    fn markdown_links_refs_but_leaves_code_blocks_alone() {
-        let text = "pane @macbook:$0:1.%0 and `%0` in `crates/a.rs:4`\n```\n@macbook:$0\n```\n";
-        let (out, targets) = linkify_markdown(text, &refs());
+    fn refs_in_prose_and_code_link_to_their_labels() {
+        let refs = refs();
+        let text = "pane @macbook:$0:1.%0 and @claude";
         assert_eq!(
-            out,
-            "pane [bash · zebrilus 0:1](zzref:0) and [bash · zebrilus 0:1](zzref:1) in [a.rs:4](zzref:2)\n```\n@macbook:$0\n```\n"
+            ref_links(&refs, text, InlineSource::Text),
+            [InlineLink {
+                range: 5..21,
+                label: "bash · zebrilus 0:1".to_owned(),
+                url: "zzref:@macbook:$0:1.%0".to_owned(),
+            }]
         );
         assert_eq!(
-            targets[2].target,
-            RefTarget::Path {
+            ref_links(&refs, "crates/a.rs:4", InlineSource::Code),
+            [InlineLink {
+                range: 0..13,
+                label: "a.rs:4".to_owned(),
+                url: "zzref:crates/a.rs:4".to_owned(),
+            }]
+        );
+        assert_eq!(
+            refs.resolve_code("crates/a.rs:4")
+                .map(|target| target.target),
+            Some(RefTarget::Path {
                 path: "/repo/crates/a.rs".to_owned(),
                 line: Some(4)
-            }
+            })
+        );
+        assert!(ref_links(&refs, "main", InlineSource::Code).is_empty());
+        assert_eq!(
+            refs.resolve_code("@macbook:$0:1.%0")
+                .map(|target| target.label),
+            Some("bash · zebrilus 0:1".to_owned())
         );
     }
 
-    #[test]
-    fn unknown_refs_stay_as_written() {
-        let (out, targets) = linkify_markdown("ask @claude and `main`", &refs());
-        assert_eq!(out, "ask @claude and `main`");
-        assert!(targets.is_empty());
+    #[ala::test]
+    fn clicking_a_ref_link_opens_its_target(cx: &mut ala::TestAppContext) {
+        use std::sync::Mutex;
+
+        use ala::{Modifiers, MouseButton};
+
+        use crate::text::{LinkClick, TextLinks};
+
+        let opened = Arc::new(Mutex::new(Vec::new()));
+        let seen = Arc::clone(&opened);
+        let refs = ChatRefs {
+            open: Arc::new(move |target, _, _| seen.lock().unwrap().push(target.label.clone())),
+            ..refs()
+        };
+        let url = ref_links(&refs, "see @macbook:$0:1.%0", InlineSource::Text)[0]
+            .url
+            .clone();
+        let links = super::RefLinks::new(Arc::new(refs));
+        let window = cx.add_empty_window();
+        let clicked = window.update(|window, cx| {
+            links.click(
+                &LinkClick {
+                    url: url.into(),
+                    button: MouseButton::Left,
+                    modifiers: Modifiers::default(),
+                },
+                window,
+                cx,
+            )
+        });
+        assert!(clicked);
+        assert_eq!(*opened.lock().unwrap(), ["bash · zebrilus 0:1"]);
     }
 
     #[cfg(unix)]

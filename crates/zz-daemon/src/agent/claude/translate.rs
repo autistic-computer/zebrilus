@@ -10,6 +10,7 @@ use serde_json::{Value, json};
 use crate::agent::chat_bridge::attach_images;
 
 const MAX_TITLE_CHARS: usize = 500;
+pub(crate) const INTERRUPTED: &str = "[Request interrupted";
 
 #[derive(Clone, Debug, Default, PartialEq)]
 struct PlanItem {
@@ -28,6 +29,12 @@ impl PlanItem {
     }
 }
 
+struct Ended {
+    failed: bool,
+    output: Option<String>,
+    code: Option<i64>,
+}
+
 #[derive(Default)]
 pub(crate) struct Translator {
     cwd: PathBuf,
@@ -36,12 +43,14 @@ pub(crate) struct Translator {
     whole_blocks: HashMap<String, u64>,
     streamed: HashSet<String>,
     tools: HashMap<String, String>,
+    labels: HashMap<String, String>,
     hidden_tools: HashSet<String>,
     summaries: HashMap<String, String>,
     task_tools: HashMap<String, String>,
     background: HashSet<String>,
     settled: HashSet<String>,
-    ended_early: HashMap<String, (bool, Option<String>)>,
+    ended_early: HashMap<String, Ended>,
+    asked: HashMap<String, Value>,
     todos: Vec<PlanItem>,
     tasks: Vec<(String, PlanItem)>,
     pending_tasks: HashMap<String, PlanItem>,
@@ -92,43 +101,52 @@ impl Translator {
     }
 
     pub(crate) fn history_entry(&mut self, entry: &Value) -> Vec<Value> {
-        if entry["isSidechain"] == true {
-            return Vec::new();
-        }
-        self.sidechain_entry(entry)
-    }
-
-    pub(crate) fn sidechain_entry(&mut self, entry: &Value) -> Vec<Value> {
-        if entry["isMeta"] == true {
+        if entry["isSidechain"] == true || entry["isMeta"] == true {
             return Vec::new();
         }
         match entry["type"].as_str() {
             Some("assistant") => self.assistant(entry),
             Some("user") => {
-                if let Some(frame) = task_notification(entry) {
+                if let Some(frame) = task_notification(&message_text(entry)) {
                     return self.system(&frame);
                 }
                 let mut updates = self.user_text(entry);
                 updates.extend(self.tool_results(entry));
                 updates
             }
-            Some("attachment") => self.queued_prompt(entry),
+            Some("attachment") => self.queued(entry),
             _ => Vec::new(),
         }
     }
 
-    fn queued_prompt(&self, entry: &Value) -> Vec<Value> {
-        let attachment = &entry["attachment"];
-        if attachment["type"] != "queued_command"
-            || attachment["commandMode"] != "prompt"
-            || attachment["origin"]["kind"] != "human"
-        {
+    pub(crate) fn sidechain_entry(&mut self, entry: &Value, parent: &str) -> Vec<Value> {
+        if entry["isMeta"] == true {
             return Vec::new();
         }
-        self.user_text(&json!({
-            "uuid": entry["uuid"],
-            "message": { "content": attachment["prompt"] },
-        }))
+        match entry["type"].as_str() {
+            Some("assistant") => self.blocks(entry, Some(parent)),
+            Some("user") => self.tool_results(entry),
+            _ => Vec::new(),
+        }
+    }
+
+    fn queued(&mut self, entry: &Value) -> Vec<Value> {
+        let attachment = &entry["attachment"];
+        if attachment["type"] != "queued_command" {
+            return Vec::new();
+        }
+        match attachment["commandMode"].as_str() {
+            Some("task-notification") => attachment["prompt"]
+                .as_str()
+                .and_then(task_notification)
+                .map(|frame| self.system(&frame))
+                .unwrap_or_default(),
+            Some("prompt") if attachment["origin"]["kind"] == "human" => self.user_text(&json!({
+                "uuid": entry["uuid"],
+                "message": { "content": attachment["prompt"] },
+            })),
+            _ => Vec::new(),
+        }
     }
 
     pub(crate) fn task_tool_call(&self, task_id: &str) -> Option<String> {
@@ -199,10 +217,18 @@ impl Translator {
                     frame["status"].as_str(),
                     Some("failed" | "stopped" | "killed")
                 );
+                let code = summary.as_deref().and_then(summary_exit_code);
                 if !self.settled.contains(&tool) {
                     if self.background.contains(&tool) {
                         let output = self.task_output(&tool, frame, summary.clone());
-                        self.ended_early.insert(tool.clone(), (failed, output));
+                        self.ended_early.insert(
+                            tool.clone(),
+                            Ended {
+                                failed,
+                                output,
+                                code,
+                            },
+                        );
                     }
                     if let Some(summary) = summary {
                         self.summaries.insert(tool, summary);
@@ -216,6 +242,9 @@ impl Translator {
                     "toolCallId": tool,
                     "status": if failed { "failed" } else { "completed" },
                 });
+                if let Some(code) = code {
+                    update["_meta"]["zz"]["exitCode"] = Value::from(code);
+                }
                 if let Some(output) = output.filter(|output| !output.trim().is_empty()) {
                     update["content"] = json!([text_content(&output)]);
                 }
@@ -306,7 +335,10 @@ impl Translator {
     }
 
     fn assistant(&mut self, frame: &Value) -> Vec<Value> {
-        let parent = frame["parent_tool_use_id"].as_str().map(str::to_owned);
+        self.blocks(frame, frame["parent_tool_use_id"].as_str())
+    }
+
+    fn blocks(&mut self, frame: &Value, parent: Option<&str>) -> Vec<Value> {
         let message = &frame["message"];
         let message_id = message["id"]
             .as_str()
@@ -333,7 +365,7 @@ impl Translator {
                     }
                 }
                 Some("tool_use" | "server_tool_use" | "mcp_tool_use") => {
-                    updates.extend(self.tool_use(block, parent.as_deref()));
+                    updates.extend(self.tool_use(block, parent));
                 }
                 Some(kind @ ("text" | "thinking")) => {
                     let (session_update, field) = if kind == "text" {
@@ -342,7 +374,7 @@ impl Translator {
                         ("agent_thought_chunk", "thinking")
                     };
                     if let (Some(parent), Some(text)) = (
-                        parent.as_deref(),
+                        parent,
                         block[field].as_str().filter(|text| !text.is_empty()),
                     ) {
                         let mut update = chunk(session_update, &key, text);
@@ -423,7 +455,21 @@ impl Translator {
             }
             _ => {}
         }
-        let info = tool_info(&name, &input, &self.cwd);
+        if name == "AskUserQuestion" {
+            self.asked
+                .insert(id.to_owned(), json!(super::question_list(&input)));
+        }
+        let mut info = tool_info(&name, &input, &self.cwd);
+        if matches!(name.as_str(), "TaskStop" | "KillShell" | "KillBash")
+            && let Some(label) = input["task_id"]
+                .as_str()
+                .or_else(|| input["shell_id"].as_str())
+                .and_then(|task| self.task_tools.get(task))
+                .and_then(|tool| self.labels.get(tool))
+        {
+            info.title = clip_title(&format!("Stop {label}"));
+        }
+        self.labels.insert(id.to_owned(), info.title.clone());
         let mut call = json!({
             "sessionUpdate": "tool_call",
             "toolCallId": id,
@@ -431,7 +477,10 @@ impl Translator {
             "kind": info.kind,
             "status": "in_progress",
             "rawInput": input,
-            "_meta": { "claudeCode": { "toolName": name } },
+            "_meta": {
+                "claudeCode": { "toolName": name },
+                "zz": { "target": info.target },
+            },
         });
         if !info.content.is_empty() {
             call["content"] = Value::Array(info.content);
@@ -447,7 +496,12 @@ impl Translator {
             .as_str()
             .map(str::trim)
             .filter(|text| !text.is_empty())
-            .filter(|_| matches!(name.as_str(), "Bash" | "PowerShell" | "Agent" | "Task"))
+            .filter(|_| {
+                matches!(
+                    name.as_str(),
+                    "Bash" | "PowerShell" | "Monitor" | "Agent" | "Task"
+                )
+            })
         {
             call["_meta"]["zz"]["activity"] = Value::from(clip_title(activity));
         }
@@ -485,12 +539,13 @@ impl Translator {
         let structured = frame
             .get("tool_use_result")
             .or_else(|| frame.get("toolUseResult"));
+        let rejected = frame["toolDenialKind"] == "user-rejected";
         frame["message"]["content"]
             .as_array()
             .into_iter()
             .flatten()
             .filter(|block| block["type"] == "tool_result")
-            .flat_map(|block| self.tool_result(block, structured))
+            .flat_map(|block| self.tool_result(block, structured, rejected))
             .collect()
     }
 
@@ -504,7 +559,12 @@ impl Translator {
         }
     }
 
-    fn tool_result(&mut self, block: &Value, structured: Option<&Value>) -> Vec<Value> {
+    fn tool_result(
+        &mut self,
+        block: &Value,
+        structured: Option<&Value>,
+        rejected: bool,
+    ) -> Vec<Value> {
         let Some(id) = block["tool_use_id"].as_str() else {
             return Vec::new();
         };
@@ -538,8 +598,14 @@ impl Translator {
                 self.task_tools.insert(agent.to_owned(), id.to_owned());
             }
         }
+        if !is_error
+            && let Some(task) = structured.and_then(|result| result["backgroundTaskId"].as_str())
+        {
+            self.background.insert(id.to_owned());
+            self.task_tools.insert(task.to_owned(), id.to_owned());
+        }
         let output = if is_error {
-            Some(text)
+            Some(error_text(&text))
         } else {
             match name.as_str() {
                 "Edit" | "Write" | "MultiEdit" | "NotebookEdit" => None,
@@ -554,13 +620,20 @@ impl Translator {
             self.background.remove(id);
         }
         let running = !is_error && self.background.contains(id) && early.is_none();
-        let status = match (is_error, running, &early) {
-            (true, _, _) | (false, _, Some((true, _))) => "failed",
-            (false, true, _) => "in_progress",
-            (false, false, _) => "completed",
+        let failed = is_error || early.as_ref().is_some_and(|ended| ended.failed);
+        let status = match (failed, running) {
+            (true, _) => "failed",
+            (false, true) => "in_progress",
+            (false, false) => "completed",
         };
+        let command = matches!(name.as_str(), "Bash" | "PowerShell");
+        let code = early.as_ref().and_then(|ended| ended.code).or_else(|| {
+            (is_error && command)
+                .then(|| exit_code(output.as_deref().unwrap_or_default()))
+                .flatten()
+        });
         let output = early
-            .and_then(|(_, output)| output)
+            .and_then(|ended| ended.output)
             .or(output)
             .filter(|_| !(running && matches!(name.as_str(), "Agent" | "Task")));
         let mut update = json!({
@@ -568,14 +641,18 @@ impl Translator {
             "toolCallId": id,
             "status": status,
         });
-        if is_error
-            && matches!(name.as_str(), "Bash" | "PowerShell")
-            && let Some(code) = exit_code(output.as_deref().unwrap_or_default())
-        {
-            update["_meta"] = json!({ "zz": { "exitCode": code } });
+        if let Some(code) = code {
+            update["_meta"]["zz"]["exitCode"] = Value::from(code);
         }
         if running {
-            update["_meta"] = json!({ "zz": { "background": true } });
+            update["_meta"]["zz"]["background"] = Value::from(true);
+        }
+        let asked = self.asked.remove(id);
+        if rejected && is_error {
+            update["_meta"]["zz"]["declined"] = Value::from(true);
+            if let Some(questions) = asked {
+                update["_meta"]["zz"]["questions"] = questions;
+            }
         }
         if name == "AskUserQuestion"
             && !is_error
@@ -646,6 +723,24 @@ fn exit_code(output: &str) -> Option<i64> {
         .ok()
 }
 
+fn summary_exit_code(summary: &str) -> Option<i64> {
+    let (_, rest) = summary.rsplit_once("exit code ")?;
+    let end = rest
+        .char_indices()
+        .find(|(at, ch)| !(ch.is_ascii_digit() || (*at == 0 && *ch == '-')))
+        .map_or(rest.len(), |(at, _)| at);
+    rest[..end].parse().ok()
+}
+
+fn error_text(text: &str) -> String {
+    let text = text.trim();
+    text.strip_prefix("<tool_use_error>")
+        .and_then(|inner| inner.strip_suffix("</tool_use_error>"))
+        .unwrap_or(text)
+        .trim()
+        .to_owned()
+}
+
 fn text_content(text: &str) -> Value {
     json!({ "type": "content", "content": { "type": "text", "text": text } })
 }
@@ -685,6 +780,10 @@ pub(crate) fn user_prompt(frame: &Value) -> Option<(String, Vec<(String, String)
     let text = message_text(frame);
     (!is_internal_user_text(&text))
         .then(|| (without_image_tags(&without_paste_tags(&text)), images))
+}
+
+pub(crate) fn interrupted(frame: &Value) -> bool {
+    message_text(frame).trim_start().starts_with(INTERRUPTED)
 }
 
 fn message_images(frame: &Value) -> Vec<(String, String)> {
@@ -770,8 +869,7 @@ fn message_text(frame: &Value) -> String {
     }
 }
 
-fn task_notification(entry: &Value) -> Option<Value> {
-    let text = message_text(entry);
+fn task_notification(text: &str) -> Option<Value> {
     let body = text.trim_start().strip_prefix("<task-notification>")?;
     let tag = |name: &str| {
         let open = format!("<{name}>");
@@ -827,6 +925,7 @@ fn is_internal_user_text(text: &str) -> bool {
         "<local-command-",
         "<system-reminder>",
         "<task-notification>",
+        INTERRUPTED,
     ]
     .iter()
     .any(|prefix| trimmed.starts_with(prefix))
@@ -891,6 +990,7 @@ pub(crate) struct ToolInfo {
     pub(crate) kind: &'static str,
     pub(crate) content: Vec<Value>,
     pub(crate) locations: Vec<Value>,
+    pub(crate) target: Option<String>,
 }
 
 pub(crate) fn tool_info(name: &str, input: &Value, cwd: &Path) -> ToolInfo {
@@ -909,11 +1009,46 @@ pub(crate) fn tool_info(name: &str, input: &Value, cwd: &Path) -> ToolInfo {
         })
         .unwrap_or_default()
     };
+    let text = |key: &str| {
+        input[key]
+            .as_str()
+            .map(str::trim)
+            .filter(|text| !text.is_empty())
+    };
+    let target = match name {
+        "Bash" | "PowerShell" | "Monitor" => text("command").map(clip_title),
+        "Read" | "Write" | "Edit" | "MultiEdit" | "NotebookEdit" => shown.clone(),
+        "Glob" | "Grep" => text("pattern").map(clip_title),
+        "WebFetch" => text("url").map(clip_title),
+        "WebSearch" => text("query").map(clip_title),
+        "Agent" | "Task" => text("prompt").map(str::to_owned),
+        "ToolSearch" => text("query").map(|query| {
+            query.strip_prefix("select:").map_or_else(
+                || clip_title(query),
+                |names| {
+                    names
+                        .split(',')
+                        .map(str::trim)
+                        .filter(|name| !name.is_empty())
+                        .map(|name| mcp_name(name).unwrap_or_else(|| name.to_owned()))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                },
+            )
+        }),
+        _ => None,
+    };
     let (title, kind, content, locations) = match name {
         "Bash" | "PowerShell" => (
             input["command"]
                 .as_str()
                 .map_or_else(|| "Terminal".to_owned(), str::to_owned),
+            "execute",
+            Vec::new(),
+            Vec::new(),
+        ),
+        "Monitor" => (
+            text("description").unwrap_or("Monitor").to_owned(),
             "execute",
             Vec::new(),
             Vec::new(),
@@ -1033,12 +1168,19 @@ pub(crate) fn tool_info(name: &str, input: &Value, cwd: &Path) -> ToolInfo {
             Vec::new(),
         ),
         "ExitPlanMode" => (
-            "Plan".to_owned(),
+            "Exit plan mode".to_owned(),
             "switch_mode",
             input["plan"]
                 .as_str()
                 .map(|plan| vec![text_content(plan)])
                 .unwrap_or_default(),
+            Vec::new(),
+        ),
+        "ToolSearch" => ("Load tools".to_owned(), "other", Vec::new(), Vec::new()),
+        "TaskStop" | "KillShell" | "KillBash" => (
+            "Stop background task".to_owned(),
+            "other",
+            Vec::new(),
             Vec::new(),
         ),
         "AskUserQuestion" => {
@@ -1068,6 +1210,7 @@ pub(crate) fn tool_info(name: &str, input: &Value, cwd: &Path) -> ToolInfo {
         kind,
         content,
         locations,
+        target,
     }
 }
 
@@ -1105,13 +1248,29 @@ fn grep_title(input: &Value) -> String {
     title
 }
 
-fn mcp_title(name: &str) -> String {
+fn mcp_name(name: &str) -> Option<String> {
     name.strip_prefix("mcp__")
         .and_then(|rest| rest.split_once("__"))
-        .map_or_else(
-            || name.to_owned(),
-            |(server, tool)| format!("{server}: {tool}"),
-        )
+        .map(|(server, tool)| format!("{server}: {tool}"))
+}
+
+fn mcp_title(name: &str) -> String {
+    mcp_name(name).unwrap_or_else(|| words(name))
+}
+
+fn words(name: &str) -> String {
+    let mut out = String::with_capacity(name.len() + 4);
+    let mut lower = false;
+    for ch in name.chars() {
+        if ch.is_uppercase() && lower {
+            out.push(' ');
+            out.extend(ch.to_lowercase());
+        } else {
+            out.push(ch);
+        }
+        lower = ch.is_lowercase();
+    }
+    out
 }
 
 fn clip_title(title: &str) -> String {
@@ -1562,7 +1721,7 @@ mod tests {
         let first = translator.frame(&call("toolu_1", "wc -l a.txt", "Count lines in a.txt"));
         assert_eq!(
             first[0]["_meta"]["zz"],
-            json!({ "activity": "Count lines in a.txt" })
+            json!({ "activity": "Count lines in a.txt", "target": "wc -l a.txt" })
         );
         translator.frame(&call("toolu_2", "ls", ""));
         let todo = json!({"type":"assistant","parent_tool_use_id":null,"message":{"id":"m2","content":[
@@ -1595,20 +1754,77 @@ mod tests {
     }
 
     #[test]
-    fn titles_are_one_line_and_relative_to_the_workspace() {
-        let info = tool_info(
-            "Bash",
-            &json!({"command":"cat <<EOF\nhello\nEOF"}),
-            Path::new("/work"),
+    fn rows_carry_a_plain_title_and_a_short_target() {
+        let rows = [
+            ("Bash", json!({"command":"cat <<EOF\nhello\nEOF"})),
+            (
+                "Read",
+                json!({"file_path":"/work/src/a.rs","offset":10,"limit":5}),
+            ),
+            (
+                "Write",
+                json!({"file_path":"/elsewhere/x.md","content":"x"}),
+            ),
+            ("Grep", json!({"pattern":"fn main","path":"src","-n":true})),
+            ("Glob", json!({"pattern":"**/*.rs"})),
+            (
+                "WebFetch",
+                json!({"url":"https://example.com/a","prompt":"Summarize"}),
+            ),
+            ("WebSearch", json!({"query":"rust 2024"})),
+            (
+                "ToolSearch",
+                json!({"query":"select:EnterPlanMode,mcp__github__create_issue","max_results":2}),
+            ),
+            ("ToolSearch", json!({"query":"slack send","max_results":5})),
+            ("EnterPlanMode", json!({})),
+            ("ExitPlanMode", json!({"plan":"# Plan"})),
+            (
+                "Monitor",
+                json!({"command":"tail -f log","description":"Watch the log","timeout_ms":1000}),
+            ),
+            ("TaskStop", json!({"task_id":"b1"})),
+            (
+                "CronCreate",
+                json!({"cron":"* * * * *","prompt":"check the build"}),
+            ),
+            ("mcp__github__create_issue", json!({"query":"x"})),
+        ]
+        .map(|(name, input)| {
+            let info = tool_info(name, &input, Path::new("/work"));
+            (info.title, info.kind, info.target)
+        });
+        let rows = rows
+            .iter()
+            .map(|(title, kind, target)| (title.as_str(), *kind, target.as_deref()))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            rows,
+            [
+                ("cat <<EOF…", "execute", Some("cat <<EOF…")),
+                ("Read src/a.rs (10 - 14)", "read", Some("src/a.rs")),
+                ("Write /elsewhere/x.md", "edit", Some("/elsewhere/x.md")),
+                ("grep -n \"fn main\" src", "search", Some("fn main")),
+                ("Find `**/*.rs`", "search", Some("**/*.rs")),
+                (
+                    "Fetch https://example.com/a",
+                    "fetch",
+                    Some("https://example.com/a")
+                ),
+                ("Search \"rust 2024\"", "fetch", Some("rust 2024")),
+                (
+                    "Load tools",
+                    "other",
+                    Some("EnterPlanMode, github: create_issue")
+                ),
+                ("Load tools", "other", Some("slack send")),
+                ("Enter plan mode", "other", None),
+                ("Exit plan mode", "switch_mode", None),
+                ("Watch the log", "execute", Some("tail -f log")),
+                ("Stop background task", "other", None),
+                ("Cron create", "other", None),
+                ("github: create_issue", "other", None),
+            ]
         );
-        assert_eq!(info.title, "cat <<EOF…");
-        let info = tool_info("mcp__github__create_issue", &json!({}), Path::new("/work"));
-        assert_eq!(info.title, "github: create_issue");
-        let info = tool_info(
-            "Read",
-            &json!({"file_path":"/elsewhere/x"}),
-            Path::new("/work"),
-        );
-        assert_eq!(info.title, "Read /elsewhere/x");
     }
 }

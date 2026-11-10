@@ -48,7 +48,7 @@ Run `zz <verb> --help` for options, or `zz list-commands [verb]` for usage.
 `zz` without a verb attaches the terminal UI (`new-session -A`); with `--host NAME`, on that host.
 Pane options need `-p`: `zz set-option -p -t %3 @name reviewer`.
 
-`#{pane_kind}` is `terminal`, `browser`, `editor`, `picker`, or `agent`.
+`#{pane_kind}` is `terminal`, `browser`, `editor`, `picker`, `agent`, or `view`.
 `#{pane_last_command_status}` is the last completed command's exit code, or empty
 when unknown; terminal panes report it from OSC 133 marks.
 `#{@name}` reads a user option from pane, window, session, then global scope.

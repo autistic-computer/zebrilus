@@ -2919,6 +2919,10 @@ fn placeholder_text(kind: &PaneKindSnapshot) -> (&'static str, String) {
             editor.path.clone().unwrap_or_else(|| editor.cwd.clone()),
         ),
         PaneKindSnapshot::Terminal => ("Terminal", String::new()),
+        PaneKindSnapshot::View(view) => (
+            view.content.kind_name(),
+            format!("{} · open it in the zz app", view.title),
+        ),
     }
 }
 

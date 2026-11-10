@@ -8,7 +8,7 @@ use ala::{
 };
 use penna::ContentLook;
 
-use zz_client::program::Program;
+use zz_client::{program::Program, window_summary::Attention};
 
 use crate::{
     ActiveTheme as _, Colorize as _, Emphasis, Ground, Icon, IconName, Layer, PaintState,
@@ -75,6 +75,43 @@ pub struct StackTile {
     pub label: SharedString,
     pub tooltip: SharedString,
     pub select: Option<StackAction>,
+    pub attention: Attention,
+}
+
+const DOT_SHARE: f32 = 0.3;
+const DOT_RING: f32 = 1.5;
+const DOT_OVERHANG: f32 = 1.0;
+
+#[must_use]
+pub fn attention_tone(attention: Attention) -> Option<Tone> {
+    match attention {
+        Attention::Working => Some(Tone::Accent),
+        Attention::NeedsYou => Some(Tone::Warning),
+        Attention::Failed => Some(Tone::Danger),
+        Attention::Done => Some(Tone::Success),
+        Attention::Bell => Some(Tone::Primary),
+        Attention::None => None,
+    }
+}
+
+#[must_use]
+pub fn status_dot(attention: Attention, tile: Pixels, ring: Hsla, cx: &App) -> Option<Div> {
+    let tone = attention_tone(attention)?;
+    let dot = (f32::from(tile) * DOT_SHARE).round().max(5.0);
+    let edge = -(DOT_RING + DOT_OVERHANG);
+    Some(
+        div()
+            .absolute()
+            .right(px(edge))
+            .bottom(px(edge))
+            .flex()
+            .items_center()
+            .justify_center()
+            .size(px(dot + 2.0 * DOT_RING))
+            .rounded_full()
+            .bg(ring.opaque())
+            .child(div().size(px(dot)).rounded_full().bg(cx.theme().tone(tone))),
+    )
 }
 
 pub fn stack_radius(tile: Pixels, cx: &App) -> Pixels {
@@ -262,9 +299,18 @@ impl PaneStack {
         }
     }
 
-    fn resting(&self, slot: usize, layer: &Layer, dark: bool, colors: bool) -> Div {
+    fn resting(&self, slot: usize, layer: &Layer, dark: bool, colors: bool, cx: &App) -> Div {
         let size = self.size;
         let front = self.tiles.first().filter(|_| slot == 0);
+        let dot = front.and_then(|_| {
+            let attention = self
+                .tiles
+                .iter()
+                .map(|tile| tile.attention)
+                .max()
+                .unwrap_or_default();
+            status_dot(attention, px(size.tile()), self.ground.fill, cx)
+        });
         let tile = if let Some(program) = front.and_then(|front| front.program).filter(|_| colors) {
             self.face(program, layer.smoothing, dark, self.dimmed)
                 .tile()
@@ -282,7 +328,10 @@ impl PaneStack {
                 .shadow(self.lit(dark, self.dimmed).shadows())
                 .children(front.map(|front| glyph(front, size.glyph(), self.dim(layer.text))))
         };
-        tile.absolute().left(px(slot as f32 * size.step())).top_0()
+        tile.absolute()
+            .left(px(slot as f32 * size.step()))
+            .top_0()
+            .children(dot)
     }
 
     fn open_row(&self, pointer: &Entity<Pointer>, view: EntityId, cx: &App) -> AnyElement {
@@ -362,6 +411,12 @@ impl PaneStack {
                         })
                         .child(glyph(stack_tile, size.glyph(), ink)),
                 };
+                let element = element.children(status_dot(
+                    stack_tile.attention,
+                    px(size.tile()),
+                    tile_ground.fill,
+                    cx,
+                ));
                 let from = index.min(RESTING - 1) as f32 * size.step() - index as f32 * travel;
                 if animate {
                     element
@@ -462,7 +517,7 @@ impl RenderOnce for PaneStack {
             })
             .when(!open, |stack| {
                 stack.children((0..shown).rev().map(|slot| {
-                    self.resting(slot, &resting, cx.theme().is_dark(), program_colors(cx))
+                    self.resting(slot, &resting, cx.theme().is_dark(), program_colors(cx), cx)
                 }))
             })
             .children(row);

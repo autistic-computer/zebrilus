@@ -1,8 +1,10 @@
 mod catalog;
+mod language;
 
 use std::{collections::HashMap, sync::LazyLock};
 
 use catalog::PROGRAMS;
+use language::{LANGUAGES, MARKS};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Look {
@@ -29,6 +31,36 @@ impl Program {
     pub fn all() -> &'static [Self] {
         PROGRAMS
     }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct CodeLanguage {
+    pub name: &'static str,
+    pub program: &'static Program,
+}
+
+#[must_use]
+pub fn code_language(fence: &str) -> Option<CodeLanguage> {
+    let fence = fence.trim();
+    let language = LANGUAGES.iter().find(|language| {
+        language
+            .fences
+            .iter()
+            .any(|name| name.eq_ignore_ascii_case(fence))
+    })?;
+    let program = MARKS
+        .iter()
+        .chain(PROGRAMS)
+        .find(|program| program.id == language.program)?;
+    Some(CodeLanguage {
+        name: language.name,
+        program,
+    })
+}
+
+#[must_use]
+pub fn language_marks() -> &'static [Program] {
+    MARKS
 }
 
 const TAIL: usize = 128;
@@ -141,6 +173,21 @@ mod tests {
             Some("neovim")
         );
         assert_eq!(id(&["Python3.12"]), Some("python"));
+    }
+
+    #[test]
+    fn code_fences_name_their_language_and_tile() {
+        let named = |fence: &str| code_language(fence).map(|found| (found.name, found.program.id));
+        assert_eq!(named("TSX"), Some(("TypeScript", "typescript")));
+        assert_eq!(named(" sh "), Some(("Shell", "terminal")));
+        assert_eq!(named("c++"), Some(("C++", "cplusplus")));
+        assert_eq!(named("yml"), Some(("YAML", "yaml")));
+        assert_eq!(named("brainfuck"), None);
+        for language in LANGUAGES {
+            for fence in language.fences {
+                assert!(code_language(fence).is_some(), "{fence}");
+            }
+        }
     }
 
     #[test]

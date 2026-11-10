@@ -1,30 +1,28 @@
 use std::{rc::Rc, sync::Arc};
 
 use ala::{
-    AnyElement, App, Context, Entity, Focusable as _, IntoElement, SharedString, Subscription,
-    Window, div, prelude::*, px,
+    App, ClickEvent, Context, Entity, Focusable as _, IntoElement, SharedString, Subscription,
+    Window, prelude::*, px,
 };
-use penna::{Label, Panel, TextStyle};
+use penna::blocks::chat::{
+    ASK_GUTTER, AskDetail, AskOption, ask_count, ask_key, ask_leading, ask_options, ask_picked_key,
+    ask_question, ask_send, ask_skip, ask_step,
+};
+use penna::{Label, TextStyle};
 use zz_protocol::agent_stream::AgentQuestion;
 #[cfg(test)]
 use zz_protocol::{
     AgentQuestionAnswer, MAX_AGENT_ANSWER_BYTES, MAX_AGENT_OPTION_BYTES, MAX_AGENT_QUESTION_ANSWERS,
 };
 
+use super::ask::{AskParts, ask_hint};
 use crate::{
-    ActiveTheme as _, Colorize as _, Disableable as _, Emphasis, PaintState, Tone,
-    button::Button,
-    check::Check,
-    h_flex,
-    input::{Input, InputContentType, InputEvent, InputState},
-    kbd::Keycap,
+    ActiveTheme as _, Disableable as _, Ground, IconName, Tone,
+    input::{InputEvent, InputState},
     v_flex,
 };
+use zz_client::agent_ask::{KEYED_OPTIONS, question_hints, question_other_key, question_send};
 
-use penna::blocks::chat::{
-    CARD_GAP, CARD_GUTTER, CARD_TITLE_LINE, CardTile, card_button, card_chip, card_close,
-    card_divider, card_footer, card_header, card_surface, card_tiles, card_title, card_trailing,
-};
 pub use zz_client::agent_question::{
     OTHER_LABEL, QuestionCard, QuestionCardAction, QuestionCardStep,
 };
@@ -54,9 +52,14 @@ impl QuestionCardState {
                     let placeholder = if question.options.is_empty() {
                         "Type your answer"
                     } else {
-                        "Type your own answer"
+                        "Something else"
                     };
-                    let input = cx.new(|cx| InputState::new(window, cx).placeholder(placeholder));
+                    let input = cx.new(|cx| {
+                        InputState::new(window, cx)
+                            .auto_grow(1, 8)
+                            .submit_on_enter(true)
+                            .placeholder(placeholder)
+                    });
                     let on_input = on_input.clone();
                     subscriptions.push(cx.subscribe_in(
                         &input,
@@ -111,12 +114,7 @@ impl QuestionCardState {
         window: &mut Window,
         cx: &mut App,
     ) -> QuestionCardStep {
-        let step = match action {
-            QuestionCardAction::Pick { question, option } => self.card.pick(question, option),
-            QuestionCardAction::Other { question } => self.card.select_other(question),
-            QuestionCardAction::Submit => self.card.submit(),
-            QuestionCardAction::Dismiss => QuestionCardStep::Dismiss,
-        };
+        let step = self.card.act(action);
         self.follow(step, window, cx)
     }
 
@@ -144,227 +142,131 @@ impl QuestionCardState {
         step
     }
 
-    pub fn render(
+    pub fn parts(
         &self,
         id: &str,
         counter: Option<SharedString>,
         enabled: bool,
         on_action: impl Fn(QuestionCardAction, &mut Window, &mut App) + 'static,
+        on: Ground,
         cx: &App,
-    ) -> Panel {
+    ) -> AskParts {
         let on_action: Rc<dyn Fn(QuestionCardAction, &mut Window, &mut App)> = Rc::new(on_action);
         let card = &self.card;
-        let several = card.questions().len() > 1;
-        let problem = card.problem();
-        let close = Rc::clone(&on_action);
-        let skip = Rc::clone(&on_action);
-        let submit = Rc::clone(&on_action);
-        let mut trailing = Some(
-            counter
-                .map(|counter| card_chip(counter).into_any_element())
-                .into_iter()
-                .chain(std::iter::once(
-                    card_close(
-                        Button::new(SharedString::from(format!("{id}-close")))
-                            .tooltip("Skip")
-                            .disabled(!enabled)
-                            .on_click(move |_, window, cx| {
-                                close(QuestionCardAction::Dismiss, window, cx);
-                                cx.stop_propagation();
-                            }),
-                        cx,
-                    )
-                    .into_any_element(),
-                ))
-                .collect::<Vec<_>>(),
-        );
-        let submittable = enabled && card.is_complete() && problem.is_none();
-        let submit_ground =
-            cx.theme()
-                .paint(Tone::Primary, Emphasis::Solid)
-                .ground_at(if submittable {
-                    PaintState::Rest
-                } else {
-                    PaintState::Disabled
-                });
-        card_surface(SharedString::from(format!("{id}-card")))
-            .children(
-                card.questions()
-                    .iter()
-                    .enumerate()
-                    .map(|(index, question)| {
-                        self.render_question(
-                            id,
-                            index,
-                            question,
-                            several,
-                            enabled,
-                            trailing.take(),
-                            &on_action,
-                            cx,
-                        )
-                    }),
-            )
-            .when_some(problem.clone(), |card, problem| {
-                card.child(
-                    Label::new(TextStyle::Small, problem)
-                        .px(px(CARD_GUTTER))
-                        .pt(px(CARD_GUTTER))
-                        .text_color(cx.theme().tone(Tone::Danger)),
-                )
-            })
-            .child(
-                card_footer()
-                    .child(
-                        card_button(
-                            Button::new(SharedString::from(format!("{id}-skip")))
-                                .emphasis(Emphasis::Ghost),
-                            cx,
-                        )
-                        .label("Skip")
-                        .disabled(!enabled)
-                        .on_click(move |_, window, cx| {
-                            skip(QuestionCardAction::Dismiss, window, cx);
-                            cx.stop_propagation();
-                        }),
-                    )
-                    .child(
-                        card_button(
-                            Button::new(SharedString::from(format!("{id}-submit")))
-                                .tone(Tone::Primary)
-                                .emphasis(Emphasis::Solid),
-                            cx,
-                        )
-                        .label("Submit")
-                        .child(Keycap::new("↵").on(submit_ground))
-                        .disabled(!submittable)
-                        .on_click(move |_, window, cx| {
-                            submit(QuestionCardAction::Submit, window, cx);
-                            cx.stop_propagation();
-                        }),
-                    ),
-            )
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    fn render_question(
-        &self,
-        id: &str,
-        index: usize,
-        question: &AgentQuestion,
-        several: bool,
-        enabled: bool,
-        trailing: Option<Vec<AnyElement>>,
-        on_action: &Rc<dyn Fn(QuestionCardAction, &mut Window, &mut App)>,
-        cx: &App,
-    ) -> AnyElement {
-        let card = &self.card;
-        let focused = card.focused() == index;
-        let keys = enabled && (focused || !several);
-        let marker = |option: usize, picked: bool, tile: CardTile| {
-            card_trailing().child(if question.multi_select {
-                Check::checkbox(picked).on(tile.ground()).into_any_element()
-            } else if picked {
-                Check::radio(true).on(tile.ground()).into_any_element()
-            } else if keys && option < 9 {
-                tile.keycap(format!("{}", option + 1)).into_any_element()
-            } else {
-                div().into_any_element()
-            })
-        };
-        let options = question.options.iter().enumerate().map(|(option, choice)| {
-            let on_action = Rc::clone(on_action);
-            let picked = card.is_picked(index, option);
-            let tile = CardTile::new(Tone::Neutral, enabled, picked, cx);
-            tile.render((SharedString::from(format!("{id}-{index}")), option), cx)
-                .on_click(move |_, window, cx| {
-                    on_action(
-                        QuestionCardAction::Pick {
-                            question: index,
-                            option,
-                        },
-                        window,
-                        cx,
-                    );
-                    cx.stop_propagation();
-                })
-                .child(
-                    v_flex()
-                        .min_w_0()
-                        .flex_1()
-                        .child(choice.label.clone())
-                        .when_some(choice.description.clone(), |column, description| {
-                            column.child(tile.detail(description))
-                        }),
-                )
-                .child(marker(option, picked, tile))
-                .into_any_element()
-        });
-        let other = self.other_input(index).map(|input| {
-            let picked = card.other_selected(index);
-            let tile = (!question.options.is_empty())
-                .then(|| CardTile::new(Tone::Neutral, enabled, picked, cx));
-            let field = Input::new(input)
-                .w_full()
-                .disabled(!enabled)
-                .when_some(tile, |field, tile| field.on(tile.ground()))
-                .when(question.secret, |field| {
-                    field.content_type(InputContentType::Password)
-                });
-            let Some(tile) = tile else {
-                return field.into_any_element();
-            };
-            let on_action = Rc::clone(on_action);
-            let choice = question.options.len();
-            tile.render(
-                (SharedString::from(format!("{id}-{index}-other")), choice),
-                cx,
-            )
-            .on_click(move |_, window, cx| {
-                on_action(QuestionCardAction::Other { question: index }, window, cx);
+        let index = card.focused();
+        let count = card.questions().len();
+        let act = |action: QuestionCardAction| {
+            let on_action = Rc::clone(&on_action);
+            move |_: &ClickEvent, window: &mut Window, cx: &mut App| {
+                on_action(action, window, cx);
                 cx.stop_propagation();
-            })
-            .child(
-                v_flex()
-                    .min_w_0()
-                    .flex_1()
-                    .gap(px(CARD_GAP))
-                    .child(
-                        h_flex()
-                            .w_full()
-                            .gap(px(CARD_GAP))
-                            .child(div().min_w_0().flex_1().child(OTHER_LABEL))
-                            .child(marker(choice, picked, tile)),
+            }
+        };
+        let Some(question) = card.questions().get(index) else {
+            return AskParts {
+                body: v_flex().w_full().into_any_element(),
+                input: None,
+                leading: None,
+                trailing: Vec::new(),
+                hints: Vec::new(),
+                secret: false,
+            };
+        };
+        let header = ask_question(question.question.clone(), on, cx);
+        let header = if count > 1 {
+            header
+                .child(
+                    ask_step(
+                        SharedString::from(format!("{id}-back")),
+                        IconName::ChevronLeft,
+                        "Previous question",
+                        on,
                     )
-                    .child(field),
-            )
-            .into_any_element()
+                    .disabled(!enabled)
+                    .on_click(act(QuestionCardAction::Back)),
+                )
+                .child(ask_count(format!("{} of {count}", index + 1), on))
+                .child(
+                    ask_step(
+                        SharedString::from(format!("{id}-forward")),
+                        IconName::ChevronRight,
+                        "Next question",
+                        on,
+                    )
+                    .disabled(!enabled)
+                    .on_click(act(QuestionCardAction::Forward)),
+                )
+        } else {
+            header.children(counter.map(|counter| ask_count(counter, on)))
+        };
+        let choices = question.options.len();
+        let rows = (choices > 0).then(|| {
+            ask_options().children(question.options.iter().enumerate().map(|(option, choice)| {
+                let row = AskOption::new(
+                    (SharedString::from(format!("{id}-{index}")), option),
+                    choice.label.clone(),
+                    on,
+                )
+                .highlighted(option == card.highlight())
+                .enabled(enabled)
+                .on_click(act(QuestionCardAction::Pick {
+                    question: index,
+                    option,
+                }));
+                let row = match &choice.description {
+                    Some(description) => row.detail(description.clone(), AskDetail::Under),
+                    None => row,
+                };
+                let row = if option < KEYED_OPTIONS {
+                    row.key((option + 1).to_string())
+                } else {
+                    row
+                };
+                if question.multi_select {
+                    row.picked(card.is_picked(index, option))
+                } else {
+                    row
+                }
+            }))
         });
-        v_flex()
-            .w_full()
-            .when(index > 0, |section| section.child(card_divider(cx)))
-            .child(
-                card_header()
-                    .when(index > 0, ala::Styled::pt_0)
-                    .when(several && !focused, |header| {
-                        header.text_color(cx.theme().foreground.muted())
-                    })
-                    .when_some(question.header.clone(), |row, header| {
-                        row.child(card_chip(header))
-                    })
-                    .child(card_title(question.question.clone()))
-                    .when(question.multi_select, |row| {
-                        row.child(
-                            h_flex().flex_none().h(px(CARD_TITLE_LINE)).child(
-                                Label::new(TextStyle::Caption, "Pick any")
-                                    .text_color(cx.theme().foreground.muted()),
-                            ),
-                        )
-                    })
-                    .children(trailing.into_iter().flatten()),
-            )
-            .child(card_tiles().children(options).children(other))
-            .into_any_element()
+        let problem = card.problem().map(|problem| {
+            Label::new(TextStyle::Small, problem)
+                .px(px(ASK_GUTTER))
+                .pb(px(8.0))
+                .text_color(cx.theme().tone(Tone::Danger))
+        });
+        let input = self.other_input(index).cloned();
+        let key = question_other_key(card).map(|key| SharedString::from(key.to_string()));
+        let leading = if question.multi_select && card.other_selected(index) && choices > 0 {
+            Some(ask_picked_key(key, on))
+        } else {
+            key.map(|key| ask_key(key, on))
+        }
+        .map(|cap| ask_leading(cap).into_any_element());
+        let send = question_send(card);
+        let hints = question_hints(card).into_iter().map(ask_hint).collect();
+        AskParts {
+            body: v_flex()
+                .w_full()
+                .child(header)
+                .children(rows)
+                .children(problem)
+                .into_any_element(),
+            input,
+            leading,
+            trailing: vec![
+                ask_skip(SharedString::from(format!("{id}-skip")), on)
+                    .disabled(!enabled)
+                    .on_click(act(QuestionCardAction::Dismiss))
+                    .into_any_element(),
+                ask_send(SharedString::from(format!("{id}-send")), send, on)
+                    .disabled(!enabled)
+                    .on_click(act(QuestionCardAction::Enter))
+                    .into_any_element(),
+            ],
+            hints,
+            secret: question.secret,
+        }
     }
 }
 
@@ -440,13 +342,30 @@ mod tests {
                 answer("tools", &["saw", "drill"])
             ])
         );
-        assert_eq!(card.key("up", false), QuestionCardStep::Handled);
+        assert_eq!(card.key("left", false), QuestionCardStep::Handled);
         assert_eq!(card.focused(), 0);
         assert_eq!(card.key("tab", true), QuestionCardStep::Handled);
         assert_eq!(card.focused(), 1);
         assert_eq!(card.key("escape", false), QuestionCardStep::Dismiss);
         assert_eq!(card.key("9", false), QuestionCardStep::Stay);
         assert_eq!(card.key("x", false), QuestionCardStep::Stay);
+    }
+
+    #[test]
+    fn arrows_move_the_highlight_and_enter_picks_it() {
+        let mut card =
+            QuestionCard::new(4, vec![question("fruit", &["apple", "pear", "fig"], false)]);
+        assert_eq!(card.highlight(), 0);
+        assert_eq!(card.key("up", false), QuestionCardStep::Handled);
+        assert_eq!(card.highlight(), 2, "up from the first option wraps");
+        assert_eq!(card.key("down", false), QuestionCardStep::Handled);
+        assert_eq!(card.key("down", false), QuestionCardStep::Handled);
+        assert_eq!(card.highlight(), 1);
+        assert!(card.last_step());
+        assert_eq!(
+            card.enter(),
+            QuestionCardStep::Submit(vec![answer("fruit", &["pear"])])
+        );
     }
 
     #[test]

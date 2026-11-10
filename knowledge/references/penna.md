@@ -73,7 +73,7 @@ None is on by default.
 | Feature | What it adds |
 | --- | --- |
 | `editor` | `penna::blocks::code_editor` (the code editor widget) and nothing else |
-| `tree-sitter` | the tree-sitter parser and its JSON, Markdown, Rust and TOML grammars, so the code editor and Markdown code blocks highlight. The highlighter API (`SyntaxHighlighter`, `LanguageConfig::new` and `plain`, `LanguageRegistry`) is the same with it off, so app code compiles either way. An app adds a grammar with `LanguageRegistry::singleton().register(name, &LanguageConfig::new(..))`, the way `zz_ui::init` adds tmux |
+| `tree-sitter` | the tree-sitter parser and its grammars (Bash, C, CSS, diff, Go, HTML, JavaScript, JSON, Markdown, Python, Rust, TOML, TypeScript and TSX, YAML), so the code editor and Markdown code blocks highlight. The highlighter API (`SyntaxHighlighter`, `LanguageConfig::new` and `plain`, `LanguageRegistry`) is the same with it off, so app code compiles either way. An app adds a grammar with `LanguageRegistry::singleton().register(name, &LanguageConfig::new(..))`, the way `zz_ui::init` adds tmux |
 | `tray` | `penna::blocks::tray`, a tray or menu bar icon with a menu: StatusNotifierItem on Linux, `NSStatusItem` on macOS, `Shell_NotifyIcon` on Windows |
 
 ## Toolchain and dev profiles

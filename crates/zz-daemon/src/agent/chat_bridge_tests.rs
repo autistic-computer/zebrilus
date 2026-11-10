@@ -3,7 +3,8 @@ use std::time::Instant;
 use serde_json::json;
 use zz_protocol::agent_stream::{AgentImage, AgentStreamPayload};
 use zz_protocol::chat::{
-    Answer, ChatPhase, ChatView, ItemId, ItemKind, ItemStatus, RequestClose, RequestId,
+    Answer, Ask, AskOption, ChatPhase, ChatView, ItemId, ItemKind, ItemStatus, OptionKind,
+    RequestClose, RequestId,
 };
 
 use super::chat_bridge::{MAX_PROMPT_IMAGES_BASE64, Shadow, attach_images, chat_answer};
@@ -78,6 +79,47 @@ fn an_answer_is_recorded_as_the_answer_not_a_withdrawal() {
             answer: Answer::Option {
                 id: "allow".to_owned()
             }
+        })
+    );
+}
+
+#[test]
+fn a_plan_approval_carries_the_plan_text() {
+    let mut shadow = Shadow::recording();
+    ready(&mut shadow);
+    running(&mut shadow, "c1");
+    shadow.payload(&AgentStreamPayload::PermissionRequested {
+        request_id: 4,
+        tool_call: json!({
+            "toolCallId": "plan",
+            "title": "Ready to code?",
+            "kind": "switch_mode",
+            "content": [{ "type": "content", "content": { "type": "text", "text": "1. Morph the composer" } }],
+        }),
+        options: json!([
+            { "optionId": "approve", "name": "Yes", "kind": "allow_once" },
+            { "optionId": "keep_planning", "name": "No, keep planning", "kind": "reject_once" },
+        ]),
+        questions: Vec::new(),
+    });
+    assert_eq!(
+        view(&shadow)
+            .request(RequestId(4))
+            .map(|request| request.ask.clone()),
+        Some(Ask::Plan {
+            markdown: "1. Morph the composer".to_owned(),
+            options: vec![
+                AskOption {
+                    id: "approve".to_owned(),
+                    label: "Yes".to_owned(),
+                    kind: OptionKind::Allow,
+                },
+                AskOption {
+                    id: "keep_planning".to_owned(),
+                    label: "No, keep planning".to_owned(),
+                    kind: OptionKind::Deny,
+                },
+            ],
         })
     );
 }

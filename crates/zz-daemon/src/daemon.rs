@@ -4544,6 +4544,7 @@ const INSPECT_VERBS: &[(&str, &[&str])] = &[
         ],
     ),
     ("editor", &["resize-pane", "kill-pane"]),
+    ("view", &["view-pane", "resize-pane", "kill-pane"]),
     ("picker", &["resize-pane", "kill-pane", "select-pane-kind"]),
     (
         "agent",
@@ -10262,11 +10263,17 @@ impl Shared {
                         let _ = (pane, at);
                     }
                     MuxEffect::PaneCreated {
-                        kind: PaneKindSnapshot::Browser(_) | PaneKindSnapshot::Picker,
+                        kind:
+                            PaneKindSnapshot::Browser(_)
+                            | PaneKindSnapshot::Picker
+                            | PaneKindSnapshot::View(_),
                         ..
                     }
                     | MuxEffect::PaneMaterialized {
-                        kind: PaneKindSnapshot::Browser(_) | PaneKindSnapshot::Picker,
+                        kind:
+                            PaneKindSnapshot::Browser(_)
+                            | PaneKindSnapshot::Picker
+                            | PaneKindSnapshot::View(_),
                         ..
                     }
                     | MuxEffect::SuppressAfterHook
@@ -21415,7 +21422,7 @@ impl Shared {
             {
                 return Ok(false);
             }
-            if !inner.terminals.contains_key(&pane) {
+            if inner.engine.state.window_for_pane(pane).is_none() {
                 return Err(ServerError::PaneExited(pane).into());
             }
             if !client_is_attached_to_pane(&inner, client, pane) {
@@ -37087,6 +37094,9 @@ impl ChooseTreeSession {
                             Some(ChooseTreePaneKind::Agent),
                             format!("Agent · {}", agent.provider.label()),
                         ),
+                        PaneKind::View(view) => {
+                            (None, format!("View · {}", view.content.kind_name()))
+                        }
                     };
                     if !push_choose_tree_item(
                         &mut items,
@@ -45525,7 +45535,11 @@ fn resolve_input_sinks(inner: &ServerState, source: PaneId) -> Result<Vec<PaneSi
         }
         if matches!(
             inner.engine.state.pane(pane).map(|pane| &pane.kind),
-            Some(zz_mux::PaneKind::Picker { .. } | zz_mux::PaneKind::Editor(_))
+            Some(
+                zz_mux::PaneKind::Picker { .. }
+                    | zz_mux::PaneKind::Editor(_)
+                    | zz_mux::PaneKind::View(_)
+            )
         ) {
         } else if let Some(terminal) = inner.terminals.get(&pane) {
             sinks.push(PaneSink::Terminal(Arc::clone(terminal)));
@@ -46170,13 +46184,14 @@ fn terminal_geometry_for_mode_from(
     let place = (source == GeometrySource::ClientReport)
         .then(|| pane_place(inner, pane))
         .flatten();
+    let drawn = !inner.terminals.contains_key(&pane);
     let candidates = inner
         .attached
         .get(&session)?
         .iter()
         .filter(|client| client_is_sizing_candidate(inner, **client, suppress_ignored))
         .filter(|client| {
-            if aggressive {
+            if aggressive || drawn {
                 client_focused_window_for_attachment(inner, **client) == Some(window)
             } else {
                 inner.client(**client).and_then(|c| c.kind) == Some(ClientKind::Control)
@@ -51664,7 +51679,7 @@ Run `zz <verb> --help` for options, or `zz list-commands [verb]` for usage.
 `zz` without a verb attaches the terminal UI (`new-session -A`); with `--host NAME`, on that host.
 Pane options need `-p`: `zz set-option -p -t %3 @name reviewer`.
 
-`#{pane_kind}` is `terminal`, `browser`, `editor`, `picker`, or `agent`.
+`#{pane_kind}` is `terminal`, `browser`, `editor`, `picker`, `agent`, or `view`.
 `#{pane_last_command_status}` is the last completed command's exit code, or empty
 when unknown; terminal panes report it from OSC 133 marks.
 `#{@name}` reads a user option from pane, window, session, then global scope.

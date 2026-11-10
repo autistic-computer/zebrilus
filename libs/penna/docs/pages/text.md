@@ -35,7 +35,7 @@ Blocks sit 12 apart. Headings have 24 above at h1 and h2, 16 above at h3 to h6, 
 
 ## Code
 
-Code takes the reading size in the code face. Blocks sit on a card.
+Code takes the reading size in the code face. Blocks sit on a card. With the `tree-sitter` feature, fences in Rust, Python, JavaScript, TypeScript, TSX, shell, Go, C, CSS, HTML, JSON, TOML, YAML, Markdown and diff are colored; a diff's added and removed lines take the success and danger inks.
 
 ```figure
 <div class="penna-md docs-full"><p>Run <code data-penna="card.code">cargo run</code> to start the server.</p><div class="md-code"><pre data-penna="card.code"><code><span class="tk-keyword">let</span> pane = session.<span class="tk-function">active_pane</span>();</code></pre></div></div>
@@ -47,6 +47,14 @@ A quote has a 4 bar and 16 inside it. Table columns size to their content from 4
 
 ```figure
 <div class="penna-md" style="width: 320px"><div class="md-quote"><blockquote><p>The server outlives the app.</p></blockquote></div><div class="md-table"><div class="md-figure" data-penna="card.figure"><div class="md-row"><div class="md-cell" data-align="left">Command</div><div class="md-cell" data-align="center">Key</div></div><div class="md-row"><div class="md-cell" data-align="left">Split right</div><div class="md-cell" data-align="center"><code data-penna="card.code">Ctrl+D</code></div></div></div></div></div>
+```
+
+## Footnotes
+
+A reference is a superscript number. The notes gather after the last block, numbered in caption size.
+
+```figure
+<div class="penna-md" style="width: 320px"><p>The server outlives the app.¹</p><div class="md-footnotes"><div class="md-footnote"><span>1.</span><p>Until the machine restarts.</p></div></div></div>
 ```
 
 ## Streaming

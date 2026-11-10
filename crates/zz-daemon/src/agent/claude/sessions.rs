@@ -6,9 +6,9 @@ use std::{
     time::UNIX_EPOCH,
 };
 
-use serde_json::Value;
+use serde_json::{Value, json};
 
-use super::translate::{Translator, user_prompt};
+use super::translate::{INTERRUPTED, Translator, interrupted, user_prompt};
 use crate::agent::stream::AgentSessionSummary;
 
 const MAX_SANITIZED_LENGTH: usize = 200;
@@ -213,7 +213,7 @@ fn first_prompt(head: &str) -> Option<String> {
                 command.get_or_insert(name);
                 continue;
             }
-            if text.starts_with('<') || text.starts_with("[Request interrupted") {
+            if text.starts_with('<') || text.starts_with(INTERRUPTED) {
                 continue;
             }
             return Some(clip(text));
@@ -332,27 +332,149 @@ pub(crate) fn list(config: &Path, cwd: Option<&Path>) -> Vec<AgentSessionSummary
 
 pub(crate) fn transcript(path: &Path, cwd: PathBuf, until: Option<&str>) -> Vec<Value> {
     let entries = chain_entries(path);
-    let mut translator = Translator::new(cwd);
-    chain(&entries, until)
-        .into_iter()
-        .flat_map(|entry| translator.history_entry(entry))
-        .collect()
+    let mut replay = Replay {
+        translator: Translator::new(cwd),
+        subagents: subagents(path),
+        updates: Vec::new(),
+        open: false,
+        last: None,
+    };
+    for entry in chain(&entries, until) {
+        replay.entry(entry);
+    }
+    replay.end_turn("completed", None);
+    replay.updates
+}
+
+pub(crate) fn trim(updates: &mut Vec<Value>, limit: usize) {
+    if updates.len() <= limit {
+        return;
+    }
+    updates.drain(..updates.len() - limit);
+    let mark = updates
+        .iter()
+        .find_map(|update| update["_meta"]["zz"]["turn"].as_str());
+    if mark.is_some_and(|mark| mark != "started") {
+        let at = updates
+            .iter()
+            .find_map(|update| update["_meta"]["zz"]["at"].as_u64());
+        updates.insert(0, turn_mark("started", at));
+    }
 }
 
 pub(crate) fn prompts(path: &Path) -> Vec<(String, Option<String>)> {
     let entries = chain_entries(path);
     chain(&entries, None)
         .into_iter()
-        .filter(|entry| {
-            entry["type"] == "user"
-                && entry["isCompactSummary"] != true
-                && user_prompt(entry).is_some()
-        })
+        .filter(|entry| is_prompt(entry))
         .filter_map(|entry| {
             Some((
                 entry["uuid"].as_str()?.to_owned(),
                 entry["parentUuid"].as_str().map(str::to_owned),
             ))
+        })
+        .collect()
+}
+
+fn is_prompt(entry: &Value) -> bool {
+    entry["type"] == "user" && entry["isCompactSummary"] != true && user_prompt(entry).is_some()
+}
+
+struct Replay {
+    translator: Translator,
+    subagents: HashMap<String, PathBuf>,
+    updates: Vec<Value>,
+    open: bool,
+    last: Option<u64>,
+}
+
+impl Replay {
+    fn entry(&mut self, entry: &Value) {
+        let at = stamp(entry);
+        if entry["type"] == "user" && interrupted(entry) {
+            self.end_turn("cancelled", at);
+            return;
+        }
+        if is_prompt(entry) {
+            self.end_turn("completed", None);
+            self.updates.push(turn_mark("started", at));
+            self.open = true;
+            self.last = at;
+        }
+        let updates = self.translator.history_entry(entry);
+        self.push(updates, at);
+        self.sidechains(entry);
+    }
+
+    fn sidechains(&mut self, entry: &Value) {
+        if entry["type"] != "assistant" {
+            return;
+        }
+        let calls = entry["message"]["content"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter(|block| block["type"] == "tool_use")
+            .filter_map(|block| block["id"].as_str());
+        for call in calls {
+            let Some(file) = self.subagents.remove(call) else {
+                continue;
+            };
+            for inner in chain_entries(&file) {
+                let updates = self.translator.sidechain_entry(&inner, call);
+                self.push(updates, stamp(&inner));
+                self.sidechains(&inner);
+            }
+        }
+    }
+
+    fn push(&mut self, updates: Vec<Value>, at: Option<u64>) {
+        if updates.is_empty() {
+            return;
+        }
+        self.last = self.last.max(at);
+        self.updates.extend(updates.into_iter().map(|mut update| {
+            if let Some(at) = at {
+                update["_meta"]["zz"]["at"] = Value::from(at);
+            }
+            update
+        }));
+    }
+
+    fn end_turn(&mut self, outcome: &str, at: Option<u64>) {
+        if std::mem::take(&mut self.open) {
+            self.updates.push(turn_mark(outcome, at.or(self.last)));
+        }
+    }
+}
+
+fn turn_mark(turn: &str, at: Option<u64>) -> Value {
+    let mut mark = json!({
+        "sessionUpdate": "session_info_update",
+        "_meta": { "zz": { "turn": turn } },
+    });
+    if let Some(at) = at {
+        mark["_meta"]["zz"]["at"] = Value::from(at);
+    }
+    mark
+}
+
+fn stamp(entry: &Value) -> Option<u64> {
+    let at = chrono::DateTime::parse_from_rfc3339(entry["timestamp"].as_str()?).ok()?;
+    u64::try_from(at.timestamp_millis()).ok()
+}
+
+fn subagents(path: &Path) -> HashMap<String, PathBuf> {
+    std::fs::read_dir(path.with_extension("").join("subagents"))
+        .into_iter()
+        .flatten()
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter_map(|meta| {
+            let agent = meta.file_name()?.to_str()?.strip_suffix(".meta.json")?;
+            let transcript = meta.with_file_name(format!("{agent}.jsonl"));
+            let meta = serde_json::from_str::<Value>(&std::fs::read_to_string(&meta).ok()?).ok()?;
+            Some((meta["toolUseId"].as_str()?.to_owned(), transcript))
         })
         .collect()
 }
@@ -383,80 +505,117 @@ fn chain<'a>(entries: &'a [Value], until: Option<&str>) -> Vec<&'a Value> {
     let by_uuid = entries
         .iter()
         .enumerate()
-        .filter_map(|(index, entry)| Some((entry["uuid"].as_str()?, (index, entry))))
+        .filter_map(|(index, entry)| Some((entry["uuid"].as_str()?, index)))
         .collect::<HashMap<_, _>>();
-    let parents = entries
-        .iter()
-        .filter_map(|entry| entry["parentUuid"].as_str())
-        .collect::<HashSet<_>>();
-    let parent_of = |entry: &Value| {
-        entry["parentUuid"]
+    let parent_of = |index: usize| {
+        entries[index]["parentUuid"]
             .as_str()
             .and_then(|parent| by_uuid.get(parent))
-            .map(|(_, entry)| *entry)
+            .copied()
     };
-    if let Some(until) = until {
-        return by_uuid
-            .get(until)
-            .map_or_else(Vec::new, |(_, leaf)| walk(leaf, parent_of));
-    }
-    let mut leaves = Vec::new();
-    for terminal in entries.iter().filter(|entry| {
-        entry["uuid"]
-            .as_str()
-            .is_some_and(|uuid| !parents.contains(uuid))
-    }) {
-        let mut seen = HashSet::new();
-        let mut current = Some(terminal);
-        while let Some(entry) = current {
-            if !seen.insert(entry["uuid"].as_str().unwrap_or_default()) {
-                break;
-            }
-            if matches!(entry["type"].as_str(), Some("user" | "assistant")) {
-                leaves.push(entry);
-                break;
-            }
-            current = parent_of(entry);
-        }
-    }
-    let index_of = |entry: &Value| {
-        entry["uuid"]
-            .as_str()
-            .and_then(|uuid| by_uuid.get(uuid))
-            .map_or(0, |(index, _)| *index)
+    let leaf = match until {
+        Some(until) => by_uuid.get(until).copied(),
+        None => leaf(entries, &by_uuid, parent_of),
     };
-    let main = leaves
-        .iter()
-        .copied()
-        .filter(|leaf| {
-            leaf["isSidechain"] != true && leaf["isMeta"] != true && leaf["teamName"].is_null()
-        })
-        .max_by_key(|leaf| index_of(leaf));
-    main.or_else(|| leaves.iter().copied().max_by_key(|leaf| index_of(leaf)))
-        .map_or_else(Vec::new, |leaf| walk(leaf, parent_of))
-}
-
-fn walk<'a>(leaf: &'a Value, parent_of: impl Fn(&Value) -> Option<&'a Value>) -> Vec<&'a Value> {
-    let mut chain = Vec::new();
-    let mut seen = HashSet::new();
+    let Some(leaf) = leaf else {
+        return Vec::new();
+    };
+    let mut kept = HashSet::new();
     let mut current = Some(leaf);
-    while let Some(entry) = current {
-        if !seen.insert(entry["uuid"].as_str().unwrap_or_default()) {
+    while let Some(index) = current {
+        if !kept.insert(index) {
             break;
         }
-        chain.push(entry);
-        current = parent_of(entry);
+        current = parent_of(index);
     }
-    chain.reverse();
-    chain
-        .into_iter()
+    let messages = kept
+        .iter()
+        .filter_map(|index| message_id(&entries[*index]))
+        .collect::<HashSet<_>>();
+    let mut answered = kept
+        .iter()
+        .flat_map(|index| answers(&entries[*index]))
+        .collect::<HashSet<_>>();
+    for (index, entry) in entries.iter().enumerate().take(leaf) {
+        if kept.contains(&index) {
+            continue;
+        }
+        let sibling = message_id(entry).is_some_and(|message| messages.contains(message));
+        let result = parent_of(index)
+            .is_some_and(|parent| kept.contains(&parent) && message_id(&entries[parent]).is_some())
+            && answers(entry).next().is_some()
+            && answers(entry).all(|call| !answered.contains(call));
+        if sibling || result {
+            kept.insert(index);
+            answered.extend(answers(entry));
+        }
+    }
+    let mut kept = kept.into_iter().collect::<Vec<_>>();
+    kept.sort_unstable();
+    kept.into_iter()
+        .map(|index| &entries[index])
         .filter(|entry| {
-            matches!(entry["type"].as_str(), Some("user" | "assistant"))
-                && entry["isMeta"] != true
+            matches!(
+                entry["type"].as_str(),
+                Some("user" | "assistant" | "attachment")
+            ) && entry["isMeta"] != true
                 && entry["isSidechain"] != true
                 && entry["teamName"].is_null()
         })
         .collect()
+}
+
+fn leaf(
+    entries: &[Value],
+    by_uuid: &HashMap<&str, usize>,
+    parent_of: impl Fn(usize) -> Option<usize>,
+) -> Option<usize> {
+    let parents = entries
+        .iter()
+        .filter_map(|entry| entry["parentUuid"].as_str())
+        .collect::<HashSet<_>>();
+    let mut leaves = Vec::new();
+    for terminal in entries.iter().filter_map(|entry| {
+        let uuid = entry["uuid"].as_str()?;
+        (!parents.contains(uuid)).then(|| by_uuid.get(uuid).copied())?
+    }) {
+        let mut seen = HashSet::new();
+        let mut current = Some(terminal);
+        while let Some(index) = current {
+            if !seen.insert(index) {
+                break;
+            }
+            if matches!(entries[index]["type"].as_str(), Some("user" | "assistant")) {
+                leaves.push(index);
+                break;
+            }
+            current = parent_of(index);
+        }
+    }
+    let main = leaves
+        .iter()
+        .copied()
+        .filter(|leaf| {
+            let leaf = &entries[*leaf];
+            leaf["isSidechain"] != true && leaf["isMeta"] != true && leaf["teamName"].is_null()
+        })
+        .max();
+    main.or_else(|| leaves.into_iter().max())
+}
+
+fn message_id(entry: &Value) -> Option<&str> {
+    (entry["type"] == "assistant")
+        .then(|| entry["message"]["id"].as_str())
+        .flatten()
+}
+
+fn answers(entry: &Value) -> impl Iterator<Item = &str> {
+    entry["message"]["content"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|block| entry["type"] == "user" && block["type"] == "tool_result")
+        .filter_map(|block| block["tool_use_id"].as_str())
 }
 
 #[cfg(test)]
@@ -556,14 +715,16 @@ mod tests {
         assert_eq!(
             kinds,
             [
+                "session_info_update",
                 "user_message_chunk",
                 "tool_call",
                 "tool_call_update",
-                "agent_message_chunk"
+                "agent_message_chunk",
+                "session_info_update"
             ]
         );
-        assert_eq!(updates[2]["content"][0]["content"]["text"], "a.rs");
-        assert_eq!(updates[3]["content"]["text"], "kept");
+        assert_eq!(updates[3]["content"][0]["content"]["text"], "a.rs");
+        assert_eq!(updates[4]["content"]["text"], "kept");
     }
 
     #[test]
@@ -593,10 +754,113 @@ mod tests {
         let kept = transcript(&path, PathBuf::from("/work"), Some("x1"));
         let texts = kept
             .iter()
-            .map(|update| update["content"]["text"].as_str().unwrap_or_default())
+            .filter_map(|update| update["content"]["text"].as_str())
             .collect::<Vec<_>>();
         assert_eq!(texts, ["first", "one"]);
         assert!(transcript(&path, PathBuf::from("/work"), Some("missing")).is_empty());
+    }
+
+    #[test]
+    fn a_resumed_chat_keeps_parallel_tool_results_and_hides_the_interrupt_marker() {
+        use std::time::Instant;
+
+        use zz_protocol::agent_stream::AgentStreamPayload;
+        use zz_protocol::chat::{ChatView, ItemKind, ItemStatus, TurnOutcome};
+
+        use crate::agent::{chat_bridge::Shadow, turn};
+
+        const START: u64 = 1_794_240_000_000;
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("s.jsonl");
+        let lines = [
+            r#"{"type":"user","uuid":"u1","parentUuid":null,"timestamp":"2026-11-09T16:00:00.000Z","message":{"role":"user","content":"run both"}}"#,
+            r#"{"type":"assistant","uuid":"a1","parentUuid":"u1","timestamp":"2026-11-09T16:00:01.000Z","message":{"id":"m1","content":[{"type":"tool_use","id":"t1","name":"Bash","input":{"command":"ls"}}]}}"#,
+            r#"{"type":"assistant","uuid":"a2","parentUuid":"a1","timestamp":"2026-11-09T16:00:01.000Z","message":{"id":"m1","content":[{"type":"tool_use","id":"t2","name":"Bash","input":{"command":"false"}}]}}"#,
+            r#"{"type":"user","uuid":"r1","parentUuid":"a1","timestamp":"2026-11-09T16:00:02.000Z","toolUseResult":{"stdout":"a.rs","stderr":""},"message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1","content":"a.rs"}]}}"#,
+            r#"{"type":"user","uuid":"r2","parentUuid":"a2","timestamp":"2026-11-09T16:00:03.000Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t2","is_error":true,"content":"Exit code 1\nboom"}]}}"#,
+            r#"{"type":"assistant","uuid":"a3","parentUuid":"r2","timestamp":"2026-11-09T16:00:04.000Z","message":{"id":"m2","content":[{"type":"text","text":"one failed"}]}}"#,
+            r#"{"type":"user","uuid":"u2","parentUuid":"a3","timestamp":"2026-11-09T16:00:05.000Z","message":{"role":"user","content":[{"type":"text","text":"[Request interrupted by user]"}]}}"#,
+        ];
+        std::fs::write(&path, lines.join("\n")).expect("write");
+        assert_eq!(prompts(&path), [("u1".to_owned(), None)]);
+        let mut shadow = Shadow::recording();
+        for update in transcript(&path, PathBuf::from("/work"), None) {
+            shadow.payload(&AgentStreamPayload::Update { update });
+        }
+        shadow.turn(&turn::Fact::SessionReady, Some("s1"), Instant::now());
+        assert!(shadow.rejects.is_empty(), "{:?}", shadow.rejects);
+        let mut view = ChatView::default();
+        for event in &shadow.events {
+            view.apply(event)
+                .unwrap_or_else(|skip| panic!("skipped {event:?}: {skip:?}"));
+        }
+        let [turn] = view.turns.as_slice() else {
+            panic!("expected one turn, got {:?}", view.turns);
+        };
+        let rows = turn
+            .items
+            .iter()
+            .map(|id| {
+                let item = view.item(id).expect("item");
+                (
+                    id.as_str(),
+                    item.kind,
+                    item.status.clone(),
+                    item.body.text.as_str(),
+                    item.body.exit_code,
+                    item.started_at - START,
+                    item.ended_at.map(|at| at - START),
+                )
+            })
+            .collect::<Vec<_>>();
+        let failed = ItemStatus::Failed {
+            message: Some("boom".to_owned()),
+        };
+        assert_eq!(
+            rows,
+            [
+                (
+                    "u:u1",
+                    ItemKind::User,
+                    ItemStatus::Completed,
+                    "run both",
+                    None,
+                    0,
+                    Some(0)
+                ),
+                (
+                    "t1",
+                    ItemKind::Execute,
+                    ItemStatus::Completed,
+                    "a.rs",
+                    None,
+                    1000,
+                    Some(2000)
+                ),
+                (
+                    "t2",
+                    ItemKind::Execute,
+                    failed,
+                    "Exit code 1\nboom",
+                    Some(1),
+                    1000,
+                    Some(3000)
+                ),
+                (
+                    "a:m2#1",
+                    ItemKind::Agent,
+                    ItemStatus::Completed,
+                    "one failed",
+                    None,
+                    4000,
+                    Some(5000)
+                ),
+            ]
+        );
+        assert_eq!(
+            (turn.outcome.clone(), turn.started_at, turn.ended_at),
+            (Some(TurnOutcome::Cancelled), START, Some(START + 5000))
+        );
     }
 
     #[test]

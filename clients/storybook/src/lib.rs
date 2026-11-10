@@ -63,6 +63,23 @@ const KNOBS: &[Knob] = &[
         },
     },
     Knob {
+        name: "pip-hold",
+        label: "Hold flights",
+        section: "PiP flight",
+        control: Control::Check(false),
+    },
+    Knob {
+        name: "pip-progress",
+        label: "Progress",
+        section: "PiP flight",
+        control: Control::Range {
+            min: 0.0,
+            max: 1.0,
+            step: 0.05,
+            value: 0.4,
+        },
+    },
+    Knob {
         name: "program-colors",
         label: "Program colors",
         section: "Preview",

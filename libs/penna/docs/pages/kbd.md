@@ -14,6 +14,7 @@ A keystroke drawn the way it is pressed. Menus and tooltips show shortcuts as pl
 
 - **Keystroke**: a key or a chord, spelled for the platform.
 - **Label**: any short text in the same cap.
+- **Glyph**: one icon in a square cap, for a mark no key makes.
 
 ```rust
 Kbd::new(Keystroke::parse("cmd-shift-p").unwrap_or_default())
@@ -44,9 +45,23 @@ Kbd::new(Keystroke::parse("cmd-shift-p").unwrap_or_default())
 
 Medium beside body text, small beside small text. Extra small draws like small, large and up like medium.
 
+## Emphasis
+
+Soft is the cap. Solid lights it in a tone: a picked answer's key is solid accent.
+
+```figure uses=kbd
+<div class="docs-show" data-gap="wide">
+  <div class="docs-cell"><kbd class="penna-kbd" data-penna="keycap" data-size="small"><span data-penna-text>1</span></kbd><span class="docs-note">Soft</span></div>
+  <div class="docs-cell"><kbd class="penna-kbd" data-penna="keycap" data-size="small" data-tone="accent" data-emphasis="solid" data-solid="accent"><span data-penna-text>2</span></kbd><span class="docs-note">Solid, lit</span></div>
+  <div class="docs-cell"><kbd class="penna-kbd" data-penna="keycap" data-size="small" data-tone="accent" data-emphasis="solid" data-solid="accent" data-glyph><i data-icon="check"></i></kbd><span class="docs-note">Glyph, lit</span></div>
+  <div class="docs-cell"><kbd class="penna-kbd" data-penna="keycap" data-emphasis="outline"><span data-penna-text>3</span></kbd><span class="docs-note">Outline</span></div>
+  <div class="docs-cell"><kbd class="penna-kbd" data-penna="keycap" data-emphasis="ghost"><span data-penna-text>4</span></kbd><span class="docs-note">Ghost</span></div>
+</div>
+```
+
 ## States
 
-One look. A keycap is read-only: it never hovers, presses or takes focus. On a fill it takes the ink that reads there.
+A keycap is read-only: it never hovers, presses or takes focus. In a disabled row it dims, and a lit cap stays lit. On a fill it takes the ink that reads there.
 
 ## Sequences
 
@@ -65,6 +80,9 @@ One cap per keystroke, 4 apart.
 | --- | --- | --- |
 | `Kbd::new(keystroke)` | `.penna-kbd`, `data-kbd` | Draws a keystroke |
 | `Keycap::new(label)` | a `span` in the cap | Draws a fixed label |
+| `Keycap::icon(icon)` | `data-glyph`, an `i` in the cap | Draws one glyph in a square cap |
+| `.emphasis(..)`, `.tone(..)` | `data-emphasis`, `data-tone`, `data-solid` | Soft by default; solid lights it |
+| `.disabled(true)` | `data-state="disabled"` | Dims it with its row |
 | `.lowercase()` | `data-kbd-lowercase` | Keeps the key lowercase |
 | `.small()` | `data-size="small"` | Size; medium by default |
 | `.on(ground)` | `data-ground` on the surface | Paint for the ground under it |

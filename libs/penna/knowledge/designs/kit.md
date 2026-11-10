@@ -67,7 +67,7 @@ A component takes a look: a typed variant that picks one penna recipe. Every loo
 |---|---|---|
 | `Button::look` | `ButtonLook::Icon`, `Quiet`, `Flat`, `Chrome`, `Bar`, `Toggle`, `RowIcon`, `Floating`, `Row`, `Send`, `FloatingChip`, `Tray` | `icon-button`, `button.quiet`, `icon-button.flat`, `chrome.button`, `icon-button.bar`, `icon-button.toggle`, `icon-button.row`, `icon-button.floating`, `button.row`, `button.send`, `chip.floating`, `tab.tray` |
 | `Panel::new(id, look)` | `PanelLook::Popover`, `Inline`, `Picker`, `Toast`, `Plain` | `popover`, `inline-panel`, `picker`, `toast`, `panel` painted opaque |
-| `Card::new(id, look)` | `CardLook::Bubble`, `Code`, `Figure`, `Image` | `card.bubble`, `card.code`, `card.figure`, `card.image` |
+| `Card::new(id, look)` | `CardLook::Bubble`, `Code`, `Figure`, `Image`, `Activity` | `card.bubble`, `card.code`, `card.figure`, `card.image`, `card.activity` |
 | `Bar::new(id, look)` | `BarLook::Plain`, `Pane`, `Window` | `bar`, `bar.pane`, `titlebar` |
 | `Tab::new(id, look)` | `TabLook::Window`, `Page`, `Tray`, `Title` | `tab.window`, `tab.page`, `tab.tray`, `button.title` |
 | `Row::new(id, look)`, `ListItem::look` | `RowLook::Menu`, `MenuCard`, `MenuTint`, `Sidebar`, `Nav`, `Cursor` | `menu-item`, `menu-item.card`, `menu-item.tint`, `sidebar.row`, `row.nav`, `row.cursor` |
@@ -89,8 +89,10 @@ How they behave:
 - `Panel::inset(px)` grows a rounded corner by the inset its rows sit at; square and pill corners stay.
 - `Tile::edge(width)` draws the look's edge at that width where the theme draws one, so a drop zone can match the edge of the frames it lands in.
 - `Badge::on(ground)` paints the badge on that ground, and `opaque()` blends over it.
+- `Keycap` takes `.tone()` and `.emphasis()` on the `keycap` recipe the way a badge does: `Solid` is a lit cap, the tone's solid fill with the ink that reads on it (a picked answer's key in the chat composer is `Solid` `Accent`); `Outline` and `Ghost` fix fill and outline on the recipe as a chip's do. `.disabled(true)` dims it with the row it sits in.
 - `Emphasis::Outline` draws through its own recipe: `button.outline`, `badge.outline`, `chip.outline` (the plain chip), `field.outline` and `field.multiline.outline`. Each has no fill and a 1px outline in the tone's outline ink (30% neutral, 55% for a tone, as `Emphasis::Outline`'s paint), not the hairline, and fixes both; shape, smoothing and highlights stay open. Another chip look at Outline or Ghost, and a badge, chip or field at Ghost, fixes fill and outline on the look's own recipe the same way.
 - `field_chrome(element, look, ground, state, cx)` frames a field the app lays out itself, on `ground` or the window's when it is `None`, and `field_paint(look, cx)` gives its inks. The forms that take a surface are crate-private, for penna's own fields.
+- `field.composer` is glass. Where glass can't draw it falls back like a floating surface, to a solid fill, which for a field is its wash made opaque on its ground: the `card.activity` color, with no edge. Its selected highlight is none, so focus draws no edge in the ink. `Composer.ground` is the ground it sits on, the pane's own as the app draws it (a lit or veiled pane included), and `composer_ground(on, cx)` is the ground everything inside it passes to `.on()`; the composer and ask helpers take that ground as an argument.
 - `BottomSheet` headers are `phone.bar`, `sheet_row` rows `phone.row`. `TextView` paints code blocks and inline code as `card.code` and tables as `card.figure`.
 - `ContentLook` names the recipes an app's content paints by hand: a pane frame, a tmux popup, a PiP, stack tiles, the window frame. No component draws it; content reads it through the readers below, and the code that paints it allows the lint on the narrowest fn with a reason.
 
@@ -120,7 +122,7 @@ Theme tweaks: D default, M macos, Y yaru. A dash means none.
 |---|---|---|---|---|---|
 | titlebar.window-tab | tab | ink rest | D hover/selected tint; M smoothing 2.5, selected glass; Y hover/selected tint | `TabLook::Window` | `tab.window`, drawn by `Tab`, `TabLook::Window` |
 | browser.tab | tab | - | M selected tint; Y hover/selected tint | `TabLook::Page` | `tab.page`, drawn by `Tab`, `TabLook::Page` |
-| agent.tray | tab | - | M hover/selected tint | `TabLook::Tray`, `ButtonLook::Tray` for a chip that takes focus | `tab.tray`, drawn by `Tab`, `TabLook::Tray`; the tasks chip, `Button`, `ButtonLook::Tray` |
+| agent.tray | tab | - | M hover/selected tint | `TabLook::Tray`, `ButtonLook::Tray` for a chip that takes focus | `tab.tray`, drawn by `Tab`, `TabLook::Tray` |
 | titlebar.status-chip | badge | selected tint | M hover/selected lift | `ChipLook::Bar` | `chip.bar`, drawn by `Chip`, `ChipLook::Bar` |
 | pane.chip | floating | contact shadow, selected tint, capsule | M solid, outline | `ChipLook::Floating`, `ButtonLook::FloatingChip` when pressed | `chip.floating`, drawn by `Chip`, `ChipLook::Floating`; pressed, `Button`, `ButtonLook::FloatingChip` |
 | pane.display-panes | floating | hover/selected ring | M hover tint, selected accent | `ChipLook::Marker` | `chip.marker`, drawn by `Chip`, `ChipLook::Marker`, ringed in tmux's colour with `Chip::ring` |
@@ -154,9 +156,10 @@ Theme tweaks: D default, M macos, Y yaru. A dash means none.
 | pane.header | bar | fixed knobs | - | `BarLook::Pane` | `bar.pane`, drawn by `Bar`, `BarLook::Pane` |
 | pane.header.title | button.quiet | hover/selected tint | - | `TabLook::Title` | `button.title`, drawn by `Tab`, `TabLook::Title` |
 | rule.split | rule | - | - | `RuleLook::Plain` | `rule`, drawn by `Separator`, `RuleLook::Plain` |
-| agent.bubble | card | - | M, Y tint, no outline, no shadow | `CardLook::Bubble` | `card.bubble`, drawn by `Card`, `CardLook::Bubble` |
+| agent.bubble | card | tint, accent | M, Y tint, no outline, no shadow | `CardLook::Bubble` | `card.bubble`, drawn by `Card`, `CardLook::Bubble` |
+| agent.activity | card | tint, hover tint | - | `CardLook::Activity` | `card.activity`, drawn by `Card`, `CardLook::Activity` |
 | code | card | no outline, no shadow | M, Y tint, no outline, no shadow | `CardLook::Code` | `card.code`, drawn by `Card`, `CardLook::Code`; `TextView` code blocks |
-| figure | card | no fill | - | `CardLook::Figure` | `card.figure`, drawn by `TextView` tables, `CardLook::Figure` |
+| figure | card | no fill | - | `CardLook::Figure` | `card.figure`, drawn by `TextView` tables and zz's diagrams, `CardLook::Figure` |
 | agent.attachment | card | - | M tint | `CardLook::Image` | `card.image`, drawn by `Card`, `CardLook::Image` |
 | agent.composer | field.multiline | pill | D hover/selected none; M smoothing 2.5, hover/selected none; Y tint, outline, hover/selected none | `FieldLook::Composer` | `field.composer`, drawn by `field_chrome` and `field_underlay`, `FieldLook::Composer` |
 | browser.address | field | no fill, no outline | D, M selected tint | `FieldLook::Address` | `field.address`, drawn by `field_chrome`, `FieldLook::Address` |

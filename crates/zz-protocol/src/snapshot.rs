@@ -354,6 +354,7 @@ pub enum PaneKindSnapshot {
     Browser(BrowserDescriptor),
     Editor(EditorDescriptor),
     Agent(AgentDescriptor),
+    View(crate::ViewDescriptor),
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -988,6 +989,34 @@ mod tests {
             postcard::from_bytes::<PaneKindSnapshot>(&encoded).expect("decode agent"),
             PaneKindSnapshot::Agent(descriptor)
         );
+    }
+
+    #[test]
+    fn view_kind_takes_the_tag_after_agent_and_refuses_oversized_text() {
+        let descriptor = crate::ViewDescriptor {
+            origin: Some(PaneId(3)),
+            title: "session.rs".to_owned(),
+            content: crate::ViewContent::Code {
+                language: Some("rust".to_owned()),
+                text: "fn main() {}".to_owned(),
+            },
+        };
+        let encoded =
+            postcard::to_stdvec(&PaneKindSnapshot::View(descriptor.clone())).expect("encode view");
+        assert_eq!(encoded[0], 5);
+        assert_eq!(
+            postcard::from_bytes::<PaneKindSnapshot>(&encoded).expect("decode view"),
+            PaneKindSnapshot::View(descriptor)
+        );
+        let oversized = PaneKindSnapshot::View(crate::ViewDescriptor {
+            origin: None,
+            title: "big".to_owned(),
+            content: crate::ViewContent::Markdown {
+                text: "x".repeat(crate::MAX_VIEW_TEXT_BYTES + 1),
+            },
+        });
+        let encoded = postcard::to_stdvec(&oversized).expect("encode oversized view");
+        assert!(postcard::from_bytes::<PaneKindSnapshot>(&encoded).is_err());
     }
 
     #[test]

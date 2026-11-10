@@ -194,6 +194,7 @@ Base colors from a theme (`colors`) and a person's own accent color are fitted t
 - Depth: steps of fill separate surfaces; controls, panes and cards draw no shadow. `shadow-float` (y 10, blur 30, spread -6) for menus, popovers, dialogs and the window, drawn tight (0.4 of its offset, blur and spread: y 4, blur 12, spread -2.4) under a floating surface without glass, whose hairline already marks its edge, `shadow-lifted` for cards that move, and `shadow-contact` (0 1 4 #00000033) only for the knob of a switch or slider. Never let a shadow alone separate two surfaces.
 - Focus: a 1.5px ring (`FOCUS_RING_WIDTH`) drawn outside the border box with its own adaptive radius (`foundation::focus::with_focus_ring`), from the keyboard only; see Focus and keys. Only fields change their fill or edge on focus.
 - Motion: appear 120ms, enter 200ms, turn 220ms, at half those under Fast motion. Respect reduced motion.
+- Live motion, for work under way with no end in sight, keeps one steady speed and never eases: a spinner turns once every 900ms; a live line (a chat's activity row while the agent works) rests in `fg-muted` and sweeps a crest of `fg` across its label, left to right, once every 2600ms (a 2000ms pass, then 600ms still). The crest is 12 characters wide with a raised-cosine falloff, its colors mixed in 32 steps so no step shows, and it moves with time, not a character at a time. The glyph beside it breathes on the same cycle, opacity 0.5 to 1 and scale 0.9 to 1 on a cosine, brightest as the crest leaves it. Under reduced motion all of it holds still: the label in `fg-muted`, the glyph whole.
 - Pointer: one choice for the whole app, `PointerCursor` (the Pointing hand row, `pointer` in `Appearance`): the hand over everything that acts on a click (buttons, rows, chips, tabs, tiles, switches, checkboxes, segments, selects, links), or the arrow over all of them. The hand is the default. Every clickable element calls `click_cursor()` from `StyledExt` and nothing else sets the hand, so no control differs from its neighbors. A disabled control, a surface that only takes focus, a drag handle and a scrollbar keep the arrow; text keeps the I-beam. Content draws its own pointer: a page in a browser and a link in a terminal follow the page and the terminal, not this choice. HTML: every clickable rule reads `--penna-click-cursor` (`penna.css`), `pointer` by default and `default` under `:root[data-pointer="arrow"]` and on anything `:disabled`, `aria-disabled="true"`, `data-disabled` or `data-state~="disabled"`; a row is clickable when it is a `button`, a link or has a button, menu item, option, tab or tree item role. A page sets `data-pointer` from the same `pointer` preference; the kit pages take `?pointer=arrow`.
 
 ## Look
@@ -279,8 +280,9 @@ Glass is for what sits over something, since it reads only with something behind
 - Floating surfaces, and buttons that float over the content (`ButtonLook::Floating`), over whatever is under them.
 - Panes over the window's frame, when panes have gaps (`Theme::pane_margin` above 0): the pane's ground is the tint, at the ground's own opacity, under the material's rim and light, with no blur or refraction, since the frame under a pane is one flat fill. A pane that sits flush has nothing under it and takes its ground.
 - The selection in chrome, over its bar or sidebar (chrome items, above).
+- The chat composer (`field.composer`), over the transcript that scrolls under it.
 
-Never cards, fields, bars, panels, or the rows and controls inside content: they sit in their ground, not over it. Where glass is off each falls back: floating surfaces to the `popover` fill under a hairline in `divider` and the tight `shadow-float`, panes to their ground with a hairline in `divider` when they have gaps, a PiP to its pane's ground, opaque, under that hairline, chrome selections to the highlight. A gapped pane takes the same hairline under a material of its own that draws no rim (no bezel and no edge shadow), so its edge always shows.
+Never cards, other fields, bars, panels, or the rows and controls inside content: they sit in their ground, not over it. Where glass is off each falls back: floating surfaces to the `popover` fill under a hairline in `divider` and the tight `shadow-float`, panes to their ground with a hairline in `divider` when they have gaps, a PiP to its pane's ground, opaque, under that hairline, chrome selections to the highlight, the composer to the activity card's wash made opaque on its ground, with no edge. A gapped pane takes the same hairline under a material of its own that draws no rim (no bezel and no edge shadow), so its edge always shows.
 
 A material is a full glass definition (blur, tint, saturation, bezel, refraction, specular, rim) for light and for dark:
 
@@ -480,16 +482,17 @@ Status: matches.
 
 ### Card
 
-A card is a box in the flow of content that holds one thing: a message, a block of code, a table, an image. It rests where the content puts it. For something raised over the view, use a panel; for a group of settings, a settings card; for a status message, a notice; for something you pick or drag, a tile.
+A card is a box in the flow of content that holds one thing: a message, a block of code, a table or diagram, an image, a piece of an agent's work. It rests where the content puts it. For something raised over the view, use a panel; for a group of settings, a settings card; for a status message, a notice; for something you pick or drag, a tile.
 
 Looks (`CardLook`, `Card::new(id, look)`):
 
 | Look | Recipe | Paint | Use |
 |---|---|---|---|
-| Bubble | `card.bubble` | solid, one step above its ground, no outline, no shadow | your messages in an agent chat |
-| Code | `card.code` | solid, one step above its ground, no outline, no shadow | code blocks, diagrams and inline code in messages |
-| Figure | `card.figure` | no fill of its own, no outline, no shadow; announced as a figure | tables in messages |
-| Image | `card.image` | as Bubble; announced as a figure | image tiles in messages and the composer |
+| Bubble | `card.bubble` | a wash of the accent over its ground, ink as on the ground, no outline, no shadow | your messages in an agent chat |
+| Code | `card.code` | solid, one step above its ground, no outline, no shadow | code blocks and inline code in messages |
+| Figure | `card.figure` | no fill of its own, no outline, no shadow; announced as a figure | tables and diagrams in messages |
+| Image | `card.image` | solid, one step above its ground, no outline, no shadow; announced as a figure | image tiles in messages and the composer |
+| Activity | `card.activity` | a flat wash one step above its ground, no outline, no shadow; a wash deeper on hover when it takes a click | subagents, background tasks, plans and answered questions in an agent chat |
 
 Anatomy:
 
@@ -498,11 +501,11 @@ Anatomy:
 - Content: the caller's, with its own text style (`body` for a message, `mono` for code).
 - Ground: `.on(ground)` paints the card on a ground other than the window's, such as a panel. What sits on the card passes `cx.theme().ground_of(look)` to `.on()`, so a badge or muted label inside follows the card's fill.
 
-Behavior: none. A card doesn't light on hover or take focus.
+Behavior: none, except that an Activity card given `on_click` washes deeper on hover. A card doesn't take focus.
 
 Placement: cards sit in the content, one step above what holds them: window `bg`, then `panel`, then cards, then popover. Cards in a column sit `gap-group` 16 apart; a heading sits `gap-related` 8 above its card. The parent sets both.
 
-HTML: `.penna-card` with `data-penna` set to `card.bubble`, `card.code`, `card.figure` or `card.image`; Bubble and Code take `role="group"` and Figure and Image `role="figure"`, as natively. `card.css` sets `box-sizing` and the `inset-card` padding at the weight of one class, so a page's own class or inline style replaces it; the caller lays out the inside. A card inside a container marked `data-ground` rises one step from that container's fill, as `.on(ground)` does natively: the tokens write every card look under each container's ground. `data-ground` on the card makes controls inside paint on its ground.
+HTML: `.penna-card` with `data-penna` set to `card.bubble`, `card.code`, `card.figure`, `card.image` or `card.activity`; Bubble, Code and Activity take `role="group"` and Figure and Image `role="figure"`, as natively. `card.css` sets `box-sizing` and the `inset-card` padding at the weight of one class, so a page's own class or inline style replaces it; the caller lays out the inside. A card inside a container marked `data-ground` rises one step from that container's fill, as `.on(ground)` does natively: the tokens write every card look under each container's ground. `data-ground` on the card makes controls inside paint on its ground.
 
 Status: matches.
 
@@ -732,12 +735,15 @@ Kinds:
 
 - `Kbd::new(keystroke)`: one keystroke, a key or a chord of modifiers and a key, spelled for the platform. `Kbd::binding_for_action` finds the keystroke bound to an action.
 - `Keycap::new(label)`: any short label in the same cap ("↵", "1").
+- `Keycap::icon(icon)`: one glyph in a square cap of the same height, for a cap that marks something no key does (the check on a picked answer past the ninth).
+
+Emphasis: `Keycap` takes `.emphasis(..)` and `.tone(..)` like a badge. `soft` (the default) is the keycap paint; `solid` is the tone's solid fill with the ink that reads on it, a cap that is lit (a picked answer's key is `solid` `accent`); `outline` is no fill and the edge; `ghost` is the glyphs alone.
 
 Anatomy:
 
 - Cap: height 18 (the `body` line) from `md` up, 16 (the `small` line) at `xs` and `sm`, and at least as wide as it is tall; inset `space-4` (4) at both sides; the keycap paint (a faint fill and edge); radius the theme radius capped at 45% of the height.
-- Glyphs: modifiers, tab, return, escape, backspace and the arrows are icons at 1.2 times the text size (13, or 12 at `xs` and `sm`), with ISO marks off Apple platforms, where the command key reads "Win". Everything else is text, and text parts run together with "+" off Apple platforms. Parts sit `space-2` (2) apart.
-- Text: `caption` (11 on 16) at 400, `micro` (10 on 14) at `xs` and `sm`, in muted ink. A letter shows uppercase unless `.lowercase()`.
+- Glyphs: modifiers, tab, return, escape, backspace and the arrows are icons at 1.2 times the text size (13, or 12 at `xs` and `sm`), with ISO marks off Apple platforms, where the command key reads "Win". Everything else is text, and text parts run together with "+" off Apple platforms. Parts sit `space-2` (2) apart. `Keycap::icon` draws its glyph at the same size.
+- Text: `caption` (11 on 16) at 400, `micro` (10 on 14) at `xs` and `sm`, in muted ink, or in the solid's ink on a lit cap. A letter shows uppercase unless `.lowercase()`.
 
 Sizes: `md` by default (18), beside `body` text; `sm` (16) beside `small` text. `xs` draws like `sm`, and `lg` and up like `md`, since a keycap sits in a line of text. `Size(px)` takes its rung's look.
 
@@ -745,7 +751,8 @@ States:
 
 | State | Look | Notes |
 |---|---|---|
-| rest | the keycap paint, muted ink | the only state: a keycap is read-only, so it has no hover, pressed, focused, selected or disabled look |
+| rest | the paint of its emphasis, muted ink (the solid's ink when lit) | a keycap is read-only, so it has no hover, pressed, focused or selected look |
+| disabled | the fill at the disabled opacity, the disabled ink | `.disabled(true)`, for a cap in a row that is disabled; a lit cap stays lit, dimmed |
 
 On a fill, `.on(ground)` gives it the paint and ink that read there, as inside a solid button.
 
@@ -755,7 +762,7 @@ Content: one keystroke per cap. A sequence, such as a prefix and then a key, is 
 
 Placement: the caps of one sequence sit `gap-tight` (4) apart; a cap sits at the end of the row or field it belongs to.
 
-HTML: `<kbd class="penna-kbd" data-penna="keycap">` with `data-kbd`, the keystroke as the keymap spells it (`cmd-shift-p`), which `kbd.js` fills with glyphs and an `aria-label`; `data-kbd-lowercase`; `data-size` (`xsmall`, `small`). A fixed label holds its text in a `span` marked `data-penna-text`, as `kbd.js` writes it. `data-kbd-text` on any element fills it with the spelled-out keystroke.
+HTML: `<kbd class="penna-kbd" data-penna="keycap">` with `data-kbd`, the keystroke as the keymap spells it (`cmd-shift-p`), which `kbd.js` fills with glyphs and an `aria-label`; `data-kbd-lowercase`; `data-size` (`xsmall`, `small`); `data-emphasis` (`solid`, `outline`, `ghost`) with `data-tone`, and `data-solid` naming the tone of a solid one; `data-state="disabled"`. A fixed label holds its text in a `span` marked `data-penna-text`, as `kbd.js` writes it; a `Keycap::icon` cap is marked `data-glyph` and holds an `i` with `data-icon`. `data-kbd-text` on any element fills it with the spelled-out keystroke.
 
 Status: matches.
 
@@ -942,7 +949,7 @@ Looks (`PanelLook`, `Panel::new(id, look)`):
 | Look | Recipe | Paint | Use |
 |---|---|---|---|
 | Popover | `popover` | glass and `shadow-float`, or the `popover` fill (the window `bg` two steps up) under a hairline in `divider` and the tight `shadow-float` when glass is off; the `radius` knob | menus, dropdowns, the find bar, the palette |
-| Inline | `inline-panel` | as Popover | panels raised inside a view: question cards, failure alerts |
+| Inline | `inline-panel` | as Popover | panels raised inside a view: failure alerts, plans |
 | Picker | `picker`, under `dialog` | as Popover | dialogs that search a list and pick from it |
 | Toast | `toast` | as Popover; announced as a status | notifications and banners |
 | Plain | `panel` | the `panel` fill, opaque; square, no outline, no shadow | an opaque cover, such as a slide-over |
@@ -1012,7 +1019,7 @@ Looks (`RowLook`):
 
 Anatomy:
 
-- Fill: the look's fill, outline, shadow and highlight. Corners: a control's, `roundness` × the row's height; `.radius(px)` sets a round look's radius on the fill and its press highlight.
+- Fill: the look's fill, outline, shadow and highlight. Corners: a control's, `roundness` × the row's height; `.radius(px)` gives a round look that radius in place of the share, fixed at any height, so a row that wraps to several lines keeps the corner of a one-line row. It sets the fill and its press highlight.
 - Content, the caller's: the stories use a 32 row, `space-12` inset, `space-8` gaps, a 12 icon, a `small` label and an optional `caption` aside in muted ink.
 - Fill row: with `.hover_group(group)` a Row is a fill set inside a taller row (2 from its top and bottom and `space-4` from its sides in the story) that lights when the whole row is pointed at.
 
@@ -1038,7 +1045,7 @@ Content: one line, the item's name; a short muted aside at the end.
 
 Placement: rows in an inset list sit `space-2` apart with the row inset at the sides, so their highlights never merge; a plain list's rows touch.
 
-HTML: `.penna-row[data-penna]` (the look's recipe), with no size, inset or text style of its own (the page sets them, as the caller does natively), and `data-state` (`hover`, `active`, `selected`, `current`, `focused`, `disabled`), `aria-selected`, `aria-disabled`, `data-tone`, and `data-still` for a row that is not interactive. It holds `<i data-icon>`, `.penna-row-label` and `.penna-row-aside`, each text run in `.penna-text[data-penna-text]`. A fill row is `.penna-row-fill[data-penna]` inside the caller's row, `data-round` for the 24 radius. `data-state="selected focused"` is a selected row with the ring. `.penna-item.penna-list-item` draws a list item with a Row's focus ring. `tab.js` marks keyboard focus and `kit.js` sizes the ring (`--penna-ring-r`).
+HTML: `.penna-row[data-penna]` (the look's recipe), with no size, inset or text style of its own (the page sets them, as the caller does natively), and `data-state` (`hover`, `active`, `selected`, `current`, `focused`, `disabled`), `aria-selected`, `aria-disabled`, `data-tone`, and `data-still` for a row that is not interactive. It holds `<i data-icon>`, `.penna-row-label` and `.penna-row-aside`, each text run in `.penna-text[data-penna-text]`. A fill row is `.penna-row-fill[data-penna]` inside the caller's row, `data-round` for a radius of half the row (the story's 24 on its 48 row), drawn as a full round. `data-state="selected focused"` is a selected row with the ring. `.penna-item.penna-list-item` draws a list item with a Row's focus ring. `tab.js` marks keyboard focus and `kit.js` sizes the ring (`--penna-ring-r`).
 
 Status: matches.
 
@@ -1199,6 +1206,7 @@ Kinds:
 |---|---|---|
 | Continuous | `Slider::new(id, label, value, range, on_change)` | a value on a range: tint, hue, zoom. `.step()` snaps it, `.display()` formats it |
 | Stepped | `DiscreteSlider::new(id, label, steps, picked, on_change)` | one of a few ordered, named steps: scrollback, opacity |
+| Rail | `StepRail::new(id, label, steps, picked, on_change)` | the same, as one thick rail to drag, where the control has a row to itself: an effort under a list of models in a popover. `.open_start()` when the first step means "not set" |
 
 Anatomy, continuous:
 
@@ -1213,7 +1221,135 @@ Anatomy, stepped (all text `small`, `caption` at `xs` and `sm`; the three parts 
 - Pills: one per step, `space-4` apart, sharing the width, each at most 24 wide. Each is a bar as thick as the continuous rail (4 at `xs` and `sm`, 6 from `md` up) in a hit box the rung's `control_px` tall. Steps up to the picked one take the `accent` fill, the rest `--penna-control`.
 - Value: the picked step's name in the ink, in a 52 wide column after the pills.
 
-Sizes: every rung through `.with_size()` (`Sizable`) on both kinds, `md` by default (follows density):
+Anatomy, rail:
+
+- Head: 26 tall, the label in `caption`, strong, in the muted ink at the left, the picked step's name in `small` in the ink at the right. While a drag is held the name follows the knob.
+- Rail: a pill 26 tall across the full width, in `--penna-control`. From its left end to the picked step it takes the `accent` fill, a pill of its own that ends 13 past the step's center, under the knob. A dot 4 across marks each step, the first 13 in from the left end and the last 13 in from the right, in the muted ink past the pick and in the accent's ink under the fill. With `.open_start()` the first step is a ring 6 across with a 1 wide line instead of a dot, and picking it leaves the rail unfilled.
+- Knob: a circle 30 across centered on the picked step, 2 past the rail above and below and at either end, `--penna-knob` with `shadow-contact`. With nothing picked there is no knob and no fill.
+
+Sizes: every rung through `.with_size()` (`Sizable`), `md` by default (follows density). `xs` and `sm` in toolbars and dense rows, `touch` under a coarse pointer. Every control in a row has the same size (Rules 6).
+
+States:
+
+| State | Look | Notes |
+|---|---|---|
+| rest | the track, labels in the quiet ink | |
+| hover | the quiet button's hover fill behind the segment, the pill's height and radius, and its label in the hover ink | not on the picked segment |
+| pressed | the quiet button's active fill behind the segment, while held | as hover |
+| selected | the pill under it, its label in the selected ink | exactly one segment |
+| focused | the focus ring, 1.5 outside the track; the track takes the field's focused edge, which only the default theme sets apart | from the keyboard only, never from a click |
+| disabled | the track takes the field's disabled paint; the pill keeps its selected paint at half strength (fill and edge, no shadow), and every label takes its ink at half strength | presses, keys and hover are ignored, and it leaves the focus order; the pick still shows |
+
+Behavior: a click on a segment picks it and calls `on_select` with its index; the caller sets `selected`. With `on_select` the control is one tab stop: Left and Up pick the previous segment, Right and Down the next, Home and End the first and last, each through `on_select`, and they stop at the ends. A click picks without focusing. The pill slides to the new segment in 220ms (`turn`) with an ease out, and holds still with reduced motion. Under a coarse pointer each segment's hit area grows to the touch slop.
+
+Content: one or two words per segment, sentence case, no period ("System", "Light", "Dark"). Keep the labels about the same length, since each segment is as wide as its own.
+
+Placement: at the trailing end of a settings row (Appearance's mode and density), above content to switch its view (the docs' Rust and HTML tabs), or at full width under a menu's search field to scope its rows (Menu).
+
+HTML: `.penna-segmented` (`data-penna="field"`, `role="radiogroup"`, `data-value` the picked index, `data-size` (`xsmall` to `touch`), `aria-disabled="true"`) holding `.penna-segments` (`data-penna="button.quiet"`, `data-state="current"`), which holds a `.penna-segment-pill` and a `.penna-segment` (`role="button"`) per option with a `.penna-label` inside. `.penna-segment` takes `:hover` or `data-state="hover"` and `:active` or `data-state="active"`, drawn in the root `--penna-quiet-hover` and `--penna-quiet-pressed` (the quiet button's fills) with the pill's radius (`--penna-pill-r`, which `segmented.js` sets). `segmented.js` makes the track a tab stop, places the pill, sets `aria-selected`, moves the pick on click and on the keys above, fires `change` with `{ index }`, and sizes the ring (`--penna-ring-r`) that `:focus-visible` or `data-state="focused"` draws. With `aria-disabled="true"` it leaves the track out of the tab order, ignores clicks and keys, and marks `.penna-segments` disabled so the tokens give the labels their disabled ink. `data-width="full"` fills the container with the segments sharing its width. `pennaSegmented.wire(root)` sets up controls added after load, and `pennaSegmented.set(control, index)` moves the pick from code without firing `change`.
+
+Status: matches.
+
+### Select
+
+A select picks one value from a list that opens under it. For two to five short options always in view, use a segmented control; for on or off, a switch; to type a value, an input; to run a command, a button with a caret.
+
+Kinds: one. `Select::new(&state)` draws a `SelectState`, which holds the options (any `SelectDelegate`, such as a `Vec`) and the picked one. Under a coarse pointer the list opens as a bottom sheet instead of a menu.
+
+Anatomy, left to right, all from the select's rung of the control ladder (Size):
+
+- Trigger: a field (the field role's fill, a hairline edge of at least 1px, radius the theme radius capped at 45% of the height), height `control_px`, the field inset at both sides (6, 6, 8, 10, 12, 12 from `xs` to `touch`). It is as wide as its value unless the caller sets a width.
+- Value: the rung's text style (`caption`, `small`, `body`, `body`, `lead`, `touch-body`), cut with an ellipsis when it doesn't fit. With nothing picked it shows the placeholder (or "Select") in the field's faint ink.
+- Chevron: `chevron-down` at the end, `icon_gap` after the value (4, 4, 6, 6, 8, 8), in the muted ink, a rung smaller than the trigger from `md` up: 12, 12, 12, 14, 16, 16.
+- Menu: a popover menu `space-4` under the trigger, its trailing edge on the trigger's, at least as wide as the trigger and scrolling past its height (`.menu_max_h()`). Its rows are menu rows (`small`, 12 icons) with a check before the picked one. An empty list shows a 28 inbox icon in the faint muted ink, `space-24` above and below, or the caller's `.empty()`. Past 12 options it carries the menu's search field (Menu), with the placeholder from `.search_placeholder()` ("Search" by default); `.searchable(bool)` forces it on or off. With `.scopes()` it carries the menu's scopes (Menu) and opens on the first scope that keeps the picked option's title, or the first scope.
+- Sheet (coarse pointer): a bottom sheet titled by `.title()` or the placeholder, with a row per option, a search field when the select is searchable, as above, and under it a full-width `touch` segmented control when it has scopes, which filters the rows the same way.
+
+Sizes: `md` by default (follows density). Same rungs and uses as a field. Every control in a row has the same size (Rules 6).
+
+States:
+
+| State | Look | Notes |
+|---|---|---|
+| rest | the field's fill and edge | |
+| hover | the fill's hover step | not when disabled |
+| focused | the field's focus edge | also while the menu is open |
+| open | the focused look, with the menu under it and the picked row highlighted | |
+| disabled | the field's disabled paint, faint value | leaves the focus order and never opens |
+| error | `.tone(Tone::Danger)` paints the trigger in the danger tone, like a field: its edge only | its Field shows the message with an icon (Field) |
+
+Behavior: a press on the trigger opens the menu, and a second press closes it. While focused, Enter, Space, Up or Down open it. In the menu, Up and Down move, Enter picks, Escape closes it and returns focus to the trigger. Picking a row closes the menu and emits `SelectEvent::Confirm`. A searchable menu opens with its field focused and the picked row highlighted, and filters as the menu's search does. Under a coarse pointer the trigger's hit area grows to the touch slop.
+
+Content: options are short nouns in sentence case ("Rust", "Floating"). The placeholder names what is picked ("Language"), with no closing period.
+
+Placement: like a field: in a Field in a form, or at the end of a settings row whose title names it.
+
+HTML: `div.penna-select` with `data-options` (a comma list), `data-value` (the picked index), `data-placeholder`, `data-size` (`xsmall` to `touch`), `data-tone="danger"` for an error, `aria-disabled="true"`, and `data-open` (with `data-pinned` to stay open without focus). `select.js` builds `.penna-select-trigger` (`data-penna="field"`, carrying the select's `data-tone`) holding `.penna-select-title` (`data-placeholder` while nothing is picked) and `<i data-icon="chevron-down">`, and the menu `.penna-menu.penna-select-menu` (`data-penna="popover"`) of `menu-item` rows, each with a `.penna-select-check`. It sets `role="combobox"`, answers the same keys (Tab also closes), closes on a press outside and fires `change` with `{ index, value }`. Past 12 options, or with `data-searchable` (`"false"` turns it off), the menu takes `data-searchable` and holds `.penna-select-search` (a `label.penna-input` with the search icon, its placeholder from `data-search-placeholder`) over `.penna-select-rows`; filtered rows take `hidden` and `.penna-select-none` says "No matches". `data-scopes` is a JSON list of `{ "label", "keep": [option names] }`, where a scope without `keep` keeps every option: the menu takes `data-scoped` and holds `.penna-select-scopes`, a full-width segmented control, after the search; it opens on the first scope that keeps the picked option, `data-scope` on the select holds the shown one, and Tab and Shift-Tab switch scope instead of closing. The page loads `segmented.css` and `segmented.js`.
+
+Status: matches.
+
+### Separator
+
+A separator is a one pixel line between things that takes no room along its axis. Reach for space first: a `gap-group` between groups usually separates them on its own, and a line is for where space can't, such as between panes or between groups in a menu. For a line on an element's own edge (under a bar, beside a sidebar), use `.rule(look, edge, cx)` on that element.
+
+Looks (`RuleLook`, `.look()`):
+
+| Look | Recipe | Use |
+|---|---|---|
+| Plain (default) | `rule` | between panes in a split |
+| Bar | `rule.bar` | under the title bar and other bars, over footers |
+| List | `rule.list` | between menu groups, setting rows and stacked cards |
+| Tree | `rule.tree` | the guides that join a tree's children |
+
+All four draw a hairline in the same ink.
+
+Anatomy:
+
+- Line: `RULE_WIDTH` 1, in `divider` (the ink at the theme's edge weight), centered on the separator's box.
+- Box: full width and zero height (horizontal), or full height and zero width (vertical), so the gap on either side is the parent's alone. A vertical separator needs a parent with a definite height.
+- `.rule(look, edge, cx)`: a 1px border in `divider` on one edge of any element; unlike a separator it takes its pixel of room.
+
+Behavior: none. `.id(id)` makes it an accessibility node (a splitter, with its orientation); it doesn't drag.
+
+Placement: between siblings, with the parent's gap on each side (`gap-related` 8 in the display story). A settings card insets its list rules `inset-card` 12 from its sides, so they line up with the row text.
+
+Content: plain ink. `.tone(tone)` draws the line in a tone's ink (`Primary`, `Danger`, `Warning`, `Success`, `Accent`; `Neutral` is the plain ink), and nothing takes a free color (Rules 8). A status tone on it comes with a word next to it ("Danger zone").
+
+HTML: `.penna-separator-rule` holding a `div` with `data-penna` set to `rule`, `rule.bar`, `rule.list` or `rule.tree`; `data-axis="vertical"` for a vertical one, `data-tone` (`primary`, `danger`, `warning`, `success`, `accent`) for a toned line, `role="separator"` (and `aria-orientation="vertical"`) where native gives it an id. The line is 1px, offset half a pixel to sit centered.
+
+Status: matches.
+
+### Slider
+
+A slider sets a value on a range by dragging or with the arrow keys. For an exact number, use a number input; for a few named choices that read better side by side, a segmented control.
+
+Kinds:
+
+| Kind | Call | Use |
+|---|---|---|
+| Continuous | `Slider::new(id, label, value, range, on_change)` | a value on a range: tint, hue, zoom. `.step()` snaps it, `.display()` formats it |
+| Stepped | `DiscreteSlider::new(id, label, steps, picked, on_change)` | one of a few ordered, named steps: scrollback, opacity |
+| Rail | `StepRail::new(id, label, steps, picked, on_change)` | the same, as one thick rail to drag, where the control has a row to itself: an effort under a list of models in a popover. `.open_start()` when the first step means "not set" |
+
+Anatomy, continuous:
+
+- Box: the rung's `control_px` tall (28 at `md`, which follows density; 44 under a coarse pointer at any size), half the knob inside at each side. The whole box takes the press.
+- Rail: a pill, 4 tall at `xs` and `sm` and 6 from `md` up. Up to the value it takes the `accent` fill, past it the neutral soft paint's pressed fill (`--penna-control`); `.track(colors)` paints a gradient instead, as on the hue slider.
+- Knob: a circle (Sizes; 28 under a coarse pointer) centered on the value, whichever of `bg` and `fg` is lighter (`--penna-knob`), with `shadow-contact`.
+- Under a coarse pointer, unless `.inline()`: a field at the slider's rung showing the value and a 72 wide preview rail (4 tall, 10 knob); a tap opens a bottom sheet titled by the label, with the value in `title` over a full slider.
+
+Anatomy, stepped (all text `small`, `caption` at `xs` and `sm`; the three parts `space-8` apart):
+
+- Label: before the pills, in the muted ink.
+- Pills: one per step, `space-4` apart, sharing the width, each at most 24 wide. Each is a bar as thick as the continuous rail (4 at `xs` and `sm`, 6 from `md` up) in a hit box the rung's `control_px` tall. Steps up to the picked one take the `accent` fill, the rest `--penna-control`.
+- Value: the picked step's name in the ink, in a 52 wide column after the pills.
+
+Anatomy, rail:
+
+- Rows: one per step, the last step on top, each 32 tall with its name in `small`, `space-10` from the left. The picked row takes the menu row's selected fill, the rest its hover on the pointer.
+- Lane: 32 wide, `space-8` from the right edge, over the rows. In it a rail 12 wide, a pill from the first row's center to the last's, in `--penna-control`; up to the picked row it takes the `accent` fill. A dot 4 across marks each step, in the faint ink past the pick and in the accent's ink under it.
+- Knob: a circle 22 across on the picked row's center, `--penna-knob` with `shadow-contact`, an 8 dot of the accent in it. With nothing picked there is no knob and no fill.
+
+Sizes: every rung through `.with_size()` (`Sizable`) on the continuous and stepped kinds, `md` by default (follows density); the rail has one size:
 
 | Size | Box | Rail | Knob |
 |---|---|---|---|
@@ -1240,13 +1376,15 @@ Both kinds are tab stops. Behavior, continuous: a press anywhere on the box move
 
 Behavior, stepped: a click on a pill picks that step and focuses the slider. The arrow keys move one step, Home and End go to the ends. Each pill's tooltip names its step.
 
+Behavior, rail: a press anywhere on the rail moves the knob to the nearest step and focuses it, and a drag follows, a step at a time. `on_change` fires once, on release, with the step the knob was let go on, and not at all when that is the picked one. Up and Right step up, Down and Left step down, Home and End go to the ends; the ring is on the knob. It is drawn the same under a coarse pointer. Disabled, the rail, fill, dots and knob take half strength, the head takes `fg-faint`, and presses and keys are ignored.
+
 Content: the label names the setting in sentence case ("Scrollback", "Opacity"). Values carry their unit ("10k", "70%"); format a continuous value with `.display()`.
 
 Placement: in a settings row, between its title and its value; a stepped slider fills the row it sits in.
 
 HTML: the stepped slider is `.penna-steps` with `data-label`, `data-steps` (a comma list), `data-value` (the picked index), `data-size` (`xsmall` to `touch`), `aria-disabled="true"`, and `data-focused` to draw focus. `slider.js` builds `.penna-steps-label`, `.penna-steps-pills` of `.penna-step` (`role="button"`, `data-filled`, `data-picked`) and `.penna-steps-value`, sets `role="slider"`, answers the same keys and fires `change` with `{ index, value }`. The continuous slider is `.penna-slider` with `data-min`, `data-max` (0 and 100 when left out), `data-step`, `data-value`, `data-size`, `aria-disabled="true"` and `aria-label` for its name, holding a `.penna-rail` with `.penna-fill` and `.penna-knob`; `slider.js` sets `role="slider"` and `--penna-value` (a percentage), moves the knob on a press and a drag, answers the same keys and fires `change` with `{ value }`. Both draw the ring on `:focus-visible` or `data-focused`, which the script sets when a key moves the slider and clears on a press or blur. A disabled one has no `tabindex` and ignores presses and keys. `slider.css` draws both. The gradient rail of `.track(colors)` has no HTML attribute; the Appearance block's hue slider draws its own.
 
-Status: matches.
+Status: the continuous and stepped kinds match. The rail is drawn in ala only: it has no HTML yet, and no storybook section or docs figure.
 
 ### Spinner
 
@@ -1256,8 +1394,8 @@ Kinds: one, the `loader` icon turning. `.color()` tints it; without one it takes
 
 Anatomy:
 
-- Icon: `loader` at the rung's `icon_px` (12 at `xs` and `sm`, 14 at `md`, 16 from `lg` up); `Size(px)` draws it that many pixels across.
-- Turn: one full turn every 800ms, eased in and out, repeating.
+- Icon: `loader`, an open ring (a 293° arc with its gap at the upper right), at the rung's `icon_px` (12 at `xs` and `sm`, 14 at `md`, 16 from `lg` up); `Size(px)` draws it that many pixels across.
+- Turn: one full turn every 900ms at a constant speed, repeating (Live motion).
 
 Sizes: `md` (14) by default, beside `body` text; `sm` (12) beside `small` and `caption`; `lg` (16) beside `lead` and `heading`. In a control it takes the size of the icon it stands in for: a busy button's spinner is its icon's size, a field's is a rung smaller than the field from `md` up.
 
@@ -1392,9 +1530,11 @@ Anatomy, top to bottom:
 - Inline code: the code face at the size of the text around it, on the `card.code` fill, corners at most 6.
 - Lists: items touch, with no gap; markers `•`, `◦`, `▪` by depth, or `1.`; a nested list indents `space-16` (16). A task item's checkbox is as tall as the font, centered on the capitals in a box one line tall, `space-6` (6) before its text.
 - Quotes: a `space-4` (4) bar in the divider color at the start, `space-16` (16) inside it, text in `fg-muted`.
-- Code blocks: a `card.code` card, `inset-card` (12) all round, the code face at the reading size with the theme's syntax colors. With `code_block_actions` the top inset grows to 2 × `space-8` + `control-md` (44), and the actions sit `space-8` (8) from the top and sides, at the end.
+- Callouts: an alert (`> [!NOTE]`, `[!TIP]`, `[!IMPORTANT]`, `[!WARNING]`, `[!CAUTION]`) or a `:::name title` block is a `card.activity` card washed in its tone (note and info the accent, tip success, important primary, warning warning, caution, danger and error danger, any other name neutral), `space-12` (12) by `space-8` (8) inside. Its first line is the tone's icon as tall as the font, centered on the capitals, `space-8` (8) before the title at 600: the alert's own title or its kind, the text after a directive's name or the name itself; its blocks follow `space-4` (4) below. HTML has no callout yet.
+- Code blocks: a `card.code` card, `inset-card` (12) all round, the code face at the reading size with the theme's syntax colors; a diff's added and removed lines take `success` and `danger`. With `code_block_actions` the top inset grows to 2 × `space-8` + `control-md` (44), and the actions sit `space-8` (8) from the top and sides, at the end.
 - Tables: hairline rules between rows and between columns, cells `space-4` (4) by `space-8` (8), columns sized to their content from 48 to 480 (Size, Width). By default the columns share the container's width in that proportion, none narrower than 64, and their text wraps. With `overflow_x` scroll on `TextViewStyle::table` (`data-scroll`) they keep their widths, a narrower table grows in proportion to fill its container, and a wider one scrolls sideways in its own area. Text `read-body` (`read-small` is planned).
 - Rule: a hairline in the divider color.
+- Footnotes: a reference is its number in superscript digits, in the order references first appear. The notes gather after the last block, `paragraph_gap` (12) below it and `space-2` (2) apart: `caption` in `fg-muted`, the number and a period, then the note `space-4` (4) after it.
 
 Rhythm: blocks sit `space-12` (12) apart (`TextViewStyle::paragraph_gap`). A heading has `space-24` (24) above it at h1 and h2, `space-16` (16) at h3 to h6, and `space-8` (8) below. The first block has nothing above it and the last nothing below.
 
@@ -1408,11 +1548,11 @@ States:
 
 Behavior: with `.selectable(true)` a drag selects across blocks, a double click a word and a triple click a paragraph; while it has focus, ⌘C or Ctrl+C copies and ⌘A or Ctrl+A selects all. A drag past the top or bottom scrolls. `.scrollable(true)` fills its container and scrolls with a vertical scrollbar. Links open with the system unless `.links(..)` handles the click; a `TextLinks` can also restyle a link or give it a tooltip. `markdown_extensions` adds block kinds and `code_block_body` replaces a code block's body.
 
-Content: markdown. Headings give structure, never emphasis; bold carries emphasis inside a line. Keep the measure; don't widen it.
+Content: markdown, parsed with GFM tables, task lists, strikethrough, autolinks and footnotes, plus alerts, `:::` blocks and math in code spans. `MarkdownExtensions::inline_links` turns spans of a text run, or a whole code span, into links after parsing, so nothing inside a code block or a code span's text ever matches. Headings give structure, never emphasis; bold carries emphasis inside a line. Keep the measure; don't widen it.
 
 Placement: inside a pane or page that gives the inset, `inset-page` (32) around a document page.
 
-HTML: `.penna-md` (`data-selectable` to make it focusable and select all with ⌘A; `data-selected`; `data-streaming` with a `template[data-tail]`, whose blocks `text.js` appends under the same veil, one 220 fade on the native curve as for a first chunk; `data-text="inherit"` for the inherited kind, which takes its container's text style and drops the measure) holding plain `p`, `h1` to `h6`, `strong`, `em`, `s`, `a` and `code[data-penna="card.code"]`; quotes as `.md-quote > blockquote`; lists as `ul` or `ol` > `li` > `.md-item` > `.md-prefix` + `.md-body`, a task's box as `.md-box > .md-check[role="checkbox"][aria-checked]`; `hr`; code as `.md-code > pre[data-penna="card.code"] > code` with `.tk-*` runs, and `data-actions` and `.md-actions` for actions; tables as `.md-table` (`data-scroll`, with a `.md-scroll`) > `.md-figure[data-penna="card.figure"]` > `.md-row` > `.md-cell[data-align]`. `text.js` sizes table columns, rounds inline code and check corners, and places baselines as ala does.
+HTML: `.penna-md` (`data-selectable` to make it focusable and select all with ⌘A; `data-selected`; `data-streaming` with a `template[data-tail]`, whose blocks `text.js` appends under the same veil, one 220 fade on the native curve as for a first chunk; `data-text="inherit"` for the inherited kind, which takes its container's text style and drops the measure) holding plain `p`, `h1` to `h6`, `strong`, `em`, `s`, `a` and `code[data-penna="card.code"]`; quotes as `.md-quote > blockquote`; lists as `ul` or `ol` > `li` > `.md-item` > `.md-prefix` + `.md-body`, a task's box as `.md-box > .md-check[role="checkbox"][aria-checked]`; `hr`; footnotes as `.md-footnotes` > `.md-footnote` > a `span` number + `p`; code as `.md-code > pre[data-penna="card.code"] > code` with `.tk-*` runs, and `data-actions` and `.md-actions` for actions; tables as `.md-table` (`data-scroll`, with a `.md-scroll`) > `.md-figure[data-penna="card.figure"]` > `.md-row` > `.md-cell[data-align]`. `text.js` sizes table columns, rounds inline code and check corners, and places baselines as ala does.
 
 Status: matches.
 
@@ -1598,6 +1738,66 @@ Content: rows name the place or the command as the app knows it; the detail says
 Placement: centered near the top of the window, above everything else. `.input_last()` puts the field at the bottom, for a palette that opens from below.
 
 HTML: `.penna-palette-surface` with `data-penna="popover"` and `data-inset="8"` holds a `.penna-palette-input` (a `label` with `.penna-palette-pills` and an `input`; `data-prompt` and `data-mono` for a prompt), a `.penna-palette-usage`, a `.penna-palette-rows` and a `.penna-palette-footer` with a `.penna-palette-rule` (`data-penna="rule.bar"`) and `.penna-palette-hint`s. A row is `.penna-list-item.penna-palette-row` with `data-penna="menu-item"`, its parts in `.penna-palette-content`: `.penna-palette-disclosure` (`data-toggle` to make it toggle), `.penna-palette-icon`, `.penna-palette-dot` (`data-status`: `online`, `running`, `waiting`, `offline`, `busy`; it reads `--penna-dot` first, so a solid scope recolors it), `.penna-palette-label` (with `.penna-palette-match` and `.penna-palette-muted` runs), `.penna-palette-detail`, `.penna-palette-right` and `.penna-palette-shortcut`; `data-detail` when it has a detail, `--indent` for its indent. `palette.js` gives the surface its inset radius, moves the selection on Up and Down inside a surface, and toggles disclosures (firing `penna-toggle`).
+
+Status: matches.
+
+### Chat composer
+
+The chat composer is the one place a person talks to an agent: they write the next message in it, and when the agent needs an answer it asks there too. A question, a tool approval or a plan approval grows out of the top of the composer instead of opening a card in the chat, so the answer is always given where the typing happens. The chat keeps one row per ask.
+
+Parts (`penna::blocks::chat`):
+
+| Part | Call | Use |
+|---|---|---|
+| Composer | `Composer { input, leading, usage, action, attachments, command_hint, ask, secret, ground }` | the field; `ask` is the body it grows while the agent waits; `secret` hides what is typed; `ground` is the pane's ground under it, lit or veiled where the app lights its panes, and `composer_ground(ground, cx)` the ground its parts paint on |
+| Frame | `ChatComposer { composer, prefix, footer, controls }` | the field with what sits above and below it |
+| Header | `ask_header(icon, title, ground, cx)` with `ask_count` and `ask_step` at its end | what kind of approval this is, and which of several |
+| Question | `ask_question(question, ground, cx)` with `ask_count` or the `ask_step` pager at its end | a question, which is its own header |
+| Inset | `ask_body()` holding `ask_inset(cx)` and `ask_note(text, ground)` | what the agent wants to run or change, and where |
+| Sheet | `ask_sheet(cx)` | a plan, in its own scrolling inset |
+| Options | `ask_options()` holding `AskOption`s and `ask_divider(cx)`; `AskDetail::Under` or `Beside` places an option's detail; `.picked(bool)` on each answer of a question that takes several | the answers on offer |
+| Row slots | `ask_leading(child)` with `ask_key(key, ground)`, or `ask_picked_key(key, ground)` once that answer is picked, then `ask_skip(id, ground)` and `ask_send(id, label, ground)`, `ASK_GAP` apart | what the input row carries while asking |
+| Hints | `ask_hints(items, ground)` of `AskHint`s in the frame's footer | the keys that work now, and how many answers are picked |
+
+Anatomy:
+
+- Surface: the `field.composer` look. While the look draws a glass material it is glass, edged by the material's own rim and no hairline. Where glass is off it rests on the surface the activity cards use, made opaque so the transcript scrolling under it never shows through: one wash step from its ground (lighter in dark, darker in light), no edge, no shadow. Questions and approvals are drawn inside it, so they take the same surface, and everything in it (wells, option rows, keycaps, buttons, the context ring, the placeholder, the rule over the input row) paints on its ground. At rest it is the input row alone, a pill 40 tall. While asking the corner drops to 16 and the body sits above the input row inside the same surface; the input row stays at the bottom, under a hairline rule, and moves onto the sheet's gutter and gap (Input row while asking, below).
+- Header: `small`, muted, `space-8` between its parts, inset 14 at the start and 8 above. A 14 glyph centered on the cap height, the title in the foreground at medium weight taking the room, then the count ("1 of 2") or a 22 ghost button for each step.
+- Question: a question is the header. The same row, 8 above and inset 14 at the sides, holds the 14 chat glyph, the question in `body` at medium weight in the foreground, `space-8` apart, then the count or the pager (a 22 step button, the count, a 22 step button). The question takes the room and wraps; it is never cut short. Each line is 18, with 2 above the first and below the last, so one line is as tall as the step buttons. The glyph sits in a strut as tall as that first line (22) and is centered on its cap height, and the count and the step buttons sit at the top in a 22 box, so both stay on the first line however many lines follow. The options start 8 under it; a question with no options leaves the same 8 to the rule over the input row. The question's short label is not shown in the sheet; the chat's row and the answered record use it.
+- One column: the wells, the option rows and the divider all sit 14 (the gutter) from the sides of the surface, so their edges line up, and everything inside a well or an option row starts 10 in from that edge: the first letters of a command, a plan and the option labels line up, and so do the key caps at the end. The header and the note under a command sit on the gutter itself, and so do the input row and the hints under the surface.
+- Inset: a `well` with a 9 corner, inset 10 at the sides and 7 above and below, on the gutter, 8 above. A command reads in `small` mono and wraps anywhere. A note under it is `caption`, muted.
+- Sheet: a plan's text in a `well` with a 9 corner, inset 10 at the sides and 10 above and below, on the gutter, 8 above and 10 below, 152 tall and scrolling inside. The header's step button opens the whole plan in a view pane.
+- Options: on the gutter, 5 below, 2 between rows. A row is the `menu-item` look with a 10 corner that stays 10 however many lines the row wraps to, inset 10 at the sides, `space-10` between its parts: the label in `body` at medium weight, a `small` muted detail (under the label for a question, beside it for an approval), and a small keycap with the row's digit at the end. A hairline divider parts the answers that say no from the ones that say yes, `space-4` from the rows on each side whether they are lit or not.
+- Picked, when several answers can be picked: no checkbox. A picked answer's keycap is lit, `solid` in the `accent` tone (the accent's fill, the ink that reads on it), and keeps its digit, so the same key takes the pick back. An answer that is not picked looks exactly like an answer of a question that takes one. An answer past the ninth has no keycap: picked, it shows a lit cap of the same size holding a check in that slot, and nothing when it is not, so the labels keep their edge. The row is a checkbox to assistive tech, checked or not.
+- Input row while asking: on the gutter, its last button ending 14 from the side, the same 10 between the rule and the buttons as between the buttons and the bottom edge, `space-8` (the sheet's gap) between its parts. The keycap of the next digit leads it with its left edge on the option labels' (the gutter and the row's 10, 24 from the side), lit like a picked answer's once a typed answer is picked in a question that takes several; with no keycap (a question with no options, or the `+` while the field is not the answer's) the first part starts on the gutter. The placeholder says what typing does ("Something else", "Deny and say what to do instead", "Keep planning and say what to change"). At the end: Skip (a ghost button, questions only), the primary button (28 tall, a 9 corner, its label and the return glyph), then Stop.
+- Hints: `caption`, muted, `space-14` apart, starting on the gutter, in the frame's footer in place of what the footer shows at rest. A question that takes several answers leads with "Pick any", which becomes "2 picked" in the foreground at medium weight once an answer is picked; a typed answer counts once it is picked and holds text.
+
+States:
+
+| State | Look | Notes |
+|---|---|---|
+| rest | the input row alone | |
+| hovered | the wash a step deeper, as any field | not while it has focus |
+| focused | as at rest; the caret shows it | the composer is where typing goes, so focus draws no edge and no ring |
+| asking | the body above the input row, corner 16 | one ask at a time; a count in the header when more wait |
+| highlighted | the `menu-item` selected fill | one row; Up and Down move it; Enter picks it |
+| picked | the row's keycap lit (several answers) or the highlight (one answer) | holds with and without the highlight on the row |
+| disabled | the `menu-item` disabled ink, keycaps disabled | an ask that someone else is answering; a lit keycap stays lit, dimmed |
+| answered | the body goes; the chat shows one row: the ask's glyph, its label muted, the answer in the foreground | |
+
+Behavior:
+
+- Focus stays in the input row. A digit picks its row when the field is empty; Up and Down move the highlight; Enter runs the highlighted row, or sends what was typed; Escape skips a question, denies an approval and keeps planning on a plan.
+- Several questions show one at a time. Left and Right page between them while the field is empty, and so do the header's step buttons; Enter on the last one sends them all.
+- Typing during an approval or a plan never answers yes. Enter with text sends the no answer and the text as the next message.
+- The message draft is kept while an ask is up and comes back when it is answered.
+- The body is at most half the height of its pane and scrolls past that; a plan scrolls inside its own inset.
+
+Content: the title names an approval in a few words ("Run this command?", "Plan"); a question's header is the question, as the agent wrote it. Option labels are the agent's own. Hints name the key and what it does now, in lowercase ("1 to 3 pick", "esc deny").
+
+Placement: at the bottom of a chat, at most `COMPOSER_MAX_WIDTH` wide. On a narrow pane the input row's buttons keep their size and the field shrinks.
+
+HTML: `.penna-chat-composer` holds `.penna-chat-field` (`data-penna="field.composer"`, `data-asking` while asking). Inside it `.penna-chat-ask` holds `.penna-chat-ask-header` (`data-question` for a question, with `.penna-chat-ask-glyph` and `.penna-chat-ask-question`; otherwise `.penna-chat-ask-title`; `.penna-chat-ask-count` either way), `.penna-chat-ask-inset` (`data-penna="well"`), `.penna-chat-ask-note` and `.penna-chat-ask-options` with `.penna-chat-ask-option` rows (`data-penna="menu-item"`, `aria-selected` on the highlighted one, `role="checkbox"` and `aria-checked` when several answers can be picked, a lit keycap or `.penna-chat-ask-tick` cap when picked) and `.penna-chat-ask-divider`; `.penna-chat-input-row` is the input row, with `.penna-chat-ask-leading`, `.penna-chat-ask-skip` and `.penna-chat-ask-send`. `.penna-chat-ask-hints` sits in the footer, its count in a `b`.
 
 Status: matches.
 

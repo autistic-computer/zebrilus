@@ -11,7 +11,6 @@ const TOOL_ICONS = {
   other: "asterisk",
 };
 const COUNT_ICONS = ["file", "search", "pencil", "square-terminal", "globe", "asterisk", "bot", "triangle-alert"];
-const TASK_ICONS = { shell: "terminal", agent: "bot", monitor: "inspector" };
 const JUMP_DISTANCE = 320;
 const STICK_DISTANCE = 70;
 
@@ -311,117 +310,119 @@ function empty(view) {
   return h("div", { class: "agent-empty" }, view.empty.busy ? spinner() : null, text(view.empty.text));
 }
 
-function permissionCard(card, actions) {
-  const surface = h("div", { class: "agent-card", "data-penna": "inline-panel" });
-  const header = h("div", { class: "agent-card-header" }, h("span", { class: "agent-card-glyph" }, icon("triangle-alert")), h("div", { class: "agent-card-title", "aria-label": card.title }, card.title));
-  surface.append(header);
-  if (card.counter) header.append(h("span", { class: "agent-card-chip", "data-penna": "badge" }, text(card.counter)));
-  header.append(
-    h(
-      "span",
-      { class: "agent-card-close" },
-      button("button", "Cancel request", "xmark", () => actions.respond(null), { disabled: !card.writable || null }),
-    ),
-  );
-  surface.append(
-    h(
-      "div",
-      { class: "agent-card-tiles" },
-      card.options.map((option, index) =>
-        h(
-          "div",
-          {
-            class: "agent-option",
-            "data-penna": "menu-item",
-            role: "button",
-            "data-tone": option.danger ? "danger" : null,
-            "data-state": !card.writable ? "disabled" : option.selected ? "selected" : null,
-            onclick: () => actions.respond(option.id),
-            onmouseenter: () => {
-              if (!option.selected) actions.select(index);
-            },
-          },
-          h("div", { class: "agent-option-label", "aria-label": option.name }, option.name),
-          h(
-            "span",
-            { class: "agent-option-trailing" },
-            option.selected && card.writable ? h("span", { "data-penna": "keycap", "data-tone": option.danger ? "danger" : null }, text("↵")) : null,
-            index < 9 ? h("span", { "data-penna": "keycap", "data-tone": option.danger ? "danger" : null }, text(String(index + 1))) : null,
-          ),
-        ),
-      ),
-    ),
-  );
-  return surface;
+function askQuestion(lens, action) {
+  act(lens, () => state.client.agent_question(lens.pane, JSON.stringify(action)));
 }
 
-function questionCard(lens, card) {
-  const send = (action) => act(lens, () => state.client.agent_question(lens.pane, JSON.stringify(action)));
-  const surface = h("div", { class: "agent-card", "data-penna": "inline-panel" });
-  const header = h("div", { class: "agent-card-header" }, h("span", { class: "agent-card-glyph" }, icon("triangle-alert")), h("div", { class: "agent-card-title" }, card.title));
-  if (card.counter) header.append(h("span", { class: "agent-card-chip", "data-penna": "badge" }, text(card.counter)));
-  header.append(h("span", { class: "agent-card-close" }, button("button", "Dismiss", "xmark", () => send({ dismiss: true }), { disabled: !card.writable || null })));
-  surface.append(header);
-  card.questions.forEach((question, q) => {
-    if (q > 0) surface.append(h("div", { class: "agent-card-divider", "data-penna": "rule.list" }));
-    surface.append(
+function askSend(lens, ask) {
+  if (ask.kind === "question") {
+    askQuestion(lens, { enter: true });
+    return;
+  }
+  const sent = state.client.agent_approve(lens.pane, lens.reply.value);
+  flush();
+  if (sent) {
+    lens.reply.value = "";
+    grow(lens, lens.reply);
+    lens.pinned = true;
+  }
+  mark(lens.pane);
+}
+
+function askPick(lens, ask, index, option) {
+  if (ask.kind === "question") askQuestion(lens, { pick: [ask.index, index] });
+  else act(lens, () => state.client.agent_respond(lens.pane, ask.requestId, option.id));
+}
+
+function askBody(lens, ask) {
+  const disabled = !ask.writable || null;
+  const header =
+    ask.kind === "question"
+      ? h("div", { class: "agent-ask-header", "data-question": true }, h("span", { class: "agent-ask-glyph" }, icon("chat")), text(ask.question, { class: "agent-ask-question" }))
+      : h("div", { class: "agent-ask-header" }, icon(ask.icon, { class: "agent-ask-glyph" }), text(ask.title, { class: "agent-ask-title" }));
+  if (ask.pager) {
+    header.append(
+      button("icon-button.row", "Previous question", "chevron-left", () => askQuestion(lens, { key: "left" }), { class: "agent-ask-step", disabled }),
+      text(`${ask.pager.index + 1} of ${ask.pager.count}`, { class: "agent-ask-count" }),
+      button("icon-button.row", "Next question", "chevron-right", () => askQuestion(lens, { key: "right" }), { class: "agent-ask-step", disabled }),
+    );
+  } else if (ask.counter) {
+    header.append(text(ask.counter, { class: "agent-ask-count" }));
+  }
+  if (ask.kind === "plan") {
+    header.append(button("icon-button.row", "Open the plan in a view pane", "expand", () => act(lens, () => state.client.agent_open_plan(lens.pane, ask.requestId)), { class: "agent-ask-step" }));
+  }
+  const parts = [header];
+  if (ask.kind === "plan") {
+    parts.push(h("div", { class: "agent-ask-sheet" }, markdown(ask.plan)));
+  } else if (ask.inset || ask.note) {
+    parts.push(
       h(
         "div",
-        { class: "agent-question" },
-        question.header ? h("span", { "data-penna": "badge" }, question.header) : null,
-        h("div", { class: "agent-question-text" }, question.question),
+        { class: "agent-ask-body" },
+        ask.inset ? h("div", { class: "agent-ask-inset" }, ask.inset) : null,
+        ask.note ? text(ask.note, { class: "agent-ask-note" }) : null,
       ),
     );
-    const tiles = h("div", { class: "agent-card-tiles" });
-    question.options.forEach((option, o) => {
-      tiles.append(
-        h(
-          "div",
-          {
-            class: "agent-option",
-            "data-penna": "menu-item",
-            role: "button",
-            "data-state": option.picked ? "selected" : null,
-            onclick: () => send({ pick: [q, o] }),
-          },
-          h("div", { class: "agent-option-label" }, option.label, option.description ? h("div", { class: "agent-option-detail" }, option.description) : null),
-          option.picked ? h("span", { class: "agent-option-trailing" }, icon("check")) : null,
-        ),
-      );
-    });
-    if (question.allowOther) {
-      const other = h(
+  }
+  if (ask.options.length) {
+    parts.push(
+      h(
         "div",
-        { class: "agent-option", "data-penna": "menu-item", role: "button", "data-state": question.other ? "selected" : null, onclick: () => send({ other: q }) },
-        h("div", { class: "agent-option-label" }, "Other"),
-      );
-      tiles.append(other);
-      if (question.other) {
-        const field = h("input", { class: "agent-other", "data-penna": "field", placeholder: "Type your answer" });
-        field.addEventListener("input", () => state.client.agent_question(lens.pane, JSON.stringify({ otherText: [q, field.value] })));
-        field.addEventListener("keydown", (event) => {
-          if (event.key === "Enter") {
-            event.preventDefault();
-            send({ submit: true });
-          }
-        });
-        tiles.append(field);
-      }
-    }
-    surface.append(tiles);
-  });
-  surface.append(
-    h(
-      "div",
-      { class: "agent-card-footer" },
-      card.problem ? h("span", { class: "agent-card-problem" }, card.problem) : null,
-      h("button", { "data-penna": "button", "data-prominent": true, disabled: !card.complete || !card.writable || null, onclick: () => send({ submit: true }) }, "Submit"),
-    ),
-  );
-  return surface;
+        { class: "agent-ask-options" },
+        ask.options.flatMap((option, index) => [
+          option.divider ? h("div", { class: "agent-ask-divider", "data-penna": "rule.list" }) : null,
+          h(
+            "div",
+            {
+              class: "agent-ask-option",
+              "data-penna": "menu-item",
+              role: option.picked === null || option.picked === undefined ? "button" : "checkbox",
+              "aria-checked": option.picked === null || option.picked === undefined ? null : String(option.picked),
+              "data-state": !ask.writable ? "disabled" : option.highlighted ? "selected" : null,
+              onclick: ask.writable ? () => askPick(lens, ask, index, option) : null,
+            },
+            h(
+              "div",
+              { class: "agent-ask-option-text", "data-under": option.under || null },
+              text(option.label, { class: "agent-ask-option-label" }),
+              option.detail ? text(option.detail, { class: "agent-ask-option-detail" }) : null,
+            ),
+            option.key || option.picked ? keycap(option.key, option.picked, !ask.writable) : null,
+          ),
+        ]),
+      ),
+    );
+  }
+  if (ask.problem) parts.push(text(ask.problem, { class: "agent-ask-problem" }));
+  return parts;
 }
 
-function tray(lens, tray, writable) {
+function keycap(key, lit, disabled) {
+  const look = lit ? { "data-emphasis": "solid", "data-solid": "accent" } : {};
+  return h("span", { "data-penna": "keycap", "data-state": disabled ? "disabled" : null, ...look }, key ? text(key) : icon("check"));
+}
+
+function askLeading(ask) {
+  if (!ask?.reply || !ask.leading) return [];
+  return [keycap(ask.leading.key, ask.leading.lit, false)];
+}
+
+function askTrailing(lens, ask) {
+  if (!ask) return [];
+  const disabled = !ask.writable || null;
+  return [
+    ask.skip ? h("button", { "data-penna": "button.quiet", class: "agent-ask-skip", disabled, onclick: () => askQuestion(lens, { dismiss: true }) }, "Skip") : null,
+    h(
+      "button",
+      { "data-penna": "button", "data-prominent": true, "data-tone": "primary", class: "agent-ask-send", disabled, onclick: () => askSend(lens, ask) },
+      text(ask.send),
+      icon("key-return"),
+    ),
+  ].filter(Boolean);
+}
+
+function tray(lens, tray) {
   const box = h("div", { class: "agent-tray" });
   if (tray.plan?.open) {
     box.append(
@@ -442,29 +443,6 @@ function tray(lens, tray, writable) {
         ),
       ),
     );
-  } else if (tray.tasks?.open) {
-    box.append(
-      h(
-        "div",
-        { class: "agent-tray-panel", "data-penna": "inline-panel" },
-        tray.tasks.rows.map((task) =>
-          h(
-            "div",
-            {
-              class: "agent-task",
-              "data-penna": task.toolCall ? "menu-item" : null,
-              onclick: task.toolCall ? () => reveal(lens, task.toolCall) : null,
-            },
-            icon(TASK_ICONS[task.kind] || "cpu"),
-            h("span", { class: "agent-task-text" }, task.description),
-            button("button", "Stop", "stop", (event) => {
-              event.stopPropagation();
-              act(lens, () => state.client.agent_stop_task(lens.pane, task.id));
-            }, { class: "agent-task-stop", disabled: !writable || null }),
-          ),
-        ),
-      ),
-    );
   }
   const bar = h("div", { class: "agent-tray-bar" });
   const chip = h("div", { class: "agent-tray-left" });
@@ -472,7 +450,7 @@ function tray(lens, tray, writable) {
     chip.append(
       h(
         "div",
-        { class: "agent-plan-chip", "data-penna": "tab.tray", "data-state": tray.plan.open ? "current" : null, role: "button", onclick: () => act(lens, () => state.client.agent_tray(lens.pane, "plan")) },
+        { class: "agent-plan-chip", "data-penna": "tab.tray", "data-state": tray.plan.open ? "current" : null, role: "button", onclick: () => act(lens, () => state.client.agent_plan(lens.pane)) },
         icon("circle-check"),
         text(tray.plan.label),
         tray.plan.current ? text(tray.plan.current, { class: "agent-plan-current" }) : null,
@@ -481,22 +459,6 @@ function tray(lens, tray, writable) {
     );
   }
   bar.append(chip);
-  if (tray.tasks) {
-    bar.append(
-      h(
-        "button",
-        {
-          class: "agent-tasks-chip",
-          "data-penna": "tab.tray",
-          "aria-label": tray.tasks.label,
-          title: tray.tasks.open ? "Hide background tasks" : "Show background tasks",
-          onclick: () => act(lens, () => state.client.agent_tray(lens.pane, "tasks")),
-        },
-        spinner(),
-        tray.tasks.label,
-      ),
-    );
-  }
   box.append(bar);
   return box;
 }
@@ -560,15 +522,6 @@ function accept(lens, index) {
   return true;
 }
 
-function reveal(lens, toolCall) {
-  const key = state.client.agent_reveal(lens.pane, toolCall);
-  const row = key && lens.list.querySelector(`[data-key="${key}"]`);
-  if (row) {
-    lens.pinned = false;
-    row.scrollIntoView({ block: "start", behavior: "smooth" });
-  }
-}
-
 function submit(lens) {
   const value = lens.input.value;
   const sent = state.client.agent_submit(lens.pane, value);
@@ -581,8 +534,7 @@ function submit(lens) {
   mark(lens.pane);
 }
 
-function grow(lens) {
-  const input = lens.input;
+function grow(lens, input = lens.input) {
   input.style.height = "auto";
   const line = parseFloat(getComputedStyle(input).lineHeight) || 16;
   const padding = parseFloat(getComputedStyle(input).paddingTop) * 2 || 0;
@@ -590,7 +542,20 @@ function grow(lens) {
 }
 
 function keyName(event) {
-  return { ArrowUp: "up", ArrowDown: "down", Escape: "escape", Enter: "enter" }[event.key] || event.key;
+  return { ArrowUp: "up", ArrowDown: "down", ArrowLeft: "left", ArrowRight: "right", Tab: "tab", Escape: "escape", Enter: "enter" }[event.key] || event.key;
+}
+
+function askKey(lens, field, event) {
+  if (event.metaKey || event.altKey || event.ctrlKey) return false;
+  const empty = !field.value.trim();
+  const navigation = ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Tab"].includes(event.key) && lens.view?.ask;
+  if (!(["ArrowUp", "ArrowDown", "Escape"].includes(event.key) || navigation || (/^[1-9]$/.test(event.key) && empty))) return false;
+  if (navigation && !empty) return false;
+  if (!state.client.agent_key(lens.pane, keyName(event), empty, true)) return false;
+  event.preventDefault();
+  flush();
+  mark(lens.pane);
+  return true;
 }
 
 function createLens(pane) {
@@ -619,18 +584,25 @@ function createLens(pane) {
     mark(lens.pane);
   });
   const hint = h("div", { class: "agent-hint" });
+  const reply = h("textarea", { class: "agent-input agent-reply", rows: "1", spellcheck: "false", hidden: true });
+  const lead = h("div", { class: "agent-ask-leading", hidden: true });
+  const ask = h("div", { class: "agent-ask", hidden: true });
+  const askRule = h("div", { class: "agent-ask-rule", "data-penna": "rule.list", hidden: true });
+  const trailing = h("div", { class: "agent-ask-trailing", hidden: true });
   const usage = h("div", { class: "agent-usage-slot" });
   const action = h("button", { "data-penna": "button.send", "data-prominent": true, "data-tone": "primary", class: "agent-action" }, icon("arrow-up"));
   action.addEventListener("click", () => {
     if (lens.view?.action === "stop") act(lens, () => state.client.agent_cancel(lens.pane));
     else submit(lens);
   });
-  const pill = h("div", { class: "agent-pill", "data-penna": "field.composer" }, mention, h("div", { class: "agent-field" }, input, hint), usage, action);
+  const row = h("div", { class: "agent-row" }, mention, lead, h("div", { class: "agent-field" }, input, reply, hint), usage, trailing, action);
+  const pill = h("div", { class: "agent-pill", "data-penna": "field.composer" }, ask, askRule, row);
   const upper = h("div", { class: "agent-upper" }, h("div", { class: "agent-column agent-stack" }, prefix, h("div", { class: "agent-pill-back" }, pill)));
   const git = h("div", { class: "agent-column agent-git" });
-  const composer = h("div", { class: "agent-composer" }, upper, h("div", { class: "agent-footer" }, git));
+  const hints = h("div", { class: "agent-column agent-ask-hints", hidden: true });
+  const composer = h("div", { class: "agent-composer" }, upper, h("div", { class: "agent-footer" }, git, hints));
   const root = h("div", { class: "agent-chat" }, area, composer);
-  Object.assign(lens, { root, list, scroll, area, jump, prefix, pill, upper, hint, usage, action, git, composer, mention });
+  Object.assign(lens, { root, list, scroll, area, jump, prefix, pill, upper, hint, usage, action, git, composer, mention, reply, lead, ask, askRule, trailing, hints });
 
   scroll.addEventListener("scroll", () => {
     const distance = scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight;
@@ -641,8 +613,26 @@ function createLens(pane) {
     grow(lens);
     mark(lens.pane);
   });
-  input.addEventListener("focus", () => pill.setAttribute("data-state", "focused"));
-  input.addEventListener("blur", () => pill.removeAttribute("data-state"));
+  for (const field of [input, reply]) {
+    field.addEventListener("focus", () => pill.setAttribute("data-state", "focused"));
+    field.addEventListener("blur", () => pill.removeAttribute("data-state"));
+  }
+  reply.addEventListener("input", () => {
+    grow(lens, reply);
+    const current = lens.view?.ask;
+    if (current?.kind === "question") state.client.agent_question(lens.pane, JSON.stringify({ otherText: [current.index, reply.value] }));
+    mark(lens.pane);
+  });
+  reply.addEventListener("keydown", (event) => {
+    if (event.isComposing) return;
+    const current = lens.view?.ask;
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      if (current) askSend(lens, current);
+      return;
+    }
+    askKey(lens, reply, event);
+  });
   input.addEventListener("keyup", (event) => {
     if (["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) mark(lens.pane);
   });
@@ -661,17 +651,10 @@ function createLens(pane) {
       accept(lens, null);
       return;
     }
-    if (["ArrowUp", "ArrowDown", "Escape"].includes(event.key) || (/^[1-9]$/.test(event.key) && !input.value.trim())) {
-      if (event.metaKey || event.altKey || event.ctrlKey) return;
-      if (state.client.agent_key(lens.pane, keyName(event), !input.value.trim(), true)) {
-        event.preventDefault();
-        flush();
-        mark(lens.pane);
-      }
-    }
+    askKey(lens, input, event);
   });
   root.addEventListener("keydown", (event) => {
-    if (event.target === input || event.target.closest("input, textarea")) return;
+    if (event.target === input || event.target === reply || event.target.closest("input, textarea")) return;
     if (event.metaKey || event.altKey || event.ctrlKey) return;
     if (state.client.agent_key(lens.pane, keyName(event), !input.value.trim(), false)) {
       event.preventDefault();
@@ -683,7 +666,7 @@ function createLens(pane) {
   root.addEventListener("mouseup", (event) => {
     event.stopPropagation();
     if (getSelection()?.toString() || event.target.closest("a, input, textarea")) return;
-    input.focus({ preventScroll: true });
+    (reply.hidden ? input : reply).focus({ preventScroll: true });
   });
   return lens;
 }
@@ -693,16 +676,7 @@ function updateComposer(lens, view) {
   lens.composer.hidden = false;
   lens.pill.parentElement.hidden = view.watchOnly;
   const prefix = [];
-  if (view.card) {
-    prefix.push(
-      view.card.kind === "question"
-        ? questionCard(lens, view.card)
-        : permissionCard(view.card, {
-            respond: (option) => act(lens, () => state.client.agent_respond(lens.pane, view.card.requestId, option)),
-            select: (index) => act(lens, () => state.client.agent_permission_select(lens.pane, index)),
-          }),
-    );
-  }
+  updateAsk(lens, view);
   if (view.queued) {
     prefix.push(
       h(
@@ -725,14 +699,14 @@ function updateComposer(lens, view) {
       ),
     );
   }
-  if (view.tray) prefix.push(tray(lens, view.tray, view.writable));
+  if (view.tray) prefix.push(tray(lens, view.tray));
   if (view.error) prefix.push(errorCard(view.error));
-  if (view.completions.length) prefix.push(completions(lens, view));
+  if (view.completions.length && !view.ask?.reply) prefix.push(completions(lens, view));
   lens.prefix.replaceChildren(...prefix);
   lens.composer.toggleAttribute("data-prefix", prefix.length > 0);
   lens.hint.textContent = view.hint || "";
   lens.hint.hidden = !view.hint;
-  lens.usage.replaceChildren(...(view.usage ? [usageRing(view.usage)] : []));
+  lens.usage.replaceChildren(...(view.usage && !view.ask ? [usageRing(view.usage)] : []));
   const [iconName, title] = {
     send: ["arrow-up", "Send message"],
     queue: ["plus", "Queue this as the next turn"],
@@ -744,6 +718,7 @@ function updateComposer(lens, view) {
   if (view.action === "queue") delete lens.action.dataset.tone;
   else lens.action.dataset.tone = "primary";
   lens.action.disabled = !view.actionEnabled;
+  lens.action.hidden = Boolean(view.ask) && view.action !== "stop";
   const git = view.git;
   lens.git.replaceChildren(
     ...(git
@@ -767,9 +742,44 @@ function updateComposer(lens, view) {
   }
 }
 
+function updateAsk(lens, view) {
+  const ask = view.ask;
+  lens.pill.toggleAttribute("data-asking", Boolean(ask));
+  lens.ask.hidden = !ask;
+  lens.askRule.hidden = !ask;
+  lens.ask.replaceChildren(...(ask ? askBody(lens, ask) : []));
+  const replying = Boolean(ask?.reply);
+  const typing = document.activeElement === lens.input || document.activeElement === lens.reply;
+  lens.input.hidden = replying;
+  lens.reply.hidden = !replying;
+  lens.mention.hidden = replying;
+  if (replying) {
+    if (lens.replyKey !== ask.reply.key) {
+      lens.replyKey = ask.reply.key;
+      lens.reply.value = ask.reply.value || "";
+      grow(lens, lens.reply);
+    }
+    lens.reply.placeholder = ask.reply.placeholder;
+    lens.reply.toggleAttribute("data-secret", ask.reply.secret);
+  } else {
+    lens.replyKey = null;
+  }
+  const row = replying ? lens.reply : lens.input;
+  if (typing && document.activeElement !== row) row.focus({ preventScroll: true });
+  const leading = askLeading(ask);
+  lens.lead.replaceChildren(...leading);
+  lens.lead.hidden = leading.length === 0;
+  const trailing = askTrailing(lens, ask);
+  lens.trailing.replaceChildren(...trailing);
+  lens.trailing.hidden = trailing.length === 0;
+  lens.hints.replaceChildren(...(ask ? ask.hints.map((hint) => (hint.strong ? h("b", {}, hint.text) : text(hint.text))) : []));
+  lens.hints.hidden = !ask;
+  lens.git.hidden = Boolean(ask);
+}
+
 function render(lens) {
   if (!state.client) return;
-  const view = JSON.parse(state.client.agent_view(lens.pane, lens.input.value, lens.input.selectionStart ?? lens.input.value.length));
+  const view = JSON.parse(state.client.agent_view(lens.pane, lens.input.value, lens.input.selectionStart ?? lens.input.value.length, lens.reply.value));
   flush();
   if (!view) return;
   lens.view = view;

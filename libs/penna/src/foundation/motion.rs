@@ -49,6 +49,7 @@ pub(crate) const TURN: Duration = Duration::from_millis(220);
 const ENTER: Duration = Duration::from_millis(200);
 const ENTER_DROP: f32 = 8.0;
 pub(crate) const APPEAR: Duration = Duration::from_millis(120);
+pub(crate) const SPIN: Duration = Duration::from_millis(900);
 
 #[derive(Default)]
 struct Turns(HashMap<ElementId, (bool, Option<Instant>)>);

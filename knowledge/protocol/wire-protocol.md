@@ -1,10 +1,10 @@
 ---
 type: Protocol
-title: zz wire protocol (v120)
+title: zz wire protocol (v121)
 description: The versioned, little-endian length-prefixed, postcard-encoded control protocol whose ProtocolMessage enum carries the entire client/daemon conversation over local IPC or an SSH tunnel.
 resource: crates/zz-protocol/src/framing.rs
 tags: [protocol, wire, framing, postcard, versioning]
-timestamp: 2026-11-01T00:00:00-03:00
+timestamp: 2026-11-09T00:00:00-03:00
 ---
 
 # Overview
@@ -15,7 +15,7 @@ daemon through an OpenSSH `ssh -L` Unix-socket forward. iOS instead carries the 
 through `zz proxy` over an in-process `russh` SSH channel.
 Every message is wrapped in a fixed envelope carrying a `u32` little-endian length prefix, a
 one-byte **lane** tag, a **flags** byte, and a `u16` **protocol version**. The current wire version is
-**`PROTOCOL_VERSION = 120`** (`crates/zz-protocol/src/message.rs`).
+**`PROTOCOL_VERSION = 121`** (`crates/zz-protocol/src/message.rs`).
 
 The version is a gate, not a negotiation: a frame whose envelope version differs from the running
 build's is rejected outright. Before disconnecting, a daemon makes a best-effort
@@ -64,7 +64,7 @@ Relevant constants (`framing.rs`): `MAX_FRAME_BYTES = 64 * 1024 * 1024`, `ENVELO
 | length | 0..4 | `u32` LE | Bytes following the prefix (`4 + payload`) |
 | lane | 4 | `u8` | `0` = Control, `1` = Terminal |
 | flags | 5 | `u8` | `0x00` only; every other value is rejected |
-| version | 6..8 | `u16` LE | `PROTOCOL_VERSION` (120) |
+| version | 6..8 | `u16` LE | `PROTOCOL_VERSION` (121) |
 | payload | 8.. | bytes | `postcard(ProtocolMessage)` (Control) or packed terminal sections |
 
 # Schema . `ProtocolMessage` (Control lane)
@@ -145,7 +145,9 @@ notifications keep their ordering after `%end`. A CLI receiving an attach `ExecR
 the same connection instead of opening a second one.
 
 Size reports use `ResizeTerminalV2` and `ClientTerminalSizeV2`, each carrying the layout generation
-the client rendered. The daemon drops a report from an older layout, including one that arrives
+the client rendered. A `ResizeTerminalV2` may name any tiled pane, not only a terminal: the desktop
+reports agent, view, browser and editor tiles in terminal cells too, so a window with no terminal
+still has its real size and its floats can grow to it. Only a pane with a PTY resizes one. The daemon drops a report from an older layout, including one that arrives
 after unzoom. It checks the generation under the same model lock that applies the report;
 rejection skips geometry storage, actor resizing and the input publication/hook tail.
 Clients retry their measured geometry when the layout generation changes, including when
@@ -1054,6 +1056,14 @@ v120 appends `PaneSummary.shell`, the shell the pane last sat at its prompt in (
 and not from the title, so a pane whose shell writes no title, or writes a path, still names its
 shell ([snapshots](/protocol/snapshots.md#pane-status-summary-and-time)).
 
+v121 appends `PaneKindSnapshot::View(ViewDescriptor)` after `Agent`, a pane with no process that
+shows something from a chat: `ViewDescriptor { origin, title, content }`, where `origin` is the
+pane it belongs to and `content` is a `ViewContent`: `Diagram { language, source }`,
+`Code { language, text }`, `Markdown { text }`, or a pointer into the origin's chat,
+`Image { item, index }` or `Subagent { item }`. Text is capped at 64 KiB and labels at 256 bytes,
+checked when a descriptor decodes, so the kind stays small in every snapshot and delta.
+`view-pane` joins the command catalog ([agent panes](/concepts/agent-panes.md#previews-and-the-view-pane)).
+
 v118 brings the agent pane kind back, for a chat over Claude Code or Codex that a pane flips to
 and from the CLI's own TUI. It appends `PaneKindSnapshot::Agent(AgentDescriptor)` after `Editor`
 and `ChooseTreePaneKind::Agent` after `Editor`. `AgentDescriptor { provider, cwd, session_id,
@@ -1066,9 +1076,11 @@ to go idle ([agent panes](/concepts/agent-panes.md)).
 
 # Versioning & compatibility
 
-- **`PROTOCOL_VERSION: u16 = 120`** is stamped into every frame's envelope and re-checked inside
+- **`PROTOCOL_VERSION: u16 = 121`** is stamped into every frame's envelope and re-checked inside
   `Hello` and `Welcome` (`validate_control_message` rejects an inner-version mismatch even if the envelope
   version passed).
+- v121 requires updated clients and daemon together, including the daemon on every ssh host.
+  v121 appends `PaneKindSnapshot::View(ViewDescriptor)`.
 - v120 requires updated clients and daemon together, including the daemon on every ssh host.
   v120 appends `PaneSummary.shell`.
 - v119 requires updated clients and daemon together, including the daemon on every ssh host.

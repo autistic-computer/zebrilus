@@ -1189,7 +1189,6 @@ impl Client {
         self.send_view(pane_id(pane), output, action);
     }
 
-
     pub fn search_open(&mut self, pane: f64, output: bool) {
         self.begin_search(pane_id(pane), output, SearchQuery::default(), false);
     }

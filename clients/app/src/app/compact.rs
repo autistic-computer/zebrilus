@@ -253,6 +253,7 @@ pub(super) const fn kind_icon(kind: &PaneKindSnapshot) -> IconName {
         PaneKindSnapshot::Editor(_) => IconName::File,
         PaneKindSnapshot::Picker => IconName::Plus,
         PaneKindSnapshot::Agent(agent) => zz_ui::pane::agent_provider_icon(agent.provider),
+        PaneKindSnapshot::View(_) => IconName::Eye,
     }
 }
 
@@ -816,6 +817,9 @@ impl AppShell {
                 Corners::all(radius),
                 cx,
             ),
+            PaneKindSnapshot::View(descriptor) => {
+                self.view_element(pane_id, descriptor, can_focus, window, cx)
+            }
             PaneKindSnapshot::Picker => {
                 let picker = self.picker_entity(pane_id, cx);
                 picker.update(cx, |picker, cx| {

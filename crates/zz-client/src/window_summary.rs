@@ -18,6 +18,7 @@ pub enum PaneTag {
     Browser,
     Editor,
     Agent(AgentProvider),
+    View,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -26,6 +27,7 @@ pub struct PaneTile {
     pub tag: PaneTag,
     pub label: String,
     pub program: Option<&'static Program>,
+    pub attention: Attention,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -152,6 +154,7 @@ pub fn pane_tag(kind: &PaneKindSnapshot) -> PaneTag {
         PaneKindSnapshot::Browser(_) => PaneTag::Browser,
         PaneKindSnapshot::Editor(_) => PaneTag::Editor,
         PaneKindSnapshot::Agent(agent) => PaneTag::Agent(agent.provider),
+        PaneKindSnapshot::View(_) => PaneTag::View,
     }
 }
 
@@ -159,12 +162,17 @@ pub fn pane_tag(kind: &PaneKindSnapshot) -> PaneTag {
 pub fn pane_program(pane: &PaneSnapshot) -> Option<&'static Program> {
     match &pane.kind {
         PaneKindSnapshot::Terminal => resolve(pane.summary.process.iter().map(String::as_str)),
-        PaneKindSnapshot::Agent(agent) => Program::by_id(match agent.provider {
-            AgentProvider::ClaudeCode => "claude",
-            AgentProvider::Codex => "codex",
-        }),
+        PaneKindSnapshot::Agent(agent) => provider_program(agent.provider),
         _ => None,
     }
+}
+
+#[must_use]
+pub fn provider_program(provider: AgentProvider) -> Option<&'static Program> {
+    Program::by_id(match provider {
+        AgentProvider::ClaudeCode => "claude",
+        AgentProvider::Codex => "codex",
+    })
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -259,6 +267,7 @@ fn pane_tile(pane: &PaneSnapshot) -> PaneTile {
         tag: pane_tag(&pane.kind),
         label: pane_label(pane),
         program: pane_program(pane),
+        attention: pane_attention(pane),
     }
 }
 
@@ -544,6 +553,7 @@ pub fn pane_detail(window: &WindowSnapshot, pane: &PaneSnapshot, title: &str) ->
             location.unwrap_or_else(|| agent.provider.label().to_owned()),
             Tone::Muted,
         )],
+        PaneKindSnapshot::View(view) => vec![part(view.content.kind_name(), Tone::Muted)],
     }
 }
 

@@ -51,6 +51,11 @@
   --penna-row: 0;
 }
 
+.penna-row-fill[data-penna][data-round] {
+  --penna-r: 9999px;
+  --penna-k: 1;
+}
+
 .penna-item.penna-list-item[data-penna] {
   margin: 0;
   outline: none;

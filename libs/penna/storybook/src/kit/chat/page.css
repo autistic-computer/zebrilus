@@ -7,3 +7,7 @@
   padding-top: 12px;
   border: 1px solid var(--penna-border);
 }
+
+.chat-frozen :is(.penna-chat-shimmer, [data-icon]) {
+  animation-play-state: paused;
+}

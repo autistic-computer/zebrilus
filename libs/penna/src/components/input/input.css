@@ -212,7 +212,7 @@
 
 @media (prefers-reduced-motion: no-preference) {
   .penna-input .penna-spinner > [data-icon] {
-    animation: penna-input-spin 800ms ease-in-out infinite;
+    animation: penna-input-spin 900ms linear infinite;
   }
 }
 

@@ -1,4 +1,7 @@
-use ala::{App, ElementId, IntoElement, Pixels, RenderOnce, Role, SharedString, Window};
+use ala::{
+    App, CornerRadiusMode, ElementId, IntoElement, Pixels, RenderOnce, Role, SharedString, Styled,
+    Window,
+};
 
 use crate::{
     ActiveTheme as _, Ground, PaintState, Shape, Surface, SurfaceRole, Tone,
@@ -121,10 +124,16 @@ impl RenderOnce for Row {
         let role = self.plate.surface.role;
         let round = theme.style(role).shape == Shape::Round;
         let radius = self.radius.filter(|_| round);
-        self.plate.paint_with(window, cx, move |layer| {
+        let row = self.plate.paint_with(window, cx, move |layer| {
             if let Some(radius) = radius {
                 layer.radius = radius;
+                layer.share = None;
             }
-        })
+        });
+        if radius.is_some() {
+            row.corner_radius_mode(CornerRadiusMode::Fixed)
+        } else {
+            row
+        }
     }
 }

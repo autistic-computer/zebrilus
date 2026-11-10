@@ -213,7 +213,7 @@ Kit widgets on the model:
 | Invalid field | danger at the field role's emphasis |
 | Inline field (rename in place) | the field role's emphasis, no focus ring |
 | Agent composer | a field shell: `field_chrome` with `FieldLook::Composer`, not a card |
-| User message bubble, attachment tile, Mermaid diagram | `Card` in `CardLook::Bubble`, `Image` and `Code` (`card.bubble`, `card.image`, `card.code`) |
+| User message bubble, attachment tile, Mermaid diagram, subagent row | `Card` in `CardLook::Bubble`, `Image`, `Figure` and `Activity` (`card.bubble`, `card.image`, `card.figure`, `card.activity`) |
 | Browser address bar | neutral · ghost field |
 | Browser tab | neutral · soft when active, ghost otherwise |
 | Settings control | its own recipe, on `settings_card_ground` |

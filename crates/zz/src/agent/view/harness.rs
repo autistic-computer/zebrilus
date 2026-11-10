@@ -1,21 +1,21 @@
-use ala::{AnyElement, Context, Entity, IntoElement, Window};
+use ala::{AnyElement, Context, Entity, Window};
 use std::sync::Arc;
-use zz_client::agent_settings::{
-    fork_chat_command, real_session, short_folder, side_chat_command, source_message,
-};
+use zz_client::agent_settings::{self, fork_chat_command, real_session, source_message};
 
+use zz_ui::agent::preview::ViewRequest;
 use zz_ui::agent::refs::{ChatRefs, open_path};
 use zz_ui::command::{PaletteTarget, target_hosts};
 use zz_ui::target::{RefTarget, ResolvedTarget};
 
 use crate::command::palette::palette_backend;
-use zz_ui::agent::controls::{agent_directory_chip, agent_settings_menu, agent_side_chat_button};
+use zz_ui::agent::controls::{agent_mode_chip, agent_model_picker};
 
 use super::{AgentPaneState, AgentView};
 
 impl AgentView {
     pub(super) fn chat_refs(&self, view: &Entity<Self>, cx: &ala::App) -> ChatRefs {
         let view = view.downgrade();
+        let shows = view.clone();
         ChatRefs {
             hosts: target_hosts(&palette_backend(self.mux.clone()).tree(cx)),
             cwd: Some(self.chat_cwd()),
@@ -23,7 +23,24 @@ impl AgentView {
                 view.update(cx, |view, cx| view.open_ref(target, window, cx))
                     .ok();
             }),
+            view: Some(Arc::new(move |request, window, cx| {
+                shows
+                    .update(cx, |view, cx| view.open_view(&request, window, cx))
+                    .ok();
+            })),
         }
+    }
+
+    pub(super) fn open_view(&self, request: &ViewRequest, window: &Window, cx: &mut Context<Self>) {
+        let mux = self.mux.read(cx);
+        let rows = crate::workspace::pip_fill_rows(
+            mux,
+            self.pane,
+            self.pane_canvas.get().size,
+            window,
+            cx,
+        );
+        mux.execute(request.command(self.pane, rows));
     }
 
     fn open_ref(&mut self, target: &ResolvedTarget, _: &mut Window, cx: &mut Context<Self>) {
@@ -50,24 +67,12 @@ impl AgentView {
     pub(super) fn render_harness_controls(
         &self,
         state: &AgentPaneState,
-        view: &Entity<Self>,
         cx: &mut ala::App,
-    ) -> (Option<AnyElement>, Vec<AnyElement>) {
+    ) -> Vec<AnyElement> {
         let Some(settings) = state.settings.as_ref() else {
-            return (None, Vec::new());
+            return Vec::new();
         };
-        let local = self.mux.read(cx).attached_is_local();
-        let directory = {
-            let home = std::env::home_dir().filter(|_| local);
-            let label = short_folder(
-                &self.chat_cwd(),
-                home.as_deref().and_then(|home| home.to_str()),
-            );
-            Some(
-                agent_directory_chip(("agent-directory", self.pane.0), label, false, cx)
-                    .into_any_element(),
-            )
-        };
+        let enabled = state.connection.accepts_setting();
         let pick = {
             let controller = self.controller.clone();
             let pane = self.pane;
@@ -77,26 +82,23 @@ impl AgentView {
                 });
             }
         };
-        let menu = agent_settings_menu(
-            ("agent-settings", self.pane.0),
+        let mode = agent_mode_chip(
+            ("agent-mode", self.pane.0),
+            state.provider,
             settings,
-            state.connection.accepts_setting(),
-            pick,
+            enabled,
+            {
+                let pick = pick.clone();
+                move |value, window, cx| pick(agent_settings::MODE, value, window, cx)
+            },
             cx,
         );
-        let side = {
-            let view = view.clone();
-            agent_side_chat_button(
-                ("agent-side-chat", self.pane.0),
-                state.session_id.as_deref().is_some_and(real_session),
-                move |_, cx| view.update(cx, AgentView::open_side_chat),
-            )
-            .into_any_element()
-        };
-        (directory, vec![menu, side])
+        let picker =
+            agent_model_picker(("agent-settings", self.pane.0), settings, enabled, pick, cx);
+        mode.into_iter().chain([picker]).collect()
     }
 
-    fn chat_cwd(&self) -> String {
+    pub(super) fn chat_cwd(&self) -> String {
         self.pane_state.cwd.to_string_lossy().into_owned()
     }
 
@@ -105,20 +107,6 @@ impl AgentView {
             .session_id
             .as_deref()
             .filter(|session| real_session(session))
-    }
-
-    fn open_side_chat(&mut self, cx: &mut Context<Self>) {
-        let Some(session) = self.session() else {
-            return;
-        };
-        let command = side_chat_command(
-            self.pane_state.provider,
-            session,
-            &self.chat_cwd(),
-            self.pane,
-            self.pane_state.settings.as_ref(),
-        );
-        self.mux.read(cx).execute(command);
     }
 
     pub(super) fn fork_from(&mut self, item: &str, cx: &mut Context<Self>) {

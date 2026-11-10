@@ -1,7 +1,7 @@
 ---
 type: Design Plan
 title: Agent chat machine . one owner for everything a chat shows
-description: "One pure machine in the daemon owns a driver-backed chat: the session, the turn (through the existing turn machine), every item with its parent and scope, subagents, approvals and questions, and the prompt queue. It emits typed chat events; the journal keeps them and every client folds them with one projector in zz-protocol, so a replay builds the same view the live stream did. Built and fuzzed next to the Claude and Codex drivers, which send its events on the agent stream; the desktop lens folds them and draws the chat, with asks inline and each subagent's chat in a PiP."
+description: "One pure machine in the daemon owns a driver-backed chat: the session, the turn (through the existing turn machine), every item with its parent and scope, subagents, approvals and questions, and the prompt queue. It emits typed chat events; the journal keeps them and every client folds them with one projector in zz-protocol, so a replay builds the same view the live stream did. Built and fuzzed next to the Claude and Codex drivers, which send its events on the agent stream; the desktop lens folds them and draws the chat, with asks in the composer and each subagent's chat in a PiP."
 status: Built (2026-10-29, branch feat/agent-chat); events on the agent stream with replay through a compacted log; the desktop lens draws the chat with inline asks and subagents opening in place, checked live in zz Dev against Claude Code 2.1.312; 2026-10-31 subagents became one row each opening a PiP
 resource: crates/zz-daemon/src/agent/chat.rs
 tags:
@@ -228,16 +228,15 @@ could tie to real Claude Code or Codex behavior.
    in `LensTranscript::chat`. Once that view has a turn, both draw it with
    `zz_ui::agent::chat::chat_surface`, a list that lays out only the turns on screen and follows the
    bottom until you scroll up, holding folds, the opened subagent and the list in the shared
-   `ChatPane`; each app is a `ChatHost` that hands the surface its chat and its ask cards. Sending
-   a prompt or switching sessions follows the bottom again. Pending approvals and questions sit inline where the chat puts them, built by
-   the same permission and question cards the composer used to dock (`ChatHooks::ask`); a request
-   the chat does not know still docks above the composer. Subagents started together share one
+   `ChatPane`; each app is a `ChatHost` that hands the surface its chat. Sending
+   a prompt or switching sessions follows the bottom again. Pending approvals and questions leave
+   one row in the chat and are asked in the composer (see [agent panes](/concepts/agent-panes.md)),
+   including a request the chat does not know. Subagents started together share one
    card with a row each (status glyph, name, a one-line preview, how long it took); a row opens and
    closes in place to show the prompt, the agent's own rows and a footer ("Done in 12s"). There is
-   no drill-in page and no back button: a subagent never navigates inside the pane. The keys that
-   answer the head request (Enter, digits, Escape) do nothing while the thread is scrolled away
-   from it, so nothing is approved out of sight; clicking a row stops following the bottom so the
-   row stays put. History replayed while no turn runs lands in the background and is drawn before
+   no drill-in page and no back button: a subagent never navigates inside the pane. The head
+   request is always in view, since the composer asks it; clicking a row stops following the
+   bottom so the row stays put. History replayed while no turn runs lands in the background and is drawn before
    the first turn that started after it. If one ever
    needs more room it opens as a zz split pane or a PiP, never a view inside the chat. The old driver-backed pane kind
    (`69ceca016`) stays gone, confirmed by fabrico on 2026-10-29: chat mode's windows run the CLI with the lens over it, so the lens is

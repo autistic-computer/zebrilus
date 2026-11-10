@@ -7,6 +7,10 @@ use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use serde_json::{Value, json};
 use wasm_bindgen::prelude::*;
 use zz_client::{
+    agent_ask::{
+        ApprovalTopic, KEYED_OPTIONS, approval_hints, approval_send, approval_topic,
+        question_hints, question_other_key, question_send,
+    },
     agent_completion::{
         AgentCommand, CommandCompletion, active_command_hint, bare_command_name, completion_query,
         meaningful_command_description, pane_commands, ranked_completions, rendered_error,
@@ -25,7 +29,7 @@ use zz_client::{
         composer_action, context_usage_fraction, context_usage_tooltip, ending_failure,
         final_assistant_entry_id, fold_timeline_rows, git_file_count_label, git_summary_tooltip,
         is_turn_row, plan_chip_label, plan_items, plan_progress, single_line, split_turn,
-        task_tray_label, thought_tail, tool_tag, trace_header,
+        thought_tail, tool_tag, trace_header,
     },
     agent_transcript::{AgentThreadEntry, ToolPayload, is_zz_command, rewind_command},
     mend::mend,
@@ -35,6 +39,7 @@ use zz_client::{
     },
     window_summary::pane_agent,
 };
+use zz_protocol::chat::{Ask, ItemKind, RequestId};
 use zz_protocol::{
     AgentConnectionPhase, AgentPaneWire, AgentProvider, AgentQuestionAnswer, CommandInvocation,
     CommandResponse, PaneId, PaneKindSnapshot, PaneSnapshot, ProtocolMessage,
@@ -54,12 +59,6 @@ fn decode_image(format: &str, data: Vec<u8>) -> Option<Image> {
     .then(|| format!("data:{format};base64,{}", BASE64.encode(data)))
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum Tray {
-    Plan,
-    Tasks,
-}
-
 struct Lens {
     transcript: LensTranscript<Image>,
     last_sequence: u64,
@@ -71,7 +70,7 @@ struct Lens {
     question: Option<QuestionCard>,
     expanded: HashMap<u64, bool>,
     clocks: TurnClocks,
-    tray: Option<Tray>,
+    plan_open: bool,
     last_input: String,
     last_cursor: usize,
     completion_dismissed: bool,
@@ -95,7 +94,7 @@ impl Lens {
             question: None,
             expanded: HashMap::new(),
             clocks: TurnClocks::default(),
-            tray: None,
+            plan_open: false,
             last_input: String::new(),
             last_cursor: 0,
             completion_dismissed: false,
@@ -675,7 +674,7 @@ impl Client {
     }
 
     #[allow(clippy::too_many_lines)]
-    fn lens_view(&mut self, pane: PaneId, value: &str, cursor: usize) -> Value {
+    fn lens_view(&mut self, pane: PaneId, value: &str, cursor: usize, reply: &str) -> Value {
         self.synchronize_lens(pane);
         let head = self.head_permission(pane);
         let context = self.lens_context(pane);
@@ -768,57 +767,43 @@ impl Client {
                 let (done, total, _) = plan_progress(source);
                 total > 0 && (done < total || running)
             });
-        if state.tasks.is_empty() && lens.tray == Some(Tray::Tasks) {
-            lens.tray = None;
-        }
-        let tray = (plan.is_some() || !state.tasks.is_empty()).then(|| {
-            json!({
-                "plan": plan.as_deref().and_then(|source| {
-                    let (label, current) = plan_chip_label(source)?;
-                    Some(json!({
-                        "label": label,
-                        "current": current,
-                        "open": lens.tray == Some(Tray::Plan),
-                        "items": plan_items(source).into_iter().map(|(state, text)| json!({
-                            "state": state,
-                            "text": text,
-                        })).collect::<Vec<_>>(),
-                    }))
-                }),
-                "tasks": (!state.tasks.is_empty()).then(|| json!({
-                    "label": task_tray_label(state.tasks.len()),
-                    "open": lens.tray == Some(Tray::Tasks),
-                    "rows": state.tasks.iter().map(|task| json!({
-                        "id": task.id,
-                        "kind": task.kind,
-                        "description": task.description,
-                        "toolCall": task.tool_call_id,
+        let tray = plan.as_deref().and_then(|source| {
+            let (label, current) = plan_chip_label(source)?;
+            Some(json!({
+                "plan": {
+                    "label": label,
+                    "current": current,
+                    "open": lens.plan_open,
+                    "items": plan_items(source).into_iter().map(|(state, text)| json!({
+                        "state": state,
+                        "text": text,
                     })).collect::<Vec<_>>(),
-                })),
-            })
+                },
+            }))
         });
-        let card = head.map(|head| {
-            let counter = (pending_count > 1).then(|| format!("1/{pending_count}"));
+        let ask = head.map(|head| {
+            let counter = (pending_count > 1).then(|| format!("1 of {pending_count}"));
             if let Some(card) = lens
                 .question
                 .as_ref()
                 .filter(|card| card.request_id() == head.request_id)
             {
-                question_json(card, &head.title, counter, context.writable)
+                question_ask(card, counter, context.writable)
             } else {
-                json!({
-                    "kind": "permission",
-                    "requestId": head.request_id,
-                    "title": head.title,
-                    "counter": counter,
-                    "writable": context.writable,
-                    "options": head.options.iter().enumerate().map(|(index, option)| json!({
-                        "id": option.id,
-                        "name": option.name,
-                        "danger": option.allow == Some(false),
-                        "selected": index == lens.permission_selected,
-                    })).collect::<Vec<_>>(),
-                })
+                let cwd = zz_client::providers::home_relative(&cwd);
+                approval_ask(
+                    &head,
+                    approval_topic(
+                        Some(&lens.transcript.chat),
+                        head.request_id,
+                        &head.title,
+                        Some(&cwd),
+                    ),
+                    counter,
+                    lens.permission_selected,
+                    !reply.trim().is_empty(),
+                    context.writable,
+                )
             }
         });
         let error = state
@@ -867,7 +852,7 @@ impl Client {
             "watchOnly": context.watch,
             "rows": row_values,
             "empty": empty,
-            "card": card,
+            "ask": ask,
             "queued": (state.queued_prompts > 0).then_some(state.queued_prompts),
             "tray": tray,
             "error": error,
@@ -892,34 +877,127 @@ impl Client {
     }
 }
 
-fn question_json(
-    card: &QuestionCard,
-    title: &str,
-    counter: Option<String>,
-    writable: bool,
-) -> Value {
+fn kind_icon(kind: Option<ItemKind>) -> &'static str {
+    match kind {
+        Some(ItemKind::Execute) => "square-terminal",
+        Some(ItemKind::Edit) => "pencil",
+        Some(ItemKind::Read) => "file",
+        Some(ItemKind::Search) => "search",
+        Some(ItemKind::Fetch | ItemKind::Web) => "globe",
+        _ => "info",
+    }
+}
+
+fn key_label(index: usize) -> Option<String> {
+    (index < KEYED_OPTIONS).then(|| (index + 1).to_string())
+}
+
+fn question_ask(card: &QuestionCard, counter: Option<String>, writable: bool) -> Value {
+    let index = card.focused();
+    let count = card.questions().len();
+    let Some(question) = card.questions().get(index) else {
+        return Value::Null;
+    };
+    let key = question_other_key(card).map(|key| key.to_string());
+    let leading =
+        if question.multi_select && card.other_selected(index) && !question.options.is_empty() {
+            json!({ "key": key, "lit": true })
+        } else {
+            key.map_or(Value::Null, |key| json!({ "key": key }))
+        };
     json!({
         "kind": "question",
         "requestId": card.request_id(),
+        "index": index,
+        "counter": (count == 1).then_some(counter).flatten(),
+        "pager": (count > 1).then(|| json!({ "index": index, "count": count })),
+        "question": question.question,
+        "problem": card.problem(),
+        "options": question.options.iter().enumerate().map(|(option, choice)| json!({
+            "label": choice.label,
+            "detail": choice.description,
+            "under": true,
+            "key": key_label(option),
+            "highlighted": option == card.highlight(),
+            "picked": question.multi_select.then(|| card.is_picked(index, option)),
+        })).collect::<Vec<_>>(),
+        "reply": question.allow_other.then(|| json!({
+            "placeholder": if question.options.is_empty() { "Type your answer" } else { "Something else" },
+            "secret": question.secret,
+            "value": card.other_text(index),
+            "key": format!("{}-{index}", card.request_id()),
+        })),
+        "leading": leading,
+        "send": question_send(card),
+        "skip": true,
+        "hints": question_hints(card),
+        "writable": writable,
+    })
+}
+
+fn approval_ask(
+    head: &PendingPermission,
+    topic: ApprovalTopic,
+    counter: Option<String>,
+    selected: usize,
+    replying: bool,
+    writable: bool,
+) -> Value {
+    let plan = topic.plan();
+    let reject = head
+        .options
+        .iter()
+        .position(|option| option.allow == Some(false));
+    let denying = head
+        .options
+        .get(selected)
+        .is_some_and(|option| option.allow == Some(false));
+    let send = approval_send(replying, denying, plan);
+    let count = head.options.len();
+    let (icon, title, inset, note, markdown) = match &topic {
+        ApprovalTopic::Plan { markdown } => {
+            ("list", "Plan", None, None, Some(markdown_html(markdown)))
+        }
+        ApprovalTopic::Tool {
+            kind,
+            heading,
+            inset,
+            note,
+        } => (
+            kind_icon(*kind),
+            *heading,
+            inset.clone(),
+            note.clone(),
+            None,
+        ),
+    };
+    json!({
+        "kind": if plan { "plan" } else { "approval" },
+        "requestId": head.request_id,
+        "icon": icon,
         "title": title,
         "counter": counter,
-        "writable": writable,
-        "focused": card.focused(),
-        "complete": card.is_complete(),
-        "problem": card.problem(),
-        "questions": card.questions().iter().enumerate().map(|(question, asked)| json!({
-            "header": asked.header,
-            "question": asked.question,
-            "multiSelect": asked.multi_select,
-            "allowOther": asked.allow_other,
-            "answered": card.is_answered(question),
-            "other": card.other_selected(question),
-            "options": asked.options.iter().enumerate().map(|(option, choice)| json!({
-                "label": choice.label,
-                "description": choice.description,
-                "picked": card.is_picked(question, option),
-            })).collect::<Vec<_>>(),
+        "inset": inset,
+        "note": note,
+        "plan": markdown,
+        "options": head.options.iter().enumerate().map(|(index, option)| json!({
+            "id": option.id,
+            "label": option.name,
+            "key": key_label(index),
+            "highlighted": index == selected,
+            "divider": Some(index) == reject && index > 0,
         })).collect::<Vec<_>>(),
+        "reply": reject.map(|_| json!({
+            "placeholder": topic.placeholder(),
+            "secret": false,
+            "key": format!("{}", head.request_id),
+        })),
+        "leading": (reject.is_some() && count < KEYED_OPTIONS)
+            .then(|| json!({ "key": (count + 1).to_string() })),
+        "send": send,
+        "skip": false,
+        "hints": approval_hints(count, replying, plan, send),
+        "writable": writable,
     })
 }
 
@@ -1319,9 +1397,9 @@ impl Client {
         }
     }
 
-    pub fn agent_view(&mut self, pane: f64, value: &str, cursor: f64) -> String {
+    pub fn agent_view(&mut self, pane: f64, value: &str, cursor: f64, reply: &str) -> String {
         let pane = pane_id(pane);
-        let view = self.lens_view(pane, value, cursor as usize);
+        let view = self.lens_view(pane, value, cursor as usize, reply);
         self.pump_agents();
         view.to_string()
     }
@@ -1340,7 +1418,7 @@ impl Client {
                     .agents
                     .views
                     .get_mut(&pane)
-                    .and_then(|lens| lens.question.as_ref().map(QuestionCard::submit));
+                    .and_then(|lens| lens.question.as_mut().map(QuestionCard::enter));
                 if let Some(step) = step {
                     self.apply_question_step(pane, step);
                 }
@@ -1361,6 +1439,62 @@ impl Client {
             lens.dismiss_completions();
         }
         self.send_prompt(pane, text)
+    }
+
+    pub fn agent_approve(&mut self, pane: f64, text: &str) -> bool {
+        let pane = pane_id(pane);
+        let Some(head) = self.head_permission(pane) else {
+            return false;
+        };
+        let text = text.trim();
+        if text.is_empty() {
+            let selected = self
+                .agents
+                .views
+                .get(&pane)
+                .map_or(0, |lens| lens.permission_selected);
+            if let Some(option) = head.options.get(selected) {
+                self.respond_permission(pane, head.request_id, Some(option.id.clone()));
+            }
+            return false;
+        }
+        let Some(reject) = head
+            .options
+            .iter()
+            .find(|option| option.allow == Some(false))
+        else {
+            return false;
+        };
+        self.respond_permission(pane, head.request_id, Some(reject.id.clone()));
+        self.send_prompt(pane, text)
+    }
+
+    pub fn agent_open_plan(&mut self, pane: f64, request_id: f64) {
+        let pane = pane_id(pane);
+        let Some(Ask::Plan { markdown, .. }) = self
+            .agents
+            .views
+            .get(&pane)
+            .and_then(|lens| lens.transcript.chat.request(RequestId(request_id as u64)))
+            .map(|request| request.ask.clone())
+        else {
+            return;
+        };
+        if self.writable() {
+            self.invoke(CommandInvocation::new(
+                "view-pane",
+                [
+                    "-t".to_owned(),
+                    pane.to_string(),
+                    "-T".to_owned(),
+                    "Plan".to_owned(),
+                    "-k".to_owned(),
+                    "markdown".to_owned(),
+                    "--".to_owned(),
+                    markdown,
+                ],
+            ));
+        }
     }
 
     pub fn agent_cancel(&mut self, pane: f64) {
@@ -1392,43 +1526,10 @@ impl Client {
         }
     }
 
-    pub fn agent_tray(&mut self, pane: f64, panel: &str) {
-        let panel = if panel == "plan" {
-            Tray::Plan
-        } else {
-            Tray::Tasks
-        };
+    pub fn agent_plan(&mut self, pane: f64) {
         if let Some(lens) = self.agents.views.get_mut(&pane_id(pane)) {
-            lens.tray = (lens.tray != Some(panel)).then_some(panel);
+            lens.plan_open = !lens.plan_open;
         }
-    }
-
-    pub fn agent_stop_task(&mut self, pane: f64, task_id: &str) {
-        if self.writable() {
-            self.send(&ProtocolMessage::AgentStopTask {
-                pane: pane_id(pane),
-                task_id: task_id.to_owned(),
-            });
-        }
-    }
-
-    pub fn agent_reveal(&self, pane: f64, tool_call_id: &str) -> Option<String> {
-        let lens = self.agents.views.get(&pane_id(pane))?;
-        let entry = lens.transcript.model.tool_entry(tool_call_id)?;
-        let entries = items(&lens.transcript);
-        let index = entries.iter().position(|item| item.id == entry)?;
-        let folded = fold_timeline_rows(&entries);
-        let row = folded.rows.get(*folded.entry_to_row.get(index)?)?;
-        let prefix = match row {
-            TimelineRow::Group {
-                kind: TimelineGroupKind::Reply,
-                ..
-            } => "r",
-            TimelineRow::Single(item) if item.shape == TimelineShape::User => "u",
-            TimelineRow::Single(item) if item.shape == TimelineShape::Notice => "n",
-            _ => "t",
-        };
-        Some(format!("{prefix}{}", row.id()))
     }
 
     pub fn agent_open_output(&mut self, pane: f64, id: f64) {
@@ -1507,6 +1608,8 @@ impl Client {
                     .and_then(Value::as_bool)
                     .unwrap_or(false),
             )
+        } else if action.get("enter").is_some() {
+            card.enter()
         } else if action.get("submit").is_some() {
             card.submit()
         } else if action.get("dismiss").is_some() {
@@ -1548,7 +1651,7 @@ impl Client {
             .get(&pane_key)
             .is_some_and(|lens| lens.question.is_some())
         {
-            if !composer_empty && composer_focused {
+            if !composer_empty && composer_focused && key != "escape" {
                 return false;
             }
             let step = self
@@ -1559,21 +1662,23 @@ impl Client {
                 .map(|card| card.key(key, false));
             return step.is_some_and(|step| self.apply_question_step(pane_key, step));
         }
-        if !composer_empty && composer_focused {
-            return false;
-        }
         let Some(permission) = head else {
             return false;
         };
+        if key == "escape" {
+            self.respond_permission(pane_key, permission.request_id, None);
+            return true;
+        }
+        if !composer_empty && composer_focused {
+            return false;
+        }
         let options = permission.options;
+        let replies = options.iter().any(|option| option.allow == Some(false));
         let Some(lens) = self.agents.views.get_mut(&pane_key) else {
             return false;
         };
         match key {
             "enter" if composer_focused => return false,
-            "escape" => {
-                self.respond_permission(pane_key, permission.request_id, None);
-            }
             "up" if !options.is_empty() => {
                 lens.permission_selected = lens
                     .permission_selected
@@ -1584,12 +1689,15 @@ impl Client {
                 lens.permission_selected = (lens.permission_selected + 1) % options.len();
             }
             key => {
+                if replies && key.parse::<usize>().ok() == Some(options.len() + 1) {
+                    return true;
+                }
                 let index = if key == "enter" {
                     Some(lens.permission_selected)
                 } else {
                     key.parse::<usize>()
                         .ok()
-                        .filter(|digit| (1..=9).contains(digit))
+                        .filter(|digit| (1..=KEYED_OPTIONS).contains(digit))
                         .map(|digit| digit - 1)
                 };
                 let Some(option) = index.and_then(|index| options.get(index)) else {
@@ -1717,7 +1825,7 @@ mod tests {
                 item(8, json!({"item":"permissionRequested","request_id":9,"tool_call":{"toolCallId":"t2","title":"Delete it"},"options":[{"optionId":"yes","name":"Allow","kind":"allow_once"},{"optionId":"no","name":"Deny","kind":"reject_once"}]})),
             ],
         );
-        let view = client.lens_view(pane, "/re", 3);
+        let view = client.lens_view(pane, "/re", 3, "");
         let rows = view["rows"].as_array().unwrap();
         assert_eq!(rows.len(), 4);
         assert_eq!(rows[0]["kind"], "user");
@@ -1731,8 +1839,9 @@ mod tests {
                 .unwrap()
                 .contains("<li>one</li>")
         );
-        assert_eq!(view["card"]["kind"], "permission");
-        assert_eq!(view["card"]["options"][1]["danger"], true);
+        assert_eq!(view["ask"]["kind"], "approval");
+        assert_eq!(view["ask"]["options"][1]["divider"], true);
+        assert_eq!(view["ask"]["send"], "Allow");
         let names = view["completions"]
             .as_array()
             .unwrap()
@@ -1741,27 +1850,26 @@ mod tests {
             .collect::<Vec<_>>();
         assert!(names.contains(&"review".to_owned()) && names.contains(&"rewind".to_owned()));
 
-        let view = client.lens_view(pane, "é /rev", 6);
+        let view = client.lens_view(pane, "é /rev", 6, "");
         assert_eq!(view["completions"][0]["name"], "review");
         let accepted: Value =
             serde_json::from_str(&client.agent_completion_accept(4.0, None).unwrap()).unwrap();
         assert_eq!(accepted, json!({"value": "é /review ", "cursor": 10}));
         assert_eq!(
-            client.lens_view(pane, "/review ", 8)["hint"],
+            client.lens_view(pane, "/review ", 8, "")["hint"],
             "Argument · branch"
         );
 
         assert!(client.agent_key(4.0, "down", true, true));
-        assert_eq!(
-            client.lens_view(pane, "", 0)["card"]["options"][1]["selected"],
-            true
-        );
+        let view = client.lens_view(pane, "", 0, "");
+        assert_eq!(view["ask"]["options"][1]["highlighted"], true);
+        assert_eq!(view["ask"]["send"], "Deny");
         assert!(client.agent_key(4.0, "enter", true, false));
         let messages = sent(&mut client);
         assert!(messages.iter().any(|message| matches!(
             message,
             ProtocolMessage::AgentRespondPermission { request_id: 9, option_id: Some(option), .. } if option == "no"
         )));
-        assert!(client.lens_view(pane, "", 0)["card"].is_null());
+        assert!(client.lens_view(pane, "", 0, "")["ask"].is_null());
     }
 }

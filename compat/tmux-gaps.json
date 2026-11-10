@@ -342,6 +342,7 @@
         "native-command:show-last-output",
         "native-command:tailnet",
         "native-command:tools",
+        "native-command:view-pane",
         "native-command:wait-pane"
       ],
       "evidence": [

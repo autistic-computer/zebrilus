@@ -1,4 +1,5 @@
 use async_channel::Receiver;
+use zz_protocol::chat::{ItemId, ItemKind, ItemStatus};
 
 use super::*;
 
@@ -352,6 +353,204 @@ fn chat_of(runtime: &Runtime) -> (zz_protocol::chat::ChatView, Vec<String>) {
         })
         .collect();
     (view, rejects)
+}
+
+#[test]
+fn tool_rows_read_as_plain_steps_with_their_failures() {
+    let (mut runtime, receiver) = setup();
+    prompt(&mut runtime, 1, ORIGINAL);
+    let call = |id: &str, name: &str, input: Value| {
+        json!({"type":"assistant","parent_tool_use_id":null,"message":{"id":format!("m-{id}"),
+            "content":[{"type":"tool_use","id":id,"name":name,"input":input}]}})
+    };
+    let result = |id: &str, content: &str, error: bool| {
+        json!({"type":"user","parent_tool_use_id":null,"message":{"role":"user",
+            "content":[{"type":"tool_result","tool_use_id":id,"content":content,"is_error":error}]}})
+    };
+    let frames = [
+        json!({"type":"command_lifecycle","command_uuid":ORIGINAL,"state":"started"}),
+        call(
+            "t1",
+            "ToolSearch",
+            json!({"query":"select:EnterPlanMode,ExitPlanMode","max_results":2}),
+        ),
+        result("t1", "", false),
+        call("t2", "EnterPlanMode", json!({})),
+        result("t2", "Entered plan mode.", false),
+        call(
+            "t3",
+            "Write",
+            json!({"file_path":"/elsewhere/plan.md","content":"# Plan"}),
+        ),
+        result("t3", "File created successfully", false),
+        call(
+            "t4",
+            "Bash",
+            json!({"command":"cargo build","description":"Build the crate"}),
+        ),
+        result(
+            "t4",
+            "Exit code 101\nerror: could not find `Cargo.toml` in `/work` or any parent directory",
+            true,
+        ),
+        call("t5", "Read", json!({"file_path":"/work/src/missing.rs"})),
+        result(
+            "t5",
+            "<tool_use_error>File does not exist. Note: your current working directory is /work.</tool_use_error>",
+            true,
+        ),
+        call(
+            "t6",
+            "WebSearch",
+            json!({"query":"Rust edition 2024 changes"}),
+        ),
+        result("t6", "Links: []", false),
+        call(
+            "t7",
+            "WebFetch",
+            json!({"url":"https://example.com/notes","prompt":"Summarize"}),
+        ),
+        result("t7", "A short page.", false),
+        call(
+            "t8",
+            "Bash",
+            json!({"command":"sleep 90","description":"Sleep","run_in_background":true}),
+        ),
+        json!({"type":"system","subtype":"task_started","task_id":"bg1","tool_use_id":"t8",
+            "is_backgrounded":true,"task_type":"local_bash","description":"Sleep"}),
+        result("t8", "Command running in background with ID: bg1.", false),
+        call("t9", "TaskStop", json!({"task_id":"bg1"})),
+        result("t9", "Successfully stopped task: bg1", false),
+        json!({"type":"system","subtype":"task_notification","task_id":"bg1","tool_use_id":"t8",
+            "status":"failed","summary":"Background command \"Sleep\" failed with exit code 144"}),
+        call("t10", "ExitPlanMode", json!({"plan":"# Plan"})),
+        json!({"type":"control_request","request_id":"perm-plan","request":{
+            "subtype":"can_use_tool","tool_name":"ExitPlanMode","input":{"plan":"# Plan"},
+            "tool_use_id":"t10"}}),
+    ];
+    for frame in frames {
+        smol::block_on(runtime.frame(frame)).expect("frame");
+    }
+    let plan = std::iter::from_fn(|| receiver.try_recv().ok())
+        .find_map(|event| match event {
+            AgentStreamPayload::PermissionRequested { request_id, .. } => Some(request_id),
+            _ => None,
+        })
+        .expect("plan card");
+    smol::block_on(runtime.answer(plan, Some("keep_planning".to_owned()))).expect("answer");
+    smol::block_on(runtime.frame(result("t10", "The user wants to keep planning.", true)))
+        .expect("frame");
+    let (view, rejects) = chat_of(&runtime);
+    assert!(rejects.is_empty(), "{rejects:#?}");
+    let failed = |message: &str| ItemStatus::Failed {
+        message: Some(message.to_owned()),
+    };
+    let rows = ["t1", "t2", "t3", "t4", "t5", "t6", "t7", "t8", "t9", "t10"].map(|id| {
+        let item = view.item(&ItemId::new(id)).expect(id);
+        (
+            item.kind,
+            item.body.title.clone(),
+            item.body.target.clone(),
+            item.body.activity.clone(),
+            item.body.exit_code,
+            item.status.clone(),
+        )
+    });
+    let row = |kind, title: &str, target: Option<&str>, activity: Option<&str>, code, status| {
+        (
+            kind,
+            title.to_owned(),
+            target.map(str::to_owned),
+            activity.map(str::to_owned),
+            code,
+            status,
+        )
+    };
+    assert_eq!(
+        rows,
+        [
+            row(
+                ItemKind::Tool,
+                "Load tools",
+                Some("EnterPlanMode, ExitPlanMode"),
+                None,
+                None,
+                ItemStatus::Completed,
+            ),
+            row(
+                ItemKind::Tool,
+                "Enter plan mode",
+                None,
+                None,
+                None,
+                ItemStatus::Completed,
+            ),
+            row(
+                ItemKind::Edit,
+                "Write /elsewhere/plan.md",
+                Some("/elsewhere/plan.md"),
+                None,
+                None,
+                ItemStatus::Completed,
+            ),
+            row(
+                ItemKind::Execute,
+                "cargo build",
+                Some("cargo build"),
+                Some("Build the crate"),
+                Some(101),
+                failed("error: could not find `Cargo.toml` in `/work` or any parent directory"),
+            ),
+            row(
+                ItemKind::Read,
+                "Read src/missing.rs",
+                Some("src/missing.rs"),
+                None,
+                None,
+                failed("File does not exist. Note: your current working directory is /work."),
+            ),
+            row(
+                ItemKind::Web,
+                "Search \"Rust edition 2024 changes\"",
+                Some("Rust edition 2024 changes"),
+                None,
+                None,
+                ItemStatus::Completed,
+            ),
+            row(
+                ItemKind::Fetch,
+                "Fetch https://example.com/notes",
+                Some("https://example.com/notes"),
+                None,
+                None,
+                ItemStatus::Completed,
+            ),
+            row(
+                ItemKind::Execute,
+                "sleep 90",
+                Some("sleep 90"),
+                Some("Sleep"),
+                Some(144),
+                failed("Background command \"Sleep\" failed with exit code 144"),
+            ),
+            row(
+                ItemKind::Tool,
+                "Stop sleep 90",
+                None,
+                None,
+                None,
+                ItemStatus::Completed,
+            ),
+            row(
+                ItemKind::Tool,
+                "Exit plan mode",
+                None,
+                None,
+                None,
+                ItemStatus::Declined,
+            ),
+        ]
+    );
 }
 
 #[test]

@@ -1,9 +1,13 @@
+pub mod ask;
 pub mod chat;
 pub mod controls;
 pub mod presentation;
+pub mod preview;
 pub mod question;
 pub mod refs;
+pub mod resume;
 pub mod tasks;
+pub mod view;
 
 use std::{
     collections::{HashMap, HashSet, VecDeque},
@@ -33,7 +37,7 @@ use ala::{
     prelude::*, px,
 };
 use penna::blocks::chat::{
-    COMPOSER_ATTACHMENT, PlanState, message_action, shown_on_hover, spinner, transcript_ground,
+    COMPOSER_ATTACHMENT, PlanState, message_action, shown_on_hover, transcript_ground,
 };
 #[cfg(test)]
 use penna::blocks::chat::{activity_color, disclosure_icon, single_line};
@@ -42,7 +46,6 @@ use penna::{Card, CardLook, TextStyle};
 const MERMAID_NODE_NAME: &str = "zz-mermaid";
 const SVG_NODE_NAME: &str = "zz-svg";
 const RICH_MARKDOWN_NODE_NAME: &str = "zz-rich-markdown";
-const FIGURE_HEADER_HEIGHT: f32 = 30.0;
 const FIGURE_MAX_SOURCE_BYTES: usize = 32 * 1024;
 const FIGURE_RENDER_DEBOUNCE: Duration = Duration::from_millis(250);
 const FIGURE_CACHE_CAPACITY: usize = 16;
@@ -77,9 +80,9 @@ pub fn agent_attachment_thumbnail(
     id: impl Into<ElementId>,
     image: Arc<Image>,
     side: Pixels,
-    cx: &App,
+    ground: Ground,
 ) -> Card {
-    attachment_tile(id, image, side, penna::blocks::chat::composer_ground(cx))
+    attachment_tile(id, image, side, ground)
 }
 
 pub fn composer_attachment(
@@ -87,10 +90,10 @@ pub fn composer_attachment(
     remove: impl Into<ElementId>,
     image: Arc<Image>,
     on_remove: impl Fn(&mut Window, &mut App) + 'static,
-    cx: &App,
+    ground: Ground,
 ) -> Div {
     penna::blocks::chat::composer_attachment(
-        agent_attachment_thumbnail(id, image, COMPOSER_ATTACHMENT, cx),
+        agent_attachment_thumbnail(id, image, COMPOSER_ATTACHMENT, ground),
         remove,
         on_remove,
     )
@@ -609,7 +612,12 @@ fn agent_code_block_chrome(
                 .debug_selector(|| "agent-code-language".to_owned())
                 .type_style(TextStyle::Micro, cx)
                 .text_color(cx.theme().foreground.muted())
-                .child(language),
+                .child(preview::code_name(
+                    code_block
+                        .lang()
+                        .as_deref()
+                        .filter(|language| !language.trim().is_empty()),
+                )),
         )
         .child(
             shown_on_hover(CODE_BLOCK_GROUP, cx).child(
@@ -697,14 +705,20 @@ fn standard_markdown_extensions() -> MarkdownExtensions {
 pub(crate) fn assistant_markdown_extensions() -> MarkdownExtensions {
     static EXTENSIONS: OnceLock<MarkdownExtensions> = OnceLock::new();
     EXTENSIONS
-        .get_or_init(|| {
-            MarkdownExtensions::default()
-                .plugin(MermaidPlugin)
-                .plugin(SvgPlugin)
-                .plugin(RichMarkdownPlugin)
-                .link_rewriter(|url| (url == PENDING_LINK_URL).then(|| INERT_LINK_URL.to_owned()))
-        })
+        .get_or_init(|| assistant_plugins(MarkdownExtensions::default()))
         .clone()
+}
+
+pub(crate) fn previewing_markdown_extensions(open: preview::ViewOpener) -> MarkdownExtensions {
+    assistant_plugins(MarkdownExtensions::default().plugin(preview::PreviewPlugin { open }))
+}
+
+fn assistant_plugins(extensions: MarkdownExtensions) -> MarkdownExtensions {
+    extensions
+        .plugin(MermaidPlugin)
+        .plugin(SvgPlugin)
+        .plugin(RichMarkdownPlugin)
+        .link_rewriter(|url| (url == PENDING_LINK_URL).then(|| INERT_LINK_URL.to_owned()))
 }
 
 #[derive(Clone)]
@@ -725,25 +739,19 @@ impl MarkdownPlugin for RichMarkdownPlugin {
         RICH_MARKDOWN_NODE_NAME
     }
 
-    fn parse(
+    fn parse<'a>(
         &self,
-        node: &markdown_ast::Node,
+        node: &'a markdown_ast::AstNode<'a>,
         cx: &MarkdownParseContext<'_>,
     ) -> Option<MarkdownNode> {
-        let markdown_ast::Node::Code(code) = node else {
-            return None;
-        };
+        let code = cx.code_fence(node)?;
         if !code.lang.as_deref().is_some_and(is_markdown_language) {
             return None;
         }
         if code.value.len() > MAX_STREAMING_MEND_BYTES {
             return None;
         }
-        let source_offset = cx.offset()
-            + code
-                .position
-                .as_ref()
-                .map_or(0, |position| position.start.offset);
+        let source_offset = code.start;
         Some(
             MarkdownNode::new(
                 RICH_MARKDOWN_NODE_NAME,
@@ -834,9 +842,9 @@ impl MarkdownPlugin for MermaidPlugin {
         MERMAID_NODE_NAME
     }
 
-    fn parse(
+    fn parse<'a>(
         &self,
-        node: &markdown_ast::Node,
+        node: &'a markdown_ast::AstNode<'a>,
         cx: &MarkdownParseContext<'_>,
     ) -> Option<MarkdownNode> {
         parse_figure(FigureKind::Mermaid, node, cx)
@@ -859,9 +867,9 @@ impl MarkdownPlugin for SvgPlugin {
         SVG_NODE_NAME
     }
 
-    fn parse(
+    fn parse<'a>(
         &self,
-        node: &markdown_ast::Node,
+        node: &'a markdown_ast::AstNode<'a>,
         cx: &MarkdownParseContext<'_>,
     ) -> Option<MarkdownNode> {
         parse_figure(FigureKind::Svg, node, cx)
@@ -874,12 +882,10 @@ impl MarkdownPlugin for SvgPlugin {
 
 fn parse_figure(
     kind: FigureKind,
-    node: &markdown_ast::Node,
+    node: &markdown_ast::AstNode<'_>,
     cx: &MarkdownParseContext<'_>,
 ) -> Option<MarkdownNode> {
-    let markdown_ast::Node::Code(code) = node else {
-        return None;
-    };
+    let code = cx.code_fence(node)?;
     if !code
         .lang
         .as_deref()
@@ -896,11 +902,7 @@ fn parse_figure(
         .and_then(|scale| scale.parse::<f32>().ok())
         .unwrap_or(100.0)
         .clamp(25.0, 200.0);
-    let source_offset = cx.offset()
-        + code
-            .position
-            .as_ref()
-            .map_or(0, |position| position.start.offset);
+    let source_offset = code.start;
     Some(
         MarkdownNode::new(
             kind.node_name(),
@@ -916,10 +918,11 @@ fn parse_figure(
     )
 }
 
-fn render_figure(node: &MarkdownNode, window: &mut Window, cx: &mut App) -> impl IntoElement {
-    let source = node
-        .data::<FigureSource>()
-        .expect("figure markdown node data");
+fn figure_state(
+    source: &FigureSource,
+    window: &mut Window,
+    cx: &mut App,
+) -> ala::Entity<FigureRenderState> {
     let kind = source.kind;
     let theme_key = mermaid_theme_key(cx);
     let mut hasher = DefaultHasher::new();
@@ -941,6 +944,46 @@ fn render_figure(node: &MarkdownNode, window: &mut Window, cx: &mut App) -> impl
     render_state.update(cx, |state, cx| {
         state.synchronize(source.clone(), render_key, cx);
     });
+    render_state
+}
+
+pub(crate) fn figure_image(
+    language: &str,
+    source: &str,
+    key: usize,
+    window: &mut Window,
+    cx: &mut App,
+) -> FigureImage {
+    let kind = if language.eq_ignore_ascii_case("svg") {
+        FigureKind::Svg
+    } else {
+        FigureKind::Mermaid
+    };
+    let source = FigureSource {
+        kind,
+        source: source.to_owned(),
+        source_offset: key,
+        scale: 100.0,
+    };
+    match &figure_state(&source, window, cx).read(cx).result {
+        FigureRenderResult::Pending => FigureImage::Pending,
+        FigureRenderResult::Ready(image) => FigureImage::Ready(Arc::clone(image)),
+        FigureRenderResult::Failed(error) => FigureImage::Failed(error.clone()),
+    }
+}
+
+pub(crate) enum FigureImage {
+    Pending,
+    Ready(Arc<RenderImage>),
+    Failed(SharedString),
+}
+
+fn render_figure(node: &MarkdownNode, window: &mut Window, cx: &mut App) -> impl IntoElement {
+    let source = node
+        .data::<FigureSource>()
+        .expect("figure markdown node data");
+    let kind = source.kind;
+    let render_state = figure_state(source, window, cx);
 
     let preview_image = match &render_state.read(cx).result {
         FigureRenderResult::Ready(image) => Some(Arc::clone(image)),
@@ -1004,23 +1047,28 @@ fn render_figure(node: &MarkdownNode, window: &mut Window, cx: &mut App) -> impl
             .into_any_element(),
     };
 
-    let card = cx.theme().ground_of(CardLook::Code);
-    Card::new(("agent-figure", source_offset), CardLook::Code)
+    let card = cx.theme().ground_of(CardLook::Figure);
+    let hover_only = !crate::touch::CoarsePointer::get(cx);
+    Card::new(("agent-figure", source_offset), CardLook::Figure)
+        .group(FIGURE_GROUP)
+        .relative()
         .p_0()
         .v_flex()
         .w_full()
         .overflow_hidden()
+        .child(div().w_full().py_2().child(content))
         .child(
             h_flex()
-                .w_full()
-                .h(px(FIGURE_HEADER_HEIGHT))
-                .pl_3()
-                .pr_1()
+                .absolute()
+                .top_0()
+                .right_0()
                 .gap_1()
                 .items_center()
-                .type_style(TextStyle::Caption, cx)
-                .text_color(cx.theme().foreground.muted())
-                .child(div().flex_1().child(kind.label()))
+                .when(hover_only, |actions| {
+                    actions
+                        .invisible()
+                        .group_hover(FIGURE_GROUP, ala::Styled::visible)
+                })
                 .child(message_action(
                     Button::compact_icon(("agent-mermaid-copy", source_offset), IconName::Copy)
                         .on(card)
@@ -1047,13 +1095,14 @@ fn render_figure(node: &MarkdownNode, window: &mut Window, cx: &mut App) -> impl
                     ))
                 }),
         )
-        .child(div().w_full().px_3().pb_3().child(content))
 }
 
+const FIGURE_GROUP: &str = "agent-figure";
+
 const MERMAID_FONT_SIZE: f64 = 13.0;
+const MERMAID_STROKE_WIDTH: f64 = 1.25;
 const MERMAID_LAYOUT_WIDTH: f64 = 640.0;
 const MERMAID_MEASURE_SIZE: f32 = 64.0;
-const MERMAID_MAX_RADIUS: f64 = 4.0;
 const MERMAID_SERIES: usize = 8;
 const MERMAID_SERIES_LIGHTNESS_LIGHT: (f32, f32) = (0.5, 0.58);
 const MERMAID_SERIES_LIGHTNESS_DARK: (f32, f32) = (0.68, 0.78);
@@ -1069,7 +1118,7 @@ fn mermaid_options(cx: &App) -> pele::RenderOptions {
     mermaid_render_options(
         MermaidThemeColors::from_app(cx),
         [theme.font_family.as_ref(), theme.mono_font_family.as_ref()],
-        f64::from(theme.radius).min(MERMAID_MAX_RADIUS),
+        f64::from(penna::blocks::chat::diagram_paint(theme).radius),
         Some(Arc::new(measurer)),
     )
 }
@@ -1105,6 +1154,7 @@ fn mermaid_render_options(
             node_border: Some(css_color(colors.node_border)),
             series,
             radius,
+            stroke_width: MERMAID_STROKE_WIDTH,
         },
         measurer,
         ..pele::RenderOptions::default()
@@ -1185,24 +1235,16 @@ impl MermaidThemeColors {
     }
 
     fn from_theme(theme: &penna::Theme) -> Self {
-        let code = theme.ground_of(CardLook::Code).opaque();
-        let background = code.fill;
+        let paint = penna::blocks::chat::diagram_paint(theme);
         Self {
-            background,
-            surface: background.blend(theme.paint(Tone::Neutral, Emphasis::Soft).fill),
-            muted: theme
-                .paint_on(code, Tone::Neutral, Emphasis::Soft)
-                .opaque()
-                .fill,
+            background: paint.ground,
+            surface: paint.group,
+            muted: paint.group_deep,
             foreground: theme.foreground,
             muted_foreground: theme.foreground.muted(),
-            border: theme.border(),
-            node: theme
-                .paint_on(code, Tone::Accent, Emphasis::Soft)
-                .opaque()
-                .fill,
-            node_border: background
-                .blend(theme.paint_on(code, Tone::Accent, Emphasis::Outline).border),
+            border: paint.group_edge,
+            node: paint.node,
+            node_border: paint.node_edge,
             primary: theme.foreground,
             primary_foreground: theme.paint(Tone::Neutral, Emphasis::Solid).text,
             accent: theme.accent.opaque(),
@@ -1283,7 +1325,7 @@ fn mermaid_font_family(font_family: &str, system: &str, generic: &str) -> String
 }
 
 fn mermaid_theme_key(cx: &App) -> u64 {
-    const LOOK: u32 = 7;
+    const LOOK: u32 = 8;
     let mut hasher = DefaultHasher::new();
     LOOK.hash(&mut hasher);
     let colors = MermaidThemeColors::from_app(cx);
@@ -2001,7 +2043,7 @@ mod tests {
         mermaid_render_options(
             MermaidThemeColors::from_theme(&theme),
             ["", ""],
-            MERMAID_MAX_RADIUS,
+            f64::from(penna::blocks::chat::diagram_paint(&theme).radius),
             None,
         )
         .theme
@@ -2022,12 +2064,12 @@ mod tests {
                 &theme.accent,
             ],
             [
-                "#e9e9e6", "#1c1c1a", "#575756", "#575756", "#e0e0dd", "#e0e0dd", "#d4d4d1",
+                "#f6f6f3", "#1c1c1a", "#575756", "#575756", "#ecece9", "#e4e4e2", "#90908e",
                 "#0a64dd"
             ]
         );
-        assert_eq!(theme.node.as_deref(), Some("#ced9e5"));
-        assert_eq!(theme.node_border.as_deref(), Some("#6ea0e1"));
+        assert_eq!(theme.node.as_deref(), Some("#dae4f0"));
+        assert_eq!(theme.node_border.as_deref(), Some("#74a6e7"));
         assert_eq!(
             theme.series,
             [

@@ -85,6 +85,8 @@ Show the value people know, with its unit.
 | `.commit_on_release()` | | Changes once, on release |
 | `.track(colors)` | | Paints a gradient rail |
 | `DiscreteSlider::new(..)` | `.penna-steps`, `data-label`, `data-steps`, `data-value` | Stepped |
+| `StepRail::new(..)` | | Stepped, one thick rail with a dot per step and the picked step's name over it. No HTML yet |
+| `.open_start()` | | A rail's first step means "not set": a ring, no fill |
 | `.xsmall()` … `.touch()` | `data-size` | Size, both kinds; medium by default |
 | `.disabled(true)` | `aria-disabled="true"` | Off, both kinds |
 | `on_change` | `change` | Gets the new value |

@@ -1009,13 +1009,8 @@ mod tests {
         cx.run_until_parked();
 
         let extensions = MarkdownExtensions::default().block_parser(|node, cx| {
-            let markdown::mdast::Node::Paragraph(paragraph) = node else {
-                return None;
-            };
-            let [markdown::mdast::Node::Text(text)] = paragraph.children.as_slice() else {
-                return None;
-            };
-            let symbol = text.value.strip_prefix('$')?.to_string();
+            let text = crate::components::text::MarkdownParseContext::sole_text(node)?;
+            let symbol = text.strip_prefix('$')?.to_string();
             let node_text = format!("${symbol}");
 
             Some(

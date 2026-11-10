@@ -850,7 +850,7 @@ function providerEntry(row) {
 
 function agentsPage() {
   const { checking, rows } = JSON.parse(engine.providers(state.client ? state.client.providers() : "null"));
-  const entries = checking ? [entry({ title: "Checking", control: h("span", { class: "zz-spinner", role: "progressbar" }) })] : rows.map(providerEntry);
+  const entries = checking ? [entry({ title: "Checking", control: h("i", { class: "zz-spinner", "data-icon": "loader", role: "progressbar", "aria-label": "Loading" }) })] : rows.map(providerEntry);
   return [
     heading("Agents"),
     stack("This computer", entries),

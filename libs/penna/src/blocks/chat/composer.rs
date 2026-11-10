@@ -6,14 +6,17 @@ use ala::{
 };
 
 use crate::{
-    ActiveTheme as _, CHROME_GAP, Colorize as _, Disableable as _, Emphasis, Ground, IconName,
-    Label, PaintState, Sizable as _, TextStyle, Tone,
+    ActiveTheme as _, CHROME_GAP, Colorize as _, Disableable as _, Edge, Emphasis, Ground,
+    IconName, Label, PaintState, RuleLook, Sizable as _, StyledExt as _, Surface, TextStyle, Tone,
     components::button::{Button, ButtonLook, ButtonVariants},
-    components::input::{FieldLook, Input, InputState, field_chrome, field_paint, field_underlay},
+    components::input::{
+        FieldLook, Input, InputContentType, InputState, field_chrome, field_underlay,
+    },
     components::tooltip::Tooltip,
-    h_flex, rems_from_px, v_flex,
+    h_flex, muted_on, rems_from_px, v_flex,
 };
 
+use super::ask::{ASK_GAP, ASK_GUTTER, ASK_RADIUS, ASK_ROW_PADDING};
 use super::message::CHAT_CONTENT_MAX_WIDTH;
 
 pub const COMPOSER_FOOTER_HEIGHT: f32 = 28.0;
@@ -22,6 +25,7 @@ pub const COMPOSER_SECTION_GAP: f32 = 8.0;
 pub const COMPOSER_MAX_WIDTH: f32 = CHAT_CONTENT_MAX_WIDTH + 2.0;
 pub const COMPOSER_BUTTON: f32 = 28.0;
 pub const COMPOSER_INSET: f32 = 6.0;
+pub(super) const COMPOSER_FOOTER_INSET: f32 = 4.0;
 pub const COMPOSER_HEIGHT: f32 = COMPOSER_BUTTON + 2.0 * COMPOSER_INSET;
 const COMPOSER_RADIUS: f32 = COMPOSER_HEIGHT / 2.0;
 const COMPOSER_BACKING_INSET: f32 = 1.0;
@@ -30,8 +34,18 @@ const CONTEXT_RING_SIZE: f32 = 16.0;
 const CONTEXT_STROKE_WIDTH: f32 = 2.0;
 
 #[must_use]
-pub fn composer_ground(cx: &App) -> Ground {
-    cx.theme().ground_of(FieldLook::Composer)
+pub fn composer_ground(on: Ground, cx: &App) -> Ground {
+    cx.theme()
+        .ground_of(Surface::from(FieldLook::Composer).on(on))
+}
+
+fn composer_corner(asking: bool, cx: &App) -> Pixels {
+    let radius = composer_radius(cx);
+    if asking {
+        radius.min(px(ASK_RADIUS))
+    } else {
+        radius
+    }
 }
 
 fn composer_radius(cx: &App) -> Pixels {
@@ -50,7 +64,9 @@ pub struct Composer {
     pub action: AnyElement,
     pub attachments: Option<AnyElement>,
     pub command_hint: Option<SharedString>,
-    pub ground: Option<Ground>,
+    pub ask: Option<AnyElement>,
+    pub secret: bool,
+    pub ground: Ground,
 }
 
 impl RenderOnce for Composer {
@@ -60,52 +76,74 @@ impl RenderOnce for Composer {
         } else {
             PaintState::Rest
         };
-        let paint = field_paint(FieldLook::Composer, cx);
+        let inside = cx
+            .theme()
+            .ground_at(Surface::from(FieldLook::Composer).on(self.ground), state);
         let leading = self.leading.is_some();
-        let radius = composer_radius(cx);
+        let asking = self.ask.is_some();
+        let radius = composer_corner(asking, cx);
         field_chrome(
-            h_flex()
+            v_flex()
                 .debug_selector(|| "chat-composer".to_owned())
                 .w_full()
-                .min_h(px(COMPOSER_HEIGHT))
-                .items_end()
-                .gap(px(COMPOSER_INSET))
-                .p(px(COMPOSER_INSET)),
+                .min_h(px(COMPOSER_HEIGHT)),
             FieldLook::Composer,
-            self.ground,
+            Some(self.ground),
             state,
             cx,
         )
         .rounded(radius)
         .corner_radius_mode(ala::CornerRadiusMode::Fixed)
-        .children(self.leading)
+        .children(self.ask)
         .child(
-            v_flex()
-                .flex_1()
-                .min_w_0()
-                .children(self.attachments)
+            h_flex()
+                .debug_selector(|| "chat-composer-row".to_owned())
+                .w_full()
+                .flex_none()
+                .items_end()
+                .map(|row| {
+                    if asking {
+                        row.gap(px(ASK_GAP))
+                            .px(px(ASK_GUTTER))
+                            .py(px(ASK_ROW_PADDING))
+                            .rule(RuleLook::List, Edge::Top, cx)
+                    } else {
+                        row.gap(px(COMPOSER_INSET)).p(px(COMPOSER_INSET))
+                    }
+                })
+                .children(self.leading)
                 .child(
-                    Input::new(&self.input)
-                        .w_full()
+                    v_flex()
+                        .flex_1()
                         .min_w_0()
-                        .h_auto()
-                        .py(px(COMPOSER_TEXT_PADDING))
-                        .when(leading, |input| input.pl(px(0.0)))
-                        .appearance(false)
-                        .bordered(false)
-                        .focus_bordered(false),
+                        .children(self.attachments)
+                        .child(
+                            Input::new(&self.input)
+                                .w_full()
+                                .min_w_0()
+                                .h_auto()
+                                .py(px(COMPOSER_TEXT_PADDING))
+                                .on(inside)
+                                .when(leading || asking, |input| input.pl(px(0.0)))
+                                .when(self.secret, |input| {
+                                    input.content_type(InputContentType::Password)
+                                })
+                                .appearance(false)
+                                .bordered(false)
+                                .focus_bordered(false),
+                        )
+                        .when_some(self.command_hint, |column, hint| {
+                            column.child(
+                                Label::new(TextStyle::Micro, hint)
+                                    .pb_1()
+                                    .when(!leading, ala::Styled::px_2)
+                                    .text_color(muted_on(inside, cx)),
+                            )
+                        }),
                 )
-                .when_some(self.command_hint, |column, hint| {
-                    column.child(
-                        Label::new(TextStyle::Micro, hint)
-                            .pb_1()
-                            .when(!leading, ala::Styled::px_2)
-                            .text_color(paint.muted_at(state)),
-                    )
-                }),
+                .children(self.usage)
+                .child(self.action),
         )
-        .children(self.usage)
-        .child(self.action)
     }
 }
 
@@ -121,9 +159,10 @@ impl RenderOnce for ChatComposer {
     fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
         let has_prefix = !self.prefix.is_empty();
         let inset = px(COMPOSER_BACKING_INSET);
+        let radius = composer_corner(self.composer.ask.is_some(), cx);
         let backing = field_underlay(FieldLook::Composer, inset, cx).map(|underlay| {
             underlay
-                .rounded(composer_radius(cx) - inset)
+                .rounded(radius - inset)
                 .corner_radius_mode(ala::CornerRadiusMode::Fixed)
         });
         v_flex()
@@ -165,7 +204,7 @@ impl RenderOnce for ChatComposer {
                             .h(px(COMPOSER_FOOTER_HEIGHT))
                             .items_center()
                             .gap(px(CHROME_GAP))
-                            .px_1()
+                            .px(px(COMPOSER_FOOTER_INSET))
                             .child(
                                 h_flex()
                                     .min_w_0()
@@ -199,7 +238,7 @@ pub fn composer_action_button(
     id: impl Into<ElementId>,
     action: ComposerAction,
     enabled: bool,
-    cx: &App,
+    on: Ground,
 ) -> Button {
     let (icon, tooltip) = match action {
         ComposerAction::Send => (IconName::ArrowUp, "Send message"),
@@ -217,17 +256,17 @@ pub fn composer_action_button(
             ButtonVariants::secondary,
         )
         .look(ButtonLook::Send)
-        .on(composer_ground(cx))
+        .on(on)
         .tooltip(tooltip)
         .disabled(!enabled)
 }
 
-pub fn composer_add_button(id: impl Into<ElementId>, tooltip: &'static str, cx: &App) -> Button {
+pub fn composer_add_button(id: impl Into<ElementId>, tooltip: &'static str, on: Ground) -> Button {
     Button::compact_icon(id, IconName::Plus)
         .size(rems_from_px(COMPOSER_BUTTON))
         .secondary()
         .look(ButtonLook::Send)
-        .on(composer_ground(cx))
+        .on(on)
         .tooltip(tooltip)
 }
 

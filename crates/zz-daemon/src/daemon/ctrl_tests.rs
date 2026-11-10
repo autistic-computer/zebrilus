@@ -3637,3 +3637,47 @@ fn an_unattached_tree_client_sees_another_sessions_agent_finish() {
         "{ops:?}"
     );
 }
+
+#[test]
+fn a_window_holding_no_terminal_takes_its_size_from_a_gui_tile_report() {
+    let shared = Arc::new(Shared::new(62));
+    let (client, _) =
+        shared.register_subscribed(ClientKind::Interactive, None, None, OutboundMailbox::new());
+    let (session, window, pane) = {
+        let mut inner = shared.inner.lock();
+        let (session, window, pane) = inner
+            .engine
+            .state
+            .create_session("chat-only")
+            .expect("model session");
+        inner.engine.state.pane_mut(pane).expect("pane").kind = PaneKind::Browser(
+            zz_protocol::BrowserDescriptor::single("about:blank".to_owned(), "default".to_owned()),
+        );
+        (session, window, pane)
+    };
+    shared.attach(client, session).expect("GUI attach");
+    let geometry = TerminalGeometry {
+        columns: 150,
+        rows: 40,
+        cell_width_px: 8,
+        cell_height_px: 16,
+    };
+    assert!(
+        shared
+            .apply_terminal_size_report(client, pane, geometry, None)
+            .expect("a tile with no PTY still reports its size")
+    );
+    let inner = shared.inner.lock();
+    assert_eq!(inner.engine.pane_geometry(pane), Some((150, 40)));
+    assert_eq!(
+        (
+            inner
+                .engine
+                .window_extent(window, zz_protocol::Axis::Horizontal),
+            inner
+                .engine
+                .window_extent(window, zz_protocol::Axis::Vertical)
+        ),
+        (Some(150), Some(40))
+    );
+}

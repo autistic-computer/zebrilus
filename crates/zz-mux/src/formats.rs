@@ -3350,9 +3350,10 @@ impl MuxEngine {
                     .map(|path| path.to_string_lossy().into_owned())
                     .unwrap_or_default(),
                 PaneKind::Editor(editor) => editor.cwd.clone(),
-                PaneKind::Picker { .. } | PaneKind::Terminal | PaneKind::Browser(_) => {
-                    String::new()
-                }
+                PaneKind::Picker { .. }
+                | PaneKind::Terminal
+                | PaneKind::Browser(_)
+                | PaneKind::View(_) => String::new(),
             };
             context
                 .pane_start_path

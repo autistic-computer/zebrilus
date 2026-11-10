@@ -23,7 +23,7 @@ zz-protocol.workspace = true
 zz-terminal.workspace = true
 
 [dev-dependencies]
-markdown = "1.0"
+comrak = { version = "0.59", default-features = false }
 tempfile.workspace = true
 zz-daemon = { workspace = true, features = ["default"] }
 zz-daemon-client.workspace = true

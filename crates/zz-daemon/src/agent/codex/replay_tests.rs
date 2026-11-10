@@ -1,5 +1,7 @@
 use async_channel::Receiver;
-use zz_protocol::chat::{Answer, ItemId, ItemStatus, QuestionAnswer, RequestClose, RequestId};
+use zz_protocol::chat::{
+    Answer, ItemId, ItemKind, ItemStatus, QuestionAnswer, RequestClose, RequestId,
+};
 
 use super::*;
 
@@ -230,6 +232,191 @@ fn chat_of(runtime: &Runtime) -> (zz_protocol::chat::ChatView, Vec<String>) {
         })
         .collect();
     (view, rejects)
+}
+
+#[test]
+fn tool_rows_read_as_plain_steps_with_their_failures() {
+    let thread = "thread-1";
+    let (mut runtime, receiver) = setup(thread);
+    runtime.translator = Translator::new(PathBuf::from("/work"));
+    smol::block_on(runtime.apply(&Fact::Prompt {
+        turn: 1,
+        command: None,
+    }))
+    .expect("prompt");
+    let command = |id: &str, command: &str, actions: Value| {
+        json!({"type": "commandExecution", "id": id, "command": command, "cwd": "/work",
+            "status": "inProgress", "commandActions": actions})
+    };
+    let done = |item: &Value, fields: Value| {
+        let mut item = item.clone();
+        for (key, value) in fields.as_object().into_iter().flatten() {
+            item[key] = value.clone();
+        }
+        item
+    };
+    let both = |item: &Value, fields: Value| {
+        [
+            json!({ "method": "item/started", "params": { "threadId": thread, "item": item } }),
+            json!({ "method": "item/completed", "params": { "threadId": thread, "item": done(item, fields) } }),
+        ]
+    };
+    let chained = command(
+        "c1",
+        "/bin/bash -lc 'cat a.rs && echo '\\''done'\\'''",
+        json!([{"type": "read", "command": "cat a.rs", "name": "a.rs", "path": "/work/a.rs"},
+            {"type": "unknown", "command": "echo done"}]),
+    );
+    let search = command(
+        "c2",
+        "/bin/zsh -lc \"rg -n 'fn main' src\"",
+        json!([{"type": "search", "command": "rg -n 'fn main' src", "query": "fn main", "path": "src"}]),
+    );
+    let build = command(
+        "c3",
+        "/bin/bash -lc 'cargo build'",
+        json!([{"type": "unknown", "command": "cargo build"}]),
+    );
+    let edit = json!({"type": "fileChange", "id": "f1", "status": "inProgress", "changes": [
+        {"path": "/work/src/lib.rs", "kind": {"type": "update"}, "diff": "@@ -1 +1 @@\n-a\n+b\n"}]});
+    let web = json!({"type": "webSearch", "id": "w1", "query": "", "action": null});
+    let mcp = json!({"type": "mcpToolCall", "id": "m1", "server": "github", "tool": "create_issue",
+        "arguments": {"query": "x"}, "status": "inProgress"});
+    let mut messages = vec![
+        json!({ "method": "turn/started", "params": { "threadId": thread, "turn": { "id": "t1" } } }),
+    ];
+    messages.extend(both(
+        &chained,
+        json!({"status": "completed", "exitCode": 0}),
+    ));
+    messages.extend(both(&search, json!({"status": "completed", "exitCode": 0})));
+    messages.extend(both(
+        &build,
+        json!({"status": "completed", "exitCode": 101,
+            "aggregatedOutput": "   Compiling x v0.1.0\nerror: could not compile `x`\n"}),
+    ));
+    messages.extend(both(&edit, json!({"status": "completed"})));
+    messages.extend(both(
+        &web,
+        json!({"query": "zz terminal", "action": {"type": "search", "query": "zz terminal"}}),
+    ));
+    messages.extend(both(
+        &mcp,
+        json!({"status": "failed", "error": {"message": "rate limited\nretry later"}}),
+    ));
+    let removal = command(
+        "c4",
+        "/bin/bash -lc 'rm -rf build'",
+        json!([{"type": "unknown", "command": "rm -rf build"}]),
+    );
+    messages.push(
+        json!({ "method": "item/started", "params": { "threadId": thread, "item": removal } }),
+    );
+    messages.push(
+        json!({ "id": 9, "method": "item/commandExecution/requestApproval",
+        "params": { "threadId": thread, "turnId": "t1", "itemId": "c4",
+            "command": "/bin/bash -lc 'rm -rf build'" } }),
+    );
+    for message in messages {
+        smol::block_on(runtime.message(message)).expect("message");
+    }
+    let (_, tool_call, _) = asked_requests(&payloads(&receiver))[0].clone();
+    assert_eq!(tool_call["title"], "rm -rf build");
+    for message in [
+        json!({ "method": "serverRequest/resolved", "params": { "threadId": thread, "requestId": 9 } }),
+        json!({ "method": "item/completed", "params": {
+            "threadId": thread, "item": done(&removal, json!({"status": "declined"})) } }),
+    ] {
+        smol::block_on(runtime.message(message)).expect("message");
+    }
+    let (view, rejects) = chat_of(&runtime);
+    assert!(rejects.is_empty(), "{rejects:#?}");
+    let rows = ["c1", "c2", "c3", "c4", "f1", "w1", "m1"].map(|id| {
+        let item = view.item(&ItemId::new(id)).expect(id);
+        (
+            item.kind,
+            item.body.title.clone(),
+            item.body.target.clone(),
+            item.body.activity.clone(),
+            item.body.exit_code,
+            item.status.clone(),
+        )
+    });
+    let row = |kind, title: &str, target: Option<&str>, activity: Option<&str>, code, status| {
+        (
+            kind,
+            title.to_owned(),
+            target.map(str::to_owned),
+            activity.map(str::to_owned),
+            code,
+            status,
+        )
+    };
+    assert_eq!(
+        rows,
+        [
+            row(
+                ItemKind::Execute,
+                "cat a.rs && echo 'done'",
+                Some("cat a.rs && echo 'done'"),
+                None,
+                Some(0),
+                ItemStatus::Completed,
+            ),
+            row(
+                ItemKind::Search,
+                "rg -n 'fn main' src",
+                Some("fn main"),
+                None,
+                Some(0),
+                ItemStatus::Completed,
+            ),
+            row(
+                ItemKind::Execute,
+                "cargo build",
+                Some("cargo build"),
+                None,
+                Some(101),
+                ItemStatus::Failed {
+                    message: Some("error: could not compile `x`".to_owned()),
+                },
+            ),
+            row(
+                ItemKind::Execute,
+                "rm -rf build",
+                Some("rm -rf build"),
+                None,
+                None,
+                ItemStatus::Declined,
+            ),
+            row(
+                ItemKind::Edit,
+                "Edit src/lib.rs",
+                Some("src/lib.rs"),
+                None,
+                None,
+                ItemStatus::Completed,
+            ),
+            row(
+                ItemKind::Web,
+                "Search \"zz terminal\"",
+                Some("zz terminal"),
+                Some("Searching the web"),
+                None,
+                ItemStatus::Completed,
+            ),
+            row(
+                ItemKind::Mcp,
+                "github: create_issue",
+                None,
+                None,
+                None,
+                ItemStatus::Failed {
+                    message: Some("rate limited\nretry later".to_owned()),
+                },
+            ),
+        ]
+    );
 }
 
 #[test]

@@ -63,9 +63,11 @@ deserializer so hostile nesting is rejected before it can exhaust the receiving 
 | `PaneSummary` | `changed_at: u64`, `unseen: bool`, `command: Option<ShellCommand>`, `name: String`, `cwd: String`, `repo: String`, `branch: String`, `process: Vec<String>` |
 | `ShellCommand` | `Running` \| `Finished(u8)` |
 | `PaneMode` | `Clock { .. }` \| `Switch { .. }` \| `Customize { .. }` \| `Panes { .. }` |
-| `PaneKindSnapshot` | `Picker` \| `Terminal` \| `Browser(BrowserDescriptor)` \| `Editor(EditorDescriptor)` |
+| `PaneKindSnapshot` | `Picker` \| `Terminal` \| `Browser(BrowserDescriptor)` \| `Editor(EditorDescriptor)` \| `Agent(AgentDescriptor)` \| `View(ViewDescriptor)` |
 | `BrowserDescriptor` | `tabs: Vec<String>`, `active_tab: usize`, `profile: String` |
 | `EditorDescriptor` | `path: Option<String>`, `cwd: String` |
+| `ViewDescriptor` | `origin: Option<PaneId>`, `title: String`, `content: ViewContent` |
+| `ViewContent` | `Diagram { language, source }` \| `Code { language, text }` \| `Markdown { text }` \| `Image { item, index }` \| `Subagent { item }` |
 
 Every field after `activity` on `WindowSnapshot`, and after `active_border_colour` on
 `PaneSnapshot`, carries `#[serde(default)]`. That only helps JSON readers: postcard is positional,
@@ -128,6 +130,15 @@ provider, folder, session, model and effort. A client reads a terminal's `summar
 the flip on one running Claude Code or Codex, and `summary.flip_armed` says a flip waits for the
 pane to go idle. The chat itself, prompts and permissions travel on the agent lane, never in the
 mux snapshot.
+
+`PaneKindSnapshot::View(ViewDescriptor)` (v121) is a [view pane](/concepts/agent-panes.md#previews-and-the-view-pane):
+no process, just something a chat pane showed, opened by `view-pane`. Diagrams, code and markdown
+carry their text, at most `MAX_VIEW_TEXT_BYTES` (64 KiB), because the kind rides in every snapshot
+and every `PaneState` delta; a longer block stays in the chat. Images and subagents carry only the
+chat item they come from: every GUI client already holds every agent pane's chat, so it draws
+them from its own copy of `origin`'s chat, and says so when that chat no longer has them. The
+descriptor is validated on deserialization (text and label sizes, no control characters in labels,
+an origin for pointers).
 
 ## Pane status, summary and time
 

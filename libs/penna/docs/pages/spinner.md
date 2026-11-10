@@ -24,7 +24,7 @@ Spinner::new().small().color(cx.theme().foreground.muted())
 ```
 
 1. **Icon**: the loader, at its size's icon size.
-2. **Turn**: once every 800ms. It holds still under reduced motion.
+2. **Turn**: once every 900ms, at one steady speed. It holds still under reduced motion.
 
 ## Sizes
 

@@ -1,20 +1,21 @@
-use std::{collections::HashSet, sync::Arc};
+use std::{collections::HashSet, rc::Rc, sync::Arc};
 
 use ala::{
     AnyElement, App, Context, Corners, Entity, FocusHandle, Focusable, IntoElement, Pixels, Render,
-    Subscription, Window, div, prelude::*,
+    SharedString, Subscription, Window, div, prelude::*,
 };
 use penna::{
-    Disableable as _,
+    ActiveTheme as _, Ground,
     blocks::chat::{
-        ChatComposer, Composer, TaskTrayAction, TrayPanel, composer_add_button, empty_state,
-        permission_card, permission_option, queue_chip, spinner_phase, suggestion_list,
-        suggestion_list_height, suggestion_row,
+        ChatComposer, Composer, composer_add_button, composer_ground, empty_state, queue_chip,
+        suggestion_list, suggestion_list_height, suggestion_row,
     },
-    components::button::Button,
-    components::input::{IndentInline, InputEvent, InputState, MoveDown, MoveUp},
+    components::input::{
+        IndentInline, InputEvent, InputState, MoveDown, MoveLeft, MoveRight, MoveUp,
+    },
 };
 use serde_json::Value;
+use zz_client::agent_ask::{DENY_PLACEHOLDER, REPLAN_PLACEHOLDER};
 use zz_client::agent_completion::{
     AgentCommand, CommandCompletion, active_command_hint, command_label, composer_completions,
     meaningful_command_description, pane_commands,
@@ -25,27 +26,31 @@ use zz_client::agent_lens::{
     turn_running,
 };
 use zz_client::agent_settings::{
-    ComposerSetter, LensSettings, composer_setter, fork_chat_command, real_session, short_folder,
-    side_chat_command, source_message,
+    self, ComposerSetter, LensSettings, composer_setter, fork_chat_command, real_session,
+    source_message,
 };
 use zz_client::agent_transcript::{AgentThreadEntry, is_zz_command};
-use zz_protocol::chat::{ChatView, ItemId, RequestView};
+use zz_protocol::chat::{Ask, ChatView, ItemId, RequestId};
 use zz_protocol::{
     AgentConnectionPhase, AgentImage, AgentPaneWire, AgentQuestionAnswer, PaneId, PaneSnapshot,
     ProtocolMessage,
 };
 use zz_ui::{
     agent::{
+        ask::{
+            Approval, ApprovalAction, AskChoice, AskParts, AskSubject, PromptRow, approval_subject,
+        },
         chat::{ChatHost, ChatLook, ChatPane, chat_surface, shows_chat},
         composer_attachment,
         controls::{
-            ComposerAction, agent_directory_chip, agent_settings_menu, agent_side_chat_button,
-            composer_action, composer_action_button, context_usage_meter, git_summary_footer,
+            ComposerAction, agent_mode_chip, agent_model_picker, composer_action,
+            composer_action_button, context_usage_meter, git_summary_footer,
         },
         presentation::{agent_welcome, error_card},
+        preview::ViewRequest,
         question::{QuestionCardAction, QuestionCardState, QuestionCardStep},
         refs::{ChatRefs, open_path},
-        tasks::task_tray,
+        tasks::plan_tray,
     },
     command::{PaletteSettings, PaletteTarget, target_hosts, target_picker},
     target::{RefTarget, ResolvedTarget, TargetPicker, mention_at_caret, mention_keys},
@@ -93,9 +98,20 @@ impl AgentPane {
             .unwrap_or_default()
     }
 
+    fn open_view(&self, request: &ViewRequest, cx: &mut Context<Self>) {
+        let rows = self.float_rows.clone().and_then(|rows| rows(cx));
+        let pane = self.pane;
+        self.connection.update(cx, |connection, cx| {
+            connection.invoke(request.command(pane, rows), cx);
+        });
+    }
+
     fn chat_refs(&self, entity: &Entity<Self>, cx: &App) -> ChatRefs {
         let view = entity.downgrade();
+        let view_rows = view.clone();
         let cwd = self.chat_cwd(cx);
+        let connection = self.connection.downgrade();
+        let pane = self.pane;
         ChatRefs {
             hosts: target_hosts(
                 &palette_backend(self.connection.clone(), PaletteSettings::default()).tree(cx),
@@ -104,6 +120,17 @@ impl AgentPane {
             open: Arc::new(move |target, _, cx| {
                 view.update(cx, |this, cx| this.open_ref(target, cx)).ok();
             }),
+            view: Some(Arc::new(move |request, _, cx| {
+                let rows = view_rows
+                    .upgrade()
+                    .and_then(|pane| pane.read(cx).float_rows.clone())
+                    .and_then(|rows| rows(cx));
+                connection
+                    .update(cx, |connection, cx| {
+                        connection.invoke(request.command(pane, rows), cx);
+                    })
+                    .ok();
+            })),
         }
     }
 
@@ -132,20 +159,10 @@ impl AgentPane {
         state: &AgentPaneWire,
         enabled: bool,
         cx: &mut Context<Self>,
-    ) -> (Option<AnyElement>, Vec<AnyElement>) {
+    ) -> Vec<AnyElement> {
         let Some(settings) = self.lens_settings(state) else {
-            return (None, Vec::new());
+            return Vec::new();
         };
-        let cwd = self.chat_cwd(cx);
-        let directory = (!cwd.is_empty()).then(|| {
-            agent_directory_chip(
-                ("agent-directory", self.pane.0),
-                short_folder(&cwd, None),
-                false,
-                cx,
-            )
-            .into_any_element()
-        });
         let pane = self.pane;
         let connection = self.connection.clone();
         let pick = move |option: &'static str, value: String, _: &mut Window, cx: &mut App| {
@@ -160,39 +177,25 @@ impl AgentPane {
                 );
             });
         };
-        let menu = agent_settings_menu(
+        let mode = self.provider(cx).and_then(|provider| {
+            let pick = pick.clone();
+            agent_mode_chip(
+                ("agent-mode", self.pane.0),
+                provider,
+                &settings,
+                enabled,
+                move |value, window, cx| pick(agent_settings::MODE, value, window, cx),
+                cx,
+            )
+        });
+        let picker = agent_model_picker(
             ("agent-settings", self.pane.0),
             &settings,
             enabled,
             pick,
             cx,
         );
-        let side = {
-            let entity = cx.entity();
-            agent_side_chat_button(
-                ("agent-side-chat", self.pane.0),
-                enabled && self.forks(cx),
-                move |_, cx| entity.update(cx, AgentPane::open_side_chat),
-            )
-            .into_any_element()
-        };
-        (directory, vec![menu, side])
-    }
-
-    fn open_side_chat(&mut self, cx: &mut Context<Self>) {
-        let (Some(session), Some(provider)) = (self.session(cx), self.provider(cx)) else {
-            return;
-        };
-        let command = side_chat_command(
-            provider,
-            &session,
-            &self.chat_cwd(cx),
-            self.pane,
-            self.transcript.lens.settings.as_ref(),
-        );
-        self.connection.update(cx, |connection, cx| {
-            connection.invoke(command, cx);
-        });
+        mode.into_iter().chain([picker]).collect()
     }
 
     fn fork_from(&mut self, item: &str, cx: &mut Context<Self>) {
@@ -219,6 +222,7 @@ pub(super) struct AgentPane {
     connection: Entity<Connection>,
     connected: bool,
     input: Entity<InputState>,
+    reply: Entity<InputState>,
     commands: Arc<[AgentCommand]>,
     completions: Arc<[CommandCompletion]>,
     completion_selected: Option<usize>,
@@ -236,16 +240,24 @@ pub(super) struct AgentPane {
     permission_selected: usize,
     permission_answered: HashSet<u64>,
     question: Option<QuestionCardState>,
-    tray_open: Option<TrayPanel>,
+    plan_open: bool,
     usage: Option<(u64, u64)>,
     transcript_dirty: bool,
     corner_radii: Corners<Pixels>,
+    ground: Ground,
     chat: ChatPane,
-    chat_inline: bool,
+    float_rows: Option<Rc<dyn Fn(&App) -> Option<u16>>>,
     _subscriptions: Vec<Subscription>,
 }
 
 impl AgentPane {
+    pub(super) fn set_float_rows_handler(
+        &mut self,
+        handler: impl Fn(&App) -> Option<u16> + 'static,
+    ) {
+        self.float_rows = Some(Rc::new(handler));
+    }
+
     pub(super) fn new(
         pane: PaneId,
         connection: Entity<Connection>,
@@ -311,6 +323,18 @@ impl AgentPane {
                 cx.notify();
             }
         });
+        let reply = cx.new(|cx| {
+            InputState::new(window, cx)
+                .auto_grow(1, 8)
+                .submit_on_enter(true)
+                .placeholder(DENY_PLACEHOLDER)
+        });
+        let reply_subscription =
+            cx.subscribe_in(&reply, window, |this, _, event, window, cx| match event {
+                InputEvent::PressEnter { shift: false, .. } => this.send_approval(window, cx),
+                InputEvent::Change => cx.notify(),
+                _ => {}
+            });
         let mention = target_picker(
             &palette_backend(connection.clone(), PaletteSettings::default()),
             Some(input.clone()),
@@ -323,6 +347,7 @@ impl AgentPane {
             connection,
             connected: false,
             input,
+            reply,
             commands: Arc::from([]),
             completions: Arc::from([]),
             completion_selected: None,
@@ -340,16 +365,18 @@ impl AgentPane {
             permission_selected: 0,
             permission_answered: HashSet::new(),
             question: None,
-            tray_open: None,
+            plan_open: false,
             usage: None,
             transcript_dirty: false,
             corner_radii: Corners::default(),
+            ground: cx.theme().ground(),
             chat: ChatPane::default(),
-            chat_inline: false,
+            float_rows: None,
             _subscriptions: vec![
                 observation,
                 events,
                 subscription,
+                reply_subscription,
                 input_observer,
                 chat_release,
             ],
@@ -370,6 +397,13 @@ impl AgentPane {
     pub(super) fn set_corner_radii(&mut self, radii: Corners<Pixels>, cx: &mut Context<Self>) {
         if self.corner_radii != radii {
             self.corner_radii = radii;
+            cx.notify();
+        }
+    }
+
+    pub(super) fn set_ground(&mut self, ground: Ground, cx: &mut Context<Self>) {
+        if self.ground != ground {
+            self.ground = ground;
             cx.notify();
         }
     }
@@ -426,11 +460,11 @@ impl AgentPane {
     }
 
     fn enter(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.input.read(cx).value().trim().is_empty() && !self.asks_out_of_view() {
+        if self.input.read(cx).value().trim().is_empty() {
             let head = self.current_permission(cx);
             self.synchronize_question_card(head.as_ref(), window, cx);
-            if let Some(card) = &self.question {
-                let step = card.card.submit();
+            if let Some(card) = self.question.as_mut() {
+                let step = card.card.enter();
                 self.apply_question_step(step, window, cx);
                 return;
             }
@@ -474,6 +508,8 @@ impl AgentPane {
         if let Some(index) = self.completion_selected {
             self.accept_completion(index, window, cx);
             cx.stop_propagation();
+        } else {
+            self.ask_arrow("tab", window, cx);
         }
     }
 
@@ -494,16 +530,34 @@ impl AgentPane {
         cx.notify();
     }
 
-    fn move_completion_up(&mut self, _: &MoveUp, _: &mut Window, cx: &mut Context<Self>) {
-        if !self.completions.is_empty() {
-            self.navigate_completion(-1, cx);
-            cx.stop_propagation();
+    fn move_completion_up(&mut self, _: &MoveUp, window: &mut Window, cx: &mut Context<Self>) {
+        if self.completions.is_empty() {
+            self.ask_arrow("up", window, cx);
+            return;
         }
+        self.navigate_completion(-1, cx);
+        cx.stop_propagation();
     }
 
-    fn move_completion_down(&mut self, _: &MoveDown, _: &mut Window, cx: &mut Context<Self>) {
-        if !self.completions.is_empty() {
-            self.navigate_completion(1, cx);
+    fn move_completion_down(&mut self, _: &MoveDown, window: &mut Window, cx: &mut Context<Self>) {
+        if self.completions.is_empty() {
+            self.ask_arrow("down", window, cx);
+            return;
+        }
+        self.navigate_completion(1, cx);
+        cx.stop_propagation();
+    }
+
+    fn move_ask_left(&mut self, _: &MoveLeft, window: &mut Window, cx: &mut Context<Self>) {
+        self.ask_arrow("left", window, cx);
+    }
+
+    fn move_ask_right(&mut self, _: &MoveRight, window: &mut Window, cx: &mut Context<Self>) {
+        self.ask_arrow("right", window, cx);
+    }
+
+    fn ask_arrow(&mut self, key: &str, window: &mut Window, cx: &mut Context<Self>) {
+        if self.completions.is_empty() && self.ask_key(key, false, window, cx) {
             cx.stop_propagation();
         }
     }
@@ -786,78 +840,189 @@ impl AgentPane {
             .find(|request| !self.permission_answered.contains(&request.request_id))
     }
 
-    fn asks_out_of_view(&self) -> bool {
-        self.chat_inline && self.chat.away()
+    fn asking_input(&self, cx: &App) -> Option<Entity<InputState>> {
+        let head = self.current_permission(cx)?;
+        if let Some(card) = self
+            .question
+            .as_ref()
+            .filter(|card| card.request_id() == head.request_id)
+        {
+            return card.other_input(card.card.focused()).cloned();
+        }
+        (head.questions.is_empty()
+            && head
+                .options
+                .iter()
+                .any(|option| option.allow == Some(false)))
+        .then(|| self.reply.clone())
     }
 
-    fn permissions(
+    fn row_input(&self, cx: &App) -> Entity<InputState> {
+        self.asking_input(cx).unwrap_or_else(|| self.input.clone())
+    }
+
+    fn synchronize_row_focus(&self, window: &mut Window, cx: &mut Context<Self>) {
+        let row = self.row_input(cx).read(cx).focus_handle(cx);
+        if row.is_focused(window) {
+            return;
+        }
+        let held = self.input.read(cx).focus_handle(cx).is_focused(window)
+            || self.reply.read(cx).focus_handle(cx).is_focused(window)
+            || self
+                .question
+                .as_ref()
+                .is_some_and(|card| card.editing(window, cx));
+        if held {
+            row.focus(window, cx);
+        }
+    }
+
+    fn ask_parts(
         &self,
-        permission: PendingPermission,
-        index: usize,
+        head: &PendingPermission,
         count: usize,
-        current: bool,
-        entity: &Entity<Self>,
-        cx: &App,
-    ) -> AnyElement {
-        let request_id = permission.request_id;
-        let writable = self.connection.read(cx).connected
-            && !self.connection.read(cx).core.attached_read_only()
-            && !self.permission_answered.contains(&request_id);
-        let options = permission
+        writable: bool,
+        cx: &mut Context<Self>,
+    ) -> Option<AskParts> {
+        let request_id = head.request_id;
+        let counter = (count > 1).then(|| SharedString::from(format!("1 of {count}")));
+        if let Some(card) = self
+            .question
+            .as_ref()
+            .filter(|card| card.request_id() == request_id)
+        {
+            let entity = cx.entity();
+            return Some(card.parts(
+                &format!("web-agent-question-{}-{request_id}", self.pane.0),
+                counter,
+                writable,
+                move |action, window, cx| {
+                    entity.update(cx, |this, cx| this.question_action(action, window, cx));
+                },
+                composer_ground(self.ground, cx),
+                cx,
+            ));
+        }
+        if !head.questions.is_empty() || head.options.is_empty() {
+            return None;
+        }
+        let cwd = zz_client::providers::home_relative(&self.chat_cwd(cx));
+        let subject = approval_subject(
+            Some(&self.transcript.lens.chat),
+            request_id,
+            &head.title,
+            Some(&cwd),
+        );
+        let placeholder = match subject {
+            AskSubject::Plan { .. } => REPLAN_PLACEHOLDER,
+            AskSubject::Tool { .. } => DENY_PLACEHOLDER,
+        };
+        self.reply
+            .update(cx, |input, cx| input.set_placeholder(placeholder, cx));
+        let reply = head
             .options
-            .into_iter()
-            .enumerate()
-            .map(|(index, option)| {
-                let id = option.id;
-                let chosen = entity.clone();
-                let hovered = entity.clone();
-                permission_option(
-                    format!(
-                        "agent-permission-option-{}-{request_id}-{index}",
-                        self.pane.0
-                    ),
-                    index,
-                    option.name,
-                    option.allow == Some(false),
-                    current && index == self.permission_selected,
-                    writable,
-                    cx,
-                )
-                .on_click(move |_, _, cx| {
-                    chosen.update(cx, |this, cx| {
-                        this.choose_permission(request_id, id.clone(), cx);
+            .iter()
+            .any(|option| option.allow == Some(false))
+            .then(|| self.reply.clone());
+        let replying = reply
+            .as_ref()
+            .is_some_and(|reply| !reply.read(cx).value().trim().is_empty());
+        let entity = cx.entity();
+        Some(
+            Approval {
+                id: &format!("web-agent-permission-{}-{request_id}", self.pane.0),
+                choices: head
+                    .options
+                    .iter()
+                    .map(|option| AskChoice {
+                        label: option.name.clone().into(),
+                        rejects: option.allow == Some(false),
+                    })
+                    .collect(),
+                subject,
+                counter,
+                highlighted: self.permission_selected,
+                enabled: writable,
+                reply,
+                replying,
+                owner: Some(self.pane.0),
+            }
+            .parts(
+                move |action, window, cx| {
+                    entity.update(cx, |this, cx| {
+                        this.approval_action(request_id, action, window, cx);
                     });
-                    cx.stop_propagation();
-                })
-                .on_hover(move |over, _, cx| {
-                    hovered.update(cx, |this, cx| {
-                        if current && *over && this.permission_selected != index {
-                            this.permission_selected = index;
-                            cx.notify();
-                        }
-                    });
-                })
-                .into_any_element()
-            })
-            .collect();
-        let cancel = entity.clone();
-        permission_card(
-            permission.title,
-            (count > 1).then(|| format!("{}/{count}", index + 1).into()),
-            options,
-            Button::new(format!(
-                "agent-permission-cancel-{}-{request_id}",
-                self.pane.0
-            ))
-            .disabled(!writable)
-            .tooltip("Cancel request")
-            .on_click(move |_, _, cx| {
-                cancel.update(cx, |this, cx| this.respond_permission(request_id, None, cx));
-                cx.stop_propagation();
-            }),
-            cx,
+                },
+                composer_ground(self.ground, cx),
+                cx,
+            ),
         )
-        .into_any_element()
+    }
+
+    fn approval_action(
+        &mut self,
+        request_id: u64,
+        action: ApprovalAction,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        match action {
+            ApprovalAction::Pick(index) => {
+                let option = self
+                    .pending_permissions(cx)
+                    .into_iter()
+                    .find(|permission| permission.request_id == request_id)
+                    .and_then(|permission| permission.options.into_iter().nth(index));
+                if let Some(option) = option {
+                    self.choose_permission(request_id, option.id, cx);
+                }
+            }
+            ApprovalAction::Send => self.send_approval(window, cx),
+            ApprovalAction::Open => {
+                if let Some(Ask::Plan { markdown, .. }) = self
+                    .transcript
+                    .lens
+                    .chat
+                    .request(RequestId(request_id))
+                    .map(|request| request.ask.clone())
+                {
+                    self.open_view(
+                        &ViewRequest {
+                            title: "Plan".to_owned(),
+                            content: zz_protocol::ViewContent::Markdown { text: markdown },
+                        },
+                        cx,
+                    );
+                }
+            }
+        }
+    }
+
+    fn send_approval(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(head) = self.current_permission(cx) else {
+            return;
+        };
+        let text = self.reply.read(cx).value().trim().to_owned();
+        if text.is_empty() {
+            if let Some(option) = head.options.get(self.permission_selected) {
+                self.choose_permission(head.request_id, option.id.clone(), cx);
+            }
+            return;
+        }
+        let Some(reject) = head
+            .options
+            .iter()
+            .find(|option| option.allow == Some(false))
+        else {
+            return;
+        };
+        self.choose_permission(head.request_id, reject.id.clone(), cx);
+        if self.send_prompt(&text, &[], cx) {
+            self.reply
+                .update(cx, |input, cx| input.set_value("", window, cx));
+            self.chat.follow();
+        }
+        cx.notify();
     }
 
     fn can_answer(&self, request_id: u64, cx: &App) -> bool {
@@ -971,8 +1136,8 @@ impl AgentPane {
                     cx.notify();
                 }
             }
-            InputEvent::PressEnter { .. } => {
-                let step = card.card.submit();
+            InputEvent::PressEnter { shift: false, .. } => {
+                let step = card.card.enter();
                 self.apply_question_step(step, window, cx);
             }
             _ => {}
@@ -1038,39 +1203,16 @@ impl AgentPane {
         (total > 0 && (done < total || running)).then_some(source)
     }
 
-    fn task_action(&mut self, action: TaskTrayAction, cx: &mut Context<Self>) {
-        match action {
-            TaskTrayAction::Toggle(panel) => {
-                self.tray_open = (self.tray_open != Some(panel)).then_some(panel);
-            }
-            TaskTrayAction::Stop(task_id) => {
-                let pane = self.pane;
-                self.connection.update(cx, |connection, cx| {
-                    connection.send(
-                        ProtocolMessage::AgentStopTask {
-                            pane,
-                            task_id: task_id.to_string(),
-                        },
-                        cx,
-                    );
-                });
-            }
-            TaskTrayAction::Reveal(tool_call_id) => {
-                self.chat.reveal(
-                    &self.transcript.lens.chat,
-                    &ItemId::new(tool_call_id.to_string()),
-                );
-            }
-        }
-        cx.notify();
-    }
-
     fn key_down(&mut self, event: &ala::KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
+        let modifiers = event.keystroke.modifiers;
         if self.completions.is_empty() {
-            self.permission_key_down(event, window, cx);
+            if !(modifiers.platform || modifiers.alt || modifiers.control || modifiers.function)
+                && self.ask_key(event.keystroke.key.as_str(), modifiers.shift, window, cx)
+            {
+                cx.stop_propagation();
+            }
             return;
         }
-        let modifiers = event.keystroke.modifiers;
         match event.keystroke.key.as_str() {
             "up" if !modifiers.platform && !modifiers.alt => self.navigate_completion(-1, cx),
             "down" if !modifiers.platform && !modifiers.alt => self.navigate_completion(1, cx),
@@ -1085,79 +1227,46 @@ impl AgentPane {
         cx.stop_propagation();
     }
 
-    fn permission_key_down(
+    fn ask_key(
         &mut self,
-        event: &ala::KeyDownEvent,
+        key: &str,
+        shift: bool,
         window: &mut Window,
         cx: &mut Context<Self>,
-    ) {
-        let modifiers = event.keystroke.modifiers;
-        if modifiers.platform || modifiers.alt || modifiers.control || modifiers.function {
-            return;
-        }
-        if self.asks_out_of_view() {
-            return;
-        }
-        let head = self.current_permission(cx);
-        self.synchronize_question_card(head.as_ref(), window, cx);
-        if let Some(card) = self.question.as_mut() {
-            let key = event.keystroke.key.as_str();
-            if card.editing(window, cx) {
-                if key == "escape" {
-                    self.input.read(cx).focus_handle(cx).focus(window, cx);
-                    cx.stop_propagation();
-                    cx.notify();
-                }
-                return;
-            }
-            let input = self.input.read(cx);
-            if !input.value().trim().is_empty() && input.focus_handle(cx).is_focused(window) {
-                return;
-            }
-            let step = card.key(key, modifiers.shift, window, cx);
-            if self.apply_question_step(step, window, cx) {
-                cx.stop_propagation();
-            }
-            return;
-        }
-        let input = self.input.read(cx);
-        let composer_focused = input.focus_handle(cx).is_focused(window);
-        if !input.value().trim().is_empty() && composer_focused {
-            return;
-        }
-        let Some(permission) = self.current_permission(cx) else {
-            return;
+    ) -> bool {
+        let Some(head) = self.current_permission(cx) else {
+            return false;
         };
-        let options = permission.options;
-        match event.keystroke.key.as_str() {
-            "enter" if composer_focused => return,
-            "escape" => self.respond_permission(permission.request_id, None, cx),
-            "up" if !options.is_empty() => {
-                self.permission_selected = self
-                    .permission_selected
-                    .checked_sub(1)
-                    .unwrap_or(options.len() - 1);
-            }
-            "down" if !options.is_empty() => {
-                self.permission_selected = (self.permission_selected + 1) % options.len();
-            }
-            key => {
-                let index = if key == "enter" {
-                    Some(self.permission_selected)
-                } else {
-                    key.parse::<usize>()
-                        .ok()
-                        .filter(|digit| (1..=9).contains(digit))
-                        .map(|digit| digit - 1)
-                };
-                let Some(option) = index.and_then(|index| options.get(index)) else {
-                    return;
-                };
-                self.choose_permission(permission.request_id, option.id.clone(), cx);
-            }
+        self.synchronize_question_card(Some(&head), window, cx);
+        let typed = !self.row_input(cx).read(cx).value().trim().is_empty();
+        if typed && key != "escape" {
+            return false;
         }
-        cx.stop_propagation();
-        cx.notify();
+        if let Some(card) = self.question.as_mut() {
+            let step = card.key(key, shift, window, cx);
+            return self.apply_question_step(step, window, cx);
+        }
+        let count = head.options.len();
+        match key {
+            "escape" => self.respond_permission(head.request_id, None, cx),
+            "up" | "down" if count > 0 => {
+                self.permission_selected = if key == "up" {
+                    (self.permission_selected + count - 1) % count
+                } else {
+                    (self.permission_selected + 1) % count
+                };
+                cx.notify();
+            }
+            _ => match key.parse::<usize>() {
+                Ok(digit) if (1..=count.min(9)).contains(&digit) => {
+                    let option = head.options[digit - 1].id.clone();
+                    self.choose_permission(head.request_id, option, cx);
+                }
+                Ok(digit) if digit == count + 1 && self.asking_input(cx).is_some() => {}
+                _ => return false,
+            },
+        }
+        true
     }
 
     fn render_error(&self, state: &zz_protocol::AgentPaneWire, cx: &App) -> Option<AnyElement> {
@@ -1176,7 +1285,7 @@ impl AgentPane {
 
 impl Focusable for AgentPane {
     fn focus_handle(&self, cx: &App) -> FocusHandle {
-        self.input.read(cx).focus_handle(cx)
+        self.row_input(cx).read(cx).focus_handle(cx)
     }
 }
 
@@ -1214,51 +1323,14 @@ impl Render for AgentPane {
             self.permission_selected = 0;
         }
         self.synchronize_question_card(permissions.first(), window, cx);
-        if state.tasks.is_empty() && self.tray_open == Some(TrayPanel::Tasks) {
-            self.tray_open = None;
-        }
+        self.synchronize_row_focus(window, cx);
         let use_chat = shows_chat(&self.transcript.lens.chat);
-        let open_in_chat = |lens: &Self, request_id: u64| {
-            use_chat
-                && lens
-                    .transcript
-                    .lens
-                    .chat
-                    .open_requests()
-                    .any(|request| request.id.0 == request_id)
-        };
+        let ask = permissions
+            .first()
+            .and_then(|head| self.ask_parts(head, permissions.len(), writable, cx));
+        let asking = ask.is_some();
+        let prompting = ask.as_ref().is_none_or(|ask| ask.input.is_none());
         let mut prefix = Vec::new();
-        self.chat_inline = false;
-        if let Some(index) = current_permission {
-            let request_id = permissions[index].request_id;
-            self.chat_inline = open_in_chat(self, request_id);
-            if !self.chat_inline {
-                let count = permissions.len();
-                let card = if let Some(card) = self
-                    .question
-                    .as_ref()
-                    .filter(|card| card.request_id() == request_id)
-                {
-                    let entity = cx.entity();
-                    card.render(
-                        &format!("web-agent-question-{}-{request_id}", self.pane.0),
-                        (count > 1).then(|| format!("{}/{count}", index + 1).into()),
-                        writable,
-                        move |action, window, cx| {
-                            entity.update(cx, |this, cx| {
-                                this.question_action(action, window, cx);
-                            });
-                        },
-                        cx,
-                    )
-                    .into_any_element()
-                } else {
-                    let entity = cx.entity();
-                    self.permissions(permissions[index].clone(), index, count, true, &entity, cx)
-                };
-                prefix.push(card);
-            }
-        }
         if state.queued_prompts > 0 {
             let connection = self.connection.clone();
             let pane = self.pane;
@@ -1277,39 +1349,38 @@ impl Render for AgentPane {
                 .into_any_element(),
             );
         }
-        let plan = self.current_plan(running);
-        let entity = cx.entity();
-        let phase = if state.tasks.is_empty() {
-            0.0
-        } else {
-            spinner_phase(entity.entity_id(), cx)
-        };
-        prefix.extend(
-            task_tray(
-                &format!("web-agent-{}", self.pane.0),
-                plan.as_deref(),
-                &state.tasks,
-                self.tray_open,
-                writable,
-                phase,
-                move |action, _, cx| {
-                    entity.update(cx, |this, cx| this.task_action(action, cx));
-                },
-                cx,
-            )
-            .map(IntoElement::into_any_element),
-        );
+        if let Some(plan) = self.current_plan(running) {
+            let entity = cx.entity();
+            prefix.extend(
+                plan_tray(
+                    &format!("web-agent-{}", self.pane.0),
+                    &plan,
+                    self.plan_open,
+                    move |_, cx| {
+                        entity.update(cx, |this, cx| {
+                            this.plan_open = !this.plan_open;
+                            cx.notify();
+                        });
+                    },
+                    cx,
+                )
+                .map(IntoElement::into_any_element),
+            );
+        }
         prefix.extend(self.render_error(&state, cx));
-        prefix.extend(self.render_completions(cx));
-        prefix.extend(
-            self.mention
-                .read(cx)
-                .is_open()
-                .then(|| self.mention.clone().into_any_element()),
-        );
+        if prompting {
+            prefix.extend(self.render_completions(cx));
+            prefix.extend(
+                self.mention
+                    .read(cx)
+                    .is_open()
+                    .then(|| self.mention.clone().into_any_element()),
+            );
+        }
         let has_content =
             !self.input.read(cx).value().trim().is_empty() || !self.attachments.is_empty();
         let action_kind = composer_action(running, has_content);
+        let inside = composer_ground(self.ground, cx);
         let action = composer_action_button(
             ("agent-action", self.pane.0),
             action_kind,
@@ -1317,18 +1388,24 @@ impl Render for AgentPane {
                 ComposerAction::Stop | ComposerAction::Queue => writable,
                 ComposerAction::Send => ready && state.pending_permission.is_none() && has_content,
             },
-            cx,
+            inside,
         );
         let action = if action_kind == ComposerAction::Stop {
             let connection = self.connection.clone();
             let pane = self.pane;
-            action.on_click(move |_, _, cx| {
-                connection.update(cx, |connection, cx| {
-                    connection.send(ProtocolMessage::AgentCancel { pane }, cx);
-                });
-            })
+            action
+                .on_click(move |_, _, cx| {
+                    connection.update(cx, |connection, cx| {
+                        connection.send(ProtocolMessage::AgentCancel { pane }, cx);
+                    });
+                })
+                .into_any_element()
+        } else if asking {
+            div().into_any_element()
         } else {
-            action.on_click(cx.listener(|this, _, window, cx| this.submit(window, cx)))
+            action
+                .on_click(cx.listener(|this, _, window, cx| this.submit(window, cx)))
+                .into_any_element()
         };
         let usage = self.usage.map(|(used, size)| {
             context_usage_meter(("agent-context-usage", self.pane.0), used, size, cx)
@@ -1346,70 +1423,100 @@ impl Render for AgentPane {
                 .children(prefix)
                 .into_any_element()
         } else {
-            let (directory, controls) = self.harness_controls(&state, ready, cx);
+            let controls = self.harness_controls(&state, ready, cx);
+            let attachments =
+                (prompting && !self.attachments.is_empty()).then(|| {
+                    penna::h_flex()
+                        .w_full()
+                        .flex_wrap()
+                        .gap_2()
+                        .px_2()
+                        .py_1()
+                        .children(self.attachments.iter().enumerate().filter_map(
+                            |(index, image)| {
+                                let preview = preview_image(image)?;
+                                let view = cx.entity();
+                                Some(composer_attachment(
+                                    ("web-agent-image", index),
+                                    ("web-agent-remove-image", index),
+                                    preview,
+                                    move |_, cx| {
+                                        view.update(cx, |this, cx| {
+                                            if index < this.attachments.len() {
+                                                this.attachments.remove(index);
+                                            }
+                                            this.draft_error = None;
+                                            cx.notify();
+                                        });
+                                    },
+                                    inside,
+                                ))
+                            },
+                        ))
+                        .into_any_element()
+                });
+            let command_hint = active_command_hint(&self.last_input, &self.commands)
+                .filter(|_| prompting)
+                .map(Into::into);
+            let add = {
+                let input = self.input.clone();
+                composer_add_button(
+                    ("agent-mention", self.pane.0),
+                    "Mention a chat, host, session or file",
+                    inside,
+                )
+                .on_click(move |_, window, cx| mention_at_caret(&input, "@", window, cx))
+                .into_any_element()
+            };
+            let (composer, footer) = match ask {
+                Some(ask) => {
+                    let (composer, hints) = ask.composer(
+                        ("web-agent-ask", self.pane.0),
+                        window.viewport_size().height,
+                        PromptRow {
+                            input: self.input.clone(),
+                            add,
+                            action,
+                            attachments,
+                            command_hint,
+                        },
+                        self.ground,
+                    );
+                    (composer, vec![hints])
+                }
+                None => (
+                    Composer {
+                        input: self.input.clone(),
+                        leading: Some(add),
+                        usage,
+                        action,
+                        attachments,
+                        command_hint,
+                        ask: None,
+                        secret: false,
+                        ground: self.ground,
+                    },
+                    state
+                        .git
+                        .as_ref()
+                        .map(|git| {
+                            git_summary_footer(
+                                ("agent-git-summary", self.pane.0),
+                                git.branch.clone().map(Into::into),
+                                git.changed_files,
+                                git.additions,
+                                git.deletions,
+                                cx,
+                            )
+                        })
+                        .into_iter()
+                        .collect(),
+                ),
+            };
             ChatComposer {
                 controls,
-                composer: Composer {
-                    input: self.input.clone(),
-                    leading: Some({
-                        let input = self.input.clone();
-                        composer_add_button(
-                            ("agent-mention", self.pane.0),
-                            "Mention a chat, host, session or file",
-                            cx,
-                        )
-                        .on_click(move |_, window, cx| mention_at_caret(&input, "@", window, cx))
-                        .into_any_element()
-                    }),
-                    usage,
-                    action: action.into_any_element(),
-                    attachments: (!self.attachments.is_empty()).then(|| {
-                        penna::h_flex()
-                            .w_full()
-                            .flex_wrap()
-                            .gap_2()
-                            .px_2()
-                            .py_1()
-                            .children(self.attachments.iter().enumerate().filter_map(
-                                |(index, image)| {
-                                    let preview = preview_image(image)?;
-                                    let view = cx.entity();
-                                    Some(composer_attachment(
-                                        ("web-agent-image", index),
-                                        ("web-agent-remove-image", index),
-                                        preview,
-                                        move |_, cx| {
-                                            view.update(cx, |this, cx| {
-                                                if index < this.attachments.len() {
-                                                    this.attachments.remove(index);
-                                                }
-                                                this.draft_error = None;
-                                                cx.notify();
-                                            });
-                                        },
-                                        cx,
-                                    ))
-                                },
-                            ))
-                            .into_any_element()
-                    }),
-                    command_hint: active_command_hint(&self.last_input, &self.commands)
-                        .map(Into::into),
-                    ground: None,
-                },
-                footer: directory
-                    .into_iter()
-                    .chain(state.git.as_ref().map(|git| {
-                        git_summary_footer(
-                            ("agent-git-summary", self.pane.0),
-                            git.branch.clone().map(Into::into),
-                            git.changed_files,
-                            git.additions,
-                            git.deletions,
-                            cx,
-                        )
-                    }))
-                    .collect(),
+                composer,
+                footer,
                 prefix,
             }
             .into_any_element()
@@ -1443,6 +1550,8 @@ impl Render for AgentPane {
                     .children(chat),
             )
             .child(composer)
+            .capture_action(cx.listener(Self::move_ask_left))
+            .capture_action(cx.listener(Self::move_ask_right))
             .capture_action(cx.listener(Self::complete))
             .capture_action(cx.listener(Self::move_completion_up))
             .capture_action(cx.listener(Self::move_completion_down))
@@ -1464,48 +1573,6 @@ impl ChatHost for AgentPane {
         (&self.chat, Some(&self.transcript.lens.chat))
     }
 
-    fn chat_ask(&self, request: &RequestView, host: &Entity<Self>, cx: &App) -> Option<AnyElement> {
-        let pending = self.pending_permissions(cx);
-        let current = pending
-            .iter()
-            .find(|permission| !self.permission_answered.contains(&permission.request_id))
-            .map(|permission| permission.request_id);
-        let permission = pending
-            .into_iter()
-            .find(|permission| permission.request_id == request.id.0)?;
-        if Some(permission.request_id) != current {
-            return permission
-                .questions
-                .is_empty()
-                .then(|| self.permissions(permission, 0, 1, false, host, cx));
-        }
-        let Some(card) = self
-            .question
-            .as_ref()
-            .filter(|card| card.request_id() == permission.request_id)
-        else {
-            return Some(self.permissions(permission, 0, 1, true, host, cx));
-        };
-        let connection = self.connection.read(cx);
-        let writable = connection.connected && !connection.core.attached_read_only();
-        let entity = host.clone();
-        Some(
-            card.render(
-                &format!(
-                    "web-agent-question-{}-{}",
-                    self.pane.0, permission.request_id
-                ),
-                None,
-                writable,
-                move |action, window, cx| {
-                    entity.update(cx, |this, cx| this.question_action(action, window, cx));
-                },
-                cx,
-            )
-            .into_any_element(),
-        )
-    }
-
     fn chat_fork(&mut self, item: &ItemId, cx: &mut Context<Self>) {
         self.fork_from(item.as_str(), cx);
     }
@@ -1518,10 +1585,10 @@ impl AgentPane {
             pane: self.pane.0,
             fork: self.forks(cx),
             refs: Some(self.chat_refs(&entity, cx)),
-            vendor: self.provider(cx).map(|provider| match provider {
-                zz_protocol::AgentProvider::ClaudeCode => zz_ui::program::CLAUDE_ICON,
-                zz_protocol::AgentProvider::Codex => zz_ui::program::OPENAI_ICON,
-            }),
+            vendor: self
+                .provider(cx)
+                .and_then(zz_client::window_summary::provider_program),
+            ground: Some(self.ground),
         };
         chat_surface(self, look, window, cx)
     }

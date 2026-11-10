@@ -20,6 +20,9 @@ pub enum QuestionCardStep {
 pub enum QuestionCardAction {
     Pick { question: usize, option: usize },
     Other { question: usize },
+    Back,
+    Forward,
+    Enter,
     Submit,
     Dismiss,
 }
@@ -32,6 +35,7 @@ pub struct QuestionCard {
     other: Vec<bool>,
     other_text: Vec<String>,
     focused: usize,
+    highlight: usize,
 }
 
 impl QuestionCard {
@@ -47,6 +51,7 @@ impl QuestionCard {
             other_text: vec![String::new(); questions.len()],
             questions,
             focused: 0,
+            highlight: 0,
         }
     }
 
@@ -62,6 +67,25 @@ impl QuestionCard {
         self.focused
     }
 
+    pub const fn highlight(&self) -> usize {
+        self.highlight
+    }
+
+    pub fn last_step(&self) -> bool {
+        (0..self.questions.len()).all(|index| index == self.focused || self.is_answered(index))
+    }
+
+    fn set_page(&mut self, question: usize) {
+        if self.focused != question {
+            self.focused = question;
+            self.highlight = self
+                .picks
+                .get(question)
+                .and_then(|picks| picks.iter().position(|picked| *picked))
+                .unwrap_or(0);
+        }
+    }
+
     pub fn is_picked(&self, question: usize, option: usize) -> bool {
         self.picks
             .get(question)
@@ -74,6 +98,11 @@ impl QuestionCard {
         self.other.get(question).copied().unwrap_or(false)
     }
 
+    #[must_use]
+    pub fn other_text(&self, question: usize) -> &str {
+        self.other_text.get(question).map_or("", String::as_str)
+    }
+
     fn submits_on_pick(&self) -> bool {
         matches!(&*self.questions, [only] if !only.multi_select)
     }
@@ -82,7 +111,7 @@ impl QuestionCard {
         if question >= self.questions.len() || self.focused == question {
             return false;
         }
-        self.focused = question;
+        self.set_page(question);
         true
     }
 
@@ -97,20 +126,24 @@ impl QuestionCard {
         else {
             return QuestionCardStep::Stay;
         };
-        self.focused = question;
         if multi_select {
             picks[option] = !picks[option];
+        } else {
+            for (index, picked) in picks.iter_mut().enumerate() {
+                *picked = index == option;
+            }
+            self.other[question] = false;
+        }
+        self.set_page(question);
+        self.highlight = option;
+        if multi_select {
             return QuestionCardStep::Handled;
         }
-        for (index, picked) in picks.iter_mut().enumerate() {
-            *picked = index == option;
-        }
-        self.other[question] = false;
         if self.submits_on_pick() {
             return self.submit();
         }
         if question + 1 < self.questions.len() {
-            self.focused = question + 1;
+            self.set_page(question + 1);
         }
         QuestionCardStep::Handled
     }
@@ -119,8 +152,9 @@ impl QuestionCard {
         let Some(asked) = self.questions.get(question).filter(|q| q.allow_other) else {
             return QuestionCardStep::Stay;
         };
-        self.focused = question;
-        if asked.multi_select {
+        let multi_select = asked.multi_select;
+        self.set_page(question);
+        if multi_select {
             self.other[question] = !self.other[question];
         } else {
             self.other[question] = true;
@@ -146,7 +180,7 @@ impl QuestionCard {
             return false;
         }
         text.clone_into(&mut self.other_text[question]);
-        self.focused = question;
+        self.set_page(question);
         if !text.trim().is_empty() && !self.other[question] {
             self.other[question] = true;
             if !multi_select {
@@ -154,6 +188,14 @@ impl QuestionCard {
             }
         }
         true
+    }
+
+    pub fn picked(&self, question: usize) -> usize {
+        if question < self.questions.len() {
+            self.question_answers(question).len()
+        } else {
+            0
+        }
     }
 
     pub fn is_answered(&self, question: usize) -> bool {
@@ -229,31 +271,83 @@ impl QuestionCard {
             .map_or(QuestionCardStep::Handled, QuestionCardStep::Submit)
     }
 
-    fn move_focus(&mut self, forward: bool) -> QuestionCardStep {
+    pub fn page(&mut self, forward: bool) -> QuestionCardStep {
         let count = self.questions.len();
         if count > 1 {
-            self.focused = if forward {
+            self.set_page(if forward {
                 (self.focused + 1) % count
             } else {
                 (self.focused + count - 1) % count
-            };
+            });
         }
         QuestionCardStep::Handled
+    }
+
+    fn choices(&self) -> usize {
+        self.questions
+            .get(self.focused)
+            .map_or(0, |asked| asked.options.len())
+    }
+
+    fn move_highlight(&mut self, forward: bool) -> QuestionCardStep {
+        let choices = self.choices();
+        if choices == 0 {
+            return QuestionCardStep::Stay;
+        }
+        self.highlight = if forward {
+            (self.highlight + 1) % choices
+        } else {
+            (self.highlight + choices - 1) % choices
+        };
+        QuestionCardStep::Handled
+    }
+
+    pub fn enter(&mut self) -> QuestionCardStep {
+        let question = self.focused;
+        let count = self.questions.len();
+        if !self.is_answered(question) {
+            return if self.highlight < self.choices() {
+                self.pick(question, self.highlight)
+            } else {
+                self.select_other(question)
+            };
+        }
+        if self.is_complete() {
+            return self.submit();
+        }
+        if let Some(next) = (1..count)
+            .map(|offset| (question + offset) % count)
+            .find(|index| !self.is_answered(*index))
+        {
+            self.set_page(next);
+        }
+        QuestionCardStep::Handled
+    }
+
+    pub fn act(&mut self, action: QuestionCardAction) -> QuestionCardStep {
+        match action {
+            QuestionCardAction::Pick { question, option } => self.pick(question, option),
+            QuestionCardAction::Other { question } => self.select_other(question),
+            QuestionCardAction::Back => self.page(false),
+            QuestionCardAction::Forward => self.page(true),
+            QuestionCardAction::Enter => self.enter(),
+            QuestionCardAction::Submit => self.submit(),
+            QuestionCardAction::Dismiss => QuestionCardStep::Dismiss,
+        }
     }
 
     pub fn key(&mut self, key: &str, shift: bool) -> QuestionCardStep {
         match key {
             "escape" => QuestionCardStep::Dismiss,
-            "tab" => self.move_focus(!shift),
-            "down" => self.move_focus(true),
-            "up" => self.move_focus(false),
+            "tab" => self.page(!shift),
+            "right" => self.page(true),
+            "left" => self.page(false),
+            "down" => self.move_highlight(true),
+            "up" => self.move_highlight(false),
             key => match key.parse::<usize>() {
                 Ok(digit @ 1..=9) => {
                     let question = self.focused;
-                    let choices = self
-                        .questions
-                        .get(question)
-                        .map_or(0, |asked| asked.options.len());
+                    let choices = self.choices();
                     match digit - 1 {
                         option if option < choices => self.pick(question, option),
                         option if option == choices => self.select_other(question),
@@ -263,5 +357,49 @@ impl QuestionCard {
                 _ => QuestionCardStep::Stay,
             },
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use zz_protocol::agent_stream::AgentQuestionOption;
+
+    use super::*;
+    use crate::agent_ask::{Hint, question_hints};
+
+    #[test]
+    fn a_pick_any_hint_line_counts_what_is_picked() {
+        let question = AgentQuestion {
+            id: "checks".to_owned(),
+            header: Some("Checks".to_owned()),
+            question: "Which checks should run?".to_owned(),
+            options: ["test", "clippy", "fmt"]
+                .map(|label| AgentQuestionOption {
+                    label: label.to_owned(),
+                    description: None,
+                })
+                .to_vec(),
+            multi_select: true,
+            allow_other: true,
+            secret: false,
+        };
+        let mut card = QuestionCard::new(1, vec![question]);
+        assert_eq!(
+            question_hints(&card),
+            [
+                Hint::new("Pick any"),
+                Hint::new("1 to 4 toggle"),
+                Hint::new("↑↓ move"),
+                Hint::new("↵ send"),
+                Hint::new("esc skip"),
+            ]
+        );
+        card.pick(0, 0);
+        card.pick(0, 2);
+        assert_eq!(question_hints(&card)[0], Hint::strong("2 picked"));
+        card.select_other(0);
+        assert_eq!(question_hints(&card)[0], Hint::strong("2 picked"));
+        card.set_other_text(0, "deny");
+        assert_eq!(question_hints(&card)[0], Hint::strong("3 picked"));
     }
 }

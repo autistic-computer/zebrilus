@@ -1,14 +1,10 @@
-use std::time::Duration;
-
 use ala::{
     Animation, AnimationExt as _, App, ElementId, Hsla, IntoElement, ParentElement as _,
-    RenderOnce, Role, StatefulInteractiveElement as _, Transformation, Window, div, ease_in_out,
-    percentage, prelude::FluentBuilder as _,
+    RenderOnce, Role, StatefulInteractiveElement as _, Transformation, Window, div, percentage,
+    prelude::FluentBuilder as _,
 };
 
-use crate::{AuthoredElement as _, Icon, IconName, Sizable, Size};
-
-const ROTATION_PERIOD: Duration = Duration::from_millis(800);
+use crate::{AuthoredElement as _, Icon, IconName, Sizable, Size, foundation::motion::SPIN};
 
 #[derive(IntoElement)]
 pub struct Spinner {
@@ -60,10 +56,7 @@ impl RenderOnce for Spinner {
             .when_some(self.color, ala::Styled::text_color)
             .with_animation(
                 "spinner-rotation",
-                Animation::new(ROTATION_PERIOD)
-                    .repeat()
-                    .with_easing(ease_in_out)
-                    .with_max_fps(30.0),
+                Animation::new(SPIN).repeat().with_max_fps(30.0),
                 |this, delta| this.transform(Transformation::rotate(percentage(delta))),
             );
         match self.id {

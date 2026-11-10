@@ -385,3 +385,24 @@
 .penna-md[data-selectable] {
   outline: none;
 }
+
+.penna-md .md-footnotes {
+  display: flex;
+  flex-direction: column;
+  gap: var(--penna-space-2);
+  padding-top: var(--penna-space-12);
+  font-size: var(--penna-text-caption-size);
+  font-weight: var(--penna-text-caption-weight);
+  line-height: var(--penna-text-caption-line);
+  color: var(--penna-fg-muted);
+}
+
+.penna-md .md-footnote {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--penna-space-4);
+}
+
+.penna-md .md-footnote p {
+  padding-bottom: 0;
+}

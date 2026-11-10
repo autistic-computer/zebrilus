@@ -9,8 +9,8 @@ use ala::{
 };
 
 use crate::{
-    ActiveTheme as _, AuthoredElement as _, Colorize as _, Disableable, Emphasis, Kind, Paint,
-    PaintState, Sizable, Size, Smoothing, StyledExt as _, Surface, TextStyle, Tone,
+    ActiveTheme as _, AuthoredElement as _, Colorize as _, Disableable, Emphasis, Kind, Label,
+    Paint, PaintState, Sizable, Size, Smoothing, StyledExt as _, Surface, TextStyle, Tone,
     blocks::sheet::{bottom_sheet, close_sheet, floating_sheet, sheet_close, sheet_inset},
     blocks::touch::CoarsePointer,
     components::input::{field_chrome_on, field_text},
@@ -252,6 +252,129 @@ impl RenderOnce for DiscreteSlider {
     }
 }
 
+const STOP_TRACK: f32 = 26.0;
+const STOP_KNOB: f32 = 30.0;
+const STOP_DOT: f32 = 4.0;
+const STOP_RING: f32 = 6.0;
+const STOP_HEAD: f32 = 26.0;
+
+#[derive(Clone, Copy)]
+struct Stops {
+    count: usize,
+    open_start: bool,
+    picked: bool,
+}
+
+#[allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    reason = "a step index: whole, never negative and far below usize"
+)]
+fn step_index(value: f32) -> usize {
+    value.round().max(0.0) as usize
+}
+
+#[derive(IntoElement)]
+pub struct StepRail {
+    id: ElementId,
+    label: SharedString,
+    steps: Vec<SharedString>,
+    picked: Option<usize>,
+    open_start: bool,
+    disabled: bool,
+    on_change: ChangeHandler,
+}
+
+impl StepRail {
+    pub fn new(
+        id: impl Into<ElementId>,
+        label: impl Into<SharedString>,
+        steps: Vec<SharedString>,
+        picked: Option<usize>,
+        on_change: impl Fn(usize, &mut Window, &mut App) + 'static,
+    ) -> Self {
+        Self {
+            id: id.into(),
+            label: label.into(),
+            steps,
+            picked,
+            open_start: false,
+            disabled: false,
+            on_change: Rc::new(on_change),
+        }
+    }
+
+    #[must_use]
+    pub fn open_start(mut self) -> Self {
+        self.open_start = true;
+        self
+    }
+}
+
+impl Disableable for StepRail {
+    fn disabled(mut self, disabled: bool) -> Self {
+        self.disabled = disabled;
+        self
+    }
+}
+
+impl RenderOnce for StepRail {
+    #[allow(
+        clippy::cast_precision_loss,
+        reason = "a handful of steps, far below f32 precision"
+    )]
+    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+        let count = self.steps.len();
+        let picked = self.picked.filter(|picked| *picked < count);
+        let drag = drag_state(&self.id, window, cx);
+        let shown = drag.read(cx).live.map(step_index).or(picked);
+        let name = shown
+            .and_then(|at| self.steps.get(at).cloned())
+            .unwrap_or_default();
+        let foreground = cx.theme().foreground;
+        let (label_color, value_color) = if self.disabled {
+            (foreground.faint(), foreground.faint())
+        } else {
+            (foreground.muted(), foreground)
+        };
+        let names = self.steps;
+        let on_change = self.on_change;
+        let mut slider = Slider::new(
+            self.id,
+            self.label.clone(),
+            picked.unwrap_or(0) as f32,
+            0.0..=count.saturating_sub(1) as f32,
+            move |value, window, cx| on_change(step_index(value), window, cx),
+        )
+        .step(1.0)
+        .commit_on_release()
+        .inline()
+        .display(move |value| names.get(step_index(value)).cloned().unwrap_or_default())
+        .disabled(self.disabled);
+        slider.stops = Some(Stops {
+            count,
+            open_start: self.open_start,
+            picked: shown.is_some(),
+        });
+        slider.drag = Some(drag);
+        v_flex()
+            .w_full()
+            .child(
+                h_flex()
+                    .w_full()
+                    .h(px(STOP_HEAD))
+                    .justify_between()
+                    .child(
+                        Label::new(TextStyle::Caption, self.label)
+                            .strong()
+                            .text_color(label_color),
+                    )
+                    .child(Label::new(TextStyle::Small, name).text_color(value_color)),
+            )
+            .child(slider)
+    }
+}
+
 fn past_active(paint: &Paint) -> Hsla {
     let step = (paint.active.a - paint.hover.a).max(0.0);
     paint.active.alpha((paint.active.a + step).min(1.0))
@@ -268,6 +391,8 @@ pub struct Slider {
     inline: bool,
     commit_on_release: bool,
     focus: Option<FocusHandle>,
+    stops: Option<Stops>,
+    drag: Option<Entity<Drag>>,
     size: Size,
     disabled: bool,
     on_change: ValueHandler,
@@ -295,6 +420,8 @@ impl Slider {
             inline: false,
             commit_on_release: false,
             focus: None,
+            stops: None,
+            drag: None,
             size: Size::Medium,
             disabled: false,
             on_change: Rc::new(on_change),
@@ -449,16 +576,35 @@ impl Drag {
     }
 }
 
+fn drag_state(id: &ElementId, window: &mut Window, cx: &mut App) -> Entity<Drag> {
+    window.use_keyed_state(id.clone(), cx, |_, cx| Drag {
+        focus: cx.focus_handle().tab_stop(true),
+        bounds: Bounds::default(),
+        live: None,
+        touch: false,
+        sheet: false,
+        pointer: false,
+    })
+}
+
+fn knob_fill(cx: &App, disabled: bool) -> Hsla {
+    let theme = cx.theme();
+    dim(
+        if oklab_lightness(theme.background) >= oklab_lightness(theme.foreground) {
+            theme.background
+        } else {
+            theme.foreground
+        },
+        disabled,
+    )
+}
+
 impl RenderOnce for Slider {
-    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
-        let drag = window.use_keyed_state(self.id.clone(), cx, |_, cx| Drag {
-            focus: cx.focus_handle().tab_stop(true),
-            bounds: Bounds::default(),
-            live: None,
-            touch: false,
-            sheet: false,
-            pointer: false,
-        });
+    fn render(mut self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+        let drag = match self.drag.take() {
+            Some(drag) => drag,
+            None => drag_state(&self.id, window, cx),
+        };
         if drag.read(cx).pointer && !self.focus(&drag, cx).is_focused(window) {
             drag.update(cx, |drag, _| drag.pointer = false);
         }
@@ -480,6 +626,9 @@ impl Slider {
         window: &Window,
         cx: &App,
     ) -> Div {
+        if let Some(stops) = self.stops {
+            return self.stop_rail(stops, fraction, ringed, window, cx);
+        }
         let theme = cx.theme();
         let disabled = self.disabled;
         let filled = dim(theme.paint(Tone::Accent, Emphasis::Solid).fill, disabled);
@@ -489,14 +638,7 @@ impl Slider {
                 .fill_at(PaintState::Active),
             disabled,
         );
-        let knob = dim(
-            if oklab_lightness(theme.background) >= oklab_lightness(theme.foreground) {
-                theme.background
-            } else {
-                theme.foreground
-            },
-            disabled,
-        );
+        let knob = knob_fill(cx, disabled);
         let bar = if self.track.len() > 1 {
             let last = self.track.len() - 2;
             div()
@@ -539,6 +681,100 @@ impl Slider {
             cx,
         );
         div().relative().w_full().child(bar).child(dot)
+    }
+
+    #[allow(
+        clippy::cast_precision_loss,
+        reason = "a handful of steps, far below f32 precision"
+    )]
+    fn stop_rail(
+        &self,
+        stops: Stops,
+        fraction: f32,
+        ringed: bool,
+        window: &Window,
+        cx: &App,
+    ) -> Div {
+        let theme = cx.theme();
+        let disabled = self.disabled;
+        let filled = theme.paint(Tone::Accent, Emphasis::Solid);
+        let rest = dim(
+            theme
+                .paint(Tone::Neutral, Emphasis::Soft)
+                .fill_at(PaintState::Active),
+            disabled,
+        );
+        let unlit = dim(theme.foreground.muted(), disabled);
+        let lit = dim(filled.text.opacity(0.7), disabled);
+        let last = stops.count.saturating_sub(1).max(1) as f32;
+        let at = (fraction * last).round();
+        let pad = (STOP_KNOB - 4.0) / 2.0;
+        let bar = h_flex()
+            .absolute()
+            .top_0()
+            .bottom_0()
+            .left(px(-pad))
+            .right(px(-pad))
+            .rounded_full()
+            .bg(rest)
+            .when(stops.picked && at > 0.0, |bar| {
+                bar.child(
+                    div()
+                        .h_full()
+                        .flex_basis(px(pad * 2.0))
+                        .flex_grow(fraction)
+                        .flex_shrink_0()
+                        .rounded_full()
+                        .bg(dim(filled.fill, disabled)),
+                )
+                .child(div().h_full().flex_basis(px(0.0)).flex_grow(1.0 - fraction))
+            });
+        let dots = (0..stops.count).map(|index| {
+            let ink = if stops.picked && (index as f32) < at {
+                lit
+            } else {
+                unlit
+            };
+            let ring = stops.open_start && index == 0;
+            let size = if ring { STOP_RING } else { STOP_DOT };
+            div()
+                .absolute()
+                .top(px((STOP_TRACK - size) / 2.0))
+                .left(relative(index as f32 / last))
+                .ml(px(-size / 2.0))
+                .size(px(size))
+                .rounded_full()
+                .map(|dot| {
+                    if ring {
+                        dot.border_1().border_color(ink)
+                    } else {
+                        dot.bg(ink)
+                    }
+                })
+        });
+        let knob = stops.picked.then(|| {
+            focus_ring(
+                div()
+                    .absolute()
+                    .top(px((STOP_TRACK - STOP_KNOB) / 2.0))
+                    .left(relative(fraction))
+                    .ml(px(-STOP_KNOB / 2.0))
+                    .size(px(STOP_KNOB))
+                    .rounded_full()
+                    .bg(knob_fill(cx, disabled))
+                    .shadow(crate::knob_shadow(cx)),
+                ringed,
+                window,
+                cx,
+            )
+        });
+        div()
+            .relative()
+            .w_full()
+            .h(px(STOP_TRACK))
+            .child(bar)
+            .children(dots)
+            .children(knob)
     }
 
     fn field(self, drag: Entity<Drag>, window: &Window, cx: &App) -> Div {
@@ -635,7 +871,16 @@ impl Slider {
 
     fn slider(self, drag: Entity<Drag>, window: &Window, cx: &App) -> Stateful<Div> {
         let scale = self.scale;
-        let metrics = Metrics::new(self.size, CoarsePointer::get(cx));
+        let fat = self.stops.is_some();
+        let metrics = if fat {
+            Metrics {
+                size: self.size,
+                rail: STOP_TRACK,
+                knob: STOP_KNOB,
+            }
+        } else {
+            Metrics::new(self.size, CoarsePointer::get(cx))
+        };
         let thumb = metrics.knob;
         let disabled = self.disabled;
         let focus = self.focus(&drag, cx);
@@ -649,6 +894,11 @@ impl Slider {
             window,
             cx,
         );
+        let spoken = if fat {
+            self.read(value)
+        } else {
+            SharedString::from(format!("{value}"))
+        };
         let on_change = self.on_change;
         let deferred = self.commit_on_release;
         let committed = scale.snap(self.value);
@@ -758,13 +1008,19 @@ impl Slider {
             .author_id(self.id)
             .role(Role::Slider)
             .aria_label(self.label)
-            .aria_value(SharedString::from(format!("{value}")))
+            .aria_value(spoken)
             .aria_disabled(disabled)
             .relative()
             .flex()
             .items_center()
             .w_full()
-            .h(metrics.size.control_h())
+            .map(|this| {
+                if fat {
+                    this.h(px(STOP_KNOB))
+                } else {
+                    this.h(metrics.size.control_h())
+                }
+            })
             .px(px(thumb / 2.0))
             .child(rail)
             .when(!disabled, |this| {
@@ -895,6 +1151,66 @@ mod tests {
         cx.simulate_keystrokes("shift-left");
         assert_eq!(*value.borrow(), 349.0);
         assert_eq!(*changes.borrow(), [180.0, 360.0, 359.0, 349.0]);
+    }
+
+    struct RailTest(Rc<RefCell<Vec<usize>>>);
+
+    impl Render for RailTest {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            let picks = Rc::clone(&self.0);
+            div().w(px(230.0)).child(StepRail::new(
+                "effort",
+                "Effort",
+                ["Default", "Low", "Medium", "High", "Xhigh", "Max"]
+                    .map(SharedString::from)
+                    .to_vec(),
+                Some(3),
+                move |index, _, _| picks.borrow_mut().push(index),
+            ))
+        }
+    }
+
+    #[ala::test]
+    fn a_step_rail_reports_the_stop_it_is_let_go_on_and_the_end_key(cx: &mut TestAppContext) {
+        cx.update(crate::init);
+        let picks = Rc::new(RefCell::new(Vec::new()));
+        let (_, cx) = cx.add_window_view({
+            let picks = Rc::clone(&picks);
+            move |_, _| RailTest(picks)
+        });
+        let cx: &mut VisualTestContext = cx;
+        let draw = |cx: &mut VisualTestContext| {
+            cx.run_until_parked();
+            cx.update(|window, cx| {
+                let _ = window.draw(cx);
+            });
+        };
+        draw(cx);
+        let y = px(STOP_HEAD + STOP_KNOB / 2.0);
+        cx.simulate_event(MouseDownEvent {
+            position: point(px(175.0), y),
+            modifiers: Modifiers::default(),
+            button: MouseButton::Left,
+            click_count: 1,
+            first_mouse: false,
+        });
+        draw(cx);
+        cx.simulate_event(MouseMoveEvent {
+            position: point(px(96.0), y),
+            modifiers: Modifiers::default(),
+            pressed_button: Some(MouseButton::Left),
+        });
+        draw(cx);
+        assert!(picks.borrow().is_empty());
+        cx.simulate_event(MouseUpEvent {
+            position: point(px(96.0), y),
+            modifiers: Modifiers::default(),
+            button: MouseButton::Left,
+            click_count: 1,
+        });
+        draw(cx);
+        cx.simulate_keystrokes("end");
+        assert_eq!(*picks.borrow(), [2, 5]);
     }
 
     #[ala::test]

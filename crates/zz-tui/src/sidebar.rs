@@ -365,6 +365,7 @@ fn pane_title(pane: &PaneSnapshot) -> &str {
         PaneKindSnapshot::Browser(_) => "browser",
         PaneKindSnapshot::Editor(_) => "editor",
         PaneKindSnapshot::Agent(_) => "agent",
+        PaneKindSnapshot::View(_) => "view",
     }
 }
 
@@ -375,6 +376,7 @@ const fn pane_glyph(kind: &PaneKindSnapshot) -> char {
         PaneKindSnapshot::Browser(_) => 'B',
         PaneKindSnapshot::Editor(_) => 'E',
         PaneKindSnapshot::Agent(_) => 'A',
+        PaneKindSnapshot::View(_) => 'V',
     }
 }
 
