@@ -5,6 +5,8 @@ use serde::Deserialize;
 
 const RELEASES_API: &str =
     "https://api.github.com/repos/autistic-computer/zebrilus/releases?per_page=10";
+const WIRE_LINE_PREFIX: &str = "<!-- zz-wire:";
+const WIRE_LINE_SUFFIX: &str = "-->";
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(15);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -35,6 +37,44 @@ pub struct Release {
     pub version: Version,
     pub url: String,
     pub assets: Vec<ReleaseAsset>,
+    pub wire: Option<ReleaseWire>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ReleaseWire {
+    pub epoch: u16,
+    pub min_daemon_revision: u32,
+}
+
+impl ReleaseWire {
+    fn parse(body: &str) -> Option<Self> {
+        body.lines().find_map(|line| {
+            let fields = line
+                .trim()
+                .strip_prefix(WIRE_LINE_PREFIX)?
+                .strip_suffix(WIRE_LINE_SUFFIX)?;
+            let mut epoch = None;
+            let mut min_daemon_revision = None;
+            for field in fields.split_whitespace() {
+                match field.split_once('=') {
+                    Some(("epoch", value)) => epoch = value.parse().ok(),
+                    Some(("min-daemon-revision", value)) => {
+                        min_daemon_revision = value.parse().ok();
+                    }
+                    _ => {}
+                }
+            }
+            Some(Self {
+                epoch: epoch?,
+                min_daemon_revision: min_daemon_revision?,
+            })
+        })
+    }
+
+    #[must_use]
+    pub const fn keeps_daemon(self, epoch: u16, revision: u32) -> bool {
+        self.epoch == epoch && revision >= self.min_daemon_revision
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
@@ -86,6 +126,8 @@ struct ReleaseEntry {
     prerelease: bool,
     #[serde(default)]
     assets: Vec<ReleaseAsset>,
+    #[serde(default)]
+    body: Option<String>,
 }
 
 pub fn parse_releases(json: &str, channel: Channel) -> Result<Option<Release>, String> {
@@ -97,10 +139,11 @@ pub fn parse_releases(json: &str, channel: Channel) -> Result<Option<Release>, S
         .filter_map(|entry| {
             let version = Version::parse(entry.tag_name.strip_prefix('v')?).ok()?;
             let stable = !entry.prerelease && version.pre.is_empty();
-            (channel == Channel::Beta || stable).then_some(Release {
+            (channel == Channel::Beta || stable).then(|| Release {
                 version,
                 url: entry.html_url,
                 assets: entry.assets,
+                wire: entry.body.as_deref().and_then(ReleaseWire::parse),
             })
         })
         .max_by(|a, b| a.version.cmp(&b.version)))
@@ -209,11 +252,46 @@ mod tests {
     }
 
     #[test]
+    fn a_release_names_its_wire_epoch_and_daemon_floor_in_its_notes() {
+        let entry = |tag: &str, body: &str| {
+            format!(
+                r#"{{"tag_name":"{tag}","html_url":"https://github.com/autistic-computer/zebrilus/releases/tag/{tag}","body":"{body}"}}"#
+            )
+        };
+        let notes = r"## What's Changed\r\n* Fix a crash";
+        let stated = entry(
+            "v0.3.2",
+            &format!(r"<!-- zz-wire: epoch=123 min-daemon-revision=4 -->\r\n{notes}"),
+        );
+        let newest = parse_releases(
+            &releases(&[stated, release("v0.3.1", false, false)]),
+            Channel::Stable,
+        )
+        .unwrap()
+        .unwrap();
+        let wire = ReleaseWire {
+            epoch: 123,
+            min_daemon_revision: 4,
+        };
+        assert_eq!(newest.wire, Some(wire));
+        assert!(wire.keeps_daemon(123, 4));
+        assert!(!wire.keeps_daemon(123, 3));
+        assert!(!wire.keeps_daemon(122, 9));
+
+        let newest = parse_releases(&releases(&[entry("v0.3.1", notes)]), Channel::Stable)
+            .unwrap()
+            .unwrap();
+        assert_eq!(newest.version, version("0.3.1"));
+        assert_eq!(newest.wire, None);
+    }
+
+    #[test]
     fn native_assets_require_the_native_product_architecture_and_release_url() {
         let mut release = Release {
             version: version("0.3.2"),
             url: "https://github.com/autistic-computer/zebrilus/releases/tag/v0.3.2".to_owned(),
             assets: Vec::new(),
+            wire: None,
         };
         let asset = |name: &str| ReleaseAsset {
             name: name.to_owned(),

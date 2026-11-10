@@ -78,8 +78,28 @@ send the daemon any command, so it offers to stop the old one and start its own;
 holds, which is why the epoch bumps only for changes an existing peer cannot decode or would get
 wrong; a client that is newer inside the same epoch, whose revision floor the daemon meets,
 attaches to the running daemon instead
-([wire protocol](/protocol/wire-protocol.md#wire-epochs)). The stop is deliberately paranoid so it
-never kills an unrelated process:
+([wire protocol](/protocol/wire-protocol.md#wire-epochs)).
+
+A daemon below the client's `MIN_DAEMON_REVISION` (`DaemonError::DaemonTooOld`) gets the same
+offer: the same alert, the same `auto-restart-stale-daemon`, and the same y/N prompt and
+`--restart-daemon` in the raw terminal, with its own sentence, "The running daemon is revision N;
+this zz needs revision M or newer." The desktop keeps which case it is in `StaleDaemonInfo`
+(`Protocol` or `Revision`). The other way round, a client below the daemon's
+`MIN_CLIENT_REVISION` (`ServerError::ClientTooOld`) is never offered a restart, since restarting
+would not help: the desktop shows "This zz is too old for the running daemon" with an Update
+button when the update check knows a newer release, and the raw terminal and CLI print the message
+with no `kill-server` hint.
+
+A daemon that is only behind (same epoch, revision at or above the floor, below this build's
+`REVISION`) keeps its sessions and stays attached. `MuxClient::daemon_behind` reports it with both
+revisions; the tray then shows **Restart Daemon to Update…** and the About page a Restart daemon
+row, and the prompt says "The zz daemon runs an older build, revision N; this zz is revision M.
+Restarting it to update ends K sessions", K from the local snapshot (no sessions, 1 session, K
+sessions). While attached, that restart sends `kill-server`, waits up to 5 s for the socket to stop
+answering, then starts a daemon the normal way (`connect_interactive_client`); only if the daemon
+is still there does it fall back to the signal below.
+
+The signal stop is deliberately paranoid so it never kills an unrelated process:
 
 - `Daemon::run_foreground` installs a `DaemonIdentityGuard` that atomically writes a private
   `<socket>.identity` file (magic `zz-daemon-identity-v2`, `pid` + process `start_time` +

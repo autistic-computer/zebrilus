@@ -1,7 +1,7 @@
 ---
 type: Design Plan
 title: Split updates . the client and the daemon update apart
-description: Proposed plan to let a client update without restarting the daemon and ending its sessions. PROTOCOL_VERSION becomes a wire epoch that only bumps for changes an existing peer cannot decode or would get wrong, additive changes travel as messages gated by the capabilities both hellos already carry, a build revision on each side sets floors for behavior, and restarting the daemon onto a newer build becomes its own action that states how many sessions it ends. Step 1, the setup epoch (v122), and step 2, the capability rule, are built.
+description: Proposed plan to let a client update without restarting the daemon and ending its sessions. PROTOCOL_VERSION becomes a wire epoch that only bumps for changes an existing peer cannot decode or would get wrong, additive changes travel as messages gated by the capabilities both hellos already carry, a build revision on each side sets floors for behavior, and restarting the daemon onto a newer build becomes its own action that states how many sessions it ends. Step 1, the setup epoch (v122), step 2, the capability rule, and step 3, the client UI, are built.
 status: In progress
 tags:
 - protocol
@@ -36,6 +36,23 @@ timestamp: 2026-11-10T00:00:00-03:00
 > rule and the steps for adding a message are in [wire protocol](/protocol/wire-protocol.md#wire-epochs)
 > and `CLAUDE.md`. A message added from now on stays inside the epoch; the client UI for a daemon
 > that is behind is step 3.
+>
+> **2026-11-10: step 3 is built.** A local daemon below `MIN_DAEMON_REVISION` gets the same
+> "Restart the zz daemon?" alert, the same `auto-restart-stale-daemon` and the same raw terminal
+> y/N prompt and `--restart-daemon` as an epoch mismatch, with its own sentence (`StaleDaemonInfo`
+> is `Protocol` or `Revision`). A client below the daemon's floor is never offered a restart: the
+> desktop says this zz is too old and shows Update when the update check knows a newer release,
+> and the raw terminal and CLI print the message alone. While attached, `MuxClient::daemon_behind`
+> compares the daemon's revision with `REVISION`; a daemon that is behind shows "Restart Daemon to
+> Update…" in the tray and a Restart daemon row on the About page, and the prompt names how many
+> sessions end. That restart sends `kill-server`, waits for the socket to stop answering, then
+> starts a daemon the normal way, and falls back to `terminate_incompatible_daemon` after 5 s. A
+> host below the floor is `HostState::DaemonTooOld` and offers Update; a host that is only behind
+> offers Update in its menu, and the dialog counts its sessions; a host whose daemon refuses this
+> zz is `HostState::ClientTooOld` and offers nothing. The release workflow puts
+> `<!-- zz-wire: epoch=N min-daemon-revision=M -->` at the top of each release's notes, and the
+> update toast and About line say whether the update keeps the sessions running. Every revision is
+> still 1, so none of this shows in a normal run.
 
 The daemon holds every session, so restarting it ends them. Today a client update almost always
 forces that restart, because the client and the daemon must be built from the same protocol version.
@@ -136,8 +153,9 @@ into the struct and retires the capability.
 `Welcome.caps` is a `u64` with a bit per index, and the daemon fills it as `(1 << len) - 1`, so
 `CAPABILITY_NAMES` holds at most 63 names; a bit's meaning is its index, so the table is append-only
 inside an epoch. The client's table rides `ClientHello.capabilities`, which decodes at most 64
-entries and already carries up to 29 `client-*` facts, so it has room for 35. Each
-epoch bump folds every capability into the baseline and starts the table over.
+entries and already carries up to 29 of the client's own entries, so it has room for 35. Const
+assertions in `control.rs` hold both limits. Each epoch bump folds every capability into the
+baseline and starts the table over.
 
 ## 3. Open slots for things every client must see
 
@@ -182,9 +200,10 @@ Delete a gate once the floor or the epoch passes it.
 - While attached, the restart action states what it ends: "Restart the daemon to update it. This
   ends N sessions." The count is the snapshot's, and the restart is `kill-server` followed by a
   normal start.
-- Across an epoch mismatch or below a floor the client is not attached, so it has no count and
-  cannot send a command. The prompt says the restart ends every running session and stops the
-  daemon with `terminate_incompatible_daemon`, as it does now.
+- Across an epoch mismatch or below a floor the client is not attached, so it has no count. Across
+  an epoch it cannot send a command either; below a floor an `Exec` command still works, since it
+  carries no revision, but the prompt treats both cases the same. It says the restart ends every
+  running session and stops the daemon with `terminate_incompatible_daemon`, as it does now.
 - A client update that raises the floor or the epoch says so before it installs, so staying on the
   older client to keep the sessions is a real choice. For that, each release states its epoch and
   its `MIN_DAEMON_REVISION` on one line of the release body, which the update check already

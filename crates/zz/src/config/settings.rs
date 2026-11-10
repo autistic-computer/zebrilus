@@ -889,6 +889,8 @@ impl SettingsView {
                     HostState::Connected => (IconName::Globe, cx.theme().success),
                     HostState::Unreachable { .. }
                     | HostState::Incompatible { .. }
+                    | HostState::DaemonTooOld { .. }
+                    | HostState::ClientTooOld { .. }
                     | HostState::Missing => (IconName::Globe, cx.theme().danger),
                     HostState::Connecting
                     | HostState::Reconnecting { .. }
@@ -1267,9 +1269,13 @@ impl SettingsView {
         )
     }
 
-    fn updates_stack(cx: &Context<Self>) -> SettingsStack {
-        use crate::update::{self, CheckState};
+    fn updates_stack(&self, cx: &Context<Self>) -> SettingsStack {
+        use crate::{
+            mux::hosts::HostId,
+            update::{self, CheckState},
+        };
 
+        let mux = self.mux.read(cx);
         let resolved = config::resolved_config(cx);
         let status = update::status(cx);
         let check = status.as_ref().map(|status| &status.check);
@@ -1283,8 +1289,13 @@ impl SettingsView {
         let (state, control): (SharedString, AnyElement) = match (status.as_ref(), check) {
             (Some(status), Some(CheckState::Available(release))) => {
                 let notes_url = release.url.clone();
+                let out = format!("zz {} is out, you have {}", release.version, status.current);
                 (
-                    format!("zz {} is out, you have {}", release.version, status.current).into(),
+                    match update::daemon_note(release, mux) {
+                        Some(note) => format!("{out}. {note}"),
+                        None => out,
+                    }
+                    .into(),
                     h_flex()
                         .gap_2()
                         .child(
@@ -1319,6 +1330,23 @@ impl SettingsView {
             (_, Some(CheckState::Checking)) => ("Asking GitHub".into(), check_button),
             _ => ("Not checked yet".into(), check_button),
         };
+        let daemon = mux.daemon_behind(HostId::LOCAL).map(|behind| {
+            let restart_mux = self.mux.clone();
+            SettingEntry::new("Daemon")
+                .description(behind.restart_text(mux.host_session_count(HostId::LOCAL)))
+                .control(
+                    Button::new("settings-daemon-restart")
+                        .label("Restart daemon")
+                        .on(settings_card_ground(cx))
+                        .on_click(move |_, window, cx| {
+                            crate::workspace::AppView::prompt_daemon_update(
+                                &restart_mux,
+                                window,
+                                cx,
+                            );
+                        }),
+                )
+        });
         SettingsStack::titled("Updates")
             .child(
                 Self::boolean_setting(
@@ -1333,9 +1361,10 @@ impl SettingsView {
                     .description(state)
                     .control(control),
             )
+            .children(daemon)
     }
 
-    fn about_section(cx: &Context<Self>) -> AnyElement {
+    fn about_section(&self, cx: &Context<Self>) -> AnyElement {
         use penna::blocks::settings::about::{
             about_build_stack, about_copy_button, about_hero, about_project_stack,
         };
@@ -1347,7 +1376,7 @@ impl SettingsView {
                 img(crate::app_icon::about_logo(cx.theme().mode)).size(px(ABOUT_LOGO_SIZE)),
                 cx,
             ))
-            .child(Self::updates_stack(cx))
+            .child(self.updates_stack(cx))
             .child(about_build_stack(
                 &ZZ_ABOUT,
                 platform(),
@@ -1540,7 +1569,7 @@ impl Render for SettingsView {
             SettingsSection::Advanced => Self::advanced_section(&resolved, cx),
             SettingsSection::Terminal => self.config_file_section(ConfigFileKind::Terminal, cx),
             SettingsSection::Multiplexer => self.config_file_section(ConfigFileKind::Mux, cx),
-            SettingsSection::About => Self::about_section(cx),
+            SettingsSection::About => self.about_section(cx),
         };
         div()
             .id("settings-route")

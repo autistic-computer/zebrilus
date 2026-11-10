@@ -276,11 +276,19 @@ sidebar installs at once (`MuxClient::install_or_retry_host`), so a dev build an
 refusal instead of a silent re-dial. `Incompatible` carries an optional remote protocol: an older
 one, the same protocol from an older build and `RemoteProtocolUnknown` all offer **Update**. The
 local daemon's `IncompatibleDaemon { daemon: None }` (an identity file too old to name its protocol)
-stays an unreachable row with its own message. Offers collect in `MuxClient::update_offers`; the first emits
+stays an unreachable row with its own message. A host whose daemon is below this zz's
+`MIN_DAEMON_REVISION` is `HostState::DaemonTooOld { daemon, minimum }` and offers **Update** too; one
+that refuses this zz as below its own floor is `HostState::ClientTooOld { client, minimum }`, reads
+"That machine runs a newer zz. Update zz on this machine, then reconnect." and offers nothing, the
+way a newer remote protocol does. A connected host whose daemon is only behind (`MuxClient::daemon_behind`)
+keeps its row and offers **Update zz** in its menu; the install then runs while it stays connected,
+and the daemon restart drops the connection, which reconnects to the new daemon. Offers collect in
+`MuxClient::update_offers`; the first emits
 `RemoteInstallOffer`, and the workspace opens one dialog whose title and text read the list every
-frame, so hosts that report later join it. **Update and restart** installs on all of them with a
-restart; closing the dialog clears the list. The host row's menu keeps **Install zz** (runs at once)
-and **Update zz** (joins the list). `zz fleet install [--restart-daemon] (-a | NAME...)` runs the
+frame, so hosts that report later join it. When every listed host is connected, the dialog says how
+many sessions end ("which ends 3 sessions running on them"). **Update and restart** installs on all
+of them with a restart; closing the dialog clears the list. The host row's menu keeps **Install zz**
+(runs at once) and **Update zz** (joins the list). `zz fleet install [--restart-daemon] (-a | NAME...)` runs the
 same function from a shell on every named host in parallel without prompts
 (`install_remote_batch`), then retries one at a time, on the terminal, each host that needs a typed
 login ([zz's own key](#zzs-own-key)); one line per host, a failing host prints its reason on stderr

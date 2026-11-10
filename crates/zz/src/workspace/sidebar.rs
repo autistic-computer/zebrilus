@@ -1584,7 +1584,7 @@ fn render_tree_row_context_menu(
         if let Some(offer) = runtime
             .tree_model
             .host(host)
-            .and_then(|tree_host| tree_host.state.install_offer())
+            .and_then(MuxTreeHost::install_offer)
         {
             let install_mux = runtime.mux.clone();
             items.push(TreeRowMenuItem::new(

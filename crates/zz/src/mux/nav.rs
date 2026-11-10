@@ -12,7 +12,7 @@ use zz_protocol::{
 
 use super::{
     client::MuxClient,
-    hosts::{HostId, HostState},
+    hosts::{HostId, HostState, InstallOffer},
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -76,11 +76,15 @@ pub struct MuxTreeModel {
 impl MuxTreeModel {
     #[must_use]
     pub fn from_mux(mux: &MuxClient) -> Self {
-        Self::from_hosts(
+        let mut model = Self::from_hosts(
             mux.attached_host(),
             mux.attached_session(),
             mux.fleet_hosts(),
-        )
+        );
+        for host in &mut model.hosts {
+            host.daemon_behind = mux.daemon_behind(host.id).is_some();
+        }
+        model
     }
 
     #[must_use]
@@ -157,6 +161,7 @@ impl MuxTreeModel {
                     id: host,
                     name: name.to_owned(),
                     state: state.clone(),
+                    daemon_behind: false,
                     snapshot_loaded,
                     sessions,
                 }
@@ -346,6 +351,8 @@ impl MuxTreeModel {
                         | HostState::Reconnecting { .. }
                         | HostState::Unreachable { .. }
                         | HostState::Incompatible { .. }
+                        | HostState::DaemonTooOld { .. }
+                        | HostState::ClientTooOld { .. }
                         | HostState::Missing
                 ) =>
             {
@@ -399,6 +406,7 @@ pub struct MuxTreeHost {
     pub id: HostId,
     pub name: String,
     pub state: HostState,
+    pub daemon_behind: bool,
     pub snapshot_loaded: bool,
     pub sessions: Vec<MuxTreeSession>,
 }
@@ -421,6 +429,13 @@ impl MuxTreeHost {
     }
 
     #[must_use]
+    pub fn install_offer(&self) -> Option<InstallOffer> {
+        self.state
+            .install_offer()
+            .or_else(|| self.daemon_behind.then_some(InstallOffer::Update))
+    }
+
+    #[must_use]
     pub fn indicator(&self) -> Option<HostIndicator> {
         match self.state {
             HostState::Connected if self.snapshot_loaded => None,
@@ -431,6 +446,8 @@ impl MuxTreeHost {
             HostState::Disconnected
             | HostState::Unreachable { .. }
             | HostState::Incompatible { .. }
+            | HostState::DaemonTooOld { .. }
+            | HostState::ClientTooOld { .. }
             | HostState::Missing => Some(HostIndicator::Failed {
                 detail: self.state.failure_detail().map(SharedString::from),
             }),

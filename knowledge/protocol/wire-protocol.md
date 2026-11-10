@@ -116,10 +116,19 @@ An event, daemon to client:
 A message the daemon sends that is not an event follows the event steps, with its arm in
 `ProtocolMessage::required_capability`.
 
-Two limits. `CAPABILITY_NAMES` must stay under 64 names, because `Welcome.caps` is a `u64` and the
-daemon sets `(1 << len) - 1`; it holds 33. `ClientHello.capabilities` decodes at most 64 entries,
-and a client fills up to 29 of them with its own `client-*` entries (up to 16 are
-`client-features-v1:` specs), so `CLIENT_CAPABILITY_NAMES` has room for 35 at most.
+Two limits, both const assertions in `control.rs`. `CAPABILITY_NAMES` must stay under 64 names,
+because `Welcome.caps` is a `u64` and the daemon sets `(1 << len) - 1`; it holds 33.
+`ClientHello.capabilities` decodes at most 64 entries (`MAX_SERVER_CAPABILITIES`), and
+`connect_stream_hello` fills up to 29 of them with its own entries (up to 16 are
+`client-features-v1:` specs, 2 come from its callers), so `CLIENT_CAPABILITY_NAMES` has room for 35
+at most.
+
+Each release says which epoch it speaks and which daemons it attaches to. The `draft` job in
+`.github/workflows/release.yml` reads `PROTOCOL_VERSION` and `MIN_DAEMON_REVISION` from
+`message.rs` at the tag and puts `<!-- zz-wire: epoch=N min-daemon-revision=M -->` above the
+generated notes. The desktop's update check parses it into `Release.wire`
+(`crates/zz-config/src/update.rs` `ReleaseWire`), and the update keeps a running daemon when the
+epoch matches and the daemon's revision is at least the release's minimum.
 
 # Framing
 

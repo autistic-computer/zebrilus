@@ -47,7 +47,7 @@ use zz_terminal::{
 
 use crate::{
     diagnostics,
-    mux::hosts::{HostId, HostRegistry, HostState, InstallOffer},
+    mux::hosts::{DaemonBehind, HostId, HostRegistry, HostState, InstallOffer},
     terminal::view::localize_terminal_font_families,
 };
 
@@ -234,6 +234,9 @@ fn drain_decoded_batch<T>(
 }
 
 fn connect_error_state(error: &DaemonError) -> HostState {
+    if let DaemonError::DaemonTooOld { daemon, minimum } = *error {
+        return HostState::DaemonTooOld { daemon, minimum };
+    }
     if let DaemonError::IncompatibleDaemon { daemon, client } = error {
         return daemon.map_or_else(
             || HostState::Unreachable {
@@ -276,12 +279,27 @@ fn connect_error_state(error: &DaemonError) -> HostState {
                 remote: Some(*received),
             };
         }
-        if let Some(ServerError::ProtocolMismatch { server, .. }) =
-            current.downcast_ref::<ServerError>()
+        match current.downcast_ref::<ServerError>() {
+            Some(ServerError::ProtocolMismatch { server, .. }) => {
+                return HostState::Incompatible {
+                    local: PROTOCOL_VERSION,
+                    remote: Some(*server),
+                };
+            }
+            Some(ServerError::ClientTooOld { client, minimum }) => {
+                return HostState::ClientTooOld {
+                    client: *client,
+                    minimum: *minimum,
+                };
+            }
+            _ => {}
+        }
+        if let Some(DaemonError::DaemonTooOld { daemon, minimum }) =
+            current.downcast_ref::<DaemonError>()
         {
-            return HostState::Incompatible {
-                local: PROTOCOL_VERSION,
-                remote: Some(*server),
+            return HostState::DaemonTooOld {
+                daemon: *daemon,
+                minimum: *minimum,
             };
         }
         if let Some(error) = current.downcast_ref::<io::Error>()
@@ -753,8 +771,87 @@ pub(crate) struct AgentStateChanged;
 pub(crate) struct KeyTableChanged;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) struct StaleDaemonInfo {
-    pub(crate) daemon: Option<u16>,
+pub(crate) enum StaleDaemonInfo {
+    Protocol { daemon: Option<u16> },
+    Revision { daemon: u32, minimum: u32 },
+}
+
+impl StaleDaemonInfo {
+    const fn from_error(error: &DaemonError) -> Option<Self> {
+        match *error {
+            DaemonError::IncompatibleDaemon { daemon, .. } => Some(Self::Protocol { daemon }),
+            DaemonError::DaemonTooOld { daemon, minimum } => {
+                Some(Self::Revision { daemon, minimum })
+            }
+            _ => None,
+        }
+    }
+
+    fn restarted_notice(self) -> String {
+        match self {
+            Self::Protocol {
+                daemon: Some(daemon),
+            } => format!("restarted stale zz daemon (was v{daemon})"),
+            Self::Protocol { daemon: None } => {
+                "restarted stale zz daemon (previous version unknown)".to_owned()
+            }
+            Self::Revision { daemon, .. } => {
+                format!("restarted stale zz daemon (was revision {daemon})")
+            }
+        }
+    }
+}
+
+const DAEMON_EXIT_DEADLINE: Duration = Duration::from_secs(5);
+const DAEMON_EXIT_POLL: Duration = Duration::from_millis(50);
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum LocalDaemonStop {
+    Signal,
+    KillServer,
+}
+
+impl LocalDaemonStop {
+    fn stop(self, socket_path: &Path) -> Result<(), String> {
+        if self == Self::KillServer {
+            let killed =
+                zz_daemon_client::CommandClient::connect(socket_path).and_then(|mut client| {
+                    client.execute(CommandInvocation::new("kill-server", [] as [&str; 0]))
+                });
+            if let Err(DaemonError::Server(error)) = killed {
+                return Err(error.tmux_message());
+            }
+            let deadline = Instant::now() + DAEMON_EXIT_DEADLINE;
+            while local_daemon_answers(socket_path) {
+                if Instant::now() >= deadline {
+                    break;
+                }
+                thread::sleep(DAEMON_EXIT_POLL);
+            }
+            if !local_daemon_answers(socket_path) {
+                return Ok(());
+            }
+        }
+        terminate_incompatible_daemon(socket_path)
+            .map(drop)
+            .map_err(|error| error.to_string())
+    }
+}
+
+fn local_daemon_answers(socket_path: &Path) -> bool {
+    use zz_daemon_client::transport::{LocalTransport, Transport as _};
+
+    LocalTransport::connect(socket_path).is_ok()
+}
+
+fn local_connect_error_text(error: &DaemonError) -> String {
+    match error {
+        DaemonError::Server(ServerError::ClientTooOld { client, minimum }) => format!(
+            "This zz is too old for the running daemon. It is revision {client}, and the daemon \
+             needs revision {minimum} or newer. Update zz."
+        ),
+        error => error.to_string(),
+    }
 }
 
 #[cfg(test)]
@@ -1053,6 +1150,20 @@ impl HostConnection {
     pub(crate) fn client_instance_id(&self) -> Option<zz_protocol::ClientInstanceId> {
         self.current_hello().map(|hello| hello.client_instance_id)
     }
+
+    fn daemon_revision(&self) -> Option<u32> {
+        let revision = self
+            .client
+            .as_ref()
+            .map(|client| client.server_hello().revision);
+        #[cfg(test)]
+        let revision = revision.or_else(|| {
+            self.fake_client
+                .as_ref()
+                .map(|client| client.hello.revision)
+        });
+        revision
+    }
 }
 
 pub(crate) struct TerminalSignal;
@@ -1295,10 +1406,8 @@ impl MuxClient {
                     }
                 }
                 Some(Err(error)) => {
-                    if let DaemonError::IncompatibleDaemon { daemon, .. } = &error {
-                        state.stale_daemon = Some(StaleDaemonInfo { daemon: *daemon });
-                    }
-                    state.error = Some(Arc::from(error.to_string()));
+                    state.stale_daemon = StaleDaemonInfo::from_error(&error);
+                    state.error = Some(Arc::from(local_connect_error_text(&error)));
                 }
                 None => {
                     state.connections.get_mut(&HostId::LOCAL).unwrap().state =
@@ -1352,12 +1461,10 @@ impl MuxClient {
                 }
             }
             Err(error) => {
-                if let DaemonError::IncompatibleDaemon { daemon, .. } = &error {
-                    self.stale_daemon = Some(StaleDaemonInfo { daemon: *daemon });
-                }
+                self.stale_daemon = StaleDaemonInfo::from_error(&error);
                 self.connections.get_mut(&HostId::LOCAL).unwrap().state =
                     connect_error_state(&error);
-                self.error = Some(Arc::from(error.to_string()));
+                self.error = Some(Arc::from(local_connect_error_text(&error)));
             }
         }
         cx.notify();
@@ -2061,12 +2168,23 @@ impl MuxClient {
         cx.notify();
     }
 
-    pub(crate) fn update_offer_names(&self) -> Vec<String> {
+    pub(crate) fn update_offer_hosts(&self) -> Vec<(String, Option<usize>)> {
         self.update_offers
             .iter()
-            .filter_map(|host| self.registry.get(*host))
-            .map(|entry| entry.name.clone())
+            .filter_map(|host| {
+                let entry = self.registry.get(*host)?;
+                Some((entry.name.clone(), self.host_session_count(*host)))
+            })
             .collect()
+    }
+
+    #[must_use]
+    pub(crate) fn host_update_offer(&self, host: HostId) -> Option<InstallOffer> {
+        self.connections
+            .get(&host)?
+            .state
+            .install_offer()
+            .or_else(|| self.daemon_behind(host).map(|_| InstallOffer::Update))
     }
 
     pub(crate) fn accept_update_offers(&mut self, cx: &mut Context<Self>) {
@@ -2088,13 +2206,14 @@ impl MuxClient {
         let Endpoint::Ssh(ssh) = endpoint.clone() else {
             return;
         };
+        let Some(offer) = self.host_update_offer(host) else {
+            return;
+        };
         let Some(connection) = self.connections.get_mut(&host) else {
             return;
         };
-        let Some(offer) = connection.state.install_offer() else {
-            return;
-        };
-        let previous = std::mem::replace(&mut connection.state, HostState::Installing);
+        let previous = (!connection.is_connected())
+            .then(|| std::mem::replace(&mut connection.state, HostState::Installing));
         let route = Arc::clone(&connection.route);
         cx.notify();
         #[cfg(test)]
@@ -2139,11 +2258,19 @@ impl MuxClient {
     fn finish_install(
         &mut self,
         host: HostId,
-        previous: HostState,
+        previous: Option<HostState>,
         name: &str,
         result: Result<RemoteInstall, String>,
         cx: &mut Context<Self>,
     ) {
+        let Some(previous) = previous else {
+            let (kind, text) = match &result {
+                Ok(outcome) => install_notification(name, outcome),
+                Err(reason) => (ClientMessageKind::Error, reason.clone()),
+            };
+            Self::emit_notification(kind, text, cx);
+            return;
+        };
         let Some(connection) = self.connections.get_mut(&host) else {
             return;
         };
@@ -2667,6 +2794,33 @@ impl MuxClient {
         self.stale_daemon
     }
 
+    #[must_use]
+    pub(crate) fn daemon_revision(&self, host: HostId) -> Option<u32> {
+        self.connections.get(&host)?.daemon_revision()
+    }
+
+    #[must_use]
+    pub(crate) fn daemon_behind(&self, host: HostId) -> Option<DaemonBehind> {
+        DaemonBehind::compare(self.daemon_revision(host)?, zz_protocol::REVISION)
+    }
+
+    #[must_use]
+    pub(crate) fn host_session_count(&self, host: HostId) -> Option<usize> {
+        if !self.connections.get(&host)?.is_connected() {
+            return None;
+        }
+        self.host_snapshot(host)
+            .map(|snapshot| snapshot.sessions.len())
+    }
+
+    #[must_use]
+    pub(crate) fn attached_client_too_old(&self) -> bool {
+        matches!(
+            self.attached_connection().state,
+            HostState::ClientTooOld { .. }
+        )
+    }
+
     pub(crate) fn dismiss_stale_daemon(&mut self, cx: &mut Context<Self>) {
         if self.stale_daemon.take().is_none() {
             return;
@@ -2682,8 +2836,17 @@ impl MuxClient {
     }
 
     pub(crate) fn restart_daemon_for_update(&mut self, cx: &mut Context<Self>) {
+        if self
+            .connections
+            .get(&HostId::LOCAL)
+            .is_some_and(HostConnection::is_connected)
+        {
+            self.release_local_connection(cx);
+            self.restart_local_daemon(LocalDaemonStop::KillServer, None, cx);
+            return;
+        }
         self.stale_daemon
-            .get_or_insert(StaleDaemonInfo { daemon: None });
+            .get_or_insert(StaleDaemonInfo::Protocol { daemon: None });
         self.restart_stale_daemon(false, cx);
     }
 
@@ -2691,21 +2854,46 @@ impl MuxClient {
         let Some(stale) = self.stale_daemon.take() else {
             return;
         };
+        let notice = automatic.then(|| stale.restarted_notice());
+        self.restart_local_daemon(LocalDaemonStop::Signal, notice, cx);
+    }
+
+    fn release_local_connection(&mut self, cx: &mut Context<Self>) {
+        let Some(connection) = self.connections.get_mut(&HostId::LOCAL) else {
+            return;
+        };
+        connection.clear_route();
+        let mut released = HostConnection::disconnected(HostId::LOCAL);
+        released.platform = connection.platform;
+        self.connections.insert(HostId::LOCAL, released);
+        if self.attached_host == HostId::LOCAL {
+            self.error_after_next_attach = None;
+            self.reset_session_state(cx);
+        }
+    }
+
+    fn restart_local_daemon(
+        &mut self,
+        stop: LocalDaemonStop,
+        notice: Option<String>,
+        cx: &mut Context<Self>,
+    ) {
         let socket_path = self.registry.local_socket_path().to_path_buf();
         let color_scheme = self.color_scheme;
-        self.error = Some(Arc::from("restarting stale zz daemon…"));
+        self.error = Some(Arc::from(match stop {
+            LocalDaemonStop::Signal => "restarting stale zz daemon…",
+            LocalDaemonStop::KillServer => "restarting the zz daemon…",
+        }));
         cx.notify();
 
         let (results, incoming) = async_channel::bounded(1);
         let restart_thread = thread::Builder::new()
-            .name("zz-stale-daemon-restart".to_owned())
+            .name("zz-daemon-restart".to_owned())
             .spawn(move || {
-                let result = terminate_incompatible_daemon(&socket_path)
-                    .map_err(|error| error.to_string())
-                    .and_then(|_| {
-                        crate::connect_interactive_client(&socket_path, color_scheme)
-                            .map_err(|error| error.to_string())
-                    });
+                let result = stop.stop(&socket_path).and_then(|()| {
+                    crate::connect_interactive_client(&socket_path, color_scheme)
+                        .map_err(|error| error.to_string())
+                });
                 let _ = results.send_blocking(result);
             });
         if let Err(error) = restart_thread {
@@ -2720,39 +2908,49 @@ impl MuxClient {
             let Ok(result) = incoming.recv().await else {
                 return;
             };
-            let _ = this.update(cx, |client, cx| match result {
-                Ok(connection) => match client.install_initial_local_connection(connection, cx) {
+            let _ = this.update(cx, |client, cx| {
+                let installed = match result {
+                    Ok(connection) if client.attached_host == HostId::LOCAL => client
+                        .install_initial_local_connection(connection, cx)
+                        .map_err(|error| {
+                            format!("could not attach after restarting the zz daemon: {error}")
+                        }),
+                    Ok(connection) => client
+                        .install_background_local_connection(connection, cx)
+                        .map_err(|error| {
+                            format!("could not connect after restarting the zz daemon: {error}")
+                        }),
+                    Err(error) => Err(format!("could not restart the zz daemon: {error}")),
+                };
+                match installed {
                     Ok(()) => {
                         client.error = None;
                         client.ensure_all_connected(cx);
-                        if automatic {
-                            let message = stale.daemon.map_or_else(
-                                || {
-                                    "restarted stale zz daemon (previous version unknown)"
-                                        .to_owned()
-                                },
-                                |daemon| format!("restarted stale zz daemon (was v{daemon})"),
-                            );
-                            Self::emit_notification(ClientMessageKind::Success, message, cx);
+                        if let Some(notice) = notice {
+                            Self::emit_notification(ClientMessageKind::Success, notice, cx);
                         }
-                        cx.notify();
                     }
-                    Err(error) => {
-                        client.error = Some(Arc::from(format!(
-                            "could not attach after restarting the zz daemon: {error}"
-                        )));
-                        cx.notify();
-                    }
-                },
-                Err(error) => {
-                    client.error = Some(Arc::from(format!(
-                        "could not restart the zz daemon: {error}"
-                    )));
-                    cx.notify();
+                    Err(error) => client.error = Some(Arc::from(error)),
                 }
+                cx.notify();
             });
         })
         .detach();
+    }
+
+    fn install_background_local_connection(
+        &mut self,
+        client: InteractiveClient,
+        cx: &mut Context<Self>,
+    ) -> Result<(), String> {
+        if let Err(error) = client.request_resync() {
+            log::warn!("failed to request the restarted daemon's snapshot: {error}");
+        }
+        let connection = HostConnection::connected(Arc::new(client), HostId::LOCAL, cx)
+            .map_err(|error| error.to_string())?;
+        self.connections.insert(HostId::LOCAL, connection);
+        self.report_color_scheme();
+        Ok(())
     }
 
     pub(crate) fn emit_notification(
@@ -5632,7 +5830,10 @@ mod tests {
             assert_eq!(mux.read(cx).color_scheme, TerminalColorScheme::Light);
             let completed = completed.clone();
             cx.subscribe(&mux, move |mux, _: &InitialConnectionFinished, cx| {
-                assert_eq!(mux.read(cx).stale_daemon().unwrap().daemon, Some(41));
+                assert_eq!(
+                    mux.read(cx).stale_daemon(),
+                    Some(StaleDaemonInfo::Protocol { daemon: Some(41) })
+                );
                 completed.set(true);
             })
             .detach();
@@ -5649,7 +5850,10 @@ mod tests {
                     cx,
                 );
             });
-            assert_eq!(mux.read(cx).stale_daemon().unwrap().daemon, Some(41));
+            assert_eq!(
+                mux.read(cx).stale_daemon(),
+                Some(StaleDaemonInfo::Protocol { daemon: Some(41) })
+            );
             assert_eq!(
                 mux.read(cx).attached_connection().state,
                 HostState::Incompatible {
@@ -5803,6 +6007,30 @@ mod tests {
             }
         );
         assert_eq!(state.install_offer(), Some(InstallOffer::Update));
+
+        assert_eq!(
+            connect_result_state(&Err::<(), _>(DaemonError::DaemonTooOld {
+                daemon: 1,
+                minimum: 2,
+            })),
+            HostState::DaemonTooOld {
+                daemon: 1,
+                minimum: 2
+            }
+        );
+
+        assert_eq!(
+            connect_result_state(&Err::<(), _>(DaemonError::Server(
+                ServerError::ClientTooOld {
+                    client: 1,
+                    minimum: 2,
+                },
+            ))),
+            HostState::ClientTooOld {
+                client: 1,
+                minimum: 2
+            }
+        );
     }
 
     #[ala::test]
@@ -5988,7 +6216,7 @@ mod tests {
             });
             assert_eq!(
                 mux.read(cx).stale_daemon(),
-                Some(StaleDaemonInfo { daemon: Some(41) })
+                Some(StaleDaemonInfo::Protocol { daemon: Some(41) })
             );
             mux.update(cx, super::MuxClient::dismiss_stale_daemon);
             assert!(mux.read(cx).stale_daemon().is_none());
@@ -6078,7 +6306,7 @@ mod tests {
                 mux.connections.get_mut(&desk).unwrap().state = HostState::Installing;
                 mux.finish_install(
                     desk,
-                    HostState::Missing,
+                    Some(HostState::Missing),
                     "desk",
                     Err("Could not install zz on ssh://desk: curl is missing".to_owned()),
                     cx,
@@ -6169,8 +6397,12 @@ mod tests {
         });
         assert_eq!(*offers.borrow(), 1);
         assert_eq!(
-            cx.read(|cx| mux.read(cx).update_offer_names()),
-            ["xps", "ubuntu", "alienware"]
+            cx.read(|cx| mux.read(cx).update_offer_hosts()),
+            [
+                ("xps".to_owned(), None),
+                ("ubuntu".to_owned(), None),
+                ("alienware".to_owned(), None)
+            ]
         );
 
         cx.update(|cx| mux.update(cx, MuxClient::accept_update_offers));
@@ -6178,7 +6410,7 @@ mod tests {
             cx.read(|cx| mux.read(cx).install_requests.clone().unwrap()),
             [(xps, true), (ubuntu, true), (alienware, true)]
         );
-        assert!(cx.read(|cx| mux.read(cx).update_offer_names()).is_empty());
+        assert!(cx.read(|cx| mux.read(cx).update_offer_hosts()).is_empty());
 
         cx.update(|cx| {
             mux.update(cx, |mux, cx| {

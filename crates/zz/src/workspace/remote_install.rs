@@ -4,7 +4,10 @@ use penna::{
     components::button::ButtonVariant,
 };
 
-use crate::mux::{client::MuxClient, hosts::InstallOffer};
+use crate::mux::{
+    client::MuxClient,
+    hosts::{InstallOffer, session_count},
+};
 
 pub(crate) fn menu_label(offer: InstallOffer) -> &'static str {
     match offer {
@@ -13,11 +16,15 @@ pub(crate) fn menu_label(offer: InstallOffer) -> &'static str {
     }
 }
 
-fn update_copy(names: &[String]) -> (String, String) {
+fn update_copy(offers: &[(String, Option<usize>)]) -> (String, String) {
     let version = env!("CARGO_PKG_VERSION");
-    let hosts = match names {
+    let names = offers
+        .iter()
+        .map(|(name, _)| name.as_str())
+        .collect::<Vec<_>>();
+    let hosts = match names.as_slice() {
         [] => "these hosts".to_owned(),
-        [name] => name.clone(),
+        [name] => (*name).to_owned(),
         [rest @ .., last] => format!("{} and {last}", rest.join(", ")),
     };
     let (runs, daemons, them) = if names.len() == 1 {
@@ -25,11 +32,20 @@ fn update_copy(names: &[String]) -> (String, String) {
     } else {
         ("run", "their daemons", "them")
     };
+    let ended = offers
+        .iter()
+        .map(|(_, sessions)| *sessions)
+        .sum::<Option<usize>>()
+        .filter(|_| !offers.is_empty())
+        .map_or_else(
+            || "the sessions".to_owned(),
+            |sessions| session_count(Some(sessions)),
+        );
     (
         format!("Update zz on {hosts}?"),
         format!(
             "{hosts} {runs} an older zz. Updating installs zz {version} in ~/.local there and \
-             restarts {daemons}, which ends the sessions running on {them}."
+             restarts {daemons}, which ends {ended} running on {them}."
         ),
     )
 }
@@ -37,7 +53,7 @@ fn update_copy(names: &[String]) -> (String, String) {
 pub(crate) fn open(mux: &Entity<MuxClient>, window: &mut Window, cx: &mut App) {
     let mux = mux.clone();
     window.open_alert_dialog(cx, move |alert, _, cx| {
-        let (title, description) = update_copy(&mux.read(cx).update_offer_names());
+        let (title, description) = update_copy(&mux.read(cx).update_offer_hosts());
         let accept = mux.clone();
         let close = mux.clone();
         alert
@@ -68,7 +84,7 @@ mod tests {
     fn one_dialog_names_every_host_it_updates() {
         let version = env!("CARGO_PKG_VERSION");
         assert_eq!(
-            update_copy(&["xps".to_owned()]),
+            update_copy(&[("xps".to_owned(), None)]),
             (
                 "Update zz on xps?".to_owned(),
                 format!(
@@ -77,10 +93,17 @@ mod tests {
                 )
             )
         );
+        assert_eq!(
+            update_copy(&[("xps".to_owned(), Some(1)), ("ubuntu".to_owned(), Some(2))]).1,
+            format!(
+                "xps and ubuntu run an older zz. Updating installs zz {version} in ~/.local there \
+                 and restarts their daemons, which ends 3 sessions running on them."
+            )
+        );
         let (title, description) = update_copy(&[
-            "xps".to_owned(),
-            "ubuntu".to_owned(),
-            "alienware".to_owned(),
+            ("xps".to_owned(), None),
+            ("ubuntu".to_owned(), Some(2)),
+            ("alienware".to_owned(), None),
         ]);
         assert_eq!(title, "Update zz on xps, ubuntu and alienware?");
         assert!(

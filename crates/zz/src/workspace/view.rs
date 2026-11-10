@@ -19,7 +19,9 @@ use ala::{
 use penna::blocks::dialog::DialogButtonProps;
 use penna::{
     ActiveTheme as _, ElementExt as _, Emphasis, Tone, WindowExt as _,
-    blocks::notification::Notification, components::button::ButtonVariant, draws_window_controls,
+    blocks::notification::Notification,
+    components::button::{Button, ButtonVariant, ButtonVariants as _},
+    draws_window_controls,
 };
 #[cfg(test)]
 use zz_client::pane_swap_command;
@@ -88,6 +90,7 @@ use crate::{
         client::{
             AttachmentPreviewRequest, ClientNotification, ClientNotificationCleared,
             KeyTableChanged, MuxClient, PathPickerUpdate, RemoteInstallOffer, SshPromptRequest,
+            StaleDaemonInfo,
         },
         hosts::HostId,
         nav::{TreeTarget, kill_target_command},
@@ -132,27 +135,32 @@ fn prompt_stale_daemon(
         mux.update(cx, |mux, cx| mux.restart_stale_daemon(true, cx));
         return true;
     }
-    let daemon = stale.and_then(|stale| stale.daemon);
-
-    let description = if explicit && stale.is_none() {
-        "zz was updated, but the daemon is still running the previous build. Restarting it will \
-         end all running sessions."
-            .to_owned()
-    } else {
-        daemon.map_or_else(
-            || {
-                format!(
-                    "The running daemon is from an older build (its protocol version is unknown; \
-                 this zz speaks v{PROTOCOL_VERSION}). Restarting it will end all running sessions."
-                )
-            },
-            |daemon| {
-                format!(
-                    "The running daemon is from an older build (daemon protocol v{daemon}; this zz \
-                 speaks v{PROTOCOL_VERSION}). Restarting it will end all running sessions."
-                )
-            },
-        )
+    let description = match stale {
+        Some(StaleDaemonInfo::Protocol { daemon: None }) => format!(
+            "The running daemon is from an older build (its protocol version is unknown; this zz \
+             speaks v{PROTOCOL_VERSION}). Restarting it will end all running sessions."
+        ),
+        Some(StaleDaemonInfo::Protocol {
+            daemon: Some(daemon),
+        }) => format!(
+            "The running daemon is from an older build (daemon protocol v{daemon}; this zz speaks \
+             v{PROTOCOL_VERSION}). Restarting it will end all running sessions."
+        ),
+        Some(StaleDaemonInfo::Revision { daemon, minimum }) => format!(
+            "The running daemon is revision {daemon}; this zz needs revision {minimum} or newer. \
+             Restarting it will end all running sessions."
+        ),
+        None => {
+            let mux = mux.read(cx);
+            mux.daemon_behind(HostId::LOCAL).map_or_else(
+                || {
+                    "zz was updated, but the daemon is still running the previous build. \
+                     Restarting it will end all running sessions."
+                        .to_owned()
+                },
+                |behind| behind.restart_text(mux.host_session_count(HostId::LOCAL)),
+            )
+        }
     };
     let restart_mux = mux.clone();
     let dismiss_mux = mux.clone();
@@ -4904,6 +4912,12 @@ impl Render for AppView {
                 self.new_session.clone().into_any_element()
             }
         } else {
+            let update = self
+                .mux
+                .read(cx)
+                .attached_client_too_old()
+                .then(|| crate::update::available_release(cx))
+                .flatten();
             app_connection_state(
                 error.map_or_else(
                     || "connecting to zz daemon…".to_owned(),
@@ -4911,6 +4925,14 @@ impl Render for AppView {
                 ),
                 cx,
             )
+            .when_some(update, |state, version| {
+                state.child(
+                    Button::new("connection-update-install")
+                        .primary()
+                        .label(format!("Update to {version}"))
+                        .on_click(|_, window, cx| crate::update::install(window, cx)),
+                )
+            })
             .into_any_element()
         };
         log::trace!(

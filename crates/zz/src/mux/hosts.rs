@@ -38,6 +38,8 @@ pub enum HostState {
     Connected,
     Unreachable { reason: String },
     Incompatible { local: u16, remote: Option<u16> },
+    DaemonTooOld { daemon: u32, minimum: u32 },
+    ClientTooOld { client: u32, minimum: u32 },
     Missing,
     Installing,
 }
@@ -48,6 +50,44 @@ pub enum InstallOffer {
     Update,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct DaemonBehind {
+    pub daemon: u32,
+    pub client: u32,
+}
+
+impl DaemonBehind {
+    #[must_use]
+    pub const fn compare(daemon: u32, client: u32) -> Option<Self> {
+        if daemon < client {
+            Some(Self { daemon, client })
+        } else {
+            None
+        }
+    }
+
+    #[must_use]
+    pub fn restart_text(self, sessions: Option<usize>) -> String {
+        format!(
+            "The zz daemon runs an older build, revision {}; this zz is revision {}. Restarting it \
+             to update ends {}.",
+            self.daemon,
+            self.client,
+            session_count(sessions)
+        )
+    }
+}
+
+#[must_use]
+pub fn session_count(sessions: Option<usize>) -> String {
+    match sessions {
+        None => "every running session".to_owned(),
+        Some(0) => "no sessions".to_owned(),
+        Some(1) => "1 session".to_owned(),
+        Some(sessions) => format!("{sessions} sessions"),
+    }
+}
+
 impl HostState {
     pub const fn label(&self) -> &'static str {
         match self {
@@ -56,7 +96,9 @@ impl HostState {
             Self::Reconnecting { .. } => "reconnecting",
             Self::Connected => "connected",
             Self::Unreachable { .. } => "unreachable",
-            Self::Incompatible { .. } => "incompatible",
+            Self::Incompatible { .. } | Self::DaemonTooOld { .. } | Self::ClientTooOld { .. } => {
+                "incompatible"
+            }
             Self::Missing => "not installed",
             Self::Installing => "installing",
         }
@@ -65,7 +107,9 @@ impl HostState {
     pub const fn install_offer(&self) -> Option<InstallOffer> {
         match self {
             Self::Missing => Some(InstallOffer::Install),
-            Self::Incompatible { remote: None, .. } => Some(InstallOffer::Update),
+            Self::Incompatible { remote: None, .. } | Self::DaemonTooOld { .. } => {
+                Some(InstallOffer::Update)
+            }
             Self::Incompatible {
                 local,
                 remote: Some(remote),
@@ -96,6 +140,14 @@ impl HostState {
                 "This zz speaks protocol v{local}; that machine speaks v{remote}.\nUpgrade \
                  whichever side is older, then reconnect."
             )),
+            Self::DaemonTooOld { daemon, minimum } => Some(format!(
+                "That machine's zz daemon is revision {daemon}; this zz needs revision {minimum} \
+                 or newer.\nRight-click it and choose Update zz."
+            )),
+            Self::ClientTooOld { .. } => Some(
+                "That machine runs a newer zz.\nUpdate zz on this machine, then reconnect."
+                    .to_owned(),
+            ),
             Self::Missing => Some(
                 "zz is not installed on that machine.\nRight-click it and choose Install zz."
                     .to_owned(),
@@ -289,10 +341,22 @@ mod tests {
                 "{remote:?}"
             );
         }
+        assert_eq!(
+            HostState::DaemonTooOld {
+                daemon: 1,
+                minimum: 2
+            }
+            .install_offer(),
+            Some(InstallOffer::Update)
+        );
         for state in [
             HostState::Incompatible {
                 local: 107,
                 remote: Some(108),
+            },
+            HostState::ClientTooOld {
+                client: 1,
+                minimum: 2,
             },
             HostState::Unreachable {
                 reason: "no route".to_owned(),
@@ -301,6 +365,34 @@ mod tests {
             HostState::Connected,
         ] {
             assert_eq!(state.install_offer(), None, "{state:?}");
+        }
+    }
+
+    #[test]
+    fn a_daemon_behind_names_both_revisions_and_how_many_sessions_end() {
+        assert_eq!(DaemonBehind::compare(2, 2), None);
+        assert_eq!(DaemonBehind::compare(3, 2), None);
+        let behind = DaemonBehind::compare(1, 2).expect("revision 1 is behind 2");
+        assert_eq!(
+            behind,
+            DaemonBehind {
+                daemon: 1,
+                client: 2
+            }
+        );
+        for (sessions, ends) in [
+            (Some(0), "no sessions"),
+            (Some(1), "1 session"),
+            (Some(3), "3 sessions"),
+            (None, "every running session"),
+        ] {
+            assert_eq!(
+                behind.restart_text(sessions),
+                format!(
+                    "The zz daemon runs an older build, revision 1; this zz is revision 2. \
+                     Restarting it to update ends {ends}."
+                )
+            );
         }
     }
 
@@ -333,6 +425,27 @@ mod tests {
             }
             .failure_detail()
             .is_some_and(|detail| detail.contains("too old to report its protocol"))
+        );
+        assert_eq!(
+            HostState::DaemonTooOld {
+                daemon: 1,
+                minimum: 2
+            }
+            .failure_detail()
+            .as_deref(),
+            Some(
+                "That machine's zz daemon is revision 1; this zz needs revision 2 or newer.\nRight-click \
+                 it and choose Update zz."
+            )
+        );
+        assert_eq!(
+            HostState::ClientTooOld {
+                client: 1,
+                minimum: 2
+            }
+            .failure_detail()
+            .as_deref(),
+            Some("That machine runs a newer zz.\nUpdate zz on this machine, then reconnect.")
         );
         assert!(HostState::Disconnected.failure_detail().is_none());
         assert!(HostState::Connecting.failure_detail().is_none());

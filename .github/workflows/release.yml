@@ -45,8 +45,16 @@ jobs:
           if [[ "$version" == *-* ]]; then
             prerelease=(--prerelease)
           fi
+          message=crates/zz-protocol/src/message.rs
+          epoch="$(sed -nE 's/^pub const PROTOCOL_VERSION: u16 = ([0-9]+);$/\1/p' "$message")"
+          minimum="$(sed -nE 's/^pub const MIN_DAEMON_REVISION: u32 = ([0-9]+);$/\1/p' "$message")"
+          if [[ -z "$epoch" || -z "$minimum" ]]; then
+            echo "could not read PROTOCOL_VERSION and MIN_DAEMON_REVISION from $message" >&2
+            exit 1
+          fi
           gh release create "$GITHUB_REF_NAME" \
             --title "zz $version" \
+            --notes "<!-- zz-wire: epoch=$epoch min-daemon-revision=$minimum -->" \
             --generate-notes \
             --verify-tag \
             --draft \

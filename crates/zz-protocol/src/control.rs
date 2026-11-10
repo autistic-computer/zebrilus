@@ -55,6 +55,19 @@ pub const CAPABILITY_NAMES: &[&str] = &[
 
 pub const CLIENT_CAPABILITY_NAMES: &[&str] = &[];
 
+const CLIENT_OWN_HELLO_ENTRIES: usize = 29;
+
+const _: () = assert!(
+    CAPABILITY_NAMES.len() < 64,
+    "Welcome.caps is a u64 and the daemon sets (1 << len) - 1, so CAPABILITY_NAMES holds at most 63 names"
+);
+
+const _: () = assert!(
+    CLIENT_CAPABILITY_NAMES.len() + CLIENT_OWN_HELLO_ENTRIES
+        <= crate::message::MAX_SERVER_CAPABILITIES,
+    "ClientHello.capabilities decodes at most 64 entries and connect_stream_hello fills up to 29 with its own"
+);
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum TreeSubscription {
     None,

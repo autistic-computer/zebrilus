@@ -27,7 +27,7 @@ use zz_daemon_client::{
 };
 use zz_protocol::{
     AttachOperation, CommandInvocation, CommandResponse, PreparedCommand, PreparedCommandResult,
-    ProtocolMessage,
+    ProtocolMessage, ServerError,
 };
 
 use crate::browser::BrowserFrameProvider;
@@ -303,9 +303,13 @@ fn initial_connection(
                 )
                 .map_err(|restart| Error::message(format!("daemon start failed: {restart}")));
             }
-            let DaemonError::IncompatibleDaemon { .. } = error else {
-                return Err(Error::message(error.to_string()));
-            };
+            match error {
+                DaemonError::IncompatibleDaemon { .. } | DaemonError::DaemonTooOld { .. } => {}
+                DaemonError::Server(error @ ServerError::ClientTooOld { .. }) => {
+                    return Err(Error::message(error.to_string()));
+                }
+                error => return Err(Error::message(error.to_string())),
+            }
             if !interactive {
                 return Err(Error::message(format!("{error}\n{MANUAL_RESTART_HINT}")));
             }

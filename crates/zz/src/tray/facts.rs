@@ -32,13 +32,13 @@ pub(super) struct TrayFacts {
 pub(super) fn facts_from(
     snapshot: Option<&MuxSnapshot>,
     attention: impl Fn(PaneId) -> Option<AgentAttentionStatus>,
-    stale: bool,
+    update_available: bool,
 ) -> Option<TrayFacts> {
     let snapshot = snapshot?;
     let mut facts = TrayFacts {
         sessions: Vec::new(),
         attention: Vec::new(),
-        update_available: stale,
+        update_available,
     };
     for session in &snapshot.sessions {
         facts.sessions.push(Session {

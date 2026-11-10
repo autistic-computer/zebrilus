@@ -1372,8 +1372,12 @@ fn run_tui_chain(
     let request = tui_request(routing, &options, &reconnect);
     let result = match (connection, prepared) {
         (Some(client), Some(commands)) => {
-            match client.into_interactive(zz_protocol::AttachOperation::Commands(commands)) {
+            match client.into_interactive(zz_protocol::AttachOperation::Commands(commands.clone()))
+            {
                 Ok(initial) => zz_tui::run_connected(request, initial),
+                Err(DaemonError::DaemonTooOld { .. }) => {
+                    zz_tui::run_prepared_new_session(request, commands)
+                }
                 Err(error) => {
                     eprintln!("{}", command_error_message(&error));
                     return exit_code_for(CliFailure::Daemon(&error));
@@ -1437,8 +1441,11 @@ fn run_native_attach(
     let request = tui_request(routing, &options, &reconnect);
     let result = if let (Some(client), Some(mut commands)) = (connection, prepared.clone()) {
         commands[0].invocation = attach_command;
-        match client.into_interactive(zz_protocol::AttachOperation::Commands(commands)) {
+        match client.into_interactive(zz_protocol::AttachOperation::Commands(commands.clone())) {
             Ok(initial) => zz_tui::run_connected(request, initial),
+            Err(DaemonError::DaemonTooOld { .. }) => {
+                zz_tui::run_prepared_new_session(request, commands)
+            }
             Err(error) => {
                 eprintln!("{}", command_error_message(&error));
                 return exit_code_for(CliFailure::Daemon(&error));
@@ -1985,6 +1992,7 @@ fn format_local_daemon_error(error: DaemonError) -> String {
         error @ (DaemonError::IncompatibleDaemon { .. } | DaemonError::DaemonTooOld { .. }) => {
             format!("{error}\nrun 'zz kill-server' to restart it (sessions will be lost)")
         }
+        DaemonError::Server(error @ ServerError::ClientTooOld { .. }) => error.to_string(),
         error => error.to_string(),
     }
 }
@@ -3111,6 +3119,9 @@ fn host_failure_hint(name: &str, known: &[&str], destination: &str, error: &Daem
             } if daemon != client => protocol(*daemon, *client),
             DaemonError::IncompatibleDaemon { .. } | DaemonError::DaemonTooOld { .. } => {
                 format!("{name}: {error}; {}", install(true))
+            }
+            DaemonError::Server(ServerError::ClientTooOld { .. }) => {
+                format!("{name} runs a newer zz; update zz on this machine")
             }
             error => unreachable(error),
         },
@@ -5070,6 +5081,16 @@ mod tests {
                 }
             ),
             "xps runs protocol v107, this zz speaks v110; run: zz fleet install --restart-daemon xps (ends its sessions)"
+        );
+        assert_eq!(
+            failure(
+                true,
+                &DaemonError::Server(zz_protocol::ServerError::ClientTooOld {
+                    client: 1,
+                    minimum: 2,
+                })
+            ),
+            "xps runs a newer zz; update zz on this machine"
         );
         assert!(
             failure(

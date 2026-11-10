@@ -74,6 +74,8 @@ Closing the window or pressing cmd-q hides zz only when `tray` is enabled, the i
 `quit-daemon-on-exit` is false, and the local daemon snapshot contains at least one session.
 On macOS, hiding switches the app to the Accessory activation policy; showing restores Regular.
 **Quit and Stop Sessions** in the tray menu sends `kill-server` and quits the GUI.
+**Restart Daemon to Update…** shows while the local daemon is stale or runs an older revision than
+the GUI ([session persistence](/concepts/session-persistence.md#guarded-recovery-of-an-incompatible-daemon)).
 Daemons started without a GUI have no tray icon.
 The `tray` config key applies live; disabling or losing the icon brings a hidden window back.
 

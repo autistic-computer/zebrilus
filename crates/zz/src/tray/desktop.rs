@@ -137,7 +137,7 @@ fn refresh(mux: &Entity<MuxClient>, cx: &mut App) {
     let facts = facts_from(
         snapshot,
         |pane| mux.agent_attention_status(pane),
-        mux.stale_daemon().is_some(),
+        mux.stale_daemon().is_some() || mux.daemon_behind(HostId::LOCAL).is_some(),
     );
     let tray = cx.global_mut::<DesktopTray>();
     if tray.facts != facts {

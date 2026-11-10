@@ -16,7 +16,15 @@ pub(crate) use zz_config::update::{Channel, Release};
 use zz_config::update::{checks_enabled, fetch_latest};
 use zz_protocol::CommandInvocation;
 
-use crate::{config, mux::client::MuxClient, user_data, window::toast};
+use crate::{
+    config,
+    mux::{
+        client::MuxClient,
+        hosts::{HostId, session_count},
+    },
+    user_data,
+    window::toast,
+};
 
 const INSTALL_SCRIPT_URL: &str = "https://zzmux.sh/install.sh";
 const INITIAL_DELAY: Duration = Duration::from_secs(10);
@@ -62,6 +70,28 @@ pub(crate) fn status(cx: &App) -> Option<Status> {
         channel: Channel::of(&state.current),
         check: state.check.clone(),
     })
+}
+
+pub(crate) fn available_release(cx: &App) -> Option<Version> {
+    match &cx.try_global::<UpdateState>()?.check {
+        CheckState::Available(release) => Some(release.version.clone()),
+        _ => None,
+    }
+}
+
+pub(crate) fn daemon_note(release: &Release, mux: &MuxClient) -> Option<String> {
+    let wire = release.wire?;
+    let revision = mux.daemon_revision(HostId::LOCAL)?;
+    Some(
+        if wire.keeps_daemon(zz_protocol::PROTOCOL_VERSION, revision) {
+            "The update keeps your sessions running.".to_owned()
+        } else {
+            format!(
+                "The update needs a daemon restart, which ends {}.",
+                session_count(mux.host_session_count(HostId::LOCAL))
+            )
+        },
+    )
 }
 
 pub(crate) fn start(mux: Entity<MuxClient>, cx: &mut App) {
@@ -211,12 +241,19 @@ fn finish_check(result: Result<Option<Release>, String>, trigger: Trigger, cx: &
 fn offer_update(release: &Release, current: &Version, cx: &mut App) {
     let version = release.version.clone();
     let url = release.url.clone();
+    let message = cx
+        .try_global::<UpdateState>()
+        .and_then(|state| daemon_note(release, state.mux.read(cx)))
+        .map_or_else(
+            || format!("You are running {current}."),
+            |note| format!("You are running {current}. {note}"),
+        );
     toast::push(
         Notification::new()
             .key(TOAST_KEY)
             .autohide(false)
             .title(format!("zz {version} is available"))
-            .message(format!("You are running {current}."))
+            .message(message)
             .content(move |_, _, _| {
                 let later_version = version.clone();
                 let notes_url = url.clone();
@@ -414,6 +451,7 @@ mod tests {
             version: version("0.3.2"),
             url: "https://github.com/autistic-computer/zebrilus/releases/tag/v0.3.2".to_owned(),
             assets: Vec::new(),
+            wire: None,
         }
     }
 
