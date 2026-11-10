@@ -966,7 +966,7 @@ impl Runtime {
             command.env(name, value);
         }
         if let Some(home) = &account {
-            command.env(accounts::variable(AgentProvider::ClaudeCode), home);
+            accounts::run_on(&mut command, AgentProvider::ClaudeCode, home);
         }
         command.env("CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS", "1");
         command.env("CLAUDE_CODE_EMIT_TOOL_USE_SUMMARIES", "1");
@@ -2577,7 +2577,7 @@ while read -r line; do :; done
 
     #[cfg(unix)]
     const FAKE_ACCOUNT_CLAUDE: &str = r#"#!/bin/sh
-printf '%s' "${CLAUDE_CONFIG_DIR-unset}" > config-dir
+printf '%s\n%s' "${CLAUDE_CONFIG_DIR-unset}" "${ANTHROPIC_API_KEY-unset}" > seen
 read -r init
 printf '%s\n' '{"type":"control_response","response":{"subtype":"success","request_id":"zz-1","response":{"commands":[],"models":[],"current_permission_mode":"default"}}}'
 while read -r line; do :; done
@@ -2640,7 +2640,7 @@ while read -r line; do :; done
             first
         };
         let (_, first) = smol::block_on(futures_lite::future::zip(runtime, driver));
-        let seen = std::fs::read_to_string(directory.path().join("config-dir")).ok();
+        let seen = std::fs::read_to_string(directory.path().join("seen")).ok();
         (first, seen)
     }
 
@@ -2649,6 +2649,21 @@ while read -r line; do :; done
     fn an_account_pane_runs_claude_on_its_config_directory_and_no_other() {
         use std::os::unix::fs::PermissionsExt as _;
 
+        const CHILD: &str = "ZZ_TEST_ACCOUNT_LOGIN_OVERRIDES";
+        if std::env::var_os(CHILD).is_none() {
+            let status = Command::new(std::env::current_exe().expect("test binary"))
+                .args([
+                    "--exact",
+                    "agent::claude::tests::an_account_pane_runs_claude_on_its_config_directory_and_no_other",
+                    "--test-threads=1",
+                ])
+                .env(CHILD, "1")
+                .env("ANTHROPIC_API_KEY", "zz-test-key")
+                .status()
+                .expect("isolated login environment");
+            assert!(status.success());
+            return;
+        }
         let directory = tempfile::tempdir().expect("tempdir");
         let program = directory.path().join("claude");
         std::fs::write(&program, FAKE_ACCOUNT_CLAUDE).expect("fake claude");
@@ -2669,7 +2684,7 @@ while read -r line; do :; done
             matches!(ready, AgentStreamPayload::Ready { .. }),
             "{ready:?}"
         );
-        assert_eq!(seen, Some(home.display().to_string()));
+        assert_eq!(seen, Some(format!("{}\nunset", home.display())));
 
         let (ready, seen) = opened_with(&program, AgentWorkspaceEnvironment::default());
         assert!(
@@ -2677,12 +2692,13 @@ while read -r line; do :; done
             "{ready:?}"
         );
         assert_eq!(
-            seen.as_deref(),
-            Some(
+            seen,
+            Some(format!(
+                "{}\nzz-test-key",
                 std::env::var("CLAUDE_CONFIG_DIR")
                     .as_deref()
                     .unwrap_or("unset")
-            )
+            ))
         );
 
         let missing = directory.path().join("a2");

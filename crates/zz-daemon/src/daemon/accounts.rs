@@ -217,7 +217,7 @@ impl Shared {
             "--".to_owned(),
         ];
         args.extend(cli_session::interactive_shell(
-            Some((accounts::variable(provider), &home)),
+            Some((provider, &home)),
             &login,
         ));
         context.no_hooks = true;
@@ -290,7 +290,7 @@ fn identify(
         command.env_remove(name);
     }
     if let Some(home) = &home {
-        command.env(accounts::variable(provider), home);
+        accounts::run_on(&mut command, provider, home);
     }
     let account = match provider {
         AgentProvider::ClaudeCode => {

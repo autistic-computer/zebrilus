@@ -286,9 +286,7 @@ impl Shared {
                     step: FlipStep::ToCli {
                         cwd: descriptor.cwd,
                         command: cli_session::interactive_shell(
-                            account
-                                .as_deref()
-                                .map(|home| (accounts::variable(provider), home)),
+                            account.as_deref().map(|home| (provider, home)),
                             &cli_session::cli_command(
                                 provider,
                                 session.as_deref(),

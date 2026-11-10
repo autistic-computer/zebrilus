@@ -180,10 +180,24 @@ picks a different Keychain item than leaving it unset. zz never reads or writes 
   `codex app-server` fallback gets `CODEX_HOME` too. An ACP adapter gets the variable unless its
   command sets it. A named account whose directory is missing fails the pane with
   `Claude Code account a1 has no directory at <dir>; ...` and runs nothing on another login.
-- **Flips.** Chat to CLI runs the CLI as `CLAUDE_CONFIG_DIR=<dir> claude --resume ...` (or
-  `CODEX_HOME=<dir> codex resume ...`) inside the user's interactive shell
+- **No login from the environment.** A credential in the environment comes before the login in
+  the config directory, so a daemon started with `ANTHROPIC_API_KEY` set would run every account
+  pane on that key. Everything that runs for an account (the driver, the app server daemon and its
+  fallback, an ACP adapter, the identity probe, the flip's CLI and the login window) goes without
+  `accounts::login_overrides`: for Claude Code `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_API_KEY`,
+  `CLAUDE_CODE_OAUTH_TOKEN`, and `CLAUDE_CODE_USER_EMAIL`, `CLAUDE_CODE_ACCOUNT_UUID` and
+  `CLAUDE_CODE_ORGANIZATION_UUID`, which a daemon started inside a hosted session inherits and the
+  CLI writes into a fresh account's `.claude.json`; for Codex `CODEX_ACCESS_TOKEN`,
+  `OPENAI_FEDERATION_RULE_ID` and `OPENAI_IDENTITY_TOKEN_FILE`, each of which wins over
+  `auth.json` (codex-cli 0.167: `login status` and the app server's `account/read` follow them),
+  where `OPENAI_API_KEY` and `CODEX_API_KEY` do not. `accounts::run_on` removes them from a
+  `Command` before the command's own environment applies, so a configured value still wins; an
+  ACP adapter runs under `/usr/bin/env -u ...` for each one its command does not set; the shell
+  lines start with `unset ...;`. The default account keeps the daemon's environment as it is.
+- **Flips.** Chat to CLI runs the CLI as `unset ...; CLAUDE_CONFIG_DIR=<dir> claude --resume ...`
+  (or `CODEX_HOME=<dir> codex resume ...`) inside the user's interactive shell
   (`cli_session::interactive_shell`), so the variable reaches the TUI after the shell's startup
-  files. CLI to chat reads the variable from the TUI's process (`process_info::environment`:
+  files and the user's aliases still apply. CLI to chat reads the variable from the TUI's process (`process_info::environment`:
   `/proc/<pid>/environ` on Linux, the strings after argv in `KERN_PROCARGS2` on macOS) and, when it
   names an account directory (`accounts::account_of`), adds `--account`. macOS shows no environment
   for Apple-signed binaries, which the CLIs are not. A chat whose account directory is missing
@@ -223,7 +237,8 @@ picks a different Keychain item than leaving it unset. zz never reads or writes 
   `email`, `workspaceName` as the organization and `planType` as the plan; an API key login is
   signed in with no email or plan. The server's stdin is closed, it gets 2 s to exit, and then its
   process group is killed. Both probes drop the parent Claude Code session variables and `ZZ_PANE`,
-  `ZZ_SESSION`, `TMUX` and `TMUX_PANE`, give up after 10 s, and count as signed out when they fail.
+  `ZZ_SESSION`, `TMUX` and `TMUX_PANE` (and for an account the login overrides above), give up
+  after 10 s, and count as signed out when they fail.
   An account directory is linked (`accounts::prepare`) before its probe, so a Codex home has its
   state databases before its first app server.
 - **Watching.** A plain call adds the client to the watchers, sends the list the daemon already has

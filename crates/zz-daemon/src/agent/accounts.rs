@@ -2,6 +2,7 @@ use std::{
     ffi::OsString,
     fs, io,
     path::{Path, PathBuf},
+    process::Command,
 };
 
 use serde_json::{Map, Value, json};
@@ -75,6 +76,32 @@ pub(crate) const fn variable(provider: AgentProvider) -> &'static str {
         AgentProvider::ClaudeCode => "CLAUDE_CONFIG_DIR",
         AgentProvider::Codex => "CODEX_HOME",
     }
+}
+
+#[must_use]
+pub(crate) const fn login_overrides(provider: AgentProvider) -> &'static [&'static str] {
+    match provider {
+        AgentProvider::ClaudeCode => &[
+            "ANTHROPIC_AUTH_TOKEN",
+            "ANTHROPIC_API_KEY",
+            "CLAUDE_CODE_OAUTH_TOKEN",
+            "CLAUDE_CODE_USER_EMAIL",
+            "CLAUDE_CODE_ACCOUNT_UUID",
+            "CLAUDE_CODE_ORGANIZATION_UUID",
+        ],
+        AgentProvider::Codex => &[
+            "CODEX_ACCESS_TOKEN",
+            "OPENAI_FEDERATION_RULE_ID",
+            "OPENAI_IDENTITY_TOKEN_FILE",
+        ],
+    }
+}
+
+pub(crate) fn run_on(command: &mut Command, provider: AgentProvider, home: &Path) {
+    for name in login_overrides(provider) {
+        command.env_remove(name);
+    }
+    command.env(variable(provider), home);
 }
 
 const fn directory_name(provider: AgentProvider) -> &'static str {

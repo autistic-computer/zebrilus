@@ -156,10 +156,30 @@ pub(crate) fn with_account(
     };
     let name = crate::agent::accounts::variable(provider);
     let config = agent.into_config();
-    if config.environment().contains_key(name) {
-        return AcpAgent::new(config);
-    }
-    AcpAgent::new(config.env(name, home.to_string_lossy()))
+    let config = if config.environment().contains_key(name) {
+        config
+    } else {
+        config.env(name, home.to_string_lossy())
+    };
+    #[cfg(unix)]
+    let config = without_login_overrides(&config, provider);
+    AcpAgent::new(config)
+}
+
+#[cfg(unix)]
+fn without_login_overrides(
+    config: &agent_client_protocol::AcpAgentConfig,
+    provider: zz_protocol::AgentProvider,
+) -> agent_client_protocol::AcpAgentConfig {
+    let unset = crate::agent::accounts::login_overrides(provider)
+        .iter()
+        .filter(|name| !config.environment().contains_key(**name))
+        .flat_map(|name| ["-u", name]);
+    agent_client_protocol::AcpAgentConfig::new("/usr/bin/env")
+        .args(unset)
+        .arg(config.command().to_string_lossy())
+        .args(config.arguments())
+        .envs(config.environment().clone())
 }
 
 fn with_executable_path(agent: AcpAgent, path: Option<&str>) -> AcpAgent {
@@ -795,6 +815,55 @@ mod workspace_tests {
                 .collect::<Vec<_>>(),
             ["/configured/bin"]
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn an_account_adapter_runs_without_inherited_logins_unless_configured() {
+        let agent = AcpAgent::from_str("ANTHROPIC_API_KEY=mine npx -y adapter")
+            .expect("valid configured command");
+        let agent = super::with_account(
+            agent,
+            zz_protocol::AgentProvider::ClaudeCode,
+            Some(std::path::Path::new("/accounts/claude/a1")),
+        );
+        assert_eq!(
+            agent.config().command(),
+            std::path::Path::new("/usr/bin/env")
+        );
+        assert_eq!(
+            agent.config().arguments(),
+            [
+                "-u",
+                "ANTHROPIC_AUTH_TOKEN",
+                "-u",
+                "CLAUDE_CODE_OAUTH_TOKEN",
+                "-u",
+                "CLAUDE_CODE_USER_EMAIL",
+                "-u",
+                "CLAUDE_CODE_ACCOUNT_UUID",
+                "-u",
+                "CLAUDE_CODE_ORGANIZATION_UUID",
+                "npx",
+                "-y",
+                "adapter",
+            ]
+        );
+        assert_eq!(
+            environment(&agent),
+            [
+                ("ANTHROPIC_API_KEY".to_owned(), "mine".to_owned()),
+                (
+                    "CLAUDE_CONFIG_DIR".to_owned(),
+                    "/accounts/claude/a1".to_owned()
+                ),
+            ]
+        );
+
+        let agent = AcpAgent::from_str("npx -y adapter").expect("valid command");
+        let agent = super::with_account(agent, zz_protocol::AgentProvider::ClaudeCode, None);
+        assert_eq!(agent.config().command(), std::path::Path::new("npx"));
+        assert!(environment(&agent).is_empty());
     }
 
     #[test]

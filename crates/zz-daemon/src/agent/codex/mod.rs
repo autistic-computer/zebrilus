@@ -857,7 +857,7 @@ impl Runtime {
                 command.env(name, value);
             }
             if let Some(home) = &account {
-                command.env(accounts::variable(AgentProvider::Codex), home);
+                accounts::run_on(&mut command, AgentProvider::Codex, home);
             }
             if self.workspace.pane.is_some() {
                 command.env(crate::WORKSPACE_CONTEXT_SENT_ENVIRONMENT_VARIABLE, "1");
@@ -2551,7 +2551,7 @@ fn managed_daemon(
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null());
     if let Some(home) = account {
-        start.env(accounts::variable(AgentProvider::Codex), home);
+        accounts::run_on(&mut start, AgentProvider::Codex, home);
     }
     if let Err(error) = start.status_unmasked() {
         log::warn!(target: "zz::agent", "could not start the Codex app server daemon: {error}");
