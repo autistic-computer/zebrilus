@@ -96,6 +96,24 @@ struct Json(Movable):
             return None
         return Optional[String](self.nodes[found].text.copy())
 
+    def last_unsigned(self, node: Int, key: String) -> Optional[UInt64]:
+        var found = self.last(node, key)
+        if found < 0 or self.nodes[found].kind != JSON_UNSIGNED:
+            return None
+        return Optional[UInt64](self.nodes[found].magnitude)
+
+    def last_list(self, node: Int, key: String) -> List[Int]:
+        var found = self.last(node, key)
+        if found < 0 or self.nodes[found].kind != JSON_ARRAY:
+            return List[Int]()
+        return self.children(found)
+
+    def escaped(self, node: Int) -> Bool:
+        return (
+            self.nodes[node].kind == JSON_STRING
+            and self.nodes[node].magnitude == 1
+        )
+
     def fail(mut self) -> Int:
         self.failed = True
         return JSON_ABSENT
@@ -399,10 +417,13 @@ struct Json(Movable):
         if node < 0:
             return node
         if byte == 34:
+            var start = self.at
             var text = self.quoted(bytes)
             if not text:
                 return self.refuse(JSON_REFUSED_SYNTAX)
             self.nodes[node].kind = JSON_STRING
+            if self.at - start - 2 != text.value().byte_length():
+                self.nodes[node].magnitude = 1
             self.nodes[node].text = text.value()
             return node
         if byte == 45 or (byte >= 48 and byte <= 57):
@@ -526,6 +547,19 @@ def _push_scalar(mut out: List[UInt8], scalar: Int):
         out.append(UInt8(0x80 | ((scalar >> 12) & 0x3F)))
         out.append(UInt8(0x80 | ((scalar >> 6) & 0x3F)))
         out.append(UInt8(0x80 | (scalar & 0x3F)))
+
+
+def utf8_valid(bytes: List[UInt8]) -> Bool:
+    var at = 0
+    while at < len(bytes):
+        if bytes[at] < 128:
+            at += 1
+            continue
+        var width = _utf8_width(bytes, at)
+        if width == 0:
+            return False
+        at += width
+    return True
 
 
 def json_parse(bytes: List[UInt8], limit: Int = JSON_MAX_NODES) -> Json:

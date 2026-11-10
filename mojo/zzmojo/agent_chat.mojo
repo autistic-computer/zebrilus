@@ -344,6 +344,26 @@ def _options(mut json: Json, node: Int) -> List[AskOption]:
     return options^
 
 
+def chat_question(mut json: Json, question: Int) -> ChatQuestion:
+    var choices = List[ChatChoice]()
+    for choice in json.def_list(question, "options"):
+        choices.append(
+            ChatChoice(
+                json.req_text(choice, "label"),
+                json.opt_text(choice, "description"),
+            )
+        )
+    return ChatQuestion(
+        json.req_text(question, "id"),
+        json.opt_text(question, "header"),
+        json.req_text(question, "question"),
+        choices^,
+        json.def_bool(question, "multiSelect"),
+        json.def_bool(question, "allowOther"),
+        json.def_bool(question, "secret"),
+    )
+
+
 def _ask(mut json: Json, node: Int) -> Ask:
     var ask = Ask()
     ask.kind = _tagged(json, node, "ask", ASK_KINDS)
@@ -358,25 +378,7 @@ def _ask(mut json: Json, node: Int) -> Ask:
         ask.options = _options(json, node)
     else:
         for question in json.req_list(node, "questions"):
-            var choices = List[ChatChoice]()
-            for choice in json.def_list(question, "options"):
-                choices.append(
-                    ChatChoice(
-                        json.req_text(choice, "label"),
-                        json.opt_text(choice, "description"),
-                    )
-                )
-            ask.questions.append(
-                ChatQuestion(
-                    json.req_text(question, "id"),
-                    json.opt_text(question, "header"),
-                    json.req_text(question, "question"),
-                    choices^,
-                    json.def_bool(question, "multiSelect"),
-                    json.def_bool(question, "allowOther"),
-                    json.def_bool(question, "secret"),
-                )
-            )
+            ask.questions.append(chat_question(json, question))
     return ask^
 
 
