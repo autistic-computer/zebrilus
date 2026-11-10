@@ -42,9 +42,11 @@ use zz_protocol::{
 };
 
 use crate::agent::{
+    accounts,
     chat_bridge::attach_images,
     environment::{
-        AgentWorkspaceEnvironment, with_platform_environment, with_workspace_environment,
+        AgentWorkspaceEnvironment, with_account, with_platform_environment,
+        with_workspace_environment,
     },
     journal::{AgentJournal, JournalEntry},
     stream::{
@@ -284,7 +286,17 @@ pub(crate) async fn run_agent_runtime(
 ) -> Result<(), String> {
     let agent = AcpAgent::from_str(config.command_for(provider))
         .map_err(|error| format!("invalid {}: {error}", AgentSpawnConfig::key_for(provider)))?;
-    let agent = with_platform_environment(agent);
+    let account = config
+        .workspace
+        .account
+        .as_ref()
+        .map(|account| accounts::prepare(provider, account))
+        .transpose()?;
+    let agent = with_account(
+        with_platform_environment(agent),
+        provider,
+        account.as_deref(),
+    );
     let stderr = StderrTail::default();
     let debug_stderr = stderr.clone();
     let agent =

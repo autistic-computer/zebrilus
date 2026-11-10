@@ -32840,6 +32840,7 @@ impl Shared {
                 tmux_pane: None,
                 tools,
                 tools_executable,
+                account: None,
             },
         }
     }
@@ -33212,6 +33213,10 @@ impl Shared {
                 socket: None,
                 tmux: session.map(|session| tmux_environment(&self.socket_path, Some(session))),
                 tmux_pane: Some(pane.to_string()),
+                account: descriptor
+                    .account
+                    .as_deref()
+                    .map(|id| crate::agent::accounts::Account::resolve(descriptor.provider, id)),
                 ..AgentWorkspaceEnvironment::default()
             },
         })

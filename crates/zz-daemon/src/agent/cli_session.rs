@@ -617,10 +617,14 @@ pub(crate) fn cli_command(
     words
 }
 
-pub(crate) fn interactive_shell(words: &[String]) -> Vec<String> {
-    let line = words
-        .iter()
-        .map(|word| shell_word(word))
+pub(crate) fn interactive_shell(
+    environment: Option<(&str, &Path)>,
+    words: &[String],
+) -> Vec<String> {
+    let line = environment
+        .map(|(name, value)| format!("{name}={}", shell_word(&value.to_string_lossy())))
+        .into_iter()
+        .chain(words.iter().map(|word| shell_word(word)))
         .collect::<Vec<_>>()
         .join(" ");
     vec![

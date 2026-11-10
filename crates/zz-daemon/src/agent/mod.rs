@@ -1,3 +1,4 @@
+pub(crate) mod accounts;
 pub(crate) mod catalog;
 #[cfg_attr(not(test), allow(dead_code))]
 pub(crate) mod chat;

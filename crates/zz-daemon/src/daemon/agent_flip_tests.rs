@@ -275,3 +275,37 @@ fn a_busy_chat_refuses_then_flips_to_its_cli_when_idle() {
     assert!(!shared.inner.lock().agent_panes.contains(&pane));
     shared.request_shutdown();
 }
+
+#[test]
+fn a_cli_on_an_account_flips_into_a_chat_on_that_account() {
+    let step = FlipStep::ToChat {
+        provider: AgentProvider::ClaudeCode,
+        session: crate::agent::cli_session::CliSession {
+            session_id: Some(SESSION.to_owned()),
+            cwd: Some(PathBuf::from("/work")),
+            model: Some("haiku".to_owned()),
+            ..Default::default()
+        },
+        account: Some("a1".to_owned()),
+    };
+    assert_eq!(
+        step.command(PaneId(3)),
+        CommandInvocation::new(
+            "select-pane-kind",
+            [
+                "-t",
+                "%3",
+                "-c",
+                "/work",
+                "--resume",
+                SESSION,
+                "--model",
+                "haiku",
+                "--account",
+                "a1",
+                "agent",
+                "claude-code",
+            ],
+        )
+    );
+}

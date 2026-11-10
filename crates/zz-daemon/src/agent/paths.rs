@@ -3,18 +3,25 @@ use std::{io, path::PathBuf};
 use zz_daemon_client::user_data::platform_data_dir;
 
 const DAEMON_DIRECTORY_NAME: &str = "daemon";
+const ACCOUNTS_DIRECTORY_NAME: &str = "accounts";
 const JOURNAL_DIRECTORY_NAME: &str = "agent-journal";
 
-pub(crate) fn daemon_data_dir() -> io::Result<PathBuf> {
+fn app_data_dir() -> io::Result<PathBuf> {
     let data = platform_data_dir().ok_or_else(|| {
         io::Error::new(
             io::ErrorKind::NotFound,
             "could not resolve the current user's application-data directory",
         )
     })?;
-    Ok(data
-        .join(zz_protocol::app_identity::DIRECTORY)
-        .join(DAEMON_DIRECTORY_NAME))
+    Ok(data.join(zz_protocol::app_identity::DIRECTORY))
+}
+
+pub(crate) fn daemon_data_dir() -> io::Result<PathBuf> {
+    Ok(app_data_dir()?.join(DAEMON_DIRECTORY_NAME))
+}
+
+pub(crate) fn accounts_dir() -> io::Result<PathBuf> {
+    Ok(app_data_dir()?.join(ACCOUNTS_DIRECTORY_NAME))
 }
 
 pub(crate) fn journal_directory() -> io::Result<PathBuf> {

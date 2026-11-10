@@ -26,6 +26,7 @@ use zz_protocol::{
 };
 
 use crate::agent::{
+    accounts,
     child::{
         ChildEvent, Input, Process, Rewind, Title, cancelled, clean_title, fit_update, new_uuid,
         next_input, option, prompt_outcome, random_u64, rewind_shortfall,
@@ -921,6 +922,12 @@ impl Runtime {
                 self.command.program
             )
         })?;
+        let account = self
+            .workspace
+            .account
+            .as_ref()
+            .map(|account| accounts::prepare(AgentProvider::ClaudeCode, account))
+            .transpose()?;
         let mut command = Command::new(program);
         command.args(BASE_ARGS);
         match launch {
@@ -957,6 +964,9 @@ impl Runtime {
         }
         for (name, value) in self.workspace.entries() {
             command.env(name, value);
+        }
+        if let Some(home) = &account {
+            command.env(accounts::variable(AgentProvider::ClaudeCode), home);
         }
         command.env("CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS", "1");
         command.env("CLAUDE_CODE_EMIT_TOOL_USE_SUMMARIES", "1");
@@ -2563,6 +2573,130 @@ while read -r line; do :; done
         };
         let (result, ()) = smol::block_on(futures_lite::future::zip(runtime, driver));
         assert_eq!(result, Ok(()));
+    }
+
+    #[cfg(unix)]
+    const FAKE_ACCOUNT_CLAUDE: &str = r#"#!/bin/sh
+printf '%s' "${CLAUDE_CONFIG_DIR-unset}" > config-dir
+read -r init
+printf '%s\n' '{"type":"control_response","response":{"subtype":"success","request_id":"zz-1","response":{"commands":[],"models":[],"current_permission_mode":"default"}}}'
+while read -r line; do :; done
+"#;
+
+    #[cfg(unix)]
+    fn opened_with(
+        program: &Path,
+        workspace: AgentWorkspaceEnvironment,
+    ) -> (AgentStreamPayload, Option<String>) {
+        let directory = tempfile::tempdir().expect("tempdir");
+        let command = ClaudeCommand::parse(&program.display().to_string()).expect("native");
+        let (commands, command_rx) = async_channel::unbounded();
+        let (_controls, control_rx) = async_channel::unbounded();
+        let (events, event_rx) = async_channel::unbounded();
+        let runtime = run_claude_runtime(
+            command,
+            workspace,
+            AgentProvider::ClaudeCode,
+            RuntimeChannels {
+                auto_approve: Arc::new(Mutex::new(AgentAutoApprove::Off)),
+                permission_ids: Arc::new(AtomicU64::new(1)),
+                journal: None,
+                commands: command_rx,
+                controls: control_rx,
+                events,
+            },
+        );
+        let driver = async {
+            commands
+                .send(RuntimeCommand::Open {
+                    cwd: directory.path().to_path_buf(),
+                    resume_session: None,
+                })
+                .await
+                .expect("open");
+            let first = futures_lite::future::or(
+                async {
+                    loop {
+                        let event = event_rx.recv().await.expect("event");
+                        if matches!(
+                            event,
+                            AgentStreamPayload::Ready { .. }
+                                | AgentStreamPayload::PaneFailed { .. }
+                        ) {
+                            break event;
+                        }
+                    }
+                },
+                async {
+                    smol::Timer::after(Duration::from_secs(20)).await;
+                    panic!("timed out waiting for the runtime");
+                },
+            )
+            .await;
+            commands
+                .send(RuntimeCommand::Shutdown)
+                .await
+                .expect("shutdown");
+            first
+        };
+        let (_, first) = smol::block_on(futures_lite::future::zip(runtime, driver));
+        let seen = std::fs::read_to_string(directory.path().join("config-dir")).ok();
+        (first, seen)
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn an_account_pane_runs_claude_on_its_config_directory_and_no_other() {
+        use std::os::unix::fs::PermissionsExt as _;
+
+        let directory = tempfile::tempdir().expect("tempdir");
+        let program = directory.path().join("claude");
+        std::fs::write(&program, FAKE_ACCOUNT_CLAUDE).expect("fake claude");
+        std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o755))
+            .expect("executable");
+        let home = directory.path().join("a1");
+        std::fs::create_dir(&home).expect("account home");
+        let account = |id: &str, home: PathBuf| AgentWorkspaceEnvironment {
+            account: Some(accounts::Account {
+                id: id.to_owned(),
+                home: Some(home),
+            }),
+            ..AgentWorkspaceEnvironment::default()
+        };
+
+        let (ready, seen) = opened_with(&program, account("a1", home.clone()));
+        assert!(
+            matches!(ready, AgentStreamPayload::Ready { .. }),
+            "{ready:?}"
+        );
+        assert_eq!(seen, Some(home.display().to_string()));
+
+        let (ready, seen) = opened_with(&program, AgentWorkspaceEnvironment::default());
+        assert!(
+            matches!(ready, AgentStreamPayload::Ready { .. }),
+            "{ready:?}"
+        );
+        assert_eq!(
+            seen.as_deref(),
+            Some(
+                std::env::var("CLAUDE_CONFIG_DIR")
+                    .as_deref()
+                    .unwrap_or("unset")
+            )
+        );
+
+        let missing = directory.path().join("a2");
+        let (failed, seen) = opened_with(&program, account("a2", missing.clone()));
+        assert_eq!(
+            failed,
+            AgentStreamPayload::PaneFailed {
+                message: format!(
+                    "Claude Code account a2 has no directory at {}; add the account again or move this chat to another with agent-account",
+                    missing.display()
+                )
+            }
+        );
+        assert_eq!(seen, None, "nothing runs on the default account");
     }
 
     #[cfg(unix)]

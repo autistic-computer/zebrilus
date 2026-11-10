@@ -226,18 +226,51 @@ fn resume_arguments_carry_the_session_model_and_effort_through_the_users_shell()
         words(&["claude"])
     );
     assert_eq!(
-        interactive_shell(&cli_command(
-            AgentProvider::ClaudeCode,
-            Some(SESSION),
-            Some("opus[1m]"),
-            None
-        )),
+        interactive_shell(
+            None,
+            &cli_command(
+                AgentProvider::ClaudeCode,
+                Some(SESSION),
+                Some("opus[1m]"),
+                None
+            )
+        ),
         words(&[
             "/bin/sh",
             "-c",
             &format!(
                 r#"exec "${{SHELL:-/bin/sh}}" -ic 'claude --resume {SESSION} --model '\''opus[1m]'\'''"#
             ),
+        ])
+    );
+    assert_eq!(
+        interactive_shell(
+            Some((
+                "CLAUDE_CONFIG_DIR",
+                Path::new("/Users/me/Library/Application Support/zz/accounts/claude/a1")
+            )),
+            &cli_command(AgentProvider::ClaudeCode, Some(SESSION), None, None)
+        ),
+        words(&[
+            "/bin/sh",
+            "-c",
+            &format!(
+                r#"exec "${{SHELL:-/bin/sh}}" -ic 'CLAUDE_CONFIG_DIR='\''/Users/me/Library/Application Support/zz/accounts/claude/a1'\'' claude --resume {SESSION}'"#
+            ),
+        ])
+    );
+    assert_eq!(
+        interactive_shell(
+            Some((
+                "CODEX_HOME",
+                Path::new("/home/me/.local/share/zz/accounts/codex/a2")
+            )),
+            &cli_command(AgentProvider::Codex, Some("t-1"), None, None)
+        ),
+        words(&[
+            "/bin/sh",
+            "-c",
+            r#"exec "${SHELL:-/bin/sh}" -ic 'CODEX_HOME=/home/me/.local/share/zz/accounts/codex/a2 codex resume t-1'"#,
         ])
     );
 }

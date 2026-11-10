@@ -28,6 +28,7 @@ use zz_protocol::{
 };
 
 use crate::agent::{
+    accounts,
     child::{
         ChildEvent, Input, Process, Rewind, Title, cancelled, clean_title, fit_update, next_input,
         option, prompt_outcome, random_u64,
@@ -828,9 +829,15 @@ impl Runtime {
                 self.command.program
             )
         })?;
+        let account = self
+            .workspace
+            .account
+            .as_ref()
+            .map(|account| accounts::prepare(AgentProvider::Codex, account))
+            .transpose()?;
         self.generation += 1;
         #[cfg(unix)]
-        let managed = managed_daemon(&program, &self.command);
+        let managed = managed_daemon(&program, &self.command, account.as_deref());
         #[cfg(not(unix))]
         let managed: Option<PathBuf> = None;
         if let Some(socket) = managed {
@@ -848,6 +855,9 @@ impl Runtime {
             }
             for (name, value) in self.workspace.entries() {
                 command.env(name, value);
+            }
+            if let Some(home) = &account {
+                command.env(accounts::variable(AgentProvider::Codex), home);
             }
             if self.workspace.pane.is_some() {
                 command.env(crate::WORKSPACE_CONTEXT_SENT_ENVIRONMENT_VARIABLE, "1");
@@ -2509,21 +2519,29 @@ pub(crate) fn uses_managed_daemon(command: &CodexCommand) -> bool {
 }
 
 #[cfg(unix)]
-pub(crate) fn managed_socket() -> Option<PathBuf> {
-    control::socket(&codex_home()?)
+pub(crate) fn managed_socket(account: Option<&Path>) -> Option<PathBuf> {
+    match account {
+        Some(home) => control::socket(home),
+        None => control::socket(&codex_home()?),
+    }
 }
 
 #[cfg(unix)]
-fn managed_daemon(program: &Path, command: &CodexCommand) -> Option<PathBuf> {
+fn managed_daemon(
+    program: &Path,
+    command: &CodexCommand,
+    account: Option<&Path>,
+) -> Option<PathBuf> {
     use zz_daemon_client::unmasked::SpawnUnmasked as _;
 
     if cfg!(test) || !uses_managed_daemon(command) {
         return None;
     }
-    if let Some(socket) = managed_socket() {
+    if let Some(socket) = managed_socket(account) {
         return Some(socket);
     }
-    let started = Command::new(program)
+    let mut start = Command::new(program);
+    start
         .args(["app-server", "daemon", "start"])
         .env_remove("ZZ_PANE")
         .env_remove("ZZ_SESSION")
@@ -2531,15 +2549,17 @@ fn managed_daemon(program: &Path, command: &CodexCommand) -> Option<PathBuf> {
         .env_remove("TMUX_PANE")
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status_unmasked();
-    if let Err(error) = started {
+        .stderr(std::process::Stdio::null());
+    if let Some(home) = account {
+        start.env(accounts::variable(AgentProvider::Codex), home);
+    }
+    if let Err(error) = start.status_unmasked() {
         log::warn!(target: "zz::agent", "could not start the Codex app server daemon: {error}");
         return None;
     }
     let deadline = Instant::now() + MANAGED_START;
     loop {
-        if let Some(socket) = managed_socket() {
+        if let Some(socket) = managed_socket(account) {
             return Some(socket);
         }
         if Instant::now() >= deadline {

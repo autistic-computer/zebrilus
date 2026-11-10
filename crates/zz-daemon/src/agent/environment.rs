@@ -72,10 +72,12 @@ pub(crate) struct AgentWorkspaceEnvironment {
     pub(crate) tmux_pane: Option<String>,
     pub(crate) tools: Option<String>,
     pub(crate) tools_executable: Option<String>,
+    pub(crate) account: Option<crate::agent::accounts::Account>,
 }
 
 impl AgentWorkspaceEnvironment {
     pub(crate) fn adopt_pane_identity(&mut self, pane: &Self) {
+        self.account.clone_from(&pane.account);
         if pane.pane.is_some() {
             self.pane.clone_from(&pane.pane);
         }
@@ -142,6 +144,22 @@ pub(crate) fn with_workspace_environment(
         config = config.env("PATH", path);
     }
     AcpAgent::new(config)
+}
+
+pub(crate) fn with_account(
+    agent: AcpAgent,
+    provider: zz_protocol::AgentProvider,
+    home: Option<&std::path::Path>,
+) -> AcpAgent {
+    let Some(home) = home else {
+        return agent;
+    };
+    let name = crate::agent::accounts::variable(provider);
+    let config = agent.into_config();
+    if config.environment().contains_key(name) {
+        return AcpAgent::new(config);
+    }
+    AcpAgent::new(config.env(name, home.to_string_lossy()))
 }
 
 fn with_executable_path(agent: AcpAgent, path: Option<&str>) -> AcpAgent {
