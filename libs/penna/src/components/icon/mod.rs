@@ -38,7 +38,7 @@ impl Icon {
         self
     }
 
-    fn drawn_path(&self, cx: &App) -> SharedString {
+    pub(crate) fn drawn_path(&self, cx: &App) -> SharedString {
         if self.asset {
             return self.path.clone();
         }
