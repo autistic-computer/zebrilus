@@ -1,7 +1,7 @@
 ---
 type: Design Plan
 title: Split updates . the client and the daemon update apart
-description: Proposed plan to let a client update without restarting the daemon and ending its sessions. PROTOCOL_VERSION becomes a wire epoch that only bumps for changes an existing peer cannot decode or would get wrong, additive changes travel as messages gated by the capabilities both hellos already carry, a build revision on each side sets floors for behavior, and restarting the daemon onto a newer build becomes its own action that states how many sessions it ends. Step 1, the setup epoch (v122), is built.
+description: Proposed plan to let a client update without restarting the daemon and ending its sessions. PROTOCOL_VERSION becomes a wire epoch that only bumps for changes an existing peer cannot decode or would get wrong, additive changes travel as messages gated by the capabilities both hellos already carry, a build revision on each side sets floors for behavior, and restarting the daemon onto a newer build becomes its own action that states how many sessions it ends. Step 1, the setup epoch (v122), and step 2, the capability rule, are built.
 status: In progress
 tags:
 - protocol
@@ -24,6 +24,18 @@ timestamp: 2026-11-10T00:00:00-03:00
 > plain attach failure until step 3 gives it its own screen. `PaneKindSnapshot::Other` exists and
 > every client draws it as a placeholder, though the daemon never sends it. Nothing is gated by
 > capability yet (step 2), so a wire change still bumps the version and still restarts the daemon.
+>
+> **2026-11-10: step 2 is built.** `ProtocolMessage::required_capability` and
+> `EventPayload::required_capability` name each variant's capability in exhaustive matches, and
+> every v122 variant answers `None`. `CLIENT_CAPABILITY_NAMES` (empty) sits beside
+> `CAPABILITY_NAMES`; the Rust, browser and HTML clients append it to their hello, and each daemon
+> `OutboundMailbox` keeps the declared names and drops a gated message for a client without one.
+> `zz-daemon-client`'s `ProtocolSender` refuses a gated message the daemon did not list with
+> `DaemonError::DaemonLacksCapability`, and the browser client drops one by `Welcome::has_capability`.
+> The command client's `ServerHello.capabilities` is built from `CAPABILITY_NAMES`, same names. The
+> rule and the steps for adding a message are in [wire protocol](/protocol/wire-protocol.md#wire-epochs)
+> and `CLAUDE.md`. A message added from now on stays inside the epoch; the client UI for a daemon
+> that is behind is step 3.
 
 The daemon holds every session, so restarting it ends them. Today a client update almost always
 forces that restart, because the client and the daemon must be built from the same protocol version.
@@ -54,10 +66,11 @@ Not in this plan: keeping sessions alive across a daemon restart. A daemon resta
     (`crates/zz-protocol/src/control.rs`, 33 names), and the daemon sets every bit. Rust clients
     read them as strings on `ServerHello.capabilities`, which `materialize_welcome` builds; only
     the web client calls `Welcome::has_capability`. A command client gets a second, hand-written
-    list from `Shared::register`.
+    list from `Shared::register` (built from `CAPABILITY_NAMES` since step 2).
   - Client to daemon: `ClientHello.capabilities` carries `client-*` names. The daemon turns them
     into fields on its `Client` record in two places (`handle_connection_message` and
-    `Session::register`) and keeps no list.
+    `Session::register`) and keeps no list (since step 2, each `OutboundMailbox` keeps the names
+    from `CLIENT_CAPABILITY_NAMES`).
 - On a macOS bundle install the daemon runs from `cli` inside the app bundle
   ([process model](/architecture/process-model.md)). `scripts/install-macos.sh` replaces the bundle
   and leaves the running daemon on the previous build.
@@ -87,7 +100,8 @@ for a change that an existing peer cannot decode or would get wrong.
 | --- | --- |
 | Remove or reshape a shipped message, variant or field | bumps |
 | Change what a shipped message means | bumps |
-| Add a message or variant | stays (decision 2) |
+| Add a variant to a nested enum (`InputMessage`, `TreeOp`, `BrowserCommand`) | bumps, unless it travels in a new top-level variant |
+| Add a `ProtocolMessage` or `EventPayload` variant | stays (decision 2) |
 | Add data to a struct every client receives | stays (decisions 2 and 3) |
 | Fix or change daemon behavior with no wire change | stays (decision 4) |
 
@@ -103,10 +117,12 @@ has it before sending.
   refuses the message.
 - Daemon to client: a new `EventPayload` variant, with its name in the client's own table, which
   the client sends in `ClientHello.capabilities`. The daemon keeps each client's names and drops a
-  gated event for a client without its name.
+  gated event for a client without its name. A new top-level message the daemon sends that is not
+  an event works the same way.
 
 Each enum says which capability a variant needs in one exhaustive match, so adding a variant does
-not compile until that question is answered.
+not compile until that question is answered. Only `ProtocolMessage` and `EventPayload` have one;
+`ProtocolMessage::Event` answers with its payload's, and a variant of a nested enum has no gate.
 
 Appending a variant is safe with postcard as long as an older peer never receives it, which is what
 the check guarantees.
@@ -117,8 +133,11 @@ type for every client. New data for them travels as its own
 gated event, keyed by pane or window, and the client merges it. An epoch bump folds the gated data
 into the struct and retires the capability.
 
-`Welcome.caps` holds 64 names, and a bit's meaning is its index, so the table is append-only inside
-an epoch. Each epoch bump folds every capability into the baseline and starts the table over.
+`Welcome.caps` is a `u64` with a bit per index, and the daemon fills it as `(1 << len) - 1`, so
+`CAPABILITY_NAMES` holds at most 63 names; a bit's meaning is its index, so the table is append-only
+inside an epoch. The client's table rides `ClientHello.capabilities`, which decodes at most 64
+entries and already carries up to 29 `client-*` facts, so it has room for 35. Each
+epoch bump folds every capability into the baseline and starts the table over.
 
 ## 3. Open slots for things every client must see
 
@@ -223,9 +242,8 @@ in.
    release body carries the epoch and the floor, and the update prompt reads them.
 4. **Delivery.** Pin the macOS pty helper to the daemon's own build.
 
-When step 2 lands, rewrite "the version is a gate, not a negotiation" in
-[wire protocol](/protocol/wire-protocol.md) and the Recover row in
-[session persistence](/concepts/session-persistence.md).
+Step 2 rewrote the epoch paragraph in [wire protocol](/protocol/wire-protocol.md) and the Recover
+row in [session persistence](/concepts/session-persistence.md).
 
 # Open questions
 

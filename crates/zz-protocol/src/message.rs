@@ -3445,6 +3445,78 @@ pub enum EventPayload {
 
 impl EventPayload {
     #[must_use]
+    pub const fn required_capability(&self) -> Option<&'static str> {
+        match self {
+            Self::Snapshot(_)
+            | Self::AppearanceChanged { .. }
+            | Self::MuxOptionsChanged { .. }
+            | Self::StatusChanged { .. }
+            | Self::TerminalViewport { .. }
+            | Self::TerminalPatch { .. }
+            | Self::Clipboard { .. }
+            | Self::BrowserCommand { .. }
+            | Self::TerminalUiCommand { .. }
+            | Self::CommandPrompt { .. }
+            | Self::CommandOutput { .. }
+            | Self::ChooseTree { .. }
+            | Self::ChooseTreeUpdate { .. }
+            | Self::ChooseBuffer { .. }
+            | Self::ChooseBufferUpdate { .. }
+            | Self::DisplayPanes { .. }
+            | Self::ClientMessage { .. }
+            | Self::PaneRemoved(_)
+            | Self::ServerStopping
+            | Self::OpenUri { .. }
+            | Self::FocusSidebar
+            | Self::PrefixArmed { .. }
+            | Self::Detached { .. }
+            | Self::HistoryChunk { .. }
+            | Self::Bell { .. }
+            | Self::KeyTablesChanged { .. }
+            | Self::KittyImageBegin { .. }
+            | Self::KittyImageChunk { .. }
+            | Self::KittyImagesRemoved { .. }
+            | Self::AgentUpdates { .. }
+            | Self::AgentState { .. }
+            | Self::AgentLagged { .. }
+            | Self::AgentSessions { .. }
+            | Self::TimedClientMessage { .. }
+            | Self::PrefixCancelled { .. }
+            | Self::RetiredPopup { .. }
+            | Self::Menu { .. }
+            | Self::Confirm { .. }
+            | Self::ControlExit { .. }
+            | Self::HookEvent { .. }
+            | Self::PaneOutput { .. }
+            | Self::PaneOutputState { .. }
+            | Self::PaneOutputAged { .. }
+            | Self::ControlFlags { .. }
+            | Self::SubscriptionChanged { .. }
+            | Self::TimedClientMessageCleared { .. }
+            | Self::ControlCommandGuard { .. }
+            | Self::ControlSourceFile { .. }
+            | Self::StartupConfigCauses { .. }
+            | Self::ControlCommandOutput { .. }
+            | Self::ControlConfigError { .. }
+            | Self::ChooserPresentation { .. }
+            | Self::CommandStdout { .. }
+            | Self::CommandClientExit
+            | Self::KeyTableActive { .. }
+            | Self::OpenPathPicker { .. }
+            | Self::KeyTablesPatched { .. }
+            | Self::TreeDelta(_)
+            | Self::ClientView(_)
+            | Self::KeyTablesHashChanged { .. }
+            | Self::MuxOptionsPatched { .. }
+            | Self::ControlCommandGuardRaw { .. }
+            | Self::ControlCommandStarted { .. }
+            | Self::ClipboardQuery
+            | Self::TerminalNegotiation { .. }
+            | Self::Providers(_) => None,
+        }
+    }
+
+    #[must_use]
     pub fn detached_requested(session: SessionId, by: Option<String>) -> Self {
         Self::detached_requested_with_action(session, by, ClientExitAction::Exit)
     }
@@ -3799,6 +3871,90 @@ pub enum ProtocolMessage {
         #[serde(deserialize_with = "deserialize_agent_prompt_text")]
         text: String,
     },
+}
+
+impl ProtocolMessage {
+    #[must_use]
+    pub const fn required_capability(&self) -> Option<&'static str> {
+        match self {
+            Self::Event(event) => event.payload.required_capability(),
+            Self::ClientHello(_)
+            | Self::ServerHello(_)
+            | Self::CommandRequest(_)
+            | Self::CommandResponse(_)
+            | Self::Attach { .. }
+            | Self::Attached { .. }
+            | Self::Detach
+            | Self::SetColorScheme(_)
+            | Self::SetConfigOverrides { .. }
+            | Self::Input(_)
+            | Self::GuiResponse(_)
+            | Self::Resync
+            | Self::RequestFull { .. }
+            | Self::HistoryRequest { .. }
+            | Self::PasteUploadBegin { .. }
+            | Self::PasteUploadChunk { .. }
+            | Self::FetchPastedImage { .. }
+            | Self::PastedImageBegin { .. }
+            | Self::PastedImageChunk { .. }
+            | Self::PastedImageUnavailable { .. }
+            | Self::AgentPrompt { .. }
+            | Self::AgentCancel { .. }
+            | Self::AgentUnqueue { .. }
+            | Self::AgentRespondPermission { .. }
+            | Self::AgentSetConfigOption { .. }
+            | Self::AgentSetMode { .. }
+            | Self::AgentAuthenticate { .. }
+            | Self::AgentSessionOp { .. }
+            | Self::AgentReplay { .. }
+            | Self::AgentAcknowledgePromptRestore { .. }
+            | Self::PrepareCommandList { .. }
+            | Self::PreparedCommandList { .. }
+            | Self::SetTerminalPreview { .. }
+            | Self::ClientFileRequest(_)
+            | Self::ClientFileResponse(_)
+            | Self::HomeDirectoryRequest { .. }
+            | Self::HomeDirectoryResponse { .. }
+            | Self::CommandQueueParked { .. }
+            | Self::EnvironmentRequest { .. }
+            | Self::EnvironmentResponse { .. }
+            | Self::ClientTerminalFeatures { .. }
+            | Self::ClientTerminalType { .. }
+            | Self::PathListRequest { .. }
+            | Self::PathListBegin { .. }
+            | Self::PathListChunk { .. }
+            | Self::PathListGit { .. }
+            | Self::PathListCancel { .. }
+            | Self::Exec(_)
+            | Self::ExecExit(_)
+            | Self::Hello(_)
+            | Self::Welcome(_)
+            | Self::Batch(_)
+            | Self::TreeSync
+            | Self::GetKeyTables
+            | Self::ControlStdio
+            | Self::ControlStdin { .. }
+            | Self::ControlStdioSync { .. }
+            | Self::ControlWrite { .. }
+            | Self::ControlStdioClosed
+            | Self::TtyInput { .. }
+            | Self::TtyInputStarted { .. }
+            | Self::TtyInputBytes { .. }
+            | Self::TtyInputReady { .. }
+            | Self::TtyInputRelease { .. }
+            | Self::TtyInputClosed { .. }
+            | Self::AgentAnswerQuestion { .. }
+            | Self::AgentStopTask { .. }
+            | Self::Ping { .. }
+            | Self::Pong { .. }
+            | Self::FetchArtifact { .. }
+            | Self::ArtifactBegin { .. }
+            | Self::ArtifactChunk { .. }
+            | Self::ArtifactUnavailable { .. }
+            | Self::ArtifactReply { .. }
+            | Self::AgentSteer { .. } => None,
+        }
+    }
 }
 
 fn deserialize_client_terminal_type<'de, D>(deserializer: D) -> Result<String, D::Error>

@@ -134,6 +134,8 @@ pub enum DaemonError {
         "the running zz daemon is revision {daemon}; this zz needs revision {minimum} or newer"
     )]
     DaemonTooOld { daemon: u32, minimum: u32 },
+    #[error("the running zz daemon does not support {capability}; restart it to update it")]
+    DaemonLacksCapability { capability: &'static str },
 }
 
 fn incompatible_daemon_message(daemon: Option<u16>, client: u16) -> String {

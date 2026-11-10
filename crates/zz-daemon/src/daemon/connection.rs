@@ -87,6 +87,7 @@ impl Session {
             ));
             return Err(error.into());
         }
+        outbound.accept_client_capabilities(&hello.capabilities);
         let startup_reentry_capability = format!(
             "{}{}",
             zz_daemon_client::STARTUP_REENTRY_CAPABILITY_PREFIX,

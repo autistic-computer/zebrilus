@@ -1656,7 +1656,8 @@ fn daemon_transport_failure(error: &DaemonError) -> bool {
         | DaemonError::InsertedCommandParse(_)
         | DaemonError::CommandExit { .. }
         | DaemonError::ReportedCommandExit { .. }
-        | DaemonError::DaemonTooOld { .. } => false,
+        | DaemonError::DaemonTooOld { .. }
+        | DaemonError::DaemonLacksCapability { .. } => false,
     }
 }
 

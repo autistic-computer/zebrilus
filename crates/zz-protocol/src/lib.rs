@@ -43,10 +43,10 @@ pub use catalog::{
     unimplemented_tmux_command_spec,
 };
 pub use control::{
-    AttachOperation, Batch, CAPABILITY_NAMES, CONTROL_CAPABILITY, CONTROL_STDIO_CAPABILITY,
-    ClientView, ClientViewport, FLOW_WINDOW_CAPABILITY, Hello, HostPlatform, KeySubscription,
-    LinuxDistro, MAX_BATCH_FRAMES, MouseBindings, Subscriptions, TTY_INPUT_CAPABILITY,
-    TreeSubscription, Welcome, key_tables_hash,
+    AttachOperation, Batch, CAPABILITY_NAMES, CLIENT_CAPABILITY_NAMES, CONTROL_CAPABILITY,
+    CONTROL_STDIO_CAPABILITY, ClientView, ClientViewport, FLOW_WINDOW_CAPABILITY, Hello,
+    HostPlatform, KeySubscription, LinuxDistro, MAX_BATCH_FRAMES, MouseBindings, Subscriptions,
+    TTY_INPUT_CAPABILITY, TreeSubscription, Welcome, key_tables_hash,
 };
 pub const UNZOOMED_LAYOUT_VARIABLE: &str = "unzoomed_layout";
 pub const EVENT_SESSION_VARIABLE: &str = "zz_event_session";

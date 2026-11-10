@@ -36,7 +36,7 @@ so terminal signals aimed at the launching client (Ctrl+C, tty hangup) never rea
 | Owner-only | `restrict_socket_permissions` sets Unix `0o600`; the Windows pipe is user-SID scoped |
 | Stay alive | Serves connections until `request_shutdown` sets `stopping`; **outlives GUI detach** while sessions exist |
 | Stop | `kill-server` (never auto-starts a daemon), or nothing-left-to-serve: zero sessions **and** zero interactive clients (`subscribers`), armed once the daemon has created a session; `SocketGuard::Drop` unlinks the Unix socket |
-| Recover | `terminate_incompatible_daemon` safely stops a daemon whose protocol version no longer matches |
+| Recover | `terminate_incompatible_daemon` safely stops a daemon on another wire epoch (`PROTOCOL_VERSION`), once the person accepts the restart prompt or runs `kill-server`. A daemon that is only older inside the epoch, and meets the client's revision floor, keeps running: a client never sends it a message it lacks the capability for ([wire protocol](/protocol/wire-protocol.md#wire-epochs)) |
 
 zz deliberately diverges from tmux's `exit-empty` here by default. tmux can key on sessions alone
 because its last client exits at the same instant, dropping the user back in a shell; zz's GUI
@@ -72,8 +72,14 @@ background-app UI.
 
 ## Guarded recovery of an incompatible daemon
 
-When a client handshakes with a daemon speaking a different `PROTOCOL_VERSION`, `zz-daemon` can stop
-the old one before rebinding. This is deliberately paranoid so it never kills an unrelated process:
+When a client handshakes with a daemon on a different wire epoch (`PROTOCOL_VERSION`), it cannot
+send the daemon any command, so it offers to stop the old one and start its own; the desktop asks
+"Restart the zz daemon?" and the raw terminal asks on stderr. Stopping it ends every session it
+holds, which is why the epoch bumps only for changes an existing peer cannot decode or would get
+wrong; a client that is newer inside the same epoch, whose revision floor the daemon meets,
+attaches to the running daemon instead
+([wire protocol](/protocol/wire-protocol.md#wire-epochs)). The stop is deliberately paranoid so it
+never kills an unrelated process:
 
 - `Daemon::run_foreground` installs a `DaemonIdentityGuard` that atomically writes a private
   `<socket>.identity` file (magic `zz-daemon-identity-v2`, `pid` + process `start_time` +

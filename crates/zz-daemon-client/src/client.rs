@@ -2415,6 +2415,7 @@ impl InteractiveClient {
     ) -> io::Result<()> {
         let frame = zz_protocol::encode_protocol_message(message).map_err(io::Error::other)?;
         let writer = self.writer.lock();
+        writer.admit(message).map_err(io::Error::other)?;
         let socket = writer.stream.receive_fd()?;
         let fds = [fd];
         let mut space = [std::mem::MaybeUninit::uninit(); rustix::cmsg_space!(ScmRights(1))];
@@ -2563,6 +2564,7 @@ impl fmt::Debug for TracedMessage<'_> {
 struct ProtocolSender<S> {
     stream: S,
     frame: Vec<u8>,
+    daemon_capabilities: Vec<String>,
 }
 
 struct ProtocolReceiver<S> {
@@ -2756,10 +2758,26 @@ impl<S: TransportStream> ProtocolSender<S> {
         Self {
             stream,
             frame: Vec::new(),
+            daemon_capabilities: Vec::new(),
+        }
+    }
+
+    fn admit(&self, message: &ProtocolMessage) -> Result<(), DaemonError> {
+        match message.required_capability() {
+            Some(capability)
+                if !self
+                    .daemon_capabilities
+                    .iter()
+                    .any(|name| name == capability) =>
+            {
+                Err(DaemonError::DaemonLacksCapability { capability })
+            }
+            _ => Ok(()),
         }
     }
 
     fn send(&mut self, message: &ProtocolMessage) -> Result<(), DaemonError> {
+        self.admit(message)?;
         self.send_encoded(message, |frame| {
             encode_protocol_message_into(message, frame)
         })
@@ -3370,6 +3388,7 @@ fn connect_stream_hello<S: TransportStream>(
     capabilities.extend(
         extra_capabilities
             .iter()
+            .chain(zz_protocol::CLIENT_CAPABILITY_NAMES)
             .map(|capability| (*capability).to_owned()),
     );
     terminal_facts_capabilities(
@@ -3450,6 +3469,7 @@ fn connect_stream_hello<S: TransportStream>(
             received: hello.protocol_version,
         }));
     }
+    writer.daemon_capabilities.clone_from(&hello.capabilities);
     log::debug!(
         target: "zz_daemon::diagnostics::client",
         "connected path={endpoint_display} kind={kind:?} server_hello={hello:#?} elapsed_us={}",

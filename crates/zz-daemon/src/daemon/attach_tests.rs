@@ -564,6 +564,59 @@ fn a_terminal_client_hello_names_the_options_its_terminal_is_armed_from() {
 }
 
 #[test]
+fn a_server_hello_lists_the_daemon_capabilities_without_the_control_plane() {
+    let shared = Arc::new(Shared::new(1));
+    let listed = [
+        "mux-v1",
+        "terminal-viewport-v3",
+        "terminal-row-patches",
+        "terminal-visible-window-subscriptions",
+        "terminal-native-selection",
+        "terminal-async-regex-search",
+        "terminal-osc8-links",
+        "terminal-appearance-v2",
+        "terminal-appearance-reload",
+        "config-overrides-v1",
+        "terminal-copy-pipe",
+        "native-synchronize-panes",
+        "native-command-prompt",
+        "native-command-output-view",
+        "native-choose-tree",
+        "native-choose-buffer",
+        "native-display-panes",
+        "native-display-popup",
+        "native-display-menu",
+        "native-confirm-before",
+        "native-split-resize",
+        "native-pane-swap",
+        "native-pane-relocation",
+        "native-preset-layouts",
+        "native-pane-rotation",
+        "browser-panes",
+        "tmux-config-subset",
+        "new-session-attach-v1",
+        "exec-v1",
+        "pane-frame-v1",
+    ];
+    let (_, hello) =
+        shared.register_subscribed(ClientKind::Command, None, None, OutboundMailbox::new());
+    assert_eq!(hello.capabilities, listed);
+    let (_, hello) =
+        shared.register_subscribed(ClientKind::Interactive, None, None, OutboundMailbox::new());
+    assert_eq!(
+        hello.capabilities,
+        [
+            listed.as_slice(),
+            &[
+                "server-option-v1:extended-keys=off",
+                "server-option-v1:focus-events=off",
+            ],
+        ]
+        .concat()
+    );
+}
+
+#[test]
 fn a_cell_fact_needs_two_positive_pixel_extents() {
     let fact = |value: &str| {
         attach::client_cell_fact(&[format!(

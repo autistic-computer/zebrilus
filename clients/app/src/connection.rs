@@ -90,6 +90,8 @@ pub struct Connection {
     #[cfg(target_family = "wasm")]
     socket: Option<browser::Socket>,
     #[cfg(target_family = "wasm")]
+    welcome: Option<zz_protocol::Welcome>,
+    #[cfg(target_family = "wasm")]
     reader: Option<ala::Task<()>>,
     #[cfg(target_family = "wasm")]
     retry: Option<ala::Task<()>>,
@@ -149,6 +151,8 @@ impl Connection {
             color_scheme: None,
             #[cfg(target_family = "wasm")]
             socket: None,
+            #[cfg(target_family = "wasm")]
+            welcome: None,
             #[cfg(target_family = "wasm")]
             reader: None,
             #[cfg(target_family = "wasm")]
@@ -586,6 +590,7 @@ impl Connection {
             self.retry = None;
             self.reader = None;
             self.socket = None;
+            self.welcome = None;
             match browser::Socket::connect() {
                 Ok((socket, receiver)) => {
                     self.socket = Some(socket);
@@ -718,6 +723,14 @@ impl Connection {
         }
         #[cfg(target_family = "wasm")]
         {
+            if let Some(capability) = message.required_capability()
+                && !self
+                    .welcome
+                    .is_some_and(|welcome| welcome.has_capability(capability))
+            {
+                log::warn!("not sending a message the daemon lacks {capability} for");
+                return;
+            }
             if let Some(socket) = &self.socket {
                 if let Err(error) = socket.send(&message) {
                     self.disconnected(error, cx);
@@ -728,10 +741,14 @@ impl Connection {
             }
         }
         #[cfg(any(target_os = "ios", target_os = "android"))]
-        if let Some(client) = &self.client
-            && let Err(error) = client.send(&message)
-        {
-            self.disconnect_native(error.to_string(), cx);
+        if let Some(client) = &self.client {
+            match client.send(&message) {
+                Ok(()) => {}
+                Err(zz_daemon_client::DaemonError::DaemonLacksCapability { capability }) => {
+                    log::warn!("not sending a message the daemon lacks {capability} for");
+                }
+                Err(error) => self.disconnect_native(error.to_string(), cx),
+            }
         }
         #[cfg(not(any(target_family = "wasm", target_os = "ios", target_os = "android")))]
         let _ = (message, cx);
@@ -1342,6 +1359,7 @@ impl Connection {
         self.attaching = false;
         self.status = reason;
         self.socket = None;
+        self.welcome = None;
         self.reader = None;
         self.retry = Some(cx.spawn(async move |entity, cx| {
             cx.background_executor()
@@ -1386,6 +1404,9 @@ impl Connection {
                             cx,
                         );
                         return false;
+                    }
+                    if let ProtocolMessage::Welcome(welcome) = &message {
+                        self.welcome = Some(*welcome);
                     }
                     self.receive(message, cx);
                 }
@@ -1714,11 +1735,15 @@ mod browser {
             client_instance_id: instance_id(),
             kind: ClientKind::Interactive,
             device_name: Some("Browser".into()),
-            capabilities: vec![
-                ClientHello::CLIENT_TERMINAL_CAPABILITY.into(),
-                ClientHello::CLIENT_UTF8_CAPABILITY.into(),
-                ClientHello::CLIENT_PATH_PICKER_CAPABILITY.into(),
-            ],
+            capabilities: [
+                ClientHello::CLIENT_TERMINAL_CAPABILITY,
+                ClientHello::CLIENT_UTF8_CAPABILITY,
+                ClientHello::CLIENT_PATH_PICKER_CAPABILITY,
+            ]
+            .into_iter()
+            .chain(zz_protocol::CLIENT_CAPABILITY_NAMES.iter().copied())
+            .map(str::to_owned)
+            .collect(),
             color_scheme: None,
             origin: None,
             working_directory: None,

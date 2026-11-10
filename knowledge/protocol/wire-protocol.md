@@ -18,20 +18,108 @@ one-byte **lane** tag, a **flags** byte, and a `u16` **protocol version**. The c
 **`PROTOCOL_VERSION = 122`** (`crates/zz-protocol/src/message.rs`). Each side also states its
 build `REVISION` in the handshake and holds a floor for the other side's (see v122 below).
 
-The version is a gate, not a negotiation: a frame whose envelope version differs from the running
-build's is rejected outright. Before disconnecting, a daemon makes a best-effort
-`CommandResponse::Error(ServerError::ProtocolMismatch)` reply encoded with its own version, so the
-client can identify the stale side and offer a guarded restart. Anything that changes an
-already-shipped encoding bumps it. The version history below records each wire change, and
-`knowledge/log.md` records its delivery. This doc describes only the shape speaking today. Framing
-lives in `crates/zz-protocol/src/framing.rs`, the message vocabulary in
-`crates/zz-protocol/src/message.rs`.
+`PROTOCOL_VERSION` is a wire epoch. It is checked for equality, never negotiated: a frame whose
+envelope version differs from the running build's is rejected outright. Before disconnecting, a
+daemon makes a best-effort `CommandResponse::Error(ServerError::ProtocolMismatch)` reply encoded
+with its own version, so the client can identify the stale side and offer a guarded restart. That
+restart ends every session the daemon holds, so the epoch bumps only for a change an existing peer
+cannot decode or would get wrong ([wire epochs](#wire-epochs)). A message added inside an epoch is
+gated by a capability instead, and a client update that adds one leaves the running daemon alone.
+The version history below records each wire change, and `knowledge/log.md` records its delivery.
+This doc describes only the shape speaking today. Framing lives in
+`crates/zz-protocol/src/framing.rs`, the message vocabulary in `crates/zz-protocol/src/message.rs`.
 
 There are two lanes sharing one envelope: **Control** (lane `0`, `postcard`-encoded
 `ProtocolMessage`) and **Terminal** (lane `1`, PaneFrames; see
 [PaneFrame terminal lane](/protocol/terminal-lanes.md)). Both lanes ride one ordered stream, local or
 SSH-tunneled, and every frame is delivered reliably and in order. This concept documents the Control
 lane and the shared framing.
+
+## Wire epochs
+
+| Change | Epoch |
+| --- | --- |
+| Remove, reorder or reshape a shipped message, variant or field | bumps |
+| Change what a shipped message means | bumps |
+| Change the terminal lane's packing (`terminal_codec.rs`) | bumps |
+| Append a variant to a nested enum (`InputMessage`, `TreeOp`, `BrowserCommand` and the like) | bumps, unless it travels in a new top-level variant instead |
+| Append a `ProtocolMessage` or `EventPayload` variant | stays, gated by a capability |
+| Add data to a shape every client receives (snapshots, tree deltas, the option set) | stays, as a gated event of its own keyed by pane or window |
+| Add a pane kind | stays: snapshots show it as `PaneKindSnapshot::Other { kind }`, its descriptor travels in a gated event |
+| Change daemon behavior with no wire change | stays; bump `REVISION` if the other side relies on it |
+
+Postcard numbers variants by position and has no field tags, so a peer cannot decode a variant it
+was not built with. The capability rule makes sure it never receives one. Each top-level variant
+names the capability its receiver must have, in `ProtocolMessage::required_capability` and
+`EventPayload::required_capability` (`crates/zz-protocol/src/message.rs`). Both are exhaustive
+matches with no wildcard arm, so a new variant does not compile until it answers.
+`ProtocolMessage::Event` answers with its payload's. Every variant shipped at v122 answers `None`.
+
+The names live in two tables in `crates/zz-protocol/src/control.rs`, append-only inside an epoch:
+
+- `CAPABILITY_NAMES` is what the daemon takes. The daemon sets every one in `Welcome.caps`, a
+  `u64` with a bit per index, and a connection that opens with `ClientHello` gets them as strings
+  in `ServerHello.capabilities`, built from the same table without the control-plane,
+  control-stdio and tty-input names. A message a client sends names one of these.
+- `CLIENT_CAPABILITY_NAMES` is what a client can decode. Every client built from this source
+  appends all of them to `ClientHello.capabilities`: `connect_stream_hello` in `zz-daemon-client`,
+  `browser::hello` in the browser client, `hello` in the HTML client. A message the daemon sends
+  names one of these. It is empty at v122.
+
+The sender checks, so the receiver never sees what it cannot decode:
+
+- `zz-daemon-client`: `ProtocolSender::send` refuses a message whose name the daemon did not list,
+  with `DaemonError::DaemonLacksCapability { capability }`, before it writes a byte.
+  `connect_stream_hello` hands the sender the hello's list; a connection that opens with `Exec`
+  gets none, so every gated message on it is refused. `InteractiveClient` and `CommandClient` both
+  write through it, and `InteractiveClient::send_with_fd` makes the same check. Two writes skip it
+  and carry fixed v122 messages only: the key-input fast path (`InputMessage::Key`) and the control
+  client's `ControlStdio` handoff in `zz-cli`.
+- The browser client: `Connection::send` checks `Welcome::has_capability` and drops the message with
+  a warning. The HTML client checks nothing, so it must not send a gated message until it does.
+- The daemon: each `OutboundMailbox` keeps the names its client declared from
+  `CLIENT_CAPABILITY_NAMES` (`accept_client_capabilities`, called where the hello is read), and
+  `enqueue_reliable_frame` drops a gated message for a client without the name, silently.
+
+An epoch bump folds every gated variant into the baseline: its arm answers `None` again and its
+name leaves the table.
+
+## Adding a message inside an epoch
+
+A request, client to daemon:
+
+1. Append the variant at the end of `ProtocolMessage`.
+2. In `control.rs`, add `pub const <NAME>_CAPABILITY: &str = "<name>-v1";` and append it to
+   `CAPABILITY_NAMES`.
+3. Answer `Some(<NAME>_CAPABILITY)` for the variant in `ProtocolMessage::required_capability`.
+4. Append the name to the list that
+   `a_server_hello_lists_the_daemon_capabilities_without_the_control_plane`
+   (`crates/zz-daemon/src/daemon/attach_tests.rs`) expects; a command connection sees it too.
+5. Handle it in the daemon.
+6. In each client, hide or disable the feature unless the daemon has the name:
+   `InteractiveClient::server_hello().capabilities` in the Rust clients, `Welcome::has_capability`
+   in the browser client. If a client sends it anyway, the send path refuses that one message.
+
+An event, daemon to client:
+
+1. Append the variant at the end of `EventPayload`.
+2. In `control.rs`, add `pub const <NAME>_CAPABILITY: &str = "<name>-v1";` and append it to
+   `CLIENT_CAPABILITY_NAMES`. Every client's hello picks it up with no other change.
+3. Answer `Some(<NAME>_CAPABILITY)` for the variant in `EventPayload::required_capability`.
+4. Handle it in each client that should show it.
+5. Send it from the daemon with `publish`, `publish_to_client`, `publish_to_control_clients`,
+   `send_event` or `OutboundMailbox::enqueue_reliable`. Each one reaches `enqueue_reliable_frame`,
+   which drops it for an older client. Do not send it through the paths that take encoded bytes
+   (`enqueue_encoded_reliable`, `enqueue_control_group`, the terminal and agent lanes, the Kitty
+   and pasted image frames): they never see the message and do not check.
+
+A message the daemon sends that is not an event follows the event steps, with its arm in
+`ProtocolMessage::required_capability`.
+
+Two limits. `CAPABILITY_NAMES` must stay under 64 names, because `Welcome.caps` is a `u64` and the
+daemon sets `(1 << len) - 1`; it holds 33. `ClientHello.capabilities` decodes at most 64 entries,
+and a client fills up to 29 of them with its own `client-*` entries (up to 16 are
+`client-features-v1:` specs), so `CLIENT_CAPABILITY_NAMES` has room for 35 at most.
 
 # Framing
 
@@ -1716,9 +1804,14 @@ to go idle ([agent panes](/concepts/agent-panes.md)).
 - v59 appends `TimedClientMessage` and adds automatic-rename plus retained-dead metadata to mux
   snapshots. Older clients cannot decode either shape, so the normal exact-version restart path is
   required.
-- **Any change that affects an already shipped encoding** (new enum variants, reordered fields,
-  changed integer widths) **requires bumping the version**. The envelope's `VersionMismatch` guard
-  then forces the peers to agree. A rejected first frame gets a best-effort mismatch response before
+- **From v122 on, the version bumps only for a change an existing peer cannot decode or would get
+  wrong**: a removed, reordered or reshaped message, variant or field, a changed integer width, a
+  changed meaning, a variant appended to a nested enum, or any change to the terminal lane's
+  packing ([wire epochs](#wire-epochs)). A `ProtocolMessage` or `EventPayload` variant appended
+  inside the epoch is gated by a capability and needs no bump
+  ([adding a message inside an epoch](#adding-a-message-inside-an-epoch)). Through v122 every
+  appended variant and field bumped it. The envelope's `VersionMismatch` guard then forces the
+  peers to agree. A rejected first frame gets a best-effort mismatch response before
   disconnect; clients also classify the received envelope version or the daemon's versioned identity
   file, so an older local daemon produces a legible restart path rather than a bare EOF.
 - **`ClientHello.capabilities` carries the caller's terminal.** Since 2026-08-20 an Interactive
@@ -1731,13 +1824,14 @@ to go idle ([agent panes](/concepts/agent-panes.md)).
   `client-terminal-v1` or turn it into a terminal surface. Because the field is an already-shipped
   `Vec<String>`, adding a token changes no
   encoding and needed **no version bump** — the phase-8 attach wave shipped entirely on v69.
-- **Capability strings are now descriptive, all of them.** The daemon advertises a fixed list in
+- **Capability strings name features, not encodings.** The daemon advertises `CAPABILITY_NAMES` in
+  `Welcome.caps`, and the same list without the control-plane, control-stdio and tty-input names in
   `ServerHello.capabilities` (`mux-v1`, `terminal-viewport-v3`, `terminal-row-patches`,
   `terminal-appearance-v2`, `config-overrides-v1`, `browser-panes`, `tmux-config-subset`,
-  `new-session-attach-v1`, and the `native-*` command surfaces) that names features, not encodings;
-  the numeric version alone carries a break. The two strings that were real switches,
-  `terminal-zstd-v1` and `egress-v1`, went with QUIC at v43, so nothing in the handshake changes how
-  a frame is encoded any more.
+  `new-session-attach-v1`, and the `native-*` command surfaces). A name appended inside an epoch
+  says which gated variants a peer may be sent ([wire epochs](#wire-epochs)); it never changes how
+  a frame is encoded. The two strings that were real switches, `terminal-zstd-v1` and `egress-v1`,
+  went with QUIC at v43.
 - The **flags byte is entirely reserved** and every nonzero value is rejected, so no silent
   capability drift is possible.
 - Bounded decoders reject oversized input: `ClientHello.capabilities` uses a visitor that refuses

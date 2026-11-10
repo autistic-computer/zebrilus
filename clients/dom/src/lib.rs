@@ -58,10 +58,14 @@ impl Client {
             client_instance_id: ClientInstanceId(self.instance),
             kind: ClientKind::Interactive,
             device_name: Some("Browser (HTML)".into()),
-            capabilities: vec![
-                ClientHello::CLIENT_TERMINAL_CAPABILITY.into(),
-                ClientHello::CLIENT_UTF8_CAPABILITY.into(),
-            ],
+            capabilities: [
+                ClientHello::CLIENT_TERMINAL_CAPABILITY,
+                ClientHello::CLIENT_UTF8_CAPABILITY,
+            ]
+            .into_iter()
+            .chain(zz_protocol::CLIENT_CAPABILITY_NAMES.iter().copied())
+            .map(str::to_owned)
+            .collect(),
             color_scheme: Some(scheme(dark)),
             origin: None,
             working_directory: None,

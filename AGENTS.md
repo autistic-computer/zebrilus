@@ -116,6 +116,14 @@ A few `zz-daemon` tests are timing-sensitive and only fail under full-workspace 
 - Recipes live in `knowledge/playbooks/running-zz.md`.
 </important>
 
+<important if="you are changing the wire protocol">
+
+- `PROTOCOL_VERSION` (`crates/zz-protocol/src/message.rs`) is a wire epoch. Bump it only for a change an existing peer cannot decode or would get wrong: removing, reordering or reshaping a shipped message, variant or field, changing what one means, appending to a nested enum, or touching the terminal lane's packing.
+- Never bump it to add a `ProtocolMessage` or `EventPayload` variant. Gate the variant with a capability instead; "Adding a message inside an epoch" in `knowledge/protocol/wire-protocol.md` has the steps for each direction.
+- Bump `REVISION` (same file) by hand when behavior the other side relies on changes with no wire change, a fix included. Raise `MIN_DAEMON_REVISION` or `MIN_CLIENT_REVISION` only when an older peer would make a screen wrong.
+- A bump ends every running session for every user on update: the new client cannot talk to the old daemon until it restarts, and the restart kills every pane it holds.
+</important>
+
 <important if="you are building or styling UI chrome or widgets">
 
 - UI conventions: `knowledge/configuration/ui-conventions.md` (chrome colors come from the theme; clippy rejects raw `rgb`/`hsla`).

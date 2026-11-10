@@ -53,6 +53,8 @@ pub const CAPABILITY_NAMES: &[&str] = &[
     TTY_INPUT_CAPABILITY,
 ];
 
+pub const CLIENT_CAPABILITY_NAMES: &[&str] = &[];
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum TreeSubscription {
     None,

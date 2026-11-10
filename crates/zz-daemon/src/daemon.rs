@@ -111,13 +111,13 @@ use zz_protocol::{
     MAX_CHOOSE_TREE_QUERY_BYTES, MAX_ENCODED_FRAME_BYTES, MAX_PANE_INDICATOR_LABEL_BYTES,
     MAX_STARTUP_CONFIG_CAUSE_BYTES, MAX_STARTUP_CONFIG_CAUSES, MAX_STARTUP_CONFIG_CAUSES_BYTES,
     MAX_WINDOW_STATUS_LABEL_BYTES, MENU_ROW_MARGIN, MenuAction, MenuItem, MenuState, MuxOptionKey,
-    MuxOptionSource, MuxOptions, MuxSnapshot, NEW_SESSION_ATTACH_CAPABILITY, PROTOCOL_VERSION,
-    PaneId, PaneIndicator, PaneKindSnapshot, PaneMode, PaneStatus, PaneStatusKind, PaneStatusState,
-    PanesModeArea, PanesModeBorder, PasteUploadPurpose, PastedImageFormat, PatchTail,
-    PopupBorderLines, PreparedCommand, PreparedCommandResult, PromptCursor, ProtocolError,
-    ProtocolMessage, RawText, SERVER_OPTION_CAPABILITY_PREFIX, SPLIT_RATIO_BASIS, ServerError,
-    ServerHello, SessionId, SessionViewer, SourceSpan, SplitId, StatusLine, StdoutClaim, WindowId,
-    canonical_key, encode_protocol_message_into, encode_terminal_patch_event_into,
+    MuxOptionSource, MuxOptions, MuxSnapshot, PROTOCOL_VERSION, PaneId, PaneIndicator,
+    PaneKindSnapshot, PaneMode, PaneStatus, PaneStatusKind, PaneStatusState, PanesModeArea,
+    PanesModeBorder, PasteUploadPurpose, PastedImageFormat, PatchTail, PopupBorderLines,
+    PreparedCommand, PreparedCommandResult, PromptCursor, ProtocolError, ProtocolMessage, RawText,
+    SERVER_OPTION_CAPABILITY_PREFIX, SPLIT_RATIO_BASIS, ServerError, ServerHello, SessionId,
+    SessionViewer, SourceSpan, SplitId, StatusLine, StdoutClaim, WindowId, canonical_key,
+    encode_protocol_message_into, encode_terminal_patch_event_into,
     encode_terminal_viewport_event_into, is_key_name, layout_menu_row, menu_row_cells,
     menu_row_width, resolve_command,
 };
@@ -2418,6 +2418,7 @@ struct OutboundState {
     ctrl_collecting: ControlCollection,
     #[cfg(unix)]
     flow: Option<flow::FlowWindow>,
+    client_capabilities: Vec<&'static str>,
 }
 
 #[cfg(unix)]
@@ -2913,6 +2914,14 @@ impl OutboundMailbox {
         (state.written_bytes, state.discarded_bytes)
     }
 
+    fn accept_client_capabilities(&self, declared: &[String]) {
+        self.state.lock().client_capabilities = zz_protocol::CLIENT_CAPABILITY_NAMES
+            .iter()
+            .copied()
+            .filter(|name| declared.iter().any(|capability| capability == name))
+            .collect();
+    }
+
     #[must_use]
     fn enqueue_reliable(&self, message: &ProtocolMessage) -> bool {
         self.enqueue_reliable_with_wakeup(message, true)
@@ -2969,6 +2978,11 @@ impl OutboundMailbox {
         let mut state = self.state.lock();
         if state.closed {
             return false;
+        }
+        if let Some(capability) = message.required_capability()
+            && !state.client_capabilities.contains(&capability)
+        {
+            return true;
         }
         if let Some(pane) = removed_pane {
             remove_pending_terminal(&mut state, pane);
@@ -6714,38 +6728,18 @@ impl Shared {
             startup_reentry,
         )?;
         let mut inner = self.inner.lock();
-        let mut capabilities = vec![
-            "mux-v1".to_owned(),
-            "terminal-viewport-v3".to_owned(),
-            "terminal-row-patches".to_owned(),
-            "terminal-visible-window-subscriptions".to_owned(),
-            "terminal-native-selection".to_owned(),
-            "terminal-async-regex-search".to_owned(),
-            "terminal-osc8-links".to_owned(),
-            "terminal-appearance-v2".to_owned(),
-            "terminal-appearance-reload".to_owned(),
-            "config-overrides-v1".to_owned(),
-            "terminal-copy-pipe".to_owned(),
-            "native-synchronize-panes".to_owned(),
-            "native-command-prompt".to_owned(),
-            "native-command-output-view".to_owned(),
-            "native-choose-tree".to_owned(),
-            "native-choose-buffer".to_owned(),
-            "native-display-panes".to_owned(),
-            "native-display-popup".to_owned(),
-            "native-display-menu".to_owned(),
-            "native-confirm-before".to_owned(),
-            "native-split-resize".to_owned(),
-            "native-pane-swap".to_owned(),
-            "native-pane-relocation".to_owned(),
-            "native-preset-layouts".to_owned(),
-            "native-pane-rotation".to_owned(),
-            "browser-panes".to_owned(),
-            "tmux-config-subset".to_owned(),
-            NEW_SESSION_ATTACH_CAPABILITY.to_owned(),
-            zz_protocol::EXEC_CAPABILITY.to_owned(),
-            zz_protocol::PANE_FRAME_CAPABILITY.to_owned(),
-        ];
+        let mut capabilities = zz_protocol::CAPABILITY_NAMES
+            .iter()
+            .filter(|name| {
+                ![
+                    zz_protocol::CONTROL_CAPABILITY,
+                    zz_protocol::CONTROL_STDIO_CAPABILITY,
+                    zz_protocol::TTY_INPUT_CAPABILITY,
+                ]
+                .contains(name)
+            })
+            .map(|name| (*name).to_owned())
+            .collect::<Vec<_>>();
         if kind == ClientKind::Interactive && client_has_terminal {
             capabilities.extend(attach::terminal_option_capabilities(&inner.engine));
         }
@@ -52233,6 +52227,7 @@ fn handle_connection_message<S: TransportStream>(
     }
 
     let outbound = OutboundMailbox::new();
+    outbound.accept_client_capabilities(&hello.capabilities);
     let registration = if let Some(hello) = &compact_hello {
         shared
             .register_welcome(hello)
@@ -63718,7 +63713,7 @@ mod tests {
             hello
                 .capabilities
                 .iter()
-                .any(|capability| capability == NEW_SESSION_ATTACH_CAPABILITY)
+                .any(|capability| capability == zz_protocol::NEW_SESSION_ATTACH_CAPABILITY)
         );
         let mut context = ExecutionContext::default();
 
@@ -63969,7 +63964,7 @@ mod tests {
             hello
                 .capabilities
                 .iter()
-                .any(|capability| capability == NEW_SESSION_ATTACH_CAPABILITY)
+                .any(|capability| capability == zz_protocol::NEW_SESSION_ATTACH_CAPABILITY)
         );
         shared.inner.lock().client_entry(client).pid.replace(4242);
         let mut context = ExecutionContext::default();
