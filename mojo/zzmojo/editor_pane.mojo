@@ -32,7 +32,11 @@ from mjui.widgets.highlight import (
 )
 from mjui.widgets.key import sub
 from mjui.widgets.markdown import CODE_STYLED, MdTheme
-from mjui.widgets.penna import PennaTheme, button
+from mjui.sem import ROLE_BUTTON
+from mjui.widgets.penna import PennaTheme, REST, HOVER, ACTIVE
+from mjui.widgets.penna_chooser_data import chooser_color
+from mjui.widgets.penna_geometry import length, text_width
+from mjui.widgets.penna_metrics import cap_center_drop
 from mjui.widgets.penna_native import root_color
 from mjui.widgets.penna_icon_names import named_icon
 from mjui.widgets.penna_palette import PaletteRow, palette_row
@@ -135,6 +139,10 @@ def editor_hint(mut ui: Ui, th: PennaTheme, width: Float32, height: Float32):
     ui.close()
 
 
+def _half_down(ui: Ui, value: Float32) -> Float32:
+    return value - Float32(0.015625) / ui.scale
+
+
 def editor_error_panel(
     mut ui: Ui,
     th: PennaTheme,
@@ -144,39 +152,61 @@ def editor_error_panel(
     width: Float32,
     height: Float32,
 ) raises -> Bool:
-    var inner = min(Float32(360), max(width - 24, Float32(0)))
-    var body = max(inner - 24, Float32(0))
-    var retry = False
-    ui.open(Style.col().at(0, 0).width(width).height(height).center().fill(th.flat.bg))
+    var back = th.paint("panel")
     var paint = th.paint("inline-panel")
-    ui.open(paint.style(Style.col().width(inner).pad(12, 12).spacing(8)))
-    paint.decorations(ui)
-    ui.open(Style.row().width(body).spacing(8).align(START, START))
+    var inset = length(ui, 12)
+    var gap = length(ui, 8)
+    var first = length(ui, 18)
+    var tall = length(ui, 28)
+    var pad = inset + length(ui, paint.border_width)
+    var inner = min(length(ui, 360), max(width - 2 * inset, Float32(0)))
+    var body = max(inner - 2 * pad, Float32(0))
     var words = body
+    ui.open(back.style(Style.col().at(0, 0).width(width).height(height).center()))
+    back.decorations(ui)
+    ui.open(paint.style(Style.col().width(inner).pad(pad, pad).spacing(gap)))
+    paint.decorations(ui)
+    ui.open(Style.row().width(body).spacing(gap).align(START, START))
     comptime if USE_SWASH_RASTER:
         if th.flat.penna_index >= 0:
-            ui.open(Style.col().width(16).height(18).center())
-            named_icon(ui, th.flat, "triangle-alert", 16, th.flat.danger)
+            var mark = length(ui, 14)
+            var danger = th.paint("label", tone="danger").color(0)
+            danger.a = 1
+            danger.ha = 1
+            var drop = (first - mark) / 2 + length(ui, cap_center_drop(ui, th.flat.font, 13, 14))
+            ui.open(Style.col().width(mark).height(first))
+            ui.open(Style.col().width(mark).height(mark).at(0, _half_down(ui, drop)))
+            named_icon(ui, th.flat, "triangle-alert", mark, th.flat.danger, danger, physical_layout=True)
             ui.close()
-            words = max(body - 24, Float32(0))
-    ui.open(Style.col().width(words).spacing(4))
+            ui.close()
+            words = max(body - mark - gap, Float32(0))
+    ui.open(Style.col().width(words).spacing(length(ui, 4)))
     ui.text_opts(
         title.unsafe_ptr(),
         title.byte_length(),
         TextStyle(th.flat.mono, 13, th.flat.fg, False, root_color(th.theme, 1)),
-        TextOpts().line_height(18),
+        TextOpts().line_height(first),
     )
     ui.text_opts(
         message.unsafe_ptr(),
         message.byte_length(),
-        TextStyle(th.flat.mono, 12, th.flat.dim, True, root_color(th.theme, 2)),
-        TextOpts().line_height(16),
+        TextStyle(th.flat.mono, 12, th.flat.dim, True, chooser_color(th.theme, 1)),
+        TextOpts().line_height(length(ui, 16)),
     )
     ui.close()
     ui.close()
-    ui.open(Style.row().width(body).spacing(8).align(END, START))
-    if button(ui, th, key, EDITOR_RETRY_LABEL, tone="primary", prominent=True):
-        retry = True
+    ui.open(Style.row().width(body).align(END, START))
+    var response = ui.interact(key, focusable=True, focus_on_press=False, activate_on_release=True)
+    var retry = response.clicked or ui.nav(key).activate()
+    var look = th.paint("button", ACTIVE if response.held else HOVER if response.hovered else REST, "primary", True)
+    var label = String(EDITOR_RETRY_LABEL)
+    var ink = TextStyle(th.flat.mono, 13, look.ink, False, look.color(1))
+    var across = text_width(ui, EDITOR_RETRY_LABEL, ink, first) + 2 * inset
+    ui.open(look.style(Style.row().width(across).height(tall).pad_sides(inset, _half_down(ui, (tall - first) / 2), inset, 0).align(START, START).id(key)))
+    look.decorations(ui, ui.focus == key)
+    ui.sem(ROLE_BUTTON, EDITOR_RETRY_LABEL, 0)
+    ui.text_opts(label.unsafe_ptr(), label.byte_length(), ink, TextOpts().line_height(first))
+    ui.close()
     ui.close()
     ui.close()
     ui.close()
