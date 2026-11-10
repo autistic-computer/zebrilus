@@ -355,6 +355,19 @@ pub enum PaneKindSnapshot {
     Editor(EditorDescriptor),
     Agent(AgentDescriptor),
     View(crate::ViewDescriptor),
+    Other {
+        #[serde(deserialize_with = "deserialize_pane_kind_name")]
+        kind: String,
+    },
+}
+
+pub const MAX_PANE_KIND_BYTES: usize = 64;
+
+fn deserialize_pane_kind_name<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    deserialize_bounded_text(deserializer, MAX_PANE_KIND_BYTES)
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]

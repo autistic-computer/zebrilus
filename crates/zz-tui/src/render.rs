@@ -2923,6 +2923,9 @@ fn placeholder_text(kind: &PaneKindSnapshot) -> (&'static str, String) {
             view.content.kind_name(),
             format!("{} · open it in the zz app", view.title),
         ),
+        PaneKindSnapshot::Other { kind } => {
+            ("Unknown pane", zz_client::navigation::newer_pane_text(kind))
+        }
     }
 }
 

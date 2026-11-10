@@ -359,13 +359,14 @@ fn pane_title(pane: &PaneSnapshot) -> &str {
     if !title.is_empty() {
         return title;
     }
-    match pane.kind {
+    match &pane.kind {
         PaneKindSnapshot::Picker => "new pane",
         PaneKindSnapshot::Terminal => "terminal",
         PaneKindSnapshot::Browser(_) => "browser",
         PaneKindSnapshot::Editor(_) => "editor",
         PaneKindSnapshot::Agent(_) => "agent",
         PaneKindSnapshot::View(_) => "view",
+        PaneKindSnapshot::Other { kind } => kind,
     }
 }
 
@@ -377,6 +378,7 @@ const fn pane_glyph(kind: &PaneKindSnapshot) -> char {
         PaneKindSnapshot::Editor(_) => 'E',
         PaneKindSnapshot::Agent(_) => 'A',
         PaneKindSnapshot::View(_) => 'V',
+        PaneKindSnapshot::Other { .. } => '?',
     }
 }
 

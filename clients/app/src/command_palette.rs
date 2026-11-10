@@ -437,6 +437,7 @@ fn tree_pane(
             PaneKindSnapshot::Picker => "New pane",
             PaneKindSnapshot::Agent(_) => "Agent",
             PaneKindSnapshot::View(view) => view.content.kind_name(),
+            PaneKindSnapshot::Other { .. } => "Needs a newer zz",
         }
         .into(),
         icon: match &pane.kind {
@@ -446,6 +447,7 @@ fn tree_pane(
             PaneKindSnapshot::Editor(_) => IconName::File,
             PaneKindSnapshot::Agent(agent) => zz_ui::pane::agent_provider_icon(agent.provider),
             PaneKindSnapshot::View(_) => IconName::Eye,
+            PaneKindSnapshot::Other { .. } => IconName::Info,
         },
         running: attention == Some(AgentAttentionStatus::Working),
         needs_you: pane.status.as_ref().is_some_and(|status| {

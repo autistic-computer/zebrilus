@@ -6767,6 +6767,7 @@ impl Shared {
             key_tables: inner.engine.keys.snapshot(),
             clock: unix_timestamp(),
             platform: host_platform(),
+            revision: zz_protocol::REVISION,
         };
         if kind == ClientKind::Interactive && client_has_terminal {
             return Some((client, hello));
@@ -10266,14 +10267,16 @@ impl Shared {
                         kind:
                             PaneKindSnapshot::Browser(_)
                             | PaneKindSnapshot::Picker
-                            | PaneKindSnapshot::View(_),
+                            | PaneKindSnapshot::View(_)
+                            | PaneKindSnapshot::Other { .. },
                         ..
                     }
                     | MuxEffect::PaneMaterialized {
                         kind:
                             PaneKindSnapshot::Browser(_)
                             | PaneKindSnapshot::Picker
-                            | PaneKindSnapshot::View(_),
+                            | PaneKindSnapshot::View(_)
+                            | PaneKindSnapshot::Other { .. },
                         ..
                     }
                     | MuxEffect::SuppressAfterHook
@@ -52209,13 +52212,14 @@ fn handle_connection_message<S: TransportStream>(
         }
     };
     if let Err(error) = validate_hello(&hello) {
-        best_effort_protocol_mismatch_reply(&mut stream, hello.protocol_version);
+        best_effort_error_reply(&mut stream, error.clone());
         log::info!(
             target: "zz_daemon::diagnostics::connection",
-            "rejected client hello protocol={} server_protocol={PROTOCOL_VERSION}",
+            "rejected client hello protocol={} revision={} server_protocol={PROTOCOL_VERSION}",
             hello.protocol_version,
+            hello.revision,
         );
-        return Err(error);
+        return Err(error.into());
     }
     let startup_reentry_capability = format!(
         "{}{}",
@@ -52836,12 +52840,20 @@ fn handle_agent_message(
 
 #[cfg(windows)]
 fn best_effort_protocol_mismatch_reply(stream: &mut impl Write, client: u16) {
-    let message = ProtocolMessage::CommandResponse(CommandResponse::Error {
-        request_id: 0,
-        error: ServerError::ProtocolMismatch {
+    best_effort_error_reply(
+        stream,
+        ServerError::ProtocolMismatch {
             client,
             server: PROTOCOL_VERSION,
         },
+    );
+}
+
+#[cfg(windows)]
+fn best_effort_error_reply(stream: &mut impl Write, error: ServerError) {
+    let message = ProtocolMessage::CommandResponse(CommandResponse::Error {
+        request_id: 0,
+        error,
         output: RawText::default(),
     });
     let mut frame = Vec::new();
@@ -52916,13 +52928,18 @@ fn write_outbound(
     let _ = stream.shutdown();
 }
 
-fn validate_hello(hello: &ClientHello) -> Result<(), DaemonError> {
+fn validate_hello(hello: &ClientHello) -> Result<(), ServerError> {
     if hello.protocol_version != PROTOCOL_VERSION {
         return Err(ServerError::ProtocolMismatch {
             client: hello.protocol_version,
             server: PROTOCOL_VERSION,
-        }
-        .into());
+        });
+    }
+    if hello.revision < zz_protocol::MIN_CLIENT_REVISION {
+        return Err(ServerError::ClientTooOld {
+            client: hello.revision,
+            minimum: zz_protocol::MIN_CLIENT_REVISION,
+        });
     }
     Ok(())
 }
@@ -61479,6 +61496,7 @@ mod tests {
                     environment: Vec::new(),
                     working_directory: None,
                     process_id: u32::try_from(index).expect("client index") + 100,
+                    revision: zz_protocol::REVISION,
                 }),
             )
             .unwrap();
@@ -61553,6 +61571,7 @@ mod tests {
                     environment: Vec::new(),
                     working_directory: None,
                     process_id: 0,
+                    revision: zz_protocol::REVISION,
                 }),
             )
             .expect("hello");
@@ -61771,6 +61790,7 @@ mod tests {
             environment: Vec::new(),
             working_directory: None,
             process_id: 0,
+            revision: zz_protocol::REVISION,
         }))
         .unwrap();
         hello[6..8].copy_from_slice(&stale.to_le_bytes());
@@ -61816,6 +61836,7 @@ mod tests {
                 environment: Vec::new(),
                 working_directory: None,
                 process_id: 0,
+                revision: zz_protocol::REVISION,
             }),
         )
         .unwrap();
@@ -61836,6 +61857,49 @@ mod tests {
                 client,
                 server: PROTOCOL_VERSION,
             })) if client == stale
+        ));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn hello_below_the_client_revision_floor_is_refused_with_both_revisions() {
+        let shared = Arc::new(Shared::new(1));
+        let (mut client, server) = std::os::unix::net::UnixStream::pair().unwrap();
+        let server_shared = Arc::clone(&shared);
+        let connection = thread::spawn(move || handle_connection(server, &server_shared));
+        let stale = zz_protocol::MIN_CLIENT_REVISION.saturating_sub(1);
+        zz_protocol::write_protocol_message(
+            &mut client,
+            &ProtocolMessage::Hello(zz_protocol::Hello::from_client(ClientHello {
+                protocol_version: PROTOCOL_VERSION,
+                client_instance_id: ClientInstanceId(1),
+                kind: ClientKind::Interactive,
+                device_name: None,
+                capabilities: Vec::new(),
+                color_scheme: None,
+                origin: None,
+                environment: Vec::new(),
+                working_directory: None,
+                process_id: 0,
+                revision: stale,
+            })),
+        )
+        .unwrap();
+        let refusal = ServerError::ClientTooOld {
+            client: stale,
+            minimum: zz_protocol::MIN_CLIENT_REVISION,
+        };
+        assert_eq!(
+            zz_protocol::read_protocol_message(&mut client).unwrap(),
+            ProtocolMessage::CommandResponse(CommandResponse::Error {
+                request_id: 0,
+                error: refusal.clone(),
+                output: RawText::default(),
+            })
+        );
+        assert!(matches!(
+            connection.join().unwrap(),
+            Err(DaemonError::Server(error)) if error == refusal
         ));
     }
 
@@ -61869,6 +61933,7 @@ mod tests {
                     environment: Vec::new(),
                     working_directory: None,
                     process_id: 0,
+                    revision: zz_protocol::REVISION,
                 }),
             )
             .expect("hello");
@@ -109863,6 +109928,7 @@ bind - split-window -v -c "#{pane_current_path}"
                 environment: Vec::new(),
                 working_directory: None,
                 process_id: 0,
+                revision: zz_protocol::REVISION,
             }),
         )
         .expect("hello");
@@ -120295,6 +120361,7 @@ bind - split-window -v -c "#{pane_current_path}"
                 environment: Vec::new(),
                 working_directory: None,
                 process_id: 0,
+                revision: zz_protocol::REVISION,
             }),
         )
         .expect("send owner hello");
@@ -120370,6 +120437,7 @@ bind - split-window -v -c "#{pane_current_path}"
                 environment: Vec::new(),
                 working_directory: None,
                 process_id: 0,
+                revision: zz_protocol::REVISION,
             }),
         )
         .expect("send hello");
@@ -120458,6 +120526,7 @@ bind - split-window -v -c "#{pane_current_path}"
                 environment: Vec::new(),
                 working_directory: None,
                 process_id: 0,
+                revision: zz_protocol::REVISION,
             }),
         )
         .expect("send control hello");
@@ -120558,6 +120627,7 @@ bind - split-window -v -c "#{pane_current_path}"
                 environment: Vec::new(),
                 working_directory: None,
                 process_id: 0,
+                revision: zz_protocol::REVISION,
             }),
         )
         .expect("send client hello");

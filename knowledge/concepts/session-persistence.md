@@ -98,7 +98,7 @@ sends a request and disconnects.
 
 | Step | Server action (`daemon.rs`) |
 |------|-----------------------------|
-| Connect | `handle_connection` reads `ClientHello` (protocol version plus an optional `device_name`), `validate_hello` checks the version |
+| Connect | `handle_connection` reads `ClientHello` (protocol version, build revision and an optional `device_name`), `validate_hello` checks the version, then the revision against `MIN_CLIENT_REVISION` (`ServerError::ClientTooOld` below it) |
 | Register | `register` mints a `ClientId`, records the device name, adds interactive clients to `subscribers` (their `OutboundMailbox`), returns `ServerHello` + capabilities |
 | Attach | `Attach{session}` → `attach_target` → `attach`: an Interactive empty target lazily runs idempotent detached `new-session` only when no sessions exist; then it inserts the client into `attached[session]`, removes it from every other session's set, seeds `visible_terminals`, calls `TerminalSession::attach_view(TerminalViewId(client.0))` on every terminal in the session, recomputes PTY sizes, and returns a `MuxSnapshot` stamped for that client; then a full resync of visible panes |
 | Steal | `attach-session -d` attaches, then `evict_other_clients` sends each peer `EventPayload::Detached { session, by: Some(device) }` and tears its per-client state down. A command-only client cannot attach, but its `-d` still evicts |

@@ -78,6 +78,7 @@ fn test_server(tables: Vec<KeyTableSnapshot>) -> (InteractiveClient, TestServer)
                 key_tables: tables,
                 clock: 0,
                 platform: zz_protocol::HostPlatform::default(),
+                revision: zz_protocol::REVISION,
             })),
         )
         .unwrap();

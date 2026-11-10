@@ -281,6 +281,7 @@ fn hello(kind: ClientKind) -> ProtocolMessage {
         environment: Vec::new(),
         working_directory: None,
         process_id: 0,
+        revision: zz_protocol::REVISION,
     })
 }
 

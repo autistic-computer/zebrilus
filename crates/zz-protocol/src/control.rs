@@ -248,6 +248,8 @@ pub struct Welcome {
     pub clock: u64,
     #[serde(default)]
     pub platform: HostPlatform,
+    #[serde(default)]
+    pub revision: u32,
 }
 
 impl Welcome {

@@ -1612,6 +1612,7 @@ const fn pane_kind_icon(kind: MuxTreePaneKind) -> IconName {
         MuxTreePaneKind::Browser => IconName::Globe,
         MuxTreePaneKind::Editor => IconName::File,
         MuxTreePaneKind::View => IconName::Eye,
+        MuxTreePaneKind::Other => IconName::Info,
         MuxTreePaneKind::Agent(provider) => zz_ui::pane::agent_provider_icon(provider),
     }
 }

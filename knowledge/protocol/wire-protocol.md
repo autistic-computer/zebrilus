@@ -1,10 +1,10 @@
 ---
 type: Protocol
-title: zz wire protocol (v121)
+title: zz wire protocol (v122)
 description: The versioned, little-endian length-prefixed, postcard-encoded control protocol whose ProtocolMessage enum carries the entire client/daemon conversation over local IPC or an SSH tunnel.
 resource: crates/zz-protocol/src/framing.rs
 tags: [protocol, wire, framing, postcard, versioning]
-timestamp: 2026-11-09T00:00:00-03:00
+timestamp: 2026-11-10T00:00:00-03:00
 ---
 
 # Overview
@@ -15,7 +15,8 @@ daemon through an OpenSSH `ssh -L` Unix-socket forward. iOS instead carries the 
 through `zz proxy` over an in-process `russh` SSH channel.
 Every message is wrapped in a fixed envelope carrying a `u32` little-endian length prefix, a
 one-byte **lane** tag, a **flags** byte, and a `u16` **protocol version**. The current wire version is
-**`PROTOCOL_VERSION = 121`** (`crates/zz-protocol/src/message.rs`).
+**`PROTOCOL_VERSION = 122`** (`crates/zz-protocol/src/message.rs`). Each side also states its
+build `REVISION` in the handshake and holds a floor for the other side's (see v122 below).
 
 The version is a gate, not a negotiation: a frame whose envelope version differs from the running
 build's is rejected outright. Before disconnecting, a daemon makes a best-effort
@@ -64,7 +65,7 @@ Relevant constants (`framing.rs`): `MAX_FRAME_BYTES = 64 * 1024 * 1024`, `ENVELO
 | length | 0..4 | `u32` LE | Bytes following the prefix (`4 + payload`) |
 | lane | 4 | `u8` | `0` = Control, `1` = Terminal |
 | flags | 5 | `u8` | `0x00` only; every other value is rejected |
-| version | 6..8 | `u16` LE | `PROTOCOL_VERSION` (121) |
+| version | 6..8 | `u16` LE | `PROTOCOL_VERSION` (122) |
 | payload | 8.. | bytes | `postcard(ProtocolMessage)` (Control) or packed terminal sections |
 
 # Schema . `ProtocolMessage` (Control lane)
@@ -74,8 +75,8 @@ fields in declaration order.
 
 | Variant | Fields | Purpose |
 |---------|--------|---------|
-| `Hello(Hello)` | `client: ClientHello`, `viewport: Option<ClientViewport>`, `subscriptions: Subscriptions`, `attach: Option<AttachOperation>`, `environment: ClientEnvironmentBlob` | Client → daemon handshake. The client names its viewport, requested tree/status/options/keys/pane stream, optional session or prepared attach chain, and NUL-separated environment in one request. `ClientHello` keeps identity and terminal facts as an in-memory model; normal interactive clients send `Hello` |
-| `Welcome(Welcome)` | `protocol_version: u16`, `server_id: u64`, `client_id: ClientId`, `client_instance_id: ClientInstanceId`, `caps: u64`, `clock: u64`, `platform: HostPlatform` | Daemon → client identity and capability mask. The daemon sends requested state in a following `Batch`; `InteractiveClient` materializes `ServerHello` for callers without transmitting its key tables, appearance, options, or status in the welcome |
+| `Hello(Hello)` | `client: ClientHello`, `viewport: Option<ClientViewport>`, `subscriptions: Subscriptions`, `attach: Option<AttachOperation>`, `environment: ClientEnvironmentBlob` | Client → daemon handshake. The client names its viewport, requested tree/status/options/keys/pane stream, optional session or prepared attach chain, and NUL-separated environment in one request. `ClientHello` keeps identity and terminal facts as an in-memory model and ends with `revision: u32`, the client's build `REVISION`; the daemon refuses a revision below `MIN_CLIENT_REVISION` with `ServerError::ClientTooOld`. Normal interactive clients send `Hello` |
+| `Welcome(Welcome)` | `protocol_version: u16`, `server_id: u64`, `client_id: ClientId`, `client_instance_id: ClientInstanceId`, `caps: u64`, `clock: u64`, `platform: HostPlatform`, `revision: u32` | Daemon → client identity and capability mask. The daemon sends requested state in a following `Batch`; `InteractiveClient` materializes `ServerHello` (which carries the same `revision`) for callers without transmitting its key tables, appearance, options, or status in the welcome. `revision` is the daemon's build `REVISION`; a client refuses one below its `MIN_DAEMON_REVISION` |
 | `CommandRequest(CommandRequest)` | `request_id: u64`, `command: CommandInvocation`, `prepared: bool` | tmux-style command from any client. A prepared multi-command alias travels as one opaque `CommandInvocation`; the daemon still runs authorization and ordinary dispatch validation. Compact Control clients submit raw lines through `ExecRequest` |
 | `CommandResponse(CommandResponse)` | `Success { request_id, output, exit_code, stderr }` / `Error { request_id, error: ServerError, output }` | Command result. A client prints either output field before it reports an error or returns the exit code. `stderr` (appended at v71) is populated for `source-file` diagnostics issued by a Command client since Wave E (2026-08-22) and stays empty for every other command; `Success` with a nonzero `exit_code` is a COMPLETED command, so `Error` stays reserved for dispatch, transport, and server failures |
 | `Attach { session: String }` | target string | Interactive attach request. An empty target lazily creates the next numeric session when the daemon has none; explicit missing targets and Command-kind attaches do not create. A session holds a set of attached clients, so a second device never collides with the first |
@@ -509,7 +510,9 @@ Protocol v104 appends `NativeCommandParse(String)` at tag 14 for zz-native verbs
 `NativeInvalidCommand(String)` at tag 16 for native usage errors promoted to command-time
 failures by callback construction. The latter retains the runtime error phase of `InvalidCommand`.
 Both parse variants support the same parse-error checks and diagnostic rendering. Command clients
-return 2 for the native variants, and 1 for `CommandParse` or `UnsupportedCommand`.
+return 2 for the native variants, and 1 for `CommandParse` or `UnsupportedCommand`. Protocol v122
+appends `ClientTooOld { client: u32, minimum: u32 }` at tag 17: the daemon's answer to a hello whose
+`revision` is below its `MIN_CLIENT_REVISION`, carrying both numbers.
 
 # Attachment, presence, and per-client views
 
@@ -1064,6 +1067,22 @@ pane it belongs to and `content` is a `ViewContent`: `Diagram { language, source
 checked when a descriptor decodes, so the kind stays small in every snapshot and delta.
 `view-pane` joins the command catalog ([agent panes](/concepts/agent-panes.md#previews-and-the-view-pane)).
 
+v122 is the setup epoch for [split updates](/designs/split-updates.md). `zz-protocol` gains
+`REVISION: u32`, a build revision bumped by hand when behavior the other side relies on changes, and
+two floors, `MIN_DAEMON_REVISION` and `MIN_CLIENT_REVISION`, all 1. `ClientHello`, `Welcome` and
+`ServerHello` append `revision: u32`, which every sender fills with its `REVISION`. The daemon checks
+the hello after the version: a revision below `MIN_CLIENT_REVISION` gets
+`ServerError::ClientTooOld { client, minimum }` and the connection closes, the same way a version
+mismatch does. `zz-daemon-client` checks the welcome (or `ServerHello`): a revision below
+`MIN_DAEMON_REVISION` fails the attach with `DaemonError::DaemonTooOld { daemon, minimum }`, apart
+from the version mismatch error; the browser client makes the same check. Only connections that open
+with a hello carry a revision. A command connection that opens with `Exec` carries none either way
+(`ExecRequest` has only `protocol_version`, `ExecExit` nothing), so neither floor applies to it.
+`PaneKindSnapshot` appends `Other { kind }` after `View`, the slot for a pane kind added inside an
+epoch: `kind` names it, bounded at `MAX_PANE_KIND_BYTES` (64) on decode. The daemon never sends it
+yet. Every client draws such a pane as a placeholder that names the kind and says a newer zz shows
+it, with no process and no input.
+
 v118 brings the agent pane kind back, for a chat over Claude Code or Codex that a pane flips to
 and from the CLI's own TUI. It appends `PaneKindSnapshot::Agent(AgentDescriptor)` after `Editor`
 and `ChooseTreePaneKind::Agent` after `Editor`. `AgentDescriptor { provider, cwd, session_id,
@@ -1076,9 +1095,12 @@ to go idle ([agent panes](/concepts/agent-panes.md)).
 
 # Versioning & compatibility
 
-- **`PROTOCOL_VERSION: u16 = 121`** is stamped into every frame's envelope and re-checked inside
+- **`PROTOCOL_VERSION: u16 = 122`** is stamped into every frame's envelope and re-checked inside
   `Hello` and `Welcome` (`validate_control_message` rejects an inner-version mismatch even if the envelope
   version passed).
+- v122 requires updated clients and daemon together, including the daemon on every ssh host.
+  v122 appends `ClientHello.revision`, `Welcome.revision`, `ServerHello.revision`,
+  `ServerError::ClientTooOld` and `PaneKindSnapshot::Other`.
 - v121 requires updated clients and daemon together, including the daemon on every ssh host.
   v121 appends `PaneKindSnapshot::View(ViewDescriptor)`.
 - v120 requires updated clients and daemon together, including the daemon on every ssh host.

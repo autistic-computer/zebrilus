@@ -1,8 +1,8 @@
 ---
 type: Design Plan
 title: Split updates . the client and the daemon update apart
-description: Proposed plan to let a client update without restarting the daemon and ending its sessions. PROTOCOL_VERSION becomes a wire epoch that only bumps for changes an existing peer cannot decode or would get wrong, additive changes travel as messages gated by the capabilities both hellos already carry, a build revision on each side sets floors for behavior, and restarting the daemon onto a newer build becomes its own action that states how many sessions it ends. Nothing is built.
-status: Proposed
+description: Proposed plan to let a client update without restarting the daemon and ending its sessions. PROTOCOL_VERSION becomes a wire epoch that only bumps for changes an existing peer cannot decode or would get wrong, additive changes travel as messages gated by the capabilities both hellos already carry, a build revision on each side sets floors for behavior, and restarting the daemon onto a newer build becomes its own action that states how many sessions it ends. Step 1, the setup epoch (v122), is built.
+status: In progress
 tags:
 - protocol
 - versioning
@@ -14,8 +14,16 @@ timestamp: 2026-11-10T00:00:00-03:00
 
 # Overview
 
-> **Status: proposed 2026-11-10. Nothing is built.** The counts below were read from the protocol
-> version history at `PROTOCOL_VERSION = 121`.
+> **Status: proposed 2026-11-10.** The counts below were read from the protocol version history at
+> `PROTOCOL_VERSION = 121`.
+>
+> **2026-11-10: step 1 is built.** Wire v122 is the setup epoch. Both sides send their `REVISION` in
+> the handshake and hold a floor for the other's; every revision and floor is 1, so nothing is
+> refused yet. A client below the daemon's floor gets `ServerError::ClientTooOld`, and a daemon below
+> the client's floor fails the attach with `DaemonError::DaemonTooOld`, which clients show as a
+> plain attach failure until step 3 gives it its own screen. `PaneKindSnapshot::Other` exists and
+> every client draws it as a placeholder, though the daemon never sends it. Nothing is gated by
+> capability yet (step 2), so a wire change still bumps the version and still restarts the daemon.
 
 The daemon holds every session, so restarting it ends them. Today a client update almost always
 forces that restart, because the client and the daemon must be built from the same protocol version.
@@ -96,10 +104,19 @@ clients that already shipped. The slot has to be in the frozen shape before it i
 snapshots as `Other`, and its descriptor travels in a gated event. A client without the capability
 draws a placeholder pane that names the kind and says a newer client shows it.
 
+`ChooseTreePaneKind` needs no slot: choose-tree rows carry it as an `Option`, and a kind it does not
+name is `None` with a detail line, as `View` already is.
+
 ## 4. Build revisions and floors
 
 `zz-protocol` gains `REVISION: u32`, bumped by hand when behavior a peer depends on changes,
-including a fix the other side wants to rely on. `ClientHello` and `Welcome` each carry it.
+including a fix the other side wants to rely on. `ClientHello` and `Welcome` each carry it, and so
+does `ServerHello`, the answer to a bare `ClientHello`.
+
+Only a connection that opens with a hello carries a revision. A command connection that opens with
+`Exec` (every one-shot `zz <command>`, local or `--host`) carries none either way: `ExecRequest` has
+only `protocol_version` and `ExecExit` nothing. The floors do not apply to it, and the epoch is its
+only gate.
 
 - The client has `MIN_DAEMON_REVISION`. Below it, the client does not attach and shows the daemon
   restart prompt.

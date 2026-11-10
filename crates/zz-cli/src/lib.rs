@@ -1655,7 +1655,8 @@ fn daemon_transport_failure(error: &DaemonError) -> bool {
         | DaemonError::Thread(_)
         | DaemonError::InsertedCommandParse(_)
         | DaemonError::CommandExit { .. }
-        | DaemonError::ReportedCommandExit { .. } => false,
+        | DaemonError::ReportedCommandExit { .. }
+        | DaemonError::DaemonTooOld { .. } => false,
     }
 }
 
@@ -1980,7 +1981,7 @@ fn protocol_version_output(
 
 fn format_local_daemon_error(error: DaemonError) -> String {
     match error {
-        error @ DaemonError::IncompatibleDaemon { .. } => {
+        error @ (DaemonError::IncompatibleDaemon { .. } | DaemonError::DaemonTooOld { .. }) => {
             format!("{error}\nrun 'zz kill-server' to restart it (sessions will be lost)")
         }
         error => error.to_string(),
@@ -3107,7 +3108,9 @@ fn host_failure_hint(name: &str, known: &[&str], destination: &str, error: &Daem
                 daemon: Some(daemon),
                 client,
             } if daemon != client => protocol(*daemon, *client),
-            DaemonError::IncompatibleDaemon { .. } => format!("{name}: {error}; {}", install(true)),
+            DaemonError::IncompatibleDaemon { .. } | DaemonError::DaemonTooOld { .. } => {
+                format!("{name}: {error}; {}", install(true))
+            }
             error => unreachable(error),
         },
     }

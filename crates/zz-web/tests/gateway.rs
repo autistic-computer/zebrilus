@@ -351,6 +351,7 @@ mod daemon {
                     working_directory: None,
                     environment: Vec::new(),
                     process_id: 0,
+                    revision: zz_protocol::REVISION,
                 },
                 viewport: Some(zz_protocol::ClientViewport {
                     columns: 60,

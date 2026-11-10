@@ -19,6 +19,7 @@ pub enum PaneTag {
     Editor,
     Agent(AgentProvider),
     View,
+    Other,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -155,6 +156,7 @@ pub fn pane_tag(kind: &PaneKindSnapshot) -> PaneTag {
         PaneKindSnapshot::Editor(_) => PaneTag::Editor,
         PaneKindSnapshot::Agent(agent) => PaneTag::Agent(agent.provider),
         PaneKindSnapshot::View(_) => PaneTag::View,
+        PaneKindSnapshot::Other { .. } => PaneTag::Other,
     }
 }
 
@@ -554,6 +556,7 @@ pub fn pane_detail(window: &WindowSnapshot, pane: &PaneSnapshot, title: &str) ->
             Tone::Muted,
         )],
         PaneKindSnapshot::View(view) => vec![part(view.content.kind_name(), Tone::Muted)],
+        PaneKindSnapshot::Other { .. } => vec![part("Needs a newer zz", Tone::Muted)],
     }
 }
 

@@ -267,6 +267,7 @@ pub fn pane_glyph(tag: PaneTag) -> IconName {
         PaneTag::Browser => IconName::Globe,
         PaneTag::Editor => IconName::File,
         PaneTag::View => IconName::Eye,
+        PaneTag::Other => IconName::Info,
         PaneTag::Picker => IconName::Plus,
         PaneTag::Agent(provider) => crate::pane::agent_provider_icon(provider),
     }

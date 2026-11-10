@@ -992,6 +992,13 @@ impl Client {
                         }),
                         _ => Value::Null,
                     },
+                    "other": match &pane.kind {
+                        PaneKindSnapshot::Other { kind } => json!({
+                            "kind": kind,
+                            "text": zz_client::navigation::newer_pane_text(kind),
+                        }),
+                        _ => Value::Null,
+                    },
                 })
             })
             .collect::<Vec<_>>();
@@ -1129,6 +1136,7 @@ const fn tag_name(tag: PaneTag) -> &'static str {
         PaneTag::Browser => "browser",
         PaneTag::Editor => "editor",
         PaneTag::View => "view",
+        PaneTag::Other => "other",
         PaneTag::Picker => "picker",
         PaneTag::Agent(_) => "agent",
     }
@@ -1184,6 +1192,7 @@ pub fn kind(kind: &PaneKindSnapshot) -> &'static str {
         PaneKindSnapshot::Editor(_) => "editor",
         PaneKindSnapshot::Agent(_) => "agent",
         PaneKindSnapshot::View(_) => "view",
+        PaneKindSnapshot::Other { .. } => "other",
     }
 }
 

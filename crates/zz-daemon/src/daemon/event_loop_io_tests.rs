@@ -13,6 +13,7 @@ pub(super) fn hello() -> ProtocolMessage {
         working_directory: None,
         environment: Vec::new(),
         process_id: std::process::id(),
+        revision: zz_protocol::REVISION,
     })
 }
 

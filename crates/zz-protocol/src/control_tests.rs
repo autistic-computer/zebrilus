@@ -88,6 +88,7 @@ fn compact_welcome_round_trip_is_bounded_and_caps_recover_names() {
         caps: Welcome::caps_from_strings(&capabilities),
         clock: 0,
         platform: crate::HostPlatform::default(),
+        revision: crate::REVISION,
     };
     let message = ProtocolMessage::Welcome(welcome);
     let encoded = encode_protocol_message(&message).unwrap();
@@ -112,6 +113,7 @@ fn compact_welcome_rejects_missing_required_capabilities_on_encode_and_decode() 
             caps: Welcome::caps_from_strings(&capabilities),
             clock: 0,
             platform: crate::HostPlatform::default(),
+            revision: crate::REVISION,
         };
         assert!(!welcome.has_capability(missing));
         let message = ProtocolMessage::Welcome(welcome);
@@ -179,6 +181,7 @@ fn hello_moves_environment_into_one_blob_and_keeps_raw_bytes() {
         working_directory: None,
         environment: vec![RawText::from(&b"K=\xff"[..])],
         process_id: 1,
+        revision: crate::REVISION,
     };
     let mut hello = Hello::from_client(client.clone());
     hello.viewport = Some(ClientViewport {

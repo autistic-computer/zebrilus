@@ -140,6 +140,11 @@ them from its own copy of `origin`'s chat, and says so when that chat no longer 
 descriptor is validated on deserialization (text and label sizes, no control characters in labels,
 an origin for pointers).
 
+`PaneKindSnapshot::Other { kind }` (v122) is the slot for a pane kind added inside a wire epoch
+([split updates](/designs/split-updates.md)): `kind` names it, at most `MAX_PANE_KIND_BYTES` (64) on
+decode. The daemon never sends it yet. A client draws it as a placeholder with no process and no
+input that names the kind and says a newer zz shows it.
+
 ## Pane status, summary and time
 
 `PaneSnapshot.status` is one attention record per pane, whoever reported it:

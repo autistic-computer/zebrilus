@@ -2173,6 +2173,7 @@ impl AppView {
                             self.ensure_view(*pane, descriptor, vendor, window, cx);
                             self.ensure_pane_header(*pane, cx);
                         }
+                        PaneKindSnapshot::Other { .. } => {}
                     }
                 }
             }
@@ -3728,11 +3729,24 @@ impl AppView {
                     });
                 }
                 let pane_content = self.pane_content(*pane, dimmed, inactive_opacity, cx);
-                let waiting = pane_content.is_none();
+                let newer_kind = pane_snapshot.and_then(|held| match &held.kind {
+                    PaneKindSnapshot::Other { kind } => Some(kind.as_str()),
+                    _ => None,
+                });
+                let waiting = pane_content.is_none() && newer_kind.is_none();
                 let content = pane_content.as_ref().map_or_else(
                     || {
-                        crate::window::corners::round_div_radii(div().size_full(), radii)
-                            .into_any_element()
+                        crate::window::corners::round_div_radii(
+                            div().size_full().flex().children(newer_kind.map(|kind| {
+                                penna::blocks::feedback::empty_state(
+                                    None,
+                                    zz_client::navigation::newer_pane_text(kind),
+                                    cx,
+                                )
+                            })),
+                            radii,
+                        )
+                        .into_any_element()
                     },
                     PaneContent::element,
                 );
@@ -5775,6 +5789,7 @@ mod tests {
                     key_tables: zz_protocol::KeyTables::default().snapshot(),
                     clock: 0,
                     platform: zz_protocol::HostPlatform::default(),
+                    revision: zz_protocol::REVISION,
                 })),
             )
             .unwrap();

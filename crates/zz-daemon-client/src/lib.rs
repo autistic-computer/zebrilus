@@ -130,6 +130,10 @@ pub enum DaemonError {
     },
     #[error("{}", incompatible_daemon_message(*daemon, *client))]
     IncompatibleDaemon { daemon: Option<u16>, client: u16 },
+    #[error(
+        "the running zz daemon is revision {daemon}; this zz needs revision {minimum} or newer"
+    )]
+    DaemonTooOld { daemon: u32, minimum: u32 },
 }
 
 fn incompatible_daemon_message(daemon: Option<u16>, client: u16) -> String {

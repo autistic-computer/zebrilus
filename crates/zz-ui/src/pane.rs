@@ -53,6 +53,7 @@ pub const fn pane_kind_icon(kind: &zz_protocol::PaneKindSnapshot) -> IconName {
         zz_protocol::PaneKindSnapshot::Picker => IconName::Plus,
         zz_protocol::PaneKindSnapshot::Agent(agent) => agent_provider_icon(agent.provider),
         zz_protocol::PaneKindSnapshot::View(_) => IconName::Eye,
+        zz_protocol::PaneKindSnapshot::Other { .. } => IconName::Info,
     }
 }
 

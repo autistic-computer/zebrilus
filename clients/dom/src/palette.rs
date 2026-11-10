@@ -1071,6 +1071,7 @@ impl Client {
                                             PaneKindSnapshot::Picker => "New pane",
                                             PaneKindSnapshot::Agent(_) => "Agent",
                                             PaneKindSnapshot::View(_) => "View · unavailable",
+                                            PaneKindSnapshot::Other { .. } => "Needs a newer zz",
                                         },
                                         icon: match &pane.kind {
                                             PaneKindSnapshot::Picker => "plus",
@@ -1079,6 +1080,7 @@ impl Client {
                                             PaneKindSnapshot::Editor(_) => "file",
                                             PaneKindSnapshot::Agent(_) => "bot",
                                             PaneKindSnapshot::View(_) => "eye",
+                                            PaneKindSnapshot::Other { .. } => "info",
                                         },
                                         running: attention == Some(AgentAttentionStatus::Working),
                                         needs_you: pane.status.as_ref().is_some_and(|status| {

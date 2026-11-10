@@ -213,6 +213,7 @@ fn connection_capture_dispatches_to_a_loop_continuation() {
         environment: Vec::new(),
         working_directory: None,
         process_id: 0,
+        revision: zz_protocol::REVISION,
     };
     let mut session = connection::Session::register(
         &shared,

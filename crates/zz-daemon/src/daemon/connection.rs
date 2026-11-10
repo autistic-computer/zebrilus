@@ -81,14 +81,11 @@ impl Session {
             let _ = outbound.enqueue_reliable(&ProtocolMessage::CommandResponse(
                 CommandResponse::Error {
                     request_id: 0,
-                    error: ServerError::ProtocolMismatch {
-                        client: hello.protocol_version,
-                        server: PROTOCOL_VERSION,
-                    },
+                    error: error.clone(),
                     output: RawText::default(),
                 },
             ));
-            return Err(error);
+            return Err(error.into());
         }
         let startup_reentry_capability = format!(
             "{}{}",

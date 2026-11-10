@@ -3056,6 +3056,7 @@ mod tests {
                 caps: zz_protocol::Welcome::caps_from_strings(&capabilities),
                 clock: 0,
                 platform: zz_protocol::HostPlatform::default(),
+                revision: zz_protocol::REVISION,
             });
             let initial = ProtocolMessage::Batch(
                 zz_protocol::Batch::from_messages(

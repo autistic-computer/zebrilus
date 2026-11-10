@@ -15,7 +15,7 @@ fn payload(frame: &[u8]) -> &[u8] {
 
 #[test]
 fn protocol_version_on_this_commit_is_one_hundred_and_seven() {
-    assert_eq!(PROTOCOL_VERSION, 121);
+    assert_eq!(PROTOCOL_VERSION, 122);
 }
 
 #[test]
@@ -291,6 +291,7 @@ fn client_hello_carries_a_non_utf8_working_directory_verbatim() {
         working_directory: ClientPath::from_path(&fixture),
         environment: Vec::new(),
         process_id: 11,
+        revision: zz_protocol::REVISION,
     });
     let frame = encode_protocol_message(&hello).expect("encode non-UTF-8 hello");
     let ProtocolMessage::ClientHello(decoded) =
@@ -328,13 +329,14 @@ fn dark_interactive_hello_encodes_version_instance_and_process_id_as_varints() {
         working_directory: None,
         environment: Vec::new(),
         process_id: 7,
+        revision: 1,
     }))
     .expect("encode hello");
     assert_eq!(
         frame,
         [
-            0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0x79, 0x00, 0x00, 0x79, 0x00, 0x00, 0x00, 0x00,
-            0x01, 0x01, 0x00, 0x00, 0x00, 0x07,
+            0x11, 0x00, 0x00, 0x00, 0x00, 0x00, 0x7a, 0x00, 0x00, 0x7a, 0x00, 0x00, 0x00, 0x00,
+            0x01, 0x01, 0x00, 0x00, 0x00, 0x07, 0x01,
         ]
     );
 }

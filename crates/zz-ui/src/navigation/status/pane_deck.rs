@@ -43,6 +43,7 @@ impl StatusPaneEntry {
             ),
             PaneKindSnapshot::Picker => format!("New pane · {}", pane.id),
             PaneKindSnapshot::View(view) => format!("{} · {}", view.content.kind_name(), pane.id),
+            PaneKindSnapshot::Other { kind } => format!("{kind} · {}", pane.id),
             PaneKindSnapshot::Agent(agent) => agent.cwd.as_ref().map_or_else(
                 || format!("{} · {}", agent.provider.label(), pane.id),
                 |cwd| {

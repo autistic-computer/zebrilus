@@ -254,6 +254,7 @@ pub(super) const fn kind_icon(kind: &PaneKindSnapshot) -> IconName {
         PaneKindSnapshot::Picker => IconName::Plus,
         PaneKindSnapshot::Agent(agent) => zz_ui::pane::agent_provider_icon(agent.provider),
         PaneKindSnapshot::View(_) => IconName::Eye,
+        PaneKindSnapshot::Other { .. } => IconName::Info,
     }
 }
 
@@ -813,6 +814,14 @@ impl AppShell {
                 "Editor",
                 IconName::File,
                 "The daemon does not share editor file contents with browser clients yet.",
+                None,
+                Corners::all(radius),
+                cx,
+            ),
+            PaneKindSnapshot::Other { kind } => super::unsupported_pane(
+                kind,
+                IconName::Info,
+                &zz_client::navigation::newer_pane_text(kind),
                 None,
                 Corners::all(radius),
                 cx,

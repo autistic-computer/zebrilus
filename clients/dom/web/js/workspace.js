@@ -16,7 +16,7 @@ export function paneHeaderButton(factory) {
 }
 
 export function paneIcon(kind) {
-  return { browser: "globe", editor: "file", picker: "plus", agent: "bot", view: "eye" }[kind] || "square-terminal";
+  return { browser: "globe", editor: "file", picker: "plus", agent: "bot", view: "eye", other: "info" }[kind] || "square-terminal";
 }
 
 export function metrics() {
@@ -191,7 +191,7 @@ function mount(pane, info) {
   pane.kind = kind;
   pane.body.replaceChildren();
   const renderer = renderers.get(kind) || renderers.get("terminal");
-  pane.view = renderer ? renderer(pane) : null;
+  pane.view = renderer ? renderer(pane, info) : null;
 }
 
 function badge(icon, label) {
@@ -1078,3 +1078,4 @@ function unsupported(title, icon, reason) {
 
 paneRenderer("editor", unsupported("Editor", "file", "The daemon does not share editor file contents with browser clients yet."));
 paneRenderer("view", unsupported("View", "eye", "Diagrams, code and images from a chat open in the zz app."));
+paneRenderer("other", (pane, info) => unsupported(escape(info.other.kind), "info", escape(info.other.text))(pane));

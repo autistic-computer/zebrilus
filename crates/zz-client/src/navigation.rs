@@ -91,7 +91,13 @@ pub fn pane_label(pane: &PaneSnapshot) -> String {
         PaneKindSnapshot::Editor(_) => "editor".to_owned(),
         PaneKindSnapshot::Agent(agent) => agent.provider.label().to_owned(),
         PaneKindSnapshot::View(view) => view.title.clone(),
+        PaneKindSnapshot::Other { kind } => kind.clone(),
     }
+}
+
+#[must_use]
+pub fn newer_pane_text(kind: &str) -> String {
+    format!("A newer zz shows this {kind} pane")
 }
 
 #[must_use]

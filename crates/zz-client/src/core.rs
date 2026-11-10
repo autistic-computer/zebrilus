@@ -758,6 +758,7 @@ impl ClientCore {
             key_tables,
             clock,
             platform,
+            revision: _,
         } = hello;
         self.hello_received = true;
         self.server_clock = clock;
@@ -1463,6 +1464,7 @@ mod tests {
             key_tables: Vec::new(),
             clock: 0,
             platform: zz_protocol::HostPlatform::default(),
+            revision: zz_protocol::REVISION,
         }))
     }
 
@@ -1951,6 +1953,7 @@ mod tests {
             caps: 0,
             clock: 1_760_000_000,
             platform: zz_protocol::HostPlatform::default(),
+            revision: zz_protocol::REVISION,
         }));
         assert_eq!(drain(&mut core), vec![CoreEvent::HelloReceived]);
         assert_eq!(core.server_clock(), 1_760_000_000);

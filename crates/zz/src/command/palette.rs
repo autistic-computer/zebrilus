@@ -482,6 +482,7 @@ fn tree_pane(pane: &MuxTreePane, attached: bool, mux: &MuxClient) -> PaletteTree
             MuxTreePaneKind::Browser => "Browser",
             MuxTreePaneKind::Editor => "Editor",
             MuxTreePaneKind::View => "View",
+            MuxTreePaneKind::Other => "Needs a newer zz",
             MuxTreePaneKind::Picker => "New pane",
             MuxTreePaneKind::Agent(_) => "Agent",
         }
@@ -492,6 +493,7 @@ fn tree_pane(pane: &MuxTreePane, attached: bool, mux: &MuxClient) -> PaletteTree
             MuxTreePaneKind::Browser => IconName::Globe,
             MuxTreePaneKind::Editor => IconName::File,
             MuxTreePaneKind::View => IconName::Eye,
+            MuxTreePaneKind::Other => IconName::Info,
             MuxTreePaneKind::Agent(provider) => zz_ui::pane::agent_provider_icon(provider),
         },
         running: attention == Some(zz_client::AgentAttentionStatus::Working),

@@ -16,10 +16,11 @@ use zz_protocol::{
     ClientHello, ClientInstanceId, ClientKind, ClientPath, CommandInvocation, CommandRequest,
     CommandResponse, ConfigOverrideEntry, GuiResponse, InputMessage, MAX_CLIENT_ENVIRONMENT_BYTES,
     MAX_CLIENT_ENVIRONMENT_ENTRIES, MAX_CLIENT_ENVIRONMENT_ENTRY_BYTES, MAX_CLIENT_FILE_BYTES,
-    MAX_CLIENT_WORKING_DIRECTORY_BYTES, MAX_PASTE_UPLOAD_CHUNK_BYTES, PANE_FRAME_CAPABILITY,
-    PROTOCOL_VERSION, PaneId, PasteUploadPurpose, PreparedCommand, PreparedCommandResult,
-    ProtocolError, ProtocolMessage, RawText, ServerError, ServerHello, StdoutClaim,
-    encode_key_input_into, encode_protocol_message_into, read_protocol_message_into,
+    MAX_CLIENT_WORKING_DIRECTORY_BYTES, MAX_PASTE_UPLOAD_CHUNK_BYTES, MIN_DAEMON_REVISION,
+    PANE_FRAME_CAPABILITY, PROTOCOL_VERSION, PaneId, PasteUploadPurpose, PreparedCommand,
+    PreparedCommandResult, ProtocolError, ProtocolMessage, REVISION, RawText, ServerError,
+    ServerHello, StdoutClaim, encode_key_input_into, encode_protocol_message_into,
+    read_protocol_message_into,
 };
 use zz_protocol::{
     ClientEnvironmentBlob, EXEC_CAPABILITY, ExecFlags, ExecOutcome, ExecRequest, ExecResume,
@@ -3201,6 +3202,7 @@ fn materialize_welcome<S: TransportStream>(
         key_tables: Vec::new(),
         clock: welcome.clock,
         platform: welcome.platform,
+        revision: welcome.revision,
     };
     let mut pings = Vec::new();
     let batch = loop {
@@ -3389,6 +3391,7 @@ fn connect_stream_hello<S: TransportStream>(
         working_directory: client_working_directory(client_facts, logical_current_dir),
         environment: client_environment(client_facts),
         process_id: std::process::id(),
+        revision: REVISION,
     };
     if kind == ClientKind::Command {
         writer.send(&ProtocolMessage::ClientHello(client_hello))?;
@@ -3426,6 +3429,12 @@ fn connect_stream_hello<S: TransportStream>(
             )));
         }
     };
+    if hello.revision < MIN_DAEMON_REVISION {
+        return Err(DaemonError::DaemonTooOld {
+            daemon: hello.revision,
+            minimum: MIN_DAEMON_REVISION,
+        });
+    }
     if kind == ClientKind::Interactive
         && [PANE_FRAME_CAPABILITY, zz_protocol::CONTROL_CAPABILITY]
             .iter()
@@ -4332,6 +4341,7 @@ mod tests {
                         key_tables: Vec::new(),
                         clock: 0,
                         platform: zz_protocol::HostPlatform::default(),
+                        revision: zz_protocol::REVISION,
                     })))
                     .expect("send hello");
             });
@@ -4371,6 +4381,85 @@ mod tests {
                 _ => assert!(result.is_ok(), "a command client needs no terminal frames"),
             }
         }
+    }
+
+    #[test]
+    fn a_client_refuses_a_welcome_below_the_daemon_revision_floor() {
+        use super::{ProtocolReceiver, ProtocolSender, connect_stream_with_startup_owner};
+        use crate::transport::{LocalTransport, Transport, TransportListener};
+        use zz_protocol::{
+            Batch, ClientId, ClientInstanceId, MIN_DAEMON_REVISION, PROTOCOL_VERSION,
+            ProtocolMessage, Welcome,
+        };
+
+        #[cfg(unix)]
+        let directory = tempfile::Builder::new()
+            .prefix("zz-revision-")
+            .tempdir_in("/tmp")
+            .expect("create socket directory");
+        #[cfg(unix)]
+        let socket = directory.path().join("daemon.sock");
+        #[cfg(windows)]
+        let socket =
+            std::path::PathBuf::from(format!(r"\\.\pipe\zz-revision-{}", std::process::id()));
+        let stale = MIN_DAEMON_REVISION.saturating_sub(1);
+        let listener = LocalTransport::bind(&socket).expect("bind handshake listener");
+        let server = std::thread::spawn(move || {
+            let stream = listener.accept().expect("accept client");
+            let mut reader = ProtocolReceiver::new(
+                super::TransportStream::try_clone(&stream).expect("clone stream"),
+            );
+            let mut writer = ProtocolSender::new(stream);
+            assert!(matches!(
+                reader.recv().expect("receive handshake"),
+                ProtocolMessage::Hello(_)
+            ));
+            let capabilities = [
+                zz_protocol::PANE_FRAME_CAPABILITY.to_owned(),
+                zz_protocol::CONTROL_CAPABILITY.to_owned(),
+            ];
+            writer
+                .send(&ProtocolMessage::Welcome(Welcome {
+                    protocol_version: PROTOCOL_VERSION,
+                    server_id: 1,
+                    client_id: ClientId(1),
+                    client_instance_id: ClientInstanceId(1),
+                    caps: Welcome::caps_from_strings(&capabilities),
+                    clock: 0,
+                    platform: zz_protocol::HostPlatform::default(),
+                    revision: stale,
+                }))
+                .expect("send welcome");
+            writer
+                .send(&ProtocolMessage::Batch(
+                    Batch::from_messages(1, []).expect("empty batch"),
+                ))
+                .expect("send batch");
+        });
+        let result = connect_stream_with_startup_owner(
+            LocalTransport::connect(&socket).expect("connect handshake client"),
+            socket.display(),
+            ClientKind::Interactive,
+            None,
+            None,
+            true,
+            false,
+            false,
+            &[],
+            EndpointFactsScope::None,
+        );
+        server.join().expect("join handshake server");
+        let Err(error) = result else {
+            panic!("a client attached to a daemon below its revision floor");
+        };
+        assert!(
+            matches!(
+                error,
+                crate::DaemonError::DaemonTooOld { daemon, minimum }
+                    if daemon == stale && minimum == MIN_DAEMON_REVISION
+            ),
+            "{error:?}"
+        );
     }
 
     #[test]

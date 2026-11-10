@@ -72,6 +72,7 @@ fn hello_with(session: &str, extra: &[&str]) -> ProtocolMessage {
         working_directory: None,
         environment: Vec::new(),
         process_id: std::process::id(),
+        revision: zz_protocol::REVISION,
     });
     hello.subscriptions = zz_protocol::Subscriptions::terminal();
     hello.viewport = Some(zz_protocol::ClientViewport {

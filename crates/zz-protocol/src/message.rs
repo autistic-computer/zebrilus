@@ -23,7 +23,10 @@ use crate::{
     },
 };
 
-pub const PROTOCOL_VERSION: u16 = 121;
+pub const PROTOCOL_VERSION: u16 = 122;
+pub const REVISION: u32 = 1;
+pub const MIN_DAEMON_REVISION: u32 = 1;
+pub const MIN_CLIENT_REVISION: u32 = 1;
 pub const NEW_SESSION_ATTACH_CAPABILITY: &str = "new-session-attach-v1";
 pub const PANE_FRAME_CAPABILITY: &str = "pane-frame-v1";
 pub const CLIENT_TERMINAL_CAPABILITY: &str = "client-terminal-v1";
@@ -1592,6 +1595,7 @@ pub struct ClientHello {
     #[serde(deserialize_with = "deserialize_client_environment")]
     pub environment: Vec<RawText>,
     pub process_id: u32,
+    pub revision: u32,
 }
 
 impl fmt::Debug for ClientHello {
@@ -1608,6 +1612,7 @@ impl fmt::Debug for ClientHello {
             .field("working_directory", &self.working_directory)
             .field("environment_entries", &self.environment.len())
             .field("process_id", &self.process_id)
+            .field("revision", &self.revision)
             .finish()
     }
 }
@@ -1645,6 +1650,8 @@ pub struct ServerHello {
     pub clock: u64,
     #[serde(default)]
     pub platform: crate::HostPlatform,
+    #[serde(default)]
+    pub revision: u32,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -2047,6 +2054,10 @@ pub enum ServerError {
     NativeUnsupportedCommand(String),
     #[error("invalid command: {0}")]
     NativeInvalidCommand(String),
+    #[error(
+        "this zz is revision {client} and the running daemon needs revision {minimum} or newer; update zz"
+    )]
+    ClientTooOld { client: u32, minimum: u32 },
 }
 
 impl ServerError {
@@ -5367,7 +5378,7 @@ mod tests {
 
     #[test]
     fn detached_reason_holds_its_appended_wire_field() {
-        assert_eq!(super::PROTOCOL_VERSION, 121);
+        assert_eq!(super::PROTOCOL_VERSION, 122);
         for (reason, tag) in [
             (super::DetachReason::Requested, 0),
             (super::DetachReason::Evicted, 1),

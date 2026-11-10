@@ -2237,6 +2237,14 @@ impl AppShell {
                     radii,
                     cx,
                 ),
+                PaneKindSnapshot::Other { kind } => unsupported_pane(
+                    kind,
+                    IconName::Info,
+                    &zz_client::navigation::newer_pane_text(kind),
+                    None,
+                    radii,
+                    cx,
+                ),
                 PaneKindSnapshot::Picker => {
                     let picker = self.picker_entity(pane_id, cx);
                     if can_focus

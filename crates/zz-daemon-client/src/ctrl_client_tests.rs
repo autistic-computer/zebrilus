@@ -47,6 +47,7 @@ fn a_welcome_hands_its_clock_to_the_materialized_hello() {
             caps: 0,
             clock: 1_760_000_000,
             platform: zz_protocol::HostPlatform::default(),
+            revision: zz_protocol::REVISION,
         },
     )
     .unwrap();
@@ -274,6 +275,7 @@ fn legacy_command_attach_reconnects_with_the_original_route() {
                     key_tables: Vec::new(),
                     clock: 0,
                     platform: zz_protocol::HostPlatform::default(),
+                    revision: zz_protocol::REVISION,
                 },
             )))
             .unwrap();

@@ -1008,6 +1008,7 @@ mod tests {
             key_tables: Vec::new(),
             clock: 0,
             platform: crate::HostPlatform::default(),
+            revision: crate::REVISION,
         }));
 
         let frame = encode_protocol_message(&message).expect("encode ServerHello");
@@ -1147,6 +1148,7 @@ mod tests {
             key_tables: Vec::new(),
             clock: 0,
             platform: crate::HostPlatform::default(),
+            revision: crate::REVISION,
         }));
         let hello_frame = encode_protocol_message(&hello).expect("encode mux options in hello");
         assert_eq!(decode_protocol_frame(&hello_frame).unwrap(), hello);
@@ -1191,6 +1193,7 @@ mod tests {
             key_tables: Vec::new(),
             clock: 0,
             platform: crate::HostPlatform::default(),
+            revision: crate::REVISION,
         };
         assert!(matches!(
             encode_protocol_message(&ProtocolMessage::ServerHello(Box::new(oversized))),
@@ -1237,6 +1240,7 @@ mod tests {
             key_tables: Vec::new(),
             clock: 0,
             platform: crate::HostPlatform::default(),
+            revision: crate::REVISION,
         }));
         assert!(matches!(
             encode_protocol_message(&oversized_hello),
@@ -1270,6 +1274,7 @@ mod tests {
             key_tables: Vec::new(),
             clock: 0,
             platform: crate::HostPlatform::default(),
+            revision: crate::REVISION,
         }));
 
         assert!(matches!(
@@ -1304,6 +1309,7 @@ mod tests {
             key_tables: Vec::new(),
             clock: 0,
             platform: crate::HostPlatform::default(),
+            revision: crate::REVISION,
         }));
 
         assert!(matches!(
@@ -1334,6 +1340,7 @@ mod tests {
             key_tables: Vec::new(),
             clock: 0,
             platform: crate::HostPlatform::default(),
+            revision: crate::REVISION,
         }));
 
         assert!(matches!(
@@ -1384,6 +1391,7 @@ mod tests {
                 key_tables: Vec::new(),
                 clock: 0,
                 platform: crate::HostPlatform::default(),
+                revision: crate::REVISION,
             }));
             let payload = postcard::to_stdvec(&message).expect("serialize malformed fixture");
             let frame = crate::framing::encode_enveloped(Lane::Control, &payload)
@@ -1414,6 +1422,7 @@ mod tests {
                 key_tables: Vec::new(),
                 clock: 0,
                 platform: crate::HostPlatform::default(),
+                revision: crate::REVISION,
             }));
             assert!(matches!(
                 encode_protocol_message(&message),
@@ -1447,6 +1456,7 @@ mod tests {
                 working_directory: None,
                 environment: Vec::new(),
                 process_id: 13,
+                revision: crate::REVISION,
             });
             assert!(matches!(
                 encode_protocol_message(&message),
@@ -1479,6 +1489,7 @@ mod tests {
                 )),
                 environment: Vec::new(),
                 process_id: 13,
+                revision: crate::REVISION,
             })
         };
         let boundary = hello_with_working_directory(MAX_CLIENT_WORKING_DIRECTORY_BYTES);
@@ -1525,6 +1536,7 @@ mod tests {
                 working_directory: None,
                 environment,
                 process_id: 13,
+                revision: crate::REVISION,
             })
         };
         let rejected = |environment| {
@@ -1594,6 +1606,7 @@ mod tests {
             working_directory: None,
             environment: vec!["ZZ_SECRET=do-not-print".into()],
             process_id: 13,
+            revision: crate::REVISION,
         };
         let debug = format!("{hello:?}");
         assert!(debug.contains("environment_entries: 1"));
@@ -1617,6 +1630,7 @@ mod tests {
             key_tables: Vec::new(),
             clock: 0,
             platform: crate::HostPlatform::default(),
+            revision: crate::REVISION,
         }));
         let mut changed = message.clone();
         let ProtocolMessage::ServerHello(hello) = &mut changed else {
@@ -1757,6 +1771,7 @@ mod tests {
             )),
             environment: Vec::new(),
             process_id: 13,
+            revision: crate::REVISION,
         });
         let mut bytes = Vec::new();
         write_protocol_message(&mut bytes, &message).expect("write message");

@@ -64,6 +64,7 @@ pub enum MuxTreePaneKind {
     Editor,
     Agent(zz_protocol::AgentProvider),
     View,
+    Other,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -513,6 +514,7 @@ impl MuxTreePane {
             PaneKindSnapshot::Editor(_) => MuxTreePaneKind::Editor,
             PaneKindSnapshot::Agent(ref agent) => MuxTreePaneKind::Agent(agent.provider),
             PaneKindSnapshot::View(_) => MuxTreePaneKind::View,
+            PaneKindSnapshot::Other { .. } => MuxTreePaneKind::Other,
         };
         Self {
             id: pane.id,

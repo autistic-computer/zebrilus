@@ -1376,7 +1376,19 @@ impl Connection {
                     );
                     return false;
                 }
-                Ok(message) => self.receive(message, cx),
+                Ok(message) => {
+                    if let Some(revision) = daemon_below_floor(&message) {
+                        self.disconnected(
+                            format!(
+                                "The zz daemon is revision {revision}; this client needs revision {} or newer. Restart it with zz kill-server.",
+                                zz_protocol::MIN_DAEMON_REVISION
+                            ),
+                            cx,
+                        );
+                        return false;
+                    }
+                    self.receive(message, cx);
+                }
                 Err(error) => {
                     self.disconnected(format!("Connection rejected: {error}. Rebuild zz-web and the browser client together."), cx);
                     return false;
@@ -1404,6 +1416,16 @@ fn supports_required_protocol(message: &ProtocolMessage) -> bool {
             .any(|capability| capability == required),
         _ => true,
     })
+}
+
+#[cfg(target_family = "wasm")]
+fn daemon_below_floor(message: &ProtocolMessage) -> Option<u32> {
+    let revision = match message {
+        ProtocolMessage::Welcome(welcome) => welcome.revision,
+        ProtocolMessage::ServerHello(hello) => hello.revision,
+        _ => return None,
+    };
+    (revision < zz_protocol::MIN_DAEMON_REVISION).then_some(revision)
 }
 
 #[cfg(any(target_family = "wasm", test))]
@@ -1702,6 +1724,7 @@ mod browser {
             working_directory: None,
             environment: Vec::new(),
             process_id: 0,
+            revision: zz_protocol::REVISION,
         });
         hello.attach = Some(AttachOperation::Session(target));
         hello
@@ -1750,6 +1773,7 @@ mod tests {
                 key_tables: Vec::new(),
                 clock: 0,
                 platform: zz_protocol::HostPlatform::default(),
+                revision: zz_protocol::REVISION,
             }));
             let encoded = zz_protocol::encode_protocol_message(&hello).unwrap();
             let decoded = zz_protocol::decode_protocol_frame(&encoded).unwrap();
