@@ -25,6 +25,7 @@ body {
 
 :root {
   --penna-click-cursor: pointer;
+  --penna-control-touch-lg: 56px;
 }
 
 :root[data-pointer="arrow"],
@@ -249,6 +250,16 @@ select[data-penna] {
   --penna-icon-size: 14px;
 }
 
+:is([data-penna="button"], [data-penna="button.quiet"], [data-penna="button.outline"])[data-size="touch-large"] {
+  gap: var(--penna-space-8);
+  height: var(--penna-control-touch-lg);
+  padding: 0 var(--penna-space-16);
+  font-size: var(--penna-text-touch-body-size);
+  font-weight: var(--penna-text-touch-body-weight);
+  line-height: var(--penna-text-touch-body-line);
+  --penna-icon-size: 20px;
+}
+
 :is([data-penna="icon-button"], [data-penna="icon-button.flat"])[data-size="xsmall"] {
   width: var(--penna-control-xs);
   height: var(--penna-control-xs);
@@ -319,6 +330,15 @@ select[data-penna] {
   font-size: var(--penna-text-lead-size);
   font-weight: var(--penna-text-lead-weight);
   line-height: var(--penna-text-lead-line);
+}
+
+:is([data-penna="field"], [data-penna="field.outline"])[data-size="touch-large"] {
+  gap: var(--penna-space-8);
+  height: var(--penna-control-touch-lg);
+  padding: var(--penna-space-2) var(--penna-space-12);
+  font-size: var(--penna-text-touch-body-size);
+  font-weight: var(--penna-text-touch-body-weight);
+  line-height: var(--penna-text-touch-body-line);
 }
 
 :is([data-penna="field"], [data-penna="field.outline"])[data-size="touch"] {

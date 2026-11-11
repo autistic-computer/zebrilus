@@ -48,3 +48,26 @@
   top: 0.5px;
   min-width: 0;
 }
+
+.penna-field[data-size="touch-large"] {
+  align-items: stretch;
+}
+
+.penna-field[data-size="touch-large"] > .penna-field-label {
+  font-size: var(--penna-text-touch-small-size);
+  line-height: var(--penna-text-touch-small-line);
+}
+
+.penna-field[data-size="touch-large"] > :is(.penna-field-help, .penna-field-error) {
+  font-size: var(--penna-text-touch-small-size);
+  font-weight: var(--penna-text-touch-small-weight);
+  line-height: var(--penna-text-touch-small-line);
+}
+
+.penna-field[data-size="touch-large"] > .penna-field-error {
+  --penna-icon-size: 16px;
+}
+
+.penna-field[data-size="touch-large"] > .penna-field-error > [data-icon] {
+  margin-block: calc((var(--penna-text-touch-small-line) - var(--penna-icon-size)) / 2);
+}

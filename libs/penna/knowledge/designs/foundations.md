@@ -41,6 +41,7 @@ penna draws zz and nidus: tools people keep open all day, mostly driven from the
 6. Every control in one row has the same size.
 7. A token has one name everywhere. Its number is its pixel value. Rust and CSS spell it the same way (see Names).
 8. Color comes from the look's roles, never a literal. Status colors always come with an icon or a word.
+9. A phone screen is built from the phone components and keeps the phone rules (Phone). Desktop components under a coarse pointer are a different case: they keep their layout and grow their targets (Size).
 
 ## Names
 
@@ -122,7 +123,7 @@ Reading rhythm (built): blocks (paragraphs, lists, quotes, code, tables) sit `sp
 
 `TextView` sets `read-body` on itself (`TextViewStyle::text`, default `Some(TextStyle::ReadBody)`). `None` makes it inherit its container's text style instead, without the measure: zz's agent transcript sets `read-body` on its containers and lets its markdown inherit it. Headings always take the reading ladder. A task list's checkbox is as tall as the font and sits in a box one line tall.
 
-Touch, for the compact, touch and sheet blocks (`TextStyle::TouchSmall`, `TouchBody`, `TouchTitle`, built): `touch-small` 15 on 20, `touch-body` 17 on 22, `touch-title` 34 on 40, weights 400, 400, 600; strong is 500 for the first two.
+Touch, for the compact, touch and sheet blocks and the phone components (`TextStyle::TouchSmall`, `TouchBody`, `TouchTitle`, built): `touch-small` 15 on 20, `touch-body` 17 on 22, `touch-title` 34 on 40, weights 400, 400, 600; strong is 500 for the first two.
 
 Component text (step 3, built): list and tree rows `lead`, centered in the row height (which follows density and the rem), their details `small`; sidebar headings strong `small`, under the `body` rows they head; menu rows `small` with 12 icons, and `body` with 14 icons on a 44 row under a coarse pointer; their shortcuts `small`; menu section labels `caption`. Controls take the text of their size from `Size::control_text()`, the Text column of the control ladder: buttons, fields, selects and segmented controls set it once on the control and their label, icon and children inherit it, so a caller's weight (a selected sidebar row's 500) still wins. A field's caret, selection and rows follow its line (18 at `body`). Badges are strong `caption` (`micro` at the `xs` and `sm` rungs), keycaps `caption` (`micro`), the stepped slider `small` (`caption` at `xs` and `sm`), and the touch slider's readout `title`. Surfaces (dialogs, alerts, notifications, callouts, notices, popovers) set `body` on the surface, before the caller's own style, so content with no style of its own is 13 on 18; their titles are `body` at the heading weight, 600, and their descriptions and messages `small`; a stacked notice's title is `lead` at 600. An empty state sets `small` on itself, since its message is its bare content, and its title is `body` at 600. A marker beside a first line (a notification, callout or notice icon) sits in a box as tall as that line: 18 beside a `body` title, 20 beside a stacked notice's `lead` title, 16 beside a message alone. Tooltips are `small`. Chrome: the title bar's content area and the tray panel set `body`; a window title in the title bar is `body` at 600, with a path beside it regular and muted. The docs header's brand is `lead` at 600. Which-key sets `small` on itself, its table name strong `small`, and `caption` for block titles, the repeat mark and its key caps in the code face. Settings: the page heading is `title`, group headers `body` at 600 (so a disclosure's chevron box is 18 tall), row titles `body`, descriptions `small`; the about page's name is `title`, its tagline `small`, its values `caption` in the code face. The picker's rows are `small`, its empty label `caption`, its footer `micro`. The color picker's label is `caption`, the touch trigger's hex `mono`. Appearance: slider values `small`, tile labels `caption`, and the theme file description `small`. Compact and touch: large titles `touch-title`; the HUD strong `touch-body`; the folding title `touch-body` at 600; pill titles and menu chips strong `touch-small`, pill meta `small`, the mini pill strong `body`; key rows `touch-small`; the touch which-key list `touch-body`, its caps `touch-small` in the code face, its group headers strong `body`; popover keys `touch-body`. Sheets: titles `display`, row labels `touch-body`, details `touch-small`. The code editor sets `mono` on itself (13 on 18) and draws line numbers at the `caption` size on the code line. The HTML versions read the `--penna-text-*` variables instead of copying sizes.
 
@@ -144,6 +145,9 @@ Control ladder. Every control at a size shares one anatomy:
 | `control-lg` | 32 | `body` | 16 | 10 | 16 | 6 | built: `Size::Large`, the tabs' default height |
 | `control-xl` | 40 | `lead` | 16 | 12 | 16 | 8 | built: `Size::XLarge` |
 | `control-touch` | 44 | `touch-body` | 16 | 12 | 16 | 8 | built: `Size::Touch` |
+| `control-touch-lg` | 56 | `touch-body` | 16 | 12 | 20 | 8 | not built: `Size::TouchLarge` |
+
+Two rungs are for fingers. `control-touch` 44 is the smallest thing a finger can hit: on a phone it is the minimum target and the size of icon buttons and of the accessories inside a field, and on a tablet or a touch screen the desktop components take it under a coarse pointer, where `touch_scale` grows them by 15/13 and controls drawn smaller grow their hit area to 44 (Checkbox). That second case is desktop layout made reachable, not a phone screen. `control-touch-lg` 56 is the phone's rung for main actions and fields. It equals the pill's height (`COMPACT_PILL_HEIGHT`), so a main action at the bottom of a screen lines up with the pill it takes the place of, and a 44 accessory fits inside a 56 field with the 4 inside gap (`INSIDE_GAP`, Button). Its icon is 20, as on the pill's buttons (`compact_bar_button`). HTML: `data-size="touch-large"` and `--penna-control-touch-lg`.
 
 Fields use the field inset because their text starts at the edge. `Size` carries the whole row of the table: `control_px`, `control_text`, `inset`, `field_inset`, `icon_px` and `icon_gap`, and `Size::Size(px)` takes the nearest rung (`Size::rung()`) for everything but its height. Buttons are the exception: a `Size(px)` button keeps a proportional inset (a fifth of its height) and icon (three quarters of it) and a `space-6` icon gap, for custom shapes such as the title bar's chrome button. Chips take their rung's inset, icon gap and icon like buttons, and selects their rung's field inset and icon gap like fields; badges and keycaps pick their look by rung too, `Size(px)` included, while a checkbox at `Size(px)` takes that side. Badges, keycaps and checkboxes sit in a line of text, so from `Large` up they draw like `Medium`. A field's own marks (clear button, spinner, select chevron) are a rung smaller than the field from `Medium` up; `xs` and `sm` fields keep their own size.
 
@@ -326,6 +330,70 @@ How Principles 1 is kept, for every component:
 - A control's tooltip shows when the keyboard focuses it, as on hover.
 - Keys never leave a focused terminal or text field: app shortcuts that act while one has focus need a modifier.
 
+## Phone
+
+A phone screen is not the desktop made bigger. The desktop components stay what they are under a coarse pointer (Size); a phone screen is built from the components this section lists, which are sized for a thumb from the start. The chrome that moves around a phone (the pill, its menu, the bento overview, the zoom, the key row and sheets) is the compact, touch and sheet blocks.
+
+Rules:
+
+1. The whole thing is the target. A tile, row or card is tapped as one piece; no button sits inside one. More actions live one zoom in, or behind press-and-hold.
+2. Nothing tappable is under 44 (`control-touch`), and what is drawn is as big as what is tappable: no small drawing with an invisible hit area.
+3. One main action per screen, full width, at the bottom where the thumb is, at `control-touch-lg` 56. It rides the keyboard. The top of the screen is for reading.
+4. Going into a thing is a zoom: the tile grows into the screen and shrinks back the way it came. A short question that returns you where you were is a sheet.
+5. State is said in words and a tone dot, never by look alone (Rules 8).
+6. Text is `touch-body` 17 by default and `touch-small` 15 for details. Nothing is under 13 (`body`).
+
+Layout, top to bottom:
+
+- The platform's status area, then a top row 44 tall for the close or back control (`COMPACT_TITLE_BAR_HEIGHT`), `inset-pane` 16 from the sides like the body, so the control's corner sits clear of the screen's and concentric with a container whose corner is its own plus 16.
+- A large title 52 tall in `touch-title` (`large_title`), folding into the top row as the page scrolls (`folding_title_bar`).
+- The body, `inset-pane` 16 at the sides, groups `gap-group` 16 apart.
+- The bottom: the pill on the overview and on a pane, or the action bar on a zoom card or sheet. They hold the same spot, 16 from the sides and 20 above the bottom edge (`PILL_INSET_MIN`, `PILL_INSET_MAX`), so a screen has one or the other.
+
+Components (each specified in its own section):
+
+| Component | Section | Status |
+|---|---|---|
+| Main action and icon button | Button, Phone | the 56 rung not built; 44 built (`Size::Touch`), unused by phone code |
+| Field | Field, Phone | not built at 56; 44 built, unused |
+| Touch row, row group, section header | List, Touch rows | one-line and two-line rows built inside sheets; the rest not built |
+| Machine tile | Tile, Machine tile | bento cell and add tile built; the states not built |
+| Action bar | Blocks, Action bar | not built |
+| Zoom card | Blocks, Zoom card | the zoom built; the card not built |
+| Sheet | Blocks, Sheet | built, close at 36 |
+| Empty state | Blocks, Empty state on a phone | not built |
+| Status marks | below | not built at phone sizes |
+
+Status marks: a tone dot 8 across (`success` connected, `warning` waiting, `fg-faint` off), always beside its word; the spinner at the touch rung's icon, 16, one turn every 900ms; a count badge 20 tall, the `touch-small` line, strong `touch-small`, where a desktop badge follows a `body` line (18).
+
+Surfaces: the Look's rule, applied to the phone: flat by default, glass only for what sits over something, and a floating surface without glass drawn as the Look says (Look; Corners, depth, focus, motion). Glass is on by default on the phone as everywhere: the thin client's Appearance applies `liquid` when nothing turns it off, and Reduce transparency turns it off.
+
+| Piece | Surface | Glass off |
+|---|---|---|
+| Screen | the ground | the same |
+| Machine tile, add tile | `phone.card`, `phone.add`: a step of fill, no edge; pressed a wash | the same |
+| Touch rows and row groups | rows no fill, a wash when pressed; a group a `settings.card` step | the same |
+| Field | the field's tint | the same |
+| Empty state | none of its own | the same |
+| Zoom card | flat, the tile's look; once it fills the screen it is the ground | the same |
+| Main action | a solid fill, never glass | the same |
+| Action bar | none of its own while it holds only the solid main action; a floating surface like the pill whose spot it takes when it holds a quiet secondary or content scrolls under it | a floating surface without glass (Look); not built |
+| Pill | glass, the `floating` look (`floating_layer`) | a floating surface without glass (Look) |
+| Pill menu chips | glass, floating over the scrim | a floating surface without glass (Look); not built: natively each chip is a `phone.pill` tint with no glass, hairline or shadow, glass on or off (`compact_pill_menu`) |
+| Floating buttons (the gear disc) | glass, the `floating` look (`compact_floating_group`) | a floating surface without glass (Look) |
+| Folding title bar | a frost of its own over the scrolled page: blur 20, the ground at 72%, saturation 1.8 (`folding_title_bar`), with the `phone.bar` hairline under it | should be the ground, opaque, under the hairline; today it keeps its frost with glass off: not built |
+| Chat composer | glass, as Chat composer says | its opaque card surface |
+| Sheet | the `drawer` look, floating: glass with the float shadow | a floating surface without glass (Look) |
+| Key row | its pill a floating surface, glass; its keys `phone.key`, flat, a wash when pressed or latched, solid when inverted | the pill a floating surface without glass (Look), the keys the same; not built: natively the pill is a `phone.pill` tint with no glass, hairline or shadow, glass on or off (`KeyRow`) |
+
+Outline buttons sit only on a ground with its own fill (Button); a phone screen's secondary action is quiet or text.
+
+Decisions: a tile's title is strong `touch-body`, 500, since strong is 500 for the touch styles (Type); a tile's inset is `inset-card` 12; a main action that is loading keeps its label (Button).
+
+HTML: the phone components' twins live with their tiers: the rung in `button.css`, `input.css` and `penna.css` (`data-size="touch-large"`); rows, groups, headers, the action bar, the empty state and the marks (`.penna-tone-dot` with `data-tone`, `.penna-touch-spinner`, `.penna-touch-badge`) in `blocks/touch/touch.css`; the machine tile, the zoom card, the icon button (`.penna-touch-icon`) and its disc (`.penna-touch-disc[data-penna="floating"]`) in `blocks/compact/compact.css`; the 44 close in `blocks/sheet/sheet.css`.
+
+Status: not built natively; drawn in HTML on the docs Phone pages.
+
 ## Layout primitives (built)
 
 Six primitives lay out app screens, stories and new components. They take tokens and draw nothing. The components that existed before them already lay out with `Space` directly and move onto the primitives only when they are rewritten.
@@ -405,9 +473,15 @@ Content: the label is a verb or a short verb phrase in sentence case, one to thr
 
 Placement: buttons in a group sit `gap-related` 8 apart. A dialog's or a form's actions sit at its end, aligned to the trailing edge, the primary last and its cancel just before it. A destructive dialog confirms with a danger button, not a primary one. Ghost buttons in a bar sit `inset-chrome` from its edges.
 
-HTML: `.penna-button` with `data-penna` (the recipe: `button`, `button.quiet` for ghost, `button.outline`), `data-tone`, `data-prominent` (solid), `data-size` (`xsmall` to `touch`), `data-state="current"` (selected), `data-variant` (`link`, `text`), `disabled`, `data-loading`; the label is `.penna-label`, the icon `<i data-icon>`, and a button with a caret takes `data-caret` and holds a `.penna-caret`. A button set inside a tab or row takes `data-inside` with `--penna-inside-rows` set to the container's height, and `kit.js` rounds it concentric.
+Phone (Phone, rules 2 and 3):
 
-Status: matches.
+- Main action: full width at `control-touch-lg` 56, `touch-body`, inset 16, a 20 icon `space-8` from the label. One per screen, in the action bar. Kinds: primary for the main action, secondary (soft) for the one secondary, ghost for a text-only way out ("Type an address instead"), danger soft for an action that removes something, named for what it removes.
+- States: rest; pressed as the press highlight, a wash that rises over 120ms after a 100ms delay, holds at least 130ms and falls over 180ms (`touch::press`); disabled faint; loading with the spinner in the icon's place, or before the label when there is none. Loading keeps the label, which can turn to its -ing form ("Connecting"), so the button never changes width or loses its name.
+- Icon button: 44 square with a 20 icon (`compact_bar_button`), ghost, its tooltip and accessible name naming the action. Over the content it sits in a floating disc 56 tall, the pill's height (`compact_floating_group`).
+
+HTML: `.penna-button` with `data-penna` (the recipe: `button`, `button.quiet` for ghost, `button.outline`), `data-tone`, `data-prominent` (solid), `data-size` (`xsmall` to `touch`, and `touch-large`), `data-state="current"` (selected), `data-variant` (`link`, `text`), `disabled`, `data-loading`; the label is `.penna-label`, the icon `<i data-icon>`, and a button with a caret takes `data-caret` and holds a `.penna-caret`. A button set inside a tab or row takes `data-inside` with `--penna-inside-rows` set to the container's height, and `kit.js` rounds it concentric.
+
+Status: matches, but for Phone above: the `control-touch-lg` rung, phone code on the touch rungs and the 44 icon button are not built.
 
 ### Badge
 
@@ -634,9 +708,11 @@ Content: the label is a noun or a short noun phrase in sentence case, with no co
 
 Placement: fields in a form sit `gap-group` 16 apart. Two short fields can share a line `gap-related` 8 apart, each with its own label.
 
+Phone: a field on a phone is `control-touch-lg` 56, `touch-body` text, field inset 12, a 20 leading icon. Its label is strong `touch-small` and its help and error `touch-small`, the error after a 16 `circle-x`; parts `gap-tight` 4 apart as above. Its accessories (clear, scan, send) are 44 icon buttons set inside it, `INSIDE_GAP` 4 or more from its edge, never a rung smaller as a desktop field's marks are. Not built: phone code draws fields at the default rung. HTML: `.penna-field[data-size="touch-large"]` around `.penna-input[data-size="touch-large"]`, its accessories `.penna-button[data-size="touch"][data-shape="icon"]` in `.penna-input-suffix`.
+
 HTML: `.penna-field` holding `.penna-field-label`, the control, and `.penna-field-help` or `.penna-field-error` (an `<i data-icon="circle-x">` before its text). Text runs are spans marked `data-penna-text`; `field.css` holds the twin.
 
-Status: matches.
+Status: matches, but for Phone above, which is not built.
 
 ### Icon
 
@@ -873,9 +949,20 @@ Content: the label is the thing's name as people know it (a host, a session, a f
 
 Placement: in a sidebar, a pane or a picker, full width, in a column of rows `space-2` apart with the row inset at the sides. One selected row shows which one is open.
 
+Touch rows (Phone): a list on a phone (found machines, chats, settings) uses touch rows.
+
+- Row: one line 52 or two lines 64 tall (the sheet's `OPTION_HEIGHT` and `DETAIL_HEIGHT`), inset `space-12` at the sides, children `space-12` apart. Leading icon 20 in muted ink. Title `touch-body`, detail `touch-small` muted `space-2` under it, both on one line. The `phone.row` look: no fill at rest, the press highlight while held, the disabled paint.
+- Trailing, one of: a 16 chevron when the tap zooms in; a value in `touch-small`, muted; a tone dot and its word; a 16 spinner and its word; the add mark, a 20 `plus` in accent ink, when the tap adds the thing. The whole row is the target; nothing in it is a button.
+- Disabled: the title faint, the detail saying why ("No zz on it yet"), no trailing mark.
+- Group: rows in a `settings.card`, the row inset (6) around them, `space-2` apart, a `divider` hairline between them from the title's start to the row's end.
+- Swipe: swiping a row left reveals one trailing action 64 wide (`space-64`), solid danger, as tall as the row ("Forget").
+- Section header: over a group or a grid, 28 tall (as the touch which-key list's), strong `touch-small` muted, inset 12 so it sits over the rows' text, `space-4` above the card; an optional count at its end in regular `touch-small`.
+
+Status for touch rows: one-line and two-line rows are built inside sheets (`sheet_row`, `sheet_detail_row`); phone code uses `sheet_row` only. Rows outside a sheet, the group, the trailing kinds, the swipe and the section header are not built. HTML: `.penna-touch-row[data-penna="phone.row"]` (`data-lines="2"` for two lines) holding an `<i data-icon>`, `.penna-touch-row-lines`, and a `.penna-touch-row-value`, `.penna-touch-row-state` or trailing `<i data-icon>` (`data-add` for the add mark); `.penna-touch-group[data-penna="settings.card"]` around rows; `.penna-touch-swipe` (`data-open`) holding a row and `.penna-touch-swipe-action`; `.penna-touch-header` with an optional `.penna-touch-count`.
+
 HTML: `.penna-list` is the column (rows `space-2` apart). A row is `.penna-list-item[data-penna]` (`menu-item`, `sidebar.row`, `menu-item.tint`) with `role="option"`, `aria-selected="true"` or `data-state="selected"`, `aria-disabled="true"` or `data-state="disabled"`, `data-state="focused"` (or keyboard focus) for the focus ring, and `--penna-list-row` for its height. Inside, `.penna-list-content` holds `i.penna-list-icon[data-icon]`, `.penna-list-label` and `.penna-list-detail`, each text run in `.penna-text[data-penna-text]`. No script.
 
-Status: matches.
+Status: matches, but for Touch rows above, built only inside sheets.
 
 ### Menu
 
@@ -1631,9 +1718,18 @@ Behavior: the native tile paints a state; the app picks, drags and drops. A tile
 
 Placement: on a well or in a dock, `gap-group` 16 apart in a row, or where the app arranges them. Drop and veil sit absolutely over the panes they cover. A tile rises one step of fill from its ground, and casts a shadow only while dragged.
 
+Machine tile (Phone): the bento overview's cell, two to a row.
+
+- Container: the `phone.card` look, `gap-related` 8 apart over `inset-pane` 16 (`BENTO_GAP`, `BENTO_INSET`), square, inset `inset-card` 12.
+- Name: strong `touch-body` (500), after a tone dot 8 or a 16 spinner, `space-8` apart. State under it in `touch-small`, muted, or `warning` ink while something waits. Lines at the bottom in `touch-small`, muted.
+- States, and what a tap does: connected ("Connected"), zooms into the machine; waiting ("1 waiting for you", warning dot), zooms in; connecting (spinner, "Connecting"), zooms into its progress, where Cancel is the main action; offline (faint dot, "Not connected", when it was last seen), reconnects; pressed, the bento press (`control` over the tile); add, the `phone.add` look with a 20 `plus` and "Add machine", zooms into the add card.
+- No button sits inside a tile, and nothing on the overview is drawn as a ghost: machines not yet added are rows in the add card.
+
+Status for the machine tile: the grid, the cell and the add tile are built (`bento_grid`, `bento_tile`, `bento_add_tile`); zz-ui draws the states (`host_tile`) at `heading` 16 and `body` 13, inset 14, with Connect and Cancel buttons inside. Not built. HTML: `.penna-machine-grid` holding `.penna-machine-tile[data-penna="phone.card"]` (`data-penna="phone.add"` and `data-add` for the add tile) with `.penna-machine-name`, `.penna-machine-state` (`data-tone="warning"`), `.penna-machine-foot` and a `.penna-press` for the pressed state (`data-state="active"`).
+
 HTML: `.penna-tile` with `data-penna` (`tile.card`, `tile.screen`, `tile.drop`, `tile.mini`) and `data-variant` (`card`, `screen`, `drop`, `veil`, `mini`); `data-state` (`hover`, `selected`, `focused`, `disabled`), `data-tone` (`primary`, `danger`), `data-edge` on a drop zone, and `role="button"` with `tabindex="0"` on a tile that takes focus. `tile.css` draws the variants and states, the lift as `--penna-shadow-lifted` under an inset `--penna-wash` (one wash step, laid over whatever fill the tile or its well draws), the selected ring in `::before` and the focus ring in `::after`; size, inset, placement and a mini's fill and corners are the page's, as natively. `tile.js` runs a focusable tile on Space and Enter and keeps a click from focusing it. Picking and dragging are the page's, as natively the app's.
 
-Status: matches.
+Status: matches, but for Machine tile above, whose states are not built.
 
 ### Tooltip
 
@@ -1725,6 +1821,56 @@ Status: matches.
 ## Blocks
 
 A block is a piece of UI that owns the layout and state of several components. It takes plain data and callbacks; the app keeps whatever turns its own model into that data.
+
+### Action bar
+
+The action bar holds a phone screen's one main action at the bottom, where the thumb is. For moving around, the pill.
+
+Anatomy: a column, `gap-related` 8 apart, 16 from the sides and 20 above the bottom edge, the pill's spot (`PILL_INSET_MIN`, `PILL_INSET_MAX`). It holds the main action (Button, Phone) and at most one secondary: above it as a ghost or soft button, or beside it, the two sharing the width, the main action last.
+
+Behavior: when the keyboard is up it rides on it, 8 above. It never scrolls with the content.
+
+Placement: on a zoom card or a sheet. The overview and a pane have the pill in that spot instead; inside a machine the main action (New chat) is in the pill's menu, not a bar.
+
+HTML: `.penna-action-bar` (`data-row` for two side by side, `data-keys` riding the keyboard, `data-penna="floating"` when it is a floating surface), holding `.penna-button[data-size="touch-large"]`.
+
+Status: not built.
+
+### Zoom card
+
+A zoom card is what a tile becomes when it grows to fill the screen: the thing you went into, or the form behind the add tile. For a short question, a sheet.
+
+Anatomy, top to bottom: the platform's status area; a top row 44 with the close control at its end, `inset-pane` 16 from the side (an icon button, Button, Phone); a large title 52 in `touch-title`; the body, `inset-pane` 16 at the sides and `gap-group` 16 between its groups; the action bar. The look is the tile's (`phone.card` for a machine or the add card), filling the screen.
+
+Behavior: it opens with the zoom (`zoom_layers`: the tile's layer grows to the screen while the grid behind scales up around it and they cross-fade between 0.3 and 0.7 of the way, on the touch spring) and closes the same way back, from the close control, a drag down or a pinch out.
+
+HTML: `.penna-zoom-card[data-penna]` holding `.penna-zoom-top`, `.penna-zoom-title`, `.penna-zoom-body` and `.penna-action-bar`.
+
+Status: the zoom is built; the card, its close control, drag down and pinch out are not.
+
+### Sheet
+
+A sheet asks a short question and returns you where you were: a password, a confirmation, a few choices. To go into something, a zoom card.
+
+Anatomy (`penna::blocks::sheet`): floating `space-8` from the screen's sides on the `drawer` look; a grabber 36 by 5, `space-6` from the top; a header 60 tall with the title in `display` and the close control at its end; the body, `inset-pane` 16 at the sides, in `touch-body`; rows from List, Touch rows; on a phone the action bar at the bottom, riding the keyboard. It rises over 240ms and is dismissed by a drag down past half its height, a fling, the scrim or the close control.
+
+Phone: the close control is a 44 icon button (Phone, rule 2). Built at 36 (`CLOSE`).
+
+HTML: `.penna-sheet` with `.penna-sheet-scrim`, `.penna-sheet-frame`, `.penna-sheet-panel`, `.penna-sheet-grip`, `.penna-sheet-header`, `.penna-sheet-title`, `.penna-sheet-close` (`data-size="touch"` for 44) and `.penna-sheet-row`.
+
+Status: built, but for the 44 close and the action bar.
+
+### Empty state on a phone
+
+An empty phone screen says what will be there and how to get it.
+
+Anatomy: in the upper middle, a 32 icon in muted ink, a title in `title`, one line in `touch-small` muted, `gap-tight` 4 apart and `space-8` under the icon, `space-32` from the sides. Its action is the screen's main action in the action bar, never a button under the text.
+
+Content: the title says what is missing ("No machines yet"); the line says what the thing is, in one sentence.
+
+HTML: `.penna-empty` with an `<i data-icon>`, a `b` and a `span`.
+
+Status: not built; the desktop's empty state (`small` text, a `body` title at 600) stays as it is.
 
 ### Palette
 
@@ -1864,5 +2010,6 @@ Status: matches.
 | 18 | A see-through window reads like an opaque one: the theme carries the window's opacity, so cards and bars on it take their step as a wash and stay a step above it, and `divider` drops to 8% | settings cards under window blur read a step above the page instead of darker than it; every rule is lighter | built |
 | 19 | PiPs follow Glass: a PiP is glass when glass is on and its pane's ground, opaque, under the `divider` hairline when it is off | PiPs lose their frosted blur with glass off and gain the pane's hairline | built |
 | 20 | One corner rule: controls round to a share of their height, containers keep `radius`, nested corners are concentric on drawn corners, and smoothing no longer changes how round a corner looks | controls on macOS (`smoothing` 4) read as round as their radius says instead of about half; rows, sidebar entries, tabs and the segmented pill match at every Corner radius; zz's flat sidebar entries follow the knob instead of a fixed 24 | built |
+| 21 | Phone components: the `control-touch-lg` rung, phone buttons and fields on the touch rungs, touch rows outside sheets, machine tile states, the action bar, the zoom card, a 44 sheet close and the phone empty state | phone buttons grow from about 32 to 44 and 56, tiles lose their buttons, text in tiles grows to 17 and 15 | not built |
 
 Each step lands in penna with its stories, scores parity, rebaselines only what the step meant to move, and is pulled into zz and nidus.

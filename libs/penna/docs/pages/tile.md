@@ -67,3 +67,33 @@ A tone tints the label. Say what it means in words.
 | `.edge(width)` | `data-edge` | Drop zone edge width |
 
 Size, inset, picking and dragging are yours, natively and in HTML.
+
+## Machine tile
+
+The bento overview's cell on a phone, two to a row. The whole tile is the target.
+
+```figure uses=notice
+<div class="penna-notice" data-penna="notice" data-tone="warning" style="width: 100%"><div class="penna-notice-tone" data-penna="chip" data-tone="warning"><span class="penna-notice-lead"><i data-icon="triangle-alert"></i></span><div class="penna-notice-body"><span class="penna-text penna-notice-title" data-penna-text>States not built natively yet</span><span class="penna-text penna-notice-detail" data-penna-text>The grid, the cell and the add tile are native; these states are drawn with the HTML kit.</span></div></div></div>
+```
+
+```figure uses=compact,touch
+<div class="penna-machine-grid" style="width: 370px">
+  <div class="penna-machine-tile" data-penna="phone.card" role="button"><span class="penna-machine-name"><span class="penna-tone-dot"></span><span>alienware</span></span><span class="penna-machine-state">Connected</span><span class="penna-machine-foot"><span>1 chat</span><span>cachyos-upgrade</span></span><span class="penna-press"></span></div>
+  <div class="penna-machine-tile" data-penna="phone.card" role="button"><span class="penna-machine-name"><span class="penna-tone-dot" data-tone="warning"></span><span>macbook</span></span><span class="penna-machine-state" data-tone="warning">1 waiting for you</span><span class="penna-machine-foot"><span>3 chats</span><span>2 working</span></span><span class="penna-press"></span></div>
+  <div class="penna-machine-tile" data-penna="phone.card" role="button"><span class="penna-machine-name"><i class="penna-touch-spinner" data-icon="loader"></i><span>homelab</span></span><span class="penna-machine-state">Connecting</span><span class="penna-machine-foot"><span>Over Tailscale</span></span><span class="penna-press"></span></div>
+  <div class="penna-machine-tile" data-penna="phone.card" role="button"><span class="penna-machine-name"><span class="penna-tone-dot" data-tone="off"></span><span>xps</span></span><span class="penna-machine-state">Not connected</span><span class="penna-machine-foot"><span>Last seen 2 days ago</span></span><span class="penna-press"></span></div>
+  <div class="penna-machine-tile" data-penna="phone.card" role="button" data-state="active"><span class="penna-machine-name"><span class="penna-tone-dot"></span><span>alienware</span></span><span class="penna-machine-state">Connected</span><span class="penna-machine-foot"><span>1 chat</span></span><span class="penna-press"></span></div>
+  <div class="penna-machine-tile" data-penna="phone.add" data-add role="button"><i data-icon="plus"></i>Add machine<span class="penna-press"></span></div>
+</div>
+```
+
+| State | Says | A tap |
+| --- | --- | --- |
+| Connected | a green dot, "Connected" | zooms into the machine |
+| Waiting | a warning dot, "1 waiting for you" | zooms into the machine |
+| Connecting | a spinner, "Connecting" | zooms into its progress, where Cancel is the main action |
+| Offline | a faint dot, "Not connected", when it was last seen | reconnects |
+| Pressed | the press over the tile | |
+| Add | "Add machine" | zooms into the add card |
+
+Name strong `touch-body`, state and lines `touch-small`, inset 12. No button inside, no ghost tiles: machines not added yet are rows in the add card.

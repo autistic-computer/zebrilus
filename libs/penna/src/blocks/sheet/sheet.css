@@ -107,6 +107,12 @@
   --penna-icon-size: 16px;
 }
 
+.penna-sheet-close.penna-button[data-size="touch"] {
+  width: var(--penna-control-touch);
+  height: var(--penna-control-touch);
+  --penna-icon-size: 20px;
+}
+
 .penna-sheet-content {
   display: flex;
   flex-direction: column;

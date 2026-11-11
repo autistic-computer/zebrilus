@@ -76,6 +76,16 @@
   --penna-icon-size: 16px;
 }
 
+.penna-button[data-size="touch-large"] {
+  height: var(--penna-control-touch-lg);
+  padding: 0 var(--penna-space-16);
+  gap: var(--penna-space-8);
+  font-size: var(--penna-text-touch-body-size);
+  font-weight: var(--penna-text-touch-body-weight);
+  line-height: var(--penna-text-touch-body-line);
+  --penna-icon-size: 20px;
+}
+
 .penna-button[data-compact] {
   min-width: var(--penna-control-md);
   padding: 0 var(--penna-space-6);

@@ -18,6 +18,7 @@
         "typography",
         "spacing",
         "sizes",
+        "phone",
         "look"
       ]
     },
@@ -59,8 +60,12 @@
     {
       "title": "Blocks",
       "pages": [
+        "action-bar",
         "chat",
-        "palette"
+        "empty-state",
+        "palette",
+        "sheet",
+        "zoom-card"
       ]
     }
   ]

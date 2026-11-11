@@ -120,3 +120,39 @@ Actions at the end, main action last. Destructive confirms are danger, not prima
 | `.dropdown_caret(true)` | `data-caret`, `.penna-caret` | Caret |
 | `.tooltip(text)` | `data-tooltip` | Tooltip; required with only an icon |
 | `.on_click(handler)` | `click` | Runs on release |
+
+## Phone
+
+```figure uses=notice
+<div class="penna-notice" data-penna="notice" data-tone="warning" style="width: 100%"><div class="penna-notice-tone" data-penna="chip" data-tone="warning"><span class="penna-notice-lead"><i data-icon="triangle-alert"></i></span><div class="penna-notice-body"><span class="penna-text penna-notice-title" data-penna-text>Not built natively yet</span><span class="penna-text penna-notice-detail" data-penna-text>The 56 rung is drawn with the HTML kit. Phone code asks for no touch rung today; icon buttons should ask for touch (44), main actions for touch-large (56).</span></div></div></div>
+```
+
+```figure uses=button,touch,compact
+<div class="docs-show" data-gap="wide" style="align-items: flex-start">
+  <div class="docs-cell" style="width: 370px; gap: 12px">
+    <button class="penna-button" data-penna="button" data-tone="primary" data-prominent data-size="touch-large" style="width: 100%"><span class="penna-label" data-penna-text>Connect</span></button>
+    <button class="penna-button" data-penna="button" data-size="touch-large" style="width: 100%"><span class="penna-label" data-penna-text>Scan QR</span></button>
+    <button class="penna-button" data-penna="button.quiet" data-size="touch-large" style="width: 100%"><span class="penna-label" data-penna-text>Type an address instead</span></button>
+    <button class="penna-button" data-penna="button" data-tone="danger" data-size="touch-large" style="width: 100%"><span class="penna-label" data-penna-text>Forget xps</span></button>
+    <span class="docs-note">Primary, secondary, ghost, danger</span>
+  </div>
+  <div class="docs-cell" style="width: 370px; gap: 12px">
+    <button class="penna-button" data-penna="button" data-tone="primary" data-prominent data-size="touch-large" style="width: 100%"><span class="penna-label" data-penna-text>Rest</span></button>
+    <button class="penna-button" data-penna="button" data-tone="primary" data-prominent data-size="touch-large" data-state="active" style="width: 100%"><span class="penna-label" data-penna-text>Pressed</span></button>
+    <button class="penna-button" data-penna="button" data-tone="primary" data-prominent data-size="touch-large" disabled aria-disabled="true" style="width: 100%"><span class="penna-label" data-penna-text>Disabled</span></button>
+    <button class="penna-button" data-penna="button" data-tone="primary" data-prominent data-size="touch-large" data-loading style="width: 100%"><i class="penna-touch-spinner" data-icon="loader"></i><span class="penna-label" data-penna-text>Connecting</span></button>
+    <span class="docs-note">States</span>
+  </div>
+</div>
+```
+
+- **Main action**: `touch-large` 56, full width, one per screen, in the action bar.
+- **Pressed**: the press highlight, a wash that rises after a short delay and holds long enough to see.
+- **Loading**: the spinner before the label; the label stays, so the button keeps its width and its name.
+
+```figure uses=compact
+<div class="docs-show" data-gap="wide">
+  <div class="docs-cell"><button class="penna-touch-icon" data-penna="phone.button" aria-label="Settings"><i data-icon="settings"></i></button><span class="docs-note">Icon button, 44</span></div>
+  <div class="docs-cell"><span class="penna-touch-disc" data-penna="floating"><button class="penna-touch-icon" data-penna="phone.button" aria-label="Settings"><i data-icon="settings"></i></button></span><span class="docs-note">Over the content, in a 56 disc</span></div>
+</div>
+```

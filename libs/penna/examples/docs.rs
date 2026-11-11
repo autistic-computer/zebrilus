@@ -54,12 +54,14 @@ const LOOKS: [(&str, &str); 11] = [
     ("glass-liquid", r#"{ "glass": "liquid" }"#),
 ];
 
-const LOOK_ROLES: [&str; 8] = [
+const LOOK_ROLES: [&str; 10] = [
     "button",
     "button.quiet",
     "field",
     "menu-item",
     "popover",
+    "floating",
+    "drawer",
     "card",
     "tile.card",
     "chip",

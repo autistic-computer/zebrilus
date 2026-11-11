@@ -68,6 +68,24 @@
   --input-mark: 16px;
 }
 
+.penna-input[data-size="touch-large"] {
+  gap: var(--penna-space-8);
+  height: var(--penna-control-touch-lg);
+  padding: var(--penna-space-2) var(--penna-space-12);
+  font-size: var(--penna-text-touch-body-size);
+  font-weight: var(--penna-text-touch-body-weight);
+  line-height: var(--penna-text-touch-body-line);
+  --penna-icon-size: 20px;
+  --input-mark: 20px;
+}
+
+.penna-input[data-size="touch-large"] > .penna-input-suffix > .penna-button[data-shape="icon"],
+.penna-input[data-size="touch-large"] > .penna-input-suffix > .penna-button[data-size="touch"] {
+  width: var(--penna-control-touch);
+  height: var(--penna-control-touch);
+  margin-right: calc(var(--penna-space-4) - var(--penna-space-12));
+}
+
 .penna-input[data-bare] {
   background: none;
   border: 0;
