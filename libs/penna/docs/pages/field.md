@@ -68,10 +68,10 @@ Fields in a form sit `gap-group` 16 apart. Two short fields can share a line, `g
 ```figure uses=field,input
 <div class="docs-show" data-gap="wide" style="align-items: flex-start">
   <div class="docs-cell" style="width: 370px; gap: 16px">
-    <div class="penna-field" data-size="touch-large"><span class="penna-field-label" data-penna-text>Address</span><label class="penna-input" data-penna="field" data-size="touch-large"><i data-icon="server"></i><input placeholder="user@host" /></label><span class="penna-field-help" data-penna-text>Where zz runs, reached with your own ssh.</span></div>
+    <div class="penna-field" data-size="touch-large"><span class="penna-field-label" data-penna-text>Address</span><label class="penna-input" data-penna="field" data-size="touch-large"><i data-icon="server"></i><input placeholder="user@host" /></label></div>
     <label class="penna-input" data-penna="field" data-size="touch-large"><i data-icon="server"></i><input value="fabrico@xps" /><span class="penna-input-suffix"><button class="penna-button" data-penna="button.quiet" data-size="touch" data-shape="icon" aria-label="Clear"><i data-icon="circle-x"></i></button></span></label>
     <label class="penna-input" data-penna="field" data-size="touch-large"><input value="fabrico@xps" /><span class="penna-input-suffix"><button class="penna-button" data-penna="button" data-tone="primary" data-prominent data-size="touch" data-shape="icon" aria-label="Connect"><i data-icon="arrow-up"></i></button></span></label>
-    <span class="docs-note">Label and help; clear and send accessories, 44</span>
+    <span class="docs-note">Label; clear and send accessories, 44</span>
   </div>
   <div class="docs-cell" style="width: 370px; gap: 16px">
     <div class="penna-field" data-size="touch-large"><label class="penna-input" data-penna="field" data-size="touch-large" data-tone="danger"><input value="fabrico@xps:99999" /></label><div class="penna-field-error"><i data-icon="circle-x"></i><span data-penna-text>Ports go up to 65535.</span></div></div>

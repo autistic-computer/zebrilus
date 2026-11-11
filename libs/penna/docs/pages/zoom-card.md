@@ -46,13 +46,12 @@ Behind the add tile. Found machines first, as touch rows with the add mark: a ta
   <div class="penna-zoom-title">Add machine</div>
   <div class="penna-zoom-body">
     <div style="aspect-ratio: 1; border-radius: calc(var(--penna-phone-radius) * var(--penna-corner-grow)); corner-shape: superellipse(var(--penna-window-k)); background: color-mix(in srgb, var(--penna-fg) 80%, var(--penna-bg))"></div>
-    <span class="penna-type" data-type="touch-small" data-muted data-penna-text>On your computer, the code is in zz Settings, Hosts, under Add this machine to a phone.</span>
   </div>
   <div class="penna-action-bar"><button class="penna-button" data-penna="button" data-size="touch-large"><span class="penna-label" data-penna-text>Type an address instead</span></button></div>
 </div>
 ```
 
-The scan accessory turns the same card into the scanner: the camera's picture, square, one line saying where the code is, and a way back to typing. The picture is the app's.
+The scan accessory turns the same card into the scanner: the camera's picture, square, and a way back to typing. The picture is the app's.
 
 ## Connecting card
 

@@ -341,11 +341,12 @@ A phone screen is not the desktop made bigger. The desktop components stay what 
 Rules:
 
 1. The whole thing is the target. A tile, row or card is tapped as one piece; no button sits inside one. More actions live one zoom in, or behind press-and-hold.
-2. Nothing tappable is under 44 (`control-touch`), and what is drawn is as big as what is tappable: no small drawing with an invisible hit area.
+2. Nothing tappable is under 44 (`control-touch`), and what is drawn is as big as what is tappable: no small drawing with an invisible hit area, but for the mini pill and a badge on a thumbnail (Layout).
 3. One main action per screen, full width, at the bottom where the thumb is, at `control-touch-lg` 56. It rides the keyboard. The top of the screen is for reading.
 4. Going into a thing is a zoom: the tile grows into the screen and shrinks back the way it came. A short question that returns you where you were is a sheet.
 5. State is said in words and a tone dot, never by look alone (Rules 8).
 6. Text is `touch-body` 17 by default and `touch-small` 15 for details. Nothing is under 13 (`body`).
+7. Text says a state, a value or a name. No eyebrows, subheads, helper lines or microcopy that explains what the screen already shows.
 
 Press and hold: holding a tile, or a section header that heads a group of tiles, opens a sheet (Sheet) of what can be done to that thing, titled with its name: one-line touch rows, each a 20 glyph and a verb, the plain actions first and the one that destroys or removes last in `danger` ink. The rule is one for every tile, whatever it holds, so nothing that acts on a tile ever sits inside it (rule 1). A tap still goes in. A header that can be held is 44 tall (rule 2; List, Touch rows). A session's header is its name and nothing else; holding it gives Rename session and Close session. What a tile leaves out to stay quiet (a window's folder, branch, age, and the work's message and percent) is one muted line under the sheet's title (Sheet). Not built: natively no tile or header takes a long press.
 
@@ -362,7 +363,9 @@ Inside a pane there is no top row, no title and no header: the pane's content ru
 
 The keyboard rule: when the keyboard is up, the pill gives its place to what you type with: the composer in a chat (Chat on a phone), the key row in a terminal (Key row), the address field in a browser. It sits 8 above the keyboard, 16 from the sides, and nothing else rides with it. Keyboard down, the pill is back. Status: in a terminal the pill turns into the key row (`compact.rs`); in a chat or a browser the pill stays, squeezed above the keyboard, and the composer sits over it: not built.
 
-The mini pill is the one thing drawn smaller than its target (rule 2). Scrolling a pane's content 24 shrinks the pill to it (`compact_pill_morph`): 32 tall, its label in strong `body`, 14 lower than the pill's spot; scrolling back or a tap brings the pill back. Its target is 44, reaching 6 past the drawing on every side. It is a handle like a sheet's grabber: it marks where the pill waits while you read, and drawn at 44 it would cover the last line you are reading. Status: built at 32 (`COMPACT_MINI_PILL_HEIGHT`); the 44 target is not built.
+The mini pill is one of two things drawn smaller than their target (rule 2). Scrolling a pane's content 24 shrinks the pill to it (`compact_pill_morph`): 32 tall, its label in strong `body`, 14 lower than the pill's spot; scrolling back or a tap brings the pill back. Its target is 44, reaching 6 past the drawing on every side. It is a handle like a sheet's grabber: it marks where the pill waits while you read, and drawn at 44 it would cover the last line you are reading. Status: built at 32 (`COMPACT_MINI_PILL_HEIGHT`); the 44 target is not built.
+
+A badge on a thumbnail is the other. It is an accessory of the picture, not a control beside it, so it is drawn small and its target stays 44: drawn at 44 it would cover a quarter of the picture. It is a `control-sm` 24 disc with its 12 glyph, on the floating surface (Surfaces), its corner a control's from its height, inset 4 in the thumbnail's top right corner; its 44 target is centered on the disc and may reach past the thumbnail. The pasted image's remove control is one (Chat on a phone). Status: not built.
 
 Components (each specified in its own section):
 
@@ -376,6 +379,7 @@ Components (each specified in its own section):
 | Pill and its menu | Blocks, Pill | the pill, its menu and its groups built; the second line naming the session in view, the group label and New chat not built |
 | Pill inside a pane | Blocks, Pill | the pill, its two lines with the tile's words, its dots, the swipe and drag built; "Needs approval" (it says "Needs your permission"), the danger tone and the pane menu not built |
 | Mini pill | Phone, Layout | built at 32; the 44 target not built |
+| Badge on a thumbnail | Phone, Layout | not built |
 | Keyboard rule | Phone, Layout | built in a terminal; in a chat and a browser the pill stays: not built |
 | Phone composer, ask card, queued row, chat rows | Blocks, Chat on a phone | not built: the phone draws the desktop's composer, its chips and the inline ask with key caps |
 | Hold a message | Blocks, Chat on a phone | not built: Copy and Fork are 24 buttons under the message |
@@ -423,6 +427,7 @@ Surfaces: the Look's rule, applied to the phone: flat by default, glass only for
 | Folding title bar | a frost of its own over the scrolled page: blur 20, the ground at 72%, saturation 1.8 (`folding_title_bar`), with the `phone.bar` hairline under it | should be the ground, opaque, under the hairline; today it keeps its frost with glass off: not built |
 | Chat composer, the phone composer row and the ask card | glass, as Chat composer says | its opaque card surface |
 | Jump to latest | glass, the `floating` look, a 44 icon button | a floating surface without glass (Look) |
+| Badge on a thumbnail | glass, the `floating` look, a 24 disc | a floating surface without glass (Look) |
 | Sheet | the `drawer` look, floating: glass with the float shadow | a floating surface without glass (Look) |
 | Key row | its pill a floating surface, glass; its keys `phone.key`, flat, a wash when pressed or latched, solid when inverted | the pill a floating surface without glass (Look), the keys the same; not built: natively the pill is a `phone.pill` tint with no glass, hairline or shadow, glass on or off (`KeyRow`) |
 
@@ -1988,9 +1993,9 @@ Behavior: it opens with the zoom (`zoom_layers`: the tile's layer grows to the s
 The add card, behind the add tile, titled "Add machine":
 
 - Found machines first: the section header "Found on your tailnet" with its count over a row group of two-line touch rows (List, Touch rows), the machine's name over its system and "runs zz", the add mark at the end. Tapping a row adds the machine and connects it. A found machine without zz is a disabled row that says so ("No zz on it yet"). With no tailnet the group is left out.
-- Then the address field (Field, Phone), labelled "Or an address" under found rows and "Address" with its help line when alone, a 44 scan accessory inside it. Alone, it opens focused with the keyboard up.
+- Then the address field (Field, Phone), labelled "Or an address" under found rows and "Address" when alone, a 44 scan accessory inside it. Alone, it opens focused with the keyboard up.
 - Connect is the main action, off until an address is typed. Connect, a found row or a read code zoom the card back out to the overview, where the new machine's tile is connecting, before the add tile.
-- Scan: the scan accessory turns the same card into the scanner. The title stays; the body is the camera's picture, square, the body's width, at the phone container corner, with one line under it in `touch-small` muted saying where the code is; the action bar holds "Type an address instead", a secondary at 56, which brings the field back focused. The code holds `zz://host/<machine>.ts.net:<port>`.
+- Scan: the scan accessory turns the same card into the scanner. The title stays; the body is the camera's picture, square, the body's width, at the phone container corner; the action bar holds "Type an address instead", a secondary at 56, which brings the field back focused. The code holds `zz://host/<machine>.ts.net:<port>`.
 
 The connecting card, behind a connecting tile, titled with the machine's name: the body is the empty state's anatomy (Empty state on a phone) with the spinner at 32 in place of the icon, "Connecting" as its title and one line saying what it waits for ("Waiting for ssh on fabrico@xps"). Cancel is the one action, a secondary at 56: stopping is not what the card is for, so it is not drawn as the main action. Cancel stops the connect and zooms back to the tile, now "Not connected". When the connection lands the card becomes the machine. A question from ssh comes up as a sheet over whatever is on screen (Sheet).
 
@@ -2020,11 +2025,11 @@ Status: built, but for the 44 close, the panel's phone corner, the cap on its ro
 
 ### Empty state on a phone
 
-An empty phone screen says what will be there and how to get it.
+An empty phone screen says what is missing; its main action is how to get it.
 
-Anatomy: in the upper middle, a 32 icon in muted ink, a title in `title`, one line in `touch-small` muted, `gap-tight` 4 apart and `space-8` under the icon, `space-32` from the sides. Its action is the screen's main action in the action bar, never a button under the text.
+Anatomy: in the upper middle, a 32 icon in muted ink, a title in `title`, and when there is a state to say, one line in `touch-small` muted, `gap-tight` 4 apart and `space-8` under the icon, `space-32` from the sides. Its action is the screen's main action in the action bar, never a button under the text.
 
-Content: the title says what is missing ("No machines yet"); the line says what the thing is, in one sentence.
+Content: the title says what is missing ("No machines yet") or what is ready ("Claude Code is ready"). The line says a state or a value ("Waiting for ssh on fabrico@xps"), never what the screen is for or how to use it (Phone, rule 7).
 
 HTML: `.penna-empty` with an `<i data-icon>`, a `b` and a `span`.
 
@@ -2163,9 +2168,9 @@ The composer row:
 
 - The `field.composer` surface, 16 from the sides and 8 above the pill, or 8 above the keyboard while it is up (Phone, Layout). At least 56 tall: a 44 plus at the start, the field in `touch-body`, the 44 action at the end, all inset 6. The field grows with the text to five lines, then scrolls; the two buttons stay at the bottom. Its corner is its buttons' plus the 6 inset and stays that as it grows (Phone, Corners).
 - Nothing else is in the row: no chips, no context ring, no hints.
-- The action: send, solid, with the up arrow, off while the field is empty; stop, solid with the stop glyph, while the agent works and the field is empty; queue, the soft look with the clock glyph, once you type while it works. With text to send it takes the tone of the chat's mode, as the desktop's does: `warning` when the mode edits or runs without asking, `danger` when it runs everything, `success` when it only reads or plans. That tint is the only place the mode shows outside the plus sheet.
-- A pasted image is a thumbnail inside the surface above the field, 88 square, at the surface's corner less its inset, with a 44 remove control on the floating surface inside its top right corner, inset 4.
-- The plus opens a sheet titled with the agent's name: Mention a file first, then the chat's settings as touch rows with their value at the trailing end in muted `touch-small` (the app picks the rows; zz has Model, Mode, Effort and Account), and a last muted line in `touch-small` for how much of the context is used. A settings row opens its choices in the same sheet, under a back control: one row per choice, a second line for its description, the current one checked at the trailing end. A tap picks and goes back.
+- The action: send, solid, with the up arrow, off while the field is empty; stop, solid with the stop glyph, while the agent works and the field is empty; queue, the soft look with the clock glyph, once you type while it works. Send is one look whatever the chat's mode: the mode shows in the plus sheet's Mode row and nowhere else in the chat.
+- A pasted image is a thumbnail inside the surface above the field, 88 square, at the surface's corner less its inset, with its remove control as a badge in its top right corner (Phone, Layout): a 24 disc with a 12 `xmark` on the floating surface, inset 4, and a 44 target centered on the disc.
+- The plus opens a sheet titled with the agent's name: Mention a file first, then the chat's settings as touch rows with their value at the trailing end in muted `touch-small` (the app picks the rows; zz has Model, Mode, Effort and Account), and a last muted line in `touch-small` for how much of the context is used. A settings row opens its choices in the same sheet, under a back control: one row per choice, its name as the desktop shows it (a mode leads with its glyph), the current one checked at the trailing end. A tap picks and goes back.
 
 Queued messages: one row above the composer, 44 tall, 16 from the sides, its 20 glyph and "2 queued" in muted `touch-small`, the whole row the target. It opens a sheet titled "Queued" with a row per message; tapping one takes it back into the field, as the desktop's chip does.
 
@@ -2179,9 +2184,9 @@ The ask card: a permission request or a question takes the composer's place.
 
 Empty chat: the phone empty state in the upper middle (Empty state on a phone), the agent's glyph over "<agent> is ready", then a row group of two touch rows: Folder, with the chat's folder at the trailing end, and Resume, with the last chat's title; each opens a sheet list. The composer is under it as usual.
 
-HTML: the composer row is `.penna-chat-field[data-size="touch"]` holding the plus, `.penna-chat-input` and the action, both `button.send` buttons drawn at 44: the action solid with `data-solid` naming its tone (`primary`, or the mode's `warning`, `danger`, `success`), queue with no `data-solid` for the soft look. Thumbnails come first, in `.penna-chat-attach`, which takes its own line: `.penna-chat-thumb` with a `.penna-touch-icon.penna-chat-thumb-remove[data-penna="floating"]`. The ask card is `.penna-chat-ask-card[data-penna="field.composer"]` with `.penna-chat-ask-what` (`.penna-chat-ask-what-title`, `.penna-chat-ask-what-detail`, `.penna-chat-ask-what-count`) and `.penna-touch-row`s. The queued row is `.penna-touch-row.penna-chat-queued`. Jump to latest is `.penna-touch-icon[data-penna="floating"]`. A transcript step is `.penna-chat-activity[data-size="touch"]`.
+HTML: the composer row is `.penna-chat-field[data-size="touch"]` holding the plus, `.penna-chat-input` and the action, both `button.send` buttons drawn at 44: send and stop solid with `data-solid="primary"`, queue with no `data-solid` for the soft look. Thumbnails come first, in `.penna-chat-attach`, which takes its own line: `.penna-chat-thumb` holding `button.penna-chat-thumb-remove`, the 44 target, around `.penna-chat-thumb-disc[data-penna="floating"]`, the 24 disc. The ask card is `.penna-chat-ask-card[data-penna="field.composer"]` with `.penna-chat-ask-what` (`.penna-chat-ask-what-title`, `.penna-chat-ask-what-detail`, `.penna-chat-ask-what-count`) and `.penna-touch-row`s. The queued row is `.penna-touch-row.penna-chat-queued`. Jump to latest is `.penna-touch-icon[data-penna="floating"]`. A transcript step is `.penna-chat-activity[data-size="touch"]`.
 
-Status: not built. The phone draws the desktop's chat: 13 text, 28 tool rows, 36 subagent rows, Copy, Fork and Jump to latest at 24; the desktop composer with the plus, the context ring and the action at 28, account and model chips at 24 under it and mode and effort in the model popover with 32 rows; a "2 queued" chip at 24; asks inline in the composer with 1 to 9 key caps and a 28 answer button; an empty chat that says "<agent> is ready" and nothing else. Send is not tinted by mode on the phone.
+Status: not built. The phone draws the desktop's chat: 13 text, 28 tool rows, 36 subagent rows, Copy, Fork and Jump to latest at 24; the desktop composer with the plus and the action at 28, and under it git's line, the context pill (a 16 ring and its percentage, the account in its menu) and the model chip at 24, which leads with the mode's glyph in its tone and holds model, effort and permissions in a popover with 32 rows; a "2 queued" chip at 24; asks inline in the composer with 1 to 9 key caps and a 28 answer button; an empty chat that says "<agent> is ready" and nothing else.
 
 ### Key row
 

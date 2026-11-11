@@ -862,18 +862,6 @@
   --penna-icon-size: 20px;
 }
 
-.penna-chat-field[data-size="touch"] .penna-button[data-penna="button.send"][data-solid="warning"] {
-  color: var(--penna-on-warning);
-}
-
-.penna-chat-field[data-size="touch"] .penna-button[data-penna="button.send"][data-solid="danger"] {
-  color: var(--penna-on-danger);
-}
-
-.penna-chat-field[data-size="touch"] .penna-button[data-penna="button.send"][data-solid="success"] {
-  color: var(--penna-on-success);
-}
-
 .penna-chat-attach {
   display: flex;
   flex: 1 0 100%;
@@ -885,7 +873,6 @@
   flex: none;
   width: 88px;
   height: 88px;
-  overflow: hidden;
   border-radius: calc(var(--penna-control-share) * var(--penna-control-touch));
   corner-shape: superellipse(var(--penna-window-k));
   background: rgb(from var(--penna-fg) r g b / 0.08);
@@ -893,17 +880,35 @@
   background-size: cover;
 }
 
-.penna-chat-thumb > .penna-chat-thumb-remove[data-penna][data-penna][data-penna] {
+.penna-chat-thumb > .penna-chat-thumb-remove {
   position: absolute;
-  top: var(--penna-space-4);
-  right: var(--penna-space-4);
+  top: calc(var(--penna-space-4) + (var(--penna-control-sm) - var(--penna-control-touch)) / 2);
+  right: calc(var(--penna-space-4) + (var(--penna-control-sm) - var(--penna-control-touch)) / 2);
+  display: grid;
+  place-items: center;
+  width: var(--penna-control-touch);
+  height: var(--penna-control-touch);
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: var(--penna-click-cursor);
+}
+
+.penna-chat-thumb-remove > .penna-chat-thumb-disc[data-penna][data-penna][data-penna] {
+  display: grid;
+  place-items: center;
+  box-sizing: border-box;
+  width: var(--penna-control-sm);
+  height: var(--penna-control-sm);
+  --penna-icon-size: 12px;
   --penna-r: var(--penna-control-radius);
   --penna-share: var(--penna-control-share);
   --penna-k: var(--penna-style-k);
 }
 
 @container style(--penna-control-radius: 9999px) {
-  .penna-chat-thumb > .penna-chat-thumb-remove[data-penna][data-penna][data-penna] {
+  .penna-chat-thumb-remove > .penna-chat-thumb-disc[data-penna][data-penna][data-penna] {
     --penna-k: 1;
   }
 }

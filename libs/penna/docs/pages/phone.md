@@ -14,6 +14,7 @@ A phone screen is built from phone components, sized for a thumb from the start.
 4. **Going into a thing is a zoom**; a short question that returns you where you were is a sheet.
 5. **State is said in words and a tone dot**, never by look alone.
 6. **Text is touch-body 17** by default, touch-small 15 for details, never under 13.
+7. **Text says a state, a value or a name.** No eyebrows, subheads or helper lines that explain what the screen already shows.
 
 ```figure uses=compact,touch,button,label
 <div class="docs-dodont">
@@ -106,7 +107,7 @@ No header: the content runs to the edges and the pill is the one handle. Its sec
 </div>
 ```
 
-The **mini pill** is the one thing drawn smaller than its target: scrolling a pane shrinks the pill to 32, a handle like a sheet's grabber, and its target stays 44. Not built natively yet: the keyboard rule in a chat and a browser, 44 keys with the pinned end, the 44 target, and the pane menu.
+The **mini pill** and a **badge on a thumbnail** are the two things drawn smaller than their target. Scrolling a pane shrinks the pill to 32, a handle like a sheet's grabber, and its target stays 44. A badge, like a pasted image's remove control, is an accessory of the picture: a 24 floating disc in its corner, its 44 target centered on it. Not built natively yet: the keyboard rule in a chat and a browser, 44 keys with the pinned end, the 44 target, and the pane menu.
 
 ## Surfaces
 
