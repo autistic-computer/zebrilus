@@ -29,7 +29,6 @@
   .zz-tx > .penna-chat-bubble[data-held] { box-shadow: 0 0 0 2px var(--penna-accent); }
   .zz-steps { display: flex; flex-direction: column; margin: -8px 0; }
   .zz-fade { position: absolute; z-index: 5; top: 0; right: 0; left: 0; height: 70px; background: linear-gradient(var(--penna-bg) 54px, transparent); pointer-events: none; }
-  .zz-flip { position: absolute; z-index: 10; top: 62px; right: 16px; }
   .zz-dock { position: absolute; z-index: 15; right: 16px; bottom: 84px; left: 16px; display: flex; flex-direction: column; }
   .zz-dock > .zz-jump { position: absolute; top: -52px; left: 50%; margin-left: -22px; }
   .zz-phone[data-kb] .zz-dock { bottom: 300px; }
@@ -111,12 +110,12 @@
     <div class="penna-variants zz-phones zz-story">
       <figure>
         <div class="zz-phone" data-frame="today"></div>
-        <figcaption><b>0. Today</b>The chat pane mid-turn as the phone draws it now, the desktop's chat at desktop sizes. No header; a 22 flip button floats at the top right (<code>compact.rs:865</code>). The transcript is the shared list (<code>chat.rs:636</code>): text at 13, tool steps 28 tall, a time and the 24 Copy and Fork buttons under each message. Over the composer a 24 "2 queued" chip. The ask grows inside the composer with 1 to 9 key caps, a hint line and a 28 Deny button beside Stop (<code>ask.rs:55-112</code>); under it the 24 context pill, a ring and its percentage, and the model chip, which leads with the mode's glyph in its tone (<code>controls.rs:58</code>). The pill says Needs your permission (<code>compact.rs:1610</code>).</figcaption>
+        <figcaption><b>0. Today</b>The chat pane mid-turn as the phone draws it now, the desktop's chat at desktop sizes. No header; a 22 flip button floats at the top right (<code>compact.rs:865</code>). <i>The new design drops the flip.</i> The transcript is the shared list (<code>chat.rs:636</code>): text at 13, tool steps 28 tall, a time and the 24 Copy and Fork buttons under each message. Over the composer a 24 "2 queued" chip. The ask grows inside the composer with 1 to 9 key caps, a hint line and a 28 Deny button beside Stop (<code>ask.rs:55-112</code>); under it the 24 context pill, a ring and its percentage, and the model chip, which leads with the mode's glyph in its tone (<code>controls.rs:58</code>). The pill says Needs your permission (<code>compact.rs:1610</code>).</figcaption>
       </figure>
 
       <figure>
         <div class="zz-phone" data-frame="rest"></div>
-        <figcaption><b>1. Chat at rest</b>The transcript at phone sizes: your message a bubble, the reply plain text, both at 17; a tool step is a 44 row with a 20 glyph, the whole row a target that opens it. Under it one composer row: a 44 plus, the field, a 44 send that stays off while the field is empty. Then the pill: the chat glyph, the chat's title, and where it works in muted ink beside one dot per pane of the session, grouped by window. The flip to the agent's terminal floats top right at 44. <i>Today the text is 13, the rows 28, the flip 22, and under the composer sit a git line, the context pill and the model chip.</i></figcaption>
+        <figcaption><b>1. Chat at rest</b>The transcript at phone sizes: your message a bubble, the reply plain text, both at 17; a tool step is a 44 row with a 20 glyph, the whole row a target that opens it. Under it one composer row: a 44 plus, the field, a 44 send that stays off while the field is empty. Then the pill: the chat glyph, the chat's title, and where it works in muted ink beside one dot per pane of the session, grouped by window. <i>Today the text is 13, the rows 28, and under the composer sit a git line, the context pill and the model chip.</i></figcaption>
       </figure>
 
       <figure>
@@ -161,7 +160,7 @@
 
       <figure>
         <div class="zz-phone" data-frame="menu" data-menu></div>
-        <figcaption><b>9. Pill menu in a pane</b>The machine screen's shape. "New in zz" over New browser, New terminal and New chat, chat nearest the thumb and solid: each makes a window holding that one thing and zooms into it. Then this pane: Rename, and Close in danger ink. Then Overview, back to the machine. In a terminal, All bindings sits apart at the top. The composer steps aside with the pill while the menu is open. <i>Today: All bindings and Kill pane, then Rename pane, New window, New pane, Last pane, Overview and the flip (<code>compact.rs:141-164</code>). Last pane is a swipe away and stays a key binding; the flip is already on screen.</i></figcaption>
+        <figcaption><b>9. Pill menu in a pane</b>The machine screen's shape. "New in zz" over New browser, New terminal and New chat, chat nearest the thumb and solid: each makes a window holding that one thing and zooms into it. Then this pane: Rename, and Close in danger ink. Then Overview, back to the machine. In a terminal, All bindings sits apart at the top. The composer steps aside with the pill while the menu is open. <i>Today: All bindings and Kill pane, then Rename pane, New window, New pane, Last pane, Overview and, in a chat, the flip (<code>compact.rs:141-164</code>). Last pane is a swipe away and stays a key binding; the new design drops the flip.</i></figcaption>
       </figure>
 
       <figure>
@@ -229,7 +228,6 @@
   const WHERE = "zebrilus · main";
   const restPill = (act) => pill({ title: TITLE, meta: WHERE, act });
 
-  const flip = `<button class="penna-touch-icon zz-flip" data-penna="floating" aria-label="Show the terminal">${ic("square-terminal")}</button>`;
   const fade = `<div class="zz-fade"></div>`;
 
   const you = (text, held) => `<div class="penna-card penna-chat-bubble" data-penna="card.bubble" role="group"${held ? " data-held" : ""}><span>${text}</span></div>`;
@@ -257,7 +255,7 @@
   const row = (label, { glyph, detail, value, check, tone, quiet, send } = {}) => `<div class="penna-touch-row" data-penna="phone.row" role="button"${detail ? ` data-lines="2"` : ""}${tone ? ` data-tone="${tone}"` : ""}${quiet ? " data-quiet" : ""}${send ? " data-send" : ""}>${glyph ? ic(glyph) : ""}<span class="penna-touch-row-lines"><span>${label}</span>${detail ? `<span>${detail}</span>` : ""}</span>${value ? `<span class="penna-touch-row-value"><span>${value}</span></span>` : ""}${check ? `<span class="penna-touch-row-state">${ic("check")}</span>` : ""}</div>`;
   const askCard = (title, detail, rows, count) => `<div class="penna-chat-ask-card" data-penna="field.composer"><div class="penna-chat-ask-what" role="button"><div class="penna-chat-ask-what-head"><span class="penna-chat-ask-what-title">${title}</span>${count ? `<span class="penna-chat-ask-what-count">${count}</span>` : ""}</div>${detail ? `<span class="penna-chat-ask-what-detail">${detail}</span>` : ""}</div>${rows.join("")}</div>`;
 
-  const pane = (tx, dock, bar, extra = "") => `<div class="zz-pane"><div class="zz-tx">${tx}</div>${fade}${flip}<div class="zz-dock">${dock}</div>${extra}${bar}</div>`;
+  const pane = (tx, dock, bar, extra = "") => `<div class="zz-pane"><div class="zz-tx">${tx}</div>${fade}<div class="zz-dock">${dock}</div>${extra}${bar}</div>`;
 
   const kb = () => {
     const keys = (s) => [...s].map((k) => `<i>${k}</i>`).join("");
@@ -314,7 +312,7 @@
     working: () => pane(workTx, queued + composer({ state: "stop" }), pill({ title: TITLE, meta: "Running cargo test -p penna pill" })),
     approval: () => pane(askTx, approvalCard, pill({ title: TITLE, meta: "Needs approval", tone: "warning" })),
     question: () => pane([you("Pick a tailnet library for zz."), reply("Two fit, and they differ in who runs the node."), steps(step("file", "Read tailnet-node.md"))].join(""), askCard("Should the daemon embed the tailnet node, or talk to tailscaled?", "", [row("Embed it", { detail: "One process, no system service" }), row("Talk to tailscaled", { detail: "Uses the node the machine already runs" }), row("Something else", { quiet: true })], "1 of 2"), pill({ title: "Pick a tailnet library", meta: "Has a question", tone: "warning" })),
-    empty: () => `<div class="zz-pane">${flip}<div class="zz-empty"><div class="penna-empty">${ic("chat")}<b>Claude Code is ready</b></div><div class="penna-touch-group" data-penna="settings.card">${row("Folder", { glyph: "folder", value: "~/dev/zebrilus" })}${row("Resume", { glyph: "history", value: "Fix pane stack hit testing on iPad" })}</div></div><div class="zz-dock">${composer()}</div>${pill({ title: "Claude Code", meta: WHERE, on: 8, groups: [...GROUPS, 1] })}</div>`,
+    empty: () => `<div class="zz-pane"><div class="zz-empty"><div class="penna-empty">${ic("chat")}<b>Claude Code is ready</b></div><div class="penna-touch-group" data-penna="settings.card">${row("Folder", { glyph: "folder", value: "~/dev/zebrilus" })}${row("Resume", { glyph: "history", value: "Fix pane stack hit testing on iPad" })}</div></div><div class="zz-dock">${composer()}</div>${pill({ title: "Claude Code", meta: WHERE, on: 8, groups: [...GROUPS, 1] })}</div>`,
     plus: () => pane(restTx(false), composer(), restPill()) + plusSheet,
     mode: () => pane(restTx(false), composer(), restPill()) + modeSheet,
     hold: () => pane(restTx(true), composer(), restPill()) + holdSheet,
