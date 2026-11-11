@@ -157,6 +157,19 @@ The key row takes the pill's place while the keyboard is up: 44 keys in one 56 p
 
 Find takes the pill's place by the same rule: a 56 field with a 44 close, the query, the count as its value, and previous and next as 44 buttons. A tap on a link opens a sheet titled with the link, with Open in a browser pane, Open on this phone and Copy. Scrolled back, the pill shrinks to the mini pill and a 44 jump to bottom floats over it. Not built natively yet: 44 keys in one pill with the pinned end, the inverted latch, the chord stacks, the arrow pad's new bubble, find, the link sheet and jump to bottom.
 
+## Browser
+
+No header and no bar: the page runs to the edges and the pill is the browser's bar, the page's title over its host. Its stack leads with a glyph row of Back, Forward and Reload, then the address, then Tabs, Pick element and Open on this phone; what the pill offers on every pane waits behind More. Hold the pill, slide onto Back and let go: back in one stroke.
+
+```figure uses=touch,compact,button,label
+<div class="docs-show" data-gap="wide" style="align-items: flex-end">
+  <div class="docs-cell"><div style="position: relative; width: 390px; height: 560px; overflow: hidden; border-radius: 28px; background: var(--penna-bg); box-shadow: 0 0 0 1px var(--penna-divider)"><div class="penna-stack" data-open><div class="penna-stack-scrim"></div><div class="penna-stack-column" style="right: 0; bottom: 84px; left: 0"><div class="penna-stack-group"><button class="penna-stack-chip" data-penna="floating"><i data-icon="ellipsis"></i><span>More</span></button></div><div class="penna-stack-group"><button class="penna-stack-chip" data-penna="floating"><i data-icon="external-link"></i><span>Open on this phone</span></button><button class="penna-stack-chip" data-penna="floating"><i data-icon="inspector"></i><span>Pick element</span></button><button class="penna-stack-chip" data-penna="floating"><i data-icon="layers"></i><span>Tabs</span><span class="penna-stack-value">3</span></button></div><div class="penna-stack-group"><button class="penna-stack-chip" data-penna="floating"><i data-icon="globe"></i><span>github.com/…/zebrilus/pull/412</span></button></div><div class="penna-stack-group" data-row><button class="penna-stack-chip" data-penna="floating" data-glyph data-state="selected" aria-label="Back"><i data-icon="arrow-left"></i></button><button class="penna-stack-chip" data-penna="floating" data-glyph disabled aria-label="Forward"><i data-icon="arrow-right"></i></button><button class="penna-stack-chip" data-penna="floating" data-glyph aria-label="Reload"><i data-icon="redo-2"></i></button></div></div></div><div class="penna-compact-bar" style="position: absolute; right: 0; bottom: 0; left: 0; height: auto; padding: 0 16px 20px"><button class="penna-compact-pill" data-penna="floating"><span class="penna-pill-tile" data-penna="phone.pill.icon"><i data-icon="globe"></i></span><span class="penna-pill-copy"><span class="penna-pill-title">Draw the browser pane at touch sizes</span><span class="penna-pill-meta"><span class="penna-pill-meta-text">github.com</span></span></span></button></div></div><span class="docs-note">Held, sliding over Back</span></div>
+  <div class="docs-cell" style="width: 361px"><div style="display: flex; flex-direction: column; gap: 8px; width: 361px"><div class="penna-touch-group" data-penna="field.composer"><div class="penna-touch-row" data-penna="phone.row" data-lines="2" role="button"><i data-icon="history"></i><span class="penna-touch-row-lines"><span>Stack menu · penna</span><span>localhost:8102/stack-menu.html</span></span></div><div class="penna-touch-row" data-penna="phone.row" data-lines="2" role="button"><i data-icon="history"></i><span class="penna-touch-row-lines"><span>Phone · penna</span><span>localhost:8102/phone.html</span></span></div></div><div class="penna-address" data-penna="field.composer"><button class="penna-button" data-penna="button.quiet" data-shape="icon" aria-label="Close address"><i data-icon="xmark"></i></button><span class="penna-address-text"><span>localhost:8102/p</span></span><button class="penna-button" data-penna="button.quiet" data-shape="icon" aria-label="Clear"><i data-icon="circle-x"></i></button></div></div><span class="docs-note">The address field, riding the keyboard</span></div>
+</div>
+```
+
+Picking the address raises the keyboard and the address field takes the pill's place, like find: a 56 field with a 44 close, the address all selected, and a 44 clear; go is on the keyboard. Suggestions are two-line rows just above it, the best nearest. A page loading draws a 2 line in the accent along its top edge, and Reload turns to Stop. When a field on the page has the keyboard, the pill hides and nothing rides it. Not built natively yet: today a 52 bar with a 40 address field, tabs and the picker runs across the top, the pill stays squeezed over the keyboard, and the phone has no suggestions.
+
 ## Surfaces
 
 Flat by default; glass only for what sits over something. Tiles, rows, fields and the main action are flat fills. The pill, its menu, floating buttons, sheets, the key row's pill and the chat composer float: glass when glass is on, and with glass off the popover fill, a hairline all round and a close shadow.
@@ -170,7 +183,7 @@ Flat by default; glass only for what sits over something. Tiles, rows, fields an
 
 - **Flat**: the screen, tiles, rows and row groups, fields, the empty state, the zoom card, the key row's keys.
 - **Solid**: the main action, never glass.
-- **Floating**: the pill, the stack menu's chips, the arrow pad's bubble, the gear disc, sheets, the key row's pill, the chat composer, and the action bar when content scrolls under it.
+- **Floating**: the pill, the stack menu's chips, the arrow pad's bubble, the gear disc, sheets, the key row's pill, the chat composer, the find and address fields and the address suggestions, and the action bar when content scrolls under it.
 
 Not built natively yet: the pill menu's chips and the key row's pill draw a flat tint today, glass on or off, and the arrow pad's bubble is a popover.
 
@@ -194,10 +207,12 @@ The desktop's four corner rules, unchanged. Controls round from their height, th
 | Icon button (44) | control | 13.7 | a circle | 11.2 |
 | Icon button in the disc | the disc's less 6 | 11.5 | a circle | 8.3 |
 | Stack chip (52) | control | 16.2 | a capsule | 13.2 |
-| Arrow pad bubble | its 44 cells' corner plus 6 | 19.7 | 28 | 17.2 |
+| Stack glyph chip (52 square) | control | 16.2 | a circle | 13.2 |
+| Arrow pad bubble, find and address fields | their 44 buttons' corner plus 6 | 19.7 | 28 | 17.2 |
+| Progress line | square ends | 0 | 0 | 0 |
 | Touch row, 52 and 64 | control, never a capsule | 16.2, 20 | 16.2, 20 | 13.2, 16.3 |
 | Touch row in a group | at most the group's less 4 | 16.2, 20 | 16.2, 20 | 12, 12 |
-| Tile, row group, sheet, zoom card | phone container, twice `radius` | 24 | 24 | 16 |
+| Tile, row group, sheet, zoom card, address suggestions | phone container, twice `radius` | 24 | 24 | 16 |
 
 Not built natively yet: tiles take the control radius (12, 25, 8), the sheet keeps `radius`, the zoom starts at 10, and the disc follows the pill's corner, a circle in every look.
 
