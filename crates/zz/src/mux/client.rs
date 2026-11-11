@@ -3260,12 +3260,10 @@ impl MuxClient {
         );
     }
 
-    #[expect(dead_code, reason = "the composer's account chip reads it")]
     pub(crate) fn host_agent_accounts(&self, host: HostId) -> Option<&[zz_protocol::AgentAccount]> {
         self.connections.get(&host)?.agent_accounts.as_deref()
     }
 
-    #[expect(dead_code, reason = "the composer's account chip asks for it")]
     pub(crate) fn request_agent_accounts(&self, host: HostId) {
         self.execute_on_host(
             host,
@@ -3273,7 +3271,6 @@ impl MuxClient {
         );
     }
 
-    #[expect(dead_code, reason = "the composer's account chip adds accounts")]
     pub(crate) fn add_agent_account(&self, host: HostId, provider: zz_protocol::AgentProvider) {
         self.execute_on_host(
             host,

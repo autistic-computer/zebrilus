@@ -242,7 +242,25 @@ pub(crate) struct AgentView {
     pane_canvas: Rc<Cell<Bounds<Pixels>>>,
     resume_for: Option<(Option<Arc<str>>, std::path::PathBuf)>,
     resume_revision: u64,
+    account: Option<String>,
+    accounts: Option<Vec<zz_protocol::AgentAccount>>,
     _subscriptions: Vec<Subscription>,
+}
+
+pub(crate) struct AgentAccountPicked {
+    pub(crate) account: Option<String>,
+}
+
+impl ala::EventEmitter<AgentAccountPicked> for AgentView {}
+
+fn pane_accounts(
+    mux: &MuxClient,
+    pane: PaneId,
+) -> (Option<String>, Option<&[zz_protocol::AgentAccount]>) {
+    (
+        agent_settings::pane_account(&mux.snapshot(), pane).map(str::to_owned),
+        mux.host_agent_accounts(mux.attached_host()),
+    )
 }
 
 impl AgentView {
@@ -338,12 +356,30 @@ impl AgentView {
         });
         let floats = zz_client::floating::pane_floats(&mux.read(cx).snapshot(), pane);
         let active = mux.read(cx).active_pane() == Some(pane);
+        let (account, accounts) = {
+            let mux = mux.read(cx);
+            let (account, accounts) = pane_accounts(mux, pane);
+            if accounts.is_none() {
+                mux.request_agent_accounts(mux.attached_host());
+            }
+            (account, accounts.map(<[_]>::to_vec))
+        };
         let mux_observer = cx.observe(&mux, |view, mux, cx| {
             let floats = zz_client::floating::pane_floats(&mux.read(cx).snapshot(), view.pane);
             let active = mux.read(cx).active_pane() == Some(view.pane);
-            if view.floats != floats || view.active != active {
+            let (account, accounts) = pane_accounts(mux.read(cx), view.pane);
+            let accounts_changed = view.accounts.as_deref() != accounts;
+            if view.floats != floats
+                || view.active != active
+                || view.account != account
+                || accounts_changed
+            {
+                if accounts_changed {
+                    view.accounts = accounts.map(<[_]>::to_vec);
+                }
                 view.floats = floats;
                 view.active = active;
+                view.account = account;
                 cx.notify();
             }
         });
@@ -382,6 +418,8 @@ impl AgentView {
             pane_canvas: Rc::default(),
             resume_for: None,
             resume_revision: 0,
+            account,
+            accounts,
             _subscriptions: vec![
                 input_observer,
                 input_subscription,
@@ -1639,7 +1677,7 @@ impl AgentView {
             .is_open()
             .then(|| self.mention.clone().into_any_element())
             .filter(|_| prompting);
-        let controls = self.render_harness_controls(state, cx);
+        let controls = self.render_harness_controls(state, view, cx);
         let attachments = self
             .render_attachments(view, inside)
             .filter(|_| prompting)

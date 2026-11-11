@@ -13,11 +13,15 @@ use crate::{
 };
 use penna::{
     Label, Row, RowLook, TextStyle,
-    components::{popover::Popover, slider::StepRail},
+    components::{
+        popover::{Popover, PopoverState},
+        slider::StepRail,
+    },
 };
 use zz_client::agent_settings::{self, LensSettings, ModeRisk};
+use zz_protocol::{AgentAccount, AgentProvider};
 
-use penna::blocks::chat::{self, COMPOSER_FOOTER_HEIGHT};
+use penna::blocks::chat::{self, COMPOSER_FOOTER_HEIGHT, suggestion_row};
 
 pub use zz_client::agent_timeline::{
     ComposerAction, composer_action, context_usage_fraction, context_usage_tooltip,
@@ -243,6 +247,142 @@ fn effort_rail(settings: &LensSettings, on_pick: &Pick) -> StepRail {
     } else {
         rail
     }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum AccountAction {
+    Refresh,
+    Use(Option<String>),
+    Add,
+}
+
+type OnAccount = Rc<dyn Fn(AccountAction, &mut Window, &mut App)>;
+
+const ACCOUNT_LABEL_WIDTH: f32 = 180.0;
+
+pub fn agent_account_chip(
+    id: impl Into<ElementId>,
+    provider: AgentProvider,
+    current: Option<&str>,
+    accounts: Option<&[AgentAccount]>,
+    enabled: bool,
+    on_action: impl Fn(AccountAction, &mut Window, &mut App) + 'static,
+    cx: &App,
+) -> Option<AnyElement> {
+    let accounts = accounts?;
+    let id = id.into();
+    let on_action: OnAccount = Rc::new(on_action);
+    let refresh = Rc::clone(&on_action);
+    let muted = cx.theme().foreground.muted();
+    let trigger = chat::chrome_button(SharedString::from(format!("{id}-trigger")))
+        .text_color(muted)
+        .disabled(!enabled)
+        .tooltip("Choose the account this chat runs on")
+        .child(
+            div()
+                .min_w_0()
+                .max_w(px(ACCOUNT_LABEL_WIDTH))
+                .overflow_hidden()
+                .text_ellipsis()
+                .whitespace_nowrap()
+                .child(agent_settings::account_label(accounts, provider, current)),
+        )
+        .child(Icon::new(IconName::ChevronDown).small().text_color(muted))
+        .on_click(move |_, window, cx| refresh(AccountAction::Refresh, window, cx));
+    let accounts = accounts
+        .iter()
+        .filter(|account| account.provider == provider)
+        .cloned()
+        .collect::<Vec<_>>();
+    let current = current.map(str::to_owned);
+    Some(
+        Popover::new(id)
+            .anchor(Anchor::BottomRight)
+            .p(px(0.0))
+            .trigger(trigger)
+            .content(move |_, _, cx| account_panel(&accounts, current.as_deref(), &on_action, cx))
+            .into_any_element(),
+    )
+}
+
+fn account_panel(
+    accounts: &[AgentAccount],
+    current: Option<&str>,
+    on_action: &OnAccount,
+    cx: &mut ala::Context<PopoverState>,
+) -> AnyElement {
+    let popover = cx.entity();
+    let pick = |action: Option<AccountAction>| {
+        let on_action = Rc::clone(on_action);
+        let popover = popover.clone();
+        move |_: &ala::ClickEvent, window: &mut Window, cx: &mut App| {
+            popover.update(cx, |popover, cx| popover.dismiss(window, cx));
+            if let Some(action) = action.clone() {
+                on_action(action, window, cx);
+            }
+        }
+    };
+    let rows = accounts.iter().enumerate().map(|(index, account)| {
+        let chosen = account.id.as_deref() == current;
+        suggestion_row(
+            ("agent-account-row", index),
+            agent_settings::account_name(account),
+            agent_settings::account_detail(account).map(SharedString::from),
+            None,
+            chosen,
+            cx,
+        )
+        .px(px(10.0))
+        .on_click(pick(
+            (!chosen).then(|| AccountAction::Use(account.id.clone())),
+        ))
+        .when(chosen, |row| {
+            row.child(Icon::new(IconName::Check).with_size(px(12.0)))
+        })
+    });
+    crate::v_flex()
+        .w(px(PANEL))
+        .p(px(6.0))
+        .child(head("Account", cx))
+        .children(rows)
+        .child(
+            div()
+                .flex_none()
+                .h(px(1.0))
+                .mx(px(-6.0))
+                .my(px(6.0))
+                .bg(cx.theme().border()),
+        )
+        .child(add_account_row(cx).on_click(pick(Some(AccountAction::Add))))
+        .into_any_element()
+}
+
+fn add_account_row(cx: &App) -> Row {
+    let muted = cx.theme().foreground.muted();
+    Row::new("agent-account-add", RowLook::Menu)
+        .state(crate::row_state(false, true))
+        .row_height(px(STEP))
+        .h_flex()
+        .flex_none()
+        .h(px(STEP))
+        .w_full()
+        .gap(px(8.0))
+        .px(px(10.0))
+        .click_cursor()
+        .child(
+            Icon::new(IconName::Plus)
+                .with_size(px(12.0))
+                .flex_none()
+                .text_color(muted)
+                .relative()
+                .top(crate::icon::cap_center_drop(px(12.0), px(12.0), cx)),
+        )
+        .child(
+            Label::new(TextStyle::Small, "Add account")
+                .flex_1()
+                .min_w_0()
+                .text_color(muted),
+        )
 }
 
 #[must_use]

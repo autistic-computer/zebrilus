@@ -1,5 +1,7 @@
 use serde_json::Value;
-use zz_protocol::{AgentProvider, CommandInvocation, MuxSnapshot, PaneId, PaneKindSnapshot};
+use zz_protocol::{
+    AgentAccount, AgentProvider, CommandInvocation, MuxSnapshot, PaneId, PaneKindSnapshot,
+};
 
 pub const MODEL: &str = "model";
 pub const EFFORT: &str = "effort";
@@ -248,6 +250,61 @@ pub fn pane_account(snapshot: &MuxSnapshot, pane: PaneId) -> Option<&str> {
         })
 }
 
+pub const DEFAULT_ACCOUNT_NAME: &str = "Default";
+pub const SIGNED_OUT: &str = "Signed out";
+
+#[must_use]
+pub fn account_name(account: &AgentAccount) -> String {
+    account
+        .email
+        .clone()
+        .or_else(|| account.id.clone())
+        .unwrap_or_else(|| DEFAULT_ACCOUNT_NAME.to_owned())
+}
+
+#[must_use]
+pub fn account_label(
+    accounts: &[AgentAccount],
+    provider: AgentProvider,
+    current: Option<&str>,
+) -> String {
+    accounts
+        .iter()
+        .find(|account| account.provider == provider && account.id.as_deref() == current)
+        .map_or_else(
+            || current.unwrap_or(DEFAULT_ACCOUNT_NAME).to_owned(),
+            account_name,
+        )
+}
+
+#[must_use]
+pub fn account_detail(account: &AgentAccount) -> Option<String> {
+    if !account.signed_in {
+        return Some(SIGNED_OUT.to_owned());
+    }
+    let parts = account
+        .plan
+        .as_deref()
+        .map(plan_name)
+        .into_iter()
+        .chain(account.organization.clone())
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>();
+    (!parts.is_empty()).then(|| parts.join(" · "))
+}
+
+fn plan_name(plan: &str) -> String {
+    let words = plan
+        .split('_')
+        .filter(|word| !word.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ");
+    let mut characters = words.chars();
+    characters.next().map_or_else(String::new, |first| {
+        first.to_uppercase().chain(characters).collect()
+    })
+}
+
 pub const SIDE_CHAT_WIDTH: &str = "46%";
 pub const SIDE_CHAT_HEIGHT: &str = "72%";
 
@@ -347,6 +404,38 @@ pub fn real_session(session: &str) -> bool {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn an_account_reads_as_its_email_else_its_id_else_default() {
+        let account = |id: Option<&str>, email: Option<&str>, plan: Option<&str>| AgentAccount {
+            provider: AgentProvider::ClaudeCode,
+            id: id.map(str::to_owned),
+            signed_in: email.is_some(),
+            email: email.map(str::to_owned),
+            organization: None,
+            plan: plan.map(str::to_owned),
+        };
+        let accounts = [
+            account(None, Some("me@home.dev"), Some("max_20x")),
+            AgentAccount {
+                organization: Some("Acme".to_owned()),
+                ..account(Some("a1"), Some("me@acme.dev"), Some("team"))
+            },
+        ];
+        let label = |current| account_label(&accounts, AgentProvider::ClaudeCode, current);
+        assert_eq!(label(None), "me@home.dev");
+        assert_eq!(label(Some("a1")), "me@acme.dev");
+        assert_eq!(label(Some("a7")), "a7");
+        assert_eq!(
+            account_label(&accounts, AgentProvider::Codex, None),
+            "Default"
+        );
+        assert_eq!(account_detail(&accounts[0]).as_deref(), Some("Max 20x"));
+        assert_eq!(account_detail(&accounts[1]).as_deref(), Some("Team · Acme"));
+        let signed_out = account(None, None, None);
+        assert_eq!(account_name(&signed_out), "Default");
+        assert_eq!(account_detail(&signed_out).as_deref(), Some("Signed out"));
+    }
 
     #[test]
     fn lens_settings_read_the_daemons_config_options() {

@@ -8,9 +8,11 @@ use zz_ui::command::{PaletteTarget, target_hosts};
 use zz_ui::target::{RefTarget, ResolvedTarget};
 
 use crate::command::palette::palette_backend;
-use zz_ui::agent::controls::{agent_mode_chip, agent_model_picker};
+use zz_ui::agent::controls::{
+    AccountAction, agent_account_chip, agent_mode_chip, agent_model_picker,
+};
 
-use super::{AgentPaneState, AgentView};
+use super::{AgentAccountPicked, AgentPaneState, AgentView};
 
 impl AgentView {
     pub(super) fn chat_refs(&self, view: &Entity<Self>, cx: &ala::App) -> ChatRefs {
@@ -67,12 +69,40 @@ impl AgentView {
     pub(super) fn render_harness_controls(
         &self,
         state: &AgentPaneState,
+        view: &Entity<Self>,
         cx: &mut ala::App,
     ) -> Vec<AnyElement> {
-        let Some(settings) = state.settings.as_ref() else {
-            return Vec::new();
-        };
         let enabled = state.connection.accepts_setting();
+        let account = agent_account_chip(
+            ("agent-account", self.pane.0),
+            state.provider,
+            self.account.as_deref(),
+            self.accounts.as_deref(),
+            enabled,
+            {
+                let mux = self.mux.clone();
+                let view = view.downgrade();
+                let provider = state.provider;
+                move |action, _, cx| match action {
+                    AccountAction::Refresh => {
+                        let mux = mux.read(cx);
+                        mux.request_agent_accounts(mux.attached_host());
+                    }
+                    AccountAction::Add => {
+                        let mux = mux.read(cx);
+                        mux.add_agent_account(mux.attached_host(), provider);
+                    }
+                    AccountAction::Use(account) => {
+                        view.update(cx, |_, cx| cx.emit(AgentAccountPicked { account }))
+                            .ok();
+                    }
+                }
+            },
+            cx,
+        );
+        let Some(settings) = state.settings.as_ref() else {
+            return account.into_iter().collect();
+        };
         let pick = {
             let controller = self.controller.clone();
             let pane = self.pane;
@@ -95,7 +125,7 @@ impl AgentView {
         );
         let picker =
             agent_model_picker(("agent-settings", self.pane.0), settings, enabled, pick, cx);
-        mode.into_iter().chain([picker]).collect()
+        account.into_iter().chain(mode).chain([picker]).collect()
     }
 
     pub(super) fn chat_cwd(&self) -> String {

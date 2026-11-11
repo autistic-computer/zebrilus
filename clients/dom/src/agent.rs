@@ -471,7 +471,7 @@ impl Client {
             .settle(request, result.as_ref().copied().map_err(String::as_str));
         Some(json!({
             "type": "flip",
-            "error": error.map(|error| format!("flip-agent: {error}")),
+            "error": error,
         }))
     }
 

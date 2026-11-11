@@ -37,7 +37,7 @@ const STORY: Story = Story {
         Section {
             id: "composer-controls",
             name: "Composer controls",
-            summary: "The pieces of the composer on their own: the action button, the + that starts a mention, the context meter, the git summary, and the footer's permissions chip and model picker. The picker lists the first five models, with the rest behind More models in the same list, over a horizontal effort slider with a dot per step.",
+            summary: "The pieces of the composer on their own: the action button, the + that starts a mention, the context meter, the git summary, and the footer's account chip, permissions chip and model picker. The account chip shows the pane's account as its email and opens a list of the CLI's accounts with Add account under it; picking one sends agent-account, and a busy: answer shows the flip's busy card without its choices. The picker lists the first five models, with the rest behind More models in the same list, over a horizontal effort slider with a dot per step.",
             build: composer::controls,
         },
         Section {

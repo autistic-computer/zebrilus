@@ -2782,7 +2782,32 @@ impl AppView {
             view.share_pane_canvas(pane_canvas);
             view
         });
+        #[cfg(feature = "agent-pane")]
+        cx.subscribe_in(
+            &view,
+            window,
+            move |this, _, picked: &crate::agent::AgentAccountPicked, window, cx| {
+                this.switch_agent_account(pane, picked.account.as_deref(), window, cx);
+            },
+        )
+        .detach();
         self.agents.insert(pane, view);
+    }
+
+    #[cfg(feature = "agent-pane")]
+    fn switch_agent_account(
+        &mut self,
+        pane: PaneId,
+        account: Option<&str>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let mux = self.mux.clone();
+        if self.flips.switch_account(pane, account, |command| {
+            mux.read(cx).execute_answered(command)
+        }) {
+            self.refresh_flip(pane, window, cx);
+        }
     }
 
     fn flip_pane(&mut self, pane: PaneId, window: &mut Window, cx: &mut Context<Self>) {
@@ -2848,11 +2873,7 @@ impl AppView {
                 .settle(request, result.as_ref().copied().map_err(String::as_str))
             {
                 self.mux.update(cx, |_, cx| {
-                    MuxClient::emit_notification(
-                        ClientMessageKind::Error,
-                        format!("flip-agent: {error}"),
-                        cx,
-                    );
+                    MuxClient::emit_notification(ClientMessageKind::Error, error, cx);
                 });
             }
         }

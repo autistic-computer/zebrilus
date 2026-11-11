@@ -226,6 +226,21 @@ impl Connection {
         cx.notify();
     }
 
+    pub fn switch_agent_account(
+        &mut self,
+        pane: PaneId,
+        account: Option<&str>,
+        cx: &mut Context<Self>,
+    ) {
+        if !self.connected || self.core.attached_read_only() {
+            return;
+        }
+        let mut flips = std::mem::take(&mut self.flips);
+        flips.switch_account(pane, account, |command| Some(self.invoke(command, cx)));
+        self.flips = flips;
+        cx.notify();
+    }
+
     pub fn choose_flip(
         &mut self,
         pane: PaneId,
@@ -980,7 +995,7 @@ impl Connection {
                     self.commands.remove(request_id);
                     let message = error.to_string();
                     if let Some(error) = self.flips.settle(*request_id, Err(&message)) {
-                        self.notify_error(format!("flip-agent: {error}"), cx);
+                        self.notify_error(error, cx);
                     }
                     cx.notify();
                 }

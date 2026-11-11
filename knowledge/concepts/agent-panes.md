@@ -1,7 +1,7 @@
 ---
 type: Concept
 title: Agent panes and the flip
-description: How a pane runs Claude Code or Codex as a chat (PaneKind::Agent over the vendor drivers), how a chat and its window are named after the CLI's session title, how flip-agent switches one pane between the CLI's own TUI and that chat on the same session (busy rules, --now, --when-idle and the armed flag, finding the TUI's session, waiting for the old process), forks and side chats, accounts (a CLI login per pane through CLAUDE_CONFIG_DIR or CODEX_HOME, agent-account, and agent-accounts to list who is signed in and add one), Codex on its shared app server, the chat's slash list, agent-send and agent-respond, what the chat draws, the preview cards and the floating view pane they open, and how its stream reaches clients.
+description: How a pane runs Claude Code or Codex as a chat (PaneKind::Agent over the vendor drivers), how a chat and its window are named after the CLI's session title, how flip-agent switches one pane between the CLI's own TUI and that chat on the same session (busy rules, --now, --when-idle and the armed flag, finding the TUI's session, waiting for the old process), forks and side chats, accounts (a CLI login per pane through CLAUDE_CONFIG_DIR or CODEX_HOME, agent-account, and agent-accounts to list who is signed in and add one, and the composer chip that shows and switches it), Codex on its shared app server, the chat's slash list, agent-send and agent-respond, what the chat draws, the preview cards and the floating view pane they open, and how its stream reaches clients.
 resource: crates/zz-daemon/src/daemon/agent_flip.rs
 tags: [agent, agent-pane, flip, chat, claude-code, codex, driver, stream]
 timestamp: 2026-11-10T00:00:00-03:00
@@ -212,8 +212,10 @@ picks a different Keychain item than leaving it unset. zz never reads or writes 
 - **`default`** means no account everywhere: `agent-account default` and `select-pane-kind
   --account default` both run the CLI's own login, and `valid_agent_account` refuses `default`, so
   a directory of that name is never listed, created or flipped into.
-- **Not built yet.** The composer's account chip, and removing an account: a signed-out account
-  directory is reused by the next add instead.
+- **In the chat.** The composer footer's account chip shows the account and switches it (see
+  [the footer](#the-empty-chat-and-the-footer)).
+- **Not built yet.** Removing an account: a signed-out account directory is reused by the next add
+  instead.
 
 ## Listing and adding accounts
 
@@ -255,7 +257,8 @@ picks a different Keychain item than leaving it unset. zz never reads or writes 
 - **Clients.** zz-client's core keeps the last list (`ClientCore::agent_accounts`) and emits
   `CoreEvent::AgentAccountsChanged`. The desktop keeps one list per host beside the providers report
   (`MuxClient::host_agent_accounts`, `request_agent_accounts`, `add_agent_account`); zz-app reads the
-  core (`Connection::request_agent_accounts`, `add_agent_account`).
+  core (`Connection::request_agent_accounts`, `add_agent_account`, `switch_agent_account`). The
+  composer's account chip is their one reader.
 
 # Finding the TUI's session
 
@@ -332,7 +335,8 @@ end no turn.
 - **The flip button.** A terminal running either CLI and an agent pane carry a flip button in their
   header (`ButtonLook::Toggle`, `zz_ui::pane::pane_flip_button`) that sends `flip-agent -t <pane>`.
   A `busy:` answer offers Switch when idle and Switch now; an armed flip shows with Cancel.
-  `zz_client::agent_flip` (`AgentFlips`) keeps that state per pane for every client.
+  `zz_client::agent_flip` (`AgentFlips`) keeps that state per pane for every client, and the
+  composer's account switch (`agent-account`) rides the same requests and busy card.
 - **The chat.** `crates/zz/src/agent` on the desktop and `clients/app/src/app/agent_pane.rs` on
   web, iPad and iPhone draw an agent pane with `zz_ui::agent::chat`: the composer, the model and
   effort menu, questions and approvals asked in the composer, subagent rows, images, references,
@@ -378,8 +382,23 @@ picking one resumes it in the same pane.
   then leaves a folder, then returns to the composer. The pointer selects the row under it. `zz_ui::agent::resume::resume_rows` draws the rows under
   `agent_resume_welcome`.
 - **The footer.** The folder chip and the side chat button are gone: the header pill shows the
-  folder, and `/side` opens a side chat. What is left is the branch summary on the left and two
+  folder, and `/side` opens a side chat. What is left is the branch summary on the left and three
   controls on the right (`zz_ui::agent::controls`):
+  - `agent_account_chip`: the [account](#accounts) the pane runs on, as its email
+    (`agent_settings::account_label`), or "Default" when the CLI's own login has no known email, or
+    the id when a named account is not in the list; an email longer than 180px ends in an
+    ellipsis. It is hidden until the host's first `agent-accounts` list arrives; a chat asks for
+    one when it mounts if there is none, and the chip asks again every time it is clicked, which
+    is how a finished login shows up. Its popover lists the pane provider's accounts as 40px rows
+    (penna's `suggestion_row`): the email over the plan and organization (`account_detail`:
+    `max_20x` reads Max 20x), or Signed out for a default that is not signed in, the current one
+    picked and checked. Picking another sends `agent-account -t %N <id|default>` through
+    `zz_client::agent_flip::AgentFlips::switch_account`, the flip's own request tracking: a `busy:`
+    answer shows the flip's busy card over the pane with "Wait for ..., then pick the account
+    again." and only its close button (`Flip::AccountBusy`, `pane::pane_account_busy`), and any
+    other error, the missing-directory one included, becomes a notification that starts with
+    `agent-account:`. Add account sends `agent-accounts --add` for the pane's provider. Both close
+    the popover.
   - `agent_mode_chip`: the driver's `mode` option, the permissions the CLI runs with. A click or
     Shift-Tab steps to the next mode (`LensSettings::next_mode`). `agent_settings::mode_risk` gives
     it a tone, and the send button takes the same one: none while the agent asks first (Claude's
@@ -392,9 +411,10 @@ picking one resumes it in the same pane.
     past eight rows. Under a rule the efforts as penna's `StepRail`, one horizontal rail with a dot
     per step that sets the effort when the knob is let go. Claude's first effort is `default`, so
     its first step is a ring (`effort_starts_unset`).
-- **Where.** The desktop has all of it. Web, iPad and iPhone have the footer but not the lists yet,
-  and the HTML client has neither. The storybook's Agent story shows the lists (Empty chat) and the
-  controls (Composer controls).
+- **Where.** The desktop has all of it. Web, iPad and iPhone have the footer, the account chip
+  included, but not the lists yet, and the HTML client has neither. The storybook's Agent story
+  shows the lists (Empty chat) and the controls (Composer controls, with the account chip on the
+  CLI's own login, two accounts with the second picked, and a signed-out default).
 
 # References in the chat
 

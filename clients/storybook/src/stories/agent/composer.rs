@@ -19,7 +19,7 @@ use zz_client::agent_settings::{Choice, LensSettings};
 use zz_ui::agent::{
     agent_attachment_thumbnail,
     controls::{
-        ComposerAction, agent_mode_chip, agent_model_picker, composer_action,
+        ComposerAction, agent_account_chip, agent_mode_chip, agent_model_picker, composer_action,
         composer_action_button, context_usage_meter, git_summary_footer,
     },
     presentation::{agent_resume_welcome, error_card},
@@ -32,7 +32,7 @@ use super::{
 };
 use crate::stories::console::palette::chat_backend;
 use crate::story::{row, states};
-use zz_protocol::PaneId;
+use zz_protocol::{AgentAccount, AgentProvider, PaneId};
 use zz_ui::{command::target_picker, target::TargetPicker};
 
 pub const PLACEHOLDER: &str = "Message Claude Code…";
@@ -146,7 +146,13 @@ pub fn composer(draft: Draft, cx: &mut App) -> AnyElement {
             cx,
         )],
         prefix: draft.prefix,
-        controls: footer_controls(&id, &draft.settings, draft.writable, cx),
+        controls: footer_controls(
+            &id,
+            &draft.settings,
+            &Accounts::default_only(),
+            draft.writable,
+            cx,
+        ),
     }
     .into_any_element()
 }
@@ -234,26 +240,96 @@ pub fn codex_settings() -> LensSettings {
     }
 }
 
+pub struct Accounts {
+    pub list: Vec<AgentAccount>,
+    pub current: Option<&'static str>,
+}
+
+impl Accounts {
+    fn account(id: Option<&str>, email: Option<&str>, plan: Option<&str>) -> AgentAccount {
+        AgentAccount {
+            provider: AgentProvider::ClaudeCode,
+            id: id.map(str::to_owned),
+            signed_in: email.is_some(),
+            email: email.map(str::to_owned),
+            organization: None,
+            plan: plan.map(str::to_owned),
+        }
+    }
+
+    #[must_use]
+    pub fn default_only() -> Self {
+        Self {
+            list: vec![Self::account(None, Some("me@example.com"), Some("max_20x"))],
+            current: None,
+        }
+    }
+
+    #[must_use]
+    pub fn two_with_the_second_picked() -> Self {
+        Self {
+            list: vec![
+                Self::account(None, Some("me@example.com"), Some("max_20x")),
+                AgentAccount {
+                    organization: Some("Acme Robotics".to_owned()),
+                    ..Self::account(
+                        Some("a1"),
+                        Some("sam.rivera@acme-robotics.example.com"),
+                        Some("team"),
+                    )
+                },
+            ],
+            current: Some("a1"),
+        }
+    }
+
+    #[must_use]
+    pub fn signed_out_default() -> Self {
+        Self {
+            list: vec![Self::account(None, None, None)],
+            current: None,
+        }
+    }
+}
+
 pub fn footer_controls(
     id: &str,
     settings: &LensSettings,
+    accounts: &Accounts,
     enabled: bool,
     cx: &App,
 ) -> Vec<AnyElement> {
     let provider = if settings.modes.iter().any(|mode| mode.value == "read-only") {
-        zz_protocol::AgentProvider::Codex
+        AgentProvider::Codex
     } else {
-        zz_protocol::AgentProvider::ClaudeCode
+        AgentProvider::ClaudeCode
     };
-    agent_mode_chip(
+    let list = accounts
+        .list
+        .iter()
+        .map(|account| AgentAccount {
+            provider,
+            ..account.clone()
+        })
+        .collect::<Vec<_>>();
+    agent_account_chip(
+        SharedString::from(format!("{id}-account")),
+        provider,
+        accounts.current,
+        Some(&list),
+        enabled,
+        |_, _, _| {},
+        cx,
+    )
+    .into_iter()
+    .chain(agent_mode_chip(
         SharedString::from(format!("{id}-mode")),
         provider,
         settings,
         enabled,
         |_, _, _| {},
         cx,
-    )
-    .into_iter()
+    ))
     .chain([agent_model_picker(
         SharedString::from(format!("{id}-settings")),
         settings,
@@ -667,12 +743,24 @@ impl Render for Controls {
             .state("context usage meter", usage)
             .state("git summary", git)
             .state(
-                "permissions, model and effort: Claude Code's own lists",
-                row().children(footer_controls("claude", &claude_settings(), true, cx)),
+                "account, permissions, model and effort: Claude Code's own lists",
+                row().children(footer_controls(
+                    "claude",
+                    &claude_settings(),
+                    &Accounts::default_only(),
+                    true,
+                    cx,
+                )),
             )
             .state(
                 "the same controls on Codex, with the modes, models and levels it lists",
-                row().children(footer_controls("codex", &codex_settings(), true, cx)),
+                row().children(footer_controls(
+                    "codex",
+                    &codex_settings(),
+                    &Accounts::default_only(),
+                    true,
+                    cx,
+                )),
             )
             .state(
                 "a mode that acts without asking tints its chip",
@@ -682,7 +770,37 @@ impl Render for Controls {
                         mode: "acceptEdits".to_owned(),
                         ..claude_settings()
                     },
+                    &Accounts::default_only(),
                     true,
+                    cx,
+                )),
+            )
+            .state(
+                "two accounts, the second picked: a long email ends in an ellipsis",
+                row().children(footer_controls(
+                    "claude-accounts",
+                    &claude_settings(),
+                    &Accounts::two_with_the_second_picked(),
+                    true,
+                    cx,
+                )),
+            )
+            .state(
+                "the CLI's own login, signed out",
+                row().children(footer_controls(
+                    "claude-signed-out",
+                    &claude_settings(),
+                    &Accounts::signed_out_default(),
+                    true,
+                    cx,
+                )),
+            )
+            .state(
+                "an account picked during a turn: the pane shows the busy card, with no choices",
+                row().child(zz_ui::pane::pane_account_busy(
+                    PaneId(10),
+                    "a turn and 1 background task",
+                    |_, _, _| {},
                     cx,
                 )),
             )
