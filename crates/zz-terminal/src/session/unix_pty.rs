@@ -193,8 +193,47 @@ static PINNED_PTY_EXEC_HELPER: OnceLock<CString> = OnceLock::new();
 
 #[cfg(target_os = "macos")]
 pub(super) fn pin_pty_exec_helper(path: &Path) {
-    if let Ok(path) = CString::new(path.as_os_str().as_bytes()) {
-        let _ = PINNED_PTY_EXEC_HELPER.set(path);
+    if !PTY_EXEC_HOST.load(Ordering::Acquire) {
+        return;
+    }
+    let Ok(helper) = CString::new(path.as_os_str().as_bytes()) else {
+        return;
+    };
+    let _ = std::thread::Builder::new()
+        .name("zz-pane-helper-warmup".to_owned())
+        .spawn(move || {
+            if run_pty_exec_helper_once(&helper).unwrap_or(false) {
+                let _ = PINNED_PTY_EXEC_HELPER.set(helper);
+            }
+        });
+}
+
+#[cfg(target_os = "macos")]
+fn run_pty_exec_helper_once(helper: &CString) -> io::Result<bool> {
+    let marker = CString::new(PTY_EXEC_ARGUMENT).expect("the marker has no NUL byte");
+    let mut spawn = crate::posix_spawn::PosixSpawn::new()?;
+    for target in 0..=2 {
+        spawn.open(target, c"/dev/null", libc::O_RDWR)?;
+    }
+    let argv = [
+        helper.as_c_str(),
+        marker.as_c_str(),
+        c"/usr/bin/true",
+        c"true",
+    ];
+    let pid = spawn.spawn(helper, &argv, &[] as &[&std::ffi::CStr])?;
+    let pid = i32::try_from(pid)
+        .ok()
+        .and_then(rustix::process::Pid::from_raw)
+        .ok_or_else(|| io::Error::other("the warm-up helper has no process id"))?;
+    loop {
+        match rustix::process::waitpid(Some(pid), rustix::process::WaitOptions::empty()) {
+            Ok(status) => {
+                return Ok(status.is_some_and(|(_, status)| status.exit_status() == Some(0)));
+            }
+            Err(rustix::io::Errno::INTR) => {}
+            Err(error) => return Err(error.into()),
+        }
     }
 }
 

@@ -1072,6 +1072,31 @@ mod daemon_autostart {
         }
     }
 
+    #[test]
+    fn the_first_pane_of_a_new_daemon_names_its_window_after_its_program() {
+        let fixture = Fixture::new();
+        if !local_socket_bind_available(&fixture.socket) {
+            return;
+        }
+        let created = fixture.run(&["new-session", "-d", "-s", "first", "sleep", "30"]);
+        assert_eq!(created.status.code(), Some(0), "{created:?}");
+        let format = |format: &str| {
+            String::from_utf8_lossy(
+                &fixture
+                    .run(&["display-message", "-p", "-t", "first", format])
+                    .stdout,
+            )
+            .trim()
+            .to_owned()
+        };
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while format("#{pane_current_command}") != "sleep" {
+            assert!(Instant::now() < deadline, "the pane did not exec sleep");
+            thread::sleep(Duration::from_millis(20));
+        }
+        assert_eq!(format("#{window_name}"), "sleep");
+    }
+
     fn ready_then_window_hook(fixture: &Fixture, mut events: Command) -> Vec<serde_json::Value> {
         use std::io::BufRead as _;
 
@@ -9554,6 +9579,21 @@ tmux set-option -g @plugin loaded
                 .expect("pane id")
                 .trim()
                 .to_owned();
+            let deadline = Instant::now() + Duration::from_secs(10);
+            while fixture
+                .run(&[
+                    "display-message",
+                    "-p",
+                    "-t",
+                    &pane,
+                    "#{pane_current_command}",
+                ])
+                .stdout
+                != b"cat\n"
+            {
+                assert!(Instant::now() < deadline, "cat did not start");
+                thread::sleep(Duration::from_millis(10));
+            }
             fn control(stdin: &mut ChildStdin, pane: &str, state: &str) {
                 writeln!(stdin, "refresh-client -A '{pane}:{state}'").expect("write pane state");
                 stdin.flush().expect("flush pane state");
