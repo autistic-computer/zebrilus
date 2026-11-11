@@ -58,7 +58,15 @@
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
-  color: var(--penna-fg-faint);
+  font-size: var(--penna-text-small-size);
+  line-height: 0;
+  color: var(--penna-fg-muted);
+}
+
+.penna-chat-detail::before {
+  content: "";
+  font-size: var(--penna-text-body-size);
+  line-height: 16px;
 }
 
 .penna-chat-counts {
@@ -812,6 +820,15 @@
   min-height: var(--penna-control-touch);
   font-size: var(--penna-text-touch-small-size);
   font-weight: var(--penna-text-touch-small-weight);
+  line-height: var(--penna-text-touch-small-line);
+}
+
+.penna-chat-activity[data-size="touch"] .penna-chat-detail {
+  font-size: var(--penna-text-body-size);
+}
+
+.penna-chat-activity[data-size="touch"] .penna-chat-detail::before {
+  font-size: var(--penna-text-touch-small-size);
   line-height: var(--penna-text-touch-small-line);
 }
 

@@ -4,7 +4,7 @@ The pieces of an agent chat. Each takes plain data and callbacks, so an app keep
 
 ## Activity rows
 
-One row per tool call, thought or summary: an icon or a running spinner, the label, a faint detail, a tag, per-kind counts and a chevron that opens it. While the agent works, the live line sweeps a soft crest across its muted label and its glyph breathes on the same 2.6s cycle.
+One row per tool call, thought or summary: an icon or a running spinner, the label, a smaller detail in the same muted ink on its baseline, a tag, per-kind counts and a chevron that opens it. While the agent works, the live line sweeps a soft crest across its muted label and its glyph breathes on the same 2.6s cycle.
 
 ```rust example story=chat/activity
 let mut mark = ActivityMark::plain(IconName::SquareTerminal);

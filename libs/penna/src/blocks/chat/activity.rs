@@ -83,6 +83,16 @@ pub const fn disclosure_icon(expanded: bool) -> IconName {
     }
 }
 
+fn baseline_drop(line: TextStyle, run: TextStyle, cx: &App) -> Pixels {
+    let text = cx.text_system();
+    let font = text.resolve_font(&ala::font(cx.theme().font_family.clone()));
+    let below_center = |style: TextStyle| {
+        let size = px(style.design_px());
+        (text.ascent(font, size) + text.descent(font, size)) / 2.0
+    };
+    below_center(line) - below_center(run)
+}
+
 #[must_use]
 pub fn activity_color(cx: &App) -> Hsla {
     cx.theme().foreground.muted()
@@ -155,7 +165,9 @@ pub fn activity_row(
     let spread = mark.spread;
     let detail_color = mark
         .detail_color
-        .unwrap_or_else(|| cx.theme().foreground.faint());
+        .unwrap_or_else(|| cx.theme().foreground.muted());
+    let detail_line =
+        px(ACTIVITY_ROW_HEIGHT) + baseline_drop(TextStyle::Body, TextStyle::Small, cx) * 2.0;
     let live = mark.shimmer.is_some();
     let end_icon = match end {
         ActivityEnd::None => None,
@@ -214,6 +226,9 @@ pub fn activity_row(
                     .overflow_hidden()
                     .text_ellipsis()
                     .whitespace_nowrap()
+                    .type_style(TextStyle::Small, cx)
+                    .self_start()
+                    .line_height(detail_line)
                     .text_color(detail_color)
                     .child(detail),
             )
