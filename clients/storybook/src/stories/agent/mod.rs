@@ -37,7 +37,7 @@ const STORY: Story = Story {
         Section {
             id: "composer-controls",
             name: "Composer controls",
-            summary: "The pieces of the composer on their own: the action button, the + that starts a mention, the context meter, the git summary, and the footer's permissions chip and model picker. The picker lists the first five models, with the rest behind More models in the same list, over a horizontal effort slider with a dot per step.",
+            summary: "The pieces of the composer on their own: the action button, the + that starts a mention, the context meter, the git summary, and the footer's permissions chip and model picker. The picker is every model in one list six rows tall that scrolls, opened on the current one, over a horizontal effort slider with a dot per step. Bypass permissions draws the chip in danger.",
             build: composer::controls,
         },
         Section {

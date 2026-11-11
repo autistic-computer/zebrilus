@@ -3,7 +3,6 @@ use zz_protocol::{AgentProvider, CommandInvocation, PaneId};
 
 pub const MODEL: &str = "model";
 pub const EFFORT: &str = "effort";
-pub const LATEST_MODELS: usize = 5;
 const UNSET_EFFORT: &str = "default";
 pub const MODE: &str = "mode";
 
@@ -47,14 +46,15 @@ impl LensSettings {
                 .collect::<Vec<_>>()
         };
         let current = text(&model["currentValue"]);
-        let label = model["_meta"]["zz"]["label"]
-            .as_str()
-            .filter(|label| !label.is_empty())
-            .map_or_else(|| current.clone(), str::to_owned);
+        let models = choices(Some(model));
+        let label = models
+            .iter()
+            .find(|choice| choice.value == current && !choice.name.is_empty())
+            .map_or_else(|| current.clone(), |choice| choice.name.clone());
         Some(Self {
             model: current,
             model_label: label,
-            models: choices(Some(model)),
+            models,
             effort: effort
                 .map(|effort| text(&effort["currentValue"]))
                 .unwrap_or_default(),
@@ -87,26 +87,6 @@ impl LensSettings {
         self.efforts
             .first()
             .is_some_and(|choice| choice.value == UNSET_EFFORT)
-    }
-
-    #[must_use]
-    pub fn listed_models(&self, all: bool) -> Vec<&Choice> {
-        if all {
-            return self.models.iter().collect();
-        }
-        let mut listed = self.models.iter().take(LATEST_MODELS).collect::<Vec<_>>();
-        listed.extend(
-            self.models
-                .iter()
-                .skip(LATEST_MODELS)
-                .find(|choice| choice.value == self.model),
-        );
-        listed
-    }
-
-    #[must_use]
-    pub fn older_models(&self) -> usize {
-        self.models.len().saturating_sub(LATEST_MODELS)
     }
 
     #[must_use]
@@ -330,11 +310,11 @@ mod tests {
     #[test]
     fn lens_settings_read_the_daemons_config_options() {
         let options = json!([
-            {"id":"model","currentValue":"opus","options":[{"value":"opus","name":"Opus"},{"value":"haiku","name":"Haiku"}],"_meta":{"zz":{"label":"Opus 5.5"}}},
+            {"id":"model","currentValue":"haiku","options":[{"value":"opus","name":"Opus 5.5"},{"value":"haiku","name":"Haiku 5.5"}]},
             {"id":"effort","currentValue":"xhigh","options":[{"value":"high","name":"High"},{"value":"xhigh","name":"Extra high"}]},
         ]);
         let settings = LensSettings::parse(&options).expect("settings");
-        assert_eq!(settings.summary(), "Opus 5.5 · Extra high");
+        assert_eq!(settings.summary(), "Haiku 5.5 · Extra high");
         assert_eq!(settings.models.len(), 2);
         assert_eq!(
             settings.choices(EFFORT).map(|(_, current)| current),
@@ -350,7 +330,7 @@ mod tests {
         );
         assert_eq!(short_folder("/", None), "/");
         let codex = LensSettings::parse(&json!([
-            {"id":"model","currentValue":"gpt-6-luna","options":[{"value":"gpt-6-luna","name":"GPT-6-Luna","_meta":{"zz":{"efforts":["low","high"],"defaultEffort":"low"}}}],"_meta":{"zz":{"label":"GPT-6-Luna"}}},
+            {"id":"model","currentValue":"gpt-6-luna","options":[{"value":"gpt-6-luna","name":"GPT-6-Luna","_meta":{"zz":{"efforts":["low","high"],"defaultEffort":"low"}}}]},
             {"id":"effort","currentValue":"high","options":[{"value":"low","name":"Low"},{"value":"high","name":"High"}]},
         ]))
         .expect("codex");
@@ -384,27 +364,6 @@ mod tests {
                 ModeRisk::Unguarded,
             ]
         );
-    }
-
-    #[test]
-    fn the_model_list_is_the_first_five_and_keeps_an_older_pick() {
-        let options = (1..=7)
-            .map(|n| json!({"value": format!("m{n}"), "name": format!("M{n}")}))
-            .collect::<Vec<_>>();
-        let settings = LensSettings::parse(&json!([
-            {"id":"model","currentValue":"m7","options":options},
-        ]))
-        .expect("settings");
-        let listed = |all| {
-            settings
-                .listed_models(all)
-                .iter()
-                .map(|choice| choice.value.as_str())
-                .collect::<Vec<_>>()
-        };
-        assert_eq!(listed(false), ["m1", "m2", "m3", "m4", "m5", "m7"]);
-        assert_eq!(listed(true), ["m1", "m2", "m3", "m4", "m5", "m6", "m7"]);
-        assert_eq!(settings.older_models(), 2);
     }
 
     #[test]

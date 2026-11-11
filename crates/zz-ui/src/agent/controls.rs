@@ -1,7 +1,8 @@
 use std::rc::Rc;
 
 use ala::{
-    Anchor, AnyElement, App, ElementId, IntoElement, SharedString, Window, div, prelude::*, px,
+    Anchor, AnyElement, App, ElementId, IntoElement, ScrollHandle, SharedString, Window, div,
+    prelude::*, px,
 };
 
 use crate::{
@@ -41,7 +42,7 @@ pub fn composer_action_button(
 const STEP: f32 = 32.0;
 const HEAD: f32 = 26.0;
 const PANEL: f32 = 264.0;
-const LIST_ROWS: f32 = 8.0;
+const LIST_ROWS: f32 = 6.0;
 
 pub fn agent_model_picker(
     id: impl Into<ElementId>,
@@ -92,9 +93,25 @@ fn model_panel(
     window: &mut Window,
     cx: &mut App,
 ) -> AnyElement {
-    let all = window.use_keyed_state("agent-model-all", cx, |_, _| false);
-    let open = *all.read(cx);
-    let rows = settings.listed_models(open).into_iter().map(|choice| {
+    let current = settings
+        .models
+        .iter()
+        .position(|choice| choice.value == settings.model);
+    let scroll = window
+        .use_keyed_state("agent-model-scroll", cx, |window, _| {
+            let scroll = ScrollHandle::new();
+            if let Some(current) = current {
+                let painted = scroll.clone();
+                window.on_next_frame(move |window, _| {
+                    painted.scroll_to_item(current);
+                    window.refresh();
+                });
+            }
+            scroll
+        })
+        .read(cx)
+        .clone();
+    let rows = settings.models.iter().map(|choice| {
         let pick = on_pick.clone();
         let value = choice.value.clone();
         let chosen = choice.value == settings.model;
@@ -115,15 +132,13 @@ fn model_panel(
         .flex_none()
         .max_h(px(STEP * LIST_ROWS))
         .overflow_y_scroll()
+        .track_scroll(&scroll)
         .children(rows);
-    let older = settings.older_models();
-    let more = (older > 0).then(|| more_row(open, older, all, cx));
     let panel = crate::v_flex()
         .w(px(PANEL))
         .p(px(6.0))
         .child(head("Model", cx))
-        .child(list)
-        .children(more);
+        .child(list);
     if settings.efforts.is_empty() {
         return panel.into_any_element();
     }
@@ -143,49 +158,6 @@ fn model_panel(
                 .child(effort_rail(settings, on_pick)),
         )
         .into_any_element()
-}
-
-fn more_row(open: bool, older: usize, all: ala::Entity<bool>, cx: &App) -> Row {
-    let muted = cx.theme().foreground.muted();
-    Row::new("agent-model-more", RowLook::Menu)
-        .state(crate::row_state(false, true))
-        .row_height(px(STEP))
-        .h_flex()
-        .flex_none()
-        .h(px(STEP))
-        .w_full()
-        .gap(px(8.0))
-        .px(px(10.0))
-        .click_cursor()
-        .on_click(move |_, _, cx| {
-            all.update(cx, |all, cx| {
-                *all = !*all;
-                cx.notify();
-            });
-        })
-        .child(
-            Label::new(
-                TextStyle::Small,
-                if open { "Fewer models" } else { "More models" },
-            )
-            .flex_1()
-            .min_w_0()
-            .text_color(muted),
-        )
-        .children((!open).then(|| {
-            Label::new(TextStyle::Caption, older.to_string())
-                .flex_none()
-                .text_color(muted)
-        }))
-        .child(
-            Icon::new(if open {
-                IconName::ChevronUp
-            } else {
-                IconName::ChevronDown
-            })
-            .with_size(px(10.0))
-            .text_color(muted),
-        )
 }
 
 fn head(text: &'static str, cx: &App) -> Label {

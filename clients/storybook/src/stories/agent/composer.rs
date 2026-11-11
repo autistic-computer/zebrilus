@@ -194,6 +194,7 @@ pub fn claude_settings() -> LensSettings {
             ("acceptEdits", "Accept edits"),
             ("plan", "Plan"),
             ("auto", "Auto"),
+            ("bypassPermissions", "Bypass permissions"),
         ]),
     }
 }
@@ -680,6 +681,31 @@ impl Render for Controls {
                     "claude-auto",
                     &LensSettings {
                         mode: "acceptEdits".to_owned(),
+                        ..claude_settings()
+                    },
+                    true,
+                    cx,
+                )),
+            )
+            .state(
+                "Bypass permissions: nothing guards it, so the chip turns danger",
+                row().children(footer_controls(
+                    "claude-bypass",
+                    &LensSettings {
+                        mode: "bypassPermissions".to_owned(),
+                        ..claude_settings()
+                    },
+                    true,
+                    cx,
+                )),
+            )
+            .state(
+                "an older model picked: the list opens scrolled to it",
+                row().children(footer_controls(
+                    "claude-older",
+                    &LensSettings {
+                        model: "opus-4-8".to_owned(),
+                        model_label: "Opus 4.8".to_owned(),
                         ..claude_settings()
                     },
                     true,
