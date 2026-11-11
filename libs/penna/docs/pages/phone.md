@@ -83,16 +83,40 @@ A screen of things is the same at every level: the large title, then tiles under
 
 ## Pill
 
-The pill is the one place a machine's windows and sessions are made. Its second line says where they will land: inside a machine, the session in view, the one whose section is under the top row, following the scroll. Tap it for its menu.
+The pill is the one place a machine's windows and sessions are made. Its second line says where they will land: inside a machine, the session in view, the one whose section is under the top row, following the scroll. Tap or hold it for its menu.
 
 ```figure uses=compact,touch,button,label
 <div class="docs-show" data-gap="wide" style="align-items: flex-end">
   <div class="docs-cell"><div class="penna-compact-bar" style="width: 370px; height: auto; padding: 0"><button class="penna-compact-pill" data-penna="floating"><span class="penna-pill-tile" data-penna="phone.pill.icon"><i data-icon="laptop"></i></span><span class="penna-pill-copy"><span class="penna-pill-title">macbook</span><span class="penna-pill-meta"><span class="penna-pill-meta-text">zz</span><span class="penna-dots"><span class="penna-dot" data-active></span><span class="penna-dot"></span><span class="penna-dot"></span></span></span></span></button></div><span class="docs-note">macbook over the session in view</span></div>
-  <div class="docs-cell"><div style="position: relative; width: 390px; height: 552px; overflow: hidden; border-radius: 28px; background: var(--penna-bg); box-shadow: 0 0 0 1px var(--penna-divider)"><div class="penna-pill-menu" data-open><div class="penna-pill-menu-scrim"></div><div class="penna-pill-menu-stack"><div class="penna-pill-menu-group"><button class="penna-pill-chip" data-penna="floating" style="color: var(--penna-muted)"><i data-icon="settings"></i><span>Settings</span></button></div><div class="penna-pill-menu-group"><button class="penna-pill-chip" data-penna="floating"><i data-icon="server"></i><span>All machines</span></button></div><div class="penna-pill-menu-group"><button class="penna-pill-chip" data-penna="floating"><i data-icon="layers-plus"></i><span>New session</span></button></div><div class="penna-pill-menu-group"><span class="penna-pill-menu-label" data-penna="floating">New in zz</span><button class="penna-pill-chip" data-penna="floating"><i data-icon="globe"></i><span>New browser</span></button><button class="penna-pill-chip" data-penna="floating"><i data-icon="square-terminal"></i><span>New terminal</span></button><button class="penna-pill-chip" data-penna="button" data-tone="primary" data-prominent style="--penna-r: 9999px; --penna-k: 1"><i data-icon="chat-plus"></i><span>New chat</span></button></div></div><div class="penna-pill-menu-well"></div><button class="penna-pill-menu-close" data-penna="button" data-tone="primary" data-prominent aria-label="Close"><i data-icon="xmark"></i></button></div></div><span class="docs-note">The menu, its New group labelled</span></div>
+  <div class="docs-cell"><div style="position: relative; width: 390px; height: 600px; overflow: hidden; border-radius: 28px; background: var(--penna-bg); box-shadow: 0 0 0 1px var(--penna-divider)"><div class="penna-stack" data-open><div class="penna-stack-scrim"></div><div class="penna-stack-column" style="right: 0; bottom: 84px; left: 0"><div class="penna-stack-group"><button class="penna-stack-chip" data-penna="floating" style="color: var(--penna-muted)"><i data-icon="settings"></i><span>Settings</span></button></div><div class="penna-stack-group"><button class="penna-stack-chip" data-penna="floating"><i data-icon="server"></i><span>All machines</span></button></div><div class="penna-stack-group"><button class="penna-stack-chip" data-penna="floating"><i data-icon="layers-plus"></i><span>New session</span></button></div><div class="penna-stack-group"><span class="penna-stack-label" data-penna="floating">New in zz</span><button class="penna-stack-chip" data-penna="floating"><i data-icon="globe"></i><span>New browser</span></button><button class="penna-stack-chip" data-penna="floating" data-state="selected"><i data-icon="square-terminal"></i><span>New terminal</span></button><button class="penna-stack-chip" data-penna="button" data-tone="primary" data-prominent><i data-icon="chat-plus"></i><span>New chat</span></button></div></div></div><div class="penna-compact-bar" style="position: absolute; right: 0; bottom: 0; left: 0; height: auto; padding: 0 16px 20px"><button class="penna-compact-pill" data-penna="floating"><span class="penna-pill-tile" data-penna="phone.pill.icon"><i data-icon="laptop"></i></span><span class="penna-pill-copy"><span class="penna-pill-title">macbook</span><span class="penna-pill-meta"><span class="penna-pill-meta-text">zz</span><span class="penna-dots"><span class="penna-dot" data-active></span><span class="penna-dot"></span><span class="penna-dot"></span></span></span></span></button></div></div><span class="docs-note">Held, sliding over New terminal</span></div>
 </div>
 ```
 
-Chips are 44 capsules in groups, the likeliest nearest the thumb and solid, Settings apart at the top. A group whose chips make things in one place is headed by a label chip saying where ("New in zz"): 28 tall, muted, no glyph, not a target. What it makes lands in the session the pill names. With no sessions it reads "In a new session" and New session is left out. Not built natively yet: the pill's second line shows a session count, and the menu has no label and no New chat.
+Its menu is a stack menu (below): chips in groups, the likeliest nearest the thumb and solid, Settings apart at the top. A group whose chips make things in one place is headed by a label chip saying where ("New in zz"). What it makes lands in the session the pill names. With no sessions it reads "In a new session" and New session is left out. Not built natively yet: the pill's second line shows a session count, and the menu has no label and no New chat.
+
+## Stack menu
+
+The phone's one menu: chips that rise out of what you pressed, the pill or a key in the key row. Tap the anchor and the stack stays for a tap on a chip; or hold it, slide to a chip and let go, in one stroke.
+
+| Gesture on the pill | Does | Told apart by |
+| --- | --- | --- |
+| Tap | opens the stack, staying | let go within 280 ms, moved under 10 |
+| Hold | opens it under the finger | still within 10 at 280 ms |
+| Hold, then slide | picks the chip it lets go on | after the hold the stack owns the touch |
+| Sideways swipe | pages | moved 10 before 280 ms, across |
+| Drag up | the lift, back one level | moved 10 before 280 ms, upward |
+
+Chips are 52, the floating surface, a 20 glyph and the label in strong `touch-body`, 8 apart in a group and 16 between groups. The chip under the finger inverts and grows 4%, with a tick. Letting go on the anchor keeps the stack open; anywhere else closes it. Close and other danger chips ask first in a sheet. More than six chips in a group go in two columns. Chips never shrink: what does not fit folds behind More. Not built natively yet: the pill's menu opens on a tap only, at 44, and nothing ticks.
+
+```figure uses=touch,compact,button,label
+<div class="docs-show" data-gap="wide" style="align-items: flex-end">
+  <div class="docs-cell"><button class="penna-stack-chip" data-penna="floating"><i data-icon="square-terminal"></i><span>New terminal</span></button><span class="docs-note">Rest</span></div>
+  <div class="docs-cell"><button class="penna-stack-chip" data-penna="floating" data-state="selected"><i data-icon="square-terminal"></i><span>New terminal</span></button><span class="docs-note">Under the finger</span></div>
+  <div class="docs-cell"><button class="penna-stack-chip" data-penna="floating" data-tone="danger"><i data-icon="xmark"></i><span>Close</span></button><span class="docs-note">Danger</span></div>
+  <div class="docs-cell"><span class="penna-stack-label" data-penna="floating">New in zz</span><span class="docs-note">Group label, not a target</span></div>
+  <div class="docs-cell"><div class="penna-stack-group" data-chords><button class="penna-stack-chip" data-penna="floating"><span class="penna-stack-cap">^C</span><span>Interrupt</span></button></div><span class="docs-note">Chord</span></div>
+</div>
+```
 
 ## Inside a pane
 
@@ -111,7 +135,7 @@ The **mini pill** and a **badge on a thumbnail** are the two things drawn smalle
 
 ## Terminal
 
-The key row takes the pill's place while the keyboard is up: 44 keys in one 56 pill, the prefix pinned at the start, the arrow pad and hide pinned at the end, and between them esc, tab, ctrl, alt, / and @, most used first, scrolling under a fade. A tap on ctrl or alt latches it for the next key; holding it opens its chord card, items 44 tall, the most used nearest the key.
+The key row takes the pill's place while the keyboard is up: 44 keys in one 56 pill, the prefix pinned at the start, the arrow pad and hide pinned at the end, and between them esc, tab, ctrl, alt, / and @, most used first, scrolling under a fade. A tap on ctrl or alt latches it for the next key; holding it opens its chords as a stack menu, the most used nearest the key. The prefix opens the pill's own stack. The arrow pad's bubble is the stack's sibling: the cell under the finger inverts and grows like a chip.
 
 ```figure uses=touch,button,label
 <div class="docs-show" data-gap="wide" style="align-items: flex-end">
@@ -125,12 +149,13 @@ The key row takes the pill's place while the keyboard is up: 44 keys in one 56 p
 
 ```figure uses=touch,button,label
 <div class="docs-show" data-gap="wide" style="align-items: flex-end">
-  <div class="docs-cell"><div class="penna-chord-card" data-penna="popover"><div class="penna-chord-item" data-penna="menu-item"><span class="penna-chord-cap">^A</span><span>Line start</span></div><div class="penna-chord-item" data-penna="menu-item"><span class="penna-chord-cap">^E</span><span>Line end</span></div><div class="penna-chord-item" data-penna="menu-item"><span class="penna-chord-cap">^W</span><span>Kill word</span></div><div class="penna-chord-item" data-penna="menu-item"><span class="penna-chord-cap">^K</span><span>Kill to end</span></div><div class="penna-chord-item" data-penna="menu-item"><span class="penna-chord-cap">^R</span><span>History</span></div><div class="penna-chord-item" data-penna="menu-item"><span class="penna-chord-cap">^U</span><span>Kill line</span></div><div class="penna-chord-item" data-penna="menu-item"><span class="penna-chord-cap">^Z</span><span>Suspend</span></div><div class="penna-chord-item" data-penna="menu-item"><span class="penna-chord-cap">^L</span><span>Clear</span></div><div class="penna-chord-item" data-penna="menu-item" data-state="selected"><span class="penna-chord-cap">^C</span><span>Interrupt</span></div><div class="penna-chord-item" data-penna="menu-item"><span class="penna-chord-cap">^D</span><span>End input</span></div></div><span class="docs-note">Holding ctrl</span></div>
+  <div class="docs-cell"><div class="penna-stack-group" data-chords data-columns="2"><button class="penna-stack-chip" data-penna="floating"><span class="penna-stack-cap">^A</span><span>Line start</span></button><button class="penna-stack-chip" data-penna="floating"><span class="penna-stack-cap">^E</span><span>Line end</span></button><button class="penna-stack-chip" data-penna="floating"><span class="penna-stack-cap">^W</span><span>Kill word</span></button><button class="penna-stack-chip" data-penna="floating"><span class="penna-stack-cap">^K</span><span>Kill to end</span></button><button class="penna-stack-chip" data-penna="floating"><span class="penna-stack-cap">^R</span><span>History</span></button><button class="penna-stack-chip" data-penna="floating"><span class="penna-stack-cap">^U</span><span>Kill line</span></button><button class="penna-stack-chip" data-penna="floating"><span class="penna-stack-cap">^Z</span><span>Suspend</span></button><button class="penna-stack-chip" data-penna="floating"><span class="penna-stack-cap">^L</span><span>Clear</span></button><button class="penna-stack-chip" data-penna="floating" data-state="selected"><span class="penna-stack-cap">^C</span><span>Interrupt</span></button><button class="penna-stack-chip" data-penna="floating"><span class="penna-stack-cap">^D</span><span>End input</span></button></div><span class="docs-note">Holding ctrl, over ^C</span></div>
+  <div class="docs-cell"><span class="penna-arrow-bubble" data-penna="floating" data-size="touch" style="position: static; transform: none"><span></span><span class="penna-arrow-cell" data-penna="phone.arrow-pad" data-state="selected"><i data-icon="arrow-up"></i></span><span></span><span class="penna-arrow-cell" data-penna="phone.arrow-pad"><i data-icon="arrow-left"></i></span><span class="penna-arrow-hub"></span><span class="penna-arrow-cell" data-penna="phone.arrow-pad"><i data-icon="arrow-right"></i></span><span></span><span class="penna-arrow-cell" data-penna="phone.arrow-pad"><i data-icon="arrow-down"></i></span><span></span></span><span class="docs-note">The arrow pad, held</span></div>
   <div class="docs-cell"><div class="penna-find" data-penna="field.composer" style="width: 361px"><button class="penna-button" data-penna="button.quiet" data-shape="icon" aria-label="Close find"><i data-icon="xmark"></i></button><span class="penna-find-query">pill-find</span><span class="penna-find-count">3 of 7</span><button class="penna-button" data-penna="button.quiet" data-shape="icon" aria-label="Previous match"><i data-icon="chevron-up"></i></button><button class="penna-button" data-penna="button.quiet" data-shape="icon" aria-label="Next match"><i data-icon="chevron-down"></i></button></div><span class="docs-note">Find, riding the keyboard</span></div>
 </div>
 ```
 
-Find takes the pill's place by the same rule: a 56 field with a 44 close, the query, the count as its value, and previous and next as 44 buttons. A tap on a link opens a sheet titled with the link, with Open in a browser pane, Open on this phone and Copy. Scrolled back, the pill shrinks to the mini pill and a 44 jump to bottom floats over it. Not built natively yet: 44 keys in one pill with the pinned end, the inverted latch, find, the link sheet and jump to bottom.
+Find takes the pill's place by the same rule: a 56 field with a 44 close, the query, the count as its value, and previous and next as 44 buttons. A tap on a link opens a sheet titled with the link, with Open in a browser pane, Open on this phone and Copy. Scrolled back, the pill shrinks to the mini pill and a 44 jump to bottom floats over it. Not built natively yet: 44 keys in one pill with the pinned end, the inverted latch, the chord stacks, the arrow pad's new bubble, find, the link sheet and jump to bottom.
 
 ## Surfaces
 
@@ -145,9 +170,9 @@ Flat by default; glass only for what sits over something. Tiles, rows, fields an
 
 - **Flat**: the screen, tiles, rows and row groups, fields, the empty state, the zoom card, the key row's keys.
 - **Solid**: the main action, never glass.
-- **Floating**: the pill, its menu, the gear disc, sheets, the key row's pill, the chat composer, and the action bar when content scrolls under it.
+- **Floating**: the pill, the stack menu's chips, the arrow pad's bubble, the gear disc, sheets, the key row's pill, the chat composer, and the action bar when content scrolls under it.
 
-Not built natively yet: the pill menu's chips and the key row's pill draw a flat tint today, glass on or off.
+Not built natively yet: the pill menu's chips and the key row's pill draw a flat tint today, glass on or off, and the arrow pad's bubble is a popover.
 
 ## Corners
 
@@ -168,6 +193,8 @@ The desktop's four corner rules, unchanged. Controls round from their height, th
 | Main action, field, pill, disc (56) | control | 17.5 | a capsule | 14.3 |
 | Icon button (44) | control | 13.7 | a circle | 11.2 |
 | Icon button in the disc | the disc's less 6 | 11.5 | a circle | 8.3 |
+| Stack chip (52) | control | 16.2 | a capsule | 13.2 |
+| Arrow pad bubble | its 44 cells' corner plus 6 | 19.7 | 28 | 17.2 |
 | Touch row, 52 and 64 | control, never a capsule | 16.2, 20 | 16.2, 20 | 13.2, 16.3 |
 | Touch row in a group | at most the group's less 4 | 16.2, 20 | 16.2, 20 | 12, 12 |
 | Tile, row group, sheet, zoom card | phone container, twice `radius` | 24 | 24 | 16 |

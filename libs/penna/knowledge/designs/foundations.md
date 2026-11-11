@@ -336,7 +336,7 @@ How Principles 1 is kept, for every component:
 
 ## Phone
 
-A phone screen is not the desktop made bigger. The desktop components stay what they are under a coarse pointer (Size); a phone screen is built from the components this section lists, which are sized for a thumb from the start. The chrome that moves around a phone (the pill, its menu, the bento overview, the zoom, the key row and sheets) is the compact, touch and sheet blocks.
+A phone screen is not the desktop made bigger. The desktop components stay what they are under a coarse pointer (Size); a phone screen is built from the components this section lists, which are sized for a thumb from the start. The chrome that moves around a phone (the pill, its stack menu, the bento overview, the zoom, the key row and sheets) is the compact, touch and sheet blocks.
 
 Rules:
 
@@ -376,14 +376,15 @@ Components (each specified in its own section):
 | Touch row, row group, section header | List, Touch rows | one-line and two-line rows built inside sheets; the rest not built |
 | Phone tile, machine and window content | Tile, Phone tile | the bento grid, sizing by pane count, mini panes with terminal text and a browser's URL, and the add tile built; machine states, the window header and marks, the chat preview and the corner not built |
 | Session header | List, Touch rows | a 44 heading built; the hold not built |
-| Pill and its menu | Blocks, Pill | the pill, its menu and its groups built; the second line naming the session in view, the group label and New chat not built |
+| Pill and its menu | Blocks, Pill | the pill, its tap, swipe and lift, and today's menu and its groups built; the hold, the second line naming the session in view, the group label and New chat not built |
+| Stack menu | Blocks, Stack menu | not built: the pill's menu opens on a tap only with 44 chips that shrink, the chord card is a `popover` of 44 rows with hold, slide and release, and nothing ticks |
 | Pill inside a pane | Blocks, Pill | the pill, its two lines with the tile's words, its dots, the swipe and drag built; "Needs approval" (it says "Needs your permission"), the danger tone and the pane menu not built |
 | Mini pill | Phone, Layout | built at 32; the 44 target not built |
 | Badge on a thumbnail | Phone, Layout | not built |
 | Keyboard rule | Phone, Layout | built in a terminal; in a chat and a browser the pill stays: not built |
 | Phone composer, ask card, queued row, chat rows | Blocks, Chat on a phone | not built: the phone draws the desktop's composer, its chips and the inline ask with key caps |
 | Hold a message | Blocks, Chat on a phone | not built: Copy and Fork are 24 buttons under the message |
-| Key row | Blocks, Key row | built with 40 keys, the prefix in its own 48 pill, the latch, the chord card at 44 and the arrow pad; 44 keys, one pill, the pinned end, the new order, the thumb order of the chord card and the 44 arrow cells not built |
+| Key row | Blocks, Key row | built with 40 keys, the prefix in its own 48 pill, the latch, the chord card at 44 and the arrow pad; 44 keys, one pill, the pinned end, the new order, the chord stacks, the prefix's hold and the arrow pad's 44 floating bubble not built |
 | Terminal on a phone | Blocks, Terminal on a phone | the terminal, scrolling, pinch, long-press selection with the system edit menu and the exited pill line built; the link sheet, find, jump to bottom, selection handles, the scroll indicator and Find in the menu not built |
 | Keycap at touch size | Keycap | not built: All bindings spells keys as mono text at the leading end |
 | Confirm and rename sheets | Blocks, Sheet | not built: Kill pane runs at once, Rename opens the desktop palette |
@@ -424,13 +425,14 @@ Surfaces: the Look's rule, applied to the phone: flat by default, glass only for
 | Main action | a solid fill, never glass | the same |
 | Action bar | none of its own while it holds only the solid main action; a floating surface like the pill whose spot it takes when it holds a quiet secondary or content scrolls under it | a floating surface without glass (Look); not built |
 | Pill | glass, the `floating` look (`floating_layer`) | a floating surface without glass (Look) |
-| Pill menu chips | glass, floating over the scrim | a floating surface without glass (Look); not built: natively each chip is a `phone.pill` tint with no glass, hairline or shadow, glass on or off (`compact_pill_menu`) |
+| Stack menu chips and group label | glass, floating over the scrim; the chip under the finger the `primary` solid, a danger chip the `danger` solid | a floating surface without glass (Look); not built: natively the pill menu's chips are a `phone.pill` tint with no glass, hairline or shadow, glass on or off (`compact_pill_menu`), and the chord card a `popover` of menu rows |
+| Stack menu close | the solid `primary`, never glass | the same |
 | Floating buttons (the gear disc) | glass, the `floating` look (`compact_floating_group`) | a floating surface without glass (Look) |
 | Folding title bar | a frost of its own over the scrolled page: blur 20, the ground at 72%, saturation 1.8 (`folding_title_bar`), with the `phone.bar` hairline under it | should be the ground, opaque, under the hairline; today it keeps its frost with glass off: not built |
 | Chat composer, the phone composer row and the ask card | glass, as Chat composer says | its opaque card surface |
 | Jump to latest, jump to bottom | glass, the `floating` look, a 44 icon button | a floating surface without glass (Look) |
 | Find field | glass, the `field.composer` look, as the composer row | its opaque card surface |
-| Chord card, arrow pad bubble | the `popover` look | the same |
+| Arrow pad bubble | glass, the `floating` look; the cell under the finger the `primary` solid | a floating surface without glass (Look); not built: natively the `popover` look |
 | Badge on a thumbnail | glass, the `floating` look, a 24 disc | a floating surface without glass (Look) |
 | Sheet | the `drawer` look, floating: glass with the float shadow | a floating surface without glass (Look) |
 | Key row | its pill a floating surface, glass; its keys `phone.key`, flat, a wash when pressed or latched, solid when inverted | the pill a floating surface without glass (Look), the keys the same; not built: natively the pill is a `phone.pill` tint with no glass, hairline or shadow, glass on or off (`KeyRow`) |
@@ -452,6 +454,11 @@ Corners: the four corner rules (Corners, under Look) hold on the phone unchanged
 | Ask card | phone container | 24 | 24 | 16 | not built |
 | Key row pill (56) | control | 17.5 | 28, a capsule | 14.3 | not built: the pill is 48 inside a 56 row |
 | Key (44) | control, concentric: the key row pill's corner less 6 | 11.5 | 22, a circle | 8.3 | not built: keys are 40 |
+| Stack chip (52) | control | 16.2 | 26, a capsule | 13.2 | not built: the pill menu's chips are 44 capsules in every look, the chord card's items 44 menu rows |
+| Stack group label (28) | control | 8.7 | 14, a capsule | 7.1 | not built: no label natively |
+| Stack close (56) | control | 17.5 | 28, a circle | 14.3 | not built: a circle in every look |
+| Arrow pad bubble | floating, concentric: its 44 cells' corner plus its 6 inset | 19.7 | 28 | 17.2 | not built: the `popover`'s `radius` |
+| Arrow cell (44) | control | 13.7 | 22, a circle | 11.2 | not built: cells are smaller and never filled |
 | Touch row, 52 and 64 | control, never a capsule | 16.2, 20 | 16.2, 20 | 13.2, 16.3 | matches in sheets (`row_radius`) |
 | Touch row in a group | the same, at most the group's corner less 4 | 16.2, 20 | 16.2, 20 | 12, 12 | not built |
 | Row in a sheet | the same, at most the sheet's corner less 6 | 16.2, 18 | 16.2, 18 | 10, 10 | not built: rows keep 16.2 and 20 in a 12 sheet |
@@ -1952,6 +1959,57 @@ HTML: `.penna-action-bar` (`data-row` for two side by side, `data-keys` riding t
 
 Status: not built.
 
+### Stack menu
+
+The stack menu is the phone's one menu: chips that rise in a column out of the thing you pressed, picked with a tap, or in one stroke with a press, a slide and a release. The pill's menu and the key row's chord menus are stack menus. For a question, or a choice that needs more than a few words, a sheet.
+
+Anchor: the pill (Pill), or a key in the key row: ctrl, alt, or the prefix, which stands in for the pill while the keyboard is up (Key row). The stack grows out of the anchor, nearest chip first, and the chip most used sits nearest, where the thumb already is.
+
+Two ways in, one menu:
+
+| Gesture | What happens |
+|---|---|
+| Tap the anchor | the stack opens and stays. A tap on a chip picks it; a tap on the anchor or the scrim closes it |
+| Hold the anchor 280ms | the stack opens under the finger, with a tick. Letting go on the anchor leaves it open, as a tap does |
+| Hold, then slide | the chip under the finger lifts. Letting go on it picks it; letting go on the anchor leaves the stack open; letting go anywhere else closes it with nothing picked |
+
+- Hold: the finger stays within 10 of where it landed for 280ms, the key row's hold. A move of 10 before then is not a hold but whatever the anchor does with a drag: the pill pages or lifts (Pill), a key pans the row sideways, and a key's slide up opens its stack at once, as the hold would.
+- Once the stack is open the touch belongs to it until the finger lifts: nothing under it scrolls, pages or lifts.
+- Over a chip or none: while the finger slides, each chip owns half the gap around it, so moving from chip to chip never passes over nothing. Outside the column the finger is over none.
+- The anchor while the finger holds it stays itself, pressed: the pill under its press wash, a key inverted. When the stack stays open after the finger lifts, the pill turns into the close, a 56 solid `primary` disc with a 22 `xmark` in the pill's spot; a key stays inverted and is its own close.
+- An anchor whose tap already does something keeps it: a tap on ctrl or alt latches (Key row), so their stacks open only by the hold or the slide. The pill and the prefix open on both.
+
+Chips:
+
+- A chip is a floating surface (Phone, Surfaces) 52 tall, its corner a control's from its height (16.2 by default, a capsule under Pill controls; Phone, Corners), inset 16 at the leading side and 20 at the trailing: a 20 glyph, `space-10`, then its label in strong `touch-body`. 52 rather than 44, since a sliding thumb covers what it is over and needs room to land on the next one. The whole chip is the target.
+- Chips stand `gap-related` 8 apart inside a group and `gap-group` 16 between groups. Menu chips are each as wide as what they hold, centered on the column's axis.
+- A group of up to six chips is one column. A group of more than six goes in two columns of equal width, `gap-related` apart, filled a row at a time from the anchor out.
+- A chord chip has no glyph: the chord in `touch-small` mono, muted, at least 32 wide, then its name in strong `touch-body`. The chips of a chord group are all as wide as the widest, so the chords line up.
+- Group label: a group whose chips all make things in one place is headed by a label chip saying where ("New in zz"): the floating surface, 28 tall, inset 12 at the sides, its words in strong `touch-small` muted, with no glyph. It is not a target: a finger over it is over none, and it does not lift.
+- Looks: the one solid `primary` chip for the thing most likely wanted (New chat); quiet, in muted ink, for a chip set apart at the far end (Settings, All bindings); `danger` ink for one that destroys. A disabled chip is in the disabled ink and does not lift or tick; letting go on it picks nothing.
+- A danger chip never acts at once: picking it opens its confirm sheet (Sheet, Confirm), so a slide cannot destroy anything by accident.
+
+Placement: the nearest chip `gap-related` 8 above the anchor, the column centered on the anchor's middle. A column that would come closer than 16 to a side of the screen keeps 16 from it, and its chips line up along that side: the prefix's stack runs along the start. The column stays 16 under the status area.
+
+What does not fit: chips keep 52 and nothing shrinks. The groups furthest from the anchor fold behind one More chip (`ellipsis`) at the far end, as many groups as it takes for the rest and More to fit. Picking More, by a release or a tap, turns the stack to the folded groups, open and staying, the anchor still the close. Folding needs nothing a sliding finger cannot do; a stack that scrolls would need an edge that scrolls on its own under the finger.
+
+Feedback:
+
+- Under the finger: the chip inverts, the `primary` solid and its ink (a danger chip the `danger` solid and its ink, the solid primary chip its pressed fill), and grows 4% about its center over `appear` 120ms. The platform's selection tick sounds each time the finger enters a chip, and once when the hold opens the stack.
+- Opening: the chips rise 14 out of the anchor and fade in, nearest first, each 0.06 of the way behind the one before, on the pill's spring (`PillSpring`, stiffness 520, damping 46).
+- Picking: the other chips fold back into the anchor on the same spring while the picked chip holds its inverted look for 120ms, then it follows them; the action runs as the fold starts. Closing with nothing picked is the fold alone.
+- Reduced motion: no growth, no rise and no fold. The stack fades in and out over `appear` 120ms and the chip under the finger only inverts. The ticks stay.
+
+Scrim: the `scrim` over the screen above the keyboard, the anchor and the stack over it. A tap on the scrim closes the stack. A key typed on the system keyboard closes it too, and types.
+
+The arrow pad (Key row) is its sibling: held only, never a menu, drawn in the same language: the floating surface, 44 cells, the cell under the finger inverted and grown 4% with a tick.
+
+Content: a chip says a verb or a place in a word or two; a chord chip says the chord and what it does.
+
+HTML: `.penna-stack[data-open]` holding `.penna-stack-scrim` and `.penna-stack-column` (placed by the app; `data-align="start"` or `"end"` against a side) of `.penna-stack-group`s (`data-columns="2"` for two columns, `data-chords` for chord chips of one width), each an optional `.penna-stack-label[data-penna="floating"]` and `.penna-stack-chip[data-penna="floating"]`s: an `i[data-icon]` and a `span`, or a `.penna-stack-cap` and a `span`. `data-state="selected"` on the chip under the finger, `data-picked` while it flashes, `data-look="quiet"`, `data-tone="danger"`, `disabled`; the primary chip is `data-penna="button" data-tone="primary" data-prominent data-look="primary"`. The pill's close is `.penna-stack-close[data-penna="button"][data-tone="primary"][data-prominent]`. Today's pill menu keeps its own classes (`.penna-pill-menu`, `.penna-pill-chip`) as the twin of the native menu on its storybook page until the stack menu is built.
+
+Status: not built. Today the two are separate. The pill's menu (`compact_pill_menu`) opens on a tap only (`on_click` on the pill): 44 chips with 18 glyphs in strong `touch-small`, shrinking to 40 and 36 when room is short (`Spacing::fitting`), rising 14 and staggered 0.06 on `PillSpring`, picked by a tap and closed by the scrim or the close; holding the pill does nothing until the finger lifts, and then it is a tap. The prefix only taps (`PopoverKeyTap::Press`) and opens that same menu from its own spot, lined up at the start (`MenuFrom::Prefix`). The chord card (`PopoverKey`) is a `popover` card of 44 menu rows, top down with ^C first: a hold of 280ms or a slide of 12 opens it (a sideways slide pans the row instead), letting go on an item sends it, letting go on the key without sliding pins it open, letting go anywhere else after a slide closes it, the key included, and a pinned card closes on a press outside the key (`popover_key.rs`). Nothing on the phone ticks: neither ala nor the app has a haptics call.
+
 ### Pill
 
 The pill sits at the bottom of a screen of tiles and of a pane: it says where you are and where a new thing will land, and its menu holds what you can do from there. It is the one place a machine's windows and sessions are made. For a screen's one main action, the action bar.
@@ -1960,15 +2018,23 @@ Anatomy: a floating capsule 56 tall (`COMPACT_PILL_HEIGHT`), in the action bar's
 
 The second line names where new things land. Inside a machine the title is the machine's name and the second line the session in view ("macbook" over "zz"): the session whose section is under the top row, following the scroll, or the first while the large title shows. A machine with more than one session ends its page with room for the last to rise under the top row, so any session can be the one in view. A machine with no sessions says "No sessions".
 
-Behavior: a tap opens the menu; a swipe pages to the next machine or pane; dragging it up goes back one level (Zoom card).
+Behavior: five gestures start on the pill, told apart by time first and direction second.
 
-Menu: a scrim over the screen, then chips in a column centered over the pill, with the close in the pill's spot. A chip is a floating capsule 44 tall (40 or 36 only when the screen is too short for 44, `compact_pill_menu`) with an 18 glyph and its label in strong `touch-small`, the whole chip the target. Chips fall in groups, `gap-related` 8 apart inside one and `gap-group` 16 between groups. The thing you most likely want sits nearest the thumb, the one solid primary chip; Settings sits apart at the top, quiet.
+| Gesture | Does | Told apart by |
+|---|---|---|
+| Tap | opens its menu, staying (Stack menu) | let go before 280ms, having moved less than 10 |
+| Hold | opens its menu under the finger | still within 10 of where it landed at 280ms |
+| Hold, then slide | picks the chip it lets go on | after the hold every move belongs to the menu |
+| Sideways swipe | pages to the next machine or pane | moved 10 before 280ms, more across than up |
+| Drag up | goes back one level, the lift (Zoom card) | moved 10 before 280ms, upward; it opens past a third of its 300 or on a flick of 500 a second, and springs back short of both |
 
-- Group label: a group whose chips all make things in one place is headed by a label chip saying where ("New in zz"), centered over its chips, `gap-related` above the first: the chips' floating surface as a capsule 28 tall, inset 12 at the sides, its words in strong `touch-small` muted, with no glyph. It is not a target, and it is drawn short of the 44 a finger presses and without a glyph so it does not read as one. It has a surface because the menu's scrim is light (5% in the light themes) and bare text over it runs into the tiles behind.
+In plain words: a finger that moves 10 within 280ms is a swipe or the lift, exactly as today, and the hold never starts. A finger that stays put 280ms is a hold, and from then on the menu owns the touch, so moving up slides over chips and never lifts. The thresholds agree with the lift's: it starts only once the system's pan has seen about 10 of movement (`Lift::scroll`), so a drag that covers 10 in 280ms, 36 a second and slower than any deliberate drag, is never taken for a hold, and the hold is settled long before the lift could open at 100.
+
+Menu: a stack menu (Stack menu) with the pill as its anchor, chips in a column centered over the pill, the close in the pill's spot once it stays open. Chips fall in groups. The thing you most likely want sits nearest the thumb, the one solid primary chip; Settings sits apart at the top, quiet. The group label ("New in zz") has a surface because the menu's scrim is light (5% in the light themes) and bare text over it runs into the tiles behind.
 - Inside a machine, top to bottom: Settings; All machines; New session; then "New in" and the session in view over New browser, New terminal and New chat, New chat nearest the thumb. What the group makes lands in the session the label names, which is the one the second line names. New chat goes on to the chat picker; New terminal and New browser make the window and zoom into it.
 - With no sessions the label reads "In a new session" and New session is left out, since each chip under it starts one. The empty machine's add tile opens this same menu.
 
-Inside a pane: the pill is the pane's only chrome (Phone, Layout). The icon tile holds the pane's kind (chat, terminal, browser) and the title is the pane's title. The second line uses a window tile's words and tones (Phone, Window tiles): "Needs approval" or "Has a question" in `warning` ink, "Failed" or "Exit 1" in `danger` ink (a terminal whose last command failed, with its folder after it), "Exited 1" in `danger` ink or "Exited" muted for a terminal whose shell has exited, the agent's working message in muted ink while it works ("Running cargo test"), and otherwise where the pane works, muted: folder and branch for a chat or a terminal ("zebrilus · main"), the host for a browser, as today (`pane_detail`). Not the window's name: a window is usually named after its chat, so it would repeat the title. The dots are one per pane of the session, in a `space-2` group per window with `space-6` between groups, the pane in view the long one and a pane that waits for you in `warning`. A tap opens the menu; a sideways swipe pages to the next pane, the content sliding with the finger and the long dot moving with it; dragging up goes to the machine. Keyboard up, the pill gives its place to what you type with (Phone, Layout).
+Inside a pane: the pill is the pane's only chrome (Phone, Layout). The icon tile holds the pane's kind (chat, terminal, browser) and the title is the pane's title. The second line uses a window tile's words and tones (Phone, Window tiles): "Needs approval" or "Has a question" in `warning` ink, "Failed" or "Exit 1" in `danger` ink (a terminal whose last command failed, with its folder after it), "Exited 1" in `danger` ink or "Exited" muted for a terminal whose shell has exited, the agent's working message in muted ink while it works ("Running cargo test"), and otherwise where the pane works, muted: folder and branch for a chat or a terminal ("zebrilus · main"), the host for a browser, as today (`pane_detail`). Not the window's name: a window is usually named after its chat, so it would repeat the title. The dots are one per pane of the session, in a `space-2` group per window with `space-6` between groups, the pane in view the long one and a pane that waits for you in `warning`. A tap or a hold opens the menu; a sideways swipe pages to the next pane, the content sliding with the finger and the long dot moving with it; dragging up goes to the machine. Keyboard up, the pill gives its place to what you type with (Phone, Layout).
 
 The menu inside a pane has the machine screen's shape. Top to bottom:
 
@@ -1979,11 +2045,11 @@ The menu inside a pane has the machine screen's shape. Top to bottom:
 
 Not in it: New window and New pane apart (a phone shows one pane at a time, so the three New chips make a window, and splitting stays on the desktop), and Last pane (a swipe away, and still a key binding).
 
-HTML: `.penna-compact-pill[data-penna="floating"]` holding `.penna-pill-tile[data-penna="phone.pill.icon"]` and `.penna-pill-copy` (`.penna-pill-title`, then `.penna-pill-meta` with `.penna-pill-meta-text` and `.penna-dots`); `.penna-pill-menu[data-open]` holding `.penna-pill-menu-scrim`, `.penna-pill-menu-stack` of `.penna-pill-menu-group`s, each an optional `.penna-pill-menu-label[data-penna="floating"]` and `.penna-pill-chip[data-penna="floating"]`s (`data-look="quiet"` or `"primary"`), then `.penna-pill-menu-well` and `.penna-pill-menu-close`.
+HTML: `.penna-compact-pill[data-penna="floating"]` holding `.penna-pill-tile[data-penna="phone.pill.icon"]` and `.penna-pill-copy` (`.penna-pill-title`, then `.penna-pill-meta` with `.penna-pill-meta-text` and `.penna-dots`); its menu is a `.penna-stack` (Stack menu). Today's native menu has its HTML twin for the storybook: `.penna-pill-menu[data-open]` holding `.penna-pill-menu-scrim`, `.penna-pill-menu-stack` of `.penna-pill-menu-group`s, each an optional `.penna-pill-menu-label[data-penna="floating"]` and `.penna-pill-chip[data-penna="floating"]`s (`data-look="quiet"` or `"primary"`, `data-tone="danger"`), then `.penna-pill-menu-well` and `.penna-pill-menu-close`.
 
 A chip that destroys takes `danger` ink (`data-tone="danger"` in HTML, `PillMenuLook::Danger` natively).
 
-Status: the pill, the menu, its groups, the stagger and the fitting chip sizes are built (`compact_pill_menu` takes groups of `PillMenuItem`). Not built: the second line inside a machine shows a session count ("3 sessions"); the group label; New chat; and new windows land in the attached session, not the one in view. Inside a pane the pill, its lines, its dots, the swipe and the drag are built; the second line is already `pane_detail`, the tile's words included, except that a waiting agent says "Needs your permission" and only the warning takes its tone, and the menu is two groups, All bindings and Kill pane, then Rename pane, New window, New pane, Last pane, Overview and the agent's flip (`compact.rs`). Kill pane runs with no question and Rename opens the desktop palette pinned to the top.
+Status: the pill, the tap that opens the menu, the swipe and the lift are built, and the menu, its groups and its stagger are built as today's pill menu (`compact_pill_menu` takes groups of `PillMenuItem`; Stack menu, Status). Not built: the hold, hold and slide, and everything else the stack menu adds; the second line inside a machine shows a session count ("3 sessions"); the group label; New chat; and new windows land in the attached session, not the one in view. The hold needs the pill to see the touch begin, as the key row's keys do (`press_listeners`), and once it fires to swallow the pan for the rest of that touch, so the pager and the lift (`compact.rs`, `compact_scroll`, `compact_lift_scroll`) never see it. Inside a pane the pill, its lines, its dots, the swipe and the drag are built; the second line is already `pane_detail`, the tile's words included, except that a waiting agent says "Needs your permission" and only the warning takes its tone, and the menu is two groups, All bindings and Kill pane, then Rename pane, New window, New pane, Last pane, Overview and the agent's flip (`compact.rs`). Kill pane runs with no question and Rename opens the desktop palette pinned to the top.
 
 ### Zoom card
 
@@ -2208,21 +2274,21 @@ States:
 | rest | no fill; on glass a faint wash of the ink with the glass rim, so a key reads as a key | |
 | pressed | inverted: the `primary` solid and its ink, the label at the strong weight | while the finger is down |
 | latched | a wash of the ink, so it reads apart from a pressed key | ctrl or alt after a tap, until the next key |
-| held | inverted, its card or bubble open above the row | ctrl and alt after 280ms, the arrow pad at once |
+| held | inverted, its stack or bubble open above the row | ctrl, alt and the prefix after 280ms, the arrow pad at once |
 | armed | inverted | the prefix, while the multiplexer waits for the key after it |
 
 Behavior:
 
 - A key sends on release. A drag that starts on a scrolling key scrolls the row instead, and that key does not send.
-- The prefix: a tap opens the pill's menu (Pill), the same menu a tap on the pill opens.
-- ctrl and alt: a tap latches the modifier for the next key, from the row or the keyboard; a second tap lets it go. Holding one 280ms opens its chord card.
-- Chord card: the `popover` look, inset 6, above the key and kept 8 inside the screen; two columns of items 140 wide, `space-2` apart. An item is 44 tall, inset 8: the chord in `touch-small` mono, muted, 32 wide, then its name in `touch-body`. The rows run bottom up, the most used on the row nearest the key, where the thumb already is. Slide onto an item and let go to send it; let go on the key without sliding and the card stays open until a tap on an item, the key or anywhere else. zz's ctrl card: ^C Interrupt, ^D End input, ^Z Suspend, ^L Clear, ^R History, ^U Kill line, ^W Kill word, ^K Kill to end, ^A Line start, ^E Line end. Its alt card: M-b Word back, M-f Word ahead, M-d Kill word, M-. Last arg.
-- Arrow pad: holding it opens its bubble above it: the `popover` look, inset 6, a 3 by 3 grid of 44 cells `space-4` apart (152 square), the four arrows around a hub dot. Dragging 10 from where the finger landed picks the nearest direction, which lights; holding a direction repeats it; letting go closes the bubble.
+- The prefix: the anchor of the pill's own menu while the keyboard is up (Stack menu). A tap or a hold opens it from the prefix, its chips lined up along the start; it is the same menu the pill opens, folded where it does not fit above the keyboard.
+- ctrl and alt: a tap latches the modifier for the next key, from the row or the keyboard; a second tap lets it go. Holding one 280ms, or sliding up 10 from it, opens its chords as a stack menu over the key; a sideways drag scrolls the row instead.
+- Chords: a stack of chord chips (Stack menu), each the chord in mono and its name, the most used nearest the key. ctrl's ten go in two columns, from the key out: ^C Interrupt and ^D End input, ^Z Suspend and ^L Clear, ^R History and ^U Kill line, ^W Kill word and ^K Kill to end, ^A Line start and ^E Line end. alt's four go in one: M-b Word back nearest, then M-f Word ahead, M-d Kill word, M-. Last arg. Slide onto a chip and let go to send it; let go on the key and the stack stays open until a tap on a chip, the key, the scrim or a key on the keyboard.
+- Arrow pad, the stack menu's sibling: holding it opens its bubble above it at once, kept 8 inside the screen: the floating surface (Phone, Surfaces), inset 6, a 3 by 3 grid of 44 cells `space-4` apart (152 square), the four arrows around a hub dot, its corner its cells' plus the 6 inset (Phone, Corners). Dragging 10 from where the finger landed picks the nearest direction: its cell inverts, the `primary` solid and its ink, grows 4% and ticks, as a chip under the finger does. Holding a direction repeats it, after 300ms and then every 80ms; letting go closes the bubble. Reduced motion: the cell only inverts.
 - Hide lowers the keyboard and gives the pill back. A tap in the terminal raises it again.
 
-HTML: `.penna-key-row[data-size="touch"]` holding `.penna-key-row-pill`, then `.penna-key-row-pin` (the prefix), `.penna-key-row-scroll` and a second `.penna-key-row-pin` (arrow pad and hide), with `.penna-key-row-more` kept for the script. A key is `.penna-key[data-penna="phone.key"]`, `data-latched` when latched, `data-pressed` while pressed or held, `data-armed` when armed. The chord card is `.penna-chord-card[data-penna="popover"]` holding `.penna-chord-item[data-penna="menu-item"]`s, each a `.penna-chord-cap` and a `span`; `data-state="selected"` on the item under the finger. The arrow pad's bubble at 44 is `.penna-arrow-bubble[data-size="touch"]`.
+HTML: `.penna-key-row[data-size="touch"]` holding `.penna-key-row-pill`, then `.penna-key-row-pin` (the prefix), `.penna-key-row-scroll` and a second `.penna-key-row-pin` (arrow pad and hide), with `.penna-key-row-more` kept for the script. A key is `.penna-key[data-penna="phone.key"]`, `data-latched` when latched, `data-pressed` while pressed or held, `data-armed` when armed. The chords are a `.penna-stack` with a `.penna-stack-group[data-chords]` of `.penna-stack-chip`s (Stack menu). The arrow pad's bubble at 44 is `.penna-arrow-bubble[data-size="touch"][data-penna="floating"]`, `data-state="selected"` on the cell under the finger.
 
-Status: built with 40 keys in a 48 pill inside a 56 row, `space-8` from the sides, the prefix in its own 48 pill before it (`KeyRow`, `key_row.rs`). The rest scrolls in the order ctrl, alt, tab, esc, `/`, `@`, arrow pad, hide (`tool_keys.rs`), about 416 wide, so on a 393 phone hide is cut off and the arrow pad reaches into the 44 fade with a chevron that marks each end where more waits. A latched key is a wash (`KeyLook::Latched`, the `current` state); pressed, held, open and armed are inverted. The chord card is built as above, but its rows run top down, ^C first (`popover_key.rs`). The arrow pad's bubble is 132 square with smaller cells (`touch.css`, `arrow_pad.rs`). Not built: 44 keys, one pill, the pinned end, the new order, the inverted latch, the card's bottom-up order and the 44 cells.
+Status: built with 40 keys in a 48 pill inside a 56 row, `space-8` from the sides, the prefix in its own 48 pill before it (`KeyRow`, `key_row.rs`). The rest scrolls in the order ctrl, alt, tab, esc, `/`, `@`, arrow pad, hide (`tool_keys.rs`), about 416 wide, so on a 393 phone hide is cut off and the arrow pad reaches into the 44 fade with a chevron that marks each end where more waits. A latched key is a wash (`KeyLook::Latched`, the `current` state); pressed, held, open and armed are inverted. The chords are today's chord card, not a stack (Stack menu, Status). The prefix opens the pill's menu on a tap only. The arrow pad's bubble is a 132 `popover` with 18 arrows in smaller cells, the lit cell only its arrow in the full ink, repeating after 300ms and then every 80ms (`arrow_pad.rs`). Not built: 44 keys, one pill, the pinned end, the new order, the inverted latch, the chord stacks, the prefix's hold, the 44 cells and the bubble's new look.
 
 ### Terminal on a phone
 
@@ -2269,6 +2335,6 @@ Status: built: the terminal at the pane's full size, a tap raising the keyboard 
 | 19 | PiPs follow Glass: a PiP is glass when glass is on and its pane's ground, opaque, under the `divider` hairline when it is off | PiPs lose their frosted blur with glass off and gain the pane's hairline | built |
 | 20 | One corner rule: controls round to a share of their height, containers keep `radius`, nested corners are concentric on drawn corners, and smoothing no longer changes how round a corner looks | controls on macOS (`smoothing` 4) read as round as their radius says instead of about half; rows, sidebar entries, tabs and the segmented pill match at every Corner radius; zz's flat sidebar entries follow the knob instead of a fixed 24 | built |
 | 21 | Phone components: the `control-touch-lg` rung, phone buttons and fields on the touch rungs, touch rows outside sheets, phone tile states and window content, press and hold, the action bar, the zoom card, a 44 sheet close and the phone empty state | phone buttons grow from about 32 to 44 and 56, tiles lose their buttons, text in tiles grows to 17 and 15 | not built |
-| 22 | Inside a pane: the pill's tile words and pane menu, the keyboard rule, the confirm and rename sheets, the chat on a phone (composer row, plus sheet, ask card, queued row, touch transcript rows, hold a message) and the 44 key row with pinned ends | the phone chat loses its chips, key caps and 24 buttons; terminal keys grow to 44 and the arrow pad stays in view | not built |
+| 22 | Inside a pane: the pill's tile words and pane menu, the keyboard rule, the confirm and rename sheets, the chat on a phone (composer row, plus sheet, ask card, queued row, touch transcript rows, hold a message), the 44 key row with pinned ends, and the stack menu for the pill and the key row with hold, slide and release | the phone chat loses its chips, key caps and 24 buttons; terminal keys grow to 44 and the arrow pad stays in view; the pill menu's chips grow to 52, the chord card turns into chips, and holding the pill opens its menu | not built |
 
 Each step lands in penna with its stories, scores parity, rebaselines only what the step meant to move, and is pulled into zz and nidus.
