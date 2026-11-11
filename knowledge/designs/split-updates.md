@@ -1,7 +1,7 @@
 ---
 type: Design Plan
 title: Split updates . the client and the daemon update apart
-description: Plan to let a client update without restarting the daemon and ending its sessions. PROTOCOL_VERSION becomes a wire epoch that only bumps for changes an existing peer cannot decode or would get wrong, additive changes travel as messages gated by the capabilities both hellos already carry, a build revision on each side sets floors for behavior, and restarting the daemon onto a newer build becomes its own action that states how many sessions it ends. All four steps are built: the setup epoch (v123), the capability rule, the client UI, and the macOS pty helper pinned to the daemon's build.
+description: "Plan to let a client update without restarting the daemon and ending its sessions. PROTOCOL_VERSION becomes a wire epoch that only bumps for changes an existing peer cannot decode or would get wrong, additive changes travel as messages gated by the capabilities both hellos already carry, a build revision on each side sets floors for behavior, and restarting the daemon onto a newer build becomes its own action that states how many sessions it ends. All four steps are built: the setup epoch (v123), the capability rule, the client UI, and the macOS pty helper pinned to the daemon's build; the desktop app now installs an update itself and restarts into it without ending the sessions."
 status: Built
 tags:
 - protocol
@@ -9,7 +9,7 @@ tags:
 - update
 - daemon
 - design-plan
-timestamp: 2026-11-10T00:00:00-03:00
+timestamp: 2026-11-11T00:00:00-03:00
 ---
 
 # Overview
@@ -63,6 +63,21 @@ timestamp: 2026-11-10T00:00:00-03:00
 > first run: without that the first pane of every daemon start waited about 1.3 s (debug build)
 > and its window was named after the helper. Until the run finishes, panes use the bundle path. Linux and Windows
 > are unchanged. All four steps are built; no message is gated yet and every revision is 1.
+>
+> **2026-11-11: the app installs the update itself.** Update in the toast or on the About page
+> downloads the release's asset for this install (a `zz.app` bundle, a tarball prefix or an
+> AppImage the app can write to, `zz_config::update::detect`), checks its `.sha256`, and stages it
+> beside the install (`prepare`), on a background thread; nothing downloads before that click. The
+> update toast (key `update-available`) is replaced in place as it goes: Downloading zz X with
+> "84 of 186 MB" over a progress bar and Cancel, then Verifying and Preparing, then "zz X is ready"
+> with the daemon line and Restart to update or Later, or Update failed with the error, Try again
+> and Release page. The About row shows the same stages. Restart to update swaps the staged build in
+> (`apply`, which puts the old one back if the swap fails) and relaunches it through ala's restart;
+> that quit skips `quit-daemon-on-exit`, so the sessions keep running and the new app attaches to
+> the same daemon. A staged update for the latest release survives a quit: the next check goes
+> straight to ready, and a stale one is removed. Homebrew, pacman and deb installs, and an install
+> the app cannot write to, keep the old route: the package manager or install.sh in a terminal
+> window, or the release page.
 
 The daemon holds every session, so restarting it ends them. Today a client update almost always
 forces that restart, because the client and the daemon must be built from the same protocol version.
@@ -103,7 +118,8 @@ Not in this plan: keeping sessions alive across a daemon restart. A daemon resta
   and leaves the running daemon on the previous build.
 - The desktop client checks GitHub releases for a newer version (`fetch_latest` in
   `crates/zz-config/src/update.rs`, behind the `update` feature). A release says nothing about its
-  protocol version.
+  protocol version. Since 2026-11-11 the app downloads, verifies and stages the release itself
+  (`crates/zz-config/src/update/install.rs`) and the UI for it is `crates/zz/src/update.rs`.
 - For an ssh host, the probe (`remote_probe_socket` in `crates/zz-daemon-client/src/endpoint.rs`)
   demands an equal protocol version from the installed CLI (`zz protocol-version`), which can
   differ from the daemon that is running; the handshake catches that case. `remote_install_script`
@@ -295,5 +311,7 @@ row in [session persistence](/concepts/session-persistence.md).
 - `crates/zz-daemon-client/src/lifecycle.rs` `terminate_incompatible_daemon`
 - `crates/zz-daemon-client/src/endpoint.rs` `remote_install_script`
 - `crates/zz-config/src/update.rs` `fetch_latest`
+- `crates/zz-config/src/update/install.rs` `detect`, `prepare`, `apply`, `staged_for`
+- `crates/zz/src/update.rs` `Stage`, `toast_view`, `restart`
 - `scripts/install-macos.sh`
 - [wire protocol](/protocol/wire-protocol.md), version history v113 to v121

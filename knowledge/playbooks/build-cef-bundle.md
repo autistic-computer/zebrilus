@@ -121,7 +121,10 @@ a Caskroom entry owns the install; on Linux it hands the `.deb` to `apt-get` whe
 (root, and the only route that installs the AppArmor profile) and otherwise unpacks the tarball's
 `usr/` tree under `~/.local`, which is already the XDG layout, patching the desktop entry's `Exec`
 to the absolute launcher. `just site` copies it into `site/dist` and deploys, so that deploy is
-what publishes a change.
+what publishes a change. The desktop app's Update takes the same assets and checks the same
+`.sha256` files itself for a `zz.app` bundle, a tarball under a prefix or an AppImage it can write
+to (`zz_config::update::prepare`, then `apply` on restart); it runs install.sh in a terminal window
+only for an install it cannot replace that way.
 Render the cask by hand with the same script the workflow uses. It takes the disk image or, as the
 workflow passes now that it renders on a runner that never held the DMG, that image's sha256:
 
