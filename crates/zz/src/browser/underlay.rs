@@ -19,7 +19,7 @@ use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 
 const CORNER_SEGMENTS: u32 = 16;
 
-type MaskShape = (f64, f64, [f64; 4]);
+type MaskShape = (f64, f64, [f64; 4], f64);
 
 struct Layer(Retained<CALayer>, Mutex<Option<MaskShape>>);
 
@@ -51,8 +51,8 @@ impl Layer {
         unsafe_code,
         reason = "CALayer.mask is marked unsafe in objc2-quartz-core"
     )]
-    fn round(&self, size: CGSize, radii: [f64; 4]) {
-        let shape = (size.width, size.height, radii);
+    fn round(&self, size: CGSize, radii: [f64; 4], smoothing: f64) {
+        let shape = (size.width, size.height, radii, smoothing);
         let mut current = self.1.lock().unwrap_or_else(PoisonError::into_inner);
         if *current == Some(shape) {
             return;
@@ -68,7 +68,7 @@ impl Layer {
             size.width,
             size.height,
             radii,
-            f64::from(penna::CORNER_SMOOTHING),
+            smoothing,
         )));
         unsafe { self.0.setMask(Some(&mask)) };
     }
@@ -273,6 +273,7 @@ pub(crate) fn place(
         let y = host.view.bounds().size.height - point(bounds.origin.y) - height;
         let size = CGSize::new(point(bounds.size.width), height);
         layer.setFrame(CGRect::new(CGPoint::new(point(bounds.origin.x), y), size));
+        let (radii, smoothing) = window.drawn_corners(radii, bounds.size, None);
         underlay.0.round(
             size,
             [
@@ -281,6 +282,7 @@ pub(crate) fn place(
                 point(radii.bottom_right),
                 point(radii.bottom_left),
             ],
+            f64::from(smoothing.unwrap_or_else(|| window.default_corner_smoothing())),
         );
         layer.setHidden(false);
         match host

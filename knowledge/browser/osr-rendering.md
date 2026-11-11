@@ -152,9 +152,10 @@ stop going through ala:
   `PaneChrome::rim_over_content`: the frame drawn under the content loses its
   glint and fresnel, and `GlassMaterial::rim()` draws them over the page
   instead, which reads nothing and keeps the hole. The layer carries a
-  `CAShapeLayer` mask on the same superellipse as the hole
-  (`penna::CORNER_SMOOTHING`), so its corners never show square through a
-  translucent frame;
+  `CAShapeLayer` mask on the same superellipse as the hole and the pane's rim:
+  the corner `Window::drawn_corners` gives for the radius, grown when the
+  window draws apparent corners, so the page never pokes past the rim at a
+  rounded corner;
 - `UnderlayFlush`, painted last by `AppShell`, hides layers that were not
   placed this frame and calls `Window::set_underlay_active`, which makes ala's
   Metal layer non-opaque and presents with the Core Animation transaction only
