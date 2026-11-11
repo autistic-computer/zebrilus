@@ -53,7 +53,25 @@ pub static PENNA: Catalog = Catalog {
     logo: IconName::Pencil.path(),
     plates: crate::creator::PLATES,
     stories: &[crate::FOUNDATION, crate::KIT],
-    knobs: &[],
+    knobs: &[
+        Knob {
+            name: "progress-value",
+            label: "Value",
+            section: "Progress",
+            control: Control::Range {
+                min: 0.0,
+                max: 1.0,
+                step: 0.01,
+                value: 0.42,
+            },
+        },
+        Knob {
+            name: "progress-indeterminate",
+            label: "Indeterminate",
+            section: "Progress",
+            control: Control::Check(false),
+        },
+    ],
     apply: |_, _| {},
     floating: &[crate::backdrop::KIT_FLOATING],
 };

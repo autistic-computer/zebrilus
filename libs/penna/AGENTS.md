@@ -30,7 +30,7 @@ and rule (space, type, sizes, color, layout) and the order of work bringing penn
   When a piece owns a layout of other penna components, put it here. Appearance is a block.
 
 Components: badge, bar, button, card, check, chip, field, icon, input, kbd, label, list, menu,
-panel, plate (crate-private), popover, row, scroll, segmented, select, separator, slider,
+panel, plate (crate-private), popover, progress, row, scroll, segmented, select, separator, slider,
 spinner, switch, tab, text, tile, tooltip, tree, well.
 
 Blocks: appearance, chat, code_editor (editor feature), color_picker, compact, dialog, dock,

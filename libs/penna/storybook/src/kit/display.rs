@@ -49,7 +49,7 @@ pub const STORY: Story = Story {
         Section {
             id: "spinner",
             name: "Spinner",
-            summary: "The Loader glyph on a 800ms turn, at every size and in a few tints. It stops with motion off.",
+            summary: "The Loader glyph on a 900ms turn, at every size and in a few tints. It stops with motion off.",
             build: |_, cx| stateless(spinners, cx),
         },
         Section {

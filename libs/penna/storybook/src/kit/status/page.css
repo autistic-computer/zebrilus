@@ -4,3 +4,9 @@
   white-space: nowrap;
 }
 
+.status-bars {
+  display: flex;
+  flex-direction: column;
+  gap: var(--penna-space-16);
+  width: 320px;
+}

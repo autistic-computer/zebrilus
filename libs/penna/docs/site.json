@@ -39,6 +39,7 @@
         "menu",
         "panel",
         "popover",
+        "progress",
         "row",
         "scroll",
         "segmented",

@@ -1001,6 +1001,44 @@ HTML: `.penna-popover` holds a `.penna-popover-trigger` (a button with `aria-has
 
 Status: matches.
 
+### Progress
+
+A progress bar says how far a task has come: a download, an install, a long copy. When the task has a measure, the bar fills to it; when it has none yet (verifying, staging, waiting for a total), it sweeps. For a wait beside a word or in a control, use a spinner; for a setup with named steps, steps; to set a value, a slider.
+
+Kinds:
+
+| Kind | Call | Use |
+|---|---|---|
+| Determinate | `Progress::new(id, value)` | a value from 0 to 1, clamped; a value that isn't a number reads as 0 |
+| Indeterminate | `Progress::indeterminate(id)` | a step with no measure |
+
+Anatomy:
+
+- Track: a pill as thick as the slider's rail (4 at `xs` and `sm`, 6 from `md` up) in the neutral soft paint's pressed fill (`--penna-control`), as wide as its container. It has no hit box around it: the box is the track.
+- Fill: from the start of the track to the value, a pill in the `accent` fill. At 0 it draws nothing.
+- Segment (indeterminate): a pill in the `accent` fill a third of the track long, cut where it meets the track's ends, so it grows in at the start and shrinks out at the end.
+
+Sizes: `md` by default (6), `sm` (4) under `small` text or in a dense row, through `.with_size()` (`Sizable`). It doesn't follow density: only the rail's two thicknesses exist.
+
+States:
+
+| State | Look | Notes |
+|---|---|---|
+| determinate | the fill up to the value | |
+| changing | the fill eases to the new value in 220ms (`turn`) with an ease out, from wherever it is drawn | jumps with reduced motion |
+| indeterminate | the segment crosses the track left to right at one steady speed, once every 2600ms: a 2000ms pass, then 600ms with the track empty, the live line's cycle (Live motion) | |
+| reduced motion | indeterminate: the segment holds still in the middle third | |
+
+Behavior: none. It takes no pointer or keyboard input and no focus. It is announced as a progress indicator named by `.label()` ("Progress" without one); a determinate bar adds its value, 0 to 1, read as a percentage ("42%"), and an indeterminate one has none.
+
+Content: the bar never says what is under way or how much is left. A line beside it does, in sentence case: "Downloading 42%", "Verifying". The label names the task the same way.
+
+Placement: under the text it measures, as wide as that text's column, never with a wrapper. In a toast, as `.content()`: it sits `gap-tight` 4 under the message, its ends on the text's. In a settings row, as a child of `SettingEntry`: it sits `gap-related` 8 under the heading, `inset-card` 12 from the card's sides, its ends on the title's.
+
+HTML: `.penna-progress` with `role="progressbar"`, `aria-label`, `data-size` (`xsmall` to `touch`), and either `--penna-value` (a percentage) with `aria-valuenow`, `aria-valuemin="0"`, `aria-valuemax="1"` and `aria-valuetext`, or `data-indeterminate`. It holds one `.penna-progress-fill`. `progress.css` eases a change of `--penna-value` over 220ms, sweeps the fill under `data-indeterminate` and holds both still under `prefers-reduced-motion`.
+
+Status: matches.
+
 ### Row
 
 A row is the fill behind a row the app lays out itself: a menu or picker option, a sidebar entry, a navigation item, the sidebar's cursor. It paints a look in the state the app gives it and lights on hover and press; its height, inset and content are the caller's. For a ready list row use a list item; inside a menu, a menu row.

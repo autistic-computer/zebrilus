@@ -11,10 +11,15 @@
     <link rel="stylesheet" href="../../../../src/components/chip/chip.css" />
     <link rel="stylesheet" href="../../../../src/blocks/steps/steps.css" />
     <link rel="stylesheet" href="../../../../src/blocks/notice/notice.css" />
+    <link rel="stylesheet" href="../../../../src/components/progress/progress.css" />
+    <link rel="stylesheet" href="../../../../src/components/switch/switch.css" />
+    <link rel="stylesheet" href="../../../../src/blocks/notification/notification.css" />
+    <link rel="stylesheet" href="../../../../src/blocks/settings/settings.css" />
     <script src="../../../../web/kit.js" data-tokens="../../../../web/tokens/"></script>
     <script src="../../../../src/components/button/button.js" defer></script>
     <script src="../../../../src/components/chip/chip.js" defer></script>
     <script src="../../../../src/blocks/notice/notice.js" defer></script>
+    <script src="../../../../src/blocks/notification/notification.js" defer></script>
   </head>
   <body>
     <section data-section="chips">
@@ -124,6 +129,60 @@
         <div class="story-state">
           <div class="story-label">all done</div>
           <div class="penna-steps" data-id="steps"><div class="penna-step" data-id="steps-0" data-place="done"><span class="penna-step-dot" data-penna="step" data-tone="primary"><i data-icon="check"></i></span><span class="penna-text penna-step-label" data-penna-text>Allow</span></div><div class="penna-step" data-id="steps-1" data-place="done"><span class="penna-step-line" data-penna="step" data-tone="primary"></span><span class="penna-step-dot" data-penna="step" data-tone="primary"><i data-icon="check"></i></span><span class="penna-text penna-step-label" data-penna-text>Find</span></div><div class="penna-step" data-id="steps-2" data-place="done"><span class="penna-step-line" data-penna="step" data-tone="primary"></span><span class="penna-step-dot" data-penna="step" data-tone="primary"><i data-icon="check"></i></span><span class="penna-text penna-step-label" data-penna-text>Place</span></div></div>
+        </div>
+      </div>
+    </section>
+
+    <section data-section="progress">
+      <div class="story-states">
+        <div class="story-state">
+          <div class="story-label">from the knobs</div>
+          <div class="status-bars"><div class="penna-progress" data-id="progress-knob" role="progressbar" aria-label="Downloading" aria-valuemin="0" aria-valuemax="1" aria-valuenow="0.42" aria-valuetext="42%" style="--penna-value: 42%"><div class="penna-progress-fill"></div></div></div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">empty and full</div>
+          <div class="status-bars"><div class="penna-progress" data-id="progress-empty" role="progressbar" aria-label="Progress" aria-valuemin="0" aria-valuemax="1" aria-valuenow="0" aria-valuetext="0%" style="--penna-value: 0%"><div class="penna-progress-fill"></div></div><div class="penna-progress" data-id="progress-full" role="progressbar" aria-label="Progress" aria-valuemin="0" aria-valuemax="1" aria-valuenow="1" aria-valuetext="100%" style="--penna-value: 100%"><div class="penna-progress-fill"></div></div></div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">small and medium at 42%</div>
+          <div class="status-bars"><div class="penna-progress" data-id="progress-small" data-size="small" role="progressbar" aria-label="Progress" aria-valuemin="0" aria-valuemax="1" aria-valuenow="0.42" aria-valuetext="42%" style="--penna-value: 42%"><div class="penna-progress-fill"></div></div><div class="penna-progress" data-id="progress-medium" role="progressbar" aria-label="Progress" aria-valuemin="0" aria-valuemax="1" aria-valuenow="0.42" aria-valuetext="42%" style="--penna-value: 42%"><div class="penna-progress-fill"></div></div></div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">indeterminate</div>
+          <div class="status-bars"><div class="penna-progress" data-id="progress-indeterminate" data-indeterminate role="progressbar" aria-label="Progress"><div class="penna-progress-fill"></div></div></div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">in a toast</div>
+          <div class="penna-toast" data-penna="toast" role="status">
+            <div class="penna-toast-body">
+              <div class="penna-toast-text">
+                <div class="penna-toast-title"><span data-penna-text>Updating</span></div>
+                <div class="penna-toast-message"><span data-penna-text>Version 0.16.1, 18 MB</span></div>
+                <div class="penna-progress" data-id="progress-toast" role="progressbar" aria-label="Downloading" aria-valuemin="0" aria-valuemax="1" aria-valuenow="0.42" aria-valuetext="42%" style="--penna-value: 42%"><div class="penna-progress-fill"></div></div>
+              </div>
+            </div>
+            <div class="penna-toast-close"><button class="penna-button" data-penna="button.quiet" data-shape="icon" data-size="small" data-id="close" type="button" aria-label="Close"><i data-icon="xmark"></i></button></div>
+          </div>
+        </div>
+        <div class="story-state">
+          <div class="story-label">in a settings row</div>
+          <div class="penna-settings-stack" style="width: 420px">
+            <div class="penna-settings-group"><span data-penna-text>Updates</span></div>
+            <div class="penna-settings-list" role="list" data-id="stack-progress">
+              <div class="penna-setting-entry" role="listitem" data-id="entry-progress">
+                <div data-penna="settings.card" data-ground>
+                  <div class="penna-setting-body">
+                    <div class="penna-setting-heading">
+                      <div class="penna-setting-copy">
+                        <div class="penna-setting-title"><span data-penna-text>Downloading 42%</span></div>
+                      </div>
+                    </div>
+                    <div class="penna-progress" data-id="progress-row" role="progressbar" aria-label="Downloading" aria-valuemin="0" aria-valuemax="1" aria-valuenow="0.42" aria-valuetext="42%" style="--penna-value: 42%"><div class="penna-progress-fill"></div></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </section>

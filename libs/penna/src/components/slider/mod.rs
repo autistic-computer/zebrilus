@@ -63,6 +63,10 @@ fn focus_ring<T: ParentElement + Styled>(this: T, ringed: bool, window: &Window,
     )
 }
 
+pub(crate) fn rail(size: Size) -> f32 {
+    Metrics::new(size, false).rail
+}
+
 pub(crate) fn thumb(cx: &App) -> f32 {
     Metrics::new(Size::Medium, CoarsePointer::get(cx)).knob
 }

@@ -15,6 +15,7 @@ pub mod menu;
 pub mod panel;
 pub(crate) mod plate;
 pub mod popover;
+pub mod progress;
 pub mod row;
 pub mod scroll;
 pub mod segmented;

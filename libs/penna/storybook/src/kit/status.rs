@@ -1,11 +1,14 @@
 use ala::{
-    AnyElement, App, IntoElement, ParentElement as _, SharedString,
-    StatefulInteractiveElement as _, Styled as _, Window, px,
+    AnyElement, App, AppContext as _, Context, Entity, IntoElement, ParentElement as _, Render,
+    SharedString, StatefulInteractiveElement as _, Styled as _, Window, div, px,
 };
 use penna::{
     ActiveTheme as _, Chip, ChipLook, Emphasis, IconName, Label, Notice, PaintState,
     Selectable as _, Sizable as _, Size, Space, Steps, TextStyle, Tone,
+    blocks::notification::Notification,
+    blocks::settings::{SettingEntry, SettingsStack},
     components::button::{Button, ButtonVariants as _},
+    components::progress::Progress,
     h_flex, v_flex,
 };
 
@@ -15,7 +18,7 @@ pub const STORY: Story = Story {
     id: "status",
     name: "Status",
     group: "Kit",
-    summary: "Pieces that say what state something is in: a chip names it, a step strip says how far a setup has come, a notice says what needs doing.",
+    summary: "Pieces that say what state something is in: a chip names it, a step strip says how far a setup has come, a progress bar how far a task has, a notice says what needs doing.",
     sections: &[
         Section {
             id: "chips",
@@ -34,6 +37,12 @@ pub const STORY: Story = Story {
             name: "Steps",
             summary: "Steps::new(labels).current(index). Done steps show a check, the current one is selected, later ones are muted.",
             build: |_, cx| stateless(steps, cx),
+        },
+        Section {
+            id: "progress",
+            name: "Progress",
+            summary: "Progress::new(id, value) fills the track up to a value from 0 to 1, clamped, and eases to a new value over 220ms. Progress::indeterminate(id) sweeps a third of the track across it, once every 2600ms, and holds it still in the middle with motion off. It is as wide as its container, 4 tall at xs and sm and 6 from md up, and sits in a toast or a settings row with no wrapper. The progress-value and progress-indeterminate knobs drive the first bar, the toast and the settings row.",
+            build: |_, cx| cx.new(Progresses::new).into(),
         },
         Section {
             id: "notices",
@@ -311,4 +320,77 @@ fn stacked(_: &mut Window, cx: &mut App) -> AnyElement {
             ),
         )
         .into_any_element()
+}
+
+const BAR_WIDTH: f32 = 320.0;
+
+fn knobbed(id: &'static str) -> Progress {
+    let knobs = crate::knobs();
+    if knobs.flag("progress-indeterminate") {
+        Progress::indeterminate(id).label("Verifying")
+    } else {
+        Progress::new(id, knobs.value("progress-value")).label("Downloading")
+    }
+}
+
+fn knobbed_title() -> SharedString {
+    let knobs = crate::knobs();
+    if knobs.flag("progress-indeterminate") {
+        "Verifying".into()
+    } else {
+        format!("Downloading {:.0}%", knobs.value("progress-value") * 100.0).into()
+    }
+}
+
+struct Progresses {
+    toast: Entity<Notification>,
+}
+
+impl Progresses {
+    fn new(cx: &mut Context<Self>) -> Self {
+        Self {
+            toast: cx.new(|_| {
+                Notification::new()
+                    .title("Updating")
+                    .message("Version 0.16.1, 18 MB")
+                    .autohide(false)
+                    .content(|_, _, _| knobbed("progress-toast").into_any_element())
+            }),
+        }
+    }
+}
+
+impl Render for Progresses {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        let bars = || v_flex().w(px(BAR_WIDTH)).gap(Space::S16);
+        states()
+            .state("from the knobs", bars().child(knobbed("progress-knob")))
+            .state(
+                "empty and full",
+                bars()
+                    .child(Progress::new("progress-empty", 0.0))
+                    .child(Progress::new("progress-full", 1.0)),
+            )
+            .state(
+                "small and medium at 42%",
+                bars()
+                    .child(Progress::new("progress-small", 0.42).small())
+                    .child(Progress::new("progress-medium", 0.42)),
+            )
+            .state(
+                "indeterminate",
+                bars().child(Progress::indeterminate("progress-indeterminate")),
+            )
+            .state("in a toast", self.toast.clone())
+            .state(
+                "in a settings row",
+                div().w(px(420.0)).child(
+                    SettingsStack::titled("Updates").id("stack-progress").child(
+                        SettingEntry::new(knobbed_title())
+                            .id("entry-progress")
+                            .child(knobbed("progress-row")),
+                    ),
+                ),
+            )
+    }
 }
