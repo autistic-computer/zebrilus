@@ -1,0 +1,410 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Phone machine</title>
+<link rel="stylesheet" href="/penna/penna.css">
+<link rel="stylesheet" href="/penna-src/components/button/button.css">
+<link rel="stylesheet" href="/penna-src/blocks/touch/touch.css">
+<link rel="stylesheet" href="/penna-src/blocks/compact/compact.css">
+<link rel="stylesheet" href="/penna-src/blocks/sheet/sheet.css">
+<link rel="stylesheet" href="/zz.css">
+<link rel="stylesheet" href="phone.css">
+<script src="/penna/kit.js" data-tokens="/tokens/" data-themes="macos default yaru" data-theme="macos"></script>
+<style>
+  .zz-story > figure > figcaption > i, .zz-page > section > p > i { color: var(--penna-warning-ink); }
+  .zz-over { position: absolute; inset: 54px 0 0; display: flex; flex-direction: column; }
+  .zz-over > .penna-machine-grid { margin: var(--penna-gap-group) var(--penna-inset-pane) 0; }
+  .zz-full[data-penna] { position: absolute; inset: 0; padding-top: 54px; }
+  .zz-say { margin: 0; color: var(--penna-fg-muted); font-size: var(--penna-text-touch-small-size); line-height: var(--penna-text-touch-small-line); }
+  .zz-clip { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+
+  .zz-machine[data-penna] { padding-top: 0; }
+  .zz-scroll { position: absolute; inset: 0; padding-top: 98px; overflow-y: auto; scrollbar-width: none; }
+  .zz-scroll::-webkit-scrollbar { display: none; }
+  .zz-sections { display: flex; flex-direction: column; gap: var(--penna-gap-group); padding: var(--penna-gap-group) var(--penna-inset-pane) 112px; }
+  .zz-sections:has(> .zz-sess) { padding-top: 0; }
+  .zz-fold { position: absolute; z-index: 20; top: 0; right: 0; left: 0; height: 98px; pointer-events: none; }
+  .zz-fold > .penna-folding-frost, .zz-fold > .penna-folding-title { display: none; }
+  .zz-fold[data-folded] > .penna-folding-frost { display: block; }
+  .zz-fold[data-folded] > .penna-folding-title { display: flex; }
+  .zz-fold[data-folded]::after { content: ""; position: absolute; right: 0; bottom: 0; left: 0; height: 1px; background: var(--penna-divider); }
+  .zz-fold > .penna-touch-icon[data-penna] { position: absolute; right: var(--penna-inset-pane); bottom: 0; pointer-events: auto; }
+  .zz-bar > .penna-compact-pill[data-penna] { flex: 1; }
+
+  .zz-menu { z-index: 25; }
+  .zz-menu-stack { position: absolute; right: 0; bottom: 96px; left: 0; display: flex; flex-direction: column; align-items: center; gap: var(--penna-gap-group); }
+  .zz-menu > :is(.penna-pill-menu-well, .penna-pill-menu-close) { top: auto; bottom: 20px; left: 173px; }
+  .zz-phone > .penna-sheet { z-index: 25; }
+  .zz-phone[data-menu] .zz-bar { visibility: hidden; }
+
+  .zz-strip { display: flex; flex-wrap: wrap; gap: 28px 16px; }
+  .zz-strip > figure { display: grid; flex: none; gap: 8px; width: 181px; margin: 0; }
+  .zz-strip > figure > figcaption { font-size: 11px; line-height: 16px; font-weight: 600; color: var(--penna-fg-muted); text-transform: uppercase; letter-spacing: 0.04em; }
+  .zz-not > figure > figcaption > b::after { content: " (not taken)"; color: var(--penna-warning-ink); }
+
+  .zz-today-head { display: flex; flex: none; align-items: center; height: 44px; margin-top: 6px; padding: 0 16px; font-size: var(--penna-text-heading-size); font-weight: 600; color: var(--penna-fg-muted); }
+  .zz-wtile[data-penna] { display: flex; flex-direction: column; gap: 8px; padding: 10px; overflow: hidden; }
+  .zz-wtile-head { display: flex; flex: none; align-items: center; gap: 8px; height: 18px; padding: 0 4px; font-size: var(--penna-text-heading-size); font-weight: var(--penna-text-heading-weight); white-space: nowrap; }
+  .zz-wtile-head > .n { color: var(--penna-fg-muted); }
+  .zz-wtile-head > .t { flex: none; max-width: 60%; overflow: hidden; text-overflow: ellipsis; }
+  .zz-wtile-head > .f { flex: 1; min-width: 0; overflow: hidden; font-size: var(--penna-text-body-size); font-weight: 400; color: var(--penna-fg-muted); text-overflow: ellipsis; }
+  .zz-minis { display: grid; flex: 1; gap: 4px; min-height: 0; }
+  .zz-mini[data-penna] { display: flex; flex-direction: column; gap: 4px; min-width: 0; min-height: 0; padding: 6px; overflow: hidden; background: var(--penna-bg); }
+  .zz-mini-head { display: flex; flex: none; align-items: center; gap: 4px; font-size: var(--penna-text-caption-size); line-height: var(--penna-text-caption-line); color: var(--penna-fg-muted); --penna-icon-size: 12px; }
+  .zz-mini-head > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .zz-mini pre { width: 200%; margin: 0; overflow: hidden; font: 8px/10px var(--penna-mono); color: var(--penna-fg-muted); white-space: pre; transform: scale(0.5); transform-origin: 0 0; }
+  .zz-mini-url { overflow: hidden; font-size: var(--penna-text-caption-size); line-height: var(--penna-text-caption-line); color: var(--penna-fg-muted); text-overflow: ellipsis; white-space: nowrap; }
+
+  .zz-live { display: grid; grid-template-columns: 424px minmax(0, 1fr); gap: 32px; align-items: start; }
+  .zz-live > figcaption { display: grid; gap: 10px; max-width: 64ch; padding-top: 10px; font-size: var(--penna-text-small-size); line-height: var(--penna-text-small-line); color: var(--penna-muted); }
+  .zz-live > figcaption b { color: var(--penna-fg); font-weight: 600; }
+  .zz-live > figcaption code { font: 12px/16px var(--penna-mono); color: var(--penna-fg); }
+  .zz-stage { position: absolute; inset: 0; overflow: hidden; }
+  .zz-layer { position: absolute; top: 0; left: 0; width: 402px; height: 874px; transform-origin: 0 0; }
+  .zz-child { overflow: hidden; }
+  .zz-child > .penna-zoom-card { width: 402px; height: 874px; }
+  .zz-live [data-zoom], .zz-live [data-close] { cursor: var(--penna-click-cursor); }
+</style>
+</head>
+<body>
+<main class="zz-page">
+  <div class="zz-intro">
+    <h1>A machine</h1>
+    <p>Step 2 of the phone redesign, after <a href="machines.html">Machines</a>: the screen inside a machine. Every level is the same screen: a large title, a two-column grid of tiles built like the machine tile, the add tile last, the whole tile the target, a zoom to go in. Here the tiles are windows, grouped by session. A window tile says in words what the window is doing, with the desktop's own words and tones, and holds no live preview: a phone shows one pane at a time, and 4 px text says nothing. Holding any tile, or a session's header, opens a sheet of what you can do to it. If the connection drops, the screen zooms back out to the machine's tile, which says Not connected. Every frame is built from the <a href="components.html">phone components</a>. Caption text in <i>italics</i> says what the native app does today where it differs; <i>today the screen stays and says Connection lost. Retrying… (<code>connection.rs:1596</code>).</i></p>
+  </div>
+
+  <section>
+    <h2>Storyboard</h2>
+    <div class="penna-variants zz-phones zz-story">
+      <figure>
+        <div class="zz-phone" data-today></div>
+        <figcaption><b>0. Today</b>The current screen, for reference. The host's name is a large title that folds on scroll, then one section per session headed by its name, each a four-column bento of window tiles sized by pane count. A window tile shows its number, title, the active pane's folder and a warning dot, and copies the window's split as mini panes: 4 px live terminal text, a URL for a browser, nothing for a chat. Tapping a tile opens the window's active pane; a mini pane can't be tapped. The pill says the host and its session count. <i>(<code>overview.rs:843-941</code>, <code>bento.rs:20</code>)</i></figcaption>
+      </figure>
+
+      <figure>
+        <div class="zz-phone" data-screen="macbook"></div>
+        <figcaption><b>1. A machine</b>Tapping macbook on Machines grows its tile into this screen: the name as the large title, the close control in the top row, then a section per session, headed by its name and its window count, each a two-column grid of window tiles with the add tile last. The tiles say what each window is doing: a chat that needs approval, one at work with its message and percent, one done since you last looked, a terminal with nothing to say. The pill stays at the bottom. <i>Today the windows are a four-column bento of mini panes, a chat's state shows only as a warning dot, and machine tiles paint working green (<code>overview.rs:567</code>).</i></figcaption>
+      </figure>
+
+      <figure>
+        <div class="zz-phone" data-screen="macbook" data-scroll="485"></div>
+        <figcaption><b>2. Scrolled</b>The title folds into the top row under a frost with a hairline, and the close control stays put. Later sessions come into view: dotfiles holds one terminal, nidus a chat at work. A session's header is 44 tall so it can be held. <i>Today the title folds the same way; session headers take no press.</i></figcaption>
+      </figure>
+
+      <figure>
+        <div class="zz-phone" data-screen="xps-empty"></div>
+        <figcaption><b>4. Empty machine</b>Connected, with no sessions: the title and the add tile alone, as on an empty Machines overview. Its New card starts the first session with whatever you pick, and the pill says so.</figcaption>
+      </figure>
+
+      <figure>
+        <div class="zz-phone" data-new></div>
+        <figcaption><b>5. Into the add tile</b>A session's add tile grows into the New card: three touch rows, the whole row the target. New chat goes on to the chat picker (not drawn here), so it ends in a chevron; New terminal and New browser make the window at once in this session, and the card zooms on into it. Each row is the action, so there is no action bar. <i>Today these live only in the pill's menu, and New terminal lands in the attached session, not the one on screen (<code>overview.rs:1231</code>).</i></figcaption>
+      </figure>
+
+      <figure>
+        <div class="zz-phone" data-screen="macbook" data-menu></div>
+        <figcaption><b>6. Pill menu open</b>New chat sits nearest the thumb, the one solid chip, then New terminal, New browser and New session; All machines above them; Settings apart at the top. What it makes goes into the session on screen: the one whose section is under the top row. Swiping the pill pages machines and dragging it up zooms out to Machines, as today. <i>Today the menu has Settings, New session, New browser, New terminal and All hosts: no New chat, and new windows land in the attached session.</i></figcaption>
+      </figure>
+
+      <figure>
+        <div class="zz-phone" data-screen="macbook" data-hold></div>
+        <figcaption><b>7. Hold a window tile</b>A sheet titled with the window's title lists what you can do to it as touch rows: Rename, then Close window in danger ink, last. A session's header gives Rename session and Close session, and on Machines a machine tile gives Rename and Remove: one rule for every tile, and nothing inside a tile is a button. <i>Today nothing can be renamed, closed or killed from the phone.</i></figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section>
+    <h2>3. Window tile states</h2>
+    <p>One tile per state, with the desktop chat list's words and tones (<code>window_summary.rs:464-554</code>). Waiting for you is the warning dot and its words; failed and an exit are the danger dot; done and not yet seen is a dot in the ink, with Done in the ink, since the accent is a person's pick and Yaru's orange would read as waiting; working is the spinner and the work's own message, which shortens before its percent does. Idle says nothing. Working is never green: green only means a machine is connected. The foot's glyphs say what the window holds, then the folder and branch, or a page's host, and the age of the last change. <i>Today the phone reads none of this but the warning dot, though every pane carries its folder, repo, branch and last change (<code>snapshot.rs:504</code>).</i></p>
+    <div class="zz-strip" data-strip></div>
+  </section>
+
+  <section>
+    <h2>The option not taken</h2>
+    <div class="penna-variants zz-phones zz-story zz-not">
+      <figure>
+        <div class="zz-phone" data-sessions></div>
+        <figcaption><b>8. Sessions as their own level</b>The machine screen is a grid of session tiles, each with its windows' state rolled up and counted; tapping one zooms into a screen of that session's window tiles. One template three times and lighter screens, at the cost of a tap on every trip.</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section>
+    <h2>The zoom</h2>
+    <figure class="zz-live" style="margin: 0">
+      <div class="zz-phone" data-live>
+        <div class="zz-stage">
+          <div class="zz-layer" data-parent>
+            <div class="zz-over">
+              <div class="penna-zoom-title">Machines</div>
+              <div class="penna-machine-grid">
+                <div class="penna-machine-tile" data-penna="phone.card" role="button" data-zoom="macbook"><span class="penna-machine-name"><span class="penna-tone-dot" data-tone="warning"></span><span>macbook</span></span><span class="penna-machine-state" data-tone="warning">1 waiting for you</span><span class="penna-machine-foot"><span>4 chats</span><span>2 working</span></span><span class="penna-press"></span></div>
+                <div class="penna-machine-tile" data-penna="phone.card" role="button" data-zoom="xps"><span class="penna-machine-name"><span class="penna-tone-dot"></span><span>xps</span></span><span class="penna-machine-state">Connected</span><span class="penna-machine-foot"><span>2 chats</span></span><span class="penna-press"></span></div>
+                <div class="penna-machine-tile" data-penna="phone.card" role="button" data-zoom="alienware"><span class="penna-machine-name"><span class="penna-tone-dot"></span><span>alienware</span></span><span class="penna-machine-state">Connected</span><span class="penna-machine-foot"><span>1 chat</span><span>cachyos-upgrade</span></span><span class="penna-press"></span></div>
+                <div class="penna-machine-tile" data-penna="phone.card" role="button"><span class="penna-machine-name"><span class="penna-tone-dot" data-tone="off"></span><span>thinkpad</span></span><span class="penna-machine-state">Not connected</span><span class="penna-machine-foot"><span>Last seen 2 days ago</span></span><span class="penna-press"></span></div>
+                <div class="penna-machine-tile" data-penna="phone.add" data-add role="button"><i data-icon="plus"></i>Add machine<span class="penna-press"></span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="zz-bar" data-gear><span class="zz-grow"></span><span class="penna-touch-disc" data-penna="floating"><button class="penna-touch-icon" data-penna="phone.button" aria-label="Settings"><i data-icon="settings"></i></button></span></div>
+      </div>
+      <figcaption>
+        <span><b>Live.</b> Tap macbook, xps or alienware to zoom into the machine. Inside, tap a window tile to zoom into a stand-in for its pane, or a session's add tile for the New card. Each close control zooms back one level. Scroll a machine to see the title fold.</span>
+        <span><b>Motion, from the app.</b> Both levels use the same zoom and the same spring as step 1: <code>TAP_SPRING</code>, stiffness 320, damping 36, mass 1 (<code>libs/penna/src/blocks/touch/lift.rs:15</code>). The tile's layer grows to the screen while the screen behind scales up around it, and they cross-fade between 30% and 70% of the way. Going in from a machine, the machine screen is the screen behind.</span>
+        <span><b>Not wired here:</b> dragging the pill up and a pinch, which also go back one level, and press and hold.</span>
+        <span><b>Reduced motion</b> jumps to the end, as the app does.</span>
+      </figcaption>
+    </figure>
+  </section>
+</main>
+<script>
+(() => {
+  const KIND = { chat: "chat", term: "square-terminal", web: "globe" };
+  const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
+
+  const machines = {
+    macbook: { name: "macbook", icon: "laptop", dot: 0, sessions: [
+      { name: "zz", windows: [
+        { title: "Make the pill menu offer New chat", mark: "warning", state: ["Needs approval"], tone: "warning", kinds: ["chat", "term"], where: "zebrilus · main", age: "now" },
+        { title: "Fix pane stack hit testing on iPad", mark: "spin", state: ["Running cargo test -p zz-mux", "62%"], kinds: ["chat"], where: "zebrilus · pane-stack", age: "now" },
+        { title: "Port the bento grid to penna", mark: "strong", state: ["Done"], tone: "strong", kinds: ["chat", "web"], where: "penna · main", age: "12m" },
+        { title: "cargo watch", kinds: ["term"], where: "zebrilus · main", age: "2h" },
+      ] },
+      { name: "dotfiles", windows: [
+        { title: "zsh", kinds: ["term"], where: ".files · main", age: "3d" },
+      ] },
+      { name: "nidus", windows: [
+        { title: "Pointer warp on a second screen", mark: "spin", state: ["Reading src/warp.rs"], kinds: ["chat", "term"], where: "nidus · warp", age: "now" },
+      ] },
+    ] },
+    xps: { name: "xps", icon: "laptop", dot: 1, sessions: [
+      { name: "work", windows: [
+        { title: "Review the tailnet node plan", mark: "strong", state: ["Done"], tone: "strong", kinds: ["chat"], where: "zebrilus · main", age: "1h" },
+        { title: "Sync the dotfiles", kinds: ["chat", "term"], where: ".files · main", age: "1d" },
+      ] },
+    ] },
+    alienware: { name: "alienware", icon: "hard-drive", dot: 2, sessions: [
+      { name: "cachyos-upgrade", windows: [
+        { title: "Upgrade to the new kernel", kinds: ["chat", "term"], where: "~ · cachyos", age: "20m" },
+      ] },
+    ] },
+    "xps-empty": { name: "xps", icon: "laptop", dot: 1, sessions: [] },
+  };
+
+  const strip = [
+    ["Needs approval", { title: "Make the pill menu offer New chat", mark: "warning", state: ["Needs approval"], tone: "warning", kinds: ["chat", "term"], where: "zebrilus · main", age: "now" }],
+    ["Has a question", { title: "Pick a tailnet library", mark: "warning", state: ["Has a question"], tone: "warning", kinds: ["chat"], where: "zebrilus · tailnet", age: "4m" }],
+    ["Working, long", { title: "Rewrite the agent turn machine on zz-machine and drop the old reducer", mark: "spin", state: ["Editing crates/zz-daemon/src/agent/turn.rs", "38%"], kinds: ["chat", "term", "web"], where: "zebrilus · agent-turn-machine-rewrite", age: "now" }],
+    ["Done, not seen", { title: "Port the bento grid to penna", mark: "strong", state: ["Done"], tone: "strong", kinds: ["chat", "web"], where: "penna · main", age: "12m" }],
+    ["Failed", { title: "Bump ghostty", mark: "danger", state: ["Failed"], tone: "danger", kinds: ["chat"], where: "zebrilus · ghostty", age: "40m" }],
+    ["Exited", { title: "cargo build", mark: "danger", state: ["Exit 101"], tone: "danger", kinds: ["term"], where: "nidus · warp", age: "2h" }],
+    ["Idle chat", { title: "Write the release notes", kinds: ["chat"], where: "zebrilus · main", age: "1d" }],
+    ["Terminal", { title: "zsh", kinds: ["term"], where: ".files · main", age: "3d" }],
+    ["Browser", { title: "Phone machines", kinds: ["web"], where: "127.0.0.1:8090", age: "5m" }],
+    ["Pressed", { title: "cargo watch", kinds: ["term"], where: "zebrilus · main", age: "2h", press: true }],
+  ];
+
+  const mark = (m) => (m === "spin" ? `<i class="penna-touch-spinner" data-icon="loader"></i>` : m ? `<span class="penna-tone-dot" data-tone="${m}"></span>` : "");
+  const windowTile = (w, live) => `<div class="penna-machine-tile" data-penna="phone.card" role="button"${live ? ` data-zoom="pane" data-title="${w.title}"` : " data-tap"}${w.press ? ` data-state="active"` : ""}><span class="penna-machine-name" data-lines="2">${mark(w.mark)}<span>${w.title}</span></span>${w.state ? `<span class="penna-machine-state"${w.tone ? ` data-tone="${w.tone}"` : ""}>${w.state.map((part) => `<span>${part}</span>`).join("")}</span>` : ""}<span class="penna-machine-foot"><span class="penna-machine-kinds">${w.kinds.map((kind) => `<i data-icon="${KIND[kind]}"></i>`).join("")}</span><span class="penna-machine-where"><span>${w.where}</span><span class="penna-machine-age">${w.age}</span></span></span><span class="penna-press"></span></div>`;
+  const addTile = (label, live) => `<div class="penna-machine-tile" data-penna="phone.add" data-add role="button"${live ? ` data-zoom="new"` : " data-tap"}><i data-icon="plus"></i>${label}<span class="penna-press"></span></div>`;
+  const section = (s, live) => `<div class="zz-sess"><div class="penna-touch-header" data-hold role="button"><span>${s.name}</span><span class="penna-touch-count">${s.windows.length}</span></div><div class="penna-machine-grid">${s.windows.map((w) => windowTile(w, live)).join("")}${addTile("New", live)}</div></div>`;
+  const dots = (on) => `<span class="penna-dots">${[0, 1, 2].map((i) => `<span class="penna-dot"${i === on ? " data-active" : ""}></span>`).join("")}</span>`;
+  const pill = (m) => `<div class="zz-bar"><button class="penna-compact-pill" data-penna="floating"><span class="penna-pill-tile" data-penna="phone.pill.icon"><i data-icon="${m.icon}"></i></span><span class="penna-pill-copy"><span class="penna-pill-title">${m.name}</span><span class="penna-pill-meta"><span class="penna-pill-meta-text">${m.sessions.length ? plural(m.sessions.length, "session") : "No sessions"}</span>${dots(m.dot)}</span></span></button></div>`;
+  const body = (inner) => `<div class="zz-sections">${inner}</div>`;
+  const shell = (title, inner, bottom, live) => `<div class="penna-zoom-card zz-full zz-machine" data-penna="phone.card"><div class="zz-scroll"><div class="penna-zoom-title">${title}</div>${body(inner)}</div><div class="zz-fold"><div class="penna-folding-frost"></div><span class="penna-folding-title">${title}</span><button class="penna-touch-icon" data-penna="phone.button"${live ? " data-close" : " data-tap"} aria-label="Close"><i data-icon="xmark"></i></button></div>${bottom}</div>`;
+  const screen = (m, live) => shell(m.name, m.sessions.length ? m.sessions.map((s) => section(s, live)).join("") : `<div class="penna-machine-grid">${addTile("New", live)}</div>`, pill(m), live);
+
+  const newCard = (live) => `<div class="penna-zoom-card zz-full" data-penna="phone.card"><div class="penna-zoom-top"><button class="penna-touch-icon" data-penna="phone.button"${live ? " data-close" : " data-tap"} aria-label="Close"><i data-icon="xmark"></i></button></div><div class="penna-zoom-title">New</div><div class="penna-zoom-body"><div><div class="penna-touch-header"><span>In session zz</span></div><div class="penna-touch-group" data-penna="settings.card"><div class="penna-touch-row" data-penna="phone.row" role="button" data-tap><i data-icon="chat"></i><span class="penna-touch-row-lines"><span>New chat</span></span><i data-icon="chevron-right"></i></div><div class="penna-touch-row" data-penna="phone.row" role="button" data-tap><i data-icon="square-terminal"></i><span class="penna-touch-row-lines"><span>New terminal</span></span></div><div class="penna-touch-row" data-penna="phone.row" role="button" data-tap><i data-icon="globe"></i><span class="penna-touch-row-lines"><span>New browser</span></span></div></div></div></div></div>`;
+  const paneCard = () => `<div class="penna-zoom-card zz-full" data-penna="phone.card"><div class="penna-zoom-top"><button class="penna-touch-icon" data-penna="phone.button" data-close aria-label="Close"><i data-icon="xmark"></i></button></div><div class="penna-zoom-title"><span class="zz-clip"></span></div><div class="penna-zoom-body"><p class="zz-say">A stand-in for the pane. Inside, the window's other panes are a sideways swipe apart: step 3.</p></div></div>`;
+
+  const chip = (icon, label, extra = ` data-penna="floating"`) => `<button class="penna-pill-chip"${extra}><i data-icon="${icon}"></i><span>${label}</span></button>`;
+  const menu = `<div class="penna-pill-menu zz-menu" data-open><div class="penna-pill-menu-scrim"></div><div class="zz-menu-stack"><div class="penna-pill-menu-group">${chip("settings", "Settings", ` data-penna="floating" data-look="quiet"`)}</div><div class="penna-pill-menu-group">${chip("server", "All machines")}</div><div class="penna-pill-menu-group">${chip("layers-plus", "New session")}${chip("globe", "New browser")}${chip("square-terminal", "New terminal")}${chip("chat-plus", "New chat", ` data-penna="button" data-tone="primary" data-prominent data-look="primary"`)}</div></div><div class="penna-pill-menu-well"></div><button class="penna-pill-menu-close" data-penna="button" data-tone="primary" data-prominent aria-label="Close"><i data-icon="xmark"></i></button></div>`;
+  const hold = `<div class="penna-sheet" style="--penna-sheet-rest: 8px"><div class="penna-sheet-scrim"></div><div class="penna-sheet-frame"><div class="penna-sheet-panel" data-penna="drawer"><div class="penna-sheet-grip"><div class="penna-sheet-grabber" data-penna="grabber"></div></div><div class="penna-sheet-header"><span class="penna-sheet-title">Port the bento grid to penna</span><button class="penna-sheet-close penna-button" data-penna="button.quiet" data-size="touch" data-tap aria-label="Close"><i data-icon="xmark"></i></button></div><div class="penna-sheet-list"><div class="penna-touch-row" data-penna="phone.row" role="button" data-tap><i data-icon="pencil"></i><span class="penna-touch-row-lines"><span>Rename</span></span></div><div class="penna-touch-row" data-penna="phone.row" data-tone="danger" role="button" data-tap><i data-icon="xmark"></i><span class="penna-touch-row-lines"><span>Close window</span></span></div></div></div></div></div>`;
+
+  const sessionTile = (name, m, state, tone, foot) => `<div class="penna-machine-tile" data-penna="phone.card" role="button" data-tap><span class="penna-machine-name">${mark(m)}<span>${name}</span></span>${state ? `<span class="penna-machine-state"${tone ? ` data-tone="${tone}"` : ""}><span>${state}</span></span>` : ""}<span class="penna-machine-foot">${foot.map((line) => `<span>${line}</span>`).join("")}</span><span class="penna-press"></span></div>`;
+  const sessions = shell("macbook", `<div class="penna-machine-grid">${sessionTile("zz", "warning", "1 waiting for you", "warning", ["4 windows", "1 working"])}${sessionTile("dotfiles", null, null, null, ["1 window", ".files · main"])}${sessionTile("nidus", "spin", "1 working", null, ["1 window", "nidus · warp"])}${addTile("New session", false)}</div>`, pill(machines.macbook), false);
+
+  const term = (lines) => `<pre>${lines.join("\n")}</pre>`;
+  const shellText = term(["~/zebrilus main", "❯ cargo watch -x check", "  Checking zz-mux", "  Finished dev in 2.1s", "[Running 'cargo check']"]);
+  const mini = (icon, title, inner = "", extra = "") => `<div class="zz-mini" data-penna="tile.mini"${extra}><div class="zz-mini-head"><i data-icon="${icon}"></i><span>${title}</span></div>${inner}</div>`;
+  const oldTile = (n, title, folder, minis, w, h, cols, warn) => `<div class="zz-wtile zz-btile" data-penna="phone.card" data-w="${w}" data-h="${h}"><div class="zz-wtile-head"><span class="n">${n}</span><span class="t">${title}</span><span class="f">${folder}</span>${warn ? `<span class="penna-tone-dot" data-tone="warning"></span>` : ""}</div><div class="zz-minis" style="grid-template-columns: ${cols}">${minis}</div></div>`;
+  const today = `<div class="zz-large">macbook</div><div class="zz-body"><div class="zz-today-head">zz</div><div class="zz-bento">${[
+    oldTile(1, "Pill menu", "~/dev/…/zebrilus", mini("asterisk", "Make the pill menu…", "", ` data-state="selected"`) + mini("square-terminal", "cargo test", term(["~/zebrilus main", "❯ cargo test -p zz-mux", "  Running 412 tests", "test result: ok"])) + mini("globe", "Phone app", `<span class="zz-mini-url">127.0.0.1:8090</span>`), 4, 2, "1fr 1fr 1fr", true),
+    oldTile(2, "Pane stack", "~/dev/…/zebrilus", mini("asterisk", "Fix pane stack…"), 2, 2, "1fr", false),
+    oldTile(3, "Bento", "~/dev/…/penna", mini("asterisk", "Port the bento…") + mini("globe", "Docs", `<span class="zz-mini-url">127.0.0.1:8102</span>`), 2, 2, "1fr 1fr", false),
+    oldTile(4, "cargo watch", "~/dev/…/zebrilus", mini("square-terminal", "cargo watch", shellText), 2, 2, "1fr", false),
+  ].join("")}</div></div>${pill(machines.macbook)}`;
+
+  for (const phone of document.querySelectorAll("[data-screen]")) {
+    phone.innerHTML = screen(machines[phone.dataset.screen], false);
+    if (phone.hasAttribute("data-menu")) phone.insertAdjacentHTML("beforeend", menu);
+    if (phone.hasAttribute("data-hold")) phone.insertAdjacentHTML("beforeend", hold);
+  }
+  for (const phone of document.querySelectorAll("[data-new]")) phone.innerHTML = newCard(false);
+  for (const phone of document.querySelectorAll("[data-sessions]")) phone.innerHTML = sessions;
+  for (const phone of document.querySelectorAll("[data-today]")) phone.innerHTML = today;
+  for (const box of document.querySelectorAll("[data-strip]")) box.innerHTML = strip.map(([label, w]) => `<figure><figcaption>${label}</figcaption>${windowTile(w, false)}</figure>`).join("");
+
+  const status = `<div class="zz-status"><b>9:41</b><span class="zz-sig"><i></i><i></i><i></i><i></i></span><span class="zz-batt"></span></div>`;
+  for (const phone of document.querySelectorAll(".zz-phone")) {
+    phone.insertAdjacentHTML("afterbegin", status);
+    phone.insertAdjacentHTML("beforeend", `<span class="zz-home"></span>`);
+  }
+
+  const fold = (root) => {
+    for (const scroll of root.querySelectorAll(".zz-scroll")) {
+      const bar = scroll.parentElement.querySelector(".zz-fold");
+      const update = () => bar.toggleAttribute("data-folded", scroll.scrollTop > 40);
+      scroll.addEventListener("scroll", update, { passive: true });
+      update();
+    }
+  };
+  fold(document);
+  const settle = () => {
+    for (const phone of document.querySelectorAll("[data-scroll]")) {
+      const scroll = phone.querySelector(".zz-scroll");
+      scroll.scrollTop = Number(phone.dataset.scroll);
+      scroll.dispatchEvent(new Event("scroll"));
+    }
+  };
+  settle();
+  addEventListener("load", settle);
+
+  const phone = document.querySelector("[data-live]");
+  const stage = phone.querySelector(".zz-stage");
+  const root = phone.querySelector("[data-parent]");
+  const gear = phone.querySelector("[data-gear]");
+  const W = 402;
+  const H = 874;
+  const FADE_START = 0.3;
+  const FADE_SPAN = 0.4;
+  const SPRING = { stiffness: 320, damping: 36, mass: 1 };
+  const EPSILON = 0.001;
+  const fade = (at) => Math.min(1, Math.max(0, (at - FADE_START) / FADE_SPAN));
+  const reduced = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  const levels = [];
+  let frame = 0;
+  let last = 0;
+
+  const draw = (level) => {
+    const { parent, child, tile } = level;
+    const p = level.progress;
+    const rest = Math.min(1, Math.max(0.05, tile.width / W));
+    const childScale = 1 + (rest - 1) * p;
+    const parentScale = 1 / rest + (1 - 1 / rest) * p;
+    parent.style.opacity = fade(p);
+    parent.style.transform = `translate(${(-tile.x / rest) * (1 - p)}px, ${(-tile.y / rest) * (1 - p)}px) scale(${parentScale})`;
+    child.style.height = `${Math.max(0, H + (tile.height / rest - H) * p)}px`;
+    child.style.borderRadius = `${(tile.radius / childScale) * p}px`;
+    child.style.opacity = fade(1 - p);
+    child.style.transform = `translate(${tile.x * p}px, ${tile.y * p}px) scale(${childScale})`;
+    if (levels[0] === level) gear.style.opacity = p;
+    const still = p >= 1;
+    parent.style.pointerEvents = p > 0.5 ? "" : "none";
+    child.style.pointerEvents = p < 0.5 ? "" : "none";
+    if (levels[0] === level) gear.style.pointerEvents = still ? "" : "none";
+    if (still && level.target === 1) {
+      child.remove();
+      parent.style.transform = "";
+      parent.style.opacity = "";
+      parent.style.pointerEvents = "";
+      levels.pop();
+    }
+  };
+
+  const step = (now) => {
+    const level = levels.at(-1);
+    if (!level) {
+      frame = 0;
+      return;
+    }
+    const elapsed = Math.min(0.25, (now - last) / 1000);
+    last = now;
+    const substeps = Math.max(1, Math.round(elapsed / 0.001));
+    const dt = elapsed / substeps;
+    for (let i = 0; i < substeps; i += 1) {
+      const force = -SPRING.stiffness * (level.progress - level.target) - SPRING.damping * level.velocity;
+      level.velocity += (force / SPRING.mass) * dt;
+      level.progress += level.velocity * dt;
+    }
+    if (Math.abs(level.progress - level.target) < EPSILON && Math.abs(level.velocity) < EPSILON) {
+      level.progress = level.target;
+      level.velocity = 0;
+      level.moving = false;
+      frame = 0;
+      draw(level);
+      return;
+    }
+    level.progress = Math.min(1.2, Math.max(0, level.progress));
+    draw(level);
+    frame = requestAnimationFrame(step);
+  };
+
+  const aim = (level, to) => {
+    level.target = to;
+    level.moving = true;
+    if (reduced()) {
+      cancelAnimationFrame(frame);
+      frame = 0;
+      level.progress = to;
+      level.velocity = 0;
+      level.moving = false;
+      draw(level);
+      return;
+    }
+    if (!frame) {
+      last = performance.now();
+      frame = requestAnimationFrame(step);
+    }
+  };
+
+  const card = (from) => {
+    const holder = document.createElement("div");
+    const kind = from.dataset.zoom;
+    if (kind === "new") holder.innerHTML = newCard(true);
+    else if (kind === "pane") {
+      holder.innerHTML = paneCard();
+      holder.querySelector(".zz-clip").textContent = from.dataset.title;
+    } else holder.innerHTML = screen(machines[kind], true);
+    return holder.firstElementChild;
+  };
+
+  const enter = (from) => {
+    const top = levels.at(-1);
+    if (top && (top.moving || top.target !== 0)) return;
+    const box = from.getBoundingClientRect();
+    const frameBox = phone.getBoundingClientRect();
+    const radius = parseFloat(getComputedStyle(from).getPropertyValue("--penna-corner")) || parseFloat(getComputedStyle(from).borderTopLeftRadius) || 0;
+    const child = document.createElement("div");
+    child.className = "zz-layer zz-child";
+    child.append(card(from));
+    stage.append(child);
+    fold(child);
+    window.pennaKit?.roundAll?.();
+    const level = { parent: top ? top.child : root, child, tile: { x: box.left - frameBox.left, y: box.top - frameBox.top, width: box.width, height: box.height, radius }, progress: 1, velocity: 0, target: 0, moving: false };
+    levels.push(level);
+    draw(level);
+    aim(level, 0);
+  };
+
+  stage.addEventListener("click", (event) => {
+    const top = levels.at(-1);
+    const layer = top ? top.child : root;
+    if (!layer.contains(event.target)) return;
+    if (top && event.target.closest("[data-close]")) {
+      if (!top.moving || top.target === 0) aim(top, 1);
+      return;
+    }
+    const from = event.target.closest("[data-zoom]");
+    if (from) enter(from);
+  });
+
+  window.pennaKit?.roundAll?.();
+})();
+</script>
+</body>
+</html>
