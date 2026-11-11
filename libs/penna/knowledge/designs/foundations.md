@@ -361,7 +361,7 @@ A screen of things is the same at every level: the top row, the large title, the
 
 Inside a pane there is no top row, no title and no header: the pane's content runs from the status area to the bottom of the screen, padded by the safe area, and the pill is the one handle (Blocks, Pill). Nothing floats over a pane's content by default. Status: the phone still floats the agent's flip at the top right at its desktop size (`compact.rs`, `pane_flip_button`) and lists it in the pill's menu; the design drops both.
 
-The keyboard rule: when the keyboard is up, the pill gives its place to what you type with: the composer in a chat (Chat on a phone), the key row in a terminal (Key row), the address field in a browser. It sits 8 above the keyboard, 16 from the sides, and nothing else rides with it. Keyboard down, the pill is back. Status: in a terminal the pill turns into the key row (`compact.rs`); in a chat or a browser the pill stays, squeezed above the keyboard, and the composer sits over it: not built.
+The keyboard rule: when the keyboard is up, the pill gives its place to what you type with: the composer in a chat (Chat on a phone), the key row in a terminal (Key row), or the find field while finding (Terminal on a phone), the address field in a browser. It sits 8 above the keyboard, 16 from the sides, and nothing else rides with it. Keyboard down, the pill is back. Status: in a terminal the pill turns into the key row (`compact.rs`); the phone has no find; in a chat or a browser the pill stays, squeezed above the keyboard, and the composer sits over it: not built.
 
 The mini pill is one of two things drawn smaller than their target (rule 2). Scrolling a pane's content 24 shrinks the pill to it (`compact_pill_morph`): 32 tall, its label in strong `body`, 14 lower than the pill's spot; scrolling back or a tap brings the pill back. Its target is 44, reaching 6 past the drawing on every side. It is a handle like a sheet's grabber: it marks where the pill waits while you read, and drawn at 44 it would cover the last line you are reading. Status: built at 32 (`COMPACT_MINI_PILL_HEIGHT`); the 44 target is not built.
 
@@ -383,7 +383,9 @@ Components (each specified in its own section):
 | Keyboard rule | Phone, Layout | built in a terminal; in a chat and a browser the pill stays: not built |
 | Phone composer, ask card, queued row, chat rows | Blocks, Chat on a phone | not built: the phone draws the desktop's composer, its chips and the inline ask with key caps |
 | Hold a message | Blocks, Chat on a phone | not built: Copy and Fork are 24 buttons under the message |
-| Key row | Blocks, Key row | built with 40 keys and the prefix leading; 44 keys and the pinned end not built |
+| Key row | Blocks, Key row | built with 40 keys, the prefix in its own 48 pill, the latch, the chord card at 44 and the arrow pad; 44 keys, one pill, the pinned end, the new order, the thumb order of the chord card and the 44 arrow cells not built |
+| Terminal on a phone | Blocks, Terminal on a phone | the terminal, scrolling, pinch, long-press selection with the system edit menu and the exited pill line built; the link sheet, find, jump to bottom, selection handles, the scroll indicator and Find in the menu not built |
+| Keycap at touch size | Keycap | not built: All bindings spells keys as mono text at the leading end |
 | Confirm and rename sheets | Blocks, Sheet | not built: Kill pane runs at once, Rename opens the desktop palette |
 | Press and hold sheet | Phone, Sheet | not built |
 | Action bar | Blocks, Action bar | not built |
@@ -426,7 +428,9 @@ Surfaces: the Look's rule, applied to the phone: flat by default, glass only for
 | Floating buttons (the gear disc) | glass, the `floating` look (`compact_floating_group`) | a floating surface without glass (Look) |
 | Folding title bar | a frost of its own over the scrolled page: blur 20, the ground at 72%, saturation 1.8 (`folding_title_bar`), with the `phone.bar` hairline under it | should be the ground, opaque, under the hairline; today it keeps its frost with glass off: not built |
 | Chat composer, the phone composer row and the ask card | glass, as Chat composer says | its opaque card surface |
-| Jump to latest | glass, the `floating` look, a 44 icon button | a floating surface without glass (Look) |
+| Jump to latest, jump to bottom | glass, the `floating` look, a 44 icon button | a floating surface without glass (Look) |
+| Find field | glass, the `field.composer` look, as the composer row | its opaque card surface |
+| Chord card, arrow pad bubble | the `popover` look | the same |
 | Badge on a thumbnail | glass, the `floating` look, a 24 disc | a floating surface without glass (Look) |
 | Sheet | the `drawer` look, floating: glass with the float shadow | a floating surface without glass (Look) |
 | Key row | its pill a floating surface, glass; its keys `phone.key`, flat, a wash when pressed or latched, solid when inverted | the pill a floating surface without glass (Look), the keys the same; not built: natively the pill is a `phone.pill` tint with no glass, hairline or shadow, glass on or off (`KeyRow`) |
@@ -444,6 +448,7 @@ Corners: the four corner rules (Corners, under Look) hold on the phone unchanged
 | Icon button in the disc | control, concentric | 11.5 | 22, a circle | 8.3 | under Pill matches; under Rounded not built (13.7) |
 | Floating action bar | floating, concentric | 25.5 | 36 | 22.3 | not built |
 | Phone composer row | floating, concentric: its 44 buttons' corner plus its 6 inset, kept as it grows | 19.7 | 28 | 17.2 | not built |
+| Find field | floating, concentric, as the composer row | 19.7 | 28 | 17.2 | not built |
 | Ask card | phone container | 24 | 24 | 16 | not built |
 | Key row pill (56) | control | 17.5 | 28, a capsule | 14.3 | not built: the pill is 48 inside a 56 row |
 | Key (44) | control, concentric: the key row pill's corner less 6 | 11.5 | 22, a circle | 8.3 | not built: keys are 40 |
@@ -890,7 +895,7 @@ Anatomy:
 - Glyphs: modifiers, tab, return, escape, backspace and the arrows are icons at 1.2 times the text size (13, or 12 at `xs` and `sm`), with ISO marks off Apple platforms, where the command key reads "Win". Everything else is text, and text parts run together with "+" off Apple platforms. Parts sit `space-2` (2) apart. `Keycap::icon` draws its glyph at the same size.
 - Text: `caption` (11 on 16) at 400, `micro` (10 on 14) at `xs` and `sm`, in muted ink, or in the solid's ink on a lit cap. A letter shows uppercase unless `.lowercase()`.
 
-Sizes: `md` by default (18), beside `body` text; `sm` (16) beside `small` text. `xs` draws like `sm`, and `lg` and up like `md`, since a keycap sits in a line of text. `Size(px)` takes its rung's look.
+Sizes: `md` by default (18), beside `body` text; `sm` (16) beside `small` text. `xs` draws like `sm`, and `lg` and up like `md`, since a keycap sits in a line of text. `Size(px)` takes its rung's look. `touch` (22, the `touch-body` line) sits beside `touch-body` text on a phone, its text `touch-small` (15 on 20), its glyphs 18, inset `space-6` at the sides: the key at the end of a binding's touch row (Terminal on a phone).
 
 States:
 
@@ -907,9 +912,9 @@ Content: one keystroke per cap. A sequence, such as a prefix and then a key, is 
 
 Placement: the caps of one sequence sit `gap-tight` (4) apart; a cap sits at the end of the row or field it belongs to.
 
-HTML: `<kbd class="penna-kbd" data-penna="keycap">` with `data-kbd`, the keystroke as the keymap spells it (`cmd-shift-p`), which `kbd.js` fills with glyphs and an `aria-label`; `data-kbd-lowercase`; `data-size` (`xsmall`, `small`); `data-emphasis` (`solid`, `outline`, `ghost`) with `data-tone`, and `data-solid` naming the tone of a solid one; `data-state="disabled"`. A fixed label holds its text in a `span` marked `data-penna-text`, as `kbd.js` writes it; a `Keycap::icon` cap is marked `data-glyph` and holds an `i` with `data-icon`. `data-kbd-text` on any element fills it with the spelled-out keystroke.
+HTML: `<kbd class="penna-kbd" data-penna="keycap">` with `data-kbd`, the keystroke as the keymap spells it (`cmd-shift-p`), which `kbd.js` fills with glyphs and an `aria-label`; `data-kbd-lowercase`; `data-size` (`xsmall`, `small`, `touch`); `data-emphasis` (`solid`, `outline`, `ghost`) with `data-tone`, and `data-solid` naming the tone of a solid one; `data-state="disabled"`. A fixed label holds its text in a `span` marked `data-penna-text`, as `kbd.js` writes it; a `Keycap::icon` cap is marked `data-glyph` and holds an `i` with `data-icon`. `data-kbd-text` on any element fills it with the spelled-out keystroke.
 
-Status: matches.
+Status: matches, but for the `touch` size, which is not built.
 
 ### Key field
 
@@ -1963,13 +1968,13 @@ Menu: a scrim over the screen, then chips in a column centered over the pill, wi
 - Inside a machine, top to bottom: Settings; All machines; New session; then "New in" and the session in view over New browser, New terminal and New chat, New chat nearest the thumb. What the group makes lands in the session the label names, which is the one the second line names. New chat goes on to the chat picker; New terminal and New browser make the window and zoom into it.
 - With no sessions the label reads "In a new session" and New session is left out, since each chip under it starts one. The empty machine's add tile opens this same menu.
 
-Inside a pane: the pill is the pane's only chrome (Phone, Layout). The icon tile holds the pane's kind (chat, terminal, browser) and the title is the pane's title. The second line uses a window tile's words and tones (Phone, Window tiles): "Needs approval" or "Has a question" in `warning` ink, "Failed" or "Exit 1" in `danger` ink, the agent's working message in muted ink while it works ("Running cargo test"), and otherwise where the pane works, muted: folder and branch for a chat or a terminal ("zebrilus · main"), the host for a browser, as today (`pane_detail`). Not the window's name: a window is usually named after its chat, so it would repeat the title. The dots are one per pane of the session, in a `space-2` group per window with `space-6` between groups, the pane in view the long one and a pane that waits for you in `warning`. A tap opens the menu; a sideways swipe pages to the next pane, the content sliding with the finger and the long dot moving with it; dragging up goes to the machine. Keyboard up, the pill gives its place to what you type with (Phone, Layout).
+Inside a pane: the pill is the pane's only chrome (Phone, Layout). The icon tile holds the pane's kind (chat, terminal, browser) and the title is the pane's title. The second line uses a window tile's words and tones (Phone, Window tiles): "Needs approval" or "Has a question" in `warning` ink, "Failed" or "Exit 1" in `danger` ink (a terminal whose last command failed, with its folder after it), "Exited 1" in `danger` ink or "Exited" muted for a terminal whose shell has exited, the agent's working message in muted ink while it works ("Running cargo test"), and otherwise where the pane works, muted: folder and branch for a chat or a terminal ("zebrilus · main"), the host for a browser, as today (`pane_detail`). Not the window's name: a window is usually named after its chat, so it would repeat the title. The dots are one per pane of the session, in a `space-2` group per window with `space-6` between groups, the pane in view the long one and a pane that waits for you in `warning`. A tap opens the menu; a sideways swipe pages to the next pane, the content sliding with the finger and the long dot moving with it; dragging up goes to the machine. Keyboard up, the pill gives its place to what you type with (Phone, Layout).
 
 The menu inside a pane has the machine screen's shape. Top to bottom:
 
 - All bindings, quiet, alone, and only in a terminal: the tmux bindings are a terminal's.
 - Overview, alone: back to the machine, as dragging the pill up.
-- This pane: Rename, then Close in `danger` ink. Close asks first in a sheet; Rename opens a sheet with the field (Sheet).
+- This pane: Find, only in a terminal (Terminal on a phone), then Rename, then Close in `danger` ink. Close asks first in a sheet; Rename opens a sheet with the field (Sheet).
 - "New in" and the session over New browser, New terminal and New chat, New chat nearest the thumb and the one solid chip. Each makes a window holding that one thing in the pill's session, and zooms into it; New chat goes on to the chat picker.
 
 Not in it: New window and New pane apart (a phone shows one pane at a time, so the three New chips make a window, and splitting stays on the desktop), and Last pane (a swipe away, and still a key binding).
@@ -2194,13 +2199,50 @@ The key row gives a terminal the keys a phone keyboard lacks. It takes the pill'
 
 Anatomy: the pill's shape and spot, 56 tall, 16 from the sides and 8 above the keyboard, a floating surface (Phone, Surfaces). Keys are 44, `phone.key`, `space-2` apart, inset 6 from the pill's ends, their corner the pill's less 6 (Phone, Corners); a glyph key's glyph is 20, a text key's label `touch-small`. Three parts: the prefix pinned at the start, `gap-related` 8 before the rest; then the keys that scroll; then the arrow pad and hide pinned at the end, `gap-related` after the scrolling keys. The scrolling keys fade out under 16 at an edge where more wait.
 
-Content (zz's): prefix; ctrl, alt, tab, esc, `/`, `@` scrolling; arrow pad and hide. On a 393 phone the scrolling part shows four keys and part of a fifth, and the pinned ends never leave the screen.
+Content (zz's): the prefix pinned at the start; then esc, tab, ctrl, alt, `/` and `@`, most used first, scrolling; then the arrow pad and hide pinned at the end. On a 393 phone the scrolling part shows four keys and part of a fifth (esc, tab, ctrl, alt), on a 440 phone five, and the pinned ends never leave the screen.
 
-Behavior: as today: ctrl and alt latch, the prefix arms, holding the arrow pad opens its bubble, hide lowers the keyboard and gives the pill back.
+States:
 
-HTML: `.penna-key-row[data-size="touch"]` holding `.penna-key-row-pill`, then `.penna-key-row-pin` (the prefix), `.penna-key-row-scroll` and a second `.penna-key-row-pin` (arrow pad and hide), with `.penna-key-row-more` kept for the script.
+| State | Look | Notes |
+|---|---|---|
+| rest | no fill; on glass a faint wash of the ink with the glass rim, so a key reads as a key | |
+| pressed | inverted: the `primary` solid and its ink, the label at the strong weight | while the finger is down |
+| latched | a wash of the ink, so it reads apart from a pressed key | ctrl or alt after a tap, until the next key |
+| held | inverted, its card or bubble open above the row | ctrl and alt after 280ms, the arrow pad at once |
+| armed | inverted | the prefix, while the multiplexer waits for the key after it |
 
-Status: built with 40 keys in a 48 pill inside a 56 row, `space-8` from the sides, the prefix leading (`KeyRow`, `key_row.rs`); every key after it scrolls, so on a 393 phone the arrow pad and hide start off screen, behind a 44 more control at each end. 44 keys and the pinned end are not built.
+Behavior:
+
+- A key sends on release. A drag that starts on a scrolling key scrolls the row instead, and that key does not send.
+- The prefix: a tap opens the pill's menu (Pill), the same menu a tap on the pill opens.
+- ctrl and alt: a tap latches the modifier for the next key, from the row or the keyboard; a second tap lets it go. Holding one 280ms opens its chord card.
+- Chord card: the `popover` look, inset 6, above the key and kept 8 inside the screen; two columns of items 140 wide, `space-2` apart. An item is 44 tall, inset 8: the chord in `touch-small` mono, muted, 32 wide, then its name in `touch-body`. The rows run bottom up, the most used on the row nearest the key, where the thumb already is. Slide onto an item and let go to send it; let go on the key without sliding and the card stays open until a tap on an item, the key or anywhere else. zz's ctrl card: ^C Interrupt, ^D End input, ^Z Suspend, ^L Clear, ^R History, ^U Kill line, ^W Kill word, ^K Kill to end, ^A Line start, ^E Line end. Its alt card: M-b Word back, M-f Word ahead, M-d Kill word, M-. Last arg.
+- Arrow pad: holding it opens its bubble above it: the `popover` look, inset 6, a 3 by 3 grid of 44 cells `space-4` apart (152 square), the four arrows around a hub dot. Dragging 10 from where the finger landed picks the nearest direction, which lights; holding a direction repeats it; letting go closes the bubble.
+- Hide lowers the keyboard and gives the pill back. A tap in the terminal raises it again.
+
+HTML: `.penna-key-row[data-size="touch"]` holding `.penna-key-row-pill`, then `.penna-key-row-pin` (the prefix), `.penna-key-row-scroll` and a second `.penna-key-row-pin` (arrow pad and hide), with `.penna-key-row-more` kept for the script. A key is `.penna-key[data-penna="phone.key"]`, `data-latched` when latched, `data-pressed` while pressed or held, `data-armed` when armed. The chord card is `.penna-chord-card[data-penna="popover"]` holding `.penna-chord-item[data-penna="menu-item"]`s, each a `.penna-chord-cap` and a `span`; `data-state="selected"` on the item under the finger. The arrow pad's bubble at 44 is `.penna-arrow-bubble[data-size="touch"]`.
+
+Status: built with 40 keys in a 48 pill inside a 56 row, `space-8` from the sides, the prefix in its own 48 pill before it (`KeyRow`, `key_row.rs`). The rest scrolls in the order ctrl, alt, tab, esc, `/`, `@`, arrow pad, hide (`tool_keys.rs`), about 416 wide, so on a 393 phone hide is cut off and the arrow pad reaches into the 44 fade with a chevron that marks each end where more waits. A latched key is a wash (`KeyLook::Latched`, the `current` state); pressed, held, open and armed are inverted. The chord card is built as above, but its rows run top down, ^C first (`popover_key.rs`). The arrow pad's bubble is 132 square with smaller cells (`touch.css`, `arrow_pad.rs`). Not built: 44 keys, one pill, the pinned end, the new order, the inverted latch, the card's bottom-up order and the 44 cells.
+
+### Terminal on a phone
+
+A terminal pane on a phone: the terminal fills the pane and the pill is its handle (Phone, Layout). What the desktop does with a pointer, the phone does with a tap, a hold or a sheet. Everything here follows the Phone rules.
+
+- At rest: the terminal runs from the status area to the bottom of the screen at the terminal's font size (13 by default) times the phone's own scale, the pill over its last lines. The pill's title is the pane's title and its second line as Pill says ("zebrilus · main", "Exit 1 · zebrilus · main"). A tap anywhere in the terminal raises the keyboard, and the key row takes the pill's place (Key row).
+- Pinch: changes the text size in 5% steps from 50% to 300%, the phone's own scale, kept across launches, its percentage in a passing HUD. Nothing else is drawn for it.
+- Scrolled back: a drag scrolls the scrollback, with momentum. Scrolling 24 shrinks the pill to the mini pill (Phone, Layout), and Jump to bottom appears: the chat's Jump to latest (Chat on a phone), a 44 icon button with `arrow-down` on the floating surface, its corner a control's from its height, centered over the mini pill and 8 above its 44 target. A tap goes to the end and the pill comes back. New output does not move a view that is scrolled back. The position shows only as the platform's scroll indicator at the trailing edge while it moves, 3 wide: an indicator, not a target.
+- Selection: holding 500ms selects the word under the finger, and the drag that follows extends it. Letting go draws a handle at each end and opens the system's edit menu over the selection: Copy, Paste when the clipboard holds text or an image, Select All. Paste lives there and nowhere else. A handle is a 2 bar in `accent` the height of the line, with a 44 disc of `accent` at 20% and a 12 dot of solid `accent` at its center, under the end and over the start, so what is drawn is the target (Phone, rule 2). Dragging a handle moves its end and the menu comes back on release; a tap elsewhere clears the selection.
+- Links: a link carries a faint underline in its own ink, since a phone has no hover to find one. A tap on it opens a sheet (Sheet) titled with the link, cut in the middle so its host and its end both show, with three one-line touch rows: Open in a browser pane (`globe`), which makes a window holding a browser in the pill's session and zooms into it as New browser does; Open on this phone (`external-link`), in the phone's own browser; Copy (`copy`). A tap anywhere else still raises the keyboard.
+- Find: Find in the pill's menu (Pill) raises the keyboard and puts the find field in the pill's place, by the keyboard rule (Phone, Layout): the `field.composer` floating surface, 56 tall, its parts inset 6 and its corner the composer row's (Phone, Corners). A 44 close at the start, the query in `touch-body`, the match count as its trailing value in `touch-small` muted, tabular ("3 of 12"), then previous and next as 44 quiet icon buttons (`chevron-up`, `chevron-down`). Matches are lit in the terminal in its search colors, the current one stronger and scrolled into view; return goes to the next. With nothing found the count says "No matches" and previous and next are off. Lowering the keyboard keeps the field in the pill's spot; close ends the find, clears the marks and brings the pill back.
+- An exited terminal: when the shell exits and the pane stays (`remain-on-exit`), the terminal keeps its last screen and the pill's second line says "Exited 1" in `danger` ink, or "Exited" muted after a clean exit (Pill). The phone has no respawn: Close in the pill's menu is the way out. The pane draws no badge of its own; the pill says it.
+- The pill's menu in a terminal: as Pill says, Find first in this pane's group and All bindings alone at the top.
+- All bindings: a sheet titled "All bindings" with one muted line under the title for the prefix ("Prefix ⌃B"), then the bindings as one-line touch rows under touch section headers (Panes, Windows, Sessions, Copy and paste, Other, Yours): the binding's name in `touch-body`, the key that follows the prefix at the trailing end as a `touch` keycap (Keycap), in `accent` ink when the binding is the person's own. A binding with several keys has a cap for each. A tap runs it and closes the sheet.
+
+Not on the phone: the right-click menu and the hover previews. A hold and a tap do their work.
+
+HTML: `.penna-find[data-penna="field.composer"]` holding a close `.penna-button[data-penna="button.quiet"][data-shape="icon"]`, `.penna-find-query`, `.penna-find-count` and the previous and next buttons; a selection handle is `.penna-select-handle` with `data-end="start"` or `"end"`, placed by the app. Jump to bottom is `.penna-touch-icon[data-penna="floating"]`; the link sheet and All bindings are `.penna-sheet`s of `.penna-touch-row`s, with `.penna-kbd[data-size="touch"]` as the row's value. The terminal, its marks and its underlines are the app's.
+
+Status: built: the terminal at the pane's full size, a tap raising the keyboard (`terminal.rs`), momentum scrolling, the mini pill, pinch in 5% steps with its HUD (`compact.rs`), the long press that selects a word and extends with the drag, then the system edit menu with Copy, Paste and Select All (`ios/window.rs`), and the "Exited 1" line (`pane_detail`). Not built: the link sheet (a tap on a link does nothing; links open with ctrl or cmd held); find (the desktop has it, the phone's menu has no Find); Jump to bottom (scrolled back the pane shows nothing until output arrives, then a 28 badge at the top right, "+3 output"); the handles; the indicator (the terminal's scrollbar is a 16 target); and All bindings at touch sizes (44 rows with the key spelled in mono at the leading end and a prefix keycap beside the title, `which_key_list.rs`). An exited pane also draws a 28 badge at the top right, "Dead · 1" (`terminal.rs`), which the design drops.
 
 ## Work order
 

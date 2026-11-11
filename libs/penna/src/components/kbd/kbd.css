@@ -25,6 +25,15 @@
   --penna-icon-size: 12px;
 }
 
+.penna-kbd[data-size="touch"] {
+  height: var(--penna-text-touch-body-line);
+  min-width: var(--penna-text-touch-body-line);
+  padding: 0 var(--penna-space-6);
+  font-size: var(--penna-text-touch-small-size);
+  line-height: var(--penna-text-touch-small-line);
+  --penna-icon-size: 18px;
+}
+
 .penna-kbd > span {
   flex: none;
   white-space: nowrap;
