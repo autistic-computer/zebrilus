@@ -8,7 +8,7 @@ use ala::{
     Anchor, Animation, AnimationExt as _, AnyElement, App, AppContext as _, ClickEvent, Context,
     DismissEvent, ElementId, Entity, EventEmitter, InteractiveElement as _, IntoElement,
     ParentElement as _, Pixels, Render, SharedString, StatefulInteractiveElement as _, Styled,
-    Subscription, Window, div, prelude::FluentBuilder as _, px,
+    Subscription, Task, Window, div, prelude::FluentBuilder as _, px,
 };
 
 use crate::blocks::dialog::DEFAULT_WIDTH;
@@ -50,10 +50,11 @@ pub struct Notification {
     type_: Option<NotificationType>,
     key: Option<SharedString>,
     title: Option<SharedString>,
-    message: Option<SharedString>,
+    pub(crate) message: Option<SharedString>,
     content_builder: Option<ContentBuilder>,
     autohide: Option<Duration>,
     width: Pixels,
+    closable: bool,
     closing: bool,
 }
 
@@ -68,6 +69,7 @@ impl Notification {
             content_builder: None,
             autohide: Some(AUTOHIDE_DELAY),
             width: DEFAULT_WIDTH,
+            closable: true,
             closing: false,
         }
     }
@@ -121,6 +123,12 @@ impl Notification {
     #[must_use]
     pub fn autohide(mut self, autohide: bool) -> Self {
         self.autohide = autohide.then_some(AUTOHIDE_DELAY);
+        self
+    }
+
+    #[must_use]
+    pub fn closable(mut self, closable: bool) -> Self {
+        self.closable = closable;
         self
     }
 
@@ -245,23 +253,25 @@ impl Render for Notification {
                             .when_some(content, |this, content| this.child(content)),
                     ),
             )
-            .child(
-                div()
-                    .flex_shrink_0()
-                    .self_center()
-                    .invisible()
-                    .group_hover("", |this| this.visible())
-                    .child(
-                        Button::new("close")
-                            .icon(IconName::Xmark)
-                            .ghost()
-                            .small()
-                            .on_click(cx.listener(|this, _, window, cx| {
-                                cx.stop_propagation();
-                                this.dismiss(window, cx);
-                            })),
-                    ),
-            )
+            .when(self.closable, |this| {
+                this.child(
+                    div()
+                        .flex_shrink_0()
+                        .self_center()
+                        .invisible()
+                        .group_hover("", |this| this.visible())
+                        .child(
+                            Button::new("close")
+                                .icon(IconName::Xmark)
+                                .ghost()
+                                .small()
+                                .on_click(cx.listener(|this, _, window, cx| {
+                                    cx.stop_propagation();
+                                    this.dismiss(window, cx);
+                                })),
+                        ),
+                )
+            })
             .on_aux_click(cx.listener(|this, event: &ClickEvent, window, cx| {
                 if event.is_middle_click() {
                     this.dismiss(window, cx);
@@ -307,6 +317,7 @@ fn slide<E: Styled + IntoElement>(this: E, placement: Anchor, closing: bool, del
 struct Entry {
     view: Entity<Notification>,
     _dismissed: Subscription,
+    _autohide: Option<Task<()>>,
 }
 
 pub(crate) struct NotificationList {
@@ -326,7 +337,10 @@ impl NotificationList {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let autohide = notification.autohide;
+        if let Some(index) = self.showing(notification.key.as_deref(), cx) {
+            self.swap(index, notification, window, cx);
+            return;
+        }
         let view = cx.new(|_| notification);
         let id = view.entity_id();
 
@@ -334,20 +348,50 @@ impl NotificationList {
             list.entries.retain(|entry| entry.view.entity_id() != id);
             cx.notify();
         });
+        let autohide = autohide(&view, window, cx);
 
         self.entries.push(Entry {
-            view: view.clone(),
+            view,
             _dismissed: dismissed,
+            _autohide: autohide,
         });
+        cx.notify();
+    }
 
-        if let Some(delay) = autohide {
-            cx.spawn_in(window, async move |_, cx| {
-                cx.background_executor().timer(delay).await;
-                let _ = view.update_in(cx, |note, window, cx| note.dismiss(window, cx));
-            })
-            .detach();
-        }
+    pub(crate) fn replace(
+        &mut self,
+        notification: Notification,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        let Some(index) = self.showing(notification.key.as_deref(), cx) else {
+            return false;
+        };
+        self.swap(index, notification, window, cx);
+        true
+    }
 
+    fn showing(&self, key: Option<&str>, cx: &App) -> Option<usize> {
+        let key = key?;
+        self.entries.iter().position(|entry| {
+            let note = entry.view.read(cx);
+            !note.closing && note.key.as_deref() == Some(key)
+        })
+    }
+
+    fn swap(
+        &mut self,
+        index: usize,
+        notification: Notification,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let view = self.entries[index].view.clone();
+        view.update(cx, |note, cx| {
+            *note = notification;
+            cx.notify();
+        });
+        self.entries[index]._autohide = autohide(&view, window, cx);
         cx.notify();
     }
 
@@ -380,6 +424,19 @@ impl NotificationList {
             .map(|entry| entry.view.clone())
             .collect()
     }
+}
+
+fn autohide(
+    view: &Entity<Notification>,
+    window: &mut Window,
+    cx: &mut Context<NotificationList>,
+) -> Option<Task<()>> {
+    let delay = view.read(cx).autohide?;
+    let view = view.clone();
+    Some(cx.spawn_in(window, async move |_, cx| {
+        cx.background_executor().timer(delay).await;
+        let _ = view.update_in(cx, |note, window, cx| note.dismiss(window, cx));
+    }))
 }
 
 impl Render for NotificationList {

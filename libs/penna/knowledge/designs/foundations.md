@@ -1033,7 +1033,7 @@ Behavior: none. It takes no pointer or keyboard input and no focus. It is announ
 
 Content: the bar never says what is under way or how much is left. A line beside it does, in sentence case: "Downloading 42%", "Verifying". The label names the task the same way.
 
-Placement: under the text it measures, as wide as that text's column, never with a wrapper. In a toast, as `.content()`: it sits `gap-tight` 4 under the message, its ends on the text's. In a settings row, as a child of `SettingEntry`: it sits `gap-related` 8 under the heading, `inset-card` 12 from the card's sides, its ends on the title's.
+Placement: under the text it measures, as wide as that text's column, never with a wrapper. In a toast, as `.content()`: it sits `gap-tight` 4 under the message, its ends on the text's; a toast built with `.closable(false)` keeps no room for the close button, so the text and the bar run to the inset on the right. A toast with a `.key()` that is already showing is replaced in place when pushed again (`push_toast`), and `replace_toast` updates it only while it shows, so a bar can follow a task without a toast the person closed coming back. In a settings row, as a child of `SettingEntry`: it sits `gap-related` 8 under the heading, `inset-card` 12 from the card's sides, its ends on the title's.
 
 HTML: `.penna-progress` with `role="progressbar"`, `aria-label`, `data-size` (`xsmall` to `touch`), and either `--penna-value` (a percentage) with `aria-valuenow`, `aria-valuemin="0"`, `aria-valuemax="1"` and `aria-valuetext`, or `data-indeterminate`. It holds one `.penna-progress-fill`. `progress.css` eases a change of `--penna-value` over 220ms, sweeps the fill under `data-indeterminate` and holds both still under `prefers-reduced-motion`.
 

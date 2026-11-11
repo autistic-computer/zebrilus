@@ -244,6 +244,16 @@ impl Root {
         cx.notify();
     }
 
+    pub fn replace_notification(
+        &mut self,
+        notification: Notification,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        self.notification
+            .update(cx, |list, cx| list.replace(notification, window, cx))
+    }
+
     pub fn dismiss_notification(
         &mut self,
         key: &str,

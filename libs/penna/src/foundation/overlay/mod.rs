@@ -11,7 +11,7 @@ pub(crate) mod window_ext;
 
 pub use crate::components::text::ROOT_KEY_CONTEXT;
 pub use root::Root;
-pub use toast::{push_toast, set_toast_host};
+pub use toast::{push_toast, replace_toast, set_toast_host};
 pub use window_ext::WindowExt;
 
 pub(crate) fn init(cx: &mut App) {

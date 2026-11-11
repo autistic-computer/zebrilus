@@ -22,6 +22,17 @@ pub fn push_toast(notification: Notification, cx: &mut App) {
     });
 }
 
+pub fn replace_toast(notification: Notification, cx: &mut App) {
+    let Some(host) = cx.try_global::<ToastHost>().map(|host| host.0) else {
+        return;
+    };
+    cx.defer(move |cx| {
+        let _ = host.update(cx, |root, window, cx| {
+            root.replace_notification(notification, window, cx);
+        });
+    });
+}
+
 #[cfg(test)]
 mod tests {
     use ala::{AppContext as _, Context, Render, TestAppContext, Window, div};
@@ -48,5 +59,32 @@ mod tests {
         cx.update(|_, cx| push_toast(Notification::info("Settings feedback"), cx));
         cx.run_until_parked();
         assert_eq!(cx.update(|window, cx| window.notifications(cx).len()), 1);
+    }
+
+    #[ala::test]
+    fn a_keyed_toast_is_replaced_in_place(cx: &mut TestAppContext) {
+        cx.update(crate::init);
+        let (_, cx) = cx.add_window_view(|window, cx| {
+            let content = cx.new(|_| Content);
+            Root::new(content, window, cx)
+        });
+        cx.update(|window, cx| set_toast_host(window.window_handle().downcast().unwrap(), cx));
+        cx.update(|_, cx| replace_toast(Notification::info("Nothing to replace").key("job"), cx));
+        cx.run_until_parked();
+        assert_eq!(cx.update(|window, cx| window.notifications(cx).len()), 0);
+
+        cx.update(|_, cx| push_toast(Notification::info("Downloading").key("job"), cx));
+        cx.run_until_parked();
+        let first = cx.update(|window, cx| window.notifications(cx));
+        cx.update(|_, cx| replace_toast(Notification::info("Verifying").key("job"), cx));
+        cx.update(|_, cx| push_toast(Notification::info("Ready").key("job"), cx));
+        cx.run_until_parked();
+        let last = cx.update(|window, cx| window.notifications(cx));
+        assert_eq!(last.len(), 1);
+        assert_eq!(last[0].entity_id(), first[0].entity_id());
+        assert_eq!(
+            cx.update(|_, cx| last[0].read(cx).message.clone()),
+            Some("Ready".into())
+        );
     }
 }
