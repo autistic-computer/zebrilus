@@ -5,7 +5,7 @@ set -euo pipefail
 udid="$1"
 app="$2"
 endpoint="$3"
-bundle_id=dev.zz.ala-poc
+bundle_id=dev.zz.ios-dev
 cli="${ZZ_BENCH_CLI:-zz-dev}"
 session="${ZZ_BENCH_SESSION:-iphone-bench}"
 cycles="${ZZ_BENCH_CYCLES:-16}"
@@ -28,7 +28,7 @@ try:
 except Exception:
     processes = []
 for process in processes:
-    if process.get("executable", "").rstrip("/").endswith("/ZZAla"):
+    if process.get("executable", "").rstrip("/").endswith("/ZZ"):
         print(process["processIdentifier"])
 PY
         xcrun devicectl device process terminate --device "$udid" --pid "$pid" >/dev/null 2>&1 || true

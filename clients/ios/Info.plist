@@ -3,10 +3,10 @@
 <plist version="1.0">
 <dict>
     <key>CFBundleDevelopmentRegion</key><string>en</string>
-    <key>CFBundleExecutable</key><string>ZZAla</string>
-    <key>CFBundleIdentifier</key><string>dev.zz.ala-poc</string>
-    <key>CFBundleName</key><string>ZZ Ala</string>
-    <key>CFBundleDisplayName</key><string>zz ala</string>
+    <key>CFBundleExecutable</key><string>ZZ</string>
+    <key>CFBundleIdentifier</key><string>dev.zz.ios-dev</string>
+    <key>CFBundleName</key><string>ZZ Dev</string>
+    <key>CFBundleDisplayName</key><string>zz dev</string>
     <key>CFBundlePackageType</key><string>APPL</string>
     <key>CFBundleShortVersionString</key><string>0.1.0</string>
     <key>CFBundleVersion</key><string>1</string>

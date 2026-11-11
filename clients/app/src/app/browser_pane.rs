@@ -881,7 +881,7 @@ impl BrowserPane {
                         let connection = self.connection.clone();
                         let float_rows = self.float_rows_handler.clone();
                         pane_header_icon_button(
-                            ("ios-browser-action", action as usize),
+                            label,
                             icon,
                             writable,
                             cx,
