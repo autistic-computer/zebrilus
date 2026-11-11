@@ -216,6 +216,23 @@ fn a_chat_title_names_its_pane_and_window() {
     runtime.shutdown();
 }
 
+#[test]
+fn a_chat_that_moves_folders_takes_its_pane_with_it() {
+    let mut fixture = fixture();
+    let pane = fixture.pane;
+    let (publisher, runtime, generation) = runtime(&fixture.shared, pane);
+    settle(&mut fixture);
+    publisher.publish_agent_folder(generation, pane, PathBuf::from("/src/other"));
+    fixture.inbox.turn(&fixture.shared);
+    let inner = fixture.shared.inner.lock();
+    let PaneKind::Agent(agent) = &inner.engine.state.pane(pane).expect("pane").kind else {
+        panic!("agent pane");
+    };
+    assert_eq!(agent.cwd, Some(PathBuf::from("/src/other")));
+    drop(inner);
+    runtime.shutdown();
+}
+
 #[cfg(unix)]
 #[test]
 fn a_shell_hook_keeps_the_agent_inbox_running() {
