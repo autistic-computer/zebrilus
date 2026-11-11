@@ -3,6 +3,13 @@ use std::time::Duration;
 use semver::Version;
 use serde::Deserialize;
 
+mod install;
+
+pub use install::{
+    Assets, Facts, Progress, Staged, Target, UpdateError, apply, assets_for, clear_staged, detect,
+    homebrew_cask, prepare, staged, staged_for, tarball_prefix, target_of,
+};
+
 const RELEASES_API: &str =
     "https://api.github.com/repos/autistic-computer/zebrilus/releases?per_page=10";
 const WIRE_LINE_PREFIX: &str = "<!-- zz-wire:";
@@ -149,26 +156,6 @@ pub fn parse_releases(json: &str, channel: Channel) -> Result<Option<Release>, S
         .max_by(|a, b| a.version.cmp(&b.version)))
 }
 
-pub fn native_macos_asset<'a>(
-    release: &'a Release,
-    architecture: &str,
-) -> Option<&'a ReleaseAsset> {
-    let architecture = match architecture {
-        "aarch64" => "arm64",
-        "x86_64" => "x64",
-        _ => return None,
-    };
-    let name = format!("zz-native-{}-macos-{architecture}.dmg", release.version);
-    let url = format!(
-        "https://github.com/autistic-computer/zebrilus/releases/download/v{}/{name}",
-        release.version
-    );
-    release
-        .assets
-        .iter()
-        .find(|asset| asset.name == name && asset.url == url)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -283,37 +270,5 @@ mod tests {
             .unwrap();
         assert_eq!(newest.version, version("0.3.1"));
         assert_eq!(newest.wire, None);
-    }
-
-    #[test]
-    fn native_assets_require_the_native_product_architecture_and_release_url() {
-        let mut release = Release {
-            version: version("0.3.2"),
-            url: "https://github.com/autistic-computer/zebrilus/releases/tag/v0.3.2".to_owned(),
-            assets: Vec::new(),
-            wire: None,
-        };
-        let asset = |name: &str| ReleaseAsset {
-            name: name.to_owned(),
-            url: format!(
-                "https://github.com/autistic-computer/zebrilus/releases/download/v0.3.2/{name}"
-            ),
-        };
-        release.assets.push(asset("zz-0.3.2-macos-arm64.dmg"));
-        assert_eq!(native_macos_asset(&release, "aarch64"), None);
-        release.assets.push(asset("zz-native-0.3.2-macos-x64.dmg"));
-        assert_eq!(native_macos_asset(&release, "aarch64"), None);
-        let mut native = asset("zz-native-0.3.2-macos-arm64.dmg");
-        native.url = "https://example.com/wrong-product.dmg".to_owned();
-        release.assets.push(native);
-        assert_eq!(native_macos_asset(&release, "aarch64"), None);
-        release
-            .assets
-            .push(asset("zz-native-0.3.2-macos-arm64.dmg"));
-        assert_eq!(
-            native_macos_asset(&release, "aarch64"),
-            release.assets.last()
-        );
-        assert_eq!(native_macos_asset(&release, "unknown"), None);
     }
 }
