@@ -102,10 +102,9 @@ pub trait StyledExt: Styled + Sized {
 
     fn list_inset(self, cx: &App) -> Self {
         let this = self.px(cx.theme().row_inset);
-        if cx.theme().inset_rows() {
-            this.gap_y(Space::S2)
-        } else {
-            this
+        match cx.theme().row_gap() {
+            Some(gap) => this.gap_y(gap),
+            None => this,
         }
     }
 

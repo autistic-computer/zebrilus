@@ -3442,6 +3442,7 @@ pub enum EventPayload {
     },
     Providers(crate::ProvidersReport),
     AgentAccounts(Vec<crate::AgentAccount>),
+    AgentQuotas(Vec<crate::AgentQuota>),
 }
 
 impl EventPayload {
@@ -3515,6 +3516,7 @@ impl EventPayload {
             | Self::TerminalNegotiation { .. }
             | Self::Providers(_)
             | Self::AgentAccounts(_) => None,
+            Self::AgentQuotas(_) => Some(crate::AGENT_QUOTAS_CAPABILITY),
         }
     }
 

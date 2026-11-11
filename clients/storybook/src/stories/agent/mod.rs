@@ -37,7 +37,7 @@ const STORY: Story = Story {
         Section {
             id: "composer-controls",
             name: "Composer controls",
-            summary: "The pieces of the composer on their own: the action button, the + that starts a mention, the context meter, the git summary, and the footer's account chip, permissions chip and model picker. The account chip shows the pane's account as its email and opens a list of the CLI's accounts with Add account under it; picking one sends agent-account, and a busy: answer shows the flip's busy card without its choices. The picker is every model in one list six rows tall that scrolls, opened on the current one, over a horizontal effort slider with a dot per step. Bypass permissions draws the chip in danger.",
+            summary: "The pieces of the composer on their own: the action button, the + that starts a mention, the git summary, and the footer's usage pill and model picker. The usage pill is the context ring and how full the context is; it turns warning when the account's 5-hour or weekly limit is at 80% or more, and shows the ring alone while the context size is unknown. Its menu meters the context, the 5-hour window and the week with when each resets, then lists the CLI's accounts with Add account under them; picking one sends agent-account, and a busy: answer shows the flip's busy card without its choices. The picker's button leads with the permission mode's glyph in its tone; its menu is every model in one list six rows tall that scrolls, opened on the current one, then a horizontal effort slider with a dot per step, then the permission modes. Bypass permissions draws the glyph in danger.",
             build: composer::controls,
         },
         Section {

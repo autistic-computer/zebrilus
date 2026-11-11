@@ -1,6 +1,7 @@
 use serde_json::Value;
 use zz_protocol::{
-    AgentAccount, AgentProvider, CommandInvocation, MuxSnapshot, PaneId, PaneKindSnapshot,
+    AgentAccount, AgentProvider, AgentQuota, CommandInvocation, MuxSnapshot, PaneId,
+    PaneKindSnapshot, QuotaWindow, QuotaWindows,
 };
 
 pub const MODEL: &str = "model";
@@ -243,18 +244,23 @@ pub fn account_name(account: &AgentAccount) -> String {
 }
 
 #[must_use]
-pub fn account_label(
-    accounts: &[AgentAccount],
+pub fn account_quota(
+    quotas: &[AgentQuota],
     provider: AgentProvider,
     current: Option<&str>,
-) -> String {
-    accounts
+    now: u64,
+) -> Option<QuotaWindows> {
+    let live = |window: Option<QuotaWindow>| {
+        window.filter(|window| window.resets_at.is_none_or(|at| at > now))
+    };
+    quotas
         .iter()
-        .find(|account| account.provider == provider && account.id.as_deref() == current)
-        .map_or_else(
-            || current.unwrap_or(DEFAULT_ACCOUNT_NAME).to_owned(),
-            account_name,
-        )
+        .find(|quota| quota.provider == provider && quota.account.as_deref() == current)
+        .map(|quota| QuotaWindows {
+            five_hour: live(quota.windows.five_hour),
+            week: live(quota.windows.week),
+        })
+        .filter(|windows| !windows.is_empty())
 }
 
 #[must_use]
@@ -402,19 +408,48 @@ mod tests {
                 ..account(Some("a1"), Some("me@acme.dev"), Some("team"))
             },
         ];
-        let label = |current| account_label(&accounts, AgentProvider::ClaudeCode, current);
-        assert_eq!(label(None), "me@home.dev");
-        assert_eq!(label(Some("a1")), "me@acme.dev");
-        assert_eq!(label(Some("a7")), "a7");
-        assert_eq!(
-            account_label(&accounts, AgentProvider::Codex, None),
-            "Default"
-        );
         assert_eq!(account_detail(&accounts[0]).as_deref(), Some("Max 20x"));
         assert_eq!(account_detail(&accounts[1]).as_deref(), Some("Team · Acme"));
         let signed_out = account(None, None, None);
         assert_eq!(account_name(&signed_out), "Default");
         assert_eq!(account_detail(&signed_out).as_deref(), Some("Signed out"));
+    }
+
+    #[test]
+    fn a_window_past_its_reset_is_unknown_and_stops_warning() {
+        let reset = 1_791_583_200;
+        let five_hour = QuotaWindow {
+            used: 0.92,
+            resets_at: Some(reset),
+        };
+        let week = QuotaWindow {
+            used: 0.61,
+            resets_at: Some(reset + 86_400),
+        };
+        let quotas = [AgentQuota {
+            provider: AgentProvider::ClaudeCode,
+            account: None,
+            windows: QuotaWindows {
+                five_hour: Some(five_hour),
+                week: Some(week),
+            },
+        }];
+        let at = |now| account_quota(&quotas, AgentProvider::ClaudeCode, None, now);
+        let week_only = Some(QuotaWindows {
+            five_hour: None,
+            week: Some(week),
+        });
+        assert_eq!(at(reset + 1), week_only);
+        assert_eq!(at(reset), week_only);
+        assert!(!crate::agent_timeline::quota_warns(at(reset + 1).as_ref()));
+        assert_eq!(
+            at(reset - 1),
+            Some(QuotaWindows {
+                five_hour: Some(five_hour),
+                week: Some(week),
+            })
+        );
+        assert!(crate::agent_timeline::quota_warns(at(reset - 1).as_ref()));
     }
 
     #[test]

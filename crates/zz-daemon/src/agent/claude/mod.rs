@@ -1601,6 +1601,13 @@ impl Runtime {
                 return Ok(());
             }
             Some("command_lifecycle") => return self.lifecycle(&frame).await,
+            Some("rate_limit_event") => {
+                if let Some(quota) = translate::rate_limits(&frame) {
+                    self.emit(AgentStreamPayload::QuotaChanged { quota })
+                        .await?;
+                }
+                return Ok(());
+            }
             Some("system") => self.system(&frame).await?,
             Some("result") if self.resumed_quiet && frame["num_turns"] == 0 => {
                 return Ok(());

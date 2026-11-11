@@ -19,8 +19,8 @@ use zz_client::agent_settings::{Choice, LensSettings};
 use zz_ui::agent::{
     agent_attachment_thumbnail,
     controls::{
-        ComposerAction, agent_account_chip, agent_mode_chip, agent_model_picker, composer_action,
-        composer_action_button, context_usage_meter, git_summary_footer,
+        ComposerAction, ContextUsage, UsagePill, agent_model_picker, agent_usage_pill,
+        composer_action, composer_action_button, git_summary_footer,
     },
     presentation::{agent_resume_welcome, error_card},
     resume::{folder_button, resume_button, resume_menu, resume_rows},
@@ -32,7 +32,7 @@ use super::{
 };
 use crate::stories::console::palette::chat_backend;
 use crate::story::{row, states};
-use zz_protocol::{AgentAccount, AgentProvider, PaneId};
+use zz_protocol::{AgentAccount, AgentProvider, AgentQuota, PaneId, QuotaWindow, QuotaWindows};
 use zz_ui::{command::target_picker, target::TargetPicker};
 
 pub const PLACEHOLDER: &str = "Message Claude Code…";
@@ -118,12 +118,7 @@ pub fn composer(draft: Draft, cx: &mut App) -> AnyElement {
         composer: Composer {
             input: draft.input,
             leading: Some(leading),
-            usage: Some(context_usage_meter(
-                SharedString::from(format!("{id}-usage")),
-                68_000,
-                200_000,
-                cx,
-            )),
+            usage: None,
             action: composer_action_button(
                 SharedString::from(format!("{id}-action")),
                 action,
@@ -146,13 +141,7 @@ pub fn composer(draft: Draft, cx: &mut App) -> AnyElement {
             cx,
         )],
         prefix: draft.prefix,
-        controls: footer_controls(
-            &id,
-            &draft.settings,
-            &Accounts::default_only(),
-            draft.writable,
-            cx,
-        ),
+        controls: footer_controls(&id, &draft.settings, &Usage::normal(), draft.writable, cx),
     }
     .into_any_element()
 }
@@ -241,12 +230,14 @@ pub fn codex_settings() -> LensSettings {
     }
 }
 
-pub struct Accounts {
-    pub list: Vec<AgentAccount>,
+pub struct Usage {
+    pub accounts: Option<Vec<AgentAccount>>,
     pub current: Option<&'static str>,
+    pub quota: Option<QuotaWindows>,
+    pub context: ContextUsage,
 }
 
-impl Accounts {
+impl Usage {
     fn account(id: Option<&str>, email: Option<&str>, plan: Option<&str>) -> AgentAccount {
         AgentAccount {
             provider: AgentProvider::ClaudeCode,
@@ -258,18 +249,73 @@ impl Accounts {
         }
     }
 
+    fn quota(five_hour: f32, week: f32) -> QuotaWindows {
+        let now = zz_client::agent_timeline::unix_now();
+        QuotaWindows {
+            five_hour: Some(QuotaWindow {
+                used: five_hour,
+                resets_at: Some(now + 2 * 3_600 + 14 * 60 + 59),
+            }),
+            week: Some(QuotaWindow {
+                used: week,
+                resets_at: Some(now + 4 * 86_400),
+            }),
+        }
+    }
+
     #[must_use]
-    pub fn default_only() -> Self {
+    pub fn normal() -> Self {
         Self {
-            list: vec![Self::account(None, Some("me@example.com"), Some("max_20x"))],
+            accounts: Some(vec![Self::account(
+                None,
+                Some("me@example.com"),
+                Some("max_20x"),
+            )]),
             current: None,
+            quota: Some(Self::quota(0.38, 0.61)),
+            context: ContextUsage::Known {
+                used: 84_000,
+                size: 200_000,
+            },
+        }
+    }
+
+    #[must_use]
+    pub fn new_chat() -> Self {
+        Self {
+            context: ContextUsage::EmptyChat,
+            ..Self::normal()
+        }
+    }
+
+    #[must_use]
+    pub fn not_known_yet() -> Self {
+        Self {
+            context: ContextUsage::Unknown,
+            ..Self::normal()
+        }
+    }
+
+    #[must_use]
+    pub fn near_a_limit() -> Self {
+        Self {
+            quota: Some(Self::quota(0.92, 0.61)),
+            ..Self::normal()
+        }
+    }
+
+    #[must_use]
+    pub fn no_quota_yet() -> Self {
+        Self {
+            quota: None,
+            ..Self::normal()
         }
     }
 
     #[must_use]
     pub fn two_with_the_second_picked() -> Self {
         Self {
-            list: vec![
+            accounts: Some(vec![
                 Self::account(None, Some("me@example.com"), Some("max_20x")),
                 AgentAccount {
                     organization: Some("Acme Robotics".to_owned()),
@@ -279,16 +325,19 @@ impl Accounts {
                         Some("team"),
                     )
                 },
-            ],
+            ]),
             current: Some("a1"),
+            quota: Some(Self::quota(0.12, 0.47)),
+            ..Self::normal()
         }
     }
 
     #[must_use]
     pub fn signed_out_default() -> Self {
         Self {
-            list: vec![Self::account(None, None, None)],
-            current: None,
+            accounts: Some(vec![Self::account(None, None, None)]),
+            quota: None,
+            ..Self::normal()
         }
     }
 }
@@ -296,7 +345,7 @@ impl Accounts {
 pub fn footer_controls(
     id: &str,
     settings: &LensSettings,
-    accounts: &Accounts,
+    usage: &Usage,
     enabled: bool,
     cx: &App,
 ) -> Vec<AnyElement> {
@@ -305,40 +354,65 @@ pub fn footer_controls(
     } else {
         AgentProvider::ClaudeCode
     };
-    let list = accounts
-        .list
-        .iter()
-        .map(|account| AgentAccount {
+    let accounts = usage.accounts.as_ref().map(|accounts| {
+        accounts
+            .iter()
+            .map(|account| AgentAccount {
+                provider,
+                ..account.clone()
+            })
+            .collect::<Vec<_>>()
+    });
+    let quotas = usage
+        .quota
+        .map(|windows| AgentQuota {
             provider,
-            ..account.clone()
+            account: usage.current.map(str::to_owned),
+            windows,
         })
+        .into_iter()
         .collect::<Vec<_>>();
-    agent_account_chip(
-        SharedString::from(format!("{id}-account")),
-        provider,
-        accounts.current,
-        Some(&list),
-        enabled,
-        |_, _, _| {},
-        cx,
-    )
-    .into_iter()
-    .chain(agent_mode_chip(
-        SharedString::from(format!("{id}-mode")),
-        provider,
-        settings,
-        enabled,
-        |_, _, _| {},
-        cx,
-    ))
-    .chain([agent_model_picker(
-        SharedString::from(format!("{id}-settings")),
-        settings,
-        enabled,
-        |_, _, _, _| {},
-        cx,
-    )])
-    .collect()
+    vec![
+        agent_usage_pill(
+            SharedString::from(format!("{id}-account")),
+            &UsagePill {
+                provider,
+                account: usage.current,
+                accounts: accounts.as_deref(),
+                quotas: &quotas,
+                context: usage.context,
+                enabled,
+            },
+            |_, _, _| {},
+            cx,
+        ),
+        agent_model_picker(
+            SharedString::from(format!("{id}-settings")),
+            Some(provider),
+            settings,
+            enabled,
+            |_, _, _, _| {},
+            cx,
+        ),
+    ]
+}
+
+fn mode_pills(id: &str, provider: AgentProvider, settings: &LensSettings, cx: &App) -> AnyElement {
+    row()
+        .children(settings.modes.iter().map(|mode| {
+            agent_model_picker(
+                SharedString::from(format!("{id}-{}", mode.value)),
+                Some(provider),
+                &LensSettings {
+                    mode: mode.value.clone(),
+                    ..settings.clone()
+                },
+                true,
+                |_, _, _, _| {},
+                cx,
+            )
+        }))
+        .into_any_element()
 }
 
 pub fn resume(_: &mut Window, cx: &mut App) -> AnyView {
@@ -664,22 +738,35 @@ pub fn controls(_: &mut Window, cx: &mut App) -> AnyView {
 impl Render for Controls {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let inside = composer_ground(cx.theme().ground(), cx);
+        let known = |used, size| ContextUsage::Known { used, size };
         let usage = [
-            ("empty", 0, 200_000),
-            ("a quarter", 50_000, 200_000),
-            ("half", 100_000, 200_000),
-            ("nearly full", 186_000, 200_000),
-            ("full", 200_000, 200_000),
-            ("size unknown", 12_000, 0),
+            ("new chat", ContextUsage::EmptyChat),
+            ("a quarter", known(50_000, 200_000)),
+            ("half", known(100_000, 200_000)),
+            ("nearly full", known(186_000, 200_000)),
+            ("full", known(200_000, 200_000)),
+            ("not known yet", ContextUsage::Unknown),
         ]
         .into_iter()
         .enumerate()
         .fold(
             states().columns(6),
-            |states, (index, (label, used, size))| {
+            |states, (index, (label, context))| {
                 states.state(
                     label,
-                    row().child(context_usage_meter(("usage", index), used, size, cx)),
+                    row().child(agent_usage_pill(
+                        ("usage", index),
+                        &UsagePill {
+                            provider: AgentProvider::ClaudeCode,
+                            account: None,
+                            accounts: None,
+                            quotas: &[],
+                            context,
+                            enabled: true,
+                        },
+                        |_, _, _| {},
+                        cx,
+                    )),
                 )
             },
         );
@@ -761,14 +848,62 @@ impl Render for Controls {
                         .disabled(true),
                     ),
             )
-            .state("context usage meter", usage)
+            .state("context in the usage pill", usage)
+            .state(
+                "every Claude Code mode: Ask, Accept edits, Plan, Auto, Bypass permissions",
+                mode_pills("claude-mode", AgentProvider::ClaudeCode, &claude_settings(), cx),
+            )
+            .state(
+                "every Codex mode: Read only, Auto, Full access",
+                mode_pills("codex-mode", AgentProvider::Codex, &codex_settings(), cx),
+            )
             .state("git summary", git)
             .state(
-                "account, permissions, model and effort: Claude Code's own lists",
+                "usage, permissions, model and effort: Claude Code's own lists",
                 row().children(footer_controls(
                     "claude",
                     &claude_settings(),
-                    &Accounts::default_only(),
+                    &Usage::normal(),
+                    true,
+                    cx,
+                )),
+            )
+            .state(
+                "a new chat: nothing used yet, 0%",
+                row().children(footer_controls(
+                    "claude-new-chat",
+                    &claude_settings(),
+                    &Usage::new_chat(),
+                    true,
+                    cx,
+                )),
+            )
+            .state(
+                "a resumed chat before its first turn: -- until the next turn reports",
+                row().children(footer_controls(
+                    "claude-not-known",
+                    &claude_settings(),
+                    &Usage::not_known_yet(),
+                    true,
+                    cx,
+                )),
+            )
+            .state(
+                "the 5-hour window at 92%: the pill turns warning, its number stays the context's",
+                row().children(footer_controls(
+                    "claude-limit",
+                    &claude_settings(),
+                    &Usage::near_a_limit(),
+                    true,
+                    cx,
+                )),
+            )
+            .state(
+                "an account with no quota yet: the menu meters the context alone",
+                row().children(footer_controls(
+                    "claude-no-quota",
+                    &claude_settings(),
+                    &Usage::no_quota_yet(),
                     true,
                     cx,
                 )),
@@ -778,30 +913,17 @@ impl Render for Controls {
                 row().children(footer_controls(
                     "codex",
                     &codex_settings(),
-                    &Accounts::default_only(),
+                    &Usage::normal(),
                     true,
                     cx,
                 )),
             )
             .state(
-                "a mode that acts without asking tints its chip",
-                row().children(footer_controls(
-                    "claude-auto",
-                    &LensSettings {
-                        mode: "acceptEdits".to_owned(),
-                        ..claude_settings()
-                    },
-                    &Accounts::default_only(),
-                    true,
-                    cx,
-                )),
-            )
-            .state(
-                "two accounts, the second picked: a long email ends in an ellipsis",
+                "two accounts, the second picked: its meters, then both accounts",
                 row().children(footer_controls(
                     "claude-accounts",
                     &claude_settings(),
-                    &Accounts::two_with_the_second_picked(),
+                    &Usage::two_with_the_second_picked(),
                     true,
                     cx,
                 )),
@@ -811,7 +933,7 @@ impl Render for Controls {
                 row().children(footer_controls(
                     "claude-signed-out",
                     &claude_settings(),
-                    &Accounts::signed_out_default(),
+                    &Usage::signed_out_default(),
                     true,
                     cx,
                 )),
@@ -826,19 +948,6 @@ impl Render for Controls {
                 )),
             )
             .state(
-                "Bypass permissions: nothing guards it, so the chip turns danger",
-                row().children(footer_controls(
-                    "claude-bypass",
-                    &LensSettings {
-                        mode: "bypassPermissions".to_owned(),
-                        ..claude_settings()
-                    },
-                    &Accounts::default_only(),
-                    true,
-                    cx,
-                )),
-            )
-            .state(
                 "an older model picked: the list opens scrolled to it",
                 row().children(footer_controls(
                     "claude-older",
@@ -847,7 +956,7 @@ impl Render for Controls {
                         model_label: "Opus 4.8".to_owned(),
                         ..claude_settings()
                     },
-                    &Accounts::default_only(),
+                    &Usage::normal(),
                     true,
                     cx,
                 )),

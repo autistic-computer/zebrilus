@@ -16,7 +16,7 @@ use zz_protocol::chat::{ChatEvent, ChatLog};
 use zz_protocol::{
     AgentPaneWire, AgentPermissionWire, AgentProvider, ClientId, ClientInstanceId,
     MAX_AGENT_PROMPT_BYTES, MAX_AGENT_QUEUED_PROMPTS, MAX_AGENT_RESULT_BYTES,
-    MAX_AGENT_UPDATES_BYTES, PaneId,
+    MAX_AGENT_UPDATES_BYTES, PaneId, QuotaWindows,
 };
 
 use crate::agent::{
@@ -71,6 +71,7 @@ pub(crate) trait AgentPublisher: Send + Sync + 'static {
     );
     fn publish_agent_state(&self, generation: u64, pane: PaneId, state: AgentPaneWire);
     fn publish_agent_folder(&self, generation: u64, pane: PaneId, cwd: PathBuf);
+    fn publish_agent_quota(&self, generation: u64, pane: PaneId, quota: QuotaWindows);
     fn publish_agent_tool_call(&self, generation: u64, pane: PaneId, call: AgentToolCall);
     fn send_agent_reply(&self, generation: u64, pane: PaneId, reply: AgentRequestReply);
 }
@@ -297,6 +298,7 @@ struct PaneLane {
     fingerprint: Option<StateFingerprint>,
     state: Option<AgentPaneWire>,
     sync_next_state: bool,
+    quota: QuotaWindows,
 }
 
 #[derive(Clone)]
@@ -384,6 +386,7 @@ impl PaneLane {
             fingerprint: None,
             state: None,
             sync_next_state: false,
+            quota: QuotaWindows::default(),
         }
     }
 
@@ -746,6 +749,10 @@ impl AgentFanout {
                 }
             }
         }
+        let quota = (lane.quota != state.quota).then(|| {
+            lane.quota = state.quota;
+            state.quota
+        });
         let next_state = lane.refresh_state(state);
         if lane.sync_next_state
             && let Some(state) = next_state.as_ref()
@@ -768,6 +775,9 @@ impl AgentFanout {
         }
         if let Some(cwd) = folder {
             publisher.publish_agent_folder(generation, pane, cwd);
+        }
+        if let Some(quota) = quota {
+            publisher.publish_agent_quota(generation, pane, quota);
         }
         if let Some(next_state) = next_state {
             publisher.publish_agent_state(generation, pane, next_state);
@@ -1372,6 +1382,8 @@ mod tests {
         }
 
         fn publish_agent_folder(&self, _generation: u64, _pane: PaneId, _cwd: PathBuf) {}
+
+        fn publish_agent_quota(&self, _generation: u64, _pane: PaneId, _quota: QuotaWindows) {}
 
         fn publish_agent_tool_call(&self, _generation: u64, _pane: PaneId, _call: AgentToolCall) {}
 

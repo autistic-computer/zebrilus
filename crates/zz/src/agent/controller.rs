@@ -893,7 +893,8 @@ impl AgentController {
             | AgentStreamPayload::Authenticated
             | AgentStreamPayload::ConfigOptionsChanged { .. }
             | AgentStreamPayload::ModeChanged { .. }
-            | AgentStreamPayload::TitleChanged { .. } => {
+            | AgentStreamPayload::TitleChanged { .. }
+            | AgentStreamPayload::QuotaChanged { .. } => {
                 return None;
             }
             AgentStreamPayload::SessionSwitched {

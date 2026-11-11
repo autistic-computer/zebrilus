@@ -15,6 +15,7 @@ pub const CONTROL_CAPABILITY: &str = "control-plane-v2";
 pub const CONTROL_STDIO_CAPABILITY: &str = "control-stdio-v1";
 pub const TTY_INPUT_CAPABILITY: &str = "tty-input-v1";
 pub const FLOW_WINDOW_CAPABILITY: &str = "flow-window-v1";
+pub const AGENT_QUOTAS_CAPABILITY: &str = "agent-quotas-v1";
 pub const MAX_BATCH_FRAMES: usize = 4096;
 
 pub const CAPABILITY_NAMES: &[&str] = &[
@@ -53,7 +54,7 @@ pub const CAPABILITY_NAMES: &[&str] = &[
     TTY_INPUT_CAPABILITY,
 ];
 
-pub const CLIENT_CAPABILITY_NAMES: &[&str] = &[];
+pub const CLIENT_CAPABILITY_NAMES: &[&str] = &[AGENT_QUOTAS_CAPABILITY];
 
 const CLIENT_OWN_HELLO_ENTRIES: usize = 29;
 

@@ -1196,6 +1196,31 @@ fn clip_title(title: &str) -> String {
     clipped
 }
 
+pub(crate) fn rate_limits(snapshot: &Value) -> Option<zz_protocol::QuotaWindows> {
+    if snapshot["limitId"]
+        .as_str()
+        .is_some_and(|limit| limit != "codex")
+    {
+        return None;
+    }
+    let mut quota = zz_protocol::QuotaWindows::default();
+    for window in [&snapshot["primary"], &snapshot["secondary"]] {
+        let Some(used) = window["usedPercent"].as_f64() else {
+            continue;
+        };
+        let slot = match window["windowDurationMins"].as_u64() {
+            Some(300) => &mut quota.five_hour,
+            Some(10_080) => &mut quota.week,
+            _ => continue,
+        };
+        *slot = Some(zz_protocol::QuotaWindow {
+            used: (used / 100.0) as f32,
+            resets_at: window["resetsAt"].as_u64(),
+        });
+    }
+    (!quota.is_empty()).then_some(quota)
+}
+
 fn display_path(path: &str, cwd: &Path) -> String {
     Path::new(path)
         .strip_prefix(cwd)
@@ -1212,6 +1237,40 @@ mod tests {
     use agent_client_protocol::v1::schema::SessionUpdate;
 
     use super::*;
+
+    #[test]
+    fn rate_limits_take_the_five_hour_and_week_windows_by_their_length() {
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("src/agent/codex/fixtures/rate-limits-read.json");
+        let read: Value =
+            serde_json::from_str(&std::fs::read_to_string(path).expect("fixture")).expect("json");
+        let week = zz_protocol::QuotaWindow {
+            used: 0.04,
+            resets_at: Some(1_794_825_904),
+        };
+        assert_eq!(
+            rate_limits(&read["rateLimits"]),
+            Some(zz_protocol::QuotaWindows {
+                five_hour: None,
+                week: Some(week),
+            })
+        );
+        let mut both = read["rateLimits"].clone();
+        both["secondary"] = both["primary"].clone();
+        both["primary"] = json!({ "usedPercent": 92, "windowDurationMins": 300, "resetsAt": null });
+        assert_eq!(
+            rate_limits(&both),
+            Some(zz_protocol::QuotaWindows {
+                five_hour: Some(zz_protocol::QuotaWindow {
+                    used: 0.92,
+                    resets_at: None,
+                }),
+                week: Some(week),
+            })
+        );
+        both["limitId"] = json!("codex_other");
+        assert_eq!(rate_limits(&both), None);
+    }
 
     #[test]
     fn streamed_command_output_keeps_only_what_it_can_show() {

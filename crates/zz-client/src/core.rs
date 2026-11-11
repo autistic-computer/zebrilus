@@ -284,6 +284,7 @@ pub struct ClientCore {
     agent_states: HashMap<PaneId, AgentPaneWire>,
     providers: Option<zz_protocol::ProvidersReport>,
     agent_accounts: Option<Vec<zz_protocol::AgentAccount>>,
+    agent_quotas: Vec<zz_protocol::AgentQuota>,
     full_pending: HashSet<PaneId>,
     prefix_armed: bool,
     key_table: Option<(String, bool)>,
@@ -660,6 +661,11 @@ impl ClientCore {
     #[must_use]
     pub fn agent_accounts(&self) -> Option<&[zz_protocol::AgentAccount]> {
         self.agent_accounts.as_deref()
+    }
+
+    #[must_use]
+    pub fn agent_quotas(&self) -> &[zz_protocol::AgentQuota] {
+        &self.agent_quotas
     }
 
     #[must_use]
@@ -1185,6 +1191,10 @@ impl ClientCore {
             }
             EventPayload::AgentAccounts(accounts) => {
                 self.agent_accounts = Some(accounts);
+                self.events.push_back(CoreEvent::AgentAccountsChanged);
+            }
+            EventPayload::AgentQuotas(quotas) => {
+                self.agent_quotas = quotas;
                 self.events.push_back(CoreEvent::AgentAccountsChanged);
             }
             EventPayload::ControlExit { .. }

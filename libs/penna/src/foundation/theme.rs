@@ -159,6 +159,10 @@ impl Theme {
         self.row_inset > px(0.0)
     }
 
+    pub fn row_gap(&self) -> Option<Space> {
+        self.inset_rows().then_some(Space::S2)
+    }
+
     pub fn outlined(&self) -> bool {
         self.outline > px(0.0)
     }

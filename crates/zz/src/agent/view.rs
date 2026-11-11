@@ -7,11 +7,12 @@ use zz_ui::agent::ask::{
     Approval, ApprovalAction, AskChoice, AskParts, AskSubject, PromptRow, approval_subject, rejects,
 };
 use zz_ui::agent::controls::{
-    ComposerAction, composer_action, composer_action_button, context_usage_meter,
-    git_summary_footer, mode_tone,
+    ComposerAction, composer_action, composer_action_button, git_summary_footer,
 };
 #[cfg(test)]
-use zz_ui::agent::controls::{context_usage_fraction, context_usage_tooltip, git_file_count_label};
+use zz_ui::agent::controls::{
+    ContextUsage, context_usage_fraction, context_usage_tooltip, git_file_count_label,
+};
 #[cfg(test)]
 use zz_ui::agent::presentation::MAX_RENDERED_ERROR_BYTES;
 #[cfg(test)]
@@ -33,7 +34,7 @@ use zz_client::agent_completion::{
     meaningful_command_description, pane_commands,
 };
 use zz_client::agent_resume::{Menu, ResumeRow, folder_name};
-use zz_client::agent_settings::{self, ComposerSetter, composer_setter, mode_risk};
+use zz_client::agent_settings::{self, ComposerSetter, composer_setter};
 use zz_ui::{
     command::target_picker,
     target::{TargetPicker, mention_at_caret, mention_keys},
@@ -228,12 +229,9 @@ fn snapshot_folder(
         .iter()
         .flat_map(|session| &session.windows)
         .find_map(|window| window.panes.get(&pane))
-        .map(|pane| match &pane.kind {
-            zz_protocol::PaneKindSnapshot::Agent(zz_protocol::AgentDescriptor {
-                cwd: Some(cwd),
-                ..
-            }) if pane.summary.cwd.is_empty() => cwd.clone(),
-            _ => std::path::PathBuf::from(&pane.summary.cwd),
+        .and_then(|pane| match &pane.kind {
+            zz_protocol::PaneKindSnapshot::Agent(agent) => agent.cwd.clone(),
+            _ => None,
         })
         .filter(|cwd| cwd.is_absolute())
 }
@@ -270,6 +268,7 @@ pub(crate) struct AgentView {
     resume_revision: u64,
     account: Option<String>,
     accounts: Option<Vec<zz_protocol::AgentAccount>>,
+    quotas: Vec<zz_protocol::AgentQuota>,
     resume_scroll: ScrollHandle,
     focus_search: bool,
     _subscriptions: Vec<Subscription>,
@@ -284,10 +283,15 @@ impl ala::EventEmitter<AgentAccountPicked> for AgentView {}
 fn pane_accounts(
     mux: &MuxClient,
     pane: PaneId,
-) -> (Option<String>, Option<&[zz_protocol::AgentAccount]>) {
+) -> (
+    Option<String>,
+    Option<&[zz_protocol::AgentAccount]>,
+    &[zz_protocol::AgentQuota],
+) {
     (
         agent_settings::pane_account(&mux.snapshot(), pane).map(str::to_owned),
         mux.host_agent_accounts(mux.attached_host()),
+        mux.host_agent_quotas(mux.attached_host()),
     )
 }
 
@@ -374,26 +378,31 @@ impl AgentView {
         });
         let floats = zz_client::floating::pane_floats(&mux.read(cx).snapshot(), pane);
         let active = mux.read(cx).active_pane() == Some(pane);
-        let (account, accounts) = {
+        let (account, accounts, quotas) = {
             let mux = mux.read(cx);
-            let (account, accounts) = pane_accounts(mux, pane);
+            let (account, accounts, quotas) = pane_accounts(mux, pane);
             if accounts.is_none() {
                 mux.request_agent_accounts(mux.attached_host());
             }
-            (account, accounts.map(<[_]>::to_vec))
+            (account, accounts.map(<[_]>::to_vec), quotas.to_vec())
         };
         let mux_observer = cx.observe(&mux, |view, mux, cx| {
             let floats = zz_client::floating::pane_floats(&mux.read(cx).snapshot(), view.pane);
             let active = mux.read(cx).active_pane() == Some(view.pane);
-            let (account, accounts) = pane_accounts(mux.read(cx), view.pane);
+            let (account, accounts, quotas) = pane_accounts(mux.read(cx), view.pane);
             let accounts_changed = view.accounts.as_deref() != accounts;
+            let quotas_changed = view.quotas != quotas;
             if view.floats != floats
                 || view.active != active
                 || view.account != account
                 || accounts_changed
+                || quotas_changed
             {
                 if accounts_changed {
                     view.accounts = accounts.map(<[_]>::to_vec);
+                }
+                if quotas_changed {
+                    view.quotas = quotas.to_vec();
                 }
                 view.floats = floats;
                 view.active = active;
@@ -446,6 +455,7 @@ impl AgentView {
             resume_revision: 0,
             account,
             accounts,
+            quotas,
             resume_scroll: ScrollHandle::new(),
             focus_search: false,
             _subscriptions: vec![
@@ -1712,15 +1722,6 @@ impl AgentView {
             action_kind != ComposerAction::Send || (can_submit && self.composer_has_content()),
             inside,
         );
-        let tone = state
-            .settings
-            .as_ref()
-            .and_then(|settings| mode_tone(mode_risk(state.provider, &settings.mode)))
-            .filter(|_| action_kind == ComposerAction::Send && can_submit);
-        let action = match tone {
-            Some(tone) if self.composer_has_content() => action.tone(tone),
-            _ => action,
-        };
         let action = if action_kind == ComposerAction::Stop {
             let controller = self.controller.clone();
             let pane = self.pane;
@@ -1738,9 +1739,6 @@ impl AgentView {
         } else {
             action.into_any_element()
         };
-        let usage = state.usage.map(|(used, size)| {
-            context_usage_meter(("agent-context-usage", self.pane.0), used, size, cx)
-        });
         let git = state.git.as_ref().map(|git| {
             git_summary_footer(
                 ("agent-git-summary", self.pane.0),
@@ -1797,7 +1795,7 @@ impl AgentView {
                 Composer {
                     input: self.input.clone(),
                     leading: Some(add.into_any_element()),
-                    usage: usage.map(IntoElement::into_any_element),
+                    usage: None,
                     action,
                     attachments,
                     command_hint: command_hint.map(Into::into),
@@ -2666,14 +2664,37 @@ mod tests {
     }
 
     #[test]
-    fn context_usage_tooltip_keeps_the_exact_counts() {
+    fn context_usage_tooltip_rounds_the_counts_to_thousands() {
         assert_eq!(
-            context_usage_tooltip(32_000, 128_000),
-            "32000 of 128000 context tokens used (25%)"
+            context_usage_tooltip(84_321, 200_000),
+            "84k of 200k context tokens used (42%)"
+        );
+        assert_eq!(
+            context_usage_tooltip(412_000, 1_000_000),
+            "412k of 1M context tokens used (41%)"
         );
         assert_eq!(
             context_usage_tooltip(4, 0),
             "Context window usage unavailable"
+        );
+        let pill = |usage: ContextUsage| (usage.label(), usage.tooltip());
+        assert_eq!(
+            pill(ContextUsage::reported(Some((84_321, 200_000))).in_empty_chat()),
+            (
+                "42%".to_owned(),
+                "84k of 200k context tokens used (42%)".to_owned()
+            )
+        );
+        assert_eq!(
+            pill(ContextUsage::reported(Some((12_000, 0))).in_empty_chat()),
+            ("0%".to_owned(), "No context used yet".to_owned())
+        );
+        assert_eq!(
+            pill(ContextUsage::reported(None)),
+            (
+                "--".to_owned(),
+                "Context use shows after the next turn".to_owned()
+            )
         );
     }
 

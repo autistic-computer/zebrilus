@@ -2114,6 +2114,13 @@ impl Runtime {
                     self.notice(text).await?;
                 }
             }
+            "account/rateLimits/updated" => {
+                if let Some(quota) = translate::rate_limits(&params["rateLimits"]) {
+                    self.emit(AgentStreamPayload::QuotaChanged { quota })
+                        .await?;
+                }
+                return Ok(());
+            }
             "thread/name/updated" => {
                 let title = params["threadName"].as_str().and_then(clean_title);
                 if self.title.rename(title.clone()) {

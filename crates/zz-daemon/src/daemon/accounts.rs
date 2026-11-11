@@ -7,9 +7,11 @@ use std::{
 
 #[cfg(all(feature = "agent", unix))]
 use zz_daemon_client::unmasked::SpawnUnmasked as _;
-#[cfg(all(feature = "agent", unix))]
-use zz_protocol::AgentAccount;
 use zz_protocol::AgentProvider;
+#[cfg(feature = "agent")]
+use zz_protocol::QuotaWindows;
+#[cfg(all(feature = "agent", unix))]
+use zz_protocol::{AgentAccount, AgentQuota};
 
 #[cfg(all(feature = "agent", unix))]
 const PROVIDERS: [AgentProvider; 2] = [AgentProvider::ClaudeCode, AgentProvider::Codex];
@@ -26,6 +28,7 @@ const CODEX_EXIT: Duration = Duration::from_secs(2);
 #[derive(Default)]
 pub(super) struct Accounts {
     list: Option<Vec<AgentAccount>>,
+    quotas: BTreeMap<(AgentProvider, Option<String>), QuotaWindows>,
     watchers: BTreeSet<ClientId>,
     refreshing: bool,
     again: bool,
@@ -77,6 +80,7 @@ impl Shared {
         {
             self.agent_accounts.lock().watchers.insert(client);
             self.publish_agent_accounts();
+            self.publish_agent_quotas();
             let Some(provider) = add else {
                 self.refresh_agent_accounts();
                 return Ok(Execution::default());
@@ -102,8 +106,67 @@ impl Shared {
     }
 }
 
+#[cfg(feature = "agent")]
+impl Shared {
+    pub(super) fn apply_agent_quota(&self, pane: PaneId, quota: QuotaWindows) {
+        #[cfg(not(unix))]
+        {
+            let _ = (pane, quota);
+        }
+        #[cfg(unix)]
+        {
+            let account = match self
+                .inner
+                .lock()
+                .engine
+                .state
+                .pane(pane)
+                .map(|state| &state.kind)
+            {
+                Some(PaneKind::Agent(descriptor)) => {
+                    (descriptor.provider, descriptor.account.clone())
+                }
+                _ => return,
+            };
+            let changed = self
+                .agent_accounts
+                .lock()
+                .quotas
+                .entry(account)
+                .or_default()
+                .merge(quota);
+            if changed {
+                self.publish_agent_quotas();
+            }
+        }
+    }
+}
+
 #[cfg(all(feature = "agent", unix))]
 impl Shared {
+    fn publish_agent_quotas(&self) {
+        let (quotas, watchers) = {
+            let accounts = self.agent_accounts.lock();
+            let quotas = accounts
+                .quotas
+                .iter()
+                .filter(|(_, windows)| !windows.is_empty())
+                .map(|((provider, account), windows)| AgentQuota {
+                    provider: *provider,
+                    account: account.clone(),
+                    windows: *windows,
+                })
+                .collect::<Vec<_>>();
+            if quotas.is_empty() {
+                return;
+            }
+            (quotas, accounts.watchers.clone())
+        };
+        for client in watchers {
+            self.publish_to_client(client, EventPayload::AgentQuotas(quotas.clone()));
+        }
+    }
+
     fn publish_agent_accounts(&self) {
         let (list, watchers) = {
             let mut accounts = self.agent_accounts.lock();
@@ -150,25 +213,36 @@ impl Shared {
 
     fn refresh_agent_accounts_once(&self) -> bool {
         let search = self.provider_search();
-        let list = PROVIDERS
+        let (list, quotas): (Vec<_>, Vec<_>) = PROVIDERS
             .into_iter()
             .filter_map(|provider| {
                 providers::locate(provider, search.as_ref())
                     .map(|program| provider_accounts(provider, &program, search.as_ref()))
             })
             .flatten()
-            .filter(|account| account.id.is_none() || account.signed_in)
-            .collect::<Vec<_>>();
-        let (changed, again) = {
+            .filter(|(account, _)| account.id.is_none() || account.signed_in)
+            .unzip();
+        let (changed, quotas_changed, again) = {
             let mut accounts = self.agent_accounts.lock();
             let changed = accounts.list.as_ref() != Some(&list);
+            let mut quotas_changed = false;
+            for (account, quota) in list.iter().zip(quotas) {
+                let Some(quota) = quota else {
+                    continue;
+                };
+                let key = (account.provider, account.id.clone());
+                quotas_changed |= accounts.quotas.insert(key, quota) != Some(quota);
+            }
             accounts.list = Some(list);
             let again = std::mem::take(&mut accounts.again);
             accounts.refreshing = again;
-            (changed, again)
+            (changed, quotas_changed, again)
         };
         if changed {
             self.publish_agent_accounts();
+        }
+        if quotas_changed {
+            self.publish_agent_quotas();
         }
         again
     }
@@ -189,7 +263,7 @@ impl Shared {
         let probed = provider_accounts(provider, &program, search.as_ref());
         let existing = probed
             .iter()
-            .filter_map(|account| Some((account.id.as_deref()?, account.signed_in)))
+            .filter_map(|(account, _)| Some((account.id.as_deref()?, account.signed_in)))
             .collect::<Vec<_>>();
         let id = login_account(&existing);
         let home = match accounts::create(provider, &id) {
@@ -241,7 +315,7 @@ fn provider_accounts(
     provider: AgentProvider,
     program: &Path,
     search: Option<&OsString>,
-) -> Vec<AgentAccount> {
+) -> Vec<(AgentAccount, Option<QuotaWindows>)> {
     let ids = std::iter::once(None)
         .chain(crate::agent::accounts::ids(provider).into_iter().map(Some))
         .collect::<Vec<_>>();
@@ -261,7 +335,7 @@ fn identify(
     program: &Path,
     id: Option<String>,
     search: Option<&OsString>,
-) -> AgentAccount {
+) -> (AgentAccount, Option<QuotaWindows>) {
     use crate::agent::accounts;
 
     let home = match id.as_deref() {
@@ -271,10 +345,13 @@ fn identify(
                 Ok(home) => Some(home),
                 Err(error) => {
                     log::info!(target: "zz::agent", "{error}");
-                    return AgentAccount {
-                        id,
-                        ..signed_out(provider)
-                    };
+                    return (
+                        AgentAccount {
+                            id,
+                            ..signed_out(provider)
+                        },
+                        None,
+                    );
                 }
             }
         }
@@ -292,31 +369,42 @@ fn identify(
     if let Some(home) = &home {
         accounts::run_on(&mut command, provider, home);
     }
-    let account = match provider {
+    let (account, quota) = match provider {
         AgentProvider::ClaudeCode => {
             command.args(["auth", "status", "--json"]);
             let deadline = Instant::now() + STATUS_TIMEOUT;
-            match crate::bounded_command::run_output_until(command, MAX_STATUS_BYTES, deadline) {
-                Ok(output) => claude_status(&output.stdout),
-                Err(error) => {
-                    log::info!(target: "zz::agent", "claude auth status: {error}");
-                    signed_out(provider)
-                }
-            }
+            let account =
+                match crate::bounded_command::run_output_until(command, MAX_STATUS_BYTES, deadline)
+                {
+                    Ok(output) => claude_status(&output.stdout),
+                    Err(error) => {
+                        log::info!(target: "zz::agent", "claude auth status: {error}");
+                        signed_out(provider)
+                    }
+                };
+            (account, None)
         }
         AgentProvider::Codex => match codex_account_read(command) {
-            Ok(result) => codex_account(&result),
+            Ok((result, limits)) => {
+                let account = codex_account(&result);
+                let quota = limits.filter(|_| account.signed_in).and_then(|limits| {
+                    crate::agent::codex::translate::rate_limits(&limits["rateLimits"])
+                });
+                (account, quota)
+            }
             Err(error) => {
                 log::info!(target: "zz::agent", "codex account/read: {error}");
-                signed_out(provider)
+                (signed_out(provider), None)
             }
         },
     };
-    AgentAccount { id, ..account }
+    (AgentAccount { id, ..account }, quota)
 }
 
 #[cfg(all(feature = "agent", unix))]
-fn codex_account_read(mut command: Command) -> Result<serde_json::Value, String> {
+fn codex_account_read(
+    mut command: Command,
+) -> Result<(serde_json::Value, Option<serde_json::Value>), String> {
     command
         .arg("app-server")
         .stdin(Stdio::piped())
@@ -325,14 +413,33 @@ fn codex_account_read(mut command: Command) -> Result<serde_json::Value, String>
     let mut child = command
         .spawn_unmasked()
         .map_err(|error| error.to_string())?;
-    let result = crate::agent_fork::codex_request(
+    let replies = crate::agent_fork::codex_requests(
         &mut child,
-        "account/read",
-        &serde_json::json!({ "refreshToken": false }),
+        &[
+            (
+                "account/read",
+                &serde_json::json!({ "refreshToken": false }),
+            ),
+            (
+                "account/rateLimits/read",
+                &serde_json::json!({ "excludeResetCreditDetails": true }),
+            ),
+        ],
         CODEX_REPLY,
     );
     stop(&mut child);
-    result
+    let mut replies = replies?.into_iter();
+    let account = replies
+        .next()
+        .unwrap_or_else(|| Err("no account/read answer".to_owned()))?;
+    let limits = replies.next().and_then(|limits| {
+        limits
+            .inspect_err(
+                |error| log::info!(target: "zz::agent", "codex account/rateLimits/read: {error}"),
+            )
+            .ok()
+    });
+    Ok((account, limits))
 }
 
 #[cfg(all(feature = "agent", unix))]

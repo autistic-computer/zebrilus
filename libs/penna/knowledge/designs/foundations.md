@@ -2094,6 +2094,7 @@ Parts (`penna::blocks::chat`):
 |---|---|---|
 | Composer | `Composer { input, leading, usage, action, attachments, command_hint, ask, secret, ground }` | the field; `ask` is the body it grows while the agent waits; `secret` hides what is typed; `ground` is the pane's ground under it, lit or veiled where the app lights its panes, and `composer_ground(ground, cx)` the ground its parts paint on |
 | Frame | `ChatComposer { composer, prefix, footer, controls }` | the field with what sits above and below it |
+| Context ring | `context_ring(fraction, color, cx)`, or `context_meter(id, fraction, tooltip, cx)` for `usage` | how much of the agent's context is used: a 16 ring 2 thick, the track in the neutral soft paint's pressed fill and the arc in `color` (`context_meter` takes the muted foreground and centers it in a 28 box with the tooltip); an app can put the ring in its own footer control instead of `usage` |
 | Header | `ask_header(icon, title, ground, cx)` with `ask_count` and `ask_step` at its end | what kind of approval this is, and which of several |
 | Question | `ask_question(question, ground, cx)` with `ask_count` or the `ask_step` pager at its end | a question, which is its own header |
 | Inset | `ask_body()` holding `ask_inset(cx)` and `ask_note(text, ground)` | what the agent wants to run or change, and where |

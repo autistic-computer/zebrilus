@@ -448,7 +448,7 @@ built:
   `MuxClient::execute_answered`, whose reply comes back to `AppView::flips`
   (`zz_client::agent_flip::AgentFlips`) instead of the error banner: a `busy:` reply shows Switch
   when idle and Switch now in the pane's top-right corner, and the pane's `PaneSummary.flip_armed`
-  shows an armed flip there with Cancel, on every client. The composer's account chip sends
+  shows an armed flip there with Cancel, on every client. The composer's usage pill sends
   `agent-account` through the same `AppView::flips` (`AgentAccountPicked` from the `AgentView`), so
   its `busy:` reply shows the same card there, without the two choices. See
   [agent panes](/concepts/agent-panes.md).

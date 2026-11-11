@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Context and account pill</title>
+<link rel="stylesheet" href="/penna/penna.css">
+<link rel="stylesheet" href="/penna-src/components/progress/progress.css">
+<link rel="stylesheet" href="/penna-src/blocks/chat/chat.css">
+<link rel="stylesheet" href="/zz.css">
+<script src="/penna/kit.js" data-tokens="/tokens/" data-themes="macos default yaru" data-theme="macos"></script>
+<style>
+  .zz-page { display: grid; gap: 48px; max-width: 1180px; margin: 0 auto; padding: 40px 32px 96px; }
+  .zz-page > section { display: grid; gap: 14px; min-width: 0; }
+  .zz-page h1 { margin: 0; font-size: var(--penna-text-title-size); line-height: var(--penna-text-title-line); font-weight: 600; }
+  .zz-page h2 { margin: 0; font-size: 15px; line-height: 20px; font-weight: 600; }
+  .zz-page p { margin: 0; max-width: 84ch; color: var(--penna-fg-muted); }
+
+  .zz-variants.penna-variants { padding: 0; }
+  .zz-variants > figure { min-width: 0; }
+  .zz-states.penna-variants { --penna-variant-width: 460px; }
+  .zz-menus.penna-variants { --penna-variant-width: 320px; align-items: stretch; }
+  .zz-menus > figure { grid-template-rows: 1fr auto; }
+  .zz-menus .zz-stage { justify-content: flex-end; }
+
+  .zz-stage { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; min-width: 0; padding: 20px; border-radius: 14px; background: color-mix(in srgb, var(--penna-fg) 3%, transparent); }
+  .zz-composer[data-penna="field.composer"] { align-items: center; width: 100%; min-height: 44px; }
+  .zz-composer > .zz-input { padding: 0 4px; font-size: 14px; line-height: 22px; }
+  .zz-plus[data-penna] { width: 28px; height: 28px; --penna-icon-size: 14px; }
+
+  .zz-foot { display: flex; align-items: center; justify-content: flex-end; gap: 4px; width: 100%; height: 28px; padding: 0 2px; }
+  .zz-pill[data-penna] { display: inline-flex; flex: none; align-items: center; gap: 6px; height: 24px; padding: 0 8px; font-size: var(--penna-text-small-size); line-height: var(--penna-text-small-line); color: var(--penna-muted); white-space: nowrap; --penna-icon-size: 12px; }
+  .zz-pill > [data-icon="chevron-down"] { --penna-icon-size: 10px; }
+  .zz-pill .zz-dim { color: var(--penna-muted); }
+  .zz-model[data-penna] { color: var(--penna-ink); }
+  .zz-num { font-variant-numeric: tabular-nums; }
+
+  .zz-pill > .penna-chat-meter { width: 16px; height: 16px; }
+  .zz-pill[data-tone="warning"] > .penna-chat-meter > span { background: conic-gradient(var(--penna-ink) calc(var(--penna-chat-used) * 1turn), rgb(from var(--penna-fg) r g b / 0.136) 0); }
+  .zz-pill[data-tone="warning"] { color: var(--penna-ink); }
+
+  .zz-panel[data-penna="popover"] { display: flex; flex-direction: column; width: 264px; max-width: 100%; padding: 6px; overflow: visible; }
+  .zz-group { display: flex; flex-direction: column; gap: var(--penna-space-2); }
+  .zz-panel > .penna-separator { margin: 6px -6px; }
+  .zz-panel [data-penna="menu-item"] { flex: none; height: 32px; gap: 8px; padding: 0 10px; --penna-icon-size: 12px; }
+  .zz-add > [data-icon], .zz-add > span { color: var(--penna-muted); }
+
+  .zz-account[data-penna="menu-item"] { height: 40px; }
+  .zz-who { display: flex; flex: 1; flex-direction: column; min-width: 0; }
+  .zz-who > b { overflow: hidden; font-weight: 500; text-overflow: ellipsis; }
+  .zz-who > span { overflow: hidden; font-size: var(--penna-text-caption-size); line-height: 14px; color: var(--penna-muted); text-overflow: ellipsis; }
+  .zz-account:not([data-current]) > [data-icon="check"] { visibility: hidden; }
+
+  .zz-pct { flex: none; min-width: 30px; text-align: right; font-variant-numeric: tabular-nums; }
+  .zz-pct[data-tone="warning"] { color: var(--penna-warning-ink); }
+  .zz-note { font-size: var(--penna-text-caption-size); line-height: var(--penna-text-caption-line); color: var(--penna-muted); white-space: nowrap; }
+
+  .zz-bars { display: flex; flex-direction: column; gap: 12px; padding: 8px 10px 6px; }
+  .zz-bar { display: flex; flex-direction: column; gap: 6px; }
+  .zz-bar-head { display: flex; align-items: baseline; gap: 4px; height: 16px; font-size: var(--penna-text-small-size); line-height: var(--penna-text-small-line); }
+  .zz-bar-head > .zz-note { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+</style>
+</head>
+<body>
+<main class="zz-page">
+  <div class="zz-intro">
+    <h1>Context and account pill</h1>
+  </div>
+
+  <section>
+    <h2>The pill in the composer footer</h2>
+    <div class="penna-variants zz-variants zz-states" data-states></div>
+  </section>
+
+  <section>
+    <h2>The open menu</h2>
+    <div class="penna-variants zz-variants zz-menus" data-menus></div>
+  </section>
+</main>
+<script>
+(() => {
+  const ring = (used) => `<span class="penna-chat-meter" style="--penna-chat-used: ${used}"><span></span></span>`;
+  const usage = (used, tone, open) =>
+    `<button class="zz-pill" type="button" ${tone ? `data-penna="chip" data-tone="${tone}"` : `data-penna="button.quiet"`}${open ? ` data-state="current"` : ""}>${ring((used ?? 0) / 100)}<span class="zz-num">${used == null ? "--" : `${used}%`}</span></button>`;
+  const model = `<button class="zz-pill zz-model" type="button" data-penna="button.quiet"><i data-icon="pencil" class="zz-dim"></i><span>Opus 5.5</span><span class="zz-dim">High</span><i data-icon="chevron-down" class="zz-dim"></i></button>`;
+  const foot = (used, tone, open) => `<div class="zz-foot">${usage(used, tone, open)}${model}</div>`;
+  const composer = `
+    <div class="zz-composer" data-penna="field.composer">
+      <button class="zz-plus" data-penna="icon-button"><i data-icon="plus"></i></button>
+      <div class="zz-input penna-muted">Message Claude Code...</div>
+      <button data-penna="button.send" data-prominent data-state="disabled"><i data-icon="arrow-up"></i></button>
+    </div>`;
+
+  const states = [
+    ["Normal", 42, null],
+    ["A limit at 80% or more", 42, "warning"],
+    ["A new chat", 0, null],
+    ["Not known until the next turn", null, null],
+  ];
+  document.querySelector("[data-states]").innerHTML = states
+    .map(([name, used, tone]) => `<figure><div class="zz-stage">${composer}${foot(used, tone, false)}</div><figcaption><b>${name}</b></figcaption></figure>`)
+    .join("");
+
+  const bars = (figures) => `<div class="zz-bars">${figures
+    .map(({ label, used, note }) => `
+      <div class="zz-bar">
+        <div class="zz-bar-head"><span>${label}</span><span class="zz-note">${note ? `· ${note}` : ""}</span><span class="zz-pct"${used >= 80 && label !== "Context" ? ` data-tone="warning"` : ""}>${used}%</span></div>
+        <div class="penna-progress" data-size="small" style="--penna-value: ${used}%"><div class="penna-progress-fill"></div></div>
+      </div>`)
+    .join("")}</div>`;
+
+  const accounts = [
+    ["me@example.com", "Max 20x", true],
+    ["sam.rivera@acme-robotics.example", "Team · Acme", false],
+  ];
+  const tail = `
+    <div class="penna-separator"></div>
+    <div class="zz-group">${accounts
+      .map(([email, plan, current]) => `<div class="zz-account" data-penna="menu-item"${current ? ` data-current data-state="selected"` : ""}><div class="zz-who"><b>${email}</b><span>${plan}</span></div><i data-icon="check"></i></div>`)
+      .join("")}</div>
+    <div class="penna-separator"></div>
+    <div class="zz-add" data-penna="menu-item"><i data-icon="plus"></i><span>Add account</span></div>`;
+
+  const context = { label: "Context", used: 42, note: "84k of 200k" };
+  const menus = [
+    ["Context and both limits", 42, null, [context, { label: "5-hour", used: 38, note: "resets in 2h 14m" }, { label: "Week", used: 61, note: "resets Thu" }]],
+    ["A limit at 80% or more", 42, "warning", [context, { label: "5-hour", used: 92, note: "resets in 14m" }, { label: "Week", used: 61, note: "resets Thu" }]],
+    ["No limits known yet", 42, null, [context]],
+    ["A new chat", 0, null, [{ label: "Context", used: 0, note: "" }, { label: "5-hour", used: 38, note: "resets in 2h 14m" }, { label: "Week", used: 61, note: "resets Thu" }]],
+  ];
+  document.querySelector("[data-menus]").innerHTML = menus
+    .map(([name, used, tone, figures]) => `<figure><div class="zz-stage"><div class="zz-panel" data-penna="popover">${bars(figures)}${tail}</div>${foot(used, tone, true)}</div><figcaption><b>${name}</b></figcaption></figure>`)
+    .join("");
+
+  window.pennaKit?.roundAll?.();
+})();
+</script>
+</body>
+</html>

@@ -729,8 +729,151 @@ pub fn context_usage_tooltip(used: u64, size: u64) -> String {
         "Context window usage unavailable".to_owned()
     } else {
         format!(
-            "{used} of {size} context tokens used ({:.0}%)",
-            context_usage_fraction(used, size) * 100.0
+            "{} context tokens used ({})",
+            context_usage_detail(used, size),
+            percent_label(context_usage_fraction(used, size))
         )
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ContextUsage {
+    Known { used: u64, size: u64 },
+    EmptyChat,
+    Unknown,
+}
+
+impl ContextUsage {
+    #[must_use]
+    pub fn reported(usage: Option<(u64, u64)>) -> Self {
+        match usage {
+            Some((used, size)) if size > 0 => Self::Known { used, size },
+            _ => Self::Unknown,
+        }
+    }
+
+    #[must_use]
+    pub const fn in_empty_chat(self) -> Self {
+        match self {
+            Self::Unknown => Self::EmptyChat,
+            known => known,
+        }
+    }
+
+    #[must_use]
+    pub fn fraction(self) -> f64 {
+        match self {
+            Self::Known { used, size } => context_usage_fraction(used, size),
+            Self::EmptyChat | Self::Unknown => 0.0,
+        }
+    }
+
+    #[must_use]
+    pub fn label(self) -> String {
+        match self {
+            Self::Known { .. } | Self::EmptyChat => percent_label(self.fraction()),
+            Self::Unknown => "--".to_owned(),
+        }
+    }
+
+    #[must_use]
+    pub fn tooltip(self) -> String {
+        match self {
+            Self::Known { used, size } => context_usage_tooltip(used, size),
+            Self::EmptyChat => "No context used yet".to_owned(),
+            Self::Unknown => "Context use shows after the next turn".to_owned(),
+        }
+    }
+}
+
+#[must_use]
+pub fn context_usage_detail(used: u64, size: u64) -> String {
+    format!("{} of {}", token_count(used), token_count(size))
+}
+
+#[must_use]
+pub fn token_count(tokens: u64) -> String {
+    match tokens {
+        0..1_000 => tokens.to_string(),
+        1_000..999_500 => format!("{}k", (tokens + 500) / 1_000),
+        _ => {
+            let tenths = (tokens + 50_000) / 100_000;
+            match tenths % 10 {
+                0 => format!("{}M", tenths / 10),
+                tenth => format!("{}.{tenth}M", tenths / 10),
+            }
+        }
+    }
+}
+
+#[must_use]
+pub fn percent_label(fraction: f64) -> String {
+    format!("{:.0}%", fraction.clamp(0.0, 1.0) * 100.0)
+}
+
+pub const QUOTA_WARNING: f32 = 0.8;
+
+#[must_use]
+pub fn quota_warns(quota: Option<&zz_protocol::QuotaWindows>) -> bool {
+    quota.is_some_and(|quota| {
+        [quota.five_hour, quota.week]
+            .into_iter()
+            .flatten()
+            .any(|window| window.used >= QUOTA_WARNING)
+    })
+}
+
+const WEEKDAYS: [&str; 7] = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+#[must_use]
+pub fn unix_now() -> u64 {
+    web_time::SystemTime::now()
+        .duration_since(web_time::UNIX_EPOCH)
+        .map_or(0, |since| since.as_secs())
+}
+
+#[must_use]
+pub fn quota_reset_detail(resets_at: Option<u64>, now: u64, utc_offset: i64) -> Option<String> {
+    let resets_at = resets_at.filter(|at| *at > now)?;
+    let left = resets_at - now;
+    if left < 86_400 {
+        let minutes = (left / 60).max(1);
+        return Some(match (minutes / 60, minutes % 60) {
+            (0, minutes) => format!("resets in {minutes}m"),
+            (hours, minutes) => format!("resets in {hours}h {minutes}m"),
+        });
+    }
+    let day = (resets_at as i64 + utc_offset).div_euclid(86_400);
+    Some(format!(
+        "resets {}",
+        WEEKDAYS[(day + 4).rem_euclid(7) as usize]
+    ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_reset_reads_as_hours_and_minutes_within_a_day_else_as_its_weekday() {
+        let at = 1_791_583_200;
+        assert_eq!(
+            quota_reset_detail(Some(at), at - 8_040, 0).as_deref(),
+            Some("resets in 2h 14m")
+        );
+        assert_eq!(
+            quota_reset_detail(Some(at), at - 840, 0).as_deref(),
+            Some("resets in 14m")
+        );
+        assert_eq!(
+            quota_reset_detail(Some(at), at - 3 * 86_400, 0).as_deref(),
+            Some("resets Fri")
+        );
+        assert_eq!(
+            quota_reset_detail(Some(at), at - 3 * 86_400, -86_400).as_deref(),
+            Some("resets Thu")
+        );
+        assert_eq!(quota_reset_detail(Some(at), at, 0), None);
+        assert_eq!(quota_reset_detail(None, at - 60, 0), None);
     }
 }

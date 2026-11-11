@@ -1322,6 +1322,22 @@ pub(crate) fn available_commands(
     json!({ "sessionUpdate": "available_commands_update", "availableCommands": commands })
 }
 
+pub(crate) fn rate_limits(frame: &Value) -> Option<zz_protocol::QuotaWindows> {
+    let windows = &frame["rate_limit_info"]["unifiedWindows"];
+    let window = |key: &str| {
+        let window = &windows[key];
+        Some(zz_protocol::QuotaWindow {
+            used: window["utilization"].as_f64()? as f32,
+            resets_at: window["resetsAt"].as_u64(),
+        })
+    };
+    let quota = zz_protocol::QuotaWindows {
+        five_hour: window("five_hour"),
+        week: window("seven_day"),
+    };
+    (!quota.is_empty()).then_some(quota)
+}
+
 #[cfg(test)]
 mod paste_tests {
     use super::without_paste_tags;
@@ -1390,6 +1406,34 @@ mod tests {
             .filter(|update| update["sessionUpdate"] == kind)
             .filter_map(|update| update["content"]["text"].as_str())
             .collect()
+    }
+
+    #[test]
+    fn a_rate_limit_event_gives_the_five_hour_and_week_windows() {
+        let quotas = fixture("steer.ndjson")
+            .iter()
+            .filter(|frame| frame["type"] == "rate_limit_event")
+            .map(rate_limits)
+            .collect::<Vec<_>>();
+        let window = |used, resets_at| {
+            Some(zz_protocol::QuotaWindow {
+                used,
+                resets_at: Some(resets_at),
+            })
+        };
+        assert_eq!(
+            quotas,
+            [
+                Some(zz_protocol::QuotaWindows {
+                    five_hour: window(0.07, 1_791_408_600),
+                    week: window(0.24, 1_791_583_200),
+                }),
+                Some(zz_protocol::QuotaWindows {
+                    five_hour: window(0.07, 1_791_408_600),
+                    week: window(0.25, 1_791_583_200),
+                }),
+            ]
+        );
     }
 
     #[test]

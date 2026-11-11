@@ -1,10 +1,10 @@
 ---
 type: Concept
 title: Agent panes and the flip
-description: How a pane runs Claude Code or Codex as a chat (PaneKind::Agent over the vendor drivers), how a chat and its window are named after the CLI's session title, how flip-agent switches one pane between the CLI's own TUI and that chat on the same session (busy rules, --now, --when-idle and the armed flag, finding the TUI's session, waiting for the old process), forks and side chats, accounts (a CLI login per pane through CLAUDE_CONFIG_DIR or CODEX_HOME, agent-account, and agent-accounts to list who is signed in and add one, and the composer chip that shows and switches it), Codex on its shared app server, the chat's slash list, agent-send and agent-respond, what the chat draws, the preview cards and the floating view pane they open, and how its stream reaches clients.
+description: How a pane runs Claude Code or Codex as a chat (PaneKind::Agent over the vendor drivers), how a chat and its window are named after the CLI's session title, how flip-agent switches one pane between the CLI's own TUI and that chat on the same session (busy rules, --now, --when-idle and the armed flag, finding the TUI's session, waiting for the old process), forks and side chats, accounts (a CLI login per pane through CLAUDE_CONFIG_DIR or CODEX_HOME, agent-account, and agent-accounts to list who is signed in and add one, the 5-hour and weekly rate limits each account reports, and the composer's usage pill that shows the context and those limits and switches the account), Codex on its shared app server, the chat's slash list, agent-send and agent-respond, what the chat draws, the preview cards and the floating view pane they open, and how its stream reaches clients.
 resource: crates/zz-daemon/src/daemon/agent_flip.rs
 tags: [agent, agent-pane, flip, chat, claude-code, codex, driver, stream]
-timestamp: 2026-11-10T00:00:00-03:00
+timestamp: 2026-11-11T00:00:00-03:00
 ---
 
 # Overview
@@ -212,8 +212,10 @@ picks a different Keychain item than leaving it unset. zz never reads or writes 
 - **`default`** means no account everywhere: `agent-account default` and `select-pane-kind
   --account default` both run the CLI's own login, and `valid_agent_account` refuses `default`, so
   a directory of that name is never listed, created or flipped into.
-- **In the chat.** The composer footer's account chip shows the account and switches it (see
-  [the footer](#the-empty-chat-and-the-footer)).
+- **In the chat.** The composer footer's usage pill shows the account's limits and switches the
+  account (see [the footer](#the-empty-chat-and-the-footer)).
+- **Rate limits.** What each account has used of its 5-hour and weekly limits; see
+  [below](#rate-limits).
 - **Not built yet.** Removing an account: a signed-out account directory is reused by the next add
   instead.
 
@@ -258,7 +260,44 @@ picks a different Keychain item than leaving it unset. zz never reads or writes 
   `CoreEvent::AgentAccountsChanged`. The desktop keeps one list per host beside the providers report
   (`MuxClient::host_agent_accounts`, `request_agent_accounts`, `add_agent_account`); zz-app reads the
   core (`Connection::request_agent_accounts`, `add_agent_account`, `switch_agent_account`). The
-  composer's account chip is their one reader.
+  composer's usage pill is their one reader.
+
+## Rate limits
+
+Quota belongs to an account, not a pane: up to two windows, the 5-hour one and the week, each a
+used fraction and a reset time (`QuotaWindows`, `QuotaWindow { used, resets_at }` in
+`zz_protocol::providers`). zz calls no usage endpoint and reads no token; it keeps what the CLIs
+emit or answer, in the daemon's memory only, one record per provider and account (`None` is the
+CLI's own login; `Accounts.quotas` in `daemon/accounts.rs`).
+
+- **Claude Code** writes `rate_limit_event` on its stream once per turn, with
+  `rate_limit_info.unifiedWindows.five_hour` and `seven_day`, each `utilization` (0 to 1) and
+  `resetsAt` (unix seconds); the driver reads both (`claude::translate::rate_limits`). Nothing
+  reports it while idle, so a Claude Code account's limits are known only after a turn on it since
+  the daemon started.
+- **Codex.** The account probe asks the same short app server for `account/rateLimits/read`
+  (`excludeResetCreditDetails: true`) after `account/read`, so the limits are known while idle and
+  come again with every `agent-accounts` call. A pane connection takes `account/rateLimits/updated`
+  too, which carries no `threadId` and fills in only what changed. The `rateLimits` snapshot's
+  `primary` and `secondary` windows are placed by `windowDurationMins`: 300 is the 5-hour window,
+  10080 the week, and any other length is left out (`codex::translate::rate_limits`); a snapshot
+  whose `limitId` is not `codex` is ignored. codex-cli 0.167.1 on a Pro login answered one
+  10080-minute `primary` window and a null `secondary`
+  (`agent/codex/fixtures/rate-limits-read.json`), so that account shows the week alone.
+- **From a pane.** A driver sends `AgentStreamPayload::QuotaChanged`, which the host keeps out of
+  the stream like `TitleChanged`: it merges it into the pane's state, the fanout hands a change to
+  the daemon (`AgentPublisher::publish_agent_quota`), and the daemon merges it into the record of
+  the pane's provider and account (`Shared::apply_agent_quota`). A window an update leaves out keeps
+  its last value; a probe answer replaces the record.
+- **To clients.** `EventPayload::AgentQuotas(Vec<AgentQuota { provider, account, windows }>)`,
+  gated by `agent-quotas-v1` ([wire protocol](/protocol/wire-protocol.md#adding-a-message-inside-an-epoch)),
+  goes to the `agent-accounts` watchers on every plain call and whenever a record changes, the
+  whole list each time. zz-client keeps it (`ClientCore::agent_quotas`) and raises
+  `CoreEvent::AgentAccountsChanged`; the desktop keeps one list per host beside the accounts
+  (`MuxClient::host_agent_quotas`). An older daemon never sends it and an older client never gets
+  it, so either side shows no limits. A client treats a window whose reset time has passed as
+  unknown (`agent_settings::account_quota`, given the time), with no meter and no warning tint,
+  since Claude Code can report one window a turn and leave the other's old value in the record.
 
 # Finding the TUI's session
 
@@ -407,48 +446,79 @@ the next chat starts in, and Resume, for a chat the CLI already has. Each opens 
   (`AppView::pane_folder`). The daemon's fanout sends the same folder to
   `Shared::apply_agent_folder`, which writes it into the pane's `AgentDescriptor` and publishes
   the snapshot, so the sidebar, the palette and a restart of the pane use the folder the chat
-  is in now, not the one the pane opened in. `AgentView` takes the snapshot's folder for its
-  pane whenever that changes (`AgentController::move_pane`), so a view built before the
-  snapshot named the pane does not stay on `/`.
+  is in now, not the one the pane opened in. `AgentView` takes the descriptor's folder for its
+  pane whenever the snapshot changes it (`AgentController::move_pane`). The daemon looks up an
+  agent pane's summary folder, repo and branch from that folder too, so a chat opened in a
+  terminal pane drops the terminal's folder.
 - **The footer.** The folder chip and the side chat button are gone: the header pill shows the
-  folder, and `/side` opens a side chat. What is left is the branch summary on the left and three
+  folder, and `/side` opens a side chat. What is left is the branch summary on the left and two
   controls on the right (`zz_ui::agent::controls`):
-  - `agent_account_chip`: the [account](#accounts) the pane runs on, as its email
-    (`agent_settings::account_label`), or "Default" when the CLI's own login has no known email, or
-    the id when a named account is not in the list; an email longer than 180px ends in an
-    ellipsis. It is hidden until the host's first `agent-accounts` list arrives; a chat asks for
-    one when it mounts if there is none, and the chip asks again every time it is clicked, which
-    is how a finished login shows up. Its popover lists the pane provider's accounts as 40px rows
-    (penna's `suggestion_row`): the email over the plan and organization (`account_detail`:
-    `max_20x` reads Max 20x), or Signed out for a default that is not signed in, the current one
-    picked and checked. Picking another sends `agent-account -t %N <id|default>` through
-    `zz_client::agent_flip::AgentFlips::switch_account`, the flip's own request tracking: a `busy:`
-    answer shows the flip's busy card over the pane with "Wait for ..., then pick the account
-    again." and only its close button (`Flip::AccountBusy`, `pane::pane_account_busy`), and any
-    other error, the missing-directory one included, becomes a notification that starts with
-    `agent-account:`. Add account sends `agent-accounts --add` for the pane's provider. Both close
-    the popover.
-  - `agent_mode_chip`: the driver's `mode` option, the permissions the CLI runs with. A click or
-    Shift-Tab steps to the next mode (`LensSettings::next_mode`). `agent_settings::mode_risk` gives
-    it a tone, and the send button takes the same one: none while the agent asks first (Claude's
-    Ask, Codex's Auto), success when it cannot write (Plan, Read only), warning when it acts
-    without asking (Accept edits, Claude's Auto), danger with nothing guarding it (Bypass
-    permissions, Full access). Claude Code always offers Bypass permissions; the driver starts the
-    CLI with `--allow-dangerously-skip-permissions` unless its command already has that flag or
-    `--dangerously-skip-permissions`, since without one the CLI refuses to switch a running
-    session to it.
-  - `agent_model_picker`: a popover over the footer. The button names the model by its choice's
-    display name (`LensSettings::model_label`), the raw value only when no choice matches. On top
-    every model the driver lists, in its order, a check on the current one, in one list six rows
-    tall that scrolls and opens with the current model in view. Under a rule the efforts as
-    penna's `StepRail`, one horizontal rail with a dot per step that sets the effort when the knob
-    is let go. Claude's first effort is `default`, so its first step is a ring
-    (`effort_starts_unset`).
-- **Where.** The desktop has all of it. Web, iPad and iPhone have the footer, the account chip
-  included, but not the menus yet, and the HTML client has neither. The storybook's Agent story
-  shows the menus (Empty chat: at rest, each menu open, searching, loading and Nothing matches) and
-  the controls (Composer controls, with the account chip on the CLI's own login, two accounts with
-  the second picked, and a signed-out default).
+  - `agent_usage_pill`: penna's context ring at 16 px (`chat::context_ring`), centred on the cap
+    height of the context's percentage beside it (`42%`, tabular figures), muted, in the same
+    `chrome_button` as the picker. What it shows is a `zz_client::agent_timeline::ContextUsage`:
+    known, the fill and its percentage; a chat with nothing in it yet (no turns), the empty ring
+    and `0%`; a chat whose use is not known yet (a resumed chat before its first turn), the empty
+    ring and `--` in the same muted text. When the
+    5-hour window or the week of the pane's [account](#accounts) is at 80% or more
+    (`QUOTA_WARNING`), the pill takes the warning soft paint and the ring's arc that paint's ink;
+    the number stays the context's. Its tooltip is the context sentence ("84k of 200k context
+    tokens used (42%)"), "No context used yet" in an empty chat, or "Context use shows after the
+    next turn". It shows whenever the footer controls do, before the first
+    `agent-accounts` list arrives and while a question is open; a chat asks for the list when it
+    mounts if there is none, and the pill asks again every time it is clicked, which is how a
+    finished login shows up. The input row no longer draws the ring (`Composer.usage` stays in
+    penna and is left empty). Its popover is 264px wide, 6px in, with no headings:
+    - Up to three meters from one builder (`usage_meter`): the label, a muted detail after a middle
+      dot and the percentage at the end, over penna's small `Progress` bar. Context reads `84k of
+      200k` when the use is known, shows no detail, 0% and an empty bar in an empty chat, and is
+      left out while the use is unknown; 5-hour and Week read `resets in 2h 14m` (or `resets
+      in 14m`) when the reset is under a day away, `resets Thu` (the local weekday) otherwise, and
+      nothing when it is past or unknown (`zz_client::agent_timeline::quota_reset_detail`), and
+      show when the account's [limits](#rate-limits) are known. A window at 80% or more draws its
+      percentage in the warning ink. With no meter, the meters and their rule are left out.
+    - Under a rule, the pane provider's accounts as 40px rows (penna's `suggestion_row`): the
+      email over the plan and organization (`account_detail`: `max_20x` reads Max 20x), or Signed
+      out for a default that is not signed in, the current one picked and checked, the theme's row
+      gap apart. Picking another sends `agent-account -t %N <id|default>` through
+      `zz_client::agent_flip::AgentFlips::switch_account`, the flip's own request tracking: a
+      `busy:` answer shows the flip's busy card over the pane with "Wait for ..., then pick the
+      account again." and only its close button (`Flip::AccountBusy`, `pane::pane_account_busy`),
+      and any other error, the missing-directory one included, becomes a notification that starts
+      with `agent-account:`.
+    - Under a rule, Add account sends `agent-accounts --add` for the pane's provider. Both close
+      the popover.
+  - `agent_model_picker`: a popover over the footer, the model, its effort and the permissions in
+    one menu. The button shows the permission mode's glyph in its tone (`mode_glyph`, centred on
+    the label's cap height), then the model by its choice's display name
+    (`LensSettings::model_label`, the raw value only when no choice matches), then the effort. The
+    menu's sections, each under a rule: every model the driver lists, in its order, a check on the
+    current one, in one list six rows tall that scrolls and opens with the current model in view;
+    the efforts as penna's `StepRail`, one horizontal rail with a dot per step that sets the effort
+    when the knob is let go (Claude's first effort is `default`, so its first step is a ring,
+    `effort_starts_unset`); then Permissions, the driver's `mode` option, the permissions the CLI
+    runs with, one row per mode with a check on the current one. Model and permission rows sit the
+    theme's row gap apart (`Theme::row_gap`, 2px in an inset list), so two highlights never touch.
+    Shift-Tab in the composer steps to the next mode (`LensSettings::next_mode`).
+    The glyph is the mode's own (`mode_icon`, by provider and mode value): a raised hand for
+    Claude's Ask, a pencil for Accept edits and Codex's Auto (it edits the workspace without
+    asking), a folded map for Plan, a bolt for Claude's Auto (the agent decides when to ask), a
+    struck-through shield for Bypass permissions and Full access, and an eye for Read only; a mode
+    the table lacks falls back by its risk (hand, eye, bolt, struck-through shield).
+    `agent_settings::mode_risk` gives the glyph its tone: none while the agent asks first
+    (Claude's Ask, Codex's Auto), success when it cannot write (Plan, Read only), warning when it
+    acts without asking (Accept edits, Claude's Auto), danger with nothing guarding it (Bypass
+    permissions, Full access). The send button draws the same in every mode. Claude Code always offers Bypass
+    permissions; the driver starts the CLI with `--allow-dangerously-skip-permissions` unless its
+    command already has that flag or `--dangerously-skip-permissions`, since without one the CLI
+    refuses to switch a running session to it.
+- **Where.** The desktop has all of it. Web, iPad and iPhone have the footer, the usage pill
+  included, but not the empty chat's menus yet, and the HTML client has neither. The storybook's
+  Agent story shows the menus (Empty chat: at rest, each menu open, searching, loading and Nothing
+  matches) and the controls (Composer controls: the pill in a new chat, at each context fill and before
+  the use is known, a model pill per Claude Code mode and per Codex mode, then the footer as
+  usual, in a new chat, before the use is known, with a 5-hour window at 92%,
+  with an account that has no limits yet, with two accounts and the second picked, and with a
+  signed-out default).
 
 # References in the chat
 

@@ -42,7 +42,7 @@ pub use composer::{
     COMPOSER_BUTTON, COMPOSER_FOOTER_HEIGHT, COMPOSER_HEIGHT, COMPOSER_INSET, COMPOSER_MAX_WIDTH,
     COMPOSER_OUTER_PADDING, COMPOSER_SECTION_GAP, ChatComposer, Composer, ComposerAction,
     chrome_button, composer_action_button, composer_add_button, composer_ground, context_meter,
-    queue_chip,
+    context_ring, queue_chip,
 };
 pub use figure::{DiagramPaint, diagram_paint};
 pub use message::{

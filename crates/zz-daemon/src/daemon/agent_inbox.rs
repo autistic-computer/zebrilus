@@ -76,6 +76,10 @@ impl AgentInbox {
                     shared.apply_agent_folder(pane, cwd);
                     None
                 }
+                Payload::Quota(quota) => {
+                    shared.apply_agent_quota(pane, quota);
+                    None
+                }
                 Payload::ToolCall(call) => shared.agent_tool_call_event(pane, call),
                 Payload::Reply(reply) => {
                     shared.send_agent_reply(pane, reply);

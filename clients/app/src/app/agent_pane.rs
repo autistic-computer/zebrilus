@@ -43,8 +43,8 @@ use zz_ui::{
         chat::{ChatHost, ChatLook, ChatPane, chat_surface, shows_chat},
         composer_attachment,
         controls::{
-            AccountAction, ComposerAction, agent_account_chip, agent_mode_chip, agent_model_picker,
-            composer_action, composer_action_button, context_usage_meter, git_summary_footer,
+            AccountAction, ComposerAction, ContextUsage, UsagePill, agent_model_picker,
+            agent_usage_pill, composer_action, composer_action_button, git_summary_footer,
         },
         presentation::{agent_welcome, error_card},
         preview::ViewRequest,
@@ -92,7 +92,7 @@ impl AgentPane {
                 zz_protocol::PaneKindSnapshot::Agent(zz_protocol::AgentDescriptor {
                     cwd: Some(cwd),
                     ..
-                }) if pane.summary.cwd.is_empty() => cwd.to_string_lossy().into_owned(),
+                }) => cwd.to_string_lossy().into_owned(),
                 _ => pane.summary.cwd.clone(),
             })
             .unwrap_or_default()
@@ -154,17 +154,27 @@ impl AgentPane {
         backend.activate(target.host, place, cx);
     }
 
-    fn account_chip(&self, enabled: bool, cx: &mut Context<Self>) -> Option<AnyElement> {
+    fn usage_pill(&self, enabled: bool, cx: &mut Context<Self>) -> Option<AnyElement> {
         let provider = self.provider(cx)?;
         let pane = self.pane;
         let connection = self.connection.clone();
         let read = self.connection.read(cx);
-        agent_account_chip(
+        let context = ContextUsage::reported(self.usage);
+        let context = if shows_chat(&self.transcript.lens.chat) {
+            context
+        } else {
+            context.in_empty_chat()
+        };
+        Some(agent_usage_pill(
             ("agent-account", pane.0),
-            provider,
-            agent_settings::pane_account(read.core.snapshot(), pane),
-            read.core.agent_accounts(),
-            enabled,
+            &UsagePill {
+                provider,
+                account: agent_settings::pane_account(read.core.snapshot(), pane),
+                accounts: read.core.agent_accounts(),
+                quotas: read.core.agent_quotas(),
+                context,
+                enabled,
+            },
             move |action, _, cx| {
                 connection.update(cx, |connection, cx| match action {
                     AccountAction::Refresh => connection.request_agent_accounts(cx),
@@ -175,7 +185,7 @@ impl AgentPane {
                 });
             },
             cx,
-        )
+        ))
     }
 
     fn harness_controls(
@@ -184,7 +194,7 @@ impl AgentPane {
         enabled: bool,
         cx: &mut Context<Self>,
     ) -> Vec<AnyElement> {
-        let account = self.account_chip(enabled, cx);
+        let account = self.usage_pill(enabled, cx);
         let Some(settings) = self.lens_settings(state) else {
             return account.into_iter().collect();
         };
@@ -202,25 +212,15 @@ impl AgentPane {
                 );
             });
         };
-        let mode = self.provider(cx).and_then(|provider| {
-            let pick = pick.clone();
-            agent_mode_chip(
-                ("agent-mode", self.pane.0),
-                provider,
-                &settings,
-                enabled,
-                move |value, window, cx| pick(agent_settings::MODE, value, window, cx),
-                cx,
-            )
-        });
         let picker = agent_model_picker(
             ("agent-settings", self.pane.0),
+            self.provider(cx),
             &settings,
             enabled,
             pick,
             cx,
         );
-        account.into_iter().chain(mode).chain([picker]).collect()
+        account.into_iter().chain([picker]).collect()
     }
 
     fn fork_from(&mut self, item: &str, cx: &mut Context<Self>) {
@@ -1439,9 +1439,6 @@ impl Render for AgentPane {
                 .on_click(cx.listener(|this, _, window, cx| this.submit(window, cx)))
                 .into_any_element()
         };
-        let usage = self.usage.map(|(used, size)| {
-            context_usage_meter(("agent-context-usage", self.pane.0), used, size, cx)
-        });
         let watch_only = self.connection.read(cx).agent_watch_only(self.pane);
         let composer = if watch_only {
             div()
@@ -1520,7 +1517,7 @@ impl Render for AgentPane {
                     Composer {
                         input: self.input.clone(),
                         leading: Some(add),
-                        usage,
+                        usage: None,
                         action,
                         attachments,
                         command_hint,

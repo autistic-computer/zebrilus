@@ -6,7 +6,7 @@ use std::{
     },
 };
 
-use zz_protocol::{AgentPaneWire, ClientId, PaneId};
+use zz_protocol::{AgentPaneWire, ClientId, PaneId, QuotaWindows};
 
 use super::AcceptWake;
 use crate::agent::fanout::{AgentPublisher, AgentRequestReply, AgentToolCall};
@@ -48,6 +48,7 @@ pub(super) enum Payload {
     },
     State(AgentPaneWire),
     Folder(PathBuf),
+    Quota(QuotaWindows),
     ToolCall(AgentToolCall),
     Reply(AgentRequestReply),
 }
@@ -144,6 +145,10 @@ impl AgentPublisher for Publisher {
 
     fn publish_agent_folder(&self, generation: u64, pane: PaneId, cwd: PathBuf) {
         self.post(generation, pane, Payload::Folder(cwd));
+    }
+
+    fn publish_agent_quota(&self, generation: u64, pane: PaneId, quota: QuotaWindows) {
+        self.post(generation, pane, Payload::Quota(quota));
     }
 
     fn publish_agent_tool_call(&self, generation: u64, pane: PaneId, call: AgentToolCall) {

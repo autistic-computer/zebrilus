@@ -74,6 +74,39 @@ pub struct AgentAccount {
     pub plan: Option<String>,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct QuotaWindow {
+    pub used: f32,
+    pub resets_at: Option<u64>,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct QuotaWindows {
+    pub five_hour: Option<QuotaWindow>,
+    pub week: Option<QuotaWindow>,
+}
+
+impl QuotaWindows {
+    #[must_use]
+    pub const fn is_empty(&self) -> bool {
+        self.five_hour.is_none() && self.week.is_none()
+    }
+
+    pub fn merge(&mut self, update: Self) -> bool {
+        let before = *self;
+        self.five_hour = update.five_hour.or(self.five_hour);
+        self.week = update.week.or(self.week);
+        *self != before
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct AgentQuota {
+    pub provider: AgentProvider,
+    pub account: Option<String>,
+    pub windows: QuotaWindows,
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ProviderTask {
     #[default]

@@ -238,6 +238,16 @@ pub(crate) fn codex_request(
     params: &Value,
     wait: Duration,
 ) -> Result<Value, String> {
+    codex_requests(child, &[(method, params)], wait)?
+        .pop()
+        .unwrap_or_else(|| Err("no request".to_owned()))
+}
+
+pub(crate) fn codex_requests(
+    child: &mut Child,
+    requests: &[(&str, &Value)],
+    wait: Duration,
+) -> Result<Vec<Result<Value, String>>, String> {
     let mut input = child.stdin.take().ok_or("no stdin")?;
     let output = child.stdout.take().ok_or("no stdout")?;
     let (sender, replies) = mpsc::channel();
@@ -276,8 +286,12 @@ pub(crate) fn codex_request(
     }))?;
     reply(1)?;
     send(json!({ "method": "initialized" }))?;
-    send(json!({ "id": 2, "method": method, "params": params }))?;
-    reply(2)
+    let mut results = Vec::with_capacity(requests.len());
+    for (id, (method, params)) in (2_u64..).zip(requests) {
+        send(json!({ "id": id, "method": method, "params": params }))?;
+        results.push(reply(id));
+    }
+    Ok(results)
 }
 
 #[cfg(test)]

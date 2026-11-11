@@ -4,7 +4,7 @@ title: zz wire protocol (v123)
 description: The versioned, little-endian length-prefixed, postcard-encoded control protocol whose ProtocolMessage enum carries the entire client/daemon conversation over local IPC or an SSH tunnel.
 resource: crates/zz-protocol/src/framing.rs
 tags: [protocol, wire, framing, postcard, versioning]
-timestamp: 2026-11-10T00:00:00-03:00
+timestamp: 2026-11-11T00:00:00-03:00
 ---
 
 # Overview
@@ -53,7 +53,8 @@ was not built with. The capability rule makes sure it never receives one. Each t
 names the capability its receiver must have, in `ProtocolMessage::required_capability` and
 `EventPayload::required_capability` (`crates/zz-protocol/src/message.rs`). Both are exhaustive
 matches with no wildcard arm, so a new variant does not compile until it answers.
-`ProtocolMessage::Event` answers with its payload's. Every variant shipped at v123 answers `None`.
+`ProtocolMessage::Event` answers with its payload's. Every variant shipped at v123 answers `None`;
+`EventPayload::AgentQuotas`, added inside it, answers `agent-quotas-v1`.
 
 The names live in two tables in `crates/zz-protocol/src/control.rs`, append-only inside an epoch:
 
@@ -64,7 +65,7 @@ The names live in two tables in `crates/zz-protocol/src/control.rs`, append-only
 - `CLIENT_CAPABILITY_NAMES` is what a client can decode. Every client built from this source
   appends all of them to `ClientHello.capabilities`: `connect_stream_hello` in `zz-daemon-client`,
   `browser::hello` in the browser client, `hello` in the HTML client. A message the daemon sends
-  names one of these. It is empty at v123.
+  names one of these. It holds `agent-quotas-v1` (`AGENT_QUOTAS_CAPABILITY`).
 
 The sender checks, so the receiver never sees what it cannot decode:
 
@@ -383,6 +384,16 @@ offset: u32, columns: u16, rows: Vec<Vec<PackedCell>>, dictionary: TerminalDicti
 `KittyImagesRemoved { pane, image_ids }`,
 `StartupConfigCauses { causes: Vec<String> }`, and
 `ControlCommandOutput { output: String }`.
+
+`AgentQuotas(Vec<AgentQuota>)` is appended inside v123 and gated by `agent-quotas-v1`. Each
+`AgentQuota { provider, account, windows: QuotaWindows { five_hour, week } }` is what one account
+of one CLI has used of its rate limits: `account: None` is the CLI's own login, and each window is
+`QuotaWindow { used: f32, resets_at: Option<u64> }`, `used` from 0 to 1 and `resets_at` in unix
+seconds. The daemon sends the whole list to the `agent-accounts` watchers on every plain call and
+whenever a record changes, and only records with a window. A client without the name never gets
+it, and a daemon without it never sends it, so either side shows no limits
+([rate limits](/concepts/agent-panes.md#rate-limits)). `AgentStreamPayload::QuotaChanged`, which
+the drivers send their host, never leaves the daemon.
 
 The agent lane added at v53 carries four more: `AgentUpdates { pane, first_seq: u64, items: Vec<Vec<u8>> }`
 carries one coalesced batch of JSON agent stream items numbered by the pane's fanout lane

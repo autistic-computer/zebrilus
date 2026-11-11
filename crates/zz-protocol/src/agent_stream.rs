@@ -131,6 +131,9 @@ pub enum AgentStreamPayload {
     TitleChanged {
         title: Option<String>,
     },
+    QuotaChanged {
+        quota: crate::QuotaWindows,
+    },
 }
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq, Serialize)]

@@ -16,7 +16,7 @@ use zz_protocol::ClientInstanceId;
 use zz_protocol::agent_stream::agent_verb;
 use zz_protocol::{
     AgentAutoApprove, AgentGitSummary, AgentProvider, AgentQuestionAnswer, AgentTaskWire, ClientId,
-    MAX_AGENT_PROMPT_BYTES, MAX_AGENT_QUEUED_PROMPTS, MAX_AGENT_TASKS, PaneId,
+    MAX_AGENT_PROMPT_BYTES, MAX_AGENT_QUEUED_PROMPTS, MAX_AGENT_TASKS, PaneId, QuotaWindows,
 };
 
 use crate::agent::{
@@ -289,6 +289,7 @@ pub(crate) struct AgentPaneState {
     pub(crate) git: Option<AgentGitSummary>,
     pub(crate) tasks: Vec<AgentTaskWire>,
     pub(crate) title: Option<String>,
+    pub(crate) quota: QuotaWindows,
 }
 
 impl AgentPaneState {
@@ -308,6 +309,7 @@ impl AgentPaneState {
             git: None,
             tasks: Vec::new(),
             title: None,
+            quota: QuotaWindows::default(),
         }
     }
 
@@ -1089,6 +1091,17 @@ impl PanePump {
             (self.sink)(self.pane, self.generation, state, None);
             return;
         }
+        if let AgentStreamPayload::QuotaChanged { quota } = payload {
+            let state = {
+                let mut state = self.state.lock();
+                if !state.quota.merge(quota) {
+                    return;
+                }
+                state.clone()
+            };
+            (self.sink)(self.pane, self.generation, state, None);
+            return;
+        }
         if let AgentStreamPayload::PromptFinished { turn_id, .. } = &payload
             && self.active_turn != Some(*turn_id)
         {
@@ -1293,7 +1306,8 @@ impl PanePump {
                 | AgentStreamPayload::PromptsReclaimed { .. }
                 | AgentStreamPayload::PromptsRestored { .. }
                 | AgentStreamPayload::Chat { .. }
-                | AgentStreamPayload::TitleChanged { .. } => {}
+                | AgentStreamPayload::TitleChanged { .. }
+                | AgentStreamPayload::QuotaChanged { .. } => {}
             }
         }
         let permission = if turn_result.is_none()

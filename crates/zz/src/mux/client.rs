@@ -938,6 +938,7 @@ struct HostConnection {
     providers: Option<zz_protocol::ProvidersReport>,
     providers_requested: bool,
     agent_accounts: Option<Vec<zz_protocol::AgentAccount>>,
+    agent_quotas: Vec<zz_protocol::AgentQuota>,
     platform: zz_protocol::HostPlatform,
 }
 
@@ -972,6 +973,7 @@ impl HostConnection {
             providers: None,
             providers_requested: false,
             agent_accounts: None,
+            agent_quotas: Vec::new(),
             platform: zz_protocol::HostPlatform::Unknown,
         }
     }
@@ -1056,6 +1058,7 @@ impl HostConnection {
             providers: None,
             providers_requested: false,
             agent_accounts: None,
+            agent_quotas: Vec::new(),
             platform,
         })
     }
@@ -3463,6 +3466,12 @@ impl MuxClient {
         self.connections.get(&host)?.agent_accounts.as_deref()
     }
 
+    pub(crate) fn host_agent_quotas(&self, host: HostId) -> &[zz_protocol::AgentQuota] {
+        self.connections
+            .get(&host)
+            .map_or(&[], |connection| &connection.agent_quotas)
+    }
+
     pub(crate) fn request_agent_accounts(&self, host: HostId) {
         self.execute_on_host(
             host,
@@ -4422,6 +4431,16 @@ impl MuxClient {
             }) => {
                 if let Some(connection) = self.connections.get_mut(&host) {
                     connection.agent_accounts = Some(accounts);
+                }
+                cx.notify();
+                return;
+            }
+            ProtocolMessage::Event(Event {
+                payload: EventPayload::AgentQuotas(quotas),
+                ..
+            }) => {
+                if let Some(connection) = self.connections.get_mut(&host) {
+                    connection.agent_quotas = quotas;
                 }
                 cx.notify();
                 return;

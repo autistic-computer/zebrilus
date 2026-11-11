@@ -9,7 +9,7 @@ use zz_ui::target::{RefTarget, ResolvedTarget};
 
 use crate::command::palette::palette_backend;
 use zz_ui::agent::controls::{
-    AccountAction, agent_account_chip, agent_mode_chip, agent_model_picker,
+    AccountAction, ContextUsage, UsagePill, agent_model_picker, agent_usage_pill,
 };
 
 use super::{AgentAccountPicked, AgentPaneState, AgentView};
@@ -73,12 +73,27 @@ impl AgentView {
         cx: &mut ala::App,
     ) -> Vec<AnyElement> {
         let enabled = state.connection.accepts_setting();
-        let account = agent_account_chip(
+        let context = ContextUsage::reported(state.usage);
+        let context = if self
+            .controller
+            .read(cx)
+            .pane_chat(self.pane)
+            .is_some_and(zz_ui::agent::chat::shows_chat)
+        {
+            context
+        } else {
+            context.in_empty_chat()
+        };
+        let account = agent_usage_pill(
             ("agent-account", self.pane.0),
-            state.provider,
-            self.account.as_deref(),
-            self.accounts.as_deref(),
-            enabled,
+            &UsagePill {
+                provider: state.provider,
+                account: self.account.as_deref(),
+                accounts: self.accounts.as_deref(),
+                quotas: &self.quotas,
+                context,
+                enabled,
+            },
             {
                 let mux = self.mux.clone();
                 let view = view.downgrade();
@@ -101,7 +116,7 @@ impl AgentView {
             cx,
         );
         let Some(settings) = state.settings.as_ref() else {
-            return account.into_iter().collect();
+            return vec![account];
         };
         let pick = {
             let controller = self.controller.clone();
@@ -112,20 +127,15 @@ impl AgentView {
                 });
             }
         };
-        let mode = agent_mode_chip(
-            ("agent-mode", self.pane.0),
-            state.provider,
+        let picker = agent_model_picker(
+            ("agent-settings", self.pane.0),
+            Some(state.provider),
             settings,
             enabled,
-            {
-                let pick = pick.clone();
-                move |value, window, cx| pick(agent_settings::MODE, value, window, cx)
-            },
+            pick,
             cx,
         );
-        let picker =
-            agent_model_picker(("agent-settings", self.pane.0), settings, enabled, pick, cx);
-        account.into_iter().chain(mode).chain([picker]).collect()
+        vec![account, picker]
     }
 
     pub(super) fn chat_cwd(&self) -> String {

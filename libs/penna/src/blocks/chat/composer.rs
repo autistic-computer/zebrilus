@@ -1,7 +1,7 @@
 use std::f32::consts::PI;
 
 use ala::{
-    AnyElement, App, ElementId, Entity, Focusable as _, IntoElement, PathBuilder, Pixels,
+    AnyElement, App, ElementId, Entity, Focusable as _, Hsla, IntoElement, PathBuilder, Pixels,
     RenderOnce, Role, SharedString, Window, canvas, div, point, prelude::*, px,
 };
 
@@ -305,12 +305,31 @@ pub fn context_meter(
 ) -> AnyElement {
     let progress = fraction.clamp(0.0, 1.0);
     let tooltip = tooltip.into();
+    let ring = context_ring(progress, cx.theme().foreground.muted(), cx);
+    let aria_value = format!("{:.0}%", f64::from(progress) * 100.0);
+    let hover_tooltip = tooltip.clone();
+    div()
+        .id(id)
+        .role(Role::ProgressIndicator)
+        .aria_label(tooltip)
+        .aria_value(aria_value)
+        .flex()
+        .flex_none()
+        .size(px(COMPOSER_BUTTON))
+        .items_center()
+        .justify_center()
+        .tooltip(move |window, cx| Tooltip::new(hover_tooltip.clone()).build(window, cx))
+        .child(ring)
+        .into_any_element()
+}
+
+pub fn context_ring(fraction: f32, progress_color: Hsla, cx: &App) -> impl IntoElement + use<> {
+    let progress = fraction.clamp(0.0, 1.0);
     let track_color = cx
         .theme()
         .paint(Tone::Neutral, Emphasis::Soft)
         .fill_at(PaintState::Active);
-    let progress_color = cx.theme().foreground.muted();
-    let ring = canvas(
+    canvas(
         |_, _, _| (),
         move |bounds, (), window, _| {
             let stroke = px(CONTEXT_STROKE_WIDTH);
@@ -365,20 +384,6 @@ pub fn context_meter(
             }
         },
     )
-    .size(px(CONTEXT_RING_SIZE));
-    let aria_value = format!("{:.0}%", f64::from(progress) * 100.0);
-    let hover_tooltip = tooltip.clone();
-    div()
-        .id(id)
-        .role(Role::ProgressIndicator)
-        .aria_label(tooltip)
-        .aria_value(aria_value)
-        .flex()
-        .flex_none()
-        .size(px(COMPOSER_BUTTON))
-        .items_center()
-        .justify_center()
-        .tooltip(move |window, cx| Tooltip::new(hover_tooltip.clone()).build(window, cx))
-        .child(ring)
-        .into_any_element()
+    .flex_none()
+    .size(px(CONTEXT_RING_SIZE))
 }
