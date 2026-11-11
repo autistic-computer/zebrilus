@@ -83,7 +83,7 @@ Insets, set by the container:
 | `inset-page` | 32 | document pages |
 | row inset | theme | lists and menus around their rows: `theme.row_inset`, 6, at the sides; a menu pads its rows by it on every side |
 
-Rows in a plain list (row inset 0) touch: their height keeps the rhythm. In an inset list (`theme.inset_rows()`, a row inset above 0, as in the look) rows sit `space-2` apart, so their rounded highlights never merge: menus, select lists, settings navigation and the touch which-key list. `list_inset` sets both the side inset and that gap. The docs navigation keeps its rows `space-2` apart in every theme.
+Rows in a plain list (row inset 0) touch: their height keeps the rhythm. In an inset list (`theme.inset_rows()`, a row inset above 0, as in the look) rows sit `space-2` apart, so their rounded highlights never merge: menus, select lists, settings navigation and the touch which-key list. `list_inset` sets both the side inset and that gap; `theme.row_gap()` is the gap alone, for a list whose sides are padded some other way. The docs navigation keeps its rows `space-2` apart in every theme.
 
 Components take every padding, gap and margin from `Space` (built in step 6), so spacing scales with the rem like type does. Settings pages are a pane (`inset-pane` 16 around the page, `gap-group` 16 between groups); a settings row is inside a card (`inset-card` 12 all round, title and description `gap-tight` 4 apart). Dialogs are panes too (`inset-pane` 16). Sidebar sections are `gap-group` 16 apart. Which-key's columns and lines are `gap-group` 16 apart inside an `inset-card` sheet. What stays in pixels: drawing geometry inside a fixed-size picture (Appearance's theme miniatures), focus halos and swatch rings that feed radius math, window snap margins, and the sidebar title bar's insets, alignment geometry computed from the rows' action column (and the traffic lights on macOS) so the window's buttons line up over the rows.
 
@@ -343,7 +343,7 @@ Rules:
 5. State is said in words and a tone dot, never by look alone (Rules 8).
 6. Text is `touch-body` 17 by default and `touch-small` 15 for details. Nothing is under 13 (`body`).
 
-Press and hold: holding a tile, or a section header that heads a group of tiles, opens a sheet (Sheet) of what can be done to that thing, titled with its name: one-line touch rows, each a 20 glyph and a verb, the plain actions first and the one that destroys or removes last in `danger` ink. The rule is one for every tile, whatever it holds, so nothing that acts on a tile ever sits inside it (rule 1). A tap still goes in. A header that can be held is 44 tall (rule 2; List, Touch rows). What a tile leaves out to stay quiet (a window's folder, branch, age, and the work's message and percent) is one muted line under the sheet's title (Sheet). Not built: natively no tile or header takes a long press.
+Press and hold: holding a tile, or a section header that heads a group of tiles, opens a sheet (Sheet) of what can be done to that thing, titled with its name: one-line touch rows, each a 20 glyph and a verb, the plain actions first and the one that destroys or removes last in `danger` ink. The rule is one for every tile, whatever it holds, so nothing that acts on a tile ever sits inside it (rule 1). A tap still goes in. A header that can be held is 44 tall (rule 2; List, Touch rows). A session's header is its name and nothing else; holding it gives Rename session and Close session. What a tile leaves out to stay quiet (a window's folder, branch, age, and the work's message and percent) is one muted line under the sheet's title (Sheet). Not built: natively no tile or header takes a long press.
 
 Layout, top to bottom:
 
@@ -352,7 +352,7 @@ Layout, top to bottom:
 - The body, `inset-pane` 16 at the sides, groups `gap-group` 16 apart.
 - The bottom: the pill on a screen of tiles and on a pane, or the action bar on a zoom card or sheet. They hold the same spot, 16 from the sides and 20 above the bottom edge (`PILL_INSET_MIN`, `PILL_INSET_MAX`), so a screen has one or the other.
 
-A screen of things is the same at every level: the top row, the large title, then tiles (Tile, Phone tile), under a section header per group when they fall in groups. Machines are square tiles two to a row with the add tile last. Inside a machine, each session's windows are a bento grid of tiles sized by what they hold, under the session's header, whose plus makes a new window in that session; the grid has no add tile, since one fixed-size tile among mixed widths leaves holes. An empty screen is the title and one add tile alone. Going into a tile is a zoom (rule 4), and the screen it opens may be another screen of tiles; the close control, dragging the pill up or a pinch goes back one level.
+A screen of things is the same at every level: the top row, the large title, then tiles (Tile, Phone tile), under a section header per group when they fall in groups. Machines are square tiles two to a row with the add tile last. Inside a machine, each session's windows are a bento grid of tiles sized by what they hold, under the session's header, which is the session's name alone; the grid has no add tile, since one fixed-size tile among mixed widths leaves holes, and the header has no button. Windows and sessions are made in one place, the pill's menu (Blocks, Pill), and the pill says where they will land: inside a machine its second line is the session in view. An empty screen is the title and one add tile alone; inside a machine with no sessions that tile opens the pill's menu, so the first session starts from the same choice. Going into a tile is a zoom (rule 4), and the screen it opens may be another screen of tiles; the close control, dragging the pill up or a pinch goes back one level.
 
 Components (each specified in its own section):
 
@@ -362,7 +362,8 @@ Components (each specified in its own section):
 | Field | Field, Phone | not built at 56; 44 built, unused |
 | Touch row, row group, section header | List, Touch rows | one-line and two-line rows built inside sheets; the rest not built |
 | Phone tile, machine and window content | Tile, Phone tile | the bento grid, sizing by pane count, mini panes with terminal text and a browser's URL, and the add tile built; machine states, the window header and marks, the chat preview and the corner not built |
-| Session header and its plus | List, Touch rows | a 44 heading built; the hold and the plus not built |
+| Session header | List, Touch rows | a 44 heading built; the hold not built |
+| Pill and its menu | Blocks, Pill | the pill, its menu and its groups built; the second line naming the session in view, the group label and New chat not built |
 | Press and hold sheet | Phone, Sheet | not built |
 | Action bar | Blocks, Action bar | not built |
 | Zoom card | Blocks, Zoom card | the zoom built; the card not built |
@@ -997,10 +998,10 @@ Touch rows (Phone): a list on a phone (found machines, chats, settings) uses tou
 - Disabled: the title faint, the detail saying why ("No zz on it yet"), no trailing mark. It keeps its place and takes no fill, hovered or pressed.
 - Group: tappable rows in a `settings.card` with the phone container corner (Phone, Corners), `space-4` in from its edges and `space-2` apart, as a menu's rows sit in a popover, and no separators: each row's fill is its own rounded shape and never meets an edge or a line. The group grows by its inset, so a row's leading icon sits 16 in from the group's edge (4 plus the row's 12), the page's rhythm.
 - Swipe: swiping a row left reveals one trailing action 64 wide (`space-64`), solid danger, as tall as the row ("Forget"), clipped to the row's corner.
-- Section header: over a group or a grid, 28 tall (as the touch which-key list's), strong `touch-small` muted, inset 16 so it lines up with the leading icons of the rows in the group under it (12 over a grid of tiles, so it lines up with their text), `space-4` above the card; an optional count at its end in regular `touch-small`, the number of things under it. A header that heads a group of things you can act on as a whole (a session's windows) can be held (Phone, Press and hold), and is then 44 tall with its text at the same foot, so the target meets rule 2. When new things are made into its group (a session's windows), it ends in a 44 icon button with a 20 `plus` in muted ink, its edge on the grid's edge so the glyph sits 12 in, as the text does at the other end, and the text centers on it rather than sitting at the foot; it zooms into the New card for that group (Zoom card). The button and the held header are two targets side by side, never one inside the other.
+- Section header: over a group or a grid, 28 tall (as the touch which-key list's), strong `touch-small` muted, inset 16 so it lines up with the leading icons of the rows in the group under it (12 over a grid of tiles, so it lines up with their text), `space-4` above the card; an optional count at its end in regular `touch-small`, the number of things under it. A header that heads a group of things you can act on as a whole (a session's windows) can be held (Phone, Press and hold), and is then 44 tall with its text at the same foot, so the target meets rule 2. A header holds no button: new things are made from the pill's menu (Blocks, Pill), never from the header.
 - Danger: a row that closes, removes or forgets takes `danger` ink for its glyph and title, and comes last in its group.
 
-Status for touch rows: one-line and two-line rows are built inside sheets (`sheet_row`, `sheet_detail_row`), their corner from their height; phone code uses `sheet_row` only. Rows outside a sheet, the group, the cap on a nested row's corner, the trailing kinds, the danger row, the swipe and the section header are not built. HTML: `.penna-touch-row[data-penna="phone.row"]` (`data-lines="2"` for two lines) holding an `<i data-icon>`, `.penna-touch-row-lines`, and a `.penna-touch-row-value`, `.penna-touch-row-state` or trailing `<i data-icon>`; `.penna-touch-group[data-penna="settings.card"]` around rows; `.penna-touch-swipe` (`data-penna-clip`, `data-open`) holding a row and `.penna-touch-swipe-action`; `.penna-touch-header` with an optional `.penna-touch-count` (`data-hold` for the 44 header) and a trailing `.penna-touch-icon[data-penna="phone.button"]` for the plus; `data-tone="danger"` on a row. Not built: the header's plus.
+Status for touch rows: one-line and two-line rows are built inside sheets (`sheet_row`, `sheet_detail_row`), their corner from their height; phone code uses `sheet_row` only. Rows outside a sheet, the group, the cap on a nested row's corner, the trailing kinds, the danger row, the swipe and the section header are not built. HTML: `.penna-touch-row[data-penna="phone.row"]` (`data-lines="2"` for two lines) holding an `<i data-icon>`, `.penna-touch-row-lines`, and a `.penna-touch-row-value`, `.penna-touch-row-state` or trailing `<i data-icon>`; `.penna-touch-group[data-penna="settings.card"]` around rows; `.penna-touch-swipe` (`data-penna-clip`, `data-open`) holding a row and `.penna-touch-swipe-action`; `.penna-touch-header` with an optional `.penna-touch-count` (`data-hold` for the 44 header); `data-tone="danger"` on a row.
 
 HTML: `.penna-list` is the column (rows `space-2` apart). A row is `.penna-list-item[data-penna]` (`menu-item`, `sidebar.row`, `menu-item.tint`) with `role="option"`, `aria-selected="true"` or `data-state="selected"`, `aria-disabled="true"` or `data-state="disabled"`, `data-state="focused"` (or keyboard focus) for the focus ring, and `--penna-list-row` for its height. Inside, `.penna-list-content` holds `i.penna-list-icon[data-icon]`, `.penna-list-label` and `.penna-list-detail`, each text run in `.penna-text[data-penna-text]`. No script.
 
@@ -1802,6 +1803,8 @@ A preview stays calm at half width: a terminal shows what fits and no more, and 
 
 The zoom grows the preview of the pane it opens into that pane (Zoom card). Mini panes are not targets: a pane's share of a half tile is often under 44, and a window is entered as one.
 
+A bento grid has no add tile and its session's header no button: windows are made from the pill's menu (Blocks, Pill). A machine with no sessions shows one add tile alone, which opens that menu.
+
 Nothing on a screen of tiles is drawn as a ghost: machines not yet added are rows in the add card.
 
 Status for the phone tile: built are the bento grid and its packing (`bento_grid`, `bento_pack`), the cell and the add tile (`bento_tile`, `bento_add_tile`), a window's size from its pane count (`window_span`), and its split copied as mini panes (`window_tile`, `window_layout`, `mini_pane`) with 4 px live terminal text and a browser's URL. Not built: a machine's states (zz-ui's `host_tile` draws `heading` 16 and `body` 13 at inset 14, with Connect and Cancel buttons inside); the window header (today the window's number, its title held to 60%, the folder and a warning dot, `heading` 16 at inset 10); the marks and the state line; mini panes without labels (today each has a 12 glyph and a `caption` title once there are two, and the active one a ring); the chat preview (blank today); a browser's host over a page stand-in (today the whole URL in `micro`); the tap into the pane that asks (today the active pane); press and hold; and the corners: the cell and the add tile take `control-radius` capped at 25 (12, 25 under Pill, 8 in Yaru), a mini pane 10.
@@ -1911,11 +1914,31 @@ Anatomy: a column, `gap-related` 8 apart, 16 from the sides and 20 above the bot
 
 Behavior: when the keyboard is up it rides on it, 8 above. It never scrolls with the content.
 
-Placement: on a zoom card or a sheet. A screen of tiles and a pane have the pill in that spot instead, and a screen of tiles makes things from its add tile, a section header's plus and the pill's menu, not a bar.
+Placement: on a zoom card or a sheet. A screen of tiles and a pane have the pill in that spot instead, and a screen of tiles makes things from the pill's menu (Pill) or its add tile, not a bar.
 
 HTML: `.penna-action-bar` (`data-row` for two side by side, `data-keys` riding the keyboard, `data-penna="floating"` when it is a floating surface), holding `.penna-button[data-size="touch-large"]`.
 
 Status: not built.
+
+### Pill
+
+The pill sits at the bottom of a screen of tiles and of a pane: it says where you are and where a new thing will land, and its menu holds what you can do from there. It is the one place a machine's windows and sessions are made. For a screen's one main action, the action bar.
+
+Anatomy: a floating capsule 56 tall (`COMPACT_PILL_HEIGHT`), in the action bar's spot, 16 from the sides and 20 above the bottom edge; a 40 icon tile with a 20 glyph, then two lines: the title in strong `touch-small`, and under it a `small` muted line with the page dots at its end, one per page the pill swipes through.
+
+The second line names where new things land. Inside a machine the title is the machine's name and the second line the session in view ("macbook" over "zz"): the session whose section is under the top row, following the scroll, or the first while the large title shows. A machine with more than one session ends its page with room for the last to rise under the top row, so any session can be the one in view. A machine with no sessions says "No sessions".
+
+Behavior: a tap opens the menu; a swipe pages to the next machine or pane; dragging it up goes back one level (Zoom card).
+
+Menu: a scrim over the screen, then chips in a column centered over the pill, with the close in the pill's spot. A chip is a floating capsule 44 tall (40 or 36 only when the screen is too short for 44, `compact_pill_menu`) with an 18 glyph and its label in strong `touch-small`, the whole chip the target. Chips fall in groups, `gap-related` 8 apart inside one and `gap-group` 16 between groups. The thing you most likely want sits nearest the thumb, the one solid primary chip; Settings sits apart at the top, quiet.
+
+- Group label: a group whose chips all make things in one place is headed by a label chip saying where ("New in zz"), centered over its chips, `gap-related` above the first: the chips' floating surface as a capsule 28 tall, inset 12 at the sides, its words in strong `touch-small` muted, with no glyph. It is not a target, and it is drawn short of the 44 a finger presses and without a glyph so it does not read as one. It has a surface because the menu's scrim is light (5% in the light themes) and bare text over it runs into the tiles behind.
+- Inside a machine, top to bottom: Settings; All machines; New session; then "New in" and the session in view over New browser, New terminal and New chat, New chat nearest the thumb. What the group makes lands in the session the label names, which is the one the second line names. New chat goes on to the chat picker; New terminal and New browser make the window and zoom into it.
+- With no sessions the label reads "In a new session" and New session is left out, since each chip under it starts one. The empty machine's add tile opens this same menu.
+
+HTML: `.penna-compact-pill[data-penna="floating"]` holding `.penna-pill-tile[data-penna="phone.pill.icon"]` and `.penna-pill-copy` (`.penna-pill-title`, then `.penna-pill-meta` with `.penna-pill-meta-text` and `.penna-dots`); `.penna-pill-menu[data-open]` holding `.penna-pill-menu-scrim`, `.penna-pill-menu-stack` of `.penna-pill-menu-group`s, each an optional `.penna-pill-menu-label[data-penna="floating"]` and `.penna-pill-chip[data-penna="floating"]`s (`data-look="quiet"` or `"primary"`), then `.penna-pill-menu-well` and `.penna-pill-menu-close`.
+
+Status: the pill, the menu, its groups, the stagger and the fitting chip sizes are built (`compact_pill_menu` takes groups of `PillMenuItem`). Not built: the second line inside a machine shows a session count ("3 sessions"); the group label; New chat; and new windows land in the attached session, not the one in view.
 
 ### Zoom card
 
@@ -1934,13 +1957,11 @@ The add card, behind the add tile, titled "Add machine":
 - Connect is the main action, off until an address is typed. Connect, a found row or a read code zoom the card back out to the overview, where the new machine's tile is connecting, before the add tile.
 - Scan: the scan accessory turns the same card into the scanner. The title stays; the body is the camera's picture, square, the body's width, at the phone container corner, with one line under it in `touch-small` muted saying where the code is; the action bar holds "Type an address instead", a secondary at 56, which brings the field back focused. The code holds `zz://host/<machine>.ts.net:<port>`.
 
-The new card, behind the plus at the end of a section header over things that are made rather than found (a session's windows), or the add tile of a screen with none yet, titled "New": a section header naming where the new thing goes, over a row group of one-line touch rows, one per kind of thing, each its 20 glyph and "New" with the kind (List, Touch rows). The whole row is the target and picking one is the action, so the card has no action bar. A row that leads to a further choice ends in `chevron-right`; one that makes the thing at once has no trailing mark, and the card zooms on into what it made. Which kinds there are is the app's.
-
 The connecting card, behind a connecting tile, titled with the machine's name: the body is the empty state's anatomy (Empty state on a phone) with the spinner at 32 in place of the icon, "Connecting" as its title and one line saying what it waits for ("Waiting for ssh on fabrico@xps"). Cancel is the one action, a secondary at 56: stopping is not what the card is for, so it is not drawn as the main action. Cancel stops the connect and zooms back to the tile, now "Not connected". When the connection lands the card becomes the machine. A question from ssh comes up as a sheet over whatever is on screen (Sheet).
 
 HTML: `.penna-zoom-card[data-penna]` holding `.penna-zoom-top`, `.penna-zoom-title`, `.penna-zoom-body` and `.penna-action-bar`. The scanner's picture is the app's, not the kit's.
 
-Status: the zoom is built, but its growing card starts at zz's `ZOOM_RADIUS` 10 rather than the tile's corner; the card, its close control, drag down and pinch out, and the zoom back out when a machine disconnects are not. The add card, the new card and the connecting card are not built: a machine's windows are made only from the pill's menu, Add host is a bottom sheet with a field and no found rows, the phone has no camera of its own (the system camera opens the code's link), and a connecting tile carries its own Cancel button.
+Status: the zoom is built, but its growing card starts at zz's `ZOOM_RADIUS` 10 rather than the tile's corner; the card, its close control, drag down and pinch out, and the zoom back out when a machine disconnects are not. The add card and the connecting card are not built: Add host is a bottom sheet with a field and no found rows, the phone has no camera of its own (the system camera opens the code's link), and a connecting tile carries its own Cancel button.
 
 ### Sheet
 

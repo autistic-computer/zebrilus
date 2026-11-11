@@ -143,6 +143,23 @@
   gap: var(--penna-gap-related);
 }
 
+.penna-pill-menu-label[data-penna] {
+  display: flex;
+  flex: none;
+  align-items: center;
+  height: 28px;
+  padding: 0 var(--penna-space-12);
+  color: var(--penna-fg-muted);
+  --penna-r: 9999px;
+  --penna-k: 1;
+  font-size: var(--penna-text-touch-small-size);
+  line-height: var(--penna-text-touch-small-line);
+  font-weight: 500;
+  white-space: nowrap;
+  pointer-events: none;
+  user-select: none;
+}
+
 .penna-pill-chip[data-penna] {
   position: relative;
   display: flex;
@@ -465,16 +482,6 @@
 
 .penna-touch-header:has(+ :is(.penna-machine-grid, .penna-bento)) {
   padding-inline: var(--penna-inset-card);
-}
-
-.penna-touch-header:has(> .penna-touch-icon) {
-  align-items: center;
-  padding-bottom: 0;
-}
-
-.penna-touch-header > .penna-touch-icon[data-penna] {
-  margin-right: calc(-1 * var(--penna-inset-card));
-  color: var(--penna-muted);
 }
 
 .penna-window-tile[data-penna] {

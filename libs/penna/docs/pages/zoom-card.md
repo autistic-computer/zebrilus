@@ -54,27 +54,6 @@ Behind the add tile. Found machines first, as touch rows with the add mark: a ta
 
 The scan accessory turns the same card into the scanner: the camera's picture, square, one line saying where the code is, and a way back to typing. The picture is the app's.
 
-## New card
-
-```figure uses=compact,touch,label
-<div class="penna-zoom-card" data-penna="phone.card" style="width: 370px; height: 420px; padding-top: var(--penna-inset-pane)">
-  <div class="penna-zoom-top"><button class="penna-touch-icon" data-penna="phone.button" aria-label="Close"><i data-icon="xmark"></i></button></div>
-  <div class="penna-zoom-title">New</div>
-  <div class="penna-zoom-body">
-    <div>
-      <div class="penna-touch-header"><span>In session zz</span></div>
-      <div class="penna-touch-group" data-penna="settings.card">
-        <div class="penna-touch-row" data-penna="phone.row" role="button"><i data-icon="chat"></i><span class="penna-touch-row-lines"><span>New chat</span></span><i data-icon="chevron-right"></i></div>
-        <div class="penna-touch-row" data-penna="phone.row" role="button"><i data-icon="square-terminal"></i><span class="penna-touch-row-lines"><span>New terminal</span></span></div>
-        <div class="penna-touch-row" data-penna="phone.row" role="button"><i data-icon="globe"></i><span class="penna-touch-row-lines"><span>New browser</span></span></div>
-      </div>
-    </div>
-  </div>
-</div>
-```
-
-Behind the plus at the end of a session's header, or the add tile of a machine with no sessions yet: a group of things you make rather than find. A header says where the new thing goes, then one row per kind; the whole row is the target and picking it is the action, so there is no action bar. A row that leads to another choice ends in a chevron; one that makes the thing at once has no mark, and the card zooms on into what it made. The kinds are the app's.
-
 ## Connecting card
 
 ```figure uses=compact,touch,button,label
@@ -90,7 +69,7 @@ Behind a connecting tile. Cancel is its one action, drawn as a secondary since s
 
 ## A card of tiles
 
-What you went into can be a screen of tiles in turn, a machine holding its windows: then the pill sits at the bottom in place of the action bar, and its tiles zoom one level further. Going into a window, what grows is the mini pane the tap opens, so its preview becomes the pane. When what the card shows goes away, as when a machine disconnects, it zooms back out to its tile, which says why.
+What you went into can be a screen of tiles in turn, a machine holding its windows: then the pill sits at the bottom in place of the action bar, and its tiles zoom one level further. Its windows and sessions are made from the pill's menu, not from a card. Going into a window, what grows is the mini pane the tap opens, so its preview becomes the pane. When what the card shows goes away, as when a machine disconnects, it zooms back out to its tile, which says why.
 
 ## Motion
 
