@@ -24,6 +24,7 @@
   .zz-scroll::-webkit-scrollbar { display: none; }
   .zz-sections { display: flex; flex-direction: column; gap: var(--penna-gap-group); padding: var(--penna-gap-group) var(--penna-inset-pane) 112px; }
   .zz-sections:has(> .zz-sess) { padding-top: 0; }
+  .zz-sess:last-child:not(:first-child) { min-height: calc(874px - 98px - 112px); }
   .zz-fold { position: absolute; z-index: 20; top: 0; right: 0; left: 0; height: 98px; pointer-events: none; }
   .zz-fold > .penna-folding-frost, .zz-fold > .penna-folding-title { display: none; }
   .zz-fold[data-folded] > .penna-folding-frost { display: block; }
@@ -35,7 +36,7 @@
   .zz-menu-stack { position: absolute; right: 0; bottom: 96px; left: 0; display: flex; flex-direction: column; align-items: center; gap: var(--penna-gap-group); }
   .zz-menu > :is(.penna-pill-menu-well, .penna-pill-menu-close) { top: auto; bottom: 20px; left: 173px; }
   .zz-phone > .penna-sheet { z-index: 25; }
-  .zz-phone[data-menu] .zz-bar { visibility: hidden; }
+  .zz-phone[data-menu] .zz-bar, .zz-machine[data-menu] > .zz-bar { visibility: hidden; }
 
   .zz-strip { display: flex; flex-wrap: wrap; gap: 28px 16px; align-items: flex-start; }
   .zz-strip > figure, .zz-compare > figure { display: grid; flex: none; gap: 8px; margin: 0; }
@@ -87,7 +88,7 @@
   .zz-live > figcaption { display: grid; gap: 10px; max-width: 64ch; padding-top: 10px; font-size: var(--penna-text-small-size); line-height: var(--penna-text-small-line); color: var(--penna-muted); }
   .zz-live > figcaption b { color: var(--penna-fg); font-weight: 600; }
   .zz-live > figcaption code { font: 12px/16px var(--penna-mono); color: var(--penna-fg); }
-  .zz-stage { position: absolute; inset: 0; overflow: hidden; }
+  .zz-stage { position: absolute; inset: 0; overflow: clip; }
   .zz-layer { position: absolute; top: 0; left: 0; width: 402px; height: 874px; transform-origin: 0 0; }
   .zz-child { overflow: hidden; }
   .zz-child > .penna-zoom-card { width: 402px; height: 874px; }
@@ -98,7 +99,7 @@
 <main class="zz-page">
   <div class="zz-intro">
     <h1>A machine</h1>
-    <p>Step 2 of the phone redesign, after <a href="machines.html">Machines</a>: the screen inside a machine. A large title, then a section per session, each a bento grid of window tiles sized by how many panes they hold, as today. The preview is the tile and text is one line: a tile is its status mark and its title over the window's own split, drawn small. Calm windows say nothing more; a window that asks for you or broke adds one line in words, so the ones that want you stand out. Holding a tile, or a session's header, opens a sheet of what you can do to it, with the details the tile leaves out under the sheet's title. If the connection drops, the screen zooms back out to the machine's tile, which says Not connected. Every frame is built from the <a href="components.html">phone components</a>. Caption text in <i>italics</i> says what the native app does today where it differs.</p>
+    <p>Step 2 of the phone redesign, after <a href="machines.html">Machines</a>: the screen inside a machine. A large title, then a section per session, each a bento grid of window tiles sized by how many panes they hold, as today. The preview is the tile and text is one line: a tile is its status mark and its title over the window's own split, drawn small. Calm windows say nothing more; a window that asks for you or broke adds one line in words, so the ones that want you stand out. Holding a tile, or a session's header, opens a sheet of what you can do to it, with the details the tile leaves out under the sheet's title. There is one way to make something: the pill's menu. The pill names the machine over the session in view, and what its menu makes lands in that session. If the connection drops, the screen zooms back out to the machine's tile, which says Not connected. Every frame is built from the <a href="components.html">phone components</a>. Caption text in <i>italics</i> says what the native app does today where it differs.</p>
   </div>
 
   <section>
@@ -111,32 +112,27 @@
 
       <figure>
         <div class="zz-phone" data-screen="macbook"></div>
-        <figcaption><b>1. A machine</b>Tapping macbook on Machines grows its tile into this screen: the name as the large title, the close control in the top row, then a section per session under its name, with a plus at the header's end. The bento is today's: three panes take the full width, one or two take half. A chat that needs approval says so in warning ink; the chat at work has only its spinner, the one done since you looked only its dot, the terminal and the browser nothing. Chats show their last exchange, terminals their screen, the browser its host over the page. <i>Today a chat's mini pane is blank, each mini pane has its own label, and the header carries the window's number and folder.</i></figcaption>
+        <figcaption><b>1. A machine</b>Tapping macbook on Machines grows its tile into this screen: the name as the large title, the close control in the top row, then a section per session under its name, and nothing else in the header. The bento is today's: three panes take the full width, one or two take half. A chat that needs approval says so in warning ink; the chat at work has only its spinner, the one done since you looked only its dot, the terminal and the browser nothing. Chats show their last exchange, terminals their screen, the browser its host over the page. The pill reads macbook over zz: zz is the session in view, where anything its menu makes will land. <i>Today a chat's mini pane is blank, each mini pane has its own label, the header carries the window's number and folder, and the pill says 3 sessions.</i></figcaption>
       </figure>
 
       <figure>
-        <div class="zz-phone" data-screen="macbook" data-scroll="560"></div>
-        <figcaption><b>2. Scrolled</b>The title folds into the top row under a frost with a hairline, and the close control stays put. Later sessions come into view: dotfiles holds one terminal, nidus a chat at work beside a build that exited with an error. A session's header is 44 tall so it can be held, and its plus is a 44 target of its own. <i>Today the title folds the same way; session headers take no press and have no plus.</i></figcaption>
+        <div class="zz-phone" data-screen="macbook" data-scroll="dotfiles"></div>
+        <figcaption><b>2. Scrolled</b>The title folds into the top row under a frost with a hairline, and the close control stays put. With dotfiles' section under the top row, the pill's second line follows: macbook over dotfiles, so the menu would make things there. dotfiles holds one terminal, nidus a chat at work beside a build that exited with an error. A session's header is 44 tall so it can be held, and holds only the name. The page ends with room for nidus, the last session, to rise under the top row too, so any session can be the one in view. <i>Today the title folds the same way, session headers take no press, and the pill's second line stays a session count.</i></figcaption>
       </figure>
 
       <figure>
         <div class="zz-phone" data-screen="xps-empty"></div>
-        <figcaption><b>4. Empty machine</b>Connected, with no sessions: the title and one add tile alone, as on an empty Machines overview. Its New card starts the first session with whatever you pick, and the pill says so.</figcaption>
-      </figure>
-
-      <figure>
-        <div class="zz-phone" data-new></div>
-        <figcaption><b>5. From a session's plus</b>The plus at the end of zz's header grows into the New card: three touch rows, the whole row the target, under "In session zz". New chat goes on to the chat picker (not drawn here), so it ends in a chevron; New terminal and New browser make the window at once in this session, and the card zooms on into it. Each row is the action, so there is no action bar. There is no add tile in a session's grid: among mixed widths it leaves holes. <i>Today these live only in the pill's menu, and New terminal lands in the attached session, not the one on screen (<code>overview.rs:1231</code>).</i></figcaption>
+        <figcaption><b>4. Empty machine</b>Connected, with no sessions: the title and one add tile alone, as on an empty Machines overview, and the pill says No sessions. The tile opens the pill's menu, the one place to make things: under "In a new session", New chat, New terminal or New browser starts the first session with that in it. New session is left out there, since each of the three starts one.</figcaption>
       </figure>
 
       <figure>
         <div class="zz-phone" data-screen="macbook" data-menu></div>
-        <figcaption><b>6. Pill menu open</b>New chat sits nearest the thumb, the one solid chip, then New terminal, New browser and New session; All machines above them; Settings apart at the top. What it makes goes into the session on screen: the one whose section is under the top row. Swiping the pill pages machines and dragging it up zooms out to Machines, as today. <i>Today the menu has Settings, New session, New browser, New terminal and All hosts: no New chat, and new windows land in the attached session.</i></figcaption>
+        <figcaption><b>5. Pill menu open</b>The one place to make things. Tapping the pill raises its menu over a scrim. "New in zz" heads New browser, New terminal and New chat, New chat nearest the thumb and the one solid chip; the label is a 28 chip in muted ink with no glyph, not a target. Then New session apart, All machines, and Settings apart at the top. The label names the session the pill names, the one under the top row, so a new window lands where you are looking. New chat goes on to the chat picker; New terminal and New browser make the window and zoom into it. A session's header has no plus and its grid no add tile: among mixed widths a tile leaves holes. Swiping the pill pages machines and dragging it up zooms out to Machines, as today. <i>Today the menu has Settings, New session, New browser, New terminal and All hosts: no group label and no New chat, and New terminal lands in the attached session, not the one on screen (<code>overview.rs:1231</code>).</i></figcaption>
       </figure>
 
       <figure>
         <div class="zz-phone" data-screen="macbook" data-hold></div>
-        <figcaption><b>7. Hold a window tile</b>A sheet titled with the window's title, and under it one muted line with what the tile leaves out: the work and its percent, then folder, branch and age. Then what you can do to it as touch rows: Rename, then Close window in danger ink, last. A session's header gives Rename session and Close session, and on Machines a machine tile gives Rename and Remove. <i>Today nothing can be renamed, closed or killed from the phone.</i></figcaption>
+        <figcaption><b>6. Hold a window tile</b>A sheet titled with the window's title, and under it one muted line with what the tile leaves out: the work and its percent, then folder, branch and age. Then what you can do to it as touch rows: Rename, then Close window in danger ink, last. A session's header gives Rename session and Close session, and on Machines a machine tile gives Rename and Remove. <i>Today nothing can be renamed, closed or killed from the phone.</i></figcaption>
       </figure>
     </div>
   </section>
@@ -148,7 +144,7 @@
   </section>
 
   <section>
-    <h2>8. Three tiles for the same window</h2>
+    <h2>7. Three tiles for the same window</h2>
     <p>The window "Make the pill menu offer New chat": a chat that needs approval beside the terminal running its tests, at half width.</p>
     <div class="zz-compare" data-compare></div>
   </section>
@@ -174,10 +170,10 @@
         <div class="zz-bar" data-gear><span class="zz-grow"></span><span class="penna-touch-disc" data-penna="floating"><button class="penna-touch-icon" data-penna="phone.button" aria-label="Settings"><i data-icon="settings"></i></button></span></div>
       </div>
       <figcaption>
-        <span><b>Live.</b> Tap macbook, xps or alienware to zoom into the machine. Inside, tap a window tile: the mini pane it opens grows into a stand-in for that pane, so the preview becomes the pane. The plus on a session's header grows into the New card. Each close control zooms back one level. Scroll a machine to see the title fold.</span>
+        <span><b>Live.</b> Tap macbook, xps or alienware to zoom into the machine. Inside, tap a window tile: the mini pane it opens grows into a stand-in for that pane, so the preview becomes the pane. Tap the pill for its menu. Scroll a machine to see the title fold and the pill's second line follow the session under the top row, and the menu's label with it. Each close control zooms back one level.</span>
         <span><b>Which pane.</b> A tile opens the pane that asks for you, failed or finished unseen, else the window's active pane. The zoom starts from that pane's mini, as the app's lift already does (<code>compact.rs:1489</code>).</span>
         <span><b>Motion, from the app.</b> Both levels use the same zoom and the same spring as step 1: <code>TAP_SPRING</code>, stiffness 320, damping 36, mass 1 (<code>libs/penna/src/blocks/touch/lift.rs:15</code>). The layer grows to the screen while the screen behind scales up around it, and they cross-fade between 30% and 70% of the way.</span>
-        <span><b>Not wired here:</b> dragging the pill up and a pinch, which also go back one level, and press and hold.</span>
+        <span><b>Not wired here:</b> dragging the pill up and a pinch, which also go back one level, swiping the pill to the next machine, press and hold, and the menu's chips, which only close it.</span>
         <span><b>Reduced motion</b> jumps to the end, as the app does.</span>
       </figcaption>
     </figure>
@@ -309,15 +305,13 @@
     const rows = Math.max(...spans.map((s, i) => s[1] + spots[i][1]));
     return `<div class="penna-bento" style="--rows: ${rows}">${windows.map((w, i) => windowTile(w, spots[i], live)).join("")}</div>`;
   };
-  const addTile = (label, live) => `<div class="penna-machine-tile" data-penna="phone.add" data-add role="button"${live ? ` data-zoom="new"` : " data-tap"}><i data-icon="plus"></i>${label}<span class="penna-press"></span></div>`;
-  const section = (s, live) => `<div class="zz-sess"><div class="penna-touch-header" data-hold><span>${s.name}</span><button class="penna-touch-icon" data-penna="phone.button" aria-label="New in ${s.name}"${live ? ` data-zoom="new" data-session="${s.name}"` : " data-tap"}><i data-icon="plus"></i></button></div>${bento(s.windows, live)}</div>`;
+  const addTile = (label, live) => `<div class="penna-machine-tile" data-penna="phone.add" data-add role="button"${live ? " data-menu-open" : " data-tap"}><i data-icon="plus"></i>${label}<span class="penna-press"></span></div>`;
+  const section = (s, live) => `<div class="zz-sess" data-session="${s.name}"><div class="penna-touch-header" data-hold><span>${s.name}</span></div>${bento(s.windows, live)}</div>`;
   const dots = (on) => `<span class="penna-dots">${[0, 1, 2].map((i) => `<span class="penna-dot"${i === on ? " data-active" : ""}></span>`).join("")}</span>`;
-  const pill = (icon, title, meta, on) => `<div class="zz-bar"><button class="penna-compact-pill" data-penna="floating"><span class="penna-pill-tile" data-penna="phone.pill.icon"><i data-icon="${icon}"></i></span><span class="penna-pill-copy"><span class="penna-pill-title">${title}</span><span class="penna-pill-meta"><span class="penna-pill-meta-text">${meta}</span>${dots(on)}</span></span></button></div>`;
-  const machinePill = (m) => pill(m.icon, m.name, m.sessions.length ? plural(m.sessions.length, "session") : "No sessions", m.dot);
+  const pill = (icon, title, meta, on, extra = "") => `<div class="zz-bar"><button class="penna-compact-pill" data-penna="floating"${extra}><span class="penna-pill-tile" data-penna="phone.pill.icon"><i data-icon="${icon}"></i></span><span class="penna-pill-copy"><span class="penna-pill-title">${title}</span><span class="penna-pill-meta"><span class="penna-pill-meta-text">${meta}</span>${dots(on)}</span></span></button></div>`;
+  const machinePill = (m, live) => pill(m.icon, m.name, m.sessions[0]?.name ?? "No sessions", m.dot, live ? " data-menu-open" : "");
   const shell = (title, inner, bottom, live) => `<div class="penna-zoom-card zz-full zz-machine" data-penna="phone.card"><div class="zz-scroll"><div class="penna-zoom-title">${title}</div><div class="zz-sections">${inner}</div></div><div class="zz-fold"><div class="penna-folding-frost"></div><span class="penna-folding-title">${title}</span><button class="penna-touch-icon" data-penna="phone.button"${live ? " data-close" : " data-tap"} aria-label="Close"><i data-icon="xmark"></i></button></div>${bottom}</div>`;
-  const screen = (m, live) => shell(m.name, m.sessions.length ? m.sessions.map((s) => section(s, live)).join("") : `<div class="penna-machine-grid">${addTile("New", live)}</div>`, machinePill(m), live);
-
-  const newCard = (session, live) => `<div class="penna-zoom-card zz-full" data-penna="phone.card"><div class="penna-zoom-top"><button class="penna-touch-icon" data-penna="phone.button"${live ? " data-close" : " data-tap"} aria-label="Close"><i data-icon="xmark"></i></button></div><div class="penna-zoom-title">New</div><div class="penna-zoom-body"><div><div class="penna-touch-header"><span>${session ? `In session ${session}` : "In a new session"}</span></div><div class="penna-touch-group" data-penna="settings.card"><div class="penna-touch-row" data-penna="phone.row" role="button" data-tap><i data-icon="chat"></i><span class="penna-touch-row-lines"><span>New chat</span></span><i data-icon="chevron-right"></i></div><div class="penna-touch-row" data-penna="phone.row" role="button" data-tap><i data-icon="square-terminal"></i><span class="penna-touch-row-lines"><span>New terminal</span></span></div><div class="penna-touch-row" data-penna="phone.row" role="button" data-tap><i data-icon="globe"></i><span class="penna-touch-row-lines"><span>New browser</span></span></div></div></div></div></div>`;
+  const screen = (m, live) => shell(m.name, m.sessions.length ? m.sessions.map((s) => section(s, live)).join("") : `<div class="penna-machine-grid">${addTile("New", live)}</div>`, machinePill(m, live), live);
 
   const KIND = { chat: "chat", term: "square-terminal", web: "globe" };
   const paneBody = (p) => {
@@ -328,7 +322,8 @@
   const paneCard = (w, p) => `<div class="penna-zoom-card zz-full" data-penna="phone.card"><div class="zz-pane"><div class="penna-zoom-top"><button class="penna-touch-icon" data-penna="phone.button" data-close aria-label="Close"><i data-icon="xmark"></i></button></div><div class="zz-pane-body">${paneBody(p)}</div></div>${pill(KIND[p.kind], w.title, `${w.panes.length > 1 ? `Pane ${w.panes.indexOf(p) + 1} of ${w.panes.length}` : "Stand-in for the pane"}`, w.panes.indexOf(p))}</div>`;
 
   const menuChip = (icon, label, extra = ` data-penna="floating"`) => `<button class="penna-pill-chip"${extra}><i data-icon="${icon}"></i><span>${label}</span></button>`;
-  const menu = `<div class="penna-pill-menu zz-menu" data-open><div class="penna-pill-menu-scrim"></div><div class="zz-menu-stack"><div class="penna-pill-menu-group">${menuChip("settings", "Settings", ` data-penna="floating" data-look="quiet"`)}</div><div class="penna-pill-menu-group">${menuChip("server", "All machines")}</div><div class="penna-pill-menu-group">${menuChip("layers-plus", "New session")}${menuChip("globe", "New browser")}${menuChip("square-terminal", "New terminal")}${menuChip("chat-plus", "New chat", ` data-penna="button" data-tone="primary" data-prominent data-look="primary"`)}</div></div><div class="penna-pill-menu-well"></div><button class="penna-pill-menu-close" data-penna="button" data-tone="primary" data-prominent aria-label="Close"><i data-icon="xmark"></i></button></div>`;
+  const group = (chips) => `<div class="penna-pill-menu-group">${chips}</div>`;
+  const menu = (session) => `<div class="penna-pill-menu zz-menu" data-open><div class="penna-pill-menu-scrim"></div><div class="zz-menu-stack">${group(menuChip("settings", "Settings", ` data-penna="floating" data-look="quiet"`))}${group(menuChip("server", "All machines"))}${session ? group(menuChip("layers-plus", "New session")) : ""}${group(`<span class="penna-pill-menu-label" data-penna="floating">${session ? `New in ${session}` : "In a new session"}</span>${menuChip("globe", "New browser")}${menuChip("square-terminal", "New terminal")}${menuChip("chat-plus", "New chat", ` data-penna="button" data-tone="primary" data-prominent data-look="primary"`)}`)}</div><div class="penna-pill-menu-well"></div><button class="penna-pill-menu-close" data-penna="button" data-tone="primary" data-prominent aria-label="Close"><i data-icon="xmark"></i></button></div>`;
   const hold = (w) => `<div class="penna-sheet" style="--penna-sheet-rest: 8px"><div class="penna-sheet-scrim"></div><div class="penna-sheet-frame"><div class="penna-sheet-panel" data-penna="drawer"><div class="penna-sheet-grip"><div class="penna-sheet-grabber" data-penna="grabber"></div></div><div class="penna-sheet-header"><span class="penna-sheet-copy"><span class="penna-sheet-title">${w.title}</span><span class="penna-sheet-detail">${w.details}</span></span><button class="penna-sheet-close penna-button" data-penna="button.quiet" data-size="touch" data-tap aria-label="Close"><i data-icon="xmark"></i></button></div><div class="penna-sheet-list"><div class="penna-touch-row" data-penna="phone.row" role="button" data-tap><i data-icon="pencil"></i><span class="penna-touch-row-lines"><span>Rename</span></span></div><div class="penna-touch-row" data-penna="phone.row" data-tone="danger" role="button" data-tap><i data-icon="xmark"></i><span class="penna-touch-row-lines"><span>Close window</span></span></div></div></div></div></div>`;
 
   const miniTerm = (lines) => `<pre>${lines.map(esc).join("\n")}</pre>`;
@@ -340,7 +335,7 @@
     todayTile(2, "Pane stack", "~/dev/…/zebrilus", mini("asterisk", "Fix pane stack…"), 2, 2, "1fr", false),
     todayTile(3, "Bento", "~/dev/…/penna", mini("asterisk", "Port the bento…") + mini("globe", "Docs", `<span class="zz-mini-url">docs.rs</span>`), 2, 2, "1fr 1fr", false),
     todayTile(4, "cargo watch", "~/dev/…/zebrilus", mini("square-terminal", "cargo watch", miniTerm(clean(T.watch))), 2, 2, "1fr", false),
-  ].join("")}</div></div>${machinePill(machines.macbook)}`;
+  ].join("")}</div></div>${pill(machines.macbook.icon, "macbook", plural(machines.macbook.sessions.length, "session"), machines.macbook.dot)}`;
 
   const was = `<div class="penna-machine-tile zz-was" data-penna="phone.card" role="button"><span class="penna-machine-name zz-was-name"><span class="penna-tone-dot" data-tone="warning"></span><span>Make the pill menu offer New chat</span></span><span class="penna-machine-state" data-tone="warning">Needs approval</span><span class="penna-machine-foot"><span class="zz-was-kinds"><i data-icon="chat"></i><i data-icon="square-terminal"></i></span><span class="zz-was-where"><span>zebrilus · main</span><span>now</span></span></span><span class="penna-press"></span></div>`;
   const compare = [
@@ -351,10 +346,9 @@
 
   for (const phone of document.querySelectorAll("[data-screen]")) {
     phone.innerHTML = screen(machines[phone.dataset.screen], false);
-    if (phone.hasAttribute("data-menu")) phone.insertAdjacentHTML("beforeend", menu);
+    if (phone.hasAttribute("data-menu")) phone.insertAdjacentHTML("beforeend", menu(machines[phone.dataset.screen].sessions[0]?.name));
     if (phone.hasAttribute("data-hold")) phone.insertAdjacentHTML("beforeend", hold(win.stack));
   }
-  for (const phone of document.querySelectorAll("[data-new]")) phone.innerHTML = newCard("zz", false);
   for (const phone of document.querySelectorAll("[data-today]")) phone.innerHTML = today;
   for (const box of document.querySelectorAll("[data-strip]")) box.innerHTML = strip.map(([label, w]) => { const [c, r] = span(w); return `<figure${c === 4 ? " data-wide" : ""}><figcaption>${label}</figcaption><div class="penna-bento" style="--rows: ${r}; width: ${c === 4 ? 370 : 181}px">${windowTile(w, [0, 0], false)}</div></figure>`; }).join("");
   for (const box of document.querySelectorAll("[data-compare]")) box.innerHTML = compare.map(([label, tile, say]) => `<figure><figcaption>${label}</figcaption>${tile}<p>${say}</p></figure>`).join("");
@@ -365,10 +359,22 @@
     phone.insertAdjacentHTML("beforeend", `<span class="zz-home"></span>`);
   }
 
+  const TOP_ROW = 98;
+  const inView = (scroll) => {
+    let name = null;
+    for (const s of scroll.querySelectorAll(".zz-sess")) if (name === null || s.offsetTop <= scroll.scrollTop + TOP_ROW) name = s.dataset.session;
+    return name;
+  };
   const fold = (root) => {
     for (const scroll of root.querySelectorAll(".zz-scroll")) {
-      const bar = scroll.parentElement.querySelector(".zz-fold");
-      const update = () => bar.toggleAttribute("data-folded", scroll.scrollTop > 40);
+      const card = scroll.parentElement;
+      const bar = card.querySelector(".zz-fold");
+      const meta = card.querySelector(":scope > .zz-bar .penna-pill-meta-text");
+      const update = () => {
+        bar.toggleAttribute("data-folded", scroll.scrollTop > 40);
+        const name = inView(scroll);
+        if (name && meta) meta.textContent = name;
+      };
       scroll.addEventListener("scroll", update, { passive: true });
       update();
     }
@@ -377,7 +383,8 @@
   const settle = () => {
     for (const phone of document.querySelectorAll("[data-scroll]")) {
       const scroll = phone.querySelector(".zz-scroll");
-      scroll.scrollTop = Number(phone.dataset.scroll);
+      const to = phone.querySelector(`.zz-sess[data-session="${phone.dataset.scroll}"]`);
+      scroll.scrollTop = to ? to.offsetTop - TOP_ROW : Number(phone.dataset.scroll);
       scroll.dispatchEvent(new Event("scroll"));
     }
   };
@@ -474,7 +481,7 @@
   };
 
   const target = (from) => {
-    if (from.dataset.zoom !== "pane") return { box: from, html: from.dataset.zoom === "new" ? newCard(from.dataset.session, true) : screen(machines[from.dataset.zoom], true) };
+    if (from.dataset.zoom !== "pane") return { box: from, html: screen(machines[from.dataset.zoom], true) };
     const w = ids.get(from.dataset.window);
     const index = w.open ?? 0;
     return { box: from.querySelectorAll(".penna-window-pane")[index], html: paneCard(w, w.panes[index]) };
@@ -505,6 +512,22 @@
     const top = levels.at(-1);
     const layer = top ? top.child : root;
     if (!layer.contains(event.target)) return;
+    const open = event.target.closest(".penna-pill-menu");
+    if (open) {
+      if (event.target.closest(".penna-pill-chip, .penna-pill-menu-close, .penna-pill-menu-scrim")) {
+        open.closest(".zz-machine").removeAttribute("data-menu");
+        open.remove();
+      }
+      return;
+    }
+    const card = event.target.closest("[data-menu-open]")?.closest(".zz-machine");
+    if (card) {
+      if (top?.moving || card.hasAttribute("data-menu")) return;
+      card.setAttribute("data-menu", "");
+      card.insertAdjacentHTML("beforeend", menu(inView(card.querySelector(".zz-scroll"))));
+      window.pennaKit?.roundAll?.();
+      return;
+    }
     if (top && event.target.closest("[data-close]")) {
       if (!top.moving || top.target === 0) aim(top, 1);
       return;
