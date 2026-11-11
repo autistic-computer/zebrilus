@@ -72,6 +72,7 @@ const FIT_STEPS: usize = 20;
 thread_local! {
     static CONTRAST: Cell<f32> = const { Cell::new(1.0) };
     static MUTED_CEILING: Cell<f32> = const { Cell::new(MUTED) };
+    static SEE_THROUGH: Cell<Option<(Hsla, f32)>> = const { Cell::new(None) };
     static MEMO: RefCell<Box<[Option<(MemoKey, Hsla)>]>> =
         RefCell::new(vec![None; MEMO_SLOTS].into_boxed_slice());
 }
@@ -159,6 +160,59 @@ fn muted_ceiling(foreground: Hsla, background: Hsla) -> f32 {
         }
     }
     low
+}
+
+pub(super) fn set_see_through(window: Option<(Hsla, f32)>) {
+    if SEE_THROUGH.replace(window) != window {
+        MEMO.with_borrow_mut(|memo| memo.fill(None));
+    }
+}
+
+pub(super) fn ink_on(ink: Hsla, ground: Hsla, weight: f32) -> Hsla {
+    match SEE_THROUGH.get() {
+        Some((_, backdrop)) if ground.a < 1.0 => share_over(
+            ink,
+            ink.mix_oklab(ground.opaque(), 1.0 - weight),
+            ground,
+            backdrop,
+        ),
+        _ => ink.mix_oklab(ground, 1.0 - weight),
+    }
+}
+
+fn ink_toward_contrast(ink: Hsla, weight: f32) -> Hsla {
+    let mixed = toward_contrast(ink, weight);
+    match SEE_THROUGH.get() {
+        Some((window, backdrop)) => share_over(ink, mixed, window, backdrop),
+        None => mixed,
+    }
+}
+
+fn share_over(ink: Hsla, mixed: Hsla, ground: Hsla, backdrop: f32) -> Hsla {
+    let target = contrast_ratio(mixed, ground.opaque());
+    memo(memo_key(2, ink, ground, target), || {
+        let behind = if oklab_lightness(ink) > oklab_lightness(ground.opaque()) {
+            backdrop.clamp(0.0, 1.0).cbrt()
+        } else {
+            0.0
+        };
+        let lightest = oklch(behind, 0.0, 0.0).blend(ground);
+        let reads =
+            |share: f32| contrast_ratio(lightest.blend(ink.opacity(share)), lightest) >= target;
+        if !reads(1.0) {
+            return ink;
+        }
+        let (mut low, mut high) = (0.0_f32, 1.0_f32);
+        for _ in 0..FIT_STEPS {
+            let middle = f32::midpoint(low, high);
+            if reads(middle) {
+                high = middle;
+            } else {
+                low = middle;
+            }
+        }
+        ink.opacity(high)
+    })
 }
 
 pub(super) fn read_as_text(color: Hsla, ground: Hsla) -> Hsla {
@@ -493,11 +547,11 @@ impl Colorize for Hsla {
     }
 
     fn muted(&self) -> Self {
-        toward_contrast(*self, muted_weight())
+        ink_toward_contrast(*self, muted_weight())
     }
 
     fn faint(&self) -> Self {
-        toward_contrast(*self, faint_weight())
+        ink_toward_contrast(*self, faint_weight())
     }
 
     fn on(&self) -> Self {
@@ -751,6 +805,32 @@ mod tests {
             assert_close(contrast(), expected);
         }
         theme.set_contrast(1.0);
+    }
+
+    #[test]
+    fn a_see_through_window_draws_muted_and_faint_as_shares_of_the_ink() {
+        use crate::{Emphasis, PaintState, Tone};
+        let mut theme = crate::Theme::default();
+        theme.set_colors(*crate::ThemeColor::dark());
+        let inks = |theme: &crate::Theme| {
+            let ghost = theme.paint_on(theme.ground(), Tone::Neutral, Emphasis::Ghost);
+            [
+                theme.foreground.muted(),
+                theme.foreground.faint(),
+                ghost.muted_at(PaintState::Rest),
+                ghost.faint_at(PaintState::Rest),
+            ]
+            .map(to_hex)
+        };
+        let opaque = ["#908f8c", "#4d4c4b", "#a4a3a0", "#6f6e6b"];
+        assert_eq!(inks(&theme), opaque);
+        theme.set_window(0.545, 0.145);
+        assert_eq!(
+            inks(&theme),
+            ["#e9e7e3b9", "#e9e7e346", "#e9e7e3dc", "#e9e7e37e"]
+        );
+        theme.set_window(1.0, 1.0);
+        assert_eq!(inks(&theme), opaque);
     }
 
     #[test]

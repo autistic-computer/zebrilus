@@ -250,7 +250,7 @@ place. macOS keeps a transparent ala surface and puts a layer-backed view under 
 again by its `zz-window-backdrop` identifier, so a second apply updates it and blur off removes it)
 whose backdrop layer filters what is behind the window: blur radius 60, saturation 1.8, then a
 brightness cap that turns white into a gray at the cap, 0.25 at Frost 0, 0.10 at the default and
-0.04 from 0.7 up. The chrome over it takes 0.65 + 0.70 × (frost − 0.5), so 0.30 at Frost 0, 0.65
+0.04 from 0.7 up. zz hands that cap to the theme with the chrome opacity (`Theme::set_window`) as the brightest the backdrop can get, read as a relative luminance, so muted and faint text keep their opaque-window contrast over the lightest ground the window can show; without the backdrop layer it hands 1, white. The chrome over it takes 0.65 + 0.70 × (frost − 0.5), so 0.30 at Frost 0, 0.65
 at the default and opaque at 1. Where the backdrop layer is missing at runtime, zz falls back to
 the WindowServer background-blur radius, 160 × (0.5 + frost), with the chrome at Frost's own
 opacity; the backdrop and that radius are never on together. At startup it also reads the

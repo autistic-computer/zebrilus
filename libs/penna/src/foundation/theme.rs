@@ -83,7 +83,8 @@ pub struct Theme {
     pub inspect: Option<SharedString>,
     pub inspect_strength: f32,
     pub pane_margin: Pixels,
-    pub window_opacity: f32,
+    window_opacity: f32,
+    backdrop: f32,
     pub transparent: Hsla,
     pub scrollbar_show: ScrollbarShow,
     pub notification: NotificationSettings,
@@ -216,6 +217,23 @@ impl Theme {
         self.colors = colors;
         self.highlight_theme =
             HighlightTheme::with_diff_inks(&self.highlight_theme, colors.success, colors.danger);
+        self.show_window();
+    }
+
+    pub fn window_opacity(&self) -> f32 {
+        self.window_opacity
+    }
+
+    pub fn set_window(&mut self, opacity: f32, backdrop: f32) {
+        self.window_opacity = opacity;
+        self.backdrop = backdrop;
+        self.show_window();
+    }
+
+    fn show_window(&self) {
+        color::set_see_through(
+            (self.window_opacity < 1.0).then(|| (self.ground().fill, self.backdrop)),
+        );
     }
 
     pub fn set_contrast(&mut self, value: f32) {
@@ -319,6 +337,7 @@ impl From<&ThemeColor> for Theme {
             inspect_strength: 1.0,
             pane_margin: px(0.0),
             window_opacity: 1.0,
+            backdrop: 1.0,
             scrollbar_show: ScrollbarShow::default(),
             notification: NotificationSettings::default(),
             colors: *colors,

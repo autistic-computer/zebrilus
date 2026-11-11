@@ -896,8 +896,7 @@ impl Layer {
         if self.ground.solid {
             return self.text;
         }
-        self.text
-            .mix_oklab(self.ground.fill, 1.0 - super::color::muted_weight())
+        super::color::ink_on(self.text, self.ground.fill, super::color::muted_weight())
     }
 }
 
@@ -1724,7 +1723,7 @@ mod tests {
         let mut theme = theme();
         theme.glass = Some(liquid());
         theme.pane_margin = px(8.0);
-        theme.window_opacity = 0.93;
+        theme.set_window(0.93, 1.0);
         let window = theme.ground();
         assert_eq!(window.fill, theme.background.alpha(0.93));
         let panel = theme.layer(

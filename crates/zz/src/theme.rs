@@ -57,7 +57,7 @@ pub fn shell_frame(cx: &App) -> Option<Hsla> {
 
 pub fn chrome_background(cx: &App) -> Hsla {
     let theme = Theme::global(cx);
-    zz_ui::shell::chrome_background(theme.background, theme.window_opacity)
+    zz_ui::shell::chrome_background(theme.background, theme.window_opacity())
 }
 
 pub(crate) fn report_terminal_color_scheme(mux: &Entity<MuxClient>, cx: &mut App) {
@@ -136,10 +136,13 @@ fn apply_zz_overrides(cx: &mut App) {
     let chrome_contrast = config::chrome_contrast(cx);
     let frost = frost(cx);
     let glass_on = glass_on(cx);
-    let window_opacity = if chrome_blur(cx) {
-        crate::window::background::chrome_opacity(frost)
+    let (window_opacity, backdrop) = if chrome_blur(cx) {
+        (
+            crate::window::background::chrome_opacity(frost),
+            crate::window::background::backdrop_ceiling(frost),
+        )
     } else {
-        1.0
+        (1.0, 1.0)
     };
     let pane_look = PaneLook {
         frames: config::pane_gaps(cx),
@@ -159,7 +162,7 @@ fn apply_zz_overrides(cx: &mut App) {
         None
     };
     theme.pane_margin = pane_margin;
-    theme.window_opacity = window_opacity;
+    theme.set_window(window_opacity, backdrop);
 }
 
 #[cfg(test)]

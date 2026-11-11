@@ -16,7 +16,7 @@ Each layer steps away from the one under it: darker in light mode, lighter in da
 </div>
 ```
 
-On a blurred window each surface takes its step as a wash over the window, so the layers stay a step apart and the window stays see-through.
+On a blurred window each surface takes its step as a wash over the window, so the layers stay a step apart and the window stays see-through. Muted and faint text there are the ink at a share, so they take the desktop's hue and hold the contrast they have on an opaque window.
 
 ## Ink
 

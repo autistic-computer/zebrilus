@@ -2,7 +2,7 @@ use ala::{Hsla, Pixels, StatefulInteractiveElement, Styled, px};
 
 use super::{
     Colorize as _, Theme,
-    color::{faint_weight, muted_weight, readable_on},
+    color::{faint_weight, ink_on, muted_weight, readable_on},
 };
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
@@ -170,13 +170,15 @@ impl Paint {
         if ground.solid {
             return self.text_at(state);
         }
-        self.text_at(state)
-            .mix_oklab(ground.fill, 1.0 - muted_weight())
+        ink_on(self.text_at(state), ground.fill, muted_weight())
     }
 
     pub fn faint_at(&self, state: PaintState) -> Hsla {
-        self.text_at(state)
-            .mix_oklab(self.ground_at(state).fill, 1.0 - faint_weight())
+        ink_on(
+            self.text_at(state),
+            self.ground_at(state).fill,
+            faint_weight(),
+        )
     }
 
     pub fn opaque(self) -> Self {
@@ -235,7 +237,7 @@ impl Theme {
         Ground {
             fill: self
                 .background
-                .alpha(self.background.a * self.window_opacity.clamp(0.0, 1.0)),
+                .alpha(self.background.a * self.window_opacity().clamp(0.0, 1.0)),
             ink: self.foreground,
             elevation: Elevation::Window,
             glass: false,

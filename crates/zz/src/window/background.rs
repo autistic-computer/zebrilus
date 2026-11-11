@@ -119,6 +119,15 @@ pub(crate) fn chrome_opacity(frost: Frost) -> f32 {
     frost.window_opacity()
 }
 
+pub(crate) fn backdrop_ceiling(frost: Frost) -> f32 {
+    #[cfg(target_os = "macos")]
+    if macos::backdrop_available() {
+        return backdrop_brightness_cap(frost);
+    }
+    let _ = frost;
+    1.0
+}
+
 #[cfg(test)]
 pub(crate) fn set_compositor_support_for_tests(supported: bool, cx: &mut App) {
     cx.set_global(CompositorBlurSupport(supported));
