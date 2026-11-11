@@ -90,12 +90,17 @@ A request, client to daemon:
 
 1. Append the variant at the end of `ProtocolMessage`.
 2. In `control.rs`, add `pub const <NAME>_CAPABILITY: &str = "<name>-v1";` and append it to
-   `CAPABILITY_NAMES`.
+   `CAPABILITY_NAMES`. Add the const to the `pub use control::{...}` list in
+   `crates/zz-protocol/src/lib.rs` too: `control` is a private module, so without it the clients in
+   step 6 cannot name the const.
 3. Answer `Some(<NAME>_CAPABILITY)` for the variant in `ProtocolMessage::required_capability`.
 4. Append the name to the list that
    `a_server_hello_lists_the_daemon_capabilities_without_the_control_plane`
    (`crates/zz-daemon/src/daemon/attach_tests.rs`) expects; a command connection sees it too.
-5. Handle it in the daemon.
+5. Handle it in both copies of the daemon's dispatch: `Session::message` in
+   `crates/zz-daemon/src/daemon/connection.rs` (Unix) and `handle_connection_message` in
+   `crates/zz-daemon/src/daemon.rs` (Windows). Both end in a wildcard arm, so nothing fails to
+   compile if you miss one, and the daemon drops the message without a reply.
 6. In each client, hide or disable the feature unless the daemon has the name:
    `InteractiveClient::server_hello().capabilities` in the Rust clients, `Welcome::has_capability`
    in the browser client. If a client sends it anyway, the send path refuses that one message.
@@ -106,15 +111,27 @@ An event, daemon to client:
 2. In `control.rs`, add `pub const <NAME>_CAPABILITY: &str = "<name>-v1";` and append it to
    `CLIENT_CAPABILITY_NAMES`. Every client's hello picks it up with no other change.
 3. Answer `Some(<NAME>_CAPABILITY)` for the variant in `EventPayload::required_capability`.
-4. Handle it in each client that should show it.
+4. Handle it in each client that should show it. The compiler asks for an arm in one place only,
+   `handle_payload` in `crates/zz-client/src/core.rs`; every other client ignores the event until
+   you add an arm for it.
 5. Send it from the daemon with `publish`, `publish_to_client`, `publish_to_control_clients`,
    `send_event` or `OutboundMailbox::enqueue_reliable`. Each one reaches `enqueue_reliable_frame`,
    which drops it for an older client. Do not send it through the paths that take encoded bytes
    (`enqueue_encoded_reliable`, `enqueue_control_group`, the terminal and agent lanes, the Kitty
-   and pasted image frames): they never see the message and do not check.
+   and pasted image frames): they never see the message and do not check. The daemon learns a
+   client's names from its hello alone, so a connection that opened with `Exec`, as every one-shot
+   CLI command does, never gets a gated event.
 
 A message the daemon sends that is not an event follows the event steps, with its arm in
 `ProtocolMessage::required_capability`.
+
+The daemon serves each connection in one of two copies, so a change to how a connection is handled
+goes in both. On Unix the event loop serves it: `Session` in `daemon/connection.rs` for a
+connection that opens with a hello, `LoopExec` in `daemon/exec.rs` for one that opens with `Exec`
+(registered in `LoopExec::register`). On Windows a thread per connection does:
+`handle_connection_message` in `daemon.rs`, and `serve_exec` and `serve_exec_ready` in `exec.rs`.
+Those three are `#[cfg(windows)]` and are not even compiled on macOS or Linux, so code added only
+there, such as a send from `serve_exec_ready`, does nothing on them.
 
 Two limits, both const assertions in `control.rs`. `CAPABILITY_NAMES` must stay under 64 names,
 because `Welcome.caps` is a `u64` and the daemon sets `(1 << len) - 1`; it holds 33.
