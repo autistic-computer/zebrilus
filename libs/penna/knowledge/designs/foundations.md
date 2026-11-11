@@ -994,7 +994,8 @@ Behavior:
 - A pointer press on the trigger, or Enter, Space or Down while the trigger has focus, opens the panel; the same again closes it. Keys pressed inside the panel stay with the panel.
 - Opening moves focus into the panel; closing returns it to what had it, when focus was still inside.
 - Escape closes it. A press outside closes it unless `.overlay_closable(false)`.
-- `.on_dismiss` runs whenever it closes. There is no call to open it from code.
+- `.on_dismiss` runs whenever it closes.
+- `.open(open)` hands the open state to the app, for a popover the app opens from its own keys or closes when a pick is made: the panel is open exactly while `open` is true, and opening or closing that way moves focus as above. The trigger, Escape and a press outside then change nothing themselves; they call `.on_toggle` with the state they ask for, and the app decides.
 
 HTML: `.penna-popover` holds a `.penna-popover-trigger` (a button with `aria-haspopup`) and a `.penna-popover-panel` with `data-penna="popover"`, `tabindex="-1"` and `role="dialog"`. `data-open` marks it open; `data-anchor` takes `bottom` (opens above), `right` (aligns trailing edges) and `center` (centers on the trigger), alone or as `bottom right` and `bottom center`; `data-closable="false"` keeps it open on a press outside. `popover.js` sets `aria-expanded` and `data-state="current"` on the trigger, opens on Enter, Space and Down on the trigger, moves focus, closes on Escape and outside presses, fires `penna-open` and `penna-dismiss`, keeps the panel `8` inside the visual viewport on both axes, as natively, and moves it up when that shrinks, and exposes `pennaPopover.setOpen(popover, open)`. A panel whose trigger is out of view stays where it hangs, so a popover left open further down a page doesn't jump to the top of the screen. `popover.css` sizes the panel to its content, as natively.
 
