@@ -1,0 +1,520 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Phone terminal</title>
+<link rel="stylesheet" href="/penna/penna.css">
+<link rel="stylesheet" href="/penna-src/components/button/button.css">
+<link rel="stylesheet" href="/penna-src/components/kbd/kbd.css">
+<link rel="stylesheet" href="/penna-src/components/row/row.css">
+<link rel="stylesheet" href="/penna-src/blocks/touch/touch.css">
+<link rel="stylesheet" href="/penna-src/blocks/compact/compact.css">
+<link rel="stylesheet" href="/penna-src/blocks/sheet/sheet.css">
+<link rel="stylesheet" href="/zz.css">
+<link rel="stylesheet" href="phone.css">
+<script src="/penna/kit.js" data-tokens="/tokens/" data-themes="macos default yaru" data-theme="macos"></script>
+<script src="/penna-src/blocks/touch/touch.js" defer></script>
+<style>
+  .zz-story > figure > figcaption > i, .zz-page > section > p > i, .zz-compare > figure > p > i { color: var(--penna-warning-ink); }
+
+  .zz-term { position: absolute; inset: 54px 0 auto; margin: 0; padding: 8px 16px; font: 13px/18px var(--penna-mono); color: var(--penna-fg-muted); white-space: pre; }
+  .zz-term b { font-weight: 400; color: var(--penna-fg); }
+  .zz-term [data-ink="success"] { color: var(--penna-success-ink); }
+  .zz-term [data-ink="danger"] { color: var(--penna-danger-ink); }
+  .zz-term [data-ink="accent"] { color: var(--penna-accent); }
+  .zz-cursor { display: inline-block; width: 8px; height: 15px; vertical-align: -3px; background: var(--penna-fg); }
+  .zz-link { text-decoration: underline; text-decoration-color: color-mix(in srgb, currentColor 40%, transparent); text-underline-offset: 3px; }
+  .zz-link[data-pressed] { background: color-mix(in srgb, var(--penna-fg) 16%, transparent); color: var(--penna-fg); }
+  .zz-hit { background: color-mix(in srgb, var(--penna-warning) 40%, transparent); color: var(--penna-fg); }
+  .zz-hit[data-current] { background: color-mix(in srgb, var(--penna-warning) 75%, transparent); }
+  .zz-sel { background: color-mix(in srgb, var(--penna-accent) 32%, transparent); color: var(--penna-fg); }
+  .zz-h { position: relative; display: inline-block; width: 0; height: 18px; vertical-align: top; }
+  .zz-h > .penna-select-handle { top: 0; left: -1px; height: 18px; }
+
+  .zz-phone[data-kb] > .zz-bar, .zz-phone[data-kb] > .zz-mini-pill { display: none; }
+  .zz-phone > .zz-kb { position: absolute; z-index: 30; right: 0; bottom: 0; left: 0; }
+  .zz-phone:not([data-kb]) > :is(.zz-kb, .zz-keys) { display: none; }
+  .zz-keys, .zz-find-dock { position: absolute; z-index: 20; right: 16px; bottom: 300px; left: 16px; }
+  .zz-find-dock[data-rest] { bottom: 20px; }
+  .zz-phone > .penna-sheet, .zz-phone > .penna-pill-menu { z-index: 35; }
+  .zz-phone .penna-sheet-panel { padding-bottom: 20px; }
+  .zz-chord { display: flex; align-items: center; gap: 1px; --penna-icon-size: 14px; }
+
+  .zz-old-keys { position: absolute; z-index: 20; right: 0; bottom: 292px; left: 0; }
+  .zz-old-keys .penna-key-row-pill[data-penna] { left: 64px; }
+  .zz-old-keys .penna-key-row-scroll { left: 68px; }
+  .zz-old-keys .penna-key-row-more[data-penna][data-side="back"] { left: 64px; }
+  .zz-old-lead[data-penna] { position: absolute; top: 4px; left: 8px; display: grid; place-items: center; width: 48px; height: 48px; }
+
+  .zz-mini-pill[data-penna] { position: absolute; z-index: 20; bottom: 30px; left: 50%; display: flex; align-items: center; height: 32px; margin: 0; padding: 0 14px; transform: translateX(-50%); font-size: var(--penna-text-body-size); line-height: var(--penna-text-body-line); font-weight: 600; white-space: nowrap; --penna-r: 9999px; --penna-k: 1; }
+  .zz-jump { position: absolute; z-index: 20; bottom: 76px; left: 50%; margin-left: -22px; }
+  .zz-indicator { position: absolute; z-index: 10; top: 250px; right: 3px; width: 3px; height: 80px; border-radius: 2px; background: color-mix(in srgb, var(--penna-fg) 35%, transparent); }
+
+  .zz-sysmenu { position: absolute; z-index: 25; display: flex; height: 44px; overflow: hidden; border-radius: 12px; background: color-mix(in srgb, var(--penna-fg) 88%, var(--penna-bg)); color: var(--penna-bg); box-shadow: var(--penna-shadow-float); font-size: 15px; line-height: 20px; }
+  .zz-sysmenu > span { display: grid; place-items: center; padding: 0 16px; }
+  .zz-sysmenu > span + span { box-shadow: inset 1px 0 0 color-mix(in srgb, var(--penna-bg) 25%, transparent); }
+
+  .zz-float { position: absolute; z-index: 25; }
+  .zz-menu-stack { position: absolute; right: 0; bottom: 96px; left: 0; display: flex; flex-direction: column; align-items: center; gap: var(--penna-gap-group); }
+  .zz-phone > .penna-pill-menu > :is(.penna-pill-menu-well, .penna-pill-menu-close) { top: auto; bottom: 20px; left: 173px; }
+  .zz-phone[data-menu] .zz-bar { visibility: hidden; }
+
+  .zz-hud { position: absolute; z-index: 20; top: 380px; left: 50%; padding: 6px 14px; transform: translateX(-50%); font-weight: 600; }
+
+  .zz-bindings { max-height: 640px; overflow: hidden; }
+  .zz-bindings .penna-touch-row-value { max-width: none; gap: var(--penna-space-4); }
+
+  .zz-compare { display: flex; flex-wrap: wrap; gap: 28px 40px; align-items: flex-start; }
+  .zz-compare > figure { display: grid; flex: none; gap: 10px; margin: 0; }
+  .zz-compare > figure > figcaption, .zz-states > figure > figcaption, .zz-widths > figure > figcaption { font-size: 11px; line-height: 16px; font-weight: 600; color: var(--penna-fg-muted); text-transform: uppercase; letter-spacing: 0.04em; }
+  .zz-compare > figure > p { max-width: 393px; margin: 0; font-size: var(--penna-text-small-size); line-height: var(--penna-text-small-line); color: var(--penna-fg-muted); }
+  .zz-compare > figure > p > b { color: var(--penna-fg); font-weight: 600; }
+  .zz-strip { position: relative; height: 72px; overflow: visible; border-radius: 20px; background: var(--penna-bg); box-shadow: 0 0 0 1px var(--penna-divider); }
+  .zz-strip > .zz-keys, .zz-strip > .zz-old-keys { bottom: 8px; }
+  .zz-widths { display: flex; flex-wrap: wrap; gap: 28px 40px; align-items: flex-start; }
+  .zz-widths > figure { display: grid; gap: 10px; margin: 0; }
+
+  .zz-states { display: flex; flex-wrap: wrap; gap: 24px 32px; align-items: flex-end; }
+  .zz-states > figure { display: grid; gap: 8px; justify-items: start; margin: 0; }
+  .zz-keyset { display: flex; align-items: center; gap: 2px; padding: 6px; font-size: var(--penna-text-touch-small-size); line-height: var(--penna-text-touch-small-line); --penna-icon-size: 20px; }
+  .zz-keyset .penna-key[data-penna] { width: 44px; height: 44px; }
+  .zz-pads { display: flex; gap: 16px; }
+  .zz-pads > .penna-arrow-bubble[data-penna] { position: static; transform: none; }
+
+  .zz-live { display: grid; grid-template-columns: 424px minmax(0, 1fr); gap: 32px; align-items: start; }
+  .zz-live > figcaption { display: grid; gap: 10px; max-width: 64ch; padding-top: 10px; font-size: var(--penna-text-small-size); line-height: var(--penna-text-small-line); color: var(--penna-muted); }
+  .zz-live > figcaption b { color: var(--penna-fg); font-weight: 600; }
+  .zz-live .zz-term, .zz-live .penna-key { cursor: var(--penna-click-cursor); }
+</style>
+</head>
+<body>
+<main class="zz-page">
+  <div class="zz-intro">
+    <h1>A terminal</h1>
+    <p>Step 4 of the phone redesign, after <a href="machines.html">Machines</a>, <a href="machine.html">A machine</a> and <a href="pane.html">A pane</a>: the terminal pane. It keeps what works today, a terminal to the edges, the pill under it and a key row over the keyboard, and fixes sizes and consistency around it: 44 keys, the ends of the row always in view, and a tap, a hold or a sheet for what the desktop does with a pointer. New on the phone: a sheet for links, find, and jump to bottom. Caption text in <i>italics</i> says what the native app does today where it differs.</p>
+  </div>
+
+  <section>
+    <h2>Storyboard</h2>
+    <div class="penna-variants zz-phones zz-story">
+      <figure>
+        <div class="zz-phone" data-frame="today" data-kb></div>
+        <figcaption><b>0. Today</b>The keyboard is up and the pill has turned into the key row (<code>compact.rs:1351-1370</code>): the prefix in its own 48 pill, then a second 48 pill of 40 keys in a 56 row, 8 from the sides (<code>key_row.rs:20-30</code>). Everything after the prefix scrolls: ctrl, alt, tab, esc, /, @, the arrow pad and hide (<code>tool_keys.rs:41-55</code>). The row needs about 416, so hide is cut off under a 44 fade with a chevron, and on a 393 phone the arrow pad reaches into the fade too.</figcaption>
+      </figure>
+
+      <figure>
+        <div class="zz-phone" data-frame="rest"></div>
+        <figcaption><b>1. At rest</b>The terminal to the edges, no header, at its font size, 13. The pill below it: the terminal glyph, the pane's title, and its folder and branch beside one dot per pane of the session. After a failed command the second line is Exit 1 in danger ink, then the folder; while something runs, the title is what runs. A tap anywhere in the terminal raises the keyboard (<code>terminal.rs:892</code>). <i>As today.</i></figcaption>
+      </figure>
+
+      <figure>
+        <div class="zz-phone" data-frame="keys" data-kb></div>
+        <figcaption><b>2. Keyboard up: the key row</b>The row takes the pill's place and shape, 8 above the keyboard. Keys are 44. The prefix is pinned at the start; the arrow pad and hide are pinned at the end and never leave the screen. Between them the keys scroll, most used first: esc, tab, ctrl, alt, then / and @ behind the fade. The prefix's tap opens the pill's menu. <i>Today keys are 40 in two 48 pills, and the order is ctrl, alt, tab, esc.</i></figcaption>
+      </figure>
+
+      <figure>
+        <div class="zz-phone" data-frame="latched" data-kb></div>
+        <figcaption><b>3. Scrolled, ctrl latched</b>The row scrolled to its end, the fade now at the start. A tap on ctrl latches it for the next key, from the row or the keyboard, drawn as a wash; the c that follows sends ^C and lets it go. A second tap lets it go too. The prefix and the arrow pad stay where they were. <i>Today a latched key is a wash, not inverted; the inverted look is for a key held or the prefix armed.</i></figcaption>
+      </figure>
+
+      <figure>
+        <div class="zz-phone" data-frame="chord" data-kb></div>
+        <figcaption><b>4. Holding ctrl</b>After 280 ms the chord card opens above the key, kept 8 inside the screen: two columns of 44 items, each the chord in mono and its name. Slide onto one and let go to send it; let go without sliding and the card stays until a tap. The rows run bottom up, so ^C and ^D sit nearest the thumb. Alt's card holds M-b Word back, M-f Word ahead, M-d Kill word and M-. Last arg. <i>Today the same card and items, ^C first at the top (<code>tool_keys.rs:72-94</code>).</i></figcaption>
+      </figure>
+
+      <figure>
+        <div class="zz-phone" data-frame="arrows" data-kb></div>
+        <figcaption><b>5. The arrow pad, held and dragged</b>Holding the pad opens its bubble above it, the arrows in 44 cells. Drag and the nearest arrow lights; hold it there and it repeats. Here up walks back through history. Let go and the bubble closes. <i>Today the same, with a 132 bubble and smaller cells.</i></figcaption>
+      </figure>
+
+      <figure>
+        <div class="zz-phone" data-frame="select"></div>
+        <figcaption><b>6. Selecting text</b>Hold 500 ms on a word to select it, then drag to extend. On release a handle sits at each end, a 44 disc with a dot where the end is, so the whole drawing is the target, and the system's edit menu opens over the selection: Copy, Paste, Select All. Paste lives there and nowhere else. <i>Today the hold and drag and the menu are the same (<code>terminal.rs:1555-1606</code>); there are no handles, so the drag is the only way to change the selection.</i></figcaption>
+      </figure>
+
+      <figure>
+        <div class="zz-phone" data-frame="back"></div>
+        <figcaption><b>7. Scrolled back</b>A drag scrolls with momentum; past 24 the pill shrinks to the mini pill, as on every pane. Jump to bottom appears over it, the chat's Jump to latest: a 44 floating button. New output does not move the view. The scroll position is a thin indicator at the edge while it moves, not a target. <i>Today nothing shows until output arrives, then a 28 badge at the top right says "+3 output"; the scrollbar is a 16 target.</i></figcaption>
+      </figure>
+
+      <figure>
+        <div class="zz-phone" data-frame="link"></div>
+        <figcaption><b>8. A tapped link</b>Links carry a faint underline, since a phone has no hover to find them. A tap on one opens a sheet titled with the link, cut in the middle so the host and the end both show: Open in a browser pane makes a window in this session and zooms into it, Open on this phone hands it to the phone's browser, Copy. A tap anywhere else still raises the keyboard. <i>Today a tap on a link does nothing; links open with ctrl or cmd held.</i></figcaption>
+      </figure>
+
+      <figure>
+        <div class="zz-phone" data-frame="find" data-kb></div>
+        <figcaption><b>9. Find</b>Find in the pill's menu raises the keyboard and the find field takes the pill's place, by the keyboard rule: a 56 field with a 44 close, the query, the count as its value, and previous and next as 44 buttons. Matches are lit in the terminal, the current one stronger. Return goes to the next. Lower the keyboard and the field stays in the pill's spot; close brings the pill back. <i>Today the desktop has find; the phone has none.</i></figcaption>
+      </figure>
+
+      <figure>
+        <div class="zz-phone" data-frame="menu"></div>
+        <figcaption><b>10. Pill menu in a terminal</b>Step 3's menu with this pane's Find. Nearest the thumb "New in zz" over New browser, New terminal and New chat; then this pane: Find, Rename, Close in danger ink; then Overview; and All bindings alone at the top, since the bindings are a terminal's. The prefix key opens this same menu. <i>Today: All bindings and Kill pane, then Rename pane, New window, New pane, Last pane and Overview (<code>compact.rs:141-164</code>).</i></figcaption>
+      </figure>
+
+      <figure>
+        <div class="zz-phone" data-frame="bindings"></div>
+        <figcaption><b>11. All bindings</b>The sheet at touch sizes: titled All bindings over the prefix, then a touch row per binding under its group's header, its name first and the key after the prefix at the end as a keycap, a cap per key when there are several. A tap runs it and closes the sheet. <i>Today 44 rows with the key spelled in mono at the start, and the prefix as a cap beside the title (<code>which_key_list.rs</code>).</i></figcaption>
+      </figure>
+
+      <figure>
+        <div class="zz-phone" data-frame="exited"></div>
+        <figcaption><b>12. An exited terminal</b>The command has ended and the pane stayed: its last screen stays, and the pill says Exited 101 in danger ink. The phone offers no respawn; Close in the pill's menu is the way out, asking first. <i>Today the pill already says Exited 101 (<code>window_summary.rs:513-517</code>), and a 28 badge at the top right also says "Dead · 101" (<code>terminal.rs:1853</code>); the design drops the badge, since the pill says it.</i></figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section>
+    <h2>Key row</h2>
+    <p>The row at its real size. On a 393 phone four keys and part of a fifth scroll between the pinned ends; on a 440 phone, five.</p>
+    <div class="zz-widths" data-widths></div>
+    <div class="zz-states" data-states></div>
+    <div class="zz-compare" data-compare></div>
+  </section>
+
+  <section>
+    <h2>Live</h2>
+    <figure class="zz-live" style="margin: 0">
+      <div class="zz-phone" data-live></div>
+      <figcaption>
+        <span><b>Live.</b> Tap the terminal: the keyboard comes up and the pill gives way to the key row. Drag the row to scroll it. Tap ctrl or alt to latch it; any other key lets it go. Tap hide to lower the keyboard.</span>
+        <span><b>Not wired here:</b> typing, the chord card, the arrow pad's bubble and the pill's menu.</span>
+      </figcaption>
+    </figure>
+  </section>
+</main>
+<script>
+(() => {
+  const ic = (name) => `<i data-icon="${name}"></i>`;
+  const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;");
+  const COLS = 46;
+
+  const GROUPS = [3, 1, 2, 1, 1];
+  const dots = (on) => {
+    let n = 0;
+    return `<span class="penna-dots">${GROUPS.map((count) => `<span class="penna-dots-group">${Array.from({ length: count }, () => {
+      const i = n++;
+      return `<span class="penna-dot"${i === on ? " data-active" : ""}></span>`;
+    }).join("")}</span>`).join("")}</span>`;
+  };
+  const pill = ({ title, meta, tone, act = false }) => `<div class="zz-bar"><button class="penna-compact-pill" data-penna="floating"${act ? ` data-act="menu"` : ""}><span class="penna-pill-tile" data-penna="phone.pill.icon">${ic("square-terminal")}</span><span class="penna-pill-copy"><span class="penna-pill-title">${title}</span><span class="penna-pill-meta"><span class="penna-pill-meta-text"${tone ? ` data-tone="${tone}"` : ""}>${meta}</span>${dots(1)}</span></span></button></div>`;
+  const TITLE = "zsh";
+  const WHERE = "zebrilus · pill-find";
+  const restPill = pill({ title: TITLE, meta: WHERE });
+
+  const URL = "https://github.com/autistic-computer/zebrilus/pull/new/pill-find";
+  const SESSION = [
+    "$cargo test -p penna pill",
+    "   Compiling penna v0.42.0",
+    "    Finished `test` profile [unoptimized + debuginfo] target(s) in 6.12s",
+    "running 14 tests",
+    "+test result: ok. 14 passed; 0 failed",
+    "$git push -u origin pill-find",
+    "remote:",
+    "remote: Create a pull request for 'pill-find' on GitHub by visiting:",
+    `remote:      ${URL}`,
+    "remote:",
+    "To github.com:autistic-computer/zebrilus.git",
+    " * [new branch]      pill-find -> pill-find",
+    "branch 'pill-find' set up to track 'origin/pill-find'.",
+    "$",
+  ];
+  const OLDER = [
+    "$git log --oneline -6",
+    "9b2f0c1 Draw the pane menu at touch sizes",
+    "e41d7a3 Pin the key row's ends",
+    "7c09e52 Swipe the pill to the next pane",
+    "3a6f1d8 Fold the title bar on scroll",
+    "d52c4b0 Size phone tiles by pane count",
+    "1f8e2a9 Add the zoom card",
+    "$cargo clippy -p zz-app -- -D warnings",
+    "    Checking zz-ui v0.42.0",
+    "    Checking zz-app v0.42.0",
+    "    Finished `dev` profile [unoptimized + debuginfo] target(s) in 12.77s",
+    "$git switch -c pill-find",
+    "Switched to a new branch 'pill-find'",
+    "$git status --short",
+    " M libs/penna/src/blocks/compact/pill_menu.rs",
+    " M clients/app/src/app/compact.rs",
+    "$git commit -am 'Put Find in the pill menu'",
+    "[pill-find 4c1e9a7] Put Find in the pill menu",
+    " 2 files changed, 31 insertions(+), 6 deletions(-)",
+  ];
+  const TESTS = [
+    "$cargo test -p zz-daemon",
+    "   Compiling zz-daemon v0.42.0",
+    "     Running unittests src/lib.rs",
+    "running 212 tests",
+    "test agent::turn::wakes_on_time ... ok",
+    "test agent::turn::queues_while_busy ... ok",
+    "test pty::resize_keeps_cursor ... ok",
+    "test server::attach_shares_session ... ok",
+    "test server::detach_keeps_panes ... ok",
+  ];
+  const HISTORY = [...SESSION.slice(0, -1), "$cargo test -p penna pill"];
+  const EXITED = [
+    "   Compiling zz-daemon v0.42.0",
+    "!error[E0425]: cannot find value `ttl` in this scope",
+    "  --> crates/zz-daemon/src/agent/turn.rs:98:10",
+    "   |",
+    "98 |     wake(ttl)",
+    "   |          ^^^ not found in this scope",
+    "",
+    "!error: could not compile `zz-daemon` (lib) due to 1 previous error",
+  ];
+
+  const kindOf = (line) => {
+    const lead = line[0];
+    if (lead === "$") return ["prompt", `❯ ${line.slice(1)}`.trimEnd() + (line.length > 1 ? "" : " ")];
+    if (lead === "@") return ["head", line.slice(1)];
+    if (lead === "+") return ["success", line.slice(1)];
+    if (lead === "!") return ["danger", line.slice(1)];
+    return ["plain", line];
+  };
+
+  const term = (lines, { cursor = false, marks = [] } = {}) => {
+    const rows = [];
+    let hits = 0;
+    for (const raw of lines) {
+      const [kind, text] = kindOf(raw);
+      const ranges = [];
+      for (const mark of marks) {
+        const re = new RegExp(mark.re.source, "g");
+        let m;
+        while ((m = re.exec(text))) {
+          if (m[0].length === 0) { re.lastIndex++; continue; }
+          const n = mark.kind === "hit" ? ++hits : 0;
+          ranges.push({ start: m.index, end: m.index + m[0].length, mark, n });
+          if (mark.once) break;
+        }
+      }
+      ranges.sort((a, b) => a.start - b.start);
+      const wrap = Math.max(1, Math.ceil(text.length / COLS));
+      for (let r = 0; r < wrap; r++) {
+        const from = r * COLS;
+        const to = Math.min(text.length, from + COLS);
+        let html = "";
+        let at = from;
+        for (const range of ranges) {
+          const s = Math.max(range.start, from);
+          const e = Math.min(range.end, to);
+          if (s >= e) continue;
+          html += esc(text.slice(at, s));
+          const m = range.mark;
+          const startHandle = m.handles && s === range.start ? `<span class="zz-h"><span class="penna-select-handle" data-end="start"></span></span>` : "";
+          const endHandle = m.handles && e === range.end ? `<span class="zz-h"><span class="penna-select-handle" data-end="end"></span></span>` : "";
+          const extra = m.kind === "hit" && range.n === m.current ? " data-current" : "";
+          html += `${startHandle}<span class="${m.cls}"${m.attrs ?? ""}${extra}>${esc(text.slice(s, e))}</span>${endHandle}`;
+          at = e;
+        }
+        html += esc(text.slice(at, to));
+        const last = raw === lines[lines.length - 1] && r === wrap - 1;
+        const tail = cursor && last ? `<span class="zz-cursor"></span>` : "";
+        if (kind === "prompt" || kind === "head") rows.push(`<b>${html}${tail}</b>`);
+        else if (kind === "success" || kind === "danger") rows.push(`<span data-ink="${kind}">${html}</span>${tail}`);
+        else rows.push(html + tail);
+      }
+    }
+    return { html: `<pre class="zz-term">${rows.join("\n")}</pre>`, hits };
+  };
+  const link = (extra = "") => ({ re: /https:\/\/\S+/, cls: "zz-link", attrs: extra });
+
+  const txt = (t) => `<span class="penna-text" data-penna-text>${t}</span>`;
+  const key = (inner, label, attrs = "") => `<span class="penna-key-row-slot"><button class="penna-key" data-penna="phone.key"${label ? ` aria-label="${label}"` : ""}${attrs}>${inner}</button></span>`;
+  const prefixGlyph = `<span class="zz-chord">${ic("key-control")}${txt("b")}</span>`;
+  const KEYS = {
+    esc: (a) => key(ic("key-escape"), "Escape", a),
+    tab: (a) => key(ic("key-tab"), "Tab", a),
+    ctrl: (a) => key(ic("key-control"), "Control", ` data-key="ctrl"${a ?? ""}`),
+    alt: (a) => key(ic("key-option"), "Alt", ` data-key="alt"${a ?? ""}`),
+    slash: (a) => key(txt("/"), "", a),
+    at: (a) => key(txt("@"), "", a),
+  };
+  const keyRow = ({ end = false, latched = "", pressed = "", bubble = "", live = false } = {}) => {
+    const mid = ["esc", "tab", "ctrl", "alt", "slash", "at"].map((name) => KEYS[name]((name === latched ? " data-latched" : "") + (name === pressed ? " data-pressed" : ""))).join("");
+    const pad = `<span class="penna-key-row-slot"><button class="penna-key penna-arrow-pad-static" data-penna="phone.key" aria-label="Arrows"${bubble ? " data-pressed" : ""}>${ic("arrows-move")}${bubble}</button></span>`;
+    return `<div class="zz-keys"><div class="penna-key-row" data-size="touch"${end ? " data-end" : ""}><div class="penna-key-row-pill" data-penna="floating"></div><span class="penna-key-row-pin">${key(prefixGlyph, "Prefix")}</span><div class="penna-key-row-scroll"${live ? ` data-drag` : ""}>${mid}</div><span class="penna-key-row-pin">${pad}${key(ic("chevron-down"), "Hide keyboard", ` data-key="hide"`)}</span><button class="penna-key-row-more" data-penna="phone.pill" data-side="back" aria-label="Scroll back">${ic("chevron-left")}</button><button class="penna-key-row-more" data-penna="phone.pill" data-side="ahead" aria-label="Scroll ahead">${ic("chevron-right")}</button></div></div>`;
+  };
+  const oldKeyRow = (cls = "zz-old-keys") => {
+    const k = (inner, label) => `<span class="penna-key-row-slot"><button class="penna-key" data-penna="phone.key" aria-label="${label}">${inner}</button></span>`;
+    return `<div class="${cls}"><div class="penna-key-row"><div class="zz-old-lead" data-penna="phone.pill"><button class="penna-key" data-penna="phone.key" aria-label="Prefix">${prefixGlyph}</button></div><div class="penna-key-row-pill" data-penna="phone.pill"></div><div class="penna-key-row-scroll">${k(ic("key-control"), "Control")}${k(ic("key-option"), "Alt")}${k(ic("key-tab"), "Tab")}${k(ic("key-escape"), "Escape")}${k(txt("/"), "Slash")}${k(txt("@"), "At")}${k(ic("arrows-move"), "Arrows")}<span class="penna-key-row-slot"><button class="penna-key penna-key-hide" data-penna="phone.key" aria-label="Hide keyboard">${ic("chevron-down")}</button></span></div><button class="penna-key-row-more" data-penna="phone.pill" data-side="back" aria-label="Scroll back">${ic("chevron-left")}</button><button class="penna-key-row-more" data-penna="phone.pill" data-side="ahead" aria-label="Scroll ahead">${ic("chevron-right")}</button></div></div>`;
+  };
+
+  const arrowBubble = (lit) => `<span class="penna-arrow-bubble" data-penna="popover" data-size="touch">${["", "up", "", "left", "hub", "right", "", "down", ""].map((name) => {
+    if (name === "hub") return `<span class="penna-arrow-hub"></span>`;
+    if (!name) return "<span></span>";
+    return `<span class="penna-arrow-cell" data-penna="phone.arrow-pad" data-direction="${name}"${name === lit ? ` data-state="selected"` : ""}>${ic(`arrow-${name}`)}</span>`;
+  }).join("")}</span>`;
+
+  const CTRL = [["^C", "Interrupt"], ["^D", "End input"], ["^Z", "Suspend"], ["^L", "Clear"], ["^R", "History"], ["^U", "Kill line"], ["^W", "Kill word"], ["^K", "Kill to end"], ["^A", "Line start"], ["^E", "Line end"]];
+  const chordCard = (items, on) => {
+    const rows = [];
+    for (let i = 0; i < items.length; i += 2) rows.push(items.slice(i, i + 2));
+    return `<div class="penna-chord-card" data-penna="popover">${rows.reverse().flat().map(([cap, label]) => `<div class="penna-chord-item" data-penna="menu-item"${cap === on ? ` data-state="selected"` : ""}><span class="penna-chord-cap">${cap}</span><span>${label}</span></div>`).join("")}</div>`;
+  };
+
+  const kb = () => {
+    const keys = (s) => [...s].map((k) => `<i>${k}</i>`).join("");
+    return `<div class="zz-kb"><div class="zz-kb-row">${keys("qwertyuiop")}</div><div class="zz-kb-row">${keys("asdfghjkl")}</div><div class="zz-kb-row"><i data-w>⇧</i>${keys("zxcvbnm")}<i data-w>⌫</i></div><div class="zz-kb-row"><i data-w>123</i><i data-space>space</i><i data-ret>return</i></div></div>`;
+  };
+
+  const sheet = ({ title, detail, body, cls = "", fitTitle = false }) => `<div class="penna-sheet" style="--penna-sheet-rest: 8px"><div class="penna-sheet-scrim" data-act="dismiss"></div><div class="penna-sheet-frame"><div class="penna-sheet-panel" data-penna="drawer"><div class="penna-sheet-grip"><div class="penna-sheet-grabber" data-penna="grabber"></div></div><div class="penna-sheet-header">${detail ? `<span class="penna-sheet-copy"><span class="penna-sheet-title">${title}</span><span class="penna-sheet-detail">${detail}</span></span>` : `<span class="penna-sheet-title"${fitTitle ? ` data-middle="${esc(title)}"` : ""}>${esc(title)}</span>`}<button class="penna-sheet-close penna-button" data-penna="button.quiet" data-size="touch" aria-label="Close" data-act="dismiss">${ic("xmark")}</button></div><div class="penna-sheet-list ${cls}">${body}</div></div></div></div>`;
+  const row = (label, { glyph, value, tone } = {}) => `<div class="penna-touch-row" data-penna="phone.row" role="button"${tone ? ` data-tone="${tone}"` : ""}>${glyph ? ic(glyph) : ""}<span class="penna-touch-row-lines"><span>${label}</span></span>${value ? `<span class="penna-touch-row-value">${value}</span>` : ""}</div>`;
+  const cap = (k) => `<kbd class="penna-kbd" data-penna="keycap" data-size="touch">${k.startsWith("arrow-") ? ic(k) : `<span data-penna-text>${esc(k)}</span>`}</kbd>`;
+  const header = (label) => `<div class="penna-touch-header"><span>${label}</span></div>`;
+  const BINDINGS = [
+    ["Panes", [["Split right", ["%"]], ["Split down", ['"']], ["Focus pane", ["arrow-left", "arrow-down", "arrow-up", "arrow-right"]], ["Zoom pane", ["z"]], ["Next pane", ["o"]], ["Last pane", [";"]], ["Kill pane", ["x"]]]],
+    ["Windows", [["New window", ["c"]], ["Next window", ["n"]], ["Previous window", ["p"]], ["Rename window", [","]], ["Kill window", ["&"]]]],
+    ["Sessions", [["Pick session", ["s"]], ["Detach", ["d"]], ["Rename session", ["$"]]]],
+  ];
+  const bindingsSheet = sheet({ title: "All bindings", detail: "Prefix ⌃B", cls: "zz-bindings", body: BINDINGS.map(([group, rows]) => header(group) + rows.map(([label, keys]) => row(label, { value: keys.map(cap).join("") })).join("")).join("") });
+  const linkSheet = sheet({ title: URL, fitTitle: true, body: [row("Open in a browser pane", { glyph: "globe" }), row("Open on this phone", { glyph: "external-link" }), row("Copy", { glyph: "copy" })].join("") });
+
+  const chip = (glyph, label, extra = ` data-penna="floating"`) => `<button class="penna-pill-chip"${extra}>${ic(glyph)}<span>${label}</span></button>`;
+  const group = (chips) => `<div class="penna-pill-menu-group">${chips}</div>`;
+  const menu = `<div class="penna-pill-menu" data-open><div class="penna-pill-menu-scrim" data-act="dismiss"></div><div class="zz-menu-stack">${group(chip("keyboard", "All bindings", ` data-penna="floating" data-look="quiet"`))}${group(chip("layout-dashboard", "Overview"))}${group(chip("search", "Find") + chip("pencil", "Rename") + chip("xmark", "Close", ` data-penna="floating" data-tone="danger"`))}${group(`<span class="penna-pill-menu-label" data-penna="floating">New in zz</span>${chip("globe", "New browser")}${chip("square-terminal", "New terminal")}${chip("chat-plus", "New chat", ` data-penna="button" data-tone="primary" data-prominent data-look="primary"`)}`)}</div><div class="penna-pill-menu-well"></div><button class="penna-pill-menu-close" data-penna="button" data-tone="primary" data-prominent aria-label="Close" data-act="dismiss">${ic("xmark")}</button></div>`;
+
+  const findMarks = (current) => [{ re: /pill-find/, cls: "zz-hit", kind: "hit", current }];
+  const findField = (count, rest = false) => `<div class="zz-find-dock"${rest ? " data-rest" : ""}><div class="penna-find" data-penna="field.composer"><button class="penna-button" data-penna="button.quiet" data-shape="icon" aria-label="Close find">${ic("xmark")}</button><span class="penna-find-query zz-caret">pill-find</span><span class="penna-find-count">${count}</span><button class="penna-button" data-penna="button.quiet" data-shape="icon" aria-label="Previous match">${ic("chevron-up")}</button><button class="penna-button" data-penna="button.quiet" data-shape="icon" aria-label="Next match">${ic("chevron-down")}</button></div></div>`;
+
+  const sel = { re: /git push -u origin pill-find/, cls: "zz-sel", handles: true, once: true };
+  const sysmenu = `<div class="zz-sysmenu" data-over=".zz-sel"><span>Copy</span><span>Paste</span><span>Select All</span></div>`;
+  const jump = `<button class="penna-touch-icon zz-jump" data-penna="floating" aria-label="Jump to bottom">${ic("arrow-down")}</button>`;
+  const mini = `<button class="zz-mini-pill" data-penna="floating">${TITLE}</button>`;
+
+  const frames = {
+    today: () => `${term(SESSION, { cursor: true, marks: [link()] }).html}${oldKeyRow()}${kb()}`,
+    rest: () => `${term(SESSION, { cursor: true, marks: [link()] }).html}${restPill}`,
+    keys: () => `${term(SESSION, { cursor: true, marks: [link()] }).html}${keyRow()}${kb()}`,
+    latched: () => `${term(TESTS, { cursor: false }).html}${keyRow({ end: true, latched: "ctrl" })}${kb()}`,
+    chord: () => `${term(TESTS).html}${keyRow({ pressed: "ctrl" })}<div class="zz-float" data-anchor="ctrl">${chordCard(CTRL, "^C")}</div>${kb()}`,
+    arrows: () => `${term(HISTORY, { cursor: true, marks: [link()] }).html}${keyRow({ bubble: arrowBubble("up") })}${kb()}`,
+    select: () => `${term(SESSION, { cursor: true, marks: [link(), sel] }).html}${sysmenu}${restPill}`,
+    back: () => `${term([...OLDER, ...SESSION.slice(0, 12)], { marks: [link()] }).html}<span class="zz-indicator"></span>${jump}${mini}`,
+    link: () => `${term(SESSION, { cursor: true, marks: [link(" data-pressed")] }).html}${restPill}${linkSheet}`,
+    find: () => {
+      const probe = term(SESSION, { marks: findMarks(3) });
+      return `${probe.html}${findField(`3 of ${probe.hits}`)}${kb()}`;
+    },
+    menu: () => `${term(SESSION, { cursor: true, marks: [link()] }).html}${restPill}${menu}`,
+    bindings: () => `${term(SESSION, { cursor: true, marks: [link()] }).html}${restPill}${bindingsSheet}`,
+    exited: () => `${term(EXITED).html}${pill({ title: "cargo run -p zz-daemon", meta: "Exited 101", tone: "danger" })}`,
+  };
+
+  for (const phone of document.querySelectorAll("[data-frame]")) {
+    phone.innerHTML = frames[phone.dataset.frame]();
+    if (phone.dataset.frame === "menu") phone.setAttribute("data-menu", "");
+  }
+
+  const live = document.querySelector("[data-live]");
+  live.innerHTML = `${term(SESSION, { cursor: true, marks: [link()] }).html}${restPill}${keyRow({ live: true })}${kb()}`;
+
+  const strip = (width, html) => `<div class="zz-strip" style="width: ${width}px">${html}</div>`;
+  document.querySelector("[data-widths]").innerHTML = [
+    ["393 wide", strip(393, keyRow())],
+    ["440 wide", strip(440, keyRow())],
+  ].map(([label, html]) => `<figure><figcaption>${label}</figcaption>${html}</figure>`).join("");
+
+  const one = (inner, attrs = "") => `<div class="zz-keyset"><button class="penna-key" data-penna="phone.key"${attrs}>${inner}</button></div>`;
+  const states = [
+    ["Rest", one(ic("key-control"))],
+    ["Pressed", one(ic("key-control"), " data-pressed")],
+    ["Latched", one(ic("key-control"), " data-latched")],
+    ["Prefix armed", one(prefixGlyph, " data-armed")],
+    ["Hide", one(ic("chevron-down"))],
+    ["Arrow pad, held", `<div class="zz-pads">${["up", "left", "right", "down"].map(arrowBubble).join("")}</div>`],
+    ["Chord card, alt", chordCard([["M-b", "Word back"], ["M-f", "Word ahead"], ["M-d", "Kill word"], ["M-.", "Last arg"]], "")],
+    ["Find field", `<div style="width: 361px">${findField("3 of 7").replace('class="zz-find-dock"', 'style="position: static"')}</div>`],
+  ];
+  document.querySelector("[data-states]").innerHTML = states.map(([label, html]) => `<figure><figcaption>${label}</figcaption>${html}</figure>`).join("");
+
+  document.querySelector("[data-compare]").innerHTML = [
+    ["Today at 393", strip(393, oldKeyRow("zz-old-keys")), "<b>Today.</b> The prefix in a 48 pill of its own, then 40 keys that all scroll, so the arrow pad reaches into the fade and hide is cut off behind it."],
+    ["New at 393", strip(393, keyRow()), "<b>New.</b> One 56 pill of 44 keys, the prefix pinned at the start and the arrow pad and hide at the end, the most used keys first between them."],
+  ].map(([label, html, say]) => `<figure><figcaption>${label}</figcaption>${html}<p>${say}</p></figure>`).join("");
+
+  const status = `<div class="zz-status"><b>9:41</b><span class="zz-sig"><i></i><i></i><i></i><i></i></span><span class="zz-batt"></span></div>`;
+  for (const phone of document.querySelectorAll(".zz-phone")) {
+    phone.insertAdjacentHTML("afterbegin", status);
+    phone.insertAdjacentHTML("beforeend", `<span class="zz-home"></span>`);
+  }
+
+  const place = () => {
+    for (const float of document.querySelectorAll("[data-anchor]")) {
+      const phone = float.closest(".zz-phone");
+      const anchor = phone.querySelector(`[data-key="${float.dataset.anchor}"]`);
+      const row = phone.querySelector(".penna-key-row");
+      const p = phone.getBoundingClientRect();
+      const a = anchor.getBoundingClientRect();
+      const r = row.getBoundingClientRect();
+      const w = float.offsetWidth;
+      const left = Math.max(8, Math.min(p.width - 8 - w, a.left - p.left + a.width / 2 - w / 2));
+      float.style.left = `${left}px`;
+      float.style.bottom = `${p.bottom - r.top + 8}px`;
+    }
+    for (const menu of document.querySelectorAll("[data-over]")) {
+      const phone = menu.closest(".zz-phone");
+      const target = phone.querySelector(menu.dataset.over);
+      const p = phone.getBoundingClientRect();
+      const t = target.getBoundingClientRect();
+      const w = menu.offsetWidth;
+      menu.style.left = `${Math.max(8, Math.min(p.width - 8 - w, t.left - p.left + t.width / 2 - w / 2))}px`;
+      menu.style.top = `${t.top - p.top - 44 - 8 - menu.offsetHeight}px`;
+    }
+    for (const bubble of document.querySelectorAll(".zz-phone .penna-arrow-bubble")) {
+      bubble.style.translate = "";
+      const p = bubble.closest(".zz-phone").getBoundingClientRect();
+      const b = bubble.getBoundingClientRect();
+      bubble.style.translate = `${Math.max(p.left + 8 - b.left, Math.min(0, p.right - 8 - b.right))}px 0`;
+    }
+    for (const title of document.querySelectorAll("[data-middle]")) {
+      const full = title.dataset.middle.replace(/&amp;/g, "&").replace(/&lt;/g, "<");
+      title.textContent = full;
+      let cut = 0;
+      while (title.scrollWidth > title.clientWidth && cut < full.length - 8) {
+        cut += 1;
+        const keep = full.length - cut;
+        const head = Math.ceil(keep / 2);
+        title.textContent = `${full.slice(0, head)}…${full.slice(full.length - (keep - head))}`;
+      }
+    }
+  };
+  place();
+  addEventListener("load", place);
+  document.fonts.ready.then(place);
+
+  const scroller = live.querySelector(".penna-key-row-scroll");
+  let drag = null;
+  scroller.addEventListener("pointerdown", (event) => { drag = { x: event.clientX, left: scroller.scrollLeft, moved: false }; });
+  addEventListener("pointermove", (event) => {
+    if (!drag) return;
+    const dx = event.clientX - drag.x;
+    if (Math.abs(dx) > 6) drag.moved = true;
+    if (drag.moved) scroller.scrollLeft = drag.left - dx;
+  });
+  addEventListener("pointerup", () => setTimeout(() => { drag = null; }, 0));
+
+  const unlatch = () => live.querySelectorAll("[data-latched]").forEach((key) => key.removeAttribute("data-latched"));
+  live.addEventListener("click", (event) => {
+    if (drag?.moved) return;
+    const key = event.target.closest(".penna-key");
+    if (key) {
+      const name = key.dataset.key;
+      if (name === "hide") { unlatch(); live.removeAttribute("data-kb"); return; }
+      if (name === "ctrl" || name === "alt") { key.toggleAttribute("data-latched"); return; }
+      unlatch();
+      return;
+    }
+    if (event.target.closest(".zz-kb")) { unlatch(); return; }
+    if (event.target.closest(".zz-term") && !live.hasAttribute("data-kb")) {
+      live.setAttribute("data-kb", "");
+      requestAnimationFrame(() => scroller.dispatchEvent(new Event("scroll")));
+    }
+  });
+
+  window.pennaKit?.roundAll?.();
+})();
+</script>
+</body>
+</html>
