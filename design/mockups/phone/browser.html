@@ -1,0 +1,835 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Phone browser</title>
+<link rel="stylesheet" href="/penna/penna.css">
+<link rel="stylesheet" href="/penna-src/components/button/button.css">
+<link rel="stylesheet" href="/penna-src/components/row/row.css">
+<link rel="stylesheet" href="/penna-src/components/progress/progress.css">
+<link rel="stylesheet" href="/penna-src/blocks/touch/touch.css">
+<link rel="stylesheet" href="/penna-src/blocks/compact/compact.css">
+<link rel="stylesheet" href="/penna-src/blocks/sheet/sheet.css">
+<link rel="stylesheet" href="/zz.css">
+<link rel="stylesheet" href="phone.css">
+<script src="/penna/kit.js" data-tokens="/tokens/" data-themes="macos default yaru" data-theme="macos"></script>
+<script src="/penna-src/blocks/touch/touch.js" defer></script>
+<style>
+  .zz-story > figure > figcaption > i, .zz-page > section > p > i, .zz-compare > figure > p > i { color: var(--penna-warning-ink); }
+
+  .zz-web { position: absolute; z-index: 1; top: 54px; right: 0; bottom: 0; left: 0; overflow: hidden; background: var(--penna-bg); color: var(--penna-fg); font-family: var(--penna-font); font-size: 16px; line-height: 24px; }
+  .zz-web-in { position: relative; display: flex; flex-direction: column; }
+  .zz-site { display: flex; flex: none; align-items: center; gap: 10px; height: 48px; padding: 0 16px; box-shadow: inset 0 -1px 0 var(--penna-divider); font-size: 15px; line-height: 20px; color: var(--penna-fg-muted); }
+  .zz-site > b { color: var(--penna-fg); font-weight: 600; }
+  .zz-site-mark { flex: none; width: 22px; height: 22px; border-radius: 50%; background: var(--penna-fg); }
+  .zz-doc { display: flex; flex-direction: column; gap: 16px; padding: 16px; }
+  .zz-doc h1 { margin: 0; font-size: 24px; line-height: 30px; font-weight: 600; }
+  .zz-doc h1 > span { color: var(--penna-fg-muted); font-weight: 400; }
+  .zz-doc p { margin: 0; }
+  .zz-doc code { padding: 1px 6px; border-radius: 6px; background: color-mix(in srgb, var(--penna-fg) 7%, transparent); font: 13px/18px var(--penna-mono); color: var(--penna-fg); }
+  .zz-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; font-size: 14px; line-height: 20px; color: var(--penna-fg-muted); }
+  .zz-meta b { color: var(--penna-fg); font-weight: 600; }
+  .zz-open { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 12px; border-radius: 14px; background: color-mix(in srgb, var(--penna-success) 16%, transparent); color: var(--penna-success-ink); font-weight: 600; --penna-icon-size: 14px; }
+  .zz-prtabs { display: flex; gap: 20px; height: 44px; padding: 0 16px; overflow: hidden; box-shadow: inset 0 -1px 0 var(--penna-divider); font-size: 14px; line-height: 20px; color: var(--penna-fg-muted); white-space: nowrap; }
+  .zz-prtabs > span { display: flex; align-items: center; gap: 6px; }
+  .zz-prtabs > span[data-on] { color: var(--penna-fg); font-weight: 600; box-shadow: inset 0 -2px 0 var(--penna-fg); }
+  .zz-prtabs i { font-style: normal; padding: 0 6px; border-radius: 9px; background: color-mix(in srgb, var(--penna-fg) 8%, transparent); font-size: 12px; line-height: 18px; }
+  .zz-cmt { border-radius: 10px; box-shadow: 0 0 0 1px var(--penna-divider); }
+  .zz-cmt > header { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 10px 10px 0 0; background: color-mix(in srgb, var(--penna-fg) 4%, transparent); font-size: 14px; line-height: 20px; color: var(--penna-fg-muted); }
+  .zz-cmt > header > b { color: var(--penna-fg); font-weight: 600; }
+  .zz-cmt > div { display: flex; flex-direction: column; gap: 10px; padding: 12px; }
+  .zz-cmt ul { margin: 0; padding-left: 22px; }
+  .zz-av { display: grid; flex: none; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: color-mix(in srgb, var(--penna-accent) 28%, var(--penna-bg)); color: var(--penna-fg); font-size: 12px; line-height: 1; font-weight: 600; }
+  .zz-av[data-two] { background: color-mix(in srgb, var(--penna-warning) 30%, var(--penna-bg)); }
+  .zz-ev { display: flex; align-items: center; gap: 10px; padding: 0 4px; font-size: 14px; line-height: 20px; color: var(--penna-fg-muted); --penna-icon-size: 16px; }
+  .zz-ev b { color: var(--penna-fg); font-weight: 600; }
+  .zz-commits { display: flex; flex-direction: column; gap: 6px; padding: 0 4px 0 30px; font-size: 14px; line-height: 20px; }
+  .zz-commits code { margin-right: 8px; }
+  .zz-box { position: relative; display: flex; align-items: flex-start; gap: 12px; padding: 12px; border-radius: 10px; box-shadow: 0 0 0 1px var(--penna-divider); --penna-icon-size: 20px; }
+  .zz-box > [data-icon] { flex: none; margin-top: 2px; color: var(--penna-success-ink); }
+  .zz-box > div { display: flex; flex-direction: column; min-width: 0; }
+  .zz-box b { font-weight: 600; }
+  .zz-box span { font-size: 14px; line-height: 20px; color: var(--penna-fg-muted); }
+  .zz-merge { display: flex; flex-direction: column; gap: 12px; }
+  .zz-merge > em { display: grid; place-items: center; height: 40px; border-radius: 8px; background: var(--penna-success); color: var(--penna-on-success); font-style: normal; font-weight: 600; font-size: 15px; }
+  .zz-reply { display: flex; gap: 10px; padding-bottom: 24px; }
+  .zz-reply-box { flex: 1; min-height: 120px; padding: 10px 12px; border-radius: 10px; box-shadow: 0 0 0 1px var(--penna-divider); color: var(--penna-fg-muted); }
+  .zz-reply-box[data-focus] { box-shadow: 0 0 0 2px var(--penna-accent); color: var(--penna-fg); }
+  .zz-li { display: flex; align-items: flex-start; gap: 12px; padding: 12px 16px; box-shadow: inset 0 -1px 0 var(--penna-divider); --penna-icon-size: 18px; }
+  .zz-li > [data-icon] { flex: none; margin-top: 3px; color: var(--penna-success-ink); }
+  .zz-li > div { display: flex; flex-direction: column; min-width: 0; }
+  .zz-li b { font-weight: 600; }
+  .zz-li span { font-size: 14px; line-height: 20px; color: var(--penna-fg-muted); }
+  .zz-filter { display: flex; gap: 16px; padding: 0 16px 12px; font-size: 14px; line-height: 20px; color: var(--penna-fg-muted); box-shadow: inset 0 -1px 0 var(--penna-divider); }
+  .zz-filter b { color: var(--penna-fg); font-weight: 600; }
+  .zz-blank { height: 600px; }
+
+  [data-pick-on] { outline: 2px solid var(--penna-fg); outline-offset: 3px; background: color-mix(in srgb, var(--penna-fg) 8%, transparent); }
+  .zz-pick-label { position: absolute; bottom: calc(100% + 10px); left: -4px; padding: 3px 8px; border-radius: 6px; background: var(--penna-panel); color: var(--penna-fg); box-shadow: 0 0 0 1px var(--penna-border), var(--penna-shadow-float); font: 12px/16px var(--penna-mono); white-space: nowrap; }
+
+  .zz-load { position: absolute; z-index: 6; top: 54px; right: 0; left: 0; }
+  .zz-load[hidden] { display: none; }
+
+  .zz-old-bar, .zz-top-bar { position: absolute; z-index: 5; top: 54px; right: 0; left: 0; display: flex; align-items: center; background: var(--penna-bg); box-shadow: inset 0 -1px 0 var(--penna-divider); }
+  .zz-old-bar { gap: 8px; height: 52px; padding: 0 12px; }
+  .zz-old-field[data-penna] { display: flex; flex: 1; align-items: center; gap: 8px; min-width: 0; height: 40px; padding: 0 12px; font-size: var(--penna-text-body-size); line-height: var(--penna-text-body-line); --penna-icon-size: 14px; }
+  .zz-old-field > [data-icon] { flex: none; color: var(--penna-muted); }
+  .zz-old-field > span, .zz-top-field > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .zz-old-tools { display: flex; flex: none; gap: 4px; }
+  .zz-old-btn[data-penna] { display: grid; place-items: center; width: 40px; height: 40px; margin: 0; padding: 0; --penna-icon-size: 16px; }
+  .zz-tabbox { display: grid; place-items: center; width: 15px; height: 15px; border: 1.5px solid currentColor; border-radius: 4px; font: 600 9px/1 var(--penna-font); color: var(--penna-fg-faint); }
+  .zz-top-bar { gap: 4px; height: 56px; padding: 0 8px; }
+  .zz-top-field[data-penna] { display: flex; flex: 1; align-items: center; gap: 8px; min-width: 0; height: 44px; padding: 0 14px; font-size: var(--penna-text-touch-body-size); line-height: var(--penna-text-touch-body-line); --penna-icon-size: 20px; }
+  .zz-top-field > [data-icon] { flex: none; color: var(--penna-muted); }
+  .zz-top-bar .zz-tabbox { width: 22px; height: 22px; border-width: 2px; border-radius: 6px; font-size: 12px; color: var(--penna-fg); }
+
+  .zz-mini-pill[data-penna] { position: absolute; z-index: 20; bottom: 30px; left: 50%; display: flex; align-items: center; height: 32px; margin: 0; padding: 0 14px; transform: translateX(-50%); font-size: var(--penna-text-body-size); line-height: var(--penna-text-body-line); font-weight: 600; white-space: nowrap; --penna-r: 9999px; --penna-k: 1; }
+
+  .zz-phone[data-kb] > .zz-bar { display: none; }
+  .zz-phone > .zz-kb { position: absolute; z-index: 30; right: 0; bottom: 0; left: 0; }
+  .zz-phone:not([data-kb]) > :is(.zz-kb, .zz-dock) { display: none; }
+  .zz-dock { position: absolute; z-index: 20; right: 16px; bottom: 300px; left: 16px; display: flex; flex-direction: column; gap: 8px; }
+  .zz-dock > .penna-touch-group { overflow: hidden; }
+  .zz-dock .penna-touch-row-lines > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .zz-kb-row > i[data-dot] { width: 33px; }
+  .zz-kb-row > i[data-com] { width: 60px; font-size: 15px; background: color-mix(in srgb, var(--penna-fg) 12%, var(--penna-bg)); }
+  .zz-kb-row > i[data-space][data-short] { width: 96px; }
+
+  .zz-act { position: absolute; z-index: 15; right: 16px; bottom: 84px; left: 16px; display: flex; }
+  .zz-act > .penna-button { width: 100%; }
+  .zz-fail { position: absolute; z-index: 2; top: 230px; right: 0; left: 0; }
+
+  .zz-phone > .penna-stack, .zz-cut > .penna-stack { z-index: 35; }
+  .zz-phone > .penna-sheet { z-index: 45; }
+  .zz-phone > .penna-stack > .penna-stack-close, .zz-cut > .penna-stack > .penna-stack-close { bottom: 20px; left: 173px; }
+  :is(.zz-phone, .zz-cut)[data-stack="pinned"] > .zz-bar { visibility: hidden; }
+  :is(.zz-phone, .zz-cut)[data-stack="held"] > .zz-bar { z-index: 40; }
+  .zz-phone .penna-sheet-panel { padding-bottom: 20px; }
+  .zz-phone .penna-sheet-panel:has(.penna-action-bar) { padding-bottom: 0; }
+  :is(.zz-phone, .zz-cut) :is(.penna-stack-chip, .zz-tabrow) { max-width: 370px; }
+  .zz-tabrow[data-penna] { padding-right: 4px; }
+  .zz-tabrow > [data-icon="check"] { color: var(--penna-ink, var(--penna-fg)); }
+  .zz-tabrow > .zz-slot { flex: none; width: 20px; }
+
+  .zz-press { position: absolute; inset: 0; display: none; border-radius: inherit; background: color-mix(in srgb, var(--penna-ink) 12%, transparent); pointer-events: none; }
+  .penna-compact-pill[data-held] > .zz-press { display: block; }
+  .zz-bar > .penna-compact-pill { transition: translate 260ms cubic-bezier(0.2, 0.9, 0.3, 1); }
+  .zz-bar > .penna-compact-pill[data-dragging] { transition: none; }
+  .zz-finger { position: absolute; z-index: 60; width: 44px; height: 44px; margin: -22px 0 0 -22px; border-radius: 50%; background: radial-gradient(circle, rgb(128 128 128 / 0.62) 0 42%, rgb(128 128 128 / 0.3) 68%, transparent 71%); box-shadow: 0 0 0 1px rgb(128 128 128 / 0.45); pointer-events: none; }
+
+  .zz-phone .penna-stack[data-rise] :is(.penna-stack-chip, .penna-stack-label) { animation: zz-rise 380ms cubic-bezier(0.2, 1.1, 0.3, 1) both; }
+  @keyframes zz-rise { from { translate: 0 14px; opacity: 0; } }
+  .zz-phone .penna-stack[data-fold] :is(.penna-stack-chip, .penna-stack-label) { transition: translate 280ms cubic-bezier(0.4, 0, 0.2, 1), scale 280ms cubic-bezier(0.4, 0, 0.2, 1), opacity 220ms ease-in; translate: var(--zz-to, 0 0); scale: 0.5; opacity: 0; }
+  .penna-stack > .penna-stack-scrim { transition: opacity 220ms ease-in; }
+  .penna-stack[data-fold] > .penna-stack-scrim { opacity: 0; }
+  @media (prefers-reduced-motion: reduce) {
+    .zz-phone .penna-stack[data-rise] :is(.penna-stack-chip, .penna-stack-label) { animation: zz-fade 120ms ease-out both; }
+    @keyframes zz-fade { from { opacity: 0; } }
+    .zz-phone .penna-stack[data-fold] :is(.penna-stack-chip, .penna-stack-label) { transition: opacity 120ms; translate: none; scale: none; }
+  }
+
+  .zz-strip-set { display: flex; flex-wrap: wrap; gap: 28px 32px; align-items: flex-start; }
+  .zz-strip-set > figure { display: grid; gap: 10px; justify-items: start; margin: 0; }
+  .zz-strip-set > figure > figcaption, .zz-compare > figure > figcaption { font-size: 11px; line-height: 16px; font-weight: 600; color: var(--penna-fg-muted); text-transform: uppercase; letter-spacing: 0.04em; }
+  .zz-strip-set > figure > p { margin: 0; font-size: var(--penna-text-small-size); line-height: var(--penna-text-small-line); color: var(--penna-fg-muted); font-variant-numeric: tabular-nums; }
+  .zz-ground { position: relative; padding: 16px; border-radius: 20px; background: color-mix(in srgb, var(--penna-fg) 6%, var(--penna-bg)); box-shadow: 0 0 0 1px var(--penna-divider); }
+  .zz-ground .penna-stack-chip { max-width: 370px; }
+
+  .zz-compare { display: flex; flex-wrap: wrap; gap: 28px 40px; align-items: flex-end; }
+  .zz-compare > figure { display: grid; flex: none; gap: 10px; margin: 0; }
+  .zz-compare > figure > p { max-width: 393px; margin: 0; font-size: var(--penna-text-small-size); line-height: var(--penna-text-small-line); color: var(--penna-fg-muted); }
+  .zz-compare > figure > p > b { color: var(--penna-fg); font-weight: 600; }
+  .zz-cut { position: relative; width: 402px; overflow: hidden; border-radius: 28px; background: var(--penna-bg); box-shadow: 0 0 0 1px var(--penna-divider); }
+  .zz-cut > .penna-stack { position: absolute; inset: 0; }
+  .zz-cut > .zz-bar { position: absolute; }
+  .zz-strip { position: relative; width: 402px; height: 52px; overflow: hidden; border-radius: 20px; background: var(--penna-bg); box-shadow: 0 0 0 1px var(--penna-divider); }
+  .zz-strip > .zz-old-bar { top: 0; }
+
+  .zz-live { display: grid; grid-template-columns: 424px minmax(0, 1fr); gap: 32px; align-items: start; }
+  .zz-live > figcaption { display: grid; gap: 10px; max-width: 64ch; padding-top: 10px; font-size: var(--penna-text-small-size); line-height: var(--penna-text-small-line); color: var(--penna-muted); }
+  .zz-live > figcaption b { color: var(--penna-fg); font-weight: 600; }
+  .zz-live .zz-phone { user-select: none; -webkit-user-select: none; }
+  .zz-live :is(.zz-web, .penna-compact-pill, .penna-stack-chip, .penna-stack-close, .zz-kb i, .penna-button, .penna-touch-row) { cursor: var(--penna-click-cursor); touch-action: none; }
+  .zz-last { margin: 0 0 0 10px; font-size: var(--penna-text-small-size); line-height: var(--penna-text-small-line); color: var(--penna-fg-muted); }
+  .zz-last > b { color: var(--penna-fg); font-weight: 600; }
+</style>
+</head>
+<body>
+<main class="zz-page">
+  <div class="zz-intro">
+    <h1>A browser</h1>
+    <p>Step 5 of the phone redesign, after <a href="machines.html">Machines</a>, <a href="machine.html">A machine</a>, <a href="pane.html">A pane</a> and <a href="terminal.html">A terminal</a>: the browser pane. It follows the rule every pane follows, no header: the page gets the whole screen and the pill is the browser's bar. Its stack menu, from <a href="menus.html">Menus</a>, leads with Back, Forward and Reload in one row nearest the thumb, so Back is one stroke from the pill. The page stays the phone's own web view, with its own scrolling, taps and keyboard. Caption text in <i>italics</i> says what the native app does today where it differs.</p>
+  </div>
+
+  <section>
+    <h2>Storyboard</h2>
+    <div class="penna-variants zz-phones zz-story">
+      <figure>
+        <div class="zz-phone" data-frame="today"></div>
+        <figcaption><b>0. Today</b>The one pane with a header on the phone: a 52 bar across the top (<code>CompactBrowserBar</code>, <code>browser.rs:125-170</code>) with a 40 address field whose input is 28, a 40 tabs button with the count in a box, and a 40 element picker. No Back, Forward or Reload: a pull at the top of the page reloads. The pill says the page's title over its host.</figcaption>
+      </figure>
+
+      <figure>
+        <div class="zz-phone" data-frame="rest"></div>
+        <figcaption><b>1. A page at rest</b>The page edge to edge under the status area: the phone's own web view, with its own scrolling, pinch and keyboard. The pill is the browser's bar, the page's title over its host. A tap on a link follows it. A long press keeps the platform's menu: the web view's link preview on iOS, nothing on Android. A pull at the top reloads, with the platform's spinner. <i>Today the same, under the 52 bar.</i></figcaption>
+      </figure>
+
+      <figure>
+        <div class="zz-phone" data-frame="scrolled"></div>
+        <figcaption><b>2. Scrolled</b>Scrolling 24 shrinks the pill to the mini pill, the host in it, as on every pane; scrolling back or a tap brings the pill back. On iOS a swipe in from the edge goes back or forward, the web view's own gesture (<code>ios_browser.rs:290</code>). <i>Today the same, with the bar still at the top. Android's back gesture goes to the app, never to the page.</i></figcaption>
+      </figure>
+
+      <figure>
+        <div class="zz-phone" data-frame="stack"></div>
+        <figcaption><b>3. The pill's stack in a browser</b>Nearest the thumb a row of three 52 glyph chips, Back, Forward and Reload, each named for a screen reader; Forward is off with nowhere to go. Then the address, cut in the middle. Then Tabs with its count, Pick element and Open on this phone. Overview, Rename, Close and New in zz wait behind More. <i>Today the pane menu, with nothing for the browser in it (<code>compact.rs:141-164</code>).</i></figcaption>
+      </figure>
+
+      <figure>
+        <div class="zz-phone" data-frame="held"></div>
+        <figcaption><b>4. Hold, slide, release on Back</b>Hold the pill 280 ms and the same stack opens under the finger. Slide onto Back, the nearest chip, and let go: the page goes back, one stroke from the pill. Over a chip of the row, the finger picks by how far across it is, each chip owning half the gap beside it. <i>Today Back is on the phone only as the iOS edge swipe.</i></figcaption>
+      </figure>
+
+      <figure>
+        <div class="zz-phone" data-frame="address" data-kb></div>
+        <figcaption><b>5. Address</b>Address raises the keyboard and the address field takes the pill's place: a 44 close, the address all selected so typing replaces it, and a 44 clear. Go is the keyboard's own key. While typing, suggestions sit just above, two-line rows, the best match nearest the field; a tap loads it. <i>Today the field is the bar's, 40 at the top, and the pill stays squeezed over the keyboard. Suggestions are not built: the desktop's come from its own history (<code>recent_pages.rs</code>), which the phone never sees.</i></figcaption>
+      </figure>
+
+      <figure>
+        <div class="zz-phone" data-frame="loading"></div>
+        <figcaption><b>6. Loading</b>A 2 line in the accent along the top edge of the page fills to the web view's estimate and goes once the page loads. The pill's second line stays the host. In the stack Reload reads Stop, and Pick element is off until the page loads. <i>Today nothing shows a load but the picker turning off; the platform's spinner shows only after a pull (<code>ios_browser.rs:1097-1120</code>).</i></figcaption>
+      </figure>
+
+      <figure>
+        <div class="zz-phone" data-frame="tabs"></div>
+        <figcaption><b>7. Tabs</b>A sheet of two-line rows, the title over the host, the current one checked at the start, and a 44 close at the end of each: the one row in the kit that holds a button. A tap on a row switches to it. New tab is the main action; it opens a blank tab with the address field up. <i>Today one-line rows with the host squeezed into 120 at the end, a 22 close, and New tab as a last row (<code>browser_pane.rs:909-1001</code>).</i></figcaption>
+      </figure>
+
+      <figure>
+        <div class="zz-phone" data-frame="picking"></div>
+        <figcaption><b>8. Pick element</b>The page turns into the picker the desktop has: the element under the finger outlined and lit, its tag and class in a mono label, all of it the page's drawing. The pill's second line says Picking an element; a tap on the pill stops. <i>Today the picker button starts it, and a 32 row under the bar says "Tap an element to copy its context and screenshot" beside a 28 Cancel, the only way to stop (<code>browser_pane.rs:1121-1157</code>). Holding the picker button and dragging onto the page picks on release (<code>:301-354</code>); that way in goes with the button.</i></figcaption>
+      </figure>
+
+      <figure>
+        <div class="zz-phone" data-frame="picked"></div>
+        <figcaption><b>9. Copied</b>A tap on an element copies its context as text, and a picture of it, to the clipboard, and the pill says so with a check for a moment. When the page cannot read the element the pill says "Could not inspect that element. Try again." in warning ink. <i>As today (<code>browser_pane.rs:465-496</code>).</i></figcaption>
+      </figure>
+
+      <figure>
+        <div class="zz-phone" data-frame="failed"></div>
+        <figcaption><b>10. Failed to load</b>The phone empty state in the page's place, its words as today's: This page couldn't load, over the web view's own error. Try again is the main action, 56, 8 above the pill, where a chat's composer sits. <i>Today the desktop's inline alert in the middle of the page with a 28 Try again (<code>browser_pane.rs:1114-1120</code>, <code>browser.rs:1280</code>).</i></figcaption>
+      </figure>
+
+      <figure>
+        <div class="zz-phone" data-frame="pagekb" data-kb></div>
+        <figcaption><b>11. The page has the keyboard</b>A field on the page took the keyboard. Nothing of zz rides it: the pill hides until the keyboard goes down, and the page scrolls its field into view. On iOS the web view's own form bar sits over the keyboard; it is the platform's, left out here. <i>Today the pill stays, squeezed over the keyboard.</i></figcaption>
+      </figure>
+
+      <figure>
+        <div class="zz-phone" data-frame="nottaken"></div>
+        <figcaption><b>12. The option not taken</b>Today's top bar kept at touch sizes: a 44 back, the address field, a 44 tabs button, and the picker moved into the pill's stack. Every control stays in view at the top, at the cost of a header no other pane has and a reach to the top of the screen.</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section>
+    <h2>Pieces at real size</h2>
+    <div class="zz-strip-set" data-strip></div>
+  </section>
+
+  <section>
+    <h2>Today's bar and the pill</h2>
+    <div class="zz-compare" data-compare></div>
+  </section>
+
+  <section>
+    <h2>Live</h2>
+    <figure class="zz-live" style="margin: 0">
+      <div>
+        <div class="zz-phone" data-live></div>
+        <p class="zz-last">Last: <b data-last>nothing yet</b></p>
+      </div>
+      <figcaption>
+        <span><b>Live,</b> with a mouse or a finger. Tap the pill for its stack, or hold it, slide onto Back and let go. Back and Forward walk between the pull request list and the pull request. Reload draws the line and reads Stop while it runs.</span>
+        <span>Address raises the keyboard and puts the field in the pill's place. Type for suggestions and tap one, clear, press go, or close. Tabs opens the sheet. Pick element starts the picker: a tap on the page copies, a tap on the pill stops. More turns the stack to the rest. Swipe the pill sideways or drag it up quickly: those stay the pager and the lift.</span>
+        <span><b>Not wired here:</b> Open on this phone, Overview, Rename, Close and the New chips, and links in the page.</span>
+      </figcaption>
+    </figure>
+  </section>
+</main>
+<script>
+(() => {
+  const HOLD = 280;
+  const SLOP = 10;
+  const ic = (name) => `<i data-icon="${name}"></i>`;
+  const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
+
+  const PR = { kind: "pr", title: "Draw the browser pane at touch sizes · Pull Request #412", host: "github.com", url: "github.com/autistic-computer/zebrilus/pull/412" };
+  const LIST = { kind: "list", title: "Pull requests · autistic-computer/zebrilus", host: "github.com", url: "github.com/autistic-computer/zebrilus/pulls" };
+  const FAILED = { kind: "failed", title: "docs.zzmux.sh/phone.html", host: "docs.zzmux.sh", url: "docs.zzmux.sh/phone.html" };
+  const BLANK = { kind: "blank", title: "New tab", host: "", url: "" };
+  const doc = (title, url) => ({ kind: "doc", title: `${title} · penna`, host: url.split("/")[0], url });
+  const SUGGEST = [
+    PR,
+    LIST,
+    doc("Look", "localhost:8102/look.html"),
+    doc("Stack menu", "localhost:8102/stack-menu.html"),
+    doc("Phone", "localhost:8102/phone.html"),
+    { kind: "doc", title: "WKWebView | Apple Developer Documentation", host: "developer.apple.com", url: "developer.apple.com/documentation/webkit/wkwebview" },
+  ];
+  const TABS = [PR, doc("Phone", "localhost:8102/phone.html"), SUGGEST[5]];
+
+  const GROUPS = [3, 1, 2, 1, 1];
+  const dots = (on) => {
+    let n = 0;
+    return `<span class="penna-dots">${GROUPS.map((count) => `<span class="penna-dots-group">${Array.from({ length: count }, () => {
+      const i = n++;
+      return `<span class="penna-dot"${i === on ? " data-active" : ""}></span>`;
+    }).join("")}</span>`).join("")}</span>`;
+  };
+  const pill = ({ at = PR, meta, title, glyph = "globe", tone = "", held = false } = {}) => `<div class="zz-bar"><button class="penna-compact-pill" data-penna="floating"${held ? " data-held" : ""}><span class="zz-press"></span><span class="penna-pill-tile" data-penna="phone.pill.icon"${tone ? ` data-tone="${tone}"` : ""}>${ic(glyph)}</span><span class="penna-pill-copy"><span class="penna-pill-title">${esc(title ?? at.title)}</span><span class="penna-pill-meta"><span class="penna-pill-meta-text"${tone ? ` data-tone="${tone}"` : ""}>${esc(meta ?? at.host)}</span>${dots(3)}</span></span></button></div>`;
+  const mini = (at = PR) => `<button class="zz-mini-pill" data-penna="floating">${esc(at.host)}</button>`;
+
+  const site = (who, what) => `<header class="zz-site"><span class="zz-site-mark"></span><span>${who} / <b>${what}</b></span></header>`;
+  const prPage = ({ pick = false, compose = false, partial = false } = {}) => `${site("autistic-computer", "zebrilus")}
+    <div class="zz-doc">
+      <h1>Draw the browser pane at touch sizes <span>#412</span></h1>
+      <div class="zz-meta"><span class="zz-open">${ic("git-branch")}Open</span><span><b>fabrico</b> wants to merge 3 commits into <code>main</code> from <code>browser-pill</code></span></div>
+    </div>
+    <div class="zz-prtabs"><span data-on>Conversation <i>4</i></span><span>Commits <i>3</i></span><span>Checks <i>2</i></span><span>Files <i>6</i></span></div>
+    ${partial ? `<div class="zz-blank"></div>` : `<div class="zz-doc">
+      <article class="zz-cmt"><header><span class="zz-av">f</span><b>fabrico</b><span>2 hours ago</span></header><div>
+        <p>The browser pane drops its top bar on the phone. The pill is the bar: its stack leads with Back, Forward and Reload, and the address sits one chip above them.</p>
+        <ul><li>A glyph row in the stack menu</li><li>The address field riding the keyboard</li><li>A progress line on the page's top edge</li></ul>
+      </div></article>
+      <div class="zz-ev">${ic("git-branch")}<span><b>fabrico</b> added 3 commits</span></div>
+      <div class="zz-commits"><span><code>9b2f0c1</code>Draw the glyph row</span><span><code>e41d7a3</code>Put the address in the stack</span><span><code>7c09e52</code>Line the page's top edge</span></div>
+      <div class="zz-box"${pick ? " data-pick-on" : ""}>${pick ? `<span class="zz-pick-label">div.merge-checks</span>` : ""}${ic("circle-check")}<div><b>All checks have passed</b><span>2 successful checks</span></div></div>
+      <article class="zz-cmt"><header><span class="zz-av" data-two>d</span><b>deadbeef-hexlord</b><span>40 minutes ago</span></header><div>
+        <p>Back one stroke from the pill reads well. The edge swipe still goes back on iOS, so nothing is lost there.</p>
+      </div></article>
+      <div class="zz-merge"><div class="zz-box">${ic("circle-check")}<div><b>No conflicts with the base branch</b><span>Merging can be performed automatically.</span></div></div><em>Merge pull request</em></div>
+      <div class="zz-reply"><span class="zz-av">f</span><div class="zz-reply-box"${compose ? " data-focus" : ""}>${compose ? `Ship it once the docs build<span class="zz-caret"></span>` : "Add a comment"}</div></div>
+    </div>`}`;
+  const listPage = () => `${site("autistic-computer", "zebrilus")}
+    <div class="zz-doc"><h1>Pull requests</h1></div>
+    <div class="zz-filter"><b>4 Open</b><span>38 Closed</span></div>
+    ${[["Draw the browser pane at touch sizes", "#412 opened 2 hours ago by fabrico"], ["Pin the key row's ends", "#409 opened yesterday by fabrico"], ["Stack menu with hold, slide and release", "#405 opened 3 days ago by toctou-hater"], ["Fold the title bar on scroll", "#398 opened last week by fabrico"]].map(([t, m]) => `<div class="zz-li">${ic("git-branch")}<div><b>${t}</b><span>${m}</span></div></div>`).join("")}`;
+  const docPage = (at) => `${site("penna", "docs")}
+    <div class="zz-doc"><h1>${esc(at.title.replace(/ · penna$/, ""))}</h1>
+      <p>A phone screen is built from phone components, sized for a thumb from the start. It is not the desktop made bigger.</p>
+      <p>Controls round from their height. Phone containers share one corner, twice the radius, since the phone's 56 rung is twice the desktop's 28.</p>
+      <div class="zz-box">${ic("circle-check")}<div><b>Built from the kit</b><span>Every picture on this page is penna markup.</span></div></div>
+    </div>`;
+  const PAGES = { pr: prPage, list: listPage, doc: docPage, blank: () => "", failed: () => "" };
+  const page = (at, { top = 54, anchor = "", y = 0, ...opts } = {}) => `<div class="zz-web" style="top: ${top}px"${anchor ? ` data-anchor="${anchor}" data-y="${y}"` : ""}><div class="zz-web-in">${at.kind === "doc" ? docPage(at) : PAGES[at.kind](opts)}</div></div>`;
+  const loadLine = (value, hidden = false) => `<div class="penna-progress zz-load" data-look="line" role="progressbar" aria-label="Loading" aria-valuemin="0" aria-valuemax="1" style="--penna-value: ${value}%"${hidden ? " hidden" : ""}><div class="penna-progress-fill"></div></div>`;
+
+  const kb = (url = false) => {
+    const keys = (s) => [...s].map((k) => `<i>${k}</i>`).join("");
+    const last = url ? `<i data-w>123</i><i data-dot>.</i><i data-dot>/</i><i data-com>.com</i><i data-space data-short>space</i><i data-ret>go</i>` : `<i data-w>123</i><i data-space>space</i><i data-ret>return</i>`;
+    return `<div class="zz-kb"><div class="zz-kb-row">${keys("qwertyuiop")}</div><div class="zz-kb-row">${keys("asdfghjkl")}</div><div class="zz-kb-row"><i data-w>⇧</i>${keys("zxcvbnm")}<i data-w>⌫</i></div><div class="zz-kb-row">${last}</div></div>`;
+  };
+
+  const suggestions = (typed) => {
+    const q = typed.toLowerCase();
+    return q ? SUGGEST.filter((s) => s.title.toLowerCase().includes(q) || s.url.toLowerCase().includes(q)).slice(0, 4) : [];
+  };
+  const suggestRow = (s) => `<div class="penna-touch-row" data-penna="phone.row" data-lines="2" role="button" data-go="${esc(s.url)}">${ic("history")}<span class="penna-touch-row-lines"><span>${esc(s.title)}</span><span>${esc(s.url)}</span></span></div>`;
+  const addressField = ({ text, selected = false }) => `<div class="penna-address" data-penna="field.composer"><button class="penna-button" data-penna="button.quiet" data-shape="icon" aria-label="Close address" data-act="close-address">${ic("xmark")}</button><span class="penna-address-text${selected ? "" : " zz-caret"}"${selected ? " data-selected" : ""}><span>${esc(text)}</span></span>${text ? `<button class="penna-button" data-penna="button.quiet" data-shape="icon" aria-label="Clear" data-act="clear-address">${ic("circle-x")}</button>` : ""}</div>`;
+  const dock = ({ text, selected = false }) => {
+    const rows = selected ? [] : suggestions(text);
+    return `<div class="zz-dock">${rows.length ? `<div class="penna-touch-group" data-penna="field.composer">${rows.slice().reverse().map(suggestRow).join("")}</div>` : ""}${addressField({ text, selected })}</div>`;
+  };
+
+  const browserGroups = ({ back = true, forward = false, loading = false, tabs = TABS.length, at = PR } = {}) => [
+    { chips: [{ glyph: "ellipsis", label: "More", more: true }] },
+    { chips: [{ glyph: "external-link", label: "Open on this phone" }, { glyph: "inspector", label: "Pick element", disabled: loading }, { glyph: "layers", label: "Tabs", value: String(tabs) }] },
+    { chips: [{ glyph: "globe", label: at.url || "New tab", key: "Address", middle: true }] },
+    { row: true, chips: [{ glyph: "arrow-left", label: "Back", only: true, disabled: !back }, { glyph: "arrow-right", label: "Forward", only: true, disabled: !forward }, loading ? { glyph: "stop", label: "Stop", only: true } : { glyph: "redo-2", label: "Reload", only: true }] },
+  ];
+  const MORE_GROUPS = [
+    { chips: [{ glyph: "layout-dashboard", label: "Overview" }] },
+    { chips: [{ glyph: "pencil", label: "Rename" }, { glyph: "xmark", label: "Close", danger: true }] },
+    { label: "New in zz", chips: [{ glyph: "globe", label: "New browser" }, { glyph: "square-terminal", label: "New terminal" }, { glyph: "chat-plus", label: "New chat" }] },
+  ];
+
+  const keyOf = (c) => c.key ?? c.label;
+  const chip = (c, marks = {}) => {
+    const k = keyOf(c);
+    const attrs = [
+      ` data-penna="floating"`,
+      c.only ? ` data-glyph aria-label="${c.label}"` : "",
+      c.danger ? ` data-tone="danger"` : "",
+      marks.selected === k ? ` data-state="selected"` : "",
+      marks.picked === k ? " data-picked" : "",
+      c.disabled ? " disabled" : "",
+      c.more ? " data-more" : "",
+      ` data-pick="${esc(k)}"`,
+    ].join("");
+    const inner = c.only ? ic(c.glyph) : `${ic(c.glyph)}<span${c.middle ? ` data-middle="${esc(c.label)}"` : ""}>${esc(c.label)}</span>${c.value ? `<span class="penna-stack-value">${c.value}</span>` : ""}`;
+    return `<button class="penna-stack-chip"${attrs}>${inner}</button>`;
+  };
+  const group = (g, marks) => `<div class="penna-stack-group"${g.row ? " data-row" : ""}>${g.label ? `<span class="penna-stack-label" data-penna="floating">${g.label}</span>` : ""}${g.chips.map((c) => chip(c, marks)).join("")}</div>`;
+  const column = (groups, marks = {}) => `<div class="penna-stack-column">${groups.map((g) => group(g, marks)).join("")}</div>`;
+  const closeButton = `<button class="penna-stack-close" data-penna="button" data-tone="primary" data-prominent aria-label="Close">${ic("xmark")}</button>`;
+  const stack = (groups, { mode = "pinned", marks = {} } = {}) => `<div class="penna-stack" data-open>${`<div class="penna-stack-scrim"></div>`}${column(groups, marks)}${mode === "pinned" ? closeButton : ""}</div>`;
+  const finger = (target, dx = 0, dy = 0) => `<span class="zz-finger" data-at='${target}' data-dx="${dx}" data-dy="${dy}"></span>`;
+
+  const tabRow = (t, current, live = false) => `<div class="penna-touch-row zz-tabrow" data-penna="phone.row" data-lines="2" role="button"${live ? ` data-tab="${esc(t.url)}"` : ""}>${current ? ic("check") : `<span class="zz-slot"></span>`}<span class="penna-touch-row-lines"><span>${esc(t.title)}</span><span>${esc(t.host)}</span></span><button class="penna-button" data-penna="button.quiet" data-shape="icon" data-size="touch" aria-label="Close tab" data-act="close-tab">${ic("xmark")}</button></div>`;
+  const tabsSheet = (tabs, current, live = false) => `<div class="penna-sheet" style="--penna-sheet-rest: 8px"><div class="penna-sheet-scrim" data-act="dismiss"></div><div class="penna-sheet-frame"><div class="penna-sheet-panel" data-penna="drawer"><div class="penna-sheet-grip"><div class="penna-sheet-grabber" data-penna="grabber"></div></div><div class="penna-sheet-header"><span class="penna-sheet-title">Tabs</span><button class="penna-sheet-close penna-button" data-penna="button.quiet" data-size="touch" aria-label="Close" data-act="dismiss">${ic("xmark")}</button></div><div class="penna-sheet-list">${tabs.map((t, i) => tabRow(t, i === current, live)).join("")}</div><div class="penna-action-bar"><button class="penna-button" data-penna="button" data-tone="primary" data-prominent data-size="touch-large" data-act="new-tab"><span class="penna-label">New tab</span></button></div></div></div></div>`;
+
+  const oldBar = () => `<div class="zz-old-bar"><div class="zz-old-field" data-penna="field">${ic("globe")}<span>${PR.url}</span></div><div class="zz-old-tools"><button class="zz-old-btn" data-penna="button.quiet" aria-label="Tabs"><span class="zz-tabbox">3</span></button><button class="zz-old-btn" data-penna="button.quiet" aria-label="Pick an element">${ic("inspector")}</button></div></div>`;
+  const topBar = () => `<div class="zz-top-bar"><button class="penna-touch-icon" data-penna="phone.button" aria-label="Back">${ic("arrow-left")}</button><div class="zz-top-field" data-penna="field">${ic("globe")}<span>${PR.host}</span></div><button class="penna-touch-icon" data-penna="phone.button" aria-label="Tabs"><span class="zz-tabbox">3</span></button></div>`;
+  const failed = () => `<div class="zz-fail"><div class="penna-empty">${ic("triangle-alert")}<b>This page couldn’t load</b><span>A server with the specified hostname could not be found.</span></div></div><div class="zz-act"><button class="penna-button" data-penna="button" data-tone="primary" data-prominent data-size="touch-large"><span class="penna-label">Try again</span></button></div>`;
+
+  const frames = {
+    today: () => ({ html: `${page(PR, { top: 106 })}${oldBar()}${pill()}` }),
+    rest: () => ({ html: `${page(PR)}${pill()}` }),
+    scrolled: () => ({ html: `${page(PR, { anchor: ".zz-ev", y: 24 })}${mini()}` }),
+    stack: () => ({ html: `${page(PR)}${pill()}${stack(browserGroups())}`, mode: "pinned" }),
+    held: () => ({ html: `${page(PR)}${pill()}${stack(browserGroups(), { mode: "held", marks: { selected: "Back" } })}${finger('[data-pick="Back"]', 6, 4)}`, mode: "held" }),
+    address: () => ({ html: `${page(PR)}${pill()}${dock({ text: "penna" })}${kb(true)}` }),
+    loading: () => ({ html: `${page(PR, { partial: true })}${loadLine(62)}${pill()}${stack(browserGroups({ loading: true }))}`, mode: "pinned" }),
+    tabs: () => ({ html: `${page(PR)}${pill()}${tabsSheet(TABS, 0)}` }),
+    picking: () => ({ html: `${page(PR, { anchor: ".zz-commits", y: 120, pick: true })}${pill({ meta: "Picking an element" })}${finger("[data-pick-on]", 40, 6)}` }),
+    picked: () => ({ html: `${page(PR, { anchor: ".zz-commits", y: 120 })}${pill({ title: "Element context + screenshot copied", glyph: "check" })}` }),
+    failed: () => ({ html: `${failed()}${pill({ at: FAILED })}` }),
+    pagekb: () => ({ html: `${page(PR, { anchor: ".zz-reply", y: 370, compose: true })}${kb()}` }),
+    nottaken: () => ({ html: `${page(PR, { top: 110 })}${topBar()}${pill()}` }),
+  };
+
+  for (const phone of document.querySelectorAll("[data-frame]")) {
+    const frame = frames[phone.dataset.frame]();
+    phone.innerHTML = frame.html;
+    if (frame.mode) phone.dataset.stack = frame.mode;
+  }
+
+  const strip = [
+    ["Glyph row", `<div class="penna-stack-group" data-row>${browserGroups()[3].chips.map((c) => chip(c)).join("")}</div>`, "52 square, 8 apart, Forward off"],
+    ["Back under the finger", `<div class="penna-stack-group" data-row>${browserGroups()[3].chips.map((c) => chip(c, { selected: "Back" })).join("")}</div>`, "inverted, grown 4%, a tick"],
+    ["Loading", `<div class="penna-stack-group" data-row>${browserGroups({ loading: true })[3].chips.map((c) => chip(c)).join("")}</div>`, "Reload reads Stop"],
+    ["Address chip", chip(browserGroups()[2].chips[0]), "the address cut in the middle, at most 370"],
+    ["Value", chip(browserGroups()[1].chips[2]), "the count, touch-small muted"],
+    ["Address field, opened", `<div style="width: 361px">${addressField({ text: PR.url, selected: true })}</div>`, "56, the address all selected"],
+    ["Address field, typing", `<div style="width: 361px">${addressField({ text: "penna" })}</div>`, "44 close and clear, inset 6"],
+    ["Progress line", `<div style="position: relative; width: 361px; height: 8px">${loadLine(62).replace("zz-load", "zz-load-strip")}</div>`, "2 tall, no track, square ends"],
+  ];
+  document.querySelector("[data-strip]").innerHTML = strip.map(([label, html, say]) => `<figure><figcaption>${label}</figcaption><div class="zz-ground">${html}</div><p>${say}</p></figure>`).join("");
+
+  document.querySelector("[data-compare]").innerHTML = [
+    ["Today's bar", `<div class="zz-strip">${oldBar()}</div>`, "<b>Today.</b> A 52 bar of 40 controls across the top: the address, tabs and the picker, and no Back."],
+    ["The pill and its stack", `<div class="zz-cut" style="height: 560px" data-stack="pinned">${page(PR)}${pill()}${stack(browserGroups())}</div>`, "<b>New.</b> The pill is the bar: Back, Forward and Reload nearest the thumb, then the address, tabs and the picker, all 52."],
+  ].map(([label, html, say]) => `<figure><figcaption>${label}</figcaption>${html}<p>${say}</p></figure>`).join("");
+
+  const live = document.querySelector("[data-live]");
+  const lastEl = document.querySelector("[data-last]");
+  const say = (text) => { lastEl.textContent = text; };
+
+  const L = { hist: [LIST, PR], at: 1, loading: 0, timer: null, picking: false, notice: null, address: null, tabs: TABS.slice(), current: 0 };
+  const here = () => L.hist[L.at];
+
+  const status = `<div class="zz-status"><b>9:41</b><span class="zz-sig"><i></i><i></i><i></i><i></i></span><span class="zz-batt"></span></div>`;
+  for (const phone of document.querySelectorAll(".zz-phone:not([data-live]), .zz-cut")) {
+    phone.insertAdjacentHTML("afterbegin", status);
+    if (phone.classList.contains("zz-phone")) phone.insertAdjacentHTML("beforeend", `<span class="zz-home"></span>`);
+  }
+
+  const livePill = () => {
+    if (L.notice) return pill({ at: here(), title: L.notice, glyph: "check" });
+    return pill({ at: here(), meta: L.picking ? "Picking an element" : undefined });
+  };
+  const renderLive = () => {
+    live.querySelector(":scope > .zz-web").outerHTML = page(here());
+    live.querySelector(":scope > .zz-bar").outerHTML = livePill();
+    live.querySelector(":scope > .zz-dock").outerHTML = L.address ? dock(L.address) : `<div class="zz-dock"></div>`;
+    live.toggleAttribute("data-kb", Boolean(L.address));
+    const line = live.querySelector(":scope > .zz-load");
+    line.hidden = !L.loading;
+    line.style.setProperty("--penna-value", `${L.loading}%`);
+    place();
+  };
+  live.innerHTML = `${status}${page(here())}${loadLine(0, true)}${livePill()}<div class="zz-dock"></div>${kb(true)}<span class="zz-home"></span>`;
+
+  const stopLoad = () => { clearInterval(L.timer); L.timer = null; L.loading = 0; };
+  const startLoad = () => {
+    stopLoad();
+    L.loading = 8;
+    L.timer = setInterval(() => {
+      L.loading = Math.min(100, L.loading + 4);
+      if (L.loading >= 100) { stopLoad(); refreshStack(); }
+      const line = live.querySelector(":scope > .zz-load");
+      line.hidden = !L.loading;
+      line.style.setProperty("--penna-value", `${L.loading}%`);
+    }, 90);
+  };
+  const go = (at) => {
+    L.hist = [...L.hist.slice(0, L.at + 1), at];
+    L.at = L.hist.length - 1;
+    L.picking = false;
+    startLoad();
+    renderLive();
+  };
+  const liveGroups = () => browserGroups({ back: L.at > 0, forward: L.at < L.hist.length - 1, loading: L.loading > 0, tabs: L.tabs.length, at: here() });
+
+  const placeStack = (stackEl) => {
+    const host = stackEl.parentElement;
+    const col = stackEl.querySelector(".penna-stack-column");
+    const h = host.getBoundingClientRect();
+    const a = host.querySelector(":scope > .zz-bar").getBoundingClientRect();
+    col.removeAttribute("data-align");
+    col.style.left = "0px";
+    col.style.width = "";
+    const w = col.offsetWidth;
+    let left = a.left - h.left + a.width / 2 - w / 2;
+    if (left < 16) { left = 16; col.dataset.align = "start"; }
+    if (left + w > h.width - 16) { left = h.width - 16 - w; col.dataset.align = "end"; }
+    col.style.left = `${left}px`;
+    col.style.width = `${w}px`;
+    col.style.bottom = `${h.bottom - a.top + 8}px`;
+  };
+  const middle = (root) => {
+    for (const span of root.querySelectorAll("[data-middle]")) {
+      const full = span.dataset.middle;
+      span.textContent = full;
+      let cut = 0;
+      while (span.scrollWidth > span.clientWidth && cut < full.length - 8) {
+        cut += 1;
+        const keep = full.length - cut;
+        const head = Math.ceil(keep / 2);
+        span.textContent = `${full.slice(0, head)}…${full.slice(full.length - (keep - head))}`;
+      }
+    }
+  };
+  const placeFinger = (dot) => {
+    const host = dot.parentElement;
+    const target = host.querySelector(dot.dataset.at);
+    const h = host.getBoundingClientRect();
+    const t = target.getBoundingClientRect();
+    dot.style.left = `${t.left - h.left + t.width / 2 + Number(dot.dataset.dx)}px`;
+    dot.style.top = `${t.top - h.top + t.height / 2 + Number(dot.dataset.dy)}px`;
+  };
+  const anchorPages = () => {
+    for (const web of document.querySelectorAll(".zz-web[data-anchor]")) {
+      const inner = web.firstElementChild;
+      inner.style.translate = "";
+      const target = web.querySelector(web.dataset.anchor);
+      inner.style.translate = `0 ${Number(web.dataset.y) - target.offsetTop}px`;
+    }
+  };
+  function place() {
+    anchorPages();
+    middle(document);
+    for (const el of document.querySelectorAll(".zz-phone > .penna-stack, .zz-cut > .penna-stack")) {
+      if (el.hasAttribute("data-fold")) continue;
+      placeStack(el);
+    }
+    for (const dot of document.querySelectorAll(".zz-finger")) placeFinger(dot);
+    window.pennaKit?.roundAll?.();
+  }
+
+  const reduced = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const tick = () => { try { navigator.vibrate?.(8); } catch { } };
+  let open = null;
+  let touch = null;
+
+  const setOver = (chipEl) => {
+    if (!open || open.over === chipEl) return;
+    if (open.over && open.over !== "anchor") open.over.removeAttribute("data-state");
+    open.over = chipEl;
+    if (chipEl && chipEl !== "anchor") { chipEl.setAttribute("data-state", "selected"); open.visited = true; tick(); }
+  };
+  const openStack = (mode, groups = liveGroups(), more = false) => {
+    closeStack(true);
+    live.insertAdjacentHTML("beforeend", stack(groups, { mode }));
+    const el = live.querySelector(":scope > .penna-stack");
+    middle(el);
+    placeStack(el);
+    [...el.querySelectorAll(".penna-stack-chip, .penna-stack-label")].reverse().forEach((part, i) => { part.style.animationDelay = `${i * 24}ms`; });
+    el.setAttribute("data-rise", "");
+    live.dataset.stack = mode;
+    open = { mode, el, over: null, more };
+    window.pennaKit?.roundAll?.();
+  };
+  function refreshStack() {
+    if (!open || open.more) return;
+    const marks = {};
+    open.el.querySelector(".penna-stack-column").outerHTML = column(liveGroups(), marks);
+    open.over = null;
+    middle(open.el);
+    placeStack(open.el);
+    window.pennaKit?.roundAll?.();
+  }
+  const pin = () => {
+    if (!open) return;
+    open.mode = "pinned";
+    live.dataset.stack = "pinned";
+    setOver(null);
+    if (!open.el.querySelector(".penna-stack-close")) {
+      open.el.insertAdjacentHTML("beforeend", closeButton);
+      window.pennaKit?.roundAll?.();
+    }
+    live.querySelector(".penna-compact-pill")?.removeAttribute("data-held");
+  };
+  function closeStack(now = false) {
+    if (!open) return;
+    const { el } = open;
+    open = null;
+    delete live.dataset.stack;
+    live.querySelector(".penna-compact-pill")?.removeAttribute("data-held");
+    if (now || reduced()) {
+      if (now) el.remove();
+      else { el.setAttribute("data-fold", ""); setTimeout(() => el.remove(), 140); }
+      return;
+    }
+    const a = live.querySelector(":scope > .zz-bar").getBoundingClientRect();
+    for (const part of el.querySelectorAll(".penna-stack-chip, .penna-stack-label")) {
+      const r = part.getBoundingClientRect();
+      part.style.animation = "none";
+      if (part.hasAttribute("data-picked")) part.style.transitionDelay = "120ms";
+      part.style.setProperty("--zz-to", `${a.left + a.width / 2 - (r.left + r.width / 2)}px ${a.top + a.height / 2 - (r.top + r.height / 2)}px`);
+    }
+    el.removeAttribute("data-rise");
+    el.offsetWidth;
+    el.setAttribute("data-fold", "");
+    setTimeout(() => el.remove(), 520);
+  }
+
+  const openAddress = (text = here().url) => {
+    L.picking = false;
+    L.address = { text, selected: Boolean(text) };
+    renderLive();
+  };
+  const closeAddress = () => { L.address = null; renderLive(); };
+  const flash = (text) => {
+    L.notice = text;
+    renderLive();
+    clearTimeout(L.noticeTimer);
+    L.noticeTimer = setTimeout(() => { L.notice = null; renderLive(); }, 2400);
+  };
+
+  const act = (name, how) => {
+    if (name === "Back") { L.at -= 1; L.picking = false; startLoad(); renderLive(); return say(`Back to ${here().title}, by ${how}`); }
+    if (name === "Forward") { L.at += 1; L.picking = false; startLoad(); renderLive(); return say(`Forward to ${here().title}, by ${how}`); }
+    if (name === "Reload") { startLoad(); renderLive(); return say(`Reload, by ${how}`); }
+    if (name === "Stop") { stopLoad(); renderLive(); return say(`Stopped, by ${how}`); }
+    if (name === "Address") { openAddress(); return say(`Address, by ${how}`); }
+    if (name === "Tabs") {
+      live.insertAdjacentHTML("beforeend", tabsSheet(L.tabs, L.current, true));
+      window.pennaKit?.roundAll?.();
+      return say(`Tabs, by ${how}`);
+    }
+    if (name === "Pick element") { L.picking = true; renderLive(); return say(`Picking, by ${how}`); }
+    say(`${name}, by ${how}`);
+  };
+
+  const pick = (chipEl, how) => {
+    const name = chipEl.dataset.pick;
+    if (chipEl.hasAttribute("data-more")) {
+      say(`More, by ${how}`);
+      openStack("pinned", MORE_GROUPS, true);
+      return;
+    }
+    chipEl.removeAttribute("data-state");
+    chipEl.setAttribute("data-picked", "");
+    closeStack();
+    act(name, how);
+  };
+
+  const chipAt = (x, y) => {
+    if (!open) return null;
+    const col = open.el.querySelector(".penna-stack-column").getBoundingClientRect();
+    if (x < col.left - 8 || x > col.right + 8 || y < col.top - 8 || y > col.bottom + 8) return null;
+    let best = null;
+    let dist = Infinity;
+    for (const c of open.el.querySelectorAll(".penna-stack-chip")) {
+      const r = c.getBoundingClientRect();
+      if (y < r.top - 8 || y > r.bottom + 8) continue;
+      const d = Math.abs(y - (r.top + r.bottom) / 2) + 0.5 * Math.abs(x - (r.left + r.right) / 2);
+      if (d < dist) { dist = d; best = c; }
+    }
+    return best?.disabled ? null : best;
+  };
+  const onAnchor = (x, y) => {
+    if (!open) return false;
+    const r = (open.el.querySelector(".penna-stack-close") ?? live.querySelector(".penna-compact-pill")).getBoundingClientRect();
+    return x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
+  };
+  const track = (x, y) => {
+    if (!open) return;
+    if (onAnchor(x, y)) return setOver("anchor");
+    setOver(chipAt(x, y));
+  };
+  const finish = (x, y, how) => {
+    const over = open?.over;
+    if (over && over !== "anchor") return pick(over, how);
+    if (over === "anchor" || onAnchor(x, y)) { const back = open.visited; pin(); say(back ? "Left open, slid back to the pill" : "Left open, let go on the pill"); return; }
+    closeStack();
+    say("Closed, nothing picked");
+  };
+  const capture = (el, id) => { try { el.setPointerCapture(id); } catch { } };
+
+  live.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0 || touch) return;
+    const t = event.target;
+    const x = event.clientX;
+    const y = event.clientY;
+    if (t.closest(".penna-sheet, .zz-dock, .zz-kb")) return;
+    const base = { id: event.pointerId, x0: x, y0: y, kind: null };
+    if (open) {
+      if (open.mode === "held") return;
+      capture(t, event.pointerId);
+      touch = { ...base, kind: "pinned", from: t.closest(".penna-stack-close, .penna-stack-scrim") };
+      track(x, y);
+      if (onAnchor(x, y)) setOver(null);
+      return;
+    }
+    const p = t.closest(".penna-compact-pill");
+    if (p) {
+      capture(p, event.pointerId);
+      if (L.picking) { touch = { ...base, kind: "stop-pick", el: p }; return; }
+      p.setAttribute("data-held", "");
+      touch = { ...base, el: p };
+      touch.timer = setTimeout(() => {
+        if (!touch || touch.kind) return;
+        touch.kind = "hold";
+        openStack("held");
+        tick();
+      }, HOLD);
+      return;
+    }
+    if (L.picking && t.closest(".zz-web")) {
+      L.picking = false;
+      flash("Element context + screenshot copied");
+      say("Copied the element under the finger");
+    }
+  });
+
+  live.addEventListener("pointermove", (event) => {
+    if (!touch || event.pointerId !== touch.id) return;
+    const x = event.clientX;
+    const y = event.clientY;
+    const dx = x - touch.x0;
+    const dy = y - touch.y0;
+    if (touch.kind === "pinned" || touch.kind === "hold") return track(x, y);
+    if (touch.kind === "swipe" || touch.kind === "lift") {
+      touch.el.setAttribute("data-dragging", "");
+      touch.el.style.translate = touch.kind === "swipe" ? `${dx * 0.6}px 0` : `0 ${Math.min(0, dy) * 0.5}px`;
+      return;
+    }
+    if (touch.kind) return;
+    if (Math.hypot(dx, dy) < SLOP) return;
+    clearTimeout(touch.timer);
+    touch.kind = Math.abs(dx) > Math.abs(dy) ? "swipe" : dy < 0 ? "lift" : "none";
+    touch.el.removeAttribute("data-held");
+  });
+
+  const release = (event, cancelled = false) => {
+    if (!touch || event.pointerId !== touch.id) return;
+    const t = touch;
+    touch = null;
+    clearTimeout(t.timer);
+    const x = event.clientX;
+    const y = event.clientY;
+    const dx = x - t.x0;
+    const dy = y - t.y0;
+    if (t.kind === "pinned") {
+      const over = open?.over;
+      if (over && over !== "anchor") return pick(over, "tap");
+      const up = document.elementFromPoint(x, y);
+      if (t.from && up?.closest(".penna-stack-close, .penna-stack-scrim")) { closeStack(); say("Closed, nothing picked"); return; }
+      setOver(null);
+      return;
+    }
+    if (t.kind === "stop-pick") { L.picking = false; renderLive(); say("Picking stopped by a tap on the pill"); return; }
+    t.el.removeAttribute("data-held");
+    t.el.removeAttribute("data-dragging");
+    t.el.style.translate = "";
+    if (cancelled) { closeStack(); return; }
+    if (t.kind === "hold") return finish(x, y, Math.hypot(dx, dy) < SLOP ? "hold" : "hold and slide");
+    if (t.kind === "swipe") { say(Math.abs(dx) > 100 ? `Paged to the ${dx < 0 ? "next" : "previous"} pane` : "Swipe sprang back"); return; }
+    if (t.kind === "lift") { say(-dy > 100 ? "Lifted to the overview" : "Lift sprang back"); return; }
+    if (t.kind === null) { openStack("pinned"); say("Stack open, by tap"); }
+  };
+  live.addEventListener("pointerup", (event) => release(event));
+  live.addEventListener("pointercancel", (event) => release(event, true));
+
+  live.addEventListener("click", (event) => {
+    const t = event.target;
+    const sheet = t.closest(".penna-sheet");
+    const actEl = t.closest("[data-act]");
+    const name = actEl?.dataset.act;
+    if (sheet) {
+      if (name === "dismiss") { sheet.remove(); say("Tabs closed"); return; }
+      if (name === "close-tab") {
+        const row = actEl.closest(".zz-tabrow");
+        const url = row.dataset.tab;
+        if (L.tabs.length < 2) return;
+        L.tabs = L.tabs.filter((tab) => tab.url !== url);
+        L.current = Math.min(L.current, L.tabs.length - 1);
+        sheet.outerHTML = tabsSheet(L.tabs, L.current, true);
+        window.pennaKit?.roundAll?.();
+        say(`Closed a tab, ${L.tabs.length} left`);
+        return;
+      }
+      if (name === "new-tab") {
+        sheet.remove();
+        L.tabs.push(BLANK);
+        L.current = L.tabs.length - 1;
+        L.hist = [BLANK];
+        L.at = 0;
+        stopLoad();
+        openAddress("");
+        say("New tab, the address field up");
+        return;
+      }
+      const row = t.closest(".zz-tabrow");
+      if (row) {
+        const index = L.tabs.findIndex((tab) => tab.url === row.dataset.tab);
+        L.current = index;
+        L.hist = [L.tabs[index]];
+        L.at = 0;
+        sheet.remove();
+        stopLoad();
+        renderLive();
+        say(`Switched to ${L.tabs[index].title}`);
+      }
+      return;
+    }
+    if (name === "close-address") { closeAddress(); say("Address closed, the pill back"); return; }
+    if (name === "clear-address") { L.address = { text: "", selected: false }; renderLive(); say("Cleared"); return; }
+    const row = t.closest("[data-go]");
+    if (row) {
+      const at = SUGGEST.find((s) => s.url === row.dataset.go);
+      L.address = null;
+      go(at);
+      say(`Loaded ${at.url}`);
+      return;
+    }
+    const key = t.closest(".zz-kb i");
+    if (key && L.address) {
+      const k = key.textContent;
+      const typed = L.address.selected ? "" : L.address.text;
+      if (k === "go") {
+        const text = L.address.text;
+        const at = suggestions(text)[0] ?? doc(text || "Phone", "localhost:8102/search.html");
+        L.address = null;
+        go(at);
+        say(`Go: ${at.url}`);
+        return;
+      }
+      if (k === "⌫") L.address = { text: typed.slice(0, -1), selected: false };
+      else if (k === "space") L.address = { text: `${typed} `, selected: false };
+      else if (k === "123" || k === "⇧") return;
+      else L.address = { text: typed + k, selected: false };
+      renderLive();
+    }
+  });
+
+  place();
+  addEventListener("load", place);
+  document.fonts.ready.then(place);
+})();
+</script>
+</body>
+</html>
