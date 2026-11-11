@@ -199,6 +199,14 @@ impl Theme {
         self.foreground.opacity(color::divider_weight())
     }
 
+    pub fn border(&self) -> Hsla {
+        if self.window_opacity < 1.0 {
+            self.foreground.opacity(color::edge_weight())
+        } else {
+            self.colors.border()
+        }
+    }
+
     pub fn contrast(&self) -> f32 {
         self.contrast
     }

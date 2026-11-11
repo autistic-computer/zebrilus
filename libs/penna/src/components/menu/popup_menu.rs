@@ -1157,7 +1157,9 @@ impl PopupMenu {
                 let menu = theme.ground_of(Surface::new(SurfaceRole::POPOVER));
                 let mut group =
                     theme.layer(Surface::new(Kind::Field.role()).on(menu), PaintState::Rest);
-                group.fill = group.ground.fill;
+                if theme.ground().fill.a >= 1.0 {
+                    group.fill = group.ground.fill;
+                }
                 let ground = group.ground;
                 let button = |id, action| {
                     Button::new((id, ix))

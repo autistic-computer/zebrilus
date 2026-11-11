@@ -1076,6 +1076,7 @@ impl Theme {
             match fill {
                 Fill::None => self.paint_on(ground, tone, Emphasis::Ghost),
                 Fill::Tint => soft,
+                Fill::Solid if see_through => soft,
                 Fill::Solid => soft.opaque(),
                 Fill::Glass => super::Paint {
                     fill: glass_fill,
@@ -1737,6 +1738,11 @@ mod tests {
             PaintState::Rest,
         );
         assert_eq!(card.fill, theme.background.opaque().washed(1));
+        let send = theme.layer(
+            Surface::new(super::super::roles::BUTTON_SEND).on(window),
+            PaintState::Rest,
+        );
+        assert_eq!(send.fill, theme.background.opaque().washed(1));
         let pane = theme.layer(Surface::new(Kind::Pane.role()).on(window), PaintState::Rest);
         assert_eq!(pane.glass.expect("a gapped pane is glass").tint.a, 0.0);
     }

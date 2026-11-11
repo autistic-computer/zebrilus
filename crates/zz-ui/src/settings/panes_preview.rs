@@ -67,7 +67,7 @@ impl RenderOnce for PanesPreview {
         let height = (f32::from(window.viewport_size().height) * 0.4)
             .clamp(300.0, 380.0)
             .max(f32::from(margin) * 3.0 + 112.0);
-        let backdrop = cx.theme().background;
+        let backdrop = cx.theme().ground().fill;
         let opacity = |index: usize| {
             if selected == index {
                 1.0
@@ -187,7 +187,12 @@ impl RenderOnce for PanesPreview {
             div().absolute(),
             cx,
         );
-        super::settings_preview(crate::shell::shell_ground(backdrop, self.gaps, cx), cx)
+        let frame = if backdrop.a < 1.0 {
+            crate::shell::shell_frame(backdrop, self.gaps, cx).unwrap_or(cx.theme().transparent)
+        } else {
+            crate::shell::shell_ground(backdrop, self.gaps, cx)
+        };
+        super::settings_preview(frame, cx)
             .id("settings-panes-preview")
             .w_full()
             .h(px(height))

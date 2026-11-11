@@ -170,7 +170,10 @@ Settings > Panes scrolls its three-pane preview with the controls, like the Term
 `settings::panes_preview::PanesPreview` draws a terminal, Claude Code in a terminal with its lens
 button, and a browser, inside `pane_surface` and `pane_split_surface` at the workspace's real size:
 `terminal_pane_header` and `BrowserHeader` with its tab row and toolbar, full-size logical-pixel
-margins and corners, and the theme's pane frames over the workspace background. Inactive samples
+margins and corners, and the theme's pane frames over the window's ground (`Theme::ground()`), as the
+workspace draws them. On a see-through window the preview paints only the frame's wash over the page
+and the samples are clear but for the pane wash, so it shows what the panes show; on an opaque window
+it fills with the workspace background and frame as before. Inactive samples
 dim the way the workspace dims them, the terminal's header and text and the browser's chrome, with
 no scrim. An occluding layer over each sample makes it one click target, so its header buttons stay
 inert; clicking a sample changes only the preview selection and moves the accent edge. The Browser
