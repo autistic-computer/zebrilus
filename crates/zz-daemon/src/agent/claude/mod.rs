@@ -39,7 +39,7 @@ use crate::agent::{
     },
     stream::{
         AgentPromptOutcome, AgentQuestion, AgentQuestionOption, AgentSessionCapabilities,
-        AgentStreamPayload,
+        AgentSessionSummary, AgentStreamPayload,
     },
     turn::{self, Effect, End, Fact, Reject, TurnMachine, TurnState},
     zz_command,
@@ -225,6 +225,7 @@ pub(crate) async fn run_claude_runtime(
         verbs: 0,
         reply: None,
         title: Title::default(),
+        listed: HashMap::new(),
     };
     let commands = channels.commands;
     let controls = channels.controls;
@@ -472,6 +473,7 @@ struct Runtime {
     verbs: u64,
     reply: Option<String>,
     title: Title,
+    listed: HashMap<Option<PathBuf>, Arc<[AgentSessionSummary]>>,
 }
 
 impl Runtime {
@@ -639,13 +641,21 @@ impl Runtime {
                 cursor,
                 replace,
             } => {
-                let filter = cwd.clone();
-                let all = smol::unblock(move || {
-                    sessions::config_home()
-                        .map(|config| sessions::list(&config, filter.as_deref()))
-                        .unwrap_or_default()
-                })
-                .await;
+                let kept = self.listed.get(&cwd).filter(|_| cursor.is_some()).cloned();
+                let all = if let Some(all) = kept {
+                    all
+                } else {
+                    let filter = cwd.clone();
+                    let all: Arc<[_]> = smol::unblock(move || {
+                        sessions::config_home()
+                            .map(|config| sessions::list(&config, filter.as_deref()))
+                            .unwrap_or_default()
+                    })
+                    .await
+                    .into();
+                    self.listed.insert(cwd.clone(), all.clone());
+                    all
+                };
                 let offset = cursor
                     .and_then(|cursor| cursor.parse::<usize>().ok())
                     .unwrap_or(0)
