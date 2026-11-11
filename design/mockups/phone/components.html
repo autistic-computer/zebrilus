@@ -1,0 +1,343 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Phone components</title>
+<link rel="stylesheet" href="/penna/penna.css">
+<link rel="stylesheet" href="/penna-src/components/button/button.css">
+<link rel="stylesheet" href="/penna-src/components/input/input.css">
+<link rel="stylesheet" href="/penna-src/components/field/field.css">
+<link rel="stylesheet" href="/penna-src/blocks/touch/touch.css">
+<link rel="stylesheet" href="/penna-src/blocks/compact/compact.css">
+<link rel="stylesheet" href="/penna-src/blocks/sheet/sheet.css">
+<link rel="stylesheet" href="/zz.css">
+<link rel="stylesheet" href="phone.css">
+<script src="/penna/kit.js" data-tokens="/tokens/" data-themes="macos default yaru" data-theme="macos"></script>
+<style>
+  .zz-rules { display: grid; gap: 4px; max-width: 92ch; margin: 0; padding-left: 22px; color: var(--penna-fg-muted); }
+  .zz-rules b { color: var(--penna-fg); font-weight: 600; }
+  .zz-cols { display: flex; flex-wrap: wrap; gap: 40px; align-items: flex-start; }
+  .zz-col { display: flex; flex: none; flex-direction: column; gap: 12px; width: 402px; }
+  .zz-col[data-wide] { width: auto; max-width: 860px; }
+  .zz-col > .penna-button, .zz-col > .penna-touch-row, .zz-col > .penna-input { width: 100%; }
+  .zz-state { display: block; margin: 6px 0 -6px; font-size: 11px; line-height: 16px; font-weight: 600; color: var(--penna-fg-muted); text-transform: uppercase; letter-spacing: 0.04em; }
+  .zz-specline { margin: 0; font-size: 12px; line-height: 17px; color: var(--penna-fg-muted); }
+  .zz-specline code { font: 11.5px/16px var(--penna-mono); color: var(--penna-fg); }
+  .zz-tag { display: inline-block; margin-right: 6px; padding: 0 6px; border-radius: 9px; font-size: 11px; line-height: 17px; font-weight: 600; box-shadow: inset 0 0 0 1px currentColor; }
+  .zz-tag[data-t="in"] { color: var(--penna-success-ink); }
+  .zz-tag[data-t="unused"] { color: var(--penna-warning-ink); }
+  .zz-tag[data-t="new"] { color: var(--penna-accent-ink); }
+  .zz-part { position: relative; display: flex; flex-direction: column; overflow: hidden; border-radius: 28px; background: var(--penna-bg); box-shadow: 0 0 0 1px var(--penna-border); }
+  .zz-part-fill { flex: 1; min-height: 120px; padding: 16px; color: var(--penna-fg-faint); font-size: 13px; }
+  .zz-part .zz-home { position: absolute; }
+  .zz-today { display: flex; flex-wrap: wrap; gap: 28px; align-items: flex-end; }
+  .zz-today figure { display: grid; gap: 8px; margin: 0; justify-items: start; }
+  .zz-today figcaption { font-size: 12px; line-height: 16px; color: var(--penna-fg-muted); }
+  .zz-today figcaption b { color: var(--penna-fg); }
+  .zz-old-pill[data-penna] { height: 32px; padding: 0 12px; font-size: 13px; }
+  .zz-old-close[data-penna] { width: 36px; height: 36px; --penna-r: 9999px; --penna-k: 1; --penna-icon-size: 16px; }
+  .zz-old-key[data-penna] { display: grid; place-items: center; width: 40px; height: 40px; padding: 0; font: 500 15px/1 var(--penna-font); }
+  .zz-today-sep { align-self: stretch; width: 1px; background: var(--penna-divider); }
+  .zz-reg { position: relative; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--penna-accent) 55%, transparent); }
+  .zz-reg::after { content: attr(data-label); position: absolute; top: 3px; left: 6px; font: 600 11px/14px var(--penna-font); color: var(--penna-accent-ink); pointer-events: none; }
+  .zz-marks { display: flex; flex-wrap: wrap; align-items: center; gap: 20px; }
+  .zz-mark-item { display: flex; align-items: center; gap: 8px; font-size: var(--penna-text-touch-small-size); line-height: var(--penna-text-touch-small-line); color: var(--penna-fg-muted); }
+  .zz-phone > .penna-zoom-card { position: absolute; inset: 0; padding-top: 54px; }
+  .zz-phone > .penna-sheet { z-index: 16; }
+  .zz-sheet-body { display: flex; flex-direction: column; gap: var(--penna-gap-related); padding: 0 var(--penna-inset-pane); color: var(--penna-fg-muted); font-size: var(--penna-text-touch-body-size); line-height: var(--penna-text-touch-body-line); }
+</style>
+</head>
+<body>
+<main class="zz-page">
+  <div class="zz-intro">
+    <h1>Phone components</h1>
+    <p>The pieces the phone views are built from, at true size, drawn with penna's kit: the 56 <code>touch-large</code> rung, the touch blocks, the machine tile, the zoom card and the sheet. The spec is penna's <code>foundations.md</code>, section Phone, and its docs pages. <span class="zz-tag" data-t="in">in penna</span> exists natively and the phone uses it; <span class="zz-tag" data-t="unused">in penna, unused</span> exists natively and the phone code never asks for it; <span class="zz-tag" data-t="new">new</span> is specified and drawn in HTML, not built natively yet.</p>
+  </div>
+
+  <section>
+    <h2>Phone rules</h2>
+    <ol class="zz-rules">
+      <li><b>The whole thing is the target.</b> A tile, row or card is tapped as one piece; no button sits inside one. More actions live one zoom in, or behind press-and-hold.</li>
+      <li><b>Nothing tappable is under 44</b>, and what is drawn is as big as what is tappable: no small drawing with an invisible hit area.</li>
+      <li><b>One main action per screen</b>, full width, at the bottom where the thumb is; it rides the keyboard. The top of the screen is for reading.</li>
+      <li><b>Going into a thing is a zoom</b>; a short question that returns you where you were is a sheet.</li>
+      <li><b>State is said in words and a tone dot</b>, never by look alone.</li>
+      <li><b>Text is touch-body 17</b> by default, touch-small 15 for details, never under 13.</li>
+    </ol>
+  </section>
+
+  <section>
+    <h2>Today</h2>
+    <p>What the phone draws now, at true size, next to the new main action and row.</p>
+    <div class="zz-today">
+      <figure><button class="zz-old-pill" data-penna="button">Connect</button><figcaption><b>32</b> Connect in a host tile<br><code>overview.rs:616</code></figcaption></figure>
+      <figure><button class="zz-old-close" data-penna="icon-button"><i data-icon="xmark"></i></button><figcaption><b>36</b> sheet close<br><code>sheet/mod.rs:25</code></figcaption></figure>
+      <figure><button class="zz-old-key" data-penna="phone.key">esc</button><figcaption><b>40</b> key-row key<br><code>key_row.rs:24</code></figcaption></figure>
+      <span class="zz-today-sep"></span>
+      <figure style="width: 260px"><button class="penna-button" data-penna="button" data-tone="primary" data-prominent data-size="touch-large" data-tap style="width: 100%"><span class="penna-label">Connect</span></button><figcaption><b>56</b> main action</figcaption></figure>
+      <figure style="width: 340px"><div class="penna-touch-row" data-penna="phone.row" role="button" data-tap style="width: 340px"><i data-icon="laptop"></i><span class="penna-touch-row-lines"><span>macbook</span></span><i data-icon="chevron-right"></i></div><figcaption><b>52</b> touch row</figcaption></figure>
+    </div>
+  </section>
+
+  <section>
+    <h2>1. Main action button</h2>
+    <div class="zz-cols">
+      <div class="zz-col">
+        <span class="zz-state">44 · touch</span>
+        <button class="penna-button" data-penna="button" data-tone="primary" data-prominent data-size="touch" data-tap><span class="penna-label">Connect</span></button>
+        <span class="zz-state">56 · touch-large</span>
+        <button class="penna-button" data-penna="button" data-tone="primary" data-prominent data-size="touch-large" data-tap><span class="penna-label">Connect</span></button>
+        <p class="zz-specline"><span class="zz-tag" data-t="unused">44 in penna, unused</span><code>control-touch</code>, the smallest target. <span class="zz-tag" data-t="new">56 new</span><code>control-touch-lg</code>, picked for main actions and fields: as tall as the pill, and a 44 accessory fits inside a 56 field with the 4 inside gap.</p>
+      </div>
+      <div class="zz-col">
+        <span class="zz-state">Primary</span>
+        <button class="penna-button" data-penna="button" data-tone="primary" data-prominent data-size="touch-large" data-tap><span class="penna-label">Connect</span></button>
+        <span class="zz-state">Secondary</span>
+        <button class="penna-button" data-penna="button" data-size="touch-large" data-tap><span class="penna-label">Scan QR</span></button>
+        <span class="zz-state">Ghost</span>
+        <button class="penna-button" data-penna="button.quiet" data-size="touch-large" data-tap><span class="penna-label">Type an address instead</span></button>
+        <span class="zz-state">Danger</span>
+        <button class="penna-button" data-penna="button" data-tone="danger" data-size="touch-large" data-tap><span class="penna-label">Forget xps</span></button>
+        <p class="zz-specline"><span class="zz-tag" data-t="in">in penna</span>The Button kinds at the 56 rung. A phone screen's secondary is soft, ghost or text, never outline.</p>
+      </div>
+      <div class="zz-col">
+        <span class="zz-state">Rest</span>
+        <button class="penna-button" data-penna="button" data-tone="primary" data-prominent data-size="touch-large" data-tap><span class="penna-label">Connect</span></button>
+        <span class="zz-state">Pressed</span>
+        <button class="penna-button" data-penna="button" data-tone="primary" data-prominent data-size="touch-large" data-state="active" data-tap><span class="penna-label">Connect</span></button>
+        <span class="zz-state">Disabled</span>
+        <button class="penna-button" data-penna="button" data-tone="primary" data-prominent data-size="touch-large" disabled aria-disabled="true" data-tap><span class="penna-label">Connect</span></button>
+        <span class="zz-state">Loading</span>
+        <button class="penna-button" data-penna="button" data-tone="primary" data-prominent data-size="touch-large" data-loading data-tap><i class="penna-touch-spinner" data-icon="loader"></i><span class="penna-label">Connecting</span></button>
+        <p class="zz-specline"><span class="zz-tag" data-t="in">in penna</span>Pressed is the press highlight (<code>touch/press.rs:13-16</code>). Loading keeps the label.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>2. Action bar</h2>
+    <div class="zz-cols">
+      <div class="zz-col">
+        <span class="zz-state">Resting above the home indicator</span>
+        <div class="zz-part" style="height: 280px">
+          <div class="zz-part-fill">content</div>
+          <div class="penna-action-bar">
+            <button class="penna-button" data-penna="button.quiet" data-size="touch-large" data-tap><span class="penna-label">Scan QR instead</span></button>
+            <button class="penna-button" data-penna="button" data-tone="primary" data-prominent data-size="touch-large" data-tap><span class="penna-label">Connect</span></button>
+          </div>
+          <span class="zz-home"></span>
+        </div>
+      </div>
+      <div class="zz-col">
+        <span class="zz-state">Riding the keyboard</span>
+        <div class="zz-part" style="height: 440px">
+          <div class="zz-part-fill">content</div>
+          <div class="penna-action-bar" data-keys>
+            <button class="penna-button" data-penna="button" data-tone="primary" data-prominent data-size="touch-large" data-tap><span class="penna-label">Connect</span></button>
+          </div>
+          <div class="zz-kb" data-keyboard style="height: 230px"></div>
+        </div>
+      </div>
+      <div class="zz-col">
+        <span class="zz-state">Secondary beside</span>
+        <div class="zz-part" style="height: 210px">
+          <div class="zz-part-fill">content</div>
+          <div class="penna-action-bar" data-row>
+            <button class="penna-button" data-penna="button" data-size="touch-large" data-tap><span class="penna-label">Not now</span></button>
+            <button class="penna-button" data-penna="button" data-tone="primary" data-prominent data-size="touch-large" data-tap><span class="penna-label">Add key</span></button>
+          </div>
+          <span class="zz-home"></span>
+        </div>
+        <p class="zz-specline"><span class="zz-tag" data-t="new">new</span>The pill's spot: 16 from the sides, 20 above the bottom, actions 8 apart, 8 above the keyboard. No surface of its own while it holds only the solid main action; a floating surface like the pill when content scrolls under it.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>3. Field</h2>
+    <div class="zz-cols">
+      <div class="zz-col">
+        <div class="penna-field" data-size="touch-large"><span class="penna-field-label">Address</span><label class="penna-input" data-penna="field" data-size="touch-large"><i data-icon="server"></i><input placeholder="user@host"></label><span class="penna-field-help">Where zz runs, reached with your own ssh.</span></div>
+        <div class="penna-field" data-size="touch-large"><span class="penna-field-label">Focused</span><label class="penna-input" data-penna="field" data-size="touch-large" data-state="focused"><i data-icon="server"></i><input placeholder="user@host"></label></div>
+        <div class="penna-field" data-size="touch-large"><span class="penna-field-label">Filled, with clear</span><label class="penna-input" data-penna="field" data-size="touch-large"><i data-icon="server"></i><input value="fabrico@xps"><span class="penna-input-suffix"><button class="penna-button" data-penna="button.quiet" data-size="touch" data-shape="icon" data-tap aria-label="Clear"><i data-icon="circle-x"></i></button></span></label></div>
+        <p class="zz-specline"><span class="zz-tag" data-t="new">new</span>Field at 56, <code>touch-body</code>, field inset 12, a 20 leading icon; label strong <code>touch-small</code>, help and error <code>touch-small</code>. Accessories are 44 icon buttons 4 from the field's edge.</p>
+      </div>
+      <div class="zz-col">
+        <div class="penna-field" data-size="touch-large"><span class="penna-field-label">Error</span><label class="penna-input" data-penna="field" data-size="touch-large" data-tone="danger"><i data-icon="server"></i><input value="fabrico@xps:99999"></label><div class="penna-field-error"><i data-icon="circle-x"></i><span>Ports go up to 65535.</span></div></div>
+        <div class="penna-field" data-size="touch-large"><span class="penna-field-label">Disabled</span><label class="penna-input" data-penna="field" data-size="touch-large" data-disabled aria-disabled="true"><i data-icon="server"></i><input placeholder="user@host" disabled></label></div>
+        <div class="penna-field" data-size="touch-large"><span class="penna-field-label">Scan and send accessories</span><label class="penna-input" data-penna="field" data-size="touch-large"><input value="fabrico@xps"><span class="penna-input-suffix"><button class="penna-button" data-penna="button.quiet" data-size="touch" data-shape="icon" data-tap aria-label="Scan QR"><span class="zz-qr"></span></button><button class="penna-button" data-penna="button" data-tone="primary" data-prominent data-size="touch" data-shape="icon" data-tap aria-label="Connect"><i data-icon="arrow-up"></i></button></span></label></div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>4. Touch row</h2>
+    <div class="zz-cols">
+      <div class="zz-col">
+        <span class="zz-state">Trailing kinds</span>
+        <div class="penna-touch-row" data-penna="phone.row" role="button" data-tap><i data-icon="palette"></i><span class="penna-touch-row-lines"><span>Appearance</span></span><i data-icon="chevron-right"></i></div>
+        <div class="penna-touch-row" data-penna="phone.row" role="button" data-tap><i data-icon="hard-drive"></i><span class="penna-touch-row-lines"><span>Machines</span></span><span class="penna-touch-row-value">3</span><i data-icon="chevron-right"></i></div>
+        <div class="penna-touch-row" data-penna="phone.row" data-lines="2" role="button" data-tap><i data-icon="laptop"></i><span class="penna-touch-row-lines"><span>macbook</span><span>3 chats running</span></span><span class="penna-touch-row-state"><span class="penna-tone-dot"></span>Connected</span></div>
+        <div class="penna-touch-row" data-penna="phone.row" data-lines="2" role="button" data-tap><i data-icon="hard-drive"></i><span class="penna-touch-row-lines"><span>alienware</span><span>alienware.tail2c4e.ts.net</span></span><span class="penna-touch-row-state"><i class="penna-touch-spinner" data-icon="loader"></i>Connecting</span></div>
+        <div class="penna-touch-row" data-penna="phone.row" data-lines="2" role="button" data-tap><i data-icon="laptop"></i><span class="penna-touch-row-lines"><span>xps</span><span>On your tailnet · runs zz</span></span><i data-icon="plus" data-add></i></div>
+        <p class="zz-specline"><span class="zz-tag" data-t="in">in penna</span>52 and 64, the sheet's rows; the two-line row is <span class="zz-tag" data-t="unused">unused</span>. <span class="zz-tag" data-t="new">new</span>outside a sheet, the trailing kinds, the add mark.</p>
+      </div>
+      <div class="zz-col">
+        <span class="zz-state">Rest, pressed, disabled</span>
+        <div class="penna-touch-row" data-penna="phone.row" data-lines="2" role="button" data-tap><i data-icon="laptop"></i><span class="penna-touch-row-lines"><span>xps</span><span>On your tailnet · runs zz</span></span><i data-icon="plus" data-add></i></div>
+        <div class="penna-touch-row" data-penna="phone.row" data-lines="2" data-state="active" role="button" data-tap><i data-icon="laptop"></i><span class="penna-touch-row-lines"><span>xps</span><span>On your tailnet · runs zz</span></span><i data-icon="plus" data-add></i></div>
+        <div class="penna-touch-row" data-penna="phone.row" data-lines="2" data-state="disabled" aria-disabled="true"><i data-icon="hard-drive"></i><span class="penna-touch-row-lines"><span>homelab</span><span>No zz on it yet</span></span></div>
+      </div>
+      <div class="zz-col">
+        <span class="zz-state">Group, section header, swipe</span>
+        <div class="penna-touch-header"><span>Found on your tailnet</span><span class="penna-touch-count">3</span></div>
+        <div class="penna-touch-group" data-penna="settings.card">
+          <div class="penna-touch-row" data-penna="phone.row" data-lines="2" role="button" data-tap><i data-icon="laptop"></i><span class="penna-touch-row-lines"><span>macbook</span><span>On your tailnet · runs zz</span></span><i data-icon="plus" data-add></i></div>
+          <div class="penna-touch-row" data-penna="phone.row" data-lines="2" role="button" data-tap><i data-icon="hard-drive"></i><span class="penna-touch-row-lines"><span>alienware</span><span>On your tailnet · runs zz</span></span><i data-icon="plus" data-add></i></div>
+          <div class="penna-touch-row" data-penna="phone.row" data-lines="2" data-state="disabled" aria-disabled="true"><i data-icon="hard-drive"></i><span class="penna-touch-row-lines"><span>homelab</span><span>No zz on it yet</span></span></div>
+        </div>
+        <div class="penna-touch-group" data-penna="settings.card">
+          <div class="penna-touch-row" data-penna="phone.row" data-lines="2" role="button" data-tap><i data-icon="laptop"></i><span class="penna-touch-row-lines"><span>macbook</span><span>Connected · 3 chats</span></span><i data-icon="chevron-right"></i></div>
+          <div class="penna-touch-swipe" data-open><div class="penna-touch-row" data-penna="phone.row" data-lines="2"><i data-icon="laptop"></i><span class="penna-touch-row-lines"><span>xps</span><span>Not connected · 2 days ago</span></span><i data-icon="chevron-right"></i></div><button class="penna-touch-swipe-action" data-penna="button" data-emphasis="solid" data-solid="danger" data-tap style="color: var(--penna-on-danger)">Forget</button></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>5. Machine tile</h2>
+    <div class="zz-cols">
+      <div class="zz-col">
+        <div class="penna-machine-grid">
+          <div class="penna-machine-tile" data-penna="phone.card" role="button" data-tap><span class="penna-machine-name"><span class="penna-tone-dot"></span><span>alienware</span></span><span class="penna-machine-state">Connected</span><span class="penna-machine-foot"><span>1 chat</span><span>cachyos-upgrade</span></span><span class="penna-press"></span></div>
+          <div class="penna-machine-tile" data-penna="phone.card" role="button" data-tap><span class="penna-machine-name"><span class="penna-tone-dot" data-tone="warning"></span><span>macbook</span></span><span class="penna-machine-state" data-tone="warning">1 waiting for you</span><span class="penna-machine-foot"><span>3 chats</span><span>2 working</span></span><span class="penna-press"></span></div>
+          <div class="penna-machine-tile" data-penna="phone.card" role="button" data-tap><span class="penna-machine-name"><i class="penna-touch-spinner" data-icon="loader"></i><span>homelab</span></span><span class="penna-machine-state">Connecting</span><span class="penna-machine-foot"><span>Over Tailscale</span></span><span class="penna-press"></span></div>
+          <div class="penna-machine-tile" data-penna="phone.card" role="button" data-tap><span class="penna-machine-name"><span class="penna-tone-dot" data-tone="off"></span><span>xps</span></span><span class="penna-machine-state">Not connected</span><span class="penna-machine-foot"><span>Last seen 2 days ago</span></span><span class="penna-press"></span></div>
+          <div class="penna-machine-tile" data-penna="phone.card" role="button" data-state="active" data-tap><span class="penna-machine-name"><span class="penna-tone-dot"></span><span>alienware</span></span><span class="penna-machine-state">Connected</span><span class="penna-machine-foot"><span>1 chat</span></span><span class="penna-press"></span></div>
+          <div class="penna-machine-tile" data-penna="phone.add" data-add role="button" data-tap><i data-icon="plus"></i>Add machine<span class="penna-press"></span></div>
+        </div>
+        <p class="zz-specline"><span class="zz-tag" data-t="new">new</span>Connected and waiting zoom in; connecting zooms into its progress, where Cancel is the main action; offline reconnects; add zooms into the add card. Name strong <code>touch-body</code>, state and lines <code>touch-small</code>, inset 12.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>6. Zoom card and sheet</h2>
+    <div class="zz-cols">
+      <div class="zz-col">
+        <div class="zz-phone">
+          <div class="penna-zoom-card" data-penna="phone.card">
+            <div class="penna-zoom-top zz-reg" data-label="top row 44"><button class="penna-touch-icon" data-penna="phone.button" data-tap aria-label="Close"><i data-icon="xmark"></i></button></div>
+            <div class="penna-zoom-title zz-reg" data-label="large title 52">Title</div>
+            <div class="penna-zoom-body zz-reg" data-label="body"></div>
+            <div class="penna-action-bar zz-reg" data-label="action bar"><button class="penna-button" data-penna="button" data-tone="primary" data-prominent data-size="touch-large" data-tap><span class="penna-label">Main action</span></button></div>
+          </div>
+        </div>
+      </div>
+      <div class="zz-col">
+        <div class="zz-phone">
+          <div class="zz-large">Machines</div>
+          <div class="penna-sheet" style="--penna-sheet-rest: 292px">
+            <div class="penna-sheet-scrim"></div>
+            <div class="penna-sheet-frame">
+              <div class="penna-sheet-panel" data-penna="drawer">
+                <div class="penna-sheet-grip"><div class="penna-sheet-grabber" data-penna="grabber"></div></div>
+                <div class="penna-sheet-header"><span class="penna-sheet-title">Sign in to xps</span><button class="penna-sheet-close penna-button" data-penna="button.quiet" data-size="touch" data-tap aria-label="Close"><i data-icon="xmark"></i></button></div>
+                <div class="zz-sheet-body"><span>fabrico@xps.tail2c4e.ts.net's password:</span><label class="penna-input" data-penna="field" data-size="touch-large" data-state="focused"><input type="password" value="hunter22"></label></div>
+                <div class="penna-action-bar" data-keys><button class="penna-button" data-penna="button" data-tone="primary" data-prominent data-size="touch-large" data-tap><span class="penna-label">Sign in</span></button></div>
+              </div>
+            </div>
+          </div>
+          <div class="zz-kb" data-keyboard style="position: absolute; z-index: 17; right: 0; bottom: 0; left: 0"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>7. Empty state and marks</h2>
+    <div class="zz-cols">
+      <div class="zz-col">
+        <div class="zz-part" style="height: 520px">
+          <div style="height: 120px"></div>
+          <div class="penna-empty"><i data-icon="laptop"></i><b>No machines yet</b><span>zz runs on your computers. This phone connects to them.</span></div>
+          <div class="zz-grow"></div>
+          <div class="penna-action-bar"><button class="penna-button" data-penna="button" data-tone="primary" data-prominent data-size="touch-large" data-tap><span class="penna-label">Add machine</span></button></div>
+          <span class="zz-home"></span>
+        </div>
+      </div>
+      <div class="zz-col" data-wide>
+        <div class="zz-marks">
+          <button class="penna-touch-icon" data-penna="phone.button" data-tap aria-label="Settings"><i data-icon="settings"></i></button>
+          <span class="penna-touch-disc" data-penna="floating"><button class="penna-touch-icon" data-penna="phone.button" data-tap aria-label="Settings"><i data-icon="settings"></i></button></span>
+          <span class="zz-mark-item"><span class="penna-tone-dot"></span>Connected</span>
+          <span class="zz-mark-item"><span class="penna-tone-dot" data-tone="warning"></span>1 waiting</span>
+          <span class="zz-mark-item"><span class="penna-tone-dot" data-tone="off"></span>Not connected</span>
+          <span class="zz-mark-item"><i class="penna-touch-spinner" data-icon="loader"></i>Connecting</span>
+          <span class="zz-mark-item"><span class="penna-touch-badge" data-penna="badge">3</span>chats</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Put together</h2>
+    <div class="penna-variants zz-phones">
+      <figure>
+        <div class="zz-phone">
+          <div style="position: absolute; inset: 54px 0 0; display: flex; flex-direction: column">
+            <div class="penna-zoom-title">Machines</div>
+            <div class="penna-machine-grid" style="margin: 16px 16px 0">
+              <div class="penna-machine-tile" data-penna="phone.card" role="button" data-tap><span class="penna-machine-name"><span class="penna-tone-dot" data-tone="warning"></span><span>macbook</span></span><span class="penna-machine-state" data-tone="warning">1 waiting for you</span><span class="penna-machine-foot"><span>3 chats</span><span>2 working</span></span><span class="penna-press"></span></div>
+              <div class="penna-machine-tile" data-penna="phone.card" role="button" data-tap><span class="penna-machine-name"><span class="penna-tone-dot"></span><span>alienware</span></span><span class="penna-machine-state">Connected</span><span class="penna-machine-foot"><span>1 chat</span><span>cachyos-upgrade</span></span><span class="penna-press"></span></div>
+              <div class="penna-machine-tile" data-penna="phone.card" role="button" data-tap><span class="penna-machine-name"><span class="penna-tone-dot" data-tone="off"></span><span>xps</span></span><span class="penna-machine-state">Not connected</span><span class="penna-machine-foot"><span>Last seen 2 days ago</span></span><span class="penna-press"></span></div>
+              <div class="penna-machine-tile" data-penna="phone.add" data-add role="button" data-tap><i data-icon="plus"></i>Add machine<span class="penna-press"></span></div>
+            </div>
+          </div>
+          <div class="zz-bar"><span class="zz-grow"></span><span class="penna-touch-disc" data-penna="floating"><button class="penna-touch-icon" data-penna="phone.button" data-tap aria-label="Settings"><i data-icon="settings"></i></button></span></div>
+        </div>
+        <figcaption><b>Machines overview</b>Only machines you added, then the add tile and the gear disc. With nothing added it is the add tile alone.</figcaption>
+      </figure>
+      <figure>
+        <div class="zz-phone">
+          <div class="penna-zoom-card" data-penna="phone.card">
+            <div class="penna-zoom-top"><button class="penna-touch-icon" data-penna="phone.button" data-tap aria-label="Close"><i data-icon="xmark"></i></button></div>
+            <div class="penna-zoom-title">Add machine</div>
+            <div class="penna-zoom-body">
+              <div>
+                <div class="penna-touch-header"><span>Found on your tailnet</span><span class="penna-touch-count">4</span></div>
+                <div class="penna-touch-group" data-penna="settings.card">
+                  <div class="penna-touch-row" data-penna="phone.row" data-lines="2" role="button" data-tap><i data-icon="laptop"></i><span class="penna-touch-row-lines"><span>macbook</span><span>macOS · runs zz</span></span><i data-icon="plus" data-add></i></div>
+                  <div class="penna-touch-row" data-penna="phone.row" data-lines="2" role="button" data-tap><i data-icon="hard-drive"></i><span class="penna-touch-row-lines"><span>alienware</span><span>Linux · runs zz</span></span><i data-icon="plus" data-add></i></div>
+                  <div class="penna-touch-row" data-penna="phone.row" data-lines="2" role="button" data-tap><i data-icon="laptop"></i><span class="penna-touch-row-lines"><span>xps</span><span>Linux · runs zz</span></span><i data-icon="plus" data-add></i></div>
+                  <div class="penna-touch-row" data-penna="phone.row" data-lines="2" data-state="disabled" aria-disabled="true"><i data-icon="hard-drive"></i><span class="penna-touch-row-lines"><span>homelab</span><span>No zz on it yet</span></span></div>
+                </div>
+              </div>
+              <div class="penna-field" data-size="touch-large"><span class="penna-field-label">Or an address</span><label class="penna-input" data-penna="field" data-size="touch-large"><input placeholder="user@host"><span class="penna-input-suffix"><button class="penna-button" data-penna="button.quiet" data-size="touch" data-shape="icon" data-tap aria-label="Scan QR"><span class="zz-qr"></span></button></span></label></div>
+            </div>
+            <div class="penna-action-bar"><button class="penna-button" data-penna="button" data-tone="primary" data-prominent data-size="touch-large" disabled aria-disabled="true"><span class="penna-label">Connect</span></button></div>
+          </div>
+        </div>
+        <figcaption><b>The add card</b>Zoomed into the add tile. Tapping a found row adds the machine and connects to it; homelab has no zz, so its row is disabled and says so. Connect stays off until an address is typed.</figcaption>
+      </figure>
+    </div>
+  </section>
+</main>
+<script>
+(() => {
+  const status = `<div class="zz-status"><b>9:41</b><span class="zz-sig"><i></i><i></i><i></i><i></i></span><span class="zz-batt"></span></div>`;
+  for (const phone of document.querySelectorAll(".zz-phone")) {
+    phone.insertAdjacentHTML("afterbegin", status);
+    phone.insertAdjacentHTML("beforeend", `<span class="zz-home"></span>`);
+  }
+  const rows = [["q", "w", "e", "r", "t", "y", "u", "i", "o", "p"], ["a", "s", "d", "f", "g", "h", "j", "k", "l"], ["⇧", "z", "x", "c", "v", "b", "n", "m", "⌫"]];
+  const wide = new Set(["⇧", "⌫"]);
+  const keys = (row) => row.map((key) => (wide.has(key) ? `<i data-w>${key}</i>` : `<i>${key}</i>`)).join("");
+  const board = rows.map((row) => `<div class="zz-kb-row">${keys(row)}</div>`).join("") + `<div class="zz-kb-row"><i data-w>123</i><i data-w>☺</i><i data-space>space</i><i data-ret>go</i></div>`;
+  for (const kb of document.querySelectorAll("[data-keyboard]")) kb.innerHTML = board;
+  window.pennaKit?.roundAll?.();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,595 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Phone app</title>
+<link rel="stylesheet" href="/penna/penna.css">
+<link rel="stylesheet" href="/penna-src/blocks/touch/touch.css">
+<link rel="stylesheet" href="/zz.css">
+<link rel="stylesheet" href="phone.css">
+<script src="/penna/kit.js" data-tokens="/tokens/" data-themes="macos default yaru" data-theme="macos"></script>
+<style>
+  .zz-scrim { position: absolute; z-index: 15; inset: 0; background: var(--penna-scrim); }
+  .zz-sheet[data-penna="drawer"] { position: absolute; z-index: 16; right: 8px; bottom: 8px; left: 8px; display: flex; flex-direction: column; padding-bottom: 26px; }
+  .zz-grab { display: flex; flex: none; justify-content: center; padding-top: 6px; }
+  .zz-grab > [data-penna="grabber"] { width: 36px; height: 5px; }
+  .zz-sheet-head { display: flex; flex: none; align-items: center; gap: 8px; height: 60px; padding: 0 16px 0 20px; }
+  .zz-sheet-head > b { flex: 1; min-width: 0; overflow: hidden; font-size: var(--penna-text-display-size); line-height: var(--penna-text-display-line); font-weight: var(--penna-text-display-weight); text-overflow: ellipsis; white-space: nowrap; }
+  .zz-sheet-head > [data-penna="icon-button"] { width: 36px; height: 36px; --penna-r: 9999px; --penna-k: 1; --penna-icon-size: 16px; }
+  .zz-sheet-body { display: flex; flex-direction: column; gap: 10px; padding: 0 16px; }
+  .zz-sheet-body > p { margin: 0; color: var(--penna-muted); font-size: var(--penna-text-body-size); line-height: var(--penna-text-body-line); }
+  .zz-sheet-body > p > code, .zz-key { font-family: var(--penna-mono); font-size: 12px; }
+  .zz-fields { display: flex; gap: 8px; }
+  .zz-fields > div { flex: 1; min-width: 0; }
+  .zz-fields > [data-port] { flex: none; width: 92px; }
+  .zz-field-label { display: block; padding: 0 2px 4px; font-size: var(--penna-text-small-size); line-height: var(--penna-text-small-line); color: var(--penna-muted); }
+  .zz-rule { flex: none; height: 1px; margin: 4px 0; background: var(--penna-divider); }
+  .zz-keybox[data-penna] { display: flex; align-items: center; gap: 10px; padding: 10px 10px 10px 12px; }
+  .zz-keybox > .zz-key { flex: 1; min-width: 0; overflow: hidden; color: var(--penna-muted); text-overflow: ellipsis; white-space: nowrap; }
+  .zz-keybox [data-penna="button"] { flex: none; height: 32px; }
+
+  .zz-center { display: flex; flex: 1; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 0 36px; text-align: center; }
+  .zz-center > [data-icon] { color: var(--penna-muted); --penna-icon-size: 34px; }
+  .zz-center > b { font-size: var(--penna-text-touch-title-size); line-height: var(--penna-text-touch-title-line); font-weight: 600; }
+  .zz-center > span { color: var(--penna-fg-muted); }
+  .zz-mark[data-penna] { display: grid; place-items: center; width: 84px; height: 84px; margin-bottom: 10px; font: 700 34px/1 var(--penna-mono); letter-spacing: -2px; }
+  .zz-actions { display: flex; flex: none; flex-direction: column; gap: 10px; padding: 0 20px 52px; }
+  .zz-actions > [data-penna] { width: 100%; }
+  .zz-actions > [data-penna="button.quiet"] { color: var(--penna-muted); }
+
+  .zz-keys[data-penna="phone.pill"] { display: flex; flex: none; gap: 2px; height: 48px; margin: 4px 8px; padding: 4px; }
+  .zz-keys > [data-penna] { display: grid; flex: none; place-items: center; width: 40px; height: 40px; padding: 0; font: 500 15px/1 var(--penna-font); --penna-icon-size: 18px; }
+  .zz-keys > [data-penna="phone.arrow-pad"] { width: 52px; }
+  .zz-keys > .zz-grow { flex: 1; }
+
+  .zz-term { flex: 1; min-height: 0; margin: 0; padding: 4px 12px; overflow: hidden; font: 12px/17px var(--penna-mono); white-space: pre; color: var(--penna-fg); }
+  .zz-term .m { color: var(--penna-muted); }
+  .zz-term .g { color: var(--penna-success-ink); }
+  .zz-term .a { color: var(--penna-accent-ink); }
+  .zz-term .w { color: var(--penna-warning-ink); }
+  .zz-cursor { display: inline-block; width: 7px; height: 15px; vertical-align: -3px; background: var(--penna-fg); }
+
+  .zz-chat { display: flex; flex: 1; flex-direction: column; gap: 12px; min-height: 0; padding: 4px 16px 12px; overflow: hidden; font-size: var(--penna-text-read-body-size); line-height: var(--penna-text-read-body-line); }
+  .zz-chat > p { margin: 0; }
+  .zz-chat code { font: 12.5px/1 var(--penna-mono); }
+  .zz-bubble[data-penna] { align-self: flex-end; max-width: 82%; padding: 9px 13px; }
+  .zz-step { display: flex; align-items: center; gap: 8px; min-height: 30px; font-size: var(--penna-text-body-size); line-height: var(--penna-text-body-line); color: var(--penna-muted); --penna-icon-size: 14px; }
+  .zz-step > b { font-weight: 500; color: var(--penna-fg); }
+  .zz-step > code { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .zz-step > .zz-grow { flex: 1; }
+  .zz-diff[data-penna] { display: flex; flex-direction: column; padding: 0; overflow: hidden; font-size: var(--penna-text-body-size); line-height: var(--penna-text-body-line); }
+  .zz-diff-head { display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 12px; font-weight: 500; --penna-icon-size: 14px; }
+  .zz-diff-row { display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 12px; box-shadow: inset 0 1px 0 0 var(--penna-divider); font-family: var(--penna-mono); font-size: 12px; }
+  .zz-diff-row > span:first-child { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .zz-add { color: var(--penna-success-ink); }
+  .zz-del { color: var(--penna-danger-ink); }
+  .zz-thinking { display: flex; align-items: center; gap: 8px; font-size: var(--penna-text-body-size); color: var(--penna-muted); --penna-icon-size: 14px; }
+
+  .zz-dock { position: relative; display: flex; flex: none; flex-direction: column; gap: 6px; padding: 0 12px 104px; }
+  .zz-composer[data-penna="field.composer"] { align-items: center; min-height: 48px; padding: 6px; font-size: var(--penna-text-touch-body-size); }
+  .zz-composer > .zz-input { flex: 1; min-width: 0; padding: 0 4px; color: var(--penna-muted); }
+  .zz-composer [data-penna="icon-button"], .zz-composer [data-penna="button.send"] { width: 36px; height: 36px; --penna-icon-size: 16px; }
+  .zz-chips { display: flex; align-items: center; gap: 6px; padding: 0 2px; }
+  .zz-chip[data-penna] { display: inline-flex; flex: none; align-items: center; gap: 6px; height: 32px; padding: 0 10px; font-size: 13px; line-height: 16px; white-space: nowrap; --penna-icon-size: 13px; }
+  .zz-chip > .zz-dim { color: var(--penna-muted); }
+  .zz-chip > [data-icon="chevron-down"] { opacity: 0.6; --penna-icon-size: 10px; }
+  .zz-git { flex: 1; min-width: 0; overflow: hidden; font-size: 12px; color: var(--penna-muted); text-overflow: ellipsis; white-space: nowrap; }
+
+  .zz-ask[data-penna="field.composer"] { flex-direction: column; align-items: stretch; padding: 0; }
+  .zz-ask-head { display: flex; align-items: flex-start; gap: 8px; padding: 12px 14px 6px; font-weight: 500; --penna-icon-size: 15px; }
+  .zz-ask-head > [data-icon] { margin-top: 3px; color: var(--penna-warning-ink); }
+  .zz-ask-cmd { margin: 0 14px 8px; padding: 8px 10px; border-radius: 8px; background: color-mix(in srgb, var(--penna-fg) 6%, transparent); font: 12px/17px var(--penna-mono); white-space: pre-wrap; }
+  .zz-opts { display: flex; flex-direction: column; gap: 2px; padding: 0 8px 8px; }
+  .zz-opt[data-penna="menu-item"] { height: 44px; padding: 0 10px; font-size: var(--penna-text-touch-small-size); line-height: var(--penna-text-touch-small-line); font-weight: 500; }
+  .zz-opt[data-penna="menu-item"] > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .zz-opt > [data-penna="keycap"] { flex: none; }
+
+  .zz-hero { display: flex; flex: none; flex-direction: column; align-items: center; gap: 4px; padding-bottom: 14px; text-align: center; }
+  .zz-hero > [data-icon] { margin-bottom: 8px; color: var(--penna-fg-muted); --penna-icon-size: 34px; }
+  .zz-hero > b { font-size: 19px; line-height: 26px; font-weight: 600; }
+  .zz-hero > span { color: var(--penna-fg-muted); }
+  .zz-two { display: flex; flex: none; justify-content: center; gap: 8px; padding-bottom: 14px; }
+  .zz-two > [data-penna] { height: 40px; padding: 0 14px; font-size: 15px; --penna-icon-size: 15px; }
+  .zz-two [data-icon="chevron-down"] { opacity: 0.6; --penna-icon-size: 11px; }
+  .zz-menu[data-penna="popover"] { position: absolute; z-index: 5; right: 12px; bottom: 252px; left: 12px; display: flex; flex-direction: column; width: auto; padding: 6px; }
+  .zz-menu [data-penna="field"] { flex: none; height: 40px; margin-bottom: 4px; --penna-icon-size: 15px; }
+  .zz-menu [data-penna="menu-item"] { flex: none; height: 44px; gap: 10px; padding: 0 10px; font-size: 15px; line-height: 20px; font-weight: 400; --penna-icon-size: 15px; }
+  .zz-menu [data-penna="menu-item"] > .zz-t { flex: 1; min-width: 0; font-weight: 400; }
+  .zz-plabel { display: flex; flex: none; align-items: center; height: 28px; padding: 4px 10px 0; font-size: 12px; font-weight: 600; color: var(--penna-fg-muted); }
+
+  .zz-addr { display: flex; flex: none; align-items: center; gap: 6px; height: 52px; padding: 0 10px 0 12px; }
+  .zz-addr > [data-penna="field.address"] { display: flex; flex: 1; align-items: center; gap: 8px; min-width: 0; height: 40px; padding: 0 12px; font-size: 15px; --penna-icon-size: 14px; }
+  .zz-addr > [data-penna="field.address"] > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .zz-addr > [data-penna="field.address"] > [data-icon] { color: var(--penna-muted); }
+  .zz-tabs-count { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 6px; box-shadow: inset 0 0 0 1.5px currentColor; font-size: 12px; font-weight: 600; }
+  .zz-web { flex: 1; min-height: 0; margin: 0 0 0; padding: 18px 18px 0; overflow: hidden; background: var(--penna-panel); }
+  .zz-web h3 { margin: 0 0 6px; font-size: 24px; line-height: 30px; font-weight: 600; }
+  .zz-web p { margin: 0 0 14px; color: var(--penna-fg-muted); font-size: 14px; line-height: 20px; }
+  .zz-web-shots { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .zz-web-shots > i { display: block; height: 150px; border-radius: 14px; background: color-mix(in srgb, var(--penna-fg) 7%, transparent); box-shadow: inset 0 0 0 1px var(--penna-divider); }
+
+  .zz-badd[data-penna] { display: flex; flex-direction: row; align-items: center; justify-content: center; gap: 6px; color: var(--penna-fg-muted); font-size: var(--penna-text-touch-small-size); --penna-icon-size: 18px; }
+  .zz-session { display: flex; flex: none; align-items: center; height: 44px; margin-top: 6px; padding: 0 16px; font-size: var(--penna-text-heading-size); font-weight: 600; color: var(--penna-fg-muted); }
+  .zz-wtile[data-penna] { display: flex; flex-direction: column; gap: 8px; padding: 10px; overflow: hidden; }
+  .zz-wtile-head { display: flex; flex: none; align-items: center; gap: 8px; height: 18px; padding: 0 4px; font-size: var(--penna-text-heading-size); font-weight: var(--penna-text-heading-weight); white-space: nowrap; }
+  .zz-wtile-head > .n { color: var(--penna-fg-muted); }
+  .zz-wtile-head > .f { flex: 1; min-width: 0; overflow: hidden; font-size: var(--penna-text-body-size); font-weight: 400; color: var(--penna-fg-muted); text-overflow: ellipsis; }
+  .zz-minis { display: grid; flex: 1; gap: 4px; min-height: 0; }
+  .zz-mini[data-penna] { display: flex; flex-direction: column; gap: 4px; min-width: 0; min-height: 0; padding: 6px; overflow: hidden; background: var(--penna-bg); }
+  .zz-mini-head { display: flex; flex: none; align-items: center; gap: 4px; font-size: var(--penna-text-caption-size); line-height: var(--penna-text-caption-line); color: var(--penna-fg-muted); --penna-icon-size: 12px; }
+  .zz-mini-head > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .zz-mini pre { margin: 0; overflow: hidden; font: 7px/9px var(--penna-mono); color: var(--penna-fg-muted); white-space: pre; }
+
+  .zz-menu-open { position: absolute; z-index: 25; inset: 0; }
+  .zz-menu-stack { position: absolute; right: 0; bottom: 104px; left: 0; display: flex; flex-direction: column; align-items: center; gap: var(--penna-gap-group); }
+  .zz-menu-group { display: flex; flex-direction: column; align-items: center; gap: var(--penna-gap-related); }
+  .zz-pchip[data-penna] { display: flex; flex: none; align-items: center; gap: 10px; height: 44px; padding: 0 16px 0 12px; font-size: var(--penna-text-touch-small-size); line-height: var(--penna-text-touch-small-line); font-weight: 500; white-space: nowrap; --penna-icon-size: 18px; }
+  .zz-pchip[data-quiet] { color: var(--penna-muted); }
+  .zz-pchip[data-solid] { color: var(--penna-on-primary); }
+  .zz-pclose[data-penna] { position: absolute; bottom: 28px; left: 50%; display: grid; place-items: center; width: 56px; height: 56px; margin-left: -28px; padding: 0; color: var(--penna-on-primary); --penna-icon-size: 22px; }
+  .zz-under { position: absolute; inset: 54px 0 0; display: flex; flex-direction: column; }
+
+  .zz-tag[data-penna] { flex: none; }
+</style>
+</head>
+<body>
+<main class="zz-page">
+  <div class="zz-intro">
+    <h1>Phone app</h1>
+    <p>The iPhone shell's main views in the order a new user meets them, redrawn to catch up with the desktop. The phone is built around <b>chats</b> now, the way the desktop sidebar is, and it uses the desktop's word <b>Machines</b> for hosts. Where a view exists today it keeps its structure: one pane per screen, the floating pill at the bottom, the bento overview, sheets for actions. Each caption says what the view is for and what changed. Switch theme and mode in the corner.</p>
+  </div>
+
+  <section>
+    <h2>1. First run, no machine saved</h2>
+    <p>Today the app opens on one row and nothing that says what zz is or where its computers are. Three takes on a first screen: the desktop's Machines page, a welcome, and a screen where you just type where to connect.</p>
+    <div class="penna-variants zz-phones">
+      <figure>
+        <div class="zz-phone">
+          <div class="zz-body">
+            <div style="height: 16px"></div>
+            <div class="zz-card" data-penna="settings.card">
+              <div class="zz-row"><i data-icon="plus" data-accent></i><span class="zz-copy"><span class="zz-t">Add host</span></span><i data-icon="chevron-right"></i></div>
+            </div>
+          </div>
+        </div>
+        <figcaption><b>Today</b>One inset row on an empty screen. No title, no word on what a host is, no way to Settings until a host connects.</figcaption>
+      </figure>
+
+      <figure>
+        <div class="zz-phone">
+          <div class="zz-nav"><span class="zz-grow"></span><button data-penna="phone.button"><i data-icon="settings"></i></button></div>
+          <div class="zz-large">Machines</div>
+          <div class="zz-body">
+            <div class="zz-center">
+              <i data-icon="laptop"></i>
+              <b>No machines yet</b>
+              <span>zz runs on your computers. Add one and its chats and terminals show up here.</span>
+            </div>
+            <div class="zz-label">Tailscale</div>
+            <div class="zz-card" data-penna="settings.card">
+              <div class="zz-row"><i data-icon="globe"></i><span class="zz-copy"><span class="zz-t">Sign in to Tailscale</span><span class="zz-d">Lists every machine on your tailnet</span></span><i data-icon="chevron-right"></i></div>
+              <div class="zz-row"><span class="zz-qr" style="color: var(--penna-muted); margin: 0 1px"></span><span class="zz-copy"><span class="zz-t">Scan the QR from zz</span><span class="zz-d">On your computer: Settings, Machines</span></span><i data-icon="chevron-right"></i></div>
+            </div>
+            <div class="zz-label">SSH</div>
+            <div class="zz-card" data-penna="settings.card">
+              <div class="zz-row"><i data-icon="plus" data-accent></i><span class="zz-copy"><span class="zz-t">Add host</span><span class="zz-d">user@host, any machine you can ssh to</span></span><i data-icon="chevron-right"></i></div>
+            </div>
+            <div style="height: 64px"></div>
+          </div>
+        </div>
+        <figcaption><b>A. Machines page</b>The desktop's page in one column: a gear to Settings, an empty state, Tailscale first, plain SSH after. The ways in sit in the lower half.</figcaption>
+      </figure>
+
+      <figure>
+        <div class="zz-phone">
+          <div class="zz-body">
+            <div class="zz-center">
+              <div class="zz-mark" data-penna="icon-tile">zz</div>
+              <span style="color: var(--penna-fg); font-size: 20px; line-height: 28px; font-weight: 500">zz runs on your computers. This phone connects to them to pick up your chats and terminals.</span>
+            </div>
+            <div class="zz-actions">
+              <button data-penna="button" data-size="touch" data-emphasis="solid" data-solid="primary" style="color: var(--penna-on-primary)"><span class="zz-qr"></span>Scan QR from zz on your computer</button>
+              <button data-penna="button.quiet" data-size="touch"><i data-icon="server-plus"></i>Add host over SSH</button>
+              <button data-penna="button.quiet" data-size="touch">Sign in with Tailscale</button>
+            </div>
+          </div>
+        </div>
+        <figcaption><b>B. Welcome</b>One sentence and three ways in, the QR first since the desktop already shows one. No list, no gear: Settings waits until a machine is in.</figcaption>
+      </figure>
+
+      <figure>
+        <div class="zz-phone">
+          <div class="zz-nav"><span class="zz-grow"></span><button data-penna="phone.button"><i data-icon="settings"></i></button></div>
+          <div class="zz-large">Connect</div>
+          <div class="zz-body">
+            <div class="zz-grow"></div>
+            <div class="zz-label">Found nearby<span>3</span></div>
+            <div class="zz-card" data-penna="settings.card">
+              <div class="zz-row"><i data-icon="laptop"></i><span class="zz-copy"><span class="zz-t">macbook</span><span class="zz-d">This network, zz 0.31</span></span><i data-icon="chevron-right"></i></div>
+              <div class="zz-row"><i data-icon="hard-drive"></i><span class="zz-copy"><span class="zz-t">alienware</span><span class="zz-d">Tailscale, alienware.tail2c4e.ts.net</span></span><i data-icon="chevron-right"></i></div>
+              <div class="zz-row"><i data-icon="laptop"></i><span class="zz-copy"><span class="zz-t">xps</span><span class="zz-d">Tailscale, offline 2 days</span></span><i data-icon="chevron-right"></i></div>
+            </div>
+            <div class="zz-input-dock">
+              <label data-penna="field" data-size="touch"><span class="zz-typed"><span>fabrico@</span><span class="zz-caret"></span><span class="zz-ph">host</span></span><button data-penna="icon-button" data-emphasis="ghost" aria-label="Scan QR"><span class="zz-qr"></span></button><button data-penna="button.send" data-emphasis="solid" data-solid="primary" style="color: var(--penna-on-primary)"><i data-icon="arrow-up"></i></button></label>
+            </div>
+          </div>
+          <div class="zz-kb" data-keyboard></div>
+        </div>
+        <figcaption><b>C. Type to connect</b>The add-host field is the first screen, focused, with what zz found on this network and the tailnet just above it. The QR sits in the field.</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section>
+    <h2>2. Getting in</h2>
+    <p>Adding a machine, signing in to it, and the Machines page once a few are saved. Today signing in is a centered dialog; here every step is a sheet in the lower half, where the thumb is.</p>
+    <div class="penna-variants zz-phones">
+      <figure>
+        <div class="zz-phone">
+          <div class="zz-nav"><span class="zz-grow"></span><button data-penna="phone.button"><i data-icon="settings"></i></button></div>
+          <div class="zz-large">Machines</div>
+          <div class="zz-scrim"></div>
+          <div class="zz-sheet" data-penna="drawer">
+            <div class="zz-grab"><span data-penna="grabber"></span></div>
+            <div class="zz-sheet-head"><b>Add host</b><button data-penna="icon-button"><i data-icon="xmark"></i></button></div>
+            <div class="zz-sheet-body">
+              <div class="zz-fields">
+                <div><span class="zz-field-label">Address</span><label class="zz-wide" data-penna="field" data-size="touch"><span>fabrico@xps</span><span class="zz-caret"></span></label></div>
+                <div data-port><span class="zz-field-label">Port</span><label class="zz-wide" data-penna="field" data-size="touch"><span class="zz-ph">22</span></label></div>
+              </div>
+              <button class="zz-wide" data-penna="button" data-size="touch" data-emphasis="solid" data-solid="primary" style="color: var(--penna-on-primary)">Connect</button>
+              <div class="zz-rule"></div>
+              <span class="zz-field-label" style="padding-bottom: 0">This phone's key</span>
+              <div class="zz-keybox" data-penna="well"><span class="zz-key">ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIM8q4vX2kP7nR1hT9wZ3 zz@iphone</span><button data-penna="button"><i data-icon="copy"></i>Copy</button></div>
+              <p>Add it to <code>~/.ssh/authorized_keys</code> on the host to sign in without a password. zz offers to do it for you after the first sign in.</p>
+              <button class="zz-wide" data-penna="button.quiet" data-size="touch"><span class="zz-qr"></span>Scan QR from zz instead</button>
+            </div>
+          </div>
+        </div>
+        <figcaption><b>Add host sheet</b>Today: one field, Connect and Copy SSH key. Now the port has its own field, the key is shown so you can tell which one it is, and the QR is a way in from here too.</figcaption>
+      </figure>
+
+      <figure>
+        <div class="zz-phone">
+          <div class="zz-nav"><span class="zz-grow"></span><button data-penna="phone.button"><i data-icon="settings"></i></button></div>
+          <div class="zz-large">Machines</div>
+          <div class="zz-scrim"></div>
+          <div class="zz-sheet" data-penna="drawer" style="bottom: 300px; padding-bottom: 16px">
+            <div class="zz-grab"><span data-penna="grabber"></span></div>
+            <div class="zz-sheet-head"><b>Sign in to xps</b><button data-penna="icon-button"><i data-icon="xmark"></i></button></div>
+            <div class="zz-sheet-body">
+              <p>fabrico@xps.tail2c4e.ts.net's password:</p>
+              <label class="zz-wide" data-penna="field" data-size="touch" data-state="focused"><span style="letter-spacing: 3px">••••••••</span><span class="zz-caret"></span></label>
+              <button class="zz-wide" data-penna="button" data-size="touch" data-emphasis="solid" data-solid="primary" style="color: var(--penna-on-primary)">Continue</button>
+            </div>
+          </div>
+          <div class="zz-kb" data-keyboard style="position: absolute; z-index: 17; right: 0; bottom: 0; left: 0"></div>
+        </div>
+        <figcaption><b>Sign in, the password</b>What ssh asks, word for word, in a sheet that rides on the keyboard. Today the same prompt is a dialog in the middle of the screen.</figcaption>
+      </figure>
+
+      <figure>
+        <div class="zz-phone">
+          <div class="zz-nav"><span class="zz-grow"></span><button data-penna="phone.button"><i data-icon="settings"></i></button></div>
+          <div class="zz-large">Machines</div>
+          <div class="zz-scrim"></div>
+          <div class="zz-sheet" data-penna="drawer">
+            <div class="zz-grab"><span data-penna="grabber"></span></div>
+            <div class="zz-sheet-head"><b>Sign in without a password?</b></div>
+            <div class="zz-sheet-body">
+              <p>Add this phone's key to <code>~/.ssh/authorized_keys</code> on xps, so next time it connects on its own.</p>
+              <div class="zz-keybox" data-penna="well"><span class="zz-key">ssh-ed25519 AAAAC3Nz…T9wZ3 zz@iphone</span></div>
+              <button class="zz-wide" data-penna="button" data-size="touch" data-emphasis="solid" data-solid="primary" style="color: var(--penna-on-primary)">Add key</button>
+              <button class="zz-wide" data-penna="button.quiet" data-size="touch">Not now</button>
+            </div>
+          </div>
+        </div>
+        <figcaption><b>Sign in, then the key</b>Right after the password works, the offer to remember this phone. Same words and buttons as today's dialog, moved to a sheet and with the key shown.</figcaption>
+      </figure>
+
+      <figure>
+        <div class="zz-phone">
+          <div class="zz-nav"><span class="zz-grow"></span><button data-penna="phone.button"><i data-icon="settings"></i></button></div>
+          <div class="zz-large">Machines</div>
+          <div class="zz-sub">3 machines · 1 connected</div>
+          <div class="zz-body">
+            <div class="zz-label">Saved</div>
+            <div class="zz-card" data-penna="settings.card">
+              <div class="zz-row"><i data-icon="laptop"></i><span class="zz-copy"><span class="zz-t">macbook</span><span class="zz-d"><b>1 waiting</b> · 3 chats running · now</span></span><span class="penna-tone-dot"></span><i data-icon="chevron-right"></i></div>
+              <div class="zz-row"><i data-icon="hard-drive"></i><span class="zz-copy"><span class="zz-t">alienware</span><span class="zz-d">Connecting over Tailscale…</span></span><i class="penna-touch-spinner" data-icon="loader"></i><button data-penna="button.quiet">Cancel</button></div>
+              <div class="zz-row"><i data-icon="laptop"></i><span class="zz-copy"><span class="zz-t">xps</span><span class="zz-d">No chats · last seen 2 days ago</span></span><span class="penna-tone-dot" data-tone="off"></span><i data-icon="chevron-right"></i></div>
+            </div>
+            <div class="zz-label">On your tailnet</div>
+            <div class="zz-card" data-penna="settings.card">
+              <div class="zz-row"><i data-icon="hard-drive"></i><span class="zz-copy"><span class="zz-t">homelab</span><span class="zz-d">homelab.tail2c4e.ts.net · zz 0.31</span></span><button data-penna="button">Add</button></div>
+              <div class="zz-row"><i data-icon="laptop"></i><span class="zz-copy"><span class="zz-t">thinkpad</span><span class="zz-d">No zz on it yet</span></span><button data-penna="button.quiet">Install</button></div>
+            </div>
+            <div class="zz-label">SSH</div>
+            <div class="zz-card" data-penna="settings.card">
+              <div class="zz-row"><i data-icon="plus" data-accent></i><span class="zz-copy"><span class="zz-t">Add host</span></span><i data-icon="chevron-right"></i></div>
+            </div>
+          </div>
+          <div class="zz-bar"><span class="zz-grow"></span><div data-penna="floating" style="display: inline-flex; align-items: center; height: 56px; padding: 0 6px"><button data-penna="phone.button"><span class="zz-qr"></span></button><button data-penna="phone.button"><i data-icon="settings"></i></button></div></div>
+        </div>
+        <figcaption><b>Machines, a few saved</b>Today this is the Hosts grid with sessions and panes counted. Now each machine says how many chats run and when it was last active; one is mid-connect; Tailscale lists machines not saved yet.</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section>
+    <h2>3. A machine</h2>
+    <p>Inside a machine the phone opens on its chats, the way the desktop's chat view does, and terminals and browsers come after. A pane still fills the screen with the pill at the bottom. The agent chat, its composer and its asks are zz-ui's, the same as the desktop's.</p>
+    <div class="penna-variants zz-phones">
+      <figure>
+        <div class="zz-phone">
+          <div class="zz-large" style="height: 44px">macbook</div>
+          <div class="zz-sub">3 chats running · 1 waiting</div>
+          <div class="zz-body">
+            <div style="padding: 14px 16px 2px"><button class="zz-wide" data-penna="button" data-size="touch" data-emphasis="solid" data-solid="primary" style="color: var(--penna-on-primary)"><i data-icon="chat-plus"></i>New chat</button></div>
+            <div class="zz-label">zebrilus <span>~/dev/autistic-computer</span></div>
+            <div class="zz-card" data-penna="settings.card">
+              <div class="zz-row"><i data-icon="asterisk"></i><span class="zz-copy"><span class="zz-t">Make the pill menu offer New chat</span><span class="zz-d"><b>Needs your permission</b> · Claude Code</span></span><span class="penna-tone-dot" data-tone="warning"></span></div>
+              <div class="zz-row"><i data-icon="asterisk"></i><span class="zz-copy"><span class="zz-t">Fix pane stack hit testing</span><span class="zz-d">Working · Claude Code</span></span><span class="penna-tone-dot"></span></div>
+              <div class="zz-row"><i data-icon="bot"></i><span class="zz-copy"><span class="zz-t">Flip keeps the model and effort</span><span class="zz-d">Codex</span></span><span class="zz-meta">3d</span></div>
+            </div>
+            <div class="zz-label">nidus <span>~/dev/autistic-computer</span></div>
+            <div class="zz-card" data-penna="settings.card">
+              <div class="zz-row"><i data-icon="asterisk"></i><span class="zz-copy"><span class="zz-t">Pointer warp on Wayland</span><span class="zz-d">Working · Claude Code</span></span><span class="penna-tone-dot"></span></div>
+              <div class="zz-row"><i data-icon="bot"></i><span class="zz-copy"><span class="zz-t">Clipboard over QUIC drops images</span><span class="zz-d">Codex</span></span><span class="zz-meta">2d</span></div>
+            </div>
+            <div class="zz-label">Terminals and browsers</div>
+            <div class="zz-card" data-penna="settings.card">
+              <div class="zz-row"><i data-icon="square-terminal"></i><span class="zz-copy"><span class="zz-t">cargo test</span><span class="zz-d">zebrilus · running 4m</span></span></div>
+              <div class="zz-row"><i data-icon="globe"></i><span class="zz-copy"><span class="zz-t">Phone app · design board</span><span class="zz-d">127.0.0.1:8090</span></span></div>
+            </div>
+          </div>
+          <div class="zz-bar"><div class="zz-pill" data-penna="floating"><span class="zz-tile" data-penna="phone.pill.icon"><i data-icon="server"></i></span><span class="zz-pill-copy"><b>macbook</b><span>3 chats · 2 panes</span></span><span class="zz-dots"><i data-on></i><i></i><i></i></span></div></div>
+        </div>
+        <figcaption><b>Chats home</b>New. A machine opens on New chat, then its chats by folder with the agent and how long ago, waiting ones marked, then terminals and browsers. The host pill swipes between machines.</figcaption>
+      </figure>
+
+      <figure>
+        <div class="zz-phone">
+          <div class="zz-body">
+            <div class="zz-grow"></div>
+            <div class="zz-hero"><i data-icon="asterisk"></i><b>Claude Code is ready</b><span>Ask it anything, or pick up a chat.</span></div>
+            <div class="zz-two">
+              <button data-penna="button"><i data-icon="folder"></i>zebrilus<i data-icon="chevron-down"></i></button>
+              <button data-penna="button.quiet" data-state="current"><i data-icon="history"></i>Resume<i data-icon="chevron-down"></i></button>
+            </div>
+            <div class="zz-menu" data-penna="popover">
+              <label data-penna="field"><i data-icon="search"></i><span class="zz-ph">Search chats</span></label>
+              <div class="zz-plabel">In zebrilus</div>
+              <div data-penna="menu-item" data-state="current"><span class="zz-t">Gantt bars in pele</span><span class="zz-meta">1d</span></div>
+              <div data-penna="menu-item"><span class="zz-t">Ask sheet keys</span><span class="zz-meta">4d</span></div>
+              <div data-penna="menu-item"><span class="zz-t">Focus ring on the pane picker</span><span class="zz-meta">6d</span></div>
+              <div class="zz-plabel">Other folders</div>
+              <div data-penna="menu-item"><span class="zz-t">Segmented focus ring</span><span class="zz-meta">penna · 3h</span></div>
+              <div data-penna="menu-item"><span class="zz-t">Clipboard over QUIC drops images</span><span class="zz-meta">nidus · 2d</span></div>
+            </div>
+            <div class="zz-dock">
+              <div class="zz-composer" data-penna="field.composer"><button data-penna="icon-button"><i data-icon="plus"></i></button><span class="zz-input">Message Claude Code…</span><button data-penna="button.send" data-emphasis="solid" data-solid="primary" data-state="disabled" style="color: var(--penna-on-primary)"><i data-icon="arrow-up"></i></button></div>
+              <div class="zz-chips"><span class="zz-git">main</span><span class="zz-chip" data-penna="chip"><i data-icon="circle-user"></i>Default</span><span class="zz-chip" data-penna="chip">Ask<i data-icon="chevron-down"></i></span><span class="zz-chip" data-penna="chip">Opus 5.5<span class="zz-dim">High</span><i data-icon="chevron-down"></i></span></div>
+            </div>
+          </div>
+          <div class="zz-bar"><div class="zz-pill" data-penna="floating"><span class="zz-tile" data-penna="phone.pill.icon"><i data-icon="asterisk"></i></span><span class="zz-pill-copy"><b>Claude Code</b><span>zebrilus · macbook</span></span><span class="zz-dots"><i></i><i data-on></i><i></i><s></s><i></i></span></div></div>
+        </div>
+        <figcaption><b>Empty chat</b>New on the phone: the folder button and Resume from the desktop, opening upward over the composer with Resume showing. Today the thin client shows only the welcome. Account, mode and model chips sit under the composer as on the desktop.</figcaption>
+      </figure>
+
+      <figure>
+        <div class="zz-phone">
+          <div class="zz-body">
+            <div class="zz-chat">
+              <div class="zz-bubble" data-penna="card.bubble">Make the pill menu offer New chat first, then New terminal and New browser.</div>
+              <p>The host menu builds its items in <code>host_menu</code>. I'll put New chat at the top of the second group and keep Settings apart.</p>
+              <div class="zz-step"><i data-icon="file"></i><b>Read</b><code>clients/app/src/app/compact.rs</code></div>
+              <div class="zz-step"><i data-icon="search"></i><b>Searched</b><code>NEW_TERMINAL</code><span class="zz-grow"></span>3 hits</div>
+              <div class="zz-diff" data-penna="card.code">
+                <div class="zz-diff-head"><i data-icon="pencil"></i>Edited 2 files<span class="zz-grow"></span><span class="zz-add">+18</span><span class="zz-del">−6</span></div>
+                <div class="zz-diff-row"><span>app/compact.rs</span><span class="zz-add">+14</span><span class="zz-del">−5</span></div>
+                <div class="zz-diff-row"><span>app/compact/overview.rs</span><span class="zz-add">+4</span><span class="zz-del">−1</span></div>
+              </div>
+              <div class="zz-thinking"><i class="penna-touch-spinner" data-icon="loader"></i>Running the phone tests</div>
+            </div>
+            <div class="zz-dock">
+              <div class="zz-ask" data-penna="field.composer">
+                <div class="zz-ask-head"><i data-icon="square-terminal"></i><span>Run this command?</span></div>
+                <div class="zz-ask-cmd">cargo test -p zz-app compact</div>
+                <div class="zz-opts">
+                  <div class="zz-opt" data-penna="menu-item" data-state="current"><span>Yes</span><kbd data-penna="keycap">1</kbd></div>
+                  <div class="zz-opt" data-penna="menu-item"><span>Yes, and don't ask again for cargo test</span><kbd data-penna="keycap">2</kbd></div>
+                  <div class="zz-opt" data-penna="menu-item"><span>No, tell it what to do</span><kbd data-penna="keycap">3</kbd></div>
+                </div>
+              </div>
+              <div class="zz-chips"><span class="zz-git">main · 2 files +18 −6</span><span class="zz-chip" data-penna="chip" data-tone="warning">Auto<i data-icon="chevron-down"></i></span><span class="zz-chip" data-penna="chip">Opus 5.5<span class="zz-dim">High</span><i data-icon="chevron-down"></i></span></div>
+            </div>
+          </div>
+          <div class="zz-bar"><div class="zz-pill" data-penna="floating"><span class="zz-tile" data-penna="phone.pill.icon" data-warn><i data-icon="asterisk"></i></span><span class="zz-pill-copy"><b>Make the pill menu offer New chat</b><span data-warn>Needs your permission</span></span><span class="zz-dots"><i data-on data-warn></i><i></i><i></i><s></s><i></i></span></div></div>
+        </div>
+        <figcaption><b>Agent chat, mid-turn</b>The shared chat list with a tool step and a diff summary, and the ask growing out of the composer. The mode chip takes the warning tone in a mode that runs without asking, as on the desktop; today the thin client paints it plain.</figcaption>
+      </figure>
+
+      <figure>
+        <div class="zz-phone">
+          <pre class="zz-term"><span class="m">~/dev/autistic-computer/zebrilus</span> <span class="a">main</span>
+<span class="g">❯</span> cargo test -p zz-mux
+   <span class="g">Compiling</span> zz-protocol v0.31.0
+   <span class="g">Compiling</span> zz-mux v0.31.0
+    <span class="g">Finished</span> test profile in 21.4s
+     <span class="g">Running</span> unittests src/lib.rs
+
+running 412 tests
+test command::split_window_keeps_ratio ... <span class="g">ok</span>
+test command::swap_pane_marks ... <span class="g">ok</span>
+test formats::pane_current_command ... <span class="g">ok</span>
+test keys::prefix_table_falls_back ... <span class="g">ok</span>
+test model::floating_pane_raise ... <span class="g">ok</span>
+test model::zoom_survives_resize ... <span class="g">ok</span>
+
+test result: <span class="g">ok</span>. 412 passed; 0 failed
+   <span class="m">finished in 0.84s</span>
+
+<span class="m">~/dev/autistic-computer/zebrilus</span> <span class="a">main</span> <span class="m">22s</span>
+<span class="g">❯</span> git status -sb<span class="zz-cursor"></span></pre>
+          <div class="zz-keys" data-penna="phone.pill">
+            <button data-penna="phone.key">ctrl</button><button data-penna="phone.key">alt</button><button data-penna="phone.key"><i data-icon="key-tab"></i></button><button data-penna="phone.key"><i data-icon="key-escape"></i></button><button data-penna="phone.key">/</button><button data-penna="phone.key">@</button><button data-penna="phone.arrow-pad"><i data-icon="arrows-move"></i></button><span class="zz-grow"></span><button data-penna="phone.key"><i data-icon="keyboard"></i></button>
+          </div>
+          <div class="zz-kb" data-keyboard></div>
+        </div>
+        <figcaption><b>Terminal pane</b>As today: the terminal fills the page and the key row (ctrl, alt, tab, esc, /, @, the arrow pad, hide) rides on the keyboard in place of the pill.</figcaption>
+      </figure>
+
+      <figure>
+        <div class="zz-phone">
+          <div class="zz-addr" data-penna="bar.pane">
+            <div data-penna="field.address"><i data-icon="globe"></i><span>127.0.0.1:8090/mockups/phone/</span></div>
+            <button data-penna="phone.button"><span class="zz-tabs-count">3</span></button>
+            <button data-penna="phone.button"><i data-icon="inspector"></i></button>
+          </div>
+          <div class="zz-web">
+            <h3>Phone app</h3>
+            <p>The iPhone shell's main views in the order a new user meets them, redrawn to catch up with the desktop.</p>
+            <div class="zz-web-shots"><i></i><i></i><i></i><i></i></div>
+          </div>
+          <div class="zz-bar"><div class="zz-pill" data-penna="floating"><span class="zz-tile" data-penna="phone.pill.icon"><i data-icon="globe"></i></span><span class="zz-pill-copy"><b>Phone app</b><span>127.0.0.1</span></span><span class="zz-dots"><i></i><i></i><i></i><s></s><i data-on></i></span></div></div>
+        </div>
+        <figcaption><b>Browser pane</b>As today: the address bar with tabs and the element picker on top, the page under it, the pill with the page title and host. Web clients have no browser pane at all yet.</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section>
+    <h2>4. Getting around</h2>
+    <p>The overview and the pill menu stay the phone's navigator. The pill menu now starts things the way the desktop does, chat first. Settings lists every page the desktop has.</p>
+    <div class="penna-variants zz-phones">
+      <figure>
+        <div class="zz-phone">
+          <div class="zz-large" style="height: 44px">macbook</div>
+          <div class="zz-body">
+            <div class="zz-session">zebrilus</div>
+            <div class="zz-bento" data-bento="zebrilus"></div>
+            <div class="zz-session">nidus</div>
+            <div class="zz-bento" data-bento="nidus"></div>
+          </div>
+          <div class="zz-bar"><div class="zz-pill" data-penna="floating"><span class="zz-tile" data-penna="phone.pill.icon"><i data-icon="server"></i></span><span class="zz-pill-copy"><b>macbook</b><span>2 sessions</span></span><span class="zz-dots"><i data-on></i><i></i><i></i></span></div></div>
+        </div>
+        <figcaption><b>Overview of a machine</b>As today: each session's windows as a bento grid of their panes, the waiting one dotted. Tiles now head agent panes with the chat's title and folder, as desktop pane headers do.</figcaption>
+      </figure>
+
+      <figure>
+        <div class="zz-phone">
+          <div class="zz-large">Machines</div>
+          <div class="zz-sub">3 machines · 2 connected</div>
+          <div class="zz-body" style="padding-top: 16px">
+            <div class="zz-bento" style="grid-auto-rows: 86.5px">
+              <div class="zz-btile" data-penna="phone.card" data-w="2" data-h="2"><span class="zz-btile-title"><span class="penna-tone-dot"></span><span>macbook</span></span><span class="zz-btile-detail">3 chats · 2 panes</span><span class="zz-grow"></span><span class="zz-btile-line" data-warn><i></i>1 waiting</span><span class="zz-btile-line"><i></i>2 working</span></div>
+              <div class="zz-btile" data-penna="phone.card" data-w="2" data-h="2" data-state="current"><span class="zz-btile-title"><span class="penna-tone-dot"></span><span>alienware</span></span><span class="zz-btile-detail">1 chat · 1 pane</span><span class="zz-grow"></span><span class="zz-btile-line"><i style="background: var(--penna-fg-faint)"></i>cachyos-upgrade</span></div>
+              <div class="zz-btile" data-penna="phone.card" data-w="2" data-h="2"><span class="zz-btile-title"><span class="penna-tone-dot" data-tone="off"></span><span>xps</span></span><span class="zz-btile-detail">Not connected</span><span class="zz-grow"></span><button data-penna="button">Connect</button></div>
+              <div class="zz-btile zz-badd" data-penna="phone.add" data-w="2" data-h="2"><i data-icon="plus"></i>Add host</div>
+            </div>
+          </div>
+          <div class="zz-bar"><span class="zz-grow"></span><div data-penna="floating" style="display: inline-flex; align-items: center; height: 56px; padding: 0 6px"><button data-penna="phone.button"><i data-icon="settings"></i></button></div></div>
+        </div>
+        <figcaption><b>All machines</b>Today's Hosts grid, renamed Machines and counting chats where it counted sessions and panes. Reached by dragging the host pill up, as today.</figcaption>
+      </figure>
+
+      <figure>
+        <div class="zz-phone">
+          <div class="zz-under">
+            <div class="zz-large" style="height: 44px">macbook</div>
+            <div class="zz-sub">3 chats running · 1 waiting</div>
+            <div class="zz-label">zebrilus <span>~/dev/autistic-computer</span></div>
+            <div class="zz-card" data-penna="settings.card">
+              <div class="zz-row"><i data-icon="asterisk"></i><span class="zz-copy"><span class="zz-t">Make the pill menu offer New chat</span><span class="zz-d"><b>Needs your permission</b> · Claude Code</span></span><span class="penna-tone-dot" data-tone="warning"></span></div>
+              <div class="zz-row"><i data-icon="asterisk"></i><span class="zz-copy"><span class="zz-t">Fix pane stack hit testing</span><span class="zz-d">Working · Claude Code</span></span><span class="penna-tone-dot"></span></div>
+            </div>
+          </div>
+          <div class="zz-menu-open">
+            <div class="zz-scrim"></div>
+            <div class="zz-menu-stack" style="z-index: 16">
+              <div class="zz-menu-group">
+                <button class="zz-pchip" data-penna="phone.pill" data-quiet><i data-icon="settings"></i>Settings</button>
+              </div>
+              <div class="zz-menu-group">
+                <button class="zz-pchip" data-penna="phone.pill"><i data-icon="layout-dashboard"></i>Overview</button>
+                <button class="zz-pchip" data-penna="phone.pill"><i data-icon="globe"></i>New browser</button>
+                <button class="zz-pchip" data-penna="phone.pill"><i data-icon="square-terminal"></i>New terminal</button>
+                <button class="zz-pchip" data-penna="phone.pill" data-emphasis="solid" data-solid="primary"><i data-icon="chat-plus"></i>New chat</button>
+              </div>
+            </div>
+            <button class="zz-pclose" data-penna="phone.pill" data-emphasis="solid" data-solid="primary" style="z-index: 16"><i data-icon="xmark"></i></button>
+          </div>
+        </div>
+        <figcaption><b>Pill menu open</b>The host pill's menu with New chat nearest the thumb, then New terminal, New browser and Overview, Settings apart. Today it offers New session, New browser, New terminal and All hosts.</figcaption>
+      </figure>
+
+      <figure>
+        <div class="zz-phone">
+          <div class="zz-nav"><button data-penna="phone.button"><i data-icon="arrow-left"></i></button><span class="zz-grow"></span></div>
+          <div class="zz-large">Settings</div>
+          <div class="zz-body">
+            <div class="zz-label">Look</div>
+            <div class="zz-card" data-penna="settings.card">
+              <div class="zz-row" style="min-height: 46px"><i data-icon="palette"></i><span class="zz-copy"><span class="zz-t">Appearance</span></span><i data-icon="chevron-right"></i></div>
+              <div class="zz-row" style="min-height: 46px"><i data-icon="app-window"></i><span class="zz-copy"><span class="zz-t">Interface</span></span><i data-icon="chevron-right"></i></div>
+              <div class="zz-row" style="min-height: 46px"><i data-icon="file"></i><span class="zz-copy"><span class="zz-t">Editor</span></span><span class="zz-tag" data-penna="badge.outline">new</span><i data-icon="chevron-right"></i></div>
+              <div class="zz-row" style="min-height: 46px"><i data-icon="layout-dashboard"></i><span class="zz-copy"><span class="zz-t">Panes</span></span><span class="zz-tag" data-penna="badge.outline">new</span><i data-icon="chevron-right"></i></div>
+            </div>
+            <div class="zz-label">Tools</div>
+            <div class="zz-card" data-penna="settings.card">
+              <div class="zz-row" style="min-height: 46px"><i data-icon="gallery-vertical-end"></i><span class="zz-copy"><span class="zz-t">Multiplexer</span></span><span class="zz-tag" data-penna="badge.outline">new</span><i data-icon="chevron-right"></i></div>
+              <div class="zz-row" style="min-height: 46px"><i data-icon="globe"></i><span class="zz-copy"><span class="zz-t">Browser</span></span><span class="zz-tag" data-penna="badge.outline">new</span><i data-icon="chevron-right"></i></div>
+              <div class="zz-row" style="min-height: 46px"><i data-icon="square-terminal"></i><span class="zz-copy"><span class="zz-t">Terminal</span></span><i data-icon="chevron-right"></i></div>
+              <div class="zz-row" style="min-height: 46px"><i data-icon="hard-drive"></i><span class="zz-copy"><span class="zz-t">Machines</span></span><span class="zz-meta">macbook</span><i data-icon="chevron-right"></i></div>
+              <div class="zz-row" style="min-height: 46px"><i data-icon="bot"></i><span class="zz-copy"><span class="zz-t">Agents</span></span><i data-icon="chevron-right"></i></div>
+            </div>
+            <div class="zz-label">System</div>
+            <div class="zz-card" data-penna="settings.card">
+              <div class="zz-row" style="min-height: 46px"><i data-icon="cpu"></i><span class="zz-copy"><span class="zz-t">System</span></span><i data-icon="chevron-right"></i></div>
+              <div class="zz-row" style="min-height: 46px"><i data-icon="info"></i><span class="zz-copy"><span class="zz-t">About</span></span><span class="zz-meta">0.31.0</span><i data-icon="chevron-right"></i></div>
+            </div>
+          </div>
+        </div>
+        <figcaption><b>Settings</b>All eleven desktop pages in the desktop's groups. Marked new: Editor, Multiplexer and Browser, which the thin client lacks, and Panes, which the iPhone hides today. Hosts reads Machines.</figcaption>
+      </figure>
+    </div>
+  </section>
+</main>
+<script>
+(() => {
+  const status = `<div class="zz-status"><b>9:41</b><span class="zz-sig"><i></i><i></i><i></i><i></i></span><span class="zz-batt"></span></div>`;
+  for (const phone of document.querySelectorAll(".zz-phone")) {
+    phone.insertAdjacentHTML("afterbegin", status);
+    phone.insertAdjacentHTML("beforeend", `<span class="zz-home"></span>`);
+  }
+
+  const rows = [["q", "w", "e", "r", "t", "y", "u", "i", "o", "p"], ["a", "s", "d", "f", "g", "h", "j", "k", "l"], ["⇧", "z", "x", "c", "v", "b", "n", "m", "⌫"]];
+  const wide = new Set(["⇧", "⌫"]);
+  const keys = (row) => row.map((key) => (wide.has(key) ? `<i data-w>${key}</i>` : `<i>${key}</i>`)).join("");
+  const board = rows.map((row) => `<div class="zz-kb-row">${keys(row)}</div>`).join("") + `<div class="zz-kb-row"><i data-w>123</i><i data-w>☺</i><i data-space>space</i><i data-ret>return</i></div>`;
+  for (const kb of document.querySelectorAll("[data-keyboard]")) kb.innerHTML = board;
+
+  const term = (lines) => `<pre>${lines.join("\n")}</pre>`;
+  const shell = term(["~/zebrilus main", "❯ cargo test", "  Compiling zz-mux", "  Running 412 tests", "test result: ok"]);
+  const claude = term(["● Edited compact.rs", "  +14 −5", "● Run cargo test?", "  1 Yes  2 No"]);
+  const mini = (icon, title, body, extra = "") => `<div class="zz-mini" data-penna="tile.mini"${extra}><div class="zz-mini-head"><i data-icon="${icon}"></i><span>${title}</span></div>${body}</div>`;
+  const tile = (n, title, folder, minis, w, h, cols, warn) => `<div class="zz-wtile zz-btile" data-penna="phone.card" data-w="${w}" data-h="${h}"><div class="zz-wtile-head"><span class="n">${n}</span><span>${title}</span><span class="f">${folder}</span>${warn ? `<span class="penna-tone-dot" data-tone="warning"></span>` : ""}</div><div class="zz-minis" style="grid-template-columns: ${cols}">${minis}</div></div>`;
+  const bentos = {
+    zebrilus: [
+      tile(1, "Pill menu", "~/dev/…/zebrilus", mini("asterisk", "Make the pill menu…", claude, ` data-state="selected"`) + mini("square-terminal", "cargo test", shell) + mini("globe", "Phone app", `<pre>127.0.0.1:8090</pre>`), 4, 2, "1fr 1fr 1fr", true),
+      tile(2, "zsh", "~/dev", mini("square-terminal", "zsh", shell), 2, 2, "1fr", false),
+      tile(3, "Pane stack", "zebrilus", mini("asterisk", "Fix pane stack…", claude), 2, 2, "1fr", false),
+    ],
+    nidus: [
+      tile(1, "Pointer warp", "~/dev/…/nidus", mini("asterisk", "Pointer warp on…", claude) + mini("square-terminal", "nid serve", shell), 4, 2, "1fr 1fr", false),
+    ],
+  };
+  for (const bento of document.querySelectorAll("[data-bento]")) bento.innerHTML = bentos[bento.dataset.bento].join("");
+
+  window.pennaKit?.roundAll?.();
+})();
+</script>
+</body>
+</html>
