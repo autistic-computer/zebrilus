@@ -9,15 +9,15 @@ What a tile becomes when it grows to fill the screen: the machine you went into,
 ## Anatomy
 
 ```figure uses=compact,touch,button,input,list
-<div class="penna-zoom-card" data-penna="phone.card" style="width: 370px; height: 656px; padding-top: var(--penna-inset-pane); border-radius: 28px">
+<div class="penna-zoom-card" data-penna="phone.card" style="width: 370px; height: 656px; padding-top: var(--penna-inset-pane)">
   <div class="penna-zoom-top"><button class="penna-touch-icon" data-penna="phone.button" aria-label="Close"><i data-icon="xmark"></i></button></div>
   <div class="penna-zoom-title">Add machine</div>
   <div class="penna-zoom-body">
     <div>
       <div class="penna-touch-header"><span>Found on your tailnet</span><span class="penna-touch-count">3</span></div>
       <div class="penna-touch-group" data-penna="settings.card">
-        <div class="penna-touch-row" data-penna="phone.row" data-lines="2" role="button"><i data-icon="laptop"></i><span class="penna-touch-row-lines"><span>macbook</span><span>macOS · runs zz</span></span><i data-icon="plus" data-add></i></div>
-        <div class="penna-touch-row" data-penna="phone.row" data-lines="2" role="button"><i data-icon="hard-drive"></i><span class="penna-touch-row-lines"><span>alienware</span><span>Linux · runs zz</span></span><i data-icon="plus" data-add></i></div>
+        <div class="penna-touch-row" data-penna="phone.row" data-lines="2" role="button"><i data-icon="laptop"></i><span class="penna-touch-row-lines"><span>macbook</span><span>macOS · runs zz</span></span><i data-icon="plus"></i></div>
+        <div class="penna-touch-row" data-penna="phone.row" data-lines="2" role="button"><i data-icon="hard-drive"></i><span class="penna-touch-row-lines"><span>alienware</span><span>Linux · runs zz</span></span><i data-icon="plus"></i></div>
         <div class="penna-touch-row" data-penna="phone.row" data-lines="2" data-state="disabled" aria-disabled="true"><i data-icon="hard-drive"></i><span class="penna-touch-row-lines"><span>homelab</span><span>No zz on it yet</span></span></div>
       </div>
     </div>
@@ -32,6 +32,8 @@ What a tile becomes when it grows to fill the screen: the machine you went into,
 3. **Body**: `inset-pane` 16, groups `gap-group` 16 apart.
 4. **Action bar**: the one main action.
 
+While it is smaller than the screen the card has the phone container corner, twice `radius`, the tile's; once it fills the screen it takes the screen's. Natively the zoom starts it at 10.
+
 ## Add card
 
 Behind the add tile. Found machines first, as touch rows with the add mark: a tap adds the machine and connects it, and a machine without zz is a disabled row that says so. Then the address field with its scan accessory; Connect stays off until an address is typed. With no tailnet the field comes first, focused, with the keyboard up.
@@ -39,11 +41,11 @@ Behind the add tile. Found machines first, as touch rows with the add mark: a ta
 ## Scan
 
 ```figure uses=compact,touch,button,label
-<div class="penna-zoom-card" data-penna="phone.card" style="width: 370px; height: 660px; padding-top: var(--penna-inset-pane); border-radius: 28px">
+<div class="penna-zoom-card" data-penna="phone.card" style="width: 370px; height: 660px; padding-top: var(--penna-inset-pane)">
   <div class="penna-zoom-top"><button class="penna-touch-icon" data-penna="phone.button" aria-label="Close"><i data-icon="xmark"></i></button></div>
   <div class="penna-zoom-title">Add machine</div>
   <div class="penna-zoom-body">
-    <div style="aspect-ratio: 1; border-radius: var(--penna-radius); background: color-mix(in srgb, var(--penna-fg) 80%, var(--penna-bg))"></div>
+    <div style="aspect-ratio: 1; border-radius: calc(var(--penna-phone-radius) * var(--penna-corner-grow)); corner-shape: superellipse(var(--penna-window-k)); background: color-mix(in srgb, var(--penna-fg) 80%, var(--penna-bg))"></div>
     <span class="penna-type" data-type="touch-small" data-muted data-penna-text>On your computer, the code is in zz Settings, Hosts, under Add this machine to a phone.</span>
   </div>
   <div class="penna-action-bar"><button class="penna-button" data-penna="button" data-size="touch-large"><span class="penna-label" data-penna-text>Type an address instead</span></button></div>
@@ -55,7 +57,7 @@ The scan accessory turns the same card into the scanner: the camera's picture, s
 ## Connecting card
 
 ```figure uses=compact,touch,button,label
-<div class="penna-zoom-card" data-penna="phone.card" style="width: 370px; height: 520px; padding-top: var(--penna-inset-pane); border-radius: 28px">
+<div class="penna-zoom-card" data-penna="phone.card" style="width: 370px; height: 520px; padding-top: var(--penna-inset-pane)">
   <div class="penna-zoom-top"><button class="penna-touch-icon" data-penna="phone.button" aria-label="Close"><i data-icon="xmark"></i></button></div>
   <div class="penna-zoom-title">xps</div>
   <div class="penna-zoom-body" style="justify-content: center"><div class="penna-empty"><i class="penna-touch-spinner" data-icon="loader"></i><b>Connecting</b><span>Waiting for ssh on fabrico@xps</span></div></div>

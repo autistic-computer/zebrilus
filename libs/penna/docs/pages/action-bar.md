@@ -18,4 +18,5 @@ Holds a phone screen's one main action at the bottom, where the thumb is. For mo
 - One main action at `touch-large` 56, full width; at most one secondary, above or beside it.
 - 16 from the sides and 20 above the bottom edge: the pill's spot. A screen has the pill or the action bar, never both.
 - With the keyboard up it rides on it, 8 above.
+- As a floating surface it pads its buttons by 8, and its corner is theirs plus 8.
 - Inside a machine the main action (New chat) is in the pill's menu, not a bar.

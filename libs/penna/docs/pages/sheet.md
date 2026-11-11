@@ -23,10 +23,11 @@ Asks a short question and returns you where you were: a password, a confirmation
 </div>
 ```
 
-1. **Grabber**: 36 by 5. Drag down past half its height, or fling, to dismiss.
-2. **Header**: 60, the title in `display`, the close control at its end.
-3. **Body**: `inset-pane` 16, `touch-body`; rows are touch rows.
-4. **Action bar**: on a phone, riding the keyboard.
+1. **Panel**: the phone container corner, twice `radius`; rows inside it are never rounder than it less the row inset.
+2. **Grabber**: 36 by 5. Drag down past half its height, or fling, to dismiss.
+3. **Header**: 60, the title in `display`, the close control at its end.
+4. **Body**: `inset-pane` 16, `touch-body`; rows are touch rows.
+5. **Action bar**: on a phone, riding the keyboard.
 
 ## Close
 
@@ -37,7 +38,7 @@ Asks a short question and returns you where you were: a password, a confirmation
 </div>
 ```
 
-Nothing tappable is under 44 on a phone, so the close grows to the touch rung.
+Nothing tappable is under 44 on a phone, so the close grows to the touch rung, and rounds like any icon button of that height. Not built: natively the panel keeps `radius` and the close is round.
 
 ## A question from ssh
 

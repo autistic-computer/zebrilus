@@ -388,9 +388,27 @@ Surfaces: the Look's rule, applied to the phone: flat by default, glass only for
 
 Outline buttons sit only on a ground with its own fill (Button); a phone screen's secondary action is quiet or text.
 
+Corners: the four corner rules (Corners, under Look) hold on the phone unchanged, with one number added. Controls take their corner from their height: buttons, fields, icon buttons, the pill, and the floating disc, which is a control-shaped surface (a circle under Pill controls, `roundness` × 56 under Rounded), never a container's `radius`. Phone containers share one corner, twice `radius` (24 at the default 12, 16 in Yaru, 0 at 0): the phone's main rung, 56, is twice the desktop's 28, so a container rounds in the same proportion to what it holds. Like any container it stops at 45% of its shorter side. The phone containers are the machine tile and the add tile, a row group, the sheet panel, the zoom card while it is smaller than the screen (once it fills the screen it is the ground and takes the screen's corner), and the scanner's picture. Inside them corners are concentric (rule 3): a touch row is a control that is never a capsule, like a menu row, so it takes its own corner from its height, never rounder than its group's corner less the group's 4 inset, or the sheet's less the row inset 6; the icon button in the disc is the disc's corner less its 6 inset; a floating action bar is its buttons' corner plus its 8 inset. Smoothing is rule 4, as everywhere.
+
+| Piece | Kind | Default | macos | Yaru | Native today |
+|---|---|---|---|---|---|
+| Main action, field (56) | control | 17.5 | 28, a capsule | 14.3 | not built (the 56 rung) |
+| Icon button (44) | control | 13.7 | 22, a circle | 11.2 | matches (`compact_bar_button`) |
+| Pill (56) | control | 17.5 | 28, a capsule | 14.3 | not built: natively and in the compact block's HTML it follows the screen's corner, a capsule on a phone with round corners in every look (`floating_layer`) |
+| Floating disc (56) | control | 17.5 | 28, a circle | 14.3 | under Pill matches; under Rounded not built: `compact_floating_group` takes the pill's corner, a circle on a phone with round corners |
+| Icon button in the disc | control, concentric | 11.5 | 22, a circle | 8.3 | under Pill matches; under Rounded not built (13.7) |
+| Floating action bar | floating, concentric | 25.5 | 36 | 22.3 | not built |
+| Touch row, 52 and 64 | control, never a capsule | 16.2, 20 | 16.2, 20 | 13.2, 16.3 | matches in sheets (`row_radius`) |
+| Touch row in a group | the same, at most the group's corner less 4 | 16.2, 20 | 16.2, 20 | 12, 12 | not built |
+| Row in a sheet | the same, at most the sheet's corner less 6 | 16.2, 18 | 16.2, 18 | 10, 10 | not built: rows keep 16.2 and 20 in a 12 sheet |
+| Machine tile, add tile | phone container | 24 | 24 | 16 | not built: `phone.card` and `phone.add` are tiles, an `Item`, so they take `control-radius` capped at 25: 12, 25, 8 |
+| Row group | phone container | 24 | 24 | 16 | not built |
+| Sheet panel | phone container | 24 | 24 | 16 | not built: the `drawer` look keeps `radius`, 12, 12, 8 |
+| Zoom card, scanner picture | phone container | 24 | 24 | 16 | not built: zz's zoom starts the growing card at its `ZOOM_RADIUS` 10, not the tile's corner; no scanner |
+
 Decisions: a tile's title is strong `touch-body`, 500, since strong is 500 for the touch styles (Type); a tile's inset is `inset-card` 12; a main action that is loading keeps its label (Button).
 
-HTML: the phone components' twins live with their tiers: the rung in `button.css`, `input.css` and `penna.css` (`data-size="touch-large"`); rows, groups, headers, the action bar, the empty state and the marks (`.penna-tone-dot` with `data-tone`, `.penna-touch-spinner`, `.penna-touch-badge`) in `blocks/touch/touch.css`; the machine tile, the zoom card, the icon button (`.penna-touch-icon`) and its disc (`.penna-touch-disc[data-penna="floating"]`) in `blocks/compact/compact.css`; the 44 close in `blocks/sheet/sheet.css`.
+HTML: the phone components' twins live with their tiers: the rung in `button.css`, `input.css` and `penna.css` (`data-size="touch-large"`); rows, groups, headers, the action bar, the empty state and the marks (`.penna-tone-dot` with `data-tone`, `.penna-touch-spinner`, `.penna-touch-badge`) in `blocks/touch/touch.css`; the machine tile, the zoom card, the icon button (`.penna-touch-icon`) and its disc (`.penna-touch-disc[data-penna="floating"]`) in `blocks/compact/compact.css`; the 44 close in `blocks/sheet/sheet.css`. The phone container corner is `--penna-phone-radius` (`penna.css`, twice `--penna-radius`); a row nested in a group or a sheet caps its corner with `--penna-nest-inset` and `--penna-nest-outer`, and a wrapper marked `data-penna-clip` (the swipe) takes its first row's drawn corner (`kit.js`).
 
 Status: not built natively; drawn in HTML on the docs Phone pages.
 
@@ -477,7 +495,8 @@ Phone (Phone, rules 2 and 3):
 
 - Main action: full width at `control-touch-lg` 56, `touch-body`, inset 16, a 20 icon `space-8` from the label. One per screen, in the action bar. Kinds: primary for the main action, secondary (soft) for the one secondary, ghost for a text-only way out ("Type an address instead"), danger soft for an action that removes something, named for what it removes.
 - States: rest; pressed as the press highlight, a wash that rises over 120ms after a 100ms delay, holds at least 130ms and falls over 180ms (`touch::press`); disabled faint; loading with the spinner in the icon's place, or before the label when there is none. Loading keeps the label, which can turn to its -ing form ("Connecting"), so the button never changes width or loses its name.
-- Icon button: 44 square with a 20 icon (`compact_bar_button`), ghost, its tooltip and accessible name naming the action. Over the content it sits in a floating disc 56 tall, the pill's height (`compact_floating_group`).
+- Corners: a control's, from its height (Phone, Corners): 17.5 at 56 and 13.7 at 44 by default, a capsule under Pill controls.
+- Icon button: 44 square with a 20 icon (`compact_bar_button`), ghost, its tooltip and accessible name naming the action. Over the content it sits in a floating disc 56 tall, the pill's height (`compact_floating_group`). The disc is control-shaped, a circle under Pill and `roundness` × 56 under Rounded, never a container's `radius`; the button in it is the disc's corner less its 6 inset (Phone, Corners).
 
 HTML: `.penna-button` with `data-penna` (the recipe: `button`, `button.quiet` for ghost, `button.outline`), `data-tone`, `data-prominent` (solid), `data-size` (`xsmall` to `touch`, and `touch-large`), `data-state="current"` (selected), `data-variant` (`link`, `text`), `disabled`, `data-loading`; the label is `.penna-label`, the icon `<i data-icon>`, and a button with a caret takes `data-caret` and holds a `.penna-caret`. A button set inside a tab or row takes `data-inside` with `--penna-inside-rows` set to the container's height, and `kit.js` rounds it concentric.
 
@@ -708,7 +727,7 @@ Content: the label is a noun or a short noun phrase in sentence case, with no co
 
 Placement: fields in a form sit `gap-group` 16 apart. Two short fields can share a line `gap-related` 8 apart, each with its own label.
 
-Phone: a field on a phone is `control-touch-lg` 56, `touch-body` text, field inset 12, a 20 leading icon. Its label is strong `touch-small` and its help and error `touch-small`, the error after a 16 `circle-x`; parts `gap-tight` 4 apart as above. Its accessories (clear, scan, send) are 44 icon buttons set inside it, `INSIDE_GAP` 4 or more from its edge, never a rung smaller as a desktop field's marks are. Not built: phone code draws fields at the default rung. HTML: `.penna-field[data-size="touch-large"]` around `.penna-input[data-size="touch-large"]`, its accessories `.penna-button[data-size="touch"][data-shape="icon"]` in `.penna-input-suffix`.
+Phone: a field on a phone is `control-touch-lg` 56, `touch-body` text, field inset 12, a 20 leading icon, its corner a control's from its height (17.5 by default, a capsule under Pill; Phone, Corners). Its label is strong `touch-small` and its help and error `touch-small`, the error after a 16 `circle-x`; parts `gap-tight` 4 apart as above. Its accessories (clear, scan, send) are 44 icon buttons set inside it, `INSIDE_GAP` 4 or more from its edge, never a rung smaller as a desktop field's marks are. Not built: phone code draws fields at the default rung. HTML: `.penna-field[data-size="touch-large"]` around `.penna-input[data-size="touch-large"]`, its accessories `.penna-button[data-size="touch"][data-shape="icon"]` in `.penna-input-suffix`.
 
 HTML: `.penna-field` holding `.penna-field-label`, the control, and `.penna-field-help` or `.penna-field-error` (an `<i data-icon="circle-x">` before its text). Text runs are spans marked `data-penna-text`; `field.css` holds the twin.
 
@@ -951,14 +970,14 @@ Placement: in a sidebar, a pane or a picker, full width, in a column of rows `sp
 
 Touch rows (Phone): a list on a phone (found machines, chats, settings) uses touch rows.
 
-- Row: one line 52 or two lines 64 tall (the sheet's `OPTION_HEIGHT` and `DETAIL_HEIGHT`), inset `space-12` at the sides, children `space-12` apart. Leading icon 20 in muted ink. Title `touch-body`, detail `touch-small` muted `space-2` under it, both on one line. The `phone.row` look: no fill at rest, the press highlight while held, the disabled paint.
-- Trailing, one of: a 16 chevron when the tap zooms in; a value in `touch-small`, muted; a tone dot and its word; a 16 spinner and its word; the add mark, a 20 `plus` in accent ink, when the tap adds the thing. The whole row is the target; nothing in it is a button.
-- Disabled: the title faint, the detail saying why ("No zz on it yet"), no trailing mark.
-- Group: rows in a `settings.card`, the row inset (6) around them, `space-2` apart, a `divider` hairline between them from the title's start to the row's end.
-- Swipe: swiping a row left reveals one trailing action 64 wide (`space-64`), solid danger, as tall as the row ("Forget").
-- Section header: over a group or a grid, 28 tall (as the touch which-key list's), strong `touch-small` muted, inset 12 so it sits over the rows' text, `space-4` above the card; an optional count at its end in regular `touch-small`.
+- Row: one line 52 or two lines 64 tall (the sheet's `OPTION_HEIGHT` and `DETAIL_HEIGHT`), inset `space-12` at the sides, children `space-12` apart. Leading icon 20 in muted ink. Title `touch-body`, detail `touch-small` muted `space-2` under it, both on one line. The `phone.row` look: no fill at rest, the press highlight while held (and the hover wash in HTML), the disabled paint. Corners: a control that is never a capsule, like a menu row: `roundness` from `radius` × the row's height (16.2 at 52 and 20 at 64 by default), never rounder than the corner of what holds it less the inset between them (Phone, Corners). The fill is the row's own rounded shape.
+- Trailing, one of: a glyph when the tap zooms in (`chevron-right`) or adds the thing (`plus`); a value in `touch-small`, muted; a tone dot and its word; a 16 spinner and its word. A trailing glyph is 20 in the muted ink, the leading icon's size and stroke; no accent. The whole row is the target; nothing in it is a button.
+- Disabled: the title faint, the detail saying why ("No zz on it yet"), no trailing mark. It keeps its place and takes no fill, hovered or pressed.
+- Group: tappable rows in a `settings.card` with the phone container corner (Phone, Corners), `space-4` in from its edges and `space-2` apart, as a menu's rows sit in a popover, and no separators: each row's fill is its own rounded shape and never meets an edge or a line. The group grows by its inset, so a row's leading icon sits 16 in from the group's edge (4 plus the row's 12), the page's rhythm.
+- Swipe: swiping a row left reveals one trailing action 64 wide (`space-64`), solid danger, as tall as the row ("Forget"), clipped to the row's corner.
+- Section header: over a group or a grid, 28 tall (as the touch which-key list's), strong `touch-small` muted, inset 16 so it lines up with the leading icons of the rows in the group under it, `space-4` above the card; an optional count at its end in regular `touch-small`.
 
-Status for touch rows: one-line and two-line rows are built inside sheets (`sheet_row`, `sheet_detail_row`); phone code uses `sheet_row` only. Rows outside a sheet, the group, the trailing kinds, the swipe and the section header are not built. HTML: `.penna-touch-row[data-penna="phone.row"]` (`data-lines="2"` for two lines) holding an `<i data-icon>`, `.penna-touch-row-lines`, and a `.penna-touch-row-value`, `.penna-touch-row-state` or trailing `<i data-icon>` (`data-add` for the add mark); `.penna-touch-group[data-penna="settings.card"]` around rows; `.penna-touch-swipe` (`data-open`) holding a row and `.penna-touch-swipe-action`; `.penna-touch-header` with an optional `.penna-touch-count`.
+Status for touch rows: one-line and two-line rows are built inside sheets (`sheet_row`, `sheet_detail_row`), their corner from their height; phone code uses `sheet_row` only. Rows outside a sheet, the group, the cap on a nested row's corner, the trailing kinds, the swipe and the section header are not built. HTML: `.penna-touch-row[data-penna="phone.row"]` (`data-lines="2"` for two lines) holding an `<i data-icon>`, `.penna-touch-row-lines`, and a `.penna-touch-row-value`, `.penna-touch-row-state` or trailing `<i data-icon>`; `.penna-touch-group[data-penna="settings.card"]` around rows; `.penna-touch-swipe` (`data-penna-clip`, `data-open`) holding a row and `.penna-touch-swipe-action`; `.penna-touch-header` with an optional `.penna-touch-count`.
 
 HTML: `.penna-list` is the column (rows `space-2` apart). A row is `.penna-list-item[data-penna]` (`menu-item`, `sidebar.row`, `menu-item.tint`) with `role="option"`, `aria-selected="true"` or `data-state="selected"`, `aria-disabled="true"` or `data-state="disabled"`, `data-state="focused"` (or keyboard focus) for the focus ring, and `--penna-list-row` for its height. Inside, `.penna-list-content` holds `i.penna-list-icon[data-icon]`, `.penna-list-label` and `.penna-list-detail`, each text run in `.penna-text[data-penna-text]`. No script.
 
@@ -1720,12 +1739,12 @@ Placement: on a well or in a dock, `gap-group` 16 apart in a row, or where the a
 
 Machine tile (Phone): the bento overview's cell, two to a row.
 
-- Container: the `phone.card` look, `gap-related` 8 apart over `inset-pane` 16 (`BENTO_GAP`, `BENTO_INSET`), square, inset `inset-card` 12.
+- Container: the `phone.card` look, `gap-related` 8 apart over `inset-pane` 16 (`BENTO_GAP`, `BENTO_INSET`), square, inset `inset-card` 12, the phone container corner, twice `radius` (Phone, Corners).
 - Name: strong `touch-body` (500), after a tone dot 8 or a 16 spinner, `space-8` apart. State under it in `touch-small`, muted, or `warning` ink while something waits. Lines at the bottom in `touch-small`, muted.
 - States, and what a tap does: connected ("Connected"), zooms into the machine; waiting ("1 waiting for you", warning dot), zooms in; connecting (spinner, "Connecting", how it is reached), zooms into the connecting card, where Cancel is the one action (Zoom card); offline (faint dot, "Not connected", when it was last seen), reconnects; pressed, the bento press (`control` over the tile); add, the `phone.add` look with a 20 `plus` and "Add machine", zooms into the add card (Zoom card).
 - No button sits inside a tile, and nothing on the overview is drawn as a ghost: machines not yet added are rows in the add card.
 
-Status for the machine tile: the grid, the cell and the add tile are built (`bento_grid`, `bento_tile`, `bento_add_tile`); zz-ui draws the states (`host_tile`) at `heading` 16 and `body` 13, inset 14, with Connect and Cancel buttons inside. Not built. HTML: `.penna-machine-grid` holding `.penna-machine-tile[data-penna="phone.card"]` (`data-penna="phone.add"` and `data-add` for the add tile) with `.penna-machine-name`, `.penna-machine-state` (`data-tone="warning"`), `.penna-machine-foot` and a `.penna-press` for the pressed state (`data-state="active"`).
+Status for the machine tile: the grid, the cell and the add tile are built (`bento_grid`, `bento_tile`, `bento_add_tile`); zz-ui draws the states (`host_tile`) at `heading` 16 and `body` 13, inset 14, with Connect and Cancel buttons inside. Not built, and neither is the corner: the cell and the add tile take `control-radius` capped at 25 (12, 25 under Pill, 8 in Yaru). HTML: `.penna-machine-grid` holding `.penna-machine-tile[data-penna="phone.card"]` (`data-penna="phone.add"` and `data-add` for the add tile) with `.penna-machine-name`, `.penna-machine-state` (`data-tone="warning"`), `.penna-machine-foot` and a `.penna-press` for the pressed state (`data-state="active"`).
 
 HTML: `.penna-tile` with `data-penna` (`tile.card`, `tile.screen`, `tile.drop`, `tile.mini`) and `data-variant` (`card`, `screen`, `drop`, `veil`, `mini`); `data-state` (`hover`, `selected`, `focused`, `disabled`), `data-tone` (`primary`, `danger`), `data-edge` on a drop zone, and `role="button"` with `tabindex="0"` on a tile that takes focus. `tile.css` draws the variants and states, the lift as `--penna-shadow-lifted` under an inset `--penna-wash` (one wash step, laid over whatever fill the tile or its well draws), the selected ring in `::before` and the focus ring in `::after`; size, inset, placement and a mini's fill and corners are the page's, as natively. `tile.js` runs a focusable tile on Space and Enter and keeps a click from focusing it. Picking and dragging are the page's, as natively the app's.
 
@@ -1826,7 +1845,7 @@ A block is a piece of UI that owns the layout and state of several components. I
 
 The action bar holds a phone screen's one main action at the bottom, where the thumb is. For moving around, the pill.
 
-Anatomy: a column, `gap-related` 8 apart, 16 from the sides and 20 above the bottom edge, the pill's spot (`PILL_INSET_MIN`, `PILL_INSET_MAX`). It holds the main action (Button, Phone) and at most one secondary: above it as a ghost or soft button, or beside it, the two sharing the width, the main action last.
+Anatomy: a column, `gap-related` 8 apart, 16 from the sides and 20 above the bottom edge, the pill's spot (`PILL_INSET_MIN`, `PILL_INSET_MAX`). It holds the main action (Button, Phone) and at most one secondary: above it as a ghost or soft button, or beside it, the two sharing the width, the main action last. As a floating surface it pads its buttons by `space-8` and its corner is theirs plus that inset (25.5 by default, 36 under Pill; Phone, Corners), never a container's `radius`.
 
 Behavior: when the keyboard is up it rides on it, 8 above. It never scrolls with the content.
 
@@ -1840,7 +1859,7 @@ Status: not built.
 
 A zoom card is what a tile becomes when it grows to fill the screen: the thing you went into, or the form behind the add tile. For a short question, a sheet.
 
-Anatomy, top to bottom: the platform's status area; a top row 44 with the close control at its end, `inset-pane` 16 from the side (an icon button, Button, Phone); a large title 52 in `touch-title`; the body, `inset-pane` 16 at the sides and `gap-group` 16 between its groups; the action bar. The look is the tile's (`phone.card` for a machine or the add card), filling the screen.
+Anatomy, top to bottom: the platform's status area; a top row 44 with the close control at its end, `inset-pane` 16 from the side (an icon button, Button, Phone); a large title 52 in `touch-title`; the body, `inset-pane` 16 at the sides and `gap-group` 16 between its groups; the action bar. The look is the tile's (`phone.card` for a machine or the add card), filling the screen. Its corner is the phone container corner while it is smaller than the screen, the tile's at the start of the zoom, and the screen's once it fills it (Phone, Corners).
 
 Behavior: it opens with the zoom (`zoom_layers`: the tile's layer grows to the screen while the grid behind scales up around it and they cross-fade between 0.3 and 0.7 of the way, on the touch spring) and closes the same way back, from the close control, a drag down or a pinch out.
 
@@ -1849,27 +1868,27 @@ The add card, behind the add tile, titled "Add machine":
 - Found machines first: the section header "Found on your tailnet" with its count over a row group of two-line touch rows (List, Touch rows), the machine's name over its system and "runs zz", the add mark at the end. Tapping a row adds the machine and connects it. A found machine without zz is a disabled row that says so ("No zz on it yet"). With no tailnet the group is left out.
 - Then the address field (Field, Phone), labelled "Or an address" under found rows and "Address" with its help line when alone, a 44 scan accessory inside it. Alone, it opens focused with the keyboard up.
 - Connect is the main action, off until an address is typed. Connect, a found row or a read code zoom the card back out to the overview, where the new machine's tile is connecting, before the add tile.
-- Scan: the scan accessory turns the same card into the scanner. The title stays; the body is the camera's picture, square, the body's width, at `radius`, with one line under it in `touch-small` muted saying where the code is; the action bar holds "Type an address instead", a secondary at 56, which brings the field back focused. The code holds `zz://host/<machine>.ts.net:<port>`.
+- Scan: the scan accessory turns the same card into the scanner. The title stays; the body is the camera's picture, square, the body's width, at the phone container corner, with one line under it in `touch-small` muted saying where the code is; the action bar holds "Type an address instead", a secondary at 56, which brings the field back focused. The code holds `zz://host/<machine>.ts.net:<port>`.
 
 The connecting card, behind a connecting tile, titled with the machine's name: the body is the empty state's anatomy (Empty state on a phone) with the spinner at 32 in place of the icon, "Connecting" as its title and one line saying what it waits for ("Waiting for ssh on fabrico@xps"). Cancel is the one action, a secondary at 56: stopping is not what the card is for, so it is not drawn as the main action. Cancel stops the connect and zooms back to the tile, now "Not connected". When the connection lands the card becomes the machine. A question from ssh comes up as a sheet over whatever is on screen (Sheet).
 
 HTML: `.penna-zoom-card[data-penna]` holding `.penna-zoom-top`, `.penna-zoom-title`, `.penna-zoom-body` and `.penna-action-bar`. The scanner's picture is the app's, not the kit's.
 
-Status: the zoom is built; the card, its close control, drag down and pinch out are not. The add card and the connecting card are not built: Add host is a bottom sheet with a field and no found rows, the phone has no camera of its own (the system camera opens the code's link), and a connecting tile carries its own Cancel button.
+Status: the zoom is built, but its growing card starts at zz's `ZOOM_RADIUS` 10 rather than the tile's corner; the card, its close control, drag down and pinch out are not. The add card and the connecting card are not built: Add host is a bottom sheet with a field and no found rows, the phone has no camera of its own (the system camera opens the code's link), and a connecting tile carries its own Cancel button.
 
 ### Sheet
 
 A sheet asks a short question and returns you where you were: a password, a confirmation, a few choices. To go into something, a zoom card.
 
-Anatomy (`penna::blocks::sheet`): floating `space-8` from the screen's sides on the `drawer` look; a grabber 36 by 5, `space-6` from the top; a header 60 tall with the title in `display` and the close control at its end; the body, `inset-pane` 16 at the sides, in `touch-body`; rows from List, Touch rows; on a phone the action bar at the bottom, riding the keyboard. It rises over 240ms and is dismissed by a drag down past half its height, a fling, the scrim or the close control.
+Anatomy (`penna::blocks::sheet`): floating `space-8` from the screen's sides on the `drawer` look, with the phone container corner, twice `radius` (Phone, Corners); a grabber 36 by 5, `space-6` from the top; a header 60 tall with the title in `display` and the close control at its end; the body, `inset-pane` 16 at the sides, in `touch-body`; rows from List, Touch rows; on a phone the action bar at the bottom, riding the keyboard. It rises over 240ms and is dismissed by a drag down past half its height, a fling, the scrim or the close control.
 
-Phone: the close control is a 44 icon button (Phone, rule 2). Built at 36 (`CLOSE`).
+Phone: the close control is a 44 icon button (Phone, rule 2), its corner a control's from its height like every icon button's (13.7 by default, a circle under Pill). Built at 36 (`CLOSE`), always round. The panel's corner is built as the `drawer` look's `radius` (12), and its rows keep their own corner without the cap.
 
 Content: a question from ssh is titled for the machine ("Sign in to xps"), shows ssh's own prompt word for word over a 56 field, and its main action says what it does ("Sign in"). It comes up over whatever is on screen, the overview or a card, and closing it cancels the connect. Not built: the thin client asks in a centered dialog whose action reads "Continue".
 
 HTML: `.penna-sheet` with `.penna-sheet-scrim`, `.penna-sheet-frame`, `.penna-sheet-panel`, `.penna-sheet-grip`, `.penna-sheet-header`, `.penna-sheet-title`, `.penna-sheet-close` (`data-size="touch"` for 44) and `.penna-sheet-row`.
 
-Status: built, but for the 44 close and the action bar.
+Status: built, but for the 44 close, the panel's phone corner, the cap on its rows' corners and the action bar.
 
 ### Empty state on a phone
 

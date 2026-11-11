@@ -1,6 +1,8 @@
 @property --penna-around { syntax: "*"; inherits: false; }
 @property --penna-around-rows { syntax: "*"; inherits: false; }
 @property --penna-nest-inset { syntax: "*"; inherits: false; }
+@property --penna-nest-outer { syntax: "*"; inherits: false; }
+@property --penna-phone-radius { syntax: "<length>"; inherits: true; initial-value: 0px; }
 
 *,
 *::before,
@@ -26,6 +28,7 @@ body {
 :root {
   --penna-click-cursor: pointer;
   --penna-control-touch-lg: 56px;
+  --penna-phone-radius: calc(var(--penna-radius, 12px) * 2);
 }
 
 :root[data-pointer="arrow"],

@@ -156,3 +156,5 @@ Actions at the end, main action last. Destructive confirms are danger, not prima
   <div class="docs-cell"><span class="penna-touch-disc" data-penna="floating"><button class="penna-touch-icon" data-penna="phone.button" aria-label="Settings"><i data-icon="settings"></i></button></span><span class="docs-note">Over the content, in a 56 disc</span></div>
 </div>
 ```
+
+The disc rounds like a control of its height, a circle under Pill controls, never like a container; the button in it is the disc's corner less 6.

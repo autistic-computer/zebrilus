@@ -325,14 +325,6 @@
   --penna-icon-size: 20px;
 }
 
-.penna-touch-row[data-penna] > [data-icon="chevron-right"] {
-  --penna-icon-size: 16px;
-}
-
-.penna-touch-row[data-penna] > [data-icon][data-add] {
-  color: var(--penna-accent-ink);
-}
-
 .penna-touch-row-lines {
   display: flex;
   flex: 1;
@@ -367,34 +359,31 @@
 
 .penna-touch-row[data-penna]:is([data-state~="disabled"], [aria-disabled="true"]) {
   cursor: default;
+  --penna-fill: transparent;
 }
 
 .penna-touch-row[data-penna]:is([data-state~="disabled"], [aria-disabled="true"]) .penna-touch-row-lines > :first-child {
   color: var(--penna-fg-faint);
 }
 
-.penna-touch-group[data-penna] {
+.penna-touch-group[data-penna][data-penna][data-penna] {
   display: flex;
   flex-direction: column;
   gap: var(--penna-space-2);
-  padding: var(--penna-row-inset);
+  padding: var(--penna-space-4);
+  --penna-r: var(--penna-phone-radius);
 }
 
-.penna-touch-group > :is(.penna-touch-row, .penna-touch-swipe) + :is(.penna-touch-row, .penna-touch-swipe)::before {
-  content: "";
-  position: absolute;
-  top: -1.5px;
-  right: var(--penna-space-12);
-  left: calc(var(--penna-space-12) * 2 + 20px);
-  height: 1px;
-  background: var(--penna-divider);
+.penna-touch-group > .penna-touch-row[data-penna][data-penna],
+.penna-touch-group > .penna-touch-swipe > .penna-touch-row[data-penna][data-penna] {
+  --penna-nest-inset: var(--penna-space-4);
+  --penna-nest-outer: var(--penna-phone-radius);
 }
 
 .penna-touch-swipe {
   position: relative;
   display: flex;
   overflow: hidden;
-  border-radius: calc(52px * var(--penna-corner-fraction, 0.312));
 }
 
 .penna-touch-swipe > .penna-touch-row {
@@ -426,7 +415,7 @@
   align-items: flex-end;
   gap: var(--penna-space-8);
   height: 28px;
-  padding: 0 var(--penna-space-12) var(--penna-space-4);
+  padding: 0 var(--penna-space-16) var(--penna-space-4);
   color: var(--penna-fg-muted);
   font-family: var(--penna-font);
   font-size: var(--penna-text-touch-small-size);
@@ -466,6 +455,8 @@
 .penna-action-bar[data-penna="floating"] {
   margin: 0 var(--penna-space-16) 20px;
   padding: var(--penna-space-8);
+  --penna-around: var(--penna-space-8);
+  --penna-around-rows: var(--penna-control-touch-lg);
 }
 
 .penna-action-bar > .penna-button {

@@ -73,7 +73,7 @@ Size, inset, picking and dragging are yours, natively and in HTML.
 The bento overview's cell on a phone, two to a row. The whole tile is the target.
 
 ```figure uses=notice
-<div class="penna-notice" data-penna="notice" data-tone="warning" style="width: 100%"><div class="penna-notice-tone" data-penna="chip" data-tone="warning"><span class="penna-notice-lead"><i data-icon="triangle-alert"></i></span><div class="penna-notice-body"><span class="penna-text penna-notice-title" data-penna-text>States not built natively yet</span><span class="penna-text penna-notice-detail" data-penna-text>The grid, the cell and the add tile are native; these states are drawn with the HTML kit.</span></div></div></div>
+<div class="penna-notice" data-penna="notice" data-tone="warning" style="width: 100%"><div class="penna-notice-tone" data-penna="chip" data-tone="warning"><span class="penna-notice-lead"><i data-icon="triangle-alert"></i></span><div class="penna-notice-body"><span class="penna-text penna-notice-title" data-penna-text>States not built natively yet</span><span class="penna-text penna-notice-detail" data-penna-text>The grid, the cell and the add tile are native, but with the control radius as their corner; these states and the phone corner are drawn with the HTML kit.</span></div></div></div>
 ```
 
 ```figure uses=compact,touch
@@ -96,4 +96,4 @@ The bento overview's cell on a phone, two to a row. The whole tile is the target
 | Pressed | the press over the tile | |
 | Add | "Add machine" | zooms into the [add card](zoom-card.html) |
 
-Name strong `touch-body`, state and lines `touch-small`, inset 12. No button inside, no ghost tiles: machines not added yet are rows in the add card.
+Name strong `touch-body`, state and lines `touch-small`, inset 12. The corner is the phone container corner, twice `radius`: 24 by default, 16 in Yaru. No button inside, no ghost tiles: machines not added yet are rows in the add card.

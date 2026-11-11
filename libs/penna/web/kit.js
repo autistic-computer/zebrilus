@@ -128,7 +128,7 @@ function cornerOf(style, width, height) {
   }
   const nest = style.getPropertyValue("--penna-nest-inset").trim();
   if (nest) {
-    const outer = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--penna-radius")) || 0;
+    const outer = parseFloat(style.getPropertyValue("--penna-nest-outer")) || parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--penna-radius")) || 0;
     corner = Math.max(Math.min(corner, outer - (parseFloat(nest) || 0)), 0);
   }
   return corner;
@@ -153,6 +153,13 @@ function focusRing(element, style = getComputedStyle(element)) {
   element.style.setProperty("--penna-ring-k", `${ringShape}`);
 }
 
+function clipParent(element, style) {
+  const clip = element.parentElement;
+  if (!clip?.hasAttribute("data-penna-clip") || clip.firstElementChild !== element) return;
+  clip.style.borderRadius = element.style.borderRadius || style.borderTopLeftRadius;
+  clip.style.setProperty("corner-shape", element.style.getPropertyValue("corner-shape") || style.getPropertyValue("corner-shape"));
+}
+
 function round(element) {
   const style = getComputedStyle(element);
   focusRing(element, style);
@@ -161,6 +168,7 @@ function round(element) {
     element.style.removeProperty("border-radius");
     element.style.removeProperty("corner-shape");
     element.style.removeProperty("--penna-corner");
+    clipParent(element, style);
     return;
   }
   const width = element.offsetWidth;
@@ -172,6 +180,7 @@ function round(element) {
   element.style.borderRadius = `${box.toFixed(2)}px`;
   element.style.setProperty("corner-shape", `superellipse(${shape.toFixed(3)})`);
   element.style.setProperty("--penna-corner", `${corner.toFixed(2)}px`);
+  clipParent(element, style);
 }
 
 const SVG = "http://www.w3.org/2000/svg";
