@@ -35,13 +35,13 @@
   .zz-phone[data-kb] > .zz-bar, .zz-phone[data-kb] .zz-pane > .zz-bar { display: none; }
   .zz-phone > .zz-kb { position: absolute; z-index: 30; right: 0; bottom: 0; left: 0; }
   .zz-phone:not([data-kb]) > .zz-kb { display: none; }
-  .zz-phone > .penna-sheet, .zz-phone > .penna-pill-menu { z-index: 35; }
+  .zz-phone > .penna-sheet, .zz-phone > .penna-stack { z-index: 35; }
   .zz-phone .penna-sheet-panel { padding-bottom: 20px; }
   .zz-phone[data-kb] .penna-sheet-panel { padding-bottom: 0; }
   .zz-phone[data-kb] > .penna-sheet { z-index: 25; }
 
-  .zz-menu-stack { position: absolute; right: 0; bottom: 96px; left: 0; display: flex; flex-direction: column; align-items: center; gap: var(--penna-gap-group); }
-  .zz-phone > .penna-pill-menu > :is(.penna-pill-menu-well, .penna-pill-menu-close) { top: auto; bottom: 20px; left: 173px; }
+  .zz-phone > .penna-stack > .penna-stack-column { right: 0; bottom: 84px; left: 0; }
+  .zz-phone > .penna-stack > .penna-stack-close { bottom: 20px; left: 173px; }
   .zz-phone[data-menu] :is(.zz-bar, .zz-dock) { visibility: hidden; }
 
   .zz-empty { position: absolute; top: 150px; right: 16px; left: 16px; display: flex; flex-direction: column; gap: 32px; }
@@ -102,7 +102,7 @@
 <main class="zz-page">
   <div class="zz-intro">
     <h1>A pane</h1>
-    <p>Step 3 of the phone redesign, after <a href="machines.html">Machines</a> and <a href="machine.html">A machine</a>: inside a pane. First the chrome every pane shares, then the agent chat. A pane has no header, as today: its content runs to the edges and the pill at the bottom is the one handle, saying what the pane is and what state it is in, the way a window tile does. When the keyboard comes up the pill gives its place to what you type with. The chat is the desktop's chat drawn for a thumb: one composer row with a plus and a send, a card in the composer's place when the agent asks, and nothing small under the messages. <a href="terminal.html">A terminal</a> is the next step, and the browser gets its own; they appear here only where a shared rule needs them. Caption text in <i>italics</i> says what the native app does today where it differs.</p>
+    <p>Step 3 of the phone redesign, after <a href="machines.html">Machines</a> and <a href="machine.html">A machine</a>: inside a pane. First the chrome every pane shares, then the agent chat. A pane has no header, as today: its content runs to the edges and the pill at the bottom is the one handle, saying what the pane is and what state it is in, the way a window tile does. When the keyboard comes up the pill gives its place to what you type with. The chat is the desktop's chat drawn for a thumb: one composer row with a plus and a send, a card in the composer's place when the agent asks, and nothing small under the messages. The pill's menu is a stack menu, drawn and live with every gesture on <a href="menus.html">Menus</a>. <a href="terminal.html">A terminal</a> is the next step, and the browser gets its own; they appear here only where a shared rule needs them. Caption text in <i>italics</i> says what the native app does today where it differs.</p>
   </div>
 
   <section>
@@ -160,7 +160,7 @@
 
       <figure>
         <div class="zz-phone" data-frame="menu" data-menu></div>
-        <figcaption><b>9. Pill menu in a pane</b>The machine screen's shape. "New in zz" over New browser, New terminal and New chat, chat nearest the thumb and solid: each makes a window holding that one thing and zooms into it. Then this pane: Rename, and Close in danger ink. Then Overview, back to the machine. In a terminal, All bindings sits apart at the top. The composer steps aside with the pill while the menu is open. <i>Today: All bindings and Kill pane, then Rename pane, New window, New pane, Last pane, Overview and, in a chat, the flip (<code>compact.rs:141-164</code>). Last pane is a swipe away and stays a key binding; the new design drops the flip.</i></figcaption>
+        <figcaption><b>9. Pill menu in a pane</b>The machine screen's shape, as a stack menu of 52 chips that a tap or a hold opens (<a href="menus.html">Menus</a>). "New in zz" over New browser, New terminal and New chat, chat nearest the thumb and solid: each makes a window holding that one thing and zooms into it. Then this pane: Rename, and Close in danger ink. Then Overview, back to the machine. In a terminal, All bindings sits apart at the top. The composer steps aside with the pill while the menu is open. <i>Today: All bindings and Kill pane, then Rename pane, New window, New pane, Last pane, Overview and, in a chat, the flip (<code>compact.rs:141-164</code>). Last pane is a swipe away and stays a key binding; the new design drops the flip.</i></figcaption>
       </figure>
 
       <figure>
@@ -203,7 +203,7 @@
       <div class="zz-phone" data-live></div>
       <figcaption>
         <span><b>Live.</b> Tap the field: the keyboard comes up and the pill gives way to the composer. Tap the chat to lower it. Tap the pill for its menu, the plus for its sheet; a chip, a row, the scrim or a close control puts them away.</span>
-        <span><b>Not wired here:</b> typing, swiping the pill, holding a message, the ask card's rows and the sheet's drill in.</span>
+        <span><b>Not wired here:</b> typing, swiping the pill, holding a message, the ask card's rows and the sheet's drill in. Holding the pill and sliding to a chip is live on <a href="menus.html">Menus</a>.</span>
       </figcaption>
     </figure>
   </section>
@@ -277,9 +277,9 @@
   const closeSheet = sheet({ title: "Close this pane?", detail: "The chat stops. Its transcript stays.", close: false, body: `<div class="penna-action-bar" style="padding-top: 8px"><button class="penna-button" data-penna="button.quiet" data-size="touch-large"><span class="penna-label">Cancel</span></button><button class="penna-button" data-penna="button" data-tone="danger" data-prominent data-size="touch-large" data-emphasis="solid" data-solid="danger" style="color: var(--penna-on-danger)"><span class="penna-label">Close</span></button></div>` });
   const renameSheet = sheet({ title: "Rename pane", rest: "300px", body: `<div style="padding: 4px 16px 8px"><label class="penna-input" data-penna="field" data-size="touch-large" data-state="focused" style="width: 100%"><span style="min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis"><span style="background: color-mix(in srgb, var(--penna-accent) 35%, transparent)">${TITLE}</span></span></label></div><div class="penna-action-bar" data-keys><button class="penna-button" data-penna="button" data-tone="primary" data-prominent data-size="touch-large" disabled><span class="penna-label">Save</span></button></div>` });
 
-  const chip = (glyph, label, extra = ` data-penna="floating"`) => `<button class="penna-pill-chip"${extra}>${ic(glyph)}<span>${label}</span></button>`;
-  const group = (chips) => `<div class="penna-pill-menu-group">${chips}</div>`;
-  const menu = (terminal) => `<div class="penna-pill-menu" data-open><div class="penna-pill-menu-scrim" data-act="dismiss"></div><div class="zz-menu-stack">${terminal ? group(chip("keyboard", "All bindings", ` data-penna="floating" data-look="quiet"`)) : ""}${group(chip("layout-dashboard", "Overview"))}${group(chip("pencil", "Rename") + chip("xmark", "Close", ` data-penna="floating" data-tone="danger"`))}${group(`<span class="penna-pill-menu-label" data-penna="floating">New in zz</span>${chip("globe", "New browser")}${chip("square-terminal", "New terminal")}${chip("chat-plus", "New chat", ` data-penna="button" data-tone="primary" data-prominent data-look="primary"`)}`)}</div><div class="penna-pill-menu-well"></div><button class="penna-pill-menu-close" data-penna="button" data-tone="primary" data-prominent aria-label="Close" data-act="dismiss">${ic("xmark")}</button></div>`;
+  const chip = (glyph, label, extra = ` data-penna="floating"`) => `<button class="penna-stack-chip"${extra}>${ic(glyph)}<span>${label}</span></button>`;
+  const group = (chips) => `<div class="penna-stack-group">${chips}</div>`;
+  const menu = (terminal) => `<div class="penna-stack" data-open data-anchor="pill"><div class="penna-stack-scrim" data-act="dismiss"></div><div class="penna-stack-column">${terminal ? group(chip("keyboard", "All bindings", ` data-penna="floating" data-look="quiet"`)) : ""}${group(chip("layout-dashboard", "Overview"))}${group(chip("pencil", "Rename") + chip("xmark", "Close", ` data-penna="floating" data-tone="danger"`))}${group(`<span class="penna-stack-label" data-penna="floating">New in zz</span>${chip("globe", "New browser")}${chip("square-terminal", "New terminal")}${chip("chat-plus", "New chat", ` data-penna="button" data-tone="primary" data-prominent data-look="primary"`)}`)}</div><button class="penna-stack-close" data-penna="button" data-tone="primary" data-prominent aria-label="Close" data-act="dismiss">${ic("xmark")}</button></div>`;
 
   const TERM = ["~/dev/zebrilus main", "❯ cargo test -p penna pill", "   Compiling penna v0.42.0", "running 14 tests", "test pill::menu_order ... ok", "test pill::new_chat ... ok", "test pill::label_chip ... ok", "✓test result: ok. 14 passed", "❯ "];
   const termLine = (line) => {
@@ -357,9 +357,9 @@
 
   live.addEventListener("click", (event) => {
     const act = event.target.closest("[data-act]")?.dataset.act;
-    const open = live.querySelector(":scope > .penna-sheet, :scope > .penna-pill-menu");
+    const open = live.querySelector(":scope > .penna-sheet, :scope > .penna-stack");
     if (open) {
-      if (act === "dismiss" || event.target.closest(".penna-pill-chip, .penna-touch-row")) {
+      if (act === "dismiss" || event.target.closest(".penna-stack-chip, .penna-touch-row")) {
         open.remove();
         live.removeAttribute("data-menu");
       }

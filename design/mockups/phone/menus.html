@@ -1,0 +1,782 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Phone menus</title>
+<link rel="stylesheet" href="/penna/penna.css">
+<link rel="stylesheet" href="/penna-src/components/button/button.css">
+<link rel="stylesheet" href="/penna-src/components/kbd/kbd.css">
+<link rel="stylesheet" href="/penna-src/components/row/row.css">
+<link rel="stylesheet" href="/penna-src/blocks/touch/touch.css">
+<link rel="stylesheet" href="/penna-src/blocks/compact/compact.css">
+<link rel="stylesheet" href="/penna-src/blocks/sheet/sheet.css">
+<link rel="stylesheet" href="/zz.css">
+<link rel="stylesheet" href="phone.css">
+<script src="/penna/kit.js" data-tokens="/tokens/" data-themes="macos default yaru" data-theme="macos"></script>
+<script src="/penna-src/blocks/touch/touch.js" defer></script>
+<style>
+  .zz-story > figure > figcaption > i, .zz-page > section > p > i, .zz-compare > figure > p > i { color: var(--penna-warning-ink); }
+
+  .zz-term { position: absolute; inset: 54px 0 auto; margin: 0; padding: 8px 16px; font: 13px/18px var(--penna-mono); color: var(--penna-fg-muted); white-space: pre; }
+  .zz-term b { font-weight: 400; color: var(--penna-fg); }
+  .zz-term [data-ink="success"] { color: var(--penna-success-ink); }
+  .zz-term [data-ink="danger"] { color: var(--penna-danger-ink); }
+  .zz-cursor { display: inline-block; width: 8px; height: 15px; vertical-align: -3px; background: var(--penna-fg); }
+  .zz-link { text-decoration: underline; text-decoration-color: color-mix(in srgb, currentColor 40%, transparent); text-underline-offset: 3px; }
+
+  .zz-phone[data-kb] > .zz-bar { display: none; }
+  .zz-phone > .zz-kb { position: absolute; z-index: 30; right: 0; bottom: 0; left: 0; }
+  .zz-phone:not([data-kb]) > :is(.zz-kb, .zz-keys) { display: none; }
+  .zz-keys { position: absolute; z-index: 20; right: 16px; bottom: 300px; left: 16px; }
+  .zz-chord { display: flex; align-items: center; gap: 1px; --penna-icon-size: 14px; }
+
+  .zz-phone > .penna-stack { z-index: 35; }
+  .zz-phone[data-kb] > .penna-stack > .penna-stack-scrim { bottom: 292px; }
+  .zz-phone > .penna-stack > .penna-stack-close { bottom: 20px; left: 173px; }
+  .zz-phone[data-stack="pinned"][data-on="pill"] > .zz-bar { visibility: hidden; }
+  .zz-phone[data-stack="held"][data-on="pill"] > .zz-bar { z-index: 40; }
+  .zz-phone[data-stack][data-on="key"] > .zz-keys { z-index: 40; }
+  .zz-phone > .penna-sheet { z-index: 45; }
+  .zz-phone .penna-sheet-panel { padding-bottom: 20px; }
+
+  .zz-press { position: absolute; inset: 0; display: none; border-radius: inherit; background: color-mix(in srgb, var(--penna-ink) 12%, transparent); pointer-events: none; }
+  .penna-compact-pill[data-held] > .zz-press { display: block; }
+  .zz-bar > .penna-compact-pill { transition: translate 260ms cubic-bezier(0.2, 0.9, 0.3, 1); }
+  .zz-bar > .penna-compact-pill[data-dragging] { transition: none; }
+
+  .zz-finger { position: absolute; z-index: 60; width: 44px; height: 44px; margin: -22px 0 0 -22px; border-radius: 50%; background: radial-gradient(circle, rgb(128 128 128 / 0.62) 0 42%, rgb(128 128 128 / 0.3) 68%, transparent 71%); box-shadow: 0 0 0 1px rgb(128 128 128 / 0.45); pointer-events: none; }
+
+  .zz-phone .penna-stack[data-rise] :is(.penna-stack-chip, .penna-stack-label) { animation: zz-rise 380ms cubic-bezier(0.2, 1.1, 0.3, 1) both; }
+  @keyframes zz-rise { from { translate: 0 14px; opacity: 0; } }
+  .zz-phone .penna-stack[data-fold] :is(.penna-stack-chip, .penna-stack-label) { transition: translate 280ms cubic-bezier(0.4, 0, 0.2, 1), scale 280ms cubic-bezier(0.4, 0, 0.2, 1), opacity 220ms ease-in; translate: var(--zz-to, 0 0); scale: 0.5; opacity: 0; }
+  .penna-stack > .penna-stack-scrim { transition: opacity 220ms ease-in; }
+  .penna-stack[data-fold] > .penna-stack-scrim { opacity: 0; }
+  .zz-phone .penna-arrow-bubble[data-penna] { bottom: calc(100% + 8px); }
+  @media (prefers-reduced-motion: reduce) {
+    .zz-phone .penna-stack[data-rise] :is(.penna-stack-chip, .penna-stack-label) { animation: zz-fade 120ms ease-out both; }
+    @keyframes zz-fade { from { opacity: 0; } }
+    .zz-phone .penna-stack[data-fold] :is(.penna-stack-chip, .penna-stack-label) { transition: opacity 120ms; translate: none; scale: none; }
+  }
+
+  .zz-strip-set { display: flex; flex-wrap: wrap; gap: 28px 32px; align-items: flex-start; }
+  .zz-strip-set > figure { display: grid; gap: 10px; justify-items: start; margin: 0; }
+  .zz-strip-set > figure > figcaption, .zz-compare > figure > figcaption { font-size: 11px; line-height: 16px; font-weight: 600; color: var(--penna-fg-muted); text-transform: uppercase; letter-spacing: 0.04em; }
+  .zz-strip-set > figure > p { margin: 0; font-size: var(--penna-text-small-size); line-height: var(--penna-text-small-line); color: var(--penna-fg-muted); font-variant-numeric: tabular-nums; }
+  .zz-ground { position: relative; padding: 16px; border-radius: 20px; background: color-mix(in srgb, var(--penna-fg) 6%, var(--penna-bg)); box-shadow: 0 0 0 1px var(--penna-divider); }
+  .zz-ground .penna-stack-column { position: static; }
+
+  .zz-measure { position: relative; display: grid; grid-template-columns: auto auto; gap: 0 14px; align-items: stretch; }
+  .zz-measure > .penna-stack-column { position: static; grid-row: 1; grid-column: 1; }
+  .zz-ticks { position: relative; grid-row: 1; grid-column: 2; width: 64px; font-size: 11px; line-height: 14px; color: var(--penna-fg-muted); font-variant-numeric: tabular-nums; }
+  .zz-ticks > span { position: absolute; left: 0; display: flex; align-items: center; gap: 6px; border-left: 1px solid var(--penna-fg-muted); padding-left: 6px; white-space: nowrap; }
+  .zz-ticks > span::before, .zz-ticks > span::after { content: ""; position: absolute; left: -4px; width: 7px; height: 1px; background: var(--penna-fg-muted); }
+  .zz-ticks > span::before { top: 0; }
+  .zz-ticks > span::after { bottom: 0; }
+
+  .zz-compare { display: flex; flex-wrap: wrap; gap: 28px 40px; align-items: flex-end; }
+  .zz-compare > figure { display: grid; flex: none; gap: 10px; margin: 0; }
+  .zz-compare > figure > p { max-width: 393px; margin: 0; font-size: var(--penna-text-small-size); line-height: var(--penna-text-small-line); color: var(--penna-fg-muted); }
+  .zz-compare > figure > p > b { color: var(--penna-fg); font-weight: 600; }
+  .zz-cut { position: relative; width: 402px; overflow: hidden; border-radius: 28px; background: var(--penna-bg); box-shadow: 0 0 0 1px var(--penna-divider); }
+  .zz-cut > .penna-stack, .zz-cut > .penna-pill-menu { position: absolute; z-index: 35; inset: 0; }
+  .zz-cut > .zz-bar { position: absolute; }
+  .zz-cut[data-on="pill"] > .zz-bar { visibility: hidden; }
+  .zz-cut .penna-stack-close { bottom: 20px; left: 173px; }
+  .zz-cut .penna-pill-menu-stack { top: auto; bottom: 96px; left: 0; width: 100%; height: auto; }
+  .zz-cut .penna-pill-menu > :is(.penna-pill-menu-well, .penna-pill-menu-close) { top: auto; bottom: 20px; left: 173px; }
+
+  .zz-old-card[data-penna] { display: grid; width: max-content; grid-template-columns: repeat(2, 140px); gap: 2px; padding: 6px; font-size: var(--penna-text-touch-body-size); line-height: var(--penna-text-touch-body-line); }
+  .zz-old-card > div[data-penna] { display: flex; align-items: center; gap: 8px; height: 44px; padding: 0 8px; white-space: nowrap; }
+  .zz-old-card > div > b { flex: none; min-width: 32px; font: var(--penna-text-touch-small-weight) var(--penna-text-touch-small-size)/var(--penna-text-touch-small-line) var(--penna-mono); color: var(--penna-muted); }
+  .zz-old-pad[data-penna] { display: grid; grid-template: repeat(3, 1fr) / repeat(3, 1fr); gap: 4px; width: 132px; height: 132px; padding: 6px; --penna-icon-size: 18px; }
+  .zz-old-pad > span { display: grid; place-items: center; color: var(--penna-muted); }
+  .zz-old-pad > span[data-lit] { color: var(--penna-ink); }
+
+  .zz-live { display: grid; grid-template-columns: 424px minmax(0, 1fr); gap: 32px; align-items: start; }
+  .zz-live > figcaption { display: grid; gap: 10px; max-width: 64ch; padding-top: 10px; font-size: var(--penna-text-small-size); line-height: var(--penna-text-small-line); color: var(--penna-muted); }
+  .zz-live > figcaption b { color: var(--penna-fg); font-weight: 600; }
+  .zz-live .zz-phone { user-select: none; -webkit-user-select: none; }
+  .zz-live :is(.zz-term, .penna-key, .penna-compact-pill, .penna-stack-chip, .penna-stack-close, .zz-kb i) { cursor: var(--penna-click-cursor); touch-action: none; }
+  .zz-last { margin: 0 0 0 10px; font-size: var(--penna-text-small-size); line-height: var(--penna-text-small-line); color: var(--penna-fg-muted); }
+  .zz-last > b { color: var(--penna-fg); font-weight: 600; }
+</style>
+</head>
+<body>
+<main class="zz-page">
+  <div class="zz-intro">
+    <h1>Menus</h1>
+    <p>One menu for the whole phone: the stack menu. Chips rise in a column out of the thing you pressed, the pill or a key in the key row, nearest first, the most used nearest the thumb. Tap the anchor and the stack stays for a tap on a chip. Or hold it, slide up and let go on a chip, in one stroke. It replaces the look of the pill's menu from <a href="machine.html">A machine</a> and <a href="pane.html">A pane</a>, and the chord card from <a href="terminal.html">A terminal</a>; the arrow pad keeps its bubble, redrawn as a sibling. Caption text in <i>italics</i> says what the native app does today where it differs.</p>
+  </div>
+
+  <section>
+    <h2>Storyboard</h2>
+    <div class="penna-variants zz-phones zz-story">
+      <figure>
+        <div class="zz-phone" data-frame="tapped"></div>
+        <figcaption><b>1. The pill, tapped</b>A tap opens the pill's stack and leaves it open. Chips rise out of the pill, 52 tall, 8 apart inside a group and 16 between groups, New chat nearest the thumb and the one solid chip. The pill turns into the close: a tap on it or on the scrim closes, a tap on a chip picks it. <i>Today the same menu on a tap, its chips 44 and shrinking to 40 or 36 when room is short (<code>pill_menu.rs</code>).</i></figcaption>
+      </figure>
+
+      <figure>
+        <div class="zz-phone" data-frame="held"></div>
+        <figcaption><b>2. The pill, held</b>The finger stays within 10 of where it landed for 280 ms: the same stack opens under it, with a tick. While the finger is on it the pill stays itself, under its press wash. Letting go here leaves the stack open, as a tap does. A finger that moves 10 sooner is a swipe or the lift, as today. <i>Today holding the pill does nothing until the finger lifts, and then it is a tap.</i></figcaption>
+      </figure>
+
+      <figure>
+        <div class="zz-phone" data-frame="slide"></div>
+        <figcaption><b>3. Sliding</b>Without lifting, the finger slides up the stack. The chip under it inverts and grows 4%, with a tick each time the finger enters a chip. Every chip owns half the gap around it, so the finger is never over nothing between two chips; the label is not a target. From the hold on, the touch belongs to the stack: sliding up never lifts to the overview. <i>Today the menu takes taps only.</i></figcaption>
+      </figure>
+
+      <figure>
+        <div class="zz-phone" data-frame="released"></div>
+        <figcaption><b>4. Released</b>Letting go on New terminal picks it. The chip holds its inverted look for 120 ms while the rest fold back into the pill on its spring, then follows them, and the window it makes zooms in. Letting go anywhere but a chip or the pill closes with nothing picked. Close is a danger chip: picking it asks first in its sheet, so a slide cannot close anything by accident.</figcaption>
+      </figure>
+
+      <figure>
+        <div class="zz-phone" data-frame="ctrl" data-kb></div>
+        <figcaption><b>5. Holding ctrl</b>Keyboard up, the key row has the pill's place. A tap on ctrl still latches it. Held 280 ms, or slid up 10, it opens its chords as a stack over the key: ten chips in two columns, the chord in mono and then its name, ^C and ^D nearest. The scrim stops at the keyboard. <i>Today a popover card of 44 rows with ^C at the top, farthest from the thumb (<code>tool_keys.rs</code>, <code>popover_key.rs</code>).</i></figcaption>
+      </figure>
+
+      <figure>
+        <div class="zz-phone" data-frame="chord" data-kb></div>
+        <figcaption><b>6. Sliding over ^C</b>^C lifts under the finger; letting go sends it and the stack folds back into ctrl. Letting go on ctrl instead keeps the stack open until a tap on a chip, on ctrl, on the scrim or on the keyboard. <i>Today letting go on the key after a slide closes the card.</i></figcaption>
+      </figure>
+
+      <figure>
+        <div class="zz-phone" data-frame="alt" data-kb></div>
+        <figcaption><b>7. Holding alt</b>Four chords in one column, M-b Word back nearest. The chips of a chord stack share one width, so the chords line up.</figcaption>
+      </figure>
+
+      <figure>
+        <div class="zz-phone" data-frame="prefix" data-kb></div>
+        <figcaption><b>8. The prefix</b>The prefix stands in for the pill while the keyboard is up, so a tap or a hold opens the pill's own stack from it, its chips along the start, 16 from the side. Above the keyboard the stack does not fit, and chips never shrink: the groups furthest from the key fold behind More, and picking More shows them in its place. <i>Today a tap opens the pill's menu lined up on the prefix, its chips shrunk to fit (<code>MenuFrom::Prefix</code>); holding the prefix does nothing.</i></figcaption>
+      </figure>
+
+      <figure>
+        <div class="zz-phone" data-frame="arrows" data-kb></div>
+        <figcaption><b>9. The arrow pad, held</b>The sibling: held only, never a menu. Its bubble opens above the pad at once, on the floating surface, 44 cells inset 6, its corner its cells' plus 6. Dragged 10, the nearest arrow's cell inverts and grows like a chip under the finger, ticks, and repeats after 300 ms, then every 80. <i>Today a 132 popover whose lit arrow only darkens (<code>arrow_pad.rs</code>).</i></figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section>
+    <h2>Chips at real size</h2>
+    <div class="zz-strip-set" data-strip></div>
+  </section>
+
+  <section>
+    <h2>Today and the stack menu</h2>
+    <div class="zz-compare" data-compare></div>
+  </section>
+
+  <section>
+    <h2>Live</h2>
+    <figure class="zz-live" style="margin: 0">
+      <div>
+        <div class="zz-phone" data-live></div>
+        <p class="zz-last">Last: <b data-last>nothing yet</b></p>
+      </div>
+      <figcaption>
+        <span><b>Live,</b> with a mouse or a finger. Tap the pill for its stack, or hold it and slide to a chip and let go. Let go on the pill to keep the stack open, anywhere else to close it. Swipe the pill sideways or drag it up quickly: those stay the pager and the lift.</span>
+        <span>Tap the terminal for the keyboard. Tap ctrl or alt to latch; hold one and slide to a chord. Tap or hold the prefix for the pill's stack from the key row. Hold the arrow pad and drag. Hide lowers the keyboard.</span>
+        <span><b>Not wired here:</b> what a pick does, but for Close's sheet and More.</span>
+      </figcaption>
+    </figure>
+  </section>
+</main>
+<script>
+(() => {
+  const HOLD = 280;
+  const SLOP = 10;
+  const ic = (name) => `<i data-icon="${name}"></i>`;
+  const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;");
+  const COLS = 46;
+
+  const GROUPS = [3, 1, 2, 1, 1];
+  const dots = (on) => {
+    let n = 0;
+    return `<span class="penna-dots">${GROUPS.map((count) => `<span class="penna-dots-group">${Array.from({ length: count }, () => {
+      const i = n++;
+      return `<span class="penna-dot"${i === on ? " data-active" : ""}></span>`;
+    }).join("")}</span>`).join("")}</span>`;
+  };
+  const pill = ({ held = false, on = 1 } = {}) => `<div class="zz-bar"><button class="penna-compact-pill" data-penna="floating"${held ? " data-held" : ""}><span class="zz-press"></span><span class="penna-pill-tile" data-penna="phone.pill.icon">${ic("square-terminal")}</span><span class="penna-pill-copy"><span class="penna-pill-title">zsh</span><span class="penna-pill-meta"><span class="penna-pill-meta-text">zebrilus · pill-find</span>${dots(on)}</span></span></button></div>`;
+
+  const SESSION = [
+    "$cargo test -p penna stack",
+    "   Compiling penna v0.42.0",
+    "    Finished `test` profile [unoptimized + debuginfo] target(s) in 6.12s",
+    "running 14 tests",
+    "+test result: ok. 14 passed; 0 failed",
+    "$git push -u origin stack-menu",
+    "remote:",
+    "remote: Create a pull request for 'stack-menu' on GitHub by visiting:",
+    "remote:      https://github.com/autistic-computer/zebrilus/pull/new/stack-menu",
+    "remote:",
+    "To github.com:autistic-computer/zebrilus.git",
+    " * [new branch]      stack-menu -> stack-menu",
+    "branch 'stack-menu' set up to track 'origin/stack-menu'.",
+    "$",
+  ];
+  const TESTS = [
+    "$cargo test -p zz-daemon",
+    "   Compiling zz-daemon v0.42.0",
+    "     Running unittests src/lib.rs",
+    "running 212 tests",
+    "test agent::turn::wakes_on_time ... ok",
+    "test agent::turn::queues_while_busy ... ok",
+    "test pty::resize_keeps_cursor ... ok",
+  ];
+  const term = (lines, cursor = true) => {
+    const rows = [];
+    for (const line of lines) {
+      const lead = line[0];
+      const text = lead === "$" ? `❯ ${line.slice(1)}` : lead === "+" ? line.slice(1) : line;
+      const wrap = Math.max(1, Math.ceil(text.length / COLS));
+      for (let r = 0; r < wrap; r++) {
+        let html = esc(text.slice(r * COLS, (r + 1) * COLS)).replace(/(https:\/\/\S+)/, `<span class="zz-link">$1</span>`);
+        const tail = cursor && line === lines[lines.length - 1] && r === wrap - 1 ? `<span class="zz-cursor"></span>` : "";
+        if (lead === "$") rows.push(`<b>${html}${tail}</b>`);
+        else if (lead === "+") rows.push(`<span data-ink="success">${html}</span>`);
+        else rows.push(html + tail);
+      }
+    }
+    return `<pre class="zz-term">${rows.join("\n")}</pre>`;
+  };
+
+  const txt = (t) => `<span class="penna-text" data-penna-text>${t}</span>`;
+  const key = (name, inner, label, attrs = "") => `<span class="penna-key-row-slot"><button class="penna-key" data-penna="phone.key" data-key="${name}" aria-label="${label}"${attrs}>${inner}</button></span>`;
+  const prefixGlyph = `<span class="zz-chord">${ic("key-control")}${txt("b")}</span>`;
+  const MID = [["esc", ic("key-escape"), "Escape"], ["tab", ic("key-tab"), "Tab"], ["ctrl", ic("key-control"), "Control"], ["alt", ic("key-option"), "Alt"], ["/", txt("/"), "Slash"], ["@", txt("@"), "At"]];
+  const keyRow = ({ pressed = "", bubble = "" } = {}) => {
+    const flag = (name) => (name === pressed ? " data-pressed" : "");
+    const mid = MID.map(([name, inner, label]) => key(name, inner, label, flag(name))).join("");
+    const pad = `<span class="penna-key-row-slot"><button class="penna-key penna-arrow-pad-static" data-penna="phone.key" data-key="arrows" aria-label="Arrows"${bubble ? " data-pressed" : ""}>${ic("arrows-move")}${bubble}</button></span>`;
+    return `<div class="zz-keys"><div class="penna-key-row" data-size="touch"><div class="penna-key-row-pill" data-penna="floating"></div><span class="penna-key-row-pin">${key("prefix", prefixGlyph, "Prefix", flag("prefix"))}</span><div class="penna-key-row-scroll">${mid}</div><span class="penna-key-row-pin">${pad}${key("hide", ic("chevron-down"), "Hide keyboard")}</span><button class="penna-key-row-more" data-penna="phone.pill" data-side="back" aria-label="Scroll back">${ic("chevron-left")}</button><button class="penna-key-row-more" data-penna="phone.pill" data-side="ahead" aria-label="Scroll ahead">${ic("chevron-right")}</button></div></div>`;
+  };
+  const kb = () => {
+    const keys = (s) => [...s].map((k) => `<i>${k}</i>`).join("");
+    return `<div class="zz-kb"><div class="zz-kb-row">${keys("qwertyuiop")}</div><div class="zz-kb-row">${keys("asdfghjkl")}</div><div class="zz-kb-row"><i data-w>⇧</i>${keys("zxcvbnm")}<i data-w>⌫</i></div><div class="zz-kb-row"><i data-w>123</i><i data-space>space</i><i data-ret>return</i></div></div>`;
+  };
+
+  const arrowBubble = (lit) => `<span class="penna-arrow-bubble" data-penna="floating" data-size="touch">${["", "up", "", "left", "hub", "right", "", "down", ""].map((name) => {
+    if (name === "hub") return `<span class="penna-arrow-hub"></span>`;
+    if (!name) return "<span></span>";
+    return `<span class="penna-arrow-cell" data-penna="phone.arrow-pad" data-direction="${name}"${name === lit ? ` data-state="selected"` : ""}>${ic(`arrow-${name}`)}</span>`;
+  }).join("")}</span>`;
+
+  const pillGroups = (terminal = true) => [
+    ...(terminal ? [{ chips: [{ glyph: "keyboard", label: "All bindings", quiet: true }] }] : []),
+    { chips: [{ glyph: "layout-dashboard", label: "Overview" }] },
+    { chips: [{ glyph: "search", label: "Find" }, { glyph: "pencil", label: "Rename" }, { glyph: "xmark", label: "Close", danger: true }] },
+    { label: "New in zz", chips: [{ glyph: "globe", label: "New browser" }, { glyph: "square-terminal", label: "New terminal" }, { glyph: "chat-plus", label: "New chat", primary: true }] },
+  ];
+  const CTRL = [["^C", "Interrupt"], ["^D", "End input"], ["^Z", "Suspend"], ["^L", "Clear"], ["^R", "History"], ["^U", "Kill line"], ["^W", "Kill word"], ["^K", "Kill to end"], ["^A", "Line start"], ["^E", "Line end"]];
+  const ALT = [["M-b", "Word back"], ["M-f", "Word ahead"], ["M-d", "Kill word"], ["M-.", "Last arg"]];
+  const chordGroups = (pairs) => {
+    const columns = pairs.length > 6 ? 2 : 1;
+    const rows = [];
+    for (let i = 0; i < pairs.length; i += columns) rows.push(pairs.slice(i, i + columns));
+    return [{ chords: true, columns, chips: rows.reverse().flat().map(([cap, label]) => ({ cap, label })) }];
+  };
+  const STACKS = { pill: () => pillGroups(true), prefix: () => pillGroups(true), ctrl: () => chordGroups(CTRL), alt: () => chordGroups(ALT) };
+
+  const chipKey = (c) => (c.cap ? `${c.cap} ${c.label}` : c.label);
+  const chip = (c, marks = {}) => {
+    const look = c.primary ? ` data-penna="button" data-tone="primary" data-prominent data-look="primary"` : ` data-penna="floating"${c.quiet ? ` data-look="quiet"` : ""}${c.danger ? ` data-tone="danger"` : ""}`;
+    const state = marks.selected === chipKey(c) ? ` data-state="selected"` : "";
+    const picked = marks.picked === chipKey(c) ? " data-picked" : "";
+    const off = c.disabled ? " disabled" : "";
+    const inner = c.cap ? `<span class="penna-stack-cap">${esc(c.cap)}</span><span>${c.label}</span>` : `${ic(c.glyph)}<span>${c.label}</span>`;
+    return `<button class="penna-stack-chip"${look}${state}${picked}${off} data-pick="${esc(chipKey(c))}"${c.more ? " data-more" : ""}>${inner}</button>`;
+  };
+  const group = (g, marks) => `<div class="penna-stack-group"${g.chords ? " data-chords" : ""}${g.columns === 2 ? ` data-columns="2"` : ""}>${g.label ? `<span class="penna-stack-label" data-penna="floating">${g.label}</span>` : ""}${g.chips.map((c) => chip(c, marks)).join("")}</div>`;
+  const MORE = { chips: [{ glyph: "ellipsis", label: "More", more: true }] };
+  const column = (groups, folded, marks) => {
+    const shown = folded ? [MORE, ...groups.slice(folded)] : groups;
+    return `<div class="penna-stack-column">${shown.map((g) => group(g, marks)).join("")}</div>`;
+  };
+  const stack = (anchor, { mode = "pinned", marks = {}, groups, folded = 0 } = {}) => {
+    const all = groups ?? STACKS[anchor]();
+    const close = mode === "pinned" && anchor === "pill" ? `<button class="penna-stack-close" data-penna="button" data-tone="primary" data-prominent aria-label="Close">${ic("xmark")}</button>` : "";
+    return `<div class="penna-stack" data-open data-anchor="${anchor}" data-folded="${folded}"><div class="penna-stack-scrim"></div>${column(all, folded, marks)}${close}</div>`;
+  };
+  const finger = (target, dx = 0, dy = 0) => `<span class="zz-finger" data-at='${target}' data-dx="${dx}" data-dy="${dy}"></span>`;
+
+  const sheet = ({ title, detail, body }) => `<div class="penna-sheet" style="--penna-sheet-rest: 8px"><div class="penna-sheet-scrim" data-act="sheet-cancel"></div><div class="penna-sheet-frame"><div class="penna-sheet-panel" data-penna="drawer"><div class="penna-sheet-grip"><div class="penna-sheet-grabber" data-penna="grabber"></div></div><div class="penna-sheet-header"><span class="penna-sheet-copy"><span class="penna-sheet-title">${title}</span><span class="penna-sheet-detail">${detail}</span></span></div><div class="penna-sheet-list">${body}</div></div></div></div>`;
+  const closeSheet = sheet({ title: "Close this pane?", detail: "zsh stops. Its scrollback goes.", body: `<div class="penna-action-bar" style="padding-top: 8px"><button class="penna-button" data-penna="button.quiet" data-size="touch-large" data-act="sheet-cancel"><span class="penna-label">Cancel</span></button><button class="penna-button" data-penna="button" data-tone="danger" data-prominent data-size="touch-large" data-emphasis="solid" data-solid="danger" style="color: var(--penna-on-danger)" data-act="sheet-close"><span class="penna-label">Close</span></button></div>` });
+
+  const frames = {
+    tapped: () => ({ html: `${term(SESSION)}${pill()}${stack("pill")}`, mode: "pinned", on: "pill" }),
+    held: () => ({ html: `${term(SESSION)}${pill({ held: true })}${stack("pill", { mode: "held" })}${finger(".penna-compact-pill", -40, 2)}`, mode: "held", on: "pill" }),
+    slide: () => ({ html: `${term(SESSION)}${pill()}${stack("pill", { mode: "held", marks: { selected: "New terminal" } })}${finger('[data-pick="New terminal"]', 18, 4)}`, mode: "held", on: "pill" }),
+    released: () => ({ html: `${term(SESSION)}${pill()}${stack("pill", { mode: "held", marks: { picked: "New terminal" } })}`, mode: "held", on: "pill", fold: 0.45 }),
+    ctrl: () => ({ html: `${term(TESTS)}${keyRow({ pressed: "ctrl" })}${stack("ctrl", { mode: "held" })}${finger('[data-key="ctrl"]', 2, 4)}${kb()}`, mode: "held", on: "key" }),
+    chord: () => ({ html: `${term(TESTS)}${keyRow({ pressed: "ctrl" })}${stack("ctrl", { mode: "held", marks: { selected: "^C Interrupt" } })}${finger('[data-pick="^C Interrupt"]', 10, 6)}${kb()}`, mode: "held", on: "key" }),
+    alt: () => ({ html: `${term(TESTS)}${keyRow({ pressed: "alt" })}${stack("alt", { mode: "held" })}${finger('[data-key="alt"]', 0, 4)}${kb()}`, mode: "held", on: "key" }),
+    prefix: () => ({ html: `${term(SESSION)}${keyRow({ pressed: "prefix" })}${stack("prefix")}${kb()}`, mode: "pinned", on: "key" }),
+    arrows: () => ({ html: `${term(SESSION)}${keyRow({ bubble: arrowBubble("up") })}${finger('[data-direction="up"]', 4, -6)}${kb()}`, on: "" }),
+  };
+
+  const anchorOf = (stackEl) => {
+    const phone = stackEl.parentElement;
+    const name = stackEl.dataset.anchor;
+    return name === "pill" ? phone.querySelector(".zz-bar") : phone.querySelector(`[data-key="${name}"]`);
+  };
+
+  const placeStack = (stackEl) => {
+    const host = stackEl.parentElement;
+    const col = stackEl.querySelector(".penna-stack-column");
+    const h = host.getBoundingClientRect();
+    const a = anchorOf(stackEl).getBoundingClientRect();
+    col.removeAttribute("data-align");
+    col.style.left = "0px";
+    col.style.width = "";
+    const w = col.offsetWidth;
+    let left = a.left - h.left + a.width / 2 - w / 2;
+    if (left < 16) { left = 16; col.dataset.align = "start"; }
+    if (left + w > h.width - 16) { left = h.width - 16 - w; col.dataset.align = "end"; }
+    col.style.left = `${left}px`;
+    col.style.width = `${w}px`;
+    col.style.bottom = `${h.bottom - a.top + 8}px`;
+    return a.top - h.top - 8 - col.offsetHeight;
+  };
+
+  const fitStack = (stackEl, marks = {}) => {
+    const groups = STACKS[stackEl.dataset.anchor]();
+    let folded = Number(stackEl.dataset.folded) || 0;
+    let top = placeStack(stackEl);
+    while (top < 54 + 16 && folded < groups.length - 1) {
+      folded += 1;
+      stackEl.dataset.folded = folded;
+      stackEl.querySelector(".penna-stack-column").outerHTML = column(groups, folded, marks);
+      top = placeStack(stackEl);
+    }
+  };
+
+  const placeFinger = (dot) => {
+    const host = dot.parentElement;
+    const target = host.querySelector(dot.dataset.at);
+    const h = host.getBoundingClientRect();
+    const t = target.getBoundingClientRect();
+    dot.style.left = `${t.left - h.left + t.width / 2 + Number(dot.dataset.dx)}px`;
+    dot.style.top = `${t.top - h.top + t.height / 2 + Number(dot.dataset.dy)}px`;
+  };
+
+  const foldStill = (stackEl, progress) => {
+    const a = anchorOf(stackEl).getBoundingClientRect();
+    const parts = [...stackEl.querySelectorAll(".penna-stack-chip, .penna-stack-label")];
+    parts.forEach((part) => {
+      if (part.hasAttribute("data-picked")) return;
+      const r = part.getBoundingClientRect();
+      const p = progress;
+      const dx = a.left + a.width / 2 - (r.left + r.width / 2);
+      const dy = a.top + a.height / 2 - (r.top + r.height / 2);
+      part.style.translate = `${dx * p}px ${dy * p}px`;
+      part.style.scale = `${1 - 0.5 * p}`;
+      part.style.opacity = `${1 - p}`;
+    });
+    stackEl.querySelector(".penna-stack-scrim").style.opacity = `${1 - progress}`;
+  };
+
+  const phones = [...document.querySelectorAll("[data-frame]")];
+  for (const phone of phones) {
+    const frame = frames[phone.dataset.frame]();
+    phone.innerHTML = frame.html;
+    if (frame.mode) phone.dataset.stack = frame.mode;
+    if (frame.on) phone.dataset.on = frame.on;
+    if (frame.fold) phone.dataset.fold = frame.fold;
+  }
+
+  const strip = [
+    ["Rest", chip({ glyph: "square-terminal", label: "New terminal" }), "52 tall, a 20 glyph, 17 strong, inset 16 and 20"],
+    ["Under the finger", chip({ glyph: "square-terminal", label: "New terminal" }, { selected: "New terminal" }), "inverted, grown 4%, a tick"],
+    ["Picked", chip({ glyph: "square-terminal", label: "New terminal" }, { picked: "New terminal" }), "inverted 120 ms, then the fold"],
+    ["Disabled", chip({ glyph: "search", label: "Find", disabled: true }), "no lift, no tick, no pick"],
+    ["Danger", chip({ glyph: "xmark", label: "Close", danger: true }), "danger ink; picking asks first"],
+    ["Danger, under the finger", chip({ glyph: "xmark", label: "Close", danger: true }, { selected: "Close" }), "the danger solid"],
+    ["Primary", chip({ glyph: "chat-plus", label: "New chat", primary: true }), "one per stack, nearest the thumb"],
+    ["Quiet", chip({ glyph: "keyboard", label: "All bindings", quiet: true }), "set apart at the far end"],
+    ["Group label", `<span class="penna-stack-label" data-penna="floating">New in zz</span>`, "28 tall, not a target"],
+    ["Chord", `<div class="penna-stack-group" data-chords>${chip({ cap: "^C", label: "Interrupt" })}</div>`, "the chord in mono, 32 wide at least"],
+    ["More", chip({ glyph: "ellipsis", label: "More" }), "holds what folded"],
+  ];
+  const measure = `<div class="zz-measure"><div class="penna-stack-column" style="align-items: flex-start">${group({ chips: [{ glyph: "search", label: "Find" }, { glyph: "pencil", label: "Rename" }] }, {})}${group({ chips: [{ glyph: "layout-dashboard", label: "Overview" }] }, {})}</div><div class="zz-ticks"><span style="top: 0; height: 52px">52</span><span style="top: 52px; height: 8px">8</span><span style="top: 112px; height: 16px">16</span></div></div>`;
+  document.querySelector("[data-strip]").innerHTML = strip.map(([label, html, say]) => `<figure><figcaption>${label}</figcaption><div class="zz-ground">${html}</div><p>${say}</p></figure>`).join("") + `<figure><figcaption>Spacing</figcaption><div class="zz-ground">${measure}</div><p>8 inside a group, 16 between groups</p></figure>`;
+
+  const oldChip = (glyph, label, extra = ` data-penna="floating"`) => `<button class="penna-pill-chip"${extra}>${ic(glyph)}<span>${label}</span></button>`;
+  const oldGroup = (chips) => `<div class="penna-pill-menu-group">${chips}</div>`;
+  const oldMenu = `<div class="penna-pill-menu" data-open><div class="penna-pill-menu-scrim"></div><div class="penna-pill-menu-stack">${oldGroup(oldChip("keyboard", "All bindings", ` data-penna="floating" data-look="quiet"`))}${oldGroup(oldChip("layout-dashboard", "Overview"))}${oldGroup(oldChip("search", "Find") + oldChip("pencil", "Rename") + oldChip("xmark", "Close", ` data-penna="floating" data-tone="danger"`))}${oldGroup(`<span class="penna-pill-menu-label" data-penna="floating">New in zz</span>${oldChip("globe", "New browser")}${oldChip("square-terminal", "New terminal")}${oldChip("chat-plus", "New chat", ` data-penna="button" data-tone="primary" data-prominent data-look="primary"`)}`)}</div><div class="penna-pill-menu-well"></div><button class="penna-pill-menu-close" data-penna="button" data-tone="primary" data-prominent aria-label="Close">${ic("xmark")}</button></div>`;
+  const oldCard = `<div class="zz-old-card" data-penna="popover">${CTRL.map(([cap, label]) => `<div data-penna="menu-item"${cap === "^C" ? ` data-state="selected"` : ""}><b>${cap}</b><span>${label}</span></div>`).join("")}</div>`;
+  const newChords = `<div class="penna-stack-column" style="position: static">${group(chordGroups(CTRL)[0], { selected: "^C Interrupt" })}</div>`;
+  const oldPad = `<span class="zz-old-pad" data-penna="popover">${["", "up", "", "left", "hub", "right", "", "down", ""].map((name) => name === "hub" ? `<span class="penna-arrow-hub"></span>` : name ? `<span${name === "up" ? " data-lit" : ""}>${ic(`arrow-${name}`)}</span>` : "<span></span>").join("")}</span>`;
+  const newPad = arrowBubble("up").replace('class="penna-arrow-bubble"', 'class="penna-arrow-bubble" style="position: static; transform: none"');
+  document.querySelector("[data-compare]").innerHTML = [
+    ["Today, the pill menu", `<div class="zz-cut" style="height: 700px" data-on="pill">${term(SESSION)}${pill()}${oldMenu}</div>`, "<b>Today.</b> 44 chips with 18 glyphs in 15 text, taken by a tap only, and shrinking to 40 or 36 when the screen is short."],
+    ["New, the pill's stack", `<div class="zz-cut" style="height: 700px" data-on="pill">${term(SESSION)}${pill()}${stack("pill")}</div>`, "<b>New.</b> 52 chips with 20 glyphs in 17 text that never shrink, taken by a tap or by a hold, a slide and a release."],
+    ["Today, the chord card", `<div class="zz-ground">${oldCard}</div>`, "<b>Today.</b> A popover of 44 rows, ^C at the top, farthest from the thumb that holds ctrl."],
+    ["New, ctrl's stack", `<div class="zz-ground">${newChords}</div>`, "<b>New.</b> The same chords as 52 chips, ^C nearest the key, picked the way the pill's chips are."],
+    ["Today, the arrow pad", `<div class="zz-ground">${oldPad}</div>`, "<b>Today.</b> A 132 popover whose lit arrow only darkens."],
+    ["New, the arrow pad", `<div class="zz-ground">${newPad}</div>`, "<b>New.</b> 44 cells on the floating surface, the one under the finger inverted and grown like a chip."],
+  ].map(([label, html, say]) => `<figure><figcaption>${label}</figcaption>${html}<p>${say}</p></figure>`).join("");
+
+  const live = document.querySelector("[data-live]");
+  const lastEl = document.querySelector("[data-last]");
+  const say = (text) => { lastEl.textContent = text; };
+  live.innerHTML = `${term(SESSION)}${pill()}${keyRow()}${kb()}`;
+
+  const status = `<div class="zz-status"><b>9:41</b><span class="zz-sig"><i></i><i></i><i></i><i></i></span><span class="zz-batt"></span></div>`;
+  for (const phone of document.querySelectorAll(".zz-phone, .zz-cut")) {
+    phone.insertAdjacentHTML("afterbegin", status);
+    if (phone.classList.contains("zz-phone")) phone.insertAdjacentHTML("beforeend", `<span class="zz-home"></span>`);
+  }
+
+  const place = () => {
+    for (const el of document.querySelectorAll("[data-frame] > .penna-stack, .zz-cut > .penna-stack")) {
+      for (const part of el.querySelectorAll(".penna-stack-chip, .penna-stack-label")) { part.style.translate = ""; part.style.scale = ""; part.style.opacity = ""; }
+      fitStack(el, marksOf(el));
+    }
+    for (const dot of document.querySelectorAll(".zz-finger")) placeFinger(dot);
+    for (const bubble of document.querySelectorAll(".zz-phone .penna-arrow-bubble")) {
+      bubble.style.translate = "";
+      const p = bubble.closest(".zz-phone").getBoundingClientRect();
+      const b = bubble.getBoundingClientRect();
+      bubble.style.translate = `${Math.max(p.left + 8 - b.left, Math.min(0, p.right - 8 - b.right))}px 0`;
+    }
+    for (const phone of document.querySelectorAll("[data-fold]")) foldStill(phone.querySelector(".penna-stack"), Number(phone.dataset.fold));
+    window.pennaKit?.roundAll?.();
+  };
+  const marksOf = (el) => ({ selected: el.querySelector('.penna-stack-chip[data-state~="selected"]')?.dataset.pick, picked: el.querySelector(".penna-stack-chip[data-picked]")?.dataset.pick });
+
+  const reduced = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const tick = () => { try { navigator.vibrate?.(8); } catch { } };
+
+  let open = null;
+  let touch = null;
+  let repeat = null;
+
+  const keyEl = (name) => live.querySelector(`[data-key="${name}"]`);
+  const unlatch = () => live.querySelectorAll("[data-latched]").forEach((k) => k.removeAttribute("data-latched"));
+  const setOver = (chipEl) => {
+    if (!open) return;
+    if (open.over === chipEl) return;
+    open.over?.removeAttribute?.("data-state");
+    open.over = chipEl;
+    if (chipEl && chipEl !== "anchor") { chipEl.setAttribute("data-state", "selected"); open.visited = true; tick(); }
+  };
+
+  const openStack = (anchor, mode, { groups } = {}) => {
+    closeStack(true);
+    live.insertAdjacentHTML("beforeend", stack(anchor, { mode, groups }));
+    const el = live.querySelector(":scope > .penna-stack");
+    if (groups) {
+      el.dataset.custom = "";
+      placeStack(el);
+    } else {
+      fitStack(el);
+    }
+    const parts = [...el.querySelectorAll(".penna-stack-chip, .penna-stack-label")].reverse();
+    parts.forEach((part, i) => { part.style.animationDelay = `${i * 24}ms`; });
+    el.setAttribute("data-rise", "");
+    live.dataset.stack = mode;
+    live.dataset.on = anchor === "pill" ? "pill" : "key";
+    if (anchor !== "pill") keyEl(anchor).setAttribute("data-pressed", "");
+    open = { anchor, mode, el, over: null };
+    window.pennaKit?.roundAll?.();
+  };
+
+  const pin = () => {
+    if (!open) return;
+    open.mode = "pinned";
+    live.dataset.stack = "pinned";
+    setOver(null);
+    if (open.anchor === "pill" && !open.el.querySelector(".penna-stack-close")) {
+      open.el.insertAdjacentHTML("beforeend", `<button class="penna-stack-close" data-penna="button" data-tone="primary" data-prominent aria-label="Close">${ic("xmark")}</button>`);
+      window.pennaKit?.roundAll?.();
+    }
+    live.querySelector(".penna-compact-pill")?.removeAttribute("data-held");
+  };
+
+  function closeStack(now = false) {
+    if (!open) return;
+    const { el, anchor } = open;
+    open = null;
+    delete live.dataset.stack;
+    delete live.dataset.on;
+    if (anchor !== "pill") keyEl(anchor)?.removeAttribute("data-pressed");
+    live.querySelector(".penna-compact-pill")?.removeAttribute("data-held");
+    if (now || reduced()) {
+      if (now) el.remove();
+      else { el.setAttribute("data-fold", ""); setTimeout(() => el.remove(), 140); }
+      return;
+    }
+    const a = anchorOf(el).getBoundingClientRect();
+    const parts = [...el.querySelectorAll(".penna-stack-chip, .penna-stack-label")];
+    parts.forEach((part) => {
+      const r = part.getBoundingClientRect();
+      part.style.animation = "none";
+      if (part.hasAttribute("data-picked")) part.style.transitionDelay = "120ms";
+      part.style.setProperty("--zz-to", `${a.left + a.width / 2 - (r.left + r.width / 2)}px ${a.top + a.height / 2 - (r.top + r.height / 2)}px`);
+    });
+    el.removeAttribute("data-rise");
+    el.offsetWidth;
+    el.setAttribute("data-fold", "");
+    setTimeout(() => el.remove(), 520);
+  }
+
+  const pick = (chipEl, how) => {
+    const name = chipEl.dataset.pick;
+    if (chipEl.hasAttribute("data-more")) {
+      const groups = STACKS[open.anchor]().slice(0, Number(open.el.dataset.folded));
+      const anchor = open.anchor;
+      say(`More, by ${how}`);
+      openStack(anchor, "pinned", { groups });
+      return;
+    }
+    chipEl.removeAttribute("data-state");
+    chipEl.setAttribute("data-picked", "");
+    const danger = chipEl.dataset.tone === "danger";
+    say(`${name}, by ${how}`);
+    closeStack();
+    if (danger) {
+      live.insertAdjacentHTML("beforeend", closeSheet);
+      window.pennaKit?.roundAll?.();
+    }
+  };
+
+  const chipAt = (x, y) => {
+    if (!open) return null;
+    const col = open.el.querySelector(".penna-stack-column").getBoundingClientRect();
+    if (x < col.left - 8 || x > col.right + 8 || y < col.top - 8 || y > col.bottom + 8) return null;
+    let best = null;
+    let dist = Infinity;
+    for (const c of open.el.querySelectorAll(".penna-stack-chip")) {
+      const r = c.getBoundingClientRect();
+      if (y < r.top - 8 || y > r.bottom + 8) continue;
+      const d = Math.abs(y - (r.top + r.bottom) / 2) + 0.5 * Math.abs(x - (r.left + r.right) / 2);
+      if (d < dist) { dist = d; best = c; }
+    }
+    return best?.disabled ? null : best;
+  };
+  const onAnchor = (x, y) => {
+    if (!open) return false;
+    const r = (open.anchor === "pill" ? (open.el.querySelector(".penna-stack-close") ?? live.querySelector(".penna-compact-pill")) : keyEl(open.anchor)).getBoundingClientRect();
+    return x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
+  };
+  const track = (x, y) => {
+    if (!open) return;
+    if (onAnchor(x, y)) return setOver("anchor");
+    setOver(chipAt(x, y));
+  };
+
+  const finish = (x, y, how) => {
+    const over = open?.over;
+    if (over && over !== "anchor") return pick(over, how);
+    if (over === "anchor" || onAnchor(x, y)) { const back = open.visited; pin(); say(back ? "Left open, slid back to its anchor" : "Left open, let go on its anchor"); return; }
+    closeStack();
+    say("Closed, nothing picked");
+  };
+
+  const capture = (el, id) => { try { el.setPointerCapture(id); } catch { } };
+  const dirOf = (dx, dy) => (Math.hypot(dx, dy) < SLOP ? null : Math.abs(dx) >= Math.abs(dy) ? (dx < 0 ? "left" : "right") : dy < 0 ? "up" : "down");
+
+  live.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0 || touch) return;
+    const t = event.target;
+    const x = event.clientX;
+    const y = event.clientY;
+    if (t.closest(".penna-sheet")) return;
+    const base = { id: event.pointerId, x0: x, y0: y, kind: null };
+
+    if (open) {
+      if (open.mode === "held") return;
+      capture(t, event.pointerId);
+      touch = { ...base, kind: "pinned", from: t.closest(".penna-stack-close, .penna-stack-scrim, .penna-key, .zz-kb") };
+      track(x, y);
+      if (onAnchor(x, y)) setOver(null);
+      return;
+    }
+
+    const p = t.closest(".penna-compact-pill");
+    if (p) {
+      capture(p, event.pointerId);
+      p.setAttribute("data-held", "");
+      touch = { ...base, anchor: "pill", el: p };
+      touch.timer = setTimeout(() => {
+        if (!touch || touch.kind) return;
+        touch.kind = "hold";
+        openStack("pill", "held");
+        tick();
+      }, HOLD);
+      return;
+    }
+
+    const k = t.closest(".penna-key");
+    if (k && live.hasAttribute("data-kb")) {
+      const name = k.dataset.key;
+      capture(k, event.pointerId);
+      touch = { ...base, anchor: name, el: k, scroll: live.querySelector(".penna-key-row-scroll").scrollLeft };
+      if (name === "arrows") {
+        touch.kind = "pad";
+        touch.count = 0;
+        k.setAttribute("data-pressed", "");
+        k.insertAdjacentHTML("beforeend", arrowBubble(""));
+        place();
+        return;
+      }
+      k.setAttribute("data-pressed", "");
+      if (name === "ctrl" || name === "alt" || name === "prefix") {
+        touch.timer = setTimeout(() => {
+          if (!touch || touch.kind) return;
+          touch.kind = "hold";
+          openStack(name, "held");
+          tick();
+        }, HOLD);
+      }
+      return;
+    }
+
+    if (t.closest(".zz-kb i")) {
+      const letter = t.closest(".zz-kb i").textContent;
+      const latched = live.querySelector("[data-latched]");
+      if (latched && letter.length === 1) say(`Sent ${latched.dataset.key === "ctrl" ? "^" : "M-"}${latched.dataset.key === "ctrl" ? letter.toUpperCase() : letter}`);
+      unlatch();
+      return;
+    }
+    if (t.closest(".zz-term") && !live.hasAttribute("data-kb")) {
+      live.setAttribute("data-kb", "");
+      requestAnimationFrame(() => live.querySelector(".penna-key-row-scroll").dispatchEvent(new Event("scroll")));
+    }
+  });
+
+  live.addEventListener("pointermove", (event) => {
+    if (!touch || event.pointerId !== touch.id) return;
+    const x = event.clientX;
+    const y = event.clientY;
+    const dx = x - touch.x0;
+    const dy = y - touch.y0;
+
+    if (touch.kind === "pinned" || touch.kind === "hold") return track(x, y);
+
+    if (touch.kind === "pad") {
+      const dir = dirOf(dx, dy);
+      if (dir === touch.dir) return;
+      touch.dir = dir;
+      clearTimeout(repeat?.wait);
+      clearInterval(repeat?.every);
+      live.querySelectorAll(".penna-arrow-cell").forEach((cell) => cell.toggleAttribute("data-state", false));
+      if (dir) {
+        live.querySelector(`.penna-arrow-cell[data-direction="${dir}"]`).setAttribute("data-state", "selected");
+        tick();
+        touch.count += 1;
+        repeat = { wait: setTimeout(() => { repeat.every = setInterval(() => { if (touch) touch.count += 1; }, 80); }, 300) };
+      }
+      return;
+    }
+
+    if (touch.kind === "swipe" || touch.kind === "lift") {
+      const p = touch.el;
+      p.setAttribute("data-dragging", "");
+      p.style.translate = touch.kind === "swipe" ? `${dx * 0.6}px 0` : `0 ${Math.min(0, dy) * 0.5}px`;
+      return;
+    }
+    if (touch.kind === "pan") {
+      live.querySelector(".penna-key-row-scroll").scrollLeft = touch.scroll - dx;
+      return;
+    }
+    if (touch.kind === "none") return;
+
+    if (Math.hypot(dx, dy) < SLOP) return;
+    clearTimeout(touch.timer);
+    if (touch.anchor === "pill") {
+      touch.kind = Math.abs(dx) > Math.abs(dy) ? "swipe" : dy < 0 ? "lift" : "none";
+      touch.el.removeAttribute("data-held");
+      return;
+    }
+    if (Math.abs(dx) > Math.abs(dy)) {
+      touch.kind = "pan";
+      touch.el.removeAttribute("data-pressed");
+      return;
+    }
+    if (dy < 0 && ["ctrl", "alt", "prefix"].includes(touch.anchor)) {
+      touch.kind = "hold";
+      touch.slid = true;
+      openStack(touch.anchor, "held");
+      tick();
+      track(x, y);
+      return;
+    }
+    touch.kind = "none";
+  });
+
+  const release = (event, cancelled = false) => {
+    if (!touch || event.pointerId !== touch.id) return;
+    const t = touch;
+    touch = null;
+    clearTimeout(t.timer);
+    const x = event.clientX;
+    const y = event.clientY;
+    const dx = x - t.x0;
+    const dy = y - t.y0;
+
+    if (t.kind === "pinned") {
+      const over = open?.over;
+      if (over && over !== "anchor") return pick(over, "tap");
+      const up = document.elementFromPoint(x, y);
+      if (t.from && t.from.matches(".penna-stack-close, .penna-stack-scrim") && up?.closest(".penna-stack-close, .penna-stack-scrim")) { closeStack(); say("Closed, nothing picked"); return; }
+      if (t.from?.closest(".penna-key") && open && t.from.closest(".penna-key") === keyEl(open.anchor)) { closeStack(); say("Closed, nothing picked"); return; }
+      if (t.from?.closest(".zz-kb")) { closeStack(); unlatch(); say("Closed by the keyboard"); return; }
+      if (t.from?.closest(".penna-key")) { closeStack(); say("Closed, nothing picked"); return; }
+      setOver(null);
+      return;
+    }
+
+    if (t.kind === "pad") {
+      clearTimeout(repeat?.wait);
+      clearInterval(repeat?.every);
+      t.el.removeAttribute("data-pressed");
+      t.el.querySelector(".penna-arrow-bubble")?.remove();
+      if (t.dir) say(`${{ up: "↑", down: "↓", left: "←", right: "→" }[t.dir]} ×${t.count}`);
+      return;
+    }
+
+    if (t.anchor === "pill") {
+      t.el.removeAttribute("data-held");
+      t.el.removeAttribute("data-dragging");
+      t.el.style.translate = "";
+      if (cancelled) { closeStack(); return; }
+      if (t.kind === "hold") return finish(x, y, Math.hypot(dx, dy) < SLOP ? "hold" : "hold and slide");
+      if (t.kind === "swipe") { say(Math.abs(dx) > 100 ? `Paged to the ${dx < 0 ? "next" : "previous"} pane` : "Swipe sprang back"); return; }
+      if (t.kind === "lift") { say(-dy > 100 ? "Lifted to the overview" : "Lift sprang back"); return; }
+      if (t.kind === null) { openStack("pill", "pinned"); say("Stack open, by tap"); }
+      return;
+    }
+
+    const name = t.anchor;
+    if (t.kind !== "hold") t.el.removeAttribute("data-pressed");
+    if (cancelled) { closeStack(); return; }
+    if (t.kind === "hold") return finish(x, y, t.slid || Math.hypot(dx, dy) >= SLOP ? "hold and slide" : "hold");
+    if (t.kind !== null) return;
+    if (name === "hide") { closeStack(true); unlatch(); live.removeAttribute("data-kb"); return; }
+    if (name === "ctrl" || name === "alt") { t.el.toggleAttribute("data-latched"); return; }
+    if (name === "prefix") { openStack("prefix", "pinned"); say("Stack open, by tap"); return; }
+    say(`Sent ${name}`);
+    unlatch();
+  };
+  live.addEventListener("pointerup", (event) => release(event));
+  live.addEventListener("pointercancel", (event) => release(event, true));
+
+  live.addEventListener("click", (event) => {
+    const act = event.target.closest("[data-act]")?.dataset.act;
+    if (!act) return;
+    live.querySelector(":scope > .penna-sheet")?.remove();
+    say(act === "sheet-close" ? "Close, asked first, then closed" : "Close, asked first, then cancelled");
+  });
+
+  place();
+  addEventListener("load", place);
+  document.fonts.ready.then(place);
+})();
+</script>
+</body>
+</html>

@@ -37,7 +37,10 @@
   .zz-phone:not([data-kb]) > :is(.zz-kb, .zz-keys) { display: none; }
   .zz-keys, .zz-find-dock { position: absolute; z-index: 20; right: 16px; bottom: 300px; left: 16px; }
   .zz-find-dock[data-rest] { bottom: 20px; }
-  .zz-phone > .penna-sheet, .zz-phone > .penna-pill-menu { z-index: 35; }
+  .zz-phone > .penna-sheet, .zz-phone > .penna-stack { z-index: 35; }
+  .zz-phone[data-kb] > .penna-stack > .penna-stack-scrim { bottom: 292px; }
+  .zz-phone[data-stack="key"] > .zz-keys { z-index: 40; }
+  .zz-phone > .penna-stack > .penna-stack-close { bottom: 20px; left: 173px; }
   .zz-phone .penna-sheet-panel { padding-bottom: 20px; }
   .zz-chord { display: flex; align-items: center; gap: 1px; --penna-icon-size: 14px; }
 
@@ -55,10 +58,8 @@
   .zz-sysmenu > span { display: grid; place-items: center; padding: 0 16px; }
   .zz-sysmenu > span + span { box-shadow: inset 1px 0 0 color-mix(in srgb, var(--penna-bg) 25%, transparent); }
 
-  .zz-float { position: absolute; z-index: 25; }
-  .zz-menu-stack { position: absolute; right: 0; bottom: 96px; left: 0; display: flex; flex-direction: column; align-items: center; gap: var(--penna-gap-group); }
-  .zz-phone > .penna-pill-menu > :is(.penna-pill-menu-well, .penna-pill-menu-close) { top: auto; bottom: 20px; left: 173px; }
-  .zz-phone[data-menu] .zz-bar { visibility: hidden; }
+  .zz-phone[data-stack="pill"] .zz-bar { visibility: hidden; }
+  .zz-states .penna-stack-column { position: static; }
 
   .zz-hud { position: absolute; z-index: 20; top: 380px; left: 50%; padding: 6px 14px; transform: translateX(-50%); font-weight: 600; }
 
@@ -92,7 +93,7 @@
 <main class="zz-page">
   <div class="zz-intro">
     <h1>A terminal</h1>
-    <p>Step 4 of the phone redesign, after <a href="machines.html">Machines</a>, <a href="machine.html">A machine</a> and <a href="pane.html">A pane</a>: the terminal pane. It keeps what works today, a terminal to the edges, the pill under it and a key row over the keyboard, and fixes sizes and consistency around it: 44 keys, the ends of the row always in view, and a tap, a hold or a sheet for what the desktop does with a pointer. New on the phone: a sheet for links, find, and jump to bottom. Caption text in <i>italics</i> says what the native app does today where it differs.</p>
+    <p>Step 4 of the phone redesign, after <a href="machines.html">Machines</a>, <a href="machine.html">A machine</a> and <a href="pane.html">A pane</a>: the terminal pane. Its menus, the pill's and the chords behind ctrl and alt, are stack menus, drawn and live on <a href="menus.html">Menus</a>. It keeps what works today, a terminal to the edges, the pill under it and a key row over the keyboard, and fixes sizes and consistency around it: 44 keys, the ends of the row always in view, and a tap, a hold or a sheet for what the desktop does with a pointer. New on the phone: a sheet for links, find, and jump to bottom. Caption text in <i>italics</i> says what the native app does today where it differs.</p>
   </div>
 
   <section>
@@ -120,12 +121,12 @@
 
       <figure>
         <div class="zz-phone" data-frame="chord" data-kb></div>
-        <figcaption><b>4. Holding ctrl</b>After 280 ms the chord card opens above the key, kept 8 inside the screen: two columns of 44 items, each the chord in mono and its name. Slide onto one and let go to send it; let go without sliding and the card stays until a tap. The rows run bottom up, so ^C and ^D sit nearest the thumb. Alt's card holds M-b Word back, M-f Word ahead, M-d Kill word and M-. Last arg. <i>Today the same card and items, ^C first at the top (<code>tool_keys.rs:72-94</code>).</i></figcaption>
+        <figcaption><b>4. Holding ctrl</b>After 280 ms, or a slide up of 10, ctrl's chords rise over the key as a stack menu (<a href="menus.html">Menus</a>): 52 chips in two columns, each the chord in mono and its name, ^C and ^D nearest the thumb. Slide onto one and let go to send it; let go on ctrl and the stack stays until a tap. Alt's stack is one column: M-b Word back, M-f Word ahead, M-d Kill word and M-. Last arg. <i>Today a popover card of 44 rows, ^C first at the top (<code>tool_keys.rs:72-94</code>).</i></figcaption>
       </figure>
 
       <figure>
         <div class="zz-phone" data-frame="arrows" data-kb></div>
-        <figcaption><b>5. The arrow pad, held and dragged</b>Holding the pad opens its bubble above it, the arrows in 44 cells. Drag and the nearest arrow lights; hold it there and it repeats. Here up walks back through history. Let go and the bubble closes. <i>Today the same, with a 132 bubble and smaller cells.</i></figcaption>
+        <figcaption><b>5. The arrow pad, held and dragged</b>Holding the pad opens its bubble above it on the floating surface, the arrows in 44 cells. Drag and the nearest arrow's cell inverts and grows, like a chip under the finger; hold it there and it repeats. Here up walks back through history. Let go and the bubble closes. <i>Today the same, with a 132 popover and smaller cells whose lit arrow only darkens.</i></figcaption>
       </figure>
 
       <figure>
@@ -150,7 +151,7 @@
 
       <figure>
         <div class="zz-phone" data-frame="menu"></div>
-        <figcaption><b>10. Pill menu in a terminal</b>Step 3's menu with this pane's Find. Nearest the thumb "New in zz" over New browser, New terminal and New chat; then this pane: Find, Rename, Close in danger ink; then Overview; and All bindings alone at the top, since the bindings are a terminal's. The prefix key opens this same menu. <i>Today: All bindings and Kill pane, then Rename pane, New window, New pane, Last pane and Overview (<code>compact.rs:141-164</code>).</i></figcaption>
+        <figcaption><b>10. Pill menu in a terminal</b>Step 3's menu with this pane's Find, as a stack menu: 52 chips, a tap or a hold to open it (<a href="menus.html">Menus</a>). Nearest the thumb "New in zz" over New browser, New terminal and New chat; then this pane: Find, Rename, Close in danger ink; then Overview; and All bindings alone at the top, since the bindings are a terminal's. The prefix key opens this same stack from the key row. <i>Today: All bindings and Kill pane, then Rename pane, New window, New pane, Last pane and Overview (<code>compact.rs:141-164</code>).</i></figcaption>
       </figure>
 
       <figure>
@@ -179,7 +180,7 @@
       <div class="zz-phone" data-live></div>
       <figcaption>
         <span><b>Live.</b> Tap the terminal: the keyboard comes up and the pill gives way to the key row. Drag the row to scroll it. Tap ctrl or alt to latch it; any other key lets it go. Tap hide to lower the keyboard.</span>
-        <span><b>Not wired here:</b> typing, the chord card, the arrow pad's bubble and the pill's menu.</span>
+        <span><b>Not wired here:</b> typing, and the chords, the arrow pad's bubble and the pill's menu, which are live on <a href="menus.html">Menus</a>.</span>
       </figcaption>
     </figure>
   </section>
@@ -341,17 +342,19 @@
     return `<div class="${cls}"><div class="penna-key-row"><div class="zz-old-lead" data-penna="phone.pill"><button class="penna-key" data-penna="phone.key" aria-label="Prefix">${prefixGlyph}</button></div><div class="penna-key-row-pill" data-penna="phone.pill"></div><div class="penna-key-row-scroll">${k(ic("key-control"), "Control")}${k(ic("key-option"), "Alt")}${k(ic("key-tab"), "Tab")}${k(ic("key-escape"), "Escape")}${k(txt("/"), "Slash")}${k(txt("@"), "At")}${k(ic("arrows-move"), "Arrows")}<span class="penna-key-row-slot"><button class="penna-key penna-key-hide" data-penna="phone.key" aria-label="Hide keyboard">${ic("chevron-down")}</button></span></div><button class="penna-key-row-more" data-penna="phone.pill" data-side="back" aria-label="Scroll back">${ic("chevron-left")}</button><button class="penna-key-row-more" data-penna="phone.pill" data-side="ahead" aria-label="Scroll ahead">${ic("chevron-right")}</button></div></div>`;
   };
 
-  const arrowBubble = (lit) => `<span class="penna-arrow-bubble" data-penna="popover" data-size="touch">${["", "up", "", "left", "hub", "right", "", "down", ""].map((name) => {
+  const arrowBubble = (lit) => `<span class="penna-arrow-bubble" data-penna="floating" data-size="touch">${["", "up", "", "left", "hub", "right", "", "down", ""].map((name) => {
     if (name === "hub") return `<span class="penna-arrow-hub"></span>`;
     if (!name) return "<span></span>";
     return `<span class="penna-arrow-cell" data-penna="phone.arrow-pad" data-direction="${name}"${name === lit ? ` data-state="selected"` : ""}>${ic(`arrow-${name}`)}</span>`;
   }).join("")}</span>`;
 
   const CTRL = [["^C", "Interrupt"], ["^D", "End input"], ["^Z", "Suspend"], ["^L", "Clear"], ["^R", "History"], ["^U", "Kill line"], ["^W", "Kill word"], ["^K", "Kill to end"], ["^A", "Line start"], ["^E", "Line end"]];
-  const chordCard = (items, on) => {
+  const ALT = [["M-b", "Word back"], ["M-f", "Word ahead"], ["M-d", "Kill word"], ["M-.", "Last arg"]];
+  const chordStack = (items, on) => {
+    const columns = items.length > 6 ? 2 : 1;
     const rows = [];
-    for (let i = 0; i < items.length; i += 2) rows.push(items.slice(i, i + 2));
-    return `<div class="penna-chord-card" data-penna="popover">${rows.reverse().flat().map(([cap, label]) => `<div class="penna-chord-item" data-penna="menu-item"${cap === on ? ` data-state="selected"` : ""}><span class="penna-chord-cap">${cap}</span><span>${label}</span></div>`).join("")}</div>`;
+    for (let i = 0; i < items.length; i += columns) rows.push(items.slice(i, i + columns));
+    return `<div class="penna-stack-column"><div class="penna-stack-group" data-chords${columns === 2 ? ` data-columns="2"` : ""}>${rows.reverse().flat().map(([cap, label]) => `<button class="penna-stack-chip" data-penna="floating"${cap === on ? ` data-state="selected"` : ""}><span class="penna-stack-cap">${cap}</span><span>${label}</span></button>`).join("")}</div></div>`;
   };
 
   const kb = () => {
@@ -371,9 +374,9 @@
   const bindingsSheet = sheet({ title: "All bindings", detail: "Prefix ⌃B", cls: "zz-bindings", body: BINDINGS.map(([group, rows]) => header(group) + rows.map(([label, keys]) => row(label, { value: keys.map(cap).join("") })).join("")).join("") });
   const linkSheet = sheet({ title: URL, fitTitle: true, body: [row("Open in a browser pane", { glyph: "globe" }), row("Open on this phone", { glyph: "external-link" }), row("Copy", { glyph: "copy" })].join("") });
 
-  const chip = (glyph, label, extra = ` data-penna="floating"`) => `<button class="penna-pill-chip"${extra}>${ic(glyph)}<span>${label}</span></button>`;
-  const group = (chips) => `<div class="penna-pill-menu-group">${chips}</div>`;
-  const menu = `<div class="penna-pill-menu" data-open><div class="penna-pill-menu-scrim" data-act="dismiss"></div><div class="zz-menu-stack">${group(chip("keyboard", "All bindings", ` data-penna="floating" data-look="quiet"`))}${group(chip("layout-dashboard", "Overview"))}${group(chip("search", "Find") + chip("pencil", "Rename") + chip("xmark", "Close", ` data-penna="floating" data-tone="danger"`))}${group(`<span class="penna-pill-menu-label" data-penna="floating">New in zz</span>${chip("globe", "New browser")}${chip("square-terminal", "New terminal")}${chip("chat-plus", "New chat", ` data-penna="button" data-tone="primary" data-prominent data-look="primary"`)}`)}</div><div class="penna-pill-menu-well"></div><button class="penna-pill-menu-close" data-penna="button" data-tone="primary" data-prominent aria-label="Close" data-act="dismiss">${ic("xmark")}</button></div>`;
+  const chip = (glyph, label, extra = ` data-penna="floating"`) => `<button class="penna-stack-chip"${extra}>${ic(glyph)}<span>${label}</span></button>`;
+  const group = (chips) => `<div class="penna-stack-group">${chips}</div>`;
+  const menu = `<div class="penna-stack" data-open data-anchor="pill"><div class="penna-stack-scrim"></div><div class="penna-stack-column">${group(chip("keyboard", "All bindings", ` data-penna="floating" data-look="quiet"`))}${group(chip("layout-dashboard", "Overview"))}${group(chip("search", "Find") + chip("pencil", "Rename") + chip("xmark", "Close", ` data-penna="floating" data-tone="danger"`))}${group(`<span class="penna-stack-label" data-penna="floating">New in zz</span>${chip("globe", "New browser")}${chip("square-terminal", "New terminal")}${chip("chat-plus", "New chat", ` data-penna="button" data-tone="primary" data-prominent data-look="primary"`)}`)}</div><button class="penna-stack-close" data-penna="button" data-tone="primary" data-prominent aria-label="Close">${ic("xmark")}</button></div>`;
 
   const findMarks = (current) => [{ re: /pill-find/, cls: "zz-hit", kind: "hit", current }];
   const findField = (count, rest = false) => `<div class="zz-find-dock"${rest ? " data-rest" : ""}><div class="penna-find" data-penna="field.composer"><button class="penna-button" data-penna="button.quiet" data-shape="icon" aria-label="Close find">${ic("xmark")}</button><span class="penna-find-query zz-caret">pill-find</span><span class="penna-find-count">${count}</span><button class="penna-button" data-penna="button.quiet" data-shape="icon" aria-label="Previous match">${ic("chevron-up")}</button><button class="penna-button" data-penna="button.quiet" data-shape="icon" aria-label="Next match">${ic("chevron-down")}</button></div></div>`;
@@ -388,7 +391,7 @@
     rest: () => `${term(SESSION, { cursor: true, marks: [link()] }).html}${restPill}`,
     keys: () => `${term(SESSION, { cursor: true, marks: [link()] }).html}${keyRow()}${kb()}`,
     latched: () => `${term(TESTS, { cursor: false }).html}${keyRow({ end: true, latched: "ctrl" })}${kb()}`,
-    chord: () => `${term(TESTS).html}${keyRow({ pressed: "ctrl" })}<div class="zz-float" data-anchor="ctrl">${chordCard(CTRL, "^C")}</div>${kb()}`,
+    chord: () => `${term(TESTS).html}${keyRow({ pressed: "ctrl" })}<div class="penna-stack" data-open data-anchor="ctrl"><div class="penna-stack-scrim"></div>${chordStack(CTRL, "^C")}</div>${kb()}`,
     arrows: () => `${term(HISTORY, { cursor: true, marks: [link()] }).html}${keyRow({ bubble: arrowBubble("up") })}${kb()}`,
     select: () => `${term(SESSION, { cursor: true, marks: [link(), sel] }).html}${sysmenu}${restPill}`,
     back: () => `${term([...OLDER, ...SESSION.slice(0, 12)], { marks: [link()] }).html}<span class="zz-indicator"></span>${jump}${mini}`,
@@ -404,7 +407,8 @@
 
   for (const phone of document.querySelectorAll("[data-frame]")) {
     phone.innerHTML = frames[phone.dataset.frame]();
-    if (phone.dataset.frame === "menu") phone.setAttribute("data-menu", "");
+    if (phone.dataset.frame === "menu") phone.dataset.stack = "pill";
+    if (phone.dataset.frame === "chord") phone.dataset.stack = "key";
   }
 
   const live = document.querySelector("[data-live]");
@@ -424,7 +428,7 @@
     ["Prefix armed", one(prefixGlyph, " data-armed")],
     ["Hide", one(ic("chevron-down"))],
     ["Arrow pad, held", `<div class="zz-pads">${["up", "left", "right", "down"].map(arrowBubble).join("")}</div>`],
-    ["Chord card, alt", chordCard([["M-b", "Word back"], ["M-f", "Word ahead"], ["M-d", "Kill word"], ["M-.", "Last arg"]], "")],
+    ["Chords, alt", chordStack(ALT, "")],
     ["Find field", `<div style="width: 361px">${findField("3 of 7").replace('class="zz-find-dock"', 'style="position: static"')}</div>`],
   ];
   document.querySelector("[data-states]").innerHTML = states.map(([label, html]) => `<figure><figcaption>${label}</figcaption>${html}</figure>`).join("");
@@ -441,17 +445,22 @@
   }
 
   const place = () => {
-    for (const float of document.querySelectorAll("[data-anchor]")) {
-      const phone = float.closest(".zz-phone");
-      const anchor = phone.querySelector(`[data-key="${float.dataset.anchor}"]`);
-      const row = phone.querySelector(".penna-key-row");
+    for (const stack of document.querySelectorAll(".zz-phone > .penna-stack")) {
+      const phone = stack.parentElement;
+      const name = stack.dataset.anchor;
+      const anchor = name === "pill" ? phone.querySelector(".zz-bar") : phone.querySelector(`[data-key="${name}"]`);
+      const col = stack.querySelector(".penna-stack-column");
       const p = phone.getBoundingClientRect();
       const a = anchor.getBoundingClientRect();
-      const r = row.getBoundingClientRect();
-      const w = float.offsetWidth;
-      const left = Math.max(8, Math.min(p.width - 8 - w, a.left - p.left + a.width / 2 - w / 2));
-      float.style.left = `${left}px`;
-      float.style.bottom = `${p.bottom - r.top + 8}px`;
+      col.removeAttribute("data-align");
+      col.style.width = "";
+      const w = col.offsetWidth;
+      let left = a.left - p.left + a.width / 2 - w / 2;
+      if (left < 16) { left = 16; col.dataset.align = "start"; }
+      if (left + w > p.width - 16) { left = p.width - 16 - w; col.dataset.align = "end"; }
+      col.style.left = `${left}px`;
+      col.style.width = `${w}px`;
+      col.style.bottom = `${p.bottom - a.top + 8}px`;
     }
     for (const menu of document.querySelectorAll("[data-over]")) {
       const phone = menu.closest(".zz-phone");

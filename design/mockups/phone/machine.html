@@ -33,8 +33,8 @@
   .zz-fold > .penna-touch-icon[data-penna] { position: absolute; right: var(--penna-inset-pane); bottom: 0; pointer-events: auto; }
 
   .zz-menu { z-index: 25; }
-  .zz-menu-stack { position: absolute; right: 0; bottom: 96px; left: 0; display: flex; flex-direction: column; align-items: center; gap: var(--penna-gap-group); }
-  .zz-menu > :is(.penna-pill-menu-well, .penna-pill-menu-close) { top: auto; bottom: 20px; left: 173px; }
+  .zz-menu > .penna-stack-column { right: 0; bottom: 84px; left: 0; }
+  .zz-menu > .penna-stack-close { bottom: 20px; left: 173px; }
   .zz-phone > .penna-sheet { z-index: 25; }
   .zz-phone[data-menu] .zz-bar, .zz-machine[data-menu] > .zz-bar { visibility: hidden; }
 
@@ -127,7 +127,7 @@
 
       <figure>
         <div class="zz-phone" data-screen="macbook" data-menu></div>
-        <figcaption><b>5. Pill menu open</b>The one place to make things. Tapping the pill raises its menu over a scrim. "New in zz" heads New browser, New terminal and New chat, New chat nearest the thumb and the one solid chip; the label is a 28 chip in muted ink with no glyph, not a target. Then New session apart, All machines, and Settings apart at the top. The label names the session the pill names, the one under the top row, so a new window lands where you are looking. New chat goes on to the chat picker; New terminal and New browser make the window and zoom into it. A session's header has no plus and its grid no add tile: among mixed widths a tile leaves holes. Swiping the pill pages machines and dragging it up zooms out to Machines, as today. <i>Today the menu has Settings, New session, New browser, New terminal and All hosts: no group label and no New chat, and New terminal lands in the attached session, not the one on screen (<code>overview.rs:1231</code>).</i></figcaption>
+        <figcaption><b>5. Pill menu open</b>The one place to make things. Tapping the pill, or holding it, raises its menu over a scrim: a stack menu of 52 chips (<a href="menus.html">Menus</a>). "New in zz" heads New browser, New terminal and New chat, New chat nearest the thumb and the one solid chip; the label is a 28 chip in muted ink with no glyph, not a target. Then New session apart, All machines, and Settings apart at the top. The label names the session the pill names, the one under the top row, so a new window lands where you are looking. New chat goes on to the chat picker; New terminal and New browser make the window and zoom into it. A session's header has no plus and its grid no add tile: among mixed widths a tile leaves holes. Swiping the pill pages machines and dragging it up zooms out to Machines, as today. <i>Today the menu has Settings, New session, New browser, New terminal and All hosts: no group label and no New chat, and New terminal lands in the attached session, not the one on screen (<code>overview.rs:1231</code>).</i></figcaption>
       </figure>
 
       <figure>
@@ -321,9 +321,9 @@
   };
   const paneCard = (w, p) => `<div class="penna-zoom-card zz-full" data-penna="phone.card"><div class="zz-pane"><div class="penna-zoom-top"><button class="penna-touch-icon" data-penna="phone.button" data-close aria-label="Close"><i data-icon="xmark"></i></button></div><div class="zz-pane-body">${paneBody(p)}</div></div>${pill(KIND[p.kind], w.title, `${w.panes.length > 1 ? `Pane ${w.panes.indexOf(p) + 1} of ${w.panes.length}` : "Stand-in for the pane"}`, w.panes.indexOf(p))}</div>`;
 
-  const menuChip = (icon, label, extra = ` data-penna="floating"`) => `<button class="penna-pill-chip"${extra}><i data-icon="${icon}"></i><span>${label}</span></button>`;
-  const group = (chips) => `<div class="penna-pill-menu-group">${chips}</div>`;
-  const menu = (session) => `<div class="penna-pill-menu zz-menu" data-open><div class="penna-pill-menu-scrim"></div><div class="zz-menu-stack">${group(menuChip("settings", "Settings", ` data-penna="floating" data-look="quiet"`))}${group(menuChip("server", "All machines"))}${session ? group(menuChip("layers-plus", "New session")) : ""}${group(`<span class="penna-pill-menu-label" data-penna="floating">${session ? `New in ${session}` : "In a new session"}</span>${menuChip("globe", "New browser")}${menuChip("square-terminal", "New terminal")}${menuChip("chat-plus", "New chat", ` data-penna="button" data-tone="primary" data-prominent data-look="primary"`)}`)}</div><div class="penna-pill-menu-well"></div><button class="penna-pill-menu-close" data-penna="button" data-tone="primary" data-prominent aria-label="Close"><i data-icon="xmark"></i></button></div>`;
+  const menuChip = (icon, label, extra = ` data-penna="floating"`) => `<button class="penna-stack-chip"${extra}><i data-icon="${icon}"></i><span>${label}</span></button>`;
+  const group = (chips) => `<div class="penna-stack-group">${chips}</div>`;
+  const menu = (session) => `<div class="penna-stack zz-menu" data-open data-anchor="pill"><div class="penna-stack-scrim"></div><div class="penna-stack-column">${group(menuChip("settings", "Settings", ` data-penna="floating" data-look="quiet"`))}${group(menuChip("server", "All machines"))}${session ? group(menuChip("layers-plus", "New session")) : ""}${group(`<span class="penna-stack-label" data-penna="floating">${session ? `New in ${session}` : "In a new session"}</span>${menuChip("globe", "New browser")}${menuChip("square-terminal", "New terminal")}${menuChip("chat-plus", "New chat", ` data-penna="button" data-tone="primary" data-prominent data-look="primary"`)}`)}</div><button class="penna-stack-close" data-penna="button" data-tone="primary" data-prominent aria-label="Close"><i data-icon="xmark"></i></button></div>`;
   const hold = (w) => `<div class="penna-sheet" style="--penna-sheet-rest: 8px"><div class="penna-sheet-scrim"></div><div class="penna-sheet-frame"><div class="penna-sheet-panel" data-penna="drawer"><div class="penna-sheet-grip"><div class="penna-sheet-grabber" data-penna="grabber"></div></div><div class="penna-sheet-header"><span class="penna-sheet-copy"><span class="penna-sheet-title">${w.title}</span><span class="penna-sheet-detail">${w.details}</span></span><button class="penna-sheet-close penna-button" data-penna="button.quiet" data-size="touch" data-tap aria-label="Close"><i data-icon="xmark"></i></button></div><div class="penna-sheet-list"><div class="penna-touch-row" data-penna="phone.row" role="button" data-tap><i data-icon="pencil"></i><span class="penna-touch-row-lines"><span>Rename</span></span></div><div class="penna-touch-row" data-penna="phone.row" data-tone="danger" role="button" data-tap><i data-icon="xmark"></i><span class="penna-touch-row-lines"><span>Close window</span></span></div></div></div></div></div>`;
 
   const miniTerm = (lines) => `<pre>${lines.map(esc).join("\n")}</pre>`;
@@ -512,9 +512,9 @@
     const top = levels.at(-1);
     const layer = top ? top.child : root;
     if (!layer.contains(event.target)) return;
-    const open = event.target.closest(".penna-pill-menu");
+    const open = event.target.closest(".penna-stack");
     if (open) {
-      if (event.target.closest(".penna-pill-chip, .penna-pill-menu-close, .penna-pill-menu-scrim")) {
+      if (event.target.closest(".penna-stack-chip, .penna-stack-close, .penna-stack-scrim")) {
         open.closest(".zz-machine").removeAttribute("data-menu");
         open.remove();
       }
