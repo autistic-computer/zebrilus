@@ -357,6 +357,11 @@
   --penna-icon-size: 16px;
 }
 
+.penna-touch-row[data-penna][data-tone="danger"] {
+  --penna-ink: var(--penna-danger-ink);
+  --penna-muted: var(--penna-danger-ink);
+}
+
 .penna-touch-row[data-penna]:is([data-state~="disabled"], [aria-disabled="true"]) {
   cursor: default;
   --penna-fill: transparent;
@@ -421,6 +426,12 @@
   font-size: var(--penna-text-touch-small-size);
   line-height: var(--penna-text-touch-small-line);
   font-weight: 500;
+}
+
+.penna-touch-header[data-hold] {
+  height: var(--penna-control-touch);
+  cursor: var(--penna-click-cursor);
+  user-select: none;
 }
 
 .penna-touch-header > :first-child {
@@ -506,6 +517,14 @@
 
 .penna-tone-dot[data-tone="off"] {
   background: var(--penna-fg-faint);
+}
+
+.penna-tone-dot[data-tone="danger"] {
+  background: var(--penna-danger);
+}
+
+.penna-tone-dot[data-tone="strong"] {
+  background: var(--penna-fg);
 }
 
 .penna-touch-badge[data-penna] {

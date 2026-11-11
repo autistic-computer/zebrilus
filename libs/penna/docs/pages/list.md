@@ -84,7 +84,7 @@ ListItem::new("work").selected(true).on_click(open).child(
 On a phone, lists use touch rows: found machines, chats, settings.
 
 ```figure uses=notice
-<div class="penna-notice" data-penna="notice" data-tone="warning" style="width: 100%"><div class="penna-notice-tone" data-penna="chip" data-tone="warning"><span class="penna-notice-lead"><i data-icon="triangle-alert"></i></span><div class="penna-notice-body"><span class="penna-text penna-notice-title" data-penna-text>Built inside sheets only</span><span class="penna-text penna-notice-detail" data-penna-text>One-line and two-line rows exist in sheets. Rows elsewhere, the group, the trailing kinds, the swipe and the section header are drawn with the HTML kit.</span></div></div></div>
+<div class="penna-notice" data-penna="notice" data-tone="warning" style="width: 100%"><div class="penna-notice-tone" data-penna="chip" data-tone="warning"><span class="penna-notice-lead"><i data-icon="triangle-alert"></i></span><div class="penna-notice-body"><span class="penna-text penna-notice-title" data-penna-text>Built inside sheets only</span><span class="penna-text penna-notice-detail" data-penna-text>One-line and two-line rows exist in sheets. Rows elsewhere, the group, the trailing kinds, the danger row, the swipe and the section header are drawn with the HTML kit.</span></div></div></div>
 ```
 
 ```figure uses=touch
@@ -131,4 +131,21 @@ On a phone, lists use touch rows: found machines, chats, settings.
 </div>
 ```
 
-The header is 28 tall, strong `touch-small`, muted, with an optional count, lined up with the rows' icons. A group has the phone container corner, twice `radius`. Its rows sit 4 in from its edges and 2 apart, with no separators, so a pressed or hovered row's fill never meets an edge or a line; a row's corner is never rounder than the group's less 4.
+```figure uses=touch,compact
+<div class="docs-show" data-gap="wide" style="align-items: flex-start">
+  <div class="docs-cell" style="width: 370px">
+    <div class="penna-touch-header" data-hold role="button" style="width: 100%"><span>zz</span><span class="penna-touch-count">5</span></div>
+    <div class="penna-machine-grid" style="width: 100%"><div class="penna-machine-tile" data-penna="phone.card" role="button"><span class="penna-machine-name" data-lines="2"><span>zsh</span></span><span class="penna-machine-foot"><span class="penna-machine-kinds"><i data-icon="square-terminal"></i></span><span class="penna-machine-where"><span>zebrilus · main</span><span class="penna-machine-age">2h</span></span></span><span class="penna-press"></span></div><div class="penna-machine-tile" data-penna="phone.add" data-add role="button"><i data-icon="plus"></i>New<span class="penna-press"></span></div></div>
+    <span class="docs-note">A header you can hold, 44, over a grid</span>
+  </div>
+  <div class="docs-cell" style="width: 370px">
+    <div class="penna-touch-group" data-penna="settings.card" style="width: 100%">
+      <div class="penna-touch-row" data-penna="phone.row" role="button"><i data-icon="pencil"></i><span class="penna-touch-row-lines"><span>Rename session</span></span></div>
+      <div class="penna-touch-row" data-penna="phone.row" data-tone="danger" role="button"><i data-icon="xmark"></i><span class="penna-touch-row-lines"><span>Close session</span></span></div>
+    </div>
+    <span class="docs-note">A danger row, last</span>
+  </div>
+</div>
+```
+
+The header is 28 tall, strong `touch-small`, muted, with an optional count of what is under it, lined up with the rows' icons. A header you can hold (a session over its windows) is 44, its text at the same foot. A row that closes, removes or forgets takes the danger ink and comes last. A group has the phone container corner, twice `radius`. Its rows sit 4 in from its edges and 2 apart, with no separators, so a pressed or hovered row's fill never meets an edge or a line; a row's corner is never rounder than the group's less 4.

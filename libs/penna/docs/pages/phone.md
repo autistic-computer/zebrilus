@@ -22,6 +22,26 @@ A phone screen is built from phone components, sized for a thumb from the start.
 </div>
 ```
 
+**Press and hold** a tile, or the header over a group of tiles, for a sheet of what you can do to it: touch rows, the one that closes or removes last in danger ink. One rule for every tile, so nothing that acts on a tile sits inside it. A header that can be held is 44 tall. Not built natively yet.
+
+```figure uses=sheet,touch,label
+<div style="position: relative; width: 370px; height: 330px; overflow: hidden; border-radius: 28px; background: var(--penna-bg)">
+  <div class="penna-sheet" style="--penna-sheet-rest: 8px">
+    <div class="penna-sheet-scrim"></div>
+    <div class="penna-sheet-frame">
+      <div class="penna-sheet-panel" data-penna="drawer">
+        <div class="penna-sheet-grip"><div class="penna-sheet-grabber" data-penna="grabber"></div></div>
+        <div class="penna-sheet-header"><span class="penna-sheet-title" data-penna-text>Port the bento grid</span><button class="penna-sheet-close penna-button" data-penna="button.quiet" data-size="touch" aria-label="Close"><i data-icon="xmark"></i></button></div>
+        <div class="penna-sheet-list">
+          <div class="penna-touch-row" data-penna="phone.row" role="button"><i data-icon="pencil"></i><span class="penna-touch-row-lines"><span>Rename</span></span></div>
+          <div class="penna-touch-row" data-penna="phone.row" data-tone="danger" role="button"><i data-icon="xmark"></i><span class="penna-touch-row-lines"><span>Close window</span></span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+```
+
 ## Two touch rungs
 
 ```figure
@@ -57,6 +77,8 @@ A phone screen is built from phone components, sized for a thumb from the start.
 2. **Large title**: 52, `touch-title`, folding into the top row as the page scrolls.
 3. **Body**: `inset-pane` 16 at the sides, groups `gap-group` 16 apart.
 4. **Bottom**: the pill on the overview and on a pane, or the action bar on a zoom card or sheet. Same spot, so never both.
+
+A screen of things is the same at every level: the large title, tiles two to a row under a section header per group, the add tile last in each grid. Going into a tile is a zoom, and what opens may be another screen of tiles; the close control, dragging the pill up or a pinch goes back one level.
 
 ## Surfaces
 
@@ -105,19 +127,21 @@ Not built natively yet: tiles take the control radius (12, 25, 8), the sheet kee
 ```figure uses=touch,compact,badge,label
 <div class="docs-show" data-gap="wide">
   <span class="docs-show"><span class="penna-tone-dot"></span><span class="penna-type" data-type="touch-small" data-penna-text>Connected</span></span>
-  <span class="docs-show"><span class="penna-tone-dot" data-tone="warning"></span><span class="penna-type" data-type="touch-small" data-penna-text>1 waiting</span></span>
+  <span class="docs-show"><span class="penna-tone-dot" data-tone="warning"></span><span class="penna-type" data-type="touch-small" data-penna-text style="color: var(--penna-warning-ink)">1 waiting</span></span>
   <span class="docs-show"><span class="penna-tone-dot" data-tone="off"></span><span class="penna-type" data-type="touch-small" data-penna-text>Not connected</span></span>
+  <span class="docs-show"><span class="penna-tone-dot" data-tone="danger"></span><span class="penna-type" data-type="touch-small" data-penna-text style="color: var(--penna-danger-ink)">Failed</span></span>
+  <span class="docs-show"><span class="penna-tone-dot" data-tone="strong"></span><span class="penna-type" data-type="touch-small" data-penna-text>Done</span></span>
   <span class="docs-show"><i class="penna-touch-spinner" data-icon="loader"></i><span class="penna-type" data-type="touch-small" data-penna-text>Connecting</span></span>
   <span class="docs-show"><span class="penna-touch-badge" data-penna="badge">3</span><span class="penna-type" data-type="touch-small" data-penna-text>chats</span></span>
   <span class="penna-touch-disc" data-penna="floating"><button class="penna-touch-icon" data-penna="phone.button" aria-label="Settings"><i data-icon="settings"></i></button></span>
 </div>
 ```
 
-- **Tone dot**: 8, always beside its word.
-- **Spinner**: 16, one turn every 900ms.
+- **Tone dot**: 8, always beside its word, which takes its tone's ink: green connected, amber waiting for you, red failed, the ink for done and not yet seen, faint off. Idle has no mark. No state takes the accent: it is a person's pick, and Yaru's orange would read as waiting.
+- **Spinner**: 16, one turn every 900ms, for working and connecting. Working is never a green dot: green only means connected.
 - **Count badge**: 20, the `touch-small` line.
 - **Icon button**: 44 with a 20 icon; over the content, in a 56 disc.
 
 ## The pieces
 
-[Button](button.html), [Field](field.html), [List](list.html) for touch rows, [Tile](tile.html) for the machine tile, and the [action bar](action-bar.html), [zoom card](zoom-card.html), [sheet](sheet.html) and [empty state](empty-state.html) blocks.
+[Button](button.html), [Field](field.html), [List](list.html) for touch rows, [Tile](tile.html) for the phone tile, machine and window, and the [action bar](action-bar.html), [zoom card](zoom-card.html), [sheet](sheet.html) and [empty state](empty-state.html) blocks.

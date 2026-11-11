@@ -54,6 +54,27 @@ Behind the add tile. Found machines first, as touch rows with the add mark: a ta
 
 The scan accessory turns the same card into the scanner: the camera's picture, square, one line saying where the code is, and a way back to typing. The picture is the app's.
 
+## New card
+
+```figure uses=compact,touch,label
+<div class="penna-zoom-card" data-penna="phone.card" style="width: 370px; height: 420px; padding-top: var(--penna-inset-pane)">
+  <div class="penna-zoom-top"><button class="penna-touch-icon" data-penna="phone.button" aria-label="Close"><i data-icon="xmark"></i></button></div>
+  <div class="penna-zoom-title">New</div>
+  <div class="penna-zoom-body">
+    <div>
+      <div class="penna-touch-header"><span>In session zz</span></div>
+      <div class="penna-touch-group" data-penna="settings.card">
+        <div class="penna-touch-row" data-penna="phone.row" role="button"><i data-icon="chat"></i><span class="penna-touch-row-lines"><span>New chat</span></span><i data-icon="chevron-right"></i></div>
+        <div class="penna-touch-row" data-penna="phone.row" role="button"><i data-icon="square-terminal"></i><span class="penna-touch-row-lines"><span>New terminal</span></span></div>
+        <div class="penna-touch-row" data-penna="phone.row" role="button"><i data-icon="globe"></i><span class="penna-touch-row-lines"><span>New browser</span></span></div>
+      </div>
+    </div>
+  </div>
+</div>
+```
+
+Behind the add tile at the end of a group of things you make rather than find. A header says where the new thing goes, then one row per kind; the whole row is the target and picking it is the action, so there is no action bar. A row that leads to another choice ends in a chevron; one that makes the thing at once has no mark, and the card zooms on into what it made. The kinds are the app's.
+
 ## Connecting card
 
 ```figure uses=compact,touch,button,label
@@ -67,6 +88,10 @@ The scan accessory turns the same card into the scanner: the camera's picture, s
 
 Behind a connecting tile. Cancel is its one action, drawn as a secondary since stopping is not what the card is for; it zooms back to the tile, now not connected. When the connection lands, the card becomes the machine.
 
+## A card of tiles
+
+What you went into can be a screen of tiles in turn, a machine holding its windows: then the pill sits at the bottom in place of the action bar, and its tiles zoom one level further. When what the card shows goes away, as when a machine disconnects, it zooms back out to its tile, which says why.
+
 ## Motion
 
-It opens with the zoom: the tile's layer grows to the screen while the grid behind scales up around it, and the two cross-fade between 30% and 70% of the way, on the touch spring. It closes the same way back, from the close control, a drag down or a pinch out.
+It opens with the zoom: the tile's layer grows to the screen while the grid behind scales up around it, and the two cross-fade between 30% and 70% of the way, on the touch spring. It closes the same way back, one level at a time, from the close control, a drag down or a pinch out, or on a card of tiles by dragging the pill up.

@@ -68,13 +68,15 @@ A tone tints the label. Say what it means in words.
 
 Size, inset, picking and dragging are yours, natively and in HTML.
 
-## Machine tile
+## Phone tile
 
-The bento overview's cell on a phone, two to a row. The whole tile is the target.
+The cell of every screen of things on a phone, two to a row: machines on the overview, windows inside a machine. One anatomy, two kinds of content. The whole tile is the target, and holding it opens a sheet of what you can do to it.
 
 ```figure uses=notice
-<div class="penna-notice" data-penna="notice" data-tone="warning" style="width: 100%"><div class="penna-notice-tone" data-penna="chip" data-tone="warning"><span class="penna-notice-lead"><i data-icon="triangle-alert"></i></span><div class="penna-notice-body"><span class="penna-text penna-notice-title" data-penna-text>States not built natively yet</span><span class="penna-text penna-notice-detail" data-penna-text>The grid, the cell and the add tile are native, but with the control radius as their corner; these states and the phone corner are drawn with the HTML kit.</span></div></div></div>
+<div class="penna-notice" data-penna="notice" data-tone="warning" style="width: 100%"><div class="penna-notice-tone" data-penna="chip" data-tone="warning"><span class="penna-notice-lead"><i data-icon="triangle-alert"></i></span><div class="penna-notice-body"><span class="penna-text penna-notice-title" data-penna-text>States and window content not built natively yet</span><span class="penna-text penna-notice-detail" data-penna-text>The grid, the cell and the add tile are native, but with the control radius as their corner; a window is a bento tile of mini panes. These states, window content, press and hold and the phone corner are drawn with the HTML kit.</span></div></div></div>
 ```
+
+### Machine content
 
 ```figure uses=compact,touch
 <div class="penna-machine-grid" style="width: 370px">
@@ -96,4 +98,27 @@ The bento overview's cell on a phone, two to a row. The whole tile is the target
 | Pressed | the press over the tile | |
 | Add | "Add machine" | zooms into the [add card](zoom-card.html) |
 
-Name strong `touch-body`, state and lines `touch-small`, inset 12. The corner is the phone container corner, twice `radius`: 24 by default, 16 in Yaru. No button inside, no ghost tiles: machines not added yet are rows in the add card.
+### Window content
+
+```figure uses=compact,touch
+<div class="penna-machine-grid" style="width: 370px">
+  <div class="penna-machine-tile" data-penna="phone.card" role="button"><span class="penna-machine-name" data-lines="2"><span class="penna-tone-dot" data-tone="warning"></span><span>Make the pill menu offer New chat</span></span><span class="penna-machine-state" data-tone="warning"><span>Needs approval</span></span><span class="penna-machine-foot"><span class="penna-machine-kinds"><i data-icon="chat"></i><i data-icon="square-terminal"></i></span><span class="penna-machine-where"><span>zebrilus · main</span><span class="penna-machine-age">now</span></span></span><span class="penna-press"></span></div>
+  <div class="penna-machine-tile" data-penna="phone.card" role="button"><span class="penna-machine-name" data-lines="2"><span class="penna-tone-dot" data-tone="warning"></span><span>Pick a tailnet library</span></span><span class="penna-machine-state" data-tone="warning"><span>Has a question</span></span><span class="penna-machine-foot"><span class="penna-machine-kinds"><i data-icon="chat"></i></span><span class="penna-machine-where"><span>zebrilus · tailnet</span><span class="penna-machine-age">4m</span></span></span><span class="penna-press"></span></div>
+  <div class="penna-machine-tile" data-penna="phone.card" role="button"><span class="penna-machine-name" data-lines="2"><i class="penna-touch-spinner" data-icon="loader"></i><span>Fix pane stack hit testing on iPad</span></span><span class="penna-machine-state"><span>Running cargo test -p zz-mux</span><span>62%</span></span><span class="penna-machine-foot"><span class="penna-machine-kinds"><i data-icon="chat"></i></span><span class="penna-machine-where"><span>zebrilus · pane-stack</span><span class="penna-machine-age">now</span></span></span><span class="penna-press"></span></div>
+  <div class="penna-machine-tile" data-penna="phone.card" role="button"><span class="penna-machine-name" data-lines="2"><span class="penna-tone-dot" data-tone="strong"></span><span>Port the bento grid</span></span><span class="penna-machine-state" data-tone="strong"><span>Done</span></span><span class="penna-machine-foot"><span class="penna-machine-kinds"><i data-icon="chat"></i><i data-icon="globe"></i></span><span class="penna-machine-where"><span>penna · main</span><span class="penna-machine-age">12m</span></span></span><span class="penna-press"></span></div>
+  <div class="penna-machine-tile" data-penna="phone.card" role="button"><span class="penna-machine-name" data-lines="2"><span class="penna-tone-dot" data-tone="danger"></span><span>cargo build</span></span><span class="penna-machine-state" data-tone="danger"><span>Exit 101</span></span><span class="penna-machine-foot"><span class="penna-machine-kinds"><i data-icon="square-terminal"></i></span><span class="penna-machine-where"><span>nidus · main</span><span class="penna-machine-age">2h</span></span></span><span class="penna-press"></span></div>
+  <div class="penna-machine-tile" data-penna="phone.card" role="button"><span class="penna-machine-name" data-lines="2"><span>zsh</span></span><span class="penna-machine-foot"><span class="penna-machine-kinds"><i data-icon="square-terminal"></i></span><span class="penna-machine-where"><span>.files · main</span><span class="penna-machine-age">3d</span></span></span><span class="penna-press"></span></div>
+</div>
+```
+
+| State | Mark, word | A tap |
+| --- | --- | --- |
+| Waiting for you | a warning dot, "Needs approval" or "Has a question" | zooms into the pane that asks |
+| Working | a spinner, the work's own message and its percent | zooms into the active pane |
+| Done, not seen | a dot in the ink, "Done" | zooms into the pane that finished |
+| Failed | a danger dot, "Failed" or "Exit 101" | zooms into the pane that failed |
+| Idle | nothing | zooms into the active pane |
+
+Top: the mark, then the title, up to two lines for a window. Under it the state in one line; a figure stays whole and the words before it shorten. At the bottom a 16 glyph per kind of pane, then where it works and how long ago it last changed. Working is a spinner, never green: green means a machine is connected.
+
+Name strong `touch-body`, state and lines `touch-small`, inset 12. The corner is the phone container corner, twice `radius`: 24 by default, 16 in Yaru. No button inside, no live preview, no ghost tiles.

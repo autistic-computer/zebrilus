@@ -163,7 +163,7 @@
   font-weight: var(--penna-text-touch-body-weight);
 }
 
-.penna-sheet-list > .penna-sheet-row[data-penna][data-penna] {
+.penna-sheet-list > :is(.penna-sheet-row, .penna-touch-row)[data-penna][data-penna] {
   --penna-nest-inset: var(--penna-row-inset);
   --penna-nest-outer: var(--penna-phone-radius);
 }

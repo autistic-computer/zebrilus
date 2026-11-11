@@ -431,6 +431,26 @@
   text-overflow: ellipsis;
 }
 
+.penna-machine-name[data-lines="2"] {
+  align-items: flex-start;
+}
+
+.penna-machine-name[data-lines="2"] > span:last-child {
+  display: -webkit-box;
+  white-space: normal;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+
+.penna-machine-name[data-lines="2"] > .penna-tone-dot {
+  margin-top: calc((var(--penna-text-touch-body-line) - var(--penna-space-8)) / 2);
+}
+
+.penna-machine-name[data-lines="2"] > .penna-touch-spinner {
+  margin-top: calc((var(--penna-text-touch-body-line) - var(--penna-icon-size)) / 2);
+}
+
 .penna-machine-state,
 .penna-machine-foot {
   color: var(--penna-fg-muted);
@@ -438,8 +458,62 @@
   line-height: var(--penna-text-touch-small-line);
 }
 
+.penna-machine-state {
+  display: flex;
+  gap: var(--penna-space-4);
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.penna-machine-state > span {
+  flex: none;
+}
+
+.penna-machine-state > span:first-child {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .penna-machine-state[data-tone="warning"] {
   color: var(--penna-warning-ink);
+}
+
+.penna-machine-state[data-tone="danger"] {
+  color: var(--penna-danger-ink);
+}
+
+.penna-machine-state[data-tone="strong"] {
+  color: var(--penna-fg);
+}
+
+.penna-machine-kinds {
+  display: flex;
+  align-items: center;
+  gap: var(--penna-space-4);
+  height: var(--penna-text-touch-small-line);
+  color: var(--penna-muted);
+  --penna-icon-size: 16px;
+}
+
+.penna-machine-where {
+  display: flex;
+  gap: var(--penna-space-8);
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.penna-machine-where > span:first-child {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.penna-machine-age {
+  flex: none;
+  font-variant-numeric: tabular-nums;
 }
 
 .penna-machine-foot {
@@ -447,6 +521,10 @@
   flex-direction: column;
   gap: var(--penna-space-2);
   margin-top: auto;
+}
+
+.penna-touch-header:has(+ .penna-machine-grid) {
+  padding-inline: var(--penna-inset-card);
 }
 
 .penna-machine-tile[data-penna]:is(:active, [data-state~="active"]) > .penna-press {

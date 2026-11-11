@@ -43,3 +43,25 @@ Nothing tappable is under 44 on a phone, so the close grows to the touch rung, a
 ## A question from ssh
 
 Titled for the machine, ssh's own prompt word for word over a 56 field, and an action that says what it does: "Sign in", not "Continue". It comes up over whatever is on screen; closing it cancels the connect. Not built: the thin client asks in a centered dialog.
+
+## Press and hold
+
+```figure uses=sheet,touch,label
+<div style="position: relative; width: 390px; height: 330px; overflow: hidden; border-radius: 28px; background: var(--penna-bg)">
+  <div class="penna-sheet" style="--penna-sheet-rest: 8px">
+    <div class="penna-sheet-scrim"></div>
+    <div class="penna-sheet-frame">
+      <div class="penna-sheet-panel" data-penna="drawer">
+        <div class="penna-sheet-grip"><div class="penna-sheet-grabber" data-penna="grabber"></div></div>
+        <div class="penna-sheet-header"><span class="penna-sheet-title" data-penna-text>macbook</span><button class="penna-sheet-close penna-button" data-penna="button.quiet" data-size="touch" aria-label="Close"><i data-icon="xmark"></i></button></div>
+        <div class="penna-sheet-list">
+          <div class="penna-touch-row" data-penna="phone.row" role="button"><i data-icon="pencil"></i><span class="penna-touch-row-lines"><span>Rename</span></span></div>
+          <div class="penna-touch-row" data-penna="phone.row" data-tone="danger" role="button"><i data-icon="xmark"></i><span class="penna-touch-row-lines"><span>Remove</span></span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+```
+
+Holding a tile, or the header over a group of tiles, opens a sheet titled with its name: one row per thing you can do to it, the one that closes or removes last in danger ink, and no action bar, since each row is an action. Not built natively yet.
