@@ -5,59 +5,34 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Phone machines</title>
 <link rel="stylesheet" href="/penna/penna.css">
+<link rel="stylesheet" href="/penna-src/components/button/button.css">
+<link rel="stylesheet" href="/penna-src/components/input/input.css">
+<link rel="stylesheet" href="/penna-src/components/field/field.css">
 <link rel="stylesheet" href="/penna-src/blocks/touch/touch.css">
+<link rel="stylesheet" href="/penna-src/blocks/compact/compact.css">
+<link rel="stylesheet" href="/penna-src/blocks/sheet/sheet.css">
 <link rel="stylesheet" href="/zz.css">
 <link rel="stylesheet" href="phone.css">
 <script src="/penna/kit.js" data-tokens="/tokens/" data-themes="macos default yaru" data-theme="macos"></script>
 <style>
-  .zz-story.penna-variants { grid-template-columns: repeat(6, 424px); overflow-x: auto; padding-bottom: 12px; }
-  .zz-story > figure > figcaption > i, .zz-gap { font-style: normal; color: var(--penna-warning-ink); }
-
-  .zz-root { position: absolute; inset: 54px 0 0; display: flex; flex-direction: column; }
-  .zz-root > .zz-bento { margin-top: 16px; }
-  .zz-root > .zz-sub { font-size: var(--zz-secondary); line-height: var(--zz-secondary-line); }
-  .zz-root .zz-btile[data-penna] { gap: 2px; padding: var(--zz-tile-pad); }
-  .zz-root .zz-btile-title { gap: 8px; font-size: var(--zz-tile-title); line-height: var(--zz-tile-title-line); font-weight: 600; }
-  .zz-root .zz-btile-detail, .zz-root .zz-btile-line { font-size: var(--zz-secondary); line-height: var(--zz-secondary-line); }
-  .zz-tap { display: flex; flex: none; align-items: center; gap: 4px; min-height: var(--zz-touch); margin: 0 calc(-1 * var(--zz-tile-pad)) calc(-1 * var(--zz-tile-pad)); padding: 0 var(--zz-tile-pad); font-size: var(--zz-secondary); line-height: var(--zz-secondary-line); font-weight: 500; color: var(--penna-accent-ink); --penna-icon-size: 14px; }
-  .zz-tap > span { flex: 1; }
-  .zz-tap[data-quiet] { font-weight: 400; color: var(--penna-fg-faint); }
-  .zz-btile > .zz-row-cancel[data-penna] { display: flex; flex: none; align-self: stretch; align-items: center; justify-content: center; height: var(--zz-tile-row); margin: 0 calc(-1 * var(--zz-tile-pad)) calc(-1 * var(--zz-tile-pad)); padding: 0; font-size: var(--zz-body); line-height: var(--zz-body-line); --penna-r: 0px; --penna-share: 0; --penna-k: var(--penna-style-k); box-shadow: inset 0 1px 0 0 var(--penna-divider); }
-  .zz-addtile[data-penna] { flex-direction: column; align-items: center; justify-content: center; gap: 4px; padding: 18px 28px; text-align: center; }
-  .zz-addtile > b { display: flex; align-items: center; gap: 6px; font-size: var(--zz-tile-title); line-height: var(--zz-tile-title-line); font-weight: 600; color: var(--penna-fg); --penna-icon-size: 20px; }
-  .zz-addtile > span { font-size: var(--zz-secondary); line-height: var(--zz-secondary-line); color: var(--penna-fg-muted); }
-  .zz-ghost[data-penna] { --penna-fill: transparent; --penna-bw: 1.5px; --penna-edge: color-mix(in srgb, var(--penna-fg) 24%, transparent); border-style: dashed; color: var(--penna-fg-muted); }
-  .zz-ghost .zz-btile-title { color: var(--penna-fg-muted); }
-  .zz-ghost .zz-btile-detail { color: var(--penna-fg-faint); }
-  .zz-ghost[data-off] { --penna-edge: color-mix(in srgb, var(--penna-fg) 12%, transparent); opacity: 0.6; }
-  .zz-btile .penna-touch-spinner { --penna-icon-size: 16px; }
-  .zz-phone [data-penna="phone.button"] { min-width: var(--zz-touch); min-height: var(--zz-touch); }
-
-  .zz-zoomed[data-penna] { position: absolute; inset: 0; display: flex; flex-direction: column; padding-top: 54px; }
-  .zz-zoomed > .zz-nav { justify-content: flex-end; }
-  .zz-lede { flex: none; padding: 4px 16px 0; font-size: var(--zz-body); line-height: var(--zz-body-line); color: var(--penna-fg-muted); }
-  .zz-ways { display: grid; flex: none; gap: 8px; padding: 0 12px 10px; }
-  .zz-hint { padding: 2px 8px 0; text-align: center; font-size: var(--zz-secondary); line-height: var(--zz-secondary-line); color: var(--penna-fg-muted); }
-  .zz-ways > [data-penna], .zz-foot > [data-penna] { width: 100%; height: var(--zz-action); font-size: var(--zz-action-text); line-height: var(--zz-body-line); --penna-icon-size: 18px; }
-  .zz-ways .zz-qr { width: 20px; height: 20px; background-size: 6.67px 6.67px; }
-  .zz-zoomed .zz-input-dock > [data-penna="field"] { height: var(--zz-field); padding: 0 3px 0 14px; font-size: var(--zz-body); line-height: var(--zz-body-line); }
-  .zz-zoomed .zz-input-dock > [data-penna="field"] [data-penna="button.send"] { width: var(--zz-touch); height: var(--zz-touch); --penna-icon-size: 18px; }
-  .zz-zoomed .zz-caret::after { height: 22px; }
-  .zz-finder { position: relative; flex: none; width: 290px; height: 290px; margin: 0 auto; border-radius: 22px; background: color-mix(in srgb, var(--penna-fg) 7%, transparent); overflow: hidden; }
-  .zz-finder > i { position: absolute; width: 44px; height: 44px; border: 4px solid var(--penna-fg); }
-  .zz-finder > i:nth-child(1) { top: 26px; left: 26px; border-right: 0; border-bottom: 0; border-top-left-radius: 14px; }
-  .zz-finder > i:nth-child(2) { top: 26px; right: 26px; border-left: 0; border-bottom: 0; border-top-right-radius: 14px; }
-  .zz-finder > i:nth-child(3) { bottom: 26px; left: 26px; border-right: 0; border-top: 0; border-bottom-left-radius: 14px; }
-  .zz-finder > i:nth-child(4) { bottom: 26px; right: 26px; border-left: 0; border-top: 0; border-bottom-right-radius: 14px; }
-  .zz-finder > span { position: absolute; inset: 0; display: grid; place-items: center; color: var(--penna-fg-faint); --penna-icon-size: 28px; }
-  .zz-say { flex: none; padding: 18px 32px 0; text-align: center; font-size: var(--zz-body); line-height: var(--zz-body-line); color: var(--penna-fg-muted); }
-  .zz-say > b { color: var(--penna-fg); font-weight: 500; }
-  .zz-foot { display: flex; flex: none; flex-direction: column; gap: 10px; padding: 0 20px 52px; }
-  .zz-foot > [data-penna="button.quiet"] { color: var(--penna-muted); }
-  .zz-mid { display: flex; flex: 1; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 0 32px; text-align: center; }
-  .zz-mid > [data-icon] { color: var(--penna-muted); --penna-icon-size: 34px; }
-  .zz-mid > b { font-size: var(--penna-text-touch-title-size); line-height: var(--penna-text-touch-title-line); font-weight: 600; }
-  .zz-mid > span { font-size: var(--zz-body); line-height: var(--zz-body-line); color: var(--penna-fg-muted); }
+  .zz-story > figure > figcaption > i { color: var(--penna-warning-ink); }
+  .zz-over { position: absolute; inset: 54px 0 0; display: flex; flex-direction: column; }
+  .zz-over > .penna-machine-grid { margin: var(--penna-gap-group) var(--penna-inset-pane) 0; }
+  .zz-full[data-penna] { position: absolute; inset: 0; padding-top: 54px; }
+  .zz-phone > .penna-sheet { z-index: 16; }
+  .zz-phone > .zz-kb[data-over] { position: absolute; z-index: 17; right: 0; bottom: 0; left: 0; }
+  .zz-sheet-body { display: flex; flex-direction: column; gap: var(--penna-gap-related); padding: 0 var(--penna-inset-pane); color: var(--penna-fg-muted); font-size: var(--penna-text-touch-body-size); line-height: var(--penna-text-touch-body-line); }
+  .zz-say { margin: 0; color: var(--penna-fg-muted); font-size: var(--penna-text-touch-small-size); line-height: var(--penna-text-touch-small-line); }
+  .zz-upper { margin-top: 96px; }
+  .zz-phone .penna-input > .penna-input-caret { margin-left: -3px; background: var(--penna-accent); }
+  .zz-finder { position: relative; flex: none; aspect-ratio: 1; overflow: hidden; border-radius: var(--penna-radius); background: radial-gradient(circle at 40% 35%, #4a4f57, #1c1e22 75%); }
+  .zz-finder > i { position: absolute; width: 48px; height: 48px; border: 4px solid #fff; }
+  .zz-finder > i:nth-child(1) { top: 56px; left: 56px; border-right: 0; border-bottom: 0; border-top-left-radius: 16px; }
+  .zz-finder > i:nth-child(2) { top: 56px; right: 56px; border-left: 0; border-bottom: 0; border-top-right-radius: 16px; }
+  .zz-finder > i:nth-child(3) { bottom: 56px; left: 56px; border-right: 0; border-top: 0; border-bottom-left-radius: 16px; }
+  .zz-finder > i:nth-child(4) { bottom: 56px; right: 56px; border-left: 0; border-top: 0; border-bottom-right-radius: 16px; }
+  .zz-finder > span { position: absolute; top: 50%; left: 50%; display: grid; place-items: center; width: 150px; height: 150px; margin: -75px 0 0 -75px; border-radius: 10px; background: #f4f4f2; color: #111; transform: rotate(-4deg); }
+  .zz-finder .zz-qr { width: 112px; height: 112px; border-radius: 4px; background-size: 28px 28px; box-shadow: inset 0 0 0 6px currentColor; }
 
   .zz-live { display: grid; grid-template-columns: 424px minmax(0, 1fr); gap: 32px; align-items: start; }
   .zz-live > figcaption { display: grid; gap: 10px; max-width: 64ch; padding-top: 10px; font-size: var(--penna-text-small-size); line-height: var(--penna-text-small-line); color: var(--penna-muted); }
@@ -65,18 +40,16 @@
   .zz-live > figcaption code { font: 12px/16px var(--penna-mono); color: var(--penna-fg); }
   .zz-stage { position: absolute; inset: 0; overflow: hidden; }
   .zz-layer { position: absolute; top: 0; left: 0; width: 402px; height: 874px; transform-origin: 0 0; }
-  .zz-child { overflow: hidden; background: var(--penna-bg); }
-  .zz-child > div { position: absolute; top: 0; left: 0; width: 402px; height: 874px; }
+  .zz-child { overflow: hidden; }
+  .zz-child > .penna-zoom-card { width: 402px; height: 874px; }
   .zz-live [data-zoom] { cursor: var(--penna-click-cursor); }
-  .zz-place { position: absolute; inset: 0; display: flex; flex-direction: column; padding-top: 54px; }
-  .zz-place > .zz-mid { padding-bottom: 120px; }
 </style>
 </head>
 <body>
 <main class="zz-page">
   <div class="zz-intro">
     <h1>Machines</h1>
-    <p>The app's root is the machines overview, the bento grid today's All hosts already is. With nothing saved it is the same grid with one tile. The zoom is the navigation: machines, then a machine, then a pane, each step growing the tile you tapped and shrinking back the way you came. Adding a machine is the same move into the add tile. On a tailnet there is nothing to add: the machines are already in the grid. One way in per thing, no lists, no extra sheets. Caption text in <i class="zz-gap">this ink</i> marks what the phone can't do today.</p>
+    <p>The app opens on the machines overview, and it holds only machines you added. With nothing added it is the title, the add tile and the gear: that is the first run, no welcome page. Going anywhere is a zoom: machines, then a machine, then a pane, each step growing the tile you tapped and shrinking back the way you came. Adding a machine is the same move into the add tile, and machines found on your tailnet wait there as rows, not on the overview. Only a short question, like the ssh password, is a sheet. Every frame is built from the <a href="components.html">phone components</a>. Caption text in <i>italics</i> says what the native app does today where it differs.</p>
   </div>
 
   <section>
@@ -84,86 +57,137 @@
     <div class="penna-variants zz-phones zz-story">
       <figure>
         <div class="zz-phone">
-          <div class="zz-root">
-            <div class="zz-large">Machines</div>
-            <div class="zz-bento">
-              <div class="zz-btile zz-addtile" data-penna="phone.add" data-w="4" data-h="2"><b><i data-icon="plus"></i>Add machine</b><span>zz runs on your computers. This phone connects to them.</span></div>
+          <div class="zz-over">
+            <div class="penna-zoom-title">Machines</div>
+            <div class="penna-machine-grid">
+              <div class="penna-machine-tile" data-penna="phone.add" data-add role="button" data-tap><i data-icon="plus"></i>Add machine<span class="penna-press"></span></div>
             </div>
           </div>
-          <div class="zz-bar"><span class="zz-grow"></span><div data-penna="floating" style="display: inline-flex; align-items: center; height: 56px; padding: 0 6px"><button data-penna="phone.button"><i data-icon="settings"></i></button></div></div>
+          <div class="zz-bar"><span class="zz-grow"></span><span class="penna-touch-disc" data-penna="floating"><button class="penna-touch-icon" data-penna="phone.button" data-tap aria-label="Settings"><i data-icon="settings"></i></button></span></div>
         </div>
-        <figcaption><b>1. Empty, no tailnet</b>The overview with nothing saved: the title, the add tile, the floating gear. Today the same grid says "Hosts" and its add tile is one full-width row.</figcaption>
+        <figcaption><b>1. Empty</b>Nothing added yet: the title, the add tile alone, the gear disc. This is the first run. <i>Today the same grid is titled Hosts and its add tile, Add host, is one full-width row.</i></figcaption>
       </figure>
 
       <figure>
         <div class="zz-phone">
-          <div class="zz-root">
-            <div class="zz-large">Machines</div>
-            <div class="zz-sub">4 on your tailnet</div>
-            <div class="zz-bento" data-grid="found"></div>
-          </div>
-          <div class="zz-bar"><span class="zz-grow"></span><div data-penna="floating" style="display: inline-flex; align-items: center; height: 56px; padding: 0 6px"><button data-penna="phone.button"><i data-icon="settings"></i></button></div></div>
-        </div>
-        <figcaption><b>2. Empty, on a tailnet</b>What a Tailscale user sees first: the machines on the tailnet are already there as ghost tiles, dashed and muted. The whole tile is the button: tapping one connects it. homelab runs no zz, so it is dimmed and does nothing. The add tile stays last. No step to find them. <i>Today tiles carry small 28 px Connect and Cancel buttons. The phone rides the Tailscale app's VPN, learns the other machines only after it reaches one, connects them at once instead of showing ghosts, and lists only ones running zz.</i></figcaption>
-      </figure>
-
-      <figure>
-        <div class="zz-phone">
-          <div class="zz-zoomed" data-penna="phone.card">
-            <div class="zz-nav"><button data-penna="phone.button"><i data-icon="xmark"></i></button></div>
-            <div class="zz-large">Add machine</div>
-            <div class="zz-lede">Where zz runs, reached with your own ssh.</div>
-            <div class="zz-grow"></div>
-            <div class="zz-input-dock">
-              <label data-penna="field" data-size="touch" data-state="focused"><span class="zz-typed"><span>fabrico@</span><span class="zz-caret"></span><span class="zz-ph">host</span></span><button data-penna="button.send" data-emphasis="solid" data-solid="primary" style="color: var(--penna-on-primary)"><i data-icon="arrow-up"></i></button></label>
+          <div class="penna-zoom-card zz-full" data-penna="phone.card">
+            <div class="penna-zoom-top"><button class="penna-touch-icon" data-penna="phone.button" data-tap aria-label="Close"><i data-icon="xmark"></i></button></div>
+            <div class="penna-zoom-title">Add machine</div>
+            <div class="penna-zoom-body">
+              <div class="penna-field" data-size="touch-large"><span class="penna-field-label">Address</span><label class="penna-input" data-penna="field" data-size="touch-large" data-state="focused"><span class="penna-input-caret"></span><input placeholder="user@host"><span class="penna-input-suffix"><button class="penna-button" data-penna="button.quiet" data-size="touch" data-shape="icon" data-tap aria-label="Scan QR"><span class="zz-qr"></span></button></span></label><span class="penna-field-help">Where zz runs, reached with your own ssh.</span></div>
             </div>
-            <div class="zz-ways">
-              <button data-penna="button" data-size="touch"><span class="zz-qr"></span>Scan QR</button>
-              <span class="zz-hint">With Tailscale on this phone, machines on your tailnet show up in Machines by themselves.</span>
-            </div>
+            <div class="penna-action-bar" data-keys><button class="penna-button" data-penna="button" data-tone="primary" data-prominent data-size="touch-large" disabled aria-disabled="true"><span class="penna-label">Connect</span></button></div>
             <div class="zz-kb" data-keyboard></div>
           </div>
         </div>
-        <figcaption><b>3. Into the add tile</b>The tile grows to the screen the way a machine tile does, the grid fading out behind. The address is focused, the keyboard up, Scan QR under it, and one line for Tailscale users. The close control, a drag down or a pinch zooms back, as when leaving a machine. <i>Today Add host is a bottom sheet; the drag and pinch out of a zoom don't exist yet, only the pill drag.</i></figcaption>
+        <figcaption><b>2. Into the add tile</b>The tile grows into the add card. With no tailnet the address field is alone, focused, with the keyboard up; Connect rides the keyboard and stays off until something is typed. The close control, a drag down or a pinch zooms back. <i>Today Add host is a bottom sheet; drag and pinch out of a zoom don't exist yet.</i></figcaption>
       </figure>
 
       <figure>
         <div class="zz-phone">
-          <div class="zz-zoomed" data-penna="phone.card">
-            <div class="zz-nav"><button data-penna="phone.button"><i data-icon="xmark"></i></button></div>
-            <div class="zz-large">Scan QR</div>
-            <div class="zz-grow"></div>
-            <div class="zz-finder"><i></i><i></i><i></i><i></i><span><span class="zz-qr" style="width: 30px; height: 30px; opacity: 0.5"></span></span></div>
-            <div class="zz-say">On your computer, open zz <b>Settings, Hosts</b>. Under Tailscale, <b>Add this machine to a phone</b> shows the code.</div>
-            <div class="zz-grow"></div>
-            <div class="zz-foot"><button data-penna="button.quiet" data-size="touch">Type an address instead</button></div>
+          <div class="penna-zoom-card zz-full" data-penna="phone.card">
+            <div class="penna-zoom-top"><button class="penna-touch-icon" data-penna="phone.button" data-tap aria-label="Close"><i data-icon="xmark"></i></button></div>
+            <div class="penna-zoom-title">Add machine</div>
+            <div class="penna-zoom-body">
+              <div>
+                <div class="penna-touch-header"><span>Found on your tailnet</span><span class="penna-touch-count">3</span></div>
+                <div class="penna-touch-group" data-penna="settings.card">
+                  <div class="penna-touch-row" data-penna="phone.row" data-lines="2" role="button" data-tap><i data-icon="laptop"></i><span class="penna-touch-row-lines"><span>macbook</span><span>macOS · runs zz</span></span><i data-icon="plus" data-add></i></div>
+                  <div class="penna-touch-row" data-penna="phone.row" data-lines="2" role="button" data-tap><i data-icon="hard-drive"></i><span class="penna-touch-row-lines"><span>alienware</span><span>Linux · runs zz</span></span><i data-icon="plus" data-add></i></div>
+                  <div class="penna-touch-row" data-penna="phone.row" data-lines="2" data-state="disabled" aria-disabled="true"><i data-icon="hard-drive"></i><span class="penna-touch-row-lines"><span>homelab</span><span>No zz on it yet</span></span></div>
+                </div>
+              </div>
+              <div class="penna-field" data-size="touch-large"><span class="penna-field-label">Or an address</span><label class="penna-input" data-penna="field" data-size="touch-large"><input placeholder="user@host"><span class="penna-input-suffix"><button class="penna-button" data-penna="button.quiet" data-size="touch" data-shape="icon" data-tap aria-label="Scan QR"><span class="zz-qr"></span></button></span></label></div>
+            </div>
+            <div class="penna-action-bar"><button class="penna-button" data-penna="button" data-tone="primary" data-prominent data-size="touch-large" disabled aria-disabled="true"><span class="penna-label">Connect</span></button></div>
           </div>
         </div>
-        <figcaption><b>4. Scan QR</b>The field becomes a viewfinder. The code holds <code>zz://host/&lt;machine&gt;.ts.net:&lt;port&gt;</code>, so it only works with the phone on the same tailnet. <i>Today zz has no camera of its own: the system camera opens the link into zz (release builds claim zz://, dev builds only zz-dev://).</i></figcaption>
+        <figcaption><b>3. The add card on a tailnet</b>Machines found on your tailnet come first. Tapping one adds it and connects; homelab has no zz, so its row is off and says why. The keyboard stays down until the field is tapped. <i>Today the phone rides the Tailscale app's VPN, learns the other machines only after it reaches one over the tailnet, and then saves and connects every one running zz at once, with no list to pick from.</i></figcaption>
       </figure>
 
       <figure>
         <div class="zz-phone">
-          <div class="zz-root">
-            <div class="zz-large">Machines</div>
-            <div class="zz-sub">4 on your tailnet · 1 connecting</div>
-            <div class="zz-bento" data-grid="connecting"></div>
+          <div class="penna-zoom-card zz-full" data-penna="phone.card">
+            <div class="penna-zoom-top"><button class="penna-touch-icon" data-penna="phone.button" data-tap aria-label="Close"><i data-icon="xmark"></i></button></div>
+            <div class="penna-zoom-title">Add machine</div>
+            <div class="penna-zoom-body">
+              <div class="zz-finder"><i></i><i></i><i></i><i></i><span><span class="zz-qr"></span></span></div>
+              <p class="zz-say">On your computer, the code is in zz Settings, Hosts, under Add this machine to a phone.</p>
+            </div>
+            <div class="penna-action-bar"><button class="penna-button" data-penna="button" data-size="touch-large" data-tap><span class="penna-label">Type an address instead</span></button></div>
           </div>
-          <div class="zz-bar"><span class="zz-grow"></span><div data-penna="floating" style="display: inline-flex; align-items: center; height: 56px; padding: 0 6px"><button data-penna="phone.button"><i data-icon="settings"></i></button></div></div>
         </div>
-        <figcaption><b>5. Connecting</b>macbook turns solid with a spinner. Cancel is a full-width row on the tile's bottom edge, 48 px tall, not a small button. When ssh asks for a password, the prompt zooms into this tile, a card like 3. Not drawn here.</figcaption>
+        <figcaption><b>4. Scan QR</b>The field's scan mark turns the same card into the camera. The code holds <code>zz://host/&lt;machine&gt;.ts.net:&lt;port&gt;</code>; once read, the machine is added and connects, as a found row does. The button brings the field back, focused. <i>Today zz has no camera of its own: the system camera opens the link into zz, and dev builds claim only <code>zz-dev://</code>, so the code opens only a release build.</i></figcaption>
       </figure>
 
       <figure>
         <div class="zz-phone">
-          <div class="zz-root">
-            <div class="zz-large">Machines</div>
-            <div class="zz-sub">4 machines · 2 connected</div>
-            <div class="zz-bento" data-grid="populated"></div>
+          <div class="zz-over">
+            <div class="penna-zoom-title">Machines</div>
+            <div class="penna-machine-grid">
+              <div class="penna-machine-tile" data-penna="phone.card" role="button" data-tap><span class="penna-machine-name"><i class="penna-touch-spinner" data-icon="loader"></i><span>xps</span></span><span class="penna-machine-state">Connecting</span><span class="penna-machine-foot"><span>fabrico@xps</span></span><span class="penna-press"></span></div>
+              <div class="penna-machine-tile" data-penna="phone.add" data-add role="button" data-tap><i data-icon="plus"></i>Add machine<span class="penna-press"></span></div>
+            </div>
           </div>
-          <div class="zz-bar"><span class="zz-grow"></span><div data-penna="floating" style="display: inline-flex; align-items: center; height: 56px; padding: 0 6px"><button data-penna="phone.button"><i data-icon="settings"></i></button></div></div>
+          <div class="zz-bar"><span class="zz-grow"></span><span class="penna-touch-disc" data-penna="floating"><button class="penna-touch-icon" data-penna="phone.button" data-tap aria-label="Settings"><i data-icon="settings"></i></button></span></div>
         </div>
-        <figcaption><b>6. Populated</b>Connected machines count chats, with the waiting one in the warning tone. xps is saved but offline; tapping it connects. homelab is still a ghost. Tapping a connected tile zooms into that machine.</figcaption>
+        <figcaption><b>5. Connecting</b>Connect zooms the card back out, and the new machine's tile sits before the add tile with a spinner, "Connecting" and how it is reached. Nothing in the tile is a button: tapping it zooms into what it is doing. <i>Today tiles carry small 32 px Connect and Cancel buttons (<code>overview.rs:597</code>, <code>:616</code>).</i></figcaption>
+      </figure>
+
+      <figure>
+        <div class="zz-phone">
+          <div class="penna-zoom-card zz-full" data-penna="phone.card">
+            <div class="penna-zoom-top"><button class="penna-touch-icon" data-penna="phone.button" data-tap aria-label="Close"><i data-icon="xmark"></i></button></div>
+            <div class="penna-zoom-title">xps</div>
+            <div class="penna-zoom-body">
+              <div class="penna-empty zz-upper"><i class="penna-touch-spinner" data-icon="loader"></i><b>Connecting</b><span>Waiting for ssh on fabrico@xps</span></div>
+            </div>
+            <div class="penna-action-bar"><button class="penna-button" data-penna="button" data-size="touch-large" data-tap><span class="penna-label">Cancel</span></button></div>
+          </div>
+        </div>
+        <figcaption><b>6. Into a connecting tile</b>The tile grows into a small card that says what it waits for. Cancel is the one action, drawn as a secondary since stopping is not what the card is for; it zooms back to the tile, now not connected. When the connection lands the card becomes the machine. <i>Not in the app today: Cancel is the button in the tile.</i></figcaption>
+      </figure>
+
+      <figure>
+        <div class="zz-phone">
+          <div class="zz-over">
+            <div class="penna-zoom-title">Machines</div>
+            <div class="penna-machine-grid">
+              <div class="penna-machine-tile" data-penna="phone.card" role="button" data-tap><span class="penna-machine-name"><i class="penna-touch-spinner" data-icon="loader"></i><span>xps</span></span><span class="penna-machine-state">Connecting</span><span class="penna-machine-foot"><span>fabrico@xps</span></span><span class="penna-press"></span></div>
+              <div class="penna-machine-tile" data-penna="phone.add" data-add role="button" data-tap><i data-icon="plus"></i>Add machine<span class="penna-press"></span></div>
+            </div>
+          </div>
+          <div class="penna-sheet" style="--penna-sheet-rest: 292px">
+            <div class="penna-sheet-scrim"></div>
+            <div class="penna-sheet-frame">
+              <div class="penna-sheet-panel" data-penna="drawer">
+                <div class="penna-sheet-grip"><div class="penna-sheet-grabber" data-penna="grabber"></div></div>
+                <div class="penna-sheet-header"><span class="penna-sheet-title">Sign in to xps</span><button class="penna-sheet-close penna-button" data-penna="button.quiet" data-size="touch" data-tap aria-label="Close"><i data-icon="xmark"></i></button></div>
+                <div class="zz-sheet-body"><span>fabrico@xps's password:</span><label class="penna-input" data-penna="field" data-size="touch-large" data-state="focused"><input type="password" value="hunter22"></label></div>
+                <div class="penna-action-bar" data-keys><button class="penna-button" data-penna="button" data-tone="primary" data-prominent data-size="touch-large" data-tap><span class="penna-label">Sign in</span></button></div>
+              </div>
+            </div>
+          </div>
+          <div class="zz-kb" data-keyboard data-over></div>
+        </div>
+        <figcaption><b>7. ssh asks for a password</b>A sheet rises over whatever is on screen, riding the keyboard: titled for the machine, ssh's own prompt word for word, the field, Sign in. Closing it cancels the connect. <i>Today the prompt is a centered dialog whose button reads Continue.</i></figcaption>
+      </figure>
+
+      <figure>
+        <div class="zz-phone">
+          <div class="zz-over">
+            <div class="penna-zoom-title">Machines</div>
+            <div class="penna-machine-grid">
+              <div class="penna-machine-tile" data-penna="phone.card" role="button" data-tap><span class="penna-machine-name"><span class="penna-tone-dot" data-tone="warning"></span><span>macbook</span></span><span class="penna-machine-state" data-tone="warning">1 waiting for you</span><span class="penna-machine-foot"><span>3 chats</span><span>2 working</span></span><span class="penna-press"></span></div>
+              <div class="penna-machine-tile" data-penna="phone.card" role="button" data-tap><span class="penna-machine-name"><span class="penna-tone-dot"></span><span>xps</span></span><span class="penna-machine-state">Connected</span><span class="penna-machine-foot"><span>2 chats</span></span><span class="penna-press"></span></div>
+              <div class="penna-machine-tile" data-penna="phone.card" role="button" data-tap><span class="penna-machine-name"><span class="penna-tone-dot"></span><span>alienware</span></span><span class="penna-machine-state">Connected</span><span class="penna-machine-foot"><span>1 chat</span><span>cachyos-upgrade</span></span><span class="penna-press"></span></div>
+              <div class="penna-machine-tile" data-penna="phone.card" role="button" data-tap><span class="penna-machine-name"><span class="penna-tone-dot" data-tone="off"></span><span>thinkpad</span></span><span class="penna-machine-state">Not connected</span><span class="penna-machine-foot"><span>Last seen 2 days ago</span></span><span class="penna-press"></span></div>
+              <div class="penna-machine-tile" data-penna="phone.add" data-add role="button" data-tap><i data-icon="plus"></i>Add machine<span class="penna-press"></span></div>
+            </div>
+          </div>
+          <div class="zz-bar"><span class="zz-grow"></span><span class="penna-touch-disc" data-penna="floating"><button class="penna-touch-icon" data-penna="phone.button" data-tap aria-label="Settings"><i data-icon="settings"></i></button></span></div>
+        </div>
+        <figcaption><b>8. Populated</b>Connected machines count their chats; macbook has one waiting, said in words and a warning dot. thinkpad is saved but offline: tapping it reconnects. The add tile stays last. <i>Today tiles say sessions and panes at 16 and 13 px, and an offline tile carries a Connect button.</i></figcaption>
       </figure>
     </div>
   </section>
@@ -174,38 +198,52 @@
       <div class="zz-phone" data-live>
         <div class="zz-stage">
           <div class="zz-layer" data-parent>
-            <div class="zz-root">
-              <div class="zz-large">Machines</div>
-              <div class="zz-sub">4 machines · 2 connected</div>
-              <div class="zz-bento" data-grid="live"></div>
+            <div class="zz-over">
+              <div class="penna-zoom-title">Machines</div>
+              <div class="penna-machine-grid">
+                <div class="penna-machine-tile" data-penna="phone.card" role="button" data-zoom="macbook"><span class="penna-machine-name"><span class="penna-tone-dot" data-tone="warning"></span><span>macbook</span></span><span class="penna-machine-state" data-tone="warning">1 waiting for you</span><span class="penna-machine-foot"><span>3 chats</span><span>2 working</span></span><span class="penna-press"></span></div>
+                <div class="penna-machine-tile" data-penna="phone.card" role="button" data-zoom="xps"><span class="penna-machine-name"><span class="penna-tone-dot"></span><span>xps</span></span><span class="penna-machine-state">Connected</span><span class="penna-machine-foot"><span>2 chats</span></span><span class="penna-press"></span></div>
+                <div class="penna-machine-tile" data-penna="phone.card" role="button" data-zoom="alienware"><span class="penna-machine-name"><span class="penna-tone-dot"></span><span>alienware</span></span><span class="penna-machine-state">Connected</span><span class="penna-machine-foot"><span>1 chat</span><span>cachyos-upgrade</span></span><span class="penna-press"></span></div>
+                <div class="penna-machine-tile" data-penna="phone.card" role="button"><span class="penna-machine-name"><span class="penna-tone-dot" data-tone="off"></span><span>thinkpad</span></span><span class="penna-machine-state">Not connected</span><span class="penna-machine-foot"><span>Last seen 2 days ago</span></span><span class="penna-press"></span></div>
+                <div class="penna-machine-tile" data-penna="phone.add" data-add role="button" data-zoom="add"><i data-icon="plus"></i>Add machine<span class="penna-press"></span></div>
+              </div>
             </div>
           </div>
         </div>
-        <div class="zz-bar" data-gear><span class="zz-grow"></span><div data-penna="floating" style="display: inline-flex; align-items: center; height: 56px; padding: 0 6px"><button data-penna="phone.button"><i data-icon="settings"></i></button></div></div>
+        <div class="zz-bar" data-gear><span class="zz-grow"></span><span class="penna-touch-disc" data-penna="floating"><button class="penna-touch-icon" data-penna="phone.button" aria-label="Settings"><i data-icon="settings"></i></button></span></div>
       </div>
       <figcaption>
-        <span><b>Live.</b> Tap the add tile, then the close control. Tap macbook or alienware to zoom into a stand-in for the machine, and its pill to come back out.</span>
-        <span><b>Motion, from the app.</b> The overview's zoom is a spring, not a timed curve: <code>TAP_SPRING</code>, stiffness 320, damping 36, mass 1 (<code>libs/penna/src/blocks/touch/lift.rs:15</code>), so just over critically damped, settling in about half a second with no overshoot. A drag uses <code>SPRING</code> 900, 60, 1, commits past a third of 300 px or at 500 px/s.</span>
-        <span><b>What moves</b> (<code>clients/app/src/app/compact/overview.rs:142</code>): the tile's layer scales from tile width over screen width to 1 and slides from the tile's corner to the screen's; its height grows from the tile's shape to the screen; its corners go from 10 px to none. The grid behind scales up around the tile by the same ratio. They cross-fade between 30% and 70% of the way. The bottom bars cross-fade over the whole move.</span>
+        <span><b>Live.</b> Tap macbook, xps or alienware to zoom into a stand-in for the machine, or the add tile to zoom into the add card; the close control zooms back out.</span>
+        <span><b>Motion, from the app.</b> The overview's zoom is a spring, not a timed curve: <code>TAP_SPRING</code>, stiffness 320, damping 36, mass 1 (<code>libs/penna/src/blocks/touch/lift.rs:15</code>), so just over critically damped, settling in about half a second with no overshoot. A drag uses <code>SPRING</code> 900, 60, 1, and commits past a third of 300 px or at 500 px/s.</span>
+        <span><b>What moves</b> (<code>clients/app/src/app/compact/overview.rs:142</code>): the tile's layer scales from tile width over screen width to 1 and slides from the tile's corner to the screen's; its height grows from the tile's shape to the screen; its corners go from the tile's to none. The grid behind scales up around the tile by the same ratio. They cross-fade between 30% and 70% of the way. The gear fades over the whole move.</span>
         <span><b>Reduced motion</b> jumps to the end, as the app does.</span>
       </figcaption>
     </figure>
   </section>
 
-  <template id="zz-add-page">
-    <div class="zz-zoomed" data-penna="phone.card">
-      <div class="zz-nav"><button data-penna="phone.button" data-close><i data-icon="xmark"></i></button></div>
-      <div class="zz-large">Add machine</div>
-      <div class="zz-lede">Where zz runs, reached with your own ssh.</div>
-      <div class="zz-grow"></div>
-      <div class="zz-input-dock">
-        <label data-penna="field" data-size="touch" data-state="focused"><span class="zz-typed"><span class="zz-caret"></span><span class="zz-ph">user@host</span></span><button data-penna="button.send" data-emphasis="solid" data-solid="primary" data-state="disabled" style="color: var(--penna-on-primary)"><i data-icon="arrow-up"></i></button></label>
+  <template id="zz-machine-card">
+    <div class="penna-zoom-card zz-full" data-penna="phone.card">
+      <div class="penna-zoom-top"><button class="penna-touch-icon" data-penna="phone.button" data-close aria-label="Close"><i data-icon="xmark"></i></button></div>
+      <div class="penna-zoom-title" data-name></div>
+      <div class="penna-zoom-body"><p class="zz-say" data-line></p></div>
+    </div>
+  </template>
+
+  <template id="zz-add-card">
+    <div class="penna-zoom-card zz-full" data-penna="phone.card">
+      <div class="penna-zoom-top"><button class="penna-touch-icon" data-penna="phone.button" data-close aria-label="Close"><i data-icon="xmark"></i></button></div>
+      <div class="penna-zoom-title">Add machine</div>
+      <div class="penna-zoom-body">
+        <div>
+          <div class="penna-touch-header"><span>Found on your tailnet</span><span class="penna-touch-count">2</span></div>
+          <div class="penna-touch-group" data-penna="settings.card">
+            <div class="penna-touch-row" data-penna="phone.row" data-lines="2" role="button"><i data-icon="hard-drive"></i><span class="penna-touch-row-lines"><span>studio</span><span>Linux · runs zz</span></span><i data-icon="plus" data-add></i></div>
+            <div class="penna-touch-row" data-penna="phone.row" data-lines="2" data-state="disabled" aria-disabled="true"><i data-icon="hard-drive"></i><span class="penna-touch-row-lines"><span>homelab</span><span>No zz on it yet</span></span></div>
+          </div>
+        </div>
+        <div class="penna-field" data-size="touch-large"><span class="penna-field-label">Or an address</span><label class="penna-input" data-penna="field" data-size="touch-large"><input placeholder="user@host"><span class="penna-input-suffix"><button class="penna-button" data-penna="button.quiet" data-size="touch" data-shape="icon" aria-label="Scan QR"><span class="zz-qr"></span></button></span></label></div>
       </div>
-      <div class="zz-ways">
-        <button data-penna="button" data-size="touch"><span class="zz-qr"></span>Scan QR</button>
-        <span class="zz-hint">With Tailscale on this phone, machines on your tailnet show up in Machines by themselves.</span>
-      </div>
-      <div class="zz-kb" data-keyboard></div>
+      <div class="penna-action-bar"><button class="penna-button" data-penna="button" data-tone="primary" data-prominent data-size="touch-large" disabled aria-disabled="true"><span class="penna-label">Connect</span></button></div>
     </div>
   </template>
 </main>
@@ -216,31 +254,11 @@
     phone.insertAdjacentHTML("afterbegin", status);
     phone.insertAdjacentHTML("beforeend", `<span class="zz-home"></span>`);
   }
-
   const rows = [["q", "w", "e", "r", "t", "y", "u", "i", "o", "p"], ["a", "s", "d", "f", "g", "h", "j", "k", "l"], ["⇧", "z", "x", "c", "v", "b", "n", "m", "⌫"]];
   const wide = new Set(["⇧", "⌫"]);
   const keys = (row) => row.map((key) => (wide.has(key) ? `<i data-w>${key}</i>` : `<i>${key}</i>`)).join("");
   const board = rows.map((row) => `<div class="zz-kb-row">${keys(row)}</div>`).join("") + `<div class="zz-kb-row"><i data-w>123</i><i data-w>☺</i><i data-space>space</i><i data-ret>go</i></div>`;
-  const fillKeyboards = (root) => {
-    for (const kb of root.querySelectorAll("[data-keyboard]")) kb.innerHTML = board;
-  };
-  fillKeyboards(document);
-
-  const tap = (text, quiet) => `<span class="zz-tap"${quiet ? " data-quiet" : ""}><span>${text}</span>${quiet ? "" : `<i data-icon="chevron-right"></i>`}</span>`;
-  const ghost = (name, runs) => `<div class="zz-btile zz-ghost" data-penna="phone.add" data-w="2" data-h="2"${runs ? ` role="button"` : ` data-off aria-disabled="true"`}><span class="zz-btile-title"><span>${name}</span></span><span class="zz-btile-detail">On your tailnet</span><span class="zz-grow"></span>${runs ? tap("Tap to connect") : tap("No zz yet", true)}</div>`;
-  const connecting = (name) => `<div class="zz-btile" data-penna="phone.card" data-w="2" data-h="2"><span class="zz-btile-title"><i class="penna-touch-spinner" data-icon="loader"></i><span>${name}</span></span><span class="zz-btile-detail">Connecting…</span><span class="zz-grow"></span><button class="zz-row-cancel" data-penna="button.quiet">Cancel</button></div>`;
-  const live = (name, detail, lines, zoom) => `<div class="zz-btile" data-penna="phone.card" data-w="2" data-h="2"${zoom ? ` data-zoom="${name}"` : ""}><span class="zz-btile-title"><span class="penna-tone-dot"></span><span>${name}</span></span><span class="zz-btile-detail">${detail}</span><span class="zz-grow"></span>${lines}</div>`;
-  const offline = (name) => `<div class="zz-btile" data-penna="phone.card" data-w="2" data-h="2" role="button"><span class="zz-btile-title"><span class="penna-tone-dot" data-tone="off"></span><span>${name}</span></span><span class="zz-btile-detail">Not connected</span><span class="zz-grow"></span>${tap("Tap to connect")}</div>`;
-  const add = (zoom) => `<div class="zz-btile zz-addtile" data-penna="phone.add" data-w="4" data-h="1"${zoom ? ` data-zoom="add"` : ""}><b><i data-icon="plus"></i>Add machine</b></div>`;
-  const macbook = (zoom) => live("macbook", "3 chats · 2 panes", `<span class="zz-btile-line" data-warn><i></i>1 waiting</span><span class="zz-btile-line"><i></i>2 working</span>`, zoom);
-  const alienware = (zoom) => live("alienware", "1 chat · 1 pane", `<span class="zz-btile-line"><i style="background: var(--penna-fg-faint)"></i>cachyos-upgrade</span>`, zoom);
-  const grids = {
-    found: [ghost("macbook", true), ghost("alienware", true), ghost("xps", true), ghost("homelab", false), add(false)],
-    connecting: [connecting("macbook"), ghost("alienware", true), ghost("xps", true), ghost("homelab", false), add(false)],
-    populated: [macbook(false), alienware(false), offline("xps"), ghost("homelab", false), add(false)],
-    live: [macbook(true), alienware(true), offline("xps"), ghost("homelab", false), add(true)],
-  };
-  for (const grid of document.querySelectorAll("[data-grid]")) grid.innerHTML = grids[grid.dataset.grid].join("");
+  for (const kb of document.querySelectorAll("[data-keyboard]")) kb.innerHTML = board;
 
   const phone = document.querySelector("[data-live]");
   const stage = phone.querySelector(".zz-stage");
@@ -248,7 +266,6 @@
   const gear = phone.querySelector("[data-gear]");
   const W = 402;
   const H = 874;
-  const RADIUS = 10;
   const FADE_START = 0.3;
   const FADE_SPAN = 0.4;
   const SPRING = { stiffness: 320, damping: 36, mass: 1 };
@@ -257,7 +274,6 @@
   const reduced = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
 
   let child = null;
-  let pill = null;
   let tile = null;
   let progress = 1;
   let velocity = 0;
@@ -274,20 +290,17 @@
     parent.style.opacity = fade(p);
     parent.style.transform = `translate(${(-tile.x / rest) * (1 - p)}px, ${(-tile.y / rest) * (1 - p)}px) scale(${parentScale})`;
     child.style.height = `${Math.max(0, H + (tile.height / rest - H) * p)}px`;
-    child.style.borderRadius = `${(RADIUS / childScale) * p}px`;
+    child.style.borderRadius = `${(tile.radius / childScale) * p}px`;
     child.style.opacity = fade(1 - p);
     child.style.transform = `translate(${tile.x * p}px, ${tile.y * p}px) scale(${childScale})`;
     gear.style.opacity = p;
-    if (pill) pill.style.opacity = 1 - p;
     const still = p >= 1;
     parent.style.pointerEvents = p > 0.5 ? "" : "none";
     child.style.pointerEvents = p < 0.5 ? "" : "none";
     gear.style.pointerEvents = still ? "" : "none";
     if (still && target === 1) {
       child.remove();
-      pill?.remove();
       child = null;
-      pill = null;
       parent.style.transform = "";
       parent.style.opacity = "";
     }
@@ -331,31 +344,24 @@
     }
   };
 
-  const placeholder = (name) => `<div class="zz-place"><div class="zz-large">${name}</div><div class="zz-mid"><i data-icon="laptop"></i><span>${name}'s chats, terminals and browsers.</span></div></div>`;
+  const card = (name) => {
+    if (name === "add") return document.querySelector("#zz-add-card").content.cloneNode(true);
+    const page = document.querySelector("#zz-machine-card").content.cloneNode(true);
+    page.querySelector("[data-name]").textContent = name;
+    page.querySelector("[data-line]").textContent = `${name}'s chats, terminals and browsers.`;
+    return page;
+  };
 
   const enter = (from) => {
     if (child) return;
     const box = from.getBoundingClientRect();
     const frameBox = phone.getBoundingClientRect();
-    tile = { x: box.left - frameBox.left, y: box.top - frameBox.top, width: box.width, height: box.height };
+    const radius = parseFloat(getComputedStyle(from).borderTopLeftRadius) || 12;
+    tile = { x: box.left - frameBox.left, y: box.top - frameBox.top, width: box.width, height: box.height, radius };
     child = document.createElement("div");
     child.className = "zz-layer zz-child";
-    const inner = document.createElement("div");
-    const name = from.dataset.zoom;
-    if (name === "add") {
-      inner.append(document.querySelector("#zz-add-page").content.cloneNode(true));
-      fillKeyboards(inner);
-      inner.querySelector("[data-close]").addEventListener("click", () => aim(1));
-    } else {
-      inner.innerHTML = placeholder(name);
-      pill = document.createElement("div");
-      pill.className = "zz-bar";
-      pill.innerHTML = `<div class="zz-pill" data-penna="phone.pill" role="button"><span class="zz-tile" data-penna="phone.pill.icon"><i data-icon="server"></i></span><span class="zz-pill-copy"><b>${name}</b><span>Tap to zoom back out</span></span></div>`;
-      pill.addEventListener("click", () => aim(1));
-      pill.style.opacity = 0;
-      phone.append(pill);
-    }
-    child.append(inner);
+    child.append(card(from.dataset.zoom));
+    child.querySelector("[data-close]").addEventListener("click", () => aim(1));
     stage.append(child);
     window.pennaKit?.roundAll?.();
     target = 0;
@@ -367,7 +373,7 @@
 
   parent.addEventListener("click", (event) => {
     const from = event.target.closest("[data-zoom]");
-    if (from && !event.target.closest("button")) enter(from);
+    if (from) enter(from);
   });
 
   window.pennaKit?.roundAll?.();
