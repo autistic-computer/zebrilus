@@ -398,10 +398,22 @@ pub(crate) fn pane_margin(cx: &App) -> Pixels {
     ))
 }
 
+const WALLPAPER_TINT: f32 = 0.8;
+
 pub(crate) fn shown_theme(cx: &App) -> InterfaceTheme {
     let appearance = appearance(cx);
     let mut theme = appearance.shown_theme();
-    if resolved_config(cx).chrome_terminal_colors.value
+    let config = resolved_config(cx);
+    if config.chrome_tint_hue.provenance != ConfigProvenance::Override
+        && let Some(hue) = crate::window::background::wallpaper_hue(cx)
+        && crate::theme::chrome_blur(cx)
+    {
+        theme.neutral.hue = hue;
+        if config.chrome_tint.provenance != ConfigProvenance::Override {
+            theme.neutral.amount = WALLPAPER_TINT;
+        }
+    }
+    if config.chrome_terminal_colors.value
         && let Some(look) = crate::theme::terminal_appearance(cx)
             .as_deref()
             .and_then(zz_ui::terminal::terminal_look)

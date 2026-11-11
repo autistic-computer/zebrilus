@@ -137,7 +137,7 @@ fn apply_zz_overrides(cx: &mut App) {
     let frost = frost(cx);
     let glass_on = glass_on(cx);
     let window_opacity = if chrome_blur(cx) {
-        frost.window_opacity()
+        crate::window::background::chrome_opacity(frost)
     } else {
         1.0
     };
@@ -283,8 +283,13 @@ mod tests {
         cx.update(|cx| {
             assert!(chrome_blur(cx));
             assert_alpha(Theme::global(cx).background, 1.0);
-            assert_alpha(chrome_background(cx), 0.93);
-            assert_alpha(Theme::global(cx).ground().fill, 0.93);
+            let window = if cfg!(target_os = "macos") {
+                0.65
+            } else {
+                0.93
+            };
+            assert_alpha(chrome_background(cx), window);
+            assert_alpha(Theme::global(cx).ground().fill, window);
         });
 
         cx.update(|cx| {
@@ -315,7 +320,12 @@ mod tests {
     #[ala::test]
     fn frost_thickens_the_glass_and_the_window_together(cx: &mut ala::TestAppContext) {
         cx.update(zz_ui::init);
-        for (frost, window, blur) in [(0.0, 0.86, 10.0), (1.0, 1.0, 30.0)] {
+        let thin = if cfg!(target_os = "macos") {
+            0.30
+        } else {
+            0.86
+        };
+        for (frost, window, blur) in [(0.0, thin, 10.0), (1.0, 1.0, 30.0)] {
             cx.update(|cx| {
                 let mut config = config::AppConfig::default();
                 config.interface_frost.value = frost;

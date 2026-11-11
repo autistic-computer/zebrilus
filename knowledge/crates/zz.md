@@ -246,7 +246,18 @@ calls `MuxClient::detach()`, leaving the daemon alive for the next launch; with 
 
 The background-blur switch becomes a platform blur request in `window/background.rs`. Window
 creation uses the resolved value, and every watcher update reapplies it to all open ala windows in
-place. macOS keeps a transparent ala surface and sets the WindowServer background-blur radius;
+place. macOS keeps a transparent ala surface and puts a layer-backed view under ala's view (found
+again by its `zz-window-backdrop` identifier, so a second apply updates it and blur off removes it)
+whose backdrop layer filters what is behind the window: blur radius 60, saturation 1.8, then a
+brightness cap that turns white into a gray at the cap, 0.25 at Frost 0, 0.10 at the default and
+0.04 from 0.7 up. The chrome over it takes 0.65 + 0.70 × (frost − 0.5), so 0.30 at Frost 0, 0.65
+at the default and opaque at 1. Where the backdrop layer is missing at runtime, zz falls back to
+the WindowServer background-blur radius, 160 × (0.5 + frost), with the chrome at Frost's own
+opacity; the backdrop and that radius are never on together. At startup it also reads the
+desktop picture of the main screen, decodes a 64-pixel thumbnail off the main thread, and keeps the
+mean OKLab hue of its colors (none for a near-gray picture); while the window is blurred and
+`chrome-tint-hue` is not set, that hue becomes the chrome's tint hue, at tint strength 0.8 unless
+`chrome-tint` is set.
 Windows uses DWM's system backdrop; Wayland uses ala's standard `ext-background-effect-v1` path
 when advertised and retains the legacy KDE protocol as a fallback. X11 publishes KDE's rounded
 blur-behind region and refreshes it as window bounds change. The request is capability-gated:

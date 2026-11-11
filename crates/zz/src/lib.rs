@@ -264,6 +264,8 @@ fn run_app(
             tailnet::start(cx);
             cx.set_global(tray::DesktopTray::default());
             window::background::detect_compositor_support(cx);
+            #[cfg(target_os = "macos")]
+            window::background::sample_wallpaper(cx);
             browser::recent_pages::init(cx);
             zz_ui::init(cx);
             command::palette::init_recents(cx);
