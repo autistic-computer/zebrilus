@@ -806,10 +806,6 @@
   --penna-ink: var(--penna-on-danger);
 }
 
-.penna-stack-chip[data-penna][data-look="primary"][data-state~="selected"]:not(:disabled) {
-  background: var(--penna-primary-pressed);
-}
-
 .penna-stack-chip[data-penna][data-state~="selected"]:not(:disabled) {
   scale: 1.04;
 }
