@@ -142,8 +142,7 @@ pub(super) fn link_cli(cli: &Path) {
         }
         let link = directory.join("zz");
         match fs::read_link(&link) {
-            Ok(existing) if existing == cli => return,
-            Ok(existing) if is_bundle_launcher(&existing) => {}
+            Ok(existing) if replaces_link(&existing, link.exists(), cli) => {}
             Ok(_) => return,
             Err(_) if link.symlink_metadata().is_ok() => return,
             Err(_) => {}
@@ -159,6 +158,10 @@ pub(super) fn link_cli(cli: &Path) {
         return;
     }
     log::warn!(target: LOG_TARGET, "found no writable directory for the zz CLI");
+}
+
+fn replaces_link(existing: &Path, existing_exists: bool, wanted: &Path) -> bool {
+    existing != wanted && !existing_exists && is_bundle_launcher(existing)
 }
 
 fn is_bundle_launcher(path: &Path) -> bool {
@@ -192,5 +195,16 @@ mod tests {
             "Executable=/tmp/zz.app/Contents/MacOS/zz\nSignature=adhoc\nTeamIdentifier=not set\n";
         assert_eq!(team_identifier(signed), Some("Y4JYPG9TS8"));
         assert_eq!(team_identifier(ad_hoc), None);
+    }
+
+    #[test]
+    fn only_a_dangling_bundle_link_is_taken_over() {
+        let wanted = Path::new("/Users/me/Downloads/zz.app/Contents/MacOS/cli");
+        let other = Path::new("/Applications/zz.app/Contents/MacOS/cli");
+        let foreign = Path::new("/opt/homebrew/Cellar/zz/1.0/bin/zz");
+        assert!(!replaces_link(wanted, true, wanted));
+        assert!(replaces_link(other, false, wanted));
+        assert!(!replaces_link(other, true, wanted));
+        assert!(!replaces_link(foreign, false, wanted));
     }
 }
