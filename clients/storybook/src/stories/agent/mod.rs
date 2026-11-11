@@ -79,7 +79,7 @@ const STORY: Story = Story {
         Section {
             id: "messages",
             name: "Messages",
-            summary: "Your messages sit right-aligned in a bubble washed in the accent; a long one folds behind a fade with Show full message. Replies have no bubble. Hovering a message shows when it was sent, Copy and Fork, muted until the pointer is on them; on a reply, Copy takes every text of the turn.",
+            summary: "Your messages sit right-aligned in a bubble washed in the accent; a long one folds behind a fade with Show full message. Replies have no bubble. Hovering a message shows when it was sent, Copy and Fork, muted until the pointer is on them; on a reply, Copy takes every text of the turn. A reply over 32 KB or 512 lines shows its start at 420 px, fading out, with Show full message and Copy under it; Show full message opens the whole reply in place and Show less closes it again, keeping the row under the pointer.",
             build: chat::messages,
         },
         Section {

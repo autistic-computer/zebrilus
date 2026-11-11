@@ -116,6 +116,12 @@ impl Thread {
         self
     }
 
+    fn expanded(mut self, reply: &str) -> Self {
+        self.pane.sync(&self.script.view);
+        self.pane.click(&ChatClick::Expand(ItemId::new(reply)));
+        self
+    }
+
     fn width(mut self, width: f32) -> Self {
         self.width = Some(width);
         self
@@ -1069,12 +1075,26 @@ fn said(prompt: &str, reply: &str) -> Script {
     script
 }
 
-pub fn messages(window: &mut Window, cx: &mut App) -> AnyView {
+fn long_reply() -> String {
     let lines = (1..=600)
         .map(|line| format!("test browser::tab_strip::case_{line:03} ... ok"))
         .collect::<Vec<_>>()
         .join("\n");
-    let log = format!("Here is the whole run:\n\n```\n{lines}\n```");
+    let seed = "9f2c4e7a1b3d5f60".repeat(40);
+    format!(
+        "## Where the time goes\n\n\
+The tab strip suite takes 41 s on CI and 6 s here. Every case builds a window, so the cost is the \
+window, not the test. The failing seed from last night, as CI printed it:\n\n\
+{seed}\n\n\
+## The whole run\n\n\
+```text\n{lines}\n```\n\n\
+## Next\n\n\
+Share one window across the cases and the suite should drop under 10 s."
+    )
+}
+
+pub fn messages(window: &mut Window, cx: &mut App) -> AnyView {
+    let log = long_reply();
     let pasted = (1..=40)
         .map(|line| format!("{line}. a pasted line of the brief, long enough to wrap once or twice in the bubble"))
         .collect::<Vec<_>>()
@@ -1150,8 +1170,14 @@ pub fn messages(window: &mut Window, cx: &mut App) -> AnyView {
                 Thread::new(shown("", &[tab_strip_screenshot()])),
             ),
             (
-                "a 600-line log: the first 512 lines scroll in a 420px box, Copy takes all of it",
+                "a reply over 512 lines: its start fades out, Show full message opens it in place",
                 Thread::new(said("Paste the whole test run.", &log))
+                    .framed(Frame::Scroll(Some(600.0))),
+            ),
+            (
+                "the same reply opened: all of it, with Show less under it",
+                Thread::new(said("Paste the whole test run.", &log))
+                    .expanded("a1")
                     .framed(Frame::Scroll(Some(600.0))),
             ),
         ],

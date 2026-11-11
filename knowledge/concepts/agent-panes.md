@@ -522,8 +522,16 @@ bubble draws refs as clickable ranges.
   arrives fades in, each paragraph, table cell and code block keyed by where it starts in the source
   (penna's `StreamingVeil`); two that shared a key would restart each other's fade every frame and
   never show, which is why table cells carry their own source spans.
-- **Long replies.** A reply over 32 KB or 512 lines shows its start in a 420 px scroll box with
-  Copy full message under it (`ChatOpen::previews`); Copy under the turn still takes all of it.
+- **Long replies.** A reply over 32 KB or 512 lines shows its start at 420 px, clipped and fading
+  into the pane's ground (penna's `bottom_fade` over a clip that does not scroll, so the wheel
+  scrolls the chat), with Show full message and Copy under it, left on the text column. Only the
+  first 8 KB or 64 lines are laid out while it is closed (`ChatOpen::previews`, mended so an
+  unclosed bold or code span is closed; an unclosed fence runs to the end of the cut, as Markdown
+  draws it). Show full message draws the whole reply in place, as any reply, and Show less
+  closes it again (`ChatOpen::expanded`, per item while the pane lives); closing scrolls the chat
+  up by what the reply lost, so the row stays under the pointer. Copy there takes this reply,
+  where Copy under the turn takes every text of the turn. A reply that streams or types itself in
+  past the limit shows the same closed start.
 - **Runs.** Tool calls and thoughts in a row, with nothing else between them (no text, message,
   subagent, plan, notice or ask), are one run with one header (`chat_rows::turn_rows`). In a
   finished turn the fold joins runs that only a kept row (an answered question, your message, a

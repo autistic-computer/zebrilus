@@ -1,5 +1,5 @@
 use std::{
-    cell::RefCell,
+    cell::{Cell, RefCell},
     collections::{HashMap, HashSet},
     hash::{DefaultHasher, Hash as _, Hasher as _},
     rc::{Rc, Weak},
@@ -9,14 +9,14 @@ use std::{
 
 use ala::{
     AnyElement, App, ClipboardItem, Context, Div, FollowMode, Global, Image, ImageFormat,
-    IntoElement, ListAlignment, ListSizingBehavior, ListState, SharedString, Stateful,
-    Subscription, Window, div, list, prelude::*, px, relative,
+    IntoElement, ListAlignment, ListSizingBehavior, ListState, ScrollHandle, SharedString,
+    Stateful, Subscription, Window, div, list, prelude::*, px, relative,
 };
 use penna::{
     Card, CardLook, Label, Sizable as _, TextStyle,
     components::{
         button::{ButtonLook, ButtonVariants as _},
-        scroll::Scrollbar,
+        scroll::{ScrollableElement as _, Scrollbar},
     },
 };
 use zz_client::{
@@ -51,8 +51,9 @@ use crate::{
     v_flex,
 };
 use penna::blocks::chat::{
-    ActivityEnd, ActivityMark, CHAT_CONTENT_MAX_WIDTH, COMPOSER_OUTER_PADDING,
-    TRANSCRIPT_ATTACHMENT, activity_row, spinner_phase, transcript_text,
+    ACTIVITY_DISCLOSURE_SIZE, ActivityEnd, ActivityMark, CHAT_CONTENT_MAX_WIDTH,
+    COMPOSER_OUTER_PADDING, TRANSCRIPT_ATTACHMENT, activity_glyph, activity_row, spinner_phase,
+    transcript_text,
 };
 use penna::blocks::chat::{card_chip, card_glyph, card_header, card_title};
 
@@ -65,6 +66,7 @@ pub struct ChatOpen {
     pub images: HashMap<ItemId, Arc<[Arc<Image>]>>,
     pub texts: HashMap<ItemId, SharedString>,
     pub previews: HashMap<ItemId, SharedString>,
+    pub expanded: HashSet<ItemId>,
     pub tall: HashSet<ItemId>,
     pub unfolded: HashSet<ItemId>,
 }
@@ -78,6 +80,8 @@ pub enum ChatClick {
     Fork(ItemId),
     Unfold(ItemId),
     Tall(ItemId, bool),
+    Expand(ItemId),
+    Collapse(ItemId, ala::Pixels),
 }
 
 pub type ChatClicks = Rc<dyn Fn(&ChatClick, &mut Window, &mut App)>;
@@ -155,8 +159,10 @@ const THOUGHT_MAX_HEIGHT: f32 = 260.0;
 const PIP_GAP: f32 = 10.0;
 const PREVIEW_MAX_BYTES: usize = 32 * 1024;
 const PREVIEW_MAX_LINES: usize = 512;
+const PREVIEW_CUT_BYTES: usize = 8 * 1024;
+const PREVIEW_CUT_LINES: usize = 64;
 const PREVIEW_HEIGHT: f32 = 420.0;
-const PREVIEW_MARKER: &str = "\n\n… [long message cut here; copy the full message below]";
+const PREVIEW_FADE_HEIGHT: f32 = 96.0;
 const PIP_MIN_WIDTH: f32 = 280.0;
 const PIP_MAX_WIDTH: f32 = 520.0;
 
@@ -336,6 +342,15 @@ impl ChatPane {
                 }
                 return;
             }
+            ChatClick::Expand(item) => {
+                self.open.expanded.insert(item.clone());
+            }
+            ChatClick::Collapse(item, shrink) => {
+                self.open.expanded.remove(item);
+                self.list.pause_following_tail();
+                self.list.scroll_by(-*shrink);
+                return;
+            }
         }
         self.list.pause_following_tail();
     }
@@ -409,6 +424,7 @@ impl ChatPane {
     fn sync_texts(&mut self, view: &ChatView) {
         let texts = &mut self.open.texts;
         let previews = &mut self.open.previews;
+        let expanded = &mut self.open.expanded;
         texts.retain(|id, _| view.item(id).is_some());
         previews.retain(|id, _| texts.contains_key(id));
         for item in view.items.values() {
@@ -432,6 +448,7 @@ impl ChatPane {
                 }
             }
         }
+        expanded.retain(|id| previews.contains_key(id));
     }
 
     fn sync_rows(&mut self, view: &ChatView) {
@@ -1065,9 +1082,28 @@ impl Draw<'_, '_> {
     }
 
     fn reply(&self, id: &ItemId) -> AnyElement {
-        if let Some(cut) = self.open.previews.get(id) {
-            return long_reply(id, cut.clone(), self.text(id), self.hooks, self.cx);
-        }
+        let Some(cut) = self.open.previews.get(id) else {
+            return self.full_reply(id);
+        };
+        let expanded = self.open.expanded.contains(id);
+        let body = if expanded {
+            self.full_reply(id)
+        } else {
+            markdown(id, cut.clone(), false, self.hooks, self.cx)
+        };
+        let anchored = self.view.item(id).is_some_and(|item| item.parent.is_none());
+        long_reply(
+            id,
+            body,
+            expanded,
+            anchored,
+            self.text(id),
+            self.hooks,
+            self.cx,
+        )
+    }
+
+    fn full_reply(&self, id: &ItemId) -> AnyElement {
         let streams = self.streams(id);
         let text = self.shown_text(id);
         let text = if streams && text.len() <= super::MAX_STREAMING_MEND_BYTES {
@@ -1075,7 +1111,7 @@ impl Draw<'_, '_> {
         } else {
             text
         };
-        markdown(id, text, streams, false, self.hooks, self.cx)
+        markdown(id, text, streams, self.hooks, self.cx)
     }
 
     fn streams(&self, id: &ItemId) -> bool {
@@ -1314,7 +1350,6 @@ impl Draw<'_, '_> {
                 body.child(markdown(
                     &ItemId::new(format!("result-{}", id.as_str())),
                     result.into(),
-                    false,
                     false,
                     self.hooks,
                     cx,
@@ -1941,61 +1976,147 @@ fn block_scope(owner: Option<u64>, id: &str) -> u64 {
     hasher.finish()
 }
 
-fn preview(text: &str) -> Option<String> {
-    let mut end = text.len().min(PREVIEW_MAX_BYTES);
+fn cut_end(text: &str, bytes: usize, lines: usize) -> usize {
+    let mut end = text.len().min(bytes);
     while !text.is_char_boundary(end) {
         end -= 1;
     }
-    if let Some((newline, _)) = text[..end].match_indices('\n').nth(PREVIEW_MAX_LINES - 1) {
+    if let Some((newline, _)) = text[..end].match_indices('\n').nth(lines - 1) {
         end = newline + 1;
     }
-    if end >= text.len() {
+    end
+}
+
+fn preview(text: &str) -> Option<String> {
+    if cut_end(text, PREVIEW_MAX_BYTES, PREVIEW_MAX_LINES) >= text.len() {
         return None;
     }
-    let prefix = &text[..end];
-    let mut cut = crate::mend::mend(prefix).unwrap_or_else(|| prefix.to_owned());
-    cut.push_str(PREVIEW_MARKER);
-    Some(cut)
+    let prefix = &text[..cut_end(text, PREVIEW_CUT_BYTES, PREVIEW_CUT_LINES)];
+    Some(crate::mend::mend(prefix).unwrap_or_else(|| prefix.to_owned()))
 }
 
 fn long_reply(
     id: &ItemId,
-    cut: SharedString,
+    body: AnyElement,
+    expanded: bool,
+    anchored: bool,
     full: SharedString,
     hooks: &ChatHooks<'_>,
     cx: &App,
 ) -> AnyElement {
+    let key = id.as_str();
+    let height = Rc::new(Cell::new(ala::Pixels::ZERO));
+    let body = if expanded {
+        let height = Rc::clone(&height);
+        div()
+            .w_full()
+            .child(body)
+            .on_children_prepainted(move |bounds, _, _| {
+                if let Some(bounds) = bounds.first() {
+                    height.set(bounds.size.height);
+                }
+            })
+            .into_any_element()
+    } else {
+        let clip = ScrollHandle::new();
+        let ground = hooks.ground.unwrap_or_else(|| cx.theme().ground());
+        div()
+            .id(SharedString::from(format!("chat-long-{key}")))
+            .relative()
+            .w_full()
+            .child(
+                div()
+                    .id(SharedString::from(format!("chat-long-clip-{key}")))
+                    .w_full()
+                    .flex()
+                    .flex_col()
+                    .max_h(px(PREVIEW_HEIGHT))
+                    .overflow_hidden()
+                    .track_scroll(&clip)
+                    .child(div().flex_none().w_full().child(body)),
+            )
+            .bottom_fade(&clip, ground.fill, px(PREVIEW_FADE_HEIGHT))
+            .into_any_element()
+    };
+    let toggle = reply_action(
+        SharedString::from(format!("chat-long-toggle-{key}")),
+        None,
+        if expanded {
+            "Show less"
+        } else {
+            "Show full message"
+        },
+        Some(if expanded {
+            IconName::ChevronUp
+        } else {
+            IconName::ChevronDown
+        }),
+        cx,
+    )
+    .when_some(hooks.click.clone(), |row, click| {
+        let id = id.clone();
+        row.on_click(move |_, window, cx| {
+            cx.stop_propagation();
+            let target = if expanded {
+                let shrink = if anchored {
+                    (height.get() - px(PREVIEW_HEIGHT)).max(ala::Pixels::ZERO)
+                } else {
+                    ala::Pixels::ZERO
+                };
+                ChatClick::Collapse(id.clone(), shrink)
+            } else {
+                ChatClick::Expand(id.clone())
+            };
+            click(&target, window, cx);
+        })
+    });
+    let copy = reply_action(
+        SharedString::from(format!("chat-long-copy-{key}")),
+        Some(IconName::Copy),
+        "Copy",
+        None,
+        cx,
+    )
+    .on_click(move |_, window, cx| {
+        cx.stop_propagation();
+        cx.write_to_clipboard(ClipboardItem::new_string(full.to_string()));
+        window.push_notification(
+            Notification::new()
+                .message("Copied")
+                .autohide_after(Duration::from_millis(1600)),
+            cx,
+        );
+    });
     v_flex()
         .w_full()
-        .gap_2()
-        .child(markdown(id, cut, false, true, hooks, cx))
-        .child(
-            h_flex().w_full().justify_end().child(
-                Button::new(SharedString::from(format!(
-                    "chat-copy-full-{}",
-                    id.as_str()
-                )))
-                .icon(IconName::Copy)
-                .label("Copy full message")
-                .on_click(move |_, window, cx| {
-                    cx.write_to_clipboard(ClipboardItem::new_string(full.to_string()));
-                    window.push_notification(
-                        Notification::new()
-                            .message("Copied")
-                            .autohide_after(Duration::from_millis(1600)),
-                        cx,
-                    );
-                }),
-            ),
-        )
+        .gap_1()
+        .child(body)
+        .child(h_flex().gap_4().child(toggle).child(copy))
         .into_any_element()
+}
+
+fn reply_action(
+    id: SharedString,
+    icon: Option<IconName>,
+    label: &'static str,
+    chevron: Option<IconName>,
+    cx: &App,
+) -> Stateful<Div> {
+    let foreground = cx.theme().foreground;
+    let mut mark = ActivityMark::bare();
+    mark.icon = icon;
+    activity_row(id, mark, label.into(), ActivityEnd::None, cx)
+        .click_cursor()
+        .hover(move |row| row.text_color(foreground))
+        .when_some(chevron, |row, chevron| {
+            row.child(activity_glyph(chevron, ACTIVITY_DISCLOSURE_SIZE, cx))
+        })
 }
 
 fn markdown(
     id: &ItemId,
     text: SharedString,
     streaming: bool,
-    scrolls: bool,
     hooks: &ChatHooks<'_>,
     cx: &App,
 ) -> AnyElement {
@@ -2014,8 +2135,7 @@ fn markdown(
             agent_text_view(view, scope, hooks.owner, cx)
                 .selectable(true)
                 .streaming(streaming)
-                .markdown_extensions(extensions)
-                .when(scrolls, |text| text.scrollable(true).h(px(PREVIEW_HEIGHT))),
+                .markdown_extensions(extensions),
         )
         .into_any_element()
 }
@@ -2777,9 +2897,9 @@ mod tests {
     }
 
     #[test]
-    fn a_long_reply_shows_its_first_512_lines_and_copies_whole() {
+    fn a_long_reply_previews_its_first_64_lines() {
         let mut view = ready("s1");
-        let long = "line\n".repeat(600);
+        let long = format!("```\n{}```\n", "line\n".repeat(600));
         view.apply(&ChatEvent::ItemStarted {
             item: ItemId::new("long"),
             turn: Some(TurnId(1)),
@@ -2794,7 +2914,7 @@ mod tests {
         pane.sync(&view);
         assert_eq!(
             pane.open.previews[&ItemId::new("long")].as_ref(),
-            format!("{}{}", "line\n".repeat(512), super::PREVIEW_MARKER)
+            format!("```\n{}", "line\n".repeat(63))
         );
         assert_eq!(pane.open.texts[&ItemId::new("long")].as_ref(), long);
         assert!(!pane.open.previews.contains_key(&ItemId::new("short")));
