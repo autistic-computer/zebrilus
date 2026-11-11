@@ -3,7 +3,7 @@
 What a tile becomes when it grows to fill the screen: the machine you went into, or the form behind the add tile. For a short question, a sheet.
 
 ```figure uses=notice
-<div class="penna-notice" data-penna="notice" data-tone="warning" style="width: 100%"><div class="penna-notice-tone" data-penna="chip" data-tone="warning"><span class="penna-notice-lead"><i data-icon="triangle-alert"></i></span><div class="penna-notice-body"><span class="penna-text penna-notice-title" data-penna-text>Zoom built, card not yet</span><span class="penna-text penna-notice-detail" data-penna-text>The zoom between tile and screen is native; the card's close control, drag down and pinch out are drawn here with the HTML kit.</span></div></div></div>
+<div class="penna-notice" data-penna="notice" data-tone="warning" style="width: 100%"><div class="penna-notice-tone" data-penna="chip" data-tone="warning"><span class="penna-notice-lead"><i data-icon="triangle-alert"></i></span><div class="penna-notice-body"><span class="penna-text penna-notice-title" data-penna-text>Zoom built, card not yet</span><span class="penna-text penna-notice-detail" data-penna-text>The zoom between tile and screen is native; the card's close control, drag down and pinch out, the add card's found rows and scanner, and the connecting card are drawn here with the HTML kit.</span></div></div></div>
 ```
 
 ## Anatomy
@@ -31,6 +31,39 @@ What a tile becomes when it grows to fill the screen: the machine you went into,
 2. **Large title**: 52, `touch-title`.
 3. **Body**: `inset-pane` 16, groups `gap-group` 16 apart.
 4. **Action bar**: the one main action.
+
+## Add card
+
+Behind the add tile. Found machines first, as touch rows with the add mark: a tap adds the machine and connects it, and a machine without zz is a disabled row that says so. Then the address field with its scan accessory; Connect stays off until an address is typed. With no tailnet the field comes first, focused, with the keyboard up.
+
+## Scan
+
+```figure uses=compact,touch,button,label
+<div class="penna-zoom-card" data-penna="phone.card" style="width: 370px; height: 660px; padding-top: var(--penna-inset-pane); border-radius: 28px">
+  <div class="penna-zoom-top"><button class="penna-touch-icon" data-penna="phone.button" aria-label="Close"><i data-icon="xmark"></i></button></div>
+  <div class="penna-zoom-title">Add machine</div>
+  <div class="penna-zoom-body">
+    <div style="aspect-ratio: 1; border-radius: var(--penna-radius); background: color-mix(in srgb, var(--penna-fg) 80%, var(--penna-bg))"></div>
+    <span class="penna-type" data-type="touch-small" data-muted data-penna-text>On your computer, the code is in zz Settings, Hosts, under Add this machine to a phone.</span>
+  </div>
+  <div class="penna-action-bar"><button class="penna-button" data-penna="button" data-size="touch-large"><span class="penna-label" data-penna-text>Type an address instead</span></button></div>
+</div>
+```
+
+The scan accessory turns the same card into the scanner: the camera's picture, square, one line saying where the code is, and a way back to typing. The picture is the app's.
+
+## Connecting card
+
+```figure uses=compact,touch,button,label
+<div class="penna-zoom-card" data-penna="phone.card" style="width: 370px; height: 520px; padding-top: var(--penna-inset-pane); border-radius: 28px">
+  <div class="penna-zoom-top"><button class="penna-touch-icon" data-penna="phone.button" aria-label="Close"><i data-icon="xmark"></i></button></div>
+  <div class="penna-zoom-title">xps</div>
+  <div class="penna-zoom-body" style="justify-content: center"><div class="penna-empty"><i class="penna-touch-spinner" data-icon="loader"></i><b>Connecting</b><span>Waiting for ssh on fabrico@xps</span></div></div>
+  <div class="penna-action-bar"><button class="penna-button" data-penna="button" data-size="touch-large"><span class="penna-label" data-penna-text>Cancel</span></button></div>
+</div>
+```
+
+Behind a connecting tile. Cancel is its one action, drawn as a secondary since stopping is not what the card is for; it zooms back to the tile, now not connected. When the connection lands, the card becomes the machine.
 
 ## Motion
 

@@ -38,3 +38,7 @@ Asks a short question and returns you where you were: a password, a confirmation
 ```
 
 Nothing tappable is under 44 on a phone, so the close grows to the touch rung.
+
+## A question from ssh
+
+Titled for the machine, ssh's own prompt word for word over a 56 field, and an action that says what it does: "Sign in", not "Continue". It comes up over whatever is on screen; closing it cancels the connect. Not built: the thin client asks in a centered dialog.

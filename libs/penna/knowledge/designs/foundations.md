@@ -1722,7 +1722,7 @@ Machine tile (Phone): the bento overview's cell, two to a row.
 
 - Container: the `phone.card` look, `gap-related` 8 apart over `inset-pane` 16 (`BENTO_GAP`, `BENTO_INSET`), square, inset `inset-card` 12.
 - Name: strong `touch-body` (500), after a tone dot 8 or a 16 spinner, `space-8` apart. State under it in `touch-small`, muted, or `warning` ink while something waits. Lines at the bottom in `touch-small`, muted.
-- States, and what a tap does: connected ("Connected"), zooms into the machine; waiting ("1 waiting for you", warning dot), zooms in; connecting (spinner, "Connecting"), zooms into its progress, where Cancel is the main action; offline (faint dot, "Not connected", when it was last seen), reconnects; pressed, the bento press (`control` over the tile); add, the `phone.add` look with a 20 `plus` and "Add machine", zooms into the add card.
+- States, and what a tap does: connected ("Connected"), zooms into the machine; waiting ("1 waiting for you", warning dot), zooms in; connecting (spinner, "Connecting", how it is reached), zooms into the connecting card, where Cancel is the one action (Zoom card); offline (faint dot, "Not connected", when it was last seen), reconnects; pressed, the bento press (`control` over the tile); add, the `phone.add` look with a 20 `plus` and "Add machine", zooms into the add card (Zoom card).
 - No button sits inside a tile, and nothing on the overview is drawn as a ghost: machines not yet added are rows in the add card.
 
 Status for the machine tile: the grid, the cell and the add tile are built (`bento_grid`, `bento_tile`, `bento_add_tile`); zz-ui draws the states (`host_tile`) at `heading` 16 and `body` 13, inset 14, with Connect and Cancel buttons inside. Not built. HTML: `.penna-machine-grid` holding `.penna-machine-tile[data-penna="phone.card"]` (`data-penna="phone.add"` and `data-add` for the add tile) with `.penna-machine-name`, `.penna-machine-state` (`data-tone="warning"`), `.penna-machine-foot` and a `.penna-press` for the pressed state (`data-state="active"`).
@@ -1844,9 +1844,18 @@ Anatomy, top to bottom: the platform's status area; a top row 44 with the close 
 
 Behavior: it opens with the zoom (`zoom_layers`: the tile's layer grows to the screen while the grid behind scales up around it and they cross-fade between 0.3 and 0.7 of the way, on the touch spring) and closes the same way back, from the close control, a drag down or a pinch out.
 
-HTML: `.penna-zoom-card[data-penna]` holding `.penna-zoom-top`, `.penna-zoom-title`, `.penna-zoom-body` and `.penna-action-bar`.
+The add card, behind the add tile, titled "Add machine":
 
-Status: the zoom is built; the card, its close control, drag down and pinch out are not.
+- Found machines first: the section header "Found on your tailnet" with its count over a row group of two-line touch rows (List, Touch rows), the machine's name over its system and "runs zz", the add mark at the end. Tapping a row adds the machine and connects it. A found machine without zz is a disabled row that says so ("No zz on it yet"). With no tailnet the group is left out.
+- Then the address field (Field, Phone), labelled "Or an address" under found rows and "Address" with its help line when alone, a 44 scan accessory inside it. Alone, it opens focused with the keyboard up.
+- Connect is the main action, off until an address is typed. Connect, a found row or a read code zoom the card back out to the overview, where the new machine's tile is connecting, before the add tile.
+- Scan: the scan accessory turns the same card into the scanner. The title stays; the body is the camera's picture, square, the body's width, at `radius`, with one line under it in `touch-small` muted saying where the code is; the action bar holds "Type an address instead", a secondary at 56, which brings the field back focused. The code holds `zz://host/<machine>.ts.net:<port>`.
+
+The connecting card, behind a connecting tile, titled with the machine's name: the body is the empty state's anatomy (Empty state on a phone) with the spinner at 32 in place of the icon, "Connecting" as its title and one line saying what it waits for ("Waiting for ssh on fabrico@xps"). Cancel is the one action, a secondary at 56: stopping is not what the card is for, so it is not drawn as the main action. Cancel stops the connect and zooms back to the tile, now "Not connected". When the connection lands the card becomes the machine. A question from ssh comes up as a sheet over whatever is on screen (Sheet).
+
+HTML: `.penna-zoom-card[data-penna]` holding `.penna-zoom-top`, `.penna-zoom-title`, `.penna-zoom-body` and `.penna-action-bar`. The scanner's picture is the app's, not the kit's.
+
+Status: the zoom is built; the card, its close control, drag down and pinch out are not. The add card and the connecting card are not built: Add host is a bottom sheet with a field and no found rows, the phone has no camera of its own (the system camera opens the code's link), and a connecting tile carries its own Cancel button.
 
 ### Sheet
 
@@ -1855,6 +1864,8 @@ A sheet asks a short question and returns you where you were: a password, a conf
 Anatomy (`penna::blocks::sheet`): floating `space-8` from the screen's sides on the `drawer` look; a grabber 36 by 5, `space-6` from the top; a header 60 tall with the title in `display` and the close control at its end; the body, `inset-pane` 16 at the sides, in `touch-body`; rows from List, Touch rows; on a phone the action bar at the bottom, riding the keyboard. It rises over 240ms and is dismissed by a drag down past half its height, a fling, the scrim or the close control.
 
 Phone: the close control is a 44 icon button (Phone, rule 2). Built at 36 (`CLOSE`).
+
+Content: a question from ssh is titled for the machine ("Sign in to xps"), shows ssh's own prompt word for word over a 56 field, and its main action says what it does ("Sign in"). It comes up over whatever is on screen, the overview or a card, and closing it cancels the connect. Not built: the thin client asks in a centered dialog whose action reads "Continue".
 
 HTML: `.penna-sheet` with `.penna-sheet-scrim`, `.penna-sheet-frame`, `.penna-sheet-panel`, `.penna-sheet-grip`, `.penna-sheet-header`, `.penna-sheet-title`, `.penna-sheet-close` (`data-size="touch"` for 44) and `.penna-sheet-row`.
 

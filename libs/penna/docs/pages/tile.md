@@ -91,9 +91,9 @@ The bento overview's cell on a phone, two to a row. The whole tile is the target
 | --- | --- | --- |
 | Connected | a green dot, "Connected" | zooms into the machine |
 | Waiting | a warning dot, "1 waiting for you" | zooms into the machine |
-| Connecting | a spinner, "Connecting" | zooms into its progress, where Cancel is the main action |
+| Connecting | a spinner, "Connecting", how it is reached | zooms into the [connecting card](zoom-card.html), where Cancel is the one action |
 | Offline | a faint dot, "Not connected", when it was last seen | reconnects |
 | Pressed | the press over the tile | |
-| Add | "Add machine" | zooms into the add card |
+| Add | "Add machine" | zooms into the [add card](zoom-card.html) |
 
 Name strong `touch-body`, state and lines `touch-small`, inset 12. No button inside, no ghost tiles: machines not added yet are rows in the add card.
